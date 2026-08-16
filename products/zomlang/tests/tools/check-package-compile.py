@@ -31,7 +31,7 @@ def run(zomc: str, workspace: Path, lock_flag: str) -> subprocess.CompletedProce
             "app",
             "--lib",
             lock_flag,
-            "--dump-ast",
+            "--check",
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -57,6 +57,8 @@ def main() -> int:
         updated = run(zomc, workspace, "--update-lock")
         if updated.returncode != 0:
             raise RuntimeError(f"package update compilation failed:\n{updated.stdout}")
+        if updated.stdout:
+            raise RuntimeError(f"package update check was not silent:\n{updated.stdout}")
         lockfile = workspace / "Zom.lock"
         if not lockfile.is_file():
             raise RuntimeError("--update-lock did not publish Zom.lock")
@@ -67,6 +69,8 @@ def main() -> int:
         locked = run(zomc, workspace, "--locked")
         if locked.returncode != 0:
             raise RuntimeError(f"locked replay compilation failed:\n{locked.stdout}")
+        if locked.stdout:
+            raise RuntimeError(f"locked replay check was not silent:\n{locked.stdout}")
 
     print("package workspace compile and locked replay passed")
     return 0

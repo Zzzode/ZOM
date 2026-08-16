@@ -24,11 +24,13 @@
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
+#include "zomlang/compiler/binder/parsed-module.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/diagnostics/diagnostic-materializer.h"
 #include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
+#include "zomlang/compiler/parser/canonical-parsed-source.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
@@ -881,6 +883,71 @@ ZC_TEST("ParserTest.ParseSimpleStruct") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse struct declaration");
+}
+
+ZC_TEST("ParserTest.ParseFunctionLocalStructLiteralMember") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("struct Cell { value: i32, }\n"
+              "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }")
+          .asBytes(),
+      "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse a local nominal aggregate field projection");
+  ZC_EXPECT(!diagnosticEngine->hasErrors(), "Local nominal aggregate should not diagnose");
+}
+
+ZC_TEST("ParserTest.CanonicalizesFunctionLocalStructLiteralMember") {
+  const auto sourceText = zc::str(
+      "struct Cell { value: i32, }\n"
+      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }");
+  auto sourceManager = zc::heap<source::SourceManager>();
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+  const auto buffer = sourceManager->addMemBufferCopy(sourceText.asBytes(), "test.zom");
+  diagnostics::SourceDiagnosticDraftBuffer facts(*sourceManager, buffer);
+  ::zomlang::compiler::parser::Parser parser(*sourceManager, facts, langOpts, stringPool, buffer);
+
+  auto tree = parser.parse();
+  auto tokens = parser.takeTokenSnapshot();
+  auto published = facts.publish(tests::test_identity_detail::source(), sourceText.size());
+  auto digest = identity::sha256(sourceText.asBytes());
+  ZC_REQUIRE(tree != zc::none);
+  ZC_REQUIRE(tokens != zc::none);
+  ZC_REQUIRE(published != zc::none);
+  ZC_REQUIRE(digest != zc::none);
+  ZC_IF_SOME(value, published) {
+    ZC_IF_SOME(contentDigest, digest) {
+      auto canonical = CanonicalParsedSource::fromParsed(
+          tests::test_identity_detail::source().encode().asPtr(), contentDigest,
+          sourceText.asBytes(), "test.zom"_zc, CanonicalParserOptions{}, *sourceManager, buffer,
+          zc::mv(ZC_REQUIRE_NONNULL(tree)), zc::mv(ZC_REQUIRE_NONNULL(tokens)), value.takeFacts(),
+          value.takeProvenance());
+      ZC_EXPECT(canonical != zc::none);
+      auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
+                                                              zc::heapArray(sourceText.asBytes()));
+      identity::SemanticContextFactory factory;
+      auto context = factory.issue();
+      ZC_REQUIRE(snapshot != zc::none);
+      ZC_REQUIRE(context != zc::none);
+      ZC_IF_SOME(sourceSnapshot, snapshot) {
+        ZC_IF_SOME(semanticContext, context) {
+          ZC_IF_SOME(parsed, canonical) {
+            auto verified = binder::ParsedModuleVerifier::verifyQueryResult(
+                semanticContext, sourceSnapshot, sourceSnapshot.source(), *sourceManager, buffer,
+                zc::mv(parsed));
+            ZC_EXPECT(verified.is<binder::VerifiedParsedModule>());
+          }
+        }
+      }
+    }
+  }
 }
 
 ZC_TEST("ParserTest.ParseSimpleEnum") {
@@ -2240,36 +2307,35 @@ ZC_TEST("ParserTest.ParseForStatementEmptyClauses") {
   }
 }
 
-ZC_TEST("ParserTest.ParseDebuggerAndJumpStatements") {
+ZC_TEST("ParserTest.ParseJumpStatements") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("debugger; break; continue loop; return; return 1;").asBytes(), "test.zom");
+      zc::str("break; continue loop; return; return 1;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Should parse debugger/break/continue/return statements");
+  ZC_EXPECT(result != zc::none, "Should parse break/continue/return statements");
 
   ZC_IF_SOME(root, result) {
     const auto statements = topLevelStatements(root);
-    ZC_EXPECT(statements.size() == 5);
+    ZC_EXPECT(statements.size() == 4);
 
-    ZC_EXPECT(topLevelStatement(root, 0).kind == ast::SyntaxKind::DebuggerStatement);
-    ZC_EXPECT(topLevelStatement(root, 1).kind == ast::SyntaxKind::BreakStmt);
+    ZC_EXPECT(topLevelStatement(root, 0).kind == ast::SyntaxKind::BreakStmt);
 
-    const ast::Node& continueNode = topLevelStatement(root, 2);
+    const ast::Node& continueNode = topLevelStatement(root, 1);
     ZC_EXPECT(continueNode.kind == ast::SyntaxKind::ContinueStatement);
     ZC_EXPECT(root.ident(ast::IdentId(
                   continueNode.payload.words[ast::kContinueStatementLabelWord])) == "loop");
 
-    const ast::Node& emptyReturn = topLevelStatement(root, 3);
+    const ast::Node& emptyReturn = topLevelStatement(root, 2);
     ZC_EXPECT(emptyReturn.kind == ast::SyntaxKind::ReturnStmt);
     ZC_EXPECT(emptyReturn.payload.words[ast::kReturnStmtValueWord] == 0);
 
-    const ast::Node& valueReturn = topLevelStatement(root, 4);
+    const ast::Node& valueReturn = topLevelStatement(root, 3);
     ZC_EXPECT(valueReturn.kind == ast::SyntaxKind::ReturnStmt);
     const ast::Node& value =
         root.node(ast::NodeId(valueReturn.payload.words[ast::kReturnStmtValueWord]));
@@ -4115,14 +4181,14 @@ ZC_TEST("ParserTest.ParseAliasWithTypeParameter") {
   ZC_EXPECT(result != zc::none);
 }
 
-ZC_TEST("ParserTest.ParseDebuggerStatement") {
+ZC_TEST("ParserTest.AllowsDebuggerAsIdentifier") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("fun foo() { debugger; }").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("fun debugger() { let debugger = 1; debugger; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();

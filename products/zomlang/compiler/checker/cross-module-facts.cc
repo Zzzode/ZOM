@@ -54,7 +54,8 @@ bool validImportedRootBinding(const binder::BindingTarget& binding,
                               const identity::ModuleKey& sourceInterface,
                               identity::ModuleId sourceModule,
                               const identity::DefinitionIdentityRecord& canonical,
-                              const CheckerIdentityAuthority& identities) {
+                              const CheckerIdentityAuthority& identities,
+                              bool allowReexportedSource) {
   const auto& value = binding.value();
   if (value.is<binder::DefinitionBindingTarget>()) {
     auto entry = identities.definition(value.get<binder::DefinitionBindingTarget>().definition);
@@ -66,7 +67,8 @@ bool validImportedRootBinding(const binder::BindingTarget& binding,
         return value.handle() == sourceModule &&
                definition.record().module().encode().asPtr() ==
                    canonical.module().encode().asPtr() &&
-               definition.record().module().encode().asPtr() == sourceInterface.encode().asPtr();
+               (allowReexportedSource ||
+                definition.record().module().encode().asPtr() == sourceInterface.encode().asPtr());
       }
     }
     return false;
@@ -81,6 +83,21 @@ bool validImportedRootBinding(const binder::BindingTarget& binding,
          semantic.sourceName().text() == canonical.name();
 }
 
+bool sameInterfaceRevision(const module_interface::ImportedInterfaceRevision& left,
+                           const module_interface::ImportedInterfaceRevision& right) {
+  const auto& leftValue = left.variant();
+  const auto& rightValue = right.variant();
+  if (leftValue.is<module_interface::UserImportedInterfaceRevision>()) {
+    return rightValue.is<module_interface::UserImportedInterfaceRevision>() &&
+           leftValue.get<module_interface::UserImportedInterfaceRevision>().value.digest() ==
+               rightValue.get<module_interface::UserImportedInterfaceRevision>().value.digest();
+  }
+  return rightValue.is<module_interface::ToolchainCoreImportedInterfaceRevision>() &&
+         leftValue.get<module_interface::ToolchainCoreImportedInterfaceRevision>().value.digest() ==
+             rightValue.get<module_interface::ToolchainCoreImportedInterfaceRevision>()
+                 .value.digest();
+}
+
 bool appendSortedRecords(zc::Vector<uint8_t>& output,
                          zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> records) {
   appendUint64(output, records.size());
@@ -91,6 +108,64 @@ bool appendSortedRecords(zc::Vector<uint8_t>& output,
     appendByteString(output, records[index]);
   }
   return true;
+}
+
+void appendInterfaceRevision(zc::Vector<uint8_t>& output,
+                             const module_interface::ImportedInterfaceRevision& revision) {
+  const auto& value = revision.variant();
+  if (value.is<module_interface::UserImportedInterfaceRevision>()) {
+    output.add(0x01);
+    append(output,
+           value.get<module_interface::UserImportedInterfaceRevision>().value.digest().bytes());
+    return;
+  }
+  output.add(0x02);
+  append(
+      output,
+      value.get<module_interface::ToolchainCoreImportedInterfaceRevision>().value.digest().bytes());
+}
+
+void appendBindingSurfaceRevision(
+    zc::Vector<uint8_t>& output, const module_interface::ImportedBindingSurfaceRevision& revision) {
+  const auto& value = revision.variant();
+  if (value.is<module_interface::UserImportedBindingSurfaceRevision>()) {
+    output.add(0x01);
+    append(
+        output,
+        value.get<module_interface::UserImportedBindingSurfaceRevision>().value.digest().bytes());
+    return;
+  }
+  output.add(0x02);
+  append(output, value.get<module_interface::ToolchainCoreImportedBindingSurfaceRevision>()
+                     .value.digest()
+                     .bytes());
+}
+
+bool sameBindingSurfaceRevision(const module_interface::ImportedBindingSurfaceRevision& left,
+                                const module_interface::ImportedBindingSurfaceRevision& right) {
+  const auto& leftValue = left.variant();
+  const auto& rightValue = right.variant();
+  if (leftValue.is<module_interface::UserImportedBindingSurfaceRevision>()) {
+    return rightValue.is<module_interface::UserImportedBindingSurfaceRevision>() &&
+           leftValue.get<module_interface::UserImportedBindingSurfaceRevision>().value.digest() ==
+               rightValue.get<module_interface::UserImportedBindingSurfaceRevision>()
+                   .value.digest();
+  }
+  return rightValue.is<module_interface::ToolchainCoreImportedBindingSurfaceRevision>() &&
+         leftValue.get<module_interface::ToolchainCoreImportedBindingSurfaceRevision>()
+                 .value.digest() ==
+             rightValue.get<module_interface::ToolchainCoreImportedBindingSurfaceRevision>()
+                 .value.digest();
+}
+
+bool matchingInterfaceAndBindingSource(
+    const module_interface::ImportedInterfaceRevision& interfaceRevision,
+    const module_interface::ImportedBindingSurfaceRevision& bindingSurfaceRevision) {
+  const bool userInterface =
+      interfaceRevision.variant().is<module_interface::UserImportedInterfaceRevision>();
+  const bool userBinding =
+      bindingSurfaceRevision.variant().is<module_interface::UserImportedBindingSurfaceRevision>();
+  return userInterface == userBinding;
 }
 
 }  // namespace
@@ -145,13 +220,16 @@ zc::Maybe<CoherenceViewRevision> CoherenceViewRevision::computeFramed(
 
 zc::Maybe<zc::Array<uint8_t>> ImportedSignatureModuleCanonicalCodec::encodeFramed(
     SignatureViewOrigin origin, zc::ArrayPtr<const uint8_t> expandedSourceModule,
-    const identity::Sha256Digest& interfaceRevision,
-    const identity::Sha256Digest& bindingSurfaceRevision,
+    const module_interface::ImportedInterfaceRevision& interfaceRevision,
+    const module_interface::ImportedBindingSurfaceRevision& bindingSurfaceRevision,
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> authorizedRootRecords,
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> lookupDefinitionRecords,
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> supportDefinitionRecords,
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> moduleTargetRecords) {
-  if (expandedSourceModule.size() == 0) { return zc::none; }
+  if (expandedSourceModule.size() == 0 ||
+      !matchingInterfaceAndBindingSource(interfaceRevision, bindingSurfaceRevision)) {
+    return zc::none;
+  }
   switch (origin) {
     case SignatureViewOrigin::ExplicitImport:
     case SignatureViewOrigin::NamespaceImport:
@@ -163,8 +241,8 @@ zc::Maybe<zc::Array<uint8_t>> ImportedSignatureModuleCanonicalCodec::encodeFrame
   zc::Vector<uint8_t> record;
   record.add(static_cast<uint8_t>(origin));
   append(record, expandedSourceModule);
-  append(record, interfaceRevision.bytes());
-  append(record, bindingSurfaceRevision.bytes());
+  appendInterfaceRevision(record, interfaceRevision);
+  appendBindingSurfaceRevision(record, bindingSurfaceRevision);
   if (!appendSortedRecords(record, authorizedRootRecords) ||
       !appendSortedRecords(record, lookupDefinitionRecords) ||
       !appendSortedRecords(record, supportDefinitionRecords) ||
@@ -175,7 +253,7 @@ zc::Maybe<zc::Array<uint8_t>> ImportedSignatureModuleCanonicalCodec::encodeFrame
 }
 
 ImportedModuleTarget ImportedModuleTarget::clone() const {
-  return ImportedModuleTarget{name.clone(), module, surfaceRevision};
+  return ImportedModuleTarget{name.clone(), module, surfaceRevision.clone()};
 }
 
 ImportedDefinitionBindingSelection ImportedDefinitionBindingSelection::clone() const {
@@ -186,8 +264,8 @@ ImportedDefinitionBindingSelection ImportedDefinitionBindingSelection::clone() c
 struct ImportedSignatureModule::Impl final {
   Impl(identity::SemanticContextBrand semanticContext, identity::ModuleId requester,
        SignatureViewOrigin origin, identity::ModuleId sourceModule,
-       module_interface::ModuleInterfaceRevision interfaceRevision,
-       binder::ExportSurfaceRevision bindingSurfaceRevision,
+       module_interface::ImportedInterfaceRevision&& interfaceRevision,
+       module_interface::ImportedBindingSurfaceRevision&& bindingSurfaceRevision,
        zc::Vector<module_interface::SignatureRootAuthorization>&& authorizedRoots,
        zc::Vector<signature::SemanticSignature>&& lookupDefinitions,
        zc::Vector<signature::SemanticSignature>&& supportDefinitions,
@@ -196,8 +274,8 @@ struct ImportedSignatureModule::Impl final {
         requester(requester),
         origin(origin),
         sourceModule(sourceModule),
-        interfaceRevision(interfaceRevision),
-        bindingSurfaceRevision(bindingSurfaceRevision),
+        interfaceRevision(zc::mv(interfaceRevision)),
+        bindingSurfaceRevision(zc::mv(bindingSurfaceRevision)),
         authorizedRoots(zc::mv(authorizedRoots)),
         lookupDefinitions(zc::mv(lookupDefinitions)),
         supportDefinitions(zc::mv(supportDefinitions)),
@@ -208,8 +286,8 @@ struct ImportedSignatureModule::Impl final {
   identity::ModuleId requester;
   SignatureViewOrigin origin;
   identity::ModuleId sourceModule;
-  module_interface::ModuleInterfaceRevision interfaceRevision;
-  binder::ExportSurfaceRevision bindingSurfaceRevision;
+  module_interface::ImportedInterfaceRevision interfaceRevision;
+  module_interface::ImportedBindingSurfaceRevision bindingSurfaceRevision;
   zc::Vector<module_interface::SignatureRootAuthorization> authorizedRoots;
   zc::Vector<signature::SemanticSignature> lookupDefinitions;
   zc::Vector<signature::SemanticSignature> supportDefinitions;
@@ -227,16 +305,16 @@ ImportedSignatureModule& ImportedSignatureModule::operator=(ImportedSignatureMod
 ImportedSignatureModule ImportedSignatureModule::publish(
     identity::SemanticContextBrand semanticContext, identity::ModuleId requester,
     SignatureViewOrigin origin, identity::ModuleId sourceModule,
-    module_interface::ModuleInterfaceRevision interfaceRevision,
-    binder::ExportSurfaceRevision bindingSurfaceRevision,
+    module_interface::ImportedInterfaceRevision&& interfaceRevision,
+    module_interface::ImportedBindingSurfaceRevision&& bindingSurfaceRevision,
     zc::Vector<module_interface::SignatureRootAuthorization>&& authorizedRoots,
     zc::Vector<signature::SemanticSignature>&& lookupDefinitions,
     zc::Vector<signature::SemanticSignature>&& supportDefinitions,
     zc::Vector<ImportedModuleTarget>&& moduleTargets, zc::Array<uint8_t>&& canonicalRecord) {
-  return ImportedSignatureModule(
-      zc::heap<Impl>(semanticContext, requester, origin, sourceModule, interfaceRevision,
-                     bindingSurfaceRevision, zc::mv(authorizedRoots), zc::mv(lookupDefinitions),
-                     zc::mv(supportDefinitions), zc::mv(moduleTargets), zc::mv(canonicalRecord)));
+  return ImportedSignatureModule(zc::heap<Impl>(
+      semanticContext, requester, origin, sourceModule, zc::mv(interfaceRevision),
+      zc::mv(bindingSurfaceRevision), zc::mv(authorizedRoots), zc::mv(lookupDefinitions),
+      zc::mv(supportDefinitions), zc::mv(moduleTargets), zc::mv(canonicalRecord)));
 }
 
 identity::SemanticContextBrand ImportedSignatureModule::authorizedContext() const noexcept {
@@ -250,12 +328,12 @@ SignatureViewOrigin ImportedSignatureModule::origin() const noexcept { return im
 identity::ModuleId ImportedSignatureModule::sourceModule() const noexcept {
   return impl->sourceModule;
 }
-const module_interface::ModuleInterfaceRevision& ImportedSignatureModule::interfaceRevision()
+const module_interface::ImportedInterfaceRevision& ImportedSignatureModule::interfaceRevision()
     const noexcept {
   return impl->interfaceRevision;
 }
-const binder::ExportSurfaceRevision& ImportedSignatureModule::bindingSurfaceRevision()
-    const noexcept {
+const module_interface::ImportedBindingSurfaceRevision&
+ImportedSignatureModule::bindingSurfaceRevision() const noexcept {
   return impl->bindingSurfaceRevision;
 }
 zc::ArrayPtr<const module_interface::SignatureRootAuthorization>
@@ -404,9 +482,19 @@ zc::Maybe<ImportedSignatureView> ImportedSignatureViewBuilder::build(
       if (definitionEntry == zc::none) { return zc::none; }
       zc::Maybe<const identity::DefinitionIdentityRecord&> canonicalRecord = zc::none;
       ZC_IF_SOME(value, definitionEntry) { canonicalRecord = value.record(); }
+      const bool coreInterface =
+          modules[index]
+              .interfaceRevision()
+              .variant()
+              .is<module_interface::ToolchainCoreImportedInterfaceRevision>();
+      const bool coreRoot =
+          root.bindingSurfaceRevision.variant()
+              .is<module_interface::ToolchainCoreImportedBindingSurfaceRevision>();
       if (!module_interface::isSignatureRootBinding(root.binding) || canonicalRecord == zc::none ||
-          root.bindingSurfaceRevision.digest() !=
-              modules[index].bindingSurfaceRevision().digest() ||
+          (coreInterface != coreRoot) ||
+          (!coreInterface &&
+           !sameBindingSurfaceRevision(root.bindingSurfaceRevision,
+                                       modules[index].bindingSurfaceRevision())) ||
           modules[index].lookupDefinition(root.canonicalDefinition) == zc::none) {
         return zc::none;
       }
@@ -418,7 +506,8 @@ zc::Maybe<ImportedSignatureView> ImportedSignatureViewBuilder::build(
             ZC_IF_SOME(interfaceModule, sourceInterface) {
               if (sourceModule.handle() != root.sourceModule ||
                   !validImportedRootBinding(root.binding, requesterModule, interfaceModule,
-                                            sourceModule.handle(), canonical, identities)) {
+                                            sourceModule.handle(), canonical, identities,
+                                            coreInterface)) {
                 return zc::none;
               }
             }
@@ -427,8 +516,9 @@ zc::Maybe<ImportedSignatureView> ImportedSignatureViewBuilder::build(
       }
       const auto& origin = root.origin.variant();
       if (!origin.is<module_interface::ImportedSignatureAuthorization>() ||
-          origin.get<module_interface::ImportedSignatureAuthorization>()
-                  .interfaceRevision.digest() != modules[index].interfaceRevision().digest()) {
+          !sameInterfaceRevision(
+              origin.get<module_interface::ImportedSignatureAuthorization>().interfaceRevision,
+              modules[index].interfaceRevision())) {
         return zc::none;
       }
       for (size_t prior = 0; prior < rootIndex; ++prior) {

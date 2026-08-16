@@ -1,0 +1,73 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/uninitialized_aggregate_sibling_field_return_neg_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #30 @1:1..11:1 file_name="uninitialized_aggregate_sibling_field_return_neg_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #7 @1:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StructDecl #6 @1:1..4:2 name="Pair"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #5 @1:13..4:2 nmembers=2
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #2 @2:3..2:17 name="left" is_mut=true is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:13..2:16 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:                 FieldDecl #4 @3:3..3:19 name="right" is_mut=true is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #3 @3:14..3:18 kind=Bool
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #29 @6:1..10:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #28 @6:1..10:2 name="entry"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #8 @6:10..6:12 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #9 @6:16..6:20 kind=Bool
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #27 @6:21..10:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #16 @7:3..7:18
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #15 @7:3..7:18 kind=Mut
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #14 @7:7..7:17 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #13 @7:7..7:17
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #10 @7:7..7:11 name="pair"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 NamedTypeExpr #12 @7:13..7:17
+// CHECK-NEXT:                                   path:
+// CHECK-NEXT:                                     ModulePath #11 @7:13..7:17 segments=["Pair"] root=Relative
+// CHECK-NEXT:                                   args: []
+// CHECK-NEXT:                               init: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #22 @8:3..8:17
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #21 @8:3..8:17
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         AssignmentExpr #20 @8:3..8:16 op=Assign
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             MemberExpression #18 @8:3..8:12 property="left" access=Dot
+// CHECK-NEXT:                               object:
+// CHECK-NEXT:                                 IdentExpr #17 @8:3..8:7 name="pair"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IntLiteral #19 @8:15..8:16 base=10 value="0"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #26 @9:3..9:21
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #25 @9:3..9:21
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         MemberExpression #24 @9:10..9:20 property="right" access=Dot
+// CHECK-NEXT:                           object:
+// CHECK-NEXT:                             IdentExpr #23 @9:10..9:14 name="pair"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

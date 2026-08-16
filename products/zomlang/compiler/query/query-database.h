@@ -1546,6 +1546,7 @@ DescriptorRegistrationResult QueryDatabase::registerDescriptor() {
             QueryCyclePolicy::Reject,
             QueryCostClass::Linear,
             CapabilityAdmission::AnySnapshot,
+            FinalFailureProjection::None,
             Binding::ownerPathFamily,
         };
       } else if constexpr (zc::isSameType<Metadata, SemanticDescriptorMetadata>()) {
@@ -1563,6 +1564,7 @@ DescriptorRegistrationResult QueryDatabase::registerDescriptor() {
             Spec::descriptor.cycle,
             Spec::descriptor.cost,
             CapabilityAdmission::AnySnapshot,
+            FinalFailureProjection::None,
             Binding::ownerPathFamily,
         };
       } else {
@@ -1580,6 +1582,7 @@ DescriptorRegistrationResult QueryDatabase::registerDescriptor() {
             Spec::descriptor.cycle,
             Spec::descriptor.cost,
             Spec::descriptor.admission,
+            Spec::descriptor.failureProjection,
             Binding::ownerPathFamily,
         };
       }

@@ -1,0 +1,5 @@
+section: "05-statements empty function body"
+covers_rule: "functionDeclaration, blockStatement"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits an empty function body; the compiler rejects unavailable function-body semantics during semantic admission."

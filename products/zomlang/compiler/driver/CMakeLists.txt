@@ -2,8 +2,13 @@ set(DRIVER_SRC active-definition-authority-query.cc active-definition-authority-
                active-identity-membership-query.cc
                borrow-evidence.cc coherence-builder.cc compiler-session.cc
                contextual-binding-key.cc
-               core-library-query-provider.cc core-library-query-verifier.cc crate-graph.cc
-               imported-signature-view-projector.cc incremental-binding-query-adapter.cc
+               core/role-seed-failure.cc
+               core/library.cc
+               core/marker-authority.cc
+               core/signature.cc
+               core/query.cc core/verifier.cc crate-graph.cc
+               imported-signature-view-projector.cc
+               incremental-binding-query-adapter.cc
                incremental-module-resolution-query.cc
                incremental-package-graph-query-input.cc
                module-dependency-provenance-query.cc module-discovery.cc

@@ -1,4 +1,4 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/undefined_identifier_neg_15.zom > %t 2>&1
+// RUN: cd %corpus && ! %zomc compile --check 04-expressions/undefined_identifier_neg_15.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
 

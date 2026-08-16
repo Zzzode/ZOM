@@ -24,6 +24,7 @@
 #include "zomlang/compiler/driver/materialized-module-graph-query.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/ownership/surface-admission.h"
 
 namespace zomlang::compiler::checker::signature {
 namespace {
@@ -692,7 +693,8 @@ zc::Maybe<const binder::MaterializedDefinitionInventoryEntry&> materializedDefin
 
 zc::Maybe<identity::DefId> enclosingDefinitionOwner(
     const binder::MaterializedDefinitionInventoryEntry& definition,
-    const binder::ImmutableDefinitionInventory& definitions) {
+    const binder::ImmutableDefinitionInventory& definitions,
+    const CheckerIdentityAuthority& identities) {
   const auto owners = definition.record.owners();
   for (size_t remaining = owners.size(); remaining > 0; --remaining) {
     const auto& owner = owners[remaining - 1];
@@ -702,6 +704,7 @@ zc::Maybe<identity::DefId> enclosingDefinitionOwner(
       for (const auto& candidate : definitions.definitions()) {
         if (sameDefinitionKey(candidate.key, key)) return candidate.definition;
       }
+      ZC_IF_SOME(entry, identities.definition(key)) { return entry.handle(); }
     }
     return zc::none;
   }
@@ -877,10 +880,70 @@ zc::Maybe<const binder::ScopeRecord&> findScope(const binder::ImmutableBindingMe
   return zc::none;
 }
 
+zc::Maybe<SignatureScope> implementationSignatureScope(
+    const driver::module_graph_query::CheckerBoundModuleView& input,
+    binder::ImplOccurrenceId occurrence) {
+  for (const auto& impl : input.definitions().impls()) {
+    if (impl.occurrence != occurrence || !input.tree().contains(impl.node)) continue;
+    const auto& syntax = input.tree().node(impl.node);
+    if (syntax.kind != ast::SyntaxKind::StandaloneImplDecl) return zc::none;
+    return SignatureScope(ModuleDefinitionSignatureScope{});
+  }
+  return zc::none;
+}
+
+zc::Maybe<binder::ImplOccurrenceId> implementationOccurrence(
+    const binder::ImmutableDefinitionInventory& definitions,
+    const binder::MaterializedDefinitionInventoryEntry& definition,
+    const CheckerIdentityAuthority& identities) {
+  const auto owners = definition.record.owners();
+  for (size_t remaining = owners.size(); remaining > 0; --remaining) {
+    const auto& owner = owners[remaining - 1];
+    if (owner.kind() != identity::EnclosingStableOwnerKind::Implementation) continue;
+    ZC_IF_SOME(key, owner.implKey()) {
+      ZC_IF_SOME(entry, identities.implementation(key)) {
+        for (const auto& impl : definitions.impls()) {
+          if (impl.authority == entry.handle()) return impl.occurrence;
+        }
+      }
+    }
+    return zc::none;
+  }
+  return zc::none;
+}
+
 zc::Maybe<SignatureScope> signatureScope(
     const driver::module_graph_query::CheckerBoundModuleView& input,
     const binder::ImmutableBindingMetadata& metadata, const binder::DefinitionFact& definition,
-    identity::ModuleId module) {
+    identity::ModuleId module, const CheckerIdentityAuthority& identities) {
+  if (definition.kind == identity::DefinitionKind::Method ||
+      definition.kind == identity::DefinitionKind::Field) {
+    auto materialized = materializedDefinition(input.definitions(), definition.identity);
+    if (materialized == zc::none) return zc::none;
+    ZC_IF_SOME(entry, materialized) {
+      auto owner = enclosingDefinitionOwner(entry, input.definitions(), identities);
+      MemberVisibility visibility = MemberVisibility::Private;
+      ZC_IF_SOME(source, definition.memberVisibility) {
+        switch (source) {
+          case binder::MemberVisibility::Public:
+            visibility = MemberVisibility::Public;
+            break;
+          case binder::MemberVisibility::Protected:
+            visibility = MemberVisibility::Protected;
+            break;
+          case binder::MemberVisibility::Private:
+            visibility = MemberVisibility::Private;
+            break;
+        }
+      }
+      ZC_IF_SOME(ownerDefinition, owner) {
+        return SignatureScope(MemberSignatureScope{ownerDefinition, visibility});
+      }
+      ZC_IF_SOME(occurrence, implementationOccurrence(input.definitions(), entry, identities)) {
+        return implementationSignatureScope(input, occurrence);
+      }
+    }
+  }
   auto scope = findScope(metadata, definition.declaringScope);
   if (scope == zc::none) return zc::none;
   ZC_IF_SOME(value, scope) {
@@ -891,45 +954,10 @@ zc::Maybe<SignatureScope> signatureScope(
     }
     if (owner.is<binder::DefinitionScopeOwner>()) {
       const auto ownerDefinition = owner.get<binder::DefinitionScopeOwner>().definition;
-      if ((definition.kind == identity::DefinitionKind::Method ||
-           definition.kind == identity::DefinitionKind::Field) &&
-          definition.memberVisibility != zc::none) {
-        MemberVisibility visibility = MemberVisibility::Private;
-        ZC_IF_SOME(source, definition.memberVisibility) {
-          switch (source) {
-            case binder::MemberVisibility::Public:
-              visibility = MemberVisibility::Public;
-              break;
-            case binder::MemberVisibility::Protected:
-              visibility = MemberVisibility::Protected;
-              break;
-            case binder::MemberVisibility::Private:
-              visibility = MemberVisibility::Private;
-              break;
-          }
-        }
-        return SignatureScope(MemberSignatureScope{ownerDefinition, visibility});
-      }
       return SignatureScope(EnclosedSignatureScope{ownerDefinition});
     }
     if (value.kind == binder::ScopeKind::ImplBody && owner.is<binder::ImplScopeOwner>()) {
-      const auto occurrence = owner.get<binder::ImplScopeOwner>().occurrence;
-      for (const auto& impl : input.definitions().impls()) {
-        if (impl.occurrence != occurrence || !input.tree().contains(impl.node)) continue;
-        const auto& syntax = input.tree().node(impl.node);
-        if (syntax.kind != ast::SyntaxKind::StandaloneImplDecl) return zc::none;
-        const ast::NodeId interfaceNode(
-            syntax.payload.words[ast::kStandaloneImplDeclInterfaceWord]);
-        if (!input.tree().contains(interfaceNode) ||
-            input.tree().node(interfaceNode).kind != ast::SyntaxKind::NamedTypeExpr) {
-          return zc::none;
-        }
-        auto interface = resolvedDefinitionAtNode(
-            metadata,
-            ast::NodeId(
-                input.tree().node(interfaceNode).payload.words[ast::kNamedTypeExprPathWord]));
-        ZC_IF_SOME(value, interface) { return SignatureScope(EnclosedSignatureScope{value}); }
-      }
+      return implementationSignatureScope(input, owner.get<binder::ImplScopeOwner>().occurrence);
     }
   }
   return zc::none;
@@ -970,15 +998,14 @@ zc::Maybe<identity::DefId> directAssociatedType(const binder::ImmutableBindingMe
   return result;
 }
 
-bool isSimpleCallableDeclaration(const ast::Tree& tree, ast::NodeId declaration,
-                                 identity::DefinitionKind definitionKind, ast::NodeId& returnType) {
+bool isCallableDeclaration(const ast::Tree& tree, ast::NodeId declaration,
+                           identity::DefinitionKind definitionKind, ast::NodeId& parameters,
+                           ast::NodeId& returnType) {
   if (!tree.contains(declaration)) { return false; }
   const auto& syntax = tree.node(declaration);
-  ast::NodeId parameters;
   if (definitionKind == identity::DefinitionKind::Function &&
       syntax.kind == ast::SyntaxKind::FunctionDecl) {
-    if (tree.contains(ast::NodeId(syntax.payload.words[ast::kFunctionDeclTypeParamsIdWord])) ||
-        tree.contains(ast::NodeId(syntax.payload.words[ast::kFunctionDeclRaisesTyWord]))) {
+    if (tree.contains(ast::NodeId(syntax.payload.words[ast::kFunctionDeclRaisesTyWord]))) {
       return false;
     }
     parameters = ast::NodeId(syntax.payload.words[ast::kFunctionDeclParamsIdWord]);
@@ -986,11 +1013,11 @@ bool isSimpleCallableDeclaration(const ast::Tree& tree, ast::NodeId declaration,
   } else if (definitionKind == identity::DefinitionKind::Method &&
              syntax.kind == ast::SyntaxKind::MethodDecl) {
     if (tree.contains(ast::NodeId(syntax.payload.words[ast::kMethodDeclTypeParamsIdWord])) ||
-        tree.contains(ast::NodeId(syntax.payload.words[ast::kMethodDeclRetTyWord])) ||
         tree.contains(ast::NodeId(syntax.payload.words[ast::kMethodDeclRaisesTyWord]))) {
       return false;
     }
     parameters = ast::NodeId(syntax.payload.words[ast::kMethodDeclParamsIdWord]);
+    returnType = ast::NodeId(syntax.payload.words[ast::kMethodDeclRetTyWord]);
   } else {
     return false;
   }
@@ -1000,7 +1027,7 @@ bool isSimpleCallableDeclaration(const ast::Tree& tree, ast::NodeId declaration,
   const ast::NodeList parameterList{
       parameterSyntax.payload.words[ast::kFunctionParameterListParamsFirstWord],
       parameterSyntax.payload.words[ast::kFunctionParameterListParamsSizeWord]};
-  return tree.contains(parameterList) && parameterList.empty();
+  return tree.contains(parameterList);
 }
 
 struct BuiltSourceType final {
@@ -1012,6 +1039,14 @@ zc::Maybe<identity::GenericParameterKey> materializedGenericParameterKey(
     const CheckerIdentityAuthority& identities,
     const binder::MaterializedGenericParameterInventoryEntry& parameter) {
   auto materialized = identities.genericParameter(parameter.parameter);
+  ZC_IF_SOME(entry, materialized) { return entry.key().clone(); }
+  return zc::none;
+}
+
+zc::Maybe<identity::CallableParameterKey> materializedCallableParameterKey(
+    const CheckerIdentityAuthority& identities,
+    const binder::MaterializedCallableParameterInventoryEntry& parameter) {
+  auto materialized = identities.callableParameter(parameter.parameter);
   ZC_IF_SOME(entry, materialized) { return entry.key().clone(); }
   return zc::none;
 }
@@ -1761,6 +1796,160 @@ zc::Maybe<BuiltSourceGenericParameters> buildSourceGenericParameters(
   return BuiltSourceGenericParameters{zc::mv(identities), zc::mv(signatures)};
 }
 
+zc::Maybe<zc::Vector<ParameterSignature>> buildCallableParameters(
+    const SignatureFactsBuildInput& input, identity::DefId owner, ast::NodeId parameterListNode,
+    zc::ArrayPtr<const identity::GenericParameterId> genericParameters) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(parameterListNode) ||
+      tree.node(parameterListNode).kind != ast::SyntaxKind::FunctionParameterList) {
+    return zc::none;
+  }
+  const auto& parameterListSyntax = tree.node(parameterListNode);
+  const ast::NodeList parameterNodes{
+      parameterListSyntax.payload.words[ast::kFunctionParameterListParamsFirstWord],
+      parameterListSyntax.payload.words[ast::kFunctionParameterListParamsSizeWord]};
+  if (!tree.contains(parameterNodes) || parameterNodes.size > UINT32_MAX) return zc::none;
+
+  zc::Maybe<const identity::DefinitionKey&> ownerKey;
+  for (const auto& definition : input.boundModule.definitions().definitions()) {
+    if (definition.definition != owner) continue;
+    if (ownerKey != zc::none) return zc::none;
+    ownerKey = definition.key;
+  }
+  if (ownerKey == zc::none) return zc::none;
+
+  struct ParameterEntry final {
+    identity::CallableParameterKey key;
+    ast::NodeId node;
+    uint32_t ordinal;
+  };
+  zc::Vector<ParameterEntry> entries;
+  ZC_IF_SOME(expectedOwner, ownerKey) {
+    for (const auto& entry : input.boundModule.definitions().callableParameters()) {
+      if (entry.record.position().kind() != identity::CallableParameterPositionKind::Ordinary ||
+          entry.record.owner() != expectedOwner) {
+        continue;
+      }
+      auto key = materializedCallableParameterKey(input.identities, entry);
+      auto ordinal = entry.record.position().ordinal();
+      if (key == zc::none || ordinal == zc::none) return zc::none;
+      ZC_IF_SOME(value, key) {
+        ZC_IF_SOME(position, ordinal) {
+          entries.add(ParameterEntry{zc::mv(value), entry.node, position});
+        }
+      }
+    }
+  }
+  if (entries.size() > parameterNodes.size || parameterNodes.size - entries.size() > 1) {
+    return zc::none;
+  }
+  const size_t receiverCount = parameterNodes.size - entries.size();
+  for (size_t index = 1; index < entries.size(); ++index) {
+    auto current = zc::mv(entries[index]);
+    size_t insertion = index;
+    while (insertion > 0 && current.ordinal < entries[insertion - 1].ordinal) {
+      entries[insertion] = zc::mv(entries[insertion - 1]);
+      --insertion;
+    }
+    entries[insertion] = zc::mv(current);
+  }
+  for (size_t index = 0; index < entries.size(); ++index) {
+    if (entries[index].ordinal != index ||
+        entries[index].node != tree.list(parameterNodes)[receiverCount + index]) {
+      return zc::none;
+    }
+  }
+
+  SourceTypeBuilder typeBuilder(input.boundModule, input.identities, input.semanticTypes,
+                                genericParameters);
+  zc::Vector<ParameterSignature> parameters(entries.size());
+  for (const auto& entry : entries) {
+    if (!tree.contains(entry.node) ||
+        tree.node(entry.node).kind != ast::SyntaxKind::FunctionParameterDecl) {
+      return zc::none;
+    }
+    const auto& syntax = tree.node(entry.node);
+    if (tree.contains(ast::NodeId(syntax.payload.words[ast::kFunctionParameterDeclDefaultWord]))) {
+      return zc::none;
+    }
+    auto label = identity::SemanticIdentifier::fromCanonical(
+        tree.ident(ast::IdentId(syntax.payload.words[ast::kFunctionParameterDeclNameWord])));
+    auto type =
+        typeBuilder.build(ast::NodeId(syntax.payload.words[ast::kFunctionParameterDeclTyWord]));
+    if (label == zc::none || type == zc::none) return zc::none;
+    ZC_IF_SOME(labelValue, label) {
+      ZC_IF_SOME(typeValue, type) {
+        ParameterMode mode = ParameterMode::Value;
+        auto typeData = input.semanticTypes.get(typeValue.type);
+        if (!typeData.is<type::SemanticTypeLookup>()) return zc::none;
+        const auto& semanticType = typeData.get<type::SemanticTypeLookup>().data();
+        if (semanticType.is<type::semantic::ReferenceTypeData>()) {
+          mode = semanticType.get<type::semantic::ReferenceTypeData>().mutability ==
+                         type::semantic::Mutability::Mutable
+                     ? ParameterMode::MutableReference
+                     : ParameterMode::SharedReference;
+        }
+        parameters.add(
+            ParameterSignature{entry.key.clone(), zc::mv(labelValue), typeValue.type, mode, false});
+      }
+    }
+  }
+  return parameters;
+}
+
+zc::Maybe<ReceiverSignature> buildCallableReceiver(const SignatureFactsBuildInput& input,
+                                                    identity::DefId owner) {
+  auto authority = input.identities.definitionAuthority(owner);
+  if (authority == zc::none) return zc::none;
+  ZC_IF_SOME(value, authority) {
+    if (!value.verify()) return zc::none;
+    auto overload = value.overloadHeaderAuthority();
+    if (overload == zc::none || !ZC_ASSERT_NONNULL(overload).verify()) return zc::none;
+    auto receiverShape = ZC_ASSERT_NONNULL(overload).header().receiver();
+
+    zc::Maybe<const identity::DefinitionKey&> ownerKey;
+    for (const auto& definition : input.boundModule.definitions().definitions()) {
+      if (definition.definition != owner) continue;
+      if (ownerKey != zc::none) return zc::none;
+      ownerKey = definition.key;
+    }
+    if (ownerKey == zc::none) return zc::none;
+
+    zc::Maybe<identity::CallableParameterKey> receiver;
+    ZC_IF_SOME(expectedOwner, ownerKey) {
+      for (const auto& parameter : input.boundModule.definitions().callableParameters()) {
+        if (parameter.record.owner() != expectedOwner ||
+            parameter.record.position().kind() !=
+                identity::CallableParameterPositionKind::Receiver) {
+          continue;
+        }
+        if (receiver != zc::none) return zc::none;
+        receiver = materializedCallableParameterKey(input.identities, parameter);
+        if (receiver == zc::none) return zc::none;
+      }
+    }
+    if (receiverShape == zc::none) {
+      if (receiver != zc::none) return zc::none;
+      return zc::none;
+    }
+    if (receiver == zc::none) return zc::none;
+
+    ZC_IF_SOME(shape, receiverShape) {
+      ZC_IF_SOME(parameter, receiver) {
+        switch (shape) {
+          case identity::ReceiverShape::Shared:
+            return ReceiverSignature{zc::mv(parameter), ReceiverMode::Shared};
+          case identity::ReceiverShape::Mutable:
+            return ReceiverSignature{zc::mv(parameter), ReceiverMode::Mutable};
+          case identity::ReceiverShape::Move:
+            return ReceiverSignature{zc::mv(parameter), ReceiverMode::Move};
+        }
+      }
+    }
+  }
+  ZC_UNREACHABLE
+}
+
 bool sortUniqueDefinitionIds(zc::Vector<identity::DefId>& definitions,
                              const binder::ImmutableDefinitionInventory& inventory) {
   for (size_t index = 1; index < definitions.size(); ++index) {
@@ -2016,6 +2205,17 @@ zc::Maybe<identity::Sha256Digest> markerPolicyRegistryDigest(
 }
 
 }  // namespace
+
+zc::Maybe<identity::SemanticTypeId> resolveClosedSourceType(
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+    const CheckerIdentityAuthority& identities, type::SemanticTypeStore& semanticTypes,
+    ast::NodeId typeSyntax) {
+  zc::Vector<identity::GenericParameterId> noGenerics;
+  SourceTypeBuilder builder(boundModule, identities, semanticTypes, noGenerics.asPtr());
+  auto built = builder.build(typeSyntax);
+  ZC_IF_SOME(value, built) { return value.type; }
+  return zc::none;
+}
 
 struct CanonicalConstValue::Impl final {
   explicit Impl(ConstInteger&& value) : value(zc::mv(value)) {}
@@ -2752,6 +2952,11 @@ public:
                                  const identity::ModuleKey& moduleKey)
       : identities(identities), semanticTypes(semanticTypes), moduleKey(moduleKey) {}
 
+  SignatureFactsCanonicalEncoder(const CheckerIdentityAuthority& identities,
+                                 const identity::ModuleKey& moduleKey,
+                                 const identity::SourceFileKey& sourceKey)
+      : identities(identities), moduleKey(moduleKey), sourceKey(sourceKey) {}
+
   RecordEncodingResult encodeCanonicalConstValue(const CanonicalConstValue& value,
                                                  uint32_t ordinal) {
     identity::CanonicalEncoder encoder;
@@ -2798,8 +3003,11 @@ public:
     identity::CanonicalEncoder encoder;
     constexpr zc::StringPtr patternDomain = "zom.impl-pattern\0"_zcc;
     auto patternHead = SignatureFactsCanonicalCodec::implPatternHead(head.pattern);
-    auto semanticHead =
-        SignatureFactsCanonicalCodec::canonicalTypeHead(head.selfType, semanticTypes);
+    if (semanticTypes == zc::none) {
+      return RecordFailure{RecordFailureKind::InvalidFact, ordinal};
+    }
+    auto semanticHead = SignatureFactsCanonicalCodec::canonicalTypeHead(
+        head.selfType, ZC_ASSERT_NONNULL(semanticTypes));
     if (!spanBelongsToSource(head.declarationSpan) || !encodeImpl(encoder, head.impl, ordinal) ||
         !SignatureFactsCanonicalCodec::implPatternIsPublishable(head.pattern,
                                                                 head.genericParameters.size()) ||
@@ -3096,7 +3304,8 @@ private:
   }
 
   bool encodeType(identity::CanonicalEncoder& encoder, identity::SemanticTypeId type, uint32_t) {
-    auto result = semanticTypes.get(type);
+    if (semanticTypes == zc::none) { return false; }
+    auto result = ZC_ASSERT_NONNULL(semanticTypes).get(type);
     if (result.is<identity::IdentityInvariant>()) {
       identityFailure = result.get<identity::IdentityInvariant>().clone();
       return false;
@@ -3702,7 +3911,7 @@ private:
   }
 
   const CheckerIdentityAuthority& identities;
-  const type::SemanticTypeStore& semanticTypes;
+  zc::Maybe<const type::SemanticTypeStore&> semanticTypes;
   const identity::ModuleKey& moduleKey;
   zc::Maybe<const identity::SourceFileKey&> sourceKey;
 
@@ -4492,6 +4701,39 @@ zc::Maybe<zc::Array<uint8_t>> SignatureFactsCanonicalCodec::encodeSignature(
   return zc::none;
 }
 
+zc::Maybe<zc::Array<uint8_t>> SignatureFactsCanonicalCodec::encodeTypeFreeInterfaceSignature(
+    const SemanticSignature& signature, identity::ModuleId owningModule,
+    const CheckerIdentityAuthority& identities) {
+  if (signature.definitionKind != identity::DefinitionKind::Interface ||
+      !signature.scope.variant().is<ModuleDefinitionSignatureScope>() ||
+      signature.modifiers.size() != 0 || signature.attributes.size() != 0 ||
+      !signature.payload.variant().is<InterfaceSignature>()) {
+    return zc::none;
+  }
+  const auto& interface = signature.payload.variant().get<InterfaceSignature>();
+  if (interface.genericParameters.size() != 0 || interface.parents.size() != 0 ||
+      interface.members.size() != 0 || interface.associatedTypes.size() != 0 ||
+      !interface.markerOnly || interface.objectSafetyCauses.size() != 0) {
+    return zc::none;
+  }
+  auto module = identities.module(owningModule);
+  auto source = identities.sourceFile(signature.declarationSpan.source());
+  if (module == zc::none || source == zc::none) { return zc::none; }
+  ZC_IF_SOME(moduleEntry, module) {
+    ZC_IF_SOME(sourceEntry, source) {
+      if (!signature.declarationSpan.belongsTo(sourceEntry.key()) ||
+          sourceEntry.key().crate().encode().asPtr() !=
+              moduleEntry.key().crate().encode().asPtr()) {
+        return zc::none;
+      }
+      SignatureFactsCanonicalEncoder encoder(identities, moduleEntry.key(), sourceEntry.key());
+      auto result = encoder.encode(signature, 0);
+      if (result.is<EncodedSignature>()) { return zc::mv(result.get<EncodedSignature>().bytes); }
+    }
+  }
+  return zc::none;
+}
+
 zc::Maybe<zc::Array<uint8_t>> SignatureFactsCanonicalCodec::encodeImplHead(
     const ImplHead& head, const CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes) {
@@ -4844,7 +5086,9 @@ zc::Maybe<InterfaceMarkerShape> VerifiedMarkerShapeInventory::shape(
 }
 
 MarkerPolicyReferenceConfiguration MarkerPolicyReferenceConfiguration::clone() const {
-  return MarkerPolicyReferenceConfiguration{mutability, requiredMarker.clone()};
+  zc::Maybe<identity::DefinitionKey> required;
+  ZC_IF_SOME(value, requiredMarker) { required = value.clone(); }
+  return MarkerPolicyReferenceConfiguration{mutability, zc::mv(required)};
 }
 
 MarkerPolicyConfigurationEntry MarkerPolicyConfigurationEntry::clone() const {
@@ -4852,13 +5096,20 @@ MarkerPolicyConfigurationEntry MarkerPolicyConfigurationEntry::clone() const {
   for (const auto& reference : referenceRequirements) { references.add(reference.clone()); }
   return MarkerPolicyConfigurationEntry{
       marker.clone(), clonePlainVector(structuralSubjects.asPtr()),
-      clonePlainVector(builtinPrimitives.asPtr()), zc::mv(references)};
+      clonePlainVector(builtinPrimitives.asPtr()), zc::mv(references),
+      clonePlainVector(rawPointerMutabilities.asPtr())};
 }
 
 MarkerPolicy MarkerPolicy::clone() const {
+  zc::Vector<MarkerPolicyReferenceRequirement> references(referenceRequirements.size());
+  for (const auto& reference : referenceRequirements) {
+    zc::Maybe<identity::DefId> required;
+    ZC_IF_SOME(value, reference.requiredMarker) { required = value; }
+    references.add(MarkerPolicyReferenceRequirement{reference.mutability, zc::mv(required)});
+  }
   return MarkerPolicy{clonePlainVector(structuralSubjects.asPtr()),
-                      clonePlainVector(builtinPrimitives.asPtr()),
-                      clonePlainVector(referenceRequirements.asPtr())};
+                      clonePlainVector(builtinPrimitives.asPtr()), zc::mv(references),
+                      clonePlainVector(rawPointerMutabilities.asPtr())};
 }
 
 namespace {
@@ -4889,21 +5140,29 @@ zc::Maybe<zc::Array<uint8_t>> encodePolicyConfigurationEntry(
     previousPrimitive = tag;
     encoder.encodeUint8(tag);
   }
-  zc::Vector<zc::Array<uint8_t>> references(entry.referenceRequirements.size());
+  uint8_t previousReference = 0;
+  encoder.encodeSequenceSize(entry.referenceRequirements.size());
   for (const auto& reference : entry.referenceRequirements) {
-    if (!isKnownEnum(reference.mutability, Mutability::Const, Mutability::Mutable)) {
+    const auto tag = static_cast<uint8_t>(reference.mutability);
+    if (tag <= previousReference ||
+        !isKnownEnum(reference.mutability, Mutability::Const, Mutability::Mutable)) {
       return zc::none;
     }
-    identity::CanonicalEncoder item;
-    item.encodeUint8(static_cast<uint8_t>(reference.mutability));
-    reference.requiredMarker.encode(item);
-    references.add(item.finish());
+    previousReference = tag;
+    encoder.encodeUint8(tag);
+    encoder.encodeBool(reference.requiredMarker != zc::none);
+    ZC_IF_SOME(marker, reference.requiredMarker) { marker.encode(encoder); }
   }
-  for (size_t index = 1; index < references.size(); ++index) {
-    if (!lessBytes(references[index - 1].asPtr(), references[index].asPtr())) return zc::none;
+  encoder.encodeSequenceSize(entry.rawPointerMutabilities.size());
+  uint8_t previousPointer = 0;
+  for (const auto pointer : entry.rawPointerMutabilities) {
+    const auto tag = static_cast<uint8_t>(pointer);
+    if (tag <= previousPointer || !isKnownEnum(pointer, Mutability::Const, Mutability::Mutable)) {
+      return zc::none;
+    }
+    previousPointer = tag;
+    encoder.encodeUint8(tag);
   }
-  encoder.encodeSequenceSize(references.size());
-  for (const auto& reference : references) { encodeRaw(encoder, reference.asPtr()); }
   return encoder.finish();
 }
 
@@ -5290,24 +5549,29 @@ MarkerPolicyRegistryBuildResult MarkerPolicyRegistryBuilder::build(
     zc::Vector<MarkerPolicyReferenceRequirement> references(
         configured.referenceRequirements.size());
     for (const auto& reference : configured.referenceRequirements) {
-      auto required = identities.definition(reference.requiredMarker);
-      if (required == zc::none || !isPreludeOwned(reference.requiredMarker)) {
-        return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact,
-                                            diagnosticModule, static_cast<uint32_t>(index)));
+      zc::Maybe<identity::DefId> requiredId;
+      ZC_IF_SOME(requiredMarker, reference.requiredMarker) {
+        auto required = identities.definition(requiredMarker);
+        if (required == zc::none || !isPreludeOwned(requiredMarker)) {
+          return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact,
+                                              diagnosticModule, static_cast<uint32_t>(index)));
+        }
+        ZC_IF_SOME(value, required) { requiredId = value.handle(); }
+        ZC_IF_SOME(value, requiredId) {
+          auto requiredShape = shapeInventory.shape(value);
+          if (requiredShape == zc::none || requiredShape != InterfaceMarkerShape::ClosedMarker) {
+            return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact, diagnosticModule,
+                                                static_cast<uint32_t>(index)));
+          }
+        }
       }
-      identity::DefId requiredId;
-      ZC_IF_SOME(value, required) { requiredId = value.handle(); }
-      auto requiredShape = shapeInventory.shape(requiredId);
-      if (requiredShape == zc::none || requiredShape != InterfaceMarkerShape::ClosedMarker) {
-        return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact, diagnosticModule,
-                                            static_cast<uint32_t>(index)));
-      }
-      references.add(MarkerPolicyReferenceRequirement{reference.mutability, requiredId});
+      references.add(MarkerPolicyReferenceRequirement{reference.mutability, zc::mv(requiredId)});
     }
     entries.add(MarkerPolicyEntry{
         markerId,
         MarkerPolicy{clonePlainVector(configured.structuralSubjects.asPtr()),
-                     clonePlainVector(configured.builtinPrimitives.asPtr()), zc::mv(references)}});
+                     clonePlainVector(configured.builtinPrimitives.asPtr()), zc::mv(references),
+                     clonePlainVector(configured.rawPointerMutabilities.asPtr())}});
     auto record = encodePolicyConfigurationEntry(configured);
     if (record == zc::none) {
       return buildReject(checkerInvariant(CheckerInvariantKind::CanonicalCodecMismatch,
@@ -5983,7 +6247,8 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
                                           definition.node.value));
     }
     ZC_IF_SOME(bound, fact) {
-      auto scope = signatureScope(input.boundModule, input.boundModule.bindings(), bound, module);
+      auto scope = signatureScope(input.boundModule, input.boundModule.bindings(), bound, module,
+                                  input.identities);
       if (scope == zc::none) {
         return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                             definition.node.value));
@@ -6262,7 +6527,8 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         continue;
       }
       if (definitionKind == identity::DefinitionKind::Field) {
-        auto owner = enclosingDefinitionOwner(definition, input.boundModule.definitions());
+        auto owner =
+            enclosingDefinitionOwner(definition, input.boundModule.definitions(), input.identities);
         if (!tree.contains(definition.node) ||
             tree.node(definition.node).kind != ast::SyntaxKind::FieldDecl || owner == zc::none) {
           return buildReject(
@@ -6330,7 +6596,8 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         continue;
       }
       if (definitionKind == identity::DefinitionKind::EnumVariant) {
-        auto owner = enclosingDefinitionOwner(definition, input.boundModule.definitions());
+        auto owner =
+            enclosingDefinitionOwner(definition, input.boundModule.definitions(), input.identities);
         if (!tree.contains(definition.node) || owner == zc::none) {
           return buildReject(
               checkerInvariant(CheckerInvariantKind::InvalidFact, module, definition.node.value));
@@ -6605,18 +6872,35 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         }
         continue;
       }
+      ast::NodeId parameters;
       ast::NodeId returnType;
       if ((definitionKind != identity::DefinitionKind::Function &&
            definitionKind != identity::DefinitionKind::Method) ||
-          !isSimpleCallableDeclaration(tree, definition.node, definitionKind, returnType)) {
+          !isCallableDeclaration(tree, definition.node, definitionKind, parameters, returnType)) {
+        return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
+                                            definition.node.value));
+      }
+      auto callableGenerics = buildSourceGenericParameters(input, definition.definition);
+      if (callableGenerics == zc::none) {
+        return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
+                                            definition.node.value));
+      }
+      zc::Vector<identity::GenericParameterId> genericParameterIds;
+      zc::Vector<GenericParameterSignature> genericParameterSignatures;
+      ZC_IF_SOME(value, callableGenerics) {
+        genericParameterIds = zc::mv(value.identities);
+        genericParameterSignatures = zc::mv(value.signatures);
+      }
+      auto callableParameters = buildCallableParameters(input, definition.definition, parameters,
+                                                        genericParameterIds.asPtr());
+      if (callableParameters == zc::none) {
         return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                             definition.node.value));
       }
       zc::Maybe<identity::SemanticTypeId> returnSemanticType;
       if (tree.contains(returnType)) {
-        zc::Vector<identity::GenericParameterId> noGenericParameters;
         SourceTypeBuilder typeBuilder(input.boundModule, input.identities, input.semanticTypes,
-                                      noGenericParameters.asPtr());
+                                      genericParameterIds.asPtr());
         auto builtReturn = typeBuilder.build(returnType);
         if (builtReturn == zc::none) {
           return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
@@ -6641,16 +6925,18 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
       }
       ZC_IF_SOME(success, returnSemanticType) {
         ZC_IF_SOME(signatureScopeValue, scope) {
-          zc::Maybe<ReceiverSignature> noReceiver;
+          auto receiver = buildCallableReceiver(input, definition.definition);
           zc::Maybe<identity::SemanticTypeId> noRaises;
           zc::Maybe<ExternAbi> noAbi;
+          zc::Vector<ParameterSignature> parameterSignatures;
+          ZC_IF_SOME(value, callableParameters) { parameterSignatures = zc::mv(value); }
           built.add(BuiltSignature{
               SemanticSignature{
                   definition.definition, definitionKind, zc::mv(signatureScopeValue),
                   zc::Vector<SignatureModifier>(), zc::Vector<NormalizedAttributeFact>(),
                   SemanticSignaturePayload(CallableSignature{
-                      zc::Vector<GenericParameterSignature>(), zc::mv(noReceiver),
-                      zc::Vector<ParameterSignature>(), success, zc::mv(noRaises), zc::mv(noAbi)}),
+                      zc::mv(genericParameterSignatures), zc::mv(receiver),
+                      zc::mv(parameterSignatures), success, zc::mv(noRaises), zc::mv(noAbi)}),
                   bound.source.clone()},
               SignatureDefinitionRequirement{definition.definition, definitionKind,
                                              zc::Array<uint8_t>()},

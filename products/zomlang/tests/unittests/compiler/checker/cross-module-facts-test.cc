@@ -78,6 +78,37 @@ identity::ModuleId moduleIdentity() {
   ZC_UNREACHABLE;
 }
 
+module_interface::ImportedInterfaceRevision userInterfaceRevision(uint8_t byte) {
+  const uint8_t module[] = {byte};
+  const zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> records;
+  auto revision = module_interface::ModuleInterfaceRevision::computeFramed(
+      repeatedDigest(byte), module, repeatedDigest(byte), repeatedDigest(byte),
+      repeatedDigest(byte), repeatedDigest(byte), repeatedDigest(byte), repeatedDigest(byte),
+      records, records, records, records, records, records, records);
+  return module_interface::ImportedInterfaceRevision(
+      module_interface::UserImportedInterfaceRevision{zc::mv(ZC_REQUIRE_NONNULL(revision))});
+}
+
+module_interface::ImportedInterfaceRevision coreInterfaceRevision(uint8_t byte) {
+  return module_interface::ImportedInterfaceRevision(
+      module_interface::ToolchainCoreImportedInterfaceRevision{
+          driver::core_library_query::CoreModuleInterfaceRevision::fromDigest(
+              repeatedDigest(byte))});
+}
+
+module_interface::ImportedBindingSurfaceRevision userBindingSurfaceRevision(uint8_t byte) {
+  return module_interface::ImportedBindingSurfaceRevision(
+      module_interface::UserImportedBindingSurfaceRevision{
+          binder::ExportSurfaceRevision::fromDigest(repeatedDigest(byte))});
+}
+
+module_interface::ImportedBindingSurfaceRevision coreBindingSurfaceRevision(uint8_t byte) {
+  return module_interface::ImportedBindingSurfaceRevision(
+      module_interface::ToolchainCoreImportedBindingSurfaceRevision{
+          driver::core_library_query::CoreBindingSurfaceRevision::fromDigest(
+              repeatedDigest(byte))});
+}
+
 }  // namespace
 
 ZC_TEST("ImportedSignatureViewRevision.ReproducesRfc0005FramingOracle") {
@@ -97,13 +128,15 @@ ZC_TEST("ImportedSignatureModuleCanonicalCodec.EncodesCompleteRfc0005Record") {
   const uint8_t source[] = {0xa1};
   const zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> emptyRecords;
   auto record = ImportedSignatureModuleCanonicalCodec::encodeFramed(
-      SignatureViewOrigin::ExplicitImport, source, repeatedDigest(0x22), repeatedDigest(0x33),
-      emptyRecords, emptyRecords, emptyRecords, emptyRecords);
+      SignatureViewOrigin::ExplicitImport, source, userInterfaceRevision(0x22),
+      userBindingSurfaceRevision(0x33), emptyRecords, emptyRecords, emptyRecords, emptyRecords);
   ZC_REQUIRE(record != zc::none);
   ZC_IF_SOME(bytes, record) {
     ZC_EXPECT(zc::encodeHex(bytes.asPtr()) ==
               "01a1"
-              "2222222222222222222222222222222222222222222222222222222222222222"
+              "01"
+              "4ba83f82850b69b10cce9765a34adce5ad45fc367073ab1b79f061dedd7a877e"
+              "01"
               "3333333333333333333333333333333333333333333333333333333333333333"
               "0000000000000000000000000000000000000000000000000000000000000000"_zc);
   }
@@ -116,8 +149,35 @@ ZC_TEST("ImportedSignatureModuleCanonicalCodec.RejectsNonCanonicalRecords") {
   const zc::ArrayPtr<const uint8_t> reversed[] = {high, low};
   const zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> emptyRecords;
   ZC_EXPECT(ImportedSignatureModuleCanonicalCodec::encodeFramed(
-                SignatureViewOrigin::NamespaceImport, source, repeatedDigest(0x22),
-                repeatedDigest(0x33), reversed, emptyRecords, emptyRecords,
+                SignatureViewOrigin::NamespaceImport, source, userInterfaceRevision(0x22),
+                userBindingSurfaceRevision(0x33), reversed, emptyRecords, emptyRecords,
+                emptyRecords) == zc::none);
+}
+
+ZC_TEST("ImportedSignatureModuleCanonicalCodec.DistinguishesInterfaceSourceTags") {
+  const uint8_t source[] = {0xa1};
+  const zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> emptyRecords;
+  auto user = ImportedSignatureModuleCanonicalCodec::encodeFramed(
+      SignatureViewOrigin::ExplicitImport, source, userInterfaceRevision(0x22),
+      userBindingSurfaceRevision(0x33), emptyRecords, emptyRecords, emptyRecords, emptyRecords);
+  auto core = ImportedSignatureModuleCanonicalCodec::encodeFramed(
+      SignatureViewOrigin::ExplicitImport, source, coreInterfaceRevision(0x22),
+      coreBindingSurfaceRevision(0x33), emptyRecords, emptyRecords, emptyRecords, emptyRecords);
+  ZC_REQUIRE(user != zc::none);
+  ZC_REQUIRE(core != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(user).asPtr() != ZC_REQUIRE_NONNULL(core).asPtr());
+}
+
+ZC_TEST("ImportedSignatureModuleCanonicalCodec.RejectsMixedInterfaceSourceTags") {
+  const uint8_t source[] = {0xa1};
+  const zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> emptyRecords;
+  ZC_EXPECT(ImportedSignatureModuleCanonicalCodec::encodeFramed(
+                SignatureViewOrigin::ExplicitImport, source, coreInterfaceRevision(0x22),
+                userBindingSurfaceRevision(0x33), emptyRecords, emptyRecords, emptyRecords,
+                emptyRecords) == zc::none);
+  ZC_EXPECT(ImportedSignatureModuleCanonicalCodec::encodeFramed(
+                SignatureViewOrigin::ExplicitImport, source, userInterfaceRevision(0x22),
+                coreBindingSurfaceRevision(0x33), emptyRecords, emptyRecords, emptyRecords,
                 emptyRecords) == zc::none);
 }
 

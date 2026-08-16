@@ -1,0 +1,5 @@
+section: "05-statements body shape"
+covers_rule: "functionDeclaration, blockStatement"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits the function body; the compiler rejects the unsupported body shape during semantic admission."

@@ -8,7 +8,9 @@
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/source-snapshot.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-type-context.h"
 
 namespace zomlang::compiler::mir {
 namespace {
@@ -34,16 +36,28 @@ MirLocalId local(uint32_t ordinal) {
   return ZC_REQUIRE_NONNULL(result);
 }
 
-MirPlace place(MirLocalId localValue, identity::DefId field, identity::DefId variant) {
+identity::SourceSpan sourceSpan() {
+  auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
+                                                          zc::heapArray<uint8_t>(8, uint8_t{0}));
+  ZC_REQUIRE(snapshot != zc::none);
+  ZC_IF_SOME(value, snapshot) {
+    auto span = value.span(1, 7);
+    ZC_IF_SOME(admitted, span) { return zc::mv(admitted); }
+  }
+  ZC_FAIL_REQUIRE("invalid Built MIR source span fixture");
+}
+
+MirPlace place(MirLocalId localValue, identity::SemanticTypeId type, identity::DefId field,
+               identity::DefId variant) {
   zc::Vector<MirProjection> projections;
-  projections.add(MirProjection::field(field));
-  projections.add(MirProjection::index(local(2)));
-  projections.add(MirProjection::dereference());
-  projections.add(MirProjection::downcast(variant));
-  auto subslice = MirProjection::subslice(1, 3);
+  projections.add(MirProjection::field(field, type, type));
+  projections.add(MirProjection::index(local(2), type, type));
+  projections.add(MirProjection::dereference(type, type));
+  projections.add(MirProjection::downcast(variant, type, type));
+  auto subslice = MirProjection::subslice(1, 3, type, type);
   ZC_REQUIRE(subslice != zc::none);
   projections.add(zc::mv(ZC_REQUIRE_NONNULL(subslice)));
-  return MirPlace(localValue, zc::mv(projections));
+  return MirPlace(localValue, type, zc::mv(projections), type);
 }
 
 void expectOracle(zc::Vector<zc::Array<uint8_t>>&& functions, zc::StringPtr expectedPreimage,
@@ -81,13 +95,16 @@ ZC_TEST("Built MIR value algebras clone every supported projection statement and
   const auto variant = tests::testDefinition(1);
   const auto firstLocal = local(1);
 
-  auto invalidSubslice = MirProjection::subslice(4, 3);
+  const auto type = tests::testSemanticType();
+  auto invalidSubslice = MirProjection::subslice(4, 3, type, type);
   ZC_EXPECT(invalidSubslice == zc::none);
-  auto projectionPlace = place(firstLocal, field, variant);
+  auto projectionPlace = place(firstLocal, type, field, variant);
   ZC_REQUIRE(projectionPlace.projections().size() == 5);
   const auto projections = projectionPlace.projections();
   ZC_EXPECT(projections[0].kind() == MirProjectionKind::Field);
   ZC_EXPECT(projections[0].fieldValue().field == field);
+  ZC_EXPECT(projections[0].inputType() == type);
+  ZC_EXPECT(projections[0].resultType() == type);
   ZC_EXPECT(projections[1].kind() == MirProjectionKind::Index);
   ZC_EXPECT(projections[1].indexValue().index == local(2));
   ZC_EXPECT(projections[2].kind() == MirProjectionKind::Dereference);
@@ -99,10 +116,17 @@ ZC_TEST("Built MIR value algebras clone every supported projection statement and
   for (const auto& projection : projections) { ZC_EXPECT(projection.isStructurallyValid()); }
   auto clonedPlace = projectionPlace.clone();
   ZC_EXPECT(clonedPlace.local() == firstLocal);
+  ZC_EXPECT(clonedPlace.rootType() == type);
   ZC_EXPECT(clonedPlace.projections().size() == projections.size());
+  ZC_EXPECT(clonedPlace.resultType() == type);
+  ZC_EXPECT(clonedPlace.hasConsistentTypeChain());
+  zc::Vector<MirProjection> noProjections;
+  auto mismatchedPlace =
+      MirPlace(firstLocal, type, zc::mv(noProjections), tests::testSemanticType(1));
+  ZC_EXPECT(!mismatchedPlace.hasConsistentTypeChain());
 
-  auto copy = MirOperand::copy(place(firstLocal, field, variant));
-  auto move = MirOperand::move(place(firstLocal, field, variant));
+  auto copy = MirOperand::copy(place(firstLocal, type, field, variant));
+  auto move = MirOperand::move(place(firstLocal, type, field, variant));
   ZC_EXPECT(copy.kind() == MirOperandKind::Copy);
   ZC_EXPECT(move.kind() == MirOperandKind::Move);
   ZC_EXPECT(copy.place().local() == firstLocal);
@@ -112,16 +136,39 @@ ZC_TEST("Built MIR value algebras clone every supported projection statement and
   ZC_EXPECT(clonedCopy.kind() == MirOperandKind::Copy);
   ZC_EXPECT(clonedMove.kind() == MirOperandKind::Move);
 
-  auto assignment =
-      MirStatement::assign(place(firstLocal, field, variant),
-                           MirRvalue::use(MirOperand::copy(place(firstLocal, field, variant))),
-                           MirInitializationKind::Initialize);
-  auto storageLive = MirStatement::storageLive(firstLocal);
-  auto storageDead = MirStatement::storageDead(firstLocal);
-  auto borrow = MirStatement::borrowCreation(
-      place(firstLocal, field, variant), MirBorrowKind::Mutable, place(firstLocal, field, variant));
-  auto discriminant = MirStatement::setDiscriminant(place(firstLocal, field, variant), variant);
-  auto deinitialize = MirStatement::deinitialize(place(firstLocal, field, variant));
+  zc::Vector<MirNominalAggregateElement> aggregateElements;
+  aggregateElements.add(MirNominalAggregateElement{
+      field, MirOperand::constant(type, checker::checked::CanonicalConstValue::boolean(true))});
+  aggregateElements.add(MirNominalAggregateElement{
+      variant, MirOperand::constant(type, checker::checked::CanonicalConstValue::boolean(false))});
+  auto aggregate = MirRvalue::nominalAggregate(variant, type, zc::mv(aggregateElements));
+  ZC_EXPECT(aggregate.kind() == MirRvalueKind::NominalAggregate);
+  ZC_EXPECT(aggregate.nominalAggregateValue().definition == variant);
+  ZC_EXPECT(aggregate.nominalAggregateValue().type == type);
+  ZC_REQUIRE(aggregate.nominalAggregateValue().elements.size() == 2);
+  ZC_EXPECT(aggregate.nominalAggregateValue().elements[0].field == field);
+  ZC_EXPECT(aggregate.nominalAggregateValue().elements[0].operand.kind() ==
+            MirOperandKind::Constant);
+  auto clonedAggregate = aggregate.clone();
+  ZC_EXPECT(clonedAggregate.kind() == MirRvalueKind::NominalAggregate);
+  ZC_REQUIRE(clonedAggregate.nominalAggregateValue().elements.size() == 2);
+  ZC_EXPECT(clonedAggregate.nominalAggregateValue().elements[1].field == variant);
+  ZC_EXPECT(clonedAggregate.nominalAggregateValue().elements[1].operand.kind() ==
+            MirOperandKind::Constant);
+
+  auto assignment = MirStatement::assign(
+      place(firstLocal, type, field, variant),
+      MirRvalue::use(MirOperand::copy(place(firstLocal, type, field, variant))),
+      MirInitializationKind::Initialize, sourceSpan());
+  auto storageLive = MirStatement::storageLive(firstLocal, sourceSpan());
+  auto storageDead = MirStatement::storageDead(firstLocal, sourceSpan());
+  auto borrow =
+      MirStatement::borrowCreation(place(firstLocal, type, field, variant), MirBorrowKind::Mutable,
+                                   place(firstLocal, type, field, variant), sourceSpan());
+  auto discriminant =
+      MirStatement::setDiscriminant(place(firstLocal, type, field, variant), variant, sourceSpan());
+  auto deinitialize =
+      MirStatement::deinitialize(place(firstLocal, type, field, variant), sourceSpan());
   ZC_EXPECT(assignment.kind() == MirStatementKind::Assign);
   ZC_EXPECT(assignment.assignmentValue().initialization == MirInitializationKind::Initialize);
   ZC_EXPECT(storageLive.storageLocal() == firstLocal);
@@ -129,6 +176,8 @@ ZC_TEST("Built MIR value algebras clone every supported projection statement and
   ZC_EXPECT(borrow.borrowCreationValue().kind == MirBorrowKind::Mutable);
   ZC_EXPECT(discriminant.setDiscriminantValue().variant == variant);
   ZC_EXPECT(deinitialize.deinitializeValue().destination.local() == firstLocal);
+  ZC_EXPECT(assignment.sourceSpan().byteStart() == 1);
+  ZC_EXPECT(assignment.clone().sourceSpan().byteEnd() == 7);
   ZC_EXPECT(assignment.clone().kind() == MirStatementKind::Assign);
   ZC_EXPECT(storageLive.clone().kind() == MirStatementKind::StorageLive);
   ZC_EXPECT(storageDead.clone().kind() == MirStatementKind::StorageDead);
@@ -136,16 +185,58 @@ ZC_TEST("Built MIR value algebras clone every supported projection statement and
   ZC_EXPECT(discriminant.clone().kind() == MirStatementKind::SetDiscriminant);
   ZC_EXPECT(deinitialize.clone().kind() == MirStatementKind::Deinitialize);
 
-  auto returning = MirTerminator::returnValue(MirOperand::move(place(firstLocal, field, variant)));
-  auto voidReturn = MirTerminator::returnVoid();
-  auto unreachable = MirTerminator::unreachable();
+  auto returning = MirTerminator::returnValue(
+      MirOperand::move(place(firstLocal, type, field, variant)), sourceSpan());
+  auto voidReturn = MirTerminator::returnVoid(sourceSpan());
+  auto unreachable = MirTerminator::unreachable(sourceSpan());
   ZC_EXPECT(returning.kind() == MirTerminatorKind::Return);
   ZC_REQUIRE(returning.returnValue().value != zc::none);
   ZC_EXPECT(voidReturn.returnValue().value == zc::none);
   ZC_EXPECT(unreachable.kind() == MirTerminatorKind::Unreachable);
+  ZC_EXPECT(returning.sourceSpan().byteStart() == 1);
+  ZC_EXPECT(returning.clone().sourceSpan().byteEnd() == 7);
   ZC_EXPECT(returning.clone().kind() == MirTerminatorKind::Return);
   ZC_EXPECT(voidReturn.clone().kind() == MirTerminatorKind::Return);
   ZC_EXPECT(unreachable.clone().kind() == MirTerminatorKind::Unreachable);
+}
+
+ZC_TEST("Built MIR call effects commit mutable receiver activation only on normal edges") {
+  const auto type = tests::testSemanticType();
+  const auto receiverTemporary = local(3);
+  const auto destination = local(4);
+  const auto callee = tests::testDefinition(2);
+  const auto normal = MirBlockId::fromOrdinal(2);
+  ZC_REQUIRE(normal != zc::none);
+
+  auto noActivation = MirCallEffect::noActivation();
+  ZC_EXPECT(noActivation.kind() == MirCallEffectKind::NoActivation);
+  ZC_EXPECT(!noActivation.commitsOnNormalEdge());
+  ZC_EXPECT(noActivation.activatedMutableReceiver() == zc::none);
+
+  auto activation = MirCallEffect::activateMutableReceiver(receiverTemporary);
+  ZC_EXPECT(activation.kind() == MirCallEffectKind::ActivateMutableReceiver);
+  ZC_EXPECT(activation.commitsOnNormalEdge());
+  ZC_REQUIRE(activation.activatedMutableReceiver() != zc::none);
+  ZC_IF_SOME(temporary, activation.activatedMutableReceiver()) {
+    ZC_EXPECT(temporary == receiverTemporary);
+  }
+  auto clonedActivation = activation.clone();
+  ZC_EXPECT(clonedActivation.kind() == MirCallEffectKind::ActivateMutableReceiver);
+
+  zc::Vector<MirOperand> arguments;
+  zc::Vector<MirProjection> projections;
+  zc::Maybe<MirBlockId> noUnwind;
+  auto call = MirTerminator::call(callee, zc::mv(arguments), zc::mv(clonedActivation),
+                                  MirPlace(destination, type, zc::mv(projections), type),
+                                  ZC_REQUIRE_NONNULL(normal), zc::mv(noUnwind), sourceSpan());
+  ZC_REQUIRE(call.kind() == MirTerminatorKind::Call);
+  const auto& value = call.callValue();
+  ZC_EXPECT(value.effect.commitsOnNormalEdge());
+  ZC_EXPECT(value.normalTarget == ZC_REQUIRE_NONNULL(normal));
+  ZC_REQUIRE(value.effect.activatedMutableReceiver() != zc::none);
+  ZC_IF_SOME(temporary, value.effect.activatedMutableReceiver()) {
+    ZC_EXPECT(temporary == receiverTemporary);
+  }
 }
 
 }  // namespace

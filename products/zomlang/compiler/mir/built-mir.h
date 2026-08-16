@@ -12,6 +12,7 @@
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/checker/body-checker.h"
 #include "zomlang/compiler/checker/checked-facts.h"
 #include "zomlang/compiler/hir/hir-module.h"
 #include "zomlang/compiler/identity/semantic-context-fingerprint.h"
@@ -19,11 +20,38 @@
 #include "zomlang/compiler/ir/ir-identity.h"
 
 namespace zomlang::compiler::ownership {
+class OwnershipAdmittedBoundModule;
 class OwnershipEventOverlayBuilder;
 class OwnershipEventOverlayVerifier;
+namespace facts {
+class FlowBuilder;
+class FlowVerifier;
+class InitializationBuilder;
+class InitializationSourceVerifier;
+class InitializationVerifier;
+class LoanBuilder;
+class LoanVerifier;
+class MovePathBuilder;
+class MovePathVerifier;
+class OwnershipInputVerifier;
+class OwnershipResourceBuilder;
+class OwnershipResourceVerifier;
+class ReborrowRegionBuilder;
+class ReborrowRegionVerifier;
+class ReborrowStateBuilder;
+class ReborrowStateVerifier;
+class ReferenceDefinitionBuilder;
+class ReferenceDefinitionVerifier;
+}  // namespace facts
 }  // namespace zomlang::compiler::ownership
 
 namespace zomlang::compiler::mir {
+
+/// \brief Call-duration authority required to lower and validate value-transfer operands.
+struct BuiltMirInput final {
+  const hir::VerifiedHirModule& hir;
+  const checker::body::BodyCheckingInput& body;
+};
 
 /// \brief Deterministic one-based identity of a local in one MIR body.
 class MirLocalId final {
@@ -65,17 +93,28 @@ enum class MirProjectionKind : uint8_t {
 
 struct MirFieldProjection final {
   identity::DefId field;
+  identity::SemanticTypeId inputType;
+  identity::SemanticTypeId resultType;
 };
 struct MirIndexProjection final {
   MirLocalId index;
+  identity::SemanticTypeId inputType;
+  identity::SemanticTypeId resultType;
 };
-struct MirDereferenceProjection final {};
+struct MirDereferenceProjection final {
+  identity::SemanticTypeId inputType;
+  identity::SemanticTypeId resultType;
+};
 struct MirDowncastProjection final {
   identity::DefId variant;
+  identity::SemanticTypeId inputType;
+  identity::SemanticTypeId resultType;
 };
 struct MirSubsliceProjection final {
   uint32_t first;
   uint32_t pastLast;
+  identity::SemanticTypeId inputType;
+  identity::SemanticTypeId resultType;
 };
 
 /// \brief Closed target-independent place projection algebra.
@@ -85,14 +124,23 @@ public:
   MirProjection& operator=(MirProjection&&) noexcept = default;
   ZC_DISALLOW_COPY(MirProjection);
 
-  ZC_NODISCARD static MirProjection field(identity::DefId field) noexcept;
-  ZC_NODISCARD static MirProjection index(MirLocalId index) noexcept;
-  ZC_NODISCARD static MirProjection dereference() noexcept;
-  ZC_NODISCARD static MirProjection downcast(identity::DefId variant) noexcept;
-  ZC_NODISCARD static zc::Maybe<MirProjection> subslice(uint32_t first, uint32_t pastLast) noexcept;
+  ZC_NODISCARD static MirProjection field(identity::DefId field, identity::SemanticTypeId inputType,
+                                          identity::SemanticTypeId resultType) noexcept;
+  ZC_NODISCARD static MirProjection index(MirLocalId index, identity::SemanticTypeId inputType,
+                                          identity::SemanticTypeId resultType) noexcept;
+  ZC_NODISCARD static MirProjection dereference(identity::SemanticTypeId inputType,
+                                                identity::SemanticTypeId resultType) noexcept;
+  ZC_NODISCARD static MirProjection downcast(identity::DefId variant,
+                                             identity::SemanticTypeId inputType,
+                                             identity::SemanticTypeId resultType) noexcept;
+  ZC_NODISCARD static zc::Maybe<MirProjection> subslice(
+      uint32_t first, uint32_t pastLast, identity::SemanticTypeId inputType,
+      identity::SemanticTypeId resultType) noexcept;
   ZC_NODISCARD MirProjection clone() const noexcept;
   ZC_NODISCARD MirProjectionKind kind() const noexcept;
   ZC_NODISCARD bool isStructurallyValid() const noexcept;
+  ZC_NODISCARD identity::SemanticTypeId inputType() const noexcept;
+  ZC_NODISCARD identity::SemanticTypeId resultType() const noexcept;
   ZC_NODISCARD const MirFieldProjection& fieldValue() const;
   ZC_NODISCARD const MirIndexProjection& indexValue() const;
   ZC_NODISCARD const MirDowncastProjection& downcastValue() const;
@@ -112,7 +160,8 @@ private:
 /// \brief One typed storage location and its logical projection path.
 class MirPlace final {
 public:
-  MirPlace(MirLocalId local, zc::Vector<MirProjection>&& projections) noexcept;
+  MirPlace(MirLocalId local, identity::SemanticTypeId rootType,
+           zc::Vector<MirProjection>&& projections, identity::SemanticTypeId resultType) noexcept;
   ~MirPlace() noexcept(false);
   MirPlace(MirPlace&&) noexcept;
   MirPlace& operator=(MirPlace&&) noexcept;
@@ -120,7 +169,10 @@ public:
 
   ZC_NODISCARD MirPlace clone() const;
   ZC_NODISCARD MirLocalId local() const noexcept;
+  ZC_NODISCARD identity::SemanticTypeId rootType() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const MirProjection> projections() const noexcept;
+  ZC_NODISCARD identity::SemanticTypeId resultType() const noexcept;
+  ZC_NODISCARD bool hasConsistentTypeChain() const noexcept;
 
 private:
   struct Impl;
@@ -164,10 +216,19 @@ private:
 };
 
 enum class MirBorrowKind : uint8_t { Shared = 0x01, Mutable = 0x02 };
-enum class MirRvalueKind : uint8_t { Use = 0x01 };
+enum class MirRvalueKind : uint8_t { Use = 0x01, NominalAggregate = 0x02 };
 
 struct MirUseRvalue final {
   MirOperand operand;
+};
+struct MirNominalAggregateElement final {
+  identity::DefId field;
+  MirOperand operand;
+};
+struct MirNominalAggregateRvalue final {
+  identity::DefId definition;
+  identity::SemanticTypeId type;
+  zc::Vector<MirNominalAggregateElement> elements;
 };
 
 /// \brief Canonical target-independent assignment value for the Built MIR boundary.
@@ -178,13 +239,18 @@ public:
   ZC_DISALLOW_COPY(MirRvalue);
 
   ZC_NODISCARD static MirRvalue use(MirOperand&& operand) noexcept;
+  ZC_NODISCARD static MirRvalue nominalAggregate(
+      identity::DefId definition, identity::SemanticTypeId type,
+      zc::Vector<MirNominalAggregateElement>&& elements) noexcept;
   ZC_NODISCARD MirRvalue clone() const;
   ZC_NODISCARD MirRvalueKind kind() const noexcept;
   ZC_NODISCARD const MirUseRvalue& useValue() const;
+  ZC_NODISCARD const MirNominalAggregateRvalue& nominalAggregateValue() const;
 
 private:
   explicit MirRvalue(MirUseRvalue&& value) noexcept;
-  MirUseRvalue value;
+  explicit MirRvalue(MirNominalAggregateRvalue&& value) noexcept;
+  zc::OneOf<MirUseRvalue, MirNominalAggregateRvalue> value;
 };
 
 enum class MirInitializationKind : uint8_t { Initialize = 0x01, Overwrite = 0x02 };
@@ -229,16 +295,23 @@ public:
   ZC_DISALLOW_COPY(MirStatement);
 
   ZC_NODISCARD static MirStatement assign(MirPlace&& destination, MirRvalue&& value,
-                                          MirInitializationKind initialization) noexcept;
-  ZC_NODISCARD static MirStatement storageLive(MirLocalId local) noexcept;
-  ZC_NODISCARD static MirStatement storageDead(MirLocalId local) noexcept;
+                                          MirInitializationKind initialization,
+                                          identity::SourceSpan&& sourceSpan) noexcept;
+  ZC_NODISCARD static MirStatement storageLive(MirLocalId local,
+                                               identity::SourceSpan&& sourceSpan) noexcept;
+  ZC_NODISCARD static MirStatement storageDead(MirLocalId local,
+                                               identity::SourceSpan&& sourceSpan) noexcept;
   ZC_NODISCARD static MirStatement borrowCreation(MirPlace&& destination, MirBorrowKind kind,
-                                                  MirPlace&& source) noexcept;
-  ZC_NODISCARD static MirStatement setDiscriminant(MirPlace&& destination,
-                                                   identity::DefId variant) noexcept;
-  ZC_NODISCARD static MirStatement deinitialize(MirPlace&& destination) noexcept;
+                                                  MirPlace&& source,
+                                                  identity::SourceSpan&& sourceSpan) noexcept;
+  ZC_NODISCARD static MirStatement setDiscriminant(MirPlace&& destination, identity::DefId variant,
+                                                   identity::SourceSpan&& sourceSpan) noexcept;
+  ZC_NODISCARD static MirStatement deinitialize(MirPlace&& destination,
+                                                identity::SourceSpan&& sourceSpan) noexcept;
   ZC_NODISCARD MirStatement clone() const;
   ZC_NODISCARD MirStatementKind kind() const noexcept;
+  /// \brief Returns presentation-only source ownership for this MIR operation.
+  ZC_NODISCARD const identity::SourceSpan& sourceSpan() const noexcept;
   ZC_NODISCARD const MirAssignmentStatement& assignmentValue() const;
   ZC_NODISCARD MirLocalId storageLocal() const;
   ZC_NODISCARD const MirBorrowCreationStatement& borrowCreationValue() const;
@@ -246,23 +319,63 @@ public:
   ZC_NODISCARD const MirDeinitializeStatement& deinitializeValue() const;
 
 private:
-  explicit MirStatement(MirAssignmentStatement&& value) noexcept;
-  explicit MirStatement(MirStorageLiveStatement value) noexcept;
-  explicit MirStatement(MirStorageDeadStatement value) noexcept;
-  explicit MirStatement(MirBorrowCreationStatement&& value) noexcept;
-  explicit MirStatement(MirSetDiscriminantStatement&& value) noexcept;
-  explicit MirStatement(MirDeinitializeStatement&& value) noexcept;
+  MirStatement(MirAssignmentStatement&& value, identity::SourceSpan&& sourceSpan) noexcept;
+  MirStatement(MirStorageLiveStatement value, identity::SourceSpan&& sourceSpan) noexcept;
+  MirStatement(MirStorageDeadStatement value, identity::SourceSpan&& sourceSpan) noexcept;
+  MirStatement(MirBorrowCreationStatement&& value, identity::SourceSpan&& sourceSpan) noexcept;
+  MirStatement(MirSetDiscriminantStatement&& value, identity::SourceSpan&& sourceSpan) noexcept;
+  MirStatement(MirDeinitializeStatement&& value, identity::SourceSpan&& sourceSpan) noexcept;
   zc::OneOf<MirAssignmentStatement, MirStorageLiveStatement, MirStorageDeadStatement,
             MirBorrowCreationStatement, MirSetDiscriminantStatement, MirDeinitializeStatement>
       value;
+  identity::SourceSpan sourceSpanValue;
 };
 
-enum class MirTerminatorKind : uint8_t { Return = 0x01, Unreachable = 0x02 };
+enum class MirTerminatorKind : uint8_t { Return = 0x01, Unreachable = 0x02, Call = 0x03 };
 
 struct MirReturnTerminator final {
   zc::Maybe<MirOperand> value;
 };
 struct MirUnreachableTerminator final {};
+
+enum class MirCallEffectKind : uint8_t {
+  NoActivation = 0x01,
+  ActivateMutableReceiver = 0x02,
+};
+
+struct MirNoActivationCallEffect final {};
+struct MirActivateMutableReceiverCallEffect final {
+  MirLocalId temporary;
+};
+
+/// \brief Ownership-relevant effect committed only when a call reaches its normal edge.
+class MirCallEffect final {
+public:
+  MirCallEffect(MirCallEffect&&) noexcept = default;
+  MirCallEffect& operator=(MirCallEffect&&) noexcept = default;
+  ZC_DISALLOW_COPY(MirCallEffect);
+
+  ZC_NODISCARD static MirCallEffect noActivation() noexcept;
+  ZC_NODISCARD static MirCallEffect activateMutableReceiver(MirLocalId temporary) noexcept;
+  ZC_NODISCARD MirCallEffect clone() const noexcept;
+  ZC_NODISCARD MirCallEffectKind kind() const noexcept;
+  ZC_NODISCARD bool commitsOnNormalEdge() const noexcept;
+  ZC_NODISCARD zc::Maybe<MirLocalId> activatedMutableReceiver() const noexcept;
+
+private:
+  explicit MirCallEffect(MirNoActivationCallEffect value) noexcept;
+  explicit MirCallEffect(MirActivateMutableReceiverCallEffect value) noexcept;
+  zc::OneOf<MirNoActivationCallEffect, MirActivateMutableReceiverCallEffect> value;
+};
+
+struct MirCallTerminator final {
+  identity::DefId callee;
+  zc::Vector<MirOperand> arguments;
+  MirCallEffect effect;
+  MirPlace destination;
+  MirBlockId normalTarget;
+  zc::Maybe<MirBlockId> unwindTarget;
+};
 
 /// \brief Closed terminator algebra for the currently supported Built MIR subset.
 class MirTerminator final {
@@ -271,20 +384,37 @@ public:
   MirTerminator& operator=(MirTerminator&&) noexcept = default;
   ZC_DISALLOW_COPY(MirTerminator);
 
-  ZC_NODISCARD static MirTerminator returnValue(MirOperand&& value) noexcept;
-  ZC_NODISCARD static MirTerminator returnVoid() noexcept;
-  ZC_NODISCARD static MirTerminator unreachable() noexcept;
+  ZC_NODISCARD static MirTerminator returnValue(MirOperand&& value,
+                                                identity::SourceSpan&& sourceSpan) noexcept;
+  ZC_NODISCARD static MirTerminator returnVoid(identity::SourceSpan&& sourceSpan) noexcept;
+  ZC_NODISCARD static MirTerminator unreachable(identity::SourceSpan&& sourceSpan) noexcept;
+  ZC_NODISCARD static MirTerminator call(identity::DefId callee, zc::Vector<MirOperand>&& arguments,
+                                         MirCallEffect&& effect, MirPlace&& destination,
+                                         MirBlockId normalTarget,
+                                         zc::Maybe<MirBlockId>&& unwindTarget,
+                                         identity::SourceSpan&& sourceSpan) noexcept;
   ZC_NODISCARD MirTerminator clone() const;
   ZC_NODISCARD MirTerminatorKind kind() const noexcept;
+  /// \brief Returns presentation-only source ownership for this MIR terminator.
+  ZC_NODISCARD const identity::SourceSpan& sourceSpan() const noexcept;
   ZC_NODISCARD const MirReturnTerminator& returnValue() const;
+  ZC_NODISCARD const MirCallTerminator& callValue() const;
 
 private:
-  explicit MirTerminator(MirReturnTerminator&& value) noexcept;
-  explicit MirTerminator(MirUnreachableTerminator value) noexcept;
-  zc::OneOf<MirReturnTerminator, MirUnreachableTerminator> value;
+  MirTerminator(MirReturnTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept;
+  MirTerminator(MirUnreachableTerminator value, identity::SourceSpan&& sourceSpan) noexcept;
+  MirTerminator(MirCallTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept;
+  zc::OneOf<MirReturnTerminator, MirUnreachableTerminator, MirCallTerminator> value;
+  identity::SourceSpan sourceSpanValue;
 };
 
-enum class MirLocalKind : uint8_t { ModuleInitializerResult = 0x01, Temporary = 0x02 };
+enum class MirLocalKind : uint8_t {
+  ModuleInitializerResult = 0x01,
+  Temporary = 0x02,
+  FunctionResult = 0x03,
+  UserLocal = 0x04,
+  Parameter = 0x05,
+};
 enum class MirFunctionKind : uint8_t { ModuleInitializer = 0x01, Function = 0x02 };
 
 struct MirSourceScope final {
@@ -401,8 +531,16 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const zc::Array<uint8_t>> canonicalFunctionRecords() const noexcept;
 
 private:
-  ZC_NODISCARD driver::module_graph_query::CheckerBoundModuleView retainBoundModule() const;
+  ZC_NODISCARD ownership::OwnershipAdmittedBoundModule retainAdmittedBoundModule() const;
   ZC_NODISCARD checker::CheckerIdentityAuthority retainIdentityAuthority() const;
+  ZC_NODISCARD driver::borrow_evidence::VerifiedBorrowEvidenceLease retainBorrowEvidenceLease()
+      const;
+  ZC_NODISCARD driver::borrow_evidence::BorrowEvidenceRepositoryCapability
+  retainBorrowEvidenceCapability() const;
+  ZC_NODISCARD bool matchesBorrowEvidenceInput(
+      const driver::borrow_evidence::VerifiedBorrowEvidenceLease& lease,
+      const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& capability) const noexcept;
+  ZC_NODISCARD driver::borrow_evidence::BorrowEvidenceLookupResult borrowEvidence() const noexcept;
   struct Impl;
   explicit VerifiedBuiltMir(zc::Own<Impl>&& impl) noexcept;
   zc::Own<Impl> impl;
@@ -410,19 +548,37 @@ private:
   friend class BuiltMirVerifier;
   friend class ownership::OwnershipEventOverlayBuilder;
   friend class ownership::OwnershipEventOverlayVerifier;
+  friend class ownership::facts::InitializationSourceVerifier;
+  friend class ownership::facts::FlowBuilder;
+  friend class ownership::facts::FlowVerifier;
+  friend class ownership::facts::InitializationBuilder;
+  friend class ownership::facts::InitializationVerifier;
+  friend class ownership::facts::LoanBuilder;
+  friend class ownership::facts::LoanVerifier;
+  friend class ownership::facts::MovePathBuilder;
+  friend class ownership::facts::MovePathVerifier;
+  friend class ownership::facts::OwnershipInputVerifier;
+  friend class ownership::facts::OwnershipResourceBuilder;
+  friend class ownership::facts::OwnershipResourceVerifier;
+  friend class ownership::facts::ReborrowRegionBuilder;
+  friend class ownership::facts::ReborrowRegionVerifier;
+  friend class ownership::facts::ReborrowStateBuilder;
+  friend class ownership::facts::ReborrowStateVerifier;
+  friend class ownership::facts::ReferenceDefinitionBuilder;
+  friend class ownership::facts::ReferenceDefinitionVerifier;
 };
 
-/// \brief Lowers the complete currently supported HIR scalar slice into Built MIR.
+/// \brief Lowers the complete currently supported HIR expression slice into Built MIR.
 class BuiltMirBuilder final {
 public:
-  ZC_NODISCARD static ir::IrOperationResult<BuiltMirCandidate> build(
-      const hir::VerifiedHirModule& hirModule);
+  ZC_NODISCARD static ir::IrOperationResult<BuiltMirCandidate> build(const BuiltMirInput& input);
 };
 
 /// \brief Sole publisher of immutable revision-checked Built MIR modules.
 class BuiltMirVerifier final {
 public:
-  ZC_NODISCARD static ir::IrOperationResult<VerifiedBuiltMir> verify(BuiltMirCandidate&& candidate);
+  ZC_NODISCARD static ir::IrOperationResult<VerifiedBuiltMir> verify(BuiltMirCandidate&& candidate,
+                                                                     const BuiltMirInput& input);
 };
 
 }  // namespace zomlang::compiler::mir

@@ -1,0 +1,6 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/body_shape_neg_02.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Error [ZOM4099]: Function body syntax has no admitted semantic contract
+// CHECK-LITERAL:   --> conformance/05-statements/body_shape_neg_02.zom:1:1
+// CHECK-NOT: ZOM9943

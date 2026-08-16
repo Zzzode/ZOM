@@ -509,8 +509,6 @@ constexpr uint32_t kDoWhileStatementPayloadWordCount = 2;
 constexpr uint32_t kDoWhileStatementBodyWord = 0;
 constexpr uint32_t kDoWhileStatementCondWord = 1;
 
-constexpr uint32_t kDebuggerStatementPayloadWordCount = 0;
-
 constexpr uint32_t kContinueStatementPayloadWordCount = 1;
 constexpr uint32_t kContinueStatementLabelWord = 0;
 

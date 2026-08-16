@@ -159,6 +159,10 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::UninitializedPlaceUse) == 4093);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::PlaceBecameUnavailableHere) == 4094);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ConcurrencySemanticsUnavailable) == 4095);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ControlFlowSemanticsUnavailable) == 4096);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::VoidReturnSemanticsUnavailable) == 4097);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ExpressionStatementSemanticsUnavailable) == 4098);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::FunctionBodySemanticsUnavailable) == 4099);
 }
 
 ZC_TEST("DiagnosticTest.ReceiverParserDiagnosticIdsAreStable") {

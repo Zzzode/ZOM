@@ -11,6 +11,7 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/binder/binding-metadata.h"
 #include "zomlang/compiler/checker/signature-facts.h"
+#include "zomlang/compiler/driver/core/revision.h"
 #include "zomlang/compiler/identity/sha256.h"
 
 namespace zomlang::compiler::module_interface {
@@ -44,17 +45,71 @@ private:
 };
 
 struct LocalSignatureAuthorization final {};
+
+struct UserImportedInterfaceRevision final {
+  ModuleInterfaceRevision value;
+};
+
+struct ToolchainCoreImportedInterfaceRevision final {
+  driver::core_library_query::CoreModuleInterfaceRevision value;
+};
+
+/// \brief Exact tagged revision of one source interface accepted by an ordinary consumer.
+class ImportedInterfaceRevision final {
+public:
+  explicit ImportedInterfaceRevision(UserImportedInterfaceRevision value) noexcept
+      : value(zc::mv(value)) {}
+  explicit ImportedInterfaceRevision(ToolchainCoreImportedInterfaceRevision value) noexcept
+      : value(zc::mv(value)) {}
+  ImportedInterfaceRevision(ImportedInterfaceRevision&&) noexcept = default;
+  ImportedInterfaceRevision& operator=(ImportedInterfaceRevision&&) noexcept = default;
+  ZC_DISALLOW_COPY(ImportedInterfaceRevision);
+
+  ZC_NODISCARD const auto& variant() const noexcept { return value; }
+  ZC_NODISCARD ImportedInterfaceRevision clone() const;
+
+private:
+  zc::OneOf<UserImportedInterfaceRevision, ToolchainCoreImportedInterfaceRevision> value;
+};
+
+struct UserImportedBindingSurfaceRevision final {
+  binder::ExportSurfaceRevision value;
+};
+
+struct ToolchainCoreImportedBindingSurfaceRevision final {
+  driver::core_library_query::CoreBindingSurfaceRevision value;
+};
+
+/// \brief Exact tagged revision of one source binding surface accepted by an ordinary consumer.
+class ImportedBindingSurfaceRevision final {
+public:
+  explicit ImportedBindingSurfaceRevision(UserImportedBindingSurfaceRevision value) noexcept
+      : value(zc::mv(value)) {}
+  explicit ImportedBindingSurfaceRevision(
+      ToolchainCoreImportedBindingSurfaceRevision value) noexcept
+      : value(zc::mv(value)) {}
+  ImportedBindingSurfaceRevision(ImportedBindingSurfaceRevision&&) noexcept = default;
+  ImportedBindingSurfaceRevision& operator=(ImportedBindingSurfaceRevision&&) noexcept = default;
+  ZC_DISALLOW_COPY(ImportedBindingSurfaceRevision);
+
+  ZC_NODISCARD const auto& variant() const noexcept { return value; }
+  ZC_NODISCARD ImportedBindingSurfaceRevision clone() const;
+
+private:
+  zc::OneOf<UserImportedBindingSurfaceRevision, ToolchainCoreImportedBindingSurfaceRevision> value;
+};
+
 struct ImportedSignatureAuthorization final {
-  ModuleInterfaceRevision interfaceRevision;
+  ImportedInterfaceRevision interfaceRevision;
 };
 
 /// \brief Closed provenance for one canonical signature-root authorization.
 class SignatureAuthorizationOrigin final {
 public:
   explicit SignatureAuthorizationOrigin(LocalSignatureAuthorization value) noexcept
-      : value(value) {}
+      : value(zc::mv(value)) {}
   explicit SignatureAuthorizationOrigin(ImportedSignatureAuthorization value) noexcept
-      : value(value) {}
+      : value(zc::mv(value)) {}
   SignatureAuthorizationOrigin(SignatureAuthorizationOrigin&&) noexcept = default;
   SignatureAuthorizationOrigin& operator=(SignatureAuthorizationOrigin&&) noexcept = default;
   ZC_DISALLOW_COPY(SignatureAuthorizationOrigin);
@@ -79,7 +134,7 @@ struct SignatureRootAuthorization final {
   identity::DefId canonicalDefinition;
   binder::VisibilityEnvelope visibility;
   identity::ModuleId sourceModule;
-  binder::ExportSurfaceRevision bindingSurfaceRevision;
+  ImportedBindingSurfaceRevision bindingSurfaceRevision;
   SignatureAuthorizationOrigin origin;
 
   ZC_NODISCARD SignatureRootAuthorization clone() const;

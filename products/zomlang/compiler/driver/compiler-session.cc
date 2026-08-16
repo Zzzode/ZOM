@@ -48,7 +48,7 @@
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
 #include "zomlang/compiler/driver/active-definition-authority-session.h"
 #include "zomlang/compiler/driver/coherence-builder.h"
-#include "zomlang/compiler/driver/core-library-query-provider.h"
+#include "zomlang/compiler/driver/core/query.h"
 #include "zomlang/compiler/driver/imported-signature-view-projector.h"
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
 #include "zomlang/compiler/driver/incremental-module-resolution-query.h"
@@ -65,6 +65,7 @@
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/identity/canonical-identity-interner-set.h"
 #include "zomlang/compiler/identity/identity-diagnostic-adapter.h"
+#include "zomlang/compiler/ownership/surface-admission.h"
 #include "zomlang/compiler/parser/parse-source-query.h"
 #include "zomlang/compiler/source/manager.h"
 
@@ -619,16 +620,20 @@ struct CompilerSession::Impl {
   bool verifiedParsedSyntax = false;
   zc::Maybe<checker::signature::VerifiedMarkerShapeInventory> markerShapes;
   zc::Maybe<checker::signature::VerifiedMarkerPolicyRegistry> markerPolicies;
+  zc::Maybe<core::VerifiedCoreLibrary> coreLibrary;
   zc::Vector<checker::signature::VerifiedSignatureFacts> signatureFacts;
   zc::Vector<checker::cross_module::ImportedSignatureView> importedSignatureViews;
+  zc::Vector<checker::body::VerifiedBodyFactRequirementInventory> bodyRequirements;
   zc::Vector<VerifiedModuleInterface> moduleInterfaces;
   zc::Maybe<checker::CheckerIdentityAuthority> checkerIdentityAuthority;
+  zc::Vector<ownership::OwnershipAdmittedBoundModule> ownershipAdmittedModules;
   zc::Maybe<checker::coherence::FrozenCoherenceView> coherenceView;
   zc::Vector<checker::checked::CheckedEvidenceLease> checkedEvidence;
   zc::Vector<checker::dispatch::VerifiedDispatchFacts> dispatchFacts;
   zc::Vector<hir::VerifiedHirModule> hirModules;
   zc::Vector<mir::VerifiedBuiltMir> builtMirModules;
   zc::Vector<ownership::VerifiedOwnershipEventOverlay> ownershipEventOverlays;
+  zc::Vector<ownership::facts::VerifiedOwnershipInputs> ownershipInputs;
   zc::Vector<ir::IrDiagnosticGroup> irFailureGroups;
   zc::Vector<identity::IdentityInvariant> irIdentityInvariantFailures;
   bool verifiedCheckedSources = false;
@@ -636,18 +641,22 @@ struct CompilerSession::Impl {
   zc::Vector<checker::signature::CheckerVerificationFailure> checkerFailures;
 
   void releaseSessionLeases() noexcept(false) {
+    ownershipInputs.clear();
     ownershipEventOverlays.clear();
     builtMirModules.clear();
     hirModules.clear();
+    ownershipAdmittedModules.clear();
     dispatchFacts.clear();
     checkedEvidence.clear();
     coherenceView = zc::none;
     checkerIdentityAuthority = zc::none;
     moduleInterfaces.clear();
+    bodyRequirements.clear();
     importedSignatureViews.clear();
     signatureFacts.clear();
     markerPolicies = zc::none;
     markerShapes = zc::none;
+    coreLibrary = zc::none;
     borrowEvidenceRepository = nullptr;
     checkedFactsRepository = nullptr;
     finalSealedSnapshot = zc::none;
@@ -1569,6 +1578,21 @@ struct CompilerSession::Impl {
         scc.kind() != query::QueryValueKind::Value || scc.value().hasCycle(graph.value())) {
       return false;
     }
+    ZC_IF_SOME(coreInputs, coreDistributionInputs) {
+      if (coreInputs.projections().size() == 0) { return false; }
+      for (const auto& projection : coreInputs.projections()) {
+        auto coreKey = core_library_query::ContextualCoreCrateKey::from(
+            ZC_ASSERT_NONNULL(stagedCompilationRoots).clone(), projection.crate().clone());
+        if (coreKey == zc::none) { return false; }
+        auto coreGraph = authorityStagingSnapshot.get<core_library_query::CoreModuleGraphQuery>(
+            zc::mv(ZC_ASSERT_NONNULL(coreKey)));
+        if (coreGraph.isRuntimeFailure() || coreGraph.kind() != query::QueryValueKind::Value ||
+            coreGraph.value().core().encode().asPtr() != projection.crate().encode().asPtr() ||
+            coreGraph.value().modules().size() == 0) {
+          return false;
+        }
+      }
+    }
     return true;
   }
 
@@ -1935,6 +1959,48 @@ zc::Maybe<CompilerSession::MaterializedModuleGraphLease> CompilerSession::materi
   return zc::mv(demand).takeLease();
 }
 
+zc::Maybe<core::VerifiedCoreLibrary> CompilerSession::materializeCoreLibrary(
+    const identity::CrateKey& coreCrate) const {
+  if (impl->finalSealedSnapshot == zc::none) { return zc::none; }
+  const auto& snapshot = ZC_ASSERT_NONNULL(impl->finalSealedSnapshot);
+  auto coreKey = core_library_query::ContextualCoreCrateKey::from(snapshot.contextRoots().clone(),
+                                                                  coreCrate.clone());
+  if (coreKey == zc::none) { return zc::none; }
+  auto graph =
+      snapshot.get<core_library_query::CoreModuleGraphQuery>(ZC_ASSERT_NONNULL(coreKey).clone());
+  auto distribution =
+      snapshot.get<core_library_query::CoreDistributionInput>(identity::ToolchainUnitKey::core());
+  auto prelude =
+      snapshot.get<core_library_query::CorePreludeSurfaceQuery>(ZC_ASSERT_NONNULL(coreKey).clone());
+  auto authority = snapshot.getCapability<core_library_query::MaterializeCoreAuthorityQuery>(
+      zc::mv(ZC_ASSERT_NONNULL(coreKey)));
+  if (graph.isRuntimeFailure() || distribution.isRuntimeFailure() || prelude.isRuntimeFailure() ||
+      graph.kind() != query::QueryValueKind::Value ||
+      distribution.kind() != query::QueryValueKind::Value ||
+      prelude.kind() != query::QueryValueKind::Value || !authority.isPublished() ||
+      graph.value().core().encode().asPtr() != coreCrate.encode().asPtr() ||
+      prelude.value().core().encode().asPtr() != coreCrate.encode().asPtr()) {
+    return zc::none;
+  }
+  zc::Vector<core::VerifiedCoreModule> modules(graph.value().modules().size());
+  for (const auto& module : graph.value().modules()) {
+    auto moduleKey = core_library_query::ContextualCoreModuleKey::from(
+        snapshot.contextRoots().clone(), module.clone());
+    if (moduleKey == zc::none) { return zc::none; }
+    auto interface = snapshot.getCapability<core_library_query::FinalizeCoreModuleInterfaceQuery>(
+        zc::mv(ZC_ASSERT_NONNULL(moduleKey)));
+    if (!interface.isPublished()) { return zc::none; }
+    auto published = core::VerifiedCoreModule::from(module.clone(), zc::mv(interface).takeLease());
+    if (published == zc::none) { return zc::none; }
+    modules.add(zc::mv(ZC_ASSERT_NONNULL(published)));
+  }
+  return core::VerifiedCoreLibrary::from(
+      authority.lease().capability().context(),
+      authority.lease().capability().fingerprint().clone(), snapshot.contextRoots().clone(),
+      snapshot.revision(), distribution.value().digest(), graph.value().clone(), zc::mv(modules),
+      prelude.value().preludeModule().clone(), zc::mv(authority).takeLease());
+}
+
 zc::Maybe<checker::CheckerIdentityAuthority> CompilerSession::materializeCheckerIdentityAuthority()
     const {
   if (impl->finalSealedSnapshot == zc::none) { return zc::none; }
@@ -1986,7 +2052,8 @@ zc::Maybe<const checker::coherence::FrozenCoherenceView&> CompilerSession::getFr
 zc::Maybe<checker::marker::MarkerProofResult> CompilerSession::proveMarker(
     identity::ModuleId requester, identity::DefId marker, identity::SemanticTypeId subject) {
   if (impl->semanticTypeStore.get() == nullptr || impl->markerPolicies == zc::none ||
-      impl->coherenceView == zc::none || impl->checkerIdentityAuthority == zc::none ||
+      impl->coreLibrary == zc::none || impl->coherenceView == zc::none ||
+      impl->checkerIdentityAuthority == zc::none ||
       impl->signatureFacts.size() != impl->importedSignatureViews.size()) {
     return zc::none;
   }
@@ -2013,15 +2080,19 @@ zc::Maybe<checker::marker::MarkerProofResult> CompilerSession::proveMarker(
       auto crate = authority.crate(boundView.crate());
       if (crate == zc::none) return zc::none;
       ZC_IF_SOME(crateEntry, crate) {
-        checker::body::BodyCheckingInput bodyInput{boundView,
+        const auto& standardMarkers =
+            ZC_ASSERT_NONNULL(impl->coreLibrary).authorityLease().capability().authority();
+        checker::body::BodyCheckingInput bodyInput{boundView.retain(),
                                                    authority,
+                                                   policies,
+                                                   standardMarkers,
                                                    impl->signatureFacts[requesterIndex],
                                                    impl->importedSignatureViews[requesterIndex],
                                                    coherence,
                                                    *impl->semanticTypeStore,
                                                    inventory,
                                                    crateEntry.key().semanticOptions()};
-        auto input = checker::marker::MarkerProofInput::from(bodyInput, policies);
+        auto input = checker::marker::MarkerProofInput::from(bodyInput);
         if (input == zc::none) return zc::none;
         ZC_IF_SOME(value, input) {
           checker::marker::MarkerProofEngine engine(zc::mv(value));
@@ -2067,6 +2138,48 @@ zc::ArrayPtr<const mir::VerifiedBuiltMir> CompilerSession::getVerifiedBuiltMirMo
 zc::ArrayPtr<const ownership::VerifiedOwnershipEventOverlay>
 CompilerSession::getVerifiedOwnershipEventOverlays() const noexcept {
   return impl->ownershipEventOverlays;
+}
+
+zc::Maybe<ownership::OwnershipEventOverlayInput> CompilerSession::getOwnershipEventOverlayInput(
+    identity::ModuleId module) const noexcept {
+  if (impl->checkerIdentityAuthority == zc::none || impl->markerPolicies == zc::none ||
+      impl->coreLibrary == zc::none || impl->coherenceView == zc::none ||
+      impl->semanticTypeStore.get() == nullptr ||
+      impl->signatureFacts.size() != impl->importedSignatureViews.size() ||
+      impl->signatureFacts.size() != impl->bodyRequirements.size() ||
+      impl->signatureFacts.size() != impl->hirModules.size() ||
+      impl->signatureFacts.size() != impl->builtMirModules.size() ||
+      impl->signatureFacts.size() != impl->ownershipAdmittedModules.size()) {
+    return zc::none;
+  }
+  for (size_t index = 0; index < impl->hirModules.size(); ++index) {
+    const auto& hirModule = impl->hirModules[index];
+    const auto& builtMir = impl->builtMirModules[index];
+    const auto& admittedModule = impl->ownershipAdmittedModules[index];
+    if (hirModule.module() != module || builtMir.module() != module) continue;
+    const auto& authority = ZC_ASSERT_NONNULL(impl->checkerIdentityAuthority);
+    const auto& coherence = ZC_ASSERT_NONNULL(impl->coherenceView);
+    auto crate = authority.crate(admittedModule.crate());
+    if (crate == zc::none) return zc::none;
+    ZC_IF_SOME(crateEntry, crate) {
+      const auto& standardMarkers =
+          ZC_ASSERT_NONNULL(impl->coreLibrary).authorityLease().capability().authority();
+      return ownership::OwnershipEventOverlayInput{
+          admittedModule, hirModule.admittedCheckedModule(), hirModule, builtMir,
+          checker::body::BodyCheckingInput{
+              admittedModule.boundModule().retain(), authority,
+              ZC_ASSERT_NONNULL(impl->markerPolicies), standardMarkers, impl->signatureFacts[index],
+              impl->importedSignatureViews[index], coherence, *impl->semanticTypeStore,
+              impl->bodyRequirements[index], crateEntry.key().semanticOptions()}};
+    }
+    return zc::none;
+  }
+  return zc::none;
+}
+
+zc::ArrayPtr<const ownership::facts::VerifiedOwnershipInputs>
+CompilerSession::getVerifiedOwnershipInputs() const noexcept {
+  return impl->ownershipInputs;
 }
 
 zc::ArrayPtr<const ir::IrDiagnosticGroup> CompilerSession::getIrFailureGroups() const noexcept {
@@ -2405,11 +2518,72 @@ bool CompilerSession::checkSources() {
     return false;
   }
 
+  if (impl->finalSealedSnapshot == zc::none) { return false; }
+  const auto& finalSnapshot = ZC_ASSERT_NONNULL(impl->finalSealedSnapshot);
+  auto graphDemand = finalSnapshot.getCapability<module_graph_query::MaterializeModuleGraphQuery>(
+      finalSnapshot.contextRoots());
+  if (!graphDemand.isPublished()) { return false; }
+  for (const auto& crate : graphDemand.lease().capability().crates()) {
+    if (crate.key().unit().kind() != identity::CompilationUnitKind::Toolchain ||
+        crate.key().unit().toolchain().component() != identity::ToolchainComponent::Core) {
+      continue;
+    }
+    auto coreKey = core_library_query::ContextualCoreCrateKey::from(
+        finalSnapshot.contextRoots().clone(), crate.key().clone());
+    if (coreKey == zc::none) { return false; }
+    auto preludeSurface = finalSnapshot.get<core_library_query::CorePreludeSurfaceQuery>(
+        ZC_ASSERT_NONNULL(coreKey).clone());
+    if (preludeSurface.isRuntimeFailure() ||
+        preludeSurface.kind() != query::QueryValueKind::Value ||
+        preludeSurface.value().core().encode().asPtr() != crate.key().encode().asPtr()) {
+      return false;
+    }
+    auto roleAuthority = finalSnapshot.get<core_library_query::CoreRoleAuthorityQuery>(
+        ZC_ASSERT_NONNULL(coreKey).clone());
+    if (roleAuthority.isRuntimeFailure() || roleAuthority.kind() != query::QueryValueKind::Value ||
+        roleAuthority.value().core().encode().asPtr() != crate.key().encode().asPtr() ||
+        roleAuthority.value().preludeRevision().digest() !=
+            preludeSurface.value().revision().digest() ||
+        roleAuthority.value().roles().size() != preludeSurface.value().roles().size()) {
+      return false;
+    }
+    auto materializedAuthority =
+        finalSnapshot.getCapability<core_library_query::MaterializeCoreAuthorityQuery>(
+            zc::mv(ZC_ASSERT_NONNULL(coreKey)));
+    if (!materializedAuthority.isPublished() ||
+        materializedAuthority.lease().capability().record().revision().digest() !=
+            roleAuthority.value().revision().digest() ||
+        materializedAuthority.lease().capability().record().roleSeedRevision().digest() !=
+            roleAuthority.value().roleSeedRevision().digest() ||
+        materializedAuthority.lease().capability().authority().prelude().encode().asPtr() !=
+            preludeSurface.value().preludeModule().encode().asPtr()) {
+      return false;
+    }
+    for (const auto& module : graphDemand.lease().capability().modules()) {
+      if (module.key().crate().encode().asPtr() != crate.key().encode().asPtr()) { continue; }
+      auto finalInterfaceKey = core_library_query::ContextualCoreModuleKey::from(
+          finalSnapshot.contextRoots().clone(), module.key().clone());
+      if (finalInterfaceKey == zc::none) { return false; }
+      auto finalInterface =
+          finalSnapshot.getCapability<core_library_query::FinalizeCoreModuleInterfaceQuery>(
+              zc::mv(ZC_ASSERT_NONNULL(finalInterfaceKey)));
+      if (!finalInterface.isPublished() ||
+          finalInterface.lease().capability().record().module().encode().asPtr() !=
+              module.key().encode().asPtr() ||
+          finalInterface.lease().capability().record().coreContext().digest() !=
+              materializedAuthority.lease().capability().record().coreContext().digest() ||
+          finalInterface.lease().capability().record().authorityRevision().digest() !=
+              materializedAuthority.lease().capability().authority().revision().digest()) {
+        return false;
+      }
+    }
+  }
+
   auto checkerAuthority = materializeCheckerIdentityAuthority();
   if (checkerAuthority == zc::none) { return false; }
   const auto& retainedCheckerAuthority = ZC_ASSERT_NONNULL(checkerAuthority);
-  const auto checkerModules = retainedCheckerAuthority.modules();
-  if (checkerModules.size() == 0) {
+  const auto boundModules = retainedCheckerAuthority.modules();
+  if (boundModules.size() == 0) {
     impl->verifiedCheckedSources = true;
     return true;
   }
@@ -2544,6 +2718,39 @@ bool CompilerSession::checkSources() {
     return false;
   };
 
+  zc::Vector<ownership::OwnershipAdmittedBoundModule> checkerModules(boundModules.size());
+  for (const auto& boundModule : boundModules) {
+    const auto module = boundModule.module();
+    auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(boundModule.retain());
+    if (admission.is<ownership::OwnershipSurfaceSourceRejected>()) {
+      auto parsed = parsedFor(module);
+      if (parsed == zc::none) {
+        return rejectOne(module, checker::signature::CheckerInvariantKind::InputReceiptMismatch,
+                         checker::signature::CheckerInvariantStage::Signature, 0);
+      }
+      ZC_IF_SOME(parsedModule, parsed) {
+        for (const auto& failure :
+             admission.get<ownership::OwnershipSurfaceSourceRejected>().failures()) {
+          diagnostics::DiagID diagnostic = diagnostics::DiagID::ControlFlowSemanticsUnavailable;
+          if (failure.kind == ownership::OwnershipSurfaceSyntaxKind::Spawn ||
+              failure.kind == ownership::OwnershipSurfaceSyntaxKind::Suspend) {
+            diagnostic = diagnostics::DiagID::ConcurrencySemanticsUnavailable;
+          } else if (failure.kind == ownership::OwnershipSurfaceSyntaxKind::VoidReturn) {
+            diagnostic = diagnostics::DiagID::VoidReturnSemanticsUnavailable;
+          } else if (failure.kind == ownership::OwnershipSurfaceSyntaxKind::ExpressionStatement) {
+            diagnostic = diagnostics::DiagID::ExpressionStatementSemanticsUnavailable;
+          } else if (failure.kind == ownership::OwnershipSurfaceSyntaxKind::FunctionBody) {
+            diagnostic = diagnostics::DiagID::FunctionBodySemanticsUnavailable;
+          }
+          impl->diagnosticEngine->emit(
+              diagnostics::Diagnostic(diagnostic, locationFor(parsedModule, failure.primarySpan)));
+        }
+      }
+      return false;
+    }
+    checkerModules.add(zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>());
+  }
+
   zc::Maybe<checker::signature::VerifiedMarkerShapeInventory> stagedMarkerShapes;
   zc::Maybe<checker::signature::VerifiedMarkerPolicyRegistry> stagedMarkerPolicies;
   zc::Vector<checker::signature::VerifiedSignatureFacts> stagedSignatureFacts;
@@ -2554,10 +2761,13 @@ bool CompilerSession::checkSources() {
       zc::heap<checker::checked::CheckedFactsRepository>(impl->contextBrand);
   zc::Vector<checker::checked::CheckedEvidenceLease> stagedCheckedEvidence;
   zc::Vector<checker::dispatch::VerifiedDispatchFacts> stagedDispatchFacts;
+  zc::Vector<checker::body::VerifiedBodyFactRequirementInventory> stagedBodyRequirements;
   zc::Own<borrow_evidence::BorrowEvidenceRepository> stagedBorrowEvidenceRepository;
   zc::Vector<hir::VerifiedHirModule> stagedHirModules;
   zc::Vector<mir::VerifiedBuiltMir> stagedBuiltMirModules;
   zc::Vector<ownership::VerifiedOwnershipEventOverlay> stagedOwnershipEventOverlays;
+  zc::Vector<ownership::facts::VerifiedOwnershipInputs> stagedOwnershipInputs;
+  zc::Vector<ownership::OwnershipAdmittedBoundModule> stagedOwnershipAdmittedModules;
   zc::Vector<size_t> checkerFactModuleIndices;
   zc::Vector<size_t> checkerFactIndexByModule;
   zc::Vector<size_t> ordinaryBoundModuleIndices;
@@ -2609,6 +2819,24 @@ bool CompilerSession::checkSources() {
     return true;
   }
   const auto ordinaryDiagnosticModule = checkerModules[ordinaryBoundModuleIndices[0]].module();
+  zc::Vector<core::VerifiedCoreLibrary> coreLibraries;
+  for (const auto& crate : graphDemand.lease().capability().crates()) {
+    if (crate.key().unit().kind() != identity::CompilationUnitKind::Toolchain ||
+        crate.key().unit().toolchain().component() != identity::ToolchainComponent::Core) {
+      continue;
+    }
+    auto library = materializeCoreLibrary(crate.key());
+    if (library == zc::none) { return false; }
+    ZC_IF_SOME(value, library) {
+      if (value.context() != impl->contextBrand ||
+          value.fingerprint().digest() != retainedCheckerAuthority.fingerprint().digest() ||
+          value.modules().size() == 0) {
+        return false;
+      }
+      coreLibraries.add(zc::mv(value));
+    }
+  }
+  if (coreLibraries.size() != 1) { return false; }
 
   if (retainedCheckerAuthority.semanticContext() == impl->contextBrand) {
     const auto& checkerAuthority = retainedCheckerAuthority;
@@ -2629,29 +2857,53 @@ bool CompilerSession::checkSources() {
         zc::mv(shapeResult).get<checker::signature::VerifiedMarkerShapeInventory>();
 
     zc::Vector<identity::ModuleId> authorizedPreludeModules;
-    for (const auto& edge : materializedGraph.requestEdges()) {
-      if (edge.request().dependencyKind() != identity::ModuleDependencyKind::Prelude) { continue; }
-      bool duplicate = false;
-      for (const auto module : authorizedPreludeModules) {
-        if (module == edge.dependency()) {
-          duplicate = true;
-          break;
+    const auto addAuthorizedModule = [&](identity::ModuleId module) {
+      for (const auto authorized : authorizedPreludeModules) {
+        if (authorized == module) return;
+      }
+      authorizedPreludeModules.add(module);
+    };
+    addAuthorizedModule(coreLibraries[0].authorityLease().capability().preludeModule());
+    for (const auto& entry : coreLibraries[0].authorityLease().capability().policies().entries()) {
+      auto definition = checkerAuthority.definition(entry.definition);
+      if (definition == zc::none) { return false; }
+      ZC_IF_SOME(value, definition) {
+        auto owner = checkerAuthority.module(value.record().module());
+        if (owner == zc::none) { return false; }
+        ZC_IF_SOME(module, owner) { addAuthorizedModule(module.handle()); }
+      }
+      for (const auto& rule : entry.policy.referenceRules()) {
+        ZC_IF_SOME(requiredMarker, rule.requiredMarker) {
+          auto required = checkerAuthority.definition(requiredMarker);
+          if (required == zc::none) { return false; }
+          ZC_IF_SOME(value, required) {
+            auto owner = checkerAuthority.module(value.record().module());
+            if (owner == zc::none) { return false; }
+            ZC_IF_SOME(module, owner) { addAuthorizedModule(module.handle()); }
+          }
         }
       }
-      if (!duplicate) { authorizedPreludeModules.add(edge.dependency()); }
     }
-    auto markerConfiguration = checker::signature::MarkerPolicyConfiguration::explicitOnly();
+    for (const auto& edge : materializedGraph.requestEdges()) {
+      if (edge.request().dependencyKind() != identity::ModuleDependencyKind::Prelude) { continue; }
+      addAuthorizedModule(edge.dependency());
+    }
+    auto markerConfiguration =
+        core::checkerConfig(coreLibraries[0].authorityLease().capability().policies());
+    if (markerConfiguration == zc::none) { return false; }
     ZC_IF_SOME(shapes, stagedMarkerShapes) {
-      auto policyResult = checker::signature::MarkerPolicyRegistryBuilder::build(
-          ordinaryDiagnosticModule, markerConfiguration, shapes, authorizedPreludeModules.asPtr(),
-          checkerAuthority);
-      if (!policyResult.is<checker::signature::VerifiedMarkerPolicyRegistry>()) {
-        auto rejected =
-            zc::mv(policyResult).get<checker::signature::SignatureFactsInvariantRejected>();
-        return rejectChecker(ordinaryDiagnosticModule, zc::mv(rejected.failures));
+      ZC_IF_SOME(configuration, markerConfiguration) {
+        auto policyResult = checker::signature::MarkerPolicyRegistryBuilder::build(
+            ordinaryDiagnosticModule, configuration, shapes, authorizedPreludeModules.asPtr(),
+            checkerAuthority);
+        if (!policyResult.is<checker::signature::VerifiedMarkerPolicyRegistry>()) {
+          auto rejected =
+              zc::mv(policyResult).get<checker::signature::SignatureFactsInvariantRejected>();
+          return rejectChecker(ordinaryDiagnosticModule, zc::mv(rejected.failures));
+        }
+        stagedMarkerPolicies =
+            zc::mv(policyResult).get<checker::signature::VerifiedMarkerPolicyRegistry>();
       }
-      stagedMarkerPolicies =
-          zc::mv(policyResult).get<checker::signature::VerifiedMarkerPolicyRegistry>();
     }
 
     for (const auto moduleIndex : checkerFactModuleIndices) {
@@ -2692,9 +2944,32 @@ bool CompilerSession::checkSources() {
           stagedSignatureFacts.add(
               zc::mv(signatureResult).get<checker::signature::VerifiedSignatureFacts>());
 
-          auto imported =
-              ImportedSignatureViewProjector::build(boundView, stagedModuleInterfaces.asPtr(),
-                                                    *impl->semanticTypeStore, checkerAuthority);
+          zc::Vector<VerifiedInterfaceSource> interfaceSources(stagedModuleInterfaces.size());
+          auto requesterCrate = retainedCheckerAuthority.crate(boundView.crate());
+          if (requesterCrate == zc::none) { return false; }
+          const bool ordinaryRequester = ZC_ASSERT_NONNULL(requesterCrate).key().unit().kind() ==
+                                         identity::CompilationUnitKind::UserPackage;
+          for (size_t index = 0; index < stagedModuleInterfaces.size(); ++index) {
+            const auto boundIndex = checkerFactModuleIndices[index];
+            auto crate = retainedCheckerAuthority.crate(checkerModules[boundIndex].crate());
+            if (crate == zc::none ||
+                (ordinaryRequester && ZC_ASSERT_NONNULL(crate).key().unit().kind() !=
+                                          identity::CompilationUnitKind::UserPackage)) {
+              continue;
+            }
+            interfaceSources.add(VerifiedInterfaceSource(
+                UserVerifiedInterfaceSource{stagedModuleInterfaces[index]}));
+          }
+          if (ordinaryRequester) {
+            for (const auto& library : coreLibraries) {
+              for (const auto& module : library.modules()) {
+                interfaceSources.add(VerifiedInterfaceSource(
+                    ToolchainCoreVerifiedInterfaceSource{module.interfaceLease().capability()}));
+              }
+            }
+          }
+          auto imported = ImportedSignatureViewProjector::build(
+              boundView, interfaceSources.asPtr(), *impl->semanticTypeStore, checkerAuthority);
           if (imported == zc::none) {
             return rejectOne(boundView.module(),
                              checker::signature::CheckerInvariantKind::ViewMismatch,
@@ -2817,7 +3092,7 @@ bool CompilerSession::checkSources() {
           const auto& boundView = checkerModules[moduleIndex];
           const auto factIndex = checkerFactIndexByModule[moduleIndex];
           auto inventoryResult =
-              checker::body::BodyFactRequirementInventoryBuilder::build(boundView);
+              checker::body::BodyFactRequirementInventoryBuilder::build(boundView.boundModule());
           if (!inventoryResult.is<checker::body::VerifiedBodyFactRequirementInventory>()) {
             auto rejected =
                 zc::mv(inventoryResult).get<checker::checked::CheckedFactsInvariantRejected>();
@@ -2825,8 +3100,8 @@ bool CompilerSession::checkSources() {
           }
           auto inventory =
               zc::mv(inventoryResult).get<checker::body::VerifiedBodyFactRequirementInventory>();
-          auto dispatchInventoryResult =
-              checker::dispatch::DispatchSiteInventoryBuilder::build(boundView, inventory);
+          auto dispatchInventoryResult = checker::dispatch::DispatchSiteInventoryBuilder::build(
+              boundView.boundModule(), inventory);
           if (!dispatchInventoryResult.is<checker::dispatch::VerifiedDispatchSiteInventory>()) {
             auto rejected = zc::mv(dispatchInventoryResult)
                                 .get<checker::dispatch::DispatchFactsInvariantRejected>();
@@ -2843,9 +3118,12 @@ bool CompilerSession::checkSources() {
           ZC_IF_SOME(crateEntry, crate) {
             auto bodyResult = bodyChecker.check(
                 checker::body::BodyCheckingInput{
-                    boundView, checkerAuthority, stagedSignatureFacts[factIndex],
-                    stagedImportedSignatureViews[factIndex], coherence, *impl->semanticTypeStore,
-                    inventory, crateEntry.key().semanticOptions()},
+                    boundView.boundModule().retain(), checkerAuthority,
+                    ZC_ASSERT_NONNULL(stagedMarkerPolicies),
+                    coreLibraries[0].authorityLease().capability().authority(),
+                    stagedSignatureFacts[factIndex], stagedImportedSignatureViews[factIndex],
+                    coherence, *impl->semanticTypeStore, inventory,
+                    crateEntry.key().semanticOptions()},
                 factStoreBrands);
             if (bodyResult.is<checker::checked::CheckedFactsSourceRejected>()) {
               auto rejected =
@@ -3015,13 +3293,16 @@ bool CompilerSession::checkSources() {
                   zc::mv(dispatchVerification).get<checker::dispatch::VerifiedDispatchFacts>());
             }
             stagedCheckedEvidence.add(zc::mv(lease));
+            stagedBodyRequirements.add(zc::mv(inventory));
           }
         }
       }
     }
   }
   if (stagedCheckedEvidence.size() != checkerModules.size() ||
-      stagedDispatchFacts.size() != checkerModules.size() || impl->diagnosticEngine->hasErrors()) {
+      stagedDispatchFacts.size() != checkerModules.size() ||
+      stagedBodyRequirements.size() != checkerModules.size() ||
+      impl->diagnosticEngine->hasErrors()) {
     return false;
   }
   if (checkerModules.size() > UINT32_MAX) {
@@ -3055,17 +3336,48 @@ bool CompilerSession::checkSources() {
                      checker::signature::CheckerInvariantKind::InferenceLifecycle,
                      checker::signature::CheckerInvariantStage::Verification, 0);
   }
+  zc::Vector<checker::signature::VerifiedSignatureFacts> ordinarySignatureFacts(
+      ordinaryBoundModuleIndices.size());
+  zc::Vector<checker::cross_module::ImportedSignatureView> ordinaryImportedSignatureViews(
+      ordinaryBoundModuleIndices.size());
+  zc::Vector<checker::body::VerifiedBodyFactRequirementInventory> ordinaryBodyRequirements(
+      ordinaryBoundModuleIndices.size());
+  zc::Vector<VerifiedModuleInterface> ordinaryModuleInterfaces(ordinaryBoundModuleIndices.size());
+  zc::Vector<checker::checked::CheckedEvidenceLease> ordinaryCheckedEvidence(
+      ordinaryBoundModuleIndices.size());
+  zc::Vector<checker::dispatch::VerifiedDispatchFacts> ordinaryDispatchFacts(
+      ordinaryBoundModuleIndices.size());
+  for (const auto index : ordinaryBoundModuleIndices) {
+    const auto factIndex = checkerFactIndexByModule[index];
+    ordinarySignatureFacts.add(zc::mv(stagedSignatureFacts[factIndex]));
+    ordinaryImportedSignatureViews.add(zc::mv(stagedImportedSignatureViews[factIndex]));
+    ordinaryBodyRequirements.add(zc::mv(stagedBodyRequirements[factIndex]));
+    ordinaryModuleInterfaces.add(zc::mv(stagedModuleInterfaces[factIndex]));
+    ordinaryCheckedEvidence.add(zc::mv(stagedCheckedEvidence[factIndex]));
+    ordinaryDispatchFacts.add(zc::mv(stagedDispatchFacts[factIndex]));
+  }
+  zc::Vector<VerifiedInterfaceSource> checkedModuleInterfaceSources(
+      ordinaryModuleInterfaces.size() + coreLibraries.size());
+  for (const auto& interface : ordinaryModuleInterfaces) {
+    checkedModuleInterfaceSources.add(
+        VerifiedInterfaceSource(UserVerifiedInterfaceSource{interface}));
+  }
+  for (const auto& library : coreLibraries) {
+    for (const auto& module : library.modules()) {
+      checkedModuleInterfaceSources.add(VerifiedInterfaceSource(
+          ToolchainCoreVerifiedInterfaceSource{module.interfaceLease().capability()}));
+    }
+  }
   for (size_t ordinaryIndex = 0; ordinaryIndex < ordinaryBoundModuleIndices.size();
        ++ordinaryIndex) {
     const auto boundIndex = ordinaryBoundModuleIndices[ordinaryIndex];
-    const auto factIndex = checkerFactIndexByModule[boundIndex];
     const auto& checkerBound = checkerModules[boundIndex];
     auto checkedModule = hir::CheckedModuleBuilder::build(hir::CheckedModuleBuildInput{
-        checkerBound, stagedSignatureFacts[factIndex], stagedModuleInterfaces[factIndex],
-        stagedImportedSignatureViews[factIndex], stagedModuleInterfaces.asPtr(),
-        stagedCheckedEvidence[factIndex], *stagedCheckedFactsRepository,
-        stagedDispatchFacts[factIndex], *stagedBorrowEvidenceRepository, retainedCheckerAuthority,
-        *impl->semanticTypeStore});
+        checkerBound, ordinarySignatureFacts[ordinaryIndex],
+        ordinaryModuleInterfaces[ordinaryIndex], ordinaryImportedSignatureViews[ordinaryIndex],
+        checkedModuleInterfaceSources.asPtr(), ordinaryCheckedEvidence[ordinaryIndex],
+        *stagedCheckedFactsRepository, ordinaryDispatchFacts[ordinaryIndex],
+        *stagedBorrowEvidenceRepository, retainedCheckerAuthority, *impl->semanticTypeStore});
     if (checkedModule.isCapabilityRejected()) {
       return rejectIrCapability(checkedModule.capabilityFailures());
     }
@@ -3099,7 +3411,24 @@ bool CompilerSession::checkSources() {
     }
     stagedHirModules.add(zc::mv(verifiedHir).takeVerified());
 
-    auto mirCandidate = mir::BuiltMirBuilder::build(stagedHirModules[ordinaryIndex]);
+    auto crate = retainedCheckerAuthority.crate(checkerBound.crate());
+    if (crate == zc::none) {
+      return rejectOne(checkerBound.module(), checker::signature::CheckerInvariantKind::InvalidFact,
+                       checker::signature::CheckerInvariantStage::Verification, 0);
+    }
+    checker::body::BodyCheckingInput bodyInput{
+        checkerBound.boundModule().retain(),
+        retainedCheckerAuthority,
+        ZC_ASSERT_NONNULL(stagedMarkerPolicies),
+        coreLibraries[0].authorityLease().capability().authority(),
+        ordinarySignatureFacts[ordinaryIndex],
+        ordinaryImportedSignatureViews[ordinaryIndex],
+        ZC_ASSERT_NONNULL(stagedCoherenceView),
+        *impl->semanticTypeStore,
+        ordinaryBodyRequirements[ordinaryIndex],
+        ZC_ASSERT_NONNULL(crate).key().semanticOptions()};
+    const mir::BuiltMirInput mirInput{stagedHirModules[ordinaryIndex], bodyInput};
+    auto mirCandidate = mir::BuiltMirBuilder::build(mirInput);
     if (mirCandidate.isCapabilityRejected()) {
       return rejectIrCapability(mirCandidate.capabilityFailures());
     }
@@ -3110,7 +3439,7 @@ bool CompilerSession::checkSources() {
       return rejectIrInvariant(mirCandidate.invariantFailures());
     }
 
-    auto verifiedMir = mir::BuiltMirVerifier::verify(zc::mv(mirCandidate).takeVerified());
+    auto verifiedMir = mir::BuiltMirVerifier::verify(zc::mv(mirCandidate).takeVerified(), mirInput);
     if (verifiedMir.isCapabilityRejected()) {
       return rejectIrCapability(verifiedMir.capabilityFailures());
     }
@@ -3122,8 +3451,11 @@ bool CompilerSession::checkSources() {
     }
     stagedBuiltMirModules.add(zc::mv(verifiedMir).takeVerified());
 
-    auto ownershipCandidate = ownership::OwnershipEventOverlayBuilder::build(
-        stagedBuiltMirModules[stagedBuiltMirModules.size() - 1]);
+    const auto& hirModule = stagedHirModules[stagedHirModules.size() - 1];
+    const auto& builtMir = stagedBuiltMirModules[stagedBuiltMirModules.size() - 1];
+    ownership::OwnershipEventOverlayInput ownershipInput{
+        checkerBound, hirModule.admittedCheckedModule(), hirModule, builtMir, zc::mv(bodyInput)};
+    auto ownershipCandidate = ownership::OwnershipEventOverlayBuilder::build(ownershipInput);
     if (ownershipCandidate.isCapabilityRejected()) {
       return rejectIrCapability(ownershipCandidate.capabilityFailures());
     }
@@ -3134,8 +3466,7 @@ bool CompilerSession::checkSources() {
       return rejectIrInvariant(ownershipCandidate.invariantFailures());
     }
     auto verifiedOwnership = ownership::OwnershipEventOverlayVerifier::verify(
-        zc::mv(ownershipCandidate).takeVerified(),
-        stagedBuiltMirModules[stagedBuiltMirModules.size() - 1]);
+        zc::mv(ownershipCandidate).takeVerified(), ownershipInput);
     if (verifiedOwnership.isCapabilityRejected()) {
       return rejectIrCapability(verifiedOwnership.capabilityFailures());
     }
@@ -3146,34 +3477,287 @@ bool CompilerSession::checkSources() {
       return rejectIrInvariant(verifiedOwnership.invariantFailures());
     }
     stagedOwnershipEventOverlays.add(zc::mv(verifiedOwnership).takeVerified());
+
+    auto movePathCandidate = ownership::facts::MovePathBuilder::build(
+        stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1]);
+    if (movePathCandidate.isCapabilityRejected()) {
+      return rejectIrCapability(movePathCandidate.capabilityFailures());
+    }
+    if (movePathCandidate.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(movePathCandidate.identityFailures());
+    }
+    if (movePathCandidate.isIrInvariantRejected()) {
+      return rejectIrInvariant(movePathCandidate.invariantFailures());
+    }
+    auto verifiedMovePaths = ownership::facts::MovePathVerifier::verify(
+        zc::mv(movePathCandidate).takeVerified(),
+        stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1]);
+    if (verifiedMovePaths.isCapabilityRejected()) {
+      return rejectIrCapability(verifiedMovePaths.capabilityFailures());
+    }
+    if (verifiedMovePaths.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(verifiedMovePaths.identityFailures());
+    }
+    if (verifiedMovePaths.isIrInvariantRejected()) {
+      return rejectIrInvariant(verifiedMovePaths.invariantFailures());
+    }
+    auto flowCandidate = ownership::facts::FlowBuilder::build(
+        stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1]);
+    if (flowCandidate.isCapabilityRejected()) {
+      return rejectIrCapability(flowCandidate.capabilityFailures());
+    }
+    if (flowCandidate.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(flowCandidate.identityFailures());
+    }
+    if (flowCandidate.isIrInvariantRejected()) {
+      return rejectIrInvariant(flowCandidate.invariantFailures());
+    }
+    auto verifiedFlow = ownership::facts::FlowVerifier::verify(
+        zc::mv(flowCandidate).takeVerified(),
+        stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1]);
+    if (verifiedFlow.isCapabilityRejected()) {
+      return rejectIrCapability(verifiedFlow.capabilityFailures());
+    }
+    if (verifiedFlow.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(verifiedFlow.identityFailures());
+    }
+    if (verifiedFlow.isIrInvariantRejected()) {
+      return rejectIrInvariant(verifiedFlow.invariantFailures());
+    }
+    auto initializationCandidate = ownership::facts::InitializationBuilder::build(
+        stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1],
+        verifiedFlow.verifiedValue(), verifiedMovePaths.verifiedValue());
+    if (initializationCandidate.isCapabilityRejected()) {
+      return rejectIrCapability(initializationCandidate.capabilityFailures());
+    }
+    if (initializationCandidate.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(initializationCandidate.identityFailures());
+    }
+    if (initializationCandidate.isIrInvariantRejected()) {
+      return rejectIrInvariant(initializationCandidate.invariantFailures());
+    }
+    auto verifiedInitialization = ownership::facts::InitializationVerifier::verify(
+        zc::mv(initializationCandidate).takeVerified(),
+        stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1],
+        verifiedFlow.verifiedValue(), verifiedMovePaths.verifiedValue());
+    if (verifiedInitialization.isCapabilityRejected()) {
+      return rejectIrCapability(verifiedInitialization.capabilityFailures());
+    }
+    if (verifiedInitialization.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(verifiedInitialization.identityFailures());
+    }
+    if (verifiedInitialization.isIrInvariantRejected()) {
+      return rejectIrInvariant(verifiedInitialization.invariantFailures());
+    }
+    auto initializationSource = ownership::facts::InitializationSourceVerifier::verify(
+        stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1],
+        verifiedInitialization.verifiedValue());
+    if (initializationSource.isSourceRejected()) {
+      auto parsed = parsedFor(checkerBound.module());
+      if (parsed == zc::none) {
+        return rejectOne(checkerBound.module(),
+                         checker::signature::CheckerInvariantKind::InvalidFact,
+                         checker::signature::CheckerInvariantStage::Verification, 0);
+      }
+      ZC_IF_SOME(parsedModule, parsed) {
+        auto failures = zc::mv(initializationSource).takeSourceFailures();
+        for (const auto& failure : failures.facts()) {
+          const auto diagnosticId =
+              failure.kind == ownership::facts::InitializationSourceFailureKind::UseAfterMove
+                  ? diagnostics::DiagID::UseAfterMove
+                  : diagnostics::DiagID::UninitializedPlaceUse;
+          const auto noteId =
+              failure.kind == ownership::facts::InitializationSourceFailureKind::UseAfterMove
+                  ? diagnostics::DiagID::ValueMovedHere
+                  : diagnostics::DiagID::PlaceBecameUnavailableHere;
+          auto diagnostic = zc::heap<diagnostics::Diagnostic>(
+              diagnosticId, locationFor(parsedModule, failure.useSpan));
+          for (const auto& cause : failure.unavailableCauses) {
+            diagnostic->addChildDiagnostic(
+                zc::heap<diagnostics::Diagnostic>(noteId, locationFor(parsedModule, cause.span)));
+          }
+          impl->diagnosticEngine->emit(*diagnostic);
+        }
+      }
+      return false;
+    }
+    if (initializationSource.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(zc::mv(initializationSource).takeIdentityFailures());
+    }
+    if (initializationSource.isIrInvariantRejected()) {
+      return rejectIrInvariant(zc::mv(initializationSource).takeInvariantFailures());
+    }
+    auto loanCandidate = ownership::facts::LoanBuilder::build(
+        verifiedMovePaths.verifiedValue(), stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1]);
+    if (loanCandidate.isCapabilityRejected()) {
+      return rejectIrCapability(loanCandidate.capabilityFailures());
+    }
+    if (loanCandidate.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(loanCandidate.identityFailures());
+    }
+    if (loanCandidate.isIrInvariantRejected()) {
+      return rejectIrInvariant(loanCandidate.invariantFailures());
+    }
+    auto verifiedLoans = ownership::facts::LoanVerifier::verify(
+        zc::mv(loanCandidate).takeVerified(), verifiedMovePaths.verifiedValue(),
+        stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1]);
+    if (verifiedLoans.isCapabilityRejected()) {
+      return rejectIrCapability(verifiedLoans.capabilityFailures());
+    }
+    if (verifiedLoans.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(verifiedLoans.identityFailures());
+    }
+    if (verifiedLoans.isIrInvariantRejected()) {
+      return rejectIrInvariant(verifiedLoans.invariantFailures());
+    }
+    auto referenceCandidate = ownership::facts::ReferenceDefinitionBuilder::build(
+        verifiedMovePaths.verifiedValue(), verifiedLoans.verifiedValue(),
+        stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1]);
+    if (referenceCandidate.isCapabilityRejected()) {
+      return rejectIrCapability(referenceCandidate.capabilityFailures());
+    }
+    if (referenceCandidate.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(referenceCandidate.identityFailures());
+    }
+    if (referenceCandidate.isIrInvariantRejected()) {
+      return rejectIrInvariant(referenceCandidate.invariantFailures());
+    }
+    auto verifiedReferences = ownership::facts::ReferenceDefinitionVerifier::verify(
+        zc::mv(referenceCandidate).takeVerified(), verifiedMovePaths.verifiedValue(),
+        verifiedLoans.verifiedValue(), stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1]);
+    if (verifiedReferences.isCapabilityRejected()) {
+      return rejectIrCapability(verifiedReferences.capabilityFailures());
+    }
+    if (verifiedReferences.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(verifiedReferences.identityFailures());
+    }
+    if (verifiedReferences.isIrInvariantRejected()) {
+      return rejectIrInvariant(verifiedReferences.invariantFailures());
+    }
+    auto regionCandidate = ownership::facts::ReborrowRegionBuilder::build(
+        verifiedFlow.verifiedValue(), verifiedLoans.verifiedValue(),
+        verifiedReferences.verifiedValue(), stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1]);
+    if (regionCandidate.isCapabilityRejected()) {
+      return rejectIrCapability(regionCandidate.capabilityFailures());
+    }
+    if (regionCandidate.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(regionCandidate.identityFailures());
+    }
+    if (regionCandidate.isIrInvariantRejected()) {
+      return rejectIrInvariant(regionCandidate.invariantFailures());
+    }
+    auto verifiedRegions = ownership::facts::ReborrowRegionVerifier::verify(
+        zc::mv(regionCandidate).takeVerified(), verifiedFlow.verifiedValue(),
+        verifiedLoans.verifiedValue(), verifiedReferences.verifiedValue(),
+        stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1]);
+    if (verifiedRegions.isCapabilityRejected()) {
+      return rejectIrCapability(verifiedRegions.capabilityFailures());
+    }
+    if (verifiedRegions.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(verifiedRegions.identityFailures());
+    }
+    if (verifiedRegions.isIrInvariantRejected()) {
+      return rejectIrInvariant(verifiedRegions.invariantFailures());
+    }
+    auto referenceStateCandidate = ownership::facts::ReborrowStateBuilder::build(
+        verifiedReferences.verifiedValue(), verifiedRegions.verifiedValue(),
+        stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1]);
+    if (referenceStateCandidate.isCapabilityRejected()) {
+      return rejectIrCapability(referenceStateCandidate.capabilityFailures());
+    }
+    if (referenceStateCandidate.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(referenceStateCandidate.identityFailures());
+    }
+    if (referenceStateCandidate.isIrInvariantRejected()) {
+      return rejectIrInvariant(referenceStateCandidate.invariantFailures());
+    }
+    auto verifiedReferenceStates = ownership::facts::ReborrowStateVerifier::verify(
+        zc::mv(referenceStateCandidate).takeVerified(), verifiedReferences.verifiedValue(),
+        verifiedRegions.verifiedValue(), stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1]);
+    if (verifiedReferenceStates.isCapabilityRejected()) {
+      return rejectIrCapability(verifiedReferenceStates.capabilityFailures());
+    }
+    if (verifiedReferenceStates.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(verifiedReferenceStates.identityFailures());
+    }
+    if (verifiedReferenceStates.isIrInvariantRejected()) {
+      return rejectIrInvariant(verifiedReferenceStates.invariantFailures());
+    }
+    auto resourceCandidate = ownership::facts::OwnershipResourceBuilder::build(
+        verifiedMovePaths.verifiedValue(), stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1]);
+    if (resourceCandidate.isCapabilityRejected()) {
+      return rejectIrCapability(resourceCandidate.capabilityFailures());
+    }
+    if (resourceCandidate.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(resourceCandidate.identityFailures());
+    }
+    if (resourceCandidate.isIrInvariantRejected()) {
+      return rejectIrInvariant(resourceCandidate.invariantFailures());
+    }
+    auto verifiedResources = ownership::facts::OwnershipResourceVerifier::verify(
+        zc::mv(resourceCandidate).takeVerified(), verifiedMovePaths.verifiedValue(),
+        stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1]);
+    if (verifiedResources.isCapabilityRejected()) {
+      return rejectIrCapability(verifiedResources.capabilityFailures());
+    }
+    if (verifiedResources.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(verifiedResources.identityFailures());
+    }
+    if (verifiedResources.isIrInvariantRejected()) {
+      return rejectIrInvariant(verifiedResources.invariantFailures());
+    }
+    auto verifiedOwnershipInputs = ownership::facts::OwnershipInputVerifier::verify(
+        zc::mv(verifiedMovePaths).takeVerified(), zc::mv(verifiedFlow).takeVerified(),
+        zc::mv(verifiedInitialization).takeVerified(), zc::mv(verifiedLoans).takeVerified(),
+        zc::mv(verifiedReferences).takeVerified(), zc::mv(verifiedRegions).takeVerified(),
+        zc::mv(verifiedReferenceStates).takeVerified(), zc::mv(verifiedResources).takeVerified(),
+        stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
+        stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1],
+        stagedBuiltMirModules[stagedBuiltMirModules.size() - 1].borrowEvidenceLease(),
+        stagedBorrowEvidenceRepository->capability());
+    if (verifiedOwnershipInputs.isCapabilityRejected()) {
+      return rejectIrCapability(verifiedOwnershipInputs.capabilityFailures());
+    }
+    if (verifiedOwnershipInputs.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(verifiedOwnershipInputs.identityFailures());
+    }
+    if (verifiedOwnershipInputs.isIrInvariantRejected()) {
+      return rejectIrInvariant(verifiedOwnershipInputs.invariantFailures());
+    }
+    stagedOwnershipInputs.add(zc::mv(verifiedOwnershipInputs).takeVerified());
+    stagedOwnershipAdmittedModules.add(checkerBound.retain());
   }
   if (stagedHirModules.size() != ordinaryBoundModuleIndices.size() ||
       stagedBuiltMirModules.size() != ordinaryBoundModuleIndices.size() ||
       stagedOwnershipEventOverlays.size() != ordinaryBoundModuleIndices.size() ||
+      stagedOwnershipInputs.size() != ordinaryBoundModuleIndices.size() ||
+      stagedOwnershipAdmittedModules.size() != ordinaryBoundModuleIndices.size() ||
       impl->diagnosticEngine->hasErrors()) {
     return false;
   }
-  zc::Vector<checker::signature::VerifiedSignatureFacts> ordinarySignatureFacts(
-      ordinaryBoundModuleIndices.size());
-  zc::Vector<checker::cross_module::ImportedSignatureView> ordinaryImportedSignatureViews(
-      ordinaryBoundModuleIndices.size());
-  zc::Vector<VerifiedModuleInterface> ordinaryModuleInterfaces(ordinaryBoundModuleIndices.size());
-  zc::Vector<checker::checked::CheckedEvidenceLease> ordinaryCheckedEvidence(
-      ordinaryBoundModuleIndices.size());
-  zc::Vector<checker::dispatch::VerifiedDispatchFacts> ordinaryDispatchFacts(
-      ordinaryBoundModuleIndices.size());
-  for (const auto index : ordinaryBoundModuleIndices) {
-    const auto factIndex = checkerFactIndexByModule[index];
-    ordinarySignatureFacts.add(zc::mv(stagedSignatureFacts[factIndex]));
-    ordinaryImportedSignatureViews.add(zc::mv(stagedImportedSignatureViews[factIndex]));
-    ordinaryModuleInterfaces.add(zc::mv(stagedModuleInterfaces[factIndex]));
-    ordinaryCheckedEvidence.add(zc::mv(stagedCheckedEvidence[factIndex]));
-    ordinaryDispatchFacts.add(zc::mv(stagedDispatchFacts[factIndex]));
-  }
   impl->markerShapes = zc::mv(stagedMarkerShapes);
   impl->markerPolicies = zc::mv(stagedMarkerPolicies);
+  impl->coreLibrary = zc::mv(coreLibraries[0]);
   impl->signatureFacts = zc::mv(ordinarySignatureFacts);
   impl->importedSignatureViews = zc::mv(ordinaryImportedSignatureViews);
+  impl->bodyRequirements = zc::mv(ordinaryBodyRequirements);
   impl->moduleInterfaces = zc::mv(ordinaryModuleInterfaces);
   impl->checkerIdentityAuthority = zc::mv(checkerAuthority);
   impl->coherenceView = zc::mv(stagedCoherenceView);
@@ -3184,6 +3768,8 @@ bool CompilerSession::checkSources() {
   impl->hirModules = zc::mv(stagedHirModules);
   impl->builtMirModules = zc::mv(stagedBuiltMirModules);
   impl->ownershipEventOverlays = zc::mv(stagedOwnershipEventOverlays);
+  impl->ownershipInputs = zc::mv(stagedOwnershipInputs);
+  impl->ownershipAdmittedModules = zc::mv(stagedOwnershipAdmittedModules);
   impl->verifiedCheckedSources = true;
   return true;
 }

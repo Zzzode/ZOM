@@ -262,8 +262,6 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "match"_zc;
     case ast::SyntaxKind::DoKeyword:
       return "do"_zc;
-    case ast::SyntaxKind::DebuggerKeyword:
-      return "debugger"_zc;
     case ast::SyntaxKind::InitKeyword:
       return "init"_zc;
     case ast::SyntaxKind::DeinitKeyword:

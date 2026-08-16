@@ -1,0 +1,5 @@
+section: "05-statements conditional syntax"
+covers_rule: "ifStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks the ownership-surface semantic rejection."

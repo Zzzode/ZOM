@@ -9,6 +9,7 @@
 
 #include "zc/core/array.h"
 #include "zomlang/compiler/checker/body-checker.h"
+#include "zomlang/compiler/driver/core/marker-authority.h"
 
 namespace zomlang::compiler::checker::marker {
 namespace {
@@ -69,12 +70,19 @@ bool contains(zc::ArrayPtr<const signature::PrimitiveKind> values,
   return false;
 }
 
-zc::Maybe<identity::DefId> referenceMarker(const MarkerPolicy& policy,
-                                           signature::Mutability mutability) {
+zc::Maybe<const signature::MarkerPolicyReferenceRequirement&> referenceRule(
+    const MarkerPolicy& policy, signature::Mutability mutability) {
   for (const auto& requirement : policy.referenceRequirements) {
-    if (requirement.mutability == mutability) return requirement.requiredMarker;
+    if (requirement.mutability == mutability) return requirement;
   }
   return zc::none;
+}
+
+bool allowsRawPointer(const MarkerPolicy& policy, signature::Mutability mutability) {
+  for (const auto allowed : policy.rawPointerMutabilities) {
+    if (allowed == mutability) return true;
+  }
+  return false;
 }
 
 zc::Maybe<const SemanticSignature&> localSignature(
@@ -320,26 +328,29 @@ type::SemanticTypeInternResult SemanticTypeInterningCapability::intern(
 }
 
 struct MarkerProofInput::Impl final {
-  Impl(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+  Impl(driver::module_graph_query::CheckerBoundModuleView&& boundModule,
        const CheckerIdentityAuthority& identities,
        const signature::VerifiedMarkerPolicyRegistry& policy,
+       const driver::core::VerifiedCoreStandardMarkerAuthority& standardMarkers,
        const signature::VerifiedSignatureFacts& localSignatures,
        const cross_module::ImportedSignatureView& importedSignatures,
        const coherence::FrozenCoherenceView& coherence,
        const type::SemanticTypeStore& semanticTypes,
        SemanticTypeInterningCapability&& componentInterner) noexcept
-      : boundModule(boundModule),
+      : boundModule(zc::mv(boundModule)),
         identities(identities),
         policy(policy),
+        standardMarkers(standardMarkers),
         localSignatures(localSignatures),
         importedSignatures(importedSignatures),
         coherence(coherence),
         semanticTypes(semanticTypes),
         componentInterner(zc::mv(componentInterner)) {}
 
-  const driver::module_graph_query::CheckerBoundModuleView& boundModule;
+  driver::module_graph_query::CheckerBoundModuleView boundModule;
   const CheckerIdentityAuthority& identities;
   const signature::VerifiedMarkerPolicyRegistry& policy;
+  const driver::core::VerifiedCoreStandardMarkerAuthority& standardMarkers;
   const signature::VerifiedSignatureFacts& localSignatures;
   const cross_module::ImportedSignatureView& importedSignatures;
   const coherence::FrozenCoherenceView& coherence;
@@ -352,14 +363,14 @@ MarkerProofInput::~MarkerProofInput() noexcept(false) = default;
 MarkerProofInput::MarkerProofInput(MarkerProofInput&&) noexcept = default;
 MarkerProofInput& MarkerProofInput::operator=(MarkerProofInput&&) noexcept = default;
 
-zc::Maybe<MarkerProofInput> MarkerProofInput::from(
-    const body::BodyCheckingInput& bodyInput,
-    const signature::VerifiedMarkerPolicyRegistry& policy) {
+zc::Maybe<MarkerProofInput> MarkerProofInput::from(const body::BodyCheckingInput& bodyInput) {
+  const auto& policy = bodyInput.markerPolicies;
+  const auto& standardMarkers = bodyInput.standardMarkers;
   const auto context = bodyInput.boundModule.semanticContext();
   const auto module = bodyInput.boundModule.module();
   const auto& parsedModule = bodyInput.boundModule.parsedModule();
   if (!context.isValid() || policy.semanticContext() != context ||
-      bodyInput.identities.semanticContext() != context ||
+      standardMarkers.context() != context || bodyInput.identities.semanticContext() != context ||
       bodyInput.signatureFacts.semanticContext() != context ||
       bodyInput.importedSignatures.semanticContext() != context ||
       bodyInput.coherence.semanticContext() != context ||
@@ -373,6 +384,8 @@ zc::Maybe<MarkerProofInput> MarkerProofInput::from(
           bodyInput.signatureFacts.bindingSurfaceRevision().digest() ||
       bodyInput.boundModule.semanticFingerprint().digest() !=
           policy.contextFingerprint().digest() ||
+      bodyInput.boundModule.semanticFingerprint().digest() !=
+          standardMarkers.fingerprint().digest() ||
       bodyInput.boundModule.semanticFingerprint().digest() !=
           bodyInput.signatureFacts.contextFingerprint().digest() ||
       bodyInput.boundModule.semanticFingerprint().digest() !=
@@ -388,17 +401,24 @@ zc::Maybe<MarkerProofInput> MarkerProofInput::from(
       bodyInput.coherence.markerPolicyRegistryRevision().digest() != policy.revision().digest()) {
     return zc::none;
   }
+  const auto copy = standardMarkers.copy();
+  const auto linear = standardMarkers.linear();
+  if (!copy.isValid() || !linear.isValid() || copy == linear ||
+      bodyInput.identities.definition(copy) == zc::none ||
+      bodyInput.identities.definition(linear) == zc::none) {
+    return zc::none;
+  }
   SemanticTypeInterningCapability componentInterner(
       zc::heap<SemanticTypeInterningCapability::Impl>(bodyInput.semanticTypes));
   return MarkerProofInput(zc::heap<MarkerProofInput::Impl>(
-      bodyInput.boundModule, bodyInput.identities, policy, bodyInput.signatureFacts,
-      bodyInput.importedSignatures, bodyInput.coherence, bodyInput.semanticTypes,
-      zc::mv(componentInterner)));
+      bodyInput.boundModule.retain(), bodyInput.identities, policy, standardMarkers,
+      bodyInput.signatureFacts, bodyInput.importedSignatures, bodyInput.coherence,
+      bodyInput.semanticTypes, zc::mv(componentInterner)));
 }
 
 struct MarkerProofEngine::Impl final {
   explicit Impl(MarkerProofInput&& input) noexcept
-      : boundModule(input.impl->boundModule),
+      : boundModule(zc::mv(input.impl->boundModule)),
         identities(input.impl->identities),
         policy(input.impl->policy),
         localSignatures(input.impl->localSignatures),
@@ -533,13 +553,18 @@ struct MarkerProofEngine::Impl final {
       if (!result.is<MarkerProofPositive>()) return result;
     } else if (data.is<type::semantic::ReferenceTypeData>()) {
       const auto& reference = data.get<type::semantic::ReferenceTypeData>();
-      auto requiredMarker = referenceMarker(markerPolicy, reference.mutability);
-      if (requiredMarker == zc::none) return MarkerProofUnsatisfied{};
-      ZC_IF_SOME(value, requiredMarker) {
-        auto result = addComponent(value, reference.referent,
-                                   MarkerComponentStep(signature::ReferenceReferentStep{}));
-        if (!result.is<MarkerProofPositive>()) return result;
+      auto rule = referenceRule(markerPolicy, reference.mutability);
+      if (rule == zc::none) return MarkerProofUnsatisfied{};
+      ZC_IF_SOME(value, rule) {
+        ZC_IF_SOME(requiredMarker, value.requiredMarker) {
+          auto result = addComponent(requiredMarker, reference.referent,
+                                     MarkerComponentStep(signature::ReferenceReferentStep{}));
+          if (!result.is<MarkerProofPositive>()) return result;
+        }
       }
+    } else if (data.is<type::semantic::RawPointerTypeData>()) {
+      const auto& pointer = data.get<type::semantic::RawPointerTypeData>();
+      if (!allowsRawPointer(markerPolicy, pointer.mutability)) return MarkerProofUnsatisfied{};
     } else if (data.is<type::semantic::NominalTypeData>()) {
       const auto& nominalType = data.get<type::semantic::NominalTypeData>();
       auto nominalDefinition = materializedDefinitionForType(nominalType.definition);
@@ -703,7 +728,7 @@ struct MarkerProofEngine::Impl final {
     return resolve(marker, subject, active);
   }
 
-  const driver::module_graph_query::CheckerBoundModuleView& boundModule;
+  driver::module_graph_query::CheckerBoundModuleView boundModule;
   const CheckerIdentityAuthority& identities;
   const signature::VerifiedMarkerPolicyRegistry& policy;
   const signature::VerifiedSignatureFacts& localSignatures;

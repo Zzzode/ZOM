@@ -299,6 +299,43 @@ ZC_TEST("Module body syntax maps schema child fields to detached child ordinals"
                                                bindings.bindings()));
 }
 
+ZC_TEST("Named interface syntax retains an empty member-list child") {
+  ModuleBodyFixture fixture("export interface Copy {}\n"_zc);
+  ZC_REQUIRE(fixture.definitionNodes.size() == 1);
+  ZC_REQUIRE(fixture.definitions.size() == 1);
+
+  auto result = ModuleBodySyntaxProducer::produceNamedItem(
+      ZC_ASSERT_NONNULL(fixture.parsed).syntax(), moduleKey(), fixture.moduleNode,
+      fixture.definitionNodes[0], fixture.definitions[0].key, fixture.definitions.asPtr());
+  ZC_REQUIRE(result.is<ModuleBodySyntaxProjection>());
+  auto projection = zc::mv(result.get<ModuleBodySyntaxProjection>());
+  ZC_REQUIRE(projection.syntax.rootCount() == 1);
+  ZC_REQUIRE(projection.syntax.nodes().size() == 2);
+
+  const auto& interface = projection.syntax.nodes()[0];
+  const auto& members = projection.syntax.nodes()[1];
+  ZC_EXPECT(interface.syntaxKind() == ast::SyntaxKind::InterfaceDecl);
+  ZC_EXPECT(members.syntaxKind() == ast::SyntaxKind::ClassMemberList);
+  auto name = interface.identifierField(0);
+  auto typeParameters = interface.childField(1);
+  auto inheritedInterfaces = interface.childField(2);
+  auto memberList = interface.childField(3);
+  auto memberItems = members.childField(1);
+  ZC_REQUIRE(name != zc::none);
+  ZC_REQUIRE(typeParameters != zc::none);
+  ZC_REQUIRE(inheritedInterfaces != zc::none);
+  ZC_REQUIRE(memberList != zc::none);
+  ZC_REQUIRE(memberItems != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(name).text() == "Copy"_zc);
+  ZC_EXPECT(!ZC_ASSERT_NONNULL(typeParameters).present);
+  ZC_EXPECT(!ZC_ASSERT_NONNULL(inheritedInterfaces).present);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(memberList).present);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(memberList).firstChildOrdinal == 0);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(memberList).childCount == 1);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(memberItems).present);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(memberItems).childCount == 0);
+}
+
 ZC_TEST("Module body syntax decodes identifier-list schema fields") {
   ModuleBodyFixture fixture("let value: Alpha = 1;\n"_zc);
   auto projection = fixture.project();

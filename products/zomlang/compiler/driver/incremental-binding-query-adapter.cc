@@ -8,7 +8,7 @@
 #include "zomlang/compiler/binder/module-skeleton-query.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
 #include "zomlang/compiler/driver/active-identity-membership-query.h"
-#include "zomlang/compiler/driver/core-library-query-provider.h"
+#include "zomlang/compiler/driver/core/query.h"
 #include "zomlang/compiler/driver/incremental-module-resolution-query.h"
 #include "zomlang/compiler/driver/incremental-package-graph-query-input.h"
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"

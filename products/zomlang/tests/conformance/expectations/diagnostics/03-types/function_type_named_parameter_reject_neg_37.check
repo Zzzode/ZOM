@@ -1,4 +1,4 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 03-types/function_type_named_parameter_reject_neg_37.zom > %t 2>&1
+// RUN: cd %corpus && ! %zomc compile --check 03-types/function_type_named_parameter_reject_neg_37.zom > %t 2>&1
 // RUN: %FileCheck %s < %t
 
 

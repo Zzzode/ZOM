@@ -16,6 +16,7 @@
 #include "zomlang/compiler/driver/module-interface.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
+#include "zomlang/compiler/ownership/surface-admission.h"
 #include "zomlang/tests/unittests/compiler/driver/core-library-test-fixture.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
@@ -251,12 +252,19 @@ public:
     identityAuthority = session.materializeCheckerIdentityAuthority();
     ZC_REQUIRE(identityAuthority != zc::none);
     const auto& identities = ZC_REQUIRE_NONNULL(identityAuthority);
+    coreLibrary = driver::core_library_test::materializeCoreLibrary(session, identities);
+    ZC_REQUIRE(coreLibrary != zc::none);
     ZC_REQUIRE(driver::core_library_test::userBoundModuleCount(identities) == 1);
     userModule = driver::core_library_test::soleUserBoundModule(identities).module();
 
-    zc::Vector<signature::MarkerShapeModuleInput> shapeInputs;
+    zc::Vector<ownership::OwnershipAdmittedBoundModule> admittedModules(
+        identities.modules().size());
+    zc::Vector<signature::MarkerShapeModuleInput> shapeInputs(identities.modules().size());
     for (const auto& candidate : identities.modules()) {
-      shapeInputs.add(signature::MarkerShapeModuleInput{candidate});
+      auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(candidate.retain());
+      ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
+      admittedModules.add(zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>());
+      shapeInputs.add(signature::MarkerShapeModuleInput{admittedModules.back()});
     }
     auto shapeResult = signature::MarkerShapeInventoryBuilder::build(
         session.getSemanticContextBrand(), contextFingerprint(), userModule, shapeInputs.asPtr(),
@@ -299,10 +307,13 @@ public:
       zc::Vector<signature::MarkerPolicyReferenceConfiguration> referenceRequirements;
       referenceRequirements.add(signature::MarkerPolicyReferenceConfiguration{
           type::semantic::Mutability::Const, key.clone()});
+      zc::Vector<type::semantic::Mutability> rawPointerMutabilities;
+      rawPointerMutabilities.add(type::semantic::Mutability::Const);
+      rawPointerMutabilities.add(type::semantic::Mutability::Mutable);
       zc::Vector<signature::MarkerPolicyConfigurationEntry> policyEntries;
       policyEntries.add(signature::MarkerPolicyConfigurationEntry{
           key.clone(), zc::mv(structuralSubjects), zc::mv(builtinPrimitives),
-          zc::mv(referenceRequirements)});
+          zc::mv(referenceRequirements), zc::mv(rawPointerMutabilities)});
       auto configuration = signature::MarkerPolicyConfiguration::from(zc::mv(policyEntries));
       ZC_REQUIRE(configuration != zc::none);
       ZC_IF_SOME(value, configuration) {
@@ -320,15 +331,23 @@ public:
     zc::Vector<cross_module::ImportedSignatureView> moduleImportedViews;
     zc::Vector<driver::VerifiedModuleInterface> interfaces;
     zc::Maybe<size_t> userModuleIndex;
-    for (const auto& candidate : identities.modules()) {
-      auto signatureResult = signature::SignatureFactsBuilder::build(
-          signature::SignatureFactsBuildInput{candidate, semanticTypes(), markerShapeInventory(),
-                                              markerPolicyRegistry(), identities});
+    for (size_t candidateIndex = 0; candidateIndex < identities.modules().size();
+         ++candidateIndex) {
+      const auto& candidate = identities.modules()[candidateIndex];
+      auto signatureResult =
+          signature::SignatureFactsBuilder::build(signature::SignatureFactsBuildInput{
+              admittedModules[candidateIndex], semanticTypes(), markerShapeInventory(),
+              markerPolicyRegistry(), identities});
       ZC_REQUIRE(signatureResult.is<signature::VerifiedSignatureFacts>());
       moduleSignatures.add(zc::mv(signatureResult).get<signature::VerifiedSignatureFacts>());
 
+      zc::Vector<driver::VerifiedInterfaceSource> interfaceSources(interfaces.size());
+      for (const auto& interface : interfaces) {
+        interfaceSources.add(
+            driver::VerifiedInterfaceSource(driver::UserVerifiedInterfaceSource{interface}));
+      }
       auto importedResult = driver::ImportedSignatureViewProjector::build(
-          candidate, interfaces.asPtr(), semanticTypes(), identities);
+          admittedModules[candidateIndex], interfaceSources.asPtr(), semanticTypes(), identities);
       ZC_REQUIRE(importedResult != zc::none);
       ZC_IF_SOME(value, importedResult) { moduleImportedViews.add(zc::mv(value)); }
 
@@ -341,7 +360,7 @@ public:
       ZC_REQUIRE(borrowResult.is<borrow::VerifiedBorrowInterfaceSurface>());
       auto interfaceResult =
           driver::ModuleInterfaceVerifier::build(driver::ModuleInterfaceBuildInput{
-              candidate, signatures, imported, markerPolicyRegistry(),
+              admittedModules[candidateIndex], signatures, imported, markerPolicyRegistry(),
               zc::mv(borrowResult).get<borrow::VerifiedBorrowInterfaceSurface>(), semanticTypes(),
               identities});
       ZC_REQUIRE(interfaceResult.is<driver::VerifiedModuleInterface>());
@@ -422,27 +441,44 @@ public:
         type::semantic::TypeData(type::semantic::ReferenceTypeData{mutability, referent}));
   }
 
+  identity::SemanticTypeId rawPointer(type::semantic::Mutability mutability,
+                                      identity::SemanticTypeId pointee) {
+    return intern(
+        type::semantic::TypeData(type::semantic::RawPointerTypeData{mutability, pointee}));
+  }
+
   MarkerProofResult prove(identity::SemanticTypeId subject) {
     return prove(coreDefinition("Copy"_zc), subject);
   }
 
   MarkerProofInput proofInput() {
+    auto input = proofInputFor(standardMarkers());
+    ZC_REQUIRE(input != zc::none);
+    return zc::mv(ZC_REQUIRE_NONNULL(input));
+  }
+
+  zc::Maybe<MarkerProofInput> proofInputFor(
+      const driver::core::VerifiedCoreStandardMarkerAuthority& authority) {
     auto crateEntry = ZC_REQUIRE_NONNULL(identityAuthority).crate(boundModule().crate());
     ZC_REQUIRE(crateEntry != zc::none);
     ZC_IF_SOME(crate, crateEntry) {
-      body::BodyCheckingInput bodyInput{boundModule(),
+      body::BodyCheckingInput bodyInput{boundModule().retain(),
                                         ZC_REQUIRE_NONNULL(identityAuthority),
+                                        markerPolicyRegistry(),
+                                        authority,
                                         verifiedSignatureFacts(),
                                         importedSignatureView(),
                                         coherenceView(),
                                         semanticTypes(),
                                         bodyRequirementInventory(),
                                         crate.key().semanticOptions()};
-      auto input = MarkerProofInput::from(bodyInput, markerPolicyRegistry());
-      ZC_REQUIRE(input != zc::none);
-      return zc::mv(ZC_REQUIRE_NONNULL(input));
+      return MarkerProofInput::from(bodyInput);
     }
     ZC_UNREACHABLE
+  }
+
+  const driver::core::VerifiedCoreStandardMarkerAuthority& standardMarkerAuthority() const {
+    return standardMarkers();
   }
 
   MarkerProofResult prove(identity::DefId marker, identity::SemanticTypeId subject) {
@@ -477,7 +513,9 @@ public:
         definitionValue,
         binder::VisibilityEnvelope::external(),
         userModule,
-        boundModule().bindingSurface().revision(),
+        module_interface::ImportedBindingSurfaceRevision(
+            module_interface::UserImportedBindingSurfaceRevision{
+                boundModule().bindingSurface().revision()}),
         module_interface::SignatureAuthorizationOrigin(
             module_interface::LocalSignatureAuthorization{})};
     return driver::ModuleInterfaceCanonicalCodec::encodeSignatureRoot(
@@ -539,8 +577,16 @@ public:
 
   zc::Maybe<cross_module::ImportedSignatureView> buildImportedSignatures(
       zc::ArrayPtr<const driver::VerifiedModuleInterface> interfaces) {
-    return driver::ImportedSignatureViewProjector::build(boundModule(), interfaces, semanticTypes(),
-                                                         ZC_REQUIRE_NONNULL(identityAuthority));
+    zc::Vector<driver::VerifiedInterfaceSource> interfaceSources(interfaces.size());
+    for (const auto& interface : interfaces) {
+      interfaceSources.add(
+          driver::VerifiedInterfaceSource(driver::UserVerifiedInterfaceSource{interface}));
+    }
+    auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(boundModule().retain());
+    ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
+    auto admitted = zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>();
+    return driver::ImportedSignatureViewProjector::build(
+        admitted, interfaceSources.asPtr(), semanticTypes(), ZC_REQUIRE_NONNULL(identityAuthority));
   }
 
 private:
@@ -578,6 +624,10 @@ private:
     ZC_UNREACHABLE
   }
 
+  const driver::core::VerifiedCoreStandardMarkerAuthority& standardMarkers() const {
+    return ZC_REQUIRE_NONNULL(coreLibrary).authorityLease().capability().authority();
+  }
+
   const signature::VerifiedSignatureFacts& verifiedSignatureFacts() const {
     ZC_IF_SOME(value, signatureFacts) { return value; }
     ZC_UNREACHABLE
@@ -604,6 +654,7 @@ private:
   driver::CompilerSession session;
   identity::ModuleId userModule;
   zc::Maybe<CheckerIdentityAuthority> identityAuthority;
+  zc::Maybe<driver::core::VerifiedCoreLibrary> coreLibrary;
   zc::Maybe<signature::VerifiedMarkerShapeInventory> markerShapes;
   zc::Maybe<signature::VerifiedMarkerPolicyRegistry> markerPolicies;
   zc::Maybe<signature::VerifiedSignatureFacts> signatureFacts;
@@ -819,7 +870,7 @@ ZC_TEST("MarkerProofEngine substitutes and interns generic nominal components") 
   ZC_EXPECT(fixture.prove(containers).is<MarkerProofUnsatisfied>());
 
   const auto pointer = fixture.nominal("GenericPointer"_zc, zc::arrayPtr(arguments));
-  ZC_EXPECT(fixture.prove(pointer).is<MarkerProofUnsatisfied>());
+  ZC_EXPECT(fixture.prove(pointer).is<MarkerProofPositive>());
 
   const auto unionValue = fixture.nominal("GenericUnion"_zc, zc::arrayPtr(arguments));
   ZC_EXPECT(fixture.prove(unionValue).is<MarkerProofInvariantRejected>());
@@ -887,6 +938,20 @@ ZC_TEST("MarkerProofEngine proves configured arrays and references structurally"
   ZC_EXPECT(fixture.prove(mutableReference).is<MarkerProofUnsatisfied>());
 }
 
+ZC_TEST("MarkerProofEngine proves configured raw pointers") {
+  MarkerProofFixture fixture(kMarkerProofSource);
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  const auto constPointer = fixture.rawPointer(type::semantic::Mutability::Const, i32);
+  const auto mutablePointer = fixture.rawPointer(type::semantic::Mutability::Mutable, i32);
+
+  auto constResult = fixture.prove(constPointer);
+  auto mutableResult = fixture.prove(mutablePointer);
+  const auto& constEvidence = structuralEvidence(constResult);
+  const auto& mutableEvidence = structuralEvidence(mutableResult);
+  ZC_EXPECT(constEvidence.components.empty());
+  ZC_EXPECT(mutableEvidence.components.empty());
+}
+
 ZC_TEST("MarkerProofEngine rejects an unknown marker identity") {
   MarkerProofFixture fixture(kMarkerProofSource);
   const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
@@ -897,6 +962,20 @@ ZC_TEST("MarkerProofEngine rejects an unknown marker identity") {
   ZC_REQUIRE(failure.is<signature::CheckerInvariantFact>());
   ZC_EXPECT(failure.get<signature::CheckerInvariantFact>().kind ==
             signature::CheckerInvariantKind::InvalidFact);
+}
+
+ZC_TEST("MarkerProofInput rejects a standard marker authority from another session") {
+  MarkerProofFixture fixture(kMarkerProofSource);
+  MarkerProofFixture foreign(kMarkerProofSource);
+  ZC_EXPECT(fixture.proofInputFor(foreign.standardMarkerAuthority()) == zc::none);
+}
+
+ZC_TEST("MarkerProofInput retains its bound-module lease after body input destruction") {
+  MarkerProofFixture fixture(kMarkerProofSource);
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  auto input = fixture.proofInput();
+  MarkerProofEngine engine(zc::mv(input));
+  ZC_EXPECT(engine.prove(fixture.coreDefinition("Copy"_zc), i32).is<MarkerProofPositive>());
 }
 
 ZC_TEST("MarkerProofEngine rejects pure self and mutual nominal cycles") {

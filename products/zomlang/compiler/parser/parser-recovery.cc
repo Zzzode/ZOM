@@ -94,7 +94,6 @@ Parser::Impl::RecoveryFrame Parser::Impl::makeRecoveryFrame(RecoveryContext cont
       addSync(frame, ast::SyntaxKind::BreakKeyword);
       addSync(frame, ast::SyntaxKind::ContinueKeyword);
       addSync(frame, ast::SyntaxKind::ReturnKeyword);
-      addSync(frame, ast::SyntaxKind::DebuggerKeyword);
       addSync(frame, ast::SyntaxKind::SuspendKeyword);
       addSync(frame, ast::SyntaxKind::SpawnKeyword);
       addSync(frame, ast::SyntaxKind::LetKeyword);
@@ -579,10 +578,6 @@ Parser::Impl::SourceElementBoundary Parser::Impl::consumeSourceElement(TokenCurs
       boundary.kind = ast::SyntaxKind::ReturnStmt;
       boundary.end = consumeSimpleStatementEnd(head, limit);
       break;
-    case ast::SyntaxKind::DebuggerKeyword:
-      boundary.kind = ast::SyntaxKind::DebuggerStatement;
-      boundary.end = consumeSimpleStatementEnd(head, limit);
-      break;
     case ast::SyntaxKind::SuspendKeyword:
       boundary.kind = ast::SyntaxKind::SuspendStatement;
       boundary.end = consumeSimpleStatementEnd(head, limit);
@@ -756,9 +751,6 @@ ast::NodeId Parser::Impl::parseSourceElementOfKind(AstFactory& builder, size_t s
       return parseDoWhileStatement(builder, start, end);
     case ast::SyntaxKind::EmptyStatement:
       return builder.makeEmptyStatement(rangeFor(start, end));
-    case ast::SyntaxKind::DebuggerStatement:
-      if (!requireTrailingSemicolon(start, end)) { return ast::NodeId(); }
-      return builder.makeDebuggerStatement(rangeFor(start, end));
     case ast::SyntaxKind::ExpressionStatement:
       if (kindAt(start) == ast::SyntaxKind::SpawnKeyword) {
         return parseSpawnStatement(builder, start, end);

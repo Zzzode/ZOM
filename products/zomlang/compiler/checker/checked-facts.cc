@@ -13,6 +13,8 @@ namespace {
 
 bool authorizedDefinition(identity::DefId definition, identity::ModuleId module,
                           const CheckedFactsVerificationInput& input);
+bool validPlace(const CheckedPlaceFact& fact, const CheckedFactsCandidate& candidate,
+                const CheckedFactsVerificationInput& input);
 bool validCanonicalValue(const CanonicalConstValue& value, identity::ModuleId module,
                          const CheckedFactsVerificationInput& input);
 bool validPatternConstructor(const PatternConstructor& constructor, identity::ModuleId module,
@@ -786,18 +788,46 @@ private:
                    const CheckedPlaceFact& fact) const {
     encodeNode(encoder, node);
     const auto& root = fact.root.variant();
+    bool encodedRoot = false;
     if (root.is<DefinitionPlaceRoot>()) {
       encoder.encodeUint8(0x01);
-      if (!encodeDefinition(encoder, root.get<DefinitionPlaceRoot>().definition)) return false;
+      encodedRoot = encodeDefinition(encoder, root.get<DefinitionPlaceRoot>().definition);
+    } else if (root.is<OwnerLocalPlaceRoot>()) {
+      encoder.encodeUint8(0x04);
+      const auto binding = root.get<OwnerLocalPlaceRoot>().binding;
+      if (!binding.isValid() || !binding.belongsTo(input.module)) return false;
+      for (const auto& entry : input.ownerLocalBindings) {
+        if (entry.binding != binding) continue;
+        entry.key.encode(encoder);
+        encodedRoot = true;
+        break;
+      }
+    } else if (root.is<CallableParameterPlaceRoot>()) {
+      encoder.encodeUint8(0x05);
+      auto parameter =
+          input.identities.callableParameter(root.get<CallableParameterPlaceRoot>().parameter);
+      auto module = input.identities.module(input.module);
+      ZC_IF_SOME(parameterValue, parameter) {
+        ZC_IF_SOME(moduleValue, module) {
+          auto owner = input.identities.definition(parameterValue.record().owner());
+          ZC_IF_SOME(ownerValue, owner) {
+            const auto ownerModule = ownerValue.record().module().encode();
+            const auto currentModule = moduleValue.key().encode();
+            if (sameBytes(ownerModule.asPtr(), currentModule.asPtr())) {
+              parameterValue.key().encode(encoder);
+              encodedRoot = true;
+            }
+          }
+        }
+      }
     } else if (root.is<DereferencePlaceRoot>()) {
       encoder.encodeUint8(0x02);
-      if (!encodeNode(encoder, root.get<DereferencePlaceRoot>().node)) return false;
+      encodedRoot = encodeNode(encoder, root.get<DereferencePlaceRoot>().node);
     } else if (root.is<TemporaryPlaceRoot>()) {
       encoder.encodeUint8(0x03);
-      if (!encodeNode(encoder, root.get<TemporaryPlaceRoot>().node)) return false;
-    } else {
-      return false;
+      encodedRoot = encodeNode(encoder, root.get<TemporaryPlaceRoot>().node);
     }
+    if (!encodedRoot) return false;
     encoder.encodeSequenceSize(fact.projections.size());
     for (const auto& projection : fact.projections) {
       const auto& value = projection.variant();
@@ -2429,6 +2459,52 @@ bool authorizedDefinition(identity::DefId definition, identity::ModuleId module,
   return false;
 }
 
+bool validPlace(const CheckedPlaceFact& fact, const CheckedFactsCandidate& candidate,
+                const CheckedFactsVerificationInput& input) {
+  if (!fact.node || !validType(input.semanticTypes, fact.type)) return false;
+  const auto& root = fact.root.variant();
+  if (root.is<DefinitionPlaceRoot>()) {
+    if (!authorizedDefinition(root.get<DefinitionPlaceRoot>().definition, candidate, input)) {
+      return false;
+    }
+  } else if (root.is<OwnerLocalPlaceRoot>()) {
+    const auto binding = root.get<OwnerLocalPlaceRoot>().binding;
+    if (!binding.isValid() || !binding.belongsTo(candidate.module)) return false;
+    bool found = false;
+    for (const auto& entry : input.ownerLocalBindings) {
+      if (entry.binding == binding) found = true;
+    }
+    if (!found) return false;
+  } else if (root.is<CallableParameterPlaceRoot>()) {
+    auto parameter =
+        input.identities.callableParameter(root.get<CallableParameterPlaceRoot>().parameter);
+    auto module = input.identities.module(candidate.module);
+    if (parameter == zc::none || module == zc::none) return false;
+    bool local = false;
+    ZC_IF_SOME(parameterValue, parameter) {
+      auto owner = input.identities.definition(parameterValue.record().owner());
+      ZC_IF_SOME(ownerValue, owner) {
+        ZC_IF_SOME(moduleValue, module) {
+          local = sameModule(ownerValue.record().module(), moduleValue.key());
+        }
+      }
+    }
+    if (!local) return false;
+  } else if (!root.is<DereferencePlaceRoot>() && !root.is<TemporaryPlaceRoot>()) {
+    return false;
+  }
+
+  for (const auto& projection : fact.projections) {
+    const auto& value = projection.variant();
+    if (value.is<FieldProjection>()) {
+      if (!authorizedDefinition(value.get<FieldProjection>().field, candidate, input)) return false;
+    } else if (!value.is<TupleIndexProjection>() && !value.is<IndexProjection>()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool authorizedImpl(identity::ImplId impl, const CheckedFactsVerificationInput& input) {
   if (!validImpl(input.identities, impl)) return false;
   for (const auto coherent : input.coherentImpls) {
@@ -2539,6 +2615,20 @@ bool validCallEnvelope(const CheckedCallEnvelope& invocation,
   if (hasReceiver != (invocation.receiverMode != zc::none) ||
       hasReceiver != (invocation.receiverAdjustment != zc::none)) {
     return false;
+  }
+  if (invocation.selected.variant().is<ConcreteMethodCallable>()) {
+    if (!hasReceiver) return false;
+    ZC_IF_SOME(receiver, invocation.receiver) {
+      ZC_IF_SOME(mode, invocation.receiverMode) {
+        ZC_IF_SOME(adjustment, invocation.receiverAdjustment) {
+          if (mode != ReceiverMode::Mutable || receiver.sourceType != adjustment.source ||
+              receiver.parameterType != adjustment.destination || adjustment.steps.size() != 1 ||
+              adjustment.steps[0] != ReceiverAdjustmentStep::BorrowMutable) {
+            return false;
+          }
+        }
+      }
+    }
   }
   ZC_IF_SOME(receiver, invocation.receiver) {
     if (!validArgument(receiver, candidate, input, moduleKey)) return false;
@@ -2924,6 +3014,9 @@ bool validateTypedFacts(const CheckedFactsCandidate& candidate,
   }
   for (const auto& entry : candidate.coercions.entries()) {
     if (!validCoercion(entry.value, candidate, input, moduleKey)) return false;
+  }
+  for (const auto& entry : candidate.places.entries()) {
+    if (!validPlace(entry.value, candidate, input)) return false;
   }
   for (const auto& entry : candidate.calls.entries()) {
     if (!validModuleSpan(moduleKey, input.source, entry.value.sourceSpan) ||

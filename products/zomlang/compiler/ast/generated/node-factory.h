@@ -761,11 +761,6 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::DoWhileStatement, zc::mv(range), payload);
   }
 
-  NodeId makeDebuggerStatement(source::SourceRange range) {
-    NodePayload payload;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::DebuggerStatement, zc::mv(range), payload);
-  }
-
   NodeId makeContinueStatement(source::SourceRange range, IdentId label) {
     NodePayload payload;
     payload.words[kContinueStatementLabelWord] = label.value;

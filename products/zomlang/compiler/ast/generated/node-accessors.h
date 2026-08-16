@@ -209,7 +209,6 @@ constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
     case SyntaxKind::LabeledStatement: return true;
     case SyntaxKind::ForInStatement: return true;
     case SyntaxKind::DoWhileStatement: return true;
-    case SyntaxKind::DebuggerStatement: return true;
     case SyntaxKind::ContinueStatement: return true;
     case SyntaxKind::VariableDeclaratorList: return true;
     case SyntaxKind::VariableDeclarator: return true;
@@ -349,7 +348,6 @@ constexpr const char* nodeKindName(SyntaxKind kind) noexcept {
     case SyntaxKind::LabeledStatement: return "LabeledStatement";
     case SyntaxKind::ForInStatement: return "ForInStatement";
     case SyntaxKind::DoWhileStatement: return "DoWhileStatement";
-    case SyntaxKind::DebuggerStatement: return "DebuggerStatement";
     case SyntaxKind::ContinueStatement: return "ContinueStatement";
     case SyntaxKind::VariableDeclaratorList: return "VariableDeclaratorList";
     case SyntaxKind::VariableDeclarator: return "VariableDeclarator";

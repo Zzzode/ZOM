@@ -34,7 +34,7 @@ add_custom_target(query-test-descriptor-inventory
 add_library(
   query-capability-production-fixture STATIC
   ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/active-definition-authority-query.cc
-  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/core-library-query-provider.cc
+  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/core/query.cc
   ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/incremental-binding-query-adapter.cc
   ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/incremental-module-resolution-query.cc
   ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/incremental-package-graph-query-input.cc

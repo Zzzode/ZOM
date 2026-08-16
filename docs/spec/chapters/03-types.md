@@ -442,8 +442,10 @@ The reverse (`&T` to `&mut T`) is **never** permitted.
 4. A reference must not outlive its referent.
 
 Full borrow and lifetime diagnostics are owned by the dedicated borrow-checker
-phase. The current type-checker surface covers reference typing and `&mut T`
-to `&T` reborrow coercions, not full non-lexical lifetime analysis. See
+phase. Reference types and unary borrow expressions are parsed, but the current
+checked-HIR production subset rejects unary reference expressions because it
+does not yet publish borrow facts. Reborrow coercions and non-lexical lifetime
+analysis enter only with the verified ownership production path. See
 [Chapter 14](14-memory-management.md).
 
 ### Raw Pointer Types

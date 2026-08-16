@@ -53,9 +53,13 @@ struct ParseSourceQuery final {
       query::CapabilityFailureList<query::SourceRejection<diagnostics::DiagnosticFact>>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "ParseSourceQuery"_zcc,          "zom.query.parse-source"_zcc,
-      query::RetentionClass::Retained, query::QueryCyclePolicy::Reject,
-      query::QueryCostClass::Linear,   query::CapabilityAdmission::AnySnapshot};
+      "ParseSourceQuery"_zcc,
+      "zom.query.parse-source"_zcc,
+      query::RetentionClass::Retained,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear,
+      query::CapabilityAdmission::AnySnapshot,
+      query::FinalFailureProjection::None};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static query::CapabilityProviderResult<ParseSourceQuery> provide(

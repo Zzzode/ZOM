@@ -6,8 +6,10 @@
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
 
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/ast/generated/node-traverse.h"
 #include "zomlang/compiler/basic/thread-pool.h"
-#include "zomlang/compiler/driver/core-library-query-provider.h"
+#include "zomlang/compiler/binder/parsed-module.h"
+#include "zomlang/compiler/driver/core/query.h"
 #include "zomlang/compiler/driver/incremental-package-graph-query-input.h"
 #include "zomlang/compiler/driver/module-graph-query-input.h"
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"
@@ -477,6 +479,79 @@ ZC_TEST("Incremental binding query parses one source from its exact tracked inpu
   ZC_EXPECT(firstLease.capability().sourceBytes() == sourceValue.bytes());
   ZC_EXPECT(firstLease.capability().tree().node(firstLease.capability().tree().root()).kind ==
             ast::SyntaxKind::SourceFile);
+}
+
+ZC_TEST("Incremental binding query publishes a local nominal aggregate projection") {
+  auto database = queryTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto sourceKey = sourceQueryKey("local-aggregate.zom"_zc);
+  auto sourceValue = sourceSnapshotValue(
+      "local-aggregate.zom"_zc,
+      zc::heapArray("struct Cell { value: i32, }\n"
+                    "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zcb));
+  auto registry = targetRegistry();
+  auto options = compilationOptionsValue(registry);
+  auto write = transaction(database);
+  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue).isApplied());
+  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
+
+  auto result = database.snapshot().getCapability<parser::ParseSourceQuery>(sourceKey);
+  ZC_REQUIRE(result.isPublished());
+  const auto& tree = result.lease().capability().tree();
+  ZC_EXPECT(tree.node(tree.root()).kind == ast::SyntaxKind::SourceFile);
+}
+
+ZC_TEST("Incremental binding query admits a local nominal aggregate projection") {
+  auto database = queryTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ZC_REQUIRE(module_graph_query::registerModuleGraphQueries(database));
+  auto moduleKey = module("root"_zc);
+  auto catalog = selectedModuleCatalog("root"_zc, "local-aggregate.zom"_zc);
+  auto sourceKey = sourceQueryKey("local-aggregate.zom"_zc);
+  auto sourceValue = sourceSnapshotValue(
+      "local-aggregate.zom"_zc,
+      zc::heapArray("struct Cell { value: i32, }\n"
+                    "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zcb));
+  auto registry = targetRegistry();
+  auto options = compilationOptionsValue(registry);
+  auto write = transaction(database);
+  ZC_REQUIRE(
+      write.set<module_graph_query::SelectedModuleCatalogInput>(crateKey(), catalog).isApplied());
+  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue).isApplied());
+  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
+
+  auto snapshot = database.snapshot();
+  auto parsed = snapshot.getCapability<parser::ParseSourceQuery>(sourceKey);
+  ZC_REQUIRE(parsed.isPublished());
+  auto canonical =
+      binder::CanonicalParsedModule::fromQueryResult(parsed.lease().capability().clone());
+  ZC_REQUIRE(canonical != zc::none);
+  const auto& tree = ZC_ASSERT_NONNULL(canonical).tree();
+  zc::Vector<uint32_t> parentCounts;
+  for (size_t index = 0; index <= tree.nodeCount(); ++index) { parentCounts.add(0); }
+  for (const auto& node : tree.nodes()) {
+    ast::visitChildNodeIds(tree, node,
+                           [&parentCounts](ast::NodeId child) { ++parentCounts[child.value]; });
+  }
+  ZC_EXPECT(parentCounts[tree.root().value] == 0);
+  for (size_t index = 1; index <= tree.nodeCount(); ++index) {
+    if (index == tree.root().value) { continue; }
+    ZC_EXPECT(
+        parentCounts[index] == 1,
+        zc::str("unexpected AST parent count for node ", static_cast<uint64_t>(index), " kind ",
+                static_cast<uint64_t>(static_cast<uint32_t>(
+                    tree.node(ast::NodeId(static_cast<uint32_t>(index))).kind))));
+  }
+  auto sites = snapshot.getCapability<IdentitySyntaxSiteInventoryQuery>(moduleKey);
+  ZC_EXPECT(sites.isPublished());
+  auto admission = snapshot.getCapability<StableIdentityAdmissionQuery>(moduleKey);
+  ZC_EXPECT(!admission.isRuntimeRejected());
+  ZC_EXPECT(!admission.isKeyRejected());
+  ZC_EXPECT(!admission.isSourceRejected());
+  ZC_REQUIRE(admission.isPublished());
+  ZC_EXPECT(admission.lease().capability().definitions().size() == 3);
 }
 
 ZC_TEST("Incremental binding query publishes strict deterministic parse rejection") {

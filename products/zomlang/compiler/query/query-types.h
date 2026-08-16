@@ -512,6 +512,7 @@ struct QueryDescriptorInventoryRow final {
   QueryCyclePolicy cycle;
   QueryCostClass cost;
   CapabilityAdmission admission;
+  FinalFailureProjection failureProjection;
   zc::LiteralStringConst ownerPathFamily;
 };
 

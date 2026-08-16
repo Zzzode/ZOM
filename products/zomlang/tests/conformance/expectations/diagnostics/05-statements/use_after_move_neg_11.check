@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/use_after_move_neg_11.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Error [ZOM4098]: Expression statement syntax has no admitted semantic contract
+// CHECK-LITERAL:   --> conformance/05-statements/use_after_move_neg_11.zom:6:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 6 |     owned;
+// CHECK-LITERAL:   |     ^
+// CHECK-NOT: ZOM9943

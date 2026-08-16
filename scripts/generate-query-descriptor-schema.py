@@ -39,6 +39,7 @@ INPUT_DURABILITIES = {"Low", "Medium", "High", "Frozen"}
 SEMANTIC_REUSE = {"Semantic", "Persisted"}
 RETENTION = {"Retained", "Evictable"}
 ADMISSION = {"AnySnapshot", "FinalSealedSnapshot"}
+FAILURE_PROJECTION = {"None", "Source", "Key", "SourceOrKey"}
 COMPLETE_CONTEXT_TYPE = (
     "zomlang::compiler::driver::module_graph_query::"
     "CompleteCompilationContextAuthorityInput"
@@ -93,6 +94,7 @@ class Row:
     domain: str
     first_policy: str
     second_policy: str | None
+    third_policy: str | None
     owner: str
 
     @property
@@ -139,6 +141,13 @@ class Row:
         assert self.second_policy is not None
         return self.second_policy
 
+    @property
+    def failure_projection(self) -> str:
+        if self.kind != "RevisionLocalCapability":
+            return "None"
+        assert self.third_policy is not None
+        return self.third_policy
+
 
 def split_arguments(arguments: str) -> list[str]:
     fields: list[str] = []
@@ -184,7 +193,7 @@ def parse_schema_text(text: str, path: Path) -> list[Row]:
             raise SchemaError(f"{path}:{line_number}: invalid schema row")
         macro, arguments = match.groups()
         fields = split_arguments(arguments)
-        expected = 7 if macro in {"ZOM_SEMANTIC", "ZOM_CAPABILITY"} else 6
+        expected = 8 if macro == "ZOM_CAPABILITY" else 7 if macro == "ZOM_SEMANTIC" else 6
         if len(fields) != expected:
             raise SchemaError(
                 f"{path}:{line_number}: {macro} expects {expected} fields"
@@ -201,7 +210,12 @@ def parse_schema_text(text: str, path: Path) -> list[Row]:
         name = unquote(fields[2], "name", path, line_number)
         domain = unquote(fields[3], "domain", path, line_number)
         first_policy = fields[4]
-        if expected == 7:
+        third_policy = None
+        if macro == "ZOM_CAPABILITY":
+            second_policy = fields[5]
+            third_policy = fields[6]
+            owner_field = fields[7]
+        elif expected == 7:
             second_policy = fields[5]
             owner_field = fields[6]
         else:
@@ -217,6 +231,7 @@ def parse_schema_text(text: str, path: Path) -> list[Row]:
                 domain,
                 first_policy,
                 second_policy,
+                third_policy,
                 owner,
             )
         )
@@ -295,6 +310,14 @@ def validate_rows(
                 raise SchemaError(
                     f"{path}: invalid capability admission {row.second_policy}"
                 )
+            if row.third_policy not in FAILURE_PROJECTION:
+                raise SchemaError(
+                    f"{path}: invalid capability failure projection {row.third_policy}"
+                )
+            if row.second_policy == "AnySnapshot" and row.third_policy != "None":
+                raise SchemaError(
+                    f"{path}: any-snapshot capability must not project final failures"
+                )
         if row.role == "CompleteContextAuthority":
             complete_context_rows.append(row)
     if require_complete_context:
@@ -322,9 +345,10 @@ def validate_rows(
                 or witness.descriptor_type != descriptor_type
                 or witness.name != name
                 or witness.domain != domain
-                or witness.first_policy != "Frozen"
-                or witness.second_policy is not None
-                or witness.owner != TRANSACTION_WITNESS_OWNER
+            or witness.first_policy != "Frozen"
+            or witness.second_policy is not None
+            or witness.third_policy is not None
+            or witness.owner != TRANSACTION_WITNESS_OWNER
             ):
                 raise SchemaError(
                     f"{path}: transaction-witness row {ordinal} is not exact"
@@ -368,6 +392,7 @@ def validate_test_prefix(production: list[Row], combined: list[Row], path: Path)
         or first.domain != TEST_COMPLETE_CONTEXT_DOMAIN
         or first.first_policy != "Frozen"
         or first.second_policy is not None
+        or first.third_policy is not None
         or first.owner != TEST_COMPLETE_CONTEXT_OWNER
     ):
         raise SchemaError(
@@ -402,6 +427,7 @@ def cpp_row(row: Row) -> str:
         f"RetentionClass::{row.retention}, Durability::{row.durability}, "
         "QueryEqualityPolicy::CanonicalBytes, QueryCyclePolicy::Reject, "
         f"QueryCostClass::Linear, CapabilityAdmission::{row.admission}, "
+        f"FinalFailureProjection::{row.failure_projection}, "
         f"\"{row.owner}\"_zcc"
         "},"
     )
@@ -591,6 +617,14 @@ def run_self_test() -> None:
             production_text.replace(
                 witness_lines[0],
                 witness_lines[0].replace(", Frozen,", ", Low,"),
+            ),
+        ),
+        (
+            "any-snapshot failure projection",
+            production_text.replace(
+                ", AnySnapshot, None,",
+                ", AnySnapshot, Source,",
+                1,
             ),
         ),
     ]

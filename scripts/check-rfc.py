@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -251,6 +252,7 @@ class Checker:
         self._check_review_state(path, frontmatter, body, status, required_owners, approvers)
         self._check_status_history(path, frontmatter, body, status)
         self._check_links(path, frontmatter)
+        self._check_review_snapshot(path, frontmatter, status)
         self._check_markdown_fences(path)
 
     def _check_review_state(self, path, frontmatter, body, status, required_owners, approvers):
@@ -325,6 +327,32 @@ class Checker:
             target = (ROOT / local).resolve()
             if not str(target).startswith(str(ROOT)) or not target.exists():
                 self.fail(path, f"{field} must be an existing local path, anchor, or URL: {text}")
+
+    def _check_review_snapshot(self, path, frontmatter, status):
+        if status != "REVIEW":
+            return
+        tracking = frontmatter.get("tracking-issue")
+        if self._is_tbd(tracking):
+            return
+        tracking_text = str(tracking)
+        if tracking_text.startswith(("http://", "https://", "#")):
+            return
+        tracking_path = (ROOT / tracking_text.split("#", 1)[0]).resolve()
+        if not tracking_path.exists():
+            return
+        snapshot = re.search(
+            r"^\|\s*Proposal SHA-256\s*\|\s*`([0-9a-f]{64})`\s*\|\s*$",
+            tracking_path.read_text(encoding="utf-8"),
+            re.MULTILINE,
+        )
+        if snapshot is None:
+            return
+        expected = hashlib.sha256(path.read_bytes()).hexdigest()
+        if snapshot.group(1) != expected:
+            self.fail(
+                tracking_path,
+                f"REVIEW snapshot does not match {path.name} SHA-256 {expected}",
+            )
 
     def _check_markdown_fences(self, path):
         if not path.exists():

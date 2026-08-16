@@ -1,4 +1,4 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 09-interfaces/iface_where_reject_neg_05.zom > %t 2>&1
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/iface_where_reject_neg_05.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
 

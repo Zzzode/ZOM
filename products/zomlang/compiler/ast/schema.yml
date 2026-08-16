@@ -872,11 +872,6 @@ variants:
       - {name: body, type: NodeId, cast: Statement, optional: true}
       - {name: cond, type: NodeId, cast: Expression, optional: true}
 
-  - id: 0x0F2
-    name: DebuggerStatement
-    doc: "debugger;"
-    fields: []
-
   - id: 0x0F3
     name: ContinueStatement
     doc: "continue [label];"

@@ -1,0 +1,4 @@
+section: "§4.5 Return without expression"
+covers_rule: "returnStatement"
+expected: "ACCEPT"
+notes: []

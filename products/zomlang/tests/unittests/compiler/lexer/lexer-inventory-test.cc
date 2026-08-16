@@ -96,7 +96,6 @@ ZC_TEST("LexerInventoryTest.StaticTokenSpellingsRoundTripThroughLexer") {
       ast::SyntaxKind::CaseKeyword,
       ast::SyntaxKind::MatchKeyword,
       ast::SyntaxKind::DoKeyword,
-      ast::SyntaxKind::DebuggerKeyword,
       ast::SyntaxKind::InitKeyword,
       ast::SyntaxKind::DeinitKeyword,
       ast::SyntaxKind::GetKeyword,

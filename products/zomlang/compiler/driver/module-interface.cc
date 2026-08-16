@@ -10,6 +10,7 @@
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/checker/cross-module-facts.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/ownership/surface-admission.h"
 
 namespace zomlang::compiler::driver {
 namespace {
@@ -634,7 +635,18 @@ zc::Maybe<zc::Array<uint8_t>> encodeImportedModuleTarget(
   zc::Vector<uint8_t> output;
   encodeName(output, target.name);
   if (!encodeModule(output, target.module, identities)) { return zc::none; }
-  append(output, target.surfaceRevision.digest().bytes());
+  const auto& revision = target.surfaceRevision.variant();
+  if (revision.is<module_interface::UserImportedBindingSurfaceRevision>()) {
+    output.add(0x01);
+    append(output, revision.get<module_interface::UserImportedBindingSurfaceRevision>()
+                       .value.digest()
+                       .bytes());
+  } else {
+    output.add(0x02);
+    append(output, revision.get<module_interface::ToolchainCoreImportedBindingSurfaceRevision>()
+                       .value.digest()
+                       .bytes());
+  }
   return output.releaseAsArray();
 }
 
@@ -704,7 +716,10 @@ zc::Maybe<binder::ExportSurfaceRevision> findModuleTargetRevision(
   }
   for (const auto& module : imported.modules()) {
     ZC_IF_SOME(moduleTarget, module.moduleTarget(entry.name)) {
-      if (moduleTarget.module == target) { return moduleTarget.surfaceRevision; }
+      if (moduleTarget.module != target) { continue; }
+      const auto& revision = moduleTarget.surfaceRevision.variant();
+      if (!revision.is<module_interface::UserImportedBindingSurfaceRevision>()) { return zc::none; }
+      return revision.get<module_interface::UserImportedBindingSurfaceRevision>().value;
     }
   }
   return zc::none;
@@ -731,6 +746,50 @@ bool containsProjectedDefinition(zc::ArrayPtr<const EncodedProjection<Value>> va
     if (value.value.definition == definition) { return true; }
   }
   return false;
+}
+
+module_interface::ImportedInterfaceRevision userInterfaceRevision(
+    const module_interface::ModuleInterfaceRevision& value) {
+  return module_interface::ImportedInterfaceRevision(
+      module_interface::UserImportedInterfaceRevision{value});
+}
+
+module_interface::ImportedBindingSurfaceRevision userBindingSurfaceRevision(
+    const binder::ExportSurfaceRevision& value) {
+  return module_interface::ImportedBindingSurfaceRevision(
+      module_interface::UserImportedBindingSurfaceRevision{value});
+}
+
+bool sameInterfaceRevision(const module_interface::ImportedInterfaceRevision& left,
+                           const module_interface::ImportedInterfaceRevision& right) {
+  const auto& leftValue = left.variant();
+  const auto& rightValue = right.variant();
+  if (leftValue.is<module_interface::UserImportedInterfaceRevision>()) {
+    return rightValue.is<module_interface::UserImportedInterfaceRevision>() &&
+           leftValue.get<module_interface::UserImportedInterfaceRevision>().value.digest() ==
+               rightValue.get<module_interface::UserImportedInterfaceRevision>().value.digest();
+  }
+  return rightValue.is<module_interface::ToolchainCoreImportedInterfaceRevision>() &&
+         leftValue.get<module_interface::ToolchainCoreImportedInterfaceRevision>().value.digest() ==
+             rightValue.get<module_interface::ToolchainCoreImportedInterfaceRevision>()
+                 .value.digest();
+}
+
+bool sameBindingSurfaceRevision(const module_interface::ImportedBindingSurfaceRevision& left,
+                                const module_interface::ImportedBindingSurfaceRevision& right) {
+  const auto& leftValue = left.variant();
+  const auto& rightValue = right.variant();
+  if (leftValue.is<module_interface::UserImportedBindingSurfaceRevision>()) {
+    return rightValue.is<module_interface::UserImportedBindingSurfaceRevision>() &&
+           leftValue.get<module_interface::UserImportedBindingSurfaceRevision>().value.digest() ==
+               rightValue.get<module_interface::UserImportedBindingSurfaceRevision>()
+                   .value.digest();
+  }
+  return rightValue.is<module_interface::ToolchainCoreImportedBindingSurfaceRevision>() &&
+         leftValue.get<module_interface::ToolchainCoreImportedBindingSurfaceRevision>()
+                 .value.digest() ==
+             rightValue.get<module_interface::ToolchainCoreImportedBindingSurfaceRevision>()
+                 .value.digest();
 }
 
 }  // namespace
@@ -768,15 +827,37 @@ zc::Maybe<zc::Array<uint8_t>> ModuleInterfaceCanonicalCodec::encodeSignatureRoot
       !encodeModule(output, root.sourceModule, identities)) {
     return zc::none;
   }
-  append(output, root.bindingSurfaceRevision.digest().bytes());
+  const auto& surfaceRevision = root.bindingSurfaceRevision.variant();
+  if (surfaceRevision.is<module_interface::UserImportedBindingSurfaceRevision>()) {
+    output.add(0x01);
+    append(output, surfaceRevision.get<module_interface::UserImportedBindingSurfaceRevision>()
+                       .value.digest()
+                       .bytes());
+  } else {
+    output.add(0x02);
+    append(output,
+           surfaceRevision.get<module_interface::ToolchainCoreImportedBindingSurfaceRevision>()
+               .value.digest()
+               .bytes());
+  }
   const auto& origin = root.origin.variant();
   if (origin.is<module_interface::LocalSignatureAuthorization>()) {
     output.add(0x01);
   } else {
     output.add(0x02);
-    append(output, origin.get<module_interface::ImportedSignatureAuthorization>()
-                       .interfaceRevision.digest()
-                       .bytes());
+    const auto& revision =
+        origin.get<module_interface::ImportedSignatureAuthorization>().interfaceRevision.variant();
+    if (revision.is<module_interface::UserImportedInterfaceRevision>()) {
+      output.add(0x01);
+      append(
+          output,
+          revision.get<module_interface::UserImportedInterfaceRevision>().value.digest().bytes());
+    } else {
+      output.add(0x02);
+      append(output, revision.get<module_interface::ToolchainCoreImportedInterfaceRevision>()
+                         .value.digest()
+                         .bytes());
+    }
   }
   return output.releaseAsArray();
 }
@@ -815,7 +896,7 @@ zc::Maybe<zc::Array<uint8_t>> ModuleInterfaceCanonicalCodec::encodeExportedBindi
 }
 
 struct VerifiedModuleInterface::Impl final {
-  Impl(module_graph_query::CheckerBoundModuleView&& boundModule,
+  Impl(ownership::OwnershipAdmittedBoundModule&& boundModule,
        identity::SemanticContextBrand semanticContext,
        module_interface::ModuleInterfaceRevision revision,
        identity::CompilationUnitId compilationUnit, identity::CrateId crate,
@@ -851,7 +932,7 @@ struct VerifiedModuleInterface::Impl final {
         markerFacts(zc::mv(markerFacts)),
         markerFactRecords(zc::mv(markerFactRecords)) {}
 
-  driver::module_graph_query::CheckerBoundModuleView boundModule;
+  ownership::OwnershipAdmittedBoundModule boundModule;
   identity::SemanticContextBrand semanticContext;
   module_interface::ModuleInterfaceRevision revision;
   identity::CompilationUnitId compilationUnit;
@@ -932,7 +1013,7 @@ zc::ArrayPtr<const checker::signature::MarkerFact> VerifiedModuleInterface::mark
 }
 
 module_graph_query::CheckerBoundModuleView VerifiedModuleInterface::retainBoundModule() const {
-  return impl->boundModule.retain();
+  return impl->boundModule.boundModule().retain();
 }
 
 checker::coherence::CoherenceModuleInput VerifiedModuleInterface::projectCoherenceInput() const {
@@ -955,7 +1036,7 @@ checker::coherence::CoherenceModuleInput VerifiedModuleInterface::projectCoheren
 
 zc::Maybe<checker::cross_module::ImportedSignatureModule>
 VerifiedModuleInterface::projectImportedSignatures(
-    const module_graph_query::CheckerBoundModuleView& requester,
+    const ownership::OwnershipAdmittedBoundModule& requester,
     checker::cross_module::SignatureViewOrigin origin,
     zc::ArrayPtr<const checker::cross_module::ImportedDefinitionBindingSelection>
         definitionBindings,
@@ -1077,7 +1158,11 @@ VerifiedModuleInterface::projectImportedSignatures(
     if (!exactAuthorization) { return zc::none; }
 
     ZC_IF_SOME(root, sourceRoot) {
-      if (root.bindingSurfaceRevision.digest() != impl->bindingSurface.revision().digest()) {
+      if (!root.bindingSurfaceRevision.variant()
+               .is<module_interface::UserImportedBindingSurfaceRevision>() ||
+          root.bindingSurfaceRevision.variant()
+                  .get<module_interface::UserImportedBindingSurfaceRevision>()
+                  .value.digest() != impl->bindingSurface.revision().digest()) {
         return zc::none;
       }
       binder::VisibilityEnvelope visibility =
@@ -1092,9 +1177,11 @@ VerifiedModuleInterface::projectImportedSignatures(
             root.canonicalDefinition,
             zc::mv(visibility),
             root.sourceModule,
-            root.bindingSurfaceRevision,
+            userBindingSurfaceRevision(impl->bindingSurface.revision()),
             module_interface::SignatureAuthorizationOrigin(
-                module_interface::ImportedSignatureAuthorization{impl->revision})};
+                module_interface::ImportedSignatureAuthorization{
+                    module_interface::ImportedInterfaceRevision(
+                        module_interface::UserImportedInterfaceRevision{impl->revision})})};
         auto encoded = ModuleInterfaceCanonicalCodec::encodeSignatureRoot(importedRoot, identities);
         ZC_IF_SOME(bytes, encoded) {
           rootDefinitions.add(importedRoot.canonicalDefinition);
@@ -1124,7 +1211,8 @@ VerifiedModuleInterface::projectImportedSignatures(
             target.is<binder::ModuleBindingTarget>() &&
             target.get<binder::ModuleBindingTarget>().module == impl->module) {
           selected = checker::cross_module::ImportedModuleTarget{
-              requestedName.requesterName.clone(), impl->module, impl->bindingSurface.revision()};
+              requestedName.requesterName.clone(), impl->module,
+              userBindingSurfaceRevision(impl->bindingSurface.revision())};
           break;
         }
       }
@@ -1137,7 +1225,8 @@ VerifiedModuleInterface::projectImportedSignatures(
             sameName(ZC_ASSERT_NONNULL(localName), requestedName.requesterName) &&
             alias.canonicalTarget == impl->module) {
           selected = checker::cross_module::ImportedModuleTarget{
-              requestedName.requesterName.clone(), impl->module, impl->bindingSurface.revision()};
+              requestedName.requesterName.clone(), impl->module,
+              userBindingSurfaceRevision(impl->bindingSurface.revision())};
           break;
         }
       }
@@ -1149,7 +1238,8 @@ VerifiedModuleInterface::projectImportedSignatures(
           target.is<ModuleTypeEnrichedTarget>()) {
         const auto& module = target.get<ModuleTypeEnrichedTarget>();
         selected = checker::cross_module::ImportedModuleTarget{
-            requestedName.requesterName.clone(), module.module, module.surfaceRevision};
+            requestedName.requesterName.clone(), module.module,
+            userBindingSurfaceRevision(module.surfaceRevision)};
         break;
       }
     }
@@ -1317,9 +1407,9 @@ VerifiedModuleInterface::projectImportedSignatures(
   }
   auto sourceBytes = sourceEncoder.finish();
   auto moduleRecord = checker::cross_module::ImportedSignatureModuleCanonicalCodec::encodeFramed(
-      origin, sourceBytes.asPtr(), impl->revision.digest(),
-      impl->bindingSurface.revision().digest(), rootBytes.asPtr(), lookupBytes.asPtr(),
-      supportBytes.asPtr(), targetBytes.asPtr());
+      origin, sourceBytes.asPtr(), userInterfaceRevision(impl->revision),
+      userBindingSurfaceRevision(impl->bindingSurface.revision()), rootBytes.asPtr(),
+      lookupBytes.asPtr(), supportBytes.asPtr(), targetBytes.asPtr());
   if (moduleRecord == zc::none) { return zc::none; }
 
   zc::Vector<module_interface::SignatureRootAuthorization> roots(rootRecords.size());
@@ -1333,9 +1423,10 @@ VerifiedModuleInterface::projectImportedSignatures(
 
   ZC_IF_SOME(record, moduleRecord) {
     return checker::cross_module::ImportedSignatureModule::publish(
-        impl->semanticContext, requester.module(), origin, impl->module, impl->revision,
-        impl->bindingSurface.revision(), zc::mv(roots), zc::mv(definitions),
-        zc::mv(supportDefinitions), zc::mv(moduleTargets), zc::mv(record));
+        impl->semanticContext, requester.module(), origin, impl->module,
+        userInterfaceRevision(impl->revision),
+        userBindingSurfaceRevision(impl->bindingSurface.revision()), zc::mv(roots),
+        zc::mv(definitions), zc::mv(supportDefinitions), zc::mv(moduleTargets), zc::mv(record));
   }
   return zc::none;
 }
@@ -1509,7 +1600,7 @@ ModuleInterfaceBuildResult ModuleInterfaceVerifier::build(ModuleInterfaceBuildIn
         }
         roots.add(module_interface::SignatureRootAuthorization{
             entry.bindingIdentity.clone(), canonicalDefinition, entry.visibility.clone(), module,
-            surface.revision(),
+            userBindingSurfaceRevision(surface.revision()),
             module_interface::SignatureAuthorizationOrigin(
                 module_interface::LocalSignatureAuthorization{})});
       } else {
@@ -1532,15 +1623,20 @@ ModuleInterfaceBuildResult ModuleInterfaceVerifier::build(ModuleInterfaceBuildIn
         ZC_IF_SOME(root, importedRoot) {
           ZC_IF_SOME(importedModule, sourceModule) {
             const auto& origin = root.origin.variant();
-            if (root.canonicalDefinition != canonicalDefinition ||
-                root.sourceModule != ownerModule ||
-                !sameVisibility(root.visibility, entry.visibility) ||
-                !origin.is<module_interface::ImportedSignatureAuthorization>() ||
-                origin.get<module_interface::ImportedSignatureAuthorization>()
-                        .interfaceRevision.digest() !=
-                    importedModule.interfaceRevision().digest() ||
-                root.bindingSurfaceRevision.digest() !=
-                    importedModule.bindingSurfaceRevision().digest()) {
+            const bool matchesCanonicalDefinition = root.canonicalDefinition == canonicalDefinition;
+            const bool matchesSourceModule = root.sourceModule == ownerModule;
+            const bool matchesVisibility = sameVisibility(root.visibility, entry.visibility);
+            const bool hasImportedOrigin =
+                origin.is<module_interface::ImportedSignatureAuthorization>();
+            const bool matchesInterfaceRevision =
+                hasImportedOrigin &&
+                sameInterfaceRevision(origin.get<module_interface::ImportedSignatureAuthorization>()
+                                          .interfaceRevision,
+                                      importedModule.interfaceRevision());
+            const bool matchesBindingSurfaceRevision = sameBindingSurfaceRevision(
+                root.bindingSurfaceRevision, importedModule.bindingSurfaceRevision());
+            if (!matchesCanonicalDefinition || !matchesSourceModule || !matchesVisibility ||
+                !matchesInterfaceRevision || !matchesBindingSurfaceRevision) {
               return rejectInterface(module, ModuleInterfaceInvariantKind::InvalidProjection,
                                      ModuleInterfaceInvariantStage::Verification, 12);
             }
@@ -1552,10 +1648,10 @@ ModuleInterfaceBuildResult ModuleInterfaceVerifier::build(ModuleInterfaceBuildIn
             }
             roots.add(module_interface::SignatureRootAuthorization{
                 entry.bindingIdentity.clone(), canonicalDefinition, entry.visibility.clone(),
-                root.sourceModule, surface.revision(),
+                root.sourceModule, importedModule.bindingSurfaceRevision().clone(),
                 module_interface::SignatureAuthorizationOrigin(
                     module_interface::ImportedSignatureAuthorization{
-                        importedModule.interfaceRevision()})});
+                        importedModule.interfaceRevision().clone()})});
           }
         }
       }

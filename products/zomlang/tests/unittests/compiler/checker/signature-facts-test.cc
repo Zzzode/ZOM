@@ -638,6 +638,28 @@ ZC_TEST("SignatureFactsVerifier.VerifiesAndRejectsAuthorityBackedSignatures") {
             identity::IdentityAllocationPhase::SemanticType);
 }
 
+ZC_TEST("SignatureFactsCanonicalCodec.EncodesClosedMarkerInterfacesWithoutTypeStore") {
+  SignatureFixture fixture;
+  auto marker = fixture.interfaceSignature(true);
+
+  auto typeFree = SignatureFactsCanonicalCodec::encodeTypeFreeInterfaceSignature(
+      marker, fixture.session.module(), fixture.session.identityAuthority());
+  auto standard = SignatureFactsCanonicalCodec::encodeSignature(marker, fixture.session.module(),
+                                                                fixture.session.identityAuthority(),
+                                                                fixture.session.semanticTypes());
+
+  ZC_REQUIRE(typeFree != zc::none);
+  ZC_REQUIRE(standard != zc::none);
+  ZC_IF_SOME(typeFreeBytes, typeFree) {
+    ZC_IF_SOME(standardBytes, standard) { ZC_EXPECT(typeFreeBytes == standardBytes); }
+  }
+
+  auto nonMarker = fixture.interfaceSignature(false);
+  ZC_EXPECT(SignatureFactsCanonicalCodec::encodeTypeFreeInterfaceSignature(
+                nonMarker, fixture.session.module(), fixture.session.identityAuthority()) ==
+            zc::none);
+}
+
 ZC_TEST("SignatureFactsCanonicalCodec.PatternFixtureRetainsMaterializedIdentityAuthority") {
   PatternAuthorityFixture fixture;
   ZC_EXPECT(fixture.identities().definition(fixture.interface()) != zc::none);

@@ -40,7 +40,8 @@ class SnapshotRegenerator:
         )
 
     def _zomc_path_in_build_dir(self, build_dir: Path) -> Path:
-        return build_dir / "products" / "zomlang" / "utils" / "zomc" / "zomc"
+        executable = "zomc.exe" if os.name == "nt" else "zomc"
+        return build_dir / "bin" / executable
 
     def find_zomc(self) -> Optional[str]:
         """Find zomc compiler in build directories."""
@@ -101,7 +102,7 @@ class SnapshotRegenerator:
             source_file = Path(test_file).resolve()
             rel = source_file.relative_to(self.corpus_root).as_posix()
             result = subprocess.run(
-                [*command_prefix, "compile", "--syntax-only", rel],
+                [*command_prefix, "compile", "--check", rel],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -302,8 +303,8 @@ class SnapshotRegenerator:
         rel = source_file.relative_to(self.corpus_root).as_posix()
         if snapshot_kind == "diagnostics":
             if returncode == 0:
-                return f"// RUN: cd %corpus && %zomc compile --syntax-only {rel} > %t 2>&1"
-            return f"// RUN: cd %corpus && ! %zomc compile --syntax-only {rel} > %t 2>&1"
+                return f"// RUN: cd %corpus && %zomc compile --check {rel} > %t 2>&1"
+            return f"// RUN: cd %corpus && ! %zomc compile --check {rel} > %t 2>&1"
         if returncode == 0:
             return f"// RUN: %zomc compile --dump-ast %corpus/{rel} | %FileCheck %s"
         return f"// RUN: ! %zomc compile --dump-ast %corpus/{rel} 2>&1 | %FileCheck %s"

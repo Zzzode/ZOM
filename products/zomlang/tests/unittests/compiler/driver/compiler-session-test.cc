@@ -21,6 +21,7 @@
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/driver/core/marker-authority.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
 #include "zomlang/compiler/source/manager.h"
@@ -49,6 +50,7 @@ zc::Own<CompilerSession> makeSession(const basic::LangOptions& langOpts,
 
 struct SessionDiagnostics final {
   zc::Vector<diagnostics::DiagID> ids;
+  zc::Vector<diagnostics::DiagID> childIds;
 };
 
 class SessionDiagnosticConsumer final : public diagnostics::DiagnosticConsumer {
@@ -58,6 +60,9 @@ public:
   void handleDiagnostic(const source::SourceManager&,
                         const diagnostics::Diagnostic& diagnostic) override {
     capture.ids.add(diagnostic.getId());
+    for (const auto& child : diagnostic.getChildDiagnostics()) {
+      capture.childIds.add(child->getId());
+    }
   }
 
 private:
@@ -282,6 +287,14 @@ size_t diagnosticCount(const SessionDiagnostics& diagnostics, diagnostics::DiagI
   return count;
 }
 
+size_t childDiagnosticCount(const SessionDiagnostics& diagnostics, diagnostics::DiagID id) {
+  size_t count = 0;
+  for (const auto candidate : diagnostics.childIds) {
+    if (candidate == id) { ++count; }
+  }
+  return count;
+}
+
 }  // namespace
 
 ZC_TEST("CompilerSessionTest.BasicInitialization") {
@@ -333,16 +346,6 @@ ZC_TEST("CompilerSessionTest.BrandExhaustionUsesRegisteredDiagnostic") {
   ZC_EXPECT(session->getSemanticTypeStore() == zc::none);
   ZC_EXPECT(session->getDiagnosticEngine().hasErrors());
   ZC_EXPECT(!session->parseSources());
-}
-
-ZC_TEST("CompilerSessionTest.CompilerOptionsAccess") {
-  auto langOpts = basic::LangOptions();
-  auto compilerOpts = basic::CompilerOptions();
-  compilerOpts.emission.syntaxOnly = true;
-  auto session = makeSession(langOpts, compilerOpts);
-
-  auto& opts = session->getCompilerOptions();
-  ZC_EXPECT(opts.emission.syntaxOnly);
 }
 
 ZC_TEST("CompilerSessionTest.GetDiagnosticEngine") {
@@ -474,6 +477,858 @@ ZC_TEST("CompilerSessionTest.PublishesSourceBackedCoreModulesInCompleteSemanticG
   ZC_EXPECT(materialized.crates().size() == 2);
   ZC_EXPECT(materialized.sources().size() == 4);
   ZC_EXPECT(materialized.modules().size() == 4);
+
+  zc::Maybe<identity::CrateKey> coreCrate;
+  zc::Maybe<identity::CrateKey> userCrate;
+  for (const auto& module : graph.modules()) {
+    if (module.key().crate().unit().kind() == identity::CompilationUnitKind::UserPackage) {
+      if (userCrate == zc::none) userCrate = module.key().crate().clone();
+      continue;
+    }
+    if (coreCrate != zc::none) {
+      ZC_EXPECT(ZC_REQUIRE_NONNULL(coreCrate).encode().asPtr() ==
+                module.key().crate().encode().asPtr());
+    } else {
+      coreCrate = module.key().crate().clone();
+    }
+  }
+  ZC_REQUIRE(userCrate != zc::none);
+  ZC_EXPECT(session->materializeCoreLibrary(ZC_REQUIRE_NONNULL(userCrate)) == zc::none);
+  ZC_REQUIRE(coreCrate != zc::none);
+  auto coreLibrary = session->materializeCoreLibrary(ZC_REQUIRE_NONNULL(coreCrate));
+  ZC_REQUIRE(coreLibrary != zc::none);
+  const auto& library = ZC_REQUIRE_NONNULL(coreLibrary);
+  ZC_EXPECT(library.modules().size() == 3);
+  const auto& authorityLease = library.authorityLease();
+  ZC_EXPECT(authorityLease.revision() == library.revision());
+  ZC_EXPECT(authorityLease.arenaRevision() == library.revision());
+  ZC_EXPECT(authorityLease.stableWitness().size() != 0);
+  ZC_EXPECT(authorityLease.retainedDependencyCount() >= 2);
+  auto retainedAuthority = authorityLease.retain();
+  ZC_EXPECT(retainedAuthority.revision() == authorityLease.revision());
+  ZC_EXPECT(retainedAuthority.stableWitness() == authorityLease.stableWitness());
+  ZC_EXPECT(retainedAuthority.capability().encodeCanonical() ==
+            authorityLease.capability().encodeCanonical());
+  ZC_EXPECT(authorityLease.capability().copy() != authorityLease.capability().linear());
+  auto markerConfiguration = core::checkerConfig(authorityLease.capability().policies());
+  ZC_REQUIRE(markerConfiguration != zc::none);
+  ZC_REQUIRE(ZC_REQUIRE_NONNULL(markerConfiguration).entries().size() == 1);
+  const auto& copyPolicy = ZC_REQUIRE_NONNULL(markerConfiguration).entries()[0];
+  ZC_EXPECT(copyPolicy.referenceRequirements.size() == 1);
+  ZC_EXPECT(copyPolicy.referenceRequirements[0].requiredMarker == zc::none);
+  ZC_EXPECT(copyPolicy.rawPointerMutabilities.size() == 2);
+  ZC_EXPECT(copyPolicy.rawPointerMutabilities[0] == type::semantic::Mutability::Const);
+  ZC_EXPECT(copyPolicy.rawPointerMutabilities[1] == type::semantic::Mutability::Mutable);
+  bool foundRoot = false;
+  bool foundMarker = false;
+  bool foundPrelude = false;
+  for (const auto& module : library.modules()) {
+    const auto& interfaceLease = module.interfaceLease();
+    ZC_EXPECT(interfaceLease.revision() == library.revision());
+    ZC_EXPECT(interfaceLease.arenaRevision() == library.revision());
+    ZC_EXPECT(interfaceLease.stableWitness().size() != 0);
+    ZC_EXPECT(interfaceLease.retainedDependencyCount() >= 2);
+    auto retainedInterface = interfaceLease.retain();
+    ZC_EXPECT(retainedInterface.revision() == interfaceLease.revision());
+    ZC_EXPECT(retainedInterface.stableWitness() == interfaceLease.stableWitness());
+    ZC_EXPECT(retainedInterface.capability().encodeCanonical() ==
+              interfaceLease.capability().encodeCanonical());
+    const auto& record = interfaceLease.capability().record();
+    if (module.module().encode().asPtr() == library.prelude().encode().asPtr()) {
+      ZC_EXPECT(record.lookupDefinitions().size() == 2);
+      ZC_EXPECT(record.supportDefinitions().size() == 0);
+      ZC_EXPECT(record.definedRoles().size() == 0);
+      ZC_EXPECT(record.signatureRoots().size() == 2);
+      for (const auto& root : record.signatureRoots()) {
+        ZC_EXPECT(root.sourceModule.encode().asPtr() != record.module().encode().asPtr());
+        ZC_EXPECT(root.bindingSurfaceRevision != record.bindingSurfaceRevision());
+      }
+      foundPrelude = true;
+      continue;
+    }
+    if (record.definedRoles().size() == 2) {
+      ZC_EXPECT(record.lookupDefinitions().size() == 2);
+      ZC_EXPECT(record.supportDefinitions().size() == 0);
+      ZC_EXPECT(record.signatureRoots().size() == 2);
+      ZC_EXPECT(record.definedRoles()[0].role == source::core::CoreSemanticRole::Copy);
+      ZC_EXPECT(record.definedRoles()[1].role == source::core::CoreSemanticRole::Linear);
+      ZC_EXPECT(record.definedRoles()[0].definition != record.definedRoles()[1].definition);
+      for (size_t index = 0; index < record.lookupDefinitions().size(); ++index) {
+        ZC_EXPECT(record.lookupDefinitions()[index].definition() ==
+                  record.definedRoles()[index].definition);
+      }
+      foundMarker = true;
+      continue;
+    }
+    ZC_EXPECT(record.lookupDefinitions().size() == 0);
+    ZC_EXPECT(record.supportDefinitions().size() == 0);
+    ZC_EXPECT(record.signatureRoots().size() == 0);
+    ZC_EXPECT(record.definedRoles().size() == 0);
+    foundRoot = true;
+  }
+  ZC_EXPECT(foundRoot);
+  ZC_EXPECT(foundMarker);
+  ZC_EXPECT(foundPrelude);
+}
+
+ZC_TEST("CompilerSessionTest.CheckerPreflightMaterializesSourceBackedCoreBootstrapInterfaces") {
+  auto session = packageSession("let main = 0;\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(captured.ids.empty());
+}
+
+ZC_TEST("CompilerSessionTest.CheckerPreflightPublishesAnnotatedConstantFacts") {
+  auto session = packageSession("const value: i32 = 1;\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(captured.ids.empty());
+}
+
+ZC_TEST("CompilerSessionTest.ErrorPropagateNonUnionUsesCheckerDiagnostic") {
+  auto session = packageSession("fun entry(value: i32) -> i32 { return value?!; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ErrorPropagateNonUnion) == 1);
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 0);
+}
+
+ZC_TEST("CompilerSessionTest.ErrorUnwrapNonUnionUsesCheckerDiagnostic") {
+  auto session = packageSession("fun entry(value: i32) -> i32 { return value!!; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ErrorUnwrapNonUnion) == 1);
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 0);
+}
+
+ZC_TEST("CompilerSessionTest.ErrorPropagateOrdinaryUnionUsesCheckerDiagnostic") {
+  auto session = packageSession("fun entry(value: i32 | bool) -> i32 { return value?!; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ErrorPropagateNonUnion) == 1);
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::CheckerMissingRequiredFact) == 0);
+}
+
+ZC_TEST("CompilerSessionTest.ArrayIndexReturnUsesFunctionBodyUnavailableDiagnostic") {
+  auto session = packageSession("fun entry(values: i32[]) -> i32 { return values[0]; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
+}
+
+ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForInitializedParameterReturn") {
+  auto session = packageSession("fun identity(value: i32) -> i32 { return value; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 1);
+  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 1);
+}
+
+ZC_TEST("CompilerSessionTest.PublishesGenericFunctionSignature") {
+  auto session = packageSession("fun identity<T>(value: i32) -> i32 { return value; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(captured.ids.empty());
+  const auto facts = session->getVerifiedSignatureFacts();
+  ZC_REQUIRE(facts.size() == 1);
+  ZC_EXPECT(facts[0].signatures().size() == 1);
+  const auto& payload = facts[0].signatures()[0].payload.variant();
+  ZC_REQUIRE(payload.is<checker::signature::CallableSignature>());
+  ZC_EXPECT(payload.get<checker::signature::CallableSignature>().genericParameters.size() == 1);
+  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 1);
+  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 1);
+}
+
+ZC_TEST("CompilerSessionTest.PublishesGenericDirectBorrowSignature") {
+  auto session = packageSession("fun borrow<T>(value: &T) -> &T { return value; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(captured.ids.empty());
+  const auto facts = session->getVerifiedSignatureFacts();
+  ZC_REQUIRE(facts.size() == 1);
+  ZC_REQUIRE(facts[0].signatures().size() == 1);
+  const auto& payload = facts[0].signatures()[0].payload.variant();
+  ZC_REQUIRE(payload.is<checker::signature::CallableSignature>());
+  ZC_EXPECT(payload.get<checker::signature::CallableSignature>().genericParameters.size() == 1);
+  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 1);
+  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 1);
+}
+
+ZC_TEST("CompilerSessionTest.PublishesGenericMutableBorrowSignature") {
+  auto session = packageSession("fun borrow<T>(value: &mut T) -> &mut T { return value; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(captured.ids.empty());
+  const auto facts = session->getVerifiedSignatureFacts();
+  ZC_REQUIRE(facts.size() == 1);
+  ZC_REQUIRE(facts[0].signatures().size() == 1);
+  const auto& payload = facts[0].signatures()[0].payload.variant();
+  ZC_REQUIRE(payload.is<checker::signature::CallableSignature>());
+  const auto& callable = payload.get<checker::signature::CallableSignature>();
+  ZC_REQUIRE(callable.parameters.size() == 1);
+  ZC_EXPECT(callable.parameters[0].mode == checker::signature::ParameterMode::MutableReference);
+  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 1);
+  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 1);
+}
+
+ZC_TEST("CompilerSessionTest.PublishesSharedParameterReborrow") {
+  auto session = packageSession("fun reborrow(value: &i32) -> &i32 { return &*value; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_REQUIRE(session->checkSources());
+  ZC_EXPECT(captured.ids.empty());
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_REQUIRE(hir.parameterReborrows().size() == 1);
+  const auto& mir = session->getVerifiedBuiltMirModules()[0];
+  ZC_REQUIRE(mir.functions().size() == 1);
+  const auto& function = mir.functions()[0];
+  ZC_REQUIRE(function.blocks.size() == 1);
+  ZC_REQUIRE(function.blocks[0].statements.size() == 2);
+  ZC_REQUIRE(function.blocks[0].statements[1].kind() == mir::MirStatementKind::BorrowCreation);
+  const auto& borrow = function.blocks[0].statements[1].borrowCreationValue();
+  ZC_EXPECT(borrow.kind == mir::MirBorrowKind::Shared);
+  ZC_REQUIRE(borrow.source.projections().size() == 1);
+  ZC_EXPECT(borrow.source.projections()[0].kind() == mir::MirProjectionKind::Dereference);
+
+  const auto overlays = session->getVerifiedOwnershipEventOverlays();
+  const auto ownershipInputs = session->getVerifiedOwnershipInputs();
+  ZC_REQUIRE(overlays.size() == 1);
+  ZC_REQUIRE(ownershipInputs.size() == 1);
+  const auto& inputs = ownershipInputs[0];
+  const auto& movePaths = inputs.movePaths();
+  const auto& initialization = inputs.initialization();
+  const auto& loans = inputs.loans();
+  const auto& references = inputs.references();
+  const auto& regions = inputs.regions();
+  const auto& states = inputs.states();
+  ZC_EXPECT(inputs.builtRevision().digest() == mir.revision().digest());
+  ZC_EXPECT(inputs.overlayRevision().digest() == overlays[0].revision().digest());
+  ZC_EXPECT(inputs.borrowEvidenceRevision().digest() == mir.borrowEvidenceRevision().digest());
+  ZC_REQUIRE(loans.loans().size() == 1);
+  const auto& loan = loans.loans()[0];
+  ZC_EXPECT(loan.owner == function.owner);
+  ZC_EXPECT(loan.issue.location.point.kind() == ownership::MirPointKind::BeforeStatement);
+  ZC_EXPECT(loan.issue.location.point.beforeStatementValue().ordinal == 1);
+  ZC_EXPECT(loan.issue.operandOrdinal == 1);
+  ZC_EXPECT(loan.commit.location.point.kind() == ownership::MirPointKind::BeforeStatement);
+  ZC_EXPECT(loan.commit.location.point.beforeStatementValue().ordinal == 1);
+  ZC_EXPECT(loan.commit.operandOrdinal == 2);
+  ZC_EXPECT(loan.kind == mir::MirBorrowKind::Shared);
+  ZC_EXPECT(loan.activeFrom.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(loan.activeFrom.afterEventValue().event.operandOrdinal == 1);
+  ZC_EXPECT(loan.source.place.local() == borrow.source.local());
+  ZC_EXPECT(loan.destination.place.local() == borrow.destination.local());
+  ZC_REQUIRE(references.definitions().size() == 1);
+  const auto& reference = references.definitions()[0];
+  ZC_EXPECT(reference.owner == function.owner);
+  ZC_EXPECT(reference.introduction.operandOrdinal == 2);
+  ZC_EXPECT(reference.loan.operandOrdinal == 1);
+  ZC_EXPECT(reference.origin.entry.location.point.kind() == ownership::MirPointKind::Entry);
+  ZC_EXPECT(reference.origin.entry.operandOrdinal == 0);
+  ZC_EXPECT(reference.origin.activation.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(reference.origin.activation.afterEventValue().event.operandOrdinal == 1);
+  ZC_EXPECT(reference.origin.rootParameter == 0);
+  ZC_EXPECT(reference.origin.referent.place.local() == borrow.source.local());
+  ZC_REQUIRE(reference.origin.referent.place.projections().size() == 1);
+  ZC_EXPECT(reference.origin.referent.place.projections()[0].kind() ==
+            mir::MirProjectionKind::Dereference);
+  ZC_EXPECT(reference.returned.location.point.kind() == ownership::MirPointKind::BeforeTerminator);
+  ZC_EXPECT(reference.returned.operandOrdinal == 0);
+  ZC_EXPECT(reference.destination.place.local() == borrow.destination.local());
+  ZC_EXPECT(reference.livePoints.afterCommit.kind() ==
+            ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(reference.livePoints.afterCommit.afterEventValue().event.operandOrdinal == 2);
+  ZC_EXPECT(reference.livePoints.afterCommitCfg.kind() ==
+            ownership::facts::OwnershipPointKind::Cfg);
+  ZC_EXPECT(reference.livePoints.afterCommitCfg.cfgValue().point.kind() ==
+            ownership::MirPointKind::AfterStatement);
+  ZC_EXPECT(reference.livePoints.beforeReturnCfg.kind() ==
+            ownership::facts::OwnershipPointKind::Cfg);
+  ZC_EXPECT(reference.livePoints.beforeReturnCfg.cfgValue().point.kind() ==
+            ownership::MirPointKind::BeforeTerminator);
+  ZC_EXPECT(reference.livePoints.beforeReturn.kind() ==
+            ownership::facts::OwnershipPointKind::BeforeEvent);
+  ZC_EXPECT(reference.livePoints.beforeReturn.beforeEventValue().event.operandOrdinal == 0);
+  ZC_EXPECT(reference.livePoints.afterReturn.kind() ==
+            ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(reference.livePoints.afterReturn.afterEventValue().event.operandOrdinal == 0);
+  ZC_REQUIRE(regions.regions().size() == 1);
+  const auto& region = regions.regions()[0];
+  ZC_EXPECT(region.owner == function.owner);
+  ZC_EXPECT(region.entry.location.point.kind() == ownership::MirPointKind::Entry);
+  ZC_EXPECT(region.entry.operandOrdinal == 0);
+  ZC_EXPECT(region.loan.operandOrdinal == 1);
+  ZC_EXPECT(region.inputParameter == 0);
+  ZC_REQUIRE(region.members.size() == 6);
+  ZC_EXPECT(region.members[0].kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(region.members[0].afterEventValue().event.operandOrdinal == 1);
+  ZC_EXPECT(region.members[5].kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(region.members[5].afterEventValue().event.operandOrdinal == 0);
+  ZC_REQUIRE(states.states().size() == 5);
+  const auto& referenceState = states.states()[0];
+  ZC_EXPECT(referenceState.owner == function.owner);
+  ZC_EXPECT(referenceState.loan.operandOrdinal == 1);
+  ZC_EXPECT(referenceState.inputParameter == 0);
+  ZC_EXPECT(referenceState.destination.place.local() == borrow.destination.local());
+  ZC_EXPECT(referenceState.point.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(referenceState.point.afterEventValue().event.operandOrdinal == 2);
+  ZC_EXPECT(states.states()[4].point.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(states.states()[4].point.afterEventValue().event.operandOrdinal == 0);
+
+  ZC_REQUIRE(movePaths.functions().size() == 1);
+  bool foundDerefPath = false;
+  for (const auto& path : movePaths.functions()[0].facts) {
+    if (path.key.place.local() != borrow.source.local() ||
+        path.key.place.projections().size() != 1 ||
+        path.key.place.projections()[0].kind() != mir::MirProjectionKind::Dereference) {
+      continue;
+    }
+    ZC_REQUIRE(path.parent != zc::none);
+    ZC_IF_SOME(parent, path.parent) {
+      ZC_EXPECT(parent.place.local() == borrow.source.local());
+      ZC_EXPECT(parent.place.projections().size() == 0);
+    }
+    foundDerefPath = true;
+  }
+  ZC_EXPECT(foundDerefPath);
+
+  ZC_REQUIRE(initialization.functions().size() == 1);
+  bool foundInitializedBorrowTemporary = false;
+  for (const auto& fact : initialization.functions()[0].facts) {
+    if (fact.point.kind() != ownership::MirPointKind::AfterStatement ||
+        fact.point.afterStatementValue().ordinal != 1 ||
+        fact.key.place.local() != borrow.destination.local() ||
+        fact.key.place.projections().size() != 0) {
+      continue;
+    }
+    ZC_EXPECT(fact.state == ownership::facts::InitializationState::initialized());
+    foundInitializedBorrowTemporary = true;
+  }
+  ZC_EXPECT(foundInitializedBorrowTemporary);
+}
+
+ZC_TEST("CompilerSessionTest.PublishesMutableParameterReborrow") {
+  auto session =
+      packageSession("fun reborrow(value: &mut i32) -> &mut i32 { return &mut *value; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(captured.ids.empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& reborrows = session->getVerifiedHirModules()[0].parameterReborrows();
+  ZC_REQUIRE(reborrows.size() == 1);
+  ZC_EXPECT(reborrows[0].mutability == type::semantic::Mutability::Mutable);
+  ZC_REQUIRE(session->getVerifiedBuiltMirModules().size() == 1);
+  const auto& functions = session->getVerifiedBuiltMirModules()[0].functions();
+  ZC_REQUIRE(functions.size() == 1);
+  const auto& function = functions[0];
+  ZC_REQUIRE(function.blocks.size() == 1);
+  ZC_REQUIRE(function.blocks[0].statements.size() == 2);
+  ZC_REQUIRE(function.blocks[0].statements[1].kind() == mir::MirStatementKind::BorrowCreation);
+  const auto& borrow = function.blocks[0].statements[1].borrowCreationValue();
+  ZC_EXPECT(borrow.kind == mir::MirBorrowKind::Mutable);
+  ZC_REQUIRE(borrow.source.projections().size() == 1);
+  ZC_EXPECT(borrow.source.projections()[0].kind() == mir::MirProjectionKind::Dereference);
+
+  const auto overlays = session->getVerifiedOwnershipEventOverlays();
+  const auto ownershipInputs = session->getVerifiedOwnershipInputs();
+  ZC_REQUIRE(overlays.size() == 1);
+  ZC_REQUIRE(ownershipInputs.size() == 1);
+  const auto& inputs = ownershipInputs[0];
+  const auto& movePaths = inputs.movePaths();
+  const auto& initialization = inputs.initialization();
+  const auto& loans = inputs.loans();
+  const auto& references = inputs.references();
+  const auto& regions = inputs.regions();
+  const auto& states = inputs.states();
+  ZC_REQUIRE(overlays[0].functions().size() == 1);
+  ZC_EXPECT(overlays[0].functions()[0].owner == function.owner);
+  ZC_EXPECT(loans.builtRevision().digest() ==
+            session->getVerifiedBuiltMirModules()[0].revision().digest());
+  ZC_EXPECT(loans.overlayRevision().digest() == overlays[0].revision().digest());
+  ZC_EXPECT(loans.borrowEvidenceRevision().digest() ==
+            session->getVerifiedBuiltMirModules()[0].borrowEvidenceRevision().digest());
+  ZC_REQUIRE(loans.loans().size() == 1);
+  const auto& loan = loans.loans()[0];
+  ZC_EXPECT(loan.owner == function.owner);
+  ZC_EXPECT(loan.issue.location.point.kind() == ownership::MirPointKind::BeforeStatement);
+  ZC_EXPECT(loan.issue.location.point.beforeStatementValue().ordinal == 1);
+  ZC_EXPECT(loan.issue.operandOrdinal == 1);
+  ZC_EXPECT(loan.commit.location.point.kind() == ownership::MirPointKind::BeforeStatement);
+  ZC_EXPECT(loan.commit.location.point.beforeStatementValue().ordinal == 1);
+  ZC_EXPECT(loan.commit.operandOrdinal == 2);
+  ZC_EXPECT(loan.kind == mir::MirBorrowKind::Mutable);
+  ZC_EXPECT(loan.activeFrom.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(loan.activeFrom.afterEventValue().event.operandOrdinal == 1);
+  ZC_EXPECT(loan.source.place.local() == borrow.source.local());
+  ZC_EXPECT(loan.destination.place.local() == borrow.destination.local());
+  ZC_REQUIRE(references.definitions().size() == 1);
+  const auto& reference = references.definitions()[0];
+  ZC_EXPECT(reference.owner == function.owner);
+  ZC_EXPECT(reference.introduction.operandOrdinal == 2);
+  ZC_EXPECT(reference.loan.operandOrdinal == 1);
+  ZC_EXPECT(reference.origin.entry.location.point.kind() == ownership::MirPointKind::Entry);
+  ZC_EXPECT(reference.origin.entry.operandOrdinal == 0);
+  ZC_EXPECT(reference.origin.activation.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(reference.origin.activation.afterEventValue().event.operandOrdinal == 1);
+  ZC_EXPECT(reference.origin.rootParameter == 0);
+  ZC_EXPECT(reference.origin.referent.place.local() == borrow.source.local());
+  ZC_REQUIRE(reference.origin.referent.place.projections().size() == 1);
+  ZC_EXPECT(reference.origin.referent.place.projections()[0].kind() ==
+            mir::MirProjectionKind::Dereference);
+  ZC_EXPECT(reference.returned.location.point.kind() == ownership::MirPointKind::BeforeTerminator);
+  ZC_EXPECT(reference.returned.operandOrdinal == 0);
+  ZC_EXPECT(reference.destination.place.local() == borrow.destination.local());
+  ZC_EXPECT(reference.livePoints.afterCommit.kind() ==
+            ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(reference.livePoints.afterCommit.afterEventValue().event.operandOrdinal == 2);
+  ZC_EXPECT(reference.livePoints.afterCommitCfg.kind() ==
+            ownership::facts::OwnershipPointKind::Cfg);
+  ZC_EXPECT(reference.livePoints.afterCommitCfg.cfgValue().point.kind() ==
+            ownership::MirPointKind::AfterStatement);
+  ZC_EXPECT(reference.livePoints.beforeReturnCfg.kind() ==
+            ownership::facts::OwnershipPointKind::Cfg);
+  ZC_EXPECT(reference.livePoints.beforeReturnCfg.cfgValue().point.kind() ==
+            ownership::MirPointKind::BeforeTerminator);
+  ZC_EXPECT(reference.livePoints.beforeReturn.kind() ==
+            ownership::facts::OwnershipPointKind::BeforeEvent);
+  ZC_EXPECT(reference.livePoints.beforeReturn.beforeEventValue().event.operandOrdinal == 0);
+  ZC_EXPECT(reference.livePoints.afterReturn.kind() ==
+            ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(reference.livePoints.afterReturn.afterEventValue().event.operandOrdinal == 0);
+  ZC_REQUIRE(regions.regions().size() == 1);
+  const auto& region = regions.regions()[0];
+  ZC_EXPECT(region.owner == function.owner);
+  ZC_EXPECT(region.entry.location.point.kind() == ownership::MirPointKind::Entry);
+  ZC_EXPECT(region.entry.operandOrdinal == 0);
+  ZC_EXPECT(region.loan.operandOrdinal == 1);
+  ZC_EXPECT(region.inputParameter == 0);
+  ZC_REQUIRE(region.members.size() == 6);
+  ZC_EXPECT(region.members[0].kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(region.members[0].afterEventValue().event.operandOrdinal == 1);
+  ZC_EXPECT(region.members[5].kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(region.members[5].afterEventValue().event.operandOrdinal == 0);
+  ZC_REQUIRE(states.states().size() == 5);
+  const auto& referenceState = states.states()[0];
+  ZC_EXPECT(referenceState.owner == function.owner);
+  ZC_EXPECT(referenceState.loan.operandOrdinal == 1);
+  ZC_EXPECT(referenceState.inputParameter == 0);
+  ZC_EXPECT(referenceState.destination.place.local() == borrow.destination.local());
+  ZC_EXPECT(referenceState.point.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(referenceState.point.afterEventValue().event.operandOrdinal == 2);
+  ZC_EXPECT(states.states()[4].point.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(states.states()[4].point.afterEventValue().event.operandOrdinal == 0);
+
+  bool foundBorrowRead = false;
+  bool foundBorrowIssue = false;
+  bool foundBorrowCommit = false;
+  for (const auto& slot : overlays[0].functions()[0].slots) {
+    if (slot.key.location.point.kind() != ownership::MirPointKind::BeforeStatement ||
+        slot.key.location.point.beforeStatementValue().ordinal != 1) {
+      continue;
+    }
+    if (slot.key.operandOrdinal == 0) {
+      ZC_EXPECT(slot.stage == ownership::OwnershipEventStage::Source);
+      ZC_REQUIRE(slot.roles.size() == 1);
+      ZC_EXPECT(slot.roles[0] == ownership::OwnershipEventRole::OperandRead);
+      foundBorrowRead = true;
+    } else if (slot.key.operandOrdinal == 1) {
+      ZC_EXPECT(slot.stage == ownership::OwnershipEventStage::Effect);
+      ZC_REQUIRE(slot.roles.size() == 2);
+      ZC_EXPECT(slot.roles[0] == ownership::OwnershipEventRole::Operation);
+      ZC_EXPECT(slot.roles[1] == ownership::OwnershipEventRole::BorrowIssue);
+      foundBorrowIssue = true;
+    } else if (slot.key.operandOrdinal == 2) {
+      ZC_EXPECT(slot.stage == ownership::OwnershipEventStage::Commit);
+      ZC_REQUIRE(slot.roles.size() == 1);
+      ZC_EXPECT(slot.roles[0] == ownership::OwnershipEventRole::DestinationWrite);
+      foundBorrowCommit = true;
+    }
+  }
+  ZC_EXPECT(foundBorrowRead);
+  ZC_EXPECT(foundBorrowIssue);
+  ZC_EXPECT(foundBorrowCommit);
+
+  ZC_REQUIRE(movePaths.functions().size() == 1);
+  bool foundDerefPath = false;
+  for (const auto& path : movePaths.functions()[0].facts) {
+    if (path.key.place.local() != borrow.source.local() ||
+        path.key.place.projections().size() != 1 ||
+        path.key.place.projections()[0].kind() != mir::MirProjectionKind::Dereference) {
+      continue;
+    }
+    ZC_REQUIRE(path.parent != zc::none);
+    ZC_IF_SOME(parent, path.parent) {
+      ZC_EXPECT(parent.place.local() == borrow.source.local());
+      ZC_EXPECT(parent.place.projections().size() == 0);
+    }
+    foundDerefPath = true;
+  }
+  ZC_EXPECT(foundDerefPath);
+
+  ZC_REQUIRE(initialization.functions().size() == 1);
+  bool foundInitializedBorrowTemporary = false;
+  for (const auto& fact : initialization.functions()[0].facts) {
+    if (fact.point.kind() != ownership::MirPointKind::AfterStatement ||
+        fact.point.afterStatementValue().ordinal != 1 ||
+        fact.key.place.local() != borrow.destination.local() ||
+        fact.key.place.projections().size() != 0) {
+      continue;
+    }
+    ZC_EXPECT(fact.state == ownership::facts::InitializationState::initialized());
+    foundInitializedBorrowTemporary = true;
+  }
+  ZC_EXPECT(foundInitializedBorrowTemporary);
+}
+
+ZC_TEST("CompilerSessionTest.PublishesGenericMutableParameterReborrow") {
+  auto session =
+      packageSession("fun reborrow<T>(value: &mut T) -> &mut T { return &mut *value; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(captured.ids.empty());
+  ZC_REQUIRE(session->getVerifiedBuiltMirModules().size() == 1);
+  const auto& functions = session->getVerifiedBuiltMirModules()[0].functions();
+  ZC_REQUIRE(functions.size() == 1);
+  ZC_REQUIRE(functions[0].blocks.size() == 1);
+  ZC_REQUIRE(functions[0].blocks[0].statements.size() == 2);
+  const auto& borrow = functions[0].blocks[0].statements[1].borrowCreationValue();
+  ZC_EXPECT(borrow.kind == mir::MirBorrowKind::Mutable);
+  ZC_REQUIRE(session->getVerifiedOwnershipInputs().size() == 1);
+  const auto& inputs = session->getVerifiedOwnershipInputs()[0];
+  ZC_REQUIRE(inputs.loans().loans().size() == 1);
+  ZC_REQUIRE(inputs.references().definitions().size() == 1);
+  const auto& reference = inputs.references().definitions()[0];
+  ZC_EXPECT(reference.destination.place.local() == borrow.destination.local());
+  ZC_EXPECT(reference.returned.location.point.kind() == ownership::MirPointKind::BeforeTerminator);
+  ZC_EXPECT(reference.returned.operandOrdinal == 0);
+  ZC_REQUIRE(inputs.regions().regions().size() == 1);
+  ZC_REQUIRE(inputs.states().states().size() == 5);
+}
+
+ZC_TEST("CompilerSessionTest.RejectsGenericParameterReturnWithoutBorrowContract") {
+  auto session = packageSession("fun identity<T>(value: T) -> T { return value; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::BorrowOutputRegionUnexpressible) == 1);
+  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 0);
+  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 0);
+}
+
+ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForParameterInitializedLocalReturn") {
+  auto session = packageSession(
+      "fun identity(value: i32) -> i32 { let copy: i32 = value; return copy; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 1);
+  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 1);
+}
+
+ZC_TEST("CompilerSessionTest.PublishesOwnershipInputsForLocalAliasReborrow") {
+  auto session = packageSession(
+      "fun reborrow(value: &i32) -> &i32 { let local = value; return &*local; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_REQUIRE(session->checkSources());
+  ZC_EXPECT(captured.ids.empty());
+
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_REQUIRE(hir.parameterReborrows().size() == 1);
+  ZC_EXPECT(hir.parameterReborrows()[0].sourceAlias != zc::none);
+
+  const auto& mir = session->getVerifiedBuiltMirModules()[0];
+  ZC_REQUIRE(mir.functions().size() == 1);
+  const auto& function = mir.functions()[0];
+  ZC_REQUIRE(function.locals.size() == 3);
+  ZC_EXPECT(function.locals[0].kind == mir::MirLocalKind::Parameter);
+  ZC_EXPECT(function.locals[1].kind == mir::MirLocalKind::UserLocal);
+  ZC_EXPECT(function.locals[2].kind == mir::MirLocalKind::Temporary);
+  ZC_REQUIRE(function.blocks.size() == 1);
+  ZC_REQUIRE(function.blocks[0].statements.size() == 4);
+  ZC_EXPECT(function.blocks[0].statements[1].kind() == mir::MirStatementKind::Assign);
+  ZC_EXPECT(function.blocks[0].statements[3].kind() == mir::MirStatementKind::BorrowCreation);
+
+  const auto inputs = session->getVerifiedOwnershipInputs();
+  ZC_REQUIRE(inputs.size() == 1);
+  ZC_EXPECT(inputs[0].loans().loans().size() == 1);
+  ZC_EXPECT(inputs[0].references().definitions().size() == 1);
+  ZC_EXPECT(inputs[0].regions().regions().size() == 1);
+  ZC_EXPECT(inputs[0].states().states().size() == 5);
+  const auto& loan = inputs[0].loans().loans()[0];
+  ZC_EXPECT(loan.kind == mir::MirBorrowKind::Shared);
+  ZC_EXPECT(loan.source.place.local() == function.locals[1].id);
+  ZC_EXPECT(loan.destination.place.local() == function.locals[2].id);
+  const auto& reference = inputs[0].references().definitions()[0];
+  ZC_EXPECT(reference.loan == loan.issue);
+  ZC_EXPECT(reference.introduction == loan.commit);
+  ZC_EXPECT(reference.origin.rootParameter == 0);
+  ZC_EXPECT(reference.origin.referent.place.local() == function.locals[1].id);
+  ZC_EXPECT(reference.destination.place.local() == function.locals[2].id);
+  const auto& region = inputs[0].regions().regions()[0];
+  ZC_EXPECT(region.loan == loan.issue);
+  ZC_EXPECT(region.inputParameter == 0);
+  const auto& state = inputs[0].states().states()[0];
+  ZC_EXPECT(state.loan == loan.issue);
+  ZC_EXPECT(state.inputParameter == 0);
+  ZC_EXPECT(state.destination.place.local() == function.locals[2].id);
+}
+
+ZC_TEST("CompilerSessionTest.PublishesOwnershipInputsForMutableLocalAliasReborrow") {
+  auto session = packageSession(
+      "fun reborrow(value: &mut i32) -> &mut i32 { let local = value; return &mut *local; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_REQUIRE(session->checkSources());
+  ZC_EXPECT(captured.ids.empty());
+
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_REQUIRE(hir.parameterReborrows().size() == 1);
+  ZC_EXPECT(hir.parameterReborrows()[0].sourceAlias != zc::none);
+  ZC_EXPECT(hir.parameterReborrows()[0].mutability == type::semantic::Mutability::Mutable);
+
+  const auto& mir = session->getVerifiedBuiltMirModules()[0];
+  ZC_REQUIRE(mir.functions().size() == 1);
+  const auto& function = mir.functions()[0];
+  ZC_REQUIRE(function.blocks.size() == 1);
+  ZC_REQUIRE(function.blocks[0].statements.size() == 4);
+  ZC_REQUIRE(function.blocks[0].statements[3].kind() == mir::MirStatementKind::BorrowCreation);
+  ZC_EXPECT(function.blocks[0].statements[3].borrowCreationValue().kind ==
+            mir::MirBorrowKind::Mutable);
+
+  const auto inputs = session->getVerifiedOwnershipInputs();
+  ZC_REQUIRE(inputs.size() == 1);
+  ZC_EXPECT(inputs[0].loans().loans().size() == 1);
+  ZC_EXPECT(inputs[0].references().definitions().size() == 1);
+  ZC_EXPECT(inputs[0].regions().regions().size() == 1);
+  ZC_EXPECT(inputs[0].states().states().size() == 5);
+  const auto& loan = inputs[0].loans().loans()[0];
+  ZC_EXPECT(loan.kind == mir::MirBorrowKind::Mutable);
+  ZC_EXPECT(loan.source.place.local() == function.locals[1].id);
+  ZC_EXPECT(loan.destination.place.local() == function.locals[2].id);
+  const auto& reference = inputs[0].references().definitions()[0];
+  ZC_EXPECT(reference.loan == loan.issue);
+  ZC_EXPECT(reference.introduction == loan.commit);
+  ZC_EXPECT(reference.origin.rootParameter == 0);
+  ZC_EXPECT(reference.origin.referent.place.local() == function.locals[1].id);
+  ZC_EXPECT(reference.destination.place.local() == function.locals[2].id);
+  const auto& region = inputs[0].regions().regions()[0];
+  ZC_EXPECT(region.loan == loan.issue);
+  ZC_EXPECT(region.inputParameter == 0);
+  const auto& state = inputs[0].states().states()[0];
+  ZC_EXPECT(state.loan == loan.issue);
+  ZC_EXPECT(state.inputParameter == 0);
+  ZC_EXPECT(state.destination.place.local() == function.locals[2].id);
+}
+
+ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForInitializedAggregateFieldReturn") {
+  auto session = packageSession(
+      "struct Cell { value: i32, }\n"
+      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 1);
+  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 1);
+}
+
+ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForAggregateFieldOverwrite") {
+  auto session = packageSession(
+      "struct Cell { mut value: i32, }\n"
+      "fun entry() -> i32 { mut cell = Cell { value: 0 }; cell.value = 1; return cell.value; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 1);
+  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 1);
+  const auto& builtMir = session->getVerifiedBuiltMirModules()[0];
+  ZC_REQUIRE(builtMir.functions().size() == 1);
+  const auto& function = builtMir.functions()[0];
+  ZC_REQUIRE(function.blocks.size() == 1);
+  const auto& block = function.blocks[0];
+  ZC_REQUIRE(block.statements.size() == 3);
+  ZC_REQUIRE(block.statements[2].kind() == mir::MirStatementKind::Assign);
+  const auto& overwrite = block.statements[2].assignmentValue();
+  ZC_EXPECT(overwrite.initialization == mir::MirInitializationKind::Overwrite);
+  ZC_REQUIRE(overwrite.destination.projections().size() == 1);
+  ZC_EXPECT(overwrite.destination.projections()[0].kind() == mir::MirProjectionKind::Field);
+  ZC_REQUIRE(block.terminator.returnValue().value != zc::none);
+  ZC_IF_SOME(value, block.terminator.returnValue().value) {
+    ZC_REQUIRE(value.place().projections().size() == 1);
+    ZC_EXPECT(value.place().projections()[0].kind() == mir::MirProjectionKind::Field);
+    ZC_EXPECT(value.place().projections()[0].fieldValue().field ==
+              overwrite.destination.projections()[0].fieldValue().field);
+  }
+}
+
+ZC_TEST("CompilerSessionTest.RejectsUninitializedLocalUseWithoutPublishingOwnershipInputs") {
+  auto session = packageSession("fun entry() -> i32 { let value: i32; return value; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  const auto failures = session->getIrFailureGroups();
+  ZC_EXPECT(failures.size() == 0);
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UninitializedPlaceUse) == 1);
+  ZC_EXPECT(childDiagnosticCount(captured, diagnostics::DiagID::PlaceBecameUnavailableHere) == 1);
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::OwnershipProofInvariant) == 0);
+  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 0);
+  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 0);
+  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 0);
+}
+
+ZC_TEST("CompilerSessionTest.RejectsUseAfterMoveWithoutPublishingOwnershipInputs") {
+  auto session = packageSession(
+      "import core::marker::{Copy};\n"
+      "struct Cell { value: i32, }\n"
+      "impl !Copy for Cell;\n"
+      "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return first; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(session->getIrFailureGroups().size() == 0);
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UseAfterMove) == 1);
+  ZC_EXPECT(childDiagnosticCount(captured, diagnostics::DiagID::ValueMovedHere) == 1);
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::OwnershipProofInvariant) == 0);
+  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 0);
+  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 0);
+  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 0);
+}
+
+ZC_TEST("CompilerSessionTest.AcceptsCopyAfterLocalTransfer") {
+  auto session = packageSession(
+      "fun entry() -> i32 { let first = 0; let second = first; return first; }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 1);
+  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 1);
+}
+
+ZC_TEST(
+    "CompilerSessionTest.RejectsUninitializedAggregateFieldUseWithoutPublishingOwnershipInputs") {
+  auto session = packageSession(
+      "struct Cell { value: i32, }\n"
+      "fun entry() -> i32 { let cell: Cell; return cell.value; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UninitializedPlaceUse) == 1);
+  ZC_EXPECT(childDiagnosticCount(captured, diagnostics::DiagID::PlaceBecameUnavailableHere) == 1);
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::OwnershipProofInvariant) == 0);
+  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 0);
+  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 0);
+  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 0);
+}
+
+ZC_TEST(
+    "CompilerSessionTest."
+    "RejectsUninitializedAggregateSiblingFieldWithoutPublishingOwnershipInputs") {
+  auto session = packageSession(
+      "struct Pair { mut left: i32, mut right: bool, }\n"
+      "fun entry() -> bool { mut pair: Pair; pair.left = 0; return pair.right; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UninitializedPlaceUse) == 1);
+  ZC_EXPECT(childDiagnosticCount(captured, diagnostics::DiagID::PlaceBecameUnavailableHere) == 1);
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::OwnershipProofInvariant) == 0);
+  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 0);
+  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 0);
+  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 0);
 }
 
 ZC_TEST("CompilerSessionTest.RejectsReservedCoreRootWithoutPublishingModuleGraph") {

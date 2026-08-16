@@ -61,7 +61,6 @@ enum class SyntaxKind {
   ContinueKeyword,     // continue
   ConstKeyword,        // const
   ConstructorKeyword,  // constructor
-  DebuggerKeyword,     // debugger
   DeclareKeyword,      // declare
   DefaultKeyword,      // default
   DeleteKeyword,       // delete

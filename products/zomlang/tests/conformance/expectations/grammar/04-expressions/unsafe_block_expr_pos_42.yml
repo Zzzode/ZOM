@@ -1,0 +1,4 @@
+section: "§4.6 Unsafe block expression"
+covers_rule: "unsafeBlockExpr, primaryExpr (exprUnsafeBlock alt)"
+expected: "ACCEPT"
+notes: []

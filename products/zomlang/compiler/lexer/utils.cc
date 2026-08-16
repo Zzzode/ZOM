@@ -186,7 +186,6 @@ ast::SyntaxKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
   if (text == "const"_zcb) return ast::SyntaxKind::ConstKeyword;
   if (text == "constructor"_zcb) return ast::SyntaxKind::ConstructorKeyword;
   if (text == "continue"_zcb) return ast::SyntaxKind::ContinueKeyword;
-  if (text == "debugger"_zcb) return ast::SyntaxKind::DebuggerKeyword;
   if (text == "declare"_zcb) return ast::SyntaxKind::DeclareKeyword;
   if (text == "default"_zcb) return ast::SyntaxKind::DefaultKeyword;
   if (text == "deinit"_zcb) return ast::SyntaxKind::DeinitKeyword;

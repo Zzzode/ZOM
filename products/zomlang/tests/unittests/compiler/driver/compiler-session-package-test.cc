@@ -24,6 +24,7 @@
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
 #include "zomlang/compiler/driver/package/trusted-runtime-manifest.h"
+#include "zomlang/compiler/ownership/surface-admission.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/tests/unittests/compiler/driver/core-library-test-fixture.h"
 
@@ -311,12 +312,12 @@ package::DigestVerifiedSourceSnapshot coherenceFailureModuleSnapshot() {
       ->openFile(zc::Path({"src"_zc, "main.zom"_zc}),
                  zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
       ->writeAll(
-          "import app::child::{Behavior};\nimport app::peer;\nimpl Behavior for i32 { fun act() {} }"_zc);
+          "import app::child::{Behavior};\nimport app::peer;\nimpl Behavior for i32 { fun act() -> i32 { return 0; } }"_zc);
   sourceDirectory->openFile(zc::Path({"src"_zc, "child.zom"_zc}), zc::WriteMode::CREATE)
-      ->writeAll("module child;\nexport interface Behavior { fun act(); }"_zc);
+      ->writeAll("module child;\nexport interface Behavior { fun act() -> i32; }"_zc);
   sourceDirectory->openFile(zc::Path({"src"_zc, "peer.zom"_zc}), zc::WriteMode::CREATE)
       ->writeAll(
-          "module peer;\nimport app::child::{Behavior};\nimpl Behavior for i32 { fun act() {} }"_zc);
+          "module peer;\nimport app::child::{Behavior};\nimpl Behavior for i32 { fun act() -> i32 { return 0; } }"_zc);
   MemoryFreshDirectoryFactory factory;
   package::SourceDirectoryMaterializer materializer;
   auto result = materializer.materialize(*sourceDirectory, factory);
@@ -970,6 +971,14 @@ const module_graph_query::CheckerBoundModuleView& checkerBoundModule(
   auto view = authority.boundModule(module);
   ZC_REQUIRE(view != zc::none);
   return ZC_REQUIRE_NONNULL(view);
+}
+
+bool isUserBoundModule(const checker::CheckerIdentityAuthority& authority,
+                       identity::ModuleId module) {
+  const auto& bound = checkerBoundModule(authority, module);
+  auto crate = authority.crate(bound.crate());
+  ZC_REQUIRE(crate != zc::none);
+  return !isToolchainCore(ZC_REQUIRE_NONNULL(crate).key());
 }
 
 checker::CheckerIdentityAuthority checkerIdentityAuthority(const CompilerSession& session) {
@@ -1694,24 +1703,28 @@ ZC_TEST("CompilerSession publishes the complete canonical Checker rail for an em
   ZC_REQUIRE(session.getBorrowEvidenceRepository() != zc::none);
   ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
   const auto& hirModule = session.getVerifiedHirModules()[0];
+  ZC_EXPECT(isUserBoundModule(identities, hirModule.module()));
   ZC_EXPECT(hirModule.declarations().size() == 0);
   ZC_EXPECT(hirModule.borrowEvidenceLease().key().revision.digest() ==
             hirModule.borrowEvidenceRevision().digest());
   ZC_IF_SOME(repository, session.getBorrowEvidenceRepository()) {
-    const auto evidence = repository.lookup(hirModule.borrowEvidenceLease());
+    const auto capability = repository.capability();
+    const auto evidence = capability.lookup(hirModule.borrowEvidenceLease());
     ZC_REQUIRE(evidence.isResolved());
     ZC_EXPECT(evidence.evidence().revision().digest() ==
               hirModule.borrowEvidenceRevision().digest());
   }
   ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
   const auto& builtMir = session.getVerifiedBuiltMirModules()[0];
+  ZC_EXPECT(isUserBoundModule(identities, builtMir.module()));
   ZC_EXPECT(builtMir.module() == hirModule.module());
   ZC_EXPECT(builtMir.functions().size() == 0);
   ZC_EXPECT(builtMir.canonicalFunctionRecords().size() == 0);
   ZC_EXPECT(builtMir.borrowEvidenceRevision().digest() ==
             hirModule.borrowEvidenceRevision().digest());
   ZC_IF_SOME(repository, session.getBorrowEvidenceRepository()) {
-    const auto evidence = repository.lookup(builtMir.borrowEvidenceLease());
+    const auto capability = repository.capability();
+    const auto evidence = capability.lookup(builtMir.borrowEvidenceLease());
     ZC_REQUIRE(evidence.isResolved());
     ZC_EXPECT(evidence.evidence().revision().digest() ==
               builtMir.borrowEvidenceRevision().digest());
@@ -1819,11 +1832,17 @@ ZC_TEST("CompilerSession retains empty prelude signature lineage after local sha
     const auto boundModuleIndices = dependencyOrderedBoundModuleIndices(identities);
     ZC_IF_SOME(constSemanticTypes, session.getSemanticTypeStore()) {
       auto& semanticTypes = const_cast<type::SemanticTypeStore&>(constSemanticTypes);
-      zc::Vector<checker::signature::MarkerShapeModuleInput> markerInputs;
+      zc::Vector<ownership::OwnershipAdmittedBoundModule> admittedMarkerModules(
+          boundModuleIndices.size());
+      zc::Vector<checker::signature::MarkerShapeModuleInput> markerInputs(
+          boundModuleIndices.size());
       for (const auto candidateIndex : boundModuleIndices) {
         const auto& candidate = identities.modules()[candidateIndex];
-        markerInputs.add(checker::signature::MarkerShapeModuleInput{
-            checkerBoundModule(identities, candidate.module())});
+        auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(
+            checkerBoundModule(identities, candidate.module()).retain());
+        ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
+        admittedMarkerModules.add(zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>());
+        markerInputs.add(checker::signature::MarkerShapeModuleInput{admittedMarkerModules.back()});
       }
       auto shapeResult = checker::signature::MarkerShapeInventoryBuilder::build(
           session.getSemanticContextBrand(), fingerprint, bound.module(), markerInputs.asPtr(),
@@ -1845,16 +1864,22 @@ ZC_TEST("CompilerSession retains empty prelude signature lineage after local sha
       zc::Maybe<size_t> userModuleIndex;
       for (const auto candidateIndex : boundModuleIndices) {
         const auto& candidate = identities.modules()[candidateIndex];
+        auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(
+            checkerBoundModule(identities, candidate.module()).retain());
+        ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
+        auto admitted = zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>();
         auto signatureResult = checker::signature::SignatureFactsBuilder::build(
-            checker::signature::SignatureFactsBuildInput{
-                checkerBoundModule(identities, candidate.module()), semanticTypes, shapes, policies,
-                identities});
+            checker::signature::SignatureFactsBuildInput{admitted, semanticTypes, shapes, policies,
+                                                         identities});
         ZC_REQUIRE(signatureResult.is<checker::signature::VerifiedSignatureFacts>());
         signatures.add(zc::mv(signatureResult).get<checker::signature::VerifiedSignatureFacts>());
 
+        zc::Vector<VerifiedInterfaceSource> interfaceSources(interfaces.size());
+        for (const auto& interface : interfaces) {
+          interfaceSources.add(VerifiedInterfaceSource(UserVerifiedInterfaceSource{interface}));
+        }
         auto importedResult = ImportedSignatureViewProjector::build(
-            checkerBoundModule(identities, candidate.module()), interfaces.asPtr(), semanticTypes,
-            identities);
+            admitted, interfaceSources.asPtr(), semanticTypes, identities);
         ZC_REQUIRE(importedResult != zc::none);
         ZC_IF_SOME(view, importedResult) { importedViews.add(zc::mv(view)); }
 
@@ -1868,8 +1893,8 @@ ZC_TEST("CompilerSession retains empty prelude signature lineage after local sha
                 semanticTypes});
         ZC_REQUIRE(borrowResult.is<checker::borrow::VerifiedBorrowInterfaceSurface>());
         auto interfaceResult = ModuleInterfaceVerifier::build(ModuleInterfaceBuildInput{
-            checkerBoundModule(identities, candidate.module()), moduleSignatures, imported,
-            policies, zc::mv(borrowResult).get<checker::borrow::VerifiedBorrowInterfaceSurface>(),
+            admitted, moduleSignatures, imported, policies,
+            zc::mv(borrowResult).get<checker::borrow::VerifiedBorrowInterfaceSurface>(),
             semanticTypes, identities});
         ZC_REQUIRE(interfaceResult.is<VerifiedModuleInterface>());
         interfaces.add(zc::mv(interfaceResult).get<VerifiedModuleInterface>());
@@ -1887,8 +1912,10 @@ ZC_TEST("CompilerSession retains empty prelude signature lineage after local sha
         const auto& prelude = view.modules()[0];
         ZC_IF_SOME(surface, boundView.preludeSurface()) {
           ZC_EXPECT(prelude.sourceModule() == surface.module);
-          ZC_EXPECT(prelude.bindingSurfaceRevision().digest() ==
-                    surface.surface.revision().digest());
+          const auto& surfaceRevision = prelude.bindingSurfaceRevision().variant();
+          ZC_REQUIRE(surfaceRevision.is<module_interface::UserImportedBindingSurfaceRevision>());
+          ZC_EXPECT(surfaceRevision.get<module_interface::UserImportedBindingSurfaceRevision>()
+                        .value.digest() == surface.surface.revision().digest());
         }
         ZC_EXPECT(prelude.origin() == checker::cross_module::SignatureViewOrigin::Prelude);
         ZC_EXPECT(prelude.authorizedRoots().size() == 0);
@@ -1896,6 +1923,59 @@ ZC_TEST("CompilerSession retains empty prelude signature lineage after local sha
         ZC_EXPECT(prelude.supportDefinitions().size() == 0);
         ZC_EXPECT(prelude.moduleTargets().size() == 0);
       }
+    }
+  }
+}
+
+ZC_TEST("CompilerSession projects core prelude re-exports through the prelude surface") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+      resolvedSourceSnapshots(
+          "app"_zc, "import core::prelude::{Copy, Linear};\n\nconst value: i32 = 1;\n"_zc));
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+  installCore(session);
+
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  ZC_REQUIRE(session.checkSources());
+  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+
+  auto identities = checkerIdentityAuthority(session);
+  const auto& bound = soleUserBoundModule(identities);
+  const auto& boundView = checkerBoundModule(identities, bound.module());
+  const auto views = session.getImportedSignatureViews();
+  ZC_REQUIRE(views.size() == 1);
+  ZC_REQUIRE(views[0].modules().size() == 1);
+  const auto& prelude = views[0].modules()[0];
+  ZC_REQUIRE(boundView.preludeSurface() != zc::none);
+  ZC_IF_SOME(surface, boundView.preludeSurface()) {
+    ZC_EXPECT(prelude.sourceModule() == surface.module);
+    const auto& importedSurfaceRevision = prelude.bindingSurfaceRevision().variant();
+    ZC_REQUIRE(importedSurfaceRevision
+                   .is<module_interface::ToolchainCoreImportedBindingSurfaceRevision>());
+    const auto& preludeRevision =
+        importedSurfaceRevision.get<module_interface::ToolchainCoreImportedBindingSurfaceRevision>()
+            .value;
+    ZC_REQUIRE(prelude.authorizedRoots().size() == 2);
+    ZC_REQUIRE(prelude.lookupDefinitions().size() == 2);
+    for (const auto& root : prelude.authorizedRoots()) {
+      ZC_EXPECT(root.sourceModule != prelude.sourceModule());
+      const auto& rootSurfaceRevision = root.bindingSurfaceRevision.variant();
+      ZC_REQUIRE(
+          rootSurfaceRevision.is<module_interface::ToolchainCoreImportedBindingSurfaceRevision>());
+      ZC_EXPECT(
+          rootSurfaceRevision.get<module_interface::ToolchainCoreImportedBindingSurfaceRevision>()
+              .value.digest() == preludeRevision.digest());
     }
   }
 }
@@ -1928,6 +2008,8 @@ ZC_TEST("MarkerProofEngine resolves explicit builtin and structural evidence") {
     ZC_REQUIRE(coreBoundModuleCount(identities) == 3);
     const auto& boundModule = soleUserBoundModule(identities);
     ZC_REQUIRE(session.checkSources());
+    auto coreLibrary = core_library_test::materializeCoreLibrary(session, identities);
+    ZC_REQUIRE(coreLibrary != zc::none);
     auto checkerBound = identities.boundModule(boundModule.module());
     ZC_REQUIRE(checkerBound != zc::none);
     const auto& boundView = ZC_REQUIRE_NONNULL(checkerBound);
@@ -1935,11 +2017,16 @@ ZC_TEST("MarkerProofEngine resolves explicit builtin and structural evidence") {
     const auto boundModuleIndices = dependencyOrderedBoundModuleIndices(identities);
     ZC_IF_SOME(constSemanticTypes, session.getSemanticTypeStore()) {
       auto& semanticTypes = const_cast<type::SemanticTypeStore&>(constSemanticTypes);
-      zc::Vector<checker::signature::MarkerShapeModuleInput> shapeInputs;
+      zc::Vector<ownership::OwnershipAdmittedBoundModule> admittedShapeModules(
+          boundModuleIndices.size());
+      zc::Vector<checker::signature::MarkerShapeModuleInput> shapeInputs(boundModuleIndices.size());
       for (const auto candidateIndex : boundModuleIndices) {
         const auto& candidate = identities.modules()[candidateIndex];
-        shapeInputs.add(checker::signature::MarkerShapeModuleInput{
-            checkerBoundModule(identities, candidate.module())});
+        auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(
+            checkerBoundModule(identities, candidate.module()).retain());
+        ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
+        admittedShapeModules.add(zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>());
+        shapeInputs.add(checker::signature::MarkerShapeModuleInput{admittedShapeModules.back()});
       }
       auto shapeResult = checker::signature::MarkerShapeInventoryBuilder::build(
           session.getSemanticContextBrand(), fingerprint, boundModule.module(), shapeInputs.asPtr(),
@@ -1973,7 +2060,7 @@ ZC_TEST("MarkerProofEngine resolves explicit builtin and structural evidence") {
             checker::signature::Mutability::Const, key.clone()});
         policyEntries.add(checker::signature::MarkerPolicyConfigurationEntry{
             key.clone(), zc::mv(structuralSubjects), zc::mv(builtinPrimitives),
-            zc::mv(referenceRequirements)});
+            zc::mv(referenceRequirements), zc::Vector<type::semantic::Mutability>()});
       }
       auto configuration =
           checker::signature::MarkerPolicyConfiguration::from(zc::mv(policyEntries));
@@ -1994,17 +2081,23 @@ ZC_TEST("MarkerProofEngine resolves explicit builtin and structural evidence") {
         zc::Maybe<size_t> userModuleIndex;
         for (const auto candidateIndex : boundModuleIndices) {
           const auto& candidate = identities.modules()[candidateIndex];
+          auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(
+              checkerBoundModule(identities, candidate.module()).retain());
+          ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
+          auto admitted = zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>();
           auto signatureResult = checker::signature::SignatureFactsBuilder::build(
-              checker::signature::SignatureFactsBuildInput{
-                  checkerBoundModule(identities, candidate.module()), semanticTypes, shapes, policy,
-                  identities});
+              checker::signature::SignatureFactsBuildInput{admitted, semanticTypes, shapes, policy,
+                                                           identities});
           ZC_REQUIRE(signatureResult.is<checker::signature::VerifiedSignatureFacts>());
           signatureFacts.add(
               zc::mv(signatureResult).get<checker::signature::VerifiedSignatureFacts>());
 
+          zc::Vector<VerifiedInterfaceSource> interfaceSources(interfaces.size());
+          for (const auto& interface : interfaces) {
+            interfaceSources.add(VerifiedInterfaceSource(UserVerifiedInterfaceSource{interface}));
+          }
           auto importedResult = ImportedSignatureViewProjector::build(
-              checkerBoundModule(identities, candidate.module()), interfaces.asPtr(), semanticTypes,
-              identities);
+              admitted, interfaceSources.asPtr(), semanticTypes, identities);
           ZC_REQUIRE(importedResult != zc::none);
           ZC_IF_SOME(imported, importedResult) { importedViews.add(zc::mv(imported)); }
           const auto& signatures = signatureFacts.back();
@@ -2017,7 +2110,7 @@ ZC_TEST("MarkerProofEngine resolves explicit builtin and structural evidence") {
                   semanticTypes});
           ZC_REQUIRE(borrowResult.is<checker::borrow::VerifiedBorrowInterfaceSurface>());
           auto interfaceResult = ModuleInterfaceVerifier::build(ModuleInterfaceBuildInput{
-              checkerBoundModule(identities, candidate.module()), signatures, imported, policy,
+              admitted, signatures, imported, policy,
               zc::mv(borrowResult).get<checker::borrow::VerifiedBorrowInterfaceSurface>(),
               semanticTypes, identities});
           ZC_REQUIRE(interfaceResult.is<VerifiedModuleInterface>());
@@ -2101,9 +2194,17 @@ ZC_TEST("MarkerProofEngine resolves explicit builtin and structural evidence") {
           ZC_REQUIRE(crate != zc::none);
           ZC_IF_SOME(value, crate) {
             checker::body::BodyCheckingInput bodyInput{
-                boundView,      identities,    signatures, imported,
-                coherence.view, semanticTypes, inventory,  value.key().semanticOptions()};
-            auto proofInput = checker::marker::MarkerProofInput::from(bodyInput, policy);
+                boundView.retain(),
+                identities,
+                policy,
+                ZC_REQUIRE_NONNULL(coreLibrary).authorityLease().capability().authority(),
+                signatures,
+                imported,
+                coherence.view,
+                semanticTypes,
+                inventory,
+                value.key().semanticOptions()};
+            auto proofInput = checker::marker::MarkerProofInput::from(bodyInput);
             ZC_REQUIRE(proofInput != zc::none);
             ZC_IF_SOME(value, proofInput) {
               checker::marker::MarkerProofEngine engine(zc::mv(value));
@@ -2204,31 +2305,52 @@ ZC_TEST("CompilerSession publishes scalar initializer definition and pattern fac
   ZC_EXPECT(function.blocks[0].statements[0].kind() == mir::MirStatementKind::StorageLive);
   ZC_EXPECT(function.blocks[0].statements[1].kind() == mir::MirStatementKind::Assign);
   ZC_EXPECT(function.blocks[0].terminator.kind() == mir::MirTerminatorKind::Return);
-  auto codecCandidate = mir::BuiltMirBuilder::build(session.getVerifiedHirModules()[0]);
-  ZC_REQUIRE(codecCandidate.isVerified());
-  auto corruptedCodec = zc::mv(codecCandidate).takeVerified();
-  ZC_REQUIRE(corruptedCodec.canonicalFunctions.size() == 1);
-  ZC_REQUIRE(corruptedCodec.canonicalFunctions[0].size() != 0);
-  corruptedCodec.canonicalFunctions[0][0] ^= 0x01;
-  auto codecRejected = mir::BuiltMirVerifier::verify(zc::mv(corruptedCodec));
-  ZC_REQUIRE(codecRejected.isIrInvariantRejected());
-  ZC_REQUIRE(codecRejected.invariantFailures().facts().size() == 1);
-  ZC_EXPECT(codecRejected.invariantFailures().facts()[0].kind() ==
-            ir::IrFailureKind::CanonicalCodecMismatch);
+  auto overlayInput =
+      session.getOwnershipEventOverlayInput(session.getVerifiedHirModules()[0].module());
+  ZC_REQUIRE(overlayInput != zc::none);
+  ZC_IF_SOME(input, overlayInput) {
+    const mir::BuiltMirInput mirInput{session.getVerifiedHirModules()[0], input.body};
+    auto codecCandidate = mir::BuiltMirBuilder::build(mirInput);
+    ZC_REQUIRE(codecCandidate.isVerified());
+    auto corruptedCodec = zc::mv(codecCandidate).takeVerified();
+    ZC_REQUIRE(corruptedCodec.canonicalFunctions.size() == 1);
+    ZC_REQUIRE(corruptedCodec.canonicalFunctions[0].size() != 0);
+    corruptedCodec.canonicalFunctions[0][0] ^= 0x01;
+    auto codecRejected = mir::BuiltMirVerifier::verify(zc::mv(corruptedCodec), mirInput);
+    ZC_REQUIRE(codecRejected.isIrInvariantRejected());
+    ZC_REQUIRE(codecRejected.invariantFailures().facts().size() == 1);
+    ZC_EXPECT(codecRejected.invariantFailures().facts()[0].kind() ==
+              ir::IrFailureKind::CanonicalCodecMismatch);
 
-  auto structureCandidate = mir::BuiltMirBuilder::build(session.getVerifiedHirModules()[0]);
-  ZC_REQUIRE(structureCandidate.isVerified());
-  auto corruptedStructure = zc::mv(structureCandidate).takeVerified();
-  ZC_REQUIRE(corruptedStructure.functions.size() == 1);
-  ZC_REQUIRE(corruptedStructure.functions[0].locals.size() == 1);
-  corruptedStructure.functions[0].locals[0].id = mir::MirLocalId();
-  auto structureRejected = mir::BuiltMirVerifier::verify(zc::mv(corruptedStructure));
-  ZC_REQUIRE(structureRejected.isIrInvariantRejected());
-  ZC_REQUIRE(structureRejected.invariantFailures().facts().size() == 1);
-  ZC_EXPECT(structureRejected.invariantFailures().facts()[0].kind() ==
-            ir::IrFailureKind::InvalidFact);
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
-  ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
+    auto structureCandidate = mir::BuiltMirBuilder::build(mirInput);
+    ZC_REQUIRE(structureCandidate.isVerified());
+    auto corruptedStructure = zc::mv(structureCandidate).takeVerified();
+    ZC_REQUIRE(corruptedStructure.functions.size() == 1);
+    ZC_REQUIRE(corruptedStructure.functions[0].locals.size() == 1);
+    corruptedStructure.functions[0].locals[0].id = mir::MirLocalId();
+    auto structureRejected = mir::BuiltMirVerifier::verify(zc::mv(corruptedStructure), mirInput);
+    ZC_REQUIRE(structureRejected.isIrInvariantRejected());
+    ZC_REQUIRE(structureRejected.invariantFailures().facts().size() == 1);
+    ZC_EXPECT(structureRejected.invariantFailures().facts()[0].kind() ==
+              ir::IrFailureKind::InvalidFact);
+
+    auto markerCandidate = mir::BuiltMirBuilder::build(mirInput);
+    ZC_REQUIRE(markerCandidate.isVerified());
+    auto corruptedMarker = zc::mv(markerCandidate).takeVerified();
+    auto& returnTerminator = corruptedMarker.functions[0].blocks[0].terminator;
+    ZC_REQUIRE(returnTerminator.returnValue().value != zc::none);
+    ZC_IF_SOME(value, returnTerminator.returnValue().value) {
+      returnTerminator = mir::MirTerminator::returnValue(
+          mir::MirOperand::move(value.place().clone()), returnTerminator.sourceSpan().clone());
+    }
+    auto markerRejected = mir::BuiltMirVerifier::verify(zc::mv(corruptedMarker), mirInput);
+    ZC_REQUIRE(markerRejected.isIrInvariantRejected());
+    ZC_REQUIRE(markerRejected.invariantFailures().facts().size() == 1);
+    ZC_EXPECT(markerRejected.invariantFailures().facts()[0].kind() ==
+              ir::IrFailureKind::InvalidFact);
+    ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+    ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
+  }
   auto repository = session.getCheckedFactsRepository();
   ZC_REQUIRE(repository != zc::none);
   ZC_IF_SOME(value, repository) {
@@ -2306,6 +2428,92 @@ ZC_TEST("CompilerSession publishes a checked scalar-return function through HIR 
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
+ZC_TEST("CompilerSession lowers a sequential local copy through HIR and Built MIR") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+      resolvedSourceSnapshots(
+          "app"_zc,
+          "fun answer() -> i32 { let first = 1; let second = first; return second; }"_zc));
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+  installCore(session);
+
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  ZC_REQUIRE(session.checkSources());
+  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+
+  ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
+  const auto& hirModule = session.getVerifiedHirModules()[0];
+  ZC_REQUIRE(hirModule.functions().size() == 1);
+  ZC_REQUIRE(hirModule.blocks().size() == 1);
+  ZC_REQUIRE(hirModule.locals().size() == 2);
+  ZC_REQUIRE(hirModule.localReferences().size() == 2);
+  ZC_REQUIRE(hirModule.expressions().size() == 1);
+  const auto& block = hirModule.blocks()[0];
+  ZC_REQUIRE(block.statements.size() == 3);
+  ZC_EXPECT(block.statements[0] == hirModule.locals()[0].node);
+  ZC_EXPECT(block.statements[1] == hirModule.locals()[1].node);
+  ZC_EXPECT(hirModule.locals()[0].local.ordinal() == 1);
+  ZC_EXPECT(hirModule.locals()[1].local.ordinal() == 2);
+  ZC_EXPECT(hirModule.localReferences()[0].local == hirModule.locals()[0].local);
+  ZC_EXPECT(hirModule.localReferences()[1].local == hirModule.locals()[1].local);
+
+  ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
+  const auto& builtMir = session.getVerifiedBuiltMirModules()[0];
+  ZC_REQUIRE(builtMir.functions().size() == 1);
+  const auto& function = builtMir.functions()[0];
+  ZC_REQUIRE(function.locals.size() == 2);
+  ZC_EXPECT(function.locals[0].id.ordinal() == 1);
+  ZC_EXPECT(function.locals[1].id.ordinal() == 2);
+  ZC_REQUIRE(function.blocks.size() == 1);
+  const auto& mirBlock = function.blocks[0];
+  ZC_REQUIRE(mirBlock.statements.size() == 4);
+  ZC_EXPECT(mirBlock.statements[0].kind() == mir::MirStatementKind::StorageLive);
+  ZC_EXPECT(mirBlock.statements[1].kind() == mir::MirStatementKind::Assign);
+  ZC_EXPECT(mirBlock.statements[2].kind() == mir::MirStatementKind::StorageLive);
+  ZC_EXPECT(mirBlock.statements[3].kind() == mir::MirStatementKind::Assign);
+  ZC_EXPECT(mirBlock.statements[3].assignmentValue().value.kind() == mir::MirRvalueKind::Use);
+  ZC_EXPECT(mirBlock.statements[3].assignmentValue().value.useValue().operand.kind() ==
+            mir::MirOperandKind::Copy);
+  ZC_EXPECT(mirBlock.terminator.kind() == mir::MirTerminatorKind::Return);
+  const auto ownershipInputs = session.getVerifiedOwnershipInputs();
+  ZC_REQUIRE(ownershipInputs.size() == 1);
+  ZC_EXPECT(ownershipInputs[0].module() == hirModule.module());
+  ZC_EXPECT(ownershipInputs[0].builtRevision().digest() == builtMir.revision().digest());
+  ZC_EXPECT(ownershipInputs[0].resources().functions().size() == 1);
+  ZC_EXPECT(ownershipInputs[0].resources().functions()[0].facts.size() == 0);
+  ZC_EXPECT(ownershipInputs[0].resources().functions()[0].transfers.size() == 0);
+  auto overlayInput = session.getOwnershipEventOverlayInput(hirModule.module());
+  ZC_REQUIRE(overlayInput != zc::none);
+  ZC_IF_SOME(input, overlayInput) {
+    const mir::BuiltMirInput mirInput{hirModule, input.body};
+    auto candidate = mir::BuiltMirBuilder::build(mirInput);
+    ZC_REQUIRE(candidate.isVerified());
+    auto corrupted = zc::mv(candidate).takeVerified();
+    ZC_REQUIRE(corrupted.functions.size() == 1);
+    ZC_REQUIRE(corrupted.functions[0].blocks.size() == 1);
+    auto& statements = corrupted.functions[0].blocks[0].statements;
+    ZC_REQUIRE(statements.size() == 4);
+    statements[3] = statements[1].clone();
+    auto rejected = mir::BuiltMirVerifier::verify(zc::mv(corrupted), mirInput);
+    ZC_REQUIRE(rejected.isIrInvariantRejected());
+    ZC_REQUIRE(rejected.invariantFailures().facts().size() == 1);
+    ZC_EXPECT(rejected.invariantFailures().facts()[0].kind() == ir::IrFailureKind::InvalidFact);
+  }
+  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
+}
+
 ZC_TEST("CompilerSession rejects a scalar return whose type differs from the signature") {
   basic::LangOptions languageOptions;
   basic::CompilerOptions compilerOptions;
@@ -2333,6 +2541,81 @@ ZC_TEST("CompilerSession rejects a scalar return whose type differs from the sig
   ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::TypeCheckerTypeMismatch);
   ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
   ZC_EXPECT(session.getVerifiedBuiltMirModules().size() == 0);
+}
+
+ZC_TEST("CompilerSession rejects unadmitted frontend syntax before Checker publication") {
+  const auto rejects = [](zc::StringPtr sourceText, diagnostics::DiagID expectedDiagnostic,
+                          size_t expectedDiagnosticCount) {
+    basic::LangOptions languageOptions;
+    basic::CompilerOptions compilerOptions;
+    identity::SemanticContextFactory contextFactory;
+    CompilerSession session(contextFactory, languageOptions, compilerOptions);
+    CapturedDiagnostics captured;
+    session.getDiagnosticEngine().addConsumer(zc::heap<CaptureDiagnosticConsumer>(captured));
+    auto registry = targetRegistry();
+    auto input = VerifiedPackageSessionInput::from(
+        request(registry), verifiedSelection(registry), verifiedSelection(registry),
+        resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+        resolvedSourceSnapshots("app"_zc, sourceText));
+    ZC_REQUIRE(input != zc::none);
+    ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+    installCore(session);
+
+    const auto roots = session.getFinalizedCompilationRoots();
+    ZC_REQUIRE(roots.size() == 1);
+    ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+    ZC_REQUIRE(session.parseSources());
+    ZC_REQUIRE(session.bindSources());
+    ZC_EXPECT(!session.checkSources());
+    ZC_EXPECT(session.getCheckerInvariantFailures().size() == 0);
+    ZC_REQUIRE(captured.ids.size() == expectedDiagnosticCount);
+    for (const auto id : captured.ids) { ZC_EXPECT(id == expectedDiagnostic); }
+    ZC_EXPECT(captured.unmanagedPrimaryLocations == 0);
+    ZC_EXPECT(session.getVerifiedSignatureFacts().size() == 0);
+    ZC_EXPECT(session.getImportedSignatureViews().size() == 0);
+    ZC_EXPECT(session.getVerifiedModuleInterfaces().size() == 0);
+    ZC_EXPECT(session.getFrozenCoherenceView() == zc::none);
+    ZC_EXPECT(session.getCheckedFactsRepository() == zc::none);
+    ZC_EXPECT(session.getCheckedEvidenceLeases().size() == 0);
+    ZC_EXPECT(session.getVerifiedDispatchFacts().size() == 0);
+    ZC_EXPECT(session.getBorrowEvidenceRepository() == zc::none);
+    ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
+    ZC_EXPECT(session.getVerifiedBuiltMirModules().size() == 0);
+    ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+    ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
+  };
+
+  rejects("fun entry() { spawn {}; }"_zc, diagnostics::DiagID::ConcurrencySemanticsUnavailable, 1);
+  rejects("fun entry() { suspend; }"_zc, diagnostics::DiagID::ConcurrencySemanticsUnavailable, 1);
+  rejects("fun entry() { suspend; spawn {}; }"_zc,
+          diagnostics::DiagID::ConcurrencySemanticsUnavailable, 2);
+  rejects("fun entry() { return; }"_zc, diagnostics::DiagID::VoidReturnSemanticsUnavailable, 1);
+  rejects("fun entry() { 1; }"_zc, diagnostics::DiagID::ExpressionStatementSemanticsUnavailable, 1);
+  rejects("fun entry() -> i32 { mut value = 1; value = value; return value; }"_zc,
+          diagnostics::DiagID::ExpressionStatementSemanticsUnavailable, 1);
+  rejects("fun entry() {}"_zc, diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
+  rejects("fun entry() -> i32 { let value = 1; }"_zc,
+          diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
+  rejects("fun entry() -> i32 { let first = 1; let second = 2; return first; }"_zc,
+          diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
+  rejects("fun entry() -> i32 { return 1 + 2; }"_zc,
+          diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
+  rejects("fun entry() -> i32 { return unsafe { 1 }; }"_zc,
+          diagnostics::DiagID::ExpressionStatementSemanticsUnavailable, 1);
+  rejects("fun entry() -> i64 { return 1 as i64; }"_zc,
+          diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
+  rejects(
+      "class Cell { value: i32 }\n"
+      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc,
+      diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
+  rejects("fun entry() -> i32 { if (true) { return 1; } else { return 2; } }"_zc,
+          diagnostics::DiagID::ControlFlowSemanticsUnavailable, 1);
+  rejects("fun entry() -> i32 { while (false) { return 1; } return 2; }"_zc,
+          diagnostics::DiagID::ControlFlowSemanticsUnavailable, 1);
+  rejects("fun entry() { for (;;) { break; } }"_zc,
+          diagnostics::DiagID::ControlFlowSemanticsUnavailable, 2);
+  rejects("fun entry() { label: while (true) { continue label; } }"_zc,
+          diagnostics::DiagID::ControlFlowSemanticsUnavailable, 3);
 }
 
 ZC_TEST("CompilerSession publishes canonical constant facts for scalar const initializers") {

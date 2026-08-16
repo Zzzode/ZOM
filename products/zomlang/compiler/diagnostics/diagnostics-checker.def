@@ -147,6 +147,14 @@ DIAG(4093, UninitializedPlaceUse, kError,
 DIAG(4094, PlaceBecameUnavailableHere, kNote, "Place became unavailable here", 0)
 DIAG(4095, ConcurrencySemanticsUnavailable, kError,
      "Concurrency syntax has no admitted semantic contract", 0)
+DIAG(4096, ControlFlowSemanticsUnavailable, kError,
+     "Control-flow syntax has no admitted semantic contract", 0)
+DIAG(4097, VoidReturnSemanticsUnavailable, kError,
+     "Void return syntax has no admitted semantic contract", 0)
+DIAG(4098, ExpressionStatementSemanticsUnavailable, kError,
+     "Expression statement syntax has no admitted semantic contract", 0)
+DIAG(4099, FunctionBodySemanticsUnavailable, kError,
+     "Function body syntax has no admitted semantic contract", 0)
 
 DIAG(9927, CheckerInputReceiptMismatch, kFatal,
      "Internal checker input receipt is inconsistent ({0} occurrence(s))", 1)

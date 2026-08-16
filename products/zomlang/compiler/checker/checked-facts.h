@@ -449,6 +449,12 @@ struct CompoundAssignmentFact final {
 struct DefinitionPlaceRoot final {
   identity::DefId definition;
 };
+struct OwnerLocalPlaceRoot final {
+  binder::OwnerLocalBindingId binding;
+};
+struct CallableParameterPlaceRoot final {
+  identity::CallableParameterId parameter;
+};
 struct DereferencePlaceRoot final {
   ast::NodeId node;
 };
@@ -459,6 +465,8 @@ struct TemporaryPlaceRoot final {
 class PlaceRoot final {
 public:
   explicit PlaceRoot(DefinitionPlaceRoot value) noexcept : value(value) {}
+  explicit PlaceRoot(OwnerLocalPlaceRoot value) noexcept : value(value) {}
+  explicit PlaceRoot(CallableParameterPlaceRoot value) noexcept : value(value) {}
   explicit PlaceRoot(DereferencePlaceRoot value) noexcept : value(value) {}
   explicit PlaceRoot(TemporaryPlaceRoot value) noexcept : value(value) {}
   PlaceRoot(PlaceRoot&&) noexcept = default;
@@ -467,7 +475,9 @@ public:
   ZC_NODISCARD const auto& variant() const noexcept { return value; }
 
 private:
-  zc::OneOf<DefinitionPlaceRoot, DereferencePlaceRoot, TemporaryPlaceRoot> value;
+  zc::OneOf<DefinitionPlaceRoot, OwnerLocalPlaceRoot, CallableParameterPlaceRoot,
+            DereferencePlaceRoot, TemporaryPlaceRoot>
+      value;
 };
 
 struct FieldProjection final {

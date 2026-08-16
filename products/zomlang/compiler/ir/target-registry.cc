@@ -92,6 +92,36 @@ void insertionSort(zc::Vector<Value>& values, Less&& less) {
   }
 }
 
+zc::Maybe<uint32_t> defaultPointerWidth(zc::ArrayPtr<const char> component) {
+  if (component.size() < 5 || component[0] != 'p' || component[1] != ':') { return zc::none; }
+  uint32_t width = 0;
+  size_t index = 2;
+  while (index < component.size() && component[index] != ':') {
+    const char byte = component[index];
+    if (byte < '0' || byte > '9') return zc::none;
+    const uint32_t digit = static_cast<uint32_t>(byte - '0');
+    constexpr uint32_t maximum = ~uint32_t{0};
+    if (width > (maximum - digit) / 10) return zc::none;
+    width = width * 10 + digit;
+    ++index;
+  }
+  if (index == 2 || index == component.size()) return zc::none;
+  if (width != 32 && width != 64) return zc::none;
+  ++index;
+  if (index == component.size()) return zc::none;
+  while (index < component.size()) {
+    const size_t fieldBegin = index;
+    while (index < component.size() && component[index] != ':') {
+      const char byte = component[index];
+      if (byte < '0' || byte > '9') return zc::none;
+      ++index;
+    }
+    if (fieldBegin == index) return zc::none;
+    if (index < component.size()) ++index;
+  }
+  return width;
+}
+
 zc::Maybe<identity::CanonicalTargetSpecificationKey> project(
     const CanonicalTargetSpec& spec,
     zc::ArrayPtr<const identity::TargetFeatureName> semanticFeatures) {
@@ -106,22 +136,46 @@ zc::Maybe<identity::CanonicalTargetSpecificationKey> project(
     begin = end + 1;
   }
   if (tripleComponents.size() < 3 || tripleComponents.size() > 4) { return zc::none; }
-  uint32_t pointerWidth = 0;
+  const auto dataLayout = spec.llvmDataLayout();
+  if (dataLayout.size() < 2 || (dataLayout[0] != 'e' && dataLayout[0] != 'E') ||
+      dataLayout[1] != '-') {
+    return zc::none;
+  }
   identity::Endianness endianness;
-  if (spec.llvmDataLayout() == "e-p:32:32"_zc) {
-    pointerWidth = 32;
+  if (dataLayout[0] == 'e') {
     endianness = identity::Endianness::Little;
-  } else if (spec.llvmDataLayout() == "e-p:64:64"_zc) {
-    pointerWidth = 64;
-    endianness = identity::Endianness::Little;
-  } else if (spec.llvmDataLayout() == "E-p:32:32"_zc) {
-    pointerWidth = 32;
-    endianness = identity::Endianness::Big;
-  } else if (spec.llvmDataLayout() == "E-p:64:64"_zc) {
-    pointerWidth = 64;
+  } else if (dataLayout[0] == 'E') {
     endianness = identity::Endianness::Big;
   } else {
     return zc::none;
+  }
+
+  uint32_t pointerWidth = 0;
+  size_t layoutBegin = 0;
+  while (layoutBegin <= dataLayout.size()) {
+    size_t layoutEnd = layoutBegin;
+    while (layoutEnd < dataLayout.size() && dataLayout[layoutEnd] != '-') { ++layoutEnd; }
+    const auto component = dataLayout.slice(layoutBegin, layoutEnd);
+    if (component.size() == 0) return zc::none;
+    const bool declaresDefaultPointer =
+        component.size() >= 2 && component[0] == 'p' && component[1] == ':';
+    auto componentWidth = defaultPointerWidth(component);
+    if (declaresDefaultPointer && componentWidth == zc::none) return zc::none;
+    if (componentWidth != zc::none) {
+      uint32_t width = 0;
+      ZC_IF_SOME(value, componentWidth) { width = value; }
+      if (pointerWidth != 0 && pointerWidth != width) return zc::none;
+      pointerWidth = width;
+    }
+    if (layoutEnd == dataLayout.size()) break;
+    layoutBegin = layoutEnd + 1;
+  }
+  if (pointerWidth == 0) {
+    if (tripleComponents[0] == "aarch64"_zc || tripleComponents[0] == "x86_64"_zc) {
+      pointerWidth = 64;
+    } else {
+      return zc::none;
+    }
   }
   auto architecture = identity::TargetComponentName::fromCanonical(tripleComponents[0]);
   auto vendor = identity::TargetComponentName::fromCanonical(tripleComponents[1]);

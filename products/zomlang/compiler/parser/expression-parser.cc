@@ -891,21 +891,6 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePostfixExpressionAt(AstFa
     if (kind == ast::SyntaxKind::LessThan) {
       const size_t closeAngle = findMatchingAngleClose(cursor, limit);
       if (closeAngle < limit && closeAngle + 1 < limit &&
-          kindAt(closeAngle + 1) == ast::SyntaxKind::LeftBrace &&
-          isStructLiteralTypeReference(start, closeAngle + 1)) {
-        const size_t closeBrace = findMatchingRightBrace(closeAngle + 1, limit);
-        if (closeBrace >= limit) {
-          diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
-              diagnosticLoc(closeAngle + 1), "}"_zc);
-          return ExpressionParseResult();
-        }
-
-        current = {parseStructLiteralExpression(builder, start, closeAngle + 1, closeBrace + 1),
-                   closeBrace + 1};
-        cursor = current.next;
-        continue;
-      }
-      if (closeAngle < limit && closeAngle + 1 < limit &&
           kindAt(closeAngle + 1) == ast::SyntaxKind::LeftParen) {
         const size_t closeParen = findMatchingRightParen(closeAngle + 1, limit);
         if (closeParen >= limit) {
@@ -986,20 +971,6 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePostfixExpressionAt(AstFa
       continue;
     }
 
-    if (kind == ast::SyntaxKind::LeftBrace && isStructLiteralTypeReference(start, cursor)) {
-      const size_t closeBrace = findMatchingRightBrace(cursor, limit);
-      if (closeBrace >= limit) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor),
-                                                                      "}"_zc);
-        return ExpressionParseResult();
-      }
-      current = {parseStructLiteralExpression(builder, start, cursor, closeBrace + 1),
-                 closeBrace + 1};
-      if (!current.node) { return current; }
-      cursor = current.next;
-      continue;
-    }
-
     break;
   }
 
@@ -1013,6 +984,34 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(AstFa
                                                                            size_t start,
                                                                            size_t limit) const {
   if (start >= limit) { return ExpressionParseResult(); }
+
+  if (isSoftKeyword(start, "unsafe"_zc) && start + 1 < limit &&
+      kindAt(start + 1) == ast::SyntaxKind::LeftBrace) {
+    const size_t closeBrace = findMatchingRightBrace(start + 1, limit);
+    if (closeBrace >= limit) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1),
+                                                                    "}"_zc);
+      return ExpressionParseResult();
+    }
+    return {parseUnsafeBlockExpression(builder, start, closeBrace + 1), closeBrace + 1};
+  }
+
+  size_t structBrace = findTypePathEnd(start, limit);
+  if (structBrace < limit && kindAt(structBrace) == ast::SyntaxKind::LessThan) {
+    const size_t closeAngle = findMatchingAngleClose(structBrace, limit);
+    if (closeAngle < limit) { structBrace = closeAngle + 1; }
+  }
+  if (structBrace < limit && kindAt(structBrace) == ast::SyntaxKind::LeftBrace &&
+      isStructLiteralTypeReference(start, structBrace)) {
+    const size_t closeBrace = findMatchingRightBrace(structBrace, limit);
+    if (closeBrace >= limit) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(structBrace),
+                                                                    "}"_zc);
+      return ExpressionParseResult();
+    }
+    return {parseStructLiteralExpression(builder, start, structBrace, closeBrace + 1),
+            closeBrace + 1};
+  }
 
   if (kindAt(start) == ast::SyntaxKind::LeftParen) {
     const ast::NodeId lambda = parseLambdaExpression(builder, start, limit);
@@ -1077,17 +1076,6 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(AstFa
 
   if (kindAt(start) == ast::SyntaxKind::SpawnKeyword) {
     return {parseSpawnExpression(builder, start, limit), limit};
-  }
-
-  if (isSoftKeyword(start, "unsafe"_zc) && start + 1 < limit &&
-      kindAt(start + 1) == ast::SyntaxKind::LeftBrace) {
-    const size_t closeBrace = findMatchingRightBrace(start + 1, limit);
-    if (closeBrace >= limit) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1),
-                                                                    "}"_zc);
-      return ExpressionParseResult();
-    }
-    return {parseUnsafeBlockExpression(builder, start, closeBrace + 1), closeBrace + 1};
   }
 
   if (kindAt(start) == ast::SyntaxKind::FunKeyword) {

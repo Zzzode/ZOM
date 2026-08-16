@@ -393,7 +393,6 @@ public:
                                                           identity::SourceFileKey&& source,
                                                           ParsedSourceLease&& parsedSource,
                                                           zc::Vector<OwnerBodyLease>&& ownerBodies);
-  ZC_NODISCARD VerifiedBoundModule clone() const;
   ZC_NODISCARD const incremental_binding_query::CompilationRootSetQueryKey& contextRoots()
       const noexcept;
   ZC_NODISCARD const identity::ModuleKey& module() const noexcept;
@@ -795,6 +794,16 @@ struct ActiveMaterialization<identity::ModuleKey> final {
   using Resource = driver::module_graph_query::ModuleGraphIdentityMaterializationResources;
   ZC_NODISCARD static TypedQueryResult<Handle> materialize(const Resource& resources,
                                                            const identity::ModuleKey& key,
+                                                           const Record& record);
+};
+
+template <>
+struct ActiveMaterialization<identity::DefinitionKey> final {
+  using Handle = identity::DefId;
+  using Record = identity::DefinitionIdentityRecord;
+  using Resource = driver::module_graph_query::ModuleGraphIdentityMaterializationResources;
+  ZC_NODISCARD static TypedQueryResult<Handle> materialize(const Resource& resources,
+                                                           const identity::DefinitionKey& key,
                                                            const Record& record);
 };
 

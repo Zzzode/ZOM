@@ -432,7 +432,6 @@ Statement ::= BlockStatement
            | ContinueStatement
            | BreakStatement
            | ReturnStatement
-           | DebuggerStatement
            | LabeledStatement
 
 VariableStatement ::= ('mut' | 'let') VariableDeclarationList ';'
@@ -485,7 +484,6 @@ ContinueStatement ::= 'continue' Identifier? ';'
 BreakStatement ::= 'break' Identifier? ';'
 ReturnStatement ::= 'return' Expression? ';'
 
-DebuggerStatement ::= 'debugger' ';'
 LabeledStatement ::= Identifier ':' LabelTarget
 LabelTarget ::= BlockStatement
               | WhileStatement

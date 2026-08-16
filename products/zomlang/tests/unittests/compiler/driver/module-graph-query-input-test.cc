@@ -12,7 +12,7 @@
 #include "zomlang/compiler/binder/module-dependency-requests.h"
 #include "zomlang/compiler/binder/parsed-module-graph-input.h"
 #include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
-#include "zomlang/compiler/driver/core-library-query-provider.h"
+#include "zomlang/compiler/driver/core/query.h"
 #include "zomlang/compiler/driver/module-dependency-provenance-query.h"
 #include "zomlang/compiler/driver/module-graph-query.h"
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
@@ -1040,6 +1040,17 @@ ZC_TEST("Stable graph and independent SCC queries cover the complete core root")
       incremental_binding_query::CompilationRootSetQueryKey::singletonToolchainCore(coreCrate());
   ZC_REQUIRE(roots != zc::none);
   auto snapshot = queries.snapshot();
+  auto coreRoot = module(coreCrate(), "core"_zc);
+  auto coreRequests = snapshot.get<ModuleDependencyRequestsQuery>(coreRoot);
+  ZC_REQUIRE(!coreRequests.isRuntimeFailure());
+  ZC_REQUIRE(coreRequests.kind() == query::QueryValueKind::Value);
+  ZC_EXPECT(coreRequests.value().requests().size() == 0);
+
+  auto coreDependencies = snapshot.get<ModuleDependenciesQuery>(coreRoot);
+  ZC_REQUIRE(!coreDependencies.isRuntimeFailure());
+  ZC_REQUIRE(coreDependencies.kind() == query::QueryValueKind::Value);
+  ZC_EXPECT(coreDependencies.value().dependencies().size() == 0);
+
   auto graph = snapshot.get<ModuleGraphQuery>(ZC_REQUIRE_NONNULL(roots));
   ZC_REQUIRE(!graph.isRuntimeFailure());
   ZC_REQUIRE(graph.kind() == query::QueryValueKind::Value);

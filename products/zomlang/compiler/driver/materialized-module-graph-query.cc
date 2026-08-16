@@ -10,7 +10,7 @@
 #include "zomlang/compiler/binder/module-skeleton-query.h"
 #include "zomlang/compiler/binder/stable-binding-codec.h"
 #include "zomlang/compiler/binder/stable-binding-diagnostic-fact.h"
-#include "zomlang/compiler/driver/core-library-query-provider.h"
+#include "zomlang/compiler/driver/core/query.h"
 #include "zomlang/compiler/driver/incremental-module-resolution-query.h"
 #include "zomlang/compiler/driver/incremental-package-graph-query-input.h"
 #include "zomlang/compiler/driver/module-dependency-provenance-query.h"
@@ -3051,6 +3051,29 @@ bool sameMaterializedImportTarget(const binder::BindingTarget& left,
              rightValue.get<binder::ModuleBindingTarget>().module;
 }
 
+zc::Maybe<identity::DefId> materializeDefinitionTarget(
+    const binder::StableDefinitionQueryKey& definition,
+    zc::ArrayPtr<const MaterializedModuleSkeleton::DependencySkeletonLease> dependencies) {
+  zc::Maybe<identity::DefId> result;
+  const auto addCandidate = [&](identity::DefId candidate) {
+    if (result != zc::none && ZC_ASSERT_NONNULL(result) != candidate) { return false; }
+    if (result == zc::none) { result = candidate; }
+    return true;
+  };
+  for (const auto& dependency : dependencies) {
+    const auto& skeleton = dependency.capability();
+    if (skeleton.module().encode().asPtr() == definition.module().encode().asPtr()) {
+      for (const auto& identity : skeleton.identities().definitions()) {
+        if (identity.key() != definition.definition()) { continue; }
+        if (!addCandidate(identity.handle())) { return zc::none; }
+      }
+    }
+    auto nested = materializeDefinitionTarget(definition, skeleton.dependencySkeletonLeases());
+    if (nested != zc::none && !addCandidate(ZC_ASSERT_NONNULL(nested))) { return zc::none; }
+  }
+  return result;
+}
+
 zc::Maybe<binder::BindingTarget> materializeImportTarget(
     const binder::StableBindingTargetKey& stable,
     zc::ArrayPtr<const MaterializedModuleSkeleton::DependencySkeletonLease> dependencies) {
@@ -3066,22 +3089,15 @@ zc::Maybe<binder::BindingTarget> materializeImportTarget(
   }
   if (!value.is<binder::StableDefinitionBindingTarget>()) { return zc::none; }
   const auto& definition = value.get<binder::StableDefinitionBindingTarget>().definition;
-  for (const auto& dependency : dependencies) {
-    if (dependency.capability().module().encode().asPtr() != definition.module().encode().asPtr()) {
-      continue;
-    }
-    for (const auto& identity : dependency.capability().identities().definitions()) {
-      if (identity.key() == definition.definition()) {
-        return binder::BindingTarget::definition(identity.handle());
-      }
-    }
-  }
-  return zc::none;
+  auto materialized = materializeDefinitionTarget(definition, dependencies);
+  if (materialized == zc::none) { return zc::none; }
+  return binder::BindingTarget::definition(ZC_ASSERT_NONNULL(materialized));
 }
 
 zc::Maybe<zc::Vector<binder::ImportBindingFact>> materializeImports(
     const binder::MaterializedModuleSkeletonIdentities& identities,
     zc::ArrayPtr<const MaterializedModuleSkeleton::DependencySkeletonLease> dependencies,
+    const MaterializedModuleGraph& graph,
     const module_graph_query::ModuleDependencyProvenanceMap& provenance) {
   const auto stableImports = identities.stableWitness().imports().values();
   zc::Vector<binder::ImportBindingFact> result(stableImports.size());
@@ -3099,27 +3115,6 @@ zc::Maybe<zc::Vector<binder::ImportBindingFact>> materializeImports(
     }
     auto canonical = materializeImportTarget(stable.canonicalTarget(), dependencies);
     if (canonical == zc::none) { return zc::none; }
-    zc::Maybe<const MaterializedModuleSkeleton&> source;
-    const auto& targetValue = ZC_ASSERT_NONNULL(canonical).value();
-    for (const auto& dependency : dependencies) {
-      if (targetValue.is<binder::DefinitionBindingTarget>()) {
-        const auto target = targetValue.get<binder::DefinitionBindingTarget>().definition;
-        bool found = false;
-        for (const auto& identity : dependency.capability().identities().definitions()) {
-          if (identity.handle() == target) { found = true; }
-        }
-        if (!found) { continue; }
-      } else if (targetValue.is<binder::ModuleBindingTarget>()) {
-        if (dependency.capability().identities().module() !=
-            targetValue.get<binder::ModuleBindingTarget>().module) {
-          continue;
-        }
-      } else {
-        return zc::none;
-      }
-      if (source != zc::none) { return zc::none; }
-      source = dependency.capability();
-    }
     zc::Maybe<const module_graph_query::ModuleDependencyProvenanceEntry&> request;
     for (const auto& candidate : provenance.entries()) {
       if (candidate.request().encode().asPtr() != binding.resolution().encode().asPtr()) {
@@ -3133,7 +3128,27 @@ zc::Maybe<zc::Vector<binder::ImportBindingFact>> materializeImports(
       }
       request = candidate;
     }
-    if (source == zc::none || request == zc::none) { return zc::none; }
+    zc::Maybe<identity::ModuleKey> requestedModule;
+    for (const auto& edge : graph.requestEdges()) {
+      if (edge.requester() != identities.module() ||
+          edge.request().encode().asPtr() != binding.resolution().encode().asPtr()) {
+        continue;
+      }
+      auto dependency = materializedModuleForHandle(graph, edge.dependency());
+      if (dependency == zc::none || requestedModule != zc::none) { return zc::none; }
+      requestedModule = ZC_ASSERT_NONNULL(dependency).key().clone();
+    }
+    if (request == zc::none || requestedModule == zc::none) { return zc::none; }
+    zc::Maybe<const MaterializedModuleSkeleton&> source;
+    for (const auto& dependency : dependencies) {
+      if (dependency.capability().module().encode().asPtr() !=
+          ZC_ASSERT_NONNULL(requestedModule).encode().asPtr()) {
+        continue;
+      }
+      if (source != zc::none) { return zc::none; }
+      source = dependency.capability();
+    }
+    if (source == zc::none) { return zc::none; }
     const bool importsModule =
         ZC_ASSERT_NONNULL(canonical).value().is<binder::ModuleBindingTarget>();
     if (!importsModule) {
@@ -4076,14 +4091,37 @@ zc::Vector<binder::LocalExportFact> cloneLocalExportFacts(
   return result;
 }
 
-zc::Vector<binder::MaterializedDependencyExportSurface> materializedDependencySurfaces(
+bool addDependencyDefinitionIdentity(
+    zc::Vector<binder::MaterializedDefinitionIdentityEntry>& identities,
+    const binder::MaterializedDefinitionIdentityEntry& candidate) {
+  for (const auto& existing : identities) {
+    if (existing.handle() != candidate.handle()) { continue; }
+    return existing.key() == candidate.key() &&
+           existing.record().encode().asPtr() == candidate.record().encode().asPtr();
+  }
+  identities.add(candidate.clone());
+  return true;
+}
+
+bool collectDependencyDefinitionIdentities(
+    zc::Vector<binder::MaterializedDefinitionIdentityEntry>& identities,
+    const MaterializedModuleSkeleton& dependency) {
+  for (const auto& identity : dependency.identities().definitions()) {
+    if (!addDependencyDefinitionIdentity(identities, identity)) { return false; }
+  }
+  for (const auto& nested : dependency.dependencySkeletonLeases()) {
+    if (!collectDependencyDefinitionIdentities(identities, nested.capability())) { return false; }
+  }
+  return true;
+}
+
+zc::Maybe<zc::Vector<binder::MaterializedDependencyExportSurface>> materializedDependencySurfaces(
     zc::ArrayPtr<const MaterializedModuleSkeleton::DependencySkeletonLease> dependencies) {
   zc::Vector<binder::MaterializedDependencyExportSurface> result(dependencies.size());
   for (const auto& dependency : dependencies) {
-    zc::Vector<binder::MaterializedDefinitionIdentityEntry> definitions(
-        dependency.capability().identities().definitions().size());
-    for (const auto& identity : dependency.capability().identities().definitions()) {
-      definitions.add(identity.clone());
+    zc::Vector<binder::MaterializedDefinitionIdentityEntry> definitions;
+    if (!collectDependencyDefinitionIdentities(definitions, dependency.capability())) {
+      return zc::none;
     }
     result.add(binder::MaterializedDependencyExportSurface{
         dependency.capability().module().clone(), dependency.capability().identities().module(),
@@ -4495,15 +4533,16 @@ zc::Maybe<MaterializedModuleSkeleton> MaterializedModuleSkeleton::from(
                      ? zc::Maybe<zc::Vector<binder::ImportBindingFact>>(
                            zc::Vector<binder::ImportBindingFact>())
                      : materializeImports(identities, dependencySkeletons.asPtr(),
-                                          dependencyProvenance.capability());
+                                          graph.capability(), dependencyProvenance.capability());
   auto dependencySurfaces = materializedDependencySurfaces(dependencySkeletons.asPtr());
   auto localExports =
       definitions == zc::none ? zc::Maybe<zc::Vector<binder::LocalExportFact>>()
       : imports == zc::none
           ? zc::Maybe<zc::Vector<binder::LocalExportFact>>()
           : materializeLocalExports(identities, ZC_ASSERT_NONNULL(definitions).asPtr(),
-                                    ZC_ASSERT_NONNULL(imports).asPtr(), dependencySurfaces.asPtr(),
-                                    provenance, source, parsedSource);
+                                    ZC_ASSERT_NONNULL(imports).asPtr(),
+                                    ZC_ASSERT_NONNULL(dependencySurfaces).asPtr(), provenance,
+                                    source, parsedSource);
   auto scopes =
       definitions == zc::none || genericParameters == zc::none || callableParameters == zc::none ||
               implementations == zc::none || moduleAliases == zc::none || imports == zc::none ||
@@ -4526,12 +4565,12 @@ zc::Maybe<MaterializedModuleSkeleton> MaterializedModuleSkeleton::from(
                 ZC_ASSERT_NONNULL(compilationUnit).key(),
                 ZC_ASSERT_NONNULL(compilationUnit).handle(), source, identities.stableWitness(),
                 identities.definitions(), ZC_ASSERT_NONNULL(definitions).asPtr(),
-                dependencySurfaces.asPtr(), ZC_ASSERT_NONNULL(imports).asPtr(),
+                ZC_ASSERT_NONNULL(dependencySurfaces).asPtr(), ZC_ASSERT_NONNULL(imports).asPtr(),
                 ZC_ASSERT_NONNULL(localExports).asPtr());
   if (definitions == zc::none || genericParameters == zc::none || callableParameters == zc::none ||
       nodeScopes == zc::none || implementations == zc::none || moduleAliases == zc::none ||
-      imports == zc::none || localExports == zc::none || scopes == zc::none ||
-      failedLookups == zc::none || bindingSurface == zc::none) {
+      imports == zc::none || dependencySurfaces == zc::none || localExports == zc::none ||
+      scopes == zc::none || failedLookups == zc::none || bindingSurface == zc::none) {
     return zc::none;
   }
   size_t provenanceIndex = 0;
@@ -4557,7 +4596,7 @@ zc::Maybe<MaterializedModuleSkeleton> MaterializedModuleSkeleton::from(
   return MaterializedModuleSkeleton(zc::heap<Impl>(
       zc::mv(key), zc::mv(graph), zc::mv(dependencySkeletons), zc::mv(source), zc::mv(provenance),
       zc::mv(dependencyProvenance), zc::mv(identities), zc::mv(identityAdmission),
-      zc::mv(dependencySurfaces), zc::mv(ZC_ASSERT_NONNULL(scopeIdentities)),
+      zc::mv(ZC_ASSERT_NONNULL(dependencySurfaces)), zc::mv(ZC_ASSERT_NONNULL(scopeIdentities)),
       zc::mv(definitionSites), zc::mv(ZC_ASSERT_NONNULL(definitions)),
       zc::mv(ZC_ASSERT_NONNULL(genericParameters)), zc::mv(ZC_ASSERT_NONNULL(callableParameters)),
       zc::mv(ZC_ASSERT_NONNULL(moduleAliases)), zc::mv(ZC_ASSERT_NONNULL(imports)),
@@ -4584,7 +4623,7 @@ MaterializedModuleSkeleton MaterializedModuleSkeleton::clone() const {
   return MaterializedModuleSkeleton(zc::heap<Impl>(
       impl->key.clone(), impl->graph.retain(), zc::mv(dependencySkeletons), impl->source.clone(),
       impl->provenance.clone(), impl->dependencyProvenance.retain(), impl->identities.clone(),
-      impl->identityAdmission.retain(), zc::mv(dependencySurfaces),
+      impl->identityAdmission.retain(), zc::mv(ZC_ASSERT_NONNULL(dependencySurfaces)),
       zc::mv(ZC_ASSERT_NONNULL(scopeIdentities)), impl->definitionSites.retain(),
       cloneDefinitionFacts(impl->definitions.asPtr()),
       cloneGenericParameterFacts(impl->genericParameters.asPtr()),
@@ -7835,15 +7874,6 @@ zc::Maybe<VerifiedBoundModule> VerifiedBoundModule::from(GraphLease&& graph,
                      zc::mv(ZC_ASSERT_NONNULL(definitions)), zc::mv(ZC_ASSERT_NONNULL(bindings))));
 }
 
-VerifiedBoundModule VerifiedBoundModule::clone() const {
-  zc::Vector<OwnerBodyLease> ownerBodies;
-  for (const auto& body : impl->ownerBodies) { ownerBodies.add(body.retain()); }
-  return VerifiedBoundModule(zc::heap<Impl>(impl->graph.retain(), impl->skeleton.retain(),
-                                            impl->source.clone(), impl->parsedSource.retain(),
-                                            impl->compilationUnit, impl->crate, zc::mv(ownerBodies),
-                                            impl->definitions.clone(), impl->bindings.clone()));
-}
-
 const incremental_binding_query::CompilationRootSetQueryKey& VerifiedBoundModule::contextRoots()
     const noexcept {
   return skeletonLease().capability().contextRoots();
@@ -8315,6 +8345,18 @@ TypedQueryResult<identity::ModuleId> ActiveMaterialization<identity::ModuleKey>:
     return TypedQueryResult<Handle>::runtimeFailure(QueryRuntimeFailure::InvariantViolation);
   }
   return mapIdentityInternResult(resources.internModule(context, key));
+}
+
+TypedQueryResult<identity::DefId> ActiveMaterialization<identity::DefinitionKey>::materialize(
+    const Resource& resources, const identity::DefinitionKey& key, const Record& record) {
+  if (identity::DefinitionKey::compute(record) != key) {
+    return TypedQueryResult<Handle>::runtimeFailure(QueryRuntimeFailure::InvariantViolation);
+  }
+  const auto context = resources.semanticContext();
+  if (!context.isValid()) {
+    return TypedQueryResult<Handle>::runtimeFailure(QueryRuntimeFailure::InvariantViolation);
+  }
+  return mapIdentityInternResult(resources.internDefinition(context, key, record));
 }
 
 using MaterializeModuleSkeletonDescriptor =

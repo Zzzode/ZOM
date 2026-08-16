@@ -1,0 +1,13 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/uninitialized_aggregate_sibling_field_return_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Error [ZOM4093]: Use of uninitialized or deinitialized place
+// CHECK:   --> {{.*}}05-statements/uninitialized_aggregate_sibling_field_return_neg_01.zom:9:3
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 9 |   return pair.right;
+// CHECK-LITERAL:   |   ^
+// CHECK-LITERAL: Note [ZOM4094]: Place became unavailable here
+// CHECK:   --> {{.*}}05-statements/uninitialized_aggregate_sibling_field_return_neg_01.zom:7:7
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 7 |   mut pair: Pair;
+// CHECK-LITERAL:   |       ^

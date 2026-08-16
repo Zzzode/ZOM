@@ -1,7 +1,7 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/struct_literal_pos_02.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #35 @1:1..5:1 file_name="struct_literal_pos_02.zom"
+// CHECK: SourceFile #34 @1:1..5:1 file_name="struct_literal_pos_02.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #9 @1:1..1:39
@@ -52,30 +52,30 @@
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     IntLiteral #17 @3:9..3:10 base=10 value="2"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #34 @4:1..4:28
+// CHECK-NEXT:     StatementListItem #33 @4:1..4:28
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #33 @4:1..4:28 kind=Let
+// CHECK-NEXT:         LetStmt #32 @4:1..4:28 kind=Let
 // CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #32 @4:5..4:27 n_decls=1
+// CHECK-NEXT:             VariableDeclaratorList #31 @4:5..4:27 n_decls=1
 // CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #31 @4:5..4:27
+// CHECK-NEXT:                 VariableDeclarator #30 @4:5..4:27
 // CHECK-NEXT:                   pattern:
 // CHECK-NEXT:                     IdentifierPattern #22 @4:5..4:6 name="f"
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StructLiteralExpr #30 @4:9..4:27
+// CHECK-NEXT:                     StructLiteralExpr #29 @4:9..4:27
 // CHECK-NEXT:                       ty:
-// CHECK-NEXT:                         NamedTypeExpr #25 @4:9..4:12
+// CHECK-NEXT:                         NamedTypeExpr #24 @4:9..4:12
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #24 @4:9..4:12 segments=["Foo"] root=Relative
+// CHECK-NEXT:                             ModulePath #23 @4:9..4:12 segments=["Foo"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       properties:
-// CHECK-NEXT:                         ObjectProperty #26 @4:15..4:16 name="x" short_form=true
+// CHECK-NEXT:                         ObjectProperty #25 @4:15..4:16 name="x" short_form=true
 // CHECK-NEXT:                           value: null
-// CHECK-NEXT:                         ObjectProperty #27 @4:18..4:19 name="y" short_form=true
+// CHECK-NEXT:                         ObjectProperty #26 @4:18..4:19 name="y" short_form=true
 // CHECK-NEXT:                           value: null
-// CHECK-NEXT:                         ObjectProperty #29 @4:21..4:25 name="z" short_form=false
+// CHECK-NEXT:                         ObjectProperty #28 @4:21..4:25 name="z" short_form=false
 // CHECK-NEXT:                           value:
-// CHECK-NEXT:                             IntLiteral #28 @4:24..4:25 base=10 value="3"
+// CHECK-NEXT:                             IntLiteral #27 @4:24..4:25 base=10 value="3"
 // CHECK-NEXT:       attrs: null

@@ -434,7 +434,6 @@ bool canStartStatementAfterBindingDeclaration(ast::SyntaxKind kind) {
     case ast::SyntaxKind::BreakKeyword:
     case ast::SyntaxKind::ContinueKeyword:
     case ast::SyntaxKind::ReturnKeyword:
-    case ast::SyntaxKind::DebuggerKeyword:
     case ast::SyntaxKind::SpawnKeyword:
     case ast::SyntaxKind::SuspendKeyword:
     case ast::SyntaxKind::Semicolon:

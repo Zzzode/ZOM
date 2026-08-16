@@ -20,7 +20,8 @@ struct IdentitySyntaxSiteInventoryQuery final {
   static constexpr query::CapabilityDescriptorMetadata descriptor{
       "IdentitySyntaxSiteInventoryQuery"_zcc, "zom.query.identity-syntax-site-inventory"_zcc,
       query::RetentionClass::Retained,        query::QueryCyclePolicy::Reject,
-      query::QueryCostClass::Linear,          query::CapabilityAdmission::AnySnapshot};
+      query::QueryCostClass::Linear,          query::CapabilityAdmission::AnySnapshot,
+      query::FinalFailureProjection::None};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static query::CapabilityProviderResult<IdentitySyntaxSiteInventoryQuery> provide(
@@ -41,7 +42,8 @@ struct StableIdentityAdmissionQuery final {
   static constexpr query::CapabilityDescriptorMetadata descriptor{
       "StableIdentityAdmissionQuery"_zcc, "zom.query.stable-identity-admission"_zcc,
       query::RetentionClass::Retained,    query::QueryCyclePolicy::Reject,
-      query::QueryCostClass::Linear,      query::CapabilityAdmission::AnySnapshot};
+      query::QueryCostClass::Linear,      query::CapabilityAdmission::AnySnapshot,
+      query::FinalFailureProjection::None};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static query::CapabilityProviderResult<StableIdentityAdmissionQuery> provide(

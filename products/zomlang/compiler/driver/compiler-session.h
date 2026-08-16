@@ -27,7 +27,8 @@
 #include "zomlang/compiler/checker/marker-proof.h"
 #include "zomlang/compiler/checker/signature-facts.h"
 #include "zomlang/compiler/driver/borrow-evidence.h"
-#include "zomlang/compiler/driver/core-library-query-provider.h"
+#include "zomlang/compiler/driver/core/query.h"
+#include "zomlang/compiler/driver/core/library.h"
 #include "zomlang/compiler/driver/crate-graph.h"
 #include "zomlang/compiler/driver/materialized-module-graph-query.h"
 #include "zomlang/compiler/driver/module-interface.h"
@@ -41,6 +42,7 @@
 #include "zomlang/compiler/ir/ir-diagnostic-adapter.h"
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/compiler/mir/built-mir.h"
+#include "zomlang/compiler/ownership/facts/inputs.h"
 #include "zomlang/compiler/ownership/ownership-event-overlay.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
@@ -157,6 +159,9 @@ public:
       query::QueryCapabilityLease<const module_graph_query::MaterializedModuleGraph>;
   /// \brief Demands the final-sealed retained module graph for this session.
   ZC_NODISCARD zc::Maybe<MaterializedModuleGraphLease> materializeModuleGraph() const;
+  /// \brief Assembles one source-backed core library from final interface and authority leases.
+  ZC_NODISCARD zc::Maybe<core::VerifiedCoreLibrary> materializeCoreLibrary(
+      const identity::CrateKey& coreCrate) const;
   /// \brief Materializes retained Checker identity authority from the sealed binding snapshot.
   ZC_NODISCARD zc::Maybe<checker::CheckerIdentityAuthority> materializeCheckerIdentityAuthority()
       const;
@@ -195,10 +200,16 @@ public:
   /// \brief Returns immutable revision-checked Built MIR modules in dependency order.
   ZC_NODISCARD zc::ArrayPtr<const mir::VerifiedBuiltMir> getVerifiedBuiltMirModules()
       const noexcept;
-  /// rief Returns immutable revision-checked RFC 0007 ownership event overlays in dependency
+  /// \brief Returns immutable revision-checked RFC 0007 ownership event overlays in dependency
   /// order.
   ZC_NODISCARD zc::ArrayPtr<const ownership::VerifiedOwnershipEventOverlay>
   getVerifiedOwnershipEventOverlays() const noexcept;
+  /// \brief Returns the exact retained checker-to-MIR handoff for one ownership overlay.
+  ZC_NODISCARD zc::Maybe<ownership::OwnershipEventOverlayInput> getOwnershipEventOverlayInput(
+      identity::ModuleId module) const noexcept;
+  /// \brief Returns atomic current-subset ownership-analysis inputs in dependency order.
+  ZC_NODISCARD zc::ArrayPtr<const ownership::facts::VerifiedOwnershipInputs>
+  getVerifiedOwnershipInputs() const noexcept;
   /// \brief Returns complete grouped IR failures retained after rejected lowering.
   ZC_NODISCARD zc::ArrayPtr<const ir::IrDiagnosticGroup> getIrFailureGroups() const noexcept;
   /// \brief Returns complete identity failures retained from rejected IR operations.

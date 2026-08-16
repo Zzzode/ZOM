@@ -93,6 +93,16 @@ add_test(
 set_tests_properties(package-invocation-cli
                      PROPERTIES LABELS "unittest;package;cli" TIMEOUT 120)
 add_test(
+  NAME native-execution-unavailable-cli
+  COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-native-execution.py"
+    --zomc
+    "$<TARGET_FILE:zomc>"
+    --manifest
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml")
+set_tests_properties(native-execution-unavailable-cli PROPERTIES LABELS "unittest;cli" TIMEOUT 30)
+add_test(
   NAME package-workspace-compile
   COMMAND
     ${Python3_EXECUTABLE}
@@ -101,11 +111,47 @@ add_test(
     "$<TARGET_FILE:zomc>")
 set_tests_properties(package-workspace-compile
                      PROPERTIES LABELS "integration;package;cli" TIMEOUT 60)
+
+add_test(
+  NAME debugger-helper-syntax
+  COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-debugger-helpers.py")
+set_tests_properties(debugger-helper-syntax PROPERTIES LABELS "unittest;debugger" TIMEOUT 30)
+
+find_program(ZOM_GDB_EXECUTABLE NAMES gdb)
+if(ZOM_GDB_EXECUTABLE)
+  add_test(
+    NAME gdb-helper
+    COMMAND
+      "${ZOM_GDB_EXECUTABLE}"
+      --batch
+      -ex "source ${CMAKE_SOURCE_DIR}/products/zomlang/tools/gdb/zomlang_gdb.py"
+      -ex "help zomkind"
+      -ex "help zominfo")
+  set_tests_properties(gdb-helper PROPERTIES LABELS "unittest;debugger;gdb" TIMEOUT 30)
+endif()
+
+find_program(ZOM_LLDB_EXECUTABLE NAMES lldb)
+if(ZOM_LLDB_EXECUTABLE)
+  add_test(
+    NAME lldb-helper
+    COMMAND
+      "${ZOM_LLDB_EXECUTABLE}"
+      --batch
+      -o "command script import ${CMAKE_SOURCE_DIR}/products/zomlang/tools/lldb/zomlang_lldb.py"
+      -o "help zomkind"
+      -o "help zominfo")
+  set_tests_properties(lldb-helper PROPERTIES LABELS "unittest;debugger;lldb" TIMEOUT 30)
+endif()
+
 add_test(
   NAME core-source-install-layout
   COMMAND
     "${CMAKE_COMMAND}"
     "-DZOM_BINARY_DIR=${CMAKE_BINARY_DIR}"
+    "-DZOM_PYTHON=${Python3_EXECUTABLE}"
+    "-DZOM_SOURCE_ROOT=${CMAKE_SOURCE_DIR}"
     "-DZOM_TEST_PREFIX=${CMAKE_BINARY_DIR}/test-prefixes/core-source-install-layout"
     "-DZOMC_FILE_NAME=$<TARGET_FILE_NAME:zomc>"
     -P
@@ -118,6 +164,7 @@ add_test(
   COMMAND
     "${CMAKE_COMMAND}"
     "-DZOM_BINARY_DIR=${CMAKE_BINARY_DIR}"
+    "-DZOM_SOURCE_ROOT=${CMAKE_SOURCE_DIR}"
     "-DZOM_TEST_PREFIX=${CMAKE_BINARY_DIR}/test-prefixes/core-library-install-consumer"
     "-DZOMC_FILE_NAME=$<TARGET_FILE_NAME:zomc>"
     "-DZOM_CONSUMER_MANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml"

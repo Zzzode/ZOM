@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/control_flow_semantics_unavailable_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Error [ZOM4096]: Control-flow syntax has no admitted semantic contract
+// CHECK-LITERAL:   --> conformance/05-statements/control_flow_semantics_unavailable_neg_01.zom:2:3
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |   if (true) { return 1; } else { return 2; }
+// CHECK-LITERAL:   |   ^
+// CHECK-NOT: ZOM9943

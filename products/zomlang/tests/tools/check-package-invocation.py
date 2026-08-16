@@ -20,6 +20,22 @@ def main() -> int:
     parsed = parser.parse_args()
     zomc = str(Path(parsed.zomc).resolve(strict=True))
 
+    for arguments in (["--check", "--dump-ast"], ["--dump-ast", "--check"]):
+        result = subprocess.run(
+            [zomc, "compile", *arguments],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        output = ANSI.sub("", result.stdout)
+        expected = "Cannot combine --check with an output selector."
+        if result.returncode == 0 or expected not in output:
+            raise RuntimeError(
+                "check/output conflict did not fail with the expected diagnostic:"
+                f"\n{output}"
+            )
+
     cases = {
         "manifest-not-found": ["--package", "app", "--lib"],
         "invalid-manifest-path": [
@@ -124,7 +140,7 @@ def main() -> int:
             time.sleep(0.001)
         output, _ = process.communicate(timeout=30)
         normalized_output = ANSI.sub("", output)
-        expected_boundary = "[ZOM9928]: Internal checker required fact is missing"
+        expected_boundary = "Verified checked dispatch facts are unavailable."
         if process.returncode == 0 or expected_boundary not in normalized_output:
             raise RuntimeError(
                 "source snapshot isolation did not reach the fail-closed signature boundary:"

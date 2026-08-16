@@ -18,7 +18,7 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/binder/canonical-input-payload-digest.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
-#include "zomlang/compiler/driver/core-library-query-provider.h"
+#include "zomlang/compiler/driver/core/query.h"
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
 #include "zomlang/compiler/driver/module-graph-query-input.h"
 #include "zomlang/compiler/driver/module-graph-query.h"

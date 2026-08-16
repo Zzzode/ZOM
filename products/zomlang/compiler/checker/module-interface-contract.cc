@@ -106,7 +106,26 @@ SignatureAuthorizationOrigin SignatureAuthorizationOrigin::clone() const {
   if (value.is<LocalSignatureAuthorization>()) {
     return SignatureAuthorizationOrigin(LocalSignatureAuthorization{});
   }
-  return SignatureAuthorizationOrigin(value.get<ImportedSignatureAuthorization>());
+  return SignatureAuthorizationOrigin(ImportedSignatureAuthorization{
+      value.get<ImportedSignatureAuthorization>().interfaceRevision.clone()});
+}
+
+ImportedInterfaceRevision ImportedInterfaceRevision::clone() const {
+  if (value.is<UserImportedInterfaceRevision>()) {
+    return ImportedInterfaceRevision(
+        UserImportedInterfaceRevision{value.get<UserImportedInterfaceRevision>().value});
+  }
+  return ImportedInterfaceRevision(ToolchainCoreImportedInterfaceRevision{
+      value.get<ToolchainCoreImportedInterfaceRevision>().value.clone()});
+}
+
+ImportedBindingSurfaceRevision ImportedBindingSurfaceRevision::clone() const {
+  if (value.is<UserImportedBindingSurfaceRevision>()) {
+    return ImportedBindingSurfaceRevision(
+        UserImportedBindingSurfaceRevision{value.get<UserImportedBindingSurfaceRevision>().value});
+  }
+  return ImportedBindingSurfaceRevision(ToolchainCoreImportedBindingSurfaceRevision{
+      value.get<ToolchainCoreImportedBindingSurfaceRevision>().value.clone()});
 }
 
 bool isSignatureRootBinding(const binder::BindingTarget& binding) noexcept {
@@ -133,8 +152,12 @@ bool sameSignatureRootBinding(const binder::BindingTarget& left,
 }
 
 SignatureRootAuthorization SignatureRootAuthorization::clone() const {
-  return SignatureRootAuthorization{binding.clone(), canonicalDefinition,    visibility.clone(),
-                                    sourceModule,    bindingSurfaceRevision, origin.clone()};
+  return SignatureRootAuthorization{binding.clone(),
+                                    canonicalDefinition,
+                                    visibility.clone(),
+                                    sourceModule,
+                                    bindingSurfaceRevision.clone(),
+                                    origin.clone()};
 }
 
 AuthorizedSignatureBundle AuthorizedSignatureBundle::clone() const {

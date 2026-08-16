@@ -45,9 +45,6 @@ struct CompilerOptions {
     zc::Maybe<zc::String> outputPath;
     /// Emission type
     OutputType outputType = OutputType::Binary;
-    /// Syntax only compilation
-    bool syntaxOnly = false;
-
     EmissionOptions() = default;
   };
 

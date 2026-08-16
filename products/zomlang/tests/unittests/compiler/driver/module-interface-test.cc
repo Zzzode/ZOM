@@ -306,7 +306,8 @@ ZC_TEST("SignatureRootAuthorization.CloneRetainsSemanticImportBinding") {
       tests::testDefinition(0),
       binder::VisibilityEnvelope::external(),
       moduleIdentity(),
-      surfaceRevision(),
+      module_interface::ImportedBindingSurfaceRevision(
+          module_interface::UserImportedBindingSurfaceRevision{surfaceRevision()}),
       module_interface::SignatureAuthorizationOrigin(
           module_interface::LocalSignatureAuthorization{})};
   auto cloned = root.clone();

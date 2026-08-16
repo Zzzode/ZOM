@@ -676,7 +676,7 @@ struct SourceRejectedFeatureBoundary final {
   SortedSourceFailureFacts<SourceFailure, SourceFailureOrdering> failures;
 };
 
-/// \brief Sole source-rejecting result extension at the executable-MIR-to-LIR boundary.
+/// \brief Canonical source-rejecting result extension for verified compiler boundaries.
 template <typename VerifiedValue, typename SourceFailure, typename SourceFailureOrdering>
 class FeatureBoundaryVerificationResult final {
 public:

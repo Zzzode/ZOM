@@ -24,6 +24,35 @@ COHERENCE_FACTS_SOURCE = CHECKER_ROOT / "coherence-facts.cc"
 MODULE_INTERFACE_CONTRACT_SOURCE = CHECKER_ROOT / "module-interface-contract.cc"
 MODULE_INTERFACE_HEADER = Path("products/zomlang/compiler/driver/module-interface.h")
 MODULE_INTERFACE_SOURCE = Path("products/zomlang/compiler/driver/module-interface.cc")
+CHECKED_MODULE_HEADER = Path("products/zomlang/compiler/hir/checked-module.h")
+CHECKED_MODULE_SOURCE = Path("products/zomlang/compiler/hir/checked-module.cc")
+HIR_MODULE_HEADER = Path("products/zomlang/compiler/hir/hir-module.h")
+HIR_MODULE_SOURCE = Path("products/zomlang/compiler/hir/hir-module.cc")
+BUILT_MIR_HEADER = Path("products/zomlang/compiler/mir/built-mir.h")
+BUILT_MIR_SOURCE = Path("products/zomlang/compiler/mir/built-mir.cc")
+OWNERSHIP_OVERLAY_SOURCE = Path(
+    "products/zomlang/compiler/ownership/ownership-event-overlay.cc"
+)
+ORDINARY_CORE_INTERFACE_CONSUMERS = (
+    MODULE_INTERFACE_HEADER,
+    MODULE_INTERFACE_SOURCE,
+    Path("products/zomlang/compiler/driver/borrow-evidence.h"),
+    Path("products/zomlang/compiler/driver/borrow-evidence.cc"),
+    CHECKED_MODULE_HEADER,
+    CHECKED_MODULE_SOURCE,
+    HIR_MODULE_HEADER,
+    HIR_MODULE_SOURCE,
+    BUILT_MIR_HEADER,
+    BUILT_MIR_SOURCE,
+    Path("products/zomlang/compiler/ownership/ownership-event-overlay.h"),
+    OWNERSHIP_OVERLAY_SOURCE,
+)
+BOOTSTRAP_CORE_INTERFACE_TYPES = (
+    "CoreBootstrapModuleInterfaceQuery",
+    "MaterializeCoreBootstrapModuleInterfaceQuery",
+    "CoreBootstrapModuleInterfaceRecord",
+    "VerifiedCoreBootstrapModuleInterface",
+)
 COHERENCE_BUILDER_HEADER = Path("products/zomlang/compiler/driver/coherence-builder.h")
 COHERENCE_BUILDER_SOURCE = Path("products/zomlang/compiler/driver/coherence-builder.cc")
 OPERATOR_KIND_HEADER = CHECKER_ROOT / "operator-kind.h"
@@ -44,6 +73,7 @@ CHECKER_SOURCE_DIAGNOSTICS = CHECKER_ROOT / "checker-source-diagnostics.def"
 CHECKED_FACTS_HEADER = CHECKER_ROOT / "checked-facts.h"
 CHECKED_FACTS_SOURCE = CHECKER_ROOT / "checked-facts.cc"
 BODY_CHECKER_SOURCE = CHECKER_ROOT / "body-checker.cc"
+BODY_CHECKER_HEADER = CHECKER_ROOT / "body-checker.h"
 SCALAR_LITERAL_FACTS_SOURCE = CHECKER_ROOT / "scalar-literal-facts.cc"
 CHECKER_DIAGNOSTIC_ADAPTER = CHECKER_ROOT / "checker-diagnostic-adapter.cc"
 MARKER_PROOF_TEST = Path(
@@ -137,6 +167,11 @@ VERIFIED_SIGNATURE_FACTS_ALLOWED = {
     Path("products/zomlang/compiler/driver/borrow-evidence.cc"),
     Path("products/zomlang/compiler/hir/checked-module.h"),
     Path("products/zomlang/compiler/hir/checked-module.cc"),
+    Path("products/zomlang/compiler/hir/hir-module.h"),
+    Path("products/zomlang/compiler/hir/hir-module.cc"),
+    Path("products/zomlang/compiler/mir/built-mir.h"),
+    Path("products/zomlang/compiler/mir/built-mir.cc"),
+    Path("products/zomlang/compiler/ownership/ownership-event-overlay.cc"),
     Path("products/zomlang/compiler/driver/compiler-session.h"),
     SESSION_SOURCE,
     MARKER_PROOF_TEST,
@@ -480,6 +515,18 @@ def check_signature_prototype_boundary(files: dict[Path, str], errors: list[str]
 def check_signature_requirement_closure(files: dict[Path, str], errors: list[str]) -> None:
     header = files.get(SIGNATURE_FACTS_HEADER, "")
     source = files.get(SIGNATURE_FACTS_SOURCE, "")
+    if (
+        "struct MarkerShapeModuleInput final {\n"
+        "  const ownership::OwnershipAdmittedBoundModule& boundModule;"
+        not in header
+    ):
+        errors.append(
+            f"{SIGNATURE_FACTS_HEADER}: marker-shape construction must require ownership admission"
+        )
+    if "const ownership::OwnershipAdmittedBoundModule& boundModule;" not in header:
+        errors.append(
+            f"{SIGNATURE_FACTS_HEADER}: signature construction must require ownership admission"
+        )
     if header.count("zc::Array<uint8_t> canonicalRecord;") != 3:
         errors.append(
             f"{SIGNATURE_FACTS_HEADER}: signature, impl, and marker requirements must "
@@ -524,12 +571,18 @@ def check_marker_proof_authority(files: dict[Path, str], errors: list[str]) -> N
         "class MarkerProofEngine final",
         "using MarkerProofResult =",
         "const body::BodyCheckingInput& bodyInput",
+        "from(const body::BodyCheckingInput& bodyInput)",
         "ZC_NODISCARD MarkerProofResult prove(",
     ):
         if marker not in header:
             errors.append(f"{MARKER_PROOF_HEADER}: missing marker proof authority {marker}")
     for marker in (
         "MarkerProofInput::from",
+        "const auto& policy = bodyInput.markerPolicies",
+        "const auto& standardMarkers = bodyInput.standardMarkers",
+        "bodyInput.boundModule.retain()",
+        "driver::module_graph_query::CheckerBoundModuleView boundModule;",
+        "boundModule(zc::mv(input.impl->boundModule))",
         "SemanticTypeInterningCapability::intern",
         "componentInterner.intern(",
         "coherence.marker(key)",
@@ -557,11 +610,34 @@ def check_marker_proof_authority(files: dict[Path, str], errors: list[str]) -> N
             f"{MARKER_PROOF_HEADER}: marker proof input bypasses BodyCheckingInput authority"
         )
     for marker in (
-        "MarkerProofInput::from(bodyInput, policies)",
+        "MarkerProofInput::from(bodyInput)",
         "engine.prove(marker, subject)",
     ):
         if marker not in session:
             errors.append(f"{SESSION_SOURCE}: missing marker proof session wiring {marker}")
+    body_input = files.get(BODY_CHECKER_HEADER, "")
+    if "driver::module_graph_query::CheckerBoundModuleView boundModule;" not in body_input:
+        errors.append(
+            f"{BODY_CHECKER_HEADER}: body checking must retain its bound-module lease"
+        )
+    if "const signature::VerifiedMarkerPolicyRegistry& markerPolicies;" not in body_input:
+        errors.append(
+            f"{BODY_CHECKER_HEADER}: marker proof policy must be carried by BodyCheckingInput"
+        )
+    if (
+        "const driver::core::VerifiedCoreStandardMarkerAuthority& standardMarkers;"
+        not in body_input
+    ):
+        errors.append(
+            f"{BODY_CHECKER_HEADER}: standard marker authority must be carried by BodyCheckingInput"
+        )
+    for marker in (
+        "zc::Maybe<core::VerifiedCoreLibrary> coreLibrary;",
+        "impl->coreLibrary = zc::mv(coreLibraries[0]);",
+        ".authorityLease().capability().authority()",
+    ):
+        if marker not in session:
+            errors.append(f"{SESSION_SOURCE}: missing retained standard marker authority {marker}")
     for path, text in files.items():
         if path in {MARKER_PROOF_HEADER, MARKER_PROOF_SOURCE} or path.suffix not in {".h", ".cc"}:
             continue
@@ -1075,7 +1151,11 @@ def check_rfc0015_interface_cutover(
         (COHERENCE_FACTS_SOURCE, "candidate.markerPolicyRegistryRevision.digest()"),
         (COHERENCE_FACTS_SOURCE, "markerPolicies.revision().digest()"),
         (MODULE_INTERFACE_HEADER, "projectCoherenceInput() const"),
+        (MODULE_INTERFACE_HEADER,
+         "const ownership::OwnershipAdmittedBoundModule& boundModule;"),
         (MODULE_INTERFACE_SOURCE, "VerifiedModuleInterface::projectCoherenceInput() const"),
+        (MODULE_INTERFACE_SOURCE, "Impl(ownership::OwnershipAdmittedBoundModule&& boundModule,"),
+        (MODULE_INTERFACE_SOURCE, "input.boundModule.retain(), input.boundModule.semanticContext()"),
         (MODULE_INTERFACE_SOURCE, "evidence.is<checker::signature::ExplicitMarkerEvidence>()"),
         (MODULE_INTERFACE_SOURCE, "zc::Vector<zc::Array<uint8_t>> implHeadRecords;"),
         (MODULE_INTERFACE_SOURCE, "zc::Vector<zc::Array<uint8_t>> markerFactRecords;"),
@@ -1103,6 +1183,45 @@ def check_rfc0015_interface_cutover(
             errors.append(f"{path}: forbidden RFC 0015 dual-authority marker remains: {marker}")
 
 
+def check_checked_module_admission(files: dict[Path, str], errors: list[str]) -> None:
+    required = (
+        (CHECKED_MODULE_HEADER, "const ownership::OwnershipAdmittedBoundModule& boundModule;"),
+        (CHECKED_MODULE_SOURCE, "Impl(ownership::OwnershipAdmittedBoundModule&& boundModule,"),
+        (CHECKED_MODULE_SOURCE, "input.boundModule.retain(), input.moduleInterface"),
+        (
+            CHECKED_MODULE_HEADER,
+            "ownership::OwnershipAdmittedBoundModule retainAdmittedBoundModule() const;",
+        ),
+        (
+            HIR_MODULE_HEADER,
+            "ownership::OwnershipAdmittedBoundModule retainAdmittedBoundModule() const;",
+        ),
+        (HIR_MODULE_SOURCE, "ownership::OwnershipAdmittedBoundModule boundModule;"),
+        (HIR_MODULE_SOURCE, "checkedModule.retainAdmittedBoundModule()"),
+        (
+            BUILT_MIR_HEADER,
+            "ownership::OwnershipAdmittedBoundModule retainAdmittedBoundModule() const;",
+        ),
+        (BUILT_MIR_SOURCE, "ownership::OwnershipAdmittedBoundModule boundModule;"),
+        (BUILT_MIR_SOURCE, "hirModule.retainAdmittedBoundModule()"),
+        (OWNERSHIP_OVERLAY_SOURCE, "OwnershipAdmittedBoundModule boundModule;"),
+        (OWNERSHIP_OVERLAY_SOURCE, "builtMir.retainAdmittedBoundModule()"),
+    )
+    for path, marker in required:
+        if marker not in files.get(path, ""):
+            errors.append(f"{path}: retained ownership admission chain is incomplete")
+
+
+def check_final_core_interface_boundary(files: dict[Path, str], errors: list[str]) -> None:
+    for path in ORDINARY_CORE_INTERFACE_CONSUMERS:
+        code = strip_cpp_comments_and_literals(files.get(path, ""))
+        for forbidden in BOOTSTRAP_CORE_INTERFACE_TYPES:
+            if forbidden in code:
+                errors.append(
+                    f"{path}: bootstrap-only core interface escapes finalization: {forbidden}"
+                )
+
+
 def analyze(files: dict[Path, str]) -> list[str]:
     errors: list[str] = []
     check_removed_rail(files, errors)
@@ -1119,6 +1238,8 @@ def analyze(files: dict[Path, str]) -> list[str]:
     check_checked_facts_codec(files, errors)
     check_production_session(files, errors)
     check_rfc0015_interface_cutover(files, errors)
+    check_checked_module_admission(files, errors)
+    check_final_core_interface_boundary(files, errors)
     check_wiring(files, errors)
     return sorted(set(errors))
 
@@ -1437,6 +1558,17 @@ def run_self_test() -> int:
     )
     failures += expect_rejection(
         baseline,
+        "marker-shape ownership admission removed",
+        lambda files: remove_once(
+            files,
+            SIGNATURE_FACTS_HEADER,
+            "struct MarkerShapeModuleInput final {\n"
+            "  const ownership::OwnershipAdmittedBoundModule& boundModule;",
+        ),
+        "marker-shape construction must require ownership admission",
+    )
+    failures += expect_rejection(
+        baseline,
         "complete signature requirement record removed",
         lambda files: remove_once(
             files, SIGNATURE_FACTS_HEADER, "zc::Array<uint8_t> canonicalRecord;"
@@ -1485,9 +1617,37 @@ def run_self_test() -> int:
         baseline,
         "body-checking marker proof issuance bypassed",
         lambda files: remove_once(
-            files, SESSION_SOURCE, "MarkerProofInput::from(bodyInput, policies)"
+            files, SESSION_SOURCE, "MarkerProofInput::from(bodyInput)"
         ),
-        "missing marker proof session wiring MarkerProofInput::from(bodyInput, policies)",
+        "missing marker proof session wiring MarkerProofInput::from(bodyInput)",
+    )
+    failures += expect_rejection(
+        baseline,
+        "marker proof bound-module lease retention removed",
+        lambda files: remove_once(
+            files, MARKER_PROOF_SOURCE, "bodyInput.boundModule.retain()"
+        ),
+        "missing marker proof closure bodyInput.boundModule.retain()",
+    )
+    failures += expect_rejection(
+        baseline,
+        "body-owned standard marker authority removed",
+        lambda files: remove_once(
+            files,
+            BODY_CHECKER_HEADER,
+            "const driver::core::VerifiedCoreStandardMarkerAuthority& standardMarkers;",
+        ),
+        "standard marker authority must be carried by BodyCheckingInput",
+    )
+    failures += expect_rejection(
+        baseline,
+        "body-checking bound-module lease retention removed",
+        lambda files: remove_once(
+            files,
+            BODY_CHECKER_HEADER,
+            "driver::module_graph_query::CheckerBoundModuleView boundModule;",
+        ),
+        "body checking must retain its bound-module lease",
     )
     failures += expect_rejection(
         baseline,
@@ -1752,6 +1912,46 @@ def run_self_test() -> int:
     )
     failures += expect_rejection(
         baseline,
+        "checked-module ownership admission removed",
+        lambda files: remove_once(
+            files,
+            CHECKED_MODULE_HEADER,
+            "const ownership::OwnershipAdmittedBoundModule& boundModule;",
+        ),
+        "retained ownership admission chain is incomplete",
+    )
+    failures += expect_rejection(
+        baseline,
+        "bootstrap core interface escape",
+        lambda files: append_source(
+            files,
+            Path("products/zomlang/compiler/driver/borrow-evidence.cc"),
+            "\nMaterializeCoreBootstrapModuleInterfaceQuery escaped;\n",
+        ),
+        "bootstrap-only core interface escapes finalization",
+    )
+    failures += expect_rejection(
+        baseline,
+        "HIR ownership admission retention removed",
+        lambda files: remove_once(
+            files,
+            HIR_MODULE_HEADER,
+            "ownership::OwnershipAdmittedBoundModule retainAdmittedBoundModule() const;",
+        ),
+        "retained ownership admission chain is incomplete",
+    )
+    failures += expect_rejection(
+        baseline,
+        "module-interface ownership admission removed",
+        lambda files: remove_once(
+            files,
+            MODULE_INTERFACE_HEADER,
+            "const ownership::OwnershipAdmittedBoundModule& boundModule;",
+        ),
+        "missing RFC 0015 atomic cutover marker",
+    )
+    failures += expect_rejection(
+        baseline,
         "module explicit marker boundary removed",
         lambda files: remove_once(
             files,
@@ -1790,10 +1990,8 @@ def run_self_test() -> int:
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
         return 1
-    fixture_count = (
-        65
-        + len(PLACEHOLDER_DIAGNOSTIC_RENDERINGS)
-        + len(TYPE_CATEGORY_PLACEHOLDER_RENDERINGS)
+    fixture_count = 73 + len(PLACEHOLDER_DIAGNOSTIC_RENDERINGS) + len(
+        TYPE_CATEGORY_PLACEHOLDER_RENDERINGS
     )
     print(
         f"Checker architecture negative fixtures passed "

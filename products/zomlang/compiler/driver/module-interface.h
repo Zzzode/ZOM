@@ -22,6 +22,10 @@ namespace zomlang::compiler::checker::borrow {
 class VerifiedBorrowInterfaceSurface;
 }
 
+namespace zomlang::compiler::ownership {
+class OwnershipAdmittedBoundModule;
+}
+
 namespace zomlang::compiler::driver {
 
 enum class ModuleInterfaceInvariantKind : uint8_t {
@@ -152,7 +156,7 @@ public:
 
   /// \brief Project one requester-authorized imported-signature module capability.
   ZC_NODISCARD zc::Maybe<checker::cross_module::ImportedSignatureModule> projectImportedSignatures(
-      const module_graph_query::CheckerBoundModuleView& requester,
+      const ownership::OwnershipAdmittedBoundModule& requester,
       checker::cross_module::SignatureViewOrigin origin,
       zc::ArrayPtr<const checker::cross_module::ImportedDefinitionBindingSelection>
           definitionBindings,
@@ -169,7 +173,7 @@ private:
 
 /// \brief Complete verified-only inputs for atomic module-interface publication.
 struct ModuleInterfaceBuildInput final {
-  const module_graph_query::CheckerBoundModuleView& boundModule;
+  const ownership::OwnershipAdmittedBoundModule& boundModule;
   const checker::signature::VerifiedSignatureFacts& signatureFacts;
   const checker::cross_module::ImportedSignatureView& importedSignatures;
   const checker::signature::VerifiedMarkerPolicyRegistry& markerPolicies;

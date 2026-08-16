@@ -1253,7 +1253,7 @@ pathSegment
     | CONSTRUCTOR | INIT | DEINIT | GET | SET | ACCESSOR | DECLARE
     // -- Control Flow --
     | IF | ELSE | MATCH | WHEN | DEFAULT | CASE | FOR | WHILE | DO | BREAK | CONTINUE
-    | RETURN | DEBUGGER | IN | OUT
+    | RETURN | IN | OUT
     // -- Type --
     | I8 | I16 | I32 | I64 | U8 | U16 | U32 | U64 | F32 | F64
     | BOOL | STR | CHAR | NULL | UNIT | NEVER | ANY | OBJECT | SYMBOL | BIGINT | UNDEFINED
@@ -1332,7 +1332,6 @@ statement
     | breakStatement                                                                        # stmtBreak
     | continueStatement                                                                     # stmtContinue
     | returnStatement                                                                       # stmtReturn
-    | debuggerStatement                                                                     # stmtDebugger
     | MUT variableDeclarationList SEMICOLON                                                 # stmtMutDecl
     | LET variableDeclarationList SEMICOLON                                                 # stmtLetDecl
     | whenStatement                                                                         # stmtWhen
@@ -1417,9 +1416,6 @@ breakStatement    : BREAK identifier? SEMICOLON ;
 continueStatement : CONTINUE identifier? SEMICOLON ;
 
 returnStatement   : RETURN expression? SEMICOLON ;
-
-debuggerStatement : DEBUGGER SEMICOLON ;
-
 
 
 spawnStatement

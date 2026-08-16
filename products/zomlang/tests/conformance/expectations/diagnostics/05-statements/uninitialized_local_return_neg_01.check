@@ -1,0 +1,13 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/uninitialized_local_return_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Error [ZOM4093]: Use of uninitialized or deinitialized place
+// CHECK:   --> {{.*}}05-statements/uninitialized_local_return_neg_01.zom:3:3
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |   return value;
+// CHECK-LITERAL:   |   ^
+// CHECK-LITERAL: Note [ZOM4094]: Place became unavailable here
+// CHECK:   --> {{.*}}05-statements/uninitialized_local_return_neg_01.zom:2:7
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |   let value: i32;
+// CHECK-LITERAL:   |       ^

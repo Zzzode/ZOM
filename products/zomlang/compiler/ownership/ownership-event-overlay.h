@@ -21,7 +21,9 @@
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/checker/body-checker.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
+#include "zomlang/compiler/hir/hir-module.h"
 #include "zomlang/compiler/identity/brand.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/identity/semantic-context-fingerprint.h"
@@ -29,6 +31,7 @@
 #include "zomlang/compiler/ir/ir-failure.h"
 #include "zomlang/compiler/ir/ir-identity.h"
 #include "zomlang/compiler/mir/built-mir.h"
+#include "zomlang/compiler/ownership/surface-admission.h"
 
 namespace zomlang::compiler::ownership {
 
@@ -119,6 +122,9 @@ public:
   ZC_NODISCARD const MirBeforeTerminatorPoint& beforeTerminatorValue() const;
   ZC_NODISCARD const MirEdgePoint& edgeValue() const;
   ZC_NODISCARD const MirExitPoint& exitValue() const;
+  bool operator==(const MirPoint& other) const noexcept;
+  bool operator!=(const MirPoint& other) const noexcept { return !(*this == other); }
+  bool operator<(const MirPoint& other) const noexcept;
 
 private:
   explicit MirPoint(MirEntryPoint value) noexcept;
@@ -136,12 +142,22 @@ private:
 struct MirLocation final {
   identity::DefId owner;
   MirPoint point;
+
+  bool operator==(const MirLocation& other) const noexcept {
+    return owner == other.owner && point == other.point;
+  }
+  bool operator!=(const MirLocation& other) const noexcept { return !(*this == other); }
 };
 
 /// \brief Canonical key of one MIR event: its location plus operand ordinal.
 struct MirEventKey final {
   MirLocation location;
   uint32_t operandOrdinal;
+
+  bool operator==(const MirEventKey& other) const noexcept {
+    return location == other.location && operandOrdinal == other.operandOrdinal;
+  }
+  bool operator!=(const MirEventKey& other) const noexcept { return !(*this == other); }
 };
 
 /// \brief Phase of one ownership event relative to its MIR source.
@@ -186,10 +202,110 @@ struct MirEventSlot final {
   zc::Vector<OwnershipEventRole> roles;
 };
 
+/// \brief Presentation-only validated source association for one MIR event.
+struct MirEventSource final {
+  MirEventKey key;
+  identity::SourceSpan span;
+};
+
+/// \brief Canonical identity of one MIR borrow issue.
+struct LoanKey final {
+  MirEventKey issue;
+
+  bool operator==(const LoanKey& other) const noexcept { return issue == other.issue; }
+  bool operator!=(const LoanKey& other) const noexcept { return !(*this == other); }
+};
+
+/// \brief Checker-authorized activation of one mutable receiver borrow on a call edge.
+struct DeferredActivationFact final {
+  LoanKey loan;
+  MirEventKey receiverSource;
+  MirEventKey activation;
+  checker::checked::ReceiverMode receiverMode;
+  identity::SemanticTypeId adjustmentSource;
+  identity::SemanticTypeId adjustmentDestination;
+  zc::Vector<checker::checked::ReceiverAdjustmentStep> adjustmentSteps;
+};
+
+/// \brief One persisted RFC 0015 marker-proof outcome for an ownership event.
+struct OwnershipMarkerDecisionPositive final {
+  checker::signature::MarkerFact proof;
+};
+
+/// \brief One persisted explicit negative RFC 0015 marker-proof outcome.
+struct OwnershipMarkerDecisionExplicitNegative final {
+  checker::signature::MarkerFact explicitFact;
+};
+
+/// \brief One persisted marker query without a satisfiable proof.
+struct OwnershipMarkerDecisionUnsatisfied final {};
+
+using OwnershipMarkerDecision =
+    zc::OneOf<OwnershipMarkerDecisionPositive, OwnershipMarkerDecisionExplicitNegative,
+              OwnershipMarkerDecisionUnsatisfied>;
+
+/// \brief Exact revision-bound identity of one ownership marker query.
+struct OwnershipMarkerUseKey final {
+  MirEventKey event;
+  identity::DefId marker;
+  identity::SemanticTypeId subject;
+  checker::signature::MarkerPolicyRegistryRevision markerPolicyRevision;
+  checker::cross_module::CoherenceViewRevision coherenceRevision;
+};
+
+/// \brief Immutable ownership projection of one Copy or Linear marker query.
+struct OwnershipMarkerUse final {
+  OwnershipMarkerUseKey key;
+  OwnershipMarkerDecision decision;
+};
+
+/// \brief Closed logical deinitialization action algebra for one resource component.
+struct LogicalDropDeclaredAction final {
+  identity::DefId deinitializer;
+};
+struct LogicalDropBuiltinAction final {
+  identity::SemanticTypeId ownerType;
+};
+struct LogicalDropDynamicAction final {
+  identity::SemanticTypeId existentialType;
+};
+using LogicalDropAction =
+    zc::OneOf<LogicalDropDeclaredAction, LogicalDropBuiltinAction, LogicalDropDynamicAction>;
+
+/// \brief One postorder logical-drop component authorized by marker decisions.
+struct LogicalDropPlanComponent final {
+  mir::MirPlace place;
+  identity::SemanticTypeId valueType;
+  zc::Maybe<LogicalDropAction> dropAction;
+  OwnershipMarkerUseKey copyDecision;
+  OwnershipMarkerUseKey linearDecision;
+  uint32_t declarationOrdinal;
+};
+
+/// \brief Complete logical-drop plan for one initialization event.
+struct LogicalDropPlan final {
+  MirEventKey initialization;
+  mir::MirPlace root;
+  zc::Vector<LogicalDropPlanComponent> components;
+};
+
+/// \brief Exact live checker and IR capabilities required to construct one ownership overlay.
+struct OwnershipEventOverlayInput final {
+  const OwnershipAdmittedBoundModule& admitted;
+  const hir::VerifiedCheckedModule& checked;
+  const hir::VerifiedHirModule& hir;
+  const mir::VerifiedBuiltMir& built;
+  checker::body::BodyCheckingInput body;
+};
+
 /// \brief One function-scoped slice of the ownership event overlay.
 struct OwnershipFunctionEventOverlay final {
   identity::DefId owner;
   zc::Vector<MirEventSlot> slots;
+  zc::Vector<MirEventSource> sourceMap;
+  zc::Vector<DeferredActivationFact> deferredActivations;
+  zc::Vector<OwnershipMarkerUse> markerUses;
+  zc::Vector<LogicalDropPlan> logicalDropPlans;
 };
 
 /// \brief Untrusted mutable overlay product admitted only by the independent verifier.
@@ -266,18 +382,18 @@ public:
       zc::ArrayPtr<const zc::Array<uint8_t>> canonicalFunctions);
 };
 
-/// \brief Builds the ownership event overlay from verified Built MIR.
+/// \brief Builds the ownership event overlay from one exact live checker-to-MIR handoff.
 class OwnershipEventOverlayBuilder final {
 public:
   ZC_NODISCARD static ir::IrOperationResult<OwnershipEventOverlayCandidate> build(
-      const mir::VerifiedBuiltMir& builtMir);
+      const OwnershipEventOverlayInput& input);
 };
 
 /// \brief Sole publisher of immutable revision-checked ownership event overlays.
 class OwnershipEventOverlayVerifier final {
 public:
   ZC_NODISCARD static ir::IrOperationResult<VerifiedOwnershipEventOverlay> verify(
-      OwnershipEventOverlayCandidate&& candidate, const mir::VerifiedBuiltMir& builtMir);
+      OwnershipEventOverlayCandidate&& candidate, const OwnershipEventOverlayInput& input);
 };
 
 }  // namespace zomlang::compiler::ownership

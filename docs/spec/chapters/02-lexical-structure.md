@@ -124,7 +124,6 @@ declare
 if          else        match       when        default     case
 for         while       do          break       continue
 return      throw       try         catch       finally
-debugger
 ```
 
 ### Type Keywords

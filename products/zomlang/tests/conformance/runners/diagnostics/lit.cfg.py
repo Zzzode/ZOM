@@ -5,7 +5,7 @@ Lit configuration for ZOM diagnostics conformance expectations.
 
 Diagnostics tests live under conformance/expectations/diagnostics/*.check.
 Each CHECK file runs the real compiler pipeline through `zomc compile
---syntax-only`; the corresponding pure ZOM source lives under
+--check`; the corresponding pure ZOM source lives under
 conformance/corpus with the same relative path and a .zom suffix.
 """
 

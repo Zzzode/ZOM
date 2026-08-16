@@ -5,8 +5,10 @@
 
 #include "zomlang/compiler/hir/checked-module.h"
 
+#include "zomlang/compiler/driver/core/query.h"
 #include "zomlang/compiler/identity/definition-key.h"
 #include "zomlang/compiler/identity/source-key.h"
+#include "zomlang/compiler/ownership/surface-admission.h"
 
 namespace zomlang::compiler::hir {
 namespace {
@@ -200,9 +202,20 @@ bool validateImportedInterfaces(const CheckedModuleBuildInput& input,
     hasPrevious = true;
 
     bool found = false;
+    const bool coreSource = imported.interfaceRevision()
+                                .variant()
+                                .is<module_interface::ToolchainCoreImportedInterfaceRevision>();
     for (auto& entry : expected) {
       if (entry.module != imported.sourceModule()) continue;
-      if (entry.matched || entry.bindingRevision != imported.bindingSurfaceRevision().digest()) {
+      const auto& bindingRevision = imported.bindingSurfaceRevision().variant();
+      if (entry.matched ||
+          (coreSource &&
+           !bindingRevision.is<module_interface::ToolchainCoreImportedBindingSurfaceRevision>()) ||
+          (!coreSource &&
+           (!bindingRevision.is<module_interface::UserImportedBindingSurfaceRevision>() ||
+            entry.bindingRevision !=
+                bindingRevision.get<module_interface::UserImportedBindingSurfaceRevision>()
+                    .value.digest()))) {
         return false;
       }
       entry.matched = true;
@@ -211,21 +224,72 @@ bool validateImportedInterfaces(const CheckedModuleBuildInput& input,
     }
     if (!found) return false;
 
-    const driver::VerifiedModuleInterface* selected = nullptr;
-    for (const auto& interface : input.availableModuleInterfaces) {
+    zc::Maybe<const driver::VerifiedModuleInterface&> selectedUser;
+    zc::Maybe<const driver::core_library_query::VerifiedCoreModuleInterface&> selectedCore;
+    for (const auto& source : input.availableModuleInterfaces) {
+      const auto& interfaceRevision = imported.interfaceRevision().variant();
+      const auto& bindingSurfaceRevision = imported.bindingSurfaceRevision().variant();
+      if (source.is<driver::UserVerifiedInterfaceSource>()) {
+        const auto& interface = source.get<driver::UserVerifiedInterfaceSource>().interface;
+        if (interface.module() != imported.sourceModule()) continue;
+        if (coreSource || selectedUser != zc::none ||
+            interface.semanticContext() != input.boundModule.semanticContext() ||
+            interface.module() == input.boundModule.module() ||
+            !interfaceRevision.is<module_interface::UserImportedInterfaceRevision>() ||
+            interface.revision().digest() !=
+                interfaceRevision.get<module_interface::UserImportedInterfaceRevision>()
+                    .value.digest() ||
+            !bindingSurfaceRevision.is<module_interface::UserImportedBindingSurfaceRevision>() ||
+            interface.bindingSurface().revision().digest() !=
+                bindingSurfaceRevision.get<module_interface::UserImportedBindingSurfaceRevision>()
+                    .value.digest()) {
+          return false;
+        }
+        selectedUser = interface;
+        continue;
+      }
+      const auto& interface = source.get<driver::ToolchainCoreVerifiedInterfaceSource>().interface;
       if (interface.module() != imported.sourceModule()) continue;
-      if (selected != nullptr ||
-          interface.semanticContext() != input.boundModule.semanticContext() ||
-          interface.module() == input.boundModule.module() ||
-          interface.revision().digest() != imported.interfaceRevision().digest() ||
-          interface.bindingSurface().revision().digest() !=
-              imported.bindingSurfaceRevision().digest()) {
+      if (!coreSource || selectedCore != zc::none ||
+          interface.context() != input.boundModule.semanticContext() ||
+          interface.fingerprint().digest() != input.boundModule.semanticFingerprint().digest() ||
+          !interfaceRevision.is<module_interface::ToolchainCoreImportedInterfaceRevision>() ||
+          interface.record().revision().digest() !=
+              interfaceRevision.get<module_interface::ToolchainCoreImportedInterfaceRevision>()
+                  .value.digest() ||
+          !bindingSurfaceRevision
+               .is<module_interface::ToolchainCoreImportedBindingSurfaceRevision>() ||
+          interface.record().bindingSurfaceRevision().digest() !=
+              bindingSurfaceRevision
+                  .get<module_interface::ToolchainCoreImportedBindingSurfaceRevision>()
+                  .value.digest()) {
         return false;
       }
-      selected = &interface;
+      for (const auto& signature : imported.lookupDefinitions()) {
+        if (signature.payload.variant().is<checker::signature::CallableSignature>()) return false;
+      }
+      for (const auto& signature : imported.supportDefinitions()) {
+        if (signature.payload.variant().is<checker::signature::CallableSignature>()) return false;
+      }
+      selectedCore = interface;
     }
-    if (selected == nullptr) return false;
-    output.add(ModuleInterfaceLineage{selected->module(), selected->revision().digest()});
+    if (coreSource) {
+      if (selectedCore == zc::none) return false;
+      ZC_IF_SOME(interface, selectedCore) {
+        output.add(ModuleInterfaceLineage{
+            interface.module(), module_interface::ImportedInterfaceRevision(
+                                    module_interface::ToolchainCoreImportedInterfaceRevision{
+                                        interface.record().revision().clone()})});
+      }
+    } else {
+      if (selectedUser == zc::none) return false;
+      ZC_IF_SOME(interface, selectedUser) {
+        output.add(ModuleInterfaceLineage{
+            interface.module(),
+            module_interface::ImportedInterfaceRevision(
+                module_interface::UserImportedInterfaceRevision{interface.revision()})});
+      }
+    }
   }
   for (const auto& entry : expected) {
     if (!entry.matched) return false;
@@ -259,7 +323,7 @@ bool validateDispatchRevision(const CheckedModuleBuildInput& input,
 }  // namespace
 
 struct VerifiedCheckedModule::Impl final {
-  Impl(driver::module_graph_query::CheckerBoundModuleView&& boundModule,
+  Impl(ownership::OwnershipAdmittedBoundModule&& boundModule,
        const driver::VerifiedModuleInterface& ownModuleInterface,
        const checker::checked::CheckedFactsRepository& checkedRepository,
        const checker::checked::VerifiedCheckedFacts& checkedFacts,
@@ -285,7 +349,7 @@ struct VerifiedCheckedModule::Impl final {
         ownInterfaceValue(zc::mv(ownInterface)),
         visibleImportedInterfaceValues(zc::mv(visibleImportedInterfaces)) {}
 
-  driver::module_graph_query::CheckerBoundModuleView boundModuleValue;
+  ownership::OwnershipAdmittedBoundModule boundModuleValue;
   const driver::VerifiedModuleInterface& ownModuleInterfaceValue;
   const checker::checked::CheckedFactsRepository& checkedRepositoryValue;
   const checker::checked::VerifiedCheckedFacts& checkedFactsValue;
@@ -368,8 +432,7 @@ VerifiedCheckedModule::borrowEvidenceLease() const noexcept {
   return impl->borrowEvidenceLeaseValue;
 }
 
-driver::module_graph_query::CheckerBoundModuleView VerifiedCheckedModule::retainBoundModule()
-    const {
+ownership::OwnershipAdmittedBoundModule VerifiedCheckedModule::retainAdmittedBoundModule() const {
   return impl->boundModuleValue.retain();
 }
 
@@ -387,9 +450,9 @@ const checker::dispatch::VerifiedDispatchFacts& VerifiedCheckedModule::dispatchF
   return impl->dispatchFactsValue;
 }
 
-const driver::borrow_evidence::BorrowEvidenceRepository&
-VerifiedCheckedModule::borrowEvidenceRepository() const noexcept {
-  return impl->borrowEvidenceRepositoryValue;
+driver::borrow_evidence::BorrowEvidenceRepositoryCapability
+VerifiedCheckedModule::borrowEvidenceCapability() const noexcept {
+  return impl->borrowEvidenceRepositoryValue.capability();
 }
 
 checker::CheckerIdentityAuthority VerifiedCheckedModule::retainIdentityAuthority() const {
@@ -402,15 +465,6 @@ const driver::VerifiedModuleInterface& VerifiedCheckedModule::ownModuleInterface
 
 const type::SemanticTypeStore& VerifiedCheckedModule::semanticTypes() const noexcept {
   return impl->semanticTypesValue;
-}
-
-checker::checked::CheckedEvidenceLease VerifiedCheckedModule::releaseCheckedEvidenceLease() {
-  return zc::mv(impl->checkedLeaseValue);
-}
-
-driver::borrow_evidence::VerifiedBorrowEvidenceLease
-VerifiedCheckedModule::releaseBorrowEvidenceLease() {
-  return zc::mv(impl->borrowEvidenceLeaseValue);
 }
 
 ir::IrOperationResult<VerifiedCheckedModule> CheckedModuleBuilder::build(
@@ -513,7 +567,8 @@ ir::IrOperationResult<VerifiedCheckedModule> CheckedModuleBuilder::build(
     }
     auto borrowLease =
         zc::mv(evidenceAdoption).get<driver::borrow_evidence::VerifiedBorrowEvidenceLease>();
-    const auto resolvedEvidence = input.borrowEvidenceRepository.lookup(borrowLease);
+    const auto borrowCapability = input.borrowEvidenceRepository.capability();
+    const auto resolvedEvidence = borrowCapability.lookup(borrowLease);
     if (!resolvedEvidence.isResolved() ||
         resolvedEvidence.evidence().revision().digest() != evidenceRevision.digest() ||
         borrowLease.key().revision.digest() != evidenceRevision.digest()) {
@@ -526,7 +581,9 @@ ir::IrOperationResult<VerifiedCheckedModule> CheckedModuleBuilder::build(
           input.boundModule.retain(), input.moduleInterface, input.checkedRepository, facts,
           zc::mv(lease), input.dispatchFacts, evidenceRevision, zc::mv(borrowLease),
           input.borrowEvidenceRepository, input.identities.clone(), input.semanticTypes,
-          ModuleInterfaceLineage{module, ownInterface.revision().digest()},
+          ModuleInterfaceLineage{module, module_interface::ImportedInterfaceRevision(
+                                             module_interface::UserImportedInterfaceRevision{
+                                                 ownInterface.revision()})},
           zc::mv(importedLineage));
       return ir::IrOperationResult<VerifiedCheckedModule>::verified(
           VerifiedCheckedModule(zc::mv(impl)));

@@ -1,0 +1,13 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/uninitialized_aggregate_field_return_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Error [ZOM4093]: Use of uninitialized or deinitialized place
+// CHECK:   --> {{.*}}05-statements/uninitialized_aggregate_field_return_neg_01.zom:7:3
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 7 |   return cell.value;
+// CHECK-LITERAL:   |   ^
+// CHECK-LITERAL: Note [ZOM4094]: Place became unavailable here
+// CHECK:   --> {{.*}}05-statements/uninitialized_aggregate_field_return_neg_01.zom:6:7
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 6 |   let cell: Cell;
+// CHECK-LITERAL:   |       ^

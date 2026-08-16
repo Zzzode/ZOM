@@ -1,0 +1,10 @@
+struct Pair {
+  mut left: i32,
+  mut right: bool,
+}
+
+fun entry() -> bool {
+  mut pair: Pair;
+  pair.left = 0;
+  return pair.right;
+}

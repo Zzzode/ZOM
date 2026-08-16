@@ -5,22 +5,37 @@
 
 #pragma once
 
+#include <atomic>
+
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
+#include "zc/core/refcount.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/checker/borrow-interface.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/checker/cross-module-facts.h"
 #include "zomlang/compiler/checker/signature-facts.h"
+#include "zomlang/compiler/driver/interface-source.h"
 #include "zomlang/compiler/driver/module-interface.h"
 #include "zomlang/compiler/identity/brand.h"
 #include "zomlang/compiler/identity/semantic-context-fingerprint.h"
 #include "zomlang/compiler/identity/sha256.h"
 #include "zomlang/compiler/ir/ir-failure.h"
 
+namespace zomlang::compiler::hir {
+class VerifiedHirModule;
+}
+
+namespace zomlang::compiler::mir {
+class BuiltMirVerifier;
+class VerifiedBuiltMir;
+}  // namespace zomlang::compiler::mir
+
 namespace zomlang::compiler::driver::borrow_evidence {
+
+namespace detail {}  // namespace detail
 
 /// \brief One imported-surface tuple in the RFC 0013 revision stream.
 struct ImportedBorrowRevisionFrame final {
@@ -114,7 +129,7 @@ struct BorrowEvidenceBuildInput final {
   const checker::signature::VerifiedSignatureFacts& localSignatureFacts;
   const checker::cross_module::ImportedSignatureView& importedSignatures;
   const VerifiedModuleInterface& ownInterface;
-  zc::ArrayPtr<const VerifiedModuleInterface> availableInterfaces;
+  zc::ArrayPtr<const VerifiedInterfaceSource> availableInterfaces;
   const checker::CheckerIdentityAuthority& identities;
 };
 
@@ -195,6 +210,8 @@ public:
   ZC_NODISCARD const BorrowEvidenceKey& key() const noexcept;
 
 private:
+  ZC_NODISCARD VerifiedBorrowEvidenceLease clone() const;
+  ZC_NODISCARD bool matches(const VerifiedBorrowEvidenceLease& other) const noexcept;
   VerifiedBorrowEvidenceLease(identity::SemanticContextBrand semanticContext,
                               identity::RegistryBrand repository, BorrowEvidenceKey key) noexcept;
 
@@ -202,6 +219,9 @@ private:
   identity::RegistryBrand repository;
   BorrowEvidenceKey evidenceKey;
   friend class BorrowEvidenceRepository;
+  friend class mir::BuiltMirVerifier;
+  friend class mir::VerifiedBuiltMir;
+  friend class BorrowEvidenceRepositoryCapability;
 };
 
 struct BorrowEvidenceRepositoryRejected final {
@@ -210,6 +230,44 @@ struct BorrowEvidenceRepositoryRejected final {
 
 using BorrowEvidenceAdoptionResult =
     zc::OneOf<VerifiedBorrowEvidenceLease, BorrowEvidenceRepositoryRejected>;
+
+namespace detail {
+
+/// \brief Shared storage retained by a repository and every issued capability.
+class BorrowEvidenceRepositoryState final : public zc::AtomicRefcounted {
+public:
+  struct Entry final {
+    zc::Array<uint8_t> expandedModuleKey;
+    VerifiedBorrowEvidence evidence;
+  };
+
+  BorrowEvidenceRepositoryState(identity::SemanticContextBrand context,
+                                identity::RegistryBrand repository,
+                                uint32_t expectedEntryCount) noexcept
+      : context(context),
+        repository(repository),
+        expectedEntryCount(expectedEntryCount),
+        entries(expectedEntryCount),
+        sortedIndices(expectedEntryCount) {}
+  ~BorrowEvidenceRepositoryState() noexcept(false) override = default;
+  ZC_DISALLOW_COPY_AND_MOVE(BorrowEvidenceRepositoryState);
+
+  ZC_NODISCARD bool isLive() const noexcept { return live.load(std::memory_order_acquire); }
+  void invalidate() const noexcept { live.store(false, std::memory_order_release); }
+
+  identity::SemanticContextBrand context;
+  identity::RegistryBrand repository;
+  uint32_t expectedEntryCount;
+  mutable zc::Vector<Entry> entries;
+  mutable zc::Vector<uint32_t> sortedIndices;
+
+private:
+  mutable std::atomic_bool live = true;
+};
+
+}  // namespace detail
+
+class BorrowEvidenceRepository;
 
 /// \brief Closed exact-lookup result that never exposes repository storage pointers.
 class BorrowEvidenceLookupResult final {
@@ -225,6 +283,33 @@ private:
   zc::Maybe<const VerifiedBorrowEvidence&> resolved;
   ir::IrFailureKind rejection = ir::IrFailureKind::InvalidFact;
   friend class BorrowEvidenceRepository;
+  friend class BorrowEvidenceRepositoryCapability;
+};
+
+/// \brief Opaque authority required to resolve one repository-owned evidence lease.
+class BorrowEvidenceRepositoryCapability final {
+public:
+  BorrowEvidenceRepositoryCapability(BorrowEvidenceRepositoryCapability&&) noexcept = default;
+  BorrowEvidenceRepositoryCapability& operator=(BorrowEvidenceRepositoryCapability&&) = delete;
+  ZC_DISALLOW_COPY(BorrowEvidenceRepositoryCapability);
+
+  ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
+  ZC_NODISCARD BorrowEvidenceLookupResult
+  lookup(const VerifiedBorrowEvidenceLease& lease) const noexcept;
+
+private:
+  ZC_NODISCARD BorrowEvidenceRepositoryCapability clone() const noexcept;
+  ZC_NODISCARD bool matches(const BorrowEvidenceRepositoryCapability& other) const noexcept;
+  BorrowEvidenceRepositoryCapability(
+      identity::SemanticContextBrand semanticContext, identity::RegistryBrand repository,
+      zc::Arc<detail::BorrowEvidenceRepositoryState>&& state) noexcept;
+
+  identity::SemanticContextBrand context;
+  identity::RegistryBrand repository;
+  zc::Arc<detail::BorrowEvidenceRepositoryState> state;
+  friend class BorrowEvidenceRepository;
+  friend class hir::VerifiedHirModule;
+  friend class mir::VerifiedBuiltMir;
 };
 
 /// \brief Session-owned append-only authority for verified borrow evidence.
@@ -240,15 +325,16 @@ public:
       uint32_t expectedEntryCount);
   ZC_NODISCARD BorrowEvidenceAdoptionResult
   adopt(VerifiedBorrowEvidence&& evidence, const checker::CheckerIdentityAuthority& identities);
+  ZC_NODISCARD BorrowEvidenceRepositoryCapability capability() const noexcept;
   ZC_NODISCARD zc::Maybe<VerifiedBorrowEvidenceLease> lease(
       identity::ModuleId module, const BorrowEvidenceRevision& revision) const noexcept;
-  ZC_NODISCARD BorrowEvidenceLookupResult
-  lookup(const VerifiedBorrowEvidenceLease& lease) const noexcept;
 
 private:
-  struct Impl;
-  explicit BorrowEvidenceRepository(zc::Own<Impl>&& impl) noexcept;
-  zc::Own<Impl> impl;
+  explicit BorrowEvidenceRepository(
+      zc::Arc<detail::BorrowEvidenceRepositoryState>&& state) noexcept;
+  zc::Arc<detail::BorrowEvidenceRepositoryState> state;
+
+  friend class BorrowEvidenceRepositoryCapability;
 };
 
 }  // namespace zomlang::compiler::driver::borrow_evidence

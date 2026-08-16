@@ -14,11 +14,16 @@
 #include "zomlang/compiler/checker/dispatch-facts.h"
 #include "zomlang/compiler/checker/signature-facts.h"
 #include "zomlang/compiler/driver/borrow-evidence.h"
+#include "zomlang/compiler/driver/interface-source.h"
 #include "zomlang/compiler/driver/materialized-module-graph-query.h"
 #include "zomlang/compiler/driver/module-interface.h"
 #include "zomlang/compiler/identity/semantic-context-fingerprint.h"
 #include "zomlang/compiler/ir/ir-failure.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
+
+namespace zomlang::compiler::ownership {
+class OwnershipAdmittedBoundModule;
+}
 
 namespace zomlang::compiler::hir {
 
@@ -28,16 +33,16 @@ class HirVerifier;
 /// \brief Exact immutable module-interface revision retained by the frontend handoff.
 struct ModuleInterfaceLineage final {
   identity::ModuleId module;
-  identity::Sha256Digest revision;
+  module_interface::ImportedInterfaceRevision revision;
 };
 
 /// \brief Complete verified-only inputs for one checked-module assembly.
 struct CheckedModuleBuildInput final {
-  const driver::module_graph_query::CheckerBoundModuleView& boundModule;
+  const ownership::OwnershipAdmittedBoundModule& boundModule;
   const checker::signature::VerifiedSignatureFacts& localSignatureFacts;
   const driver::VerifiedModuleInterface& moduleInterface;
   const checker::cross_module::ImportedSignatureView& importedSignatures;
-  zc::ArrayPtr<const driver::VerifiedModuleInterface> availableModuleInterfaces;
+  zc::ArrayPtr<const driver::VerifiedInterfaceSource> availableModuleInterfaces;
   const checker::checked::CheckedEvidenceLease& checkedLease;
   const checker::checked::CheckedFactsRepository& checkedRepository;
   const checker::dispatch::VerifiedDispatchFacts& dispatchFacts;
@@ -76,17 +81,15 @@ public:
 private:
   struct Impl;
   explicit VerifiedCheckedModule(zc::Own<Impl>&& impl) noexcept;
-  ZC_NODISCARD driver::module_graph_query::CheckerBoundModuleView retainBoundModule() const;
+  ZC_NODISCARD ownership::OwnershipAdmittedBoundModule retainAdmittedBoundModule() const;
   ZC_NODISCARD const checker::checked::CheckedFactsRepository& checkedRepository() const noexcept;
   ZC_NODISCARD const checker::checked::VerifiedCheckedFacts& checkedFacts() const noexcept;
   ZC_NODISCARD const checker::dispatch::VerifiedDispatchFacts& dispatchFacts() const noexcept;
-  ZC_NODISCARD const driver::borrow_evidence::BorrowEvidenceRepository& borrowEvidenceRepository()
-      const noexcept;
+  ZC_NODISCARD driver::borrow_evidence::BorrowEvidenceRepositoryCapability
+  borrowEvidenceCapability() const noexcept;
   ZC_NODISCARD checker::CheckerIdentityAuthority retainIdentityAuthority() const;
   ZC_NODISCARD const driver::VerifiedModuleInterface& ownModuleInterface() const noexcept;
   ZC_NODISCARD const type::SemanticTypeStore& semanticTypes() const noexcept;
-  ZC_NODISCARD checker::checked::CheckedEvidenceLease releaseCheckedEvidenceLease();
-  ZC_NODISCARD driver::borrow_evidence::VerifiedBorrowEvidenceLease releaseBorrowEvidenceLease();
 
   zc::Own<Impl> impl;
 

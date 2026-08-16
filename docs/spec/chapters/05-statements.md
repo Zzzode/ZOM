@@ -11,7 +11,6 @@ Statements are the building blocks of program execution. They perform actions bu
 5. **Jump Statements**: `break`, `continue`, `return`
 6. **Concurrency Statements**: `spawn`, `suspend`
 7. **Unsafe Block**: `unsafe { }` granting unsafe operation capability (expression form)
-8. **Debugger Statement**: `debugger;`
 
 ```ebnf
 Statement ::= BlockStatement
@@ -31,7 +30,6 @@ Statement ::= BlockStatement
             | ReturnStatement
             | SpawnStatement
             | SuspendStatement
-            | DebuggerStatement
             | LabeledStatement
 ```
 
@@ -633,24 +631,6 @@ unsafe {
       return unsafe { *ptr };
   }
   ```
-
-## Debugger Statement
-
-Triggers a debugger breakpoint at the current execution point.
-
-```ebnf
-DebuggerStatement ::= 'debugger' ';'
-```
-
-```zom
-fun complexCalculation(x: f64) -> f64 {
-    let intermediate = x * 2;
-    debugger; // Breakpoint here
-    return intermediate + 10;
-}
-```
-
-In non-debug builds, `debugger;` is a no-op.
 
 ## Reserved Syntax
 

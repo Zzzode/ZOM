@@ -5,6 +5,7 @@
 
 #include "zomlang/compiler/driver/borrow-evidence.h"
 
+#include "zomlang/compiler/driver/core/query.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 
 namespace zomlang::compiler::driver::borrow_evidence {
@@ -167,14 +168,60 @@ ExpectedInventoryResult deriveExpectedInventory(const BorrowEvidenceBuildInput& 
       }
     }
 
+    const bool coreSource = imported.interfaceRevision()
+                                .variant()
+                                .is<module_interface::ToolchainCoreImportedInterfaceRevision>();
+    if (coreSource) {
+      zc::Maybe<const core_library_query::VerifiedCoreModuleInterface&> selected;
+      const auto& interfaceRevision = imported.interfaceRevision().variant();
+      const auto& bindingSurfaceRevision = imported.bindingSurfaceRevision().variant();
+      for (const auto& source : input.availableInterfaces) {
+        if (!source.is<ToolchainCoreVerifiedInterfaceSource>()) continue;
+        const auto& available = source.get<ToolchainCoreVerifiedInterfaceSource>().interface;
+        if (available.module() != imported.sourceModule()) continue;
+        if (selected != zc::none || available.context() != context ||
+            available.fingerprint().digest() !=
+                input.localSignatureFacts.contextFingerprint().digest() ||
+            !interfaceRevision.is<module_interface::ToolchainCoreImportedInterfaceRevision>() ||
+            available.record().revision().digest() !=
+                interfaceRevision.get<module_interface::ToolchainCoreImportedInterfaceRevision>()
+                    .value.digest() ||
+            !bindingSurfaceRevision
+                 .is<module_interface::ToolchainCoreImportedBindingSurfaceRevision>() ||
+            available.record().bindingSurfaceRevision().digest() !=
+                bindingSurfaceRevision
+                    .get<module_interface::ToolchainCoreImportedBindingSurfaceRevision>()
+                    .value.digest()) {
+          return reject(ir::IrFailureKind::InputRevisionMismatch, 7, 1);
+        }
+        selected = available;
+      }
+      if (selected == zc::none) { return reject(ir::IrFailureKind::MissingRequiredFact, 8, 1); }
+      for (const auto& signature : imported.lookupDefinitions()) {
+        if (isCallable(signature)) { return reject(ir::IrFailureKind::InvalidFact, 9, 1); }
+      }
+      for (const auto& signature : imported.supportDefinitions()) {
+        if (isCallable(signature)) { return reject(ir::IrFailureKind::InvalidFact, 10, 1); }
+      }
+      continue;
+    }
+
     zc::Maybe<const VerifiedModuleInterface&> selected;
-    for (const auto& available : input.availableInterfaces) {
+    for (const auto& source : input.availableInterfaces) {
+      if (!source.is<UserVerifiedInterfaceSource>()) continue;
+      const auto& available = source.get<UserVerifiedInterfaceSource>().interface;
       if (available.module() != imported.sourceModule()) continue;
       if (selected != zc::none) { return reject(ir::IrFailureKind::AdditionalFact, 6, 1); }
+      const auto& interfaceRevision = imported.interfaceRevision().variant();
+      const auto& bindingSurfaceRevision = imported.bindingSurfaceRevision().variant();
       if (available.semanticContext() != context ||
-          available.revision().digest() != imported.interfaceRevision().digest() ||
+          !interfaceRevision.is<module_interface::UserImportedInterfaceRevision>() ||
+          interfaceRevision.get<module_interface::UserImportedInterfaceRevision>().value.digest() !=
+              available.revision().digest() ||
+          !bindingSurfaceRevision.is<module_interface::UserImportedBindingSurfaceRevision>() ||
           available.bindingSurface().revision().digest() !=
-              imported.bindingSurfaceRevision().digest()) {
+              bindingSurfaceRevision.get<module_interface::UserImportedBindingSurfaceRevision>()
+                  .value.digest()) {
         return reject(ir::IrFailureKind::InputRevisionMismatch, 7, 1);
       }
       selected = available;
@@ -702,6 +749,16 @@ identity::SemanticContextBrand VerifiedBorrowEvidenceLease::semanticContext() co
 }
 const BorrowEvidenceKey& VerifiedBorrowEvidenceLease::key() const noexcept { return evidenceKey; }
 
+VerifiedBorrowEvidenceLease VerifiedBorrowEvidenceLease::clone() const {
+  return VerifiedBorrowEvidenceLease(context, repository,
+                                     BorrowEvidenceKey{evidenceKey.module, evidenceKey.revision});
+}
+bool VerifiedBorrowEvidenceLease::matches(const VerifiedBorrowEvidenceLease& other) const noexcept {
+  return context == other.context && repository == other.repository &&
+         evidenceKey.module == other.evidenceKey.module &&
+         evidenceKey.revision.digest() == other.evidenceKey.revision.digest();
+}
+
 BorrowEvidenceLookupResult::BorrowEvidenceLookupResult(
     const VerifiedBorrowEvidence& evidence) noexcept
     : resolved(evidence) {}
@@ -714,69 +771,98 @@ const VerifiedBorrowEvidence& BorrowEvidenceLookupResult::evidence() const {
 }
 ir::IrFailureKind BorrowEvidenceLookupResult::rejectionKind() const noexcept { return rejection; }
 
-struct BorrowEvidenceRepository::Impl final {
-  struct Entry final {
-    zc::Array<uint8_t> expandedModuleKey;
-    VerifiedBorrowEvidence evidence;
-  };
+BorrowEvidenceRepositoryCapability::BorrowEvidenceRepositoryCapability(
+    identity::SemanticContextBrand semanticContext, identity::RegistryBrand repository,
+    zc::Arc<detail::BorrowEvidenceRepositoryState>&& state) noexcept
+    : context(semanticContext), repository(repository), state(zc::mv(state)) {}
+identity::SemanticContextBrand BorrowEvidenceRepositoryCapability::semanticContext()
+    const noexcept {
+  return context;
+}
+BorrowEvidenceRepositoryCapability BorrowEvidenceRepositoryCapability::clone() const noexcept {
+  return BorrowEvidenceRepositoryCapability(context, repository, state.addRef());
+}
+bool BorrowEvidenceRepositoryCapability::matches(
+    const BorrowEvidenceRepositoryCapability& other) const noexcept {
+  return context == other.context && repository == other.repository && state == other.state;
+}
+BorrowEvidenceLookupResult BorrowEvidenceRepositoryCapability::lookup(
+    const VerifiedBorrowEvidenceLease& lease) const noexcept {
+  if (!state->isLive()) {
+    return BorrowEvidenceLookupResult(ir::IrFailureKind::InputRevisionMismatch);
+  }
+  const auto& capability = *this;
+  if (state->context != capability.context || state->repository != capability.repository ||
+      lease.context != capability.context || lease.repository != capability.repository) {
+    return BorrowEvidenceLookupResult(ir::IrFailureKind::InvalidFact);
+  }
+  if (!lease.evidenceKey.module.belongsTo(state->context)) {
+    return BorrowEvidenceLookupResult(ir::IrFailureKind::InputRevisionMismatch);
+  }
+  for (const auto index : state->sortedIndices) {
+    const auto& entry = state->entries[index];
+    if (entry.evidence.module() == lease.evidenceKey.module &&
+        entry.evidence.revision().digest() == lease.evidenceKey.revision.digest()) {
+      return BorrowEvidenceLookupResult(entry.evidence);
+    }
+  }
+  return BorrowEvidenceLookupResult(ir::IrFailureKind::InputRevisionMismatch);
+}
 
-  Impl(identity::SemanticContextBrand context, identity::RegistryBrand repository,
-       uint32_t expectedEntryCount) noexcept
-      : context(context),
-        repository(repository),
-        expectedEntryCount(expectedEntryCount),
-        entries(expectedEntryCount),
-        sortedIndices(expectedEntryCount) {}
-
-  identity::SemanticContextBrand context;
-  identity::RegistryBrand repository;
-  uint32_t expectedEntryCount;
-  zc::Vector<Entry> entries;
-  zc::Vector<uint32_t> sortedIndices;
-};
-
-BorrowEvidenceRepository::BorrowEvidenceRepository(zc::Own<Impl>&& impl) noexcept
-    : impl(zc::mv(impl)) {}
-BorrowEvidenceRepository::~BorrowEvidenceRepository() noexcept(false) = default;
+BorrowEvidenceRepository::BorrowEvidenceRepository(
+    zc::Arc<detail::BorrowEvidenceRepositoryState>&& state) noexcept
+    : state(zc::mv(state)) {}
+BorrowEvidenceRepository::~BorrowEvidenceRepository() noexcept(false) {
+  if (state != nullptr) state->invalidate();
+}
 BorrowEvidenceRepository::BorrowEvidenceRepository(BorrowEvidenceRepository&&) noexcept = default;
-BorrowEvidenceRepository& BorrowEvidenceRepository::operator=(BorrowEvidenceRepository&&) noexcept =
-    default;
+BorrowEvidenceRepository& BorrowEvidenceRepository::operator=(
+    BorrowEvidenceRepository&& other) noexcept {
+  if (this != &other) {
+    if (state != nullptr) state->invalidate();
+    state = zc::mv(other.state);
+  }
+  return *this;
+}
 
 zc::Maybe<BorrowEvidenceRepository> BorrowEvidenceRepository::create(
     identity::SemanticContextBrand context, identity::RegistryBrand repositoryBrand,
     uint32_t expectedEntryCount) {
   if (!context.isValid() || !repositoryBrand.belongsTo(context)) return zc::none;
-  return BorrowEvidenceRepository(zc::heap<Impl>(context, repositoryBrand, expectedEntryCount));
+  return BorrowEvidenceRepository(
+      zc::arc<detail::BorrowEvidenceRepositoryState>(context, repositoryBrand, expectedEntryCount));
 }
 
 BorrowEvidenceAdoptionResult BorrowEvidenceRepository::adopt(
     VerifiedBorrowEvidence&& evidence, const checker::CheckerIdentityAuthority& identities) {
-  if (identities.semanticContext() != impl->context ||
-      evidence.semanticContext() != impl->context || !evidence.module().belongsTo(impl->context)) {
+  if (identities.semanticContext() != state->context ||
+      evidence.semanticContext() != state->context ||
+      !evidence.module().belongsTo(state->context)) {
     return BorrowEvidenceRepositoryRejected{ir::IrFailureKind::InputRevisionMismatch};
   }
   auto module = identities.module(evidence.module());
   if (module == zc::none) {
     return BorrowEvidenceRepositoryRejected{ir::IrFailureKind::InvalidFact};
   }
-  for (const auto& entry : impl->entries) {
+  for (const auto& entry : state->entries) {
     if (entry.evidence.module() == evidence.module() &&
         entry.evidence.revision().digest() == evidence.revision().digest()) {
       return BorrowEvidenceRepositoryRejected{ir::IrFailureKind::AdditionalFact};
     }
   }
-  if (impl->entries.size() == impl->expectedEntryCount) {
+  if (state->entries.size() == state->expectedEntryCount) {
     return BorrowEvidenceRepositoryRejected{ir::IrFailureKind::AdditionalFact};
   }
   zc::Array<uint8_t> expanded;
   ZC_IF_SOME(value, module) { expanded = value.key().encode(); }
   BorrowEvidenceKey leaseKey{evidence.module(), evidence.revision()};
-  const auto entryIndex = static_cast<uint32_t>(impl->entries.size());
-  impl->entries.add(Impl::Entry{zc::mv(expanded), zc::mv(evidence)});
-  const auto& entry = impl->entries[entryIndex];
+  const auto entryIndex = static_cast<uint32_t>(state->entries.size());
+  state->entries.add(
+      detail::BorrowEvidenceRepositoryState::Entry{zc::mv(expanded), zc::mv(evidence)});
+  const auto& entry = state->entries[entryIndex];
   size_t insertion = 0;
-  while (insertion < impl->sortedIndices.size()) {
-    const auto& existing = impl->entries[impl->sortedIndices[insertion]];
+  while (insertion < state->sortedIndices.size()) {
+    const auto& existing = state->entries[state->sortedIndices[insertion]];
     if (lessBytes(entry.expandedModuleKey.asPtr(), existing.expandedModuleKey.asPtr()) ||
         (entry.expandedModuleKey.asPtr() == existing.expandedModuleKey.asPtr() &&
          lessBytes(entry.evidence.revision().digest().bytes(),
@@ -785,44 +871,30 @@ BorrowEvidenceAdoptionResult BorrowEvidenceRepository::adopt(
     }
     ++insertion;
   }
-  impl->sortedIndices.add(entryIndex);
-  for (size_t index = impl->sortedIndices.size() - 1; index > insertion; --index) {
-    impl->sortedIndices[index] = impl->sortedIndices[index - 1];
+  state->sortedIndices.add(entryIndex);
+  for (size_t index = state->sortedIndices.size() - 1; index > insertion; --index) {
+    state->sortedIndices[index] = state->sortedIndices[index - 1];
   }
-  impl->sortedIndices[insertion] = entryIndex;
-  return VerifiedBorrowEvidenceLease(impl->context, impl->repository, leaseKey);
+  state->sortedIndices[insertion] = entryIndex;
+  return VerifiedBorrowEvidenceLease(state->context, state->repository, leaseKey);
+}
+
+BorrowEvidenceRepositoryCapability BorrowEvidenceRepository::capability() const noexcept {
+  return BorrowEvidenceRepositoryCapability(state->context, state->repository, state.addRef());
 }
 
 zc::Maybe<VerifiedBorrowEvidenceLease> BorrowEvidenceRepository::lease(
     identity::ModuleId module, const BorrowEvidenceRevision& revision) const noexcept {
-  if (!module.belongsTo(impl->context)) return zc::none;
-  for (const auto index : impl->sortedIndices) {
-    const auto& entry = impl->entries[index];
+  if (!module.belongsTo(state->context)) return zc::none;
+  for (const auto index : state->sortedIndices) {
+    const auto& entry = state->entries[index];
     if (entry.evidence.module() == module &&
         entry.evidence.revision().digest() == revision.digest()) {
-      return VerifiedBorrowEvidenceLease(impl->context, impl->repository,
+      return VerifiedBorrowEvidenceLease(state->context, state->repository,
                                          BorrowEvidenceKey{module, revision});
     }
   }
   return zc::none;
-}
-
-BorrowEvidenceLookupResult BorrowEvidenceRepository::lookup(
-    const VerifiedBorrowEvidenceLease& lease) const noexcept {
-  if (lease.context != impl->context || lease.repository != impl->repository) {
-    return BorrowEvidenceLookupResult(ir::IrFailureKind::InvalidFact);
-  }
-  if (!lease.evidenceKey.module.belongsTo(impl->context)) {
-    return BorrowEvidenceLookupResult(ir::IrFailureKind::InputRevisionMismatch);
-  }
-  for (const auto index : impl->sortedIndices) {
-    const auto& entry = impl->entries[index];
-    if (entry.evidence.module() == lease.evidenceKey.module &&
-        entry.evidence.revision().digest() == lease.evidenceKey.revision.digest()) {
-      return BorrowEvidenceLookupResult(entry.evidence);
-    }
-  }
-  return BorrowEvidenceLookupResult(ir::IrFailureKind::InputRevisionMismatch);
 }
 
 }  // namespace zomlang::compiler::driver::borrow_evidence

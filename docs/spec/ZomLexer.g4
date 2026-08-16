@@ -525,7 +525,6 @@ DO       : 'do';
 BREAK    : 'break';
 CONTINUE : 'continue';
 RETURN   : 'return';
-DEBUGGER : 'debugger';
 IN       : 'in';
 OUT      : 'out';
 

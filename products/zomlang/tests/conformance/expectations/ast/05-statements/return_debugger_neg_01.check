@@ -1,8 +1,0 @@
-// RUN: ! %zomc compile --dump-ast %corpus/05-statements/return_debugger_neg_01.zom 2>&1 | %FileCheck %s
-
-
-// CHECK-LITERAL: Error [ZOM2025]: Expected ';'
-// CHECK-LITERAL:   --> conformance/return_debugger_neg_01.zom:3:1
-// CHECK-LITERAL:   |
-// CHECK-LITERAL: 3 | }
-// CHECK-LITERAL:   | ^

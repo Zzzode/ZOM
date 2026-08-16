@@ -34,4 +34,26 @@ private:
   uint32_t value = 0;
 };
 
+/// \brief Deterministic one-based identity of a local in one HIR function body.
+class HirLocalId final {
+public:
+  constexpr HirLocalId() noexcept = default;
+
+  /// \brief Construct a valid identity from its one-based deterministic ordinal.
+  ZC_NODISCARD static zc::Maybe<HirLocalId> fromOrdinal(uint32_t ordinal) noexcept {
+    if (ordinal == 0) { return zc::none; }
+    return HirLocalId(ordinal);
+  }
+
+  ZC_NODISCARD constexpr bool isValid() const noexcept { return value != 0; }
+  ZC_NODISCARD constexpr uint32_t ordinal() const noexcept { return value; }
+
+  constexpr bool operator==(HirLocalId other) const noexcept { return value == other.value; }
+  constexpr bool operator!=(HirLocalId other) const noexcept { return !(*this == other); }
+
+private:
+  explicit constexpr HirLocalId(uint32_t ordinal) noexcept : value(ordinal) {}
+  uint32_t value = 0;
+};
+
 }  // namespace zomlang::compiler::hir

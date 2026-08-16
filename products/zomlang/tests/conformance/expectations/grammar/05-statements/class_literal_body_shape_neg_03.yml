@@ -1,0 +1,5 @@
+section: "05-statements class literal body shape"
+covers_rule: "functionDeclaration, variableDeclaration, structLiteralExpression"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits the class literal body; the compiler rejects the unsupported body shape during semantic admission."

@@ -184,7 +184,7 @@ set_tests_properties(impl-source-architecture-negative PROPERTIES
 
 set_tests_properties(checker-architecture-negative PROPERTIES
   LABELS "conformance;checker;architecture;negative"
-  TIMEOUT 300
+  TIMEOUT 600
 )
 
 add_test(

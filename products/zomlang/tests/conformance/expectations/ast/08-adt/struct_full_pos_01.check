@@ -1,7 +1,7 @@
 // RUN: %zomc compile --dump-ast %corpus/08-adt/struct_full_pos_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #116 @1:1..14:1 file_name="struct_full_pos_01.zom"
+// CHECK: SourceFile #115 @1:1..14:1 file_name="struct_full_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #7 @1:1..1:27
@@ -19,13 +19,13 @@
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     IntLiteral #3 @1:25..1:26 base=10 value="0"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #26 @2:1..2:68
+// CHECK-NEXT:     StatementListItem #25 @2:1..2:68
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #25 @2:1..2:68 kind=Const
+// CHECK-NEXT:         LetStmt #24 @2:1..2:68 kind=Const
 // CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #24 @2:7..2:67 n_decls=1
+// CHECK-NEXT:             VariableDeclaratorList #23 @2:7..2:67 n_decls=1
 // CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #23 @2:7..2:67
+// CHECK-NEXT:                 VariableDeclarator #22 @2:7..2:67
 // CHECK-NEXT:                   pattern:
 // CHECK-NEXT:                     IdentifierPattern #8 @2:7..2:16 name="Vec3_UNIT"
 // CHECK-NEXT:                       ty: null
@@ -36,229 +36,229 @@
 // CHECK-NEXT:                       args:
 // CHECK-NEXT:                         PredefinedTypeExpr #9 @2:23..2:26 kind=F32
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StructLiteralExpr #22 @2:30..2:67
+// CHECK-NEXT:                     StructLiteralExpr #21 @2:30..2:67
 // CHECK-NEXT:                       ty:
-// CHECK-NEXT:                         NamedTypeExpr #15 @2:30..2:39
+// CHECK-NEXT:                         NamedTypeExpr #14 @2:30..2:39
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #14 @2:30..2:34 segments=["Vec3"] root=Relative
+// CHECK-NEXT:                             ModulePath #13 @2:30..2:34 segments=["Vec3"] root=Relative
 // CHECK-NEXT:                           args:
-// CHECK-NEXT:                             PredefinedTypeExpr #13 @2:35..2:38 kind=F32
+// CHECK-NEXT:                             PredefinedTypeExpr #12 @2:35..2:38 kind=F32
 // CHECK-NEXT:                       properties:
-// CHECK-NEXT:                         ObjectProperty #17 @2:42..2:48 name="x" short_form=false
+// CHECK-NEXT:                         ObjectProperty #16 @2:42..2:48 name="x" short_form=false
 // CHECK-NEXT:                           value:
-// CHECK-NEXT:                             FloatLiteralExpr #16 @2:45..2:48 width=64 value="1"
-// CHECK-NEXT:                         ObjectProperty #19 @2:50..2:56 name="y" short_form=false
+// CHECK-NEXT:                             FloatLiteralExpr #15 @2:45..2:48 width=64 value="1"
+// CHECK-NEXT:                         ObjectProperty #18 @2:50..2:56 name="y" short_form=false
 // CHECK-NEXT:                           value:
-// CHECK-NEXT:                             FloatLiteralExpr #18 @2:53..2:56 width=64 value="0"
-// CHECK-NEXT:                         ObjectProperty #21 @2:58..2:64 name="z" short_form=false
+// CHECK-NEXT:                             FloatLiteralExpr #17 @2:53..2:56 width=64 value="0"
+// CHECK-NEXT:                         ObjectProperty #20 @2:58..2:64 name="z" short_form=false
 // CHECK-NEXT:                           value:
-// CHECK-NEXT:                             FloatLiteralExpr #20 @2:61..2:64 width=64 value="0"
+// CHECK-NEXT:                             FloatLiteralExpr #19 @2:61..2:64 width=64 value="0"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #115 @4:1..13:2
+// CHECK-NEXT:     StatementListItem #114 @4:1..13:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ExportDeclaration #114 @4:1..13:2
+// CHECK-NEXT:         ExportDeclaration #113 @4:1..13:2
 // CHECK-NEXT:           declaration:
-// CHECK-NEXT:             StructDecl #113 @4:8..13:2 name="Vec3"
+// CHECK-NEXT:             StructDecl #112 @4:8..13:2 name="Vec3"
 // CHECK-NEXT:               type_params_id:
-// CHECK-NEXT:                 GenericParams #31 @4:19..4:31 nparams=1
+// CHECK-NEXT:                 GenericParams #30 @4:19..4:31 nparams=1
 // CHECK-NEXT:                   params:
-// CHECK-NEXT:                     GenericTypeParam #30 @4:20..4:30 name="T"
+// CHECK-NEXT:                     GenericTypeParam #29 @4:20..4:30 name="T"
 // CHECK-NEXT:                       bounds_id:
-// CHECK-NEXT:                         TypeParameterBoundList #29 @4:23..4:30
+// CHECK-NEXT:                         TypeParameterBoundList #28 @4:23..4:30
 // CHECK-NEXT:                           bounds:
-// CHECK-NEXT:                             NamedTypeExpr #28 @4:23..4:30
+// CHECK-NEXT:                             NamedTypeExpr #27 @4:23..4:30
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #27 @4:23..4:30 segments=["numeric"] root=Relative
+// CHECK-NEXT:                                 ModulePath #26 @4:23..4:30 segments=["numeric"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                       default_ty: null
 // CHECK-NEXT:                   where_: null
 // CHECK-NEXT:               members_id:
-// CHECK-NEXT:                 ClassMemberList #112 @4:32..13:2 nmembers=6
+// CHECK-NEXT:                 ClassMemberList #111 @4:32..13:2 nmembers=6
 // CHECK-NEXT:                   members:
-// CHECK-NEXT:                     FieldDecl #34 @5:5..5:21 name="x" is_mut=true is_static=false visibility=Public
+// CHECK-NEXT:                     FieldDecl #33 @5:5..5:21 name="x" is_mut=true is_static=false visibility=Public
 // CHECK-NEXT:                       ty:
-// CHECK-NEXT:                         NamedTypeExpr #33 @5:19..5:20
+// CHECK-NEXT:                         NamedTypeExpr #32 @5:19..5:20
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #32 @5:19..5:20 segments=["T"] root=Relative
+// CHECK-NEXT:                             ModulePath #31 @5:19..5:20 segments=["T"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       init: null
-// CHECK-NEXT:                     FieldDecl #37 @6:5..6:21 name="y" is_mut=true is_static=false visibility=Public
+// CHECK-NEXT:                     FieldDecl #36 @6:5..6:21 name="y" is_mut=true is_static=false visibility=Public
 // CHECK-NEXT:                       ty:
-// CHECK-NEXT:                         NamedTypeExpr #36 @6:19..6:20
+// CHECK-NEXT:                         NamedTypeExpr #35 @6:19..6:20
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #35 @6:19..6:20 segments=["T"] root=Relative
+// CHECK-NEXT:                             ModulePath #34 @6:19..6:20 segments=["T"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       init: null
-// CHECK-NEXT:                     FieldDecl #40 @7:5..7:19 name="z" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                     FieldDecl #39 @7:5..7:19 name="z" is_mut=false is_static=false visibility=Default
 // CHECK-NEXT:                       ty:
-// CHECK-NEXT:                         NamedTypeExpr #39 @7:17..7:18
+// CHECK-NEXT:                         NamedTypeExpr #38 @7:17..7:18
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #38 @7:17..7:18 segments=["T"] root=Relative
+// CHECK-NEXT:                             ModulePath #37 @7:17..7:18 segments=["T"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       init: null
-// CHECK-NEXT:                     ConstructorDecl #73 @8:5..8:73 name="init" visibility=Default
+// CHECK-NEXT:                     ConstructorDecl #72 @8:5..8:73 name="init" visibility=Default
 // CHECK-NEXT:                       params_id:
-// CHECK-NEXT:                         FunctionParameterList #53 @8:9..8:33 nparams=4
+// CHECK-NEXT:                         FunctionParameterList #52 @8:9..8:33 nparams=4
 // CHECK-NEXT:                           params:
-// CHECK-NEXT:                             FunctionParameterDecl #43 @8:10..8:14 name="this"
+// CHECK-NEXT:                             FunctionParameterDecl #42 @8:10..8:14 name="this"
 // CHECK-NEXT:                               ty:
-// CHECK-NEXT:                                 NamedTypeExpr #42 @8:10..8:14
+// CHECK-NEXT:                                 NamedTypeExpr #41 @8:10..8:14
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #41 @8:10..8:14 segments=["Self"] root=Relative
+// CHECK-NEXT:                                     ModulePath #40 @8:10..8:14 segments=["Self"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               default_: null
 // CHECK-NEXT:                               attrs: null
-// CHECK-NEXT:                             FunctionParameterDecl #46 @8:16..8:20 name="x"
+// CHECK-NEXT:                             FunctionParameterDecl #45 @8:16..8:20 name="x"
 // CHECK-NEXT:                               ty:
-// CHECK-NEXT:                                 NamedTypeExpr #45 @8:19..8:20
+// CHECK-NEXT:                                 NamedTypeExpr #44 @8:19..8:20
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #44 @8:19..8:20 segments=["T"] root=Relative
+// CHECK-NEXT:                                     ModulePath #43 @8:19..8:20 segments=["T"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               default_: null
 // CHECK-NEXT:                               attrs: null
-// CHECK-NEXT:                             FunctionParameterDecl #49 @8:22..8:26 name="y"
+// CHECK-NEXT:                             FunctionParameterDecl #48 @8:22..8:26 name="y"
 // CHECK-NEXT:                               ty:
-// CHECK-NEXT:                                 NamedTypeExpr #48 @8:25..8:26
+// CHECK-NEXT:                                 NamedTypeExpr #47 @8:25..8:26
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #47 @8:25..8:26 segments=["T"] root=Relative
+// CHECK-NEXT:                                     ModulePath #46 @8:25..8:26 segments=["T"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               default_: null
 // CHECK-NEXT:                               attrs: null
-// CHECK-NEXT:                             FunctionParameterDecl #52 @8:28..8:32 name="z"
+// CHECK-NEXT:                             FunctionParameterDecl #51 @8:28..8:32 name="z"
 // CHECK-NEXT:                               ty:
-// CHECK-NEXT:                                 NamedTypeExpr #51 @8:31..8:32
+// CHECK-NEXT:                                 NamedTypeExpr #50 @8:31..8:32
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #50 @8:31..8:32 segments=["T"] root=Relative
+// CHECK-NEXT:                                     ModulePath #49 @8:31..8:32 segments=["T"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               default_: null
 // CHECK-NEXT:                               attrs: null
 // CHECK-NEXT:                       raises_ty: null
 // CHECK-NEXT:                       body:
-// CHECK-NEXT:                         BlockStmt #72 @8:34..8:73
+// CHECK-NEXT:                         BlockStmt #71 @8:34..8:73
 // CHECK-NEXT:                           stmts:
-// CHECK-NEXT:                             StatementListItem #59 @8:36..8:47
+// CHECK-NEXT:                             StatementListItem #58 @8:36..8:47
 // CHECK-NEXT:                               item:
-// CHECK-NEXT:                                 ExpressionStatement #58 @8:36..8:47
+// CHECK-NEXT:                                 ExpressionStatement #57 @8:36..8:47
 // CHECK-NEXT:                                   expression:
-// CHECK-NEXT:                                     AssignmentExpr #57 @8:36..8:46 op=Assign
+// CHECK-NEXT:                                     AssignmentExpr #56 @8:36..8:46 op=Assign
 // CHECK-NEXT:                                       lhs:
-// CHECK-NEXT:                                         MemberExpression #55 @8:36..8:42 property="x" access=Dot
+// CHECK-NEXT:                                         MemberExpression #54 @8:36..8:42 property="x" access=Dot
 // CHECK-NEXT:                                           object:
-// CHECK-NEXT:                                             ThisExpr #54 @8:36..8:40
+// CHECK-NEXT:                                             ThisExpr #53 @8:36..8:40
 // CHECK-NEXT:                                       rhs:
-// CHECK-NEXT:                                         IdentExpr #56 @8:45..8:46 name="x"
+// CHECK-NEXT:                                         IdentExpr #55 @8:45..8:46 name="x"
 // CHECK-NEXT:                               attrs: null
-// CHECK-NEXT:                             StatementListItem #65 @8:48..8:59
+// CHECK-NEXT:                             StatementListItem #64 @8:48..8:59
 // CHECK-NEXT:                               item:
-// CHECK-NEXT:                                 ExpressionStatement #64 @8:48..8:59
+// CHECK-NEXT:                                 ExpressionStatement #63 @8:48..8:59
 // CHECK-NEXT:                                   expression:
-// CHECK-NEXT:                                     AssignmentExpr #63 @8:48..8:58 op=Assign
+// CHECK-NEXT:                                     AssignmentExpr #62 @8:48..8:58 op=Assign
 // CHECK-NEXT:                                       lhs:
-// CHECK-NEXT:                                         MemberExpression #61 @8:48..8:54 property="y" access=Dot
+// CHECK-NEXT:                                         MemberExpression #60 @8:48..8:54 property="y" access=Dot
 // CHECK-NEXT:                                           object:
-// CHECK-NEXT:                                             ThisExpr #60 @8:48..8:52
+// CHECK-NEXT:                                             ThisExpr #59 @8:48..8:52
 // CHECK-NEXT:                                       rhs:
-// CHECK-NEXT:                                         IdentExpr #62 @8:57..8:58 name="y"
+// CHECK-NEXT:                                         IdentExpr #61 @8:57..8:58 name="y"
 // CHECK-NEXT:                               attrs: null
-// CHECK-NEXT:                             StatementListItem #71 @8:60..8:71
+// CHECK-NEXT:                             StatementListItem #70 @8:60..8:71
 // CHECK-NEXT:                               item:
-// CHECK-NEXT:                                 ExpressionStatement #70 @8:60..8:71
+// CHECK-NEXT:                                 ExpressionStatement #69 @8:60..8:71
 // CHECK-NEXT:                                   expression:
-// CHECK-NEXT:                                     AssignmentExpr #69 @8:60..8:70 op=Assign
+// CHECK-NEXT:                                     AssignmentExpr #68 @8:60..8:70 op=Assign
 // CHECK-NEXT:                                       lhs:
-// CHECK-NEXT:                                         MemberExpression #67 @8:60..8:66 property="z" access=Dot
+// CHECK-NEXT:                                         MemberExpression #66 @8:60..8:66 property="z" access=Dot
 // CHECK-NEXT:                                           object:
-// CHECK-NEXT:                                             ThisExpr #66 @8:60..8:64
+// CHECK-NEXT:                                             ThisExpr #65 @8:60..8:64
 // CHECK-NEXT:                                       rhs:
-// CHECK-NEXT:                                         IdentExpr #68 @8:69..8:70 name="z"
+// CHECK-NEXT:                                         IdentExpr #67 @8:69..8:70 name="z"
 // CHECK-NEXT:                               attrs: null
-// CHECK-NEXT:                     DestructorDecl #79 @9:5..9:20 name="deinit" visibility=Default
+// CHECK-NEXT:                     DestructorDecl #78 @9:5..9:20 name="deinit" visibility=Default
 // CHECK-NEXT:                       params_id:
-// CHECK-NEXT:                         FunctionParameterList #77 @9:11..9:17 nparams=1
+// CHECK-NEXT:                         FunctionParameterList #76 @9:11..9:17 nparams=1
 // CHECK-NEXT:                           params:
-// CHECK-NEXT:                             FunctionParameterDecl #76 @9:12..9:16 name="this"
+// CHECK-NEXT:                             FunctionParameterDecl #75 @9:12..9:16 name="this"
 // CHECK-NEXT:                               ty:
-// CHECK-NEXT:                                 NamedTypeExpr #75 @9:12..9:16
+// CHECK-NEXT:                                 NamedTypeExpr #74 @9:12..9:16
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #74 @9:12..9:16 segments=["Self"] root=Relative
+// CHECK-NEXT:                                     ModulePath #73 @9:12..9:16 segments=["Self"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               default_: null
 // CHECK-NEXT:                               attrs: null
 // CHECK-NEXT:                       raises_ty: null
 // CHECK-NEXT:                       body:
-// CHECK-NEXT:                         BlockStmt #78 @9:18..9:20
+// CHECK-NEXT:                         BlockStmt #77 @9:18..9:20
 // CHECK-NEXT:                           stmts: []
-// CHECK-NEXT:                     MethodDecl #111 @10:5..12:6 name="dot" mode=Instance visibility=Default
+// CHECK-NEXT:                     MethodDecl #110 @10:5..12:6 name="dot" mode=Instance visibility=Default
 // CHECK-NEXT:                       params_id:
-// CHECK-NEXT:                         FunctionParameterList #88 @10:12..10:34 nparams=2
+// CHECK-NEXT:                         FunctionParameterList #87 @10:12..10:34 nparams=2
 // CHECK-NEXT:                           params:
-// CHECK-NEXT:                             FunctionParameterDecl #82 @10:13..10:17 name="this"
+// CHECK-NEXT:                             FunctionParameterDecl #81 @10:13..10:17 name="this"
 // CHECK-NEXT:                               ty:
-// CHECK-NEXT:                                 NamedTypeExpr #81 @10:13..10:17
+// CHECK-NEXT:                                 NamedTypeExpr #80 @10:13..10:17
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #80 @10:13..10:17 segments=["Self"] root=Relative
+// CHECK-NEXT:                                     ModulePath #79 @10:13..10:17 segments=["Self"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               default_: null
 // CHECK-NEXT:                               attrs: null
-// CHECK-NEXT:                             FunctionParameterDecl #87 @10:19..10:33 name="other"
+// CHECK-NEXT:                             FunctionParameterDecl #86 @10:19..10:33 name="other"
 // CHECK-NEXT:                               ty:
-// CHECK-NEXT:                                 NamedTypeExpr #86 @10:26..10:33
+// CHECK-NEXT:                                 NamedTypeExpr #85 @10:26..10:33
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #85 @10:26..10:30 segments=["Vec3"] root=Relative
+// CHECK-NEXT:                                     ModulePath #84 @10:26..10:30 segments=["Vec3"] root=Relative
 // CHECK-NEXT:                                   args:
-// CHECK-NEXT:                                     NamedTypeExpr #84 @10:31..10:32
+// CHECK-NEXT:                                     NamedTypeExpr #83 @10:31..10:32
 // CHECK-NEXT:                                       path:
-// CHECK-NEXT:                                         ModulePath #83 @10:31..10:32 segments=["T"] root=Relative
+// CHECK-NEXT:                                         ModulePath #82 @10:31..10:32 segments=["T"] root=Relative
 // CHECK-NEXT:                                       args: []
 // CHECK-NEXT:                               default_: null
 // CHECK-NEXT:                               attrs: null
 // CHECK-NEXT:                       type_params_id: null
 // CHECK-NEXT:                       ret_ty:
-// CHECK-NEXT:                         NamedTypeExpr #90 @10:38..10:39
+// CHECK-NEXT:                         NamedTypeExpr #89 @10:38..10:39
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #89 @10:38..10:39 segments=["T"] root=Relative
+// CHECK-NEXT:                             ModulePath #88 @10:38..10:39 segments=["T"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       raises_ty: null
 // CHECK-NEXT:                       body:
-// CHECK-NEXT:                         BlockStmt #110 @10:40..12:6
+// CHECK-NEXT:                         BlockStmt #109 @10:40..12:6
 // CHECK-NEXT:                           stmts:
-// CHECK-NEXT:                             StatementListItem #109 @11:9..11:71
+// CHECK-NEXT:                             StatementListItem #108 @11:9..11:71
 // CHECK-NEXT:                               item:
-// CHECK-NEXT:                                 ReturnStmt #108 @11:9..11:71
+// CHECK-NEXT:                                 ReturnStmt #107 @11:9..11:71
 // CHECK-NEXT:                                   value:
-// CHECK-NEXT:                                     BinaryExpr #107 @11:16..11:70 op=Add
+// CHECK-NEXT:                                     BinaryExpr #106 @11:16..11:70 op=Add
 // CHECK-NEXT:                                       lhs:
-// CHECK-NEXT:                                         BinaryExpr #101 @11:16..11:51 op=Add
+// CHECK-NEXT:                                         BinaryExpr #100 @11:16..11:51 op=Add
 // CHECK-NEXT:                                           lhs:
-// CHECK-NEXT:                                             BinaryExpr #95 @11:16..11:32 op=Mul
+// CHECK-NEXT:                                             BinaryExpr #94 @11:16..11:32 op=Mul
 // CHECK-NEXT:                                               lhs:
-// CHECK-NEXT:                                                 MemberExpression #92 @11:16..11:22 property="x" access=Dot
+// CHECK-NEXT:                                                 MemberExpression #91 @11:16..11:22 property="x" access=Dot
 // CHECK-NEXT:                                                   object:
-// CHECK-NEXT:                                                     ThisExpr #91 @11:16..11:20
+// CHECK-NEXT:                                                     ThisExpr #90 @11:16..11:20
 // CHECK-NEXT:                                               rhs:
-// CHECK-NEXT:                                                 MemberExpression #94 @11:25..11:32 property="x" access=Dot
+// CHECK-NEXT:                                                 MemberExpression #93 @11:25..11:32 property="x" access=Dot
 // CHECK-NEXT:                                                   object:
-// CHECK-NEXT:                                                     IdentExpr #93 @11:25..11:30 name="other"
+// CHECK-NEXT:                                                     IdentExpr #92 @11:25..11:30 name="other"
 // CHECK-NEXT:                                           rhs:
-// CHECK-NEXT:                                             BinaryExpr #100 @11:35..11:51 op=Mul
+// CHECK-NEXT:                                             BinaryExpr #99 @11:35..11:51 op=Mul
 // CHECK-NEXT:                                               lhs:
-// CHECK-NEXT:                                                 MemberExpression #97 @11:35..11:41 property="y" access=Dot
+// CHECK-NEXT:                                                 MemberExpression #96 @11:35..11:41 property="y" access=Dot
 // CHECK-NEXT:                                                   object:
-// CHECK-NEXT:                                                     ThisExpr #96 @11:35..11:39
+// CHECK-NEXT:                                                     ThisExpr #95 @11:35..11:39
 // CHECK-NEXT:                                               rhs:
-// CHECK-NEXT:                                                 MemberExpression #99 @11:44..11:51 property="y" access=Dot
+// CHECK-NEXT:                                                 MemberExpression #98 @11:44..11:51 property="y" access=Dot
 // CHECK-NEXT:                                                   object:
-// CHECK-NEXT:                                                     IdentExpr #98 @11:44..11:49 name="other"
+// CHECK-NEXT:                                                     IdentExpr #97 @11:44..11:49 name="other"
 // CHECK-NEXT:                                       rhs:
-// CHECK-NEXT:                                         BinaryExpr #106 @11:54..11:70 op=Mul
+// CHECK-NEXT:                                         BinaryExpr #105 @11:54..11:70 op=Mul
 // CHECK-NEXT:                                           lhs:
-// CHECK-NEXT:                                             MemberExpression #103 @11:54..11:60 property="z" access=Dot
+// CHECK-NEXT:                                             MemberExpression #102 @11:54..11:60 property="z" access=Dot
 // CHECK-NEXT:                                               object:
-// CHECK-NEXT:                                                 ThisExpr #102 @11:54..11:58
+// CHECK-NEXT:                                                 ThisExpr #101 @11:54..11:58
 // CHECK-NEXT:                                           rhs:
-// CHECK-NEXT:                                             MemberExpression #105 @11:63..11:70 property="z" access=Dot
+// CHECK-NEXT:                                             MemberExpression #104 @11:63..11:70 property="z" access=Dot
 // CHECK-NEXT:                                               object:
-// CHECK-NEXT:                                                 IdentExpr #104 @11:63..11:68 name="other"
+// CHECK-NEXT:                                                 IdentExpr #103 @11:63..11:68 name="other"
 // CHECK-NEXT:                               attrs: null
 // CHECK-NEXT:           path: null
 // CHECK-NEXT:           specifiers: []

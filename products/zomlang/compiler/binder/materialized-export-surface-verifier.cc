@@ -121,7 +121,10 @@ zc::Maybe<const MaterializedDefinitionIdentityEntry&> dependencyDefinitionIdenti
   for (const auto& dependency : dependencies) {
     for (const auto& identity : dependency.definitions) {
       if (identity.handle() != definition) { continue; }
-      if (result != zc::none) { return zc::none; }
+      if (result != zc::none) {
+        if (ZC_ASSERT_NONNULL(result).key() != identity.key()) { return zc::none; }
+        continue;
+      }
       result = identity;
     }
   }

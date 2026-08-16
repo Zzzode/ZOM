@@ -2,13 +2,13 @@
 
 Diagnostic expectations are consumed by the `conformance-diagnostics` lit
 runner. Each `.check` file must run the real compiler pipeline with
-`zomc compile --syntax-only` and assert the user-facing diagnostic display.
+`zomc compile --check` and assert the user-facing diagnostic display.
 
 Use the safe two-step failure pattern so FileCheck failures are not hidden by
 shell pipeline negation:
 
 ```text
-// RUN: cd %corpus && ! %zomc compile --syntax-only <path>.zom > %t 2>&1
+// RUN: cd %corpus && ! %zomc compile --check <path>.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 ```
 

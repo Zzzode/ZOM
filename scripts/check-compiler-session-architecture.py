@@ -11,6 +11,8 @@ COMPILER_ROOT = ROOT / "products" / "zomlang" / "compiler"
 UTILS_ROOT = ROOT / "products" / "zomlang" / "utils"
 SESSION_HEADER = Path("products/zomlang/compiler/driver/compiler-session.h")
 SESSION_SOURCE = Path("products/zomlang/compiler/driver/compiler-session.cc")
+DRIVER_ROOT = SESSION_HEADER.parent
+CORE_ROOT = DRIVER_ROOT / "core"
 CRATE_GRAPH_HEADER = Path("products/zomlang/compiler/driver/crate-graph.h")
 CRATE_GRAPH_SOURCE = Path("products/zomlang/compiler/driver/crate-graph.cc")
 MODULE_DISCOVERY_HEADER = Path("products/zomlang/compiler/driver/module-discovery.h")
@@ -33,6 +35,7 @@ MODULE_INTERFACE_DIAGNOSTIC_SOURCE = Path(
 )
 BORROW_EVIDENCE_HEADER = Path("products/zomlang/compiler/driver/borrow-evidence.h")
 BORROW_EVIDENCE_SOURCE = Path("products/zomlang/compiler/driver/borrow-evidence.cc")
+INTERFACE_SOURCE_HEADER = Path("products/zomlang/compiler/driver/interface-source.h")
 ACTIVE_DEFINITION_AUTHORITY_QUERY_HEADER = Path(
     "products/zomlang/compiler/driver/active-definition-authority-query.h"
 )
@@ -85,17 +88,34 @@ NAMED_ITEM_QUERY_HEADER = Path("products/zomlang/compiler/driver/named-item-quer
 NAMED_ITEM_QUERY_SOURCE = Path("products/zomlang/compiler/driver/named-item-query.cc")
 OWNER_BODY_QUERY_HEADER = Path("products/zomlang/compiler/driver/owner-body-query.h")
 OWNER_BODY_QUERY_SOURCE = Path("products/zomlang/compiler/driver/owner-body-query.cc")
-CORE_LIBRARY_QUERY_PROVIDER_HEADER = Path(
-    "products/zomlang/compiler/driver/core-library-query-provider.h"
+CORE_QUERY_HEADER = Path(
+    "products/zomlang/compiler/driver/core/query.h"
 )
-CORE_LIBRARY_QUERY_PROVIDER_SOURCE = Path(
-    "products/zomlang/compiler/driver/core-library-query-provider.cc"
+CORE_QUERY_SOURCE = Path(
+    "products/zomlang/compiler/driver/core/query.cc"
 )
-CORE_LIBRARY_QUERY_VERIFIER_HEADER = Path(
-    "products/zomlang/compiler/driver/core-library-query-verifier.h"
+CORE_VERIFIER_HEADER = Path(
+    "products/zomlang/compiler/driver/core/verifier.h"
 )
-CORE_LIBRARY_QUERY_VERIFIER_SOURCE = Path(
-    "products/zomlang/compiler/driver/core-library-query-verifier.cc"
+CORE_VERIFIER_SOURCE = Path(
+    "products/zomlang/compiler/driver/core/verifier.cc"
+)
+CORE_FILES = frozenset(
+    {
+        CORE_QUERY_HEADER,
+        CORE_QUERY_SOURCE,
+        CORE_VERIFIER_HEADER,
+        CORE_VERIFIER_SOURCE,
+        Path("products/zomlang/compiler/driver/core/library.h"),
+        Path("products/zomlang/compiler/driver/core/library.cc"),
+        Path("products/zomlang/compiler/driver/core/marker-authority.h"),
+        Path("products/zomlang/compiler/driver/core/marker-authority.cc"),
+        Path("products/zomlang/compiler/driver/core/revision.h"),
+        Path("products/zomlang/compiler/driver/core/role-seed-failure.h"),
+        Path("products/zomlang/compiler/driver/core/role-seed-failure.cc"),
+        Path("products/zomlang/compiler/driver/core/signature.h"),
+        Path("products/zomlang/compiler/driver/core/signature.cc"),
+    }
 )
 MODULE_GRAPH_QUERY_INPUT_HEADER = Path(
     "products/zomlang/compiler/driver/module-graph-query-input.h"
@@ -149,6 +169,7 @@ EXPECTED_DRIVER_FILES = {
     MODULE_INTERFACE_DIAGNOSTIC_SOURCE,
     BORROW_EVIDENCE_HEADER,
     BORROW_EVIDENCE_SOURCE,
+    INTERFACE_SOURCE_HEADER,
     ACTIVE_DEFINITION_AUTHORITY_QUERY_HEADER,
     ACTIVE_DEFINITION_AUTHORITY_QUERY_SOURCE,
     ACTIVE_DEFINITION_AUTHORITY_SESSION_HEADER,
@@ -169,10 +190,7 @@ EXPECTED_DRIVER_FILES = {
     NAMED_ITEM_QUERY_SOURCE,
     OWNER_BODY_QUERY_HEADER,
     OWNER_BODY_QUERY_SOURCE,
-    CORE_LIBRARY_QUERY_PROVIDER_HEADER,
-    CORE_LIBRARY_QUERY_PROVIDER_SOURCE,
-    CORE_LIBRARY_QUERY_VERIFIER_HEADER,
-    CORE_LIBRARY_QUERY_VERIFIER_SOURCE,
+    *CORE_FILES,
     MODULE_GRAPH_QUERY_INPUT_HEADER,
     MODULE_GRAPH_QUERY_INPUT_SOURCE,
     MODULE_DEPENDENCY_PROVENANCE_QUERY_HEADER,
@@ -188,8 +206,13 @@ DRIVER_BUILD_MARKER = (
     "               active-identity-membership-query.cc\n"
     "               borrow-evidence.cc coherence-builder.cc compiler-session.cc\n"
     "               contextual-binding-key.cc\n"
-    "               core-library-query-provider.cc core-library-query-verifier.cc crate-graph.cc\n"
-    "               imported-signature-view-projector.cc incremental-binding-query-adapter.cc\n"
+    "               core/role-seed-failure.cc\n"
+    "               core/library.cc\n"
+    "               core/marker-authority.cc\n"
+    "               core/signature.cc\n"
+    "               core/query.cc core/verifier.cc crate-graph.cc\n"
+    "               imported-signature-view-projector.cc\n"
+    "               incremental-binding-query-adapter.cc\n"
     "               incremental-module-resolution-query.cc\n"
     "               incremental-package-graph-query-input.cc\n"
     "               module-dependency-provenance-query.cc module-discovery.cc\n"
@@ -284,7 +307,7 @@ SESSION_SOURCE_MARKERS = (
     "zc::Vector<hir::VerifiedHirModule> hirModules;",
     "zc::Vector<ir::IrDiagnosticGroup> irFailureGroups;",
     "zc::Vector<identity::IdentityInvariant> irIdentityInvariantFailures;",
-    "checker::dispatch::DispatchSiteInventoryBuilder::build(boundView, inventory)",
+    "checker::dispatch::DispatchSiteInventoryBuilder::build(boundView.boundModule(), inventory)",
     "checker::dispatch::DispatchFactsBuilder::build(",
     "checker::dispatch::DispatchFactsVerifier::verify(",
     "borrow_evidence::BorrowEvidenceRepository::create(",
@@ -303,12 +326,12 @@ ORDINARY_MODULE_PARTITION_MARKERS = (
     "ordinaryBoundModuleIndices.add(index);",
     "for (size_t ordinaryIndex = 0; ordinaryIndex < ordinaryBoundModuleIndices.size();",
     "const auto boundIndex = ordinaryBoundModuleIndices[ordinaryIndex];",
-    "const auto factIndex = checkerFactIndexByModule[boundIndex];",
-    "checkerBound, stagedSignatureFacts[factIndex],",
-    "stagedModuleInterfaces[factIndex], stagedImportedSignatureViews[factIndex],",
-    "stagedModuleInterfaces.asPtr(), stagedCheckedEvidence[factIndex],",
-    "*stagedCheckedFactsRepository, stagedDispatchFacts[factIndex],",
-    "mir::BuiltMirBuilder::build(stagedHirModules[ordinaryIndex])",
+    "checkerBound, ordinarySignatureFacts[ordinaryIndex],",
+    "ordinaryModuleInterfaces[ordinaryIndex], ordinaryImportedSignatureViews[ordinaryIndex],",
+    "checkedModuleInterfaceSources.asPtr(), ordinaryCheckedEvidence[ordinaryIndex],",
+    "*stagedCheckedFactsRepository, ordinaryDispatchFacts[ordinaryIndex],",
+    "const mir::BuiltMirInput mirInput{stagedHirModules[ordinaryIndex], bodyInput};",
+    "mir::BuiltMirBuilder::build(mirInput)",
     "stagedHirModules.size() != ordinaryBoundModuleIndices.size()",
     "stagedBuiltMirModules.size() != ordinaryBoundModuleIndices.size()",
     "stagedOwnershipEventOverlays.size() != ordinaryBoundModuleIndices.size()",
@@ -316,6 +339,7 @@ ORDINARY_MODULE_PARTITION_MARKERS = (
     "const auto factIndex = checkerFactIndexByModule[index];",
     "ordinarySignatureFacts.add(zc::mv(stagedSignatureFacts[factIndex]));",
     "ordinaryImportedSignatureViews.add(zc::mv(stagedImportedSignatureViews[factIndex]));",
+    "ordinaryBodyRequirements.add(zc::mv(stagedBodyRequirements[factIndex]));",
     "ordinaryModuleInterfaces.add(zc::mv(stagedModuleInterfaces[factIndex]));",
     "ordinaryCheckedEvidence.add(zc::mv(stagedCheckedEvidence[factIndex]));",
     "ordinaryDispatchFacts.add(zc::mv(stagedDispatchFacts[factIndex]));",
@@ -329,8 +353,8 @@ ORDINARY_MODULE_PARTITION_MARKERS = (
 
 def contains_format_independent_marker(text: str, marker: str) -> bool:
     """Match C++ contract markers without depending on formatter line wrapping."""
-    normalized_text = re.sub(r"\s+", " ", text)
-    normalized_marker = re.sub(r"\s+", " ", marker)
+    normalized_text = re.sub(r"\s+", "", text)
+    normalized_marker = re.sub(r"\s+", "", marker)
     return normalized_marker in normalized_text
 
 CLI_MARKERS = (
@@ -426,7 +450,9 @@ def check_driver_surface(
     scan_paths: set[Path] | None
 ) -> None:
     driver_files = {
-        path for path in files if path.parent == SESSION_HEADER.parent
+        path
+        for path in files
+        if path.parent == DRIVER_ROOT or CORE_ROOT in path.parents
     }
     unexpected = sorted(driver_files - EXPECTED_DRIVER_FILES)
     missing = sorted(EXPECTED_DRIVER_FILES - driver_files)
@@ -442,7 +468,7 @@ def check_driver_surface(
             errors.append(f"{path}: forbidden CompilerDriver identifier remains")
         if "zomlang/compiler/driver/driver.h" in files[path]:
             errors.append(f"{path}: forbidden driver.h include remains")
-        if path.parent == SESSION_HEADER.parent and re.search(
+        if (path.parent == DRIVER_ROOT or CORE_ROOT in path.parents) and re.search(
             r"\b(?:ZC_IREQUIRE|ZC_FAIL(?:_ASSERT)?)\b", text
         ):
             errors.append(f"{path}: raw session invariant assertion is forbidden")
@@ -521,8 +547,24 @@ def check_session_ownership(
         errors.append(f"{SESSION_SOURCE}: discovery scheduler must have exactly one request site")
     if "binder::VerifiedModuleGraphBuilder::build(" in source:
         errors.append(f"{SESSION_SOURCE}: session-owned module graph publication is forbidden")
-    if source.count("getCapability<module_graph_query::MaterializeModuleGraphQuery>") < 2:
+    if source.count("getCapability<module_graph_query::MaterializeModuleGraphQuery>") != 3:
         errors.append(f"{SESSION_SOURCE}: sealed materialized graph demand is missing")
+    if source.count("getCapability<core_library_query::MaterializeCoreAuthorityQuery>") != 2:
+        errors.append(f"{SESSION_SOURCE}: final core authority demand is missing")
+    if source.count("FinalizeCoreModuleInterfaceQuery") != 2:
+        errors.append(f"{SESSION_SOURCE}: source-backed final core-interface demand is missing")
+    for forbidden in (
+        "MaterializeCoreRoleSeedQuery",
+        "MaterializeCoreBootstrapModuleInterfaceQuery",
+        "CoreExportSurfaceQuery",
+    ):
+        if forbidden in source:
+            errors.append(f"{SESSION_SOURCE}: bootstrap-only core query escapes finalization: {forbidden}")
+    prelude_surface_preflight = (
+        "auto preludeSurface = finalSnapshot.get<core_library_query::CorePreludeSurfaceQuery>("
+    )
+    if prelude_surface_preflight not in source:
+        errors.append(f"{SESSION_SOURCE}: source-backed core prelude-surface preflight is missing")
     if "resolver.resolve(zc::mv(request))" in source:
         errors.append(f"{SESSION_SOURCE}: batch module resolution authority is forbidden")
     if "identity::ModuleId identity;" in source:
@@ -559,11 +601,11 @@ def check_ordinary_module_partition(files: dict[Path, str], errors: list[str]) -
                 f"{publication}"
             )
 
-    if contains_format_independent_marker(
-        source, "checkerBound, stagedSignatureFacts[ordinaryIndex],"
-    ):
+    if (contains_format_independent_marker(source, "checkerBound, stagedSignatureFacts[") or
+            contains_format_independent_marker(
+                source, "checkerBound, ordinarySignatureFacts[factIndex],")):
         errors.append(
-            f"{SESSION_SOURCE}: ordinary HIR lowering must map through the fact-module index"
+            f"{SESSION_SOURCE}: ordinary HIR lowering must use the stable ordinary-module container"
         )
 
 
@@ -1089,6 +1131,56 @@ def run_self_test() -> int:
     )
     failures += expect_rejection(
         baseline, baseline_stripped_sources,
+        "missing final core authority demand",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE].replace(
+                "getCapability<core_library_query::MaterializeCoreAuthorityQuery>",
+                "getCapability<core_library_query::RemovedCoreAuthorityQuery>",
+                1,
+            ),
+        ),
+        "final core authority demand is missing",
+    )
+    failures += expect_rejection(
+        baseline, baseline_stripped_sources,
+        "missing final core-interface demand",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE].replace(
+                "FinalizeCoreModuleInterfaceQuery", "RemovedFinalCoreModuleInterfaceQuery", 1
+            ),
+        ),
+        "source-backed final core-interface demand is missing",
+    )
+    failures += expect_rejection(
+        baseline, baseline_stripped_sources,
+        "bootstrap-only core query escape",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE].replace(
+                "FinalizeCoreModuleInterfaceQuery",
+                "FinalizeCoreModuleInterfaceQuery\nMaterializeCoreBootstrapModuleInterfaceQuery",
+                1,
+            ),
+        ),
+        "bootstrap-only core query escapes finalization",
+    )
+    failures += expect_rejection(
+        baseline, baseline_stripped_sources,
+        "missing core prelude-surface preflight",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE].replace(
+                "auto preludeSurface = finalSnapshot.get<core_library_query::CorePreludeSurfaceQuery>(",
+                "auto preludeSurface = finalSnapshot.get<core_library_query::RemovedPreludeSurfaceQuery>(",
+                1,
+            ),
+        ),
+        "source-backed core prelude-surface preflight is missing",
+    )
+    failures += expect_rejection(
+        baseline, baseline_stripped_sources,
         "batch module resolution authority",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
@@ -1119,16 +1211,16 @@ def run_self_test() -> int:
     )
     failures += expect_rejection(
         baseline, baseline_stripped_sources,
-        "ordinary HIR uses the compact index for bound facts",
+        "ordinary HIR uses a staging index for bound facts",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
             files[SESSION_SOURCE].replace(
-                "checkerBound, stagedSignatureFacts[factIndex],",
-                "checkerBound, stagedSignatureFacts[ordinaryIndex],",
+                "checkerBound, ordinarySignatureFacts[ordinaryIndex],",
+                "checkerBound, ordinarySignatureFacts[factIndex],",
                 1,
             ),
         ),
-        "ordinary HIR lowering must map through the fact-module index",
+        "ordinary HIR lowering must use the stable ordinary-module container",
     )
     failures += expect_rejection(
         baseline, baseline_stripped_sources,

@@ -440,7 +440,8 @@ def expected_initializer(row: object) -> str:
         + f"query::RetentionClass::{row.retention},"
         + "query::QueryCyclePolicy::Reject,"
         + "query::QueryCostClass::Linear,"
-        + f"query::CapabilityAdmission::{row.admission}"
+        + f"query::CapabilityAdmission::{row.admission},"
+        + f"query::FinalFailureProjection::{row.failure_projection}"
     )
 
 
@@ -827,6 +828,10 @@ def run_self_test() -> None:
                 '"CompleteCompilationContextAuthorityInput", '
                 '"zom.input.complete-compilation-context-authority", Frozen, '
                 '"products/zomlang/compiler/driver/module-graph-query-input")',
+                'ZOM_CAPABILITY(2, zomlang::compiler::example::FixtureCapability, '
+                '"FixtureCapability", "zom.query.fixture-capability", Retained, '
+                'FinalSealedSnapshot, SourceOrKey, '
+                '"products/zomlang/compiler/example/query-fixture")',
             ]
         ),
         Path("fixture.def"),
@@ -839,6 +844,14 @@ def run_self_test() -> None:
                 "  static constexpr query::InputDescriptorMetadata descriptor{",
                 '      "FixtureInput"_zcc, "zom.query.fixture-input"_zcc,',
                 "      query::Durability::Low};",
+                "};",
+                "struct FixtureCapability final {",
+                "  static constexpr query::CapabilityDescriptorMetadata descriptor{",
+                '      "FixtureCapability"_zcc, "zom.query.fixture-capability"_zcc,',
+                "      query::RetentionClass::Retained, query::QueryCyclePolicy::Reject,",
+                "      query::QueryCostClass::Linear,",
+                "      query::CapabilityAdmission::FinalSealedSnapshot,",
+                "      query::FinalFailureProjection::SourceOrKey};",
                 "};",
                 "}  // namespace zomlang::compiler::example",
             ]
@@ -941,6 +954,16 @@ def run_self_test() -> None:
                 fixture_path: baseline[fixture_path].replace(
                     "query::Durability::Low",
                     "query::Durability::High",
+                )
+            },
+            "descriptor/schema disagreement",
+        ),
+        (
+            "failure projection mismatch",
+            {
+                fixture_path: baseline[fixture_path].replace(
+                    "query::FinalFailureProjection::SourceOrKey",
+                    "query::FinalFailureProjection::None",
                 )
             },
             "descriptor/schema disagreement",

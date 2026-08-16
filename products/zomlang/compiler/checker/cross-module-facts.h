@@ -16,7 +16,8 @@
 
 namespace zomlang::compiler::driver {
 class VerifiedModuleInterface;
-}
+class ImportedSignatureViewProjector;
+}  // namespace zomlang::compiler::driver
 
 namespace zomlang::compiler::checker {
 class CheckerIdentityAuthority;
@@ -65,8 +66,8 @@ class ImportedSignatureModuleCanonicalCodec final {
 public:
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeFramed(
       SignatureViewOrigin origin, zc::ArrayPtr<const uint8_t> expandedSourceModule,
-      const identity::Sha256Digest& interfaceRevision,
-      const identity::Sha256Digest& bindingSurfaceRevision,
+      const module_interface::ImportedInterfaceRevision& interfaceRevision,
+      const module_interface::ImportedBindingSurfaceRevision& bindingSurfaceRevision,
       zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> authorizedRootRecords,
       zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> lookupDefinitionRecords,
       zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> supportDefinitionRecords,
@@ -77,7 +78,7 @@ public:
 struct ImportedModuleTarget final {
   binder::BindingNameKey name;
   identity::ModuleId module;
-  binder::ExportSurfaceRevision surfaceRevision;
+  module_interface::ImportedBindingSurfaceRevision surfaceRevision;
 
   ZC_NODISCARD ImportedModuleTarget clone() const;
 };
@@ -108,8 +109,10 @@ public:
 
   ZC_NODISCARD SignatureViewOrigin origin() const noexcept;
   ZC_NODISCARD identity::ModuleId sourceModule() const noexcept;
-  ZC_NODISCARD const module_interface::ModuleInterfaceRevision& interfaceRevision() const noexcept;
-  ZC_NODISCARD const binder::ExportSurfaceRevision& bindingSurfaceRevision() const noexcept;
+  ZC_NODISCARD const module_interface::ImportedInterfaceRevision& interfaceRevision()
+      const noexcept;
+  ZC_NODISCARD const module_interface::ImportedBindingSurfaceRevision& bindingSurfaceRevision()
+      const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const module_interface::SignatureRootAuthorization> authorizedRoots()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const signature::SemanticSignature> lookupDefinitions() const noexcept;
@@ -131,8 +134,8 @@ private:
   ZC_NODISCARD static ImportedSignatureModule publish(
       identity::SemanticContextBrand semanticContext, identity::ModuleId requester,
       SignatureViewOrigin origin, identity::ModuleId sourceModule,
-      module_interface::ModuleInterfaceRevision interfaceRevision,
-      binder::ExportSurfaceRevision bindingSurfaceRevision,
+      module_interface::ImportedInterfaceRevision&& interfaceRevision,
+      module_interface::ImportedBindingSurfaceRevision&& bindingSurfaceRevision,
       zc::Vector<module_interface::SignatureRootAuthorization>&& authorizedRoots,
       zc::Vector<signature::SemanticSignature>&& lookupDefinitions,
       zc::Vector<signature::SemanticSignature>&& supportDefinitions,
@@ -142,6 +145,7 @@ private:
   ZC_NODISCARD zc::ArrayPtr<const uint8_t> canonicalRecord() const noexcept;
   zc::Own<Impl> impl;
   friend class ::zomlang::compiler::driver::VerifiedModuleInterface;
+  friend class ::zomlang::compiler::driver::ImportedSignatureViewProjector;
   friend class ImportedSignatureViewBuilder;
 };
 

@@ -58,6 +58,34 @@ ZC_TEST("QueryDatabaseTest.GeneratedRegistryRejectsDuplicateAndLateRegistration"
   ZC_EXPECT(snapshot.revision() == DatabaseRevision(0));
 }
 
+ZC_TEST("QueryDatabaseTest.GeneratedInventoryRetainsFinalFailureProjections") {
+  const auto inventory = queryTestDescriptorInventory();
+  const zc::LiteralStringConst expectedNames[] = {
+      "RevisionLocalDefinitionSitesQuery"_zcc, "RevisionLocalImplementationSitesQuery"_zcc,
+      "ModuleBodyProvenanceQuery"_zcc,         "NamedItemProvenanceQuery"_zcc,
+      "OwnerBodyProvenanceQuery"_zcc,          "ModuleDependencyProvenanceQuery"_zcc,
+      "MaterializeModuleGraphQuery"_zcc,       "MaterializeModuleSkeletonQuery"_zcc,
+      "MaterializeOwnerBodyQuery"_zcc,         "VerifyBoundModuleQuery"_zcc,
+  };
+
+  size_t observed = 0;
+  for (const auto& row : inventory.rows()) {
+    if (row.failureProjection != FinalFailureProjection::SourceOrKey) continue;
+    bool expected = false;
+    for (const auto name : expectedNames) {
+      if (row.name == name) {
+        expected = true;
+        break;
+      }
+    }
+    ZC_EXPECT(expected);
+    ZC_EXPECT(row.kind == QueryDescriptorKind::RevisionLocalCapability);
+    ZC_EXPECT(row.admission == CapabilityAdmission::FinalSealedSnapshot);
+    ++observed;
+  }
+  ZC_EXPECT(observed == 10);
+}
+
 ZC_TEST("QueryDatabaseTest.CanonicalFingerprintIsStableAndDomainSeparated") {
   auto first = queryTestDatabase();
   auto second = queryTestDatabase();

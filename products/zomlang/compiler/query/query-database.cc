@@ -176,15 +176,19 @@ bool descriptorMetadataIsValid(const QueryDescriptorInventoryRow& row) {
   switch (row.kind) {
     case QueryDescriptorKind::Input:
       return row.reuse == ReuseClass::Input && row.retention == RetentionClass::Retained &&
-             row.admission == CapabilityAdmission::AnySnapshot;
+             row.admission == CapabilityAdmission::AnySnapshot &&
+             row.failureProjection == FinalFailureProjection::None;
     case QueryDescriptorKind::Semantic:
       return (row.reuse == ReuseClass::Semantic || row.reuse == ReuseClass::Persisted) &&
              row.durability == Durability::Frozen &&
              row.admission == CapabilityAdmission::AnySnapshot &&
+             row.failureProjection == FinalFailureProjection::None &&
              row.role == QueryDescriptorRole::Ordinary;
     case QueryDescriptorKind::RevisionLocalCapability:
       return row.reuse == ReuseClass::RevisionLocal && row.retention == RetentionClass::Retained &&
-             row.durability == Durability::Frozen && row.role == QueryDescriptorRole::Ordinary;
+             row.durability == Durability::Frozen && row.role == QueryDescriptorRole::Ordinary &&
+             (row.admission == CapabilityAdmission::FinalSealedSnapshot ||
+              row.failureProjection == FinalFailureProjection::None);
   }
   return false;
 }
@@ -196,7 +200,8 @@ bool descriptorRowsEqual(const QueryDescriptorInventoryRow& left,
          left.role == right.role && left.reuse == right.reuse &&
          left.retention == right.retention && left.durability == right.durability &&
          left.equality == right.equality && left.cycle == right.cycle && left.cost == right.cost &&
-         left.admission == right.admission && left.ownerPathFamily == right.ownerPathFamily;
+         left.admission == right.admission && left.failureProjection == right.failureProjection &&
+         left.ownerPathFamily == right.ownerPathFamily;
 }
 
 bool keyFingerprintMatches(const CanonicalQueryKey& left, const CanonicalQueryKey& right) {

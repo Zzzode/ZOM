@@ -38,11 +38,21 @@ namespace zomlang::compiler::driver::module_graph_query {
 class CheckerBoundModuleView;
 }
 
+namespace zomlang::compiler::ownership {
+class OwnershipAdmittedBoundModule;
+}
+
 namespace zomlang::compiler::checker {
 class CheckerIdentityAuthority;
 }
 
 namespace zomlang::compiler::checker::signature {
+
+/// \brief Resolves one closed source type under the bound module's verified identities.
+ZC_NODISCARD zc::Maybe<identity::SemanticTypeId> resolveClosedSourceType(
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+    const CheckerIdentityAuthority& identities, type::SemanticTypeStore& semanticTypes,
+    ast::NodeId typeSyntax);
 
 using InterfaceInstantiation = type::semantic::InterfaceInstantiation;
 using AssociatedTypeBindingData = type::semantic::AssociatedTypeBindingData;
@@ -730,7 +740,7 @@ enum class MarkerStructuralSubject : uint8_t {
 
 struct MarkerPolicyReferenceConfiguration final {
   Mutability mutability;
-  identity::DefinitionKey requiredMarker;
+  zc::Maybe<identity::DefinitionKey> requiredMarker;
 
   ZC_NODISCARD MarkerPolicyReferenceConfiguration clone() const;
 };
@@ -740,19 +750,21 @@ struct MarkerPolicyConfigurationEntry final {
   zc::Vector<MarkerStructuralSubject> structuralSubjects;
   zc::Vector<PrimitiveKind> builtinPrimitives;
   zc::Vector<MarkerPolicyReferenceConfiguration> referenceRequirements;
+  zc::Vector<Mutability> rawPointerMutabilities;
 
   ZC_NODISCARD MarkerPolicyConfigurationEntry clone() const;
 };
 
 struct MarkerPolicyReferenceRequirement final {
   Mutability mutability;
-  identity::DefId requiredMarker;
+  zc::Maybe<identity::DefId> requiredMarker;
 };
 
 struct MarkerPolicy final {
   zc::Vector<MarkerStructuralSubject> structuralSubjects;
   zc::Vector<PrimitiveKind> builtinPrimitives;
   zc::Vector<MarkerPolicyReferenceRequirement> referenceRequirements;
+  zc::Vector<Mutability> rawPointerMutabilities;
 
   ZC_NODISCARD MarkerPolicy clone() const;
 };
@@ -1095,6 +1107,10 @@ public:
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeSignature(
       const SemanticSignature& signature, identity::ModuleId owningModule,
       const CheckerIdentityAuthority& identities, const type::SemanticTypeStore& semanticTypes);
+  /// \brief Encodes one closed type-free marker interface without accessing a semantic type store.
+  ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeTypeFreeInterfaceSignature(
+      const SemanticSignature& signature, identity::ModuleId owningModule,
+      const CheckerIdentityAuthority& identities);
   /// \brief Encodes an implementation head through the retained Checker identity authority.
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeImplHead(
       const ImplHead& head, const CheckerIdentityAuthority& identities,
@@ -1125,7 +1141,7 @@ private:
 };
 
 struct MarkerShapeModuleInput final {
-  const driver::module_graph_query::CheckerBoundModuleView& boundModule;
+  const ownership::OwnershipAdmittedBoundModule& boundModule;
 };
 
 using MarkerShapeInventoryBuildResult =
@@ -1156,7 +1172,7 @@ public:
 
 /// \brief Immutable verified-only inputs accepted by production signature construction.
 struct SignatureFactsBuildInput final {
-  const driver::module_graph_query::CheckerBoundModuleView& boundModule;
+  const ownership::OwnershipAdmittedBoundModule& boundModule;
   type::SemanticTypeStore& semanticTypes;
   const VerifiedMarkerShapeInventory& markerShapes;
   const VerifiedMarkerPolicyRegistry& markerPolicies;

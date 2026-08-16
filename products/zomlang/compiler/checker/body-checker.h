@@ -20,6 +20,12 @@
 #include "zomlang/compiler/identity/semantic-context-fingerprint.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
+namespace zomlang::compiler::driver::core {
+
+class VerifiedCoreStandardMarkerAuthority;
+
+}  // namespace zomlang::compiler::driver::core
+
 namespace zomlang::compiler::checker::body {
 
 /// \brief How one checked-fact family enters the generated body requirement inventory.
@@ -74,8 +80,10 @@ public:
 
 /// \brief Complete capability input for production body checking.
 struct BodyCheckingInput final {
-  const driver::module_graph_query::CheckerBoundModuleView& boundModule;
+  driver::module_graph_query::CheckerBoundModuleView boundModule;
   const CheckerIdentityAuthority& identities;
+  const signature::VerifiedMarkerPolicyRegistry& markerPolicies;
+  const driver::core::VerifiedCoreStandardMarkerAuthority& standardMarkers;
   const signature::VerifiedSignatureFacts& signatureFacts;
   const cross_module::ImportedSignatureView& importedSignatures;
   const coherence::FrozenCoherenceView& coherence;

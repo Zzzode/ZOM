@@ -8,8 +8,12 @@
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zomlang/compiler/checker/cross-module-facts.h"
+#include "zomlang/compiler/driver/interface-source.h"
 #include "zomlang/compiler/driver/materialized-module-graph-query.h"
-#include "zomlang/compiler/driver/module-interface.h"
+
+namespace zomlang::compiler::ownership {
+class OwnershipAdmittedBoundModule;
+}
 
 namespace zomlang::compiler::driver {
 
@@ -17,9 +21,19 @@ namespace zomlang::compiler::driver {
 class ImportedSignatureViewProjector final {
 public:
   ZC_NODISCARD static zc::Maybe<checker::cross_module::ImportedSignatureView> build(
-      const module_graph_query::CheckerBoundModuleView& requester,
-      zc::ArrayPtr<const VerifiedModuleInterface> dependencyInterfaces,
+      const ownership::OwnershipAdmittedBoundModule& requester,
+      zc::ArrayPtr<const VerifiedInterfaceSource> dependencyInterfaces,
       const type::SemanticTypeStore& semanticTypes,
+      const checker::CheckerIdentityAuthority& identities);
+
+private:
+  ZC_NODISCARD static zc::Maybe<checker::cross_module::ImportedSignatureModule> projectCore(
+      const ownership::OwnershipAdmittedBoundModule& requester,
+      const core_library_query::VerifiedCoreModuleInterface& source,
+      checker::cross_module::SignatureViewOrigin origin,
+      zc::ArrayPtr<const checker::cross_module::ImportedDefinitionBindingSelection>
+          definitionBindings,
+      zc::ArrayPtr<const checker::cross_module::ImportedModuleTargetSelection> moduleTargetNames,
       const checker::CheckerIdentityAuthority& identities);
 };
 

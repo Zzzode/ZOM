@@ -14,7 +14,7 @@
 #include "zomlang/compiler/ast/schema-verifier.h"
 #include "zomlang/compiler/binder/module-resolution.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
-#include "zomlang/compiler/driver/core-library-query-provider.h"
+#include "zomlang/compiler/driver/core/query.h"
 #include "zomlang/compiler/driver/materialized-module-graph-query.h"
 #include "zomlang/compiler/driver/module-dependency-provenance-query.h"
 #include "zomlang/compiler/driver/package/package-compilation-request.h"

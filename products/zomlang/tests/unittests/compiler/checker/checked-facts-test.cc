@@ -51,7 +51,8 @@ public:
       : session(
             "interface Behavior { fun act(); }\n"
             "class RecoveryOwner { fun act() {} }\n"
-            "impl Behavior for RecoveryOwner {}\n"_zc),
+            "impl Behavior for RecoveryOwner {}\n"
+            "fun paramRoot(value: i32) {}\n"_zc),
         storeBrands(session.brands()),
         semanticTypes(session.semanticTypes()) {
     context = session.semanticContext();
@@ -141,6 +142,19 @@ public:
     }
     ZC_FAIL_REQUIRE("missing checked-facts fixture definition");
   }
+
+  identity::CallableParameterId callableParameterNamed(zc::StringPtr ownerName) const {
+    const auto owner = definitionNamed(ownerName);
+    for (const auto& parameter : boundModule().definitions().identities().callableParameters()) {
+      auto parameterOwner = session.identityAuthority().definition(parameter.record().owner());
+      ZC_IF_SOME(value, parameterOwner) {
+        if (value.handle() == owner) return parameter.handle();
+      }
+    }
+    ZC_FAIL_REQUIRE("missing checked-facts fixture callable parameter");
+  }
+
+  identity::SemanticTypeId i32Type() const noexcept { return i32; }
 
   identity::ImplId implementation() const {
     const auto implementations = boundModule().definitions().identities().implementations();
@@ -1101,6 +1115,110 @@ ZC_TEST("CheckedFactsCanonicalCodec.ExpandsCaptureKeysWithoutRevisionLocalSlots"
   ZC_EXPECT(CheckedFactsCanonicalCodec::encodeCaptureFact(
                 definitionCandidate.captures.entries()[0].key, definitionCandidate,
                 definitionInput) == zc::none);
+}
+
+ZC_TEST("CheckedFactsCanonicalCodec.ExpandsOwnerLocalPlaceRootsWithoutRevisionLocalSlots") {
+  CheckedFactsCodecFixture fixture;
+  const auto firstBinding = ownerLocalId(fixture, 0);
+  const auto secondBinding = ownerLocalId(fixture, 1);
+  ZC_REQUIRE(firstBinding != secondBinding);
+  auto bindingKey = ownerLocalKey(fixture);
+  auto sourceSpan = fixture.checkedNode(0).sourceSpan;
+
+  zc::Vector<NodeFactRequirement> firstRequirements;
+  firstRequirements.add(
+      NodeFactRequirement{CheckedFactGroup::Place, ast::NodeId(7), fixture.checkedNode(0)});
+  zc::Vector<binder::MaterializedOwnerLocalBindingInventoryEntry> firstBindings;
+  firstBindings.add(binder::MaterializedOwnerLocalBindingInventoryEntry{
+      ast::NodeId(1), binder::DefinitionSite::declaration(ast::NodeId(1)), firstBinding,
+      bindingKey.clone(), sourceSpan.clone()});
+  const auto firstInput =
+      fixture.input(firstRequirements.asPtr(), {}, {}, {}, firstBindings.asPtr());
+  auto firstCandidate =
+      fixture.nodeTypeCandidate(ast::NodeId(1), zc::heapArray<uint8_t>(1, uint8_t{0xa1}));
+  zc::Vector<PlaceProjection> firstProjections;
+  zc::Vector<PlaceFactMap::Entry> firstPlaces;
+  firstPlaces.add(PlaceFactMap::Entry{
+      ast::NodeId(7),
+      CheckedPlaceFact{ast::NodeId(7), PlaceRoot(OwnerLocalPlaceRoot{firstBinding}),
+                       zc::mv(firstProjections), fixture.i32Type(), true, true},
+      zc::Array<uint8_t>()});
+  firstCandidate.places = PlaceFactMap::fromEntries(zc::mv(firstPlaces));
+  auto firstRecord = CheckedFactsCanonicalCodec::encodeNodeFact(
+      CheckedFactGroup::Place, ast::NodeId(7), firstCandidate, firstInput);
+  ZC_REQUIRE(firstRecord != zc::none);
+
+  zc::Vector<NodeFactRequirement> secondRequirements;
+  secondRequirements.add(
+      NodeFactRequirement{CheckedFactGroup::Place, ast::NodeId(7), fixture.checkedNode(0)});
+  zc::Vector<binder::MaterializedOwnerLocalBindingInventoryEntry> secondBindings;
+  secondBindings.add(binder::MaterializedOwnerLocalBindingInventoryEntry{
+      ast::NodeId(1), binder::DefinitionSite::declaration(ast::NodeId(1)), secondBinding,
+      bindingKey.clone(), sourceSpan.clone()});
+  const auto secondInput =
+      fixture.input(secondRequirements.asPtr(), {}, {}, {}, secondBindings.asPtr());
+  auto secondCandidate =
+      fixture.nodeTypeCandidate(ast::NodeId(1), zc::heapArray<uint8_t>(1, uint8_t{0xa2}));
+  zc::Vector<PlaceProjection> secondProjections;
+  zc::Vector<PlaceFactMap::Entry> secondPlaces;
+  secondPlaces.add(PlaceFactMap::Entry{
+      ast::NodeId(7),
+      CheckedPlaceFact{ast::NodeId(7), PlaceRoot(OwnerLocalPlaceRoot{secondBinding}),
+                       zc::mv(secondProjections), fixture.i32Type(), true, true},
+      zc::Array<uint8_t>()});
+  secondCandidate.places = PlaceFactMap::fromEntries(zc::mv(secondPlaces));
+  auto secondRecord = CheckedFactsCanonicalCodec::encodeNodeFact(
+      CheckedFactGroup::Place, ast::NodeId(7), secondCandidate, secondInput);
+  ZC_REQUIRE(secondRecord != zc::none);
+  ZC_IF_SOME(first, firstRecord) {
+    ZC_IF_SOME(second, secondRecord) { ZC_EXPECT(sameBytes(first.asPtr(), second.asPtr())); }
+  }
+}
+
+ZC_TEST("CheckedFactsVerifier.AcceptsCallableParameterPlaceRootFromAuthority") {
+  CheckedFactsCodecFixture fixture;
+  const auto parameter = fixture.callableParameterNamed("paramRoot"_zc);
+  zc::Vector<NodeFactRequirement> requirements;
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::NodeType, ast::NodeId(1), fixture.checkedNode(1)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Place, ast::NodeId(7), fixture.checkedNode(7)});
+  const auto input = fixture.input(requirements.asPtr());
+  auto candidate = fixture.nodeTypeCandidate(ast::NodeId(1), zc::Array<uint8_t>());
+  zc::Vector<PlaceProjection> projections;
+  zc::Vector<PlaceFactMap::Entry> places;
+  places.add(PlaceFactMap::Entry{
+      ast::NodeId(7),
+      CheckedPlaceFact{ast::NodeId(7), PlaceRoot(CallableParameterPlaceRoot{parameter}),
+                       zc::mv(projections), fixture.i32Type(), false, false},
+      zc::Array<uint8_t>()});
+  candidate.places = PlaceFactMap::fromEntries(zc::mv(places));
+
+  ZC_REQUIRE(CheckedFactsCanonicalCodec::writeCanonicalRecords(candidate, input));
+  auto accepted = CheckedFactsVerifier::verify(zc::mv(candidate), input);
+  ZC_EXPECT(accepted.is<VerifiedCheckedFacts>());
+}
+
+ZC_TEST("CheckedFactsCanonicalCodec.RejectsUnknownCallableParameterPlaceRoot") {
+  CheckedFactsCodecFixture fixture;
+  zc::Vector<NodeFactRequirement> requirements;
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::NodeType, ast::NodeId(1), fixture.checkedNode(1)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Place, ast::NodeId(7), fixture.checkedNode(7)});
+  const auto input = fixture.input(requirements.asPtr());
+  auto candidate = fixture.nodeTypeCandidate(ast::NodeId(1), zc::Array<uint8_t>());
+  zc::Vector<PlaceProjection> projections;
+  zc::Vector<PlaceFactMap::Entry> places;
+  places.add(PlaceFactMap::Entry{
+      ast::NodeId(7),
+      CheckedPlaceFact{ast::NodeId(7),
+                       PlaceRoot(CallableParameterPlaceRoot{identity::CallableParameterId()}),
+                       zc::mv(projections), fixture.i32Type(), false, false},
+      zc::Array<uint8_t>()});
+  candidate.places = PlaceFactMap::fromEntries(zc::mv(places));
+
+  ZC_EXPECT(!CheckedFactsCanonicalCodec::writeCanonicalRecords(candidate, input));
 }
 
 ZC_TEST("CheckedFactsCanonicalCodec.VerifierRejectsTamperedNodeRecord") {

@@ -1,0 +1,4 @@
+fun entry() -> i32 {
+  let value: i32;
+  return value;
+}

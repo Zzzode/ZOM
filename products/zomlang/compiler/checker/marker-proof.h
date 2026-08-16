@@ -65,9 +65,7 @@ public:
   ZC_DISALLOW_COPY(MarkerProofInput);
 
   /// \brief Validate one exact body-checking lineage before constructing a proof engine.
-  ZC_NODISCARD static zc::Maybe<MarkerProofInput> from(
-      const body::BodyCheckingInput& bodyInput,
-      const signature::VerifiedMarkerPolicyRegistry& policy);
+  ZC_NODISCARD static zc::Maybe<MarkerProofInput> from(const body::BodyCheckingInput& bodyInput);
 
 private:
   struct Impl;

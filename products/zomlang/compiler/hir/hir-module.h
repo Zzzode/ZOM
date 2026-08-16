@@ -19,6 +19,10 @@ class BuiltMirBuilder;
 class BuiltMirVerifier;
 }  // namespace zomlang::compiler::mir
 
+namespace zomlang::compiler::ownership {
+class OwnershipAdmittedBoundModule;
+}  // namespace zomlang::compiler::ownership
+
 namespace zomlang::compiler::hir {
 
 struct ModuleHirVisibility final {
@@ -75,6 +79,144 @@ struct HirScalarLiteralExpression final {
   identity::SourceSpan sourceSpan;
 };
 
+/// \brief One field value admitted into a closed nominal aggregate expression.
+struct HirNominalAggregateElement final {
+  identity::DefId field;
+  identity::SemanticTypeId type;
+  checker::checked::CanonicalConstValue value;
+  identity::SourceSpan sourceSpan;
+};
+
+/// \brief One verified closed nominal aggregate expression.
+struct HirNominalAggregateExpression final {
+  HirNodeId node;
+  identity::DefId definition;
+  identity::SemanticTypeId type;
+  zc::Vector<HirNominalAggregateElement> elements;
+  HirValueCategory category;
+  identity::SourceSpan sourceSpan;
+};
+
+/// \brief One function-owned local binding with a layer-local identity.
+struct HirLocalBinding final {
+  HirNodeId node;
+  HirLocalId local;
+  identity::SemanticTypeId type;
+  zc::Maybe<HirNodeId> initializer;
+  identity::SourceSpan sourceSpan;
+  zc::Maybe<identity::SourceSpan> initializerSpan;
+};
+
+/// \brief One checked use of a function-local binding as a place expression.
+struct HirLocalReferenceExpression final {
+  HirNodeId node;
+  HirLocalId local;
+  identity::SemanticTypeId type;
+  HirValueCategory category;
+  identity::SourceSpan sourceSpan;
+};
+
+/// \brief One checked field projection rooted at a function-local binding.
+struct HirLocalFieldProjectionExpression final {
+  HirNodeId node;
+  HirLocalId local;
+  identity::DefId field;
+  identity::SemanticTypeId receiverType;
+  identity::SemanticTypeId type;
+  HirValueCategory category;
+  identity::SourceSpan sourceSpan;
+};
+
+enum class HirLocalWriteKind : uint8_t { Initialize = 0x01, Overwrite = 0x02 };
+
+/// \brief One verified scalar write to a mutable function-local place.
+struct HirLocalWriteStatement final {
+  HirNodeId node;
+  HirLocalId local;
+  zc::Maybe<identity::DefId> field;
+  identity::SemanticTypeId type;
+  HirNodeId value;
+  HirLocalWriteKind kind;
+  identity::SourceSpan sourceSpan;
+  identity::SourceSpan valueSpan;
+};
+
+/// \brief One immutable function parameter retained from its checked signature.
+struct HirParameter final {
+  identity::CallableParameterKey key;
+  identity::SemanticTypeId type;
+  identity::SourceSpan sourceSpan;
+};
+
+/// \brief One checked use of a function parameter as a place expression.
+struct HirParameterReferenceExpression final {
+  HirNodeId node;
+  identity::CallableParameterKey parameter;
+  identity::SemanticTypeId type;
+  HirValueCategory category;
+  identity::SourceSpan sourceSpan;
+};
+
+/// \brief One checked read-only constant index projection rooted at a function parameter.
+struct HirParameterIndexExpression final {
+  HirNodeId node;
+  identity::CallableParameterKey parameter;
+  identity::SemanticTypeId receiverType;
+  identity::SemanticTypeId indexType;
+  checker::checked::CanonicalConstValue index;
+  identity::SemanticTypeId type;
+  HirValueCategory category;
+  identity::SourceSpan sourceSpan;
+  identity::SourceSpan indexSpan;
+};
+
+/// \brief One checked reborrow rooted in a reference parameter.
+struct HirParameterReborrowExpression final {
+  HirNodeId node;
+  identity::CallableParameterKey parameter;
+  zc::Maybe<HirLocalId> sourceAlias;
+  identity::SemanticTypeId sourceType;
+  identity::SemanticTypeId type;
+  type::semantic::Mutability mutability;
+  identity::SourceSpan sourceSpan;
+};
+
+/// \brief One verified scalar constant argument retained by a direct call expression.
+struct HirDirectCallArgument final {
+  identity::SemanticTypeId type;
+  checker::checked::CanonicalConstValue value;
+  identity::SourceSpan sourceSpan;
+};
+
+/// \brief One verified direct call expression in semantic HIR.
+struct HirDirectCallExpression final {
+  HirNodeId node;
+  identity::DefId callee;
+  identity::SemanticTypeId calleeType;
+  identity::SemanticTypeId resultType;
+  zc::Vector<HirDirectCallArgument> arguments;
+  identity::SourceSpan sourceSpan;
+};
+
+/// \brief One checked receiver-call expression retained before ownership lowering.
+///
+/// The receiver node is evaluated before every explicit argument. Mutable receiver
+/// calls retain their checker-selected adjustment sequence so MIR can create the
+/// temporary borrow before recording its normal-edge activation at the call.
+struct HirReceiverCallExpression final {
+  HirNodeId node;
+  HirNodeId receiver;
+  identity::DefId callee;
+  identity::SemanticTypeId calleeType;
+  identity::SemanticTypeId receiverSourceType;
+  identity::SemanticTypeId receiverType;
+  checker::checked::ReceiverMode receiverMode;
+  zc::Vector<checker::checked::ReceiverAdjustmentStep> receiverAdjustments;
+  identity::SemanticTypeId resultType;
+  zc::Vector<HirDirectCallArgument> arguments;
+  identity::SourceSpan sourceSpan;
+};
+
 /// \brief One scalar return statement in immutable semantic HIR.
 struct HirReturnStatement final {
   HirNodeId node;
@@ -95,6 +237,7 @@ struct HirFunctionDeclaration final {
   HirNodeId node;
   identity::DefId definition;
   identity::SemanticTypeId resultType;
+  zc::Vector<HirParameter> parameters;
   HirVisibility visibility;
   HirLinkage linkage;
   identity::SourceSpan sourceSpan;
@@ -160,19 +303,35 @@ public:
   ZC_NODISCARD const checker::checked::CheckedEvidenceLease& checkedEvidenceLease() const noexcept;
   ZC_NODISCARD const driver::borrow_evidence::VerifiedBorrowEvidenceLease& borrowEvidenceLease()
       const noexcept;
+  /// \brief Returns the admitted checked-module capability retained by this HIR module.
+  ZC_NODISCARD const VerifiedCheckedModule& admittedCheckedModule() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirValueDeclaration> declarations() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirFunctionDeclaration> functions() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirBlockStatement> blocks() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirReturnStatement> returns() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirBindingPattern> patterns() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirScalarLiteralExpression> expressions() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirNominalAggregateExpression> aggregates() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirLocalBinding> locals() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirLocalWriteStatement> localWrites() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirLocalReferenceExpression> localReferences() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirLocalFieldProjectionExpression> localFieldProjections()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirParameterReferenceExpression> parameterReferences()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirParameterIndexExpression> parameterIndexes()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirParameterReborrowExpression> parameterReborrows()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirDirectCallExpression> calls() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirReceiverCallExpression> receiverCalls() const noexcept;
   ZC_NODISCARD zc::Maybe<zc::String> dump() const;
 
 private:
-  ZC_NODISCARD driver::module_graph_query::CheckerBoundModuleView retainBoundModule() const;
+  ZC_NODISCARD ownership::OwnershipAdmittedBoundModule retainAdmittedBoundModule() const;
   ZC_NODISCARD checker::CheckerIdentityAuthority retainIdentityAuthority() const;
-  ZC_NODISCARD const driver::borrow_evidence::BorrowEvidenceRepository& borrowEvidenceRepository()
-      const noexcept;
+  ZC_NODISCARD driver::borrow_evidence::BorrowEvidenceRepositoryCapability
+  borrowEvidenceCapability() const noexcept;
   ZC_NODISCARD const type::SemanticTypeStore& semanticTypes() const noexcept;
 
   struct Impl;

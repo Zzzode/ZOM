@@ -61,6 +61,18 @@ inline void installCoreDistribution(CompilerSession& session) {
   ZC_REQUIRE(session.installVerifiedCoreDistribution(distribution));
 }
 
+inline zc::Maybe<core::VerifiedCoreLibrary> materializeCoreLibrary(
+    CompilerSession& session, const checker::CheckerIdentityAuthority& authority) {
+  for (const auto& crate : authority.graphLease().capability().crates()) {
+    if (crate.key().unit().kind() != identity::CompilationUnitKind::Toolchain ||
+        crate.key().unit().toolchain().component() != identity::ToolchainComponent::Core) {
+      continue;
+    }
+    return session.materializeCoreLibrary(crate.key());
+  }
+  return zc::none;
+}
+
 inline bool isUserPackageModule(const checker::CheckerIdentityAuthority& authority,
                                 const checker::CheckerIdentityAuthority::BoundModuleView& module) {
   auto crate = authority.crate(module.crate());
