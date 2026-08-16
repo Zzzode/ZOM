@@ -157,6 +157,28 @@ zc::Vector<InitializationLossCause> cloneLossCauses(
   return cloned;
 }
 
+zc::Vector<InitializationPathState> cloneStates(
+    zc::ArrayPtr<const InitializationPathState> states) {
+  zc::Vector<InitializationPathState> cloned;
+  for (const auto& state : states) {
+    cloned.add(InitializationPathState{state.state, cloneLossCauses(state.lossCauses.asPtr())});
+  }
+  return cloned;
+}
+
+bool joinPathStates(zc::ArrayPtr<const InitializationPathState> left,
+                    zc::ArrayPtr<const InitializationPathState> right,
+                    zc::Vector<InitializationPathState>& joined) {
+  if (left.size() != right.size()) return false;
+  for (size_t index = 0; index < left.size(); ++index) {
+    joined.add(InitializationPathState{
+        InitializationLattice::joinState(left[index].state, right[index].state),
+        InitializationLattice::mergeLossCauses(left[index].lossCauses.asPtr(),
+                                               right[index].lossCauses.asPtr())});
+  }
+  return true;
+}
+
 MirEventKey eventAt(identity::DefId owner, MirPoint&& point, uint32_t ordinal) {
   return MirEventKey{MirLocation{owner, zc::mv(point)}, ordinal};
 }
@@ -472,7 +494,53 @@ zc::Maybe<size_t> blockIndex(const mir::MirFunction& function, mir::MirBlockId i
   return zc::none;
 }
 
+zc::Vector<mir::MirBlockId> predecessorBlocks(const FlowFunction& flow, mir::MirBlockId target) {
+  zc::Vector<mir::MirBlockId> predecessors;
+  for (const auto& point : flow.points) {
+    if (point.kind() != OwnershipPointKind::Cfg) continue;
+    const auto& location = point.cfgValue().point;
+    if (location.kind() != MirPointKind::Edge) continue;
+    if (location.edgeValue().to != target) continue;
+    bool duplicate = false;
+    for (const auto predecessor : predecessors) {
+      if (predecessor == location.edgeValue().from) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) predecessors.add(location.edgeValue().from);
+  }
+  return predecessors;
+}
+
+zc::Maybe<zc::Vector<InitializationPathState>> joinPredecessorStates(
+    const mir::MirFunction& function, const FlowFunction& flow, mir::MirBlockId target,
+    zc::ArrayPtr<const zc::Maybe<zc::Vector<InitializationPathState>>> blockExitStates) {
+  const auto predecessors = predecessorBlocks(flow, target);
+  if (predecessors.size() == 0) return zc::none;
+  zc::Maybe<zc::Vector<InitializationPathState>> joined;
+  for (const auto predecessor : predecessors) {
+    auto index = blockIndex(function, predecessor);
+    if (index == zc::none) return zc::none;
+    const auto& exit = blockExitStates[ZC_ASSERT_NONNULL(index)];
+    if (exit == zc::none) return zc::none;
+    ZC_IF_SOME(states, exit) {
+      if (joined == zc::none) {
+        joined = cloneStates(states.asPtr());
+      } else {
+        zc::Vector<InitializationPathState> merged;
+        if (!joinPathStates(ZC_ASSERT_NONNULL(joined).asPtr(), states.asPtr(), merged)) {
+          return zc::none;
+        }
+        joined = zc::mv(merged);
+      }
+    }
+  }
+  return joined;
+}
+
 zc::Maybe<InitializationFunction> deriveFunction(const mir::MirFunction& function,
+                                                 const FlowFunction& flow,
                                                  const MovePathFunction& paths) {
   if (function.blocks.size() == 0) return zc::none;
   zc::Vector<InitializationPathState> states;
@@ -497,6 +565,8 @@ zc::Maybe<InitializationFunction> deriveFunction(const mir::MirFunction& functio
   }
   zc::Vector<InitializationFact> facts;
   if (!appendFacts(facts, MirPoint::entry(), function, paths, states.asPtr())) return zc::none;
+  zc::Vector<zc::Maybe<zc::Vector<InitializationPathState>>> blockExitStates;
+  for (size_t index = 0; index < function.blocks.size(); ++index) blockExitStates.add(zc::none);
   zc::Vector<mir::MirBlockId> visited;
   size_t current = 0;
   for (size_t steps = 0; steps < function.blocks.size(); ++steps) {
@@ -505,6 +575,11 @@ zc::Maybe<InitializationFunction> deriveFunction(const mir::MirFunction& functio
       if (previous == block.id) return zc::none;
     }
     visited.add(block.id);
+    if (current != 0) {
+      auto joined = joinPredecessorStates(function, flow, block.id, blockExitStates.asPtr());
+      if (joined == zc::none) return zc::none;
+      ZC_IF_SOME(value, joined) { states = zc::mv(value); }
+    }
     for (size_t ordinal = 0; ordinal < block.statements.size(); ++ordinal) {
       if (!appendFacts(facts, MirPoint::beforeStatement(block.id, static_cast<uint32_t>(ordinal)),
                        function, paths, states.asPtr())) {
@@ -555,6 +630,7 @@ zc::Maybe<InitializationFunction> deriveFunction(const mir::MirFunction& functio
                      states.asPtr())) {
       return zc::none;
     }
+    blockExitStates[current] = cloneStates(states.asPtr());
     auto next = blockIndex(function, call.normalTarget);
     if (next == zc::none) return zc::none;
     ZC_IF_SOME(value, next) { current = value; }
@@ -875,7 +951,7 @@ zc::Maybe<zc::Vector<InitializationFunction>> derive(const mir::VerifiedBuiltMir
   zc::Vector<InitializationFunction> functions;
   for (size_t index = 0; index < builtMir.functions().size(); ++index) {
     const auto& function = builtMir.functions()[index];
-    auto facts = deriveFunction(function, movePaths.functions()[index]);
+    auto facts = deriveFunction(function, flow.functions()[index], movePaths.functions()[index]);
     if (facts == zc::none) return zc::none;
     ZC_IF_SOME(value, facts) {
       if (!factsUseFlow(value, flow.functions()[index])) return zc::none;
@@ -886,6 +962,26 @@ zc::Maybe<zc::Vector<InitializationFunction>> derive(const mir::VerifiedBuiltMir
 }
 
 }  // namespace
+
+zc::Vector<InitializationLossCause> InitializationLattice::mergeLossCauses(
+    zc::ArrayPtr<const InitializationLossCause> left,
+    zc::ArrayPtr<const InitializationLossCause> right) {
+  zc::Vector<InitializationLossCause> merged;
+  merged.reserve(left.size() + right.size());
+  for (const auto& cause : left) merged.add(cause);
+  for (const auto& cause : right) {
+    bool duplicate = false;
+    for (const auto& existing : merged) {
+      if (existing.kind == cause.kind && existing.local == cause.local &&
+          existing.event == cause.event) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) merged.add(cause);
+  }
+  return merged;
+}
 
 bool InitializationSourceFailureOrdering::less(const InitializationSourceFailure& left,
                                                const InitializationSourceFailure& right) noexcept {

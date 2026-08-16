@@ -58,6 +58,23 @@ struct InitializationLossCause final {
   mir::MirLocalId local;
 };
 
+/// \brief Three-bit lattice join for merging initialization states at CFG join points.
+///
+/// At a control-flow merge, storage is live only when it is live on every incoming path, a place
+/// may be initialized when at least one incoming path initializes it, and it must be initialized
+/// only when every incoming path initializes it. Loss causes from all predecessors are retained.
+struct InitializationLattice final {
+  ZC_NODISCARD static constexpr InitializationState joinState(
+      InitializationState left, InitializationState right) noexcept {
+    return InitializationState{left.storageLive && right.storageLive,
+                               left.mayBeInitialized || right.mayBeInitialized,
+                               left.mustBeInitialized && right.mustBeInitialized};
+  }
+  ZC_NODISCARD static zc::Vector<InitializationLossCause> mergeLossCauses(
+      zc::ArrayPtr<const InitializationLossCause> left,
+      zc::ArrayPtr<const InitializationLossCause> right);
+};
+
 /// \brief One root move-path state at one control-flow point in a function fact inventory.
 struct InitializationFact final {
   MirPoint point;

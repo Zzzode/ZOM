@@ -17,6 +17,7 @@
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/compiler/mir/built-mir.h"
 #include "zomlang/compiler/ownership/facts/flow.h"
+#include "zomlang/compiler/ownership/facts/init.h"
 #include "zomlang/compiler/ownership/facts/loans.h"
 #include "zomlang/compiler/ownership/facts/paths.h"
 #include "zomlang/compiler/ownership/facts/resources.h"
@@ -1153,6 +1154,61 @@ ZC_TEST("Initialization verifier rejects a tampered semantic context fingerprint
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
             ir::IrFailureKind::InputRevisionMismatch);
+}
+
+ZC_TEST("Initialization lattice joins three-bit states at control-flow merges") {
+  using facts::InitializationLattice;
+  using facts::InitializationState;
+  const auto dead = InitializationState::dead();
+  const auto uninitialized = InitializationState::uninitialized();
+  const auto initialized = InitializationState::initialized();
+  const auto mayBeInitialized = InitializationState{true, true, false};
+  const auto deadJoinedWithInitialized = InitializationState{false, true, false};
+
+  ZC_EXPECT(InitializationLattice::joinState(dead, dead) == dead);
+  ZC_EXPECT(InitializationLattice::joinState(uninitialized, uninitialized) == uninitialized);
+  ZC_EXPECT(InitializationLattice::joinState(initialized, initialized) == initialized);
+  ZC_EXPECT(InitializationLattice::joinState(initialized, uninitialized) == mayBeInitialized);
+  ZC_EXPECT(InitializationLattice::joinState(uninitialized, initialized) == mayBeInitialized);
+  ZC_EXPECT(InitializationLattice::joinState(dead, initialized) == deadJoinedWithInitialized);
+  ZC_EXPECT(InitializationLattice::joinState(initialized, dead) == deadJoinedWithInitialized);
+  ZC_EXPECT(InitializationLattice::joinState(mayBeInitialized, uninitialized) == mayBeInitialized);
+}
+
+ZC_TEST("Initialization lattice merges distinct loss causes at control-flow merges") {
+  using facts::InitializationLattice;
+  using facts::InitializationLossCause;
+  using facts::InitializationLossKind;
+  const auto firstEvent = MirEventKey{MirLocation{identity::DefId(), MirPoint::entry()}, 0};
+  const auto secondEvent = MirEventKey{MirLocation{identity::DefId(), MirPoint::entry()}, 1};
+  const auto local = ZC_REQUIRE_NONNULL(mir::MirLocalId::fromOrdinal(1));
+  const InitializationLossCause neverInitialized{InitializationLossKind::NeverInitialized,
+                                                 firstEvent, local};
+  const InitializationLossCause moved{InitializationLossKind::Moved, secondEvent, local};
+  zc::Vector<InitializationLossCause> noCauses;
+  zc::Vector<InitializationLossCause> neverCauses;
+  neverCauses.add(neverInitialized);
+  zc::Vector<InitializationLossCause> movedCauses;
+  movedCauses.add(moved);
+
+  ZC_EXPECT(InitializationLattice::mergeLossCauses(noCauses.asPtr(), noCauses.asPtr()).size() == 0);
+
+  auto oneSide =
+      InitializationLattice::mergeLossCauses(neverCauses.asPtr(), noCauses.asPtr());
+  ZC_REQUIRE(oneSide.size() == 1);
+  ZC_EXPECT(oneSide[0].kind == InitializationLossKind::NeverInitialized);
+  ZC_EXPECT(oneSide[0].event == firstEvent);
+
+  auto distinct =
+      InitializationLattice::mergeLossCauses(neverCauses.asPtr(), movedCauses.asPtr());
+  ZC_REQUIRE(distinct.size() == 2);
+  ZC_EXPECT(distinct[0].kind == InitializationLossKind::NeverInitialized);
+  ZC_EXPECT(distinct[1].kind == InitializationLossKind::Moved);
+
+  auto duplicated =
+      InitializationLattice::mergeLossCauses(neverCauses.asPtr(), neverCauses.asPtr());
+  ZC_REQUIRE(duplicated.size() == 1);
+  ZC_EXPECT(duplicated[0].kind == InitializationLossKind::NeverInitialized);
 }
 
 ZC_TEST("Loan verifier rejects a tampered active point, issue, commit, and foreign lineage") {
