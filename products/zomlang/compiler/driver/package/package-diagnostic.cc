@@ -18,8 +18,8 @@
 
 #include "zc/core/encoding.h"
 #include "zc/core/memory.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang::compiler::driver::package {

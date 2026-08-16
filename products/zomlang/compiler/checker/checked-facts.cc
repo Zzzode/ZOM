@@ -5,7 +5,7 @@
 
 #include "zomlang/compiler/checker/checked-facts.h"
 
-#include "zomlang/compiler/diagnostics/diagnostic-info.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-info.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 
 namespace zomlang::compiler::checker::checked {

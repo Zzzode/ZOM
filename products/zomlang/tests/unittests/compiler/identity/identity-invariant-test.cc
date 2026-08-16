@@ -12,7 +12,7 @@
 // the License.
 
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/diagnostics/diagnostic-info.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-info.h"
 #include "zomlang/compiler/identity/identity-diagnostic-adapter.h"
 #include "zomlang/compiler/source/manager.h"
 

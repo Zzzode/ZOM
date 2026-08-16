@@ -13,7 +13,7 @@
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/tree.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact.h"
+#include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
 #include "zomlang/compiler/identity/sha256.h"
 
 namespace zomlang::compiler {

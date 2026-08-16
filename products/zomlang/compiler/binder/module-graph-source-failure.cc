@@ -41,7 +41,7 @@ identity::ModuleId ModuleGraphModule::module() const noexcept { return moduleVal
 struct ModuleGraphSourceFailure::Impl final {
   Impl(identity::ModuleKey&& module, identity::SourceFileKey&& source,
        LocalSyntaxPath&& declaredNamePath, uint32_t schemaPreorderOrdinal,
-       diagnostics::ToolchainModuleRootArgument&& argument) noexcept
+       diagnostics::ModuleRootArgument&& argument) noexcept
       : module(zc::mv(module)),
         source(zc::mv(source)),
         declaredNamePath(zc::mv(declaredNamePath)),
@@ -52,7 +52,7 @@ struct ModuleGraphSourceFailure::Impl final {
   identity::SourceFileKey source;
   LocalSyntaxPath declaredNamePath;
   uint32_t schemaPreorderOrdinal;
-  diagnostics::ToolchainModuleRootArgument argument;
+  diagnostics::ModuleRootArgument argument;
 };
 
 ModuleGraphSourceFailure::~ModuleGraphSourceFailure() noexcept(false) = default;
@@ -63,7 +63,7 @@ ModuleGraphSourceFailure& ModuleGraphSourceFailure::operator=(ModuleGraphSourceF
 ModuleGraphSourceFailure::ModuleGraphSourceFailure(
     identity::ModuleKey&& module, identity::SourceFileKey&& source,
     LocalSyntaxPath&& declaredNamePath, uint32_t schemaPreorderOrdinal,
-    diagnostics::ToolchainModuleRootArgument&& argument) noexcept
+    diagnostics::ModuleRootArgument&& argument) noexcept
     : impl(zc::heap<Impl>(zc::mv(module), zc::mv(source), zc::mv(declaredNamePath),
                           schemaPreorderOrdinal, zc::mv(argument))) {}
 
@@ -83,7 +83,7 @@ uint32_t ModuleGraphSourceFailure::schemaPreorderOrdinal() const noexcept {
   return impl->schemaPreorderOrdinal;
 }
 
-const diagnostics::ToolchainModuleRootArgument& ModuleGraphSourceFailure::argument()
+const diagnostics::ModuleRootArgument& ModuleGraphSourceFailure::argument()
     const noexcept {
   return impl->argument;
 }
@@ -116,7 +116,7 @@ ModuleGraphSourceFailureBuilder::buildToolchainModuleRootReserved(
   if (segment == zc::none) { return zc::none; }
   zc::Vector<identity::ModulePathSegment> argumentPath;
   ZC_IF_SOME(value, segment) { argumentPath.add(zc::mv(value)); }
-  auto argument = diagnostics::ToolchainModuleRootArgument::fromCanonicalPath(zc::mv(argumentPath));
+  auto argument = diagnostics::ModuleRootArgument::fromCanonicalPath(zc::mv(argumentPath));
   if (argument == zc::none) { return zc::none; }
 
   zc::Vector<uint32_t> pathComponents;

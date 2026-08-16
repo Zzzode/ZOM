@@ -7,9 +7,9 @@
 
 #include "zc/core/common.h"
 #include "zc/core/source-location.h"
-#include "zomlang/compiler/diagnostics/diagnostic-info.h"
-#include "zomlang/compiler/diagnostics/diagnostic.h"
-#include "zomlang/compiler/diagnostics/in-flight-diagnostic.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-info.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic.h"
+#include "zomlang/compiler/diagnostics/consumer/in-flight-diagnostic.h"
 
 namespace zomlang::compiler::diagnostics {
 

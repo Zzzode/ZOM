@@ -1,7 +1,7 @@
-#include "zomlang/compiler/diagnostics/diagnostic-state.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-state.h"
 
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"
 
 namespace zomlang {
 namespace compiler {

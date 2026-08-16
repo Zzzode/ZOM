@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact.h"
+#include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::diagnostics {

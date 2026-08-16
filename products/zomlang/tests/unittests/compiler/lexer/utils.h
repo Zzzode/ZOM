@@ -16,7 +16,7 @@
 #include "zc/core/memory.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
 #include "zomlang/compiler/lexer/lexer.h"
 #include "zomlang/compiler/source/manager.h"
 

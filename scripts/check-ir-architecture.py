@@ -29,7 +29,7 @@ SESSION_HEADER = Path("products/zomlang/compiler/driver/compiler-session.h")
 SESSION_SOURCE = Path("products/zomlang/compiler/driver/compiler-session.cc")
 CLI_SOURCE = Path("products/zomlang/utils/zomc/zomc.cc")
 COMPILER_OPTIONS = Path("products/zomlang/compiler/basic/compiler-opts.h")
-DIAGNOSTIC_DEFS = Path("products/zomlang/compiler/diagnostics/diagnostics-lowering.def")
+DIAGNOSTIC_DEFS = Path("products/zomlang/compiler/diagnostics/defs/diagnostics-lowering.def")
 
 REQUIRED_TARGET_MARKERS = (
     "namespace zomlang::compiler::ir",

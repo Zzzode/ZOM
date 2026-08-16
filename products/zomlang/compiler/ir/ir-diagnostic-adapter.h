@@ -8,8 +8,8 @@
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"
 #include "zomlang/compiler/identity/identity-diagnostic-adapter.h"
 #include "zomlang/compiler/ir/ir-failure.h"
 

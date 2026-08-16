@@ -10,7 +10,7 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
+#include "zomlang/compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/identity/canonical-identity-interner-set.h"

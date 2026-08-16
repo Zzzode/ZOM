@@ -15,7 +15,7 @@
 #include "zomlang/compiler/binder/stable/definition/header-producer.h"
 #include "zomlang/compiler/binder/stable/header/verifier.h"
 #include "zomlang/compiler/binder/stable/implementation/header-producer.h"
-#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
+#include "zomlang/compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/tests/unittests/compiler/binder/parsed-module-query-test-fixture.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"

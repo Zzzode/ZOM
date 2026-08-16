@@ -5,7 +5,7 @@
 #include "zomlang/compiler/binder/owner-body-query.h"
 #include "zomlang/compiler/binder/owner-body-syntax.h"
 #include "zomlang/compiler/binder/stable-binding-facts.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact.h"
+#include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
 #include "zomlang/compiler/driver/contextual-binding-key.h"
 #include "zomlang/compiler/query/query-database.h"
 

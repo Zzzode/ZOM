@@ -12,12 +12,12 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic.h"
 
 #include "zc/core/common.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"
 #include "zomlang/compiler/source/location.h"
 #include "zomlang/compiler/source/manager.h"
 

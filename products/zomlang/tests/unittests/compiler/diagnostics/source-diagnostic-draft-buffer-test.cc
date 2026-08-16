@@ -3,10 +3,10 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
+#include "zomlang/compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 

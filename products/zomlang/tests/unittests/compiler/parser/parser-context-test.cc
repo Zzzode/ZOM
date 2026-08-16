@@ -17,7 +17,7 @@
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
+#include "zomlang/compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang {

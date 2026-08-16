@@ -15,7 +15,7 @@
 #pragma once
 
 #include "zc/core/memory.h"
-#include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
+#include "zomlang/compiler/diagnostics/consumer/diagnostic-consumer.h"
 
 namespace zomlang {
 namespace compiler {

@@ -99,8 +99,8 @@ transaction. The canonical replacement and final audit are published through
 - `products/zomlang/compiler/identity/canonical-encoder.h`
 - `products/zomlang/compiler/identity/canonical-encoder.cc`
 - `products/zomlang/tests/unittests/compiler/identity/canonical-encoder-test.cc`
-- `products/zomlang/compiler/diagnostics/diagnostic-fact.h`
-- `products/zomlang/compiler/diagnostics/diagnostic-fact.cc`
+- `products/zomlang/compiler/diagnostics/fact/diagnostic-fact.h`
+- `products/zomlang/compiler/diagnostics/fact/diagnostic-fact.cc`
 - `products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-codec-test.cc`
 - `products/zomlang/compiler/parser/parse-source-query.cc`
 - `products/zomlang/compiler/parser/canonical-parsed-source.cc`

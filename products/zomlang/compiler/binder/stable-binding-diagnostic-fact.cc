@@ -6,7 +6,7 @@
 #include "zomlang/compiler/binder/stable-binding-diagnostic-fact.h"
 
 #include "zomlang/compiler/binder/stable-binding-facts.h"
-#include "zomlang/compiler/diagnostics/diagnostic-info.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-info.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 

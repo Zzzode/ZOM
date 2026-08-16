@@ -19,11 +19,11 @@
 #include "zc/core/common.h"
 #include "zc/core/io.h"
 #include "zc/core/memory.h"
-#include "zomlang/compiler/diagnostics/diagnostic-emitter.h"
-#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
-#include "zomlang/compiler/diagnostics/diagnostic-info.h"
-#include "zomlang/compiler/diagnostics/diagnostic.h"
-#include "zomlang/compiler/diagnostics/in-flight-diagnostic.h"
+#include "zomlang/compiler/diagnostics/consumer/diagnostic-emitter.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-info.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic.h"
+#include "zomlang/compiler/diagnostics/consumer/in-flight-diagnostic.h"
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang {

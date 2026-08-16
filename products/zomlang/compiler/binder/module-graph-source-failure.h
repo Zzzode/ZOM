@@ -9,7 +9,7 @@
 #include "zc/core/memory.h"
 #include "zomlang/compiler/binder/local-identity.h"
 #include "zomlang/compiler/binder/parsed-module-graph-input.h"
-#include "zomlang/compiler/diagnostics/toolchain-module-root-argument.h"
+#include "zomlang/compiler/diagnostics/toolchain/module-root-argument.h"
 #include "zomlang/compiler/identity/handle.h"
 #include "zomlang/compiler/identity/source-key.h"
 
@@ -43,12 +43,12 @@ public:
   ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
   ZC_NODISCARD const LocalSyntaxPath& declaredNamePath() const noexcept;
   ZC_NODISCARD uint32_t schemaPreorderOrdinal() const noexcept;
-  ZC_NODISCARD const diagnostics::ToolchainModuleRootArgument& argument() const noexcept;
+  ZC_NODISCARD const diagnostics::ModuleRootArgument& argument() const noexcept;
 
 private:
   ModuleGraphSourceFailure(identity::ModuleKey&& module, identity::SourceFileKey&& source,
                            LocalSyntaxPath&& declaredNamePath, uint32_t schemaPreorderOrdinal,
-                           diagnostics::ToolchainModuleRootArgument&& argument) noexcept;
+                           diagnostics::ModuleRootArgument&& argument) noexcept;
 
   struct Impl;
   zc::Own<Impl> impl;

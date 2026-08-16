@@ -5,7 +5,7 @@
 
 #include "zomlang/compiler/checker/borrow-interface-diagnostic-adapter.h"
 
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
 
 namespace zomlang::compiler::checker::borrow {
 namespace {

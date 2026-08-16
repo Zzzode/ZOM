@@ -674,7 +674,7 @@ ModuleGraphSourceFailure =
     source: SourceFileKey,
     declaredNamePath: LocalSyntaxPath,
     schemaOrdinal: uint32,
-    argument: RFC0025::ToolchainModuleRootArgument,
+    argument: RFC0025::ModuleRootArgument,
   }
 
 ModuleGraphInvariantKind =

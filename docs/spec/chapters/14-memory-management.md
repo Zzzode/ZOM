@@ -115,7 +115,7 @@ unwind capability; aborting panic performs no unwind cleanup.
 ## 14.6 Ownership Diagnostics
 
 Ownership diagnostics are checker-owned and use registered entries in
-`products/zomlang/compiler/diagnostics/diagnostics-checker.def`. The diagnostic
+`products/zomlang/compiler/diagnostics/defs/diagnostics-checker.def`. The diagnostic
 families include:
 
 - use after move and the originating move;

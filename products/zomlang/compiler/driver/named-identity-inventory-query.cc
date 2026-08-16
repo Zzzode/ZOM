@@ -9,7 +9,7 @@
 #include "zomlang/compiler/binder/stable-binding-diagnostic-fact.h"
 #include "zomlang/compiler/binder/stable/candidate/producer.h"
 #include "zomlang/compiler/binder/stable/candidate/verifier.h"
-#include "zomlang/compiler/diagnostics/toolchain-module-root-argument.h"
+#include "zomlang/compiler/diagnostics/toolchain/module-root-argument.h"
 #include "zomlang/compiler/driver/module-graph-query-input.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
@@ -62,7 +62,7 @@ zc::Maybe<ast::NodeId> selectModuleNode(const ast::Tree& tree, const identity::M
     if (value != module.path().back()) {
       zc::Vector<identity::ModulePathSegment> declaredPath;
       declaredPath.add(value.clone());
-      if (diagnostics::ToolchainModuleRootArgument::fromCanonicalPath(zc::mv(declaredPath)) ==
+      if (diagnostics::ModuleRootArgument::fromCanonicalPath(zc::mv(declaredPath)) ==
           zc::none) {
         return zc::none;
       }

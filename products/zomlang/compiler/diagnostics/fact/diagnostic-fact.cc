@@ -3,11 +3,11 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zomlang/compiler/diagnostics/diagnostic-fact.h"
+#include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
 
 #include "zc/core/debug.h"
 #include "zc/core/one-of.h"
-#include "zomlang/compiler/diagnostics/diagnostic-info.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-info.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/identity/source-key.h"
@@ -1124,7 +1124,7 @@ bool isSourceSyntaxDiagnostic(DiagID code) noexcept {
 #define DIAG(Code, Name, ...) \
   case DiagID::Name:          \
     return true;
-#include "zomlang/compiler/diagnostics/diagnostics-parse.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-parse.def"
 #undef DIAG
     default:
       return false;

@@ -3,12 +3,12 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
+#include "zomlang/compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 
 #include "zc/core/debug.h"
 #include "zc/core/one-of.h"
-#include "zomlang/compiler/diagnostics/diagnostic-info.h"
-#include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-info.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic.h"
 #include "zomlang/compiler/identity/source-key.h"
 #include "zomlang/compiler/source/manager.h"
 

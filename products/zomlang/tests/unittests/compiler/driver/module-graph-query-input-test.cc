@@ -11,7 +11,7 @@
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/binder/module-dependency-requests.h"
 #include "zomlang/compiler/binder/parsed-module-graph-input.h"
-#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
+#include "zomlang/compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/driver/core/query.h"
 #include "zomlang/compiler/driver/module-dependency-provenance-query.h"
 #include "zomlang/compiler/driver/module-graph-query.h"

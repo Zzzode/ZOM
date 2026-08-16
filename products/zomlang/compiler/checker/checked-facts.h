@@ -21,7 +21,7 @@
 #include "zomlang/compiler/checker/cross-module-facts.h"
 #include "zomlang/compiler/checker/operator-kind.h"
 #include "zomlang/compiler/checker/signature-facts.h"
-#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"
 #include "zomlang/compiler/identity/crate-key.h"
 #include "zomlang/compiler/identity/handle.h"
 #include "zomlang/compiler/identity/semantic-context-fingerprint.h"

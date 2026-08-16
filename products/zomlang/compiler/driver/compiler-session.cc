@@ -40,11 +40,11 @@
 #include "zomlang/compiler/checker/coherence-facts.h"
 #include "zomlang/compiler/checker/cross-module-facts.h"
 #include "zomlang/compiler/checker/signature-facts.h"
-#include "zomlang/compiler/diagnostics/consoling-diagnostic-consumer.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
-#include "zomlang/compiler/diagnostics/diagnostic-materializer.h"
-#include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/diagnostics/consumer/consoling-diagnostic-consumer.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"
+#include "zomlang/compiler/diagnostics/fact/diagnostic-materializer.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
 #include "zomlang/compiler/driver/active-definition-authority-session.h"
 #include "zomlang/compiler/driver/coherence-builder.h"
@@ -1221,7 +1221,7 @@ struct CompilerSession::Impl {
               zc::Vector<identity::ModulePathSegment> declaredPath;
               declaredPath.add(value.clone());
               declaresToolchainModuleRoot =
-                  diagnostics::ToolchainModuleRootArgument::fromCanonicalPath(
+                  diagnostics::ModuleRootArgument::fromCanonicalPath(
                       zc::mv(declaredPath)) != zc::none;
             }
             if (!nameMatches && !declaresToolchainModuleRoot) {

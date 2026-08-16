@@ -24,14 +24,14 @@ namespace diagnostics {
 
 enum class DiagID : uint32_t {
 #define DIAG(Code, Name, ...) Name = Code,
-#include "zomlang/compiler/diagnostics/diagnostics-binder.def"
-#include "zomlang/compiler/diagnostics/diagnostics-checker.def"
-#include "zomlang/compiler/diagnostics/diagnostics-common.def"
-#include "zomlang/compiler/diagnostics/diagnostics-identity.def"
-#include "zomlang/compiler/diagnostics/diagnostics-lowering.def"
-#include "zomlang/compiler/diagnostics/diagnostics-module.def"
-#include "zomlang/compiler/diagnostics/diagnostics-package.def"
-#include "zomlang/compiler/diagnostics/diagnostics-parse.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-binder.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-checker.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-common.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-identity.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-lowering.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-module.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-package.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-parse.def"
 #undef DIAG
 };
 

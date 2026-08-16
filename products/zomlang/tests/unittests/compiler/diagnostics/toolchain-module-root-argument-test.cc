@@ -3,7 +3,7 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zomlang/compiler/diagnostics/toolchain-module-root-argument.h"
+#include "zomlang/compiler/diagnostics/toolchain/module-root-argument.h"
 
 #include "zc/core/array.h"
 #include "zc/ztest/test.h"
@@ -28,8 +28,8 @@ zc::Vector<identity::ModulePathSegment> path(zc::StringPtr first, zc::StringPtr 
 
 }  // namespace
 
-ZC_TEST("ToolchainModuleRootArgument admits only the exact canonical core root") {
-  auto admitted = ToolchainModuleRootArgument::fromCanonicalPath(path("core"_zc));
+ZC_TEST("ModuleRootArgument admits only the exact canonical core root") {
+  auto admitted = ModuleRootArgument::fromCanonicalPath(path("core"_zc));
   ZC_REQUIRE(admitted != zc::none);
   ZC_IF_SOME(value, admitted) {
     ZC_EXPECT(value.path().size() == 1);
@@ -37,15 +37,15 @@ ZC_TEST("ToolchainModuleRootArgument admits only the exact canonical core root")
     ZC_EXPECT(value.clone() == value);
   }
 
-  ZC_EXPECT(ToolchainModuleRootArgument::fromCanonicalPath(path("app"_zc)) == zc::none);
-  ZC_EXPECT(ToolchainModuleRootArgument::fromCanonicalPath(path("core"_zc, "marker"_zc)) ==
+  ZC_EXPECT(ModuleRootArgument::fromCanonicalPath(path("app"_zc)) == zc::none);
+  ZC_EXPECT(ModuleRootArgument::fromCanonicalPath(path("core"_zc, "marker"_zc)) ==
             zc::none);
   zc::Vector<identity::ModulePathSegment> empty;
-  ZC_EXPECT(ToolchainModuleRootArgument::fromCanonicalPath(zc::mv(empty)) == zc::none);
+  ZC_EXPECT(ModuleRootArgument::fromCanonicalPath(zc::mv(empty)) == zc::none);
 }
 
-ZC_TEST("ToolchainModuleRootArgument codec is strict and canonically framed") {
-  auto admitted = ToolchainModuleRootArgument::fromCanonicalPath(path("core"_zc));
+ZC_TEST("ModuleRootArgument codec is strict and canonically framed") {
+  auto admitted = ModuleRootArgument::fromCanonicalPath(path("core"_zc));
   ZC_REQUIRE(admitted != zc::none);
   ZC_IF_SOME(value, admitted) {
     identity::CanonicalEncoder encoder;
@@ -55,7 +55,7 @@ ZC_TEST("ToolchainModuleRootArgument codec is strict and canonically framed") {
     ZC_EXPECT(bytes.asPtr() == zc::arrayPtr(expected));
 
     identity::CanonicalDecoder decoder(bytes);
-    auto decoded = ToolchainModuleRootArgument::decodeCanonical(decoder);
+    auto decoded = ModuleRootArgument::decodeCanonical(decoder);
     ZC_REQUIRE(decoded != zc::none);
     ZC_IF_SOME(decodedValue, decoded) { ZC_EXPECT(decodedValue == value); }
     ZC_EXPECT(decoder.finished());
@@ -66,19 +66,19 @@ ZC_TEST("ToolchainModuleRootArgument codec is strict and canonically framed") {
   requireSegment("app"_zc).encode(wrongRootEncoder);
   auto wrongRoot = wrongRootEncoder.finish();
   identity::CanonicalDecoder wrongRootDecoder(wrongRoot);
-  ZC_EXPECT(ToolchainModuleRootArgument::decodeCanonical(wrongRootDecoder) == zc::none);
+  ZC_EXPECT(ModuleRootArgument::decodeCanonical(wrongRootDecoder) == zc::none);
 
   identity::CanonicalEncoder emptyEncoder;
   emptyEncoder.encodeSequenceSize(0);
   auto emptyBytes = emptyEncoder.finish();
   identity::CanonicalDecoder emptyDecoder(emptyBytes);
-  ZC_EXPECT(ToolchainModuleRootArgument::decodeCanonical(emptyDecoder) == zc::none);
+  ZC_EXPECT(ModuleRootArgument::decodeCanonical(emptyDecoder) == zc::none);
 
   identity::CanonicalEncoder oversizedEncoder;
   oversizedEncoder.encodeSequenceSize(2);
   auto oversizedBytes = oversizedEncoder.finish();
   identity::CanonicalDecoder oversizedDecoder(oversizedBytes);
-  ZC_EXPECT(ToolchainModuleRootArgument::decodeCanonical(oversizedDecoder) == zc::none);
+  ZC_EXPECT(ModuleRootArgument::decodeCanonical(oversizedDecoder) == zc::none);
 }
 
 }  // namespace zomlang::compiler::diagnostics

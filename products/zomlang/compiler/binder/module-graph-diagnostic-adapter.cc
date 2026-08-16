@@ -10,7 +10,7 @@
 #include "zc/core/debug.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang::compiler::binder {
@@ -129,7 +129,7 @@ zc::Maybe<VerifiedDiagnosticRange> resolveToolchainModuleRootRange(
     zc::Vector<identity::ModulePathSegment> argumentPath;
     ZC_IF_SOME(value, segment) { argumentPath.add(zc::mv(value)); }
     auto argument =
-        diagnostics::ToolchainModuleRootArgument::fromCanonicalPath(zc::mv(argumentPath));
+        diagnostics::ModuleRootArgument::fromCanonicalPath(zc::mv(argumentPath));
     if (argument == zc::none || ZC_ASSERT_NONNULL(argument) != failure.argument()) {
       return zc::none;
     }
@@ -144,7 +144,7 @@ zc::Maybe<VerifiedDiagnosticRange> resolveToolchainModuleRootRange(
 }
 
 zc::Maybe<zc::String> renderToolchainModuleRootArgument(
-    const diagnostics::ToolchainModuleRootArgument& argument) {
+    const diagnostics::ModuleRootArgument& argument) {
   if (argument.path().size() == 0) { return zc::none; }
   zc::String path;
   bool first = true;

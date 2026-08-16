@@ -12,7 +12,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/diagnostics/consoling-diagnostic-consumer.h"
+#include "zomlang/compiler/diagnostics/consumer/consoling-diagnostic-consumer.h"
 
 #include <cstdio>
 
@@ -21,10 +21,10 @@
 #include "zc/core/io.h"
 #include "zc/core/iostream.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
-#include "zomlang/compiler/diagnostics/diagnostic-info.h"
-#include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-info.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic.h"
 #include "zomlang/compiler/source/location.h"
 #include "zomlang/compiler/source/manager.h"
 

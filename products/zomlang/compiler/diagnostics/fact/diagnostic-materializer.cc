@@ -3,15 +3,15 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zomlang/compiler/diagnostics/diagnostic-materializer.h"
+#include "zomlang/compiler/diagnostics/fact/diagnostic-materializer.h"
 
 #include <climits>
 
 #include "zc/core/debug.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/diagnostics/diagnostic-info.h"
-#include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-info.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic.h"
 #include "zomlang/compiler/identity/source-key.h"
 #include "zomlang/compiler/source/manager.h"
 

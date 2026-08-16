@@ -14,7 +14,7 @@
 #include "zomlang/compiler/identity/identity-diagnostic-adapter.h"
 
 #include "zc/core/string.h"
-#include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic.h"
 
 namespace zomlang::compiler::identity {
 namespace {

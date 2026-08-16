@@ -19,7 +19,7 @@ INTERFACES_SPEC = Path("docs/spec/chapters/09-interfaces.md")
 ATTRIBUTES_SPEC = Path("docs/spec/chapters/16-attributes-and-annotations.md")
 GRAMMAR_REFERENCE = Path("docs/spec/chapters/17-grammar-reference.md")
 SIGNATURE_FACTS = Path("products/zomlang/compiler/checker/signature-facts.cc")
-PARSE_DIAGNOSTICS = Path("products/zomlang/compiler/diagnostics/diagnostics-parse.def")
+PARSE_DIAGNOSTICS = Path("products/zomlang/compiler/diagnostics/defs/diagnostics-parse.def")
 PARSER_TEST = Path("products/zomlang/tests/unittests/compiler/parser/parser-test.cc")
 DRIVER_TEST = Path(
     "products/zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc"

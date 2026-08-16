@@ -1686,7 +1686,7 @@ re-export the core module tree.
 The leading qualified-module segment `core` is reserved for the verified
 toolchain unit. A user crate target, dependency alias, or root module cannot
 claim it. Rejection uses the ordinary module diagnostic registered in
-`products/zomlang/compiler/diagnostics/diagnostics-module.def`:
+`products/zomlang/compiler/diagnostics/defs/diagnostics-module.def`:
 
 | Code | Name | Severity | Message | Arguments |
 |---|---|---|---|---|
@@ -1711,7 +1711,7 @@ ToolchainModuleRootReservationProducer =
   | DependencyAlias       // 0x02
   | SourceRootDeclaration // 0x03
 
-ToolchainModuleRootArgument {
+ModuleRootArgument {
   path: CanonicalModulePath,
 }
 
@@ -1720,7 +1720,7 @@ PackageToolchainModuleRootFailure {
   provenance: RFC0012::DiagnosticProvenance,
   package: PackageKey,
   fieldPath: Sequence<NfcName>,
-  argument: ToolchainModuleRootArgument,
+  argument: ModuleRootArgument,
 }
 
 RFC0012::PackagePipelineFailure +=
@@ -1732,11 +1732,11 @@ RFC0004::ModuleGraphSourceFailure +=
     source: SourceFileKey,
     declaredNamePath: LocalSyntaxPath,
     schemaOrdinal: uint32,
-    argument: ToolchainModuleRootArgument,
+    argument: ModuleRootArgument,
   }
 ```
 
-`ToolchainModuleRootArgument.path` must contain exactly the one canonical
+`ModuleRootArgument.path` must contain exactly the one canonical
 segment `core`. It can be constructed only from the matching normalized
 `TargetManifest`, dependency-alias record, or parser-produced immutable
 `ModuleDeclaration`; the package and module adapters accept this type and have
@@ -2273,7 +2273,7 @@ provenance occurrence `0`. `declaredNamePath` is not stored in the diagnostic
 occurrence field.
 
 All three facts carry the single canonical argument record
-`ToolchainModuleRootArgument { path = core }`. The acceptance transaction adds
+`ModuleRootArgument { path = core }`. The acceptance transaction adds
 exact fact, provenance, occurrence, and rendered-diagnostic wire oracles and
 mutates every outer and inner tag, root field, package root, package or module,
 field path, local path, emitter, diagnostic occurrence, provenance occurrence,
@@ -2388,7 +2388,7 @@ The RFC 0004 synchronization is mechanical:
 | Reserved toolchain root | Add `ZOM3027 ToolchainModuleRootReserved` to `diagnostics-module.def` with severity `Error`, one `ModulePath` argument, and the exact headline defined above |
 | Source failure algebra | Add the `ToolchainModuleRootReserved` alternative to `ModuleGraphSourceFailure` with exact module, source, declared-name local path, schema ordinal, and typed argument fields |
 | Producers and anchors | Reject a non-core source root at its complete declared-name span before module-graph publication; package-owned target and alias producers remain in RFC 0012 |
-| Typed module adapter | Extend only `module-graph-diagnostic-adapter` to accept the verified `ToolchainModuleRootArgument`; do not route the failure through `module-interface-diagnostic-adapter` or a raw string |
+| Typed module adapter | Extend only `module-graph-diagnostic-adapter` to accept the verified `ModuleRootArgument`; do not route the failure through `module-interface-diagnostic-adapter` or a raw string |
 | Precedence and suppression | Diagnose malformed manifest or source syntax first; for the same occurrence, make `ZOM3027` suppress `ZOM3026` and every derived import or re-export resolution diagnostic without suppressing independent duplicate-declaration facts |
 | Diagnostic publication | Reuse the existing package or module diagnostic root, provenance, canonical occurrence ordering, renderer, and CLI failure path; never wrap the occurrence in `CoreLibraryFailure` |
 | Tests and cutover | Add target, alias, source-root, legal registry-package-name, ordering, suppression, no-publication, exact code, severity, arity, headline, argument, and anchor cases in the same change |
@@ -2473,7 +2473,7 @@ The RFC 0012 synchronization is mechanical:
 | Package boundary | Keep release, resolver, lock, feature, manifest, and source-materialization contracts user-package-only; no toolchain-core identity or source enters `PackageKey`, a package graph, or a lockfile |
 | Reservation failure algebra | Add `PackageToolchainModuleRootFailure` to `PackagePipelineFailure` after invocation, compiler-invariant, and manifest failures but before registry, resolver, lock, materialization, and build-script failures |
 | Producer selection | Construct `UserTargetRoot` only from one normalized selected target and `DependencyAlias` only from a normalized alias; target precedes aliases and aliases sort by complete canonical record and provenance |
-| Typed package adapter | Extend the existing package diagnostic adapter to accept only `ToolchainModuleRootArgument` reconstructed from the retained manifest record; prohibit raw strings and prohibit `module-interface-diagnostic-adapter` |
+| Typed package adapter | Extend the existing package diagnostic adapter to accept only `ModuleRootArgument` reconstructed from the retained manifest record; prohibit raw strings and prohibit `module-interface-diagnostic-adapter` |
 | Priority | A compiler invariant, invalid invocation selection, invalid manifest, or `TargetSelectionInvalid` remains the single earlier failure; after package, feature, and requested-target selection constructs the complete selected `PackageKey`, `ZOM3027` precedes and suppresses every downstream registry-graph, lock, materialization, or build-script failure derived from the reserved target or alias |
 | Legal package name | Permit a registry package named `core` when its selected target and dependency alias are not `core`; package name alone never constructs the reservation failure |
 | Tests and cutover | Add exact target, alias, priority, legal-package-name, anchor, typed-argument, renderer, no-publication, and mutation cases to the package diagnostic and pipeline suites without a compatibility branch |

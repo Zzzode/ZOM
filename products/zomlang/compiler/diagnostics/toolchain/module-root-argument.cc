@@ -3,7 +3,7 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zomlang/compiler/diagnostics/toolchain-module-root-argument.h"
+#include "zomlang/compiler/diagnostics/toolchain/module-root-argument.h"
 
 #include "zc/core/debug.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
@@ -20,17 +20,17 @@ bool isToolchainModuleRoot(zc::ArrayPtr<const identity::ModulePathSegment> path)
 
 }  // namespace
 
-ToolchainModuleRootArgument::ToolchainModuleRootArgument(
+ModuleRootArgument::ModuleRootArgument(
     zc::Vector<identity::ModulePathSegment>&& path) noexcept
     : pathValue(zc::mv(path)) {}
 
-zc::Maybe<ToolchainModuleRootArgument> ToolchainModuleRootArgument::fromCanonicalPath(
+zc::Maybe<ModuleRootArgument> ModuleRootArgument::fromCanonicalPath(
     zc::Vector<identity::ModulePathSegment>&& path) {
   if (!isToolchainModuleRoot(path.asPtr())) { return zc::none; }
-  return ToolchainModuleRootArgument(zc::mv(path));
+  return ModuleRootArgument(zc::mv(path));
 }
 
-zc::Maybe<ToolchainModuleRootArgument> ToolchainModuleRootArgument::decodeCanonical(
+zc::Maybe<ModuleRootArgument> ModuleRootArgument::decodeCanonical(
     identity::CanonicalDecoder& decoder) {
   auto count = decoder.decodeSequenceSize(1);
   if (count == zc::none || ZC_ASSERT_NONNULL(count) != 1) { return zc::none; }
@@ -41,23 +41,23 @@ zc::Maybe<ToolchainModuleRootArgument> ToolchainModuleRootArgument::decodeCanoni
   return fromCanonicalPath(zc::mv(path));
 }
 
-ToolchainModuleRootArgument ToolchainModuleRootArgument::clone() const {
+ModuleRootArgument ModuleRootArgument::clone() const {
   zc::Vector<identity::ModulePathSegment> path(pathValue.size());
   for (const auto& segment : pathValue) { path.add(segment.clone()); }
-  return ToolchainModuleRootArgument(zc::mv(path));
+  return ModuleRootArgument(zc::mv(path));
 }
 
-zc::ArrayPtr<const identity::ModulePathSegment> ToolchainModuleRootArgument::path() const noexcept {
+zc::ArrayPtr<const identity::ModulePathSegment> ModuleRootArgument::path() const noexcept {
   return pathValue.asPtr();
 }
 
-void ToolchainModuleRootArgument::encode(identity::CanonicalEncoder& encoder) const {
+void ModuleRootArgument::encode(identity::CanonicalEncoder& encoder) const {
   encoder.encodeSequenceSize(pathValue.size());
   for (const auto& segment : pathValue) { segment.encode(encoder); }
 }
 
-bool ToolchainModuleRootArgument::operator==(
-    const ToolchainModuleRootArgument& other) const noexcept {
+bool ModuleRootArgument::operator==(
+    const ModuleRootArgument& other) const noexcept {
   return pathValue == other.pathValue;
 }
 

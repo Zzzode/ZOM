@@ -11,7 +11,7 @@
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact.h"
+#include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
 
 namespace zomlang::compiler {
 namespace identity {

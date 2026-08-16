@@ -6,8 +6,8 @@
 #include "zomlang/compiler/driver/module-interface-diagnostic-adapter.h"
 
 #include "zc/core/string.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic.h"
 
 namespace zomlang::compiler::driver {
 namespace {

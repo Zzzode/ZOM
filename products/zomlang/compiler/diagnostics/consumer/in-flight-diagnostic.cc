@@ -12,11 +12,11 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/diagnostics/in-flight-diagnostic.h"
+#include "zomlang/compiler/diagnostics/consumer/in-flight-diagnostic.h"
 
 #include "zc/core/common.h"
-#include "zomlang/compiler/diagnostics/diagnostic-emitter.h"
-#include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/diagnostics/consumer/diagnostic-emitter.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic.h"
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang {

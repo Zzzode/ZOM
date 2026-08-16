@@ -167,13 +167,13 @@ identity::CanonicalPathSegment fieldName(zc::StringPtr text) {
   ZC_UNREACHABLE;
 }
 
-zc::Maybe<diagnostics::ToolchainModuleRootArgument> toolchainRootArgument(
+zc::Maybe<diagnostics::ModuleRootArgument> toolchainRootArgument(
     zc::StringPtr canonicalRoot) {
   auto segment = identity::ModulePathSegment::fromCanonical(canonicalRoot);
   if (segment == zc::none) { return zc::none; }
   zc::Vector<identity::ModulePathSegment> path;
   ZC_IF_SOME(value, segment) { path.add(zc::mv(value)); }
-  return diagnostics::ToolchainModuleRootArgument::fromCanonicalPath(zc::mv(path));
+  return diagnostics::ModuleRootArgument::fromCanonicalPath(zc::mv(path));
 }
 
 zc::Maybe<DiagnosticProvenance> singleOriginProvenance(const DiagnosticAnchor& origin) {
@@ -522,7 +522,7 @@ bool PackageToolchainModuleRootFieldPath::operator==(
 PackageToolchainModuleRootFailure::PackageToolchainModuleRootFailure(
     PackageToolchainModuleRootProducer producer, DiagnosticProvenance&& provenance,
     identity::PackageKey&& package, PackageToolchainModuleRootFieldPath&& fieldPath,
-    diagnostics::ToolchainModuleRootArgument&& argument) noexcept
+    diagnostics::ModuleRootArgument&& argument) noexcept
     : producerValue(producer),
       provenanceValue(zc::mv(provenance)),
       packageValue(zc::mv(package)),
@@ -585,7 +585,7 @@ const PackageToolchainModuleRootFieldPath& PackageToolchainModuleRootFailure::fi
   return fieldPathValue;
 }
 
-const diagnostics::ToolchainModuleRootArgument& PackageToolchainModuleRootFailure::argument()
+const diagnostics::ModuleRootArgument& PackageToolchainModuleRootFailure::argument()
     const noexcept {
   return argumentValue;
 }

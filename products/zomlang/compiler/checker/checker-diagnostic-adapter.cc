@@ -9,9 +9,9 @@
 
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/diagnostics/diagnostic-text.h"
-#include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/text/diagnostic-text.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic.h"
 #include "zomlang/compiler/identity/identity-diagnostic-adapter.h"
 
 namespace zomlang::compiler::checker {

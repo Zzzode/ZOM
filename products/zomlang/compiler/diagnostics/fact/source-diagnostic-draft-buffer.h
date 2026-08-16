@@ -12,8 +12,8 @@
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
-#include "zomlang/compiler/diagnostics/diagnostic-emitter.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact.h"
+#include "zomlang/compiler/diagnostics/consumer/diagnostic-emitter.h"
+#include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
 
 namespace zomlang::compiler {
 namespace source {

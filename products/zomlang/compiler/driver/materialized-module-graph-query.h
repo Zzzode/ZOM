@@ -15,7 +15,7 @@
 #include "zomlang/compiler/binder/materialized-module-skeleton.h"
 #include "zomlang/compiler/binder/module-graph-revision.h"
 #include "zomlang/compiler/binder/parsed-module.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact.h"
+#include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
 #include "zomlang/compiler/driver/active-identity-membership-query.h"
 #include "zomlang/compiler/driver/module-dependency-provenance-query.h"
 #include "zomlang/compiler/driver/module-graph-query.h"

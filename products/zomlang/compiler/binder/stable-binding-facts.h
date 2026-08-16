@@ -13,7 +13,7 @@
 #include "zomlang/compiler/binder/binding-metadata.h"
 #include "zomlang/compiler/binder/identity-pre-admission.h"
 #include "zomlang/compiler/binder/local-identity.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact.h"
+#include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
 #include "zomlang/compiler/identity/definition-key.h"
 #include "zomlang/compiler/identity/semantic-import-binding-key.h"
 #include "zomlang/compiler/identity/source-key.h"

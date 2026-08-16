@@ -15,7 +15,7 @@
 #pragma once
 
 #include "zc/core/string.h"
-#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"
 
 namespace zomlang {
 namespace compiler {
@@ -38,14 +38,14 @@ struct DiagnosticTraits;
     static constexpr zc::StringPtr message = Message##_zcc;          \
     static constexpr size_t argCount = Args;                         \
   };
-#include "zomlang/compiler/diagnostics/diagnostics-binder.def"
-#include "zomlang/compiler/diagnostics/diagnostics-checker.def"
-#include "zomlang/compiler/diagnostics/diagnostics-common.def"
-#include "zomlang/compiler/diagnostics/diagnostics-identity.def"
-#include "zomlang/compiler/diagnostics/diagnostics-lowering.def"
-#include "zomlang/compiler/diagnostics/diagnostics-module.def"
-#include "zomlang/compiler/diagnostics/diagnostics-package.def"
-#include "zomlang/compiler/diagnostics/diagnostics-parse.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-binder.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-checker.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-common.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-identity.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-lowering.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-module.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-package.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-parse.def"
 #undef DIAG
 
 namespace detail {
@@ -67,14 +67,14 @@ constexpr DiagnosticInfo getDiagnosticInfo(const DiagID id) {
 #define DIAG(Code, Name, ...) \
   case DiagID::Name:          \
     return detail::getDiagnosticInfoImpl<DiagID::Name>();
-#include "zomlang/compiler/diagnostics/diagnostics-binder.def"
-#include "zomlang/compiler/diagnostics/diagnostics-checker.def"
-#include "zomlang/compiler/diagnostics/diagnostics-common.def"
-#include "zomlang/compiler/diagnostics/diagnostics-identity.def"
-#include "zomlang/compiler/diagnostics/diagnostics-lowering.def"
-#include "zomlang/compiler/diagnostics/diagnostics-module.def"
-#include "zomlang/compiler/diagnostics/diagnostics-package.def"
-#include "zomlang/compiler/diagnostics/diagnostics-parse.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-binder.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-checker.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-common.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-identity.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-lowering.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-module.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-package.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-parse.def"
 
 #undef DIAG
     default:
@@ -88,14 +88,14 @@ constexpr bool isKnownDiagnostic(const DiagID id) {
 #define DIAG(Code, Name, ...) \
   case DiagID::Name:          \
     return true;
-#include "zomlang/compiler/diagnostics/diagnostics-binder.def"
-#include "zomlang/compiler/diagnostics/diagnostics-checker.def"
-#include "zomlang/compiler/diagnostics/diagnostics-common.def"
-#include "zomlang/compiler/diagnostics/diagnostics-identity.def"
-#include "zomlang/compiler/diagnostics/diagnostics-lowering.def"
-#include "zomlang/compiler/diagnostics/diagnostics-module.def"
-#include "zomlang/compiler/diagnostics/diagnostics-package.def"
-#include "zomlang/compiler/diagnostics/diagnostics-parse.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-binder.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-checker.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-common.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-identity.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-lowering.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-module.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-package.def"
+#include "zomlang/compiler/diagnostics/defs/diagnostics-parse.def"
 #undef DIAG
     default:
       return false;

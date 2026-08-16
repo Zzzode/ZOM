@@ -18,12 +18,12 @@
 /// This file contains ztest-based unit tests for the in-flight diagnostic class,
 /// testing diagnostic building and management.
 
-#include "zomlang/compiler/diagnostics/in-flight-diagnostic.h"
+#include "zomlang/compiler/diagnostics/consumer/in-flight-diagnostic.h"
 
 #include "zc/core/common.h"
 #include "zc/core/debug.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang {

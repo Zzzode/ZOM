@@ -597,9 +597,9 @@ is registered in CTest as `stable-binding-landing-scope-negative`.
 The canonical Binder diagnostic-fact transaction owns exactly:
 
 ```text
-products/zomlang/compiler/diagnostics/diagnostics-binder.def
-products/zomlang/compiler/diagnostics/diagnostic-fact.h
-products/zomlang/compiler/diagnostics/diagnostic-fact.cc
+products/zomlang/compiler/diagnostics/defs/diagnostics-binder.def
+products/zomlang/compiler/diagnostics/fact/diagnostic-fact.h
+products/zomlang/compiler/diagnostics/fact/diagnostic-fact.cc
 products/zomlang/compiler/checker/checker-source-diagnostics.def
 products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc
 products/zomlang/tests/unittests/compiler/diagnostics/CMakeLists.txt

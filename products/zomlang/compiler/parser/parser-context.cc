@@ -15,7 +15,7 @@
 #include "zomlang/compiler/parser/parser-context.h"
 
 #include "zc/core/debug.h"
-#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
+#include "zomlang/compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 
 namespace zomlang {
 namespace compiler {

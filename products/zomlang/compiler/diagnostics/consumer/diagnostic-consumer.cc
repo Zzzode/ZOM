@@ -12,7 +12,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
+#include "zomlang/compiler/diagnostics/consumer/diagnostic-consumer.h"
 
 namespace zomlang {
 namespace compiler {

@@ -8,7 +8,7 @@
 #include "zc/core/time.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
 #include "zomlang/compiler/driver/compiler-session.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"

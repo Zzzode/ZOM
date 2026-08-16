@@ -10,7 +10,7 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/node-id.h"
 #include "zomlang/compiler/binder/stable-binding-facts.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact.h"
+#include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
 #include "zomlang/compiler/driver/module-graph-query-input.h"
 #include "zomlang/compiler/identity/module-resolution-key.h"
 #include "zomlang/compiler/identity/source-key.h"

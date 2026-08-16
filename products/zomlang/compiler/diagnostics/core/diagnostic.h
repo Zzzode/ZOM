@@ -19,7 +19,7 @@
 #include "zc/core/one-of.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang {

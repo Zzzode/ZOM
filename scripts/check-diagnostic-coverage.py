@@ -67,7 +67,7 @@ def source_files(root: Path):
 def load_definitions() -> dict[str, Definition]:
     definitions: dict[str, Definition] = {}
     codes: dict[int, str] = {}
-    for path in sorted(DIAGNOSTIC_ROOT.glob("diagnostics-*.def")):
+    for path in sorted(DIAGNOSTIC_ROOT.glob("defs/diagnostics-*.def")):
         for code_text, name in DEFINITION_PATTERN.findall(path.read_text()):
             code = int(code_text)
             if name in definitions:

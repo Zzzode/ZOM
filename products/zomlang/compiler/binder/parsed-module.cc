@@ -16,7 +16,7 @@
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/generated/node-schema.h"
 #include "zomlang/compiler/ast/schema-verifier.h"
-#include "zomlang/compiler/diagnostics/diagnostic-info.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-info.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/sha256.h"
 

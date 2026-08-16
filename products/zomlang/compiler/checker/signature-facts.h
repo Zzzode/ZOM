@@ -24,7 +24,7 @@
 #include "zomlang/compiler/ast/node-id.h"
 #include "zomlang/compiler/binder/binding-metadata.h"
 #include "zomlang/compiler/binder/parsed-module.h"
-#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"
 #include "zomlang/compiler/identity/identity-invariant.h"
 #include "zomlang/compiler/identity/semantic-context-fingerprint.h"
 #include "zomlang/compiler/type/semantic-type-data.h"

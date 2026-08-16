@@ -3,11 +3,11 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zomlang/compiler/diagnostics/diagnostic-materializer.h"
+#include "zomlang/compiler/diagnostics/fact/diagnostic-materializer.h"
 
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/consumer/diagnostic-consumer.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 

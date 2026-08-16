@@ -8,7 +8,7 @@
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact.h"
+#include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
 #include "zomlang/compiler/identity/sha256.h"
 #include "zomlang/compiler/identity/source-query-input.h"
 #include "zomlang/compiler/parser/canonical-parsed-source.h"

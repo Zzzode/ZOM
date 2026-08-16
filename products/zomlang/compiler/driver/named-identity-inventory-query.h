@@ -4,7 +4,7 @@
 #include "zomlang/compiler/binder/named-identity-inventory.h"
 #include "zomlang/compiler/binder/revision-local-identity-sites.h"
 #include "zomlang/compiler/binder/stable-binding-facts.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact.h"
+#include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {

@@ -6,7 +6,7 @@
 #include "zomlang/compiler/ir/ir-diagnostic-adapter.h"
 
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/diagnostics/diagnostic-info.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-info.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 

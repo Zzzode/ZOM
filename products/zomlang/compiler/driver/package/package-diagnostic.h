@@ -20,7 +20,7 @@
 #include "zc/core/common.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/diagnostics/diagnostic-text.h"
+#include "zomlang/compiler/diagnostics/text/diagnostic-text.h"
 #include "zomlang/compiler/driver/package/build-script-runtime.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/materialization-issue.h"

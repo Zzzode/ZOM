@@ -21,7 +21,7 @@
 #include "zc/core/one-of.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/diagnostics/toolchain-module-root-argument.h"
+#include "zomlang/compiler/diagnostics/toolchain/module-root-argument.h"
 #include "zomlang/compiler/driver/package/workspace-normalizer.h"
 #include "zomlang/compiler/identity/crate-key.h"
 #include "zomlang/compiler/identity/package-key.h"
@@ -280,20 +280,20 @@ public:
   ZC_NODISCARD const DiagnosticProvenance& provenance() const noexcept;
   ZC_NODISCARD const identity::PackageKey& package() const noexcept;
   ZC_NODISCARD const PackageToolchainModuleRootFieldPath& fieldPath() const noexcept;
-  ZC_NODISCARD const diagnostics::ToolchainModuleRootArgument& argument() const noexcept;
+  ZC_NODISCARD const diagnostics::ModuleRootArgument& argument() const noexcept;
 
 private:
   PackageToolchainModuleRootFailure(PackageToolchainModuleRootProducer producer,
                                     DiagnosticProvenance&& provenance,
                                     identity::PackageKey&& package,
                                     PackageToolchainModuleRootFieldPath&& fieldPath,
-                                    diagnostics::ToolchainModuleRootArgument&& argument) noexcept;
+                                    diagnostics::ModuleRootArgument&& argument) noexcept;
 
   PackageToolchainModuleRootProducer producerValue;
   DiagnosticProvenance provenanceValue;
   identity::PackageKey packageValue;
   PackageToolchainModuleRootFieldPath fieldPathValue;
-  diagnostics::ToolchainModuleRootArgument argumentValue;
+  diagnostics::ModuleRootArgument argumentValue;
 };
 
 /// \brief Independently reconstructs a selected-package reserved-root failure.

@@ -9,7 +9,7 @@
 
 #include "zc/core/common.h"
 #include "zc/core/one-of.h"
-#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"
 
 namespace zomlang::compiler::checker::checked {
 

@@ -15,8 +15,8 @@
 #include "zomlang/compiler/parser/token-cursor.h"
 
 #include "zc/core/debug.h"
-#include "zomlang/compiler/diagnostics/diagnostic-emitter.h"
-#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
+#include "zomlang/compiler/diagnostics/consumer/diagnostic-emitter.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"
 #include "zomlang/compiler/lexer/lexer.h"
 
 namespace zomlang {
