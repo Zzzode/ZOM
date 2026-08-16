@@ -13,9 +13,9 @@
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/driver/core/role-seed-failure.h"
 #include "zomlang/compiler/driver/core/signature.h"
-#include "zomlang/compiler/driver/materialized-module-graph-query.h"
-#include "zomlang/compiler/driver/named-identity-inventory-query.h"
-#include "zomlang/compiler/driver/named-item-query.h"
+#include "zomlang/compiler/driver/query/module-graph/materialized-module-graph-query.h"
+#include "zomlang/compiler/driver/query/binding/named-identity-inventory-query.h"
+#include "zomlang/compiler/driver/query/binding/named-item-query.h"
 
 namespace zomlang::compiler::driver::core_library_query {
 namespace {

@@ -32,7 +32,7 @@ QUERY_CAPABILITY_TEST = (
 )
 PROVENANCE_QUERY_IMPLEMENTATION = (
     ROOT
-    / "products/zomlang/compiler/driver/module-dependency-provenance-query.cc"
+    / "products/zomlang/compiler/driver/query/module-graph/module-dependency-provenance-query.cc"
 )
 STABLE_BINDING_SCHEMA = (
     ROOT / "products/zomlang/compiler/binder/stable-binding-schema.def"

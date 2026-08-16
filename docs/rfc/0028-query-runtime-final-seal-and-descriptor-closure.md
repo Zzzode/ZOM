@@ -1505,11 +1505,11 @@ The production descriptor and verifier families are:
 Input-transaction consumers are:
 
 - `products/zomlang/compiler/binder/binding-input.cc`;
-- `products/zomlang/compiler/driver/active-definition-authority-session.cc`;
-- `products/zomlang/compiler/driver/compiler-session.cc`;
+- `products/zomlang/compiler/driver/query/binding/active-definition-authority-session.cc`;
+- `products/zomlang/compiler/driver/session/compiler-session.cc`;
 - `products/zomlang/compiler/driver/core-library-query-provider.cc`;
-- `products/zomlang/compiler/driver/incremental-module-resolution-query.cc`;
-- `products/zomlang/compiler/driver/module-graph-query-input.cc`; and
+- `products/zomlang/compiler/driver/query/module-graph/incremental-module-resolution-query.cc`;
+- `products/zomlang/compiler/driver/query/module-graph/module-graph-query-input.cc`; and
 - `products/zomlang/tests/unittests/compiler/binder/binding-input-test.cc`.
 
 The native query test inventory and exact cutover tests are:
@@ -1917,10 +1917,10 @@ The review partitions have these exact file sets:
 | `R28-13B` | `products/zomlang/compiler/query/query-database.h`; `products/zomlang/compiler/query/query-database.cc` |
 | `R28-13C` | `products/zomlang/compiler/query/query-descriptor-schema.def`; `products/zomlang/compiler/query/CMakeLists.txt` |
 | `R28-13C1` | `scripts/generate-query-descriptor-schema.py`; `scripts/check-query-descriptor-architecture.py` |
-| `R28-13D.1` | `products/zomlang/compiler/identity/source-query-input.{h,cc}`; `products/zomlang/compiler/driver/active-definition-authority-query.{h,cc}`; `products/zomlang/compiler/driver/active-definition-authority-session.cc` |
+| `R28-13D.1` | `products/zomlang/compiler/identity/source-query-input.{h,cc}`; `products/zomlang/compiler/driver/active-definition-authority-query.{h,cc}`; `products/zomlang/compiler/driver/query/binding/active-definition-authority-session.cc` |
 | `R28-13D.2` | `products/zomlang/compiler/driver/core-library-query-provider.{h,cc}`; `products/zomlang/compiler/driver/core-library-query-verifier.{h,cc}` |
 | `R28-13D.3` | `products/zomlang/compiler/driver/incremental-binding-query-adapter.{h,cc}`; `products/zomlang/compiler/driver/incremental-module-resolution-query.{h,cc}`; `products/zomlang/compiler/driver/incremental-package-graph-query-input.{h,cc}` |
-| `R28-13D.4` | `products/zomlang/compiler/driver/module-graph-query-input.{h,cc}`; `products/zomlang/compiler/driver/module-graph-query.{h,cc}`; `products/zomlang/compiler/driver/compiler-session.cc` |
+| `R28-13D.4` | `products/zomlang/compiler/driver/module-graph-query-input.{h,cc}`; `products/zomlang/compiler/driver/module-graph-query.{h,cc}`; `products/zomlang/compiler/driver/session/compiler-session.cc` |
 | `R28-13D.5` | `products/zomlang/compiler/driver/named-identity-inventory-query.{h,cc}`; `products/zomlang/compiler/driver/named-item-query.{h,cc}`; `products/zomlang/compiler/driver/owner-body-query.{h,cc}` |
 | `R28-13E` | `products/zomlang/compiler/parser/parse-source-query.{h,cc}`; `products/zomlang/compiler/parser/query/parse-source-query-verifier.cc` |
 | `R28-13F` | `products/zomlang/compiler/binder/binding-input.cc`; `products/zomlang/tests/unittests/compiler/binder/binding-input-test.cc` |
@@ -1939,7 +1939,7 @@ documentation.
 `R28-16A` owns
 `products/zomlang/compiler/driver/module-dependency-provenance-query.{h,cc}`,
 `products/zomlang/compiler/query/query-descriptor-schema.def`, and
-`products/zomlang/compiler/driver/module-graph-query-input.cc`, where
+`products/zomlang/compiler/driver/query/module-graph/module-graph-query-input.cc`, where
 `registerModuleGraphQueries` installs the descriptor for the existing
 `CompilerSession` registration path, plus
 `products/zomlang/compiler/driver/CMakeLists.txt`. `R28-16B` owns

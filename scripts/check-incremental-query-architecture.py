@@ -18,38 +18,38 @@ COMPILER_CMAKE = COMPILER_ROOT / "CMakeLists.txt"
 QUERY_CMAKE = QUERY_ROOT / "CMakeLists.txt"
 QUERY_DATABASE_HEADER = QUERY_ROOT / "query-database.h"
 QUERY_DATABASE_SOURCE = QUERY_ROOT / "query-database.cc"
-DRIVER_SESSION = COMPILER_ROOT / "driver/compiler-session.cc"
-DRIVER_TOPOLOGY_ADAPTER = COMPILER_ROOT / "driver/incremental-binding-query-adapter.cc"
-DRIVER_AUTHORITY_QUERY = COMPILER_ROOT / "driver/active-definition-authority-query.cc"
-DRIVER_AUTHORITY_SESSION = COMPILER_ROOT / "driver/active-definition-authority-session.cc"
+DRIVER_SESSION = COMPILER_ROOT / "driver/session/compiler-session.cc"
+DRIVER_TOPOLOGY_ADAPTER = COMPILER_ROOT / "driver/query/binding/incremental-binding-query-adapter.cc"
+DRIVER_AUTHORITY_QUERY = COMPILER_ROOT / "driver/query/binding/active-definition-authority-query.cc"
+DRIVER_AUTHORITY_SESSION = COMPILER_ROOT / "driver/query/binding/active-definition-authority-session.cc"
 DRIVER_ACTIVE_IDENTITY_MEMBERSHIP = (
-    COMPILER_ROOT / "driver/active-identity-membership-query.cc"
+    COMPILER_ROOT / "driver/query/binding/active-identity-membership-query.cc"
 )
 DRIVER_MATERIALIZED_MODULE_GRAPH = (
-    COMPILER_ROOT / "driver/materialized-module-graph-query.cc"
+    COMPILER_ROOT / "driver/query/module-graph/materialized-module-graph-query.cc"
 )
-DRIVER_NAMED_IDENTITY_QUERY = COMPILER_ROOT / "driver/named-identity-inventory-query.cc"
-DRIVER_NAMED_ITEM_QUERY = COMPILER_ROOT / "driver/named-item-query.cc"
-DRIVER_OWNER_BODY_QUERY = COMPILER_ROOT / "driver/owner-body-query.cc"
-DRIVER_MODULE_RESOLUTION_QUERY = COMPILER_ROOT / "driver/incremental-module-resolution-query.cc"
-DRIVER_MODULE_GRAPH_INPUT = COMPILER_ROOT / "driver/module-graph-query-input.cc"
-DRIVER_MODULE_GRAPH_QUERY = COMPILER_ROOT / "driver/module-graph-query.cc"
+DRIVER_NAMED_IDENTITY_QUERY = COMPILER_ROOT / "driver/query/binding/named-identity-inventory-query.cc"
+DRIVER_NAMED_ITEM_QUERY = COMPILER_ROOT / "driver/query/binding/named-item-query.cc"
+DRIVER_OWNER_BODY_QUERY = COMPILER_ROOT / "driver/query/binding/owner-body-query.cc"
+DRIVER_MODULE_RESOLUTION_QUERY = COMPILER_ROOT / "driver/query/module-graph/incremental-module-resolution-query.cc"
+DRIVER_MODULE_GRAPH_INPUT = COMPILER_ROOT / "driver/query/module-graph/module-graph-query-input.cc"
+DRIVER_MODULE_GRAPH_QUERY = COMPILER_ROOT / "driver/query/module-graph/module-graph-query.cc"
 BINDER_GRAPH_BRIDGE = DRIVER_MATERIALIZED_MODULE_GRAPH
-DRIVER_PACKAGE_GRAPH_INPUT = COMPILER_ROOT / "driver/incremental-package-graph-query-input.cc"
+DRIVER_PACKAGE_GRAPH_INPUT = COMPILER_ROOT / "driver/query/binding/incremental-package-graph-query-input.cc"
 IDENTITY_SOURCE_QUERY_INPUT = COMPILER_ROOT / "identity/source-query-input.cc"
 PARSER_PARSE_SOURCE_QUERY = COMPILER_ROOT / "parser/query/parse-source-query.cc"
 PARSER_PARSE_SOURCE_QUERY_VERIFIER = COMPILER_ROOT / "parser/query/parse-source-query-verifier.cc"
 DRIVER_TOPOLOGY_ADAPTER_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/incremental-binding-query-adapter-test.cc"
+    "products/zomlang/tests/unittests/compiler/driver/query/binding/incremental-binding-query-adapter-test.cc"
 )
 DRIVER_SESSION_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc"
+    "products/zomlang/tests/unittests/compiler/driver/session/compiler-session-package-test.cc"
 )
 DRIVER_MODULE_RESOLUTION_QUERY_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/incremental-module-resolution-query-test.cc"
+    "products/zomlang/tests/unittests/compiler/driver/query/module-graph/incremental-module-resolution-query-test.cc"
 )
 DRIVER_MODULE_GRAPH_QUERY_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/module-graph-query-input-test.cc"
+    "products/zomlang/tests/unittests/compiler/driver/query/module-graph/module-graph-query-input-test.cc"
 )
 QUERY_DATABASE_TEST = Path(
     "products/zomlang/tests/unittests/compiler/query/query-database-test.cc"
@@ -67,7 +67,7 @@ CORE_LIBRARY_QUERY_PROVIDER_SOURCE = (
     COMPILER_ROOT / "driver/core/query.cc"
 )
 DRIVER_AUTHORITY_SESSION_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc"
+    "products/zomlang/tests/unittests/compiler/driver/query/binding/active-definition-authority-session-test.cc"
 )
 BINDER_MODULE_BODY_SYNTAX_TEST = Path(
     "products/zomlang/tests/unittests/compiler/binder/surface/module-body-syntax-test.cc"
@@ -1177,7 +1177,7 @@ def self_test() -> list[str]:
 
     mutation = dict(base)
     mutation[QUERY_ROOT / "forbidden-test.cc"] = (
-        '#include "zomlang/compiler/driver/compiler-session.h"\n'
+        '#include "zomlang/compiler/driver/session/compiler-session.h"\n'
     )
     expect_failure(mutation, "forbidden semantic path", failures)
 

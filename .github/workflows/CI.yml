@@ -131,7 +131,7 @@ jobs:
       - name: Build sanitizer sandbox gate
         run: |
           cmake --build --preset sanitizer \
-            --target linux-native-sandbox-integration-test -j2
+            --target package-linux-native-sandbox-integration-test -j2
 
       - name: Run production sandbox in delegated cgroup
         run: scripts/run-linux-sandbox-integration.sh build-sanitizer

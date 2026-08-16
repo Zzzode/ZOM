@@ -250,10 +250,10 @@ No current-graph search participates in the erase.
 RFC 0030 `R30-12D` owns exactly these authority files:
 
 ```text
-products/zomlang/compiler/driver/active-definition-authority-query.h
-products/zomlang/compiler/driver/active-definition-authority-query.cc
-products/zomlang/compiler/driver/active-definition-authority-session.h
-products/zomlang/compiler/driver/active-definition-authority-session.cc
+products/zomlang/compiler/driver/query/binding/active-definition-authority-query.h
+products/zomlang/compiler/driver/query/binding/active-definition-authority-query.cc
+products/zomlang/compiler/driver/query/binding/active-definition-authority-session.h
+products/zomlang/compiler/driver/query/binding/active-definition-authority-session.cc
 products/zomlang/tests/unittests/compiler/driver/active-definition-authority-query-test.cc
 products/zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc
 ```
@@ -261,7 +261,7 @@ products/zomlang/tests/unittests/compiler/driver/active-definition-authority-ses
 The RFC 0030 exact `R29-12AB` landing set adds:
 
 ```text
-products/zomlang/compiler/driver/active-definition-authority-session.h
+products/zomlang/compiler/driver/query/binding/active-definition-authority-session.h
 ```
 
 The newline-sorted landing allowlist must contain the same path. No other

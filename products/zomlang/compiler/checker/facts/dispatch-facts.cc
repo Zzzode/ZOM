@@ -9,7 +9,7 @@
 #include "zomlang/compiler/ast/generated/node-traverse.h"
 #include "zomlang/compiler/binder/metadata/immutable-definition-inventory.h"
 #include "zomlang/compiler/binder/graph/parsed-module.h"
-#include "zomlang/compiler/driver/materialized-module-graph-query.h"
+#include "zomlang/compiler/driver/query/module-graph/materialized-module-graph-query.h"
 #include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::checker::dispatch {

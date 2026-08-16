@@ -9,7 +9,7 @@ Updated: 2026-07-24
 | Authority | Non-normative compiler implementation guide |
 | Coverage | Current checked-module, HIR, and Built MIR publication path |
 | Governing decisions | [RFC 0010](../../rfc/0010-intermediate-representation-pipeline.md), [RFC 0013](../../rfc/0013-ownership-analysis-integration-boundary.md) |
-| Production integration | [`compiler-session.cc`](../../../products/zomlang/compiler/driver/compiler-session.cc) |
+| Production integration | [`compiler-session.cc`](../../../products/zomlang/compiler/driver/session/compiler-session.cc) |
 | Shared IR contracts | [`compiler/ir`](../../../products/zomlang/compiler/ir/) |
 | Architecture gate | [`check-ir-architecture.py`](../../../scripts/check-ir-architecture.py) |
 

@@ -9,7 +9,7 @@
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/driver/materialized-module-graph-query.h"
+#include "zomlang/compiler/driver/query/module-graph/materialized-module-graph-query.h"
 
 namespace zomlang::compiler::checker {
 

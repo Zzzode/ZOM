@@ -61,9 +61,9 @@ MODULE_RESOLUTION = Path("products/zomlang/compiler/binder/graph/module-resoluti
 MODULE_RESOLUTION_IMPLEMENTATION = Path(
     "products/zomlang/compiler/binder/graph/module-resolution.cc"
 )
-COMPILER_SESSION = Path("products/zomlang/compiler/driver/compiler-session.cc")
-CRATE_GRAPH = Path("products/zomlang/compiler/driver/crate-graph.h")
-CRATE_GRAPH_IMPLEMENTATION = Path("products/zomlang/compiler/driver/crate-graph.cc")
+COMPILER_SESSION = Path("products/zomlang/compiler/driver/session/compiler-session.cc")
+CRATE_GRAPH = Path("products/zomlang/compiler/driver/graph/crate-graph.h")
+CRATE_GRAPH_IMPLEMENTATION = Path("products/zomlang/compiler/driver/graph/crate-graph.cc")
 PACKAGE_COMPILATION_REQUEST = Path(
     "products/zomlang/compiler/driver/package/package-compilation-request.h"
 )
@@ -117,7 +117,7 @@ CANONICAL_HEADER_TYPE_PRODUCER_IMPLEMENTATION = Path(
     "products/zomlang/compiler/binder/canonical/canonical-header-type-producer.cc"
 )
 CANONICAL_HEADER_TYPE_PRODUCER_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/binder/canonical-header-type-producer-test.cc"
+    "products/zomlang/tests/unittests/compiler/binder/canonical/canonical-header-type-producer-test.cc"
 )
 CANONICAL_DEFINITION_HEADER_PRODUCER = Path(
     "products/zomlang/compiler/binder/canonical/canonical-definition-header-producer.h"
@@ -126,7 +126,7 @@ CANONICAL_DEFINITION_HEADER_PRODUCER_IMPLEMENTATION = Path(
     "products/zomlang/compiler/binder/canonical/canonical-definition-header-producer.cc"
 )
 CANONICAL_DEFINITION_HEADER_PRODUCER_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/binder/canonical-definition-header-producer-test.cc"
+    "products/zomlang/tests/unittests/compiler/binder/canonical/canonical-definition-header-producer-test.cc"
 )
 CANONICAL_IMPL_HEADER_PRODUCER = Path(
     "products/zomlang/compiler/binder/canonical/canonical-impl-header-producer.h"
@@ -135,7 +135,7 @@ CANONICAL_IMPL_HEADER_PRODUCER_IMPLEMENTATION = Path(
     "products/zomlang/compiler/binder/canonical/canonical-impl-header-producer.cc"
 )
 CANONICAL_IMPL_HEADER_PRODUCER_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/binder/canonical-impl-header-producer-test.cc"
+    "products/zomlang/tests/unittests/compiler/binder/canonical/canonical-impl-header-producer-test.cc"
 )
 BINDER_CMAKE = Path("products/zomlang/compiler/binder/CMakeLists.txt")
 BINDER_TEST_CMAKE = Path("products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt")
@@ -355,7 +355,7 @@ def check_no_post_parse_expansion(
     maker = re.compile(r"\bmake(" + "|".join(re.escape(name) for name in producer_names) + r")\s*\(")
     matches = {Path(path): values for path, values in baseline_post_parse_expansion_matches(producer_names)}
     for relative_path, text in overrides.items():
-        if relative_path.suffix != ".cc" or relative_path.parent == PARSER_ROOT:
+        if relative_path.suffix != ".cc" or PARSER_ROOT in relative_path.parents:
             continue
         matches[relative_path] = tuple(match.group(1) for match in maker.finditer(text))
     for relative_path in sorted(matches):
@@ -372,7 +372,7 @@ def baseline_post_parse_expansion_matches(
     maker = re.compile(r"\bmake(" + "|".join(re.escape(name) for name in producer_names) + r")\s*\(")
     matches: list[tuple[str, tuple[str, ...]]] = []
     for relative_path in compiler_source_files():
-        if relative_path.suffix != ".cc" or relative_path.parent == PARSER_ROOT:
+        if relative_path.suffix != ".cc" or PARSER_ROOT in relative_path.parents:
             continue
         values = tuple(match.group(1) for match in maker.finditer(repository_text(relative_path)))
         if values:
@@ -787,11 +787,11 @@ def check_canonical_header_type_producer(
                 f"{CANONICAL_HEADER_TYPE_PRODUCER_IMPLEMENTATION}: producer must {description}"
             )
 
-    if "${CMAKE_CURRENT_SOURCE_DIR}/canonical-header-type-producer.cc" not in binder_cmake:
+    if "${CMAKE_CURRENT_SOURCE_DIR}/canonical/canonical-header-type-producer.cc" not in binder_cmake:
         errors.append(f"{BINDER_CMAKE}: missing canonical header type producer source")
     if not re.search(
         r'add_ztest_unit_test\("canonical-header-type-producer-test"\s+'
-        r'"canonical-header-type-producer-test\.cc"',
+        r'"canonical/canonical-header-type-producer-test\.cc"',
         binder_test_cmake,
     ):
         errors.append(f"{BINDER_TEST_CMAKE}: missing canonical header type producer test target")
@@ -893,11 +893,11 @@ def check_canonical_definition_header_producer(
                 f"{CANONICAL_DEFINITION_HEADER_PRODUCER_IMPLEMENTATION}: producer must {description}"
             )
 
-    if "${CMAKE_CURRENT_SOURCE_DIR}/canonical-definition-header-producer.cc" not in binder_cmake:
+    if "${CMAKE_CURRENT_SOURCE_DIR}/canonical/canonical-definition-header-producer.cc" not in binder_cmake:
         errors.append(f"{BINDER_CMAKE}: missing canonical definition header producer source")
     if not re.search(
         r'add_ztest_unit_test\("canonical-definition-header-producer-test"\s+'
-        r'"canonical-definition-header-producer-test\.cc"',
+        r'"canonical/canonical-definition-header-producer-test\.cc"',
         binder_test_cmake,
     ):
         errors.append(
@@ -975,11 +975,11 @@ def check_canonical_impl_header_producer(
                 f"{CANONICAL_IMPL_HEADER_PRODUCER_IMPLEMENTATION}: producer must {description}"
             )
 
-    if "${CMAKE_CURRENT_SOURCE_DIR}/canonical-impl-header-producer.cc" not in binder_cmake:
+    if "${CMAKE_CURRENT_SOURCE_DIR}/canonical/canonical-impl-header-producer.cc" not in binder_cmake:
         errors.append(f"{BINDER_CMAKE}: missing canonical impl header producer source")
     if not re.search(
         r'add_ztest_unit_test\("canonical-impl-header-producer-test"\s+'
-        r'"canonical-impl-header-producer-test\.cc"',
+        r'"canonical/canonical-impl-header-producer-test\.cc"',
         binder_test_cmake,
     ):
         errors.append(f"{BINDER_TEST_CMAKE}: missing canonical impl header producer test target")
@@ -2546,7 +2546,7 @@ def run_self_test() -> int:
     cases.append(("missing schema rule", missing_rule, {}, "FunctionDecl has no identity rule"))
 
     missing_parser = copy.deepcopy(baseline)
-    missing_parser["producers"]["FunctionDecl"]["parser"] = "expression-parser.cc"  # type: ignore[index]
+    missing_parser["producers"]["FunctionDecl"]["parser"] = "syntax/expression-parser.cc"  # type: ignore[index]
     cases.append(("missing parser producer", missing_parser, {}, "makeFunctionDecl is missing"))
 
     inventory_text = (ROOT / INVENTORY).read_text(encoding="utf-8")

@@ -8,8 +8,8 @@
 #include "zc/core/encoding.h"
 #include "zc/core/time.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/driver/borrow-evidence.h"
-#include "zomlang/compiler/driver/compiler-session.h"
+#include "zomlang/compiler/driver/interface/borrow-evidence.h"
+#include "zomlang/compiler/driver/session/compiler-session.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
 #include "zomlang/compiler/identity/canonical/canonical-encoder.h"
@@ -20,7 +20,7 @@
 #include "zomlang/compiler/ownership/facts/loans.h"
 #include "zomlang/compiler/ownership/facts/paths.h"
 #include "zomlang/compiler/ownership/facts/resources.h"
-#include "zomlang/tests/unittests/compiler/driver/core-library-test-fixture.h"
+#include "zomlang/tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 
 namespace zomlang::compiler::ownership {
 namespace {

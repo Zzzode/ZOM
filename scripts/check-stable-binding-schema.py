@@ -19,8 +19,8 @@ FACTS_SOURCE = ROOT / "products/zomlang/compiler/binder/stable/stable-binding-fa
 CODEC_HEADER = ROOT / "products/zomlang/compiler/binder/stable/stable-binding-codec.h"
 CODEC_SOURCE = ROOT / "products/zomlang/compiler/binder/stable/stable-binding-codec.cc"
 BINDER_CMAKE = ROOT / "products/zomlang/compiler/binder/CMakeLists.txt"
-CONTEXTUAL_HEADER = ROOT / "products/zomlang/compiler/driver/contextual-binding-key.h"
-CONTEXTUAL_SOURCE = ROOT / "products/zomlang/compiler/driver/contextual-binding-key.cc"
+CONTEXTUAL_HEADER = ROOT / "products/zomlang/compiler/driver/query/binding/contextual-binding-key.h"
+CONTEXTUAL_SOURCE = ROOT / "products/zomlang/compiler/driver/query/binding/contextual-binding-key.cc"
 METADATA_HEADER = ROOT / "products/zomlang/compiler/binder/metadata/binding-metadata.h"
 NATIVE_TEST = (
     ROOT
@@ -32,7 +32,7 @@ TEST_CMAKE = (
 CONTEXTUAL_TEST = (
     ROOT
     / "products/zomlang/tests/unittests/compiler/driver/"
-    "active-definition-authority-query-test.cc"
+    "query/binding/active-definition-authority-query-test.cc"
 )
 
 REPOSITORY_INPUTS = {

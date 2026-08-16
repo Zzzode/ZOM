@@ -8,10 +8,10 @@
 #include "zc/core/time.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
-#include "zomlang/compiler/driver/compiler-session.h"
+#include "zomlang/compiler/driver/session/compiler-session.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
-#include "zomlang/tests/unittests/compiler/driver/core-library-test-fixture.h"
+#include "zomlang/tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 
 namespace zomlang::compiler::tests::checker_fixture {
 namespace package = driver::package;

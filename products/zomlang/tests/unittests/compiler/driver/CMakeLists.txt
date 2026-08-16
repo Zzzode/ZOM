@@ -12,24 +12,24 @@ add_test(
     --corpus
     "${ZOM_ROOT}/products/zomlang/tests/fixtures/pubgrub-scenarios.json"
     --replay-source
-    "${CMAKE_CURRENT_SOURCE_DIR}/package-resolver-test.cc")
+    "${CMAKE_CURRENT_SOURCE_DIR}/package/package-resolver-test.cc")
 set_tests_properties(pubgrub-scenarios-oracle
                      PROPERTIES LABELS "unittest;package" TIMEOUT 30)
 
-set_tests_properties(compiler-session-package-test
+set_tests_properties(session-compiler-session-package-test
                      PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
 
-set_tests_properties(compiler-session-test
+set_tests_properties(session-compiler-session-test
                      PROPERTIES TIMEOUT 300)
 
-set_tests_properties(active-definition-authority-session-test
+set_tests_properties(query-binding-active-definition-authority-session-test
                      PROPERTIES TIMEOUT 180)
 
-set_tests_properties(borrow-evidence-test
+set_tests_properties(interface-borrow-evidence-test
                      PROPERTIES TIMEOUT 180)
 
 target_compile_definitions(
-  lockfile-test
+  package-lockfile-test
   PRIVATE
     ZOM_LOCKFILE_GOLDEN="${ZOM_ROOT}/products/zomlang/tests/fixtures/Zom.lock.golden")
 
@@ -53,32 +53,32 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
     zom-linux-sandbox-runtime-fixture
     PRIVATE -nostdlib -static-pie -Wl,--build-id=none -Wl,-e,_start
             -Wl,-z,noexecstack -fno-sanitize=all)
-  add_dependencies(linux-native-sandbox-test zom-linux-sandbox-runtime-fixture)
+  add_dependencies(package-linux-native-sandbox-test zom-linux-sandbox-runtime-fixture)
   target_compile_definitions(
-    linux-native-sandbox-test
+    package-linux-native-sandbox-test
     PRIVATE
       ZOM_LINUX_SANDBOX_RUNTIME_FIXTURE="$<TARGET_FILE:zom-linux-sandbox-runtime-fixture>")
 
   if(ZOM_ENABLE_PRIVILEGED_LINUX_SANDBOX_TESTS)
     add_executable(
-      linux-native-sandbox-integration-test
-      ${CMAKE_CURRENT_SOURCE_DIR}/linux-native-sandbox-integration.cc)
+      package-linux-native-sandbox-integration-test
+      ${CMAKE_CURRENT_SOURCE_DIR}/package/linux-native-sandbox-integration.cc)
     target_link_libraries(
-      linux-native-sandbox-integration-test PRIVATE ztest frontend)
+      package-linux-native-sandbox-integration-test PRIVATE ztest frontend)
     target_include_directories(
-      linux-native-sandbox-integration-test
+      package-linux-native-sandbox-integration-test
       PRIVATE ${ZOM_ROOT}/libraries ${ZOM_ROOT}/products)
     target_compile_options(
-      linux-native-sandbox-integration-test PRIVATE -Wno-global-constructors)
+      package-linux-native-sandbox-integration-test PRIVATE -Wno-global-constructors)
     target_compile_definitions(
-      linux-native-sandbox-integration-test
+      package-linux-native-sandbox-integration-test
       PRIVATE
         ZOM_LINUX_SANDBOX_RUNTIME_FIXTURE="$<TARGET_FILE:zom-linux-sandbox-runtime-fixture>")
     add_dependencies(
-      linux-native-sandbox-integration-test zom-linux-sandbox-runtime-fixture)
+      package-linux-native-sandbox-integration-test zom-linux-sandbox-runtime-fixture)
     add_test(
       NAME linux-native-sandbox-integration
-      COMMAND $<TARGET_FILE:linux-native-sandbox-integration-test>)
+      COMMAND $<TARGET_FILE:package-linux-native-sandbox-integration-test>)
     set_tests_properties(
       linux-native-sandbox-integration
       PROPERTIES LABELS "integration;package;linux;privileged;release"

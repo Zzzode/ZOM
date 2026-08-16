@@ -33,13 +33,13 @@ add_custom_target(query-test-descriptor-inventory
 
 add_library(
   query-capability-production-fixture STATIC
-  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/active-definition-authority-query.cc
+  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/query/binding/active-definition-authority-query.cc
   ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/core/query.cc
-  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/incremental-binding-query-adapter.cc
-  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/incremental-module-resolution-query.cc
-  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/incremental-package-graph-query-input.cc
-  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/module-graph-query-input.cc
-  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/module-graph-query.cc)
+  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/query/binding/incremental-binding-query-adapter.cc
+  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/query/module-graph/incremental-module-resolution-query.cc
+  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/query/binding/incremental-package-graph-query-input.cc
+  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/query/module-graph/module-graph-query-input.cc
+  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/query/module-graph/module-graph-query.cc)
 add_dependencies(
   query-capability-production-fixture
   query-test-descriptor-inventory

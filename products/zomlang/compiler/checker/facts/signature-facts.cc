@@ -21,7 +21,7 @@
 #include "zomlang/compiler/binder/metadata/immutable-definition-inventory.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/checker/facts/scalar-literal-facts.h"
-#include "zomlang/compiler/driver/materialized-module-graph-query.h"
+#include "zomlang/compiler/driver/query/module-graph/materialized-module-graph-query.h"
 #include "zomlang/compiler/identity/canonical/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/compiler/ownership/surface-admission.h"

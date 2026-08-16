@@ -449,17 +449,17 @@ products/zomlang/tests/unittests/compiler/identity/definition-key-test.cc
 scripts/check-stable-binding-schema.py
 scripts/check-binder-architecture.py
 scripts/check-compiler-session-architecture.py
-products/zomlang/compiler/driver/active-definition-authority-query.h
-products/zomlang/compiler/driver/active-definition-authority-query.cc
-products/zomlang/compiler/driver/active-definition-authority-session.h
-products/zomlang/compiler/driver/active-definition-authority-session.cc
-products/zomlang/compiler/driver/compiler-session.cc
-products/zomlang/compiler/driver/contextual-binding-key.h
-products/zomlang/compiler/driver/contextual-binding-key.cc
+products/zomlang/compiler/driver/query/binding/active-definition-authority-query.h
+products/zomlang/compiler/driver/query/binding/active-definition-authority-query.cc
+products/zomlang/compiler/driver/query/binding/active-definition-authority-session.h
+products/zomlang/compiler/driver/query/binding/active-definition-authority-session.cc
+products/zomlang/compiler/driver/session/compiler-session.cc
+products/zomlang/compiler/driver/query/binding/contextual-binding-key.h
+products/zomlang/compiler/driver/query/binding/contextual-binding-key.cc
 products/zomlang/compiler/driver/CMakeLists.txt
-products/zomlang/compiler/driver/named-item-query.cc
-products/zomlang/compiler/driver/owner-body-query.h
-products/zomlang/compiler/driver/owner-body-query.cc
+products/zomlang/compiler/driver/query/binding/named-item-query.cc
+products/zomlang/compiler/driver/query/binding/owner-body-query.h
+products/zomlang/compiler/driver/query/binding/owner-body-query.cc
 products/zomlang/tests/unittests/compiler/driver/active-definition-authority-query-test.cc
 products/zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc
 products/zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc
@@ -646,7 +646,7 @@ is not rewritten for this transaction.
 |---|---|---|
 | RFC authority | `docs/rfc/0025-*` through `docs/rfc/0030-*`; affected trackers for RFCs 0017 through 0020 and 0025 through 0030; `docs/rfc/README.md` | `rfc` |
 | Task routing | `.agents/subagents/manifest.yaml`, `.agents/subagents/task-router.md`, `.agents/subagents/verification.md`, `.agents/subagents/binder-checker.md` | `task-router` |
-| Stable contextual contracts | `products/zomlang/compiler/driver/contextual-binding-key.*`, `products/zomlang/compiler/driver/active-definition-authority-query.*`, `products/zomlang/compiler/driver/active-definition-authority-session.{h,cc}`, `products/zomlang/compiler/driver/compiler-session.cc`, `products/zomlang/compiler/driver/named-item-query.*`, `products/zomlang/compiler/driver/owner-body-query.*`, `products/zomlang/compiler/driver/CMakeLists.txt` | `module-system` |
+| Stable contextual contracts | `products/zomlang/compiler/driver/contextual-binding-key.*`, `products/zomlang/compiler/driver/active-definition-authority-query.*`, `products/zomlang/compiler/driver/active-definition-authority-session.{h,cc}`, `products/zomlang/compiler/driver/session/compiler-session.cc`, `products/zomlang/compiler/driver/named-item-query.*`, `products/zomlang/compiler/driver/owner-body-query.*`, `products/zomlang/compiler/driver/CMakeLists.txt` | `module-system` |
 | Stable Binder foundation | `products/zomlang/compiler/binder/stable-binding-*`, `products/zomlang/compiler/binder/CMakeLists.txt` | `binder-checker` |
 | Diagnostic schema contract | `products/zomlang/compiler/diagnostics/**` | `error-system` |
 | Native tests and gates | `products/zomlang/tests/unittests/compiler/binder/**`, `products/zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`, `products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc`, `products/zomlang/tests/unittests/compiler/diagnostics/CMakeLists.txt`, `products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt`, `scripts/check-stable-binding-schema.py`, `scripts/check-binder-architecture.py`, `scripts/check-compiler-session-architecture.py`, `scripts/check-landing-scope.py` | `verification` |

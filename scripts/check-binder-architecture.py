@@ -44,7 +44,7 @@ TEST_CMAKE = TESTS / "CMakeLists.txt"
 TEST_SOURCE = TESTS / "binding-input-test.cc"
 BODY_BINDING_SOURCE = BINDER / "body-binding.cc"
 CLOSURE_FREE_VARIABLES_SOURCE = BINDER / "closure-free-variables.cc"
-DRIVER_SESSION_SOURCE = Path("products/zomlang/compiler/driver/compiler-session.cc")
+DRIVER_SESSION_SOURCE = Path("products/zomlang/compiler/driver/session/compiler-session.cc")
 DRIVER_SESSION_TEST = Path(
     "products/zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc"
 )
@@ -69,7 +69,7 @@ MODULE_BODY_TEST_SOURCE = TESTS / "module-body-syntax-test.cc"
 NAMED_INVENTORY_HEADER = BINDER / "identity/named-identity-inventory.h"
 NAMED_INVENTORY_SOURCE = BINDER / "identity/named-identity-inventory.cc"
 NAMED_INVENTORY_QUERY_SOURCE = Path(
-    "products/zomlang/compiler/driver/named-identity-inventory-query.cc"
+    "products/zomlang/compiler/driver/query/binding/named-identity-inventory-query.cc"
 )
 NAMED_INVENTORY_QUERY_TEST = Path(
     "products/zomlang/tests/unittests/compiler/driver/named-identity-inventory-query-test.cc"

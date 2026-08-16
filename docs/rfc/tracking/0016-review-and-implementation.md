@@ -9,7 +9,7 @@ approvers.
 | Field | Value |
 |---|---|
 | Status | `REVIEW` |
-| Proposal SHA-256 | `efe800c6c2aaeda60d6beedde45adaa459536002bf3ccf5704135411e02d808c` |
+| Proposal SHA-256 | `e421dc3bdeeead9d9ad7b504539b8a63cfde19380693ea2524aa7cf830a81d1b` |
 | Review manager | `rfc` |
 | Decision | `TBD` |
 | Implementation | Blocked until `ACCEPTED` |
@@ -86,7 +86,7 @@ before the RFC could move to `ACCEPTED`.
 The repository-wide internal-contract replacement changed normative target,
 runtime, and codec names after the prior REVIEW snapshot was recorded. No
 required owner had approved that former snapshot. The current REVIEW snapshot
-is SHA-256 `efe800c6c2aaeda60d6beedde45adaa459536002bf3ccf5704135411e02d808c`.
+is SHA-256 `e421dc3bdeeead9d9ad7b504539b8a63cfde19380693ea2524aa7cf830a81d1b`.
 Every required owner must review this exact snapshot; no earlier readiness or
 review evidence carries forward.
 
@@ -151,7 +151,7 @@ The current REVIEW snapshot requires a fresh audit and owner approval.
 ### 2026-08-12 Current Snapshot Readiness Audit
 
 The current proposal bytes reproduce SHA-256
-`efe800c6c2aaeda60d6beedde45adaa459536002bf3ccf5704135411e02d808c`.
+`e421dc3bdeeead9d9ad7b504539b8a63cfde19380693ea2524aa7cf830a81d1b`.
 Every required-owner row remains pending for that exact snapshot, so this audit
 does not record an approval, decision, status transition, or implementation
 authorization.

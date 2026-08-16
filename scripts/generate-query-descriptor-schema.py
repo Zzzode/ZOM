@@ -46,9 +46,9 @@ COMPLETE_CONTEXT_TYPE = (
 )
 COMPLETE_CONTEXT_NAME = "CompleteCompilationContextAuthorityInput"
 COMPLETE_CONTEXT_DOMAIN = "zom.input.complete-compilation-context-authority"
-COMPLETE_CONTEXT_OWNER = "products/zomlang/compiler/driver/module-graph-query-input"
+COMPLETE_CONTEXT_OWNER = "products/zomlang/compiler/driver/query/module-graph/module-graph-query-input"
 TRANSACTION_WITNESS_OWNER = (
-    "products/zomlang/compiler/driver/module-graph-query-input"
+    "products/zomlang/compiler/driver/query/module-graph/module-graph-query-input"
 )
 TRANSACTION_WITNESS_ROWS = (
     (

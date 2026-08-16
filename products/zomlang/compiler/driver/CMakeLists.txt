@@ -1,21 +1,32 @@
-set(DRIVER_SRC active-definition-authority-query.cc active-definition-authority-session.cc
-               active-identity-membership-query.cc
-               borrow-evidence.cc coherence-builder.cc compiler-session.cc
-               contextual-binding-key.cc
-               core/role-seed-failure.cc
-               core/library.cc
-               core/marker-authority.cc
-               core/signature.cc
-               core/query.cc core/verifier.cc crate-graph.cc
-               imported-signature-view-projector.cc
-               incremental-binding-query-adapter.cc
-               incremental-module-resolution-query.cc
-               incremental-package-graph-query-input.cc
-               module-dependency-provenance-query.cc module-discovery.cc
-               materialized-module-graph-query.cc module-graph-query-input.cc module-graph-query.cc
-               module-interface.cc
-               module-interface-diagnostic-adapter.cc
-               named-identity-inventory-query.cc named-item-query.cc owner-body-query.cc)
+set(DRIVER_SRC
+  session/compiler-session.cc
+  graph/crate-graph.cc
+  graph/module-discovery.cc
+  interface/borrow-evidence.cc
+  interface/coherence-builder.cc
+  interface/imported-signature-view-projector.cc
+  interface/module-interface.cc
+  interface/module-interface-diagnostic-adapter.cc
+  query/binding/active-definition-authority-query.cc
+  query/binding/active-definition-authority-session.cc
+  query/binding/active-identity-membership-query.cc
+  query/binding/contextual-binding-key.cc
+  query/binding/incremental-binding-query-adapter.cc
+  query/binding/incremental-package-graph-query-input.cc
+  query/binding/named-identity-inventory-query.cc
+  query/binding/named-item-query.cc
+  query/binding/owner-body-query.cc
+  query/module-graph/incremental-module-resolution-query.cc
+  query/module-graph/materialized-module-graph-query.cc
+  query/module-graph/module-dependency-provenance-query.cc
+  query/module-graph/module-graph-query.cc
+  query/module-graph/module-graph-query-input.cc
+  core/role-seed-failure.cc
+  core/library.cc
+  core/marker-authority.cc
+  core/signature.cc
+  core/query.cc
+  core/verifier.cc)
 
 enable_language(C)
 add_subdirectory(package/vendor)

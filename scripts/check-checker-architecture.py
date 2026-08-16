@@ -22,8 +22,8 @@ CROSS_MODULE_FACTS_SOURCE = CHECKER_ROOT / "facts/cross-module-facts.cc"
 COHERENCE_FACTS_HEADER = CHECKER_ROOT / "facts/coherence-facts.h"
 COHERENCE_FACTS_SOURCE = CHECKER_ROOT / "facts/coherence-facts.cc"
 MODULE_INTERFACE_CONTRACT_SOURCE = CHECKER_ROOT / "module-interface-contract.cc"
-MODULE_INTERFACE_HEADER = Path("products/zomlang/compiler/driver/module-interface.h")
-MODULE_INTERFACE_SOURCE = Path("products/zomlang/compiler/driver/module-interface.cc")
+MODULE_INTERFACE_HEADER = Path("products/zomlang/compiler/driver/interface/module-interface.h")
+MODULE_INTERFACE_SOURCE = Path("products/zomlang/compiler/driver/interface/module-interface.cc")
 CHECKED_MODULE_HEADER = Path("products/zomlang/compiler/hir/checked-module.h")
 CHECKED_MODULE_SOURCE = Path("products/zomlang/compiler/hir/checked-module.cc")
 HIR_MODULE_HEADER = Path("products/zomlang/compiler/hir/hir-module.h")
@@ -36,8 +36,8 @@ OWNERSHIP_OVERLAY_SOURCE = Path(
 ORDINARY_CORE_INTERFACE_CONSUMERS = (
     MODULE_INTERFACE_HEADER,
     MODULE_INTERFACE_SOURCE,
-    Path("products/zomlang/compiler/driver/borrow-evidence.h"),
-    Path("products/zomlang/compiler/driver/borrow-evidence.cc"),
+    Path("products/zomlang/compiler/driver/interface/borrow-evidence.h"),
+    Path("products/zomlang/compiler/driver/interface/borrow-evidence.cc"),
     CHECKED_MODULE_HEADER,
     CHECKED_MODULE_SOURCE,
     HIR_MODULE_HEADER,
@@ -53,8 +53,8 @@ BOOTSTRAP_CORE_INTERFACE_TYPES = (
     "CoreBootstrapModuleInterfaceRecord",
     "VerifiedCoreBootstrapModuleInterface",
 )
-COHERENCE_BUILDER_HEADER = Path("products/zomlang/compiler/driver/coherence-builder.h")
-COHERENCE_BUILDER_SOURCE = Path("products/zomlang/compiler/driver/coherence-builder.cc")
+COHERENCE_BUILDER_HEADER = Path("products/zomlang/compiler/driver/interface/coherence-builder.h")
+COHERENCE_BUILDER_SOURCE = Path("products/zomlang/compiler/driver/interface/coherence-builder.cc")
 OPERATOR_KIND_HEADER = CHECKER_ROOT / "operator-kind.h"
 OPERATOR_KIND_SOURCE = CHECKER_ROOT / "operator-kind.cc"
 INFERENCE_CONTEXT_HEADER = CHECKER_ROOT / "inference/inference-context.h"
@@ -66,7 +66,7 @@ SEMANTIC_TYPE_KEY_HEADER = TYPE_ROOT / "semantic-type-key.h"
 SEMANTIC_TYPE_KEY_SOURCE = TYPE_ROOT / "semantic-type-key.cc"
 SEMANTIC_TYPE_STORE_HEADER = TYPE_ROOT / "semantic-type-store.h"
 SEMANTIC_TYPE_STORE_SOURCE = TYPE_ROOT / "semantic-type-store.cc"
-SESSION_SOURCE = Path("products/zomlang/compiler/driver/compiler-session.cc")
+SESSION_SOURCE = Path("products/zomlang/compiler/driver/session/compiler-session.cc")
 TEST_CMAKE = Path("products/zomlang/tests/conformance/CMakeLists.txt")
 CHECKER_DIAGNOSTICS = Path("products/zomlang/compiler/diagnostics/defs/diagnostics-checker.def")
 CHECKER_SOURCE_DIAGNOSTICS = CHECKER_ROOT / "checker-source-diagnostics.def"
@@ -161,10 +161,10 @@ VERIFIED_SIGNATURE_FACTS_ALLOWED = {
     CHECKER_ROOT / "body/body-checker.cc",
     CHECKER_ROOT / "body/marker-proof.h",
     CHECKER_ROOT / "body/marker-proof.cc",
-    Path("products/zomlang/compiler/driver/module-interface.h"),
-    Path("products/zomlang/compiler/driver/module-interface.cc"),
-    Path("products/zomlang/compiler/driver/borrow-evidence.h"),
-    Path("products/zomlang/compiler/driver/borrow-evidence.cc"),
+    Path("products/zomlang/compiler/driver/interface/module-interface.h"),
+    Path("products/zomlang/compiler/driver/interface/module-interface.cc"),
+    Path("products/zomlang/compiler/driver/interface/borrow-evidence.h"),
+    Path("products/zomlang/compiler/driver/interface/borrow-evidence.cc"),
     Path("products/zomlang/compiler/hir/checked-module.h"),
     Path("products/zomlang/compiler/hir/checked-module.cc"),
     Path("products/zomlang/compiler/hir/hir-module.h"),
@@ -172,7 +172,7 @@ VERIFIED_SIGNATURE_FACTS_ALLOWED = {
     Path("products/zomlang/compiler/mir/built-mir.h"),
     Path("products/zomlang/compiler/mir/built-mir.cc"),
     Path("products/zomlang/compiler/ownership/ownership-event-overlay.cc"),
-    Path("products/zomlang/compiler/driver/compiler-session.h"),
+    Path("products/zomlang/compiler/driver/session/compiler-session.h"),
     SESSION_SOURCE,
     MARKER_PROOF_TEST,
 }
@@ -1925,7 +1925,7 @@ def run_self_test() -> int:
         "bootstrap core interface escape",
         lambda files: append_source(
             files,
-            Path("products/zomlang/compiler/driver/borrow-evidence.cc"),
+            Path("products/zomlang/compiler/driver/interface/borrow-evidence.cc"),
             "\nMaterializeCoreBootstrapModuleInterfaceQuery escaped;\n",
         ),
         "bootstrap-only core interface escapes finalization",

@@ -33,7 +33,7 @@
 #include "zomlang/compiler/basic/io-utils.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
-#include "zomlang/compiler/driver/compiler-session.h"
+#include "zomlang/compiler/driver/session/compiler-session.h"
 #include "zomlang/compiler/driver/package/lockfile.h"
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
 #include "zomlang/compiler/driver/package/package-diagnostic.h"

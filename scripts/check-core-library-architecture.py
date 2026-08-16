@@ -17,18 +17,18 @@ CORE_SIGNATURE = Path("products/zomlang/compiler/driver/core/signature.cc")
 CORE_AUTHORITY = Path("products/zomlang/compiler/driver/core/marker-authority.cc")
 CORE_LIBRARY = Path("products/zomlang/compiler/driver/core/library.cc")
 CORE_LIBRARY_HEADER = Path("products/zomlang/compiler/driver/core/library.h")
-INTERFACE_SOURCE = Path("products/zomlang/compiler/driver/interface-source.h")
-IMPORT_PROJECTOR = Path("products/zomlang/compiler/driver/imported-signature-view-projector.h")
-BORROW_EVIDENCE = Path("products/zomlang/compiler/driver/borrow-evidence.h")
+INTERFACE_SOURCE = Path("products/zomlang/compiler/driver/interface/interface-source.h")
+IMPORT_PROJECTOR = Path("products/zomlang/compiler/driver/interface/imported-signature-view-projector.h")
+BORROW_EVIDENCE = Path("products/zomlang/compiler/driver/interface/borrow-evidence.h")
 CHECKED_MODULE = Path("products/zomlang/compiler/hir/checked-module.h")
 CORE_INVENTORY_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/core-library-inventory-test.cc"
+    "products/zomlang/tests/unittests/compiler/driver/core/core-library-inventory-test.cc"
 )
 CORE_FINAL_INTERFACE_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/compiler-session-test.cc"
+    "products/zomlang/tests/unittests/compiler/driver/session/compiler-session-test.cc"
 )
 CORE_REEXPORT_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc"
+    "products/zomlang/tests/unittests/compiler/driver/session/compiler-session-package-test.cc"
 )
 CORE_INSTALLED_CONSUMER = Path(
     "products/zomlang/tests/integration/core-library/installed-consumer/src/main.zom"
@@ -168,7 +168,7 @@ def check(values: dict[Path, str]) -> list[str]:
     for marker in ("core-source-install-layout", "core-library-install-consumer"):
         if marker not in test_cmake:
             errors.append(f"{TESTS / 'CMakeLists.txt'}: missing installation gate: {marker}")
-    session = (ROOT / "products/zomlang/compiler/driver/compiler-session.cc").read_text(
+    session = (ROOT / "products/zomlang/compiler/driver/session/compiler-session.cc").read_text(
         encoding="utf-8"
     )
     if "installVerifiedCoreDistribution" not in session:

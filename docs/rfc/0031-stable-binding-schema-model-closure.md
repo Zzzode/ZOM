@@ -475,8 +475,8 @@ only the package-request records and projection verifier that T1 consumes.
 `CompleteCompilationContextAuthorityInputVerifier` are I1A artifacts in:
 
 ```text
-products/zomlang/compiler/driver/module-graph-query-input.h
-products/zomlang/compiler/driver/module-graph-query-input.cc
+products/zomlang/compiler/driver/query/module-graph/module-graph-query-input.h
+products/zomlang/compiler/driver/query/module-graph/module-graph-query-input.cc
 ```
 
 The RFC 0027 I1A exact-file row names the prepare-only value, codec,

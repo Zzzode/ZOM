@@ -9,85 +9,85 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 COMPILER_ROOT = ROOT / "products" / "zomlang" / "compiler"
 UTILS_ROOT = ROOT / "products" / "zomlang" / "utils"
-SESSION_HEADER = Path("products/zomlang/compiler/driver/compiler-session.h")
-SESSION_SOURCE = Path("products/zomlang/compiler/driver/compiler-session.cc")
-DRIVER_ROOT = SESSION_HEADER.parent
+SESSION_HEADER = Path("products/zomlang/compiler/driver/session/compiler-session.h")
+SESSION_SOURCE = Path("products/zomlang/compiler/driver/session/compiler-session.cc")
+DRIVER_ROOT = Path("products/zomlang/compiler/driver")
 CORE_ROOT = DRIVER_ROOT / "core"
-CRATE_GRAPH_HEADER = Path("products/zomlang/compiler/driver/crate-graph.h")
-CRATE_GRAPH_SOURCE = Path("products/zomlang/compiler/driver/crate-graph.cc")
-MODULE_DISCOVERY_HEADER = Path("products/zomlang/compiler/driver/module-discovery.h")
-MODULE_DISCOVERY_SOURCE = Path("products/zomlang/compiler/driver/module-discovery.cc")
-COHERENCE_BUILDER_HEADER = Path("products/zomlang/compiler/driver/coherence-builder.h")
-COHERENCE_BUILDER_SOURCE = Path("products/zomlang/compiler/driver/coherence-builder.cc")
+CRATE_GRAPH_HEADER = Path("products/zomlang/compiler/driver/graph/crate-graph.h")
+CRATE_GRAPH_SOURCE = Path("products/zomlang/compiler/driver/graph/crate-graph.cc")
+MODULE_DISCOVERY_HEADER = Path("products/zomlang/compiler/driver/graph/module-discovery.h")
+MODULE_DISCOVERY_SOURCE = Path("products/zomlang/compiler/driver/graph/module-discovery.cc")
+COHERENCE_BUILDER_HEADER = Path("products/zomlang/compiler/driver/interface/coherence-builder.h")
+COHERENCE_BUILDER_SOURCE = Path("products/zomlang/compiler/driver/interface/coherence-builder.cc")
 IMPORTED_VIEW_PROJECTOR_HEADER = Path(
-    "products/zomlang/compiler/driver/imported-signature-view-projector.h"
+    "products/zomlang/compiler/driver/interface/imported-signature-view-projector.h"
 )
 IMPORTED_VIEW_PROJECTOR_SOURCE = Path(
-    "products/zomlang/compiler/driver/imported-signature-view-projector.cc"
+    "products/zomlang/compiler/driver/interface/imported-signature-view-projector.cc"
 )
-MODULE_INTERFACE_HEADER = Path("products/zomlang/compiler/driver/module-interface.h")
-MODULE_INTERFACE_SOURCE = Path("products/zomlang/compiler/driver/module-interface.cc")
+MODULE_INTERFACE_HEADER = Path("products/zomlang/compiler/driver/interface/module-interface.h")
+MODULE_INTERFACE_SOURCE = Path("products/zomlang/compiler/driver/interface/module-interface.cc")
 MODULE_INTERFACE_DIAGNOSTIC_HEADER = Path(
-    "products/zomlang/compiler/driver/module-interface-diagnostic-adapter.h"
+    "products/zomlang/compiler/driver/interface/module-interface-diagnostic-adapter.h"
 )
 MODULE_INTERFACE_DIAGNOSTIC_SOURCE = Path(
-    "products/zomlang/compiler/driver/module-interface-diagnostic-adapter.cc"
+    "products/zomlang/compiler/driver/interface/module-interface-diagnostic-adapter.cc"
 )
-BORROW_EVIDENCE_HEADER = Path("products/zomlang/compiler/driver/borrow-evidence.h")
-BORROW_EVIDENCE_SOURCE = Path("products/zomlang/compiler/driver/borrow-evidence.cc")
-INTERFACE_SOURCE_HEADER = Path("products/zomlang/compiler/driver/interface-source.h")
+BORROW_EVIDENCE_HEADER = Path("products/zomlang/compiler/driver/interface/borrow-evidence.h")
+BORROW_EVIDENCE_SOURCE = Path("products/zomlang/compiler/driver/interface/borrow-evidence.cc")
+INTERFACE_SOURCE_HEADER = Path("products/zomlang/compiler/driver/interface/interface-source.h")
 ACTIVE_DEFINITION_AUTHORITY_QUERY_HEADER = Path(
-    "products/zomlang/compiler/driver/active-definition-authority-query.h"
+    "products/zomlang/compiler/driver/query/binding/active-definition-authority-query.h"
 )
 ACTIVE_DEFINITION_AUTHORITY_QUERY_SOURCE = Path(
-    "products/zomlang/compiler/driver/active-definition-authority-query.cc"
+    "products/zomlang/compiler/driver/query/binding/active-definition-authority-query.cc"
 )
 ACTIVE_DEFINITION_AUTHORITY_SESSION_HEADER = Path(
-    "products/zomlang/compiler/driver/active-definition-authority-session.h"
+    "products/zomlang/compiler/driver/query/binding/active-definition-authority-session.h"
 )
 ACTIVE_DEFINITION_AUTHORITY_SESSION_SOURCE = Path(
-    "products/zomlang/compiler/driver/active-definition-authority-session.cc"
+    "products/zomlang/compiler/driver/query/binding/active-definition-authority-session.cc"
 )
 ACTIVE_IDENTITY_MEMBERSHIP_QUERY_HEADER = Path(
-    "products/zomlang/compiler/driver/active-identity-membership-query.h"
+    "products/zomlang/compiler/driver/query/binding/active-identity-membership-query.h"
 )
 ACTIVE_IDENTITY_MEMBERSHIP_QUERY_SOURCE = Path(
-    "products/zomlang/compiler/driver/active-identity-membership-query.cc"
+    "products/zomlang/compiler/driver/query/binding/active-identity-membership-query.cc"
 )
 CONTEXTUAL_BINDING_KEY_HEADER = Path(
-    "products/zomlang/compiler/driver/contextual-binding-key.h"
+    "products/zomlang/compiler/driver/query/binding/contextual-binding-key.h"
 )
 CONTEXTUAL_BINDING_KEY_SOURCE = Path(
-    "products/zomlang/compiler/driver/contextual-binding-key.cc"
+    "products/zomlang/compiler/driver/query/binding/contextual-binding-key.cc"
 )
 INCREMENTAL_BINDING_QUERY_ADAPTER_HEADER = Path(
-    "products/zomlang/compiler/driver/incremental-binding-query-adapter.h"
+    "products/zomlang/compiler/driver/query/binding/incremental-binding-query-adapter.h"
 )
 INCREMENTAL_BINDING_QUERY_ADAPTER_SOURCE = Path(
-    "products/zomlang/compiler/driver/incremental-binding-query-adapter.cc"
+    "products/zomlang/compiler/driver/query/binding/incremental-binding-query-adapter.cc"
 )
 INCREMENTAL_PACKAGE_GRAPH_INPUT_HEADER = Path(
-    "products/zomlang/compiler/driver/incremental-package-graph-query-input.h"
+    "products/zomlang/compiler/driver/query/binding/incremental-package-graph-query-input.h"
 )
 INCREMENTAL_PACKAGE_GRAPH_INPUT_SOURCE = Path(
-    "products/zomlang/compiler/driver/incremental-package-graph-query-input.cc"
+    "products/zomlang/compiler/driver/query/binding/incremental-package-graph-query-input.cc"
 )
 INCREMENTAL_MODULE_RESOLUTION_QUERY_HEADER = Path(
-    "products/zomlang/compiler/driver/incremental-module-resolution-query.h"
+    "products/zomlang/compiler/driver/query/module-graph/incremental-module-resolution-query.h"
 )
 INCREMENTAL_MODULE_RESOLUTION_QUERY_SOURCE = Path(
-    "products/zomlang/compiler/driver/incremental-module-resolution-query.cc"
+    "products/zomlang/compiler/driver/query/module-graph/incremental-module-resolution-query.cc"
 )
 NAMED_IDENTITY_INVENTORY_QUERY_HEADER = Path(
-    "products/zomlang/compiler/driver/named-identity-inventory-query.h"
+    "products/zomlang/compiler/driver/query/binding/named-identity-inventory-query.h"
 )
 NAMED_IDENTITY_INVENTORY_QUERY_SOURCE = Path(
-    "products/zomlang/compiler/driver/named-identity-inventory-query.cc"
+    "products/zomlang/compiler/driver/query/binding/named-identity-inventory-query.cc"
 )
-NAMED_ITEM_QUERY_HEADER = Path("products/zomlang/compiler/driver/named-item-query.h")
-NAMED_ITEM_QUERY_SOURCE = Path("products/zomlang/compiler/driver/named-item-query.cc")
-OWNER_BODY_QUERY_HEADER = Path("products/zomlang/compiler/driver/owner-body-query.h")
-OWNER_BODY_QUERY_SOURCE = Path("products/zomlang/compiler/driver/owner-body-query.cc")
+NAMED_ITEM_QUERY_HEADER = Path("products/zomlang/compiler/driver/query/binding/named-item-query.h")
+NAMED_ITEM_QUERY_SOURCE = Path("products/zomlang/compiler/driver/query/binding/named-item-query.cc")
+OWNER_BODY_QUERY_HEADER = Path("products/zomlang/compiler/driver/query/binding/owner-body-query.h")
+OWNER_BODY_QUERY_SOURCE = Path("products/zomlang/compiler/driver/query/binding/owner-body-query.cc")
 CORE_QUERY_HEADER = Path(
     "products/zomlang/compiler/driver/core/query.h"
 )
@@ -118,24 +118,24 @@ CORE_FILES = frozenset(
     }
 )
 MODULE_GRAPH_QUERY_INPUT_HEADER = Path(
-    "products/zomlang/compiler/driver/module-graph-query-input.h"
+    "products/zomlang/compiler/driver/query/module-graph/module-graph-query-input.h"
 )
 MODULE_GRAPH_QUERY_INPUT_SOURCE = Path(
-    "products/zomlang/compiler/driver/module-graph-query-input.cc"
+    "products/zomlang/compiler/driver/query/module-graph/module-graph-query-input.cc"
 )
 MODULE_DEPENDENCY_PROVENANCE_QUERY_HEADER = Path(
-    "products/zomlang/compiler/driver/module-dependency-provenance-query.h"
+    "products/zomlang/compiler/driver/query/module-graph/module-dependency-provenance-query.h"
 )
 MODULE_DEPENDENCY_PROVENANCE_QUERY_SOURCE = Path(
-    "products/zomlang/compiler/driver/module-dependency-provenance-query.cc"
+    "products/zomlang/compiler/driver/query/module-graph/module-dependency-provenance-query.cc"
 )
-MODULE_GRAPH_QUERY_HEADER = Path("products/zomlang/compiler/driver/module-graph-query.h")
-MODULE_GRAPH_QUERY_SOURCE = Path("products/zomlang/compiler/driver/module-graph-query.cc")
+MODULE_GRAPH_QUERY_HEADER = Path("products/zomlang/compiler/driver/query/module-graph/module-graph-query.h")
+MODULE_GRAPH_QUERY_SOURCE = Path("products/zomlang/compiler/driver/query/module-graph/module-graph-query.cc")
 MATERIALIZED_MODULE_GRAPH_QUERY_HEADER = Path(
-    "products/zomlang/compiler/driver/materialized-module-graph-query.h"
+    "products/zomlang/compiler/driver/query/module-graph/materialized-module-graph-query.h"
 )
 MATERIALIZED_MODULE_GRAPH_QUERY_SOURCE = Path(
-    "products/zomlang/compiler/driver/materialized-module-graph-query.cc"
+    "products/zomlang/compiler/driver/query/module-graph/materialized-module-graph-query.cc"
 )
 QUERY_DATABASE_HEADER = Path("products/zomlang/compiler/query/query-database.h")
 QUERY_DATABASE_SOURCE = Path("products/zomlang/compiler/query/query-database.cc")
@@ -202,25 +202,35 @@ EXPECTED_DRIVER_FILES = {
 }
 
 DRIVER_BUILD_MARKER = (
-    "set(DRIVER_SRC active-definition-authority-query.cc active-definition-authority-session.cc\n"
-    "               active-identity-membership-query.cc\n"
-    "               borrow-evidence.cc coherence-builder.cc compiler-session.cc\n"
-    "               contextual-binding-key.cc\n"
-    "               core/role-seed-failure.cc\n"
-    "               core/library.cc\n"
-    "               core/marker-authority.cc\n"
-    "               core/signature.cc\n"
-    "               core/query.cc core/verifier.cc crate-graph.cc\n"
-    "               imported-signature-view-projector.cc\n"
-    "               incremental-binding-query-adapter.cc\n"
-    "               incremental-module-resolution-query.cc\n"
-    "               incremental-package-graph-query-input.cc\n"
-    "               module-dependency-provenance-query.cc module-discovery.cc\n"
-    "               materialized-module-graph-query.cc module-graph-query-input.cc "
-    "module-graph-query.cc\n"
-    "               module-interface.cc\n"
-    "               module-interface-diagnostic-adapter.cc\n"
-    "               named-identity-inventory-query.cc named-item-query.cc owner-body-query.cc)"
+    "set(DRIVER_SRC\n"
+    "  session/compiler-session.cc\n"
+    "  graph/crate-graph.cc\n"
+    "  graph/module-discovery.cc\n"
+    "  interface/borrow-evidence.cc\n"
+    "  interface/coherence-builder.cc\n"
+    "  interface/imported-signature-view-projector.cc\n"
+    "  interface/module-interface.cc\n"
+    "  interface/module-interface-diagnostic-adapter.cc\n"
+    "  query/binding/active-definition-authority-query.cc\n"
+    "  query/binding/active-definition-authority-session.cc\n"
+    "  query/binding/active-identity-membership-query.cc\n"
+    "  query/binding/contextual-binding-key.cc\n"
+    "  query/binding/incremental-binding-query-adapter.cc\n"
+    "  query/binding/incremental-package-graph-query-input.cc\n"
+    "  query/binding/named-identity-inventory-query.cc\n"
+    "  query/binding/named-item-query.cc\n"
+    "  query/binding/owner-body-query.cc\n"
+    "  query/module-graph/incremental-module-resolution-query.cc\n"
+    "  query/module-graph/materialized-module-graph-query.cc\n"
+    "  query/module-graph/module-dependency-provenance-query.cc\n"
+    "  query/module-graph/module-graph-query.cc\n"
+    "  query/module-graph/module-graph-query-input.cc\n"
+    "  core/role-seed-failure.cc\n"
+    "  core/library.cc\n"
+    "  core/marker-authority.cc\n"
+    "  core/signature.cc\n"
+    "  core/query.cc\n"
+    "  core/verifier.cc)"
 )
 
 SESSION_HEADER_MARKERS = (
@@ -452,7 +462,7 @@ def check_driver_surface(
     driver_files = {
         path
         for path in files
-        if path.parent == DRIVER_ROOT or CORE_ROOT in path.parents
+        if DRIVER_ROOT in path.parents and "package" not in path.relative_to(DRIVER_ROOT).parts
     }
     unexpected = sorted(driver_files - EXPECTED_DRIVER_FILES)
     missing = sorted(EXPECTED_DRIVER_FILES - driver_files)
@@ -468,7 +478,7 @@ def check_driver_surface(
             errors.append(f"{path}: forbidden CompilerDriver identifier remains")
         if "zomlang/compiler/driver/driver.h" in files[path]:
             errors.append(f"{path}: forbidden driver.h include remains")
-        if (path.parent == DRIVER_ROOT or CORE_ROOT in path.parents) and re.search(
+        if (DRIVER_ROOT in path.parents and "package" not in path.relative_to(DRIVER_ROOT).parts) and re.search(
             r"\b(?:ZC_IREQUIRE|ZC_FAIL(?:_ASSERT)?)\b", text
         ):
             errors.append(f"{path}: raw session invariant assertion is forbidden")

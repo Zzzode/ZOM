@@ -118,7 +118,7 @@ cannot cross a verified boundary.
 
 Evidence: `products/zomlang/compiler/type/type-interner.h:28`,
 `products/zomlang/compiler/type/type-env.cc:110`,
-`products/zomlang/compiler/driver/compiler-session.cc:167`, and
+`products/zomlang/compiler/driver/session/compiler-session.cc:167`, and
 `products/zomlang/compiler/irgen/ir.cc:53`.
 
 Refutation considered: the current CLI limits IR emission to one source and
@@ -186,7 +186,7 @@ The driver constructs one `TypeEnv` and checker per source tree.
 `TraitResolver::checkCoherence()` clears local state and visits only that tree,
 so overlapping impls split across source modules are not compared.
 
-Evidence: `products/zomlang/compiler/driver/compiler-session.cc:167`,
+Evidence: `products/zomlang/compiler/driver/session/compiler-session.cc:167`,
 `products/zomlang/compiler/checker/checker.cc:77`, and
 `products/zomlang/compiler/checker/trait-resolver.cc:1474`.
 

@@ -49,8 +49,8 @@ LOCKFILE_SOURCE = Path("products/zomlang/compiler/driver/package/lockfile.cc")
 PACKAGE_ORACLE_GENERATOR = Path("scripts/codegen/gen_package_oracles.py")
 CONFORMANCE_CMAKE = Path("products/zomlang/tests/conformance/CMakeLists.txt")
 CMAKE_PRESETS = Path("CMakePresets.json")
-SESSION_HEADER = Path("products/zomlang/compiler/driver/compiler-session.h")
-SESSION_SOURCE = Path("products/zomlang/compiler/driver/compiler-session.cc")
+SESSION_HEADER = Path("products/zomlang/compiler/driver/session/compiler-session.h")
+SESSION_SOURCE = Path("products/zomlang/compiler/driver/session/compiler-session.cc")
 
 REQUIRED_FILES = (
     CLI_SOURCE,
@@ -366,15 +366,15 @@ def check_linux_privileged_gate(files: dict[Path, str], errors: list[str]) -> No
         SANDBOX_TEST_CMAKE,
         (
             "if(ZOM_ENABLE_PRIVILEGED_LINUX_SANDBOX_TESTS)",
-            "add_executable(\n      linux-native-sandbox-integration-test",
+            "add_executable(\n      package-linux-native-sandbox-integration-test",
             "NAME linux-native-sandbox-integration",
-            "COMMAND $<TARGET_FILE:linux-native-sandbox-integration-test>",
+            "COMMAND $<TARGET_FILE:package-linux-native-sandbox-integration-test>",
             'LABELS "integration;package;linux;privileged;release"',
         ),
         "privileged Linux CTest",
         errors,
     )
-    if "linux-native-sandbox-integration-test EXCLUDE_FROM_ALL" in files.get(
+    if "package-linux-native-sandbox-integration-test EXCLUDE_FROM_ALL" in files.get(
         SANDBOX_TEST_CMAKE, ""
     ):
         errors.append(
@@ -388,7 +388,7 @@ def check_linux_privileged_gate(files: dict[Path, str], errors: list[str]) -> No
             "runs-on: ubuntu-latest",
             "cmake --preset sanitizer",
             "-DZOM_ENABLE_PRIVILEGED_LINUX_SANDBOX_TESTS=ON",
-            "--target linux-native-sandbox-integration-test",
+            "--target package-linux-native-sandbox-integration-test",
             "scripts/run-linux-sandbox-integration.sh build-sanitizer",
         ),
         "privileged Linux CI",

@@ -8,7 +8,7 @@
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/driver/core/query.h"
-#include "zomlang/compiler/driver/materialized-module-graph-query.h"
+#include "zomlang/compiler/driver/query/module-graph/materialized-module-graph-query.h"
 #include "zomlang/compiler/identity/canonical/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 

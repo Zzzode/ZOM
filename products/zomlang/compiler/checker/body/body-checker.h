@@ -14,7 +14,7 @@
 #include "zomlang/compiler/checker/facts/coherence-facts.h"
 #include "zomlang/compiler/checker/facts/cross-module-facts.h"
 #include "zomlang/compiler/checker/facts/signature-facts.h"
-#include "zomlang/compiler/driver/materialized-module-graph-query.h"
+#include "zomlang/compiler/driver/query/module-graph/materialized-module-graph-query.h"
 #include "zomlang/compiler/identity/brand.h"
 #include "zomlang/compiler/identity/key/crate-key.h"
 #include "zomlang/compiler/identity/semantic/context-fingerprint.h"

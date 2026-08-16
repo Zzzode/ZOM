@@ -30,8 +30,8 @@ RESOURCES = Path("products/zomlang/compiler/ownership/facts/resources.cc")
 RESOURCES_HEADER = Path("products/zomlang/compiler/ownership/facts/resources.h")
 INPUTS = Path("products/zomlang/compiler/ownership/facts/inputs.cc")
 INPUTS_HEADER = Path("products/zomlang/compiler/ownership/facts/inputs.h")
-BORROW_EVIDENCE_HEADER = Path("products/zomlang/compiler/driver/borrow-evidence.h")
-BORROW_EVIDENCE_SOURCE = Path("products/zomlang/compiler/driver/borrow-evidence.cc")
+BORROW_EVIDENCE_HEADER = Path("products/zomlang/compiler/driver/interface/borrow-evidence.h")
+BORROW_EVIDENCE_SOURCE = Path("products/zomlang/compiler/driver/interface/borrow-evidence.cc")
 HIR = Path("products/zomlang/compiler/hir/hir-module.cc")
 HIR_HEADER = Path("products/zomlang/compiler/hir/hir-module.h")
 CHECKED_MODULE = Path("products/zomlang/compiler/hir/checked-module.cc")
@@ -39,14 +39,14 @@ CHECKED_MODULE_HEADER = Path("products/zomlang/compiler/hir/checked-module.h")
 MIR = Path("products/zomlang/compiler/mir/built-mir.cc")
 MIR_HEADER = Path("products/zomlang/compiler/mir/built-mir.h")
 OWNERSHIP_CMAKE = Path("products/zomlang/compiler/ownership/CMakeLists.txt")
-SESSION = Path("products/zomlang/compiler/driver/compiler-session.cc")
+SESSION = Path("products/zomlang/compiler/driver/session/compiler-session.cc")
 TEST = Path("products/zomlang/tests/unittests/compiler/ownership/ownership-event-overlay-test.cc")
 HIR_TEST = Path("products/zomlang/tests/unittests/compiler/hir/hir-module-test.cc")
 SESSION_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc"
+    "products/zomlang/tests/unittests/compiler/driver/session/compiler-session-package-test.cc"
 )
 COMPILER_SESSION_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/compiler-session-test.cc"
+    "products/zomlang/tests/unittests/compiler/driver/session/compiler-session-test.cc"
 )
 TEST_CMAKE = Path("products/zomlang/tests/conformance/CMakeLists.txt")
 REQUIRED = (
