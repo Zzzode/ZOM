@@ -59,7 +59,7 @@ def _read_range_text(process, range_value, max_len=256):
   text = text.rstrip('\x00')
 
   if end_addr - start_addr > max_len:
-    return _escape_text(text) + "…"
+    return _escape_text(text) + "..."
   return _escape_text(text)
 
 
@@ -276,8 +276,12 @@ def __lldb_init_module(debugger, internal_dict):
   debugger.HandleCommand(
       "type summary add -w zomlang -F zomlang_lldb.own_ast_summary "
       '-x "zc::Own<zomlang::compiler::ast::.*>"')
-  debugger.HandleCommand("command script add -f zomlang_lldb.zomkind zomkind")
-  debugger.HandleCommand("command script add -f zomlang_lldb.zominfo zominfo")
+  debugger.HandleCommand(
+      'command script add -h "Print the SyntaxKind for an AST node expression." '
+      "-f zomlang_lldb.zomkind zomkind")
+  debugger.HandleCommand(
+      'command script add -h "Print the SyntaxKind and source text for an AST node expression." '
+      "-f zomlang_lldb.zominfo zominfo")
   debugger.HandleCommand("command alias zk zomkind")
   debugger.HandleCommand("command alias zi zominfo")
   debugger.HandleCommand("type category enable zomlang")
