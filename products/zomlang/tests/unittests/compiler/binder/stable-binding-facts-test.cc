@@ -7,7 +7,7 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/binder/module-binding-allocation-plan.h"
 #include "zomlang/compiler/binder/stable-binding-codec.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::binder {
@@ -109,7 +109,7 @@ identity::ModuleResolutionPolicyKey policy() {
       identity::ModuleCandidateSelectionPolicy::AllDistinctMatchesNoPrecedence));
 }
 
-identity::SemanticImportBindingKey importBinding(zc::StringPtr requester) {
+identity::ImportBindingKey importBinding(zc::StringPtr requester) {
   zc::Vector<identity::ModulePathSegment> path;
   path.add(tests::test_identity_detail::scalar<identity::ModulePathSegment>("dep"_zc));
   zc::Maybe<zc::Vector<identity::ModulePathSegment>> retainedPath(zc::mv(path));
@@ -118,7 +118,7 @@ identity::SemanticImportBindingKey importBinding(zc::StringPtr requester) {
       identity::ModuleResolutionKey::from(module(requester), identity::ModuleDependencyKind::Import,
                                           zc::mv(retainedPath), zc::mv(noAlias), policy()));
   using identity::DeclaredDefinitionName;
-  return require(identity::SemanticImportBindingKey::from(
+  return require(identity::ImportBindingKey::from(
       module(requester), zc::mv(resolution), identity::SemanticImportOperation::Import,
       identity::DefinitionNamespace::Value,
       tests::test_identity_detail::scalar<DeclaredDefinitionName>("source"_zc),
@@ -183,7 +183,7 @@ identity::ImplIdentityRecord implementationRecord(zc::StringPtr owner) {
       identity::CanonicalTraitReference::from(canonicalName("Trait"_zc), zc::mv(arguments)));
   zc::Vector<identity::CanonicalGenericParameter> generics;
   zc::Vector<identity::CanonicalBoundObligation> obligations;
-  auto header = require(identity::CanonicalImplHeader::from(
+  auto header = require(identity::ImplHeader::from(
       zc::mv(generics), identity::ImplPolarity::Positive, identity::ImplSafety::Safe, zc::mv(trait),
       namedHeaderType("T"_zc), zc::mv(obligations)));
   zc::Vector<identity::EnclosingStableOwnerKey> owners;
@@ -450,7 +450,7 @@ identity::ImplIdentityRecord alternativeImplementationRecord() {
       identity::CanonicalTraitReference::from(canonicalName("OtherTrait"_zc), zc::mv(arguments)));
   zc::Vector<identity::CanonicalGenericParameter> generics;
   zc::Vector<identity::CanonicalBoundObligation> obligations;
-  auto header = require(identity::CanonicalImplHeader::from(
+  auto header = require(identity::ImplHeader::from(
       zc::mv(generics), identity::ImplPolarity::Positive, identity::ImplSafety::Safe, zc::mv(trait),
       namedHeaderType("T"_zc), zc::mv(obligations)));
   zc::Vector<identity::EnclosingStableOwnerKey> owners;
@@ -641,7 +641,7 @@ zc::Maybe<StableCallableParameterDeclarationFact> callableDeclaration(
                                                       zc::mv(site), zc::mv(scope), zc::mv(name));
 }
 
-identity::SemanticImportBindingKey semanticBinding(identity::SemanticImportOperation operation,
+identity::ImportBindingKey semanticBinding(identity::SemanticImportOperation operation,
                                                    identity::DefinitionNamespace nameSpace,
                                                    zc::StringPtr localName = "local"_zc) {
   zc::Vector<identity::ModulePathSegment> path;
@@ -662,7 +662,7 @@ identity::SemanticImportBindingKey semanticBinding(identity::SemanticImportOpera
   }
   auto resolution = require(identity::ModuleResolutionKey::from(
       module("owner"_zc), dependencyKind, zc::mv(retainedPath), zc::mv(noAlias), policy()));
-  return require(identity::SemanticImportBindingKey::from(
+  return require(identity::ImportBindingKey::from(
       module("owner"_zc), zc::mv(resolution), operation, nameSpace, declaredName("source"_zc),
       nameSpace, declaredName(localName)));
 }
@@ -1286,7 +1286,7 @@ ImplSourceOccurrenceKey implementationOccurrenceFor(const identity::ImplKey& imp
   return ImplSourceOccurrenceKey::from(implementation.clone(), zc::mv(site));
 }
 
-identity::SemanticImportBindingKey semanticBindingFor(
+identity::ImportBindingKey semanticBindingFor(
     zc::StringPtr owner, identity::DefinitionNamespace nameSpace,
     identity::SemanticImportOperation operation = identity::SemanticImportOperation::Import) {
   zc::Vector<identity::ModulePathSegment> path;
@@ -1307,7 +1307,7 @@ identity::SemanticImportBindingKey semanticBindingFor(
   }
   auto resolution = require(identity::ModuleResolutionKey::from(
       module(owner), dependencyKind, zc::mv(retainedPath), zc::mv(noAlias), policy()));
-  return require(identity::SemanticImportBindingKey::from(
+  return require(identity::ImportBindingKey::from(
       module(owner), zc::mv(resolution), operation, nameSpace, declaredName("source"_zc), nameSpace,
       declaredName("local"_zc)));
 }

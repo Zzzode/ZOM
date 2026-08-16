@@ -15,8 +15,8 @@
 #include "zomlang/compiler/checker/module-interface-contract.h"
 #include "zomlang/compiler/checker/signature-facts.h"
 #include "zomlang/compiler/driver/materialized-module-graph-query.h"
-#include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 
 namespace zomlang::compiler::checker::borrow {
 class VerifiedBorrowInterfaceSurface;

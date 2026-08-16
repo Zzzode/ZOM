@@ -316,7 +316,7 @@ zc::Vector<MaterializedFailedLookupFact> cloneFailedLookups(
 
 struct ImmutableBindingMetadata::Impl final {
   Impl(identity::SemanticContextBrand context, query::DatabaseRevision revision,
-       identity::SemanticContextFingerprint&& fingerprint, BoundModuleSkeleton&& skeleton,
+       identity::ContextFingerprint&& fingerprint, BoundModuleSkeleton&& skeleton,
        zc::Vector<BoundOwnerBody>&& ownerBodies, ModuleBindingAllocationPlan&& allocationPlan,
        zc::Vector<NodeScopeFact>&& nodeScopes, zc::Vector<BindingResolution>&& nodeBindings,
        zc::Vector<BoundSelfType>&& selfTypes, zc::Vector<BoundThis>&& thisBindings,
@@ -361,7 +361,7 @@ struct ImmutableBindingMetadata::Impl final {
 
   identity::SemanticContextBrand context;
   query::DatabaseRevision revision;
-  identity::SemanticContextFingerprint fingerprint;
+  identity::ContextFingerprint fingerprint;
   BoundModuleSkeleton skeleton;
   zc::Vector<BoundOwnerBody> ownerBodies;
   ModuleBindingAllocationPlan allocationPlan;
@@ -396,7 +396,7 @@ ImmutableBindingMetadata& ImmutableBindingMetadata::operator=(ImmutableBindingMe
 
 zc::Maybe<ImmutableBindingMetadata> ImmutableBindingMetadata::from(
     identity::SemanticContextBrand context, query::DatabaseRevision revision,
-    const identity::SemanticContextFingerprint& fingerprint, BoundModuleSkeleton&& skeleton,
+    const identity::ContextFingerprint& fingerprint, BoundModuleSkeleton&& skeleton,
     zc::Vector<BoundOwnerBody>&& ownerBodies, const MaterializedBindingFacts& facts) {
   if (!context.isValid() || revision.value() == 0 ||
       !exactOwnerCoverage(skeleton, ownerBodies.asPtr())) {
@@ -452,7 +452,7 @@ query::DatabaseRevision ImmutableBindingMetadata::revision() const noexcept {
   return impl->revision;
 }
 
-const identity::SemanticContextFingerprint& ImmutableBindingMetadata::fingerprint() const noexcept {
+const identity::ContextFingerprint& ImmutableBindingMetadata::fingerprint() const noexcept {
   return impl->fingerprint;
 }
 
@@ -551,7 +551,7 @@ zc::ArrayPtr<const MaterializedFailedLookupFact> ImmutableBindingMetadata::faile
 
 bool ImmutableBindingMetadata::matches(identity::SemanticContextBrand context,
                                        query::DatabaseRevision revision,
-                                       const identity::SemanticContextFingerprint& fingerprint,
+                                       const identity::ContextFingerprint& fingerprint,
                                        const BoundModuleSkeleton& sourceSkeleton,
                                        zc::ArrayPtr<const BoundOwnerBody> sourceOwnerBodies,
                                        const MaterializedBindingFacts& facts) const {

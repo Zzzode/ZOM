@@ -20,7 +20,7 @@
 #include "zc/core/common.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/identity/semantic-version.h"
+#include "zomlang/compiler/identity/semantic/semantic-version.h"
 
 namespace zomlang::compiler::identity {
 class CanonicalEncoder;

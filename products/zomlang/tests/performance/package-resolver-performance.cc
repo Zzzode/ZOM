@@ -18,8 +18,8 @@
 #include "zomlang/compiler/driver/package/lockfile.h"
 #include "zomlang/compiler/driver/package/package-resolver.h"
 #include "zomlang/compiler/driver/package/source-record.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 
 namespace zomlang::compiler::driver::package {
 namespace {

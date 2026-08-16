@@ -15,7 +15,7 @@
 #include "zomlang/compiler/binder/immutable-binding-metadata.h"
 #include "zomlang/compiler/binder/immutable-definition-inventory.h"
 #include "zomlang/compiler/checker/signature-facts.h"
-#include "zomlang/compiler/identity/definition-key.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
 
 namespace zomlang::compiler::hir {
@@ -1005,7 +1005,7 @@ struct VerifiedHirModule::Impl final {
   ownership::OwnershipAdmittedBoundModule boundModule;
   checker::CheckerIdentityAuthority identities;
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   identity::CompilationUnitId compilationUnit;
   identity::CrateId crate;
   identity::ModuleId module;
@@ -1046,7 +1046,7 @@ identity::SemanticContextBrand VerifiedHirModule::semanticContext() const noexce
   return impl->semanticContext;
 }
 
-const identity::SemanticContextFingerprint& VerifiedHirModule::contextFingerprint() const noexcept {
+const identity::ContextFingerprint& VerifiedHirModule::contextFingerprint() const noexcept {
   return impl->contextFingerprint;
 }
 

@@ -15,8 +15,8 @@
 #include "zomlang/compiler/driver/package/build-script-runtime.h"
 
 #include "zc/core/encoding.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::driver::package {
 namespace {
@@ -278,7 +278,7 @@ void TrustedBuildRuntimeKey::encode(identity::CanonicalEncoder& encoder) const {
 
 BuildScriptExecutionKey::BuildScriptExecutionKey(
     identity::PreparatoryBuildScriptKey&& preparatory,
-    identity::SemanticContextFingerprint&& preparatoryContext,
+    identity::ContextFingerprint&& preparatoryContext,
     BuildScriptExecutableKey&& executable, TrustedBuildRuntimeKey&& trustedRuntime,
     CanonicalBuildScriptManifest&& contract, identity::CrateKey&& rootCrate,
     zc::Vector<identity::CrateKey>&& reachableHostCrates,
@@ -300,7 +300,7 @@ BuildScriptExecutionKey::BuildScriptExecutionKey(
 
 zc::Maybe<BuildScriptExecutionKey> BuildScriptExecutionKey::from(
     identity::PreparatoryBuildScriptKey&& preparatory,
-    identity::SemanticContextFingerprint&& preparatoryContext,
+    identity::ContextFingerprint&& preparatoryContext,
     BuildScriptExecutableKey&& executable, TrustedBuildRuntimeKey&& trustedRuntime,
     CanonicalBuildScriptManifest&& contract, identity::CrateKey&& rootCrate,
     zc::Vector<identity::CrateKey>&& reachableHostCrates,

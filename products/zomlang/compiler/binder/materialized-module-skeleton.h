@@ -9,9 +9,9 @@
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/binder/stable-binding-facts.h"
-#include "zomlang/compiler/identity/canonical-identity-interner-set.h"
+#include "zomlang/compiler/identity/canonical/identity-interner-set.h"
 #include "zomlang/compiler/identity/materialized-identity-entry.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
 #include "zomlang/compiler/query/query-types.h"
 
 namespace zomlang::compiler::binder {
@@ -42,12 +42,12 @@ public:
   /// \brief Interns and reverse-validates every skeleton identity authority in one context.
   ZC_NODISCARD static zc::Maybe<MaterializedModuleSkeletonIdentities> from(
       identity::SemanticContextBrand context, query::DatabaseRevision revision,
-      const identity::SemanticContextFingerprint& fingerprint, const BoundModuleSkeleton& skeleton,
-      identity::CanonicalIdentityInternerSet& interners);
+      const identity::ContextFingerprint& fingerprint, const BoundModuleSkeleton& skeleton,
+      identity::IdentityInternerSet& interners);
   ZC_NODISCARD MaterializedModuleSkeletonIdentities clone() const;
   ZC_NODISCARD identity::SemanticContextBrand context() const noexcept;
   ZC_NODISCARD query::DatabaseRevision revision() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& fingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const BoundModuleSkeleton& stableWitness() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const MaterializedDefinitionIdentityEntry> definitions() const noexcept;

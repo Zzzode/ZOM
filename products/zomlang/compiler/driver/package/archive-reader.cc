@@ -18,7 +18,7 @@
 
 #include "archive.h"
 #include "archive_entry.h"
-#include "zomlang/compiler/identity/canonical-scalar.h"
+#include "zomlang/compiler/identity/canonical/canonical-scalar.h"
 
 namespace zomlang::compiler::driver::package {
 namespace {

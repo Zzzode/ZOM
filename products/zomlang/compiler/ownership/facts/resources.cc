@@ -419,7 +419,7 @@ bool sameFunctions(zc::ArrayPtr<const OwnershipResourceFunction> left,
 
 OwnershipResourceCandidate::OwnershipResourceCandidate(
     identity::SemanticContextBrand semanticContext,
-    identity::SemanticContextFingerprint&& contextFingerprint, identity::ModuleId module,
+    identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
     mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
     zc::Vector<OwnershipResourceFunction>&& functions) noexcept
     : semanticContext(semanticContext),
@@ -444,7 +444,7 @@ VerifiedOwnershipResourceFacts& VerifiedOwnershipResourceFacts::operator=(
 identity::SemanticContextBrand VerifiedOwnershipResourceFacts::semanticContext() const noexcept {
   return impl->candidate.semanticContext;
 }
-const identity::SemanticContextFingerprint& VerifiedOwnershipResourceFacts::contextFingerprint()
+const identity::ContextFingerprint& VerifiedOwnershipResourceFacts::contextFingerprint()
     const noexcept {
   return impl->candidate.contextFingerprint;
 }

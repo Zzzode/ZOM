@@ -51,7 +51,7 @@ public:
   ZC_DISALLOW_COPY(VerifiedCoreLibrary);
 
   ZC_NODISCARD identity::SemanticContextBrand context() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& fingerprint() const noexcept;
   ZC_NODISCARD const incremental_binding_query::CompilationRootSetQueryKey& contextRoots()
       const noexcept;
   ZC_NODISCARD query::DatabaseRevision revision() const noexcept;
@@ -64,7 +64,7 @@ public:
 private:
   struct Impl;
   ZC_NODISCARD static zc::Maybe<VerifiedCoreLibrary> from(
-      identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+      identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
       incremental_binding_query::CompilationRootSetQueryKey&& contextRoots,
       query::DatabaseRevision revision, const identity::Sha256Digest& distribution,
       core_library_query::CoreModuleGraphRecord&& graph, zc::Vector<VerifiedCoreModule>&& modules,

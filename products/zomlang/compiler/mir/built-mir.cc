@@ -8,9 +8,9 @@
 #include "zomlang/compiler/checker/marker-proof.h"
 #include "zomlang/compiler/checker/signature-facts.h"
 #include "zomlang/compiler/driver/core/marker-authority.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
@@ -2499,7 +2499,7 @@ zc::Maybe<zc::Array<uint8_t>> MirRevisionCodec::encodeBuiltFramed(
 }
 
 zc::Maybe<zc::Array<uint8_t>> MirRevisionCodec::encodeBuilt(
-    const identity::SemanticContextFingerprint& contextFingerprint,
+    const identity::ContextFingerprint& contextFingerprint,
     zc::ArrayPtr<const uint8_t> expandedModuleKey,
     const checker::checked::CheckedFactsRevision& checkedFactsRevision,
     const checker::dispatch::DispatchFactsRevision& dispatchFactsRevision,
@@ -2511,7 +2511,7 @@ zc::Maybe<zc::Array<uint8_t>> MirRevisionCodec::encodeBuilt(
 }
 
 zc::Maybe<MirRevisionId> MirRevisionCodec::computeBuilt(
-    const identity::SemanticContextFingerprint& contextFingerprint,
+    const identity::ContextFingerprint& contextFingerprint,
     zc::ArrayPtr<const uint8_t> expandedModuleKey,
     const checker::checked::CheckedFactsRevision& checkedFactsRevision,
     const checker::dispatch::DispatchFactsRevision& dispatchFactsRevision,
@@ -2538,7 +2538,7 @@ BuiltMirCandidate::BuiltMirCandidate(const hir::VerifiedHirModule& sourceHir,
 
 struct VerifiedBuiltMir::Impl final {
   Impl(identity::SemanticContextBrand semanticContext,
-       identity::SemanticContextFingerprint&& contextFingerprint,
+       identity::ContextFingerprint&& contextFingerprint,
        identity::CompilationUnitId compilationUnit, identity::CrateId crate,
        identity::ModuleId module,
        const checker::checked::CheckedFactsRevision& checkedFactsRevision,
@@ -2569,7 +2569,7 @@ struct VerifiedBuiltMir::Impl final {
   ownership::OwnershipAdmittedBoundModule boundModule;
   checker::CheckerIdentityAuthority identities;
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   identity::CompilationUnitId compilationUnit;
   identity::CrateId crate;
   identity::ModuleId module;
@@ -2592,7 +2592,7 @@ identity::SemanticContextBrand VerifiedBuiltMir::semanticContext() const noexcep
   return impl->semanticContext;
 }
 
-const identity::SemanticContextFingerprint& VerifiedBuiltMir::contextFingerprint() const noexcept {
+const identity::ContextFingerprint& VerifiedBuiltMir::contextFingerprint() const noexcept {
   return impl->contextFingerprint;
 }
 

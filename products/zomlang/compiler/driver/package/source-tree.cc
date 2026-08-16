@@ -14,8 +14,8 @@
 
 #include "zomlang/compiler/driver/package/source-tree.h"
 
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/unicode-normalization.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/text/unicode-normalization.h"
 
 namespace zomlang::compiler::driver::package {
 namespace {

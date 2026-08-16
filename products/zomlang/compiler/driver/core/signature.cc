@@ -9,8 +9,8 @@
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/driver/core/query.h"
 #include "zomlang/compiler/driver/materialized-module-graph-query.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::driver::core {
 

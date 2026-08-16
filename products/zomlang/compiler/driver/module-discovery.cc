@@ -21,7 +21,7 @@
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
 #include "zomlang/compiler/ast/schema-verifier.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::driver {
 namespace {

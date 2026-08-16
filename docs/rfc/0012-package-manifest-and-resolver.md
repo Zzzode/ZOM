@@ -1025,7 +1025,7 @@ Encode(lockGraph)
 
 Each edge is the exact RFC 0011 record containing the consumer `PackageKey`,
 resolved dependency alias, dependency domain, and provider `PackageKey`. The
-sorted edge set enters `SemanticContextFingerprint`; no display-only or
+sorted edge set enters `ContextFingerprint`; no display-only or
 traversal-order edge representation crosses into RFC 0008.
 
 The resolver uses PubGrub incompatibility solving. A valid locked selection is
@@ -1245,7 +1245,7 @@ identity:
 ```text
 BuildScriptExecutionKey {
   preparatory: PreparatoryBuildScriptKey,
-  preparatoryContext: SemanticContextFingerprint,
+  preparatoryContext: ContextFingerprint,
   executable: BuildScriptExecutableKey,
   trustedRuntime: TrustedBuildRuntimeKey,
   contract: CanonicalBuildScriptManifest,

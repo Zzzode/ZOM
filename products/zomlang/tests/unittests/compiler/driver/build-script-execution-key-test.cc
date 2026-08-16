@@ -19,7 +19,7 @@
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/trusted-runtime-elf.h"
 #include "zomlang/compiler/driver/package/trusted-runtime-manifest.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/compiler/ir/target-registry.h"
 
 namespace zomlang::compiler::driver::package {
@@ -200,7 +200,7 @@ identity::PreparatoryBuildScriptKey preparatory() {
   ZC_FAIL_REQUIRE("preparatory key fixture was rejected");
 }
 
-identity::SemanticContextFingerprint fingerprint() {
+identity::ContextFingerprint fingerprint() {
   zc::Vector<identity::CompilationUnitIdentity> compilationUnits;
   zc::Vector<identity::ToolchainSemanticContextInput> toolchainInputs;
   zc::Vector<identity::PackageDependencyEdgeKey> packageEdges;
@@ -208,7 +208,7 @@ identity::SemanticContextFingerprint fingerprint() {
   zc::Vector<identity::CrateDependencyEdgeKey> crateEdges;
   zc::Vector<identity::SourceContentIdentity> sources;
   zc::Vector<identity::ModuleKey> modules;
-  auto result = identity::SemanticContextFingerprint::compute(
+  auto result = identity::ContextFingerprint::compute(
       compilationUnits, toolchainInputs, packageEdges, crates, crateEdges, sources, modules);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("semantic context fingerprint fixture was rejected");

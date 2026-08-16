@@ -15,7 +15,7 @@
 #include "zomlang/compiler/checker/body-checker.h"
 #include "zomlang/compiler/checker/checked-facts.h"
 #include "zomlang/compiler/hir/hir-module.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
 #include "zomlang/compiler/ir/ir-failure.h"
 #include "zomlang/compiler/ir/ir-identity.h"
 
@@ -475,14 +475,14 @@ public:
       const identity::Sha256Digest& borrowEvidenceRevision,
       zc::ArrayPtr<const zc::Array<uint8_t>> canonicalFunctions);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeBuilt(
-      const identity::SemanticContextFingerprint& contextFingerprint,
+      const identity::ContextFingerprint& contextFingerprint,
       zc::ArrayPtr<const uint8_t> expandedModuleKey,
       const checker::checked::CheckedFactsRevision& checkedFactsRevision,
       const checker::dispatch::DispatchFactsRevision& dispatchFactsRevision,
       const driver::borrow_evidence::BorrowEvidenceRevision& borrowEvidenceRevision,
       zc::ArrayPtr<const zc::Array<uint8_t>> canonicalFunctions);
   ZC_NODISCARD static zc::Maybe<MirRevisionId> computeBuilt(
-      const identity::SemanticContextFingerprint& contextFingerprint,
+      const identity::ContextFingerprint& contextFingerprint,
       zc::ArrayPtr<const uint8_t> expandedModuleKey,
       const checker::checked::CheckedFactsRevision& checkedFactsRevision,
       const checker::dispatch::DispatchFactsRevision& dispatchFactsRevision,
@@ -515,7 +515,7 @@ public:
   ZC_DISALLOW_COPY(VerifiedBuiltMir);
 
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& contextFingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::CompilationUnitId compilationUnit() const noexcept;
   ZC_NODISCARD identity::CrateId crate() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;

@@ -12,8 +12,8 @@
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/node-id.h"
-#include "zomlang/compiler/identity/canonical-identity-interner-set.h"
-#include "zomlang/compiler/identity/definition-key.h"
+#include "zomlang/compiler/identity/canonical/identity-interner-set.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
 
 namespace zomlang::compiler::binder {
 
@@ -275,7 +275,7 @@ public:
   /// \param occurrences Occurrences in canonical source, range, then structural-path order.
   /// \param sites Current site inventory used to resolve every occurrence exactly once.
   ZC_NODISCARD static zc::Maybe<ImplIdentityOccurrenceGroup> from(
-      const identity::CanonicalIdentityInternerSet& authorities, identity::ImplId authority,
+      const identity::IdentityInternerSet& authorities, identity::ImplId authority,
       zc::Vector<ImplSourceOccurrenceKey>&& occurrences,
       zc::ArrayPtr<const IdentitySyntaxSite> sites);
   ZC_NODISCARD ImplIdentityOccurrenceGroup clone() const;

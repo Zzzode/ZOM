@@ -19,8 +19,8 @@
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/identity/crate-key.h"
-#include "zomlang/compiler/identity/source-key.h"
+#include "zomlang/compiler/identity/key/crate-key.h"
+#include "zomlang/compiler/identity/key/source-key.h"
 #include "zomlang/compiler/source/core-source-admission.h"
 
 namespace zomlang::compiler::source::core {

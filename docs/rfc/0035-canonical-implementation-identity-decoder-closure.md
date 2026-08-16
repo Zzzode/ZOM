@@ -41,11 +41,11 @@ landing set. No intermediate source commit or push is authorized.
 that record. The current identity layer can encode `CanonicalNameReference`,
 `CanonicalHeaderTypeSyntax`, `CanonicalGenericParameter`,
 `CanonicalBoundObligation`, `CanonicalTraitReference`,
-`CanonicalImplHeader`, and `ImplIdentityRecord`, but it exposes no decoder for
+`ImplHeader`, and `ImplIdentityRecord`, but it exposes no decoder for
 the implementation record or its recursive header grammar.
 
 `DefinitionIdentityRecord::decodeCanonical` is not sufficient: implementation
-records end with an inline `CanonicalImplHeader`, not a digest or framed byte
+records end with an inline `ImplHeader`, not a digest or framed byte
 string. A Binder-local decoder would create a second owner for every nested
 tag, field order, normalization rule, collection bound, and recursion limit.
 It would also make RFC 0018's identity tracker claim that implementation
@@ -72,7 +72,7 @@ The dependency must be closed at the identity authority boundary before
 
 - This RFC does not change RFC 0018 tags, fields, domains, or normalization.
 - This RFC does not add a Binder-owned implementation identity decoder.
-- This RFC does not decode `CanonicalOverloadHeader`,
+- This RFC does not decode `OverloadHeader`,
   `CanonicalCallableResult`, or `CanonicalCallableParameter`; they are not
   fields of `ImplIdentityRecord`.
 - This RFC does not add compatibility paths, fallback parsing, alternate wire
@@ -128,7 +128,7 @@ static zc::Maybe<Value> decodeCanonical(CanonicalDecoder& decoder);
 The owners are `CanonicalNameRoot`, `CanonicalNameReference`,
 `CanonicalHeaderTypeSyntax`, `CanonicalGenericParameter`,
 `CanonicalBoundObligation`, `CanonicalTraitReference`, and
-`CanonicalImplHeader`. These operations decode inline values and do not
+`ImplHeader`. These operations decode inline values and do not
 require the enclosing decoder to be finished.
 
 `ImplIdentityRecord` gains:

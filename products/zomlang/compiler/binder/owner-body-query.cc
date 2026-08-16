@@ -17,7 +17,7 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/generated/node-schema.h"
 #include "zomlang/compiler/binder/stable-binding-codec.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
 
 namespace zomlang::compiler::binder {
 

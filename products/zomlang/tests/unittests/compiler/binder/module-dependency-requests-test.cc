@@ -11,9 +11,9 @@
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/canonical-identity-interner-set.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/identity-interner-set.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
 
@@ -221,8 +221,8 @@ struct DerivationFixture final {
     resolver = zc::mv(frozen.get<StructuralModuleResolver>());
   }
 
-  identity::CanonicalIdentityInternerSet createAuthorities() {
-    auto value = identity::CanonicalIdentityInternerSet::create(factory, context);
+  identity::IdentityInternerSet createAuthorities() {
+    auto value = identity::IdentityInternerSet::create(factory, context);
     ZC_IF_SOME(authorities, value) { return zc::mv(authorities); }
     ZC_FAIL_REQUIRE("request-derivation identity authority creation failed");
   }
@@ -561,7 +561,7 @@ ZC_TEST("StructuralModuleResolver.RejectsAncestryEndingAtInactiveRoot") {
   const auto snapshot = sourceFixture.snapshot();
   identity::SemanticContextFactory factory;
   const auto context = requireContext(factory);
-  auto authorities = identity::CanonicalIdentityInternerSet::create(factory, context);
+  auto authorities = identity::IdentityInternerSet::create(factory, context);
   ZC_REQUIRE(authorities != zc::none);
   ZC_IF_SOME(interner, authorities) {
     auto admittedModule = interner.internModule(context, nestedModuleKey());

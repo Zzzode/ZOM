@@ -12,8 +12,8 @@
 #include "zomlang/compiler/binder/stable-binding-facts.h"
 #include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
 #include "zomlang/compiler/driver/module-graph-query-input.h"
-#include "zomlang/compiler/identity/module-resolution-key.h"
-#include "zomlang/compiler/identity/source-key.h"
+#include "zomlang/compiler/identity/key/module-resolution-key.h"
+#include "zomlang/compiler/identity/key/source-key.h"
 #include "zomlang/compiler/query/query-database.h"
 
 namespace zomlang::compiler::driver::module_graph_query {

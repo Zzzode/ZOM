@@ -8,7 +8,7 @@
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/identity/canonical-scalar.h"
+#include "zomlang/compiler/identity/canonical/canonical-scalar.h"
 
 namespace zomlang::compiler::identity {
 class CanonicalDecoder;

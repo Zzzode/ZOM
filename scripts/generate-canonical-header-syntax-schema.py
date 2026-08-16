@@ -18,10 +18,10 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SCHEMA = (
-    ROOT / "products/zomlang/compiler/identity/canonical-header-syntax-schema.yml"
+    ROOT / "products/zomlang/compiler/identity/canonical/canonical-header-syntax-schema.yml"
 )
 DEFAULT_OUTPUT = (
-    ROOT / "products/zomlang/compiler/identity/canonical-header-syntax-schema.def"
+    ROOT / "products/zomlang/compiler/identity/canonical/canonical-header-syntax-schema.def"
 )
 
 EXPECTED_ENUMS = [
@@ -167,7 +167,7 @@ EXPECTED_SUMS = [
 
 EXPECTED_RECORDS = [
     (
-        "CanonicalOverloadHeader",
+        "OverloadHeader",
         [
             ("callableKind", "CallableHeaderKind"),
             ("name", "NfcDeclaredName"),
@@ -220,7 +220,7 @@ EXPECTED_RECORDS = [
 ]
 
 EXPECTED_CONSTRAINTS = [
-    ("CanonicalOverloadHeader.raises", "PresentSequenceMustBeNonEmpty"),
+    ("OverloadHeader.raises", "PresentSequenceMustBeNonEmpty"),
     ("CanonicalNameReference.root", "AbsoluteAndRelativeRequireNonEmptySuffix"),
     ("CanonicalNameReference.root", "GenericPermitsEmptySuffix"),
     ("CanonicalHeaderTypeSyntax.Function.raises", "PresentSequenceMustBeNonEmpty"),

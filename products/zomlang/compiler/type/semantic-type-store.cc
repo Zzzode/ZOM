@@ -61,16 +61,16 @@ const StoredSemanticType& entryAt(const SemanticTypeStoreData& data, uint32_t sl
 
 struct SemanticTypeStore::Impl final {
   Impl(identity::SemanticContextBrand owner,
-       const identity::CanonicalIdentityInternerSet& identities) noexcept
+       const identity::IdentityInternerSet& identities) noexcept
       : context(owner), identities(identities) {}
 
   identity::SemanticContextBrand context;
-  const identity::CanonicalIdentityInternerSet& identities;
+  const identity::IdentityInternerSet& identities;
   zc::MutexGuarded<SemanticTypeStoreData> data;
 };
 
 SemanticTypeStore::SemanticTypeStore(identity::SemanticTypeStoreConstructionToken&& token,
-                                     const identity::CanonicalIdentityInternerSet& identities)
+                                     const identity::IdentityInternerSet& identities)
     : impl(zc::heap<Impl>(token.consume(), identities)) {
   ZC_IREQUIRE(impl->context.isValid(),
               "SemanticTypeStore: construction token is invalid or already consumed");

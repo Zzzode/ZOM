@@ -659,7 +659,7 @@ The checker publishes:
 ```text
 VerifiedStandardMarkerAuthority {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   configurationRevision: StandardMarkerConfigurationRevision,
   markerShapeRevision: MarkerShapeInventoryRevision,
   markerPolicyRevision: MarkerPolicyRegistryRevision,
@@ -675,7 +675,7 @@ The promotion boundary is:
 ```text
 StandardMarkerAuthorityCandidate {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   configurationRevision: StandardMarkerConfigurationRevision,
   markerShapeRevision: MarkerShapeInventoryRevision,
   markerPolicyRevision: MarkerPolicyRegistryRevision,
@@ -725,7 +725,7 @@ The authority revision is SHA-256 over:
 ```text
 ASCII("zom.standard-marker-authority")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 StandardMarkerConfigurationRevision
 MarkerShapeInventoryRevision
 MarkerPolicyRegistryRevision

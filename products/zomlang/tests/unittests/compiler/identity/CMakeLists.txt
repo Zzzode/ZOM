@@ -4,5 +4,5 @@ add_ztest_unit_tests_from_directory(
 )
 
 target_sources(
-  unicode-normalization-test
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/unicode-normalization-conformance-data.cc)
+  text-unicode-normalization-test
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/text/unicode-normalization-conformance-data.cc)

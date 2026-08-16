@@ -16,9 +16,9 @@
 
 #include "zc/core/exception.h"
 #include "zomlang/compiler/driver/package/archive-reader.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/canonical-scalar.h"
-#include "zomlang/compiler/identity/unicode-normalization.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-scalar.h"
+#include "zomlang/compiler/identity/text/unicode-normalization.h"
 
 namespace zomlang::compiler::driver::package {
 namespace {

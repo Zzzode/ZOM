@@ -17,8 +17,8 @@
 #include "zomlang/compiler/ast/generated/node-schema.h"
 #include "zomlang/compiler/ast/schema-verifier.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic-info.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 
 namespace zomlang::compiler::binder {
 namespace {

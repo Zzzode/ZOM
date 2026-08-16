@@ -10,7 +10,7 @@
 #include "zc/core/array.h"
 #include "zc/core/one-of.h"
 #include "zomlang/compiler/ast/tree.h"
-#include "zomlang/compiler/identity/canonical-header-type.h"
+#include "zomlang/compiler/identity/canonical/header-type.h"
 
 namespace zomlang::compiler::binder {
 

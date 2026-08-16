@@ -16,9 +16,9 @@
 #include "zomlang/compiler/driver/module-dependency-provenance-query.h"
 #include "zomlang/compiler/driver/named-item-query.h"
 #include "zomlang/compiler/driver/owner-body-query.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/identity/source-query-input.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
 #include "zomlang/compiler/parser/parse-source-query.h"
@@ -270,7 +270,7 @@ zc::Maybe<const driver::module_graph_query::MaterializedModuleEntry&> moduleEntr
 }
 
 zc::Maybe<identity::Sha256Digest> computeGraphRevision(
-    const identity::SemanticContextFingerprint& fingerprint,
+    const identity::ContextFingerprint& fingerprint,
     const driver::module_graph_query::ModuleGraphRecord& graph,
     zc::ArrayPtr<const driver::module_graph_query::StableMaterializedDependencyWitness> edges) {
   zc::Vector<uint8_t> preimage;
@@ -367,7 +367,7 @@ struct ProviderSourceContent final {
 
 struct ResolvedProviderAcquisition final {
   ResolvedProviderAcquisition(
-      ProviderAcquisition&& acquisition, identity::SemanticContextFingerprint&& fingerprint,
+      ProviderAcquisition&& acquisition, identity::ContextFingerprint&& fingerprint,
       zc::Vector<driver::module_graph_query::StableMaterializedDependencyWitness>&&
           requestEdges) noexcept
       : acquisition(zc::mv(acquisition)),
@@ -375,7 +375,7 @@ struct ResolvedProviderAcquisition final {
         requestEdges(zc::mv(requestEdges)) {}
 
   ProviderAcquisition acquisition;
-  identity::SemanticContextFingerprint fingerprint;
+  identity::ContextFingerprint fingerprint;
   zc::Vector<driver::module_graph_query::StableMaterializedDependencyWitness> requestEdges;
 };
 
@@ -645,7 +645,7 @@ bool appendFingerprintSequence(zc::Vector<uint8_t>& bytes, zc::ArrayPtr<const Va
   return true;
 }
 
-zc::Maybe<identity::SemanticContextFingerprint> computeProviderFingerprint(
+zc::Maybe<identity::ContextFingerprint> computeProviderFingerprint(
     const ProviderAcquisition& acquisition,
     zc::ArrayPtr<const ProviderSourceContent> sourceContents) {
   for (const auto& unit : acquisition.units) {
@@ -680,7 +680,7 @@ zc::Maybe<identity::SemanticContextFingerprint> computeProviderFingerprint(
   }
   auto digest = identity::sha256(bytes.asPtr());
   if (digest == zc::none) { return zc::none; }
-  return identity::SemanticContextFingerprint::fromCanonicalDigest(ZC_ASSERT_NONNULL(digest));
+  return identity::ContextFingerprint::fromCanonicalDigest(ZC_ASSERT_NONNULL(digest));
 }
 
 using MaterializerProviderResult =
@@ -1329,7 +1329,7 @@ bool verifierAppendSequence(zc::Vector<uint8_t>& bytes, zc::ArrayPtr<const Value
   return true;
 }
 
-zc::Maybe<identity::SemanticContextFingerprint> computeVerifierFingerprint(
+zc::Maybe<identity::ContextFingerprint> computeVerifierFingerprint(
     zc::ArrayPtr<const identity::CompilationUnitIdentity> units,
     zc::ArrayPtr<const identity::ToolchainSemanticContextInput> toolchainInputs,
     zc::ArrayPtr<const identity::PackageDependencyEdgeKey> packageEdges,
@@ -1366,12 +1366,12 @@ zc::Maybe<identity::SemanticContextFingerprint> computeVerifierFingerprint(
   }
   auto digest = identity::sha256(bytes.asPtr());
   if (digest == zc::none) { return zc::none; }
-  return identity::SemanticContextFingerprint::fromCanonicalDigest(ZC_ASSERT_NONNULL(digest));
+  return identity::ContextFingerprint::fromCanonicalDigest(ZC_ASSERT_NONNULL(digest));
 }
 
 struct VerifierModuleAcquisition final {
   VerifierModuleAcquisition(
-      VerifierContextAcquisition&& acquisition, identity::SemanticContextFingerprint&& fingerprint,
+      VerifierContextAcquisition&& acquisition, identity::ContextFingerprint&& fingerprint,
       zc::Vector<driver::module_graph_query::StableMaterializedDependencyWitness>&&
           stableEdges) noexcept
       : acquisition(zc::mv(acquisition)),
@@ -1379,7 +1379,7 @@ struct VerifierModuleAcquisition final {
         stableEdges(zc::mv(stableEdges)) {}
 
   VerifierContextAcquisition acquisition;
-  identity::SemanticContextFingerprint fingerprint;
+  identity::ContextFingerprint fingerprint;
   zc::Vector<driver::module_graph_query::StableMaterializedDependencyWitness> stableEdges;
 };
 
@@ -1652,7 +1652,7 @@ query::CapabilityRejectionCheck verifyMaterializerRejection(
 }
 
 zc::Maybe<identity::Sha256Digest> computeVerifierGraphRevision(
-    const identity::SemanticContextFingerprint& fingerprint,
+    const identity::ContextFingerprint& fingerprint,
     const driver::module_graph_query::ModuleGraphRecord& graph,
     zc::ArrayPtr<const driver::module_graph_query::StableMaterializedDependencyWitness> edges) {
   zc::Vector<uint8_t> bytes;
@@ -2006,7 +2006,7 @@ identity::ModuleId MaterializedModuleDependencyEdge::dependency() const noexcept
 
 struct MaterializedModuleGraphWitness::Impl final {
   Impl(incremental_binding_query::CompilationRootSetQueryKey&& contextRoots,
-       identity::SemanticContextFingerprint&& fingerprint, ModuleGraphRecord&& graph,
+       identity::ContextFingerprint&& fingerprint, ModuleGraphRecord&& graph,
        ModuleGraphSccRecord&& scc, zc::Vector<StableMaterializedDependencyWitness>&& requestEdges,
        binder::ModuleGraphRevision&& graphRevision) noexcept
       : contextRoots(zc::mv(contextRoots)),
@@ -2017,7 +2017,7 @@ struct MaterializedModuleGraphWitness::Impl final {
         graphRevision(zc::mv(graphRevision)) {}
 
   incremental_binding_query::CompilationRootSetQueryKey contextRoots;
-  identity::SemanticContextFingerprint fingerprint;
+  identity::ContextFingerprint fingerprint;
   ModuleGraphRecord graph;
   ModuleGraphSccRecord scc;
   zc::Vector<StableMaterializedDependencyWitness> requestEdges;
@@ -2046,7 +2046,7 @@ MaterializedModuleGraphWitness::contextRoots() const noexcept {
   return impl->contextRoots;
 }
 
-const identity::SemanticContextFingerprint& MaterializedModuleGraphWitness::fingerprint()
+const identity::ContextFingerprint& MaterializedModuleGraphWitness::fingerprint()
     const noexcept {
   return impl->fingerprint;
 }
@@ -2070,7 +2070,7 @@ const binder::ModuleGraphRevision& MaterializedModuleGraphWitness::graphRevision
 
 zc::Maybe<MaterializedModuleGraphWitness> MaterializedModuleGraphWitness::from(
     incremental_binding_query::CompilationRootSetQueryKey&& contextRoots,
-    identity::SemanticContextFingerprint&& fingerprint, ModuleGraphRecord&& graph,
+    identity::ContextFingerprint&& fingerprint, ModuleGraphRecord&& graph,
     ModuleGraphSccRecord&& scc, zc::Vector<StableMaterializedDependencyWitness>&& requestEdges,
     binder::ModuleGraphRevision&& graphRevision) {
   if (requestEdges.size() > kMaximumRequestEdges) { return zc::none; }
@@ -2132,7 +2132,7 @@ zc::Maybe<MaterializedModuleGraphWitness> MaterializedModuleGraphWitness::decode
   if (roots == zc::none || graph == zc::none || scc == zc::none) { return zc::none; }
   auto result =
       from(zc::mv(ZC_ASSERT_NONNULL(roots)),
-           identity::SemanticContextFingerprint::fromCanonicalDigest(
+           identity::ContextFingerprint::fromCanonicalDigest(
                ZC_ASSERT_NONNULL(fingerprintDigest)),
            zc::mv(ZC_ASSERT_NONNULL(graph)), zc::mv(ZC_ASSERT_NONNULL(scc)), zc::mv(edges),
            binder::ModuleGraphRevision::fromCanonicalDigest(ZC_ASSERT_NONNULL(revisionDigest)));
@@ -3023,7 +3023,7 @@ zc::Maybe<binder::Namespace> materializedImportNamespace(identity::DefinitionNam
   return zc::none;
 }
 
-bool isMaterializedImport(const identity::SemanticImportBindingKey& binding) {
+bool isMaterializedImport(const identity::ImportBindingKey& binding) {
   return binding.operation() == identity::SemanticImportOperation::Import ||
          binding.operation() == identity::SemanticImportOperation::ForeignReexport;
 }
@@ -4654,7 +4654,7 @@ query::DatabaseRevision MaterializedModuleSkeleton::revision() const noexcept {
   return impl->identities.revision();
 }
 
-const identity::SemanticContextFingerprint& MaterializedModuleSkeleton::fingerprint()
+const identity::ContextFingerprint& MaterializedModuleSkeleton::fingerprint()
     const noexcept {
   return impl->identities.fingerprint();
 }
@@ -6277,7 +6277,7 @@ bool sameNodeScopes(zc::ArrayPtr<const binder::NodeScopeFact> left,
 struct MaterializedOwnerBody::Impl final {
   Impl(incremental_binding_query::ContextualBodyOwnerKey&& key,
        identity::SemanticContextBrand context, query::DatabaseRevision revision,
-       identity::SemanticContextFingerprint&& fingerprint, identity::ModuleId module,
+       identity::ContextFingerprint&& fingerprint, identity::ModuleId module,
        SkeletonLease&& skeleton, identity::SourceFileKey&& source, ProvenanceLease&& provenance,
        binder::BoundOwnerBody&& stableWitness, binder::OwnerAllocationRange&& allocation,
        zc::Vector<binder::ScopeId>&& scopeIdentities,
@@ -6320,7 +6320,7 @@ struct MaterializedOwnerBody::Impl final {
   incremental_binding_query::ContextualBodyOwnerKey key;
   identity::SemanticContextBrand context;
   query::DatabaseRevision revision;
-  identity::SemanticContextFingerprint fingerprint;
+  identity::ContextFingerprint fingerprint;
   identity::ModuleId module;
   SkeletonLease skeleton;
   identity::SourceFileKey source;
@@ -6801,7 +6801,7 @@ bool sameControlTransferFacts(zc::ArrayPtr<const binder::ControlTransferFact> le
 
 zc::Maybe<MaterializedOwnerBody> MaterializedOwnerBody::from(
     incremental_binding_query::ContextualBodyOwnerKey&& key, identity::SemanticContextBrand context,
-    query::DatabaseRevision revision, identity::SemanticContextFingerprint&& fingerprint,
+    query::DatabaseRevision revision, identity::ContextFingerprint&& fingerprint,
     identity::ModuleId module, SkeletonLease&& skeleton, identity::SourceFileKey&& source,
     ProvenanceLease&& provenance, binder::BoundOwnerBody&& stableWitness,
     binder::OwnerAllocationRange&& allocation, const binder::OwnerBodySyntax& syntax,
@@ -6958,7 +6958,7 @@ identity::SemanticContextBrand MaterializedOwnerBody::context() const noexcept {
 
 query::DatabaseRevision MaterializedOwnerBody::revision() const noexcept { return impl->revision; }
 
-const identity::SemanticContextFingerprint& MaterializedOwnerBody::fingerprint() const noexcept {
+const identity::ContextFingerprint& MaterializedOwnerBody::fingerprint() const noexcept {
   return impl->fingerprint;
 }
 
@@ -7891,7 +7891,7 @@ query::DatabaseRevision VerifiedBoundModule::revision() const noexcept {
   return skeletonLease().capability().revision();
 }
 
-const identity::SemanticContextFingerprint& VerifiedBoundModule::fingerprint() const noexcept {
+const identity::ContextFingerprint& VerifiedBoundModule::fingerprint() const noexcept {
   return skeletonLease().capability().fingerprint();
 }
 
@@ -8023,7 +8023,7 @@ identity::SourceFileId CheckerBoundModuleView::sourceFile() const noexcept {
   return impl->sourceFile;
 }
 
-const identity::SemanticContextFingerprint& CheckerBoundModuleView::semanticFingerprint()
+const identity::ContextFingerprint& CheckerBoundModuleView::semanticFingerprint()
     const noexcept {
   return impl->lease.capability().fingerprint();
 }

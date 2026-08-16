@@ -21,7 +21,7 @@
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/binder/definition-site.h"
-#include "zomlang/compiler/identity/definition-key.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
 
 namespace zomlang::compiler::binder {
 

@@ -208,7 +208,7 @@ bool sameStates(zc::ArrayPtr<const ReborrowState> left, zc::ArrayPtr<const Rebor
 
 ReborrowStateCandidate::ReborrowStateCandidate(
     identity::SemanticContextBrand semanticContext,
-    identity::SemanticContextFingerprint&& contextFingerprint, identity::ModuleId module,
+    identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
     mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
     driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
     zc::Vector<ReborrowState>&& states) noexcept
@@ -234,7 +234,7 @@ VerifiedReborrowStates& VerifiedReborrowStates::operator=(VerifiedReborrowStates
 identity::SemanticContextBrand VerifiedReborrowStates::semanticContext() const noexcept {
   return impl->candidate.semanticContext;
 }
-const identity::SemanticContextFingerprint& VerifiedReborrowStates::contextFingerprint()
+const identity::ContextFingerprint& VerifiedReborrowStates::contextFingerprint()
     const noexcept {
   return impl->candidate.contextFingerprint;
 }

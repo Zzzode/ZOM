@@ -23,7 +23,7 @@
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/driver/package/registry-record.h"
-#include "zomlang/compiler/identity/package-key.h"
+#include "zomlang/compiler/identity/key/package-key.h"
 
 namespace zomlang::compiler::driver::package {
 

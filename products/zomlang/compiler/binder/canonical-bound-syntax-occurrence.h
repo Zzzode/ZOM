@@ -6,7 +6,7 @@
 #pragma once
 
 #include "zomlang/compiler/ast/node-id.h"
-#include "zomlang/compiler/identity/canonical-overload-header.h"
+#include "zomlang/compiler/identity/canonical/overload-header.h"
 
 namespace zomlang::compiler::binder {
 

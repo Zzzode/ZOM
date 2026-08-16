@@ -22,7 +22,7 @@
 #include "zc/core/string.h"
 #include "zomlang/compiler/driver/package/manifest-model.h"
 #include "zomlang/compiler/driver/package/semver-constraint.h"
-#include "zomlang/compiler/identity/package-key.h"
+#include "zomlang/compiler/identity/key/package-key.h"
 
 namespace zomlang::compiler::driver::package {
 

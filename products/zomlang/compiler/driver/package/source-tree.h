@@ -23,8 +23,8 @@
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/driver/package/archive-reader.h"
-#include "zomlang/compiler/identity/package-key.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/key/package-key.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 
 namespace zomlang::compiler::identity {
 class CanonicalEncoder;

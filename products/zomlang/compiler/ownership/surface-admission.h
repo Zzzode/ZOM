@@ -79,7 +79,7 @@ public:
   ZC_NODISCARD identity::CrateId crate() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD identity::SourceFileId sourceFile() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& semanticFingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& semanticFingerprint() const noexcept;
   ZC_NODISCARD const ast::Tree& tree() const noexcept;
   ZC_NODISCARD const binder::CanonicalParsedModule& parsedModule() const noexcept;
   ZC_NODISCARD const binder::ImmutableDefinitionInventory& definitions() const noexcept;

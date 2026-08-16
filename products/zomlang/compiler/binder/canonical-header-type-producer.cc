@@ -9,7 +9,7 @@
 
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
-#include "zomlang/compiler/identity/canonical-header-name.h"
+#include "zomlang/compiler/identity/canonical/header-name.h"
 
 namespace zomlang::compiler::binder {
 namespace {

@@ -30,10 +30,10 @@ public:
     ZC_REQUIRE(issuedContext != zc::none);
     ZC_IF_SOME(value, issuedContext) { context = value; }
 
-    auto created = identity::CanonicalIdentityInternerSet::create(factory, context);
+    auto created = identity::IdentityInternerSet::create(factory, context);
     ZC_REQUIRE(created != zc::none);
     ZC_IF_SOME(value, created) {
-      identities = zc::heap<identity::CanonicalIdentityInternerSet>(zc::mv(value));
+      identities = zc::heap<identity::IdentityInternerSet>(zc::mv(value));
     }
     buildIdentities();
 
@@ -61,7 +61,7 @@ public:
 
   identity::SemanticContextFactory factory;
   identity::SemanticContextBrand context;
-  zc::Own<identity::CanonicalIdentityInternerSet> identities;
+  zc::Own<identity::IdentityInternerSet> identities;
   zc::Own<SemanticTypeStore> store;
 
 private:

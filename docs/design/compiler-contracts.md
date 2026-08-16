@@ -245,7 +245,7 @@ invariant failures.
 
 The session freezes package and crate identities before parse/discovery, source
 identities before parser promotion, module identities before computing the
-`SemanticContextFingerprint`, and definition and impl identities before module
+`ContextFingerprint`, and definition and impl identities before module
 graph publication and semantic type admission.
 
 ### ID-03 Complete keys
@@ -401,7 +401,7 @@ session retains both selections.
 ### IR-03 Current boundary
 
 `zomc` constructs one host profile with abort panic. Target selections are not
-yet bound to `SemanticContextFingerprint`. Semantic HIR and evidence-bound
+yet bound to `ContextFingerprint`. Semantic HIR and evidence-bound
 Built MIR are internal verified session publications with exact codec
 oracles. Built MIR is not executable; no target LIR, LLVM, object, or native
 artifact is a compiler output.

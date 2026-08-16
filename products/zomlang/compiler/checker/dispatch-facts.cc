@@ -10,7 +10,7 @@
 #include "zomlang/compiler/binder/immutable-definition-inventory.h"
 #include "zomlang/compiler/binder/parsed-module.h"
 #include "zomlang/compiler/driver/materialized-module-graph-query.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::checker::dispatch {
 namespace {
@@ -1125,7 +1125,7 @@ zc::Maybe<DispatchSiteRequirement> siteRequirementFor(
 
 struct VerifiedDispatchSiteInventory::Impl final {
   Impl(identity::SemanticContextBrand semanticContext, identity::ModuleId module,
-       identity::SemanticContextFingerprint&& semanticFingerprint,
+       identity::ContextFingerprint&& semanticFingerprint,
        const identity::Sha256Digest& sourceContentDigest,
        const binder::ParsedModuleReceipt& parsedModuleReceipt,
        zc::Vector<DispatchSiteRequirement>&& requirements,
@@ -1140,7 +1140,7 @@ struct VerifiedDispatchSiteInventory::Impl final {
 
   identity::SemanticContextBrand semanticContext;
   identity::ModuleId module;
-  identity::SemanticContextFingerprint semanticFingerprint;
+  identity::ContextFingerprint semanticFingerprint;
   identity::Sha256Digest sourceContentDigest;
   binder::ParsedModuleReceipt parsedModuleReceipt;
   zc::Vector<DispatchSiteRequirement> requirements;
@@ -1158,7 +1158,7 @@ identity::SemanticContextBrand VerifiedDispatchSiteInventory::semanticContext() 
   return impl->semanticContext;
 }
 identity::ModuleId VerifiedDispatchSiteInventory::module() const noexcept { return impl->module; }
-const identity::SemanticContextFingerprint& VerifiedDispatchSiteInventory::semanticFingerprint()
+const identity::ContextFingerprint& VerifiedDispatchSiteInventory::semanticFingerprint()
     const noexcept {
   return impl->semanticFingerprint;
 }
@@ -1238,7 +1238,7 @@ DispatchSiteInventoryBuildResult DispatchSiteInventoryBuilder::build(
 
 struct DispatchFactsCandidate::Impl final {
   Impl(identity::SemanticContextBrand semanticContext,
-       identity::SemanticContextFingerprint&& contextFingerprint, identity::ModuleId module,
+       identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
        const checked::CheckedFactsRevision& checkedFactsRevision,
        zc::Vector<DispatchFactCandidateEntry>&& facts)
       : semanticContext(semanticContext),
@@ -1248,7 +1248,7 @@ struct DispatchFactsCandidate::Impl final {
         facts(zc::mv(facts)) {}
 
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   checked::CheckedFactsRevision checkedFactsRevision;
   zc::Vector<DispatchFactCandidateEntry> facts;
@@ -1256,7 +1256,7 @@ struct DispatchFactsCandidate::Impl final {
 
 DispatchFactsCandidate::DispatchFactsCandidate(
     identity::SemanticContextBrand semanticContext,
-    identity::SemanticContextFingerprint&& contextFingerprint, identity::ModuleId module,
+    identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
     const checked::CheckedFactsRevision& checkedFactsRevision,
     zc::Vector<DispatchFactCandidateEntry>&& facts)
     : impl(zc::heap<Impl>(semanticContext, zc::mv(contextFingerprint), module, checkedFactsRevision,
@@ -1364,7 +1364,7 @@ zc::Maybe<zc::Array<uint8_t>> DispatchFactCanonicalCodec::encode(
 
 DispatchFactsBuildResult DispatchFactsBuilder::build(
     const VerifiedDispatchSiteInventory& inventory,
-    const identity::SemanticContextFingerprint& contextFingerprint,
+    const identity::ContextFingerprint& contextFingerprint,
     const checked::CheckedEvidenceLease& checkedLease,
     const checked::VerifiedCheckedFacts& checkedFacts, const CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes) {

@@ -438,7 +438,7 @@ field order:
 ```text
 VerifiedBorrowInterfaceSurface {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   module: ModuleId,
   signatureFactsRevision: SignatureFactsRevision,
   importedSignatureViewRevision: ImportedSignatureViewRevision,
@@ -475,7 +475,7 @@ uses `ZOM9950`. No partial interface is published.
 ```text
 ASCII("zom.module-interface-revision")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 Encode(expanded owning ModuleKey)
 Encode(sourceContentDigest)
 Encode(binding_surface.revision)
@@ -539,7 +539,7 @@ Its SHA-256 is
 ```text
 ASCII("zom.borrow-interface")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 uint64be(expandedModuleKeyByteLength)
 expandedModuleKeyBytes
 SignatureFactsRevision
@@ -598,7 +598,7 @@ ImportedBorrowSurface {
 
 VerifiedBorrowEvidence {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   module: ModuleId,
   localSignatureFactsRevision: SignatureFactsRevision,
   localSummaries: SortedMap<DefId, BorrowSignatureSummary>,
@@ -631,7 +631,7 @@ context, and requester-visible imported-signature record must agree exactly.
 ```text
 ASCII("zom.borrow-evidence")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 uint64be(expandedModuleKeyByteLength)
 expandedModuleKeyBytes
 SignatureFactsRevision

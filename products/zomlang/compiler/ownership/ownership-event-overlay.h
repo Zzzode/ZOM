@@ -25,9 +25,9 @@
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/hir/hir-module.h"
 #include "zomlang/compiler/identity/brand.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/ir/ir-failure.h"
 #include "zomlang/compiler/ir/ir-identity.h"
 #include "zomlang/compiler/mir/built-mir.h"
@@ -312,7 +312,7 @@ struct OwnershipFunctionEventOverlay final {
 class OwnershipEventOverlayCandidate final {
 public:
   OwnershipEventOverlayCandidate(identity::SemanticContextBrand semanticContext,
-                                 identity::SemanticContextFingerprint&& contextFingerprint,
+                                 identity::ContextFingerprint&& contextFingerprint,
                                  identity::ModuleId module,
                                  checker::checked::CheckedFactsRevision checkedFactsRevision,
                                  mir::MirRevisionId builtRevision,
@@ -328,7 +328,7 @@ public:
   ZC_DISALLOW_COPY(OwnershipEventOverlayCandidate);
 
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   checker::checked::CheckedFactsRevision checkedFactsRevision;
   mir::MirRevisionId builtRevision;
@@ -344,7 +344,7 @@ public:
   ZC_DISALLOW_COPY(VerifiedOwnershipEventOverlay);
 
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& contextFingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const checker::checked::CheckedFactsRevision& checkedFactsRevision() const noexcept;
   ZC_NODISCARD const mir::MirRevisionId& builtRevision() const noexcept;
@@ -369,13 +369,13 @@ public:
       const identity::Sha256Digest& builtRevisionDigest,
       zc::ArrayPtr<const zc::Array<uint8_t>> canonicalFunctions);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encode(
-      const identity::SemanticContextFingerprint& contextFingerprint,
+      const identity::ContextFingerprint& contextFingerprint,
       zc::ArrayPtr<const uint8_t> expandedModuleKey,
       const checker::checked::CheckedFactsRevision& checkedFactsRevision,
       const mir::MirRevisionId& builtRevision,
       zc::ArrayPtr<const zc::Array<uint8_t>> canonicalFunctions);
   ZC_NODISCARD static zc::Maybe<OwnershipEventOverlayRevision> compute(
-      const identity::SemanticContextFingerprint& contextFingerprint,
+      const identity::ContextFingerprint& contextFingerprint,
       zc::ArrayPtr<const uint8_t> expandedModuleKey,
       const checker::checked::CheckedFactsRevision& checkedFactsRevision,
       const mir::MirRevisionId& builtRevision,

@@ -7,10 +7,10 @@
 
 #include "zc/core/debug.h"
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/crate-key.h"
-#include "zomlang/compiler/identity/source-key.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/key/crate-key.h"
+#include "zomlang/compiler/identity/key/source-key.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
 
 namespace zomlang::compiler::identity::source_query {

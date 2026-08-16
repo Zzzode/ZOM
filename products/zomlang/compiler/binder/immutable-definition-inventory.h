@@ -101,7 +101,7 @@ public:
   ZC_NODISCARD ImmutableDefinitionInventory clone() const;
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
   ZC_NODISCARD query::DatabaseRevision revision() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& fingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const MaterializedModuleSkeletonIdentities& identities() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const BoundOwnerBody> ownerBodies() const noexcept;

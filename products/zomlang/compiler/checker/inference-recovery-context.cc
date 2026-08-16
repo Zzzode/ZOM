@@ -5,7 +5,7 @@
 
 #include "zomlang/compiler/checker/inference-recovery-context.h"
 
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::checker::inference {
 namespace {

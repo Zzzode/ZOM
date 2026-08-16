@@ -16,7 +16,7 @@
 #include "zomlang/compiler/driver/module-dependency-provenance-query.h"
 #include "zomlang/compiler/driver/module-graph-query.h"
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/compiler/parser/parser.h"
@@ -493,7 +493,7 @@ zc::Maybe<VerifiedModuleGraphInputTransaction> preparedTransaction(
   auto context = contextFactory.issue();
   ZC_REQUIRE(context != zc::none);
   auto identities =
-      identity::CanonicalIdentityInternerSet::create(contextFactory, ZC_REQUIRE_NONNULL(context));
+      identity::IdentityInternerSet::create(contextFactory, ZC_REQUIRE_NONNULL(context));
   ZC_REQUIRE(identities != zc::none);
   auto userSnapshot = userParsedSource.snapshot(userFile);
   auto coreSnapshot = coreParsedSource.snapshot(coreFile);

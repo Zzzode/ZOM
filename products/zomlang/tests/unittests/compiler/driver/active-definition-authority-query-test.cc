@@ -9,7 +9,7 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/basic/thread-pool.h"
 #include "zomlang/compiler/driver/contextual-binding-key.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {
 namespace {

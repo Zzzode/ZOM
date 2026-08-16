@@ -6,7 +6,7 @@
 #pragma once
 
 #include "zc/core/common.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 
 namespace zomlang::compiler::binder {
 

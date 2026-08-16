@@ -6,8 +6,8 @@
 #include "zomlang/compiler/binder/stable-binding-codec.h"
 
 #include "zc/core/debug.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -248,7 +248,7 @@ zc::Maybe<Routed> decodeDigestKey(zc::ArrayPtr<const uint8_t> bytes, zc::StringP
   return Routed::from(zc::mv(ZC_ASSERT_NONNULL(module)), zc::mv(ZC_ASSERT_NONNULL(key)));
 }
 
-zc::Maybe<identity::SemanticImportBindingKey> decodeSemanticImportBinding(
+zc::Maybe<identity::ImportBindingKey> decodeSemanticImportBinding(
     zc::ArrayPtr<const uint8_t> bytes) {
   constexpr auto domain = "zom.semantic-import-binding"_zc;
   if (bytes.size() > kMaximumRoutedKeyBytes || !hasDomain(bytes, domain)) { return zc::none; }
@@ -268,7 +268,7 @@ zc::Maybe<identity::SemanticImportBindingKey> decodeSemanticImportBinding(
   auto resolution =
       identity::ModuleResolutionKey::decodeCanonical(ZC_ASSERT_NONNULL(resolutionBytes).asPtr());
   if (resolution == zc::none) { return zc::none; }
-  auto result = identity::SemanticImportBindingKey::from(
+  auto result = identity::ImportBindingKey::from(
       zc::mv(ZC_ASSERT_NONNULL(requester)), zc::mv(ZC_ASSERT_NONNULL(resolution)),
       static_cast<identity::SemanticImportOperation>(ZC_ASSERT_NONNULL(operation)),
       static_cast<identity::DefinitionNamespace>(ZC_ASSERT_NONNULL(sourceNamespace)),
@@ -2454,7 +2454,7 @@ zc::Array<uint8_t> StableSemanticImportQueryKey::encodeCanonical() const {
 
 zc::Maybe<StableSemanticImportQueryKey> StableSemanticImportQueryKey::decodeCanonical(
     zc::ArrayPtr<const uint8_t> bytes) {
-  return decodeNestedKey<identity::SemanticImportBindingKey, StableSemanticImportQueryKey>(
+  return decodeNestedKey<identity::ImportBindingKey, StableSemanticImportQueryKey>(
       bytes, "zom.binder.semantic-import-query-key"_zc, &decodeSemanticImportBinding);
 }
 

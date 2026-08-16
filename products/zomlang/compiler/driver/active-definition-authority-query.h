@@ -7,8 +7,8 @@
 
 #include "zc/core/vector.h"
 #include "zomlang/compiler/driver/contextual-binding-key.h"
-#include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/query/query-database.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {

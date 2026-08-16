@@ -14,7 +14,7 @@
 
 #include "zc/core/memory.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/identity/package-key.h"
+#include "zomlang/compiler/identity/key/package-key.h"
 
 namespace zomlang::compiler::identity {
 namespace {

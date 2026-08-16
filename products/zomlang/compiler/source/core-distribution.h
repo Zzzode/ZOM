@@ -21,9 +21,9 @@
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/package-key.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
+#include "zomlang/compiler/identity/key/package-key.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/type/semantic-type-data.h"
 
 namespace zomlang::compiler::identity {

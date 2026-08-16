@@ -17,8 +17,8 @@
 #include "zomlang/compiler/binder/identity-pre-admission.h"
 #include "zomlang/compiler/binder/local-identity.h"
 #include "zomlang/compiler/binder/parsed-module.h"
-#include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/source-key.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
+#include "zomlang/compiler/identity/key/source-key.h"
 
 namespace zomlang::compiler::binder {
 

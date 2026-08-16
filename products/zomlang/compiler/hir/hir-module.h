@@ -286,7 +286,7 @@ public:
   ZC_DISALLOW_COPY(VerifiedHirModule);
 
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& contextFingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::CompilationUnitId compilationUnit() const noexcept;
   ZC_NODISCARD identity::CrateId crate() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;

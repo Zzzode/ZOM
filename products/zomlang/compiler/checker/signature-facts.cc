@@ -22,8 +22,8 @@
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/checker/scalar-literal-facts.h"
 #include "zomlang/compiler/driver/materialized-module-graph-query.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
 
 namespace zomlang::compiler::checker::signature {
@@ -5043,7 +5043,7 @@ zc::Maybe<MarkerShapeInventoryRevision> MarkerShapeInventoryRevision::computeFra
 
 struct VerifiedMarkerShapeInventory::Impl final {
   Impl(identity::SemanticContextBrand semanticContext,
-       identity::SemanticContextFingerprint&& contextFingerprint,
+       identity::ContextFingerprint&& contextFingerprint,
        MarkerShapeInventoryRevision&& revision, zc::Vector<InterfaceMarkerShapeFact>&& shapes)
       : semanticContext(semanticContext),
         contextFingerprint(zc::mv(contextFingerprint)),
@@ -5051,7 +5051,7 @@ struct VerifiedMarkerShapeInventory::Impl final {
         shapes(zc::mv(shapes)) {}
 
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   MarkerShapeInventoryRevision revision;
   zc::Vector<InterfaceMarkerShapeFact> shapes;
 };
@@ -5067,7 +5067,7 @@ VerifiedMarkerShapeInventory& VerifiedMarkerShapeInventory::operator=(
 identity::SemanticContextBrand VerifiedMarkerShapeInventory::semanticContext() const noexcept {
   return impl->semanticContext;
 }
-const identity::SemanticContextFingerprint& VerifiedMarkerShapeInventory::contextFingerprint()
+const identity::ContextFingerprint& VerifiedMarkerShapeInventory::contextFingerprint()
     const noexcept {
   return impl->contextFingerprint;
 }
@@ -5255,7 +5255,7 @@ zc::Maybe<MarkerPolicyRegistryRevision> MarkerPolicyRegistryRevision::computeFra
 
 struct VerifiedMarkerPolicyRegistry::Impl final {
   Impl(identity::SemanticContextBrand semanticContext,
-       identity::SemanticContextFingerprint&& contextFingerprint,
+       identity::ContextFingerprint&& contextFingerprint,
        const identity::Sha256Digest& configurationRevision,
        const MarkerShapeInventoryRevision& shapeInventoryRevision,
        MarkerPolicyRegistryRevision&& revision, zc::Vector<MarkerPolicyEntry>&& entries)
@@ -5267,7 +5267,7 @@ struct VerifiedMarkerPolicyRegistry::Impl final {
         entries(zc::mv(entries)) {}
 
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   identity::Sha256Digest configurationRevision;
   MarkerShapeInventoryRevision shapeInventoryRevision;
   MarkerPolicyRegistryRevision revision;
@@ -5285,7 +5285,7 @@ VerifiedMarkerPolicyRegistry& VerifiedMarkerPolicyRegistry::operator=(
 identity::SemanticContextBrand VerifiedMarkerPolicyRegistry::semanticContext() const noexcept {
   return impl->semanticContext;
 }
-const identity::SemanticContextFingerprint& VerifiedMarkerPolicyRegistry::contextFingerprint()
+const identity::ContextFingerprint& VerifiedMarkerPolicyRegistry::contextFingerprint()
     const noexcept {
   return impl->contextFingerprint;
 }
@@ -5312,7 +5312,7 @@ zc::Maybe<const MarkerPolicy&> VerifiedMarkerPolicyRegistry::policy(
 
 MarkerShapeInventoryBuildResult MarkerShapeInventoryBuilder::build(
     identity::SemanticContextBrand semanticContext,
-    const identity::SemanticContextFingerprint& contextFingerprint,
+    const identity::ContextFingerprint& contextFingerprint,
     identity::ModuleId diagnosticModule, zc::ArrayPtr<const MarkerShapeModuleInput> modules,
     const CheckerIdentityAuthority& identities) {
   if (!semanticContext.isValid()) { return buildReject(invalidContextInvariant(0)); }
@@ -5664,7 +5664,7 @@ struct VerifiedSignatureFacts::Impl final {
 
   SignatureFactsRevision revision;
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   identity::Sha256Digest sourceContentDigest;
   binder::ParsedModuleReceipt parsedModuleReceipt;
@@ -5692,7 +5692,7 @@ const MarkerPolicyRegistryRevision& VerifiedSignatureFacts::markerPolicyRegistry
 identity::SemanticContextBrand VerifiedSignatureFacts::semanticContext() const noexcept {
   return impl->semanticContext;
 }
-const identity::SemanticContextFingerprint& VerifiedSignatureFacts::contextFingerprint()
+const identity::ContextFingerprint& VerifiedSignatureFacts::contextFingerprint()
     const noexcept {
   return impl->contextFingerprint;
 }

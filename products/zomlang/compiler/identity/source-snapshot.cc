@@ -14,7 +14,7 @@
 
 #include "zomlang/compiler/identity/source-snapshot.h"
 
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::identity {
 

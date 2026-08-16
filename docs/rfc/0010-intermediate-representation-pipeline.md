@@ -305,7 +305,7 @@ TargetRegistrySnapshot {
 }
 
 VerifiedTargetSelection {
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   packageSelection: RFC0012::RegisteredTargetSelection,
   canonicalTargetSpec: CanonicalTargetSpec,
   targetSpecId: TargetSpecId,
@@ -325,7 +325,7 @@ FeatureBoundaryRegistrySnapshot {
 
 FeatureBoundaryProof {
   gate: FeatureBoundaryGateId,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   module: ModuleId,
   executableMirRevision: MirRevisionId,
   targetSpecId: TargetSpecId,
@@ -333,7 +333,7 @@ FeatureBoundaryProof {
 }
 
 VerifiedFeatureBoundarySet {
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   module: ModuleId,
   executableMirRevision: MirRevisionId,
   targetSpecId: TargetSpecId,
@@ -480,7 +480,7 @@ Every Built MIR module has one closed, recomputable `MirRevisionId`:
 
 ```text
 MirRevisionInput {
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   module: ModuleId,
   checkedFactsRevision: CheckedFactsRevision,
   dispatchFactsRevision: DispatchFactsRevision,
@@ -514,7 +514,7 @@ The digest is SHA-256 over this exact framing:
 ```text
 ASCII("zom.mir-revision")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 Frame(Encode(expanded ModuleKey))
 Encode(checkedFactsRevision)
 Encode(dispatchFactsRevision)
@@ -588,7 +588,7 @@ IR may use only RFC 0011 context-bound canonical identities:
   in-memory source pointer.
 - `SemanticContextBrand` proves that an in-memory handle belongs to the live
   semantic context that issued it.
-- `SemanticContextFingerprint` deterministically describes semantic inputs but
+- `ContextFingerprint` deterministically describes semantic inputs but
   is not an in-memory issuer capability.
 - Layer-local `HirId`, `LocalId`, `PlaceId`, `BlockId`, and `ValueId` identify
   representation-owned entities.
@@ -634,7 +634,7 @@ structural definition, substitution, and witness keys rather than store slots.
 It is not an IR layer. It owns or immutably references:
 
 - one `SemanticContextBrand` and diagnostic
-  `SemanticContextFingerprint`;
+  `ContextFingerprint`;
 - the current `PackageId`, `CrateId`, and `ModuleId`;
 - one RFC 0008 `CheckedEvidenceLease` whose key is the exact module and
   `CheckedFactsRevision`;
@@ -783,7 +783,7 @@ The minimum MIR vocabulary is:
 
 ```text
 MirModule {
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   module: ModuleId,
   checkedFactsRevision: CheckedFactsRevision,
   dispatchFactsRevision: DispatchFactsRevision,
@@ -1084,7 +1084,7 @@ diagnostic code.
 
 ```text
 IrFailureOwner =
-  Session { context: SemanticContextFingerprint }
+  Session { context: ContextFingerprint }
   | Module { module: ModuleId }
   | Definition { definition: DefId }
   | Instance { instance: InstanceId }

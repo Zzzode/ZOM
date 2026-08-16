@@ -22,7 +22,7 @@
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
 #include "zomlang/compiler/driver/module-graph-query-input.h"
 #include "zomlang/compiler/driver/module-graph-query.h"
-#include "zomlang/compiler/identity/canonical-identity-interner-set.h"
+#include "zomlang/compiler/identity/canonical/identity-interner-set.h"
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/tests/unittests/compiler/driver/core-library-test-fixture.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
@@ -52,7 +52,7 @@ public:
                                identity::SemanticContextBrand context,
                                zc::MutexGuarded<bool>& destroyed,
                                zc::MutexGuarded<bool>& reverseLookupSucceeded)
-      : interners(identity::CanonicalIdentityInternerSet::create(factory, context)),
+      : interners(identity::IdentityInternerSet::create(factory, context)),
         destroyedField(destroyed),
         reverseLookupSucceededField(reverseLookupSucceeded) {
     ZC_IREQUIRE(interners != zc::none, "test semantic context has no identity interner");
@@ -69,7 +69,7 @@ public:
   }
 
 private:
-  zc::Maybe<identity::CanonicalIdentityInternerSet> interners;
+  zc::Maybe<identity::IdentityInternerSet> interners;
   identity::CompilationUnitId retainedUnit;
   zc::MutexGuarded<bool>& destroyedField;
   zc::MutexGuarded<bool>& reverseLookupSucceededField;

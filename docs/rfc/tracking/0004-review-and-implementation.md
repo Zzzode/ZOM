@@ -779,7 +779,7 @@ repository gate matrix at HEAD `0e5a6d3f`. Two real build failures were
 repaired before the matrix could run:
 
 - `products/zomlang/compiler/binder/module-resolution.cc` was missing the
-  `zomlang/compiler/identity/canonical-decoder.h` include, leaving
+  `zomlang/compiler/identity/canonical/canonical-decoder.h` include, leaving
   `identity::CanonicalDecoder` incomplete at the `decodeCanonical` call site.
 - `products/zomlang/compiler/query/query-database.h` was missing
   `zc/core/debug.h`, leaving `ZC_REQUIRE_NONNULL` undeclared in

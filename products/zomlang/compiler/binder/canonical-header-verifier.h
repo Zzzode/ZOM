@@ -9,8 +9,8 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/binder/canonical-bound-syntax-occurrence.h"
 #include "zomlang/compiler/binder/definition-inventory.h"
-#include "zomlang/compiler/identity/canonical-impl-header.h"
-#include "zomlang/compiler/identity/overload-header-digest.h"
+#include "zomlang/compiler/identity/canonical/impl-header.h"
+#include "zomlang/compiler/identity/crypto/overload-header-digest.h"
 
 namespace zomlang::compiler::binder {
 
@@ -27,7 +27,7 @@ struct VerifiedCanonicalDefinitionHeader final {
 
 /// \brief Independently reconstructed implementation header and complete bound occurrence stream.
 struct VerifiedCanonicalImplHeader final {
-  identity::CanonicalImplHeader header;
+  identity::ImplHeader header;
   zc::Vector<CanonicalBoundSyntaxOccurrence> boundOccurrences;
 };
 

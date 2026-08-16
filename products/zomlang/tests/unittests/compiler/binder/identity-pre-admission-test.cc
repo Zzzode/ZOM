@@ -146,7 +146,7 @@ identity::CanonicalBoundObligation obligation(zc::StringPtr bound = "Eq"_zc) {
   return identity::CanonicalBoundObligation::from(namedType("T"_zc), namedType(bound));
 }
 
-identity::CanonicalImplHeader implHeader(bool withObligation = false) {
+identity::ImplHeader implHeader(bool withObligation = false) {
   zc::Vector<identity::CanonicalHeaderTypeSyntax> arguments;
   auto trait = identity::CanonicalTraitReference::from(name("Trait"_zc), zc::mv(arguments));
   ZC_REQUIRE(trait != zc::none);
@@ -154,7 +154,7 @@ identity::CanonicalImplHeader implHeader(bool withObligation = false) {
     zc::Vector<identity::CanonicalGenericParameter> generics;
     zc::Vector<identity::CanonicalBoundObligation> obligations;
     if (withObligation) { obligations.add(obligation()); }
-    auto value = identity::CanonicalImplHeader::from(
+    auto value = identity::ImplHeader::from(
         zc::mv(generics), identity::ImplPolarity::Positive, identity::ImplSafety::Safe,
         zc::mv(admittedTrait), namedType("T"_zc), zc::mv(obligations));
     ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
@@ -174,7 +174,7 @@ identity::OverloadHeaderAuthority overloadAuthority(zc::StringPtr functionName =
   zc::Vector<identity::CanonicalCallableParameter> parameters;
   zc::Maybe<zc::Vector<identity::CanonicalHeaderTypeSyntax>> raises;
   zc::Maybe<identity::ExternalAbi> abi;
-  auto header = identity::CanonicalOverloadHeader::from(
+  auto header = identity::OverloadHeader::from(
       identity::CallableHeaderKind::Function,
       requireScalar<identity::DeclaredDefinitionName>(functionName), zc::mv(receiver),
       zc::mv(generics), zc::mv(obligations), zc::mv(parameters),
@@ -195,13 +195,13 @@ identity::DefinitionIdentityRecord functionRecord(const identity::OverloadHeader
   ZC_FAIL_REQUIRE("invalid function identity record fixture");
 }
 
-identity::CanonicalIdentityInternerSet admittedImplAuthorities(
+identity::IdentityInternerSet admittedImplAuthorities(
     const identity::ImplIdentityRecord& record) {
   identity::SemanticContextFactory factory;
   auto context = factory.issue();
   ZC_REQUIRE(context != zc::none);
   ZC_IF_SOME(admittedContext, context) {
-    auto authorities = identity::CanonicalIdentityInternerSet::create(factory, admittedContext);
+    auto authorities = identity::IdentityInternerSet::create(factory, admittedContext);
     ZC_REQUIRE(authorities != zc::none);
     ZC_IF_SOME(value, authorities) {
       const auto key = identity::ImplKey::compute(record);

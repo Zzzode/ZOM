@@ -551,7 +551,7 @@ bool inputsMatch(const mir::VerifiedBuiltMir& builtMir,
 }  // namespace
 
 MovePathCandidate::MovePathCandidate(identity::SemanticContextBrand semanticContext,
-                                     identity::SemanticContextFingerprint&& contextFingerprint,
+                                     identity::ContextFingerprint&& contextFingerprint,
                                      identity::ModuleId module, mir::MirRevisionId builtRevision,
                                      OwnershipEventOverlayRevision overlayRevision,
                                      zc::Vector<MovePathFunction>&& functions) noexcept
@@ -572,7 +572,7 @@ struct VerifiedMovePaths::Impl final {
         functions(zc::mv(candidate.functions)) {}
 
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   mir::MirRevisionId builtRevision;
   OwnershipEventOverlayRevision overlayRevision;
@@ -586,7 +586,7 @@ VerifiedMovePaths& VerifiedMovePaths::operator=(VerifiedMovePaths&&) noexcept = 
 identity::SemanticContextBrand VerifiedMovePaths::semanticContext() const noexcept {
   return impl->semanticContext;
 }
-const identity::SemanticContextFingerprint& VerifiedMovePaths::contextFingerprint() const noexcept {
+const identity::ContextFingerprint& VerifiedMovePaths::contextFingerprint() const noexcept {
   return impl->contextFingerprint;
 }
 identity::ModuleId VerifiedMovePaths::module() const noexcept { return impl->module; }

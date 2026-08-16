@@ -755,7 +755,7 @@ InterfaceMarkerShape = Behavior | GenericMarkerShape | ClosedMarker
 
 VerifiedMarkerShapeInventory {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   revision: MarkerShapeInventoryRevision,
   shapes: SortedMap<DefId, InterfaceMarkerShape>,
 }
@@ -789,7 +789,7 @@ MarkerPolicyConfigurationEntry {
 
 VerifiedMarkerPolicyRegistry {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   configurationRevision: Sha256Digest,
   shapeInventoryRevision: MarkerShapeInventoryRevision,
   revision: MarkerPolicyRegistryRevision,
@@ -832,7 +832,7 @@ uses the local generic-parameter node only as the already-classified
 ```text
 ASCII("zom.marker-shape-inventory")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 EncodeSortedRecordBytes(shapes)
 ```
 
@@ -901,7 +901,7 @@ inventory and registry are both frozen.
 ```text
 ASCII("zom.marker-policy-registry")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 configurationRevision
 MarkerShapeInventoryRevision
 EncodeSortedRecordBytes(entries)
@@ -981,7 +981,7 @@ One demand-driven checker service is the sole automatic proof authority:
 ```text
 MarkerProofInput {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   policy: const VerifiedMarkerPolicyRegistry,
   standardMarkers: const RFC0024::VerifiedStandardMarkerAuthority,
   semanticTypes: const SemanticTypeStore,
@@ -1757,7 +1757,7 @@ embeds `ImplHead`. `SemanticTypeKey` remains canonical.
 ```text
 ASCII("zom.signature-facts-revision")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 EncodeByteString(expanded owning ModuleKey)
 sourceContentDigest
 bindingSurfaceRevision
@@ -1806,7 +1806,7 @@ subject node, polarity token, evidence `ImplId`, and declaration span.
 
 `CoherenceViewRevision` uses the exact RFC 0005 field order and framing under
 `ASCII("zom.coherence-view")`, NUL. It encodes
-`SemanticContextFingerprint`, `MarkerPolicyRegistryRevision`, then the remaining
+`ContextFingerprint`, `MarkerPolicyRegistryRevision`, then the remaining
 RFC 0005 fields. The independent fixture uses 32 policy revision bytes of `77`
 and is 134 bytes:
 

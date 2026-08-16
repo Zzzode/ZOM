@@ -52,7 +52,7 @@ identity::ImplIdentityRecord implementationRecord() {
   zc::Vector<identity::CanonicalBoundObligation> obligations;
   auto self =
       require(identity::CanonicalHeaderTypeSyntax::predefined(identity::PredefinedTypeKind::I32));
-  auto header = require(identity::CanonicalImplHeader::from(
+  auto header = require(identity::ImplHeader::from(
       zc::mv(generics), identity::ImplPolarity::Positive, identity::ImplSafety::Safe, zc::mv(trait),
       zc::mv(self), zc::mv(obligations)));
   zc::Vector<identity::EnclosingStableOwnerKey> owners;

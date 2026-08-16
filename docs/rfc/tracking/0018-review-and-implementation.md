@@ -584,7 +584,7 @@ Evidence:
 
 ### 2026-07-19 Canonical Header Producer Progress
 
-The identity layer now admits `CanonicalImplHeader`, whose inline codec writes
+The identity layer now admits `ImplHeader`, whose inline codec writes
 the ordered generic parameters, polarity, safety, canonical trait reference,
 self type, and sorted-unique obligations exactly as the suffix of
 `ImplIdentityRecord`. It introduces no nested wire wrapper. Closed-tag

@@ -44,7 +44,7 @@ identity::ModuleResolutionPolicyKey resolutionPolicy() {
   return zc::mv(ZC_REQUIRE_NONNULL(value));
 }
 
-identity::SemanticImportBindingKey semanticBinding() {
+identity::ImportBindingKey semanticBinding() {
   using namespace tests::test_identity_detail;
   zc::Vector<identity::ModulePathSegment> path;
   path.add(scalar<identity::ModulePathSegment>("dependency"_zc));
@@ -54,7 +54,7 @@ identity::SemanticImportBindingKey semanticBinding() {
       identity::ModuleResolutionKey::from(module(), identity::ModuleDependencyKind::Import,
                                           zc::mv(retainedPath), zc::mv(alias), resolutionPolicy());
   ZC_REQUIRE(resolution != zc::none);
-  auto binding = identity::SemanticImportBindingKey::from(
+  auto binding = identity::ImportBindingKey::from(
       module(), zc::mv(ZC_REQUIRE_NONNULL(resolution)), identity::SemanticImportOperation::Import,
       identity::DefinitionNamespace::Type, scalar<identity::DeclaredDefinitionName>("source"_zc),
       identity::DefinitionNamespace::Type, scalar<identity::DeclaredDefinitionName>("local"_zc));
@@ -66,7 +66,7 @@ identity::ModuleId moduleIdentity() {
   identity::SemanticContextFactory factory;
   auto context = factory.issue();
   ZC_IF_SOME(owner, context) {
-    auto authorities = identity::CanonicalIdentityInternerSet::create(factory, owner);
+    auto authorities = identity::IdentityInternerSet::create(factory, owner);
     ZC_REQUIRE(authorities != zc::none);
     ZC_IF_SOME(interner, authorities) {
       auto result = interner.internModule(owner, module());

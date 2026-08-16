@@ -11,7 +11,7 @@
 #include "zomlang/compiler/binder/parsed-module-graph-input.h"
 #include "zomlang/compiler/diagnostics/toolchain/module-root-argument.h"
 #include "zomlang/compiler/identity/handle.h"
-#include "zomlang/compiler/identity/source-key.h"
+#include "zomlang/compiler/identity/key/source-key.h"
 
 namespace zomlang::compiler::binder {
 

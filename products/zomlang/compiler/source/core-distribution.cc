@@ -17,8 +17,8 @@
 #include "zc/core/debug.h"
 #include "zc/core/encoding.h"
 #include "zom/core/core-library-inventory.inc"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::source::core {
 namespace {

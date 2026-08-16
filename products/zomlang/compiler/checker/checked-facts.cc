@@ -6,7 +6,7 @@
 #include "zomlang/compiler/checker/checked-facts.h"
 
 #include "zomlang/compiler/diagnostics/core/diagnostic-info.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::checker::checked {
 namespace {
@@ -2333,7 +2333,7 @@ struct VerifiedCheckedFacts::Impl final {
 
   CheckedFactsRevision revision;
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   identity::Sha256Digest sourceContentDigest;
   binder::ParsedModuleReceipt parsedModuleReceipt;

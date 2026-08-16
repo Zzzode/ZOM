@@ -61,7 +61,7 @@ the existing batch call:
 - `DefinitionPathSegment` includes a source span and sibling ordinal. Inserting
   unrelated source before a declaration can therefore change its purportedly
   stable identity.
-- `SemanticContextFingerprint` includes every source snapshot in the semantic
+- `ContextFingerprint` includes every source snapshot in the semantic
   context. `ExportSurfaceRevision` includes that global fingerprint, so a
   private or unrelated source change can change a public surface revision.
 - Binder construction writes diagnostics through `DiagnosticEngine`. A query
@@ -529,7 +529,7 @@ the same canonical encoding.
 ### Identity Interner Lifetime
 
 One refcounted `SemanticContextCapabilityArena` owns one
-`SemanticContextBrand` and one `CanonicalIdentityInternerSet` for its complete
+`SemanticContextBrand` and one `IdentityInternerSet` for its complete
 lifetime. The set contains typed append-only interners for compilation units,
 crates, sources, modules, definitions, implementations, generic parameters,
 and callable parameters. Equal canonical keys with byte-equal complete
@@ -950,7 +950,7 @@ form the initial change-propagation firewalls:
 `BodyScope(DefinitionKey, LocalSyntaxPath)`. `ScopeRole` is a closed semantic
 enum. No alternative contains a span, `NodeId`, arena slot, or branded handle.
 
-`SemanticImportBindingKey` encodes requester `ModuleKey`, semantic
+`ImportBindingKey` encodes requester `ModuleKey`, semantic
 `ModuleResolutionKey`, import operation tag, source namespace and NFC name, and
 local namespace and NFC name. It excludes the import site, source span,
 `NodeId`, alias `DefId`, surface revision, and resolution receipt revision.
@@ -1260,7 +1260,7 @@ surfaces:
 | Partial keys | A closed partial key may publish an ordinary graph and SCC value; only a root key independently reconstructed from the complete verified package request and committed core projections may authorize complete publication or Binder materialization |
 | Runtime failures | Query-runtime absence, rejection, cancellation, and verifier disagreement follow RFC 0026's readiness-sensitive mapping and publication precedence; source-backed missing or ambiguous requests remain independently verified semantic failures |
 | Session barriers | The structural transaction precedes `authorityStagingSnapshot`; contextual authority installation precedes `finalCoreSnapshot`; no revision-local materializer runs before the final graph, SCC, authority, and readiness re-demands succeed |
-| Binder bridge | The final-snapshot bridge independently reconstructs complete roots, active membership, full `SemanticContextFingerprint`, syntax provenance, request edges, stable graph projection, and `ModuleGraphRevision`; it is not a query input or stable value |
+| Binder bridge | The final-snapshot bridge independently reconstructs complete roots, active membership, full `ContextFingerprint`, syntax provenance, request edges, stable graph projection, and `ModuleGraphRevision`; it is not a query input or stable value |
 
 ### Binder Query And Identity Materialization Contract
 

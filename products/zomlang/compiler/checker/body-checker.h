@@ -16,8 +16,8 @@
 #include "zomlang/compiler/checker/signature-facts.h"
 #include "zomlang/compiler/driver/materialized-module-graph-query.h"
 #include "zomlang/compiler/identity/brand.h"
-#include "zomlang/compiler/identity/crate-key.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
+#include "zomlang/compiler/identity/key/crate-key.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::driver::core {

@@ -19,9 +19,9 @@
 #include "zc/core/common.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/identity/canonical-scalar.h"
-#include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/semantic-type-id.h"
+#include "zomlang/compiler/identity/canonical/canonical-scalar.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
+#include "zomlang/compiler/identity/semantic/type-id.h"
 
 namespace zomlang::compiler::type::semantic {
 

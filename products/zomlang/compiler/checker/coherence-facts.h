@@ -13,7 +13,7 @@
 #include "zomlang/compiler/checker/checked-facts.h"
 #include "zomlang/compiler/checker/cross-module-facts.h"
 #include "zomlang/compiler/checker/signature-facts.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
 
 namespace zomlang::compiler::driver {
 class VerifiedModuleInterface;
@@ -36,7 +36,7 @@ public:
   ZC_DISALLOW_COPY(FrozenCoherenceView);
 
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& contextFingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD const signature::MarkerPolicyRegistryRevision& markerPolicyRegistryRevision()
       const noexcept;
   ZC_NODISCARD const cross_module::CoherenceViewRevision& revision() const noexcept;
@@ -120,7 +120,7 @@ private:
 /// \brief Complete checker-neutral candidate for global coherence publication.
 struct CoherenceCandidate final {
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   signature::MarkerPolicyRegistryRevision markerPolicyRegistryRevision;
   zc::Vector<CoherenceModuleInput> modules;
 };

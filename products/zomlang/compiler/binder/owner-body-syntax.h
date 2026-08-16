@@ -8,7 +8,7 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/binder/local-identity.h"
 #include "zomlang/compiler/binder/module-body-syntax.h"
-#include "zomlang/compiler/identity/source-key.h"
+#include "zomlang/compiler/identity/key/source-key.h"
 
 namespace zomlang::compiler::binder {
 

@@ -7,7 +7,7 @@
 
 #include "zc/core/map.h"
 #include "zc/core/string.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -42,7 +42,7 @@ bool sameSource(const identity::SourceSpan& left, const identity::SourceSpan& ri
          left.byteStart() == right.byteStart() && left.byteEnd() == right.byteEnd();
 }
 
-bool isSurfaceImport(const identity::SemanticImportBindingKey& binding) {
+bool isSurfaceImport(const identity::ImportBindingKey& binding) {
   return binding.operation() == identity::SemanticImportOperation::Import ||
          binding.operation() == identity::SemanticImportOperation::ForeignReexport;
 }
@@ -283,7 +283,7 @@ ExportSurfaceEntry cloneEntry(const ExportSurfaceEntry& entry) {
 }  // namespace
 
 zc::Maybe<VerifiedExportSurface> MaterializedExportSurfaceVerifier::from(
-    identity::SemanticContextBrand context, const identity::SemanticContextFingerprint& fingerprint,
+    identity::SemanticContextBrand context, const identity::ContextFingerprint& fingerprint,
     const identity::ModuleKey& moduleKey, identity::ModuleId module,
     const identity::CompilationUnitIdentity& compilationUnitKey,
     identity::CompilationUnitId compilationUnit, const identity::SourceFileKey& source,

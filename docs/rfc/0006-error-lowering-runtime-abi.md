@@ -572,7 +572,7 @@ FfiBoundaryFailure {
 }
 
 VerifiedFfiBoundaryFacts {
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   module: ModuleId,
   checkedFactsRevision: CheckedFactsRevision,
   executableMirRevision: MirRevisionId,
@@ -616,7 +616,7 @@ The FFI facts revision is SHA-256 over this exact stream:
 ```text
 ASCII("zom.ffi-boundary-facts")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 uint64be(expandedModuleKeyByteLength)
 expandedModuleKeyBytes
 CheckedFactsRevision

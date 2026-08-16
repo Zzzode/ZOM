@@ -55,7 +55,7 @@ public:
     ZC_REQUIRE(interned.is<type::SemanticTypeInterned>());
     i32 = interned.get<type::SemanticTypeInterned>().id;
 
-    contextFingerprint = zc::heap<identity::SemanticContextFingerprint>(
+    contextFingerprint = zc::heap<identity::ContextFingerprint>(
         session.identityAuthority().fingerprint().clone());
     const auto moduleBytes = moduleKey().encode();
     const zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> emptyRecords;
@@ -280,7 +280,7 @@ public:
   identity::SemanticContextBrand foreignContext;
   identity::ModuleId moduleId;
   identity::SemanticTypeId i32;
-  zc::Own<identity::SemanticContextFingerprint> contextFingerprint;
+  zc::Own<identity::ContextFingerprint> contextFingerprint;
   zc::Own<signature::SignatureFactsRevision> signatureRevision;
   zc::Own<cross_module::ImportedSignatureViewRevision> importedRevision;
   zc::Own<cross_module::CoherenceViewRevision> coherenceRevision;

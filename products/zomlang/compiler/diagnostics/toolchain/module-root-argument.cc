@@ -6,8 +6,8 @@
 #include "zomlang/compiler/diagnostics/toolchain/module-root-argument.h"
 
 #include "zc/core/debug.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::diagnostics {
 namespace {

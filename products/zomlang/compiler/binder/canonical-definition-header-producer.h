@@ -11,7 +11,7 @@
 #include "zomlang/compiler/binder/canonical-bound-syntax-occurrence.h"
 #include "zomlang/compiler/binder/canonical-header-type-producer.h"
 #include "zomlang/compiler/binder/definition-inventory.h"
-#include "zomlang/compiler/identity/overload-header-digest.h"
+#include "zomlang/compiler/identity/crypto/overload-header-digest.h"
 
 namespace zomlang::compiler::binder {
 

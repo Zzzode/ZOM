@@ -1034,7 +1034,7 @@ ZOM_STABLE_BINDING_FIELD(StableGenericParameterQueryKey, 1, parameter, GenericPa
 ZOM_STABLE_BINDING_FIELD(StableCallableParameterQueryKey, 0, module, ModuleKey)
 ZOM_STABLE_BINDING_FIELD(StableCallableParameterQueryKey, 1, parameter, CallableParameterKey)
 ZOM_STABLE_BINDING_FIELD(StableSemanticImportQueryKey, 0, requester, ModuleKey)
-ZOM_STABLE_BINDING_FIELD(StableSemanticImportQueryKey, 1, binding, SemanticImportBindingKey)
+ZOM_STABLE_BINDING_FIELD(StableSemanticImportQueryKey, 1, binding, ImportBindingKey)
 ZOM_STABLE_BINDING_FIELD(StableOwnerBodyQueryKey, 0, module, ModuleKey)
 ZOM_STABLE_BINDING_FIELD(StableOwnerBodyQueryKey, 1, owner, StableBodyOwnerKey)
 ZOM_STABLE_BINDING_FIELD(ContextualBodyOwnerKey, 0, contextRoots, CompilationRootSetQueryKey)
@@ -1457,7 +1457,7 @@ ZOM_STABLE_BINDING_FIELD(StableMaterializedDependencyWitness, 1, request, Module
 ZOM_STABLE_BINDING_FIELD(StableMaterializedDependencyWitness, 2, dependency, ModuleKey)
 ZOM_STABLE_BINDING_FIELD(MaterializedModuleGraphWitness, 0, contextRoots,
                          CompilationRootSetQueryKey)
-ZOM_STABLE_BINDING_FIELD(MaterializedModuleGraphWitness, 1, fingerprint, SemanticContextFingerprint)
+ZOM_STABLE_BINDING_FIELD(MaterializedModuleGraphWitness, 1, fingerprint, ContextFingerprint)
 ZOM_STABLE_BINDING_FIELD(MaterializedModuleGraphWitness, 2, graph, ModuleGraphRecord)
 ZOM_STABLE_BINDING_FIELD(MaterializedModuleGraphWitness, 3, scc, ModuleGraphSccRecord)
 ZOM_STABLE_BINDING_FIELD(MaterializedModuleGraphWitness, 4, requestEdges,

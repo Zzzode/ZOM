@@ -96,8 +96,8 @@ transaction. The canonical replacement and final audit are published through
 
 `R36-16` may stage only these paths from the exact approved predecessors:
 
-- `products/zomlang/compiler/identity/canonical-encoder.h`
-- `products/zomlang/compiler/identity/canonical-encoder.cc`
+- `products/zomlang/compiler/identity/canonical/canonical-encoder.h`
+- `products/zomlang/compiler/identity/canonical/canonical-encoder.cc`
 - `products/zomlang/tests/unittests/compiler/identity/canonical-encoder-test.cc`
 - `products/zomlang/compiler/diagnostics/fact/diagnostic-fact.h`
 - `products/zomlang/compiler/diagnostics/fact/diagnostic-fact.cc`

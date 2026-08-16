@@ -7,8 +7,8 @@
 
 #include "zc/core/debug.h"
 #include "zc/core/one-of.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::binder {
 
@@ -691,7 +691,7 @@ ImplIdentityOccurrenceGroup& ImplIdentityOccurrenceGroup::operator=(
     ImplIdentityOccurrenceGroup&&) noexcept = default;
 
 zc::Maybe<ImplIdentityOccurrenceGroup> ImplIdentityOccurrenceGroup::from(
-    const identity::CanonicalIdentityInternerSet& authorities, identity::ImplId authority,
+    const identity::IdentityInternerSet& authorities, identity::ImplId authority,
     zc::Vector<ImplSourceOccurrenceKey>&& occurrences,
     zc::ArrayPtr<const IdentitySyntaxSite> sites) {
   auto authorityValue = authorities.implementation(authority);

@@ -9,7 +9,7 @@
 
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
-#include "zomlang/compiler/identity/canonical-header-name.h"
+#include "zomlang/compiler/identity/canonical/header-name.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -22,12 +22,12 @@ using identity::CanonicalCallableResult;
 using identity::CanonicalGenericParameter;
 using identity::CanonicalHeaderTypeSyntax;
 using identity::CanonicalHeaderTypeSyntaxKind;
-using identity::CanonicalImplHeader;
+using identity::ImplHeader;
 using identity::CanonicalNamedHeaderType;
 using identity::CanonicalNameReference;
 using identity::CanonicalNameRoot;
 using identity::CanonicalObjectTypeMember;
-using identity::CanonicalOverloadHeader;
+using identity::OverloadHeader;
 using identity::CanonicalTraitReference;
 using identity::DeclaredDefinitionName;
 using identity::ExternalAbi;
@@ -655,7 +655,7 @@ public:
         }
         ZC_IF_SOME(nameValue, name) {
           ZC_IF_SOME(resultValue, result) {
-            auto header = CanonicalOverloadHeader::from(
+            auto header = OverloadHeader::from(
                 callable.kind, zc::mv(nameValue), zc::mv(receiver), zc::mv(generics),
                 zc::mv(obligations), zc::mv(parameters), zc::mv(resultValue), zc::mv(raises),
                 zc::mv(callable.externalAbi));
@@ -727,7 +727,7 @@ public:
       ZC_IF_SOME(traitValue, trait) {
         ZC_IF_SOME(selfTypeValue, selfType) {
           auto header =
-              CanonicalImplHeader::from(zc::mv(generics), polarity, safety, zc::mv(traitValue),
+              ImplHeader::from(zc::mv(generics), polarity, safety, zc::mv(traitValue),
                                         zc::mv(selfTypeValue), zc::mv(obligations));
           if (header == zc::none) return failure(entry.node);
           ZC_IF_SOME(value, header) {

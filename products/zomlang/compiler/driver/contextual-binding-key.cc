@@ -6,8 +6,8 @@
 #include "zomlang/compiler/driver/contextual-binding-key.h"
 
 #include "zc/core/debug.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {
 namespace {

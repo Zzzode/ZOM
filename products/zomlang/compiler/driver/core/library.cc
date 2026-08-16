@@ -51,7 +51,7 @@ const VerifiedCoreModule::InterfaceLease& VerifiedCoreModule::interfaceLease() c
 }
 
 struct VerifiedCoreLibrary::Impl final {
-  Impl(identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+  Impl(identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
        incremental_binding_query::CompilationRootSetQueryKey&& contextRoots,
        query::DatabaseRevision revision, const identity::Sha256Digest& distribution,
        core_library_query::CoreModuleGraphRecord&& graph, zc::Vector<VerifiedCoreModule>&& modules,
@@ -66,7 +66,7 @@ struct VerifiedCoreLibrary::Impl final {
         prelude(zc::mv(prelude)),
         authority(zc::mv(authority)) {}
   identity::SemanticContextBrand context;
-  identity::SemanticContextFingerprint fingerprint;
+  identity::ContextFingerprint fingerprint;
   incremental_binding_query::CompilationRootSetQueryKey contextRoots;
   query::DatabaseRevision revision;
   identity::Sha256Digest distribution;
@@ -82,7 +82,7 @@ VerifiedCoreLibrary::VerifiedCoreLibrary(VerifiedCoreLibrary&&) noexcept = defau
 VerifiedCoreLibrary& VerifiedCoreLibrary::operator=(VerifiedCoreLibrary&&) noexcept = default;
 
 zc::Maybe<VerifiedCoreLibrary> VerifiedCoreLibrary::from(
-    identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+    identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
     incremental_binding_query::CompilationRootSetQueryKey&& contextRoots,
     query::DatabaseRevision revision, const identity::Sha256Digest& distribution,
     core_library_query::CoreModuleGraphRecord&& graph, zc::Vector<VerifiedCoreModule>&& modules,
@@ -122,7 +122,7 @@ zc::Maybe<VerifiedCoreLibrary> VerifiedCoreLibrary::from(
 identity::SemanticContextBrand VerifiedCoreLibrary::context() const noexcept {
   return impl->context;
 }
-const identity::SemanticContextFingerprint& VerifiedCoreLibrary::fingerprint() const noexcept {
+const identity::ContextFingerprint& VerifiedCoreLibrary::fingerprint() const noexcept {
   return impl->fingerprint;
 }
 const incremental_binding_query::CompilationRootSetQueryKey& VerifiedCoreLibrary::contextRoots()

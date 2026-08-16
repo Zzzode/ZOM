@@ -256,7 +256,7 @@ def render_cc(
 // Contains tables derived from Unicode Character Database {version}.
 // See third_party/unicode/LICENSE.txt and third_party/unicode/README.md.
 
-#include "zomlang/compiler/identity/unicode-normalization-data.h"
+#include "zomlang/compiler/identity/text/unicode-normalization-data.h"
 
 namespace zomlang::compiler::identity {{
 

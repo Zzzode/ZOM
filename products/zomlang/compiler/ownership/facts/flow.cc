@@ -323,7 +323,7 @@ zc::Maybe<zc::Vector<FlowFunction>> derive(const mir::VerifiedBuiltMir& builtMir
 }  // namespace
 
 FlowCandidate::FlowCandidate(identity::SemanticContextBrand semanticContext,
-                             identity::SemanticContextFingerprint&& contextFingerprint,
+                             identity::ContextFingerprint&& contextFingerprint,
                              identity::ModuleId module, mir::MirRevisionId builtRevision,
                              OwnershipEventOverlayRevision overlayRevision,
                              zc::Vector<FlowFunction>&& functions) noexcept
@@ -346,7 +346,7 @@ VerifiedFlow& VerifiedFlow::operator=(VerifiedFlow&&) noexcept = default;
 identity::SemanticContextBrand VerifiedFlow::semanticContext() const noexcept {
   return impl->candidate.semanticContext;
 }
-const identity::SemanticContextFingerprint& VerifiedFlow::contextFingerprint() const noexcept {
+const identity::ContextFingerprint& VerifiedFlow::contextFingerprint() const noexcept {
   return impl->candidate.contextFingerprint;
 }
 identity::ModuleId VerifiedFlow::module() const noexcept { return impl->candidate.module; }

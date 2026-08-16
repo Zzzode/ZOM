@@ -11,7 +11,7 @@
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/identity/canonical-identity-interner-set.h"
+#include "zomlang/compiler/identity/canonical/identity-interner-set.h"
 
 namespace zomlang::compiler::tests {
 namespace test_identity_detail {
@@ -121,7 +121,7 @@ inline zc::Vector<identity::DefId> makeTestDefinitionIds(size_t count) {
   auto context = factory.issue();
   ZC_REQUIRE(context != zc::none);
   ZC_IF_SOME(value, context) {
-    auto authorities = identity::CanonicalIdentityInternerSet::create(factory, value);
+    auto authorities = identity::IdentityInternerSet::create(factory, value);
     ZC_REQUIRE(authorities != zc::none);
     ZC_IF_SOME(interners, authorities) {
       zc::Vector<identity::DefId> result(count);

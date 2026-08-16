@@ -16,7 +16,7 @@
 #include "zomlang/compiler/driver/incremental-module-resolution-query.h"
 #include "zomlang/compiler/driver/incremental-package-graph-query-input.h"
 #include "zomlang/compiler/driver/package/canonical-package-compilation-request.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/query/query-database.h"
 #include "zomlang/compiler/source/core-distribution.h"
 

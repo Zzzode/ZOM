@@ -16,9 +16,9 @@
 #include "zomlang/compiler/driver/module-dependency-provenance-query.h"
 #include "zomlang/compiler/driver/module-graph-query-input.h"
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/parser/parse-source-query.h"
 
 namespace zomlang::compiler::binder {
@@ -168,7 +168,7 @@ zc::Maybe<CanonicalSequence<StableImportFact>> projectImportedFacts(
         auto localName = identity::DeclaredDefinitionName::fromCanonical(
             alias ? tree.ident(alias) : ZC_ASSERT_NONNULL(path).back().text());
         if (sourceName == zc::none || localName == zc::none) { return zc::none; }
-        auto binding = identity::SemanticImportBindingKey::from(
+        auto binding = identity::ImportBindingKey::from(
             module.clone(), request.clone(), ZC_ASSERT_NONNULL(operation),
             identity::DefinitionNamespace::Module, zc::mv(ZC_ASSERT_NONNULL(sourceName)),
             identity::DefinitionNamespace::Module, zc::mv(ZC_ASSERT_NONNULL(localName)));
@@ -213,7 +213,7 @@ zc::Maybe<CanonicalSequence<StableImportFact>> projectImportedFacts(
           if (exported.isRuntimeFailure() || exported.kind() != query::QueryValueKind::Value) {
             return zc::none;
           }
-          auto binding = identity::SemanticImportBindingKey::from(
+          auto binding = identity::ImportBindingKey::from(
               module.clone(), request.clone(), ZC_ASSERT_NONNULL(operation),
               ZC_ASSERT_NONNULL(sourceNamespace), ZC_ASSERT_NONNULL(sourceName).clone(),
               ZC_ASSERT_NONNULL(sourceNamespace), ZC_ASSERT_NONNULL(localName).clone());
@@ -299,7 +299,7 @@ zc::Maybe<CanonicalSequence<StableImportFact>> verifyImportedFacts(
         auto localName = identity::DeclaredDefinitionName::fromCanonical(
             alias ? tree.ident(alias) : ZC_ASSERT_NONNULL(path).back().text());
         if (sourceName == zc::none || localName == zc::none) { return zc::none; }
-        auto binding = identity::SemanticImportBindingKey::from(
+        auto binding = identity::ImportBindingKey::from(
             module.clone(), request.clone(), operation, identity::DefinitionNamespace::Module,
             zc::mv(ZC_ASSERT_NONNULL(sourceName)), identity::DefinitionNamespace::Module,
             zc::mv(ZC_ASSERT_NONNULL(localName)));
@@ -345,7 +345,7 @@ zc::Maybe<CanonicalSequence<StableImportFact>> verifyImportedFacts(
           if (exported.isRuntimeFailure() || exported.kind() != query::QueryValueKind::Value) {
             return zc::none;
           }
-          auto binding = identity::SemanticImportBindingKey::from(
+          auto binding = identity::ImportBindingKey::from(
               module.clone(), request.clone(), operation, ZC_ASSERT_NONNULL(nameSpace),
               ZC_ASSERT_NONNULL(sourceName).clone(), ZC_ASSERT_NONNULL(nameSpace),
               ZC_ASSERT_NONNULL(localName).clone());
@@ -463,7 +463,7 @@ zc::Maybe<CanonicalSequence<StableModuleAliasFact>> projectModuleAliasFacts(
       auto localName = identity::DeclaredDefinitionName::fromCanonical(tree.ident(aliasIdentifier));
       auto alias = declarationForNode(module, site.node(), definitionSites, declarations);
       if (localName == zc::none || alias == zc::none) { return zc::none; }
-      auto binding = identity::SemanticImportBindingKey::from(
+      auto binding = identity::ImportBindingKey::from(
           module.clone(), request.clone(), identity::SemanticImportOperation::ModuleAlias,
           identity::DefinitionNamespace::Module, ZC_ASSERT_NONNULL(sourceName).clone(),
           identity::DefinitionNamespace::Module, zc::mv(ZC_ASSERT_NONNULL(localName)));
@@ -529,7 +529,7 @@ zc::Maybe<CanonicalSequence<StableModuleAliasFact>> verifyModuleAliasFacts(
       auto definition =
           declarationForNode(module, originSite.node(), definitionSites, declarations);
       if (localName == zc::none || definition == zc::none) { return zc::none; }
-      auto binding = identity::SemanticImportBindingKey::from(
+      auto binding = identity::ImportBindingKey::from(
           module.clone(), request.clone(), identity::SemanticImportOperation::ModuleAlias,
           identity::DefinitionNamespace::Module, ZC_ASSERT_NONNULL(importedName).clone(),
           identity::DefinitionNamespace::Module, zc::mv(ZC_ASSERT_NONNULL(localName)));

@@ -8,9 +8,9 @@
 #include "zc/core/debug.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/driver/contextual-binding-key.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/source-key.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/key/source-key.h"
 #include "zomlang/compiler/query/query-database.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {

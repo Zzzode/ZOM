@@ -317,7 +317,7 @@ The accepted `VerifiedBuiltMir` is valid input only when:
 - `revision.phase` is `Built` and its codec domain is
   `zom.mir-revision`;
 - the wrapper, module, revision preimage, and resolved evidence all contain the
-  same `SemanticContextBrand`, `SemanticContextFingerprint`, `ModuleId`,
+  same `SemanticContextBrand`, `ContextFingerprint`, `ModuleId`,
   `CheckedFactsRevision`, `DispatchFactsRevision`, and
   `BorrowEvidenceRevision`;
 - the overlay has the same context, module, checked-facts revision, and Built
@@ -438,7 +438,7 @@ OwnershipFunctionEventOverlay {
 
 VerifiedOwnershipEventOverlay {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   module: ModuleId,
   checkedFactsRevision: CheckedFactsRevision,
   builtRevision: MirRevisionId,
@@ -2516,7 +2516,7 @@ missing row, or out-of-order key without normalization.
 ```text
 ASCII("zom.ownership-event-overlay")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 Frame(Encode(expanded owning ModuleKey))
 CheckedFactsRevision
 Encode(MirRevisionId digest)
@@ -2869,7 +2869,7 @@ Successful analysis publishes:
 ```text
 VerifiedOwnershipFacts {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   module: ModuleId,
   builtRevision: MirRevisionId,
   eventOverlayRevision: OwnershipEventOverlayRevision,
@@ -3006,7 +3006,7 @@ EncodeSortedMap(unsafeBoundaries)
 ```text
 ASCII("zom.ownership-facts")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 Frame(Encode(expanded owning ModuleKey))
 Encode(Built MirRevisionId)
 OwnershipEventOverlayRevision

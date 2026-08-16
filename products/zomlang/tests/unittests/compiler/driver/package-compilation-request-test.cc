@@ -16,8 +16,8 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/driver/package/build-script-plan.h"
 #include "zomlang/compiler/driver/package/canonical-package-compilation-request.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/ir/target-registry.h"
 
 namespace zomlang::compiler::driver::package {

@@ -7,7 +7,7 @@
 
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
-#include "zomlang/compiler/identity/canonical-header-name.h"
+#include "zomlang/compiler/identity/canonical/header-name.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -15,7 +15,7 @@ namespace {
 using identity::CanonicalBoundObligation;
 using identity::CanonicalGenericParameter;
 using identity::CanonicalHeaderTypeSyntax;
-using identity::CanonicalImplHeader;
+using identity::ImplHeader;
 using identity::CanonicalNamedHeaderType;
 using identity::CanonicalNameReference;
 using identity::CanonicalNameRoot;
@@ -92,7 +92,7 @@ public:
     ZC_IF_SOME(traitValue, trait) {
       ZC_IF_SOME(selfTypeValue, selfType) {
         auto admitted =
-            CanonicalImplHeader::from(zc::mv(generics), polarity, safety, zc::mv(traitValue),
+            ImplHeader::from(zc::mv(generics), polarity, safety, zc::mv(traitValue),
                                       zc::mv(selfTypeValue), zc::mv(obligations));
         if (admitted == zc::none) {
           reject(CanonicalHeaderSyntaxFailureKind::InvalidImplSyntax, implementation.node);

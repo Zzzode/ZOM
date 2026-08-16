@@ -18,7 +18,7 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ast/generated/node-schema.h"
 #include "zomlang/compiler/binder/stable-binding-codec.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::binder {

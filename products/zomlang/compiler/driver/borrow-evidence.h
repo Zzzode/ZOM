@@ -20,8 +20,8 @@
 #include "zomlang/compiler/driver/interface-source.h"
 #include "zomlang/compiler/driver/module-interface.h"
 #include "zomlang/compiler/identity/brand.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/ir/ir-failure.h"
 
 namespace zomlang::compiler::hir {
@@ -113,7 +113,7 @@ struct ImportedBorrowSurfaceCandidate final {
 /// \brief Untrusted mutable candidate consumed by the independent verifier.
 struct BorrowEvidenceCandidate final {
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   checker::signature::SignatureFactsRevision localSignatureFactsRevision;
   zc::Vector<checker::borrow::BorrowSignatureSummary> localSummaries;
@@ -165,7 +165,7 @@ public:
   /// \brief Clones immutable verified evidence without cloning a repository lease.
   ZC_NODISCARD VerifiedBorrowEvidence clone() const;
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& contextFingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const checker::signature::SignatureFactsRevision& localSignatureFactsRevision()
       const noexcept;

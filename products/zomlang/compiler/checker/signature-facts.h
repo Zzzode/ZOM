@@ -26,7 +26,7 @@
 #include "zomlang/compiler/binder/parsed-module.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"
 #include "zomlang/compiler/identity/identity-invariant.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
 #include "zomlang/compiler/type/semantic-type-data.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
@@ -718,7 +718,7 @@ public:
   ZC_DISALLOW_COPY(VerifiedMarkerShapeInventory);
 
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& contextFingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD const MarkerShapeInventoryRevision& revision() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const InterfaceMarkerShapeFact> shapes() const noexcept;
   ZC_NODISCARD zc::Maybe<InterfaceMarkerShape> shape(identity::DefId interface) const noexcept;
@@ -819,7 +819,7 @@ public:
   ZC_DISALLOW_COPY(VerifiedMarkerPolicyRegistry);
 
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& contextFingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD const identity::Sha256Digest& configurationRevision() const noexcept;
   ZC_NODISCARD const MarkerShapeInventoryRevision& shapeInventoryRevision() const noexcept;
   ZC_NODISCARD const MarkerPolicyRegistryRevision& revision() const noexcept;
@@ -835,7 +835,7 @@ private:
 
 struct SignatureFactsCandidate final {
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   identity::Sha256Digest sourceContentDigest;
   binder::ParsedModuleReceipt parsedModuleReceipt;
@@ -950,7 +950,7 @@ struct ImplAuthorityCensusEntry final {
 /// \brief Immutable verifier inputs supplied independently of the candidate.
 struct SignatureFactsVerificationInput final {
   identity::SemanticContextBrand semanticContext;
-  const identity::SemanticContextFingerprint& contextFingerprint;
+  const identity::ContextFingerprint& contextFingerprint;
   identity::ModuleId module;
   const identity::SourceFileKey& source;
   const identity::Sha256Digest& sourceContentDigest;
@@ -977,7 +977,7 @@ public:
   ZC_NODISCARD const SignatureFactsRevision& revision() const noexcept;
   ZC_NODISCARD const MarkerPolicyRegistryRevision& markerPolicyRegistryRevision() const noexcept;
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& contextFingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const identity::Sha256Digest& sourceContentDigest() const noexcept;
   ZC_NODISCARD const binder::ParsedModuleReceipt& parsedModuleReceipt() const noexcept;
@@ -1152,7 +1152,7 @@ class MarkerShapeInventoryBuilder final {
 public:
   ZC_NODISCARD static MarkerShapeInventoryBuildResult build(
       identity::SemanticContextBrand semanticContext,
-      const identity::SemanticContextFingerprint& contextFingerprint,
+      const identity::ContextFingerprint& contextFingerprint,
       identity::ModuleId diagnosticModule, zc::ArrayPtr<const MarkerShapeModuleInput> modules,
       const CheckerIdentityAuthority& identities);
 };

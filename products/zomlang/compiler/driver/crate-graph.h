@@ -15,7 +15,7 @@
 #include "zomlang/compiler/driver/package/build-script-runtime.h"
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
 #include "zomlang/compiler/driver/package/package-resolver.h"
-#include "zomlang/compiler/identity/crate-key.h"
+#include "zomlang/compiler/identity/key/crate-key.h"
 
 namespace zomlang::compiler::driver {
 
@@ -86,7 +86,7 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const identity::PackageDependencyEdgeKey> packageEdges() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const identity::CrateKey> crates() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const identity::CrateDependencyEdgeKey> edges() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& fingerprint() const noexcept;
 
 private:
   struct Impl;

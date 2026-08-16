@@ -13,9 +13,9 @@
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/checker/cross-module-facts.h"
 #include "zomlang/compiler/checker/signature-facts.h"
-#include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::checker::borrow {
@@ -118,7 +118,7 @@ public:
   ZC_DISALLOW_COPY(VerifiedBorrowInterfaceSurface);
 
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& contextFingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const signature::SignatureFactsRevision& signatureFactsRevision() const noexcept;
   ZC_NODISCARD const cross_module::ImportedSignatureViewRevision& importedSignatureViewRevision()
@@ -145,7 +145,7 @@ struct BorrowInterfaceInvariantRejected final {
 
 struct BorrowInterfaceBuildInput final {
   identity::SemanticContextBrand semanticContext;
-  const identity::SemanticContextFingerprint& contextFingerprint;
+  const identity::ContextFingerprint& contextFingerprint;
   identity::ModuleId module;
   const signature::SignatureFactsRevision& signatureFactsRevision;
   const cross_module::ImportedSignatureViewRevision& importedSignatureViewRevision;

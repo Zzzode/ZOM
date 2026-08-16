@@ -6,8 +6,8 @@
 #include "zomlang/compiler/binder/local-identity.h"
 
 #include "zc/core/one-of.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::binder {
 namespace {

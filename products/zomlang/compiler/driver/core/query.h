@@ -14,9 +14,9 @@
 #include "zomlang/compiler/driver/materialized-module-graph-query.h"
 #include "zomlang/compiler/driver/module-graph-query-input.h"
 #include "zomlang/compiler/driver/module-graph-query.h"
-#include "zomlang/compiler/identity/compilation-unit-key.h"
-#include "zomlang/compiler/identity/module-resolution-key.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
+#include "zomlang/compiler/identity/key/compilation-unit-key.h"
+#include "zomlang/compiler/identity/key/module-resolution-key.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
 #include "zomlang/compiler/identity/source-query-input.h"
 #include "zomlang/compiler/query/query-database.h"
 #include "zomlang/compiler/source/core-distribution.h"
@@ -268,14 +268,14 @@ public:
   ZC_DISALLOW_COPY(VerifiedCoreRoleSeed);
 
   ZC_NODISCARD static zc::Maybe<VerifiedCoreRoleSeed> from(
-      identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+      identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
       identity::CoreSemanticContextFingerprint&& coreContext,
       const identity::Sha256Digest& distribution, identity::CrateId crate,
       identity::ModuleId markerModule, zc::Vector<MaterializedCoreRoleSeedEntry>&& roles,
       CoreRoleSeedRevision revision, BoundModuleLease&& markerBoundModule);
   ZC_NODISCARD VerifiedCoreRoleSeed clone() const;
   ZC_NODISCARD identity::SemanticContextBrand context() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& fingerprint() const noexcept;
   ZC_NODISCARD const identity::CoreSemanticContextFingerprint& coreContext() const noexcept;
   ZC_NODISCARD const identity::Sha256Digest& distribution() const noexcept;
   ZC_NODISCARD identity::CrateId crate() const noexcept;
@@ -611,7 +611,7 @@ public:
   ZC_DISALLOW_COPY(VerifiedCoreAuthorityBundle);
 
   ZC_NODISCARD identity::SemanticContextBrand context() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& fingerprint() const noexcept;
   ZC_NODISCARD const CoreRoleAuthorityRecord& record() const noexcept;
   ZC_NODISCARD const core::VerifiedCoreMarkerShapeInventory& shapes() const noexcept;
   ZC_NODISCARD const core::VerifiedCoreMarkerPolicyRegistry& policies() const noexcept;
@@ -625,7 +625,7 @@ private:
   struct Impl;
   explicit VerifiedCoreAuthorityBundle(zc::Own<Impl>&& impl) noexcept;
   ZC_NODISCARD static zc::Maybe<VerifiedCoreAuthorityBundle> from(
-      identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+      identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
       CoreRoleAuthorityRecord&& record,
       source::core::CoreStandardMarkerPolicyTemplate&& policyTemplate,
       identity::ModuleKey&& preludeKey, RoleSeedLease&& roleSeed,
@@ -670,12 +670,12 @@ public:
   ZC_DISALLOW_COPY(VerifiedCoreBootstrapModuleInterface);
 
   ZC_NODISCARD static zc::Maybe<VerifiedCoreBootstrapModuleInterface> from(
-      identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+      identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
       CoreBootstrapModuleInterfaceRecord&& record, core::VerifiedCoreSignatureFacts&& signatures,
       core::VerifiedCoreImportedSignatureView&& importedSignatures, BoundModuleLease&& boundModule,
       RoleSeedLease&& roleSeed);
   ZC_NODISCARD identity::SemanticContextBrand context() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& fingerprint() const noexcept;
   ZC_NODISCARD const CoreBootstrapModuleInterfaceRecord& record() const noexcept;
   ZC_NODISCARD const core::VerifiedCoreSignatureFacts& signatures() const noexcept;
   ZC_NODISCARD const core::VerifiedCoreImportedSignatureView& importedSignatures() const noexcept;
@@ -760,10 +760,10 @@ public:
   ZC_DISALLOW_COPY(VerifiedCoreModuleInterface);
 
   ZC_NODISCARD static zc::Maybe<VerifiedCoreModuleInterface> from(
-      identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+      identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
       identity::ModuleId module, CoreModuleInterfaceRecord&& record);
   ZC_NODISCARD identity::SemanticContextBrand context() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& fingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const CoreModuleInterfaceRecord& record() const noexcept;
   ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;

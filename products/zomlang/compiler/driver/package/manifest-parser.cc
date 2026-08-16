@@ -22,11 +22,11 @@
 
 #include "toml++/toml.hpp"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/canonical-scalar.h"
-#include "zomlang/compiler/identity/semantic-version.h"
-#include "zomlang/compiler/identity/sha256.h"
-#include "zomlang/compiler/identity/unicode-normalization.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-scalar.h"
+#include "zomlang/compiler/identity/semantic/semantic-version.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
+#include "zomlang/compiler/identity/text/unicode-normalization.h"
 
 namespace zomlang::compiler::driver::package {
 namespace {

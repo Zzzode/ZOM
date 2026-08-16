@@ -26,10 +26,10 @@
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
 #include "zomlang/compiler/driver/package/source-snapshot.h"
 #include "zomlang/compiler/driver/package/source-tree.h"
-#include "zomlang/compiler/identity/build-script-key.h"
-#include "zomlang/compiler/identity/canonical-scalar.h"
-#include "zomlang/compiler/identity/package-key.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
+#include "zomlang/compiler/identity/key/build-script-key.h"
+#include "zomlang/compiler/identity/canonical/canonical-scalar.h"
+#include "zomlang/compiler/identity/key/package-key.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
 
 namespace zomlang::compiler::driver::package {
 
@@ -178,7 +178,7 @@ class BuildScriptExecutionKey final {
 public:
   ZC_NODISCARD static zc::Maybe<BuildScriptExecutionKey> from(
       identity::PreparatoryBuildScriptKey&& preparatory,
-      identity::SemanticContextFingerprint&& preparatoryContext,
+      identity::ContextFingerprint&& preparatoryContext,
       BuildScriptExecutableKey&& executable, TrustedBuildRuntimeKey&& trustedRuntime,
       CanonicalBuildScriptManifest&& contract, identity::CrateKey&& rootCrate,
       zc::Vector<identity::CrateKey>&& reachableHostCrates,
@@ -201,7 +201,7 @@ public:
 
 private:
   BuildScriptExecutionKey(identity::PreparatoryBuildScriptKey&& preparatory,
-                          identity::SemanticContextFingerprint&& preparatoryContext,
+                          identity::ContextFingerprint&& preparatoryContext,
                           BuildScriptExecutableKey&& executable,
                           TrustedBuildRuntimeKey&& trustedRuntime,
                           CanonicalBuildScriptManifest&& contract, identity::CrateKey&& rootCrate,
@@ -211,7 +211,7 @@ private:
                           zc::Vector<identity::BuildScriptEnvironmentEntry>&& declaredEnvironment,
                           BuildScriptLimitKey&& limits) noexcept;
   identity::PreparatoryBuildScriptKey preparatoryValue;
-  identity::SemanticContextFingerprint preparatoryContextValue;
+  identity::ContextFingerprint preparatoryContextValue;
   BuildScriptExecutableKey executableValue;
   TrustedBuildRuntimeKey trustedRuntimeValue;
   CanonicalBuildScriptManifest contractValue;

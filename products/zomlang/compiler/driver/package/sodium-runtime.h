@@ -17,7 +17,7 @@
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 
 namespace zomlang::compiler::driver::package {
 

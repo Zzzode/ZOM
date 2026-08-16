@@ -406,7 +406,7 @@ query::DatabaseRevision ImmutableDefinitionInventory::revision() const noexcept 
   return impl->identities.revision();
 }
 
-const identity::SemanticContextFingerprint& ImmutableDefinitionInventory::fingerprint()
+const identity::ContextFingerprint& ImmutableDefinitionInventory::fingerprint()
     const noexcept {
   return impl->identities.fingerprint();
 }

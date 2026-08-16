@@ -63,7 +63,7 @@ bool appendIdentity(zc::Vector<Entry>& entries, identity::SemanticContextBrand c
 
 struct MaterializedModuleSkeletonIdentities::Impl final {
   Impl(identity::SemanticContextBrand context, query::DatabaseRevision revision,
-       identity::SemanticContextFingerprint&& fingerprint, identity::ModuleId module,
+       identity::ContextFingerprint&& fingerprint, identity::ModuleId module,
        BoundModuleSkeleton&& stableWitness,
        zc::Vector<MaterializedDefinitionIdentityEntry>&& definitions,
        zc::Vector<MaterializedImplementationIdentityEntry>&& implementations,
@@ -81,7 +81,7 @@ struct MaterializedModuleSkeletonIdentities::Impl final {
 
   identity::SemanticContextBrand context;
   query::DatabaseRevision revision;
-  identity::SemanticContextFingerprint fingerprint;
+  identity::ContextFingerprint fingerprint;
   identity::ModuleId module;
   BoundModuleSkeleton stableWitness;
   zc::Vector<MaterializedDefinitionIdentityEntry> definitions;
@@ -103,8 +103,8 @@ MaterializedModuleSkeletonIdentities& MaterializedModuleSkeletonIdentities::oper
 
 zc::Maybe<MaterializedModuleSkeletonIdentities> MaterializedModuleSkeletonIdentities::from(
     identity::SemanticContextBrand context, query::DatabaseRevision revision,
-    const identity::SemanticContextFingerprint& fingerprint, const BoundModuleSkeleton& skeleton,
-    identity::CanonicalIdentityInternerSet& interners) {
+    const identity::ContextFingerprint& fingerprint, const BoundModuleSkeleton& skeleton,
+    identity::IdentityInternerSet& interners) {
   if (!context.isValid() || revision.value() == 0 || interners.context() != context) {
     return zc::none;
   }
@@ -211,7 +211,7 @@ query::DatabaseRevision MaterializedModuleSkeletonIdentities::revision() const n
   return impl->revision;
 }
 
-const identity::SemanticContextFingerprint& MaterializedModuleSkeletonIdentities::fingerprint()
+const identity::ContextFingerprint& MaterializedModuleSkeletonIdentities::fingerprint()
     const noexcept {
   return impl->fingerprint;
 }

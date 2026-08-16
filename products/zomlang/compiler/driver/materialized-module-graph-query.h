@@ -20,9 +20,9 @@
 #include "zomlang/compiler/driver/module-dependency-provenance-query.h"
 #include "zomlang/compiler/driver/module-graph-query.h"
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"
-#include "zomlang/compiler/identity/canonical-identity-interner-set.h"
+#include "zomlang/compiler/identity/canonical/identity-interner-set.h"
 #include "zomlang/compiler/identity/materialized-identity-entry.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
 #include "zomlang/compiler/parser/parse-source-query.h"
 #include "zomlang/compiler/query/query-database.h"
 
@@ -111,7 +111,7 @@ public:
 
   ZC_NODISCARD static zc::Maybe<MaterializedModuleGraphWitness> from(
       incremental_binding_query::CompilationRootSetQueryKey&& contextRoots,
-      identity::SemanticContextFingerprint&& fingerprint, ModuleGraphRecord&& graph,
+      identity::ContextFingerprint&& fingerprint, ModuleGraphRecord&& graph,
       ModuleGraphSccRecord&& scc, zc::Vector<StableMaterializedDependencyWitness>&& requestEdges,
       binder::ModuleGraphRevision&& graphRevision);
   ZC_NODISCARD static zc::Maybe<MaterializedModuleGraphWitness> decodeCanonical(
@@ -119,7 +119,7 @@ public:
   ZC_NODISCARD MaterializedModuleGraphWitness clone() const;
   ZC_NODISCARD const incremental_binding_query::CompilationRootSetQueryKey& contextRoots()
       const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& fingerprint() const noexcept;
   ZC_NODISCARD const ModuleGraphRecord& graph() const noexcept;
   ZC_NODISCARD const ModuleGraphSccRecord& scc() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const StableMaterializedDependencyWitness> requestEdges()
@@ -199,7 +199,7 @@ public:
   ZC_NODISCARD const identity::ModuleKey& module() const noexcept;
   ZC_NODISCARD identity::SemanticContextBrand context() const noexcept;
   ZC_NODISCARD query::DatabaseRevision revision() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& fingerprint() const noexcept;
   ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
   ZC_NODISCARD const binder::ModuleBodyProvenance& provenance() const noexcept;
   ZC_NODISCARD const DependencyProvenanceLease& dependencyProvenanceLease() const noexcept;
@@ -260,7 +260,7 @@ public:
   ZC_NODISCARD static zc::Maybe<MaterializedOwnerBody> from(
       incremental_binding_query::ContextualBodyOwnerKey&& key,
       identity::SemanticContextBrand context, query::DatabaseRevision revision,
-      identity::SemanticContextFingerprint&& fingerprint, identity::ModuleId module,
+      identity::ContextFingerprint&& fingerprint, identity::ModuleId module,
       SkeletonLease&& skeleton, identity::SourceFileKey&& source, ProvenanceLease&& provenance,
       binder::BoundOwnerBody&& stableWitness, binder::OwnerAllocationRange&& allocation,
       const binder::OwnerBodySyntax& syntax, const parser::CanonicalParsedSource& parsedSource);
@@ -270,7 +270,7 @@ public:
   ZC_NODISCARD const binder::StableOwnerBodyQueryKey& owner() const noexcept;
   ZC_NODISCARD identity::SemanticContextBrand context() const noexcept;
   ZC_NODISCARD query::DatabaseRevision revision() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& fingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
   ZC_NODISCARD const SkeletonLease& skeletonLease() const noexcept;
@@ -398,7 +398,7 @@ public:
   ZC_NODISCARD const identity::ModuleKey& module() const noexcept;
   ZC_NODISCARD identity::SemanticContextBrand context() const noexcept;
   ZC_NODISCARD query::DatabaseRevision revision() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& fingerprint() const noexcept;
   ZC_NODISCARD identity::CompilationUnitId compilationUnit() const noexcept;
   ZC_NODISCARD identity::CrateId crate() const noexcept;
   ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
@@ -425,7 +425,7 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(ModuleGraphIdentityMaterializationResources);
 
   ZC_NODISCARD virtual identity::SemanticContextBrand semanticContext() const noexcept = 0;
-  ZC_NODISCARD virtual identity::CanonicalIdentityInternerSet& identityInterners() const = 0;
+  ZC_NODISCARD virtual identity::IdentityInternerSet& identityInterners() const = 0;
   ZC_NODISCARD virtual identity::IdentityInternResult<identity::CompilationUnitId>
   internCompilationUnit(identity::SemanticContextBrand context,
                         const identity::CompilationUnitIdentity& key) const = 0;
@@ -587,7 +587,7 @@ public:
   ZC_NODISCARD identity::CrateId crate() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD identity::SourceFileId sourceFile() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& semanticFingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& semanticFingerprint() const noexcept;
   ZC_NODISCARD const ast::Tree& tree() const noexcept;
   ZC_NODISCARD const binder::CanonicalParsedModule& parsedModule() const noexcept;
   ZC_NODISCARD const binder::ImmutableDefinitionInventory& definitions() const noexcept;

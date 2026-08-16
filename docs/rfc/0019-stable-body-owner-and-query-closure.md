@@ -149,7 +149,7 @@ StableCallableParameterQueryKey {
 
 StableSemanticImportQueryKey {
   requester: ModuleKey,
-  binding: SemanticImportBindingKey,
+  binding: ImportBindingKey,
 }
 
 StableOwnerBodyQueryKey {

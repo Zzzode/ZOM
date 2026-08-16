@@ -14,8 +14,8 @@
 
 #include "zomlang/compiler/identity/sorted-feature-set.h"
 
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::identity {
 namespace {

@@ -101,9 +101,9 @@ ImplInventoryEntry entry(ast::NodeId node) {
   return ImplInventoryEntry{node, ast::NodeId(), source::SourceRange(), zc::mv(parents)};
 }
 
-const identity::CanonicalImplHeader& requireHeader(CanonicalImplHeaderProduction& result) {
-  ZC_REQUIRE(result.is<identity::CanonicalImplHeader>());
-  return result.get<identity::CanonicalImplHeader>();
+const identity::ImplHeader& requireHeader(CanonicalImplHeaderProduction& result) {
+  ZC_REQUIRE(result.is<identity::ImplHeader>());
+  return result.get<identity::ImplHeader>();
 }
 
 ZC_TEST("CanonicalImplHeaderProducer alpha-normalizes implementation generic names") {

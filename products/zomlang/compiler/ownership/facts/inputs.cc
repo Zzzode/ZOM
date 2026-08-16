@@ -219,7 +219,7 @@ VerifiedOwnershipInputs& VerifiedOwnershipInputs::operator=(VerifiedOwnershipInp
 identity::SemanticContextBrand VerifiedOwnershipInputs::semanticContext() const noexcept {
   return impl->movePaths.semanticContext();
 }
-const identity::SemanticContextFingerprint& VerifiedOwnershipInputs::contextFingerprint()
+const identity::ContextFingerprint& VerifiedOwnershipInputs::contextFingerprint()
     const noexcept {
   return impl->movePaths.contextFingerprint();
 }

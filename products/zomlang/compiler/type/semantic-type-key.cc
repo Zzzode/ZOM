@@ -15,7 +15,7 @@
 #include "zomlang/compiler/type/semantic-type-key.h"
 
 #include "zc/core/vector.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::type::semantic {

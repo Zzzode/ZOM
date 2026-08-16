@@ -7,8 +7,8 @@
 
 #include "zomlang/compiler/binder/stable-binding-facts.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic-info.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::binder {
 

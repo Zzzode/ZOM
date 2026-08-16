@@ -11,16 +11,16 @@
 #include "zomlang/compiler/binder/canonical-bound-syntax-occurrence.h"
 #include "zomlang/compiler/binder/canonical-header-type-producer.h"
 #include "zomlang/compiler/binder/definition-inventory.h"
-#include "zomlang/compiler/identity/canonical-impl-header.h"
+#include "zomlang/compiler/identity/canonical/impl-header.h"
 
 namespace zomlang::compiler::binder {
 
 using CanonicalImplHeaderProduction =
-    zc::OneOf<identity::CanonicalImplHeader, CanonicalHeaderSyntaxFailure>;
+    zc::OneOf<identity::ImplHeader, CanonicalHeaderSyntaxFailure>;
 
 /// \brief Complete implementation header plus every pre-deduplication bound occurrence.
 struct CanonicalImplHeaderProvenance final {
-  identity::CanonicalImplHeader header;
+  identity::ImplHeader header;
   zc::Vector<CanonicalBoundSyntaxOccurrence> boundOccurrences;
 };
 

@@ -21,8 +21,8 @@
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"
 #include "zomlang/compiler/driver/named-item-query.h"
 #include "zomlang/compiler/driver/owner-body-query.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/compiler/parser/parse-source-query.h"
 #include "zomlang/tests/unittests/compiler/driver/canonical-mutation-test-helpers.h"
@@ -817,7 +817,7 @@ public:
 
   identity::SemanticContextBrand semanticContext() const noexcept override { return context; }
 
-  identity::CanonicalIdentityInternerSet& identityInterners() const override { return interners; }
+  identity::IdentityInternerSet& identityInterners() const override { return interners; }
 
   identity::IdentityInternResult<identity::CompilationUnitId> internCompilationUnit(
       identity::SemanticContextBrand requested,
@@ -908,16 +908,16 @@ private:
     return ZC_ASSERT_NONNULL(issued);
   }
 
-  static identity::CanonicalIdentityInternerSet createInterners(
+  static identity::IdentityInternerSet createInterners(
       identity::SemanticContextFactory& factory, identity::SemanticContextBrand context) {
-    auto created = identity::CanonicalIdentityInternerSet::create(factory, context);
+    auto created = identity::IdentityInternerSet::create(factory, context);
     ZC_IREQUIRE(created != zc::none, "test materialization interner allocation failed");
     return zc::mv(ZC_ASSERT_NONNULL(created));
   }
 
   identity::SemanticContextFactory factory;
   identity::SemanticContextBrand context;
-  mutable identity::CanonicalIdentityInternerSet interners;
+  mutable identity::IdentityInternerSet interners;
 };
 
 query::QueryDatabase queryDatabase(basic::ThreadPool& queryScheduler) {
@@ -3130,7 +3130,7 @@ ZC_TEST("MaterializedModuleGraphCapabilityTest.GraphWitnessRejectsClosureAndRevi
   ZC_REQUIRE(wrongRevisionDigest != zc::none);
   auto wrongRevision = graph_query::MaterializedModuleGraphWitness::from(
       witness.contextRoots().clone(),
-      identity::SemanticContextFingerprint::fromCanonicalDigest(witness.fingerprint().digest()),
+      identity::ContextFingerprint::fromCanonicalDigest(witness.fingerprint().digest()),
       witness.graph().clone(), witness.scc().clone(), zc::mv(edges),
       binder::ModuleGraphRevision::fromCanonicalDigest(ZC_REQUIRE_NONNULL(wrongRevisionDigest)));
   ZC_EXPECT(wrongRevision == zc::none);
@@ -3147,7 +3147,7 @@ ZC_TEST("MaterializedModuleGraphCapabilityTest.GraphWitnessRejectsClosureAndRevi
   zc::Vector<graph_query::StableMaterializedDependencyWitness> incompleteWitnessEdges;
   auto wrongClosure = graph_query::MaterializedModuleGraphWitness::from(
       witness.contextRoots().clone(),
-      identity::SemanticContextFingerprint::fromCanonicalDigest(witness.fingerprint().digest()),
+      identity::ContextFingerprint::fromCanonicalDigest(witness.fingerprint().digest()),
       zc::mv(ZC_REQUIRE_NONNULL(incompleteGraph)), witness.scc().clone(),
       zc::mv(incompleteWitnessEdges),
       binder::ModuleGraphRevision::fromCanonicalDigest(witness.graphRevision().digest()));
@@ -3184,7 +3184,7 @@ ZC_TEST("MaterializedModuleGraphCapabilityTest.GraphWitnessRejectsClosureAndRevi
   }
   auto wrongEdges = graph_query::MaterializedModuleGraphWitness::from(
       witness.contextRoots().clone(),
-      identity::SemanticContextFingerprint::fromCanonicalDigest(witness.fingerprint().digest()),
+      identity::ContextFingerprint::fromCanonicalDigest(witness.fingerprint().digest()),
       witness.graph().clone(), witness.scc().clone(), zc::mv(changedEdges),
       binder::ModuleGraphRevision::fromCanonicalDigest(witness.graphRevision().digest()));
   ZC_EXPECT(wrongEdges == zc::none);
@@ -3255,7 +3255,7 @@ ZC_TEST("MaterializedModuleGraphCapabilityTest.GraphRejectsWitnessAndMembershipM
   for (const auto& edge : materialized.witness().requestEdges()) { witnessEdges.add(edge.clone()); }
   auto foreignWitness = graph_query::MaterializedModuleGraphWitness::from(
       zc::mv(ZC_REQUIRE_NONNULL(foreignRoots)),
-      identity::SemanticContextFingerprint::fromCanonicalDigest(
+      identity::ContextFingerprint::fromCanonicalDigest(
           materialized.witness().fingerprint().digest()),
       materialized.witness().graph().clone(), materialized.witness().scc().clone(),
       zc::mv(witnessEdges),

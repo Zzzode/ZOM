@@ -9,8 +9,8 @@
 #include "zc/core/encoding.h"
 #include "zc/core/map.h"
 #include "zc/core/string.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::driver::module_graph_query {
 namespace {

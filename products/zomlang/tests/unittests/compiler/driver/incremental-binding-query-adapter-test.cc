@@ -13,7 +13,7 @@
 #include "zomlang/compiler/driver/incremental-package-graph-query-input.h"
 #include "zomlang/compiler/driver/module-graph-query-input.h"
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/compiler/parser/parse-source-query.h"
 #include "zomlang/compiler/source/core-distribution.h"

@@ -20,7 +20,7 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/driver/package/build-script-runtime.h"
 #include "zomlang/compiler/driver/package/manifest-model.h"
-#include "zomlang/compiler/identity/build-script-key.h"
+#include "zomlang/compiler/identity/key/build-script-key.h"
 
 namespace zomlang::compiler::driver {
 class VerifiedPreparatoryCrateGraph;

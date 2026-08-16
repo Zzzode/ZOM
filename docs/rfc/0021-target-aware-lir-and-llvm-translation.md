@@ -357,7 +357,7 @@ VerifiedExecutableMirRecord {
 
 VerifiedExecutableMirSet {
   contextBrand: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   crate: CrateId,
   modules: SortedSequence<VerifiedExecutableMirRecord>,
   revision: ExecutableMirSetRevision,
@@ -374,7 +374,7 @@ from another crate or final session.
 ```text
 ASCII("zom.executable-mir-set")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 Frame(Encode(expanded CrateKey))
 EncodeFramedSequence(
   Encode(expanded ModuleKey)
@@ -413,7 +413,7 @@ VerifiedFeatureBoundaryModuleRecord {
 
 VerifiedFeatureBoundaryCollection {
   contextBrand: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   crate: CrateId,
   targetSpecId: TargetSpecId,
   registryRevision: FeatureBoundaryRegistryRevision,
@@ -467,7 +467,7 @@ The method rejects before reading structural payloads unless all of these
 match:
 
 - `SemanticContextBrand`;
-- `SemanticContextFingerprint`;
+- `ContextFingerprint`;
 - package, crate, and the complete sorted module set;
 - executable-MIR-set revision and every originating Built MIR revision;
 - checked-evidence leases, dispatch facts, borrow evidence, drop, and coroutine
@@ -826,7 +826,7 @@ Callers provide only context-bound non-runtime roots:
 ```text
 VerifiedMonomorphizationRequest {
   contextBrand: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   crate: CrateId,
   executableMirSetRevision: ExecutableMirSetRevision,
   roots: SortedUniqueSequence<RequestedMonomorphizationRoot>,
@@ -861,7 +861,7 @@ revisions used to derive them. It performs no layout or ABI selection.
 ```text
 VerifiedMonomorphizationPlan {
   contextBrand: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   crate: CrateId,
   executableMirSetRevision: ExecutableMirSetRevision,
   monomorphizationRequestRevision: MonomorphizationRequestRevision,
@@ -948,7 +948,7 @@ cannot supply or retain an unverified root key.
 ```text
 ASCII("zom.monomorphization-plan")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 Frame(Encode(expanded CrateKey))
 ExecutableMirSetRevision
 MonomorphizationRequestRevision
@@ -1014,7 +1014,7 @@ but final IDs and module order derive only from canonical keys.
 ```text
 LirModule {
   contextBrand: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   package: PackageId,
   crate: CrateId,
   executableMirSetRevision: ExecutableMirSetRevision,
@@ -2521,7 +2521,7 @@ TargetRuntimeCallback {
 }
 
 VerifiedRuntimeAbiManifest {
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   targetSpecId: TargetSpecId,
   capabilityBrand: RuntimeCapabilityBrand,
   capabilityRevision: RuntimeCapabilityRevision,
@@ -2575,7 +2575,7 @@ type participates in reconstruction. Its revision is:
 SHA256(
   ASCII("zom.runtime-abi-manifest")
   0x00
-  SemanticContextFingerprint
+  ContextFingerprint
   TargetSpecId
   RuntimeCapabilityRevision
   RuntimeAbiContractRevision
@@ -2705,7 +2705,7 @@ module, or output artifact.
 ```text
 ASCII("zom.lir-revision")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 Frame(Encode(expanded CrateKey))
 ExecutableMirSetRevision
 MonomorphizationPlanRevision

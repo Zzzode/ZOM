@@ -16,7 +16,7 @@
 
 #include "zc/core/encoding.h"
 #include "zc/core/map.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -161,7 +161,7 @@ ResolvedModuleAliasProjection::ResolvedModuleAliasProjection(
       exported(exported) {}
 
 ResolvedImportBindingProjection::ResolvedImportBindingProjection(
-    ast::NodeId node, uint32_t schemaPreorderOrdinal, identity::SemanticImportBindingKey&& binding,
+    ast::NodeId node, uint32_t schemaPreorderOrdinal, identity::ImportBindingKey&& binding,
     ImportBindingNameProjection&& localName, BindingTarget&& canonicalTarget,
     identity::ModuleId sourceModule, ExportSurfaceRevision sourceRevision, ImportBindingKind kind,
     identity::SourceSpan&& declarationSpan, zc::Maybe<identity::SourceSpan>&& aliasSpan,

@@ -6,7 +6,7 @@
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"
 
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {
@@ -104,7 +104,7 @@ identity::CanonicalNameReference implementationName(zc::StringPtr name) {
   return require(zc::mv(result));
 }
 
-identity::CanonicalImplHeader implementationHeader(zc::StringPtr traitName) {
+identity::ImplHeader implementationHeader(zc::StringPtr traitName) {
   zc::Vector<identity::CanonicalHeaderTypeSyntax> arguments;
   auto trait =
       identity::CanonicalTraitReference::from(implementationName(traitName), zc::mv(arguments));
@@ -112,7 +112,7 @@ identity::CanonicalImplHeader implementationHeader(zc::StringPtr traitName) {
       identity::CanonicalHeaderTypeSyntax::predefined(identity::PredefinedTypeKind::I32);
   zc::Vector<identity::CanonicalGenericParameter> generics;
   zc::Vector<identity::CanonicalBoundObligation> obligations;
-  auto result = identity::CanonicalImplHeader::from(
+  auto result = identity::ImplHeader::from(
       zc::mv(generics), identity::ImplPolarity::Positive, identity::ImplSafety::Safe,
       require(zc::mv(trait)), require(zc::mv(selfType)), zc::mv(obligations));
   return require(zc::mv(result));

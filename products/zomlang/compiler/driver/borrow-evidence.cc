@@ -6,7 +6,7 @@
 #include "zomlang/compiler/driver/borrow-evidence.h"
 
 #include "zomlang/compiler/driver/core/query.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::driver::borrow_evidence {
 namespace {
@@ -104,8 +104,8 @@ struct ExpectedInventory final {
 
 using ExpectedInventoryResult = zc::OneOf<ExpectedInventory, BorrowEvidenceInvariantRejected>;
 
-bool sameFingerprint(const identity::SemanticContextFingerprint& left,
-                     const identity::SemanticContextFingerprint& right) noexcept {
+bool sameFingerprint(const identity::ContextFingerprint& left,
+                     const identity::ContextFingerprint& right) noexcept {
   return left.digest() == right.digest();
 }
 
@@ -290,7 +290,7 @@ ExpectedInventoryResult deriveExpectedInventory(const BorrowEvidenceBuildInput& 
 }
 
 zc::Maybe<zc::Array<uint8_t>> encodeInventory(
-    const identity::SemanticContextFingerprint& fingerprint, identity::ModuleId module,
+    const identity::ContextFingerprint& fingerprint, identity::ModuleId module,
     const checker::signature::SignatureFactsRevision& signatureRevision,
     zc::ArrayPtr<const EncodedSummary> summaries,
     const module_interface::ModuleInterfaceRevision& ownInterface,
@@ -478,7 +478,7 @@ struct VerifiedBorrowEvidence::Impl final {
   }
 
   Impl(identity::SemanticContextBrand semanticContext,
-       identity::SemanticContextFingerprint&& contextFingerprint, identity::ModuleId module,
+       identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
        checker::signature::SignatureFactsRevision signatureRevision,
        zc::Vector<checker::borrow::BorrowSignatureSummary>&& localSummaries,
        module_interface::ModuleInterfaceRevision ownInterfaceRevision,
@@ -495,7 +495,7 @@ struct VerifiedBorrowEvidence::Impl final {
         revision(revision) {}
 
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   checker::signature::SignatureFactsRevision signatureRevision;
   zc::Vector<checker::borrow::BorrowSignatureSummary> localSummaries;
@@ -524,7 +524,7 @@ VerifiedBorrowEvidence VerifiedBorrowEvidence::clone() const {
 identity::SemanticContextBrand VerifiedBorrowEvidence::semanticContext() const noexcept {
   return impl->semanticContext;
 }
-const identity::SemanticContextFingerprint& VerifiedBorrowEvidence::contextFingerprint()
+const identity::ContextFingerprint& VerifiedBorrowEvidence::contextFingerprint()
     const noexcept {
   return impl->contextFingerprint;
 }

@@ -147,7 +147,7 @@ interface loaded in the session provides an overlapping impl.
 ```text
 CompilerSession {
   semantic_context_brand: SemanticContextBrand,
-  semantic_context_fingerprint: SemanticContextFingerprint,
+  semantic_context_fingerprint: ContextFingerprint,
   options: CompilerOptions,
   source_manager: SourceManager,
   diagnostics: DiagnosticEngine,
@@ -180,7 +180,7 @@ session publication:
 ```text
 VerifiedCoreLibrarySet {
   semanticContext: SemanticContextBrand,
-  context: SemanticContextFingerprint,
+  context: ContextFingerprint,
   contextRoots: CompilationRootSetQueryKey,
   revision: DatabaseRevision,
   distribution: Sha256Digest,
@@ -233,7 +233,7 @@ registries, and validates every handle at API boundaries. The session never
 constructs or accepts a caller-provided brand. RFC 0004 owns
 verified binding facts that target `DefId`; RFC 0005 owns branded
 `SemanticTypeId`; RFC 0010 consumes the same identities without re-interning
-them. The deterministic `SemanticContextFingerprint` records semantic inputs
+them. The deterministic `ContextFingerprint` records semantic inputs
 but is never treated as an in-process issuer brand.
 
 ### Module Graph
@@ -734,7 +734,7 @@ the RFC 0011 `CanonicalEncoder`:
 ```text
 ASCII("zom.module-interface-revision")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 Encode(expanded owning ModuleKey)
 Encode(sourceContentDigest)
 Encode(binding_surface.revision)
@@ -1118,7 +1118,7 @@ that runs the same crate repeatedly with different worker counts.
 ## Implementation Plan
 
 1. Consume RFC 0011 `PackageId`, `CrateId`, `ModuleId`, `DefId`, `ImplId`,
-   `SemanticContextBrand`, and `SemanticContextFingerprint`; add `ModuleGraph`,
+   `SemanticContextBrand`, and `ContextFingerprint`; add `ModuleGraph`,
    `ImportEdge`, and `ExportScope` on the implementation branch.
 2. Implement `CompilerSession` as the only source, diagnostic, package, crate,
    module, signature, and coherence owner.

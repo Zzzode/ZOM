@@ -7,9 +7,9 @@
 
 #include "zc/core/debug.h"
 #include "zomlang/compiler/ast/generated/node-schema.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/canonical-scalar.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-scalar.h"
 
 namespace zomlang::compiler::binder {
 

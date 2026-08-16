@@ -14,7 +14,7 @@
 
 #include "zomlang/compiler/ir/target-registry.h"
 
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::ir {
 namespace {

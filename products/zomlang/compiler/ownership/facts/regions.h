@@ -34,7 +34,7 @@ struct ReborrowRegion final {
 class ReborrowRegionCandidate final {
 public:
   ReborrowRegionCandidate(identity::SemanticContextBrand semanticContext,
-                          identity::SemanticContextFingerprint&& contextFingerprint,
+                          identity::ContextFingerprint&& contextFingerprint,
                           identity::ModuleId module, mir::MirRevisionId builtRevision,
                           OwnershipEventOverlayRevision overlayRevision,
                           driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
@@ -44,7 +44,7 @@ public:
   ZC_DISALLOW_COPY(ReborrowRegionCandidate);
 
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   mir::MirRevisionId builtRevision;
   OwnershipEventOverlayRevision overlayRevision;
@@ -61,7 +61,7 @@ public:
   ZC_DISALLOW_COPY(VerifiedReborrowRegions);
 
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& contextFingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const mir::MirRevisionId& builtRevision() const noexcept;
   ZC_NODISCARD const OwnershipEventOverlayRevision& overlayRevision() const noexcept;

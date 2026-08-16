@@ -6,8 +6,8 @@
 #include "zomlang/compiler/hir/checked-module.h"
 
 #include "zomlang/compiler/driver/core/query.h"
-#include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/source-key.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
+#include "zomlang/compiler/identity/key/source-key.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
 
 namespace zomlang::compiler::hir {
@@ -373,7 +373,7 @@ identity::SemanticContextBrand VerifiedCheckedModule::semanticContext() const no
   return impl->boundModuleValue.semanticContext();
 }
 
-const identity::SemanticContextFingerprint& VerifiedCheckedModule::contextFingerprint()
+const identity::ContextFingerprint& VerifiedCheckedModule::contextFingerprint()
     const noexcept {
   return impl->boundModuleValue.semanticFingerprint();
 }

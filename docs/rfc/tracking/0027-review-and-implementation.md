@@ -330,7 +330,7 @@ handles, while `CapabilityQueryContext` exposes neither snapshot revision nor
 a statically typed view of the arena-owned resource. Second, T1 registers
 `MaterializeModuleGraph` but its exact file set omitted the production query
 descriptor schema. Third, the repository's only `ModuleGraphRevision` and
-`SemanticContextFingerprint` values have no public canonical-digest
+`ContextFingerprint` values have no public canonical-digest
 construction boundary for witness decoding. Fourth, the complete read set did
 not lock a unique multi-child rejection order and one summary omitted the
 retained per-module provenance capability. Following the accepted plan would

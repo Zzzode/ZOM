@@ -11,7 +11,7 @@
 #include "zc/core/memory.h"
 #include "zomlang/compiler/binder/module-body-syntax.h"
 #include "zomlang/compiler/checker/signature-facts.h"
-#include "zomlang/compiler/identity/source-key.h"
+#include "zomlang/compiler/identity/key/source-key.h"
 #include "zomlang/compiler/query/query-database.h"
 #include "zomlang/compiler/source/core-distribution.h"
 

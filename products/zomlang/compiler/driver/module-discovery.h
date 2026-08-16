@@ -22,8 +22,8 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/driver/package/source-tree.h"
-#include "zomlang/compiler/identity/canonical-scalar.h"
-#include "zomlang/compiler/identity/package-key.h"
+#include "zomlang/compiler/identity/canonical/canonical-scalar.h"
+#include "zomlang/compiler/identity/key/package-key.h"
 #include "zomlang/compiler/source/core-source-catalog.h"
 
 namespace zomlang::compiler::driver {

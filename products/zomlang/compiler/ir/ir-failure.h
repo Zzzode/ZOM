@@ -14,7 +14,7 @@
 #include "zomlang/compiler/checker/checked-facts.h"
 #include "zomlang/compiler/hir/hir-node-id.h"
 #include "zomlang/compiler/identity/identity-invariant.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
 #include "zomlang/compiler/ir/ir-identity.h"
 
 namespace zomlang::compiler::ir {
@@ -100,7 +100,7 @@ enum class IrRejectedBranch : uint8_t {
 };
 
 struct SessionFailureOwner final {
-  identity::SemanticContextFingerprint context;
+  identity::ContextFingerprint context;
 };
 
 struct ModuleFailureOwner final {
@@ -123,14 +123,14 @@ public:
   ZC_DISALLOW_COPY(IrFailureOwner);
 
   ZC_NODISCARD static IrFailureOwner session(
-      identity::SemanticContextFingerprint&& context) noexcept;
+      identity::ContextFingerprint&& context) noexcept;
   ZC_NODISCARD static IrFailureOwner module(identity::ModuleId module) noexcept;
   ZC_NODISCARD static IrFailureOwner definition(identity::DefId definition) noexcept;
   ZC_NODISCARD static IrFailureOwner instance(InstanceId instance) noexcept;
 
   ZC_NODISCARD IrFailureOwner clone() const;
   ZC_NODISCARD IrFailureOwnerKind kind() const noexcept;
-  ZC_NODISCARD zc::Maybe<const identity::SemanticContextFingerprint&> sessionContext() const;
+  ZC_NODISCARD zc::Maybe<const identity::ContextFingerprint&> sessionContext() const;
   ZC_NODISCARD zc::Maybe<identity::ModuleId> moduleId() const noexcept;
   ZC_NODISCARD zc::Maybe<identity::DefId> definitionId() const noexcept;
   ZC_NODISCARD zc::Maybe<InstanceId> instanceId() const noexcept;

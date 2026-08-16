@@ -25,7 +25,7 @@ class MaterializedExportSurfaceVerifier final {
 public:
   ZC_NODISCARD static zc::Maybe<VerifiedExportSurface> from(
       identity::SemanticContextBrand context,
-      const identity::SemanticContextFingerprint& fingerprint, const identity::ModuleKey& moduleKey,
+      const identity::ContextFingerprint& fingerprint, const identity::ModuleKey& moduleKey,
       identity::ModuleId module, const identity::CompilationUnitIdentity& compilationUnitKey,
       identity::CompilationUnitId compilationUnit, const identity::SourceFileKey& source,
       const BoundModuleSkeleton& stableWitness,

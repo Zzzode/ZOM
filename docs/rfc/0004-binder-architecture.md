@@ -480,7 +480,7 @@ ModuleGraphMaterializationInput {
   packageRequest: const VerifiedPackageCompilationRequest,
   coreInputs: const VerifiedCoreDistributionInputTransaction,
   semanticContext: SemanticContextBrand,
-  fingerprint: const SemanticContextFingerprint,
+  fingerprint: const ContextFingerprint,
   stableGraph: const ModuleGraphRecord,
   stableScc: const ModuleGraphSccRecord,
   registries: const SemanticIdentityRegistrySet,
@@ -494,7 +494,7 @@ ModuleGraphMaterializationInput {
 BinderModuleGraphCandidate {
   expectedContextRoots: CompilationRootSetQueryKey,
   semanticContext: SemanticContextBrand,
-  fingerprint: SemanticContextFingerprint,
+  fingerprint: ContextFingerprint,
   stableGraph: ModuleGraphRecord,
   stableScc: ModuleGraphSccRecord,
   modules: SortedSequence<ModuleKey>,
@@ -506,7 +506,7 @@ BinderModuleGraphCandidate {
 
 VerifiedModuleGraph {
   semanticContext: SemanticContextBrand,
-  fingerprint: SemanticContextFingerprint,
+  fingerprint: ContextFingerprint,
   revision: ModuleGraphRevision,
   modules: SortedSequence<ModuleKey>,
   handles: Sequence<ModuleId>,
@@ -648,7 +648,7 @@ or query results.
 
 ```text
 "zom.module-dependency-graph" || 0x00
-|| SemanticContextFingerprint.digest
+|| ContextFingerprint.digest
 || uint64be(ModuleGraphRecord.valueEncoding.size)
 || ModuleGraphRecord.valueEncoding
 || uint64be(requestEdgeCount)
@@ -733,7 +733,7 @@ spelling or source location.
 ```text
 ASCII("zom.binding-export-surface")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 Encode(expanded source ModuleKey)
 Encode(expanded source PackageKey)
 EncodeMap(visibleEntries)

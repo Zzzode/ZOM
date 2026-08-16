@@ -22,10 +22,10 @@
 #include "zomlang/compiler/checker/operator-kind.h"
 #include "zomlang/compiler/checker/signature-facts.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"
-#include "zomlang/compiler/identity/crate-key.h"
+#include "zomlang/compiler/identity/key/crate-key.h"
 #include "zomlang/compiler/identity/handle.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::checker::inference {
@@ -937,7 +937,7 @@ using ErrorOperatorFactMap = ImmutableFactMap<ast::NodeId, ErrorOperatorFact>;
 
 struct CheckedFactsCandidate final {
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   identity::Sha256Digest sourceContentDigest;
   binder::ParsedModuleReceipt parsedModuleReceipt;
@@ -1068,7 +1068,7 @@ struct CaptureFactRequirement final {
 
 struct CheckedFactsVerificationInput final {
   identity::SemanticContextBrand semanticContext;
-  const identity::SemanticContextFingerprint& contextFingerprint;
+  const identity::ContextFingerprint& contextFingerprint;
   identity::ModuleId module;
   const identity::SourceFileKey& source;
   const identity::Sha256Digest& sourceContentDigest;

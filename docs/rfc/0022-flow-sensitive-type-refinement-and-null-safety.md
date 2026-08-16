@@ -843,7 +843,7 @@ RFC 0005's checked-facts revision preimage with:
 ```text
 ASCII("zom.checked-facts-revision")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 EncodeByteString(expanded owning ModuleKey)
 sourceContentDigest
 parsedModuleReceipt

@@ -23,9 +23,9 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/diagnostics/toolchain/module-root-argument.h"
 #include "zomlang/compiler/driver/package/workspace-normalizer.h"
-#include "zomlang/compiler/identity/crate-key.h"
-#include "zomlang/compiler/identity/package-key.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/key/crate-key.h"
+#include "zomlang/compiler/identity/key/package-key.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/identity/sorted-feature-set.h"
 
 namespace zomlang::compiler::ir {

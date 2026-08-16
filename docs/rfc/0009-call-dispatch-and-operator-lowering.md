@@ -332,7 +332,7 @@ never enter a revision or dump.
 ```text
 DispatchFactsCandidate {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   module: ModuleId,
   checkedFactsRevision: CheckedFactsRevision,
   facts: SortedMap<NodeId, DispatchFact>,
@@ -408,7 +408,7 @@ for sorting.
 ```text
 ASCII("zom.dispatch-facts-revision")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 uint64be(expandedModuleKeyByteLength)
 expandedModuleKeyBytes
 CheckedFactsRevision

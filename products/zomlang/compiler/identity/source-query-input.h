@@ -7,8 +7,8 @@
 
 #include "zc/core/array.h"
 #include "zc/core/common.h"
-#include "zomlang/compiler/identity/crate-key.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/key/crate-key.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/query/query-database.h"
 
 namespace zomlang::compiler::driver::package {

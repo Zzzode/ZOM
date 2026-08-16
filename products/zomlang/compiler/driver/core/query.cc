@@ -20,8 +20,8 @@
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"
 #include "zomlang/compiler/driver/named-item-query.h"
 #include "zomlang/compiler/driver/package/canonical-package-compilation-request.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
 
 namespace zomlang::compiler::driver::core_library_query {
@@ -1271,7 +1271,7 @@ MaterializedCoreRoleSeedEntry MaterializedCoreRoleSeedEntry::clone() const {
 }
 
 struct VerifiedCoreRoleSeed::Impl final {
-  Impl(identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+  Impl(identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
        identity::CoreSemanticContextFingerprint&& coreContext,
        const identity::Sha256Digest& distribution, identity::CrateId crate,
        identity::ModuleId markerModule, zc::Vector<MaterializedCoreRoleSeedEntry>&& roles,
@@ -1287,7 +1287,7 @@ struct VerifiedCoreRoleSeed::Impl final {
         markerBoundModule(zc::mv(markerBoundModule)) {}
 
   identity::SemanticContextBrand context;
-  identity::SemanticContextFingerprint fingerprint;
+  identity::ContextFingerprint fingerprint;
   identity::CoreSemanticContextFingerprint coreContext;
   identity::Sha256Digest distribution;
   identity::CrateId crate;
@@ -1303,7 +1303,7 @@ VerifiedCoreRoleSeed::VerifiedCoreRoleSeed(VerifiedCoreRoleSeed&&) noexcept = de
 VerifiedCoreRoleSeed& VerifiedCoreRoleSeed::operator=(VerifiedCoreRoleSeed&&) noexcept = default;
 
 zc::Maybe<VerifiedCoreRoleSeed> VerifiedCoreRoleSeed::from(
-    identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+    identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
     identity::CoreSemanticContextFingerprint&& coreContext,
     const identity::Sha256Digest& distribution, identity::CrateId crate,
     identity::ModuleId markerModule, zc::Vector<MaterializedCoreRoleSeedEntry>&& roles,
@@ -1335,7 +1335,7 @@ identity::SemanticContextBrand VerifiedCoreRoleSeed::context() const noexcept {
   return impl->context;
 }
 
-const identity::SemanticContextFingerprint& VerifiedCoreRoleSeed::fingerprint() const noexcept {
+const identity::ContextFingerprint& VerifiedCoreRoleSeed::fingerprint() const noexcept {
   return impl->fingerprint;
 }
 
@@ -2820,7 +2820,7 @@ bool CoreRoleAuthorityQuery::verify(query::QueryContext& context, const Key& key
 }
 
 struct VerifiedCoreBootstrapModuleInterface::Impl final {
-  Impl(identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+  Impl(identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
        CoreBootstrapModuleInterfaceRecord&& record, core::VerifiedCoreSignatureFacts&& signatures,
        core::VerifiedCoreImportedSignatureView&& importedSignatures, BoundModuleLease&& bound,
        RoleSeedLease&& seed)
@@ -2833,7 +2833,7 @@ struct VerifiedCoreBootstrapModuleInterface::Impl final {
         seed(zc::mv(seed)) {}
 
   identity::SemanticContextBrand context;
-  identity::SemanticContextFingerprint fingerprint;
+  identity::ContextFingerprint fingerprint;
   CoreBootstrapModuleInterfaceRecord record;
   core::VerifiedCoreSignatureFacts signatures;
   core::VerifiedCoreImportedSignatureView importedSignatures;
@@ -2852,7 +2852,7 @@ VerifiedCoreBootstrapModuleInterface& VerifiedCoreBootstrapModuleInterface::oper
     VerifiedCoreBootstrapModuleInterface&&) noexcept = default;
 
 zc::Maybe<VerifiedCoreBootstrapModuleInterface> VerifiedCoreBootstrapModuleInterface::from(
-    identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+    identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
     CoreBootstrapModuleInterfaceRecord&& record, core::VerifiedCoreSignatureFacts&& signatures,
     core::VerifiedCoreImportedSignatureView&& importedSignatures, BoundModuleLease&& bound,
     RoleSeedLease&& seed) {
@@ -2877,7 +2877,7 @@ zc::Maybe<VerifiedCoreBootstrapModuleInterface> VerifiedCoreBootstrapModuleInter
 identity::SemanticContextBrand VerifiedCoreBootstrapModuleInterface::context() const noexcept {
   return impl->context;
 }
-const identity::SemanticContextFingerprint& VerifiedCoreBootstrapModuleInterface::fingerprint()
+const identity::ContextFingerprint& VerifiedCoreBootstrapModuleInterface::fingerprint()
     const noexcept {
   return impl->fingerprint;
 }
@@ -2970,7 +2970,7 @@ bool policyTemplateIsCanonical(const source::core::CoreStandardMarkerPolicyTempl
 }  // namespace
 
 struct VerifiedCoreAuthorityBundle::Impl final {
-  Impl(identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+  Impl(identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
        CoreRoleAuthorityRecord&& record, core::VerifiedCoreMarkerShapeInventory&& shapes,
        core::VerifiedCoreMarkerPolicyRegistry&& policies,
        core::VerifiedCoreStandardMarkerAuthority&& authority, identity::ModuleId prelude,
@@ -2986,7 +2986,7 @@ struct VerifiedCoreAuthorityBundle::Impl final {
         preludeBoundModule(zc::mv(preludeBoundModule)) {}
 
   identity::SemanticContextBrand context;
-  identity::SemanticContextFingerprint fingerprint;
+  identity::ContextFingerprint fingerprint;
   CoreRoleAuthorityRecord record;
   core::VerifiedCoreMarkerShapeInventory shapes;
   core::VerifiedCoreMarkerPolicyRegistry policies;
@@ -3005,7 +3005,7 @@ VerifiedCoreAuthorityBundle& VerifiedCoreAuthorityBundle::operator=(
     VerifiedCoreAuthorityBundle&&) noexcept = default;
 
 zc::Maybe<VerifiedCoreAuthorityBundle> VerifiedCoreAuthorityBundle::from(
-    identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+    identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
     CoreRoleAuthorityRecord&& record,
     source::core::CoreStandardMarkerPolicyTemplate&& policyTemplate,
     identity::ModuleKey&& preludeKey, RoleSeedLease&& roleSeed, PreludeBoundModuleLease&& prelude) {
@@ -3064,7 +3064,7 @@ zc::Maybe<VerifiedCoreAuthorityBundle> VerifiedCoreAuthorityBundle::from(
 identity::SemanticContextBrand VerifiedCoreAuthorityBundle::context() const noexcept {
   return impl->context;
 }
-const identity::SemanticContextFingerprint& VerifiedCoreAuthorityBundle::fingerprint()
+const identity::ContextFingerprint& VerifiedCoreAuthorityBundle::fingerprint()
     const noexcept {
   return impl->fingerprint;
 }
@@ -3750,14 +3750,14 @@ zc::Array<uint8_t> CoreModuleInterfaceRecord::encodeCanonical() const {
 }
 
 struct VerifiedCoreModuleInterface::Impl final {
-  Impl(identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+  Impl(identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
        identity::ModuleId module, CoreModuleInterfaceRecord&& record) noexcept
       : context(context),
         fingerprint(zc::mv(fingerprint)),
         module(module),
         record(zc::mv(record)) {}
   identity::SemanticContextBrand context;
-  identity::SemanticContextFingerprint fingerprint;
+  identity::ContextFingerprint fingerprint;
   identity::ModuleId module;
   CoreModuleInterfaceRecord record;
 };
@@ -3770,7 +3770,7 @@ VerifiedCoreModuleInterface::VerifiedCoreModuleInterface(VerifiedCoreModuleInter
 VerifiedCoreModuleInterface& VerifiedCoreModuleInterface::operator=(
     VerifiedCoreModuleInterface&&) noexcept = default;
 zc::Maybe<VerifiedCoreModuleInterface> VerifiedCoreModuleInterface::from(
-    identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+    identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
     identity::ModuleId module, CoreModuleInterfaceRecord&& record) {
   if (!context.isValid() || !module.belongsTo(context) ||
       !finalRolesAreCanonical(record.definedRoles())) {
@@ -3782,7 +3782,7 @@ zc::Maybe<VerifiedCoreModuleInterface> VerifiedCoreModuleInterface::from(
 identity::SemanticContextBrand VerifiedCoreModuleInterface::context() const noexcept {
   return impl->context;
 }
-const identity::SemanticContextFingerprint& VerifiedCoreModuleInterface::fingerprint()
+const identity::ContextFingerprint& VerifiedCoreModuleInterface::fingerprint()
     const noexcept {
   return impl->fingerprint;
 }

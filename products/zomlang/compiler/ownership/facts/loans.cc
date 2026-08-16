@@ -375,7 +375,7 @@ bool inputsMatch(const VerifiedMovePaths& movePaths, const mir::VerifiedBuiltMir
 }  // namespace
 
 LoanCandidate::LoanCandidate(identity::SemanticContextBrand semanticContext,
-                             identity::SemanticContextFingerprint&& contextFingerprint,
+                             identity::ContextFingerprint&& contextFingerprint,
                              identity::ModuleId module, mir::MirRevisionId builtRevision,
                              OwnershipEventOverlayRevision overlayRevision,
                              driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
@@ -400,7 +400,7 @@ VerifiedLoanFacts& VerifiedLoanFacts::operator=(VerifiedLoanFacts&&) noexcept = 
 identity::SemanticContextBrand VerifiedLoanFacts::semanticContext() const noexcept {
   return impl->candidate.semanticContext;
 }
-const identity::SemanticContextFingerprint& VerifiedLoanFacts::contextFingerprint() const noexcept {
+const identity::ContextFingerprint& VerifiedLoanFacts::contextFingerprint() const noexcept {
   return impl->candidate.contextFingerprint;
 }
 identity::ModuleId VerifiedLoanFacts::module() const noexcept { return impl->candidate.module; }

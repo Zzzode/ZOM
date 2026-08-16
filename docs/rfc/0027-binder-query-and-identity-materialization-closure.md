@@ -183,7 +183,7 @@ StableCallableParameterQueryKey {
 
 StableSemanticImportQueryKey {
   requester: ModuleKey,
-  binding: SemanticImportBindingKey,
+  binding: ImportBindingKey,
 }
 
 StableOwnerBodyQueryKey {
@@ -1516,7 +1516,7 @@ engine, or an enumeration of database keys.
 ### Arena-Owned Typed Identity Interner
 
 `SemanticContextCapabilityArena` owns one
-`CanonicalIdentityInternerSet` for its complete refcounted lifetime. The set
+`IdentityInternerSet` for its complete refcounted lifetime. The set
 contains one typed interner for each global handle:
 
 - `CompilationUnitIdentity -> CompilationUnitId`;
@@ -1635,7 +1635,7 @@ repository. T1 replaces its private friend-only construction with
 fixture, and M1 caller to that constructor, and removes construction-only
 friends. The existing digest and the independently recomputed digest remain
 byte-equal authorities; M1 does not declare a second revision type.
-`SemanticContextFingerprint` likewise gains
+`ContextFingerprint` likewise gains
 `fromCanonicalDigest(const Sha256Digest&)` for exact witness decoding. Both
 factories accept an already decoded fixed-width digest and create only the
 current immutable value; neither is a compatibility adapter, alternate
@@ -1886,7 +1886,7 @@ ImmutableDefinitionInventory {
 
 MaterializedModuleGraphWitness {
   contextRoots: CompilationRootSetQueryKey,
-  fingerprint: SemanticContextFingerprint,
+  fingerprint: ContextFingerprint,
   graph: ModuleGraphRecord,
   scc: ModuleGraphSccRecord,
   requestEdges: CanonicalSequence<StableMaterializedDependencyWitness>,
@@ -1917,7 +1917,7 @@ MaterializedModuleSkeleton {
   context: SemanticContextBrand,
   contextRoots: CompilationRootSetQueryKey,
   revision: DatabaseRevision,
-  fingerprint: SemanticContextFingerprint,
+  fingerprint: ContextFingerprint,
   stableWitness: BoundModuleSkeleton,
   module: ModuleId,
   definitions:
@@ -1951,7 +1951,7 @@ MaterializedOwnerBody {
   context: SemanticContextBrand,
   contextRoots: CompilationRootSetQueryKey,
   revision: DatabaseRevision,
-  fingerprint: SemanticContextFingerprint,
+  fingerprint: ContextFingerprint,
   stableWitness: BoundOwnerBody,
   owner: ContextualBodyOwnerKey,
   nodeScopes: CanonicalSequence<NodeScopeFact>,
@@ -1997,7 +1997,7 @@ VerifiedBoundModule {
   context: SemanticContextBrand,
   contextRoots: CompilationRootSetQueryKey,
   revision: DatabaseRevision,
-  fingerprint: SemanticContextFingerprint,
+  fingerprint: ContextFingerprint,
   compilationUnit: CompilationUnitId,
   crate: CrateId,
   module: ModuleId,
@@ -3076,7 +3076,7 @@ descriptor, or replace the hand-authored inventory with generated schema.
 | `S5` | `binder-checker` with `verification` review | `S4`; `S4A` | `products/zomlang/compiler/binder/stable/header/verifier.h`; `products/zomlang/compiler/binder/stable/header/verifier.cc`; `products/zomlang/compiler/binder/stable-binding-schema.def`; `products/zomlang/compiler/binder/CMakeLists.txt`; `products/zomlang/tests/unittests/compiler/binder/stable/header/verifier-test.cc`; `products/zomlang/tests/unittests/compiler/binder/stable-binding-query-test.cc`; `products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt`; `scripts/check-stable-binding-schema.py`; `scripts/check-binder-architecture.py` | independent full-context selection and header verification, exact schema provenance names, equal-occurrence coverage, caller-selected-entry rejection, and producer/verifier disagreement mutations |
 | `S6` | `error-system` with `binder-checker`, `module-system`, and `verification` review | RFC 0029 `R29-13A`; RFC 0042 `R42-16` | RFC 0029 `R29-13B` exact live-producer landing set | directly replace the source-only fact contract with the live Source-and-Module contract; land Binder-owned typed arguments, five factories and mappings, Module provenance, exact native mutation coverage, schema and CTest ownership, `ZOM3028`, provider/verifier use, and failed-lookup bijection |
 | `Q3` | `module-system` | `G3` | `products/zomlang/compiler/driver/package/canonical-package-compilation-request.h`; `products/zomlang/compiler/driver/package/canonical-package-compilation-request.cc` | handle-free canonical package request records, exact codecs, verified-request projection, and independent projection verifier; completed production ownership remains closed while RFC 0030 `R30-13` owns the comprehensive schema mutation test |
-| `I1` | `module-system` with `runtime-memory` review | RFC 0029 `R29-14` | `products/zomlang/compiler/identity/canonical-identity-interner-set.h`; `products/zomlang/compiler/identity/canonical-identity-interner-set.cc`; `products/zomlang/compiler/query/semantic-context-capability-arena.h`; `products/zomlang/compiler/query/semantic-context-capability-arena.cc` | arena-owned eight-domain typed interner with collision, concurrency, reverse-lookup, and surviving-lease tests |
+| `I1` | `module-system` with `runtime-memory` review | RFC 0029 `R29-14` | `products/zomlang/compiler/identity/canonical/identity-interner-set.h`; `products/zomlang/compiler/identity/canonical/identity-interner-set.cc`; `products/zomlang/compiler/query/semantic-context-capability-arena.h`; `products/zomlang/compiler/query/semantic-context-capability-arena.cc` | arena-owned eight-domain typed interner with collision, concurrency, reverse-lookup, and surviving-lease tests |
 | `I1A` | `module-system` with `verification` review | `Q3`; RFC 0029 `R29-14` | `products/zomlang/compiler/driver/module-graph-query-input.h`; `products/zomlang/compiler/driver/module-graph-query-input.cc`; `products/zomlang/compiler/binder/stable-binding-schema.def`; `scripts/check-stable-binding-schema.py`; `products/zomlang/tests/unittests/compiler/driver/module-graph-query-input-test.cc` | prepare canonical input entries, the complete compilation-context authority value and exact codec, a producer-independent live-authority verifier, and the full declared mutation matrix; do not register or land the descriptor independently |
 | `I2A` | `module-system` | `I1`; `I1A` review; RFC 0029 `R29-14`; `S5` | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc` | prepare `ActiveMembershipResult`, its closed codec, record-codec contracts, and `ActiveCompilationUnitMembership`; do not land independently |
 | `I2B` | `module-system` | `I2A` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc` | prepare compilation-unit and crate membership descriptors with independent providers and verifiers; do not land independently |
@@ -3125,7 +3125,7 @@ descriptor, or replace the hand-authored inventory with generated schema.
 | `L2` | `ir-backend` | `L1` | `products/zomlang/compiler/hir/hir-module.h`; `products/zomlang/compiler/hir/hir-module.cc` | HIR retained lease and lineage verifier |
 | `L3` | `ir-backend` | `L2` | `products/zomlang/compiler/mir/built-mir.h`; `products/zomlang/compiler/mir/built-mir.cc` | Built MIR retained lease and lineage verifier |
 | `L4` | `runtime-memory` | `L3` | `products/zomlang/compiler/ownership/ownership-event-overlay.h`; `products/zomlang/compiler/ownership/ownership-event-overlay.cc` | ownership-overlay retained lease, verifier, and destruction order |
-| `T1` | `module-system` with `verification` and query-runtime review | approved I1A, I2, and M1 preparations; RFC 0029 `R29-14`; RFC 0028 `R28-16` | all files listed by I1A, I2, and M1; `products/zomlang/compiler/binder/binding-input.h`; `products/zomlang/compiler/binder/binding-input.cc`; `products/zomlang/compiler/identity/semantic-context-fingerprint.h`; `products/zomlang/compiler/identity/semantic-context-fingerprint.cc`; `products/zomlang/compiler/query/query-database.h`; `products/zomlang/compiler/query/query-descriptor-schema.def`; `products/zomlang/compiler/driver/CMakeLists.txt`; `products/zomlang/compiler/driver/core-library-query-provider.h`; `products/zomlang/compiler/driver/core-library-query-provider.cc`; `products/zomlang/compiler/driver/active-definition-authority-session.h`; `products/zomlang/compiler/driver/active-definition-authority-session.cc`; `products/zomlang/compiler/driver/compiler-session.cc`; `products/zomlang/tests/unittests/compiler/binder/binding-input-test.cc`; `products/zomlang/tests/unittests/compiler/driver/core-library-query-provider-test.cc`; `products/zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc`; `products/zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc`; `products/zomlang/tests/unittests/compiler/query/query-test-specs.h`; `products/zomlang/tests/unittests/compiler/query/query-test-descriptor-schema.def`; `products/zomlang/tests/unittests/compiler/query/query-database-test.cc`; `products/zomlang/tests/unittests/compiler/query/query-capability-test.cc`; `products/zomlang/tests/unittests/compiler/query/CMakeLists.txt`; `scripts/check-query-descriptor-architecture.py`; `scripts/generate-query-descriptor-schema.py` | atomically land the complete-context value and descriptor, the unique graph-revision and fingerprint canonical-digest construction boundaries, the narrow capability-context revision and typed-resource accessors, memberships, readiness, graph and SCC witnesses, the production and test descriptor inventories, their exact driver build rows, three static transaction-witness descriptors, three closed input transactions with caller-supplied previous revisions and same-revision witnesses, all three production mutation caller cutovers including direct replacement of authority refresh, both same-name shadow deletions, the slot-59 generic runtime fixture, production descriptor final-seal integration, complete static final-authority verification, full mutation matrix, and staging, final, and sealed snapshot publication |
+| `T1` | `module-system` with `verification` and query-runtime review | approved I1A, I2, and M1 preparations; RFC 0029 `R29-14`; RFC 0028 `R28-16` | all files listed by I1A, I2, and M1; `products/zomlang/compiler/binder/binding-input.h`; `products/zomlang/compiler/binder/binding-input.cc`; `products/zomlang/compiler/identity/semantic/context-fingerprint.h`; `products/zomlang/compiler/identity/semantic/context-fingerprint.cc`; `products/zomlang/compiler/query/query-database.h`; `products/zomlang/compiler/query/query-descriptor-schema.def`; `products/zomlang/compiler/driver/CMakeLists.txt`; `products/zomlang/compiler/driver/core-library-query-provider.h`; `products/zomlang/compiler/driver/core-library-query-provider.cc`; `products/zomlang/compiler/driver/active-definition-authority-session.h`; `products/zomlang/compiler/driver/active-definition-authority-session.cc`; `products/zomlang/compiler/driver/compiler-session.cc`; `products/zomlang/tests/unittests/compiler/binder/binding-input-test.cc`; `products/zomlang/tests/unittests/compiler/driver/core-library-query-provider-test.cc`; `products/zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc`; `products/zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc`; `products/zomlang/tests/unittests/compiler/query/query-test-specs.h`; `products/zomlang/tests/unittests/compiler/query/query-test-descriptor-schema.def`; `products/zomlang/tests/unittests/compiler/query/query-database-test.cc`; `products/zomlang/tests/unittests/compiler/query/query-capability-test.cc`; `products/zomlang/tests/unittests/compiler/query/CMakeLists.txt`; `scripts/check-query-descriptor-architecture.py`; `scripts/generate-query-descriptor-schema.py` | atomically land the complete-context value and descriptor, the unique graph-revision and fingerprint canonical-digest construction boundaries, the narrow capability-context revision and typed-resource accessors, memberships, readiness, graph and SCC witnesses, the production and test descriptor inventories, their exact driver build rows, three static transaction-witness descriptors, three closed input transactions with caller-supplied previous revisions and same-revision witnesses, all three production mutation caller cutovers including direct replacement of authority refresh, both same-name shadow deletions, the slot-59 generic runtime fixture, production descriptor final-seal integration, complete static final-authority verification, full mutation matrix, and staging, final, and sealed snapshot publication |
 | `T2A` | `module-system` | `M5`; `T1` | `products/zomlang/compiler/driver/compiler-session.h`; `products/zomlang/compiler/driver/compiler-session.cc` | install the transaction state machine and named snapshots, and make the arena-owned compiler-session semantic resource implement the approved module-graph identity-materialization interface without a second interner or resource fallback |
 | `T2B` | `module-system` | `C2`; `L4`; `T2A` | `products/zomlang/compiler/driver/compiler-session.h`; `products/zomlang/compiler/driver/compiler-session.cc` | dependency-first final capability root and irreversible seal |
 | `T2C` | `module-system` | `T2B` | `products/zomlang/compiler/driver/compiler-session.h`; `products/zomlang/compiler/driver/compiler-session.cc` | surviving-lease and session teardown order |

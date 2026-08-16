@@ -7,7 +7,7 @@
 
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/identity/canonical-identity-interner-set.h"
+#include "zomlang/compiler/identity/canonical/identity-interner-set.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -127,7 +127,7 @@ identity::SemanticContextBrand requireContext(identity::SemanticContextFactory& 
 
 zc::Array<identity::ModuleId> issueModules(identity::SemanticContextFactory& factory,
                                            identity::SemanticContextBrand context) {
-  auto created = identity::CanonicalIdentityInternerSet::create(factory, context);
+  auto created = identity::IdentityInternerSet::create(factory, context);
   ZC_REQUIRE(created != zc::none);
   ZC_IF_SOME(authorities, created) {
     auto first = module("first"_zc);

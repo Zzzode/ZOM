@@ -416,7 +416,7 @@ void insertionSort(zc::Vector<Value>& values, Less&& comparator) {
 
 struct VerifiedBorrowInterfaceSurface::Impl final {
   Impl(identity::SemanticContextBrand semanticContext,
-       identity::SemanticContextFingerprint&& contextFingerprint, identity::ModuleId module,
+       identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
        signature::SignatureFactsRevision signatureRevision,
        cross_module::ImportedSignatureViewRevision importedRevision,
        zc::Vector<BorrowSignatureSummary>&& summaries, BorrowInterfaceRevision revision)
@@ -429,7 +429,7 @@ struct VerifiedBorrowInterfaceSurface::Impl final {
         revision(revision) {}
 
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   signature::SignatureFactsRevision signatureRevision;
   cross_module::ImportedSignatureViewRevision importedRevision;
@@ -447,7 +447,7 @@ VerifiedBorrowInterfaceSurface& VerifiedBorrowInterfaceSurface::operator=(
 identity::SemanticContextBrand VerifiedBorrowInterfaceSurface::semanticContext() const noexcept {
   return impl->semanticContext;
 }
-const identity::SemanticContextFingerprint& VerifiedBorrowInterfaceSurface::contextFingerprint()
+const identity::ContextFingerprint& VerifiedBorrowInterfaceSurface::contextFingerprint()
     const noexcept {
   return impl->contextFingerprint;
 }

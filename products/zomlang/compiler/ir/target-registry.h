@@ -22,8 +22,8 @@
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
-#include "zomlang/compiler/identity/crate-key.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/key/crate-key.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 
 namespace zomlang::compiler::ir {
 

@@ -5,7 +5,7 @@
 
 #include "zomlang/compiler/ir/ir-failure.h"
 
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::ir {
 namespace {
@@ -448,7 +448,7 @@ IrFailureOwner::IrFailureOwner(ModuleFailureOwner value) noexcept : value(value)
 IrFailureOwner::IrFailureOwner(DefinitionFailureOwner value) noexcept : value(value) {}
 IrFailureOwner::IrFailureOwner(InstanceFailureOwner value) noexcept : value(value) {}
 
-IrFailureOwner IrFailureOwner::session(identity::SemanticContextFingerprint&& context) noexcept {
+IrFailureOwner IrFailureOwner::session(identity::ContextFingerprint&& context) noexcept {
   return IrFailureOwner(SessionFailureOwner{zc::mv(context)});
 }
 IrFailureOwner IrFailureOwner::module(identity::ModuleId module) noexcept {
@@ -482,7 +482,7 @@ IrFailureOwnerKind IrFailureOwner::kind() const noexcept {
   return IrFailureOwnerKind::Instance;
 }
 
-zc::Maybe<const identity::SemanticContextFingerprint&> IrFailureOwner::sessionContext() const {
+zc::Maybe<const identity::ContextFingerprint&> IrFailureOwner::sessionContext() const {
   if (value.is<SessionFailureOwner>()) { return value.get<SessionFailureOwner>().context; }
   return zc::none;
 }

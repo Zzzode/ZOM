@@ -194,11 +194,11 @@ Declaration-kind tags remain RFC 0011 `DefinitionKind` tags `0x01` through
 
 `Parameter`, `TypeParameter`, `Local`, `PatternBinding`, and `Closure` are
 invalid in `DefinitionIdentityRecord`. `ImportAlias` and `ReexportAlias` are
-also invalid: RFC 0017 `SemanticImportBindingKey` is their sole stable semantic
+also invalid: RFC 0017 `ImportBindingKey` is their sole stable semantic
 identity, so pre-admission never creates an alias `DefinitionKey`. A
 whole-module alias uses `ModuleAlias` in the module namespace. Before target
 lookup, an unqualified selected import or re-export creates one
-`SemanticImportBindingKey` slot for each syntactically permitted namespace:
+`ImportBindingKey` slot for each syntactically permitted namespace:
 `Value`, `Type`, and `Module`. `ImportTarget` returns a verified target or
 deterministic absence for each stable slot. Equal spelling exported in value
 and type namespaces therefore makes two slots present while the module slot
@@ -231,10 +231,10 @@ move-parameter producer. External ABI tags are the current frontend set
 `Cdecl = 0x01`, `Stdcall = 0x02`, and `ZomNative = 0x03`. Variadicness and
 backend calling conventions are not ABI variants and are not admitted by canonical.
 
-`CanonicalOverloadHeader` encodes these fields in order:
+`OverloadHeader` encodes these fields in order:
 
 ```text
-CanonicalOverloadHeader {
+OverloadHeader {
   callableKind: CallableHeaderKind,
   name: NfcDeclaredName,
   receiver: Maybe<ReceiverShape>,
@@ -463,7 +463,7 @@ through a second fact inventory.
 The machine-readable wire inventory lives in
 `products/zomlang/compiler/identity/canonical-header-syntax-schema.yml` and is
 generated into
-`products/zomlang/compiler/identity/canonical-header-syntax-schema.def` by
+`products/zomlang/compiler/identity/canonical/canonical-header-syntax-schema.def` by
 `scripts/generate-canonical-header-syntax-schema.py`. The source schema lists
 exactly the tags and fields above; it contains no AST ids. The identity
 architecture gate regenerates to a temporary file and requires byte equality,
@@ -487,11 +487,11 @@ parser or arena identity.
 SHA-256(
   ASCII("zom.overload-header")
   || 0x00
-  || Encode(CanonicalOverloadHeader)
+  || Encode(OverloadHeader)
 )
 ```
 
-`Encode(CanonicalOverloadHeader)` is the RFC 0011 canonical encoding of those
+`Encode(OverloadHeader)` is the RFC 0011 canonical encoding of those
 header fields in schema order. It has no outer optional tag, length wrapper,
 source provenance, or second hash layer. The optional presence tag belongs only
 to `DefinitionIdentityRecord`, which embeds the digest's 32 raw bytes.
@@ -499,7 +499,7 @@ Unordered header members use the normalization rules above before hashing.
 
 The pre-admission inventory and admitted identity registry retain
 `OverloadHeaderAuthority { digest: OverloadHeaderDigest,
-header: CanonicalOverloadHeader }` for every present digest. The verifier
+header: OverloadHeader }` for every present digest. The verifier
 recomputes the digest from the complete retained header. Equal digest bytes with
 unequal header bytes are an invariant collision before source-redeclaration
 grouping; a present definition digest without exactly one equal authority
@@ -1443,7 +1443,7 @@ different Python environments.
   ordered provenance records.
 - Selected import and re-export namespace slots are created before target
   lookup, so export-surface changes update `ImportTarget` values without
-  changing `SemanticImportBindingKey` identities.
+  changing `ImportBindingKey` identities.
 - Alias and prelude target changes invalidate through narrow tracked inputs
   without changing the semantic request key.
 - `RequesterModuleAncestry` and `ModuleCatalogPathBucket` implement the exact

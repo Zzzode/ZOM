@@ -7,8 +7,8 @@
 #include "zomlang/compiler/binder/stable-binding-diagnostic-fact.h"
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"
 #include "zomlang/compiler/driver/named-item-query.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {
 namespace {

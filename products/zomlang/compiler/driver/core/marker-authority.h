@@ -11,9 +11,9 @@
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/checker/signature-facts.h"
-#include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
-#include "zomlang/compiler/identity/source-key.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
+#include "zomlang/compiler/identity/key/source-key.h"
 #include "zomlang/compiler/source/core-distribution.h"
 
 namespace zomlang::compiler::driver::core {
@@ -128,13 +128,13 @@ public:
   ZC_DISALLOW_COPY(VerifiedCoreMarkerShapeInventory);
 
   ZC_NODISCARD static zc::Maybe<VerifiedCoreMarkerShapeInventory> from(
-      identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+      identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
       identity::CoreSemanticContextFingerprint&& coreContext,
       const identity::Sha256Digest& distribution, const identity::Sha256Digest& roleSeedRevision,
       zc::Vector<CoreMarkerShapeEntry>&& shapes);
   ZC_NODISCARD VerifiedCoreMarkerShapeInventory clone() const;
   ZC_NODISCARD identity::SemanticContextBrand context() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& fingerprint() const noexcept;
   ZC_NODISCARD const identity::CoreSemanticContextFingerprint& coreContext() const noexcept;
   ZC_NODISCARD const identity::Sha256Digest& distribution() const noexcept;
   ZC_NODISCARD const identity::Sha256Digest& roleSeedRevision() const noexcept;
@@ -157,14 +157,14 @@ public:
   ZC_DISALLOW_COPY(VerifiedCoreMarkerPolicyRegistry);
 
   ZC_NODISCARD static zc::Maybe<VerifiedCoreMarkerPolicyRegistry> from(
-      identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+      identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
       identity::CoreSemanticContextFingerprint&& coreContext,
       const identity::Sha256Digest& distribution, const identity::Sha256Digest& roleSeedRevision,
       const identity::Sha256Digest& templateRevision,
       const VerifiedCoreMarkerShapeInventory& shapes, zc::Vector<CoreMarkerPolicyEntry>&& entries);
   ZC_NODISCARD VerifiedCoreMarkerPolicyRegistry clone() const;
   ZC_NODISCARD identity::SemanticContextBrand context() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& fingerprint() const noexcept;
   ZC_NODISCARD const identity::CoreSemanticContextFingerprint& coreContext() const noexcept;
   ZC_NODISCARD const identity::Sha256Digest& distribution() const noexcept;
   ZC_NODISCARD const identity::Sha256Digest& roleSeedRevision() const noexcept;
@@ -189,14 +189,14 @@ public:
   ZC_DISALLOW_COPY(VerifiedCoreStandardMarkerAuthority);
 
   ZC_NODISCARD static zc::Maybe<VerifiedCoreStandardMarkerAuthority> from(
-      identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+      identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
       identity::CoreSemanticContextFingerprint&& coreContext,
       const identity::Sha256Digest& configurationRevision,
       const VerifiedCoreMarkerShapeInventory& shapes,
       const VerifiedCoreMarkerPolicyRegistry& policies, identity::ModuleKey&& prelude,
       zc::Vector<CoreMarkerRole>&& roles);
   ZC_NODISCARD identity::SemanticContextBrand context() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& fingerprint() const noexcept;
   ZC_NODISCARD const identity::CoreSemanticContextFingerprint& coreContext() const noexcept;
   ZC_NODISCARD const identity::Sha256Digest& configurationRevision() const noexcept;
   ZC_NODISCARD const CoreMarkerShapeInventoryRevision& shapeRevision() const noexcept;

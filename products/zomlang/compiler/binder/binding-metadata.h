@@ -13,9 +13,9 @@
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/binder/definition-site.h"
 #include "zomlang/compiler/binder/local-identity.h"
-#include "zomlang/compiler/identity/canonical-scalar.h"
-#include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/semantic-import-binding-key.h"
+#include "zomlang/compiler/identity/canonical/canonical-scalar.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
+#include "zomlang/compiler/identity/key/import-binding-key.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
 
 namespace zomlang::compiler::diagnostics {
@@ -132,7 +132,7 @@ struct OwnerLocalBindingTarget final {
   OwnerLocalBindingId binding;
 };
 struct SemanticImportBindingTarget final {
-  identity::SemanticImportBindingKey binding;
+  identity::ImportBindingKey binding;
 };
 struct ModuleBindingTarget final {
   identity::ModuleId module;
@@ -150,7 +150,7 @@ public:
   ZC_NODISCARD static BindingTarget genericParameter(identity::GenericParameterId value);
   ZC_NODISCARD static BindingTarget callableParameter(identity::CallableParameterId value);
   ZC_NODISCARD static BindingTarget ownerLocal(OwnerLocalBindingId value);
-  ZC_NODISCARD static BindingTarget semanticImport(identity::SemanticImportBindingKey&& value);
+  ZC_NODISCARD static BindingTarget semanticImport(identity::ImportBindingKey&& value);
   ZC_NODISCARD static BindingTarget module(identity::ModuleId value);
   ZC_NODISCARD BindingTarget clone() const;
   ZC_NODISCARD const BindingTargetValue& value() const noexcept;
@@ -589,7 +589,7 @@ struct ModuleAliasBindingFact final {
 enum class ImportBindingKind : uint8_t { Import = 0x01, ForeignReexport = 0x02 };
 struct ImportBindingFact final {
   ast::NodeId node;
-  identity::SemanticImportBindingKey binding;
+  identity::ImportBindingKey binding;
   BindingTarget canonicalTarget;
   identity::ModuleId sourceModule;
   ExportSurfaceRevision sourceRevision;

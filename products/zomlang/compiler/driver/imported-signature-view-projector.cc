@@ -8,7 +8,7 @@
 #include "zomlang/compiler/binder/binding-metadata.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/driver/core/query.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
 
 namespace zomlang::compiler::driver {
@@ -212,7 +212,7 @@ zc::Maybe<binder::Namespace> bindingNamespace(identity::DefinitionNamespace valu
   ZC_UNREACHABLE
 }
 
-zc::Maybe<binder::BindingNameKey> importName(const identity::SemanticImportBindingKey& binding,
+zc::Maybe<binder::BindingNameKey> importName(const identity::ImportBindingKey& binding,
                                              bool local) {
   auto nameSpace = bindingNamespace(local ? binding.localNamespace() : binding.sourceNamespace());
   if (nameSpace == zc::none) { return zc::none; }

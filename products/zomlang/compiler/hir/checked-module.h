@@ -17,7 +17,7 @@
 #include "zomlang/compiler/driver/interface-source.h"
 #include "zomlang/compiler/driver/materialized-module-graph-query.h"
 #include "zomlang/compiler/driver/module-interface.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
 #include "zomlang/compiler/ir/ir-failure.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
@@ -60,7 +60,7 @@ public:
   ZC_DISALLOW_COPY(VerifiedCheckedModule);
 
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& contextFingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::CompilationUnitId compilationUnit() const noexcept;
   ZC_NODISCARD identity::CrateId crate() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;

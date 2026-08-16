@@ -13,7 +13,7 @@
 #include "zomlang/compiler/ast/node-id.h"
 #include "zomlang/compiler/identity/brand.h"
 #include "zomlang/compiler/identity/handle.h"
-#include "zomlang/compiler/identity/module-resolution-key.h"
+#include "zomlang/compiler/identity/key/module-resolution-key.h"
 
 namespace zomlang::compiler::binder {
 

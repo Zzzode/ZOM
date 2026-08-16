@@ -22,7 +22,7 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/driver/package/linux-native-sandbox.h"
 #include "zomlang/compiler/driver/package/linux-sandbox-policy.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/compiler/ir/target-registry.h"
 
 namespace zomlang::compiler::driver::package {

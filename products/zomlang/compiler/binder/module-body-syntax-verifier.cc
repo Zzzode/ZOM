@@ -7,8 +7,8 @@
 #include "zomlang/compiler/ast/generated/node-schema.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
 #include "zomlang/compiler/binder/module-body-syntax.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/canonical-scalar.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-scalar.h"
 
 namespace zomlang::compiler::binder {
 namespace {

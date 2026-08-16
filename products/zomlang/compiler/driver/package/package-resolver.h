@@ -22,7 +22,7 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/driver/package/feature-resolver.h"
 #include "zomlang/compiler/driver/package/lockfile.h"
-#include "zomlang/compiler/identity/package-key.h"
+#include "zomlang/compiler/identity/key/package-key.h"
 
 namespace zomlang::compiler::driver::package {
 

@@ -156,7 +156,7 @@ query::DatabaseRevision CheckerIdentityAuthority::revision() const noexcept {
   return impl->graph.capability().revision();
 }
 
-const identity::SemanticContextFingerprint& CheckerIdentityAuthority::fingerprint() const noexcept {
+const identity::ContextFingerprint& CheckerIdentityAuthority::fingerprint() const noexcept {
   return impl->graph.capability().witness().fingerprint();
 }
 

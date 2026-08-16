@@ -21,7 +21,7 @@
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/sodium-runtime.h"
 #include "zomlang/compiler/driver/package/source-snapshot.h"
-#include "zomlang/compiler/identity/package-key.h"
+#include "zomlang/compiler/identity/key/package-key.h"
 
 namespace zomlang::compiler::driver::package {
 

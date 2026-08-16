@@ -43,7 +43,7 @@ struct GateSourceFailureOrdering final {
   }
 };
 
-identity::SemanticContextFingerprint emptyContextFingerprint() {
+identity::ContextFingerprint emptyContextFingerprint() {
   zc::ArrayPtr<const identity::CompilationUnitIdentity> compilationUnits;
   zc::ArrayPtr<const identity::ToolchainSemanticContextInput> toolchainInputs;
   zc::ArrayPtr<const identity::PackageDependencyEdgeKey> packageEdges;
@@ -51,7 +51,7 @@ identity::SemanticContextFingerprint emptyContextFingerprint() {
   zc::ArrayPtr<const identity::CrateDependencyEdgeKey> crateEdges;
   zc::ArrayPtr<const identity::SourceContentIdentity> sources;
   zc::ArrayPtr<const identity::ModuleKey> modules;
-  auto result = identity::SemanticContextFingerprint::compute(
+  auto result = identity::ContextFingerprint::compute(
       compilationUnits, toolchainInputs, packageEdges, crates, crateEdges, sources, modules);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("empty semantic context fingerprint fixture was rejected");

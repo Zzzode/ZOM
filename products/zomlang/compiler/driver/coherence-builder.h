@@ -13,7 +13,7 @@ namespace zomlang::compiler::driver {
 /// \brief Verified-interface-only input for global coherence construction.
 struct CoherenceBuildInput final {
   identity::SemanticContextBrand semanticContext;
-  const identity::SemanticContextFingerprint& contextFingerprint;
+  const identity::ContextFingerprint& contextFingerprint;
   const checker::signature::VerifiedMarkerPolicyRegistry& markerPolicies;
   zc::ArrayPtr<const VerifiedModuleInterface> interfaces;
   const checker::CheckerIdentityAuthority& identities;

@@ -358,7 +358,7 @@ type, callable, and implementation AST producers are also implemented.
 `DefinitionKey` and `ImplKey` now derive from complete position-independent
 canonical records, subordinate parameter registries are separate from the
 definition registry, and import/re-export bindings use
-`SemanticImportBindingKey` instead of alias `DefId` values. RFC 0019 now supplies
+`ImportBindingKey` instead of alias `DefId` values. RFC 0019 now supplies
 the closed owner model for module-owned statements and anonymous-callable
 subordinate entities. Its Phase 2 module-body syntax and provenance queries are
 registered and demanded in production. Owner-body materialization, complete
@@ -492,7 +492,7 @@ compiler inputs.
 
 The import/re-export identity cut is complete across Binder, Checker, and
 driver consumers. A selected namespace slot carries one
-`SemanticImportBindingKey`; local exports retain their canonical binding target;
+`ImportBindingKey`; local exports retain their canonical binding target;
 signature selection and root authorization accept only definition or semantic
 import targets. The definition inventory, frozen inventory, codecs, validators,
 and interface projectors contain no alias-definition identity path.

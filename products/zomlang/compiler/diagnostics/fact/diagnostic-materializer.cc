@@ -12,7 +12,7 @@
 #include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic-info.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic.h"
-#include "zomlang/compiler/identity/source-key.h"
+#include "zomlang/compiler/identity/key/source-key.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang::compiler::diagnostics {

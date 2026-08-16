@@ -252,7 +252,7 @@ BodyCheckingInput {
 
 CoherenceBuildingInput {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   markerPolicies: const RFC0015::VerifiedMarkerPolicyRegistry,
   modules: SortedNonEmptySequence<CoherenceModuleInput>,
 }
@@ -1335,7 +1335,7 @@ The candidate and verified value are:
 ```text
 SignatureFactsCandidate {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   module: ModuleId,
   sourceContentDigest: Sha256Digest,
   parsedModuleReceipt: ParsedModuleReceipt,
@@ -1370,7 +1370,7 @@ imported view revision; their local alias binding identities become separate
 ```text
 ASCII("zom.signature-facts-revision")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 EncodeByteString(expanded owning ModuleKey)
 sourceContentDigest
 bindingSurfaceRevision
@@ -1423,7 +1423,7 @@ ImportedSignatureModule {
 
 ImportedSignatureView {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   requester: ModuleId,
   revision: ImportedSignatureViewRevision,
   modules: SortedSequence<ImportedSignatureModule>,
@@ -1440,7 +1440,7 @@ VerifiedInterfaceSource =
 
 FrozenCoherenceView {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   markerPolicyRegistryRevision: MarkerPolicyRegistryRevision,
   revision: CoherenceViewRevision,
   moduleInterfaceRevisions:
@@ -1451,7 +1451,7 @@ FrozenCoherenceView {
 
 CoherenceCandidate {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   markerPolicyRegistryRevision: MarkerPolicyRegistryRevision,
   moduleInterfaceRevisions:
       SortedNonEmptySequence<ModuleInterfaceRevisionEntry>,
@@ -1995,7 +1995,7 @@ The body checker produces one write-once candidate:
 ```text
 CheckedFactsCandidate {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   module: ModuleId,
   sourceContentDigest: Sha256Digest,
   parsedModuleReceipt: ParsedModuleReceipt,
@@ -2067,7 +2067,7 @@ the RFC 0005 codec above.
 ```text
 ASCII("zom.checked-facts-revision")
 0x00
-SemanticContextFingerprint
+ContextFingerprint
 EncodeByteString(expanded owning ModuleKey)
 sourceContentDigest
 parsedModuleReceipt

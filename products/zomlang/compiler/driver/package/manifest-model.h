@@ -20,10 +20,10 @@
 #include "zc/core/common.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/identity/crate-key.h"
-#include "zomlang/compiler/identity/package-key.h"
-#include "zomlang/compiler/identity/semantic-version.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/key/crate-key.h"
+#include "zomlang/compiler/identity/key/package-key.h"
+#include "zomlang/compiler/identity/semantic/semantic-version.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 
 namespace zomlang::compiler::identity {
 class CanonicalEncoder;

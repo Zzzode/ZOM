@@ -16,9 +16,9 @@
 
 #include "zomlang/compiler/checker/marker-proof.h"
 #include "zomlang/compiler/driver/core/marker-authority.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
 
 namespace zomlang::compiler::ownership {
@@ -1532,7 +1532,7 @@ zc::Maybe<zc::Array<uint8_t>> OwnershipEventOverlayCodec::encodeFramed(
 }
 
 zc::Maybe<zc::Array<uint8_t>> OwnershipEventOverlayCodec::encode(
-    const identity::SemanticContextFingerprint& contextFingerprint,
+    const identity::ContextFingerprint& contextFingerprint,
     zc::ArrayPtr<const uint8_t> expandedModuleKey,
     const checker::checked::CheckedFactsRevision& checkedFactsRevision,
     const mir::MirRevisionId& builtRevision,
@@ -1542,7 +1542,7 @@ zc::Maybe<zc::Array<uint8_t>> OwnershipEventOverlayCodec::encode(
 }
 
 zc::Maybe<OwnershipEventOverlayRevision> OwnershipEventOverlayCodec::compute(
-    const identity::SemanticContextFingerprint& contextFingerprint,
+    const identity::ContextFingerprint& contextFingerprint,
     zc::ArrayPtr<const uint8_t> expandedModuleKey,
     const checker::checked::CheckedFactsRevision& checkedFactsRevision,
     const mir::MirRevisionId& builtRevision,
@@ -1690,7 +1690,7 @@ ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifi
 
 struct VerifiedOwnershipEventOverlay::Impl final {
   Impl(identity::SemanticContextBrand semanticContext,
-       identity::SemanticContextFingerprint&& contextFingerprint, identity::ModuleId module,
+       identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
        checker::checked::CheckedFactsRevision checkedFactsRevision,
        mir::MirRevisionId builtRevision, zc::Vector<OwnershipFunctionEventOverlay>&& functions,
        OwnershipEventOverlayRevision revision, OwnershipAdmittedBoundModule&& boundModule) noexcept
@@ -1705,7 +1705,7 @@ struct VerifiedOwnershipEventOverlay::Impl final {
 
   OwnershipAdmittedBoundModule boundModule;
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   checker::checked::CheckedFactsRevision checkedFactsRevision;
   mir::MirRevisionId builtRevision;
@@ -1724,7 +1724,7 @@ VerifiedOwnershipEventOverlay& VerifiedOwnershipEventOverlay::operator=(
 identity::SemanticContextBrand VerifiedOwnershipEventOverlay::semanticContext() const noexcept {
   return impl->semanticContext;
 }
-const identity::SemanticContextFingerprint& VerifiedOwnershipEventOverlay::contextFingerprint()
+const identity::ContextFingerprint& VerifiedOwnershipEventOverlay::contextFingerprint()
     const noexcept {
   return impl->contextFingerprint;
 }

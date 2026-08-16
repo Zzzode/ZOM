@@ -5,7 +5,7 @@
 
 #include "zomlang/compiler/checker/coherence-facts.h"
 
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::checker::coherence {
 namespace {
@@ -293,7 +293,7 @@ zc::ArrayPtr<const zc::Array<uint8_t>> CoherenceModuleInput::markerFactRecords()
 
 struct FrozenCoherenceView::Impl final {
   Impl(identity::SemanticContextBrand context,
-       const identity::SemanticContextFingerprint& fingerprint,
+       const identity::ContextFingerprint& fingerprint,
        signature::MarkerPolicyRegistryRevision markerPolicyRegistryRevision,
        cross_module::CoherenceViewRevision revision,
        zc::Vector<ModuleInterfaceRevisionEntry>&& modules, zc::Vector<signature::ImplHead>&& impls,
@@ -307,7 +307,7 @@ struct FrozenCoherenceView::Impl final {
         markers(zc::mv(markers)) {}
 
   identity::SemanticContextBrand context;
-  identity::SemanticContextFingerprint fingerprint;
+  identity::ContextFingerprint fingerprint;
   signature::MarkerPolicyRegistryRevision markerPolicyRegistryRevision;
   cross_module::CoherenceViewRevision revision;
   zc::Vector<ModuleInterfaceRevisionEntry> modules;
@@ -323,7 +323,7 @@ FrozenCoherenceView& FrozenCoherenceView::operator=(FrozenCoherenceView&&) noexc
 identity::SemanticContextBrand FrozenCoherenceView::semanticContext() const noexcept {
   return impl->context;
 }
-const identity::SemanticContextFingerprint& FrozenCoherenceView::contextFingerprint()
+const identity::ContextFingerprint& FrozenCoherenceView::contextFingerprint()
     const noexcept {
   return impl->fingerprint;
 }

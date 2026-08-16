@@ -61,9 +61,9 @@
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"
 #include "zomlang/compiler/driver/named-item-query.h"
 #include "zomlang/compiler/driver/package/package-diagnostic.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/canonical-identity-interner-set.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/identity-interner-set.h"
 #include "zomlang/compiler/identity/identity-diagnostic-adapter.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
 #include "zomlang/compiler/parser/parse-source-query.h"
@@ -331,13 +331,13 @@ class CompilerSessionSemanticContextResources final
     : public module_graph_query::ModuleGraphIdentityMaterializationResources {
 public:
   identity::SemanticContextBrand contextBrand;
-  mutable zc::Maybe<identity::CanonicalIdentityInternerSet> identityInternerSet;
+  mutable zc::Maybe<identity::IdentityInternerSet> identityInternerSet;
   zc::Own<type::SemanticTypeStore> semanticTypeStore;
   zc::Maybe<identity::RegistryBrandIssuer> factStoreBrands;
 
   identity::SemanticContextBrand semanticContext() const noexcept override { return contextBrand; }
 
-  identity::CanonicalIdentityInternerSet& identityInterners() const override {
+  identity::IdentityInternerSet& identityInterners() const override {
     return ZC_ASSERT_NONNULL(identityInternerSet);
   }
 
@@ -446,7 +446,7 @@ InitializedSemanticContextResources initializeSemanticContextResources(
   ZC_IF_SOME(context, issuedContext) { resources->contextBrand = context; }
 
   auto issuedInterners =
-      identity::CanonicalIdentityInternerSet::create(contextFactory, resources->contextBrand);
+      identity::IdentityInternerSet::create(contextFactory, resources->contextBrand);
   if (issuedInterners == zc::none) {
     return InitializedSemanticContextResources(
         zc::mv(resources), SemanticContextResourceFailure::IdentityInternerUnavailable);

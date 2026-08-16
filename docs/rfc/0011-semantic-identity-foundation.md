@@ -202,7 +202,7 @@ never accepts caller-provided tokens, rejects exhaustion before wraparound, and
 never reuses a token during the process lifetime. One semantic context owns one
 `RegistryBrandIssuer` with the same rules for any store-local registries.
 
-`SemanticContextFingerprint` is a deterministic digest of canonical package and
+`ContextFingerprint` is a deterministic digest of canonical package and
 crate dependency edges, package and crate compilation keys, source and module
 keys, and immutable source contents. It is suitable for diagnostics and
 in-memory revision validation. It is not an issuer capability, does not make
@@ -600,7 +600,7 @@ SelectedModuleIdentityInput {
 ```
 
 Only selected inputs receive `ModuleId` or contribute module keys to the
-`SemanticContextFingerprint`. Rejected duplicates are RFC 0008 diagnostic
+`ContextFingerprint`. Rejected duplicates are RFC 0008 diagnostic
 facts and do not enter an RFC 0011 identity registry.
 
 The parser preserves every accepted leading module form before discovery:
@@ -799,8 +799,8 @@ The declaration inventory is exhaustive over the current AST schema:
 | binding under block-scope `LetStmt(Let | Mut | Const)` | RFC 0017 owner-local binding key; no stable `DefinitionKey` |
 | binding pattern introduced by match, loop, or another pattern-only scope | RFC 0017 owner-local binding key; no stable `DefinitionKey` |
 | `FunctionExpression`, `LambdaExpression` | RFC 0017 owner-local syntax identity; no stable `DefinitionKey` |
-| `ImportDeclaration` namespace binding or `ImportSpecifier` | RFC 0017 `SemanticImportBindingKey`; no named `DefinitionKey` |
-| re-exporting `ExportDeclaration` or `ExportSpecifier` | RFC 0017 `SemanticImportBindingKey`; no named `DefinitionKey` |
+| `ImportDeclaration` namespace binding or `ImportSpecifier` | RFC 0017 `ImportBindingKey`; no named `DefinitionKey` |
+| re-exporting `ExportDeclaration` or `ExportSpecifier` | RFC 0017 `ImportBindingKey`; no named `DefinitionKey` |
 | `StandaloneImplDecl`, `MarkerImpl` | one shared `ImplId` authority per equal identity group and one `ImplOccurrenceId` per source occurrence; no `DefId` for the impl block |
 | `ExternBlock`, declaration-list containers, attributes | No semantic identity; consumers may not treat them as definitions |
 
@@ -1226,7 +1226,7 @@ is accepted.
 ## Acceptance Criteria
 
 1. `SemanticContextBrand` is opaque, private-construction,
-   non-serializable, and distinct from `SemanticContextFingerprint`.
+   non-serializable, and distinct from `ContextFingerprint`.
 2. Every semantic handle carries and validates its context brand.
 3. `PackageKey` includes canonical source, name, version, and enabled features.
 4. `CrateTargetKind` is closed and distinct from artifact kind.

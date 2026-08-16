@@ -6,7 +6,7 @@
 #include "zc/core/encoding.h"
 #include "zc/core/memory.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
@@ -41,10 +41,10 @@ public:
     ZC_REQUIRE(issuedContext != zc::none);
     ZC_IF_SOME(value, issuedContext) { contextValue = value; }
 
-    auto createdInterner = identity::CanonicalIdentityInternerSet::create(factory, contextValue);
+    auto createdInterner = identity::IdentityInternerSet::create(factory, contextValue);
     ZC_REQUIRE(createdInterner != zc::none);
     ZC_IF_SOME(value, createdInterner) {
-      identitiesValue = zc::heap<identity::CanonicalIdentityInternerSet>(zc::mv(value));
+      identitiesValue = zc::heap<identity::IdentityInternerSet>(zc::mv(value));
     }
     buildIdentityAuthority();
 
@@ -150,7 +150,7 @@ private:
 
   identity::SemanticContextFactory factory;
   identity::SemanticContextBrand contextValue;
-  zc::Own<identity::CanonicalIdentityInternerSet> identitiesValue;
+  zc::Own<identity::IdentityInternerSet> identitiesValue;
   zc::Vector<DefinitionEntry> definitions;
   zc::Maybe<identity::GenericParameterKey> parameterKeyValue;
   zc::Own<type::SemanticTypeStore> semanticTypesValue;

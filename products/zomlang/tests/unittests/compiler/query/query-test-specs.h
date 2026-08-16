@@ -18,7 +18,7 @@
 
 #include "zc/core/debug.h"
 #include "zomlang/compiler/basic/thread-pool.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/query/query-database.h"
 
 namespace zomlang::compiler::query::test {

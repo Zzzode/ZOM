@@ -10,9 +10,9 @@
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic-info.h"
 #include "zomlang/compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/source-key.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/key/source-key.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
 

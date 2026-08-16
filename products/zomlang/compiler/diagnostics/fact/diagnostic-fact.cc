@@ -8,9 +8,9 @@
 #include "zc/core/debug.h"
 #include "zc/core/one-of.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic-info.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/source-key.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/key/source-key.h"
 
 namespace zomlang::compiler::diagnostics {
 

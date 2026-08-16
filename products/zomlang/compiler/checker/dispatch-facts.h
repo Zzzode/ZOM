@@ -17,7 +17,7 @@
 #include "zomlang/compiler/checker/checked-facts-repository.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/identity/identity-invariant.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::driver::module_graph_query {
@@ -176,7 +176,7 @@ struct DispatchFactCandidateEntry final {
 class DispatchFactsCandidate final {
 public:
   DispatchFactsCandidate(identity::SemanticContextBrand semanticContext,
-                         identity::SemanticContextFingerprint&& contextFingerprint,
+                         identity::ContextFingerprint&& contextFingerprint,
                          identity::ModuleId module,
                          const checked::CheckedFactsRevision& checkedFactsRevision,
                          zc::Vector<DispatchFactCandidateEntry>&& facts);
@@ -270,7 +270,7 @@ public:
 
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& semanticFingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& semanticFingerprint() const noexcept;
   ZC_NODISCARD const identity::Sha256Digest& sourceContentDigest() const noexcept;
   ZC_NODISCARD const binder::ParsedModuleReceipt& parsedModuleReceipt() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const DispatchSiteRequirement> requirements() const noexcept;
@@ -327,7 +327,7 @@ using DispatchVerificationResult = zc::OneOf<VerifiedDispatchFacts, DispatchFact
 
 /// \brief Exact checked-evidence and generated inventory authority for dispatch verification.
 struct DispatchFactsVerificationInput final {
-  const identity::SemanticContextFingerprint& contextFingerprint;
+  const identity::ContextFingerprint& contextFingerprint;
   identity::ModuleId module;
   const identity::SourceFileKey& source;
   zc::ArrayPtr<const DispatchSiteRequirement> requirements;
@@ -361,7 +361,7 @@ class DispatchFactsBuilder final {
 public:
   ZC_NODISCARD static DispatchFactsBuildResult build(
       const VerifiedDispatchSiteInventory& inventory,
-      const identity::SemanticContextFingerprint& contextFingerprint,
+      const identity::ContextFingerprint& contextFingerprint,
       const checked::CheckedEvidenceLease& checkedLease,
       const checked::VerifiedCheckedFacts& checkedFacts, const CheckerIdentityAuthority& identities,
       const type::SemanticTypeStore& semanticTypes);

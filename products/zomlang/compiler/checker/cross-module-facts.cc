@@ -8,7 +8,7 @@
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::checker::cross_module {
 namespace {
@@ -385,7 +385,7 @@ zc::ArrayPtr<const uint8_t> ImportedSignatureModule::canonicalRecord() const noe
 
 struct ImportedSignatureView::Impl final {
   Impl(identity::SemanticContextBrand semanticContext,
-       identity::SemanticContextFingerprint&& contextFingerprint, identity::ModuleId requester,
+       identity::ContextFingerprint&& contextFingerprint, identity::ModuleId requester,
        ImportedSignatureViewRevision revision, zc::Vector<ImportedSignatureModule>&& modules)
       : semanticContext(semanticContext),
         contextFingerprint(zc::mv(contextFingerprint)),
@@ -394,7 +394,7 @@ struct ImportedSignatureView::Impl final {
         modules(zc::mv(modules)) {}
 
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   identity::ModuleId requester;
   ImportedSignatureViewRevision revision;
   zc::Vector<ImportedSignatureModule> modules;
@@ -407,7 +407,7 @@ ImportedSignatureView& ImportedSignatureView::operator=(ImportedSignatureView&&)
 identity::SemanticContextBrand ImportedSignatureView::semanticContext() const noexcept {
   return impl->semanticContext;
 }
-const identity::SemanticContextFingerprint& ImportedSignatureView::contextFingerprint()
+const identity::ContextFingerprint& ImportedSignatureView::contextFingerprint()
     const noexcept {
   return impl->contextFingerprint;
 }
@@ -454,7 +454,7 @@ zc::Maybe<const ImportedModuleTarget&> ImportedSignatureView::moduleTarget(
 
 zc::Maybe<ImportedSignatureView> ImportedSignatureViewBuilder::build(
     identity::SemanticContextBrand semanticContext,
-    const identity::SemanticContextFingerprint& contextFingerprint, identity::ModuleId requester,
+    const identity::ContextFingerprint& contextFingerprint, identity::ModuleId requester,
     zc::Vector<ImportedSignatureModule>&& modules, const CheckerIdentityAuthority& identities) {
   if (!semanticContext.isValid() || identities.semanticContext() != semanticContext) {
     return zc::none;

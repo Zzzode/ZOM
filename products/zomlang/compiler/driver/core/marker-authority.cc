@@ -5,8 +5,8 @@
 
 #include "zomlang/compiler/driver/core/marker-authority.h"
 
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 
 namespace zomlang::compiler::driver::core {
 namespace {
@@ -238,7 +238,7 @@ ZOM_CORE_REVISION_IMPL(CoreStandardMarkerAuthorityRevision)
 #undef ZOM_CORE_REVISION_IMPL
 
 struct VerifiedCoreMarkerShapeInventory::Impl final {
-  Impl(identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+  Impl(identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
        identity::CoreSemanticContextFingerprint&& coreContext,
        const identity::Sha256Digest& distribution, const identity::Sha256Digest& roleSeed,
        CoreMarkerShapeInventoryRevision revision,
@@ -251,7 +251,7 @@ struct VerifiedCoreMarkerShapeInventory::Impl final {
         revision(zc::mv(revision)),
         shapes(zc::mv(shapes)) {}
   identity::SemanticContextBrand context;
-  identity::SemanticContextFingerprint fingerprint;
+  identity::ContextFingerprint fingerprint;
   identity::CoreSemanticContextFingerprint coreContext;
   identity::Sha256Digest distribution;
   identity::Sha256Digest roleSeed;
@@ -268,7 +268,7 @@ VerifiedCoreMarkerShapeInventory& VerifiedCoreMarkerShapeInventory::operator=(
     VerifiedCoreMarkerShapeInventory&&) noexcept = default;
 
 zc::Maybe<VerifiedCoreMarkerShapeInventory> VerifiedCoreMarkerShapeInventory::from(
-    identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+    identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
     identity::CoreSemanticContextFingerprint&& coreContext,
     const identity::Sha256Digest& distribution, const identity::Sha256Digest& roleSeed,
     zc::Vector<CoreMarkerShapeEntry>&& shapes) {
@@ -293,7 +293,7 @@ VerifiedCoreMarkerShapeInventory VerifiedCoreMarkerShapeInventory::clone() const
 identity::SemanticContextBrand VerifiedCoreMarkerShapeInventory::context() const noexcept {
   return impl->context;
 }
-const identity::SemanticContextFingerprint& VerifiedCoreMarkerShapeInventory::fingerprint()
+const identity::ContextFingerprint& VerifiedCoreMarkerShapeInventory::fingerprint()
     const noexcept {
   return impl->fingerprint;
 }
@@ -327,7 +327,7 @@ zc::Array<uint8_t> VerifiedCoreMarkerShapeInventory::encodeCanonical() const {
 }
 
 struct VerifiedCoreMarkerPolicyRegistry::Impl final {
-  Impl(identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+  Impl(identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
        identity::CoreSemanticContextFingerprint&& coreContext,
        const identity::Sha256Digest& distribution, const identity::Sha256Digest& roleSeed,
        const identity::Sha256Digest& templateRevision,
@@ -343,7 +343,7 @@ struct VerifiedCoreMarkerPolicyRegistry::Impl final {
         revision(zc::mv(revision)),
         entries(zc::mv(entries)) {}
   identity::SemanticContextBrand context;
-  identity::SemanticContextFingerprint fingerprint;
+  identity::ContextFingerprint fingerprint;
   identity::CoreSemanticContextFingerprint coreContext;
   identity::Sha256Digest distribution;
   identity::Sha256Digest roleSeed;
@@ -362,7 +362,7 @@ VerifiedCoreMarkerPolicyRegistry& VerifiedCoreMarkerPolicyRegistry::operator=(
     VerifiedCoreMarkerPolicyRegistry&&) noexcept = default;
 
 zc::Maybe<VerifiedCoreMarkerPolicyRegistry> VerifiedCoreMarkerPolicyRegistry::from(
-    identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+    identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
     identity::CoreSemanticContextFingerprint&& coreContext,
     const identity::Sha256Digest& distribution, const identity::Sha256Digest& roleSeed,
     const identity::Sha256Digest& templateRevision, const VerifiedCoreMarkerShapeInventory& shapes,
@@ -398,7 +398,7 @@ VerifiedCoreMarkerPolicyRegistry VerifiedCoreMarkerPolicyRegistry::clone() const
 identity::SemanticContextBrand VerifiedCoreMarkerPolicyRegistry::context() const noexcept {
   return impl->context;
 }
-const identity::SemanticContextFingerprint& VerifiedCoreMarkerPolicyRegistry::fingerprint()
+const identity::ContextFingerprint& VerifiedCoreMarkerPolicyRegistry::fingerprint()
     const noexcept {
   return impl->fingerprint;
 }
@@ -444,7 +444,7 @@ zc::Array<uint8_t> VerifiedCoreMarkerPolicyRegistry::encodeCanonical() const {
 }
 
 struct VerifiedCoreStandardMarkerAuthority::Impl final {
-  Impl(identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+  Impl(identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
        identity::CoreSemanticContextFingerprint&& coreContext,
        const identity::Sha256Digest& configurationRevision, CoreMarkerShapeInventoryRevision shape,
        CoreMarkerPolicyRegistryRevision policy, identity::ModuleKey&& prelude, identity::DefId copy,
@@ -460,7 +460,7 @@ struct VerifiedCoreStandardMarkerAuthority::Impl final {
         linear(linear),
         revision(zc::mv(revision)) {}
   identity::SemanticContextBrand context;
-  identity::SemanticContextFingerprint fingerprint;
+  identity::ContextFingerprint fingerprint;
   identity::CoreSemanticContextFingerprint coreContext;
   identity::Sha256Digest configurationRevision;
   CoreMarkerShapeInventoryRevision shape;
@@ -482,7 +482,7 @@ VerifiedCoreStandardMarkerAuthority& VerifiedCoreStandardMarkerAuthority::operat
     VerifiedCoreStandardMarkerAuthority&&) noexcept = default;
 
 zc::Maybe<VerifiedCoreStandardMarkerAuthority> VerifiedCoreStandardMarkerAuthority::from(
-    identity::SemanticContextBrand context, identity::SemanticContextFingerprint&& fingerprint,
+    identity::SemanticContextBrand context, identity::ContextFingerprint&& fingerprint,
     identity::CoreSemanticContextFingerprint&& coreContext,
     const identity::Sha256Digest& configurationRevision,
     const VerifiedCoreMarkerShapeInventory& shapes,
@@ -518,7 +518,7 @@ zc::Maybe<VerifiedCoreStandardMarkerAuthority> VerifiedCoreStandardMarkerAuthori
 identity::SemanticContextBrand VerifiedCoreStandardMarkerAuthority::context() const noexcept {
   return impl->context;
 }
-const identity::SemanticContextFingerprint& VerifiedCoreStandardMarkerAuthority::fingerprint()
+const identity::ContextFingerprint& VerifiedCoreStandardMarkerAuthority::fingerprint()
     const noexcept {
   return impl->fingerprint;
 }

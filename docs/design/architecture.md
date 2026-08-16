@@ -88,7 +88,7 @@ flowchart TD
     U --> SI["Freeze source identities"]
     SI --> PS["VerifiedParsedModule sequence"]
     PS --> MI["Freeze module identities"]
-    MI --> F["SemanticContextFingerprint"]
+    MI --> F["ContextFingerprint"]
     F --> DI["Freeze definition and impl identities"]
     DI --> G["VerifiedModuleGraph"]
     PS --> G
@@ -248,7 +248,7 @@ failure, and diagnostic contracts:
 
 `zomc` currently constructs one host/abort profile. A
 `VerifiedTargetSelection` is bound to the registry revision and semantic
-projection but not yet to the session `SemanticContextFingerprint`.
+projection but not yet to the session `ContextFingerprint`.
 
 Semantic HIR and Built MIR are production, session-published internal
 representations with independent verifiers and exact codec oracles. Built MIR

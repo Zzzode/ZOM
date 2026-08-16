@@ -12,7 +12,7 @@
 #include "zc/core/one-of.h"
 #include "zomlang/compiler/checker/inference-recovery-context.h"
 #include "zomlang/compiler/identity/brand.h"
-#include "zomlang/compiler/identity/semantic-type-id.h"
+#include "zomlang/compiler/identity/semantic/type-id.h"
 
 namespace zomlang::compiler::checker::inference {
 

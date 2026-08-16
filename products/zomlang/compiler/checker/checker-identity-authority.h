@@ -32,7 +32,7 @@ public:
   ZC_NODISCARD CheckerIdentityAuthority clone() const;
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
   ZC_NODISCARD query::DatabaseRevision revision() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& fingerprint() const noexcept;
   ZC_NODISCARD const GraphLease& graphLease() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const BoundModuleView> modules() const noexcept;
   /// \brief Returns the uniquely retained Checker view for one materialized module.

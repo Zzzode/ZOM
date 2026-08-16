@@ -23,8 +23,8 @@ identity::SemanticContextBrand context(identity::SemanticContextFactory& factory
 
 identity::ModuleKey module() { return tests::test_identity_detail::module(); }
 
-identity::SemanticContextFingerprint fingerprint() {
-  return identity::SemanticContextFingerprint::fromCanonicalDigest(identity::Sha256Digest());
+identity::ContextFingerprint fingerprint() {
+  return identity::ContextFingerprint::fromCanonicalDigest(identity::Sha256Digest());
 }
 
 identity::DeclaredDefinitionName declaredName(zc::StringPtr text) {
@@ -50,7 +50,7 @@ identity::ImplIdentityRecord implementationRecord() {
       require(identity::CanonicalTraitReference::from(name("Trait"_zc), zc::mv(arguments)));
   zc::Vector<identity::CanonicalGenericParameter> generics;
   zc::Vector<identity::CanonicalBoundObligation> obligations;
-  auto header = require(identity::CanonicalImplHeader::from(
+  auto header = require(identity::ImplHeader::from(
       zc::mv(generics), identity::ImplPolarity::Positive, identity::ImplSafety::Safe, zc::mv(trait),
       namedType("T"_zc), zc::mv(obligations)));
   zc::Vector<identity::EnclosingStableOwnerKey> owners;
@@ -165,7 +165,7 @@ BoundModuleSkeleton skeleton(uint32_t implementationOccurrences) {
 ZC_TEST("MaterializedModuleSkeletonIdentities materializes all stable identity domains") {
   identity::SemanticContextFactory factory;
   const auto owner = context(factory);
-  auto interners = require(identity::CanonicalIdentityInternerSet::create(factory, owner));
+  auto interners = require(identity::IdentityInternerSet::create(factory, owner));
   auto stable = skeleton(2);
   auto semanticFingerprint = fingerprint();
 
@@ -227,7 +227,7 @@ ZC_TEST("MaterializedModuleSkeletonIdentities rejects a foreign interner context
   identity::SemanticContextFactory factory;
   const auto owner = context(factory);
   const auto foreign = context(factory);
-  auto interners = require(identity::CanonicalIdentityInternerSet::create(factory, owner));
+  auto interners = require(identity::IdentityInternerSet::create(factory, owner));
   auto stable = skeleton(1);
   auto semanticFingerprint = fingerprint();
 
@@ -239,7 +239,7 @@ ZC_TEST("MaterializedModuleSkeletonIdentities rejects a foreign interner context
 ZC_TEST("MaterializedModuleSkeletonIdentities rejects a zero revision") {
   identity::SemanticContextFactory factory;
   const auto owner = context(factory);
-  auto interners = require(identity::CanonicalIdentityInternerSet::create(factory, owner));
+  auto interners = require(identity::IdentityInternerSet::create(factory, owner));
   auto stable = skeleton(1);
 
   ZC_EXPECT(MaterializedModuleSkeletonIdentities::from(

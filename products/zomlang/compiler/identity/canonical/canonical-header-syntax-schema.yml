@@ -1,0 +1,205 @@
+domain: zom.canonical-header-syntax
+
+enums:
+  - name: CallableHeaderKind
+    wire_type: uint8
+    values:
+      - {name: Function, tag: 0x01}
+      - {name: Method, tag: 0x02}
+      - {name: Constructor, tag: 0x03}
+  - name: ReceiverShape
+    wire_type: uint8
+    values:
+      - {name: Shared, tag: 0x01}
+      - {name: Mutable, tag: 0x02}
+      - {name: Move, tag: 0x03}
+  - name: ExternalAbi
+    wire_type: uint8
+    values:
+      - {name: Cdecl, tag: 0x01}
+      - {name: Stdcall, tag: 0x02}
+      - {name: ZomNative, tag: 0x03}
+  - name: PredefinedTypeKind
+    wire_type: uint8
+    values:
+      - {name: I8, tag: 0x01}
+      - {name: I16, tag: 0x02}
+      - {name: I32, tag: 0x03}
+      - {name: I64, tag: 0x04}
+      - {name: U8, tag: 0x05}
+      - {name: U16, tag: 0x06}
+      - {name: U32, tag: 0x07}
+      - {name: U64, tag: 0x08}
+      - {name: F32, tag: 0x09}
+      - {name: F64, tag: 0x0a}
+      - {name: Bool, tag: 0x0b}
+      - {name: Str, tag: 0x0c}
+      - {name: Char, tag: 0x0d}
+      - {name: "Null", tag: 0x0e}
+      - {name: Unit, tag: 0x0f}
+      - {name: Never, tag: 0x10}
+      - {name: Any, tag: 0x11}
+  - name: ReferenceMutability
+    wire_type: uint8
+    values:
+      - {name: Shared, tag: 0x01}
+      - {name: Mutable, tag: 0x02}
+  - name: RawPointerMutability
+    wire_type: uint8
+    values:
+      - {name: Const, tag: 0x01}
+      - {name: Mutable, tag: 0x02}
+
+sums:
+  - name: CanonicalCallableResult
+    wire_type: uint8
+    variants:
+      - {name: Unit, tag: 0x01, fields: []}
+      - {name: ConstructorSelf, tag: 0x02, fields: []}
+      - name: Type
+        tag: 0x03
+        fields:
+          - {name: type, type: CanonicalHeaderTypeSyntax}
+  - name: CanonicalNameRoot
+    wire_type: uint8
+    variants:
+      - {name: Absolute, tag: 0x01, fields: []}
+      - {name: Relative, tag: 0x02, fields: []}
+      - name: Generic
+        tag: 0x03
+        fields:
+          - {name: binderDepth, type: uint32}
+          - {name: ordinal, type: uint32}
+  - name: CanonicalHeaderTypeSyntax
+    wire_type: uint8
+    variants:
+      - name: Named
+        tag: 0x01
+        fields:
+          - {name: name, type: CanonicalNameReference}
+          - {name: arguments, type: Sequence<CanonicalHeaderTypeSyntax>}
+      - name: Predefined
+        tag: 0x02
+        fields:
+          - {name: kind, type: PredefinedTypeKind}
+      - name: Function
+        tag: 0x03
+        fields:
+          - {name: parameters, type: Sequence<CanonicalHeaderTypeSyntax>}
+          - {name: result, type: CanonicalHeaderTypeSyntax}
+          - {name: raises, type: Maybe<SortedUniqueSequence<CanonicalHeaderTypeSyntax>>}
+      - name: Union
+        tag: 0x04
+        fields:
+          - {name: members, type: SortedUniqueNonEmptySequence<CanonicalHeaderTypeSyntax>}
+      - name: Intersection
+        tag: 0x05
+        fields:
+          - {name: members, type: SortedUniqueNonEmptySequence<CanonicalHeaderTypeSyntax>}
+      - name: FixedArray
+        tag: 0x06
+        fields:
+          - {name: element, type: CanonicalHeaderTypeSyntax}
+          - {name: length, type: uint64}
+      - name: DynamicArray
+        tag: 0x07
+        fields:
+          - {name: element, type: CanonicalHeaderTypeSyntax}
+      - name: Slice
+        tag: 0x08
+        fields:
+          - {name: element, type: CanonicalHeaderTypeSyntax}
+      - name: Optional
+        tag: 0x09
+        fields:
+          - {name: element, type: CanonicalHeaderTypeSyntax}
+          - {name: depth, type: uint8}
+      - name: Reference
+        tag: 0x0a
+        fields:
+          - {name: mutability, type: ReferenceMutability}
+          - {name: element, type: CanonicalHeaderTypeSyntax}
+      - name: RawPointer
+        tag: 0x0b
+        fields:
+          - {name: mutability, type: RawPointerMutability}
+          - {name: element, type: CanonicalHeaderTypeSyntax}
+      - name: TypeQuery
+        tag: 0x0c
+        fields:
+          - {name: name, type: CanonicalNameReference}
+      - name: Object
+        tag: 0x0d
+        fields:
+          - {name: members, type: SortedUniqueSequence<CanonicalObjectTypeMember>}
+      - name: Tuple
+        tag: 0x0e
+        fields:
+          - {name: elements, type: Sequence<CanonicalHeaderTypeSyntax>}
+      - name: AssociatedProjection
+        tag: 0x0f
+        fields:
+          - {name: base, type: CanonicalHeaderTypeSyntax}
+          - {name: interface, type: Maybe<CanonicalHeaderTypeSyntax>}
+          - {name: member, type: NfcName}
+      - name: Dynamic
+        tag: 0x10
+        fields:
+          - {name: principal, type: CanonicalNamedHeaderType}
+          - {name: markers, type: SortedUniqueSequence<CanonicalNameReference>}
+          - {name: associatedBindings, type: SortedUniqueSequence<CanonicalAssociatedBinding>}
+
+records:
+  - name: OverloadHeader
+    fields:
+      - {name: callableKind, type: CallableHeaderKind}
+      - {name: name, type: NfcDeclaredName}
+      - {name: receiver, type: Maybe<ReceiverShape>}
+      - {name: genericParameters, type: Sequence<CanonicalGenericParameter>}
+      - {name: obligations, type: SortedUniqueSequence<CanonicalBoundObligation>}
+      - {name: parameters, type: Sequence<CanonicalCallableParameter>}
+      - {name: result, type: CanonicalCallableResult}
+      - {name: raises, type: Maybe<SortedUniqueSequence<CanonicalHeaderTypeSyntax>>}
+      - {name: externalAbi, type: Maybe<ExternalAbi>}
+  - name: CanonicalGenericParameter
+    fields:
+      - {name: defaultType, type: Maybe<CanonicalHeaderTypeSyntax>}
+  - name: CanonicalBoundObligation
+    fields:
+      - {name: subject, type: CanonicalHeaderTypeSyntax}
+      - {name: bound, type: CanonicalHeaderTypeSyntax}
+  - name: CanonicalCallableParameter
+    fields:
+      - {name: label, type: NfcName}
+      - {name: type, type: CanonicalHeaderTypeSyntax}
+      - {name: hasDefault, type: bool}
+  - name: CanonicalNameReference
+    fields:
+      - {name: root, type: CanonicalNameRoot}
+      - {name: suffix, type: Sequence<NfcName>}
+  - name: CanonicalNamedHeaderType
+    fields:
+      - {name: name, type: CanonicalNameReference}
+      - {name: arguments, type: Sequence<CanonicalHeaderTypeSyntax>}
+  - name: CanonicalObjectTypeMember
+    fields:
+      - {name: name, type: NfcName}
+      - {name: type, type: CanonicalHeaderTypeSyntax}
+      - {name: mutable, type: bool}
+      - {name: optional, type: bool}
+  - name: CanonicalAssociatedBinding
+    fields:
+      - {name: name, type: NfcName}
+      - {name: type, type: CanonicalHeaderTypeSyntax}
+
+constraints:
+  - {target: OverloadHeader.raises, rule: PresentSequenceMustBeNonEmpty}
+  - {target: CanonicalNameReference.root, rule: AbsoluteAndRelativeRequireNonEmptySuffix}
+  - {target: CanonicalNameReference.root, rule: GenericPermitsEmptySuffix}
+  - {target: CanonicalHeaderTypeSyntax.Function.raises, rule: PresentSequenceMustBeNonEmpty}
+  - {target: CanonicalHeaderTypeSyntax.Union.members, rule: FlattenSameVariantSortUniqueCollapseSingleton}
+  - {target: CanonicalHeaderTypeSyntax.Intersection.members, rule: FlattenSameVariantSortUniqueCollapseSingleton}
+  - {target: CanonicalHeaderTypeSyntax.FixedArray.length, rule: EvaluatedUnsigned64}
+  - {target: CanonicalHeaderTypeSyntax.Optional.depth, rule: Exactly0x01Or0x02}
+  - {target: CanonicalHeaderTypeSyntax.Dynamic.principal, rule: ExactlyOneCanonicalNamedHeaderType}
+  - {target: CanonicalHeaderTypeSyntax.Dynamic, rule: NoLifetimeField}

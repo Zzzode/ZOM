@@ -15,7 +15,7 @@
 #include "zomlang/compiler/binder/import-binding.h"
 
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/identity/package-key.h"
+#include "zomlang/compiler/identity/key/package-key.h"
 #include "zomlang/compiler/identity/sorted-feature-set.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
 
@@ -132,13 +132,13 @@ identity::DefinitionNamespace definitionNamespace(Namespace nameSpace) {
   ZC_UNREACHABLE;
 }
 
-identity::SemanticImportBindingKey semanticBinding(ImportBindingKind kind, Namespace nameSpace,
+identity::ImportBindingKey semanticBinding(ImportBindingKind kind, Namespace nameSpace,
                                                    zc::StringPtr sourceName,
                                                    zc::StringPtr localName) {
   const auto operation = kind == ImportBindingKind::Import
                              ? identity::SemanticImportOperation::Import
                              : identity::SemanticImportOperation::ForeignReexport;
-  auto result = identity::SemanticImportBindingKey::from(
+  auto result = identity::ImportBindingKey::from(
       moduleKey(), resolutionKey(kind), operation, definitionNamespace(nameSpace),
       requireScalar<identity::DeclaredDefinitionName>(sourceName), definitionNamespace(nameSpace),
       requireScalar<identity::DeclaredDefinitionName>(localName));

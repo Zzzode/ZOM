@@ -10,7 +10,7 @@
 #include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic.h"
 #include "zomlang/compiler/identity/identity-diagnostic-adapter.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -211,7 +211,7 @@ BindingTarget BindingTarget::callableParameter(identity::CallableParameterId val
 BindingTarget BindingTarget::ownerLocal(OwnerLocalBindingId value) {
   return BindingTarget(BindingTargetValue(OwnerLocalBindingTarget{value}));
 }
-BindingTarget BindingTarget::semanticImport(identity::SemanticImportBindingKey&& value) {
+BindingTarget BindingTarget::semanticImport(identity::ImportBindingKey&& value) {
   return BindingTarget(BindingTargetValue(SemanticImportBindingTarget{zc::mv(value)}));
 }
 BindingTarget BindingTarget::module(identity::ModuleId value) {

@@ -12,8 +12,8 @@
 #include "zomlang/compiler/driver/compiler-session.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/compiler/mir/built-mir.h"
 #include "zomlang/compiler/ownership/facts/flow.h"
@@ -988,7 +988,7 @@ ZC_TEST("Move-path verifier rejects a tampered semantic context fingerprint") {
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   candidate.contextFingerprint =
-      identity::SemanticContextFingerprint::fromCanonicalDigest(repeatedDigest(0xFF));
+      identity::ContextFingerprint::fromCanonicalDigest(repeatedDigest(0xFF));
 
   auto verifiedResult = facts::MovePathVerifier::verify(
       zc::mv(candidate), builtMir, session.getVerifiedOwnershipEventOverlays()[0]);
@@ -1144,7 +1144,7 @@ ZC_TEST("Initialization verifier rejects a tampered semantic context fingerprint
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   candidate.contextFingerprint =
-      identity::SemanticContextFingerprint::fromCanonicalDigest(repeatedDigest(0xFE));
+      identity::ContextFingerprint::fromCanonicalDigest(repeatedDigest(0xFE));
 
   auto verifiedResult = facts::InitializationVerifier::verify(
       zc::mv(candidate), builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(),

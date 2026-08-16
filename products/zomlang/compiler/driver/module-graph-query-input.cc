@@ -18,8 +18,8 @@
 #include "zomlang/compiler/driver/materialized-module-graph-query.h"
 #include "zomlang/compiler/driver/module-dependency-provenance-query.h"
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::driver::module_graph_query {
 namespace {

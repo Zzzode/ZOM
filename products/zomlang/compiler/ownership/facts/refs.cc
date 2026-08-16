@@ -385,7 +385,7 @@ bool sameDefinitions(zc::ArrayPtr<const ReferenceDefinition> left,
 
 ReferenceDefinitionCandidate::ReferenceDefinitionCandidate(
     identity::SemanticContextBrand semanticContext,
-    identity::SemanticContextFingerprint&& contextFingerprint, identity::ModuleId module,
+    identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
     mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
     driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
     zc::Vector<ReferenceDefinition>&& definitions) noexcept
@@ -412,7 +412,7 @@ VerifiedReferenceDefinitions& VerifiedReferenceDefinitions::operator=(
 identity::SemanticContextBrand VerifiedReferenceDefinitions::semanticContext() const noexcept {
   return impl->candidate.semanticContext;
 }
-const identity::SemanticContextFingerprint& VerifiedReferenceDefinitions::contextFingerprint()
+const identity::ContextFingerprint& VerifiedReferenceDefinitions::contextFingerprint()
     const noexcept {
   return impl->candidate.contextFingerprint;
 }

@@ -44,7 +44,7 @@ proposal snapshot and this RFC moves to `ACCEPTED`.
 ## Motivation
 
 RFC 0010 declares that `VerifiedTargetSelection` contains a
-`SemanticContextFingerprint`, but its selection algorithm does not accept that
+`ContextFingerprint`, but its selection algorithm does not accept that
 fingerprint. The repository implementation reflects the incomplete algorithm:
 `TargetRegistrySnapshot::verify` accepts only a context-free registered
 selection, and `zomc` verifies host and target profiles before
@@ -307,7 +307,7 @@ The normative semantic contract is:
 ```text
 FrozenSemanticContextAuthority {
   contextBrand: RFC0011::SemanticContextBrand,
-  contextFingerprint: RFC0011::SemanticContextFingerprint,
+  contextFingerprint: RFC0011::ContextFingerprint,
 }
 
 FrozenPreparatorySemanticContextAuthority {
@@ -589,11 +589,11 @@ PreparatoryNodeState =
   Pending
   | Authorized {
       contextBrand: RFC0011::SemanticContextBrand,
-      contextFingerprint: RFC0011::SemanticContextFingerprint,
+      contextFingerprint: RFC0011::ContextFingerprint,
     }
   | Executed {
       contextBrand: RFC0011::SemanticContextBrand,
-      contextFingerprint: RFC0011::SemanticContextFingerprint,
+      contextFingerprint: RFC0011::ContextFingerprint,
       result: RFC0012::VerifiedBuildResult,
     }
 
@@ -630,7 +630,7 @@ FinalCodegenIssuanceState = Available | Issued | Closed
 
 VerifiedTargetSelection {
   contextBrand: RFC0011::SemanticContextBrand,
-  contextFingerprint: RFC0011::SemanticContextFingerprint,
+  contextFingerprint: RFC0011::ContextFingerprint,
   runtimeCapabilityBrand: RuntimeCapabilityBrand,
   runtimeCapabilityRevision: RuntimeCapabilityRevision,
   packageSelection: RFC0012::RegisteredTargetSelection,
@@ -1871,7 +1871,7 @@ order:
 - exact complete `packageSelection` equality with the host or target request
   field authorized by the owning phase wrapper;
 - exact `SemanticContextBrand` equality with every branded semantic input;
-- exact `SemanticContextFingerprint` equality;
+- exact `ContextFingerprint` equality;
 - exact `RuntimeCapabilityBrand` and `RuntimeCapabilityRevision` equality with
   the current phase's target-bound package-session snapshot;
 - exact `TargetSpecId` equality;
@@ -2158,7 +2158,7 @@ golden codecs, typed failure paths, and architecture gates.
 
 ## Alternatives Considered
 
-### Include target bytes in `SemanticContextFingerprint`
+### Include target bytes in `ContextFingerprint`
 
 This would make source semantic identity depend on backend profile details such
 as CPU and code-generation-only features. RFC 0011 intentionally separates

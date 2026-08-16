@@ -11,8 +11,8 @@
 #include "zomlang/compiler/binder/binding-metadata.h"
 #include "zomlang/compiler/checker/module-interface-contract.h"
 #include "zomlang/compiler/checker/signature-facts.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 
 namespace zomlang::compiler::driver {
 class VerifiedModuleInterface;
@@ -158,7 +158,7 @@ public:
   ZC_DISALLOW_COPY(ImportedSignatureView);
 
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& contextFingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId requester() const noexcept;
   ZC_NODISCARD const ImportedSignatureViewRevision& revision() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const ImportedSignatureModule> modules() const noexcept;
@@ -186,7 +186,7 @@ class ImportedSignatureViewBuilder final {
 public:
   ZC_NODISCARD static zc::Maybe<ImportedSignatureView> build(
       identity::SemanticContextBrand semanticContext,
-      const identity::SemanticContextFingerprint& contextFingerprint, identity::ModuleId requester,
+      const identity::ContextFingerprint& contextFingerprint, identity::ModuleId requester,
       zc::Vector<ImportedSignatureModule>&& modules, const CheckerIdentityAuthority& identities);
 };
 

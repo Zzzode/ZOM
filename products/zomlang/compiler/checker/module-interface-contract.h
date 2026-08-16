@@ -12,7 +12,7 @@
 #include "zomlang/compiler/binder/binding-metadata.h"
 #include "zomlang/compiler/checker/signature-facts.h"
 #include "zomlang/compiler/driver/core/revision.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 
 namespace zomlang::compiler::module_interface {
 

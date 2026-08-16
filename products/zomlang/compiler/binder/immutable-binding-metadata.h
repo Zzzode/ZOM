@@ -11,7 +11,7 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/binder/module-binding-allocation-plan.h"
 #include "zomlang/compiler/binder/stable-binding-facts.h"
-#include "zomlang/compiler/identity/semantic-context-fingerprint.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
 #include "zomlang/compiler/query/query-types.h"
 
 namespace zomlang::compiler::binder {
@@ -50,12 +50,12 @@ public:
 
   ZC_NODISCARD static zc::Maybe<ImmutableBindingMetadata> from(
       identity::SemanticContextBrand context, query::DatabaseRevision revision,
-      const identity::SemanticContextFingerprint& fingerprint, BoundModuleSkeleton&& skeleton,
+      const identity::ContextFingerprint& fingerprint, BoundModuleSkeleton&& skeleton,
       zc::Vector<BoundOwnerBody>&& ownerBodies, const MaterializedBindingFacts& facts);
   ZC_NODISCARD ImmutableBindingMetadata clone() const;
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
   ZC_NODISCARD query::DatabaseRevision revision() const noexcept;
-  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::ContextFingerprint& fingerprint() const noexcept;
   ZC_NODISCARD const identity::ModuleKey& module() const noexcept;
   ZC_NODISCARD const BoundModuleSkeleton& skeleton() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const BoundOwnerBody> ownerBodies() const noexcept;
@@ -85,7 +85,7 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const MaterializedFailedLookupFact> failedLookups() const noexcept;
   ZC_NODISCARD bool matches(identity::SemanticContextBrand context,
                             query::DatabaseRevision revision,
-                            const identity::SemanticContextFingerprint& fingerprint,
+                            const identity::ContextFingerprint& fingerprint,
                             const BoundModuleSkeleton& skeleton,
                             zc::ArrayPtr<const BoundOwnerBody> ownerBodies,
                             const MaterializedBindingFacts& facts) const;

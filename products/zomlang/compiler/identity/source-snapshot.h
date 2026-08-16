@@ -16,7 +16,7 @@
 
 #include "zc/core/array.h"
 #include "zc/core/common.h"
-#include "zomlang/compiler/identity/source-key.h"
+#include "zomlang/compiler/identity/key/source-key.h"
 
 namespace zomlang::compiler::identity {
 

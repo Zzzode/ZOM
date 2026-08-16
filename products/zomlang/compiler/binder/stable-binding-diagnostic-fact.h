@@ -11,7 +11,7 @@
 #include "zomlang/compiler/binder/binding-metadata.h"
 #include "zomlang/compiler/binder/identity-pre-admission.h"
 #include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
-#include "zomlang/compiler/identity/canonical-scalar.h"
+#include "zomlang/compiler/identity/canonical/canonical-scalar.h"
 
 namespace zomlang::compiler::binder {
 

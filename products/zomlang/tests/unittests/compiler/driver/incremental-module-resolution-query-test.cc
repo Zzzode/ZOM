@@ -41,9 +41,9 @@ identity::SemanticContextBrand context(identity::SemanticContextFactory& factory
   return ZC_REQUIRE_NONNULL(result);
 }
 
-identity::CanonicalIdentityInternerSet identityAuthorities(
+identity::IdentityInternerSet identityAuthorities(
     identity::SemanticContextFactory& factory, identity::SemanticContextBrand owner) {
-  auto result = identity::CanonicalIdentityInternerSet::create(factory, owner);
+  auto result = identity::IdentityInternerSet::create(factory, owner);
   return zc::mv(ZC_REQUIRE_NONNULL(result));
 }
 
@@ -141,7 +141,7 @@ struct Fixture final {
 
   identity::SemanticContextFactory factory;
   identity::SemanticContextBrand owner;
-  identity::CanonicalIdentityInternerSet identities;
+  identity::IdentityInternerSet identities;
   zc::Vector<identity::ImmutableSourceSnapshot> sourceSnapshots;
   identity::ModuleId root;
   identity::ModuleId child;

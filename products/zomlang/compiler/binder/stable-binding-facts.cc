@@ -8,7 +8,7 @@
 #include "zc/core/debug.h"
 #include "zc/core/map.h"
 #include "zomlang/compiler/binder/stable-binding-codec.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -275,7 +275,7 @@ ZOM_DEFINE_STABLE_ROUTED_KEY(StableGenericParameterQueryKey, identity::ModuleKey
 ZOM_DEFINE_STABLE_ROUTED_KEY(StableCallableParameterQueryKey, identity::ModuleKey, module,
                              identity::CallableParameterKey, parameter)
 ZOM_DEFINE_STABLE_ROUTED_KEY(StableSemanticImportQueryKey, identity::ModuleKey, requester,
-                             identity::SemanticImportBindingKey, binding)
+                             identity::ImportBindingKey, binding)
 ZOM_DEFINE_STABLE_ROUTED_KEY(StableOwnerBodyQueryKey, identity::ModuleKey, module,
                              StableBodyOwnerKey, owner)
 
@@ -310,7 +310,7 @@ StableCallableParameterQueryKey StableCallableParameterQueryKey::from(
 }
 
 zc::Maybe<StableSemanticImportQueryKey> StableSemanticImportQueryKey::from(
-    identity::ModuleKey&& requester, identity::SemanticImportBindingKey&& binding) {
+    identity::ModuleKey&& requester, identity::ImportBindingKey&& binding) {
   if (!sameModule(requester, binding.requester())) { return zc::none; }
   StableSemanticImportQueryKey result(zc::mv(requester), zc::mv(binding));
   if (result.encodeCanonical().size() > 65536) { return zc::none; }

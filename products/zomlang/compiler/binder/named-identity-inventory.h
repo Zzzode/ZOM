@@ -4,7 +4,7 @@
 #include "zc/core/common.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/binder/stable-binding-facts.h"
-#include "zomlang/compiler/identity/definition-key.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
 
 namespace zomlang::compiler::binder {
 

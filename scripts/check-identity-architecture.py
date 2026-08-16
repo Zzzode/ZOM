@@ -16,42 +16,42 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = Path("products/zomlang/compiler/ast/schema.yml")
 MANIFEST = Path("products/zomlang/compiler/identity/definition-producers.json")
-DEFINITION_KEY = Path("products/zomlang/compiler/identity/definition-key.h")
-DEFINITION_KEY_IMPLEMENTATION = Path("products/zomlang/compiler/identity/definition-key.cc")
+DEFINITION_KEY = Path("products/zomlang/compiler/identity/key/definition-key.h")
+DEFINITION_KEY_IMPLEMENTATION = Path("products/zomlang/compiler/identity/key/definition-key.cc")
 HANDLE = Path("products/zomlang/compiler/identity/handle.h")
 FROZEN_REGISTRY = Path("products/zomlang/compiler/identity/frozen-registry.h")
 SEMANTIC_IDENTITY_REGISTRY = Path(
     "products/zomlang/compiler/identity/semantic-identity-registry-set.h"
 )
 CANONICAL_IDENTITY_INTERNER = Path(
-    "products/zomlang/compiler/identity/canonical-identity-interner-set.h"
+    "products/zomlang/compiler/identity/canonical/identity-interner-set.h"
 )
 CANONICAL_IDENTITY_INTERNER_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/identity/canonical-identity-interner-set.cc"
+    "products/zomlang/compiler/identity/canonical/identity-interner-set.cc"
 )
 IDENTITY_INVARIANT = Path("products/zomlang/compiler/identity/identity-invariant.h")
 IDENTITY_DUMP_IMPLEMENTATION = Path("products/zomlang/compiler/identity/identity-dump.cc")
 SEMANTIC_CONTEXT_FINGERPRINT = Path(
-    "products/zomlang/compiler/identity/semantic-context-fingerprint.h"
+    "products/zomlang/compiler/identity/semantic/context-fingerprint.h"
 )
-BUILD_SCRIPT_KEY = Path("products/zomlang/compiler/identity/build-script-key.h")
-BUILD_SCRIPT_KEY_IMPLEMENTATION = Path("products/zomlang/compiler/identity/build-script-key.cc")
-CRATE_KEY = Path("products/zomlang/compiler/identity/crate-key.h")
-COMPILATION_UNIT_KEY = Path("products/zomlang/compiler/identity/compilation-unit-key.h")
+BUILD_SCRIPT_KEY = Path("products/zomlang/compiler/identity/key/build-script-key.h")
+BUILD_SCRIPT_KEY_IMPLEMENTATION = Path("products/zomlang/compiler/identity/key/build-script-key.cc")
+CRATE_KEY = Path("products/zomlang/compiler/identity/key/crate-key.h")
+COMPILATION_UNIT_KEY = Path("products/zomlang/compiler/identity/key/compilation-unit-key.h")
 COMPILATION_UNIT_KEY_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/identity/compilation-unit-key.cc"
+    "products/zomlang/compiler/identity/key/compilation-unit-key.cc"
 )
-SOURCE_KEY = Path("products/zomlang/compiler/identity/source-key.h")
-SOURCE_KEY_IMPLEMENTATION = Path("products/zomlang/compiler/identity/source-key.cc")
-MODULE_RESOLUTION_KEY = Path("products/zomlang/compiler/identity/module-resolution-key.h")
+SOURCE_KEY = Path("products/zomlang/compiler/identity/key/source-key.h")
+SOURCE_KEY_IMPLEMENTATION = Path("products/zomlang/compiler/identity/key/source-key.cc")
+MODULE_RESOLUTION_KEY = Path("products/zomlang/compiler/identity/key/module-resolution-key.h")
 MODULE_RESOLUTION_KEY_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/identity/module-resolution-key.cc"
+    "products/zomlang/compiler/identity/key/module-resolution-key.cc"
 )
 SEMANTIC_IMPORT_BINDING_KEY = Path(
-    "products/zomlang/compiler/identity/semantic-import-binding-key.h"
+    "products/zomlang/compiler/identity/key/import-binding-key.h"
 )
 SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/identity/semantic-import-binding-key.cc"
+    "products/zomlang/compiler/identity/key/import-binding-key.cc"
 )
 IDENTITY_CMAKE = Path("products/zomlang/compiler/identity/CMakeLists.txt")
 INVENTORY = Path("products/zomlang/compiler/binder/definition-inventory.cc")
@@ -87,28 +87,28 @@ BORROW_INTERFACE_IMPLEMENTATION = Path(
     "products/zomlang/compiler/checker/borrow-interface.cc"
 )
 HEADER_SYNTAX_SCHEMA = Path(
-    "products/zomlang/compiler/identity/canonical-header-syntax-schema.yml"
+    "products/zomlang/compiler/identity/canonical/canonical-header-syntax-schema.yml"
 )
 HEADER_SYNTAX_DEFINITION = Path(
-    "products/zomlang/compiler/identity/canonical-header-syntax-schema.def"
+    "products/zomlang/compiler/identity/canonical/canonical-header-syntax-schema.def"
 )
 HEADER_SYNTAX_GENERATOR = Path("scripts/generate-canonical-header-syntax-schema.py")
 CONFORMANCE_CMAKE = Path("products/zomlang/tests/conformance/CMakeLists.txt")
-CANONICAL_HEADER_TYPE = Path("products/zomlang/compiler/identity/canonical-header-type.h")
+CANONICAL_HEADER_TYPE = Path("products/zomlang/compiler/identity/canonical/header-type.h")
 CANONICAL_HEADER_TYPE_CORE = Path(
-    "products/zomlang/compiler/identity/canonical-header-type-core.cc"
+    "products/zomlang/compiler/identity/canonical/header-type-core.cc"
 )
 CANONICAL_HEADER_TYPE_COMPOUND = Path(
-    "products/zomlang/compiler/identity/canonical-header-type-compound.cc"
+    "products/zomlang/compiler/identity/canonical/header-type-compound.cc"
 )
 CANONICAL_HEADER_TYPE_RECORDS = Path(
-    "products/zomlang/compiler/identity/canonical-header-type-records.cc"
+    "products/zomlang/compiler/identity/canonical/header-type-records.cc"
 )
 CANONICAL_HEADER_TYPE_ENCODE = Path(
-    "products/zomlang/compiler/identity/canonical-header-type-encode.cc"
+    "products/zomlang/compiler/identity/canonical/header-type-encode.cc"
 )
 CANONICAL_HEADER_TYPE_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/identity/canonical-header-type-test.cc"
+    "products/zomlang/tests/unittests/compiler/identity/canonical/header-type-test.cc"
 )
 CANONICAL_HEADER_TYPE_PRODUCER = Path(
     "products/zomlang/compiler/binder/canonical-header-type-producer.h"
@@ -141,33 +141,33 @@ BINDER_CMAKE = Path("products/zomlang/compiler/binder/CMakeLists.txt")
 BINDER_TEST_CMAKE = Path("products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt")
 BINDING_VERIFIER = Path("products/zomlang/compiler/binder/stable/header/verifier.cc")
 CANONICAL_OVERLOAD_HEADER = Path(
-    "products/zomlang/compiler/identity/canonical-overload-header.h"
+    "products/zomlang/compiler/identity/canonical/overload-header.h"
 )
 CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/identity/canonical-overload-header.cc"
+    "products/zomlang/compiler/identity/canonical/overload-header.cc"
 )
 CANONICAL_OVERLOAD_HEADER_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/identity/canonical-overload-header-test.cc"
+    "products/zomlang/tests/unittests/compiler/identity/canonical/overload-header-test.cc"
 )
-OVERLOAD_HEADER_DIGEST = Path("products/zomlang/compiler/identity/overload-header-digest.h")
+OVERLOAD_HEADER_DIGEST = Path("products/zomlang/compiler/identity/crypto/overload-header-digest.h")
 OVERLOAD_HEADER_DIGEST_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/identity/overload-header-digest.cc"
+    "products/zomlang/compiler/identity/crypto/overload-header-digest.cc"
 )
 OVERLOAD_HEADER_DIGEST_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/identity/overload-header-digest-test.cc"
+    "products/zomlang/tests/unittests/compiler/identity/crypto/overload-header-digest-test.cc"
 )
-CANONICAL_IMPL_HEADER = Path("products/zomlang/compiler/identity/canonical-impl-header.h")
+CANONICAL_IMPL_HEADER = Path("products/zomlang/compiler/identity/canonical/impl-header.h")
 CANONICAL_IMPL_HEADER_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/identity/canonical-impl-header.cc"
+    "products/zomlang/compiler/identity/canonical/impl-header.cc"
 )
 CANONICAL_IMPL_HEADER_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/identity/canonical-impl-header-test.cc"
+    "products/zomlang/tests/unittests/compiler/identity/canonical/impl-header-test.cc"
 )
 MODULE_RESOLUTION_KEY_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/identity/module-resolution-key-test.cc"
+    "products/zomlang/tests/unittests/compiler/identity/key/module-resolution-key-test.cc"
 )
 SEMANTIC_IMPORT_BINDING_KEY_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/identity/semantic-import-binding-key-test.cc"
+    "products/zomlang/tests/unittests/compiler/identity/key/import-binding-key-test.cc"
 )
 IDENTITY_TEST_CMAKE = Path("products/zomlang/tests/unittests/compiler/identity/CMakeLists.txt")
 PARSER_ROOT = Path("products/zomlang/compiler/parser")
@@ -200,6 +200,13 @@ POINTER_IDENTITY_PATTERN = re.compile(
 
 def relative(path: Path) -> str:
     return str(path.relative_to(ROOT))
+
+
+IDENTITY_ROOT = Path("products/zomlang/compiler/identity")
+
+
+def identity_source(path: Path) -> str:
+    return str(path.relative_to(IDENTITY_ROOT))
 
 
 @functools.lru_cache(maxsize=None)
@@ -602,9 +609,9 @@ def check_canonical_header_type_inventory(
         CANONICAL_HEADER_TYPE_ENCODE,
         CANONICAL_HEADER_TYPE_RECORDS,
     ):
-        marker = f"${{CMAKE_CURRENT_SOURCE_DIR}}/{source.name}"
+        marker = f"${{CMAKE_CURRENT_SOURCE_DIR}}/{identity_source(source)}"
         if marker not in identity_cmake:
-            errors.append(f"{IDENTITY_CMAKE}: missing canonical header type source {source.name}")
+            errors.append(f"{IDENTITY_CMAKE}: missing canonical header type source {identity_source(source)}")
 
     for marker in (
         "enum class CanonicalHeaderTypeSyntaxKind : uint8_t",
@@ -873,7 +880,7 @@ def check_canonical_definition_header_producer(
         ("methodMode == 1", "reject static receivers"),
         ("methodMode == 2 && !foundReceiver", "reject receiverless mutating methods"),
         (
-            "CanonicalOverloadHeader::from(",
+            "OverloadHeader::from(",
             "admit the complete canonical overload header",
         ),
         (
@@ -961,7 +968,7 @@ def check_canonical_impl_header_producer(
             "collect inline generic bounds",
         ),
         ("appendWhere(", "merge generic and implementation where obligations"),
-        ("CanonicalImplHeader::from(", "admit the complete canonical impl header"),
+        ("ImplHeader::from(", "admit the complete canonical impl header"),
     ):
         if marker not in implementation:
             errors.append(
@@ -1006,12 +1013,12 @@ def check_canonical_overload_header_inventory(
     test = read_text(CANONICAL_OVERLOAD_HEADER_TEST, overrides)
 
     source_marker = (
-        f"${{CMAKE_CURRENT_SOURCE_DIR}}/{CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION.name}"
+        f"${{CMAKE_CURRENT_SOURCE_DIR}}/{identity_source(CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION)}"
     )
     if source_marker not in identity_cmake:
         errors.append(
             f"{IDENTITY_CMAKE}: missing canonical overload source "
-            f"{CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION.name}"
+            f"{identity_source(CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION)}"
         )
 
     for marker in (
@@ -1019,10 +1026,10 @@ def check_canonical_overload_header_inventory(
         "class CanonicalGenericParameter final",
         "class CanonicalBoundObligation final",
         "class CanonicalCallableParameter final",
-        "class CanonicalOverloadHeader final",
+        "class OverloadHeader final",
         "static CanonicalCallableResult type(CanonicalHeaderTypeSyntax&& type);",
-        "static zc::Maybe<CanonicalOverloadHeader> from(",
-        "CanonicalOverloadHeader clone() const;",
+        "static zc::Maybe<OverloadHeader> from(",
+        "OverloadHeader clone() const;",
         "zc::ArrayPtr<const CanonicalGenericParameter> genericParameters() const noexcept;",
         "zc::ArrayPtr<const CanonicalBoundObligation> obligations() const noexcept;",
         "zc::ArrayPtr<const CanonicalCallableParameter> parameters() const noexcept;",
@@ -1114,7 +1121,7 @@ def check_canonical_overload_header_inventory(
                 f"{marker}"
             )
 
-    header_codec = function_body(implementation, "void CanonicalOverloadHeader::encode(")
+    header_codec = function_body(implementation, "void OverloadHeader::encode(")
     if header_codec is None:
         errors.append(
             f"{CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION}: missing canonical overload codec body"
@@ -1174,22 +1181,22 @@ def check_overload_header_digest_inventory(
     test = read_text(OVERLOAD_HEADER_DIGEST_TEST, overrides)
 
     source_marker = (
-        f"${{CMAKE_CURRENT_SOURCE_DIR}}/{OVERLOAD_HEADER_DIGEST_IMPLEMENTATION.name}"
+        f"${{CMAKE_CURRENT_SOURCE_DIR}}/{identity_source(OVERLOAD_HEADER_DIGEST_IMPLEMENTATION)}"
     )
     if source_marker not in identity_cmake:
         errors.append(
             f"{IDENTITY_CMAKE}: missing overload digest source "
-            f"{OVERLOAD_HEADER_DIGEST_IMPLEMENTATION.name}"
+            f"{identity_source(OVERLOAD_HEADER_DIGEST_IMPLEMENTATION)}"
         )
 
     for marker in (
         "class OverloadHeaderDigest final",
-        "static OverloadHeaderDigest compute(const CanonicalOverloadHeader& header);",
+        "static OverloadHeaderDigest compute(const OverloadHeader& header);",
         "static zc::Maybe<OverloadHeaderDigest> fromBytes(",
         "OverloadHeaderDigest clone() const noexcept;",
         "void encode(CanonicalEncoder& encoder) const;",
         "class OverloadHeaderAuthority final",
-        "static OverloadHeaderAuthority from(CanonicalOverloadHeader&& header);",
+        "static OverloadHeaderAuthority from(OverloadHeader&& header);",
         "OverloadHeaderAuthority clone() const;",
         "bool verify() const;",
         "bool sameRecordAs(const OverloadHeaderAuthority& other) const;",
@@ -1245,7 +1252,7 @@ def check_overload_header_digest_inventory(
     authority_data = declaration_body(implementation, "struct OverloadHeaderAuthorityData final")
     expected_authority_data = (
         "OverloadHeaderDigest digest;",
-        "CanonicalOverloadHeader header;",
+        "OverloadHeader header;",
     )
     if authority_data is None or data_member_declarations(authority_data) != expected_authority_data:
         errors.append(
@@ -1312,11 +1319,11 @@ def check_canonical_impl_header_inventory(
     identity_cmake = read_text(IDENTITY_CMAKE, overrides)
     test = read_text(CANONICAL_IMPL_HEADER_TEST, overrides)
 
-    source_marker = f"${{CMAKE_CURRENT_SOURCE_DIR}}/{CANONICAL_IMPL_HEADER_IMPLEMENTATION.name}"
+    source_marker = f"${{CMAKE_CURRENT_SOURCE_DIR}}/{identity_source(CANONICAL_IMPL_HEADER_IMPLEMENTATION)}"
     if source_marker not in identity_cmake:
         errors.append(
             f"{IDENTITY_CMAKE}: missing canonical impl source "
-            f"{CANONICAL_IMPL_HEADER_IMPLEMENTATION.name}"
+            f"{identity_source(CANONICAL_IMPL_HEADER_IMPLEMENTATION)}"
         )
 
     for enum_name, expected in (
@@ -1393,9 +1400,9 @@ def check_canonical_impl_header_inventory(
         )
 
     for marker in (
-        "class CanonicalImplHeader final",
-        "static zc::Maybe<CanonicalImplHeader> from(",
-        "CanonicalImplHeader clone() const;",
+        "class ImplHeader final",
+        "static zc::Maybe<ImplHeader> from(",
+        "ImplHeader clone() const;",
         "zc::ArrayPtr<const CanonicalGenericParameter> genericParameters() const noexcept;",
         "const CanonicalTraitReference& trait() const noexcept;",
         "const CanonicalHeaderTypeSyntax& selfType() const noexcept;",
@@ -1421,7 +1428,7 @@ def check_canonical_impl_header_inventory(
         )
 
     impl_factory = function_body(
-        implementation, "zc::Maybe<CanonicalImplHeader> CanonicalImplHeader::from("
+        implementation, "zc::Maybe<ImplHeader> ImplHeader::from("
     )
     if impl_factory is None:
         errors.append(f"{CANONICAL_IMPL_HEADER_IMPLEMENTATION}: missing impl header admission")
@@ -1436,7 +1443,7 @@ def check_canonical_impl_header_inventory(
                     f"{CANONICAL_IMPL_HEADER_IMPLEMENTATION}: impl header admission is missing {marker}"
                 )
 
-    impl_codec = function_body(implementation, "void CanonicalImplHeader::encode(")
+    impl_codec = function_body(implementation, "void ImplHeader::encode(")
     if impl_codec is None:
         errors.append(f"{CANONICAL_IMPL_HEADER_IMPLEMENTATION}: missing impl header codec")
     else:
@@ -1469,12 +1476,12 @@ def check_canonical_impl_header_inventory(
         "value.arguments()[0].predefinedKind() == PredefinedTypeKind::I16",
         "value.arguments()[1].predefinedKind() == PredefinedTypeKind::I8",
         "value.arguments()[2].predefinedKind() == PredefinedTypeKind::I16",
-        'ZC_TEST("CanonicalImplHeader passes the exact RFC 0018 fieldwise vector")',
+        'ZC_TEST("ImplHeader passes the exact RFC 0018 fieldwise vector")',
         '"0000000000000000010102000000000000000100000000000000055472616974"',
-        'ZC_TEST("CanonicalImplHeader retains generic order and sorts unique obligations")',
+        'ZC_TEST("ImplHeader retains generic order and sorts unique obligations")',
         "ZC_REQUIRE(value.genericParameters().size() == 2);",
         "ZC_REQUIRE(value.obligations().size() == 2);",
-        'ZC_TEST("CanonicalImplHeader rejects values outside the closed tag domains")',
+        'ZC_TEST("ImplHeader rejects values outside the closed tag domains")',
         "static_cast<ImplPolarity>(0xff)",
         "static_cast<ImplSafety>(0xff)",
     ):
@@ -1838,10 +1845,10 @@ def check_module_resolution_key_architecture(
             f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: resolution request decoder must be exact bounded and compositional"
         )
 
-    if "${CMAKE_CURRENT_SOURCE_DIR}/module-resolution-key.cc" not in identity_cmake:
+    if "${CMAKE_CURRENT_SOURCE_DIR}/key/module-resolution-key.cc" not in identity_cmake:
         errors.append(f"{IDENTITY_CMAKE}: missing module-resolution-key.cc registration")
     for marker in (
-        '#include "zomlang/compiler/identity/module-resolution-key.h"',
+        '#include "zomlang/compiler/identity/key/module-resolution-key.h"',
         'ZC_TEST("ModuleCatalogPathBucketKey passes the fixed canonical codec vector")',
         'ZC_TEST("ModuleCatalogPathBucketKey rejects an empty canonical path")',
         'ZC_TEST("ModuleCatalogPathBucketKey decoder is exact bounded and domain separated")',
@@ -1915,7 +1922,7 @@ def check_semantic_import_binding_key_architecture(
             f"{SEMANTIC_IMPORT_BINDING_KEY}: SemanticImportOperation must retain its three exact semantic tags"
         )
 
-    key = declaration_body(header, "class SemanticImportBindingKey final")
+    key = declaration_body(header, "class ImportBindingKey final")
     expected_fields = (
         "ModuleKey requesterValue;",
         "ModuleResolutionKey resolutionValue;",
@@ -1926,12 +1933,12 @@ def check_semantic_import_binding_key_architecture(
         "DeclaredDefinitionName localNameValue;",
     )
     if key is None:
-        errors.append(f"{SEMANTIC_IMPORT_BINDING_KEY}: missing SemanticImportBindingKey declaration")
+        errors.append(f"{SEMANTIC_IMPORT_BINDING_KEY}: missing ImportBindingKey declaration")
     else:
         fields = data_member_declarations(key)
         if fields != expected_fields:
             errors.append(
-                f"{SEMANTIC_IMPORT_BINDING_KEY}: SemanticImportBindingKey must contain exactly seven semantic fields"
+                f"{SEMANTIC_IMPORT_BINDING_KEY}: ImportBindingKey must contain exactly seven semantic fields"
             )
         field_surface = "\n".join(fields)
         if re.search(
@@ -1943,7 +1950,7 @@ def check_semantic_import_binding_key_architecture(
                 f"{SEMANTIC_IMPORT_BINDING_KEY}: provenance handles and revisions are forbidden"
             )
 
-    admission = function_body(implementation, "SemanticImportBindingKey::from(")
+    admission = function_body(implementation, "ImportBindingKey::from(")
     if admission is None:
         errors.append(
             f"{SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION}: missing semantic import key admission"
@@ -1960,7 +1967,7 @@ def check_semantic_import_binding_key_architecture(
                     f"{SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION}: semantic import key admission is missing {marker}"
                 )
 
-    key_encode = function_body(implementation, "SemanticImportBindingKey::encode() const")
+    key_encode = function_body(implementation, "ImportBindingKey::encode() const")
     if key_encode is None:
         errors.append(
             f"{SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION}: missing semantic import key codec"
@@ -1987,14 +1994,14 @@ def check_semantic_import_binding_key_architecture(
                 f"{SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION}: invalid semantic import key domain"
             )
 
-    if "${CMAKE_CURRENT_SOURCE_DIR}/semantic-import-binding-key.cc" not in identity_cmake:
+    if "${CMAKE_CURRENT_SOURCE_DIR}/key/import-binding-key.cc" not in identity_cmake:
         errors.append(f"{IDENTITY_CMAKE}: missing semantic-import-binding-key.cc registration")
     for marker in (
-        '#include "zomlang/compiler/identity/semantic-import-binding-key.h"',
-        'ZC_TEST("SemanticImportBindingKey passes the fixed canonical codec vector")',
-        'ZC_TEST("SemanticImportBindingKey distinguishes every semantic field")',
-        'ZC_TEST("SemanticImportBindingKey rejects requester operation and namespace mismatches")',
-        'ZC_TEST("SemanticImportBindingKey canonicalizes source and local names to NFC")',
+        '#include "zomlang/compiler/identity/key/import-binding-key.h"',
+        'ZC_TEST("ImportBindingKey passes the fixed canonical codec vector")',
+        'ZC_TEST("ImportBindingKey distinguishes every semantic field")',
+        'ZC_TEST("ImportBindingKey rejects requester operation and namespace mismatches")',
+        'ZC_TEST("ImportBindingKey canonicalizes source and local names to NFC")',
     ):
         if marker not in test:
             errors.append(
@@ -2087,8 +2094,8 @@ def check_stable_identity_architecture(
         "using ImplementationIdentityEntry =",
         "using GenericParameterIdentityEntry =",
         "using CallableParameterIdentityEntry =",
-        "class CanonicalIdentityInternerSet final",
-        "static zc::Maybe<CanonicalIdentityInternerSet> create(",
+        "class IdentityInternerSet final",
+        "static zc::Maybe<IdentityInternerSet> create(",
         "const CompilationUnitIdentity& key) const;",
         "const CrateKey& key) const;",
         "const SourceFileKey& key) const;",
@@ -2129,15 +2136,15 @@ def check_stable_identity_architecture(
             errors.append(
                 f"{CANONICAL_IDENTITY_INTERNER_IMPLEMENTATION}: missing arena interner implementation marker {marker}"
             )
-    if "${CMAKE_CURRENT_SOURCE_DIR}/canonical-identity-interner-set.cc" not in read_text(
+    if "${CMAKE_CURRENT_SOURCE_DIR}/canonical/identity-interner-set.cc" not in read_text(
         IDENTITY_CMAKE, overrides
     ):
         errors.append(
             f"{IDENTITY_CMAKE}: missing canonical-identity-interner-set.cc registration"
         )
     for marker in (
-        "zc::Maybe<identity::CanonicalIdentityInternerSet> identityInternerSet;",
-        "identity::CanonicalIdentityInternerSet::create(contextFactory, resources->contextBrand)",
+        "zc::Maybe<identity::IdentityInternerSet> identityInternerSet;",
+        "identity::IdentityInternerSet::create(contextFactory, resources->contextBrand)",
     ):
         if marker not in session:
             errors.append(
@@ -2316,7 +2323,7 @@ def check_compilation_unit_architecture(
             "zc::ArrayPtr<const ToolchainSemanticContextInput> toolchainInputs,",
         ),
         IDENTITY_CMAKE: (
-            "${CMAKE_CURRENT_SOURCE_DIR}/compilation-unit-key.cc",
+            "${CMAKE_CURRENT_SOURCE_DIR}/key/compilation-unit-key.cc",
         ),
     }
     text_by_path = {
@@ -2386,7 +2393,7 @@ def check_semantic_type_store_architecture(
     if "ZC_DISALLOW_COPY_AND_MOVE(SemanticTypeStore);" not in store:
         errors.append(f"{SEMANTIC_TYPE_STORE}: semantic type store must be pinned")
     required_admission_markers = (
-        "const identity::CanonicalIdentityInternerSet& identities",
+        "const identity::IdentityInternerSet& identities",
         "SemanticTypeAdmissionResult canonicalizeClosed(semantic::TypeData&& data) const",
         "definitionKeyForAdmission(",
         "validateGenericParameterForAdmission(",
@@ -2719,7 +2726,7 @@ def run_self_test() -> int:
             copy.deepcopy(baseline),
             {
                 COMPILER_SESSION: session_text.replace(
-                    "zc::Maybe<identity::CanonicalIdentityInternerSet> identityInternerSet;",
+                    "zc::Maybe<identity::IdentityInternerSet> identityInternerSet;",
                     "zc::Maybe<identity::MissingCanonicalIdentityInternerSet> identityInternerSet;",
                     1,
                 )
@@ -2904,7 +2911,7 @@ def run_self_test() -> int:
                     "DeclaredDefinitionName mutatedLocalNameValue;",
                 )
             },
-            "SemanticImportBindingKey must contain exactly seven semantic fields",
+            "ImportBindingKey must contain exactly seven semantic fields",
         )
     )
     cases.append(
@@ -3276,10 +3283,10 @@ def run_self_test() -> int:
             copy.deepcopy(baseline),
             {
                 IDENTITY_CMAKE: identity_cmake_text.replace(
-                    "  ${CMAKE_CURRENT_SOURCE_DIR}/canonical-header-type-encode.cc\n", ""
+                    "  ${CMAKE_CURRENT_SOURCE_DIR}/canonical/header-type-encode.cc\n", ""
                 )
             },
-            "missing canonical header type source canonical-header-type-encode.cc",
+            "missing canonical header type source canonical/header-type-encode.cc",
         )
     )
     canonical_type_encode_text = (ROOT / CANONICAL_HEADER_TYPE_ENCODE).read_text(
@@ -3634,10 +3641,10 @@ def run_self_test() -> int:
             copy.deepcopy(baseline),
             {
                 IDENTITY_CMAKE: identity_cmake_text.replace(
-                    "  ${CMAKE_CURRENT_SOURCE_DIR}/canonical-overload-header.cc\n", ""
+                    "  ${CMAKE_CURRENT_SOURCE_DIR}/canonical/overload-header.cc\n", ""
                 )
             },
-            "missing canonical overload source canonical-overload-header.cc",
+            "missing canonical overload source canonical/overload-header.cc",
         )
     )
     cases.append(
@@ -3722,10 +3729,10 @@ def run_self_test() -> int:
             copy.deepcopy(baseline),
             {
                 IDENTITY_CMAKE: identity_cmake_text.replace(
-                    "  ${CMAKE_CURRENT_SOURCE_DIR}/overload-header-digest.cc\n", ""
+                    "  ${CMAKE_CURRENT_SOURCE_DIR}/crypto/overload-header-digest.cc\n", ""
                 )
             },
-            "missing overload digest source overload-header-digest.cc",
+            "missing overload digest source crypto/overload-header-digest.cc",
         )
     )
     cases.append(
@@ -3792,10 +3799,10 @@ def run_self_test() -> int:
             copy.deepcopy(baseline),
             {
                 IDENTITY_CMAKE: identity_cmake_text.replace(
-                    "  ${CMAKE_CURRENT_SOURCE_DIR}/canonical-impl-header.cc\n", ""
+                    "  ${CMAKE_CURRENT_SOURCE_DIR}/canonical/impl-header.cc\n", ""
                 )
             },
-            "missing canonical impl source canonical-impl-header.cc",
+            "missing canonical impl source canonical/impl-header.cc",
         )
     )
     cases.append(

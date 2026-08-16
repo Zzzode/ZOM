@@ -18,9 +18,9 @@
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zomlang/compiler/identity/brand.h"
-#include "zomlang/compiler/identity/canonical-identity-interner-set.h"
+#include "zomlang/compiler/identity/canonical/identity-interner-set.h"
 #include "zomlang/compiler/identity/identity-invariant.h"
-#include "zomlang/compiler/identity/semantic-type-id.h"
+#include "zomlang/compiler/identity/semantic/type-id.h"
 #include "zomlang/compiler/type/semantic-type-key.h"
 
 namespace zomlang::compiler::type {
@@ -61,7 +61,7 @@ using SemanticTypeLookupResult = zc::OneOf<SemanticTypeLookup, identity::Identit
 class SemanticTypeStore final {
 public:
   SemanticTypeStore(identity::SemanticTypeStoreConstructionToken&& token,
-                    const identity::CanonicalIdentityInternerSet& identities);
+                    const identity::IdentityInternerSet& identities);
   ~SemanticTypeStore() noexcept(false);
   ZC_DISALLOW_COPY_AND_MOVE(SemanticTypeStore);
 

@@ -594,7 +594,7 @@ private:
     return ZC_REQUIRE_NONNULL(ZC_REQUIRE_NONNULL(identityAuthority).boundModule(userModule));
   }
 
-  const identity::SemanticContextFingerprint& contextFingerprint() const {
+  const identity::ContextFingerprint& contextFingerprint() const {
     return ZC_REQUIRE_NONNULL(identityAuthority).fingerprint();
   }
 

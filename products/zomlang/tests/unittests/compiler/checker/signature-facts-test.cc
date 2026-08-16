@@ -16,7 +16,7 @@
 
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/tests/unittests/compiler/checker/checker-authority-test-fixture.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 

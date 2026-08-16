@@ -250,7 +250,7 @@ bool sameRegions(zc::ArrayPtr<const ReborrowRegion> left,
 
 ReborrowRegionCandidate::ReborrowRegionCandidate(
     identity::SemanticContextBrand semanticContext,
-    identity::SemanticContextFingerprint&& contextFingerprint, identity::ModuleId module,
+    identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
     mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
     driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
     zc::Vector<ReborrowRegion>&& regions) noexcept
@@ -276,7 +276,7 @@ VerifiedReborrowRegions& VerifiedReborrowRegions::operator=(VerifiedReborrowRegi
 identity::SemanticContextBrand VerifiedReborrowRegions::semanticContext() const noexcept {
   return impl->candidate.semanticContext;
 }
-const identity::SemanticContextFingerprint& VerifiedReborrowRegions::contextFingerprint()
+const identity::ContextFingerprint& VerifiedReborrowRegions::contextFingerprint()
     const noexcept {
   return impl->candidate.contextFingerprint;
 }

@@ -627,7 +627,7 @@ enumerate and hash the filesystem source, compare it with the embedded
 inventory and digest, and publish `VerifiedCoreDistribution` only when both
 agree. Candidate-carried bytes never supply their own expectation.
 
-`SemanticContextFingerprint` replaces its package sequence with the sorted
+`ContextFingerprint` replaces its package sequence with the sorted
 `CompilationUnitIdentity` sequence and additionally includes the exact
 `distributionDigest` and
 `CoreStandardMarkerPolicyTemplateRevision` for every toolchain unit.
@@ -660,7 +660,7 @@ admission, every revision-local capability, and final library publication.
 Policy-template lineage remains mandatory for the policy and authority
 projections. Neither broad input is copied into graph, signature, export, or
 prelude equality. The complete
-`SemanticContextFingerprint` remains mandatory on revision-local capabilities
+`ContextFingerprint` remains mandatory on revision-local capabilities
 to prevent cross-session or cross-context handle use, but it never enters
 stable core projection equality. Compilations with equal projected core keys
 therefore produce equal core semantic context fingerprints within or across
@@ -963,10 +963,10 @@ stable query value may contain a handle.
 ### Semantic Context And Session Ownership
 
 One `CompilerSession` owns exactly one semantic context, one
-`SemanticContextFingerprint`, one `QueryDatabase`, one
+`ContextFingerprint`, one `QueryDatabase`, one
 `SemanticContextCapabilityArena`, and one family of checked and borrow-evidence
 repositories. The arena owns the `SemanticContextBrand` issuer, the sole
-`CanonicalIdentityInternerSet`, and the semantic type store for its complete
+`IdentityInternerSet`, and the semantic type store for its complete
 refcounted lifetime. It owns no query memo, lookup table, flight, lease, or
 verified library. A session never contains final-context and
 preparatory-context handles together.
@@ -1102,7 +1102,7 @@ checked only after the final role authority exists.
 ```text
 VerifiedCoreRoleSeed {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   coreContext: CoreSemanticContextFingerprint,
   distribution: Sha256Digest,
   crate: CrateId,
@@ -1267,7 +1267,7 @@ CoreBootstrapImportedSignatureModule {
 
 VerifiedCoreImportedSignatureView {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   coreContext: CoreSemanticContextFingerprint,
   requester: ModuleId,
   revision: CoreImportedSignatureViewRevision,
@@ -1276,7 +1276,7 @@ VerifiedCoreImportedSignatureView {
 
 VerifiedCoreBootstrapModuleInterface {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   coreContext: CoreSemanticContextFingerprint,
   module: ModuleId,
   record: CoreBootstrapModuleInterfaceRecord,
@@ -1287,7 +1287,7 @@ VerifiedCoreBootstrapModuleInterface {
 
 VerifiedCoreModuleInterface {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   coreContext: CoreSemanticContextFingerprint,
   module: ModuleId,
   record: CoreModuleInterfaceRecord,
@@ -1443,7 +1443,7 @@ active-membership, and bound-module dependencies. They atomically publish:
 ```text
 VerifiedCoreMarkerShapeInventory {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   coreContext: CoreSemanticContextFingerprint,
   distribution: Sha256Digest,
   roleSeedRevision: Sha256Digest,
@@ -1453,7 +1453,7 @@ VerifiedCoreMarkerShapeInventory {
 
 VerifiedCoreMarkerPolicyRegistry {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   coreContext: CoreSemanticContextFingerprint,
   distribution: Sha256Digest,
   roleSeedRevision: Sha256Digest,
@@ -1465,7 +1465,7 @@ VerifiedCoreMarkerPolicyRegistry {
 
 VerifiedStandardMarkerAuthority {
   semanticContext: SemanticContextBrand,
-  contextFingerprint: SemanticContextFingerprint,
+  contextFingerprint: ContextFingerprint,
   coreContext: CoreSemanticContextFingerprint,
   configurationRevision: StandardMarkerConfigurationRevision,
   markerShapeRevision: CoreMarkerShapeInventoryRevision,
@@ -1611,7 +1611,7 @@ does not implement that path.
 
 ```text
 VerifiedCoreLibrary {
-  context: SemanticContextFingerprint,
+  context: ContextFingerprint,
   distribution: Sha256Digest,
   crate: CrateKey,
   graph: CoreModuleGraphRecord,
@@ -1622,7 +1622,7 @@ VerifiedCoreLibrary {
 
 VerifiedCoreLibrarySet {
   semanticContext: SemanticContextBrand,
-  context: SemanticContextFingerprint,
+  context: ContextFingerprint,
   contextRoots: CompilationRootSetQueryKey,
   revision: DatabaseRevision,
   distribution: Sha256Digest,
@@ -1973,7 +1973,7 @@ CoreLibraryIssue =
 
 CoreLibraryDiagnosticRoot {
   expectedDistributionDigest: Sha256Digest,
-  context: Maybe<SemanticContextFingerprint>,
+  context: Maybe<ContextFingerprint>,
 }
 
 CoreFailureProducer =
@@ -1994,7 +1994,7 @@ CoreFailureCoordinate =
   | Module { module: ModuleKey }
   | Role { role: CoreSemanticRole }
   | Distribution { expectedDigest: Sha256Digest }
-  | Context { fingerprint: SemanticContextFingerprint }
+  | Context { fingerprint: ContextFingerprint }
 
 CoreFailureCauseDomain =
     Lex
@@ -2777,7 +2777,7 @@ QueryCompletion =
 
 SemanticContextCapabilityArena : zc::AtomicRefcounted {
   semanticContext: SemanticContextBrand,
-  identityInterners: CanonicalIdentityInternerSet,
+  identityInterners: IdentityInternerSet,
   semanticTypes: SemanticTypeStore,
 }
 
@@ -3315,7 +3315,7 @@ materializer may intern only the exact active keys authorized by its registered
 typed permission and membership descriptor.
 
 `SemanticContextCapabilityArena` owns the sole
-`CanonicalIdentityInternerSet`, the brand issuer, and semantic type store. A
+`IdentityInternerSet`, the brand issuer, and semantic type store. A
 capability memo retains its snapshot arena, semantic-context arena, every child
 capability memo read by provider or verifier, and its complete stable witness.
 No session object, query database, registry container, or graph publication

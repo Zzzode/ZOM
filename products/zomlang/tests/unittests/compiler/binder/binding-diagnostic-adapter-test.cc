@@ -44,7 +44,7 @@ identity::ModuleId moduleIdentity() {
   auto context = factory.issue();
   ZC_REQUIRE(context != zc::none);
   ZC_IF_SOME(value, context) {
-    auto authorities = identity::CanonicalIdentityInternerSet::create(factory, value);
+    auto authorities = identity::IdentityInternerSet::create(factory, value);
     ZC_REQUIRE(authorities != zc::none);
     ZC_IF_SOME(interner, authorities) {
       auto result = interner.internModule(value, module());

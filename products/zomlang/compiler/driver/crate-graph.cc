@@ -540,7 +540,7 @@ struct VerifiedPreparatoryCrateGraph::Impl final {
        zc::Vector<identity::PackageDependencyEdgeKey>&& packageEdges,
        zc::Vector<identity::CrateKey>&& crates,
        zc::Vector<identity::CrateDependencyEdgeKey>&& edges,
-       identity::SemanticContextFingerprint&& fingerprint) noexcept
+       identity::ContextFingerprint&& fingerprint) noexcept
       : root(zc::mv(root)),
         packages(zc::mv(packages)),
         packageEdges(zc::mv(packageEdges)),
@@ -553,7 +553,7 @@ struct VerifiedPreparatoryCrateGraph::Impl final {
   zc::Vector<identity::PackageDependencyEdgeKey> packageEdges;
   zc::Vector<identity::CrateKey> crates;
   zc::Vector<identity::CrateDependencyEdgeKey> edges;
-  identity::SemanticContextFingerprint fingerprint;
+  identity::ContextFingerprint fingerprint;
 };
 
 VerifiedPreparatoryCrateGraph::VerifiedPreparatoryCrateGraph(zc::Own<Impl>&& impl) noexcept
@@ -858,7 +858,7 @@ PreparatoryCrateGraphBuildResult VerifiedPreparatoryCrateGraph::build(
             zc::Vector<identity::SourceContentIdentity> sourceContents;
             zc::Vector<identity::ModuleKey> modules;
             zc::Vector<identity::ToolchainSemanticContextInput> noToolchainInputs;
-            auto fingerprint = identity::SemanticContextFingerprint::compute(
+            auto fingerprint = identity::ContextFingerprint::compute(
                 compilationUnits.asPtr(), noToolchainInputs.asPtr(), uniquePackageEdges.asPtr(),
                 crates.asPtr(), edges.asPtr(), sourceContents.asPtr(), modules.asPtr());
             if (fingerprint == zc::none) { return CrateGraphIssue::InvalidCrateIdentity; }
@@ -897,7 +897,7 @@ zc::ArrayPtr<const identity::CrateDependencyEdgeKey> VerifiedPreparatoryCrateGra
   return impl->edges;
 }
 
-const identity::SemanticContextFingerprint& VerifiedPreparatoryCrateGraph::fingerprint()
+const identity::ContextFingerprint& VerifiedPreparatoryCrateGraph::fingerprint()
     const noexcept {
   return impl->fingerprint;
 }

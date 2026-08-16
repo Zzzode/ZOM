@@ -16,7 +16,7 @@
 
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 
 namespace zomlang::compiler::checker {
 namespace {

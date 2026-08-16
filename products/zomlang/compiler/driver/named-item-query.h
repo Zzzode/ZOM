@@ -9,7 +9,7 @@
 #include "zomlang/compiler/binder/stable-binding-facts.h"
 #include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
-#include "zomlang/compiler/identity/definition-key.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
 #include "zomlang/compiler/query/query-database.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {

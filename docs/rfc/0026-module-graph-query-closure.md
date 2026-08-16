@@ -269,7 +269,7 @@ StableMaterializedDependencyWitness {
 
 MaterializedModuleGraphWitness {
   contextRoots: CompilationRootSetQueryKey,
-  fingerprint: SemanticContextFingerprint,
+  fingerprint: ContextFingerprint,
   graph: ModuleGraphRecord,
   scc: ModuleGraphSccRecord,
   requestEdges:

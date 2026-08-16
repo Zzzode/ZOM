@@ -512,7 +512,7 @@ identity::ModuleId OwnershipAdmittedBoundModule::module() const noexcept {
 identity::SourceFileId OwnershipAdmittedBoundModule::sourceFile() const noexcept {
   return boundModule().sourceFile();
 }
-const identity::SemanticContextFingerprint& OwnershipAdmittedBoundModule::semanticFingerprint()
+const identity::ContextFingerprint& OwnershipAdmittedBoundModule::semanticFingerprint()
     const noexcept {
   return boundModule().semanticFingerprint();
 }

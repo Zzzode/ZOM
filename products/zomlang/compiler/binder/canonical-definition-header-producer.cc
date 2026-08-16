@@ -7,7 +7,7 @@
 
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
-#include "zomlang/compiler/identity/canonical-overload-header.h"
+#include "zomlang/compiler/identity/canonical/overload-header.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -22,7 +22,7 @@ using identity::CanonicalHeaderTypeSyntaxKind;
 using identity::CanonicalNamedHeaderType;
 using identity::CanonicalNameReference;
 using identity::CanonicalNameRoot;
-using identity::CanonicalOverloadHeader;
+using identity::OverloadHeader;
 using identity::DeclaredDefinitionName;
 using identity::ExternalAbi;
 using identity::OverloadHeaderAuthority;
@@ -76,7 +76,7 @@ public:
       if (result == zc::none || (syntax.raises && raises == zc::none)) { return failure; }
       ZC_IF_SOME(nameValue, name) {
         ZC_IF_SOME(resultValue, result) {
-          auto header = CanonicalOverloadHeader::from(
+          auto header = OverloadHeader::from(
               syntax.kind, zc::mv(nameValue), zc::mv(receiver), zc::mv(generics),
               zc::mv(obligations), zc::mv(parameters), zc::mv(resultValue), zc::mv(raises),
               zc::mv(syntax.externalAbi));

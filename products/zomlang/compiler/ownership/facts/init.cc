@@ -926,7 +926,7 @@ bool InitializationSourceFailureOrdering::less(const InitializationSourceFailure
 
 InitializationCandidate::InitializationCandidate(
     identity::SemanticContextBrand semanticContext,
-    identity::SemanticContextFingerprint&& contextFingerprint, identity::ModuleId module,
+    identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
     mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
     zc::Vector<InitializationFunction>&& functions) noexcept
     : semanticContext(semanticContext),
@@ -946,7 +946,7 @@ struct VerifiedInitializationFacts::Impl final {
         functions(zc::mv(candidate.functions)) {}
 
   identity::SemanticContextBrand semanticContext;
-  identity::SemanticContextFingerprint contextFingerprint;
+  identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   mir::MirRevisionId builtRevision;
   OwnershipEventOverlayRevision overlayRevision;
@@ -963,7 +963,7 @@ VerifiedInitializationFacts& VerifiedInitializationFacts::operator=(
 identity::SemanticContextBrand VerifiedInitializationFacts::semanticContext() const noexcept {
   return impl->semanticContext;
 }
-const identity::SemanticContextFingerprint& VerifiedInitializationFacts::contextFingerprint()
+const identity::ContextFingerprint& VerifiedInitializationFacts::contextFingerprint()
     const noexcept {
   return impl->contextFingerprint;
 }

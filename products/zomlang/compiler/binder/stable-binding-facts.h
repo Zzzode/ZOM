@@ -14,9 +14,9 @@
 #include "zomlang/compiler/binder/identity-pre-admission.h"
 #include "zomlang/compiler/binder/local-identity.h"
 #include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
-#include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/semantic-import-binding-key.h"
-#include "zomlang/compiler/identity/source-key.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
+#include "zomlang/compiler/identity/key/import-binding-key.h"
+#include "zomlang/compiler/identity/key/source-key.h"
 
 namespace zomlang::compiler::binder {
 
@@ -154,7 +154,7 @@ ZOM_DECLARE_STABLE_ROUTED_KEY(StableCallableParameterQueryKey, identity::ModuleK
                               identity::CallableParameterKey, parameter,
                               StableCallableParameterQueryKey);
 ZOM_DECLARE_STABLE_ROUTED_KEY(StableSemanticImportQueryKey, identity::ModuleKey, requester,
-                              identity::SemanticImportBindingKey, binding,
+                              identity::ImportBindingKey, binding,
                               zc::Maybe<StableSemanticImportQueryKey>);
 ZOM_DECLARE_STABLE_ROUTED_KEY(StableOwnerBodyQueryKey, identity::ModuleKey, module,
                               StableBodyOwnerKey, owner, zc::Maybe<StableOwnerBodyQueryKey>);

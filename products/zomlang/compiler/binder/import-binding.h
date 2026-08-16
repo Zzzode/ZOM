@@ -114,7 +114,7 @@ struct ResolvedModuleAliasProjection final {
 struct ResolvedImportBindingProjection final {
   ResolvedImportBindingProjection(
       ast::NodeId node, uint32_t schemaPreorderOrdinal,
-      identity::SemanticImportBindingKey&& binding, ImportBindingNameProjection&& localName,
+      identity::ImportBindingKey&& binding, ImportBindingNameProjection&& localName,
       BindingTarget&& canonicalTarget, identity::ModuleId sourceModule,
       ExportSurfaceRevision sourceRevision, ImportBindingKind kind,
       identity::SourceSpan&& declarationSpan, zc::Maybe<identity::SourceSpan>&& aliasSpan,
@@ -126,7 +126,7 @@ struct ResolvedImportBindingProjection final {
 
   ast::NodeId node;
   uint32_t schemaPreorderOrdinal;
-  identity::SemanticImportBindingKey binding;
+  identity::ImportBindingKey binding;
   ImportBindingNameProjection localName;
   BindingTarget canonicalTarget;
   identity::ModuleId sourceModule;

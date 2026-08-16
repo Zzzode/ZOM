@@ -249,7 +249,7 @@ SESSION_HEADER_MARKERS = (
 SESSION_SOURCE_MARKERS = (
     "identity::SemanticContextBrand contextBrand;",
     "public module_graph_query::ModuleGraphIdentityMaterializationResources",
-    "identity::CanonicalIdentityInternerSet& identityInterners() const override",
+    "identity::IdentityInternerSet& identityInterners() const override",
     "return ZC_ASSERT_NONNULL(identityInternerSet);",
     "identity::IdentityInternResult<identity::DefId> internDefinition(",
     "identity::IdentityInternResult<identity::ImplId> internImplementation(",
@@ -259,7 +259,7 @@ SESSION_SOURCE_MARKERS = (
     "zc::Maybe<identity::ImplementationIdentityEntry> implementation(",
     "zc::Maybe<identity::GenericParameterIdentityEntry> genericParameter(",
     "zc::Maybe<identity::CallableParameterIdentityEntry> callableParameter(",
-    "mutable zc::Maybe<identity::CanonicalIdentityInternerSet> identityInternerSet;",
+    "mutable zc::Maybe<identity::IdentityInternerSet> identityInternerSet;",
     "basic::ThreadPool queryScheduler;",
     "query::QueryDatabase queryDatabase;",
     "queryDatabase(queryScheduler, query::productionQueryDescriptorInventory(), "
@@ -736,7 +736,7 @@ def check_crate_graph_authority(
         "request.finalizeRoots(buildPlan)",
         "identity::CrateDependencyEdgeKey::from(",
         "hasCycle(crates.asPtr(), edges.asPtr())",
-        "identity::SemanticContextFingerprint::compute(",
+        "identity::ContextFingerprint::compute(",
     ):
         if marker not in source:
             errors.append(f"{CRATE_GRAPH_SOURCE}: missing crate expansion marker: {marker}")
@@ -895,7 +895,7 @@ def run_self_test() -> int:
         lambda files: files.__setitem__(
             SESSION_SOURCE,
             files[SESSION_SOURCE].replace(
-                "mutable zc::Maybe<identity::CanonicalIdentityInternerSet> identityInternerSet;", ""
+                "mutable zc::Maybe<identity::IdentityInternerSet> identityInternerSet;", ""
             ),
         ),
         "missing session ownership marker",
@@ -1006,7 +1006,7 @@ def run_self_test() -> int:
         lambda files: files.__setitem__(
             CRATE_GRAPH_SOURCE,
             files[CRATE_GRAPH_SOURCE].replace(
-                "identity::SemanticContextFingerprint::compute(",
+                "identity::ContextFingerprint::compute(",
                 "missingSemanticContextFingerprint(",
                 1,
             ),
