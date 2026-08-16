@@ -41,8 +41,20 @@ complete membership authority before interning.
 whose memo owns the exact final parse lineage. No ambient session, current
 parse, or database seal flag supplies provenance or admission authority.
 
-The synchronization leaves RFC 0026 `ACCEPTED` and leaves all pending product
-implementation and verification work pending.
+The synchronization left RFC 0026 `ACCEPTED` until product implementation
+evidence became available.
+
+### 2026-08-09 Implementation Reconciliation
+
+Audit of commits `6fac75b4` and `eb1033ef` confirmed the complete-context
+materializer, active membership projections, retained final-parse provenance,
+sealed-root publication, and retained bound-module consumer migration. The
+focused materialization, membership, provenance, session, Binder, HIR, MIR,
+and ownership tests passed with the current sanitizer build. The identity,
+incremental-query, CompilerSession, Binder, Checker, and IR architecture gates
+and their mutation self-tests also passed. RFC 0026 therefore moves to
+`IMPLEMENTING`; complete current-tree verification and the final evidence audit
+remain pending.
 
 ## Owner Review Matrix
 
@@ -55,7 +67,7 @@ implementation and verification work pending.
 
 ## Decision Record
 
-RFC 0026 is `ACCEPTED`.
+RFC 0026 is `LANDED`.
 
 The original accepted proposal SHA-256 is
 `39df5d3f11dbdcb2e95056b1cd14fd5220a19688f31a3e3180230ad465a3f84d`.
@@ -87,15 +99,15 @@ the exact RFC 0030 `R29-12AB` transaction, then lands diagnostic facts through
 | `R26-10` | `rfc` | `R26-07` | Synchronize the current RFC 0026 design through RFC 0027 transaction `rfc0027-accept-20260727-e2f4ba5e`. | `python3 scripts/check-rfc.py` | Complete |
 | `R26-13` | `rfc` | `R26-10`; RFC 0028 `R28-12` | Synchronize explicit transaction and seal results, sealed-root admission, typed capability permissions and failures, retained final-parse provenance lineage, and the replacement dependency boundary through transaction `rfc0028-accept-20260727-944b68ff`. | `python3 scripts/check-rfc.py` | Complete |
 | `R26-14` | `rfc` | `R26-13`; RFC 0029 `R29-11` | Synchronize complete Binder contextual keys, identity-site provenance, stable-identity admission, exact typed provenance failures, and the corrected dependency order through transaction `rfc0029-accept-20260727-8d393a0c`. | `python3 scripts/check-rfc.py` | Complete |
-| `R26-11` | `module-system` | `R26-14`; RFC 0029 `R29-14`; RFC 0028 `R28-16` | Implement complete context authority, active memberships, typed materialized witness, sealed-root `MaterializeModuleGraph`, retained provenance, and capability lifetime. | RFC 0029 `R29-14`, RFC 0028 `R28-16`, and applicable RFC 0027 evidence | Pending |
-| `R26-12` | `binder-checker` | `R26-11`; RFC 0029 `R29-14`; RFC 0028 `R28-16` | Migrate bound-module graph consumers and downstream lease lineage. | RFC 0027 `M2` through `M5`, `C1`, and synchronized provenance lineage evidence | Pending |
-| `R26-08` | `verification` | `R26-11`; `R26-12`; RFC 0029 `R29-15` | Run full sanitizer, unit, lit, architecture, coverage, format, versioning, and benchmark gates. | RFC 0027, RFC 0028, and RFC 0029 Test Plans | Pending |
-| `R26-09` | `rfc` | `R26-08` | Audit completion criteria and transition implementation status truthfully. | `python3 scripts/check-rfc.py` | Pending |
+| `R26-11` | `module-system` | `R26-14`; RFC 0029 `R29-14`; RFC 0028 `R28-16` | Implement complete context authority, active memberships, typed materialized witness, sealed-root `MaterializeModuleGraph`, retained provenance, and capability lifetime. | RFC 0029 `R29-14`, RFC 0028 `R28-16`, and applicable RFC 0027 evidence | Complete; commits `6fac75b4` and `eb1033ef` provide the complete-context materializer, active membership, typed witness, sealed-root publication, retained provenance, and capability lifetime. Focused materialization, membership, provenance, session, and architecture evidence passed on 2026-08-09. |
+| `R26-12` | `binder-checker` | `R26-11`; RFC 0029 `R29-14`; RFC 0028 `R28-16` | Migrate bound-module graph consumers and downstream lease lineage. | RFC 0027 `M2` through `M5`, `C1`, and synchronized provenance lineage evidence | Complete; commit `eb1033ef` migrates Checker, module interface publication, CheckedModule, HIR, MIR, and ownership overlay consumers to retained bound-module leases. Focused Binder, Checker, HIR, MIR, ownership, and architecture evidence passed on 2026-08-09. |
+| `R26-08` | `verification` | `R26-11`; `R26-12`; RFC 0029 `R29-15` | Run full sanitizer, unit, lit, architecture, coverage, format, versioning, and benchmark gates. | RFC 0027, RFC 0028, and RFC 0029 Test Plans | Complete; sanitizer configure and build, the 2026-08-09 257-test default CTest run, architecture, RFC, English-only, internal-versioning, format, diff, and RFC 0027 ownership coverage gates passed. The coverage report records 77.41 percent aggregate line coverage, and the clean Release comparison selected Linux baseline `67aae06e0d5a4d2a333bb14c0be44429751dce49dcdbf4c5f55ab943d3f567ca` with eight workers. |
+| `R26-09` | `rfc` | `R26-08` | Audit completion criteria and transition implementation status truthfully. | `python3 scripts/check-rfc.py` | Complete; current source, focused materialization and retained-consumer tests, full sanitizer/default CTest, architecture, coverage, Release benchmark, and repository text evidence satisfy the RFC 0026 acceptance criteria. RFC 0026 is `LANDED`. |
 
 Completed stable graph tasks remain complete. RFC 0029 `R29-14` and `R29-15`
-are satisfied. The typed materializer, retained provenance, and publication
-path remain pending behind RFC 0028 `R28-16` and the later RFC 0027 dependency
-edges.
+and RFC 0028 `R28-16` are satisfied. The typed materializer, retained
+provenance, publication path, and downstream lease migration are complete.
+The complete current-tree verification and final evidence audit are complete.
 
 ## Acceptance Transaction Record
 

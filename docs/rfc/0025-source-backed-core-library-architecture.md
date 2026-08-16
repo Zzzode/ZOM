@@ -2,13 +2,13 @@
 rfc: 25
 title: Source-Backed Core Library Architecture
 type: language
-status: ACCEPTED
+status: IMPLEMENTING
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, task-router, lexer-parser, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, tooling-lsp, spec-audit, verification]
 approvers: [rfc, task-router, lexer-parser, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, tooling-lsp, spec-audit, verification]
 created: 2026-07-25
-updated: 2026-07-28
+updated: 2026-08-09
 area: language
 requires: [4, 5, 6, 7, 8, 10, 11, 12, 13, 15, 17, 18, 19, 20, 24]
 supersedes: []
@@ -3957,7 +3957,7 @@ updated only with the production slice they describe:
 - Installation:
   `ctest --preset default -R '^core-library-install-consumer$' --output-on-failure`.
   The registered test
-  `products/zomlang/tests/cmake/verify-core-library-install.cmake` removes and
+  `products/zomlang/tests/cmake/verify-core-library-install-consumer.cmake` removes and
   recreates only
   `${CMAKE_BINARY_DIR}/test-prefixes/core-library-install-consumer`, installs
   the current build there, verifies the exact installed core file set and
@@ -4118,3 +4118,4 @@ None
 | 2026-07-27 | ACCEPTED | Transaction `rfc0028-accept-20260727-944b68ff` synchronized explicit transaction and seal results, sealed-root admission propagation, typed capability failures and exact membership permissions, sole `BoundOwnerBody` closure authority, and runtime source ownership to RFC 0028 proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation remains dependency-ordered and incomplete. |
 | 2026-07-27 | ACCEPTED | Transaction `rfc0029-accept-20260727-8d393a0c` synchronized complete module-qualified Binder keys, identity-site provenance, stable-identity admission, the five exact capability failure contracts, and the schema-before-runtime dependency order to RFC 0029 proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`; implementation remains dependency-ordered and incomplete. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0030-accept-20260728-4ed0e6b8` synchronized the exact build-visible S1-plus-S2-plus-S3 atomic landing and separate S6 diagnostic transaction to RFC 0030 proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b`; implementation remains dependency-ordered and incomplete. |
+| 2026-08-09 | IMPLEMENTING | Product work has completed the reserved-root diagnostic rail, compilation-unit identity cutover, source-distribution admission, intrinsic lexical cutover, stable graph foundation, final materialization, and retained consumer migration. The source-backed core bootstrap, complete core query inventory, final interface, prelude, diagnostics, build, and verification transaction remain incomplete. |

@@ -2,13 +2,13 @@
 rfc: 26
 title: Module Graph Query Closure
 type: compiler
-status: ACCEPTED
+status: LANDED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, module-system, binder-checker, verification]
 approvers: [rfc, module-system, binder-checker, verification]
 created: 2026-07-26
-updated: 2026-07-28
+updated: 2026-08-09
 area: compiler
 requires: [17, 18, 19, 20, 25]
 supersedes: []
@@ -574,16 +574,18 @@ architecture, coverage, English-only, internal-versioning, format, diff, and
 Release benchmark gates in the synchronized RFC 0027, RFC 0028, and RFC 0029
 plans.
 
-Acceptance synchronization does not claim remaining implementation or
-verification tasks are complete. RFC 0026 remains `ACCEPTED`.
+The materializer and retained-consumer migration are implemented. Complete
+current-tree verification and the final evidence audit are recorded; RFC 0026
+is `LANDED`.
 
 ## Implementation Plan
 
-Completed RFC 0026 stable graph tasks retain their recorded evidence. The
-typed witness, final-snapshot materializer, active membership, session cutover,
-downstream lease migration, removal work, and final gates follow RFC 0029
-`R29-12AB`, the separate `R29-12D` transaction, `R29-14`, RFC
-0028 `R28-16`, and `R29-15` before later RFC 0027 dependency edges resume.
+Completed RFC 0026 stable graph tasks retain their recorded evidence. Commits
+`6fac75b4` and `eb1033ef` implement the typed witness, final-snapshot
+materializer, active membership, session cutover, downstream lease migration,
+and removal work after RFC 0029 `R29-14`, RFC 0028 `R28-16`, and the RFC 0027
+materialization sequence. The complete current-tree verification and final
+evidence audit remain in the tracker.
 
 ## Test Plan
 
@@ -619,3 +621,5 @@ None
 | 2026-07-27 | ACCEPTED | Transaction `rfc0028-accept-20260727-944b68ff` synchronized explicit transaction and seal results, `SealedQuerySnapshot` admission, typed capability failures, exact membership permissions, retained final-parse provenance lineage, and runtime source ownership to RFC 0028 proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation remains pending. |
 | 2026-07-27 | ACCEPTED | Transaction `rfc0029-accept-20260727-8d393a0c` synchronized complete Binder contextual keys, identity-site provenance, stable-identity admission, exact typed provenance failures, and the schema-before-runtime dependency order to RFC 0029 proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`; implementation remains pending. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0030-accept-20260728-4ed0e6b8` synchronized the exact build-visible S1-plus-S2-plus-S3 atomic landing and separate S6 diagnostic transaction to RFC 0030 proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b`; implementation remains pending. |
+| 2026-08-09 | IMPLEMENTING | Audit confirmed that commits `6fac75b4` and `eb1033ef` implement complete-context materialization, retained provenance, active membership, and downstream bound-module lease migration. Focused materialization, membership, provenance, session, Binder, HIR, MIR, and ownership tests plus architecture gates pass; complete current-tree verification and the final evidence audit remain tracked. |
+| 2026-08-09 | LANDED | Sanitizer configure and build, the 257-test default CTest run, architecture, RFC, English-only, internal-versioning, format, diff, and ownership coverage gates passed. A clean Release build selected Linux baseline `67aae06e0d5a4d2a333bb14c0be44429751dce49dcdbf4c5f55ab943d3f567ca` with eight workers; elapsed and peak-RSS comparisons passed. |

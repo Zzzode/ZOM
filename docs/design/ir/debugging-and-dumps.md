@@ -92,10 +92,31 @@ The most relevant native tests are:
 | [`built-mir-test.cc`](../../../products/zomlang/tests/unittests/compiler/mir/built-mir-test.cc) | Built MIR empty and non-empty codec oracles |
 | [`compiler-session-package-test.cc`](../../../products/zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc) | End-to-end scalar shapes, selected corruption rejection, and no partial publication |
 
-Use LLDB against the sanitizer or debug compiler executable when an invariant
-failure needs control-flow inspection. Inspect the candidate immediately before
-the verifier call and the closed failure branch immediately after it. Do not
-patch a verified wrapper or bypass the verifier for debugging.
+Use the native debugger for the host platform against the sanitizer or debug
+compiler executable when an invariant failure needs control-flow inspection:
+
+```bash
+# macOS and other LLDB hosts
+lldb build-sanitizer/bin/zomc
+(lldb) command script import products/zomlang/tools/lldb/zomlang_lldb.py
+
+# Linux and other GDB hosts
+gdb build-sanitizer/bin/zomc
+(gdb) source products/zomlang/tools/gdb/zomlang_gdb.py
+```
+
+Installed toolchains place the same helpers under
+`<prefix>/share/zom/debuggers/lldb/zomlang_lldb.py` and
+`<prefix>/share/zom/debuggers/gdb/zomlang_gdb.py`.
+
+Both helpers summarize `ast::Node` and `zc::Own<ast::Node>`. Their `zomkind`
+and `zominfo` commands inspect either an explicit expression or the local
+variable named `expression`. They inspect compiler memory only; they do not
+add a language-level debugging statement or alter verifier behavior.
+
+Inspect the candidate immediately before the verifier call and the closed
+failure branch immediately after it. Do not patch a verified wrapper or bypass
+the verifier for debugging.
 
 ## Interpreting Evidence
 

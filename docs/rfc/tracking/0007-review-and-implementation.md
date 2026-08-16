@@ -585,21 +585,145 @@ implementation evidence or authorize production ownership publication.
 The current compiler has no `BorrowCheckerPhase` or AST ownership analysis.
 `products/zomlang/compiler/mir/built-mir.h` and `.cc` contain the first Built
 MIR value vocabulary for locals, projections, places, operands,
-`MirStatement::BorrowCreation`, blocks, and return/unreachable terminators.
-`MirRvalueKind` contains only `Use`; no borrow rvalue exists. The repository
+`MirStatement::BorrowCreation`, blocks, and return, unreachable, and call terminators.
+The current direct-call lowering admits only same-module identifier callees with
+no type arguments, raises clause, ABI override, or unwind edge. Each argument
+must be a checker-verified scalar literal whose semantic type exactly matches its
+parameter. The current receiver-call lowering additionally admits a dot-member
+call on a mutable owner-local identifier. It creates one mutable receiver borrow
+temporary and activates that borrow only on the call's normal edge. The event
+overlay emits one source slot for each argument, then its operation before the
+terminator, commits the result destination on the normal edge, and emits the
+receiver `BorrowActivation` on that same edge. This is event-slot evidence, not
+production ownership proof publication.
+`MirRvalueKind` admits `Use` and `NominalAggregate`; no borrow rvalue exists. The repository
 does not yet contain the complete RFC 0007 ownership input,
 `OwnershipSourceFailure`, `VerifiedOwnershipFacts`, its independent verifier,
 or `OwnershipCheckedMir` construction.
 
-Existing `ZOM4056-ZOM4070` rows in
-`products/zomlang/compiler/diagnostics/diagnostics-checker.def` are registry
-capacity, not implementation evidence. In particular, `ZOM4067
-ScopedTaskBorrowEscapes` and `ZOM4068 ScopedTaskReferentHere` are stale rows
-with no legal producer under the proposed Chapter 15 boundary. The enablement
-transaction must delete both rows and every associated emitter or reservation
-without reassigning either numeric code, then add the currently absent
-`ZOM4093-ZOM4095`. Existing RFC 0013 borrow-interface and checker facts are
-upstream inputs, not ownership proof publication.
+`VerifiedBuiltMir` retains the exact RFC 0013 `VerifiedBorrowEvidenceLease`.
+`BorrowEvidenceRepository` now mints a move-only
+`BorrowEvidenceRepositoryCapability`. CheckedModule, HIR, and Built MIR retain
+only a capability plus the exact lease; they expose no repository accessor to
+downstream consumers. Every lookup supplies both values. A lease from another
+repository, a capability from another repository, or either value from another
+semantic context is rejected. This is only the explicit capability plumbing
+required by a future `analyzeOwnership` input; it does not construct ownership
+facts or publish ownership proof.
+
+Within the currently admitted move-path subset, `VerifiedMovePaths` answers
+identical-key conflicts implicitly and resolves either orientation of its
+verified distinct root/field pair inventory. Its root-before-field path order
+is structural, every distinct pair is lower-key-first, and the verifier rejects
+reversed inventories and pairs. Missing field-pair mutations are independently
+rejected. The complete projection conflict relation remains part of the
+unfinished ownership facts contract.
+
+`ZOM4067 ScopedTaskBorrowEscapes` and `ZOM4068 ScopedTaskReferentHere` are
+deleted without reassignment. `ZOM4093 UninitializedPlaceUse`, `ZOM4094
+PlaceBecameUnavailableHere`, and `ZOM4095 ConcurrencySemanticsUnavailable` are
+registered. Before signature checking, `CompilerSession` now admits every
+bound module through `OwnershipSurfaceAdmissionBuilder` and rejects every
+`SpawnExpression` and `SuspendStatement` with `ZOM4095`, publishing no
+signature, checked, HIR, MIR, overlay, or ownership facts. Only an
+`OwnershipAdmittedBoundModule` continues through the session pipeline. This
+session guard is production fail-closed behavior: marker-shape construction,
+signature construction, imported-signature projection, module-interface
+publication, CheckedModule, HIR, Built MIR, and the ownership event overlay
+retain only the admitted capability. `BodyCheckingInput` owns a retained
+`CheckerBoundModuleView` for its full checker-time lifetime. Every production
+construction site retains a fresh bound-module lease, and ownership-overlay
+assembly moves that lease-owning input only after Built MIR construction and
+verification complete. No raw bound-module view crosses the body-checking
+input boundary.
+The current local admission verifies the admitted Built MIR before
+initialization facts publish. It admits scalar initialization and either a
+subsequent scalar overwrite of the same mutable zero-projection local or a
+sequential scalar or nominal-aggregate transfer to a distinct second local
+before return. That transfer shape may return either local: a `Copy` source
+remains readable, while a non-`Copy` source return after the transfer reaches
+the verified initialization source gate and emits `ZOM4056` with its
+`ZOM4057` move note without publishing ownership outputs. Marker proof selects
+`Copy` or `Move` for every transfer use.
+It also admits either a whole-local return or one field projection
+from a locally initialized, non-generic `struct` aggregate. A mutable aggregate
+local may overwrite one field before returning a different field from the same
+aggregate. A declared aggregate local may initialize multiple distinct fields,
+and a later write to one of those fields is an overwrite before an initialized
+field is returned. The whole-local return preserves the aggregate root place and
+receives its checker-time `Copy` or `Move` operand classification. The
+move-path inventory retains the root and field paths, the field path retains
+its root parent, and initialization stores independent state for each retained
+path: root initialization propagates to known descendants while a field
+overwrite preserves sibling state. This does not invent a primitive drop plan
+for the aggregate. It rejects a
+returned annotated root local or field projection without an initializer,
+emits `ZOM4093` at the return use and `ZOM4094` at the unavailable declaration,
+and publishes no ownership outputs. This narrow admission result is not the complete
+`OwnershipSourceFailure` algebra or an ownership-proof verifier. Its
+`InitializationSourceVerificationResult` is an ownership-specific sealed result:
+only `InitializationSourceVerifier` can construct verified, source-rejected, or
+invariant-rejected alternatives. A return of an uninitialized sibling field
+after another declared-aggregate field initializes reaches this verifier and
+emits `ZOM4093` with its `ZOM4094` declaration note rather than an internal
+pipeline failure.
+Existing RFC 0013 borrow-interface and checker facts remain upstream inputs,
+not ownership proof publication.
+
+The current production subset independently derives `VerifiedMovePaths`,
+`VerifiedFlow`, `VerifiedInitializationFacts`, `VerifiedLoanFacts`, and
+`VerifiedReferenceDefinitions`, plus a bounded
+`VerifiedReborrowRegions` inventory and bounded
+`VerifiedReborrowStates`, and `VerifiedOwnershipResourceFacts`. The resource
+inventory independently projects every checker-authorized logical-drop component
+from its exact initialization event, canonical move path, value type, drop
+requirement, Linear marker decision, and declaration ordinal. A non-Copy
+parameter-root move or a move from an already introduced resource root to a
+local root preserves the original resource subject and records its source event
+as a `DropTransfer`. It is an input inventory only: it does not lower cleanup
+or establish resource discharge. Each loan binds its
+exact `BorrowIssue` event and destination commit, canonical source and
+destination `MovePathKey` values, borrow kind, explicit immediate activation,
+and exact `OwnershipPoint::AfterEvent(BorrowIssue)` activation cutpoint, plus
+Built MIR revision, event-overlay revision, and RFC 0013 borrow-evidence
+revision. The admitted HIR/MIR subset also lowers a mutable local receiver call
+into one borrow-creation temporary and one normal-edge `BorrowActivation`.
+The loan builder and independent verifier require that activation slot to map
+bijectively to the temporary and derive its deferred activation cutpoint from
+that edge. This records a bounded proof input; it does not publish final
+ownership facts or general region membership.
+Each reference definition is independently reconstructed from one verified destination
+move path and one verified loan's exact destination commit and issue, plus the reborrowed parameter's `EntryRoot`
+slot, canonical referent path, child-loan activation, and returned temporary read. The ownership builder and
+verifier also require the retained RFC 0013 `DirectRoot(Parameter)` summary for that exact parameter. It derives the
+exact `AfterEvent(commit)`, post-commit CFG, pre-return CFG, `BeforeEvent(return)`,
+and `AfterEvent(return)` live points for this shape. These are current-subset solver inputs, not a proof of region
+membership beyond the admitted parameter reborrow, escape safety, or multi-origin transfer.
+The bounded region inventory independently reconstructs the one `Input(parameter)` to child-loan
+relation and its exact six event/CFG cutpoints for each admitted reborrow. It does not compute
+general CFG propagation, joins, loops, escaping references, or the complete RFC 0007 region algebra.
+`VerifiedFlow` independently reconstructs every reachable current-subset CFG
+point and every before/after event cutpoint, including a direct call's normal
+continuation edge and its destination commit. The flow derivation has an
+explicit `Unreachable` exit case and preserves the continuation edge before
+entering its target block. Production lowering and Built MIR verification still
+publish only linear blocks and direct call continuations; branch, join, loop,
+unwind, escape propagation, and a production `Unreachable` terminator remain
+unavailable until those terminators are lowered and independently verified.
+`VerifiedInitializationFacts` consumes the same flow inventory and rejects any
+fact point outside its owning function's verified CFG projection.
+The bounded reference-state inventory independently reconstructs the reference value at the five
+post-commit through post-return cutpoints, and consumes the verified region membership rather than
+reconstructing a parallel liveness relation. It does not publish a complete point-state map, joins,
+or general reaching definitions.
+An independent `OwnershipInputVerifier` consumes all eight inventories and
+publishes one `VerifiedOwnershipInputs` snapshot only when every lineage value
+matches the same Built MIR and event overlay, and the supplied borrow-evidence
+lease and repository capability exactly match the Built MIR's retained pair.
+The snapshot retains a fresh private copy of that pair and resolves it before
+publication. This is an input bundle for the complete NLL solution; it does not
+publish `VerifiedOwnershipFacts`, general regions, conflict diagnostics, or
+ownership proof.
 
 RFC 0005 currently specifies `RawConstToReferenceChecked` and
 `RawMutableToReferenceChecked` as successful checked-cast facts. RFC 0007 has no
@@ -766,10 +890,11 @@ approval-recorded proposal
 and tracker
 `2d8e77873a4a6eb0e697024d8cbf60bb666145f04fc93860f07af6c77f5a449b`.
 
-RFC 0007 is accepted as a design only. `implementation: TBD` remains
-authoritative, production ownership publication remains forbidden, and no
-implementation slice may start before an explicit `ACCEPTED -> IMPLEMENTING`
-transition plus the coordinated enablement transaction below.
+RFC 0007 is `IMPLEMENTING`. The coordinated enablement transaction below
+authorizes the ordered implementation series. No incomplete slice may publish
+`VerifiedOwnershipFacts`, `OwnershipCheckedMir`, or a successor artifact;
+those artifacts remain unavailable until their complete proof and validation
+contracts are implemented.
 
 ## Implementation Tracker
 
@@ -787,48 +912,110 @@ The ordered implementation series is now authorized:
 
 | Slice | State | Required Evidence |
 |---|---|---|
-| Built MIR and ownership event overlay | In Progress (event identity and slot codec only) | Executable evidence covers owner-bound `MirLocation`, all six `MirPoint` branches, causal operand ordinals, `Move` as `OperandRead` plus `OperandMove`, separate producer and verifier implementations, framed sorted-map slots with non-empty role sequences, independently encoded published revisions, and foreign owner/point/ordinal/role mutations. The complete six-inventory overlay contract is not implemented. |
-| Closed ownership diagnostics | Authorized | Ownership source variants, deletion without reassignment of `ZOM4067-ZOM4068`, fresh pre-checker `ZOM4095`, proposed `ZOM4093-ZOM4094`, exact primary/all-cause note mapping, suppression, ordering, and retained payloads |
-| Move paths, initialization, and drop | Authorized | Implicit reflexive conflict, exact distinct-pair inventory, three-bit lattice, complete loss causes, canonical `DropResourceSubject`, all three drop requirements, open/closed component drop with pre-consumption and abort-only action panic, partial initialization/mutation, checked-cast verified-plan and subject preservation, fail-closed `StorageDead`, overwrite, and differential oracle |
-| Loans, references, and regions | Authorized | Complete before/after point phases, issue/activation/commit timing, exact checker-time overlay `DeferredActivationFact`, independent reconstruction while checker authority lives, ownership-side overlay bijection with no checker lookup, `Storage` and event-granular NLL value regions, reaching reference definitions, root/active multi-origin transfer, reborrow restoration, exact outlives closure, call evidence, escape, and differential oracle |
+| Built MIR and ownership event overlay | In Progress (event identity, source map, marker decisions, and current-subset logical-drop plans) | Executable evidence covers owner-bound `MirLocation`, all six `MirPoint` branches, local-ordered synthetic `EntryRoot` commit slots, causal operand ordinals, presentation-only source spans retained by Built MIR operations, canonical root and result types plus input/result types for every `MirProjection`, a sorted event-to-span map reconstructed by the verifier without entering either revision, `Move` as `OperandRead` plus `OperandMove`, and direct same-module calls with checker-verified scalar literal arguments as terminator sources followed by a normal-edge destination commit. It also covers separate producer and verifier implementations, framed sorted-map slots with non-empty role sequences, checker-time `Copy` and `Linear` decisions reconstructed from independent body inputs, one plan for every admitted destination initialization, and owner/point/ordinal/role/source-span/marker/plan mutations. Current production lowering emits primitive zero-projection places, whole nominal aggregate roots, one field projection from such an aggregate, and a mutable local receiver borrow that activates only on its call's normal edge. The overlay and loan verifier require the unique `BorrowActivation` slot for that receiver temporary and retain its deferred activation cutpoint. The overlay produces a root component when its `Copy` or `Linear` decision requires one, including an explicitly `Linear` nominal aggregate, but it does not traverse nested components or attach a deinitializer action. Unsafe occurrences, cast resource plans, nested resource traversal, and the complete six-inventory overlay remain unimplemented. |
+| Closed ownership diagnostics | In Progress (registry and source admission) | `ZOM4067-ZOM4068` are deleted without reassignment; `ZOM4093-ZOM4099` are registered. The session rejects parsed `spawn` or `suspend` before Checker publication with `ZOM4095`, control-flow syntax with `ZOM4096`, void returns with `ZOM4097`, expression statements outside the admitted assignment subset with `ZOM4098`, and function bodies outside the currently lowerable linear single-return subset: scalar local writes, sequential scalar or nominal-aggregate local transfers, locally initialized nominal aggregates, declared aggregate field writes, and same-module direct-call continuations with checker-verified scalar literal arguments. The independent initialization source verifier consumes verified initialization facts at every current Built MIR operand read, including assignment sources, borrow sources, call arguments, and return values; it retains the use event, move path, and every current-subset unavailable cause, then projects every cause as a note. Its ownership-specific result can be constructed only by that verifier. Root and field-projection reads of a locally uninitialized aggregate both reach this verifier. A pure moved-cause set emits `ZOM4056-ZOM4057`, while any other unavailable cause emits `ZOM4093-ZOM4094`, and rejection publishes no ownership outputs. Complete ownership source variants, suppression, ordering, and the full source-failure algebra remain required. |
+| Move paths, initialization, and drop | In Progress (root paths, sibling fields, ordered write facts, and resource subjects) | Current production evidence covers scalar initialization, a sequential scalar or nominal-aggregate local transfer to a distinct root local, and an ordered sequence of writes to one mutable zero-projection root local, plus a locally initialized nominal aggregate whose root and field projections retain independent published states. Marker proof classifies every sequential source and return use as `Copy` or `Move`; a non-`Copy` aggregate move retains the first local as the resource subject origin and records the second-local initialization as a `DropTransfer`. Root initialization propagates to retained descendants, while a field overwrite updates that field without changing a sibling. A declared aggregate local may initialize one or more distinct fields and return an initialized field; its root remains unavailable with its `NeverInitialized` cause. Each field's first write is an initialization and a later write to that field is an overwrite, with independently reconstructed HIR and Built MIR evidence. The compiler lowers an ordered sequence of mutable owner-local field overwrites to non-empty destination places, with checked member/place facts, and a return from either a written field or a distinct sibling field. `VerifiedMovePaths` orders the current root/field inventory structurally, retains each distinct pair lower-key-first, answers identical-key conflicts, and resolves both orientations of every verified root/field pair. The resource input inventory gives every current-subset logical resource a canonical `DropResourceSubject` containing its introduction event, origin move path, and origin type, plus the closed `Logical`, `Linear`, or `LinearLogical` requirement derived from checker marker evidence and the exact optional logical-drop action. A non-Copy parameter-root move or move from an already introduced root resource to a local root preserves the original subject and records the exact source event, source path, and destination path as a `DropTransfer`; projected and unrecognized moves remain outside the resource-transfer subset. The inventory does not create, transfer, or discharge an obligation. Current `StorageLive` accepts only a root and retained descendants that are exactly `Dead`; current `StorageDead` accepts them only when exactly `Uninitialized`. Initialized and already-dead storage are rejected. Remaining work includes the complete projection conflict relation, three-bit lattice joins, complete loss causes, general resource transfer, open/closed component drop with pre-consumption and abort-only action panic, general partial initialization, checked-cast verified-plan and subject preservation, multiple and non-field projections, and a differential oracle. |
+| Loans, references, and regions | In Progress (bounded reborrow admission and receiver activation) | Complete before/after point phases, issue/activation/commit timing, exact checker-time overlay `DeferredActivationFact`, independent reconstruction while checker authority lives, ownership-side overlay bijection with no checker lookup, `Storage` and event-granular NLL value regions, reaching reference definitions, root/active multi-origin transfer, reborrow restoration, exact outlives closure, call evidence, escape, and differential oracle. Production admits `&*parameter` and `&mut *parameter`, either directly or through one owner-local initialized from that parameter, only when the parameter and result have matching reference mutability and type. The checker publishes the nested node types, HIR retains an explicit reborrow node with its semantic mutability and, for the local form, its exact source alias, Built MIR emits one matching-kind `BorrowCreation` from the direct parameter or local-alias dereference into a temporary reference, and the move-path and initialization verifiers accept its typed single dereference projection. The published current-subset loan inventory independently binds each borrow issue and destination commit. Parameter reborrows activate at `AfterEvent(BorrowIssue)`; a mutable local receiver borrow instead activates at the unique normal-edge `BorrowActivation` event bound to its temporary. `VerifiedReferenceDefinitions` independently reconstructs each corresponding returned parameter-reborrow definition at its canonical move path with its RFC 0013 `DirectRoot(Parameter)` root, parameter-entry, canonical referent path, child-loan, and returned temporary read input relation, plus independently derived `AfterEvent(commit)`, post-commit CFG, pre-return CFG, `BeforeEvent(return)`, and `AfterEvent(return)` live points. A non-escaping receiver temporary remains a loan input and does not synthesize a returned-reference definition. `VerifiedReborrowRegions` publishes the six-point current-subset membership only after every member is found and ordered-reachable in the independently verified flow inventory. These inventories do not claim escape safety or multi-origin transfer. General local-source borrows beyond the receiver shape, general region liveness, conflict diagnostics, escape checks, and all other borrow expressions remain unavailable. |
 | Marker, linear, unsafe, and capture boundaries | Authorized | RFC 0015 marker-input construction, lifetime, lineage validation, producer/verifier isolation, full descendant Copy/Linear query tree, postorder component fold, cast-carrier drop/linear transfer, multi-predecessor linear SCCs, stable pending backedges, collision-free unsafe ordinals, four-class raw-origin universe, strict raw-to-reference rejection, least raw SCC closure, and complete admissible escape records |
 | Verified ownership facts and typestate | Authorized | Independent event overlay and ownership facts codecs, exact 141/206/513 and 165/286/378-byte oracles plus the MIR 283-byte unsafe-scope oracle, no duplicate activation or marker inventory in facts, complete marker-capability/descendant-query/postorder/resource-plan/cast/drop/event/cutpoint/NLL/loop mutations, symbolic budget checks, and private constructors |
-| Session and cleanup integration | Authorized (RFC 0006 prerequisite in progress) | Atomic publication, exact borrowed Built/overlay/evidence analysis inputs, moved Built/overlay/facts finalization and successor inputs, embedded lease plus explicit live capability resolution, value-owned facts without an ownership repository, cleanup consumption, and no predecessor or successor on rejection |
+| Session and cleanup integration | In Progress (atomic ownership-input snapshots) | The session atomically publishes `VerifiedOwnershipInputs`, which owns independently verified move-path, flow, initialization, loan, reference-definition, region, and reference-state inventories after matching their Built MIR, overlay, and borrow-evidence lineage. The verifier requires the exact retained Built MIR borrow-evidence lease and repository capability, resolves that pair while the staging repository remains live, and retains fresh private copies in the published snapshot. The flow inventory covers the current linear and direct-call-continuation MIR subset. It does not yet publish a complete ownership proof or construct successors. Remaining work includes moved Built/overlay/facts finalization and successor inputs, cleanup consumption, and no predecessor or successor on rejection. |
 | Repository completion gates | Authorized | Exact architecture and coverage scripts, coverage checker self-test, per-file 70-percent line floor, aggregate baseline non-regression, sanitizer, default CTest, lit, conformance, corpus, determinism, spec, format, CJK, and diff hygiene |
 
-### Event Identity And Slot Codec Executable Evidence
+### Event Identity, Source Map, And Slot Codec Executable Evidence
 
-The current implementation slice constructs and independently verifies only
-the event identity and slot codec:
+The current implementation slice constructs and independently verifies event
+identity, presentation source association, and the slot codec:
 
 - `MirLocation` binds every event point to its function owner, and `MirPoint`
   covers `Entry`, `BeforeStatement`, `AfterStatement`, `BeforeTerminator`,
   `Edge`, and `Exit`;
+- every currently supported MIR local contributes one local-ordered `Entry`
+  commit slot with the `EntryRoot` role; its event source is the local
+  declaration span;
 - a causal operand ordinal distinguishes source, effect, and commit events at
   the same MIR location;
-- production `Move` operands publish `OperandRead` and `OperandMove`; `Copy`
-  is covered only by the canonical codec oracle because production Built MIR
-  has no `Copy` lowering caller;
-- marker-use and logical-drop publication is blocked on RFC 0024 because the
-  checked input has no verified semantic-role authority for canonical `Copy`
-  and `Linear` definitions and the production graph supplies no configured
-  prelude;
+- every current-subset value-transfer lowering creates a pass-duration
+  `MarkerProofInput` from the exact `BodyCheckingInput` and emits `Copy` only
+  for a positive canonical `Copy` proof; explicit-negative and unsatisfied
+  results emit `Move`. The independent Built MIR verifier constructs a separate
+  proof input and rejects a changed operand kind. Neither candidate nor
+  verified Built MIR retains marker authority;
+- the session projects the source-backed core marker policy into Checker, with
+  canonical `Copy` and `Linear` definitions and the configured prelude
+  authority intact; the builder and verifier each create an independent
+  checker-time proof input, publish the resulting marker decisions, and reject
+  any missing or changed marker-use row;
+- every admitted assignment destination and normal direct-call result commit
+  publishes one current-subset logical-drop plan for a primitive or whole
+  nominal aggregate root. A `Copy`-positive, `Linear`-not-positive scalar has
+  an empty component sequence, while an explicitly `Linear` nominal aggregate
+  produces its root component bound to the exact two marker-use keys;
 - the producer and verifier independently derive the slot sequence from Built
   MIR, while the codec frames the sorted event map and every non-empty role
   sequence;
+- each currently emitted slot has one source association derived from its
+  owning Built MIR statement, terminator, or normal call edge; the map is
+  sorted by `MirEventKey`, rebuilt by the verifier, and excluded from both the
+  Built MIR and overlay revision encodings; and
 - the published overlay revision is checked against a structurally independent
   oracle; and
-- negative tests mutate a foreign owner, point branch, causal ordinal, and
-  role, and require verification failure.
+- negative tests mutate a foreign owner, point branch, causal ordinal, role,
+  and event source span, and require verification failure.
 
 This evidence does not complete the six-inventory
-`OwnershipFunctionEventOverlay` contract: `slots` has executable identity and
-codec coverage, while `deferredActivations`, `unsafeOccurrences`, `markerUses`,
-`logicalDropPlans`, and `castResourcePlans` remain unimplemented. In
-particular, no executable producer or verifier yet constructs
-`logicalDropPlans`. RFC 0024 review and acceptance is a prerequisite for those
-two inventories. The Built MIR and ownership event overlay row therefore
-remains `In Progress` and must not be reported as `Implemented`.
+`OwnershipFunctionEventOverlay` contract. `slots`, `markerUses`, and
+current-subset `logicalDropPlans` for primitive and whole nominal aggregate
+roots have executable producer, verifier, canonical framing, and mutation
+coverage. `deferredActivations`, `unsafeOccurrences`, and `castResourcePlans`
+remain unimplemented; nested component discovery, direct deinitializers,
+structural cleanup, dynamic dispatch, and cast routing are also absent. The
+Built MIR and ownership event overlay row therefore remains `In Progress` and
+must not be reported as `Implemented`.
+
+### Root And Field Move-Path Initialization Executable Evidence
+
+The current ownership-facts slice constructs and independently verifies one
+move-path inventory and one linear initialization-state inventory for every
+published Built MIR module. `MovePaths` retains one empty-projection `MirPlace`
+per declared local and, for a locally initialized nominal aggregate, one field
+projection path whose parent is that root path. It binds the result to the exact
+Built MIR and event-overlay revisions. `InitializationFacts` consumes that
+verified inventory, requires a complete logical-drop plan for every admitted
+primitive or whole nominal aggregate assignment and normal direct-call
+destination initialization, and records `storageLive`, `mayBeInitialized`, and
+`mustBeInitialized` at entry, before and after every statement, before every
+terminator, a call's normal edge, and a return exit. The pre-terminator fact is
+written before call arguments or a return operand are consumed; a direct-call
+result first becomes initialized at its normal-edge commit. The current
+production lowering supports storage live, ordered initialization and overwrite
+writes for one mutable zero-projection `UserLocal`, local nominal-aggregate
+initialization followed by either a whole-local return or one field-projection
+return, and a declared aggregate local whose distinct fields initialize in
+write order while a later same-field write overwrites the established field
+state, direct zero-argument
+call result initialization into a temporary or a `UserLocal` at its normal
+edge, marker-proven source-level copy or move transfer, internal call-temporary
+move and storage end, and return; the
+independent verifier reconstructs the same facts from Built MIR rather than
+reading producer state. Both outputs are immutable, are
+atomically published by `CompilerSession`, and are destroyed before their
+prerequisite move paths, overlay, and Built MIR leases.
+Each unavailable local or field-projection use in this linear subset retains one
+canonical event-anchored cause: `NeverInitialized`, `Moved`, `Deinitialized`,
+or `StorageEnded`. Every admitted move path has one initialization row at every
+published point. Root initialization propagates to retained descendant paths,
+while a field overwrite updates that field and preserves a sibling path state
+and cause set. Successful initialization clears the cause. The current subset
+does not yet merge causes across CFG predecessors.
+
+The slice rejects a malformed local type chain, a state mutation, unknown or
+repeated block traversal, a projection other than the admitted one-field path,
+non-linear control flow, unwind call, invalid storage transition,
+uninitialized read, and an incompatible input revision. It does not implement
+multiple or non-field projections, joins, general partial initialization, cross-CFG
+loss provenance, logical drop, general `StorageDead` cleanup, or the required
+differential oracle. Those
+contracts remain required evidence for the row above.
 
 The implementation tracker must be updated with executable evidence only after
 all five coordinated governance records exist. A transition or implementation link in

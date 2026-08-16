@@ -753,7 +753,7 @@ The statement parser must implement:
 - expression statements
 - variable statements
 - if, match, while, do-while, for, and for-in
-- break, continue, return, debugger
+- break, continue, return
 - labels with the grammar's FOLLOW restrictions
 
 Match parsing must build match arms and patterns. It must not publish a match
@@ -767,7 +767,7 @@ tokens to find a later keyword.
 | Entry family | FIRST tokens or forms |
 |---|---|
 | Module item declaration | `module`, `import`, `export`, `let`, `const`, `fun`, `class`, `struct`, `interface`, `enum`, `error`, `alias`, accepted declaration modifiers, outer attributes |
-| Statement | `{`, `;`, `let`, `if`, `match`, `while`, `do`, `for`, `break`, `continue`, `return`, `debugger`, identifier label forms, expression FIRST set |
+| Statement | `{`, `;`, `let`, `if`, `match`, `while`, `do`, `for`, `break`, `continue`, `return`, identifier label forms, expression FIRST set |
 | Expression statement | expression FIRST set when no declaration or statement-specific FIRST set matches |
 | Member declaration | accepted member modifiers, `let`, `const`, `fun`, identifier property forms, outer attributes |
 

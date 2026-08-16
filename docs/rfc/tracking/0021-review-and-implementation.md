@@ -73,7 +73,7 @@ decision program because it defines `FnAbi`.
 | RFC 0011 | `4c82c7bed3533d05c9b4682ed9b1ad967e7de741a6df6efd541f75a67ec05679` | Landed identity authority |
 | RFC 0012 | `7f77fe66cb6a84b0279255081073755bb7d0e61ff2de908c251eb6c1182f8cce` | Accepted design in implementation |
 | RFC 0013 | `9dc846eecb0212402cc3f015e52c5aa81782b8f8bd2012c29b896dbabfb6b315` | Accepted overlay in implementation |
-| RFC 0016 | `fe1f2937b9426c0b0fe4729af50dc39930355d7fe7836de8b43c7501a3f4f59c` | Current REVIEW authority snapshot; must be replaced by accepted hash |
+| RFC 0016 | `efe800c6c2aaeda60d6beedde45adaa459536002bf3ccf5704135411e02d808c` | Current REVIEW authority snapshot; must be replaced by accepted hash |
 
 ## Owner Review Checklist
 

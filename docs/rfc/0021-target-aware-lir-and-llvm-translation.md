@@ -328,7 +328,7 @@ target-phase issuance and consumption.
 
 RFC 0016 is a required review dependency. This draft was authored against RFC
 0016 REVIEW SHA-256
-`fe1f2937b9426c0b0fe4729af50dc39930355d7fe7836de8b43c7501a3f4f59c`.
+`efe800c6c2aaeda60d6beedde45adaa459536002bf3ccf5704135411e02d808c`.
 Before this RFC may enter
 `REVIEW`, that binding must be replaced by RFC 0016's accepted proposal hash.
 RFC 0016 owns the target-authority bundle, code-generation capability registry,

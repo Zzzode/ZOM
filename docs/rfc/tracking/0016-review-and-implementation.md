@@ -9,7 +9,7 @@ approvers.
 | Field | Value |
 |---|---|
 | Status | `REVIEW` |
-| Proposal SHA-256 | `fe1f2937b9426c0b0fe4729af50dc39930355d7fe7836de8b43c7501a3f4f59c` |
+| Proposal SHA-256 | `efe800c6c2aaeda60d6beedde45adaa459536002bf3ccf5704135411e02d808c` |
 | Review manager | `rfc` |
 | Decision | `TBD` |
 | Implementation | Blocked until `ACCEPTED` |
@@ -77,9 +77,18 @@ without editing the proposal:
 `python3 scripts/check-rfc.py`, `python3 scripts/check-format.py`, and
 `git diff --check` passed before the status-only transition. The transition
 changed only frontmatter, status history, index, and tracker state. The current
-`REVIEW` snapshot now requires every owner below to approve exact SHA-256
+`REVIEW` snapshot then required every owner below to approve exact SHA-256
 `fe1f2937b9426c0b0fe4729af50dc39930355d7fe7836de8b43c7501a3f4f59c`
-before the RFC can move to `ACCEPTED`.
+before the RFC could move to `ACCEPTED`.
+
+### 2026-08-11 Unversioned Contract Snapshot Rebinding
+
+The repository-wide internal-contract replacement changed normative target,
+runtime, and codec names after the prior REVIEW snapshot was recorded. No
+required owner had approved that former snapshot. The current REVIEW snapshot
+is SHA-256 `efe800c6c2aaeda60d6beedde45adaa459536002bf3ccf5704135411e02d808c`.
+Every required owner must review this exact snapshot; no earlier readiness or
+review evidence carries forward.
 
 ## Required-Owner Review
 
@@ -135,5 +144,28 @@ Independent repository inspection confirmed the proposal's live dependencies:
 - `python3 scripts/check-rfc.py` passed for all 23 proposal RFCs.
 
 No blocking technical gaps found. Remaining work is required-owner approval
-of exact REVIEW SHA-256
+of the former REVIEW SHA-256
 `fe1f2937b9426c0b0fe4729af50dc39930355d7fe7836de8b43c7501a3f4f59c`.
+The current REVIEW snapshot requires a fresh audit and owner approval.
+
+### 2026-08-12 Current Snapshot Readiness Audit
+
+The current proposal bytes reproduce SHA-256
+`efe800c6c2aaeda60d6beedde45adaa459536002bf3ccf5704135411e02d808c`.
+Every required-owner row remains pending for that exact snapshot, so this audit
+does not record an approval, decision, status transition, or implementation
+authorization.
+
+The current target-registry unit suite passes its canonical target, Mach-O,
+revision-bound selection, unavailable capability, foreign revision, and
+projection-mismatch cases under the sanitizer build. It validates the existing
+RFC 0010 registry surface only; it does not provide the context-bound bundle or
+final code-generation authority defined by this RFC.
+
+The repository currently has no LLVM package discovery or component-linking
+contract. The local development environment resolves `llvm-config` and `clang`
+at version `19.1.5`, while this RFC requires the exact `22.1.8` package,
+explicit CMake provenance, and the `X86` and `AArch64` component inventory.
+That mismatch is expected before implementation and must be corrected through
+the accepted cross-platform CMake and CI transaction, not by admitting an
+ambient local LLVM installation.

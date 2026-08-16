@@ -158,7 +158,7 @@ must select exactly one workspace package and at least one target:
 ```sh
 zomc compile --package app --lib --emit=ast
 zomc compile --package app --bin app --features fast,logging --emit=dispatch
-zomc compile --manifest-path ./Zom.toml --package app --test smoke --syntax-only
+zomc compile --manifest-path ./Zom.toml --package app --test smoke --check
 ```
 
 Target selectors are `--lib`, `--bin <name>`, `--test <name>`,
