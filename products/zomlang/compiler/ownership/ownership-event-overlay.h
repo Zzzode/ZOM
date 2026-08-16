@@ -21,7 +21,7 @@
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/checker/body-checker.h"
+#include "zomlang/compiler/checker/body/body-checker.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/hir/hir-module.h"
 #include "zomlang/compiler/identity/brand.h"

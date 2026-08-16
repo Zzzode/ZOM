@@ -59,8 +59,8 @@ dangling address after the call checker returns. The non-owning `bind()`
 overload had the same lifetime contract.
 
 Evidence: `products/zomlang/compiler/type/type-env.cc:404`,
-`products/zomlang/compiler/checker/body-checker.cc:1940`, and
-`products/zomlang/compiler/checker/body-checker.cc:1982` in the audited
+`products/zomlang/compiler/checker/body/body-checker.cc:1940`, and
+`products/zomlang/compiler/checker/body/body-checker.cc:1982` in the audited
 revision. The repair clones borrowed concrete types into environment-owned
 storage. Sanitizer regressions destroy the source value before resolving both a
 direct binding and a unification binding.
@@ -98,8 +98,8 @@ annotation existed, so an invalid initializer could escape assignability
 checking.
 
 Evidence: `products/zomlang/compiler/checker/decl-signature.cc:969`,
-`products/zomlang/compiler/checker/body-checker.cc:857`, and
-`products/zomlang/compiler/checker/body-checker.cc:3258`. Body checking now
+`products/zomlang/compiler/checker/body/body-checker.cc:857`, and
+`products/zomlang/compiler/checker/body/body-checker.cc:3258`. Body checking now
 resolves the accepted complex type forms. Unit coverage proves that a boolean
 initializer is rejected for a tuple annotation.
 
@@ -202,7 +202,7 @@ checking reconstructs a `uint32_t -> Scope*` table. Two addresses can collide;
 the value is process-dependent and carries no `ScopeManager` provenance.
 
 Evidence: `products/zomlang/compiler/binder/decl-collector.cc:160` and
-`products/zomlang/compiler/checker/body-checker.cc:92`.
+`products/zomlang/compiler/checker/body/body-checker.cc:92`.
 
 Refutation considered: heap-owned scopes keep their addresses stable during one
 run. Stability does not prevent low-bit collisions or make the identity

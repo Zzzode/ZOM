@@ -5,8 +5,8 @@
 
 #include "zomlang/compiler/mir/built-mir.h"
 
-#include "zomlang/compiler/checker/marker-proof.h"
-#include "zomlang/compiler/checker/signature-facts.h"
+#include "zomlang/compiler/checker/body/marker-proof.h"
+#include "zomlang/compiler/checker/facts/signature-facts.h"
 #include "zomlang/compiler/driver/core/marker-authority.h"
 #include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/compiler/identity/key/definition-key.h"

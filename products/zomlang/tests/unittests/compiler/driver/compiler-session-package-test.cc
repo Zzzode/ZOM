@@ -14,7 +14,7 @@
 
 #include "zc/core/time.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/checker/body-checker.h"
+#include "zomlang/compiler/checker/body/body-checker.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/diagnostics/consumer/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"

@@ -6,9 +6,9 @@
 #include "zomlang/compiler/driver/module-interface.h"
 
 #include "zc/core/vector.h"
-#include "zomlang/compiler/checker/borrow-interface.h"
+#include "zomlang/compiler/checker/borrow/borrow-interface.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
-#include "zomlang/compiler/checker/cross-module-facts.h"
+#include "zomlang/compiler/checker/facts/cross-module-facts.h"
 #include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
 

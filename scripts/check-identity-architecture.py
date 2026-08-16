@@ -72,19 +72,19 @@ PACKAGE_COMPILATION_REQUEST_IMPLEMENTATION = Path(
 )
 SEMANTIC_TYPE_STORE = Path("products/zomlang/compiler/type/semantic-type-store.h")
 SEMANTIC_TYPE_KEY = Path("products/zomlang/compiler/type/semantic-type-key.h")
-SCALAR_LITERAL_FACTS = Path("products/zomlang/compiler/checker/scalar-literal-facts.h")
+SCALAR_LITERAL_FACTS = Path("products/zomlang/compiler/checker/facts/scalar-literal-facts.h")
 SCALAR_LITERAL_FACTS_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/checker/scalar-literal-facts.cc"
+    "products/zomlang/compiler/checker/facts/scalar-literal-facts.cc"
 )
 CHECKER_DIAGNOSTIC_ADAPTER = Path(
-    "products/zomlang/compiler/checker/checker-diagnostic-adapter.h"
+    "products/zomlang/compiler/checker/diagnostics/checker-diagnostic-adapter.h"
 )
 CHECKER_DIAGNOSTIC_ADAPTER_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/checker/checker-diagnostic-adapter.cc"
+    "products/zomlang/compiler/checker/diagnostics/checker-diagnostic-adapter.cc"
 )
-BORROW_INTERFACE = Path("products/zomlang/compiler/checker/borrow-interface.h")
+BORROW_INTERFACE = Path("products/zomlang/compiler/checker/borrow/borrow-interface.h")
 BORROW_INTERFACE_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/checker/borrow-interface.cc"
+    "products/zomlang/compiler/checker/borrow/borrow-interface.cc"
 )
 HEADER_SYNTAX_SCHEMA = Path(
     "products/zomlang/compiler/identity/canonical/canonical-header-syntax-schema.yml"

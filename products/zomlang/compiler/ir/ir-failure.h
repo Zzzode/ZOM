@@ -11,7 +11,7 @@
 #include "zc/core/common.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/checker/checked-facts.h"
+#include "zomlang/compiler/checker/inference/checked-facts.h"
 #include "zomlang/compiler/hir/hir-node-id.h"
 #include "zomlang/compiler/identity/identity-invariant.h"
 #include "zomlang/compiler/identity/semantic/context-fingerprint.h"

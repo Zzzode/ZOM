@@ -149,7 +149,7 @@ Independent repository inspection confirmed the proposal's live dependencies
 and non-conflicts:
 
 - `PatternRefinementFact` exists in
-  `products/zomlang/compiler/checker/checked-facts.h` and `.cc`, and is
+  `products/zomlang/compiler/checker/inference/checked-facts.h` and `.cc`, and is
   referenced from `body-checker.cc`. The RFC's direct removal target is
   present and addressable.
 - The proposed `ZOM4096-ZOM4098` range does not collide with existing

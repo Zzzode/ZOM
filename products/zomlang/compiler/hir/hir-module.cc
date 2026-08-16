@@ -14,7 +14,7 @@
 #include "zomlang/compiler/binder/metadata/definition-site.h"
 #include "zomlang/compiler/binder/metadata/immutable-binding-metadata.h"
 #include "zomlang/compiler/binder/metadata/immutable-definition-inventory.h"
-#include "zomlang/compiler/checker/signature-facts.h"
+#include "zomlang/compiler/checker/facts/signature-facts.h"
 #include "zomlang/compiler/identity/key/definition-key.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
 

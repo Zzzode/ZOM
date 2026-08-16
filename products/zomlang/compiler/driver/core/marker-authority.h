@@ -10,7 +10,7 @@
 #include "zc/core/array.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/checker/signature-facts.h"
+#include "zomlang/compiler/checker/facts/signature-facts.h"
 #include "zomlang/compiler/identity/key/definition-key.h"
 #include "zomlang/compiler/identity/semantic/context-fingerprint.h"
 #include "zomlang/compiler/identity/key/source-key.h"

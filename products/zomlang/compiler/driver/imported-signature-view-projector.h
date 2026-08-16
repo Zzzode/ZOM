@@ -7,7 +7,7 @@
 
 #include "zc/core/array.h"
 #include "zc/core/common.h"
-#include "zomlang/compiler/checker/cross-module-facts.h"
+#include "zomlang/compiler/checker/facts/cross-module-facts.h"
 #include "zomlang/compiler/driver/interface-source.h"
 #include "zomlang/compiler/driver/materialized-module-graph-query.h"
 

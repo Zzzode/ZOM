@@ -550,7 +550,7 @@ def run_self_test() -> int:
         lambda files: append_source(
             files,
             TARGET_SOURCE,
-            '\n#include "zomlang/compiler/checker/signature-facts.h"\n',
+            '\n#include "zomlang/compiler/checker/facts/signature-facts.h"\n',
         ),
         "target registry depends on forbidden semantic marker",
     )

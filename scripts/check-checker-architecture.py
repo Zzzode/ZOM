@@ -13,14 +13,14 @@ COMPILER_ROOT = ROOT / "products" / "zomlang" / "compiler"
 CHECKER_ROOT = Path("products/zomlang/compiler/checker")
 TYPE_ROOT = Path("products/zomlang/compiler/type")
 VENDOR_ROOT = Path("products/zomlang/compiler/driver/package/vendor")
-SIGNATURE_FACTS_HEADER = CHECKER_ROOT / "signature-facts.h"
-SIGNATURE_FACTS_SOURCE = CHECKER_ROOT / "signature-facts.cc"
-MARKER_PROOF_HEADER = CHECKER_ROOT / "marker-proof.h"
-MARKER_PROOF_SOURCE = CHECKER_ROOT / "marker-proof.cc"
-CROSS_MODULE_FACTS_HEADER = CHECKER_ROOT / "cross-module-facts.h"
-CROSS_MODULE_FACTS_SOURCE = CHECKER_ROOT / "cross-module-facts.cc"
-COHERENCE_FACTS_HEADER = CHECKER_ROOT / "coherence-facts.h"
-COHERENCE_FACTS_SOURCE = CHECKER_ROOT / "coherence-facts.cc"
+SIGNATURE_FACTS_HEADER = CHECKER_ROOT / "facts/signature-facts.h"
+SIGNATURE_FACTS_SOURCE = CHECKER_ROOT / "facts/signature-facts.cc"
+MARKER_PROOF_HEADER = CHECKER_ROOT / "body/marker-proof.h"
+MARKER_PROOF_SOURCE = CHECKER_ROOT / "body/marker-proof.cc"
+CROSS_MODULE_FACTS_HEADER = CHECKER_ROOT / "facts/cross-module-facts.h"
+CROSS_MODULE_FACTS_SOURCE = CHECKER_ROOT / "facts/cross-module-facts.cc"
+COHERENCE_FACTS_HEADER = CHECKER_ROOT / "facts/coherence-facts.h"
+COHERENCE_FACTS_SOURCE = CHECKER_ROOT / "facts/coherence-facts.cc"
 MODULE_INTERFACE_CONTRACT_SOURCE = CHECKER_ROOT / "module-interface-contract.cc"
 MODULE_INTERFACE_HEADER = Path("products/zomlang/compiler/driver/module-interface.h")
 MODULE_INTERFACE_SOURCE = Path("products/zomlang/compiler/driver/module-interface.cc")
@@ -57,9 +57,9 @@ COHERENCE_BUILDER_HEADER = Path("products/zomlang/compiler/driver/coherence-buil
 COHERENCE_BUILDER_SOURCE = Path("products/zomlang/compiler/driver/coherence-builder.cc")
 OPERATOR_KIND_HEADER = CHECKER_ROOT / "operator-kind.h"
 OPERATOR_KIND_SOURCE = CHECKER_ROOT / "operator-kind.cc"
-INFERENCE_CONTEXT_HEADER = CHECKER_ROOT / "inference-context.h"
-INFERENCE_CONTEXT_SOURCE = CHECKER_ROOT / "inference-context.cc"
-INFERENCE_RECOVERY_HEADER = CHECKER_ROOT / "inference-recovery-context.h"
+INFERENCE_CONTEXT_HEADER = CHECKER_ROOT / "inference/inference-context.h"
+INFERENCE_CONTEXT_SOURCE = CHECKER_ROOT / "inference/inference-context.cc"
+INFERENCE_RECOVERY_HEADER = CHECKER_ROOT / "inference/inference-recovery-context.h"
 CHECKER_CMAKE = CHECKER_ROOT / "CMakeLists.txt"
 DRIVER_CMAKE = Path("products/zomlang/compiler/driver/CMakeLists.txt")
 SEMANTIC_TYPE_KEY_HEADER = TYPE_ROOT / "semantic-type-key.h"
@@ -70,14 +70,14 @@ SESSION_SOURCE = Path("products/zomlang/compiler/driver/compiler-session.cc")
 TEST_CMAKE = Path("products/zomlang/tests/conformance/CMakeLists.txt")
 CHECKER_DIAGNOSTICS = Path("products/zomlang/compiler/diagnostics/defs/diagnostics-checker.def")
 CHECKER_SOURCE_DIAGNOSTICS = CHECKER_ROOT / "checker-source-diagnostics.def"
-CHECKED_FACTS_HEADER = CHECKER_ROOT / "checked-facts.h"
-CHECKED_FACTS_SOURCE = CHECKER_ROOT / "checked-facts.cc"
-BODY_CHECKER_SOURCE = CHECKER_ROOT / "body-checker.cc"
-BODY_CHECKER_HEADER = CHECKER_ROOT / "body-checker.h"
-SCALAR_LITERAL_FACTS_SOURCE = CHECKER_ROOT / "scalar-literal-facts.cc"
-CHECKER_DIAGNOSTIC_ADAPTER = CHECKER_ROOT / "checker-diagnostic-adapter.cc"
+CHECKED_FACTS_HEADER = CHECKER_ROOT / "inference/checked-facts.h"
+CHECKED_FACTS_SOURCE = CHECKER_ROOT / "inference/checked-facts.cc"
+BODY_CHECKER_SOURCE = CHECKER_ROOT / "body/body-checker.cc"
+BODY_CHECKER_HEADER = CHECKER_ROOT / "body/body-checker.h"
+SCALAR_LITERAL_FACTS_SOURCE = CHECKER_ROOT / "facts/scalar-literal-facts.cc"
+CHECKER_DIAGNOSTIC_ADAPTER = CHECKER_ROOT / "diagnostics/checker-diagnostic-adapter.cc"
 MARKER_PROOF_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/checker/marker-proof-test.cc"
+    "products/zomlang/tests/unittests/compiler/checker/body/marker-proof-test.cc"
 )
 
 PLACEHOLDER_DIAGNOSTIC_RENDERINGS = (
@@ -157,10 +157,10 @@ RAW_SIGNATURE_VERIFIER_TYPES = (
 VERIFIED_SIGNATURE_FACTS_ALLOWED = {
     SIGNATURE_FACTS_HEADER,
     SIGNATURE_FACTS_SOURCE,
-    CHECKER_ROOT / "body-checker.h",
-    CHECKER_ROOT / "body-checker.cc",
-    CHECKER_ROOT / "marker-proof.h",
-    CHECKER_ROOT / "marker-proof.cc",
+    CHECKER_ROOT / "body/body-checker.h",
+    CHECKER_ROOT / "body/body-checker.cc",
+    CHECKER_ROOT / "body/marker-proof.h",
+    CHECKER_ROOT / "body/marker-proof.cc",
     Path("products/zomlang/compiler/driver/module-interface.h"),
     Path("products/zomlang/compiler/driver/module-interface.cc"),
     Path("products/zomlang/compiler/driver/borrow-evidence.h"),
@@ -1106,16 +1106,16 @@ def check_inference_core(files: dict[Path, str], errors: list[str]) -> None:
 
 def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
     required = (
-        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/signature-facts.cc"),
-        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/body-checker.cc"),
-        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/checked-facts.cc"),
-        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/checked-facts-repository.cc"),
-        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/coherence-facts.cc"),
-        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/checker-diagnostic-adapter.cc"),
-        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/checker-diagnostic-id.cc"),
+        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/facts/signature-facts.cc"),
+        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/body/body-checker.cc"),
+        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/inference/checked-facts.cc"),
+        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/facts/checked-facts-repository.cc"),
+        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/facts/coherence-facts.cc"),
+        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/checker-diagnostic-adapter.cc"),
+        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/checker-diagnostic-id.cc"),
         (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/operator-kind.cc"),
-        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/inference-context.cc"),
-        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/marker-proof.cc"),
+        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/inference/inference-context.cc"),
+        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/body/marker-proof.cc"),
         (DRIVER_CMAKE, "imported-signature-view-projector.cc"),
         (DRIVER_CMAKE, "module-interface.cc"),
         (DRIVER_CMAKE, "coherence-builder.cc"),

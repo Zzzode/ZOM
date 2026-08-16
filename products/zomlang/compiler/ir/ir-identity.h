@@ -8,7 +8,7 @@
 #include <cstdint>
 
 #include "zc/core/common.h"
-#include "zomlang/compiler/checker/checked-facts.h"
+#include "zomlang/compiler/checker/inference/checked-facts.h"
 #include "zomlang/compiler/identity/brand.h"
 
 namespace zomlang::compiler::mir {

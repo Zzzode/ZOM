@@ -3119,7 +3119,7 @@ descriptor, or replace the hand-authored inventory with generated schema.
 | `M4` | `binder-checker` | `M2`; `M3` | `products/zomlang/compiler/binder/metadata/immutable-definition-inventory.h`; `products/zomlang/compiler/binder/metadata/immutable-definition-inventory.cc` | complete owned Checker identity and node lookup index |
 | `M5` | `binder-checker` | `M4` | `products/zomlang/compiler/binder/verified-bound-module.h`; `products/zomlang/compiler/binder/verified-bound-module.cc` | `VerifyBoundModule`, aggregate coverage, failure projection, and retained children |
 | `C1` | `binder-checker` | `M5` | `products/zomlang/compiler/checker/module-interface-contract.h`; `products/zomlang/compiler/checker/module-interface-contract.cc` | lease-owning Checker view and interface contract |
-| `C1A` | `binder-checker` | `C1` | `products/zomlang/compiler/checker/body-checker.h`; `products/zomlang/compiler/checker/body-checker.cc` | migrate Checker body consumers |
+| `C1A` | `binder-checker` | `C1` | `products/zomlang/compiler/checker/body/body-checker.h`; `products/zomlang/compiler/checker/body/body-checker.cc` | migrate Checker body consumers |
 | `C2` | `module-system` | `C1`; `C1A` | `products/zomlang/compiler/driver/module-interface.h`; `products/zomlang/compiler/driver/module-interface.cc` | module-interface publication from the lease-owning view |
 | `L1` | `ir-backend` | `C1A` | `products/zomlang/compiler/hir/checked-module.h`; `products/zomlang/compiler/hir/checked-module.cc` | checked-module retained lease and verifier |
 | `L2` | `ir-backend` | `L1` | `products/zomlang/compiler/hir/hir-module.h`; `products/zomlang/compiler/hir/hir-module.cc` | HIR retained lease and lineage verifier |

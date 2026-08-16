@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "zomlang/compiler/checker/coherence-facts.h"
+#include "zomlang/compiler/checker/facts/coherence-facts.h"
 #include "zomlang/compiler/driver/module-interface.h"
 
 namespace zomlang::compiler::driver {

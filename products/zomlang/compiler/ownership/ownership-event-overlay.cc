@@ -14,7 +14,7 @@
 
 #include "zomlang/compiler/ownership/ownership-event-overlay.h"
 
-#include "zomlang/compiler/checker/marker-proof.h"
+#include "zomlang/compiler/checker/body/marker-proof.h"
 #include "zomlang/compiler/driver/core/marker-authority.h"
 #include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/compiler/identity/key/definition-key.h"

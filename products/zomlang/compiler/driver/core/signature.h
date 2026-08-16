@@ -10,7 +10,7 @@
 #include "zc/core/array.h"
 #include "zc/core/memory.h"
 #include "zomlang/compiler/binder/surface/module-body-syntax.h"
-#include "zomlang/compiler/checker/signature-facts.h"
+#include "zomlang/compiler/checker/facts/signature-facts.h"
 #include "zomlang/compiler/identity/key/source-key.h"
 #include "zomlang/compiler/query/query-database.h"
 #include "zomlang/compiler/source/core-distribution.h"
