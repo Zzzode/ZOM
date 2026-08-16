@@ -11,7 +11,7 @@
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/identity/brand.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
-#include "zomlang/compiler/parser/canonical-parsed-source.h"
+#include "zomlang/compiler/parser/query/canonical-parsed-source.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang::compiler::binder {

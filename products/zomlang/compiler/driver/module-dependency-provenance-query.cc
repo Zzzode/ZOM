@@ -14,7 +14,7 @@
 #include "zomlang/compiler/binder/stable-binding-diagnostic-fact.h"
 #include "zomlang/compiler/identity/canonical/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical/canonical-encoder.h"
-#include "zomlang/compiler/parser/parse-source-query.h"
+#include "zomlang/compiler/parser/query/parse-source-query.h"
 
 namespace zomlang::compiler::driver::module_graph_query {
 namespace {

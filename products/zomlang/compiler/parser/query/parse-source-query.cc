@@ -3,7 +3,7 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zomlang/compiler/parser/parse-source-query.h"
+#include "zomlang/compiler/parser/query/parse-source-query.h"
 
 #include "zc/core/debug.h"
 #include "zomlang/compiler/basic/string-pool.h"

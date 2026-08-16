@@ -15,20 +15,20 @@ GRAMMAR = ROOT / "docs" / "spec" / "chapters" / "17-grammar-reference.md"
 PARSER_DIR = ROOT / "products" / "zomlang" / "compiler" / "parser"
 PARSER_IMPL = PARSER_DIR / "parser-impl.h"
 TOKEN_CURSOR = PARSER_DIR / "token-cursor.h"
-PARSER_SOURCES = sorted(PARSER_DIR.glob("*.cc"))
+PARSER_SOURCES = sorted(PARSER_DIR.rglob("*.cc"))
 DOMAIN_PARSER_SOURCES = [
-    PARSER_DIR / "declaration-parser.cc",
-    PARSER_DIR / "expression-parser.cc",
+    PARSER_DIR / "syntax" / "declaration-parser.cc",
+    PARSER_DIR / "syntax" / "expression-parser.cc",
     PARSER_DIR / "parser-recovery.cc",
-    PARSER_DIR / "pattern-parser.cc",
-    PARSER_DIR / "statement-parser.cc",
-    PARSER_DIR / "type-parser.cc",
+    PARSER_DIR / "syntax" / "pattern-parser.cc",
+    PARSER_DIR / "syntax" / "statement-parser.cc",
+    PARSER_DIR / "syntax" / "type-parser.cc",
 ]
 CURSOR_BOUNDARY_SOURCES = set(PARSER_SOURCES)
 COVERAGE = ROOT / "products" / "zomlang" / "compiler" / "parser" / "parser-coverage.yml"
 SCHEMA = ROOT / "products" / "zomlang" / "compiler" / "ast" / "schema.yml"
 NODE_FACTORY = ROOT / "products" / "zomlang" / "compiler" / "ast" / "generated" / "node-factory.h"
-DIAGNOSTIC_ENGINE = ROOT / "products" / "zomlang" / "compiler" / "diagnostics" / "diagnostic-engine.cc"
+DIAGNOSTIC_ENGINE = ROOT / "products" / "zomlang" / "compiler" / "diagnostics" / "core" / "diagnostic-engine.cc"
 DESIGN_DIR = ROOT / "docs" / "design"
 DESIGN_DOC_MARKERS = {
     DESIGN_DIR / "architecture.md": [
@@ -338,11 +338,11 @@ def validate_parser_architecture() -> None:
         if required not in recovery_text:
             fail(f"{rel(PARSER_DIR / 'parser-recovery.cc')} is missing recovery frame state: {required}")
     for path in [
-        PARSER_DIR / "declaration-parser.cc",
-        PARSER_DIR / "expression-parser.cc",
-        PARSER_DIR / "pattern-parser.cc",
-        PARSER_DIR / "statement-parser.cc",
-        PARSER_DIR / "type-parser.cc",
+        PARSER_DIR / "syntax" / "declaration-parser.cc",
+        PARSER_DIR / "syntax" / "expression-parser.cc",
+        PARSER_DIR / "syntax" / "pattern-parser.cc",
+        PARSER_DIR / "syntax" / "statement-parser.cc",
+        PARSER_DIR / "syntax" / "type-parser.cc",
     ]:
         if "RecoveryFrameScope" not in path.read_text(encoding="utf-8"):
             fail(f"{rel(path)} does not install an explicit parser recovery frame")

@@ -1489,7 +1489,7 @@ The production descriptor and verifier families are:
 - `products/zomlang/compiler/binder/stable/candidate/verifier.{h,cc}`;
 - `products/zomlang/compiler/identity/source-query-input.{h,cc}`;
 - `products/zomlang/compiler/parser/parse-source-query.{h,cc}`;
-- `products/zomlang/compiler/parser/parse-source-query-verifier.cc`;
+- `products/zomlang/compiler/parser/query/parse-source-query-verifier.cc`;
 - `products/zomlang/compiler/driver/active-definition-authority-query.{h,cc}`;
 - `products/zomlang/compiler/driver/core-library-query-provider.{h,cc}`;
 - `products/zomlang/compiler/driver/core-library-query-verifier.{h,cc}`;
@@ -1922,7 +1922,7 @@ The review partitions have these exact file sets:
 | `R28-13D.3` | `products/zomlang/compiler/driver/incremental-binding-query-adapter.{h,cc}`; `products/zomlang/compiler/driver/incremental-module-resolution-query.{h,cc}`; `products/zomlang/compiler/driver/incremental-package-graph-query-input.{h,cc}` |
 | `R28-13D.4` | `products/zomlang/compiler/driver/module-graph-query-input.{h,cc}`; `products/zomlang/compiler/driver/module-graph-query.{h,cc}`; `products/zomlang/compiler/driver/compiler-session.cc` |
 | `R28-13D.5` | `products/zomlang/compiler/driver/named-identity-inventory-query.{h,cc}`; `products/zomlang/compiler/driver/named-item-query.{h,cc}`; `products/zomlang/compiler/driver/owner-body-query.{h,cc}` |
-| `R28-13E` | `products/zomlang/compiler/parser/parse-source-query.{h,cc}`; `products/zomlang/compiler/parser/parse-source-query-verifier.cc` |
+| `R28-13E` | `products/zomlang/compiler/parser/parse-source-query.{h,cc}`; `products/zomlang/compiler/parser/query/parse-source-query-verifier.cc` |
 | `R28-13F` | `products/zomlang/compiler/binder/binding-input.cc`; `products/zomlang/tests/unittests/compiler/binder/binding-input-test.cc` |
 | `R28-13G.1` | `products/zomlang/tests/unittests/compiler/query/query-test-specs.h`; `products/zomlang/tests/unittests/compiler/query/query-test-descriptor-schema.def`; all six query test `.cc` files and query `CMakeLists.txt` listed in the atomic migration inventory |
 | `R28-13G.2` | all driver and Binder test files plus their `CMakeLists.txt` files listed in the atomic migration inventory; `products/zomlang/tests/CMakeLists.txt` |

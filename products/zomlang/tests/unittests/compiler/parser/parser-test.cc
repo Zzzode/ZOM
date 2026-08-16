@@ -30,7 +30,7 @@
 #include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"
 #include "zomlang/compiler/diagnostics/fact/diagnostic-materializer.h"
 #include "zomlang/compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
-#include "zomlang/compiler/parser/canonical-parsed-source.h"
+#include "zomlang/compiler/parser/query/canonical-parsed-source.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 

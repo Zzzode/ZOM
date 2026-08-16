@@ -10,7 +10,7 @@
 #include "zomlang/compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/identity/canonical/canonical-decoder.h"
 #include "zomlang/compiler/identity/key/source-key.h"
-#include "zomlang/compiler/parser/parse-source-query.h"
+#include "zomlang/compiler/parser/query/parse-source-query.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
 

@@ -21,7 +21,7 @@
 #include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/identity/source-query-input.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
-#include "zomlang/compiler/parser/parse-source-query.h"
+#include "zomlang/compiler/parser/query/parse-source-query.h"
 
 namespace zomlang::compiler {
 namespace {

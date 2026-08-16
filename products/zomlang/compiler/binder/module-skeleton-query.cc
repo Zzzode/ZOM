@@ -19,7 +19,7 @@
 #include "zomlang/compiler/identity/canonical/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/compiler/identity/crypto/sha256.h"
-#include "zomlang/compiler/parser/parse-source-query.h"
+#include "zomlang/compiler/parser/query/parse-source-query.h"
 
 namespace zomlang::compiler::binder {
 namespace {

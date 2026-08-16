@@ -66,7 +66,7 @@
 #include "zomlang/compiler/identity/canonical/identity-interner-set.h"
 #include "zomlang/compiler/identity/identity-diagnostic-adapter.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
-#include "zomlang/compiler/parser/parse-source-query.h"
+#include "zomlang/compiler/parser/query/parse-source-query.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang {

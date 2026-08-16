@@ -11,7 +11,7 @@
 #include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
 #include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/identity/source-query-input.h"
-#include "zomlang/compiler/parser/canonical-parsed-source.h"
+#include "zomlang/compiler/parser/query/canonical-parsed-source.h"
 #include "zomlang/compiler/query/query-database.h"
 
 namespace zomlang::compiler::parser {

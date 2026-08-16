@@ -5,7 +5,7 @@
 
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/identity/source-query-input.h"
-#include "zomlang/compiler/parser/parse-source-query.h"
+#include "zomlang/compiler/parser/query/parse-source-query.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::parser {

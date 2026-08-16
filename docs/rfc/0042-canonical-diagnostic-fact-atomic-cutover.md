@@ -576,11 +576,11 @@ products/zomlang/compiler/diagnostics/consumer/in-flight-diagnostic.h
 products/zomlang/compiler/diagnostics/fact/source-diagnostic-draft-buffer.cc
 products/zomlang/compiler/diagnostics/fact/source-diagnostic-draft-buffer.h
 products/zomlang/compiler/driver/compiler-session.cc
-products/zomlang/compiler/parser/canonical-parsed-source.cc
-products/zomlang/compiler/parser/canonical-parsed-source.h
-products/zomlang/compiler/parser/parse-source-query-verifier.cc
-products/zomlang/compiler/parser/parse-source-query.cc
-products/zomlang/compiler/parser/parse-source-query.h
+products/zomlang/compiler/parser/query/canonical-parsed-source.cc
+products/zomlang/compiler/parser/query/canonical-parsed-source.h
+products/zomlang/compiler/parser/query/parse-source-query-verifier.cc
+products/zomlang/compiler/parser/query/parse-source-query.cc
+products/zomlang/compiler/parser/query/parse-source-query.h
 products/zomlang/compiler/parser/parser-context.cc
 products/zomlang/compiler/parser/parser-context.h
 products/zomlang/compiler/parser/parser-impl.h

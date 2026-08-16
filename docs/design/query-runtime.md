@@ -243,7 +243,7 @@ publication also publishes no value, capability, or dependencies.
 | Production inventory | `products/zomlang/compiler/query/query-descriptor-schema.def` |
 | Inventory generation | `scripts/generate-query-descriptor-schema.py` |
 | Production database construction and registration | `products/zomlang/compiler/driver/compiler-session.cc` |
-| Production parse capability | `products/zomlang/compiler/parser/parse-source-query.h`, `parse-source-query.cc` |
+| Production parse capability | `products/zomlang/compiler/parser/query/parse-source-query.h`, `parse-source-query.cc` |
 | Binder identity and provenance descriptors | `products/zomlang/compiler/driver/named-identity-inventory-query.h`, `named-identity-inventory-query.cc`, `named-item-query.h`, `named-item-query.cc`, `owner-body-query.h`, `owner-body-query.cc` |
 | Complete-context authority input | `products/zomlang/compiler/driver/module-graph-query-input.h`, `module-graph-query-input.cc` |
 

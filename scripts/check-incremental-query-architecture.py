@@ -37,8 +37,8 @@ DRIVER_MODULE_GRAPH_QUERY = COMPILER_ROOT / "driver/module-graph-query.cc"
 BINDER_GRAPH_BRIDGE = DRIVER_MATERIALIZED_MODULE_GRAPH
 DRIVER_PACKAGE_GRAPH_INPUT = COMPILER_ROOT / "driver/incremental-package-graph-query-input.cc"
 IDENTITY_SOURCE_QUERY_INPUT = COMPILER_ROOT / "identity/source-query-input.cc"
-PARSER_PARSE_SOURCE_QUERY = COMPILER_ROOT / "parser/parse-source-query.cc"
-PARSER_PARSE_SOURCE_QUERY_VERIFIER = COMPILER_ROOT / "parser/parse-source-query-verifier.cc"
+PARSER_PARSE_SOURCE_QUERY = COMPILER_ROOT / "parser/query/parse-source-query.cc"
+PARSER_PARSE_SOURCE_QUERY_VERIFIER = COMPILER_ROOT / "parser/query/parse-source-query-verifier.cc"
 DRIVER_TOPOLOGY_ADAPTER_TEST = Path(
     "products/zomlang/tests/unittests/compiler/driver/incremental-binding-query-adapter-test.cc"
 )

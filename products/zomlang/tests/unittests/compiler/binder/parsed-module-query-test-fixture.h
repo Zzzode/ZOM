@@ -8,7 +8,7 @@
 #include "zc/core/debug.h"
 #include "zomlang/compiler/binder/parsed-module.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
-#include "zomlang/compiler/parser/canonical-parsed-source.h"
+#include "zomlang/compiler/parser/query/canonical-parsed-source.h"
 #include "zomlang/compiler/parser/token-snapshot.h"
 #include "zomlang/compiler/source/manager.h"
 

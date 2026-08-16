@@ -102,8 +102,8 @@ transaction. The canonical replacement and final audit are published through
 - `products/zomlang/compiler/diagnostics/fact/diagnostic-fact.h`
 - `products/zomlang/compiler/diagnostics/fact/diagnostic-fact.cc`
 - `products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-codec-test.cc`
-- `products/zomlang/compiler/parser/parse-source-query.cc`
-- `products/zomlang/compiler/parser/canonical-parsed-source.cc`
+- `products/zomlang/compiler/parser/query/parse-source-query.cc`
+- `products/zomlang/compiler/parser/query/canonical-parsed-source.cc`
 - `products/zomlang/tests/unittests/compiler/parser/diagnostic-fact-caller-test.cc`
 
 The source baseline is the accepted RFC 0036 governance commit that directly
