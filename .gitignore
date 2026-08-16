@@ -87,6 +87,10 @@ CLAUDE.md
 .refs
 _thirdparty/
 
+# Local build and profiling artifacts
+/a.out
+/default.profraw
+
 # Scala
 .metals
 
