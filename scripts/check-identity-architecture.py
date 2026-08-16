@@ -54,12 +54,12 @@ SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION = Path(
     "products/zomlang/compiler/identity/key/import-binding-key.cc"
 )
 IDENTITY_CMAKE = Path("products/zomlang/compiler/identity/CMakeLists.txt")
-INVENTORY = Path("products/zomlang/compiler/binder/definition-inventory.cc")
-INVENTORY_HEADER = Path("products/zomlang/compiler/binder/definition-inventory.h")
+INVENTORY = Path("products/zomlang/compiler/binder/metadata/definition-inventory.cc")
+INVENTORY_HEADER = Path("products/zomlang/compiler/binder/metadata/definition-inventory.h")
 BINDING_INPUT = Path("products/zomlang/compiler/binder/binding-input.h")
-MODULE_RESOLUTION = Path("products/zomlang/compiler/binder/module-resolution.h")
+MODULE_RESOLUTION = Path("products/zomlang/compiler/binder/graph/module-resolution.h")
 MODULE_RESOLUTION_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/binder/module-resolution.cc"
+    "products/zomlang/compiler/binder/graph/module-resolution.cc"
 )
 COMPILER_SESSION = Path("products/zomlang/compiler/driver/compiler-session.cc")
 CRATE_GRAPH = Path("products/zomlang/compiler/driver/crate-graph.h")
@@ -111,28 +111,28 @@ CANONICAL_HEADER_TYPE_TEST = Path(
     "products/zomlang/tests/unittests/compiler/identity/canonical/header-type-test.cc"
 )
 CANONICAL_HEADER_TYPE_PRODUCER = Path(
-    "products/zomlang/compiler/binder/canonical-header-type-producer.h"
+    "products/zomlang/compiler/binder/canonical/canonical-header-type-producer.h"
 )
 CANONICAL_HEADER_TYPE_PRODUCER_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/binder/canonical-header-type-producer.cc"
+    "products/zomlang/compiler/binder/canonical/canonical-header-type-producer.cc"
 )
 CANONICAL_HEADER_TYPE_PRODUCER_TEST = Path(
     "products/zomlang/tests/unittests/compiler/binder/canonical-header-type-producer-test.cc"
 )
 CANONICAL_DEFINITION_HEADER_PRODUCER = Path(
-    "products/zomlang/compiler/binder/canonical-definition-header-producer.h"
+    "products/zomlang/compiler/binder/canonical/canonical-definition-header-producer.h"
 )
 CANONICAL_DEFINITION_HEADER_PRODUCER_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/binder/canonical-definition-header-producer.cc"
+    "products/zomlang/compiler/binder/canonical/canonical-definition-header-producer.cc"
 )
 CANONICAL_DEFINITION_HEADER_PRODUCER_TEST = Path(
     "products/zomlang/tests/unittests/compiler/binder/canonical-definition-header-producer-test.cc"
 )
 CANONICAL_IMPL_HEADER_PRODUCER = Path(
-    "products/zomlang/compiler/binder/canonical-impl-header-producer.h"
+    "products/zomlang/compiler/binder/canonical/canonical-impl-header-producer.h"
 )
 CANONICAL_IMPL_HEADER_PRODUCER_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/binder/canonical-impl-header-producer.cc"
+    "products/zomlang/compiler/binder/canonical/canonical-impl-header-producer.cc"
 )
 CANONICAL_IMPL_HEADER_PRODUCER_TEST = Path(
     "products/zomlang/tests/unittests/compiler/binder/canonical-impl-header-producer-test.cc"

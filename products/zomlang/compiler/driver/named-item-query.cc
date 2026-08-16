@@ -7,9 +7,9 @@
 
 #include "zc/core/debug.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
-#include "zomlang/compiler/binder/definition-inventory.h"
-#include "zomlang/compiler/binder/stable-binding-codec.h"
-#include "zomlang/compiler/binder/stable-binding-diagnostic-fact.h"
+#include "zomlang/compiler/binder/metadata/definition-inventory.h"
+#include "zomlang/compiler/binder/stable/stable-binding-codec.h"
+#include "zomlang/compiler/binder/stable/stable-binding-diagnostic-fact.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
 #include "zomlang/compiler/driver/module-graph-query-input.h"
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"

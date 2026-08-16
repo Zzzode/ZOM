@@ -9,7 +9,7 @@
 
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
-#include "zomlang/compiler/binder/definition-inventory.h"
+#include "zomlang/compiler/binder/metadata/definition-inventory.h"
 #include "zomlang/compiler/checker/inference-recovery-context.h"
 #include "zomlang/compiler/checker/marker-proof.h"
 #include "zomlang/compiler/checker/operator-kind.h"

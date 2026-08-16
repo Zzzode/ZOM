@@ -128,16 +128,16 @@ replaced by:
 The facts files are:
 
 ```text
-products/zomlang/compiler/binder/stable-binding-facts.h
-products/zomlang/compiler/binder/stable-binding-facts.cc
+products/zomlang/compiler/binder/stable/stable-binding-facts.h
+products/zomlang/compiler/binder/stable/stable-binding-facts.cc
 products/zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
 ```
 
 The codec files replace the first two paths with:
 
 ```text
-products/zomlang/compiler/binder/stable-binding-codec.h
-products/zomlang/compiler/binder/stable-binding-codec.cc
+products/zomlang/compiler/binder/stable/stable-binding-codec.h
+products/zomlang/compiler/binder/stable/stable-binding-codec.cc
 ```
 
 Every task counts additions plus deletions across all three exact files

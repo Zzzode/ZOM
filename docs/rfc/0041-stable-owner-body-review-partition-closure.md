@@ -178,16 +178,16 @@ source, schema, or codec.
 Every fact task edits exactly:
 
 ```text
-products/zomlang/compiler/binder/stable-binding-facts.h
-products/zomlang/compiler/binder/stable-binding-facts.cc
+products/zomlang/compiler/binder/stable/stable-binding-facts.h
+products/zomlang/compiler/binder/stable/stable-binding-facts.cc
 products/zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
 ```
 
 Every codec task edits exactly:
 
 ```text
-products/zomlang/compiler/binder/stable-binding-codec.h
-products/zomlang/compiler/binder/stable-binding-codec.cc
+products/zomlang/compiler/binder/stable/stable-binding-codec.h
+products/zomlang/compiler/binder/stable/stable-binding-codec.cc
 products/zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
 ```
 

@@ -9,8 +9,8 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
-#include "zomlang/compiler/binder/canonical-definition-header-producer.h"
-#include "zomlang/compiler/binder/canonical-impl-header-producer.h"
+#include "zomlang/compiler/binder/canonical/canonical-definition-header-producer.h"
+#include "zomlang/compiler/binder/canonical/canonical-impl-header-producer.h"
 
 namespace zomlang::compiler::binder {
 

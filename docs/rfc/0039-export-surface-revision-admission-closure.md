@@ -179,8 +179,8 @@ R30-12N-D -> R39-11 -> R30-12O-D -> R30-12N-E
 RFC 0030's exact `R29-12AB` landing set adds:
 
 ```text
-products/zomlang/compiler/binder/binding-metadata.h
-products/zomlang/compiler/binder/binding-metadata.cc
+products/zomlang/compiler/binder/metadata/binding-metadata.h
+products/zomlang/compiler/binder/metadata/binding-metadata.cc
 ```
 
 `stable-binding-facts-test.cc` is already in that set. RFC 0030 `R30-13`

@@ -6,7 +6,7 @@
 #include "zomlang/compiler/driver/active-identity-membership-query.h"
 
 #include "zc/core/debug.h"
-#include "zomlang/compiler/binder/module-skeleton-query.h"
+#include "zomlang/compiler/binder/graph/module-skeleton-query.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
 #include "zomlang/compiler/driver/module-graph-query-input.h"

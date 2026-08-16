@@ -1,10 +1,10 @@
 #pragma once
 
-#include "zomlang/compiler/binder/module-binding-allocation-plan.h"
-#include "zomlang/compiler/binder/module-skeleton-query.h"
-#include "zomlang/compiler/binder/owner-body-query.h"
-#include "zomlang/compiler/binder/owner-body-syntax.h"
-#include "zomlang/compiler/binder/stable-binding-facts.h"
+#include "zomlang/compiler/binder/graph/module-binding-allocation-plan.h"
+#include "zomlang/compiler/binder/graph/module-skeleton-query.h"
+#include "zomlang/compiler/binder/surface/owner-body-query.h"
+#include "zomlang/compiler/binder/surface/owner-body-syntax.h"
+#include "zomlang/compiler/binder/stable/stable-binding-facts.h"
 #include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
 #include "zomlang/compiler/driver/contextual-binding-key.h"
 #include "zomlang/compiler/query/query-database.h"

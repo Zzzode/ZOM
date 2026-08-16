@@ -12,7 +12,7 @@
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
 #include "zomlang/compiler/ast/schema-verifier.h"
-#include "zomlang/compiler/binder/module-resolution.h"
+#include "zomlang/compiler/binder/graph/module-resolution.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
 #include "zomlang/compiler/driver/core/query.h"
 #include "zomlang/compiler/driver/materialized-module-graph-query.h"

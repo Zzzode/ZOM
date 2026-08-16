@@ -7,7 +7,7 @@
 
 #include "zc/core/array.h"
 #include "zc/core/string.h"
-#include "zomlang/compiler/binder/parsed-module.h"
+#include "zomlang/compiler/binder/graph/parsed-module.h"
 #include "zomlang/compiler/checker/checked-facts.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/checker/coherence-facts.h"

@@ -422,12 +422,12 @@ RFC 0029 `R29-12AB` owns exactly these files:
 
 ```text
 products/zomlang/compiler/binder/stable-binding-schema.def
-products/zomlang/compiler/binder/stable-binding-facts.h
-products/zomlang/compiler/binder/stable-binding-facts.cc
-products/zomlang/compiler/binder/stable-binding-codec.h
-products/zomlang/compiler/binder/stable-binding-codec.cc
-products/zomlang/compiler/binder/binding-metadata.h
-products/zomlang/compiler/binder/binding-metadata.cc
+products/zomlang/compiler/binder/stable/stable-binding-facts.h
+products/zomlang/compiler/binder/stable/stable-binding-facts.cc
+products/zomlang/compiler/binder/stable/stable-binding-codec.h
+products/zomlang/compiler/binder/stable/stable-binding-codec.cc
+products/zomlang/compiler/binder/metadata/binding-metadata.h
+products/zomlang/compiler/binder/metadata/binding-metadata.cc
 products/zomlang/compiler/binder/CMakeLists.txt
 products/zomlang/compiler/identity/canonical/header-name.h
 products/zomlang/compiler/identity/canonical/header-name.cc

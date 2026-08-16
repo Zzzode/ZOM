@@ -7,8 +7,8 @@
 
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
-#include "zomlang/compiler/binder/immutable-definition-inventory.h"
-#include "zomlang/compiler/binder/parsed-module.h"
+#include "zomlang/compiler/binder/metadata/immutable-definition-inventory.h"
+#include "zomlang/compiler/binder/graph/parsed-module.h"
 #include "zomlang/compiler/driver/materialized-module-graph-query.h"
 #include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 

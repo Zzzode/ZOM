@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "zomlang/compiler/binder/stable-binding-facts.h"
+#include "zomlang/compiler/binder/stable/stable-binding-facts.h"
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {

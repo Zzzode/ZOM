@@ -9,7 +9,7 @@
 #include "zc/core/common.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/binder/binding-metadata.h"
+#include "zomlang/compiler/binder/metadata/binding-metadata.h"
 #include "zomlang/compiler/checker/coherence-facts.h"
 #include "zomlang/compiler/checker/cross-module-facts.h"
 #include "zomlang/compiler/checker/module-interface-contract.h"

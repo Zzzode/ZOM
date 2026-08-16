@@ -558,8 +558,8 @@ persistent-data operation.
 The transaction owns exactly:
 
 ```text
-products/zomlang/compiler/binder/parsed-module.cc
-products/zomlang/compiler/binder/stable-binding-codec.h
+products/zomlang/compiler/binder/graph/parsed-module.cc
+products/zomlang/compiler/binder/stable/stable-binding-codec.h
 products/zomlang/compiler/binder/stable-binding-schema.def
 products/zomlang/compiler/diagnostics/CMakeLists.txt
 products/zomlang/compiler/diagnostics/core/diagnostic-engine.cc

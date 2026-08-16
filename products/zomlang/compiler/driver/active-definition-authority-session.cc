@@ -6,7 +6,7 @@
 #include "zomlang/compiler/driver/active-definition-authority-session.h"
 
 #include "zc/core/encoding.h"
-#include "zomlang/compiler/binder/parsed-module.h"
+#include "zomlang/compiler/binder/graph/parsed-module.h"
 #include "zomlang/compiler/binder/stable/definition/header-producer.h"
 #include "zomlang/compiler/binder/stable/implementation/header-producer.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"

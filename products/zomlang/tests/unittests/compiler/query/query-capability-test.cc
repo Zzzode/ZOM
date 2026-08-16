@@ -16,7 +16,7 @@
 #include "zc/core/mutex.h"
 #include "zc/core/thread.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/binder/canonical-input-payload-digest.h"
+#include "zomlang/compiler/binder/canonical/canonical-input-payload-digest.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
 #include "zomlang/compiler/driver/core/query.h"
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"

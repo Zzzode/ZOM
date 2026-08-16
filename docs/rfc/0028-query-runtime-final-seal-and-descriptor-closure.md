@@ -1482,9 +1482,9 @@ The query-runtime files are:
 The production descriptor and verifier families are:
 
 - `products/zomlang/compiler/binder/identity-pre-admission.{h,cc}`;
-- `products/zomlang/compiler/binder/module-body-syntax.h`;
-- `products/zomlang/compiler/binder/module-body-syntax-producer.cc`;
-- `products/zomlang/compiler/binder/module-body-syntax-verifier.cc`;
+- `products/zomlang/compiler/binder/surface/module-body-syntax.h`;
+- `products/zomlang/compiler/binder/surface/module-body-syntax-producer.cc`;
+- `products/zomlang/compiler/binder/surface/module-body-syntax-verifier.cc`;
 - `products/zomlang/compiler/binder/stable/candidate/producer.{h,cc}`;
 - `products/zomlang/compiler/binder/stable/candidate/verifier.{h,cc}`;
 - `products/zomlang/compiler/identity/source-query-input.{h,cc}`;
@@ -1926,7 +1926,7 @@ The review partitions have these exact file sets:
 | `R28-13F` | `products/zomlang/compiler/binder/binding-input.cc`; `products/zomlang/tests/unittests/compiler/binder/binding-input-test.cc` |
 | `R28-13G.1` | `products/zomlang/tests/unittests/compiler/query/query-test-specs.h`; `products/zomlang/tests/unittests/compiler/query/query-test-descriptor-schema.def`; all six query test `.cc` files and query `CMakeLists.txt` listed in the atomic migration inventory |
 | `R28-13G.2` | all driver and Binder test files plus their `CMakeLists.txt` files listed in the atomic migration inventory; `products/zomlang/tests/CMakeLists.txt` |
-| `R29-13B` | `products/zomlang/compiler/binder/identity-pre-admission.{h,cc}`; `products/zomlang/compiler/binder/module-body-syntax.h`; `products/zomlang/compiler/binder/module-body-syntax-producer.cc`; `products/zomlang/compiler/binder/module-body-syntax-verifier.cc`; `products/zomlang/compiler/binder/stable/candidate/producer.{h,cc}`; `products/zomlang/compiler/binder/stable/candidate/verifier.{h,cc}`; `products/zomlang/compiler/driver/named-identity-inventory-query.{h,cc}`; `products/zomlang/compiler/driver/named-item-query.{h,cc}`; `products/zomlang/compiler/driver/owner-body-query.{h,cc}`; Binder and driver build wiring; the focused Binder and driver tests named in the atomic migration inventory |
+| `R29-13B` | `products/zomlang/compiler/binder/identity-pre-admission.{h,cc}`; `products/zomlang/compiler/binder/surface/module-body-syntax.h`; `products/zomlang/compiler/binder/surface/module-body-syntax-producer.cc`; `products/zomlang/compiler/binder/surface/module-body-syntax-verifier.cc`; `products/zomlang/compiler/binder/stable/candidate/producer.{h,cc}`; `products/zomlang/compiler/binder/stable/candidate/verifier.{h,cc}`; `products/zomlang/compiler/driver/named-identity-inventory-query.{h,cc}`; `products/zomlang/compiler/driver/named-item-query.{h,cc}`; `products/zomlang/compiler/driver/owner-body-query.{h,cc}`; Binder and driver build wiring; the focused Binder and driver tests named in the atomic migration inventory |
 | `R29-13C` | query `query-test-specs.h`, database, capability, concurrency, and CMake files; `products/zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt`; the exact query-runtime compile-fail cases; `products/zomlang/tests/CMakeLists.txt`; `scripts/check-query-descriptor-architecture.py`; generic runtime-sum and reusable staged dual-alias gate coverage |
 
 Each numbered subpartition is separately reviewed and may be split into

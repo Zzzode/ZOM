@@ -9,12 +9,12 @@
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/binder/definition-inventory.h"
+#include "zomlang/compiler/binder/metadata/definition-inventory.h"
 #include "zomlang/compiler/binder/stable/candidate/producer.h"
 #include "zomlang/compiler/binder/stable/candidate/verifier.h"
 #include "zomlang/compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/parser/parser.h"
-#include "zomlang/tests/unittests/compiler/binder/parsed-module-query-test-fixture.h"
+#include "zomlang/tests/unittests/compiler/binder/graph/parsed-module-query-test-fixture.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::binder {

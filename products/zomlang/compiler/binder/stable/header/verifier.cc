@@ -8,8 +8,8 @@
 #include "zomlang/compiler/ast/generated/node-accessors.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/generated/node-schema.h"
-#include "zomlang/compiler/binder/definition-inventory.h"
-#include "zomlang/compiler/binder/stable-binding-codec.h"
+#include "zomlang/compiler/binder/metadata/definition-inventory.h"
+#include "zomlang/compiler/binder/stable/stable-binding-codec.h"
 #include "zomlang/compiler/binder/stable/candidate/verifier.h"
 
 namespace zomlang::compiler::binder {

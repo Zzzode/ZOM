@@ -5,7 +5,7 @@
 
 #include "zomlang/compiler/driver/imported-signature-view-projector.h"
 
-#include "zomlang/compiler/binder/binding-metadata.h"
+#include "zomlang/compiler/binder/metadata/binding-metadata.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/driver/core/query.h"
 #include "zomlang/compiler/identity/canonical/canonical-encoder.h"

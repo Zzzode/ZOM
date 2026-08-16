@@ -14,17 +14,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "products/zomlang/compiler/binder/stable-binding-schema.def"
-FACTS_HEADER = ROOT / "products/zomlang/compiler/binder/stable-binding-facts.h"
-FACTS_SOURCE = ROOT / "products/zomlang/compiler/binder/stable-binding-facts.cc"
-CODEC_HEADER = ROOT / "products/zomlang/compiler/binder/stable-binding-codec.h"
-CODEC_SOURCE = ROOT / "products/zomlang/compiler/binder/stable-binding-codec.cc"
+FACTS_HEADER = ROOT / "products/zomlang/compiler/binder/stable/stable-binding-facts.h"
+FACTS_SOURCE = ROOT / "products/zomlang/compiler/binder/stable/stable-binding-facts.cc"
+CODEC_HEADER = ROOT / "products/zomlang/compiler/binder/stable/stable-binding-codec.h"
+CODEC_SOURCE = ROOT / "products/zomlang/compiler/binder/stable/stable-binding-codec.cc"
 BINDER_CMAKE = ROOT / "products/zomlang/compiler/binder/CMakeLists.txt"
 CONTEXTUAL_HEADER = ROOT / "products/zomlang/compiler/driver/contextual-binding-key.h"
 CONTEXTUAL_SOURCE = ROOT / "products/zomlang/compiler/driver/contextual-binding-key.cc"
-METADATA_HEADER = ROOT / "products/zomlang/compiler/binder/binding-metadata.h"
+METADATA_HEADER = ROOT / "products/zomlang/compiler/binder/metadata/binding-metadata.h"
 NATIVE_TEST = (
     ROOT
-    / "products/zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc"
+    / "products/zomlang/tests/unittests/compiler/binder/stable/stable-binding-facts-test.cc"
 )
 TEST_CMAKE = (
     ROOT / "products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt"
@@ -1661,7 +1661,7 @@ def validate_repository_wiring(text: str, inputs: dict[str, str]) -> list[str]:
             errors.append(f"{name} must not include driver headers")
 
     binder_cmake = inputs["binder-cmake"]
-    for source in ("stable-binding-facts.cc", "stable-binding-codec.cc"):
+    for source in ("stable/stable-binding-facts.cc", "stable/stable-binding-codec.cc"):
         if binder_cmake.count(f"${{CMAKE_CURRENT_SOURCE_DIR}}/{source}") != 1:
             errors.append(f"Binder target must contain {source} exactly once")
 
@@ -1940,7 +1940,7 @@ def self_test(text: str) -> list[str]:
         with_input(
             "binder-cmake",
             inputs["binder-cmake"].replace(
-                "  ${CMAKE_CURRENT_SOURCE_DIR}/stable-binding-facts.cc\n", "", 1
+                "  ${CMAKE_CURRENT_SOURCE_DIR}/stable/stable-binding-facts.cc\n", "", 1
             ),
         ),
     ))
@@ -1949,7 +1949,7 @@ def self_test(text: str) -> list[str]:
         with_input(
             "binder-cmake",
             inputs["binder-cmake"].replace(
-                "  ${CMAKE_CURRENT_SOURCE_DIR}/stable-binding-codec.cc\n", "", 1
+                "  ${CMAKE_CURRENT_SOURCE_DIR}/stable/stable-binding-codec.cc\n", "", 1
             ),
         ),
     ))

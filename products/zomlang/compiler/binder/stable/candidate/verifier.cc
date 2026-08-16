@@ -7,8 +7,8 @@
 
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
-#include "zomlang/compiler/binder/canonical-header-verifier.h"
-#include "zomlang/compiler/binder/definition-inventory.h"
+#include "zomlang/compiler/binder/canonical/canonical-header-verifier.h"
+#include "zomlang/compiler/binder/metadata/definition-inventory.h"
 
 namespace zomlang::compiler::binder {
 namespace {

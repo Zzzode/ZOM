@@ -7,7 +7,7 @@
 
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/binder/binding-metadata.h"
+#include "zomlang/compiler/binder/metadata/binding-metadata.h"
 #include "zomlang/compiler/binder/stable/candidate/producer.h"
 
 namespace zomlang::compiler::binder {

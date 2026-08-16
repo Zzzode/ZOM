@@ -9,7 +9,7 @@
 #include "zc/core/common.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/binder/binding-metadata.h"
+#include "zomlang/compiler/binder/metadata/binding-metadata.h"
 #include "zomlang/compiler/checker/signature-facts.h"
 #include "zomlang/compiler/driver/core/revision.h"
 #include "zomlang/compiler/identity/crypto/sha256.h"

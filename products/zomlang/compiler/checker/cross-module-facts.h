@@ -8,7 +8,7 @@
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/binder/binding-metadata.h"
+#include "zomlang/compiler/binder/metadata/binding-metadata.h"
 #include "zomlang/compiler/checker/module-interface-contract.h"
 #include "zomlang/compiler/checker/signature-facts.h"
 #include "zomlang/compiler/identity/semantic/context-fingerprint.h"

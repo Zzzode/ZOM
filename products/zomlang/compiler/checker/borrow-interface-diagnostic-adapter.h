@@ -6,7 +6,7 @@
 #pragma once
 
 #include "zc/core/array.h"
-#include "zomlang/compiler/binder/parsed-module.h"
+#include "zomlang/compiler/binder/graph/parsed-module.h"
 #include "zomlang/compiler/checker/borrow-interface.h"
 
 namespace zomlang::compiler::diagnostics {

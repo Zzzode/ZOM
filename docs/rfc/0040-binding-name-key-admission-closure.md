@@ -131,8 +131,8 @@ requires exact full-record re-encoding.
 `R40-11` edits exactly:
 
 ```text
-products/zomlang/compiler/binder/binding-metadata.h
-products/zomlang/compiler/binder/binding-metadata.cc
+products/zomlang/compiler/binder/metadata/binding-metadata.h
+products/zomlang/compiler/binder/metadata/binding-metadata.cc
 products/zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
 ```
 

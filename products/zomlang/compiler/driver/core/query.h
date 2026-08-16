@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "zomlang/compiler/binder/stable-binding-facts.h"
+#include "zomlang/compiler/binder/stable/stable-binding-facts.h"
 #include "zomlang/compiler/driver/core/marker-authority.h"
 #include "zomlang/compiler/driver/core/revision.h"
 #include "zomlang/compiler/driver/core/signature.h"

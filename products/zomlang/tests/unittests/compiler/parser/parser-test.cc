@@ -24,7 +24,7 @@
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/binder/parsed-module.h"
+#include "zomlang/compiler/binder/graph/parsed-module.h"
 #include "zomlang/compiler/diagnostics/consumer/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"

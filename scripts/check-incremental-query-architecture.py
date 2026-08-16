@@ -70,7 +70,7 @@ DRIVER_AUTHORITY_SESSION_TEST = Path(
     "products/zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc"
 )
 BINDER_MODULE_BODY_SYNTAX_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/binder/module-body-syntax-test.cc"
+    "products/zomlang/tests/unittests/compiler/binder/surface/module-body-syntax-test.cc"
 )
 PERFORMANCE_RUNNER = Path("scripts/run-incremental-query-benchmarks.py")
 PERFORMANCE_CORPUS = Path(

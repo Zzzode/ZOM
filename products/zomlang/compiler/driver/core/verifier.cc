@@ -7,9 +7,9 @@
 
 #include "zc/core/encoding.h"
 #include "zc/core/map.h"
-#include "zomlang/compiler/binder/module-body-syntax.h"
-#include "zomlang/compiler/binder/module-skeleton-query.h"
-#include "zomlang/compiler/binder/stable-binding-codec.h"
+#include "zomlang/compiler/binder/surface/module-body-syntax.h"
+#include "zomlang/compiler/binder/graph/module-skeleton-query.h"
+#include "zomlang/compiler/binder/stable/stable-binding-codec.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/driver/core/role-seed-failure.h"
 #include "zomlang/compiler/driver/core/signature.h"

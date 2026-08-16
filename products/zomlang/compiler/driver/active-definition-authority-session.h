@@ -6,7 +6,7 @@
 #pragma once
 
 #include "zc/core/vector.h"
-#include "zomlang/compiler/binder/stable-binding-facts.h"
+#include "zomlang/compiler/binder/stable/stable-binding-facts.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
 #include "zomlang/compiler/driver/active-identity-membership-query.h"
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"

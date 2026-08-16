@@ -11,9 +11,9 @@
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/node-id.h"
-#include "zomlang/compiler/binder/canonical-header-type-producer.h"
-#include "zomlang/compiler/binder/identity-pre-admission.h"
-#include "zomlang/compiler/binder/parsed-module.h"
+#include "zomlang/compiler/binder/canonical/canonical-header-type-producer.h"
+#include "zomlang/compiler/binder/identity/identity-pre-admission.h"
+#include "zomlang/compiler/binder/graph/parsed-module.h"
 
 namespace zomlang::compiler::binder {
 

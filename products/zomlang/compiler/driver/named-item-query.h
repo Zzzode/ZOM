@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include "zomlang/compiler/binder/module-body-syntax.h"
-#include "zomlang/compiler/binder/stable-binding-facts.h"
+#include "zomlang/compiler/binder/surface/module-body-syntax.h"
+#include "zomlang/compiler/binder/stable/stable-binding-facts.h"
 #include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
 #include "zomlang/compiler/identity/key/definition-key.h"

@@ -8,7 +8,7 @@
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/binder/module-resolution.h"
+#include "zomlang/compiler/binder/graph/module-resolution.h"
 #include "zomlang/compiler/query/query-database.h"
 
 namespace zomlang::compiler::driver::incremental_module_resolution_query {

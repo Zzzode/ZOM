@@ -1,9 +1,9 @@
 #pragma once
 
-#include "zomlang/compiler/binder/module-body-syntax.h"
-#include "zomlang/compiler/binder/named-identity-inventory.h"
-#include "zomlang/compiler/binder/revision-local-identity-sites.h"
-#include "zomlang/compiler/binder/stable-binding-facts.h"
+#include "zomlang/compiler/binder/surface/module-body-syntax.h"
+#include "zomlang/compiler/binder/identity/named-identity-inventory.h"
+#include "zomlang/compiler/binder/identity/revision-local-identity-sites.h"
+#include "zomlang/compiler/binder/stable/stable-binding-facts.h"
 #include "zomlang/compiler/diagnostics/fact/diagnostic-fact.h"
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
 

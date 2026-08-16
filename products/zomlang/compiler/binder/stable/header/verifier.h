@@ -6,9 +6,9 @@
 #pragma once
 
 #include "zc/core/common.h"
-#include "zomlang/compiler/binder/named-identity-inventory.h"
-#include "zomlang/compiler/binder/parsed-module.h"
-#include "zomlang/compiler/binder/revision-local-identity-sites.h"
+#include "zomlang/compiler/binder/identity/named-identity-inventory.h"
+#include "zomlang/compiler/binder/graph/parsed-module.h"
+#include "zomlang/compiler/binder/identity/revision-local-identity-sites.h"
 
 namespace zomlang::compiler::binder {
 

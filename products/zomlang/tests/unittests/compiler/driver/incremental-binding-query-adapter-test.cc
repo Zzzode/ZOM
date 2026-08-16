@@ -8,7 +8,7 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
 #include "zomlang/compiler/basic/thread-pool.h"
-#include "zomlang/compiler/binder/parsed-module.h"
+#include "zomlang/compiler/binder/graph/parsed-module.h"
 #include "zomlang/compiler/driver/core/query.h"
 #include "zomlang/compiler/driver/incremental-package-graph-query-input.h"
 #include "zomlang/compiler/driver/module-graph-query-input.h"

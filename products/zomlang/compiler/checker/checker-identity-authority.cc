@@ -5,7 +5,7 @@
 
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 
-#include "zomlang/compiler/binder/identity-pre-admission.h"
+#include "zomlang/compiler/binder/identity/identity-pre-admission.h"
 
 namespace zomlang::compiler::checker {
 namespace {

@@ -14,8 +14,12 @@ ROOT = Path(__file__).resolve().parents[1]
 BINDER = Path("products/zomlang/compiler/binder")
 TESTS = Path("products/zomlang/tests/unittests/compiler/binder")
 
+
+def binder_source(path: Path) -> str:
+    return str(path.relative_to(BINDER))
+
 RUN_SOURCE = BINDER / "binding-run.cc"
-METADATA_HEADER = BINDER / "binding-metadata.h"
+METADATA_HEADER = BINDER / "metadata/binding-metadata.h"
 VERIFIER_HEADER = BINDER / "internal/binding-verifier.h"
 BUILDER_SOURCE = BINDER / "binding-builder.cc"
 CODEC_SOURCE = BINDER / "binding-candidate-codec.cc"
@@ -33,8 +37,8 @@ STABLE_HEADER_VERIFIER_HEADER = BINDER / "stable/header/verifier.h"
 STABLE_HEADER_VERIFIER_SOURCE = BINDER / "stable/header/verifier.cc"
 STABLE_HEADER_VERIFIER_TEST = TESTS / "stable/header/verifier-test.cc"
 STABLE_BINDING_QUERY_TEST = TESTS / "stable-binding-query-test.cc"
-CANONICAL_HEADER_VERIFIER_HEADER = BINDER / "canonical-header-verifier.h"
-CANONICAL_HEADER_VERIFIER_SOURCE = BINDER / "canonical-header-verifier.cc"
+CANONICAL_HEADER_VERIFIER_HEADER = BINDER / "canonical/canonical-header-verifier.h"
+CANONICAL_HEADER_VERIFIER_SOURCE = BINDER / "canonical/canonical-header-verifier.cc"
 BINDER_CMAKE = BINDER / "CMakeLists.txt"
 TEST_CMAKE = TESTS / "CMakeLists.txt"
 TEST_SOURCE = TESTS / "binding-input-test.cc"
@@ -47,23 +51,23 @@ DRIVER_SESSION_TEST = Path(
 FACT_SCHEMA = BINDER / "binding-fact-schema.def"
 FACT_SCHEMA_GATE = Path("scripts/check-binder-fact-schema.py")
 STABLE_SCHEMA = BINDER / "stable-binding-schema.def"
-STABLE_FACTS_HEADER = BINDER / "stable-binding-facts.h"
-STABLE_FACTS_SOURCE = BINDER / "stable-binding-facts.cc"
-STABLE_CODEC_HEADER = BINDER / "stable-binding-codec.h"
-STABLE_CODEC_SOURCE = BINDER / "stable-binding-codec.cc"
+STABLE_FACTS_HEADER = BINDER / "stable/stable-binding-facts.h"
+STABLE_FACTS_SOURCE = BINDER / "stable/stable-binding-facts.cc"
+STABLE_CODEC_HEADER = BINDER / "stable/stable-binding-codec.h"
+STABLE_CODEC_SOURCE = BINDER / "stable/stable-binding-codec.cc"
 STABLE_TEST_SOURCE = TESTS / "stable-binding-facts-test.cc"
 STABLE_SCHEMA_GATE = Path("scripts/check-stable-binding-schema.py")
 LANDING_SCOPE_GATE = Path("scripts/check-landing-scope.py")
 STABLE_LANDING_ALLOWLIST = Path(
     "products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt"
 )
-MODULE_BODY_HEADER = BINDER / "module-body-syntax.h"
-MODULE_BODY_VALUE_SOURCE = BINDER / "module-body-syntax.cc"
-MODULE_BODY_PRODUCER_SOURCE = BINDER / "module-body-syntax-producer.cc"
-MODULE_BODY_VERIFIER_SOURCE = BINDER / "module-body-syntax-verifier.cc"
+MODULE_BODY_HEADER = BINDER / "surface/module-body-syntax.h"
+MODULE_BODY_VALUE_SOURCE = BINDER / "surface/module-body-syntax.cc"
+MODULE_BODY_PRODUCER_SOURCE = BINDER / "surface/module-body-syntax-producer.cc"
+MODULE_BODY_VERIFIER_SOURCE = BINDER / "surface/module-body-syntax-verifier.cc"
 MODULE_BODY_TEST_SOURCE = TESTS / "module-body-syntax-test.cc"
-NAMED_INVENTORY_HEADER = BINDER / "named-identity-inventory.h"
-NAMED_INVENTORY_SOURCE = BINDER / "named-identity-inventory.cc"
+NAMED_INVENTORY_HEADER = BINDER / "identity/named-identity-inventory.h"
+NAMED_INVENTORY_SOURCE = BINDER / "identity/named-identity-inventory.cc"
 NAMED_INVENTORY_QUERY_SOURCE = Path(
     "products/zomlang/compiler/driver/named-identity-inventory-query.cc"
 )
@@ -669,9 +673,11 @@ def check_stable_binding_wiring(files: dict[Path, str], errors: list[str]) -> No
     binder_cmake = files.get(BINDER_CMAKE, "")
     test_cmake = files.get(TEST_CMAKE, "")
     for source in (STABLE_FACTS_SOURCE, STABLE_CODEC_SOURCE):
-        marker = f"${{CMAKE_CURRENT_SOURCE_DIR}}/{source.name}"
+        marker = f"${{CMAKE_CURRENT_SOURCE_DIR}}/{binder_source(source)}"
         if binder_cmake.count(marker) != 1:
-            errors.append(f"{BINDER_CMAKE}: stable source must appear exactly once: {source.name}")
+            errors.append(
+                f"{BINDER_CMAKE}: stable source must appear exactly once: {binder_source(source)}"
+            )
     required_registrations = (
         'add_ztest_unit_test("stable-binding-facts-test"',
         "add_test(NAME stable-binding-schema\n",
@@ -745,8 +751,8 @@ def check_cmake_boundaries(files: dict[Path, str], errors: list[str]) -> None:
     binder_cmake = files.get(BINDER_CMAKE, "")
     test_cmake = files.get(TEST_CMAKE, "")
     for path in PRODUCTION_COMPONENTS:
-        if path.name not in binder_cmake:
-            errors.append(f"{BINDER_CMAKE}: production component omitted: {path.name}")
+        if binder_source(path) not in binder_cmake:
+            errors.append(f"{BINDER_CMAKE}: production component omitted: {binder_source(path)}")
     for path in TEST_ORACLES:
         if path.name not in test_cmake:
             errors.append(f"{TEST_CMAKE}: test-only oracle omitted: {path.name}")
@@ -891,9 +897,11 @@ def check_module_body_syntax(files: dict[Path, str], errors: list[str]) -> None:
         if marker not in verifier:
             errors.append(f"{MODULE_BODY_VERIFIER_SOURCE}: independent verifier is incomplete: {marker}")
     for path in (MODULE_BODY_VALUE_SOURCE, MODULE_BODY_PRODUCER_SOURCE, MODULE_BODY_VERIFIER_SOURCE):
-        cmake_entry = f"${{CMAKE_CURRENT_SOURCE_DIR}}/{path.name}"
+        cmake_entry = f"${{CMAKE_CURRENT_SOURCE_DIR}}/{binder_source(path)}"
         if cmake_entry not in binder_cmake:
-            errors.append(f"{BINDER_CMAKE}: module-body production component omitted: {path.name}")
+            errors.append(
+                f"{BINDER_CMAKE}: module-body production component omitted: {binder_source(path)}"
+            )
     if MODULE_BODY_TEST_SOURCE.name not in test_cmake:
         errors.append(f"{TEST_CMAKE}: module-body native test is omitted")
     for marker in (
@@ -1373,15 +1381,15 @@ def self_test(files: dict[Path, str]) -> list[str]:
 
 
 CURRENT_BINDER_COMPONENTS = (
-    "canonical-input-payload-digest.cc",
-    "immutable-binding-metadata.cc",
-    "immutable-definition-inventory.cc",
-    "materialized-module-skeleton.cc",
-    "materialized-export-surface-verifier.cc",
-    "module-binding-allocation-plan.cc",
-    "module-graph-revision.cc",
-    "module-graph-source-failure.cc",
-    "owner-body-query.cc",
+    "canonical/canonical-input-payload-digest.cc",
+    "metadata/immutable-binding-metadata.cc",
+    "metadata/immutable-definition-inventory.cc",
+    "graph/materialized-module-skeleton.cc",
+    "surface/materialized-export-surface-verifier.cc",
+    "graph/module-binding-allocation-plan.cc",
+    "graph/module-graph-revision.cc",
+    "graph/module-graph-source-failure.cc",
+    "surface/owner-body-query.cc",
     "stable/candidate/producer.cc",
     "stable/candidate/verifier.cc",
 )
@@ -1448,7 +1456,7 @@ def current_self_test(files: dict[Path, str]) -> list[str]:
     cases = (
         (
             BINDER_CMAKE,
-            "${CMAKE_CURRENT_SOURCE_DIR}/materialized-module-skeleton.cc",
+            "${CMAKE_CURRENT_SOURCE_DIR}/graph/materialized-module-skeleton.cc",
             "${CMAKE_CURRENT_SOURCE_DIR}/missing-materialized-module-skeleton.cc",
             "current Binder component is omitted",
         ),
@@ -1459,7 +1467,7 @@ def current_self_test(files: dict[Path, str]) -> list[str]:
             "removed batch Binder component remains",
         ),
         (
-            BINDER / "materialized-module-skeleton.cc",
+            BINDER / "graph/materialized-module-skeleton.cc",
             "MaterializedModuleSkeleton",
             "FrozenDefinitionInventory",
             "removed Binder authority remains",
