@@ -285,8 +285,7 @@ zc::Maybe<uint32_t> parameterEntryOrdinal(const mir::MirFunction& function,
 
 bool isParameterRootTransfer(const LogicalDropPlan& plan, const LogicalDropPlanComponent& component,
                              const MoveTransferInitialization& transfer) {
-  return plan.root.projections().size() == 0 && component.place.projections().size() == 0 &&
-         transfer.source.projections().size() == 0 && samePlace(plan.root, component.place) &&
+  return transfer.source.projections().size() == 0 && samePlace(plan.root, component.place) &&
          component.valueType == transfer.source.resultType();
 }
 
@@ -331,16 +330,18 @@ zc::Maybe<zc::Vector<OwnershipResourceFunction>> derive(
               auto origin = MovePathKey{mirFunction.owner, component.place.clone()};
               if (transfer != zc::none) {
                 ZC_IF_SOME(transferValue, transfer) {
-                  if (!isParameterRootTransfer(plan, component, transferValue)) continue;
                   const auto source = MovePathKey{mirFunction.owner, transferValue.source.clone()};
-                  ZC_IF_SOME(entryOrdinal, parameterOrdinal) {
-                    introduction = MirEventKey{MirLocation{mirFunction.owner, MirPoint::entry()},
-                                               entryOrdinal};
-                    origin = MovePathKey{source.owner, source.place.clone()};
-                    transfers.add(
-                        DropTransfer{MovePathKey{mirFunction.owner, transferValue.source.clone()},
-                                     MovePathKey{mirFunction.owner, component.place.clone()},
-                                     transferValue.event});
+                  if (isParameterRootTransfer(plan, component, transferValue) &&
+                      parameterOrdinal != zc::none) {
+                    ZC_IF_SOME(entryOrdinal, parameterOrdinal) {
+                      introduction = MirEventKey{MirLocation{mirFunction.owner, MirPoint::entry()},
+                                                 entryOrdinal};
+                      origin = MovePathKey{source.owner, source.place.clone()};
+                      transfers.add(
+                          DropTransfer{MovePathKey{mirFunction.owner, transferValue.source.clone()},
+                                       MovePathKey{mirFunction.owner, component.place.clone()},
+                                       transferValue.event});
+                    }
                   } else {
                     auto resource = resourceAt(facts, transfers, source);
                     if (resource == zc::none) continue;

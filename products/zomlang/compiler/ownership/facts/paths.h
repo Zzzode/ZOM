@@ -46,6 +46,17 @@ struct MovePathFunction final {
   zc::Vector<MovePathPair> conflicts;
 };
 
+/// \brief Returns whether two move-path places potentially overlap.
+///
+/// Places rooted at different locals never conflict. Along the shared
+/// projection prefix, identical projections extend the prefix; distinct
+/// sibling fields and downcasts to distinct variants are disjoint; subslices
+/// are disjoint exactly when their half-open ranges are disjoint; every other
+/// projection pair (indices, dereferences, and all mixed-kind pairs) may
+/// alias. A place that is a projection prefix of another conflicts with it.
+ZC_NODISCARD bool placesConflict(const mir::MirPlace& first,
+                                 const mir::MirPlace& second) noexcept;
+
 /// \brief Untrusted move-path inventory awaiting independent reconstruction.
 class MovePathCandidate final {
 public:

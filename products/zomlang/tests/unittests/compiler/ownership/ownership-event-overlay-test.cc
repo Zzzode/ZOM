@@ -1655,6 +1655,178 @@ ZC_TEST("Move paths retain a parameter dereference after its root") {
   ZC_EXPECT(paths.conflicts(dereference.key, root.key));
 }
 
+namespace {
+
+identity::SemanticTypeId conflictPlaceType() { return identity::SemanticTypeId(); }
+
+mir::MirPlace conflictPlace(uint32_t local, zc::Vector<mir::MirProjection>&& projections) {
+  return mir::MirPlace(ZC_REQUIRE_NONNULL(mir::MirLocalId::fromOrdinal(local)),
+                       conflictPlaceType(), zc::mv(projections), conflictPlaceType());
+}
+
+mir::MirPlace conflictPlace(uint32_t local, mir::MirProjection&& projection) {
+  zc::Vector<mir::MirProjection> projections;
+  projections.add(zc::mv(projection));
+  return conflictPlace(local, zc::mv(projections));
+}
+
+mir::MirPlace conflictPlace(uint32_t local, mir::MirProjection&& first,
+                            mir::MirProjection&& second) {
+  zc::Vector<mir::MirProjection> projections;
+  projections.add(zc::mv(first));
+  projections.add(zc::mv(second));
+  return conflictPlace(local, zc::mv(projections));
+}
+
+mir::MirProjection conflictField(identity::DefId field) {
+  return mir::MirProjection::field(field, conflictPlaceType(), conflictPlaceType());
+}
+
+mir::MirProjection conflictIndex(uint32_t index) {
+  return mir::MirProjection::index(ZC_REQUIRE_NONNULL(mir::MirLocalId::fromOrdinal(index)),
+                                   conflictPlaceType(), conflictPlaceType());
+}
+
+mir::MirProjection conflictDereference() {
+  return mir::MirProjection::dereference(conflictPlaceType(), conflictPlaceType());
+}
+
+mir::MirProjection conflictDowncast(identity::DefId variant) {
+  return mir::MirProjection::downcast(variant, conflictPlaceType(), conflictPlaceType());
+}
+
+zc::Maybe<mir::MirProjection> conflictSubslice(uint32_t first, uint32_t pastLast) {
+  return mir::MirProjection::subslice(first, pastLast, conflictPlaceType(), conflictPlaceType());
+}
+
+}  // namespace
+
+ZC_TEST("Move-path places on distinct locals never conflict") {
+  auto firstRoot = conflictPlace(1, zc::Vector<mir::MirProjection>{});
+  auto secondRoot = conflictPlace(2, zc::Vector<mir::MirProjection>{});
+  ZC_EXPECT(!facts::placesConflict(firstRoot, secondRoot));
+  ZC_EXPECT(!facts::placesConflict(secondRoot, firstRoot));
+  auto firstField = conflictPlace(1, conflictField(identity::DefId()));
+  auto secondField = conflictPlace(2, conflictField(identity::DefId()));
+  ZC_EXPECT(!facts::placesConflict(firstField, secondField));
+  ZC_EXPECT(!facts::placesConflict(secondField, firstField));
+}
+
+ZC_TEST("Move-path places conflict with their projection prefixes") {
+  auto root = conflictPlace(1, zc::Vector<mir::MirProjection>{});
+  auto field = conflictPlace(1, conflictField(identity::DefId()));
+  ZC_EXPECT(facts::placesConflict(root, field));
+  ZC_EXPECT(facts::placesConflict(field, root));
+  auto nested = conflictPlace(1, conflictField(identity::DefId()), conflictIndex(2));
+  ZC_EXPECT(facts::placesConflict(root, nested));
+  ZC_EXPECT(facts::placesConflict(nested, root));
+  ZC_EXPECT(facts::placesConflict(field, nested));
+  ZC_EXPECT(facts::placesConflict(nested, field));
+}
+
+ZC_TEST("Move-path sibling fields and distinct downcast variants do not conflict") {
+  OwnershipPipelineFixture fixture(
+      "struct Pair { mut left: i32, mut right: i32, }\n"
+      "fun entry() -> i32 { mut pair: Pair; pair.left = 0; pair.right = 0; return pair.left; }"_zc);
+  const auto& paths = ownershipInputs(fixture.compilerSession()).movePaths();
+  ZC_REQUIRE(paths.functions().size() == 1);
+  zc::Maybe<identity::DefId> firstField;
+  zc::Maybe<identity::DefId> secondField;
+  for (const auto& fact : paths.functions()[0].facts) {
+    const auto& place = fact.key.place;
+    if (place.projections().size() != 1 ||
+        place.projections()[0].kind() != mir::MirProjectionKind::Field) {
+      continue;
+    }
+    if (firstField == zc::none) firstField = place.projections()[0].fieldValue().field;
+    else secondField = place.projections()[0].fieldValue().field;
+  }
+  ZC_REQUIRE(firstField != zc::none);
+  ZC_REQUIRE(secondField != zc::none);
+  const auto left = ZC_REQUIRE_NONNULL(firstField);
+  const auto right = ZC_REQUIRE_NONNULL(secondField);
+  ZC_REQUIRE(left != right);
+
+  auto leftPlace = conflictPlace(1, conflictField(left));
+  auto rightPlace = conflictPlace(1, conflictField(right));
+  ZC_EXPECT(!facts::placesConflict(leftPlace, rightPlace));
+  ZC_EXPECT(!facts::placesConflict(rightPlace, leftPlace));
+  auto sameField = conflictPlace(1, conflictField(left));
+  ZC_EXPECT(facts::placesConflict(leftPlace, sameField));
+  // The shared field extends the prefix, so a deeper sibling divergence still separates.
+  auto leftLeft = conflictPlace(1, conflictField(left), conflictField(left));
+  auto leftRight = conflictPlace(1, conflictField(left), conflictField(right));
+  ZC_EXPECT(!facts::placesConflict(leftLeft, leftRight));
+  ZC_EXPECT(!facts::placesConflict(leftRight, leftLeft));
+
+  auto firstVariant = conflictPlace(1, conflictDowncast(left));
+  auto secondVariant = conflictPlace(1, conflictDowncast(right));
+  ZC_EXPECT(!facts::placesConflict(firstVariant, secondVariant));
+  ZC_EXPECT(!facts::placesConflict(secondVariant, firstVariant));
+  auto sameVariant = conflictPlace(1, conflictDowncast(left));
+  ZC_EXPECT(facts::placesConflict(firstVariant, sameVariant));
+}
+
+ZC_TEST("Move-path index projections conflict with every projection kind") {
+  auto firstIndex = conflictPlace(1, conflictIndex(2));
+  auto secondIndex = conflictPlace(1, conflictIndex(3));
+  ZC_EXPECT(facts::placesConflict(firstIndex, secondIndex));
+  ZC_EXPECT(facts::placesConflict(secondIndex, firstIndex));
+  ZC_EXPECT(facts::placesConflict(firstIndex, conflictPlace(1, conflictField(identity::DefId()))));
+  ZC_EXPECT(facts::placesConflict(firstIndex, conflictPlace(1, conflictDereference())));
+  ZC_EXPECT(
+      facts::placesConflict(firstIndex, conflictPlace(1, conflictDowncast(identity::DefId()))));
+  auto slice = ZC_REQUIRE_NONNULL(conflictSubslice(0, 4));
+  ZC_EXPECT(facts::placesConflict(firstIndex, conflictPlace(1, zc::mv(slice))));
+}
+
+ZC_TEST("Move-path dereference projections conflict with every projection kind") {
+  auto firstDereference = conflictPlace(1, conflictDereference());
+  auto secondDereference = conflictPlace(1, conflictDereference());
+  ZC_EXPECT(facts::placesConflict(firstDereference, secondDereference));
+  ZC_EXPECT(
+      facts::placesConflict(firstDereference, conflictPlace(1, conflictField(identity::DefId()))));
+  ZC_EXPECT(facts::placesConflict(firstDereference, conflictPlace(1, conflictIndex(2))));
+  ZC_EXPECT(
+      facts::placesConflict(firstDereference, conflictPlace(1, conflictDowncast(identity::DefId()))));
+  auto slice = ZC_REQUIRE_NONNULL(conflictSubslice(0, 4));
+  ZC_EXPECT(facts::placesConflict(firstDereference, conflictPlace(1, zc::mv(slice))));
+}
+
+ZC_TEST("Move-path subslices conflict exactly on overlapping ranges") {
+  auto whole = conflictPlace(1, ZC_REQUIRE_NONNULL(conflictSubslice(0, 4)));
+  auto identical = conflictPlace(1, ZC_REQUIRE_NONNULL(conflictSubslice(0, 4)));
+  ZC_EXPECT(facts::placesConflict(whole, identical));
+  auto overlapping = conflictPlace(1, ZC_REQUIRE_NONNULL(conflictSubslice(2, 6)));
+  ZC_EXPECT(facts::placesConflict(whole, overlapping));
+  ZC_EXPECT(facts::placesConflict(overlapping, whole));
+  auto touching = conflictPlace(1, ZC_REQUIRE_NONNULL(conflictSubslice(4, 6)));
+  ZC_EXPECT(!facts::placesConflict(whole, touching));
+  ZC_EXPECT(!facts::placesConflict(touching, whole));
+  auto separated = conflictPlace(1, ZC_REQUIRE_NONNULL(conflictSubslice(5, 7)));
+  ZC_EXPECT(!facts::placesConflict(whole, separated));
+  ZC_EXPECT(!facts::placesConflict(separated, whole));
+  auto empty = conflictPlace(1, ZC_REQUIRE_NONNULL(conflictSubslice(2, 2)));
+  ZC_EXPECT(!facts::placesConflict(whole, empty));
+  ZC_EXPECT(!facts::placesConflict(empty, whole));
+  ZC_EXPECT(facts::placesConflict(empty, conflictPlace(1, conflictField(identity::DefId()))));
+  ZC_EXPECT(facts::placesConflict(empty, conflictPlace(1, conflictIndex(2))));
+  ZC_EXPECT(facts::placesConflict(empty, conflictPlace(1, conflictDereference())));
+  ZC_EXPECT(facts::placesConflict(empty, conflictPlace(1, conflictDowncast(identity::DefId()))));
+}
+
+ZC_TEST("Move-path mixed-kind projection pairs conflict") {
+  auto field = conflictPlace(1, conflictField(identity::DefId()));
+  auto downcast = conflictPlace(1, conflictDowncast(identity::DefId()));
+  auto slice = conflictPlace(1, ZC_REQUIRE_NONNULL(conflictSubslice(0, 4)));
+  ZC_EXPECT(facts::placesConflict(field, downcast));
+  ZC_EXPECT(facts::placesConflict(downcast, field));
+  ZC_EXPECT(facts::placesConflict(field, slice));
+  ZC_EXPECT(facts::placesConflict(slice, field));
+  ZC_EXPECT(facts::placesConflict(downcast, slice));
+  ZC_EXPECT(facts::placesConflict(slice, downcast));
+}
+
 ZC_TEST("Reference definition verifier rejects tampered definition inputs") {
   OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& session = fixture.compilerSession();
@@ -2340,6 +2512,36 @@ ZC_TEST("Ownership resources transfer and verify a moved direct-call result") {
   ZC_EXPECT(tamperedVerifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(tamperedVerifiedResult.invariantFailures().facts()[0].kind() ==
             ir::IrFailureKind::InvalidOwnershipProof);
+}
+
+ZC_TEST("Ownership resources record exact drop transfer paths for a call result") {
+  OwnershipPipelineFixture fixture(
+      "struct Cell { value: i32, }\n"
+      "import core::marker::{Copy};\n"
+      "impl !Copy for Cell;\n"
+      "fun helper() -> Cell { let cell = Cell { value: 0 }; return cell; }\n"
+      "fun entry() -> Cell { return helper(); }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& inputs = ownershipInputs(session);
+  ZC_REQUIRE(builtMir.functions().size() == 2);
+  const auto& resources = inputs.resources();
+  ZC_REQUIRE(resources.functions().size() == 2);
+
+  const facts::OwnershipResourceFunction* entry = nullptr;
+  for (const auto& function : resources.functions()) {
+    if (function.transfers.size() != 0) entry = &function;
+  }
+  ZC_REQUIRE(entry != nullptr);
+  ZC_REQUIRE(entry->transfers.size() == 1);
+  const auto& transfer = entry->transfers[0];
+  ZC_EXPECT(transfer.from.owner == transfer.to.owner);
+  ZC_EXPECT(transfer.from.place.local() != transfer.to.place.local());
+  ZC_EXPECT(transfer.from.place.projections().size() == 0);
+  ZC_EXPECT(transfer.to.place.projections().size() == 0);
+  ZC_EXPECT(transfer.event.location.point.kind() == MirPointKind::BeforeStatement);
+  ZC_EXPECT(transfer.event.operandOrdinal == 0);
+  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
 }
 
 ZC_TEST("Resource verifier rejects a tampered parameter move transfer") {

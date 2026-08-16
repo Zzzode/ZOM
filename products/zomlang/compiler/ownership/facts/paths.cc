@@ -171,6 +171,34 @@ bool sameProjection(const mir::MirProjection& left, const mir::MirProjection& ri
   return false;
 }
 
+/// \brief Returns whether two non-identical projections at one prefix position overlap.
+///
+/// Callers skip identical projections first so the shared prefix keeps walking.
+bool projectionsConflict(const mir::MirProjection& first,
+                         const mir::MirProjection& second) noexcept {
+  // Distinct sibling fields of one aggregate are disjoint.
+  if (first.kind() == mir::MirProjectionKind::Field &&
+      second.kind() == mir::MirProjectionKind::Field) {
+    return false;
+  }
+  // Downcasts to distinct variants of one enum are disjoint.
+  if (first.kind() == mir::MirProjectionKind::Downcast &&
+      second.kind() == mir::MirProjectionKind::Downcast) {
+    return false;
+  }
+  // Subslices conflict exactly when their half-open ranges overlap.
+  if (first.kind() == mir::MirProjectionKind::Subslice &&
+      second.kind() == mir::MirProjectionKind::Subslice) {
+    const auto overlapStart = zc::max(first.subsliceValue().first, second.subsliceValue().first);
+    const auto overlapEnd =
+        zc::min(first.subsliceValue().pastLast, second.subsliceValue().pastLast);
+    return overlapStart < overlapEnd;
+  }
+  // Indices may alias, dereferences may alias, and every mixed-kind pair
+  // (including Field vs Subslice) potentially overlaps.
+  return true;
+}
+
 bool samePlace(const mir::MirPlace& left, const mir::MirPlace& right) {
   if (left.local() != right.local() || left.rootType() != right.rootType() ||
       left.resultType() != right.resultType() ||
@@ -309,34 +337,6 @@ bool appendPlace(zc::Vector<mir::MirPlace>& paths, const mir::MirPlace& place) {
 
 zc::Maybe<MovePathKey> cloneKey(const MovePathKey& key) {
   return MovePathKey{key.owner, key.place.clone()};
-}
-
-bool placesConflict(const mir::MirPlace& first, const mir::MirPlace& second) {
-  if (first.local() != second.local()) return false;
-  const auto shared = zc::min(first.projections().size(), second.projections().size());
-  for (size_t index = 0; index < shared; ++index) {
-    const auto& firstProjection = first.projections()[index];
-    const auto& secondProjection = second.projections()[index];
-    if (sameProjection(firstProjection, secondProjection)) continue;
-    if (firstProjection.kind() == mir::MirProjectionKind::Field &&
-        secondProjection.kind() == mir::MirProjectionKind::Field) {
-      return false;
-    }
-    if (firstProjection.kind() == mir::MirProjectionKind::Downcast &&
-        secondProjection.kind() == mir::MirProjectionKind::Downcast) {
-      return false;
-    }
-    if (firstProjection.kind() == mir::MirProjectionKind::Subslice &&
-        secondProjection.kind() == mir::MirProjectionKind::Subslice) {
-      const auto& firstSlice = firstProjection.subsliceValue();
-      const auto& secondSlice = secondProjection.subsliceValue();
-      if (firstSlice.pastLast <= secondSlice.first || secondSlice.pastLast <= firstSlice.first) {
-        return false;
-      }
-    }
-    return true;
-  }
-  return true;
 }
 
 zc::Maybe<MovePathFunction> deriveFunction(const mir::MirFunction& function,
@@ -549,6 +549,20 @@ bool inputsMatch(const mir::VerifiedBuiltMir& builtMir,
 }
 
 }  // namespace
+
+bool placesConflict(const mir::MirPlace& first, const mir::MirPlace& second) noexcept {
+  if (first.local() != second.local()) return false;
+  const auto shared = zc::min(first.projections().size(), second.projections().size());
+  for (size_t index = 0; index < shared; ++index) {
+    const auto& firstProjection = first.projections()[index];
+    const auto& secondProjection = second.projections()[index];
+    if (sameProjection(firstProjection, secondProjection)) continue;
+    return projectionsConflict(firstProjection, secondProjection);
+  }
+  // One place is a projection prefix of the other, so the ancestor contains
+  // the descendant.
+  return true;
+}
 
 MovePathCandidate::MovePathCandidate(identity::SemanticContextBrand semanticContext,
                                      identity::ContextFingerprint&& contextFingerprint,
