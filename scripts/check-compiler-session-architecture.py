@@ -298,9 +298,9 @@ SESSION_SOURCE_MARKERS = (
     "zc::Vector<VerifiedPreparatoryCrateGraph> preparatoryCrateGraphs;",
     "const auto& fingerprint = checkerAuthority.fingerprint();",
     "graph_query::VerifiedModuleGraphInputTransaction::prepare(",
-    "authorityStagingSnapshot.get<graph_query::ModuleGraphQuery>(",
-    "authorityStagingSnapshot.get<graph_query::ModuleGraphSccQuery>(",
-    "snapshot.getCapability<module_graph_query::MaterializeModuleGraphQuery>(roots)",
+    "authorityStagingSnapshot.get<graph_query::ModuleGraph>(",
+    "authorityStagingSnapshot.get<graph_query::ModuleGraphScc>(",
+    "snapshot.getCapability<module_graph_query::MaterializeModuleGraph>(roots)",
     "finalSealedSnapshot = zc::mv(admitted).takeSnapshot();",
     "VerifiedPreparatoryCrateGraph::build(request, node, resolution, plan, completed)",
     "VerifiedPreparatoryCrateGraph::buildPlan(request, graph)",
@@ -557,21 +557,21 @@ def check_session_ownership(
         errors.append(f"{SESSION_SOURCE}: discovery scheduler must have exactly one request site")
     if "binder::VerifiedModuleGraphBuilder::build(" in source:
         errors.append(f"{SESSION_SOURCE}: session-owned module graph publication is forbidden")
-    if source.count("getCapability<module_graph_query::MaterializeModuleGraphQuery>") != 3:
+    if source.count("getCapability<module_graph_query::MaterializeModuleGraph>") != 3:
         errors.append(f"{SESSION_SOURCE}: sealed materialized graph demand is missing")
-    if source.count("getCapability<core_library_query::MaterializeCoreAuthorityQuery>") != 2:
+    if source.count("getCapability<core_library_query::MaterializeCoreAuthority>") != 2:
         errors.append(f"{SESSION_SOURCE}: final core authority demand is missing")
-    if source.count("FinalizeCoreModuleInterfaceQuery") != 2:
+    if source.count("FinalizeCoreModuleInterface") != 2:
         errors.append(f"{SESSION_SOURCE}: source-backed final core-interface demand is missing")
     for forbidden in (
-        "MaterializeCoreRoleSeedQuery",
-        "MaterializeCoreBootstrapModuleInterfaceQuery",
-        "CoreExportSurfaceQuery",
+        "MaterializeCoreRoleSeed",
+        "MaterializeCoreBootstrapModuleInterface",
+        "CoreExportSurface",
     ):
         if forbidden in source:
             errors.append(f"{SESSION_SOURCE}: bootstrap-only core query escapes finalization: {forbidden}")
     prelude_surface_preflight = (
-        "auto preludeSurface = finalSnapshot.get<core_library_query::CorePreludeSurfaceQuery>("
+        "auto preludeSurface = finalSnapshot.get<core_library_query::CorePreludeSurface>("
     )
     if prelude_surface_preflight not in source:
         errors.append(f"{SESSION_SOURCE}: source-backed core prelude-surface preflight is missing")
@@ -1132,7 +1132,7 @@ def run_self_test() -> int:
         lambda files: files.__setitem__(
             SESSION_SOURCE,
             files[SESSION_SOURCE].replace(
-                "snapshot.getCapability<module_graph_query::MaterializeModuleGraphQuery>",
+                "snapshot.getCapability<module_graph_query::MaterializeModuleGraph>",
                 "snapshot.getCapability<module_graph_query::RemovedModuleGraphQuery>",
                 1,
             ),
@@ -1145,7 +1145,7 @@ def run_self_test() -> int:
         lambda files: files.__setitem__(
             SESSION_SOURCE,
             files[SESSION_SOURCE].replace(
-                "getCapability<core_library_query::MaterializeCoreAuthorityQuery>",
+                "getCapability<core_library_query::MaterializeCoreAuthority>",
                 "getCapability<core_library_query::RemovedCoreAuthorityQuery>",
                 1,
             ),
@@ -1158,7 +1158,7 @@ def run_self_test() -> int:
         lambda files: files.__setitem__(
             SESSION_SOURCE,
             files[SESSION_SOURCE].replace(
-                "FinalizeCoreModuleInterfaceQuery", "RemovedFinalCoreModuleInterfaceQuery", 1
+                "FinalizeCoreModuleInterface", "RemovedFinalCoreModuleInterfaceQuery", 1
             ),
         ),
         "source-backed final core-interface demand is missing",
@@ -1169,8 +1169,8 @@ def run_self_test() -> int:
         lambda files: files.__setitem__(
             SESSION_SOURCE,
             files[SESSION_SOURCE].replace(
-                "FinalizeCoreModuleInterfaceQuery",
-                "FinalizeCoreModuleInterfaceQuery\nMaterializeCoreBootstrapModuleInterfaceQuery",
+                "FinalizeCoreModuleInterface",
+                "FinalizeCoreModuleInterface\nMaterializeCoreBootstrapModuleInterfaceQuery",
                 1,
             ),
         ),
@@ -1182,7 +1182,7 @@ def run_self_test() -> int:
         lambda files: files.__setitem__(
             SESSION_SOURCE,
             files[SESSION_SOURCE].replace(
-                "auto preludeSurface = finalSnapshot.get<core_library_query::CorePreludeSurfaceQuery>(",
+                "auto preludeSurface = finalSnapshot.get<core_library_query::CorePreludeSurface>(",
                 "auto preludeSurface = finalSnapshot.get<core_library_query::RemovedPreludeSurfaceQuery>(",
                 1,
             ),

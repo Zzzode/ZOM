@@ -115,7 +115,7 @@ private:
 };
 
 /// \brief Final-sealed retained dependency provenance for one selected module.
-struct ModuleDependencyProvenanceQuery final {
+struct ModuleDependencyProvenance final {
   using Key = identity::ModuleKey;
   using Capability = ModuleDependencyProvenanceMap;
   using FailureAlternatives =
@@ -123,7 +123,7 @@ struct ModuleDependencyProvenanceQuery final {
                                    query::KeyRejection<binder::BinderKeyFailure>>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "ModuleDependencyProvenanceQuery"_zcc,
+      "ModuleDependencyProvenance"_zcc,
       "zom.query.module-dependency-provenance"_zcc,
       query::RetentionClass::Retained,
       query::QueryCyclePolicy::Reject,
@@ -132,10 +132,10 @@ struct ModuleDependencyProvenanceQuery final {
       query::FinalFailureProjection::SourceOrKey};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static query::CapabilityProviderResult<ModuleDependencyProvenanceQuery> provide(
-      query::CapabilityQueryContext<ModuleDependencyProvenanceQuery>& context, const Key& key);
+  ZC_NODISCARD static query::CapabilityProviderResult<ModuleDependencyProvenance> provide(
+      query::CapabilityQueryContext<ModuleDependencyProvenance>& context, const Key& key);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verify(
-      query::CapabilityQueryContext<ModuleDependencyProvenanceQuery>& context, const Key& key,
+      query::CapabilityQueryContext<ModuleDependencyProvenance>& context, const Key& key,
       const Capability& candidate);
 };
 
@@ -144,21 +144,21 @@ struct ModuleDependencyProvenanceQuery final {
 namespace zomlang::compiler::query {
 
 template <>
-class CapabilityCandidateContract<driver::module_graph_query::ModuleDependencyProvenanceQuery>
+class CapabilityCandidateContract<driver::module_graph_query::ModuleDependencyProvenance>
     final {
 public:
-  using Descriptor = driver::module_graph_query::ModuleDependencyProvenanceQuery;
+  using Descriptor = driver::module_graph_query::ModuleDependencyProvenance;
   ZC_NODISCARD static StableWitnessBytes encode(const Descriptor::Capability& candidate);
   ZC_NODISCARD static zc::Maybe<zc::Own<Descriptor::Capability>> decode(
       zc::ArrayPtr<const uint8_t> bytes);
 };
 
 template <>
-class CapabilityFailureContract<driver::module_graph_query::ModuleDependencyProvenanceQuery,
+class CapabilityFailureContract<driver::module_graph_query::ModuleDependencyProvenance,
                                 SourceRejection<diagnostics::DiagnosticFact>>
     final {
 public:
-  using Descriptor = driver::module_graph_query::ModuleDependencyProvenanceQuery;
+  using Descriptor = driver::module_graph_query::ModuleDependencyProvenance;
   using Sequence = CanonicalNonEmptySequence<diagnostics::DiagnosticFact>;
   ZC_NODISCARD static zc::Array<uint8_t> encode(const Sequence& diagnostics);
   ZC_NODISCARD static zc::Maybe<Sequence> decode(zc::ArrayPtr<const uint8_t> bytes);
@@ -168,11 +168,11 @@ public:
 };
 
 template <>
-class CapabilityFailureContract<driver::module_graph_query::ModuleDependencyProvenanceQuery,
+class CapabilityFailureContract<driver::module_graph_query::ModuleDependencyProvenance,
                                 KeyRejection<binder::BinderKeyFailure>>
     final {
 public:
-  using Descriptor = driver::module_graph_query::ModuleDependencyProvenanceQuery;
+  using Descriptor = driver::module_graph_query::ModuleDependencyProvenance;
   ZC_NODISCARD static zc::Array<uint8_t> encode(const binder::BinderKeyFailure& failure);
   ZC_NODISCARD static zc::Maybe<binder::BinderKeyFailure> decode(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static CapabilityRejectionCheck verify(CapabilityQueryContext<Descriptor>& context,

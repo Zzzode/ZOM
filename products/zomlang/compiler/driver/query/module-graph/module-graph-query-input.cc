@@ -552,7 +552,7 @@ query::TypedQueryResult<ModuleDependencySetRecord> resolveDependencies(
   zc::Vector<identity::ModuleKey> dependencies(requests.requests().size());
   for (const auto& request : requests.requests()) {
     auto candidates =
-        context.get<incremental_module_resolution_query::ResolveModuleRequestQuery>(request);
+        context.get<incremental_module_resolution_query::ResolveModuleRequest>(request);
     if (candidates.isRuntimeFailure()) {
       return query::TypedQueryResult<ModuleDependencySetRecord>::runtimeFailure(
           candidates.runtimeFailure());
@@ -625,7 +625,7 @@ query::TypedQueryResult<ModuleDependencySetRecord> resolveVerifierDependencies(
   while (cursor < requests.requests().size()) {
     const auto& request = requests.requests()[cursor++];
     auto candidates =
-        context.get<incremental_module_resolution_query::ResolveModuleRequestQuery>(request);
+        context.get<incremental_module_resolution_query::ResolveModuleRequest>(request);
     if (candidates.isRuntimeFailure()) {
       return query::TypedQueryResult<ModuleDependencySetRecord>::runtimeFailure(
           candidates.runtimeFailure());
@@ -1797,8 +1797,8 @@ zc::Maybe<identity::Sha256Digest> computeFinalSnapshotSuccessWitness(
   auto identityWitness =
       snapshot.probeInput<ContextualIdentityAuthorityTransactionWitnessInput>(contextRoots);
   auto authority = snapshot.probeInput<CompleteCompilationContextAuthorityInput>(contextRoots);
-  auto graph = snapshot.get<ModuleGraphQuery>(contextRoots);
-  auto scc = snapshot.get<ModuleGraphSccQuery>(contextRoots);
+  auto graph = snapshot.get<ModuleGraph>(contextRoots);
+  auto scc = snapshot.get<ModuleGraphScc>(contextRoots);
   auto authorityMap =
       snapshot.probeInput<incremental_binding_query::ActiveDefinitionAuthorityReadyInput>(
           contextRoots);
@@ -1888,7 +1888,7 @@ zc::Maybe<identity::Sha256Digest> computeFinalSnapshotFailureWitness(
     return bytes;
   };
 
-  auto graph = snapshot.get<ModuleGraphQuery>(contextRoots);
+  auto graph = snapshot.get<ModuleGraph>(contextRoots);
   if (graph.isRuntimeFailure()) {
     auto payload = basePayload();
     auto failure = encodeRuntimeFailure(graph.runtimeFailure());
@@ -1909,7 +1909,7 @@ zc::Maybe<identity::Sha256Digest> computeFinalSnapshotFailureWitness(
   }
 
   auto graphBytes = graph.value().encodeCanonical();
-  auto scc = snapshot.get<ModuleGraphSccQuery>(contextRoots);
+  auto scc = snapshot.get<ModuleGraphScc>(contextRoots);
   if (scc.isRuntimeFailure()) {
     auto payload = basePayload();
     payload.encodeByteString(graphBytes.asPtr());
@@ -2637,23 +2637,23 @@ zc::Array<uint8_t> ModuleDependencyFailureRecord::encodeCanonical() const {
   return frame(kDependencyFailureDomain, payload.finish().asPtr());
 }
 
-zc::Array<uint8_t> SelectedModuleSourceQuery::encodeKey(const Key& key) { return key.encode(); }
+zc::Array<uint8_t> SelectedModuleSource::encodeKey(const Key& key) { return key.encode(); }
 
-zc::Maybe<SelectedModuleSourceQuery::Key> SelectedModuleSourceQuery::decodeKey(
+zc::Maybe<SelectedModuleSource::Key> SelectedModuleSource::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   return decodeModule(bytes);
 }
 
-zc::Array<uint8_t> SelectedModuleSourceQuery::encodeValue(const Value& value) {
+zc::Array<uint8_t> SelectedModuleSource::encodeValue(const Value& value) {
   return value.encode();
 }
 
-zc::Maybe<SelectedModuleSourceQuery::Value> SelectedModuleSourceQuery::decodeValue(
+zc::Maybe<SelectedModuleSource::Value> SelectedModuleSource::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return decodeSource(bytes);
 }
 
-query::TypedQueryResult<SelectedModuleSourceQuery::Value> SelectedModuleSourceQuery::provide(
+query::TypedQueryResult<SelectedModuleSource::Value> SelectedModuleSource::provide(
     query::QueryContext& context, const Key& key) {
   auto catalog = context.get<SelectedModuleCatalogInput>(key.crate());
   if (catalog.isRuntimeFailure()) {
@@ -2672,7 +2672,7 @@ query::TypedQueryResult<SelectedModuleSourceQuery::Value> SelectedModuleSourceQu
   return query::TypedQueryResult<Value>::absence();
 }
 
-bool SelectedModuleSourceQuery::verify(query::QueryContext& context, const Key& key,
+bool SelectedModuleSource::verify(query::QueryContext& context, const Key& key,
                                        const query::TypedQueryResult<Value>& result) {
   if (result.isRuntimeFailure()) { return false; }
   auto catalog = context.get<SelectedModuleCatalogInput>(key.crate());
@@ -2694,23 +2694,23 @@ bool SelectedModuleSourceQuery::verify(query::QueryContext& context, const Key& 
          sameSource(found->source(), result.value()) && result.value().belongsTo(key.crate());
 }
 
-zc::Array<uint8_t> ActiveModulesQuery::encodeKey(const Key& key) { return key.encode(); }
+zc::Array<uint8_t> ActiveModules::encodeKey(const Key& key) { return key.encode(); }
 
-zc::Maybe<ActiveModulesQuery::Key> ActiveModulesQuery::decodeKey(
+zc::Maybe<ActiveModules::Key> ActiveModules::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   return decodeCrate(bytes);
 }
 
-zc::Array<uint8_t> ActiveModulesQuery::encodeValue(const Value& value) {
+zc::Array<uint8_t> ActiveModules::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<ActiveModulesQuery::Value> ActiveModulesQuery::decodeValue(
+zc::Maybe<ActiveModules::Value> ActiveModules::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return ActiveModuleSetRecord::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<ActiveModulesQuery::Value> ActiveModulesQuery::provide(
+query::TypedQueryResult<ActiveModules::Value> ActiveModules::provide(
     query::QueryContext& context, const Key& key) {
   auto stable = incremental_binding_query::StableCrateQueryKey::fromVerified(key);
   if (stable == zc::none) {
@@ -2718,7 +2718,7 @@ query::TypedQueryResult<ActiveModulesQuery::Value> ActiveModulesQuery::provide(
         query::QueryRuntimeFailure::ProviderRejected);
   }
   auto sources =
-      context.get<incremental_binding_query::ActiveSourcesQuery>(ZC_ASSERT_NONNULL(stable));
+      context.get<incremental_binding_query::ActiveSources>(ZC_ASSERT_NONNULL(stable));
   if (sources.isRuntimeFailure()) {
     return query::TypedQueryResult<Value>::runtimeFailure(sources.runtimeFailure());
   }
@@ -2747,14 +2747,14 @@ query::TypedQueryResult<ActiveModulesQuery::Value> ActiveModulesQuery::provide(
   return query::TypedQueryResult<Value>::value(zc::mv(ZC_ASSERT_NONNULL(value)));
 }
 
-bool ActiveModulesQuery::verify(query::QueryContext& context, const Key& key,
+bool ActiveModules::verify(query::QueryContext& context, const Key& key,
                                 const query::TypedQueryResult<Value>& result) {
   if (result.isRuntimeFailure() || result.kind() != query::QueryValueKind::Value) { return false; }
   auto stable = incremental_binding_query::StableCrateQueryKey::fromVerified(key);
   if (stable == zc::none) { return false; }
   auto catalog = context.get<SelectedModuleCatalogInput>(key);
   auto sources =
-      context.get<incremental_binding_query::ActiveSourcesQuery>(ZC_ASSERT_NONNULL(stable));
+      context.get<incremental_binding_query::ActiveSources>(ZC_ASSERT_NONNULL(stable));
   if (catalog.isRuntimeFailure() || sources.isRuntimeFailure() ||
       catalog.kind() != query::QueryValueKind::Value ||
       sources.kind() != query::QueryValueKind::Value ||
@@ -2775,25 +2775,25 @@ bool ActiveModulesQuery::verify(query::QueryContext& context, const Key& key,
   return true;
 }
 
-zc::Array<uint8_t> ModuleDependencySitesQuery::encodeKey(const Key& key) { return key.encode(); }
+zc::Array<uint8_t> ModuleDependencySites::encodeKey(const Key& key) { return key.encode(); }
 
-zc::Maybe<ModuleDependencySitesQuery::Key> ModuleDependencySitesQuery::decodeKey(
+zc::Maybe<ModuleDependencySites::Key> ModuleDependencySites::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   return decodeModule(bytes);
 }
 
-zc::Array<uint8_t> ModuleDependencySitesQuery::encodeValue(const Value& value) {
+zc::Array<uint8_t> ModuleDependencySites::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<ModuleDependencySitesQuery::Value> ModuleDependencySitesQuery::decodeValue(
+zc::Maybe<ModuleDependencySites::Value> ModuleDependencySites::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return DetachedModuleDependencySiteSet::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<ModuleDependencySitesQuery::Value> ModuleDependencySitesQuery::provide(
+query::TypedQueryResult<ModuleDependencySites::Value> ModuleDependencySites::provide(
     query::QueryContext& context, const Key& key) {
-  auto selected = context.get<SelectedModuleSourceQuery>(key);
+  auto selected = context.get<SelectedModuleSource>(key);
   if (selected.isRuntimeFailure()) {
     return query::TypedQueryResult<Value>::runtimeFailure(selected.runtimeFailure());
   }
@@ -2827,10 +2827,10 @@ query::TypedQueryResult<ModuleDependencySitesQuery::Value> ModuleDependencySites
   return query::TypedQueryResult<Value>::value(sites.value().clone());
 }
 
-bool ModuleDependencySitesQuery::verify(query::QueryContext& context, const Key& key,
+bool ModuleDependencySites::verify(query::QueryContext& context, const Key& key,
                                         const query::TypedQueryResult<Value>& result) {
   if (result.isRuntimeFailure()) { return false; }
-  auto selected = context.get<SelectedModuleSourceQuery>(key);
+  auto selected = context.get<SelectedModuleSource>(key);
   if (selected.isRuntimeFailure()) { return false; }
   if (selected.kind() == query::QueryValueKind::Absence) {
     return result.kind() == query::QueryValueKind::Absence;
@@ -2852,25 +2852,25 @@ bool ModuleDependencySitesQuery::verify(query::QueryContext& context, const Key&
          result.value().encodeCanonical().asPtr() == input.value().encodeCanonical().asPtr();
 }
 
-zc::Array<uint8_t> ModuleDependencyRequestsQuery::encodeKey(const Key& key) { return key.encode(); }
+zc::Array<uint8_t> ModuleDependencyRequests::encodeKey(const Key& key) { return key.encode(); }
 
-zc::Maybe<ModuleDependencyRequestsQuery::Key> ModuleDependencyRequestsQuery::decodeKey(
+zc::Maybe<ModuleDependencyRequests::Key> ModuleDependencyRequests::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   return decodeModule(bytes);
 }
 
-zc::Array<uint8_t> ModuleDependencyRequestsQuery::encodeValue(const Value& value) {
+zc::Array<uint8_t> ModuleDependencyRequests::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<ModuleDependencyRequestsQuery::Value> ModuleDependencyRequestsQuery::decodeValue(
+zc::Maybe<ModuleDependencyRequests::Value> ModuleDependencyRequests::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return ModuleDependencyRequestSetRecord::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<ModuleDependencyRequestsQuery::Value>
-ModuleDependencyRequestsQuery::provide(query::QueryContext& context, const Key& key) {
-  auto sites = context.get<ModuleDependencySitesQuery>(key);
+query::TypedQueryResult<ModuleDependencyRequests::Value>
+ModuleDependencyRequests::provide(query::QueryContext& context, const Key& key) {
+  auto sites = context.get<ModuleDependencySites>(key);
   if (sites.isRuntimeFailure()) {
     return query::TypedQueryResult<Value>::runtimeFailure(sites.runtimeFailure());
   }
@@ -2889,10 +2889,10 @@ ModuleDependencyRequestsQuery::provide(query::QueryContext& context, const Key& 
   return query::TypedQueryResult<Value>::value(zc::mv(ZC_ASSERT_NONNULL(value)));
 }
 
-bool ModuleDependencyRequestsQuery::verify(query::QueryContext& context, const Key& key,
+bool ModuleDependencyRequests::verify(query::QueryContext& context, const Key& key,
                                            const query::TypedQueryResult<Value>& result) {
   if (result.isRuntimeFailure()) { return false; }
-  auto sites = context.get<ModuleDependencySitesQuery>(key);
+  auto sites = context.get<ModuleDependencySites>(key);
   if (sites.isRuntimeFailure()) { return false; }
   if (sites.kind() == query::QueryValueKind::Absence) {
     return result.kind() == query::QueryValueKind::Absence;
@@ -2906,25 +2906,25 @@ bool ModuleDependencyRequestsQuery::verify(query::QueryContext& context, const K
                                      result.value().encodeCanonical().asPtr();
 }
 
-zc::Array<uint8_t> ModuleDependenciesQuery::encodeKey(const Key& key) { return key.encode(); }
+zc::Array<uint8_t> ModuleDependencies::encodeKey(const Key& key) { return key.encode(); }
 
-zc::Maybe<ModuleDependenciesQuery::Key> ModuleDependenciesQuery::decodeKey(
+zc::Maybe<ModuleDependencies::Key> ModuleDependencies::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   return decodeModule(bytes);
 }
 
-zc::Array<uint8_t> ModuleDependenciesQuery::encodeValue(const Value& value) {
+zc::Array<uint8_t> ModuleDependencies::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<ModuleDependenciesQuery::Value> ModuleDependenciesQuery::decodeValue(
+zc::Maybe<ModuleDependencies::Value> ModuleDependencies::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return ModuleDependencySetRecord::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<ModuleDependenciesQuery::Value> ModuleDependenciesQuery::provide(
+query::TypedQueryResult<ModuleDependencies::Value> ModuleDependencies::provide(
     query::QueryContext& context, const Key& key) {
-  auto requests = context.get<ModuleDependencyRequestsQuery>(key);
+  auto requests = context.get<ModuleDependencyRequests>(key);
   if (requests.isRuntimeFailure()) {
     return query::TypedQueryResult<Value>::runtimeFailure(requests.runtimeFailure());
   }
@@ -2938,10 +2938,10 @@ query::TypedQueryResult<ModuleDependenciesQuery::Value> ModuleDependenciesQuery:
   return resolveDependencies(context, key, requests.value());
 }
 
-bool ModuleDependenciesQuery::verify(query::QueryContext& context, const Key& key,
+bool ModuleDependencies::verify(query::QueryContext& context, const Key& key,
                                      const query::TypedQueryResult<Value>& result) {
   if (result.isRuntimeFailure()) { return false; }
-  auto requests = context.get<ModuleDependencyRequestsQuery>(key);
+  auto requests = context.get<ModuleDependencyRequests>(key);
   if (requests.isRuntimeFailure()) { return false; }
   if (requests.kind() == query::QueryValueKind::Absence) {
     return result.kind() == query::QueryValueKind::Absence;
@@ -4151,16 +4151,16 @@ bool registerModuleGraphQueries(query::QueryDatabase& database) {
          database.registerDescriptor<CompleteCompilationContextAuthorityInput>().isRegistered() &&
          database.registerDescriptor<SelectedModuleCatalogInput>().isRegistered() &&
          database.registerDescriptor<ModuleDependencySiteInput>().isRegistered() &&
-         database.registerDescriptor<SelectedModuleSourceQuery>().isRegistered() &&
-         database.registerDescriptor<ActiveModulesQuery>().isRegistered() &&
-         database.registerDescriptor<ModuleDependencySitesQuery>().isRegistered() &&
-         database.registerDescriptor<ModuleDependencyRequestsQuery>().isRegistered() &&
-         database.registerDescriptor<ModuleDependencyProvenanceQuery>().isRegistered() &&
-         database.registerDescriptor<ModuleDependenciesQuery>().isRegistered() &&
-         database.registerDescriptor<MaterializeModuleGraphQuery>().isRegistered() &&
-         database.registerDescriptor<MaterializeModuleSkeletonQuery>().isRegistered() &&
-         database.registerDescriptor<MaterializeOwnerBodyQuery>().isRegistered() &&
-         database.registerDescriptor<VerifyBoundModuleQuery>().isRegistered();
+         database.registerDescriptor<SelectedModuleSource>().isRegistered() &&
+         database.registerDescriptor<ActiveModules>().isRegistered() &&
+         database.registerDescriptor<ModuleDependencySites>().isRegistered() &&
+         database.registerDescriptor<ModuleDependencyRequests>().isRegistered() &&
+         database.registerDescriptor<ModuleDependencyProvenance>().isRegistered() &&
+         database.registerDescriptor<ModuleDependencies>().isRegistered() &&
+         database.registerDescriptor<MaterializeModuleGraph>().isRegistered() &&
+         database.registerDescriptor<MaterializeModuleSkeleton>().isRegistered() &&
+         database.registerDescriptor<MaterializeOwnerBody>().isRegistered() &&
+         database.registerDescriptor<VerifyBoundModule>().isRegistered();
 }
 
 }  // namespace zomlang::compiler::driver::module_graph_query

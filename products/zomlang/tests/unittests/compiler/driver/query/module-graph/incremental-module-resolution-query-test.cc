@@ -180,7 +180,7 @@ ZC_TEST("Module search roots input preserves the toolchain core alternative") {
   ZC_EXPECT(ModuleSearchRootsInput::decodeValue(mutated.asPtr()) == zc::none);
 }
 
-ZC_TEST("ResolveModuleRequestQuery stages and demands exact candidates") {
+ZC_TEST("ResolveModuleRequest stages and demands exact candidates") {
   Fixture fixture;
   basic::ThreadPool scheduler(4);
   auto queries = database(scheduler);
@@ -192,7 +192,7 @@ ZC_TEST("ResolveModuleRequestQuery stages and demands exact candidates") {
   ZC_REQUIRE(stageModuleResolutionQueryInputs(transaction, fixture.resolver(), requests.asPtr()));
   ZC_REQUIRE(transaction.commit().isCommitted());
   auto snapshot = queries.snapshot();
-  auto candidates = snapshot.get<ResolveModuleRequestQuery>(requests[0].key());
+  auto candidates = snapshot.get<ResolveModuleRequest>(requests[0].key());
   ZC_REQUIRE(!candidates.isRuntimeFailure());
   ZC_REQUIRE(candidates.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(candidates.value().candidates().size() == 1);
@@ -200,16 +200,16 @@ ZC_TEST("ResolveModuleRequestQuery stages and demands exact candidates") {
             module("root"_zc, "child"_zc).encode().asPtr());
 }
 
-ZC_TEST("ResolveModuleRequestQuery fails closed when exact inputs are absent") {
+ZC_TEST("ResolveModuleRequest fails closed when exact inputs are absent") {
   Fixture fixture;
   basic::ThreadPool scheduler(2);
   auto queries = database(scheduler);
   auto request = fixture.request();
-  auto result = queries.snapshot().get<ResolveModuleRequestQuery>(request.key());
+  auto result = queries.snapshot().get<ResolveModuleRequest>(request.key());
   ZC_EXPECT(result.isRuntimeFailure());
 }
 
-ZC_TEST("ResolveModuleRequestQuery shields unrelated catalog bucket changes") {
+ZC_TEST("ResolveModuleRequest shields unrelated catalog bucket changes") {
   Fixture fixture;
   basic::ThreadPool scheduler(4);
   auto queries = database(scheduler);
@@ -221,8 +221,8 @@ ZC_TEST("ResolveModuleRequestQuery shields unrelated catalog bucket changes") {
   ZC_REQUIRE(stageModuleResolutionQueryInputs(transaction, fixture.resolver(), requests.asPtr()));
   ZC_REQUIRE(transaction.commit().isCommitted());
   auto first = queries.snapshot();
-  auto firstResult = first.get<ResolveModuleRequestQuery>(requests[0].key());
-  auto firstMetadata = first.metadata<ResolveModuleRequestQuery>(requests[0].key());
+  auto firstResult = first.get<ResolveModuleRequest>(requests[0].key());
+  auto firstMetadata = first.metadata<ResolveModuleRequest>(requests[0].key());
   ZC_REQUIRE(!firstResult.isRuntimeFailure());
   ZC_REQUIRE(firstMetadata != zc::none);
 
@@ -242,8 +242,8 @@ ZC_TEST("ResolveModuleRequestQuery shields unrelated catalog bucket changes") {
   ZC_REQUIRE(updateTransaction.commit().isCommitted());
 
   auto second = queries.snapshot();
-  auto secondResult = second.get<ResolveModuleRequestQuery>(requests[0].key());
-  auto secondMetadata = second.metadata<ResolveModuleRequestQuery>(requests[0].key());
+  auto secondResult = second.get<ResolveModuleRequest>(requests[0].key());
+  auto secondMetadata = second.metadata<ResolveModuleRequest>(requests[0].key());
   ZC_REQUIRE(!secondResult.isRuntimeFailure());
   ZC_REQUIRE(secondMetadata != zc::none);
   ZC_EXPECT(secondResult.value().encode().asPtr() == firstResult.value().encode().asPtr());

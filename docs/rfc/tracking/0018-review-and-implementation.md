@@ -547,7 +547,7 @@ RFC 0018 remains `IMPLEMENTING`.
 | Canonical record types | In progress | DefinitionIdentityRecord has a strict canonical decoder; ImplIdentityRecord retains complete canonical authority and exact domain-separated key derivation but requires RFC 0035's recursive header and record decoder before strict decode evidence is complete |
 | Definition and implementation identity | Complete | Independent AST producers and verifiers reconstruct complete records, owner chains, overload authority, duplicate-bound provenance, typed interner admission, and every production consumer on one path |
 | Stable and owner-local inventory split | In progress | Stable inventories contain eligible named definitions and implementations, while parameter, binding, anonymous-owner, and implementation-occurrence identities use separate domains; persistent named-inventory and revision-local provenance query projections remain |
-| Module resolution replacement | In progress | CompilerSession atomically stages exact ancestry, bucket, search-root, alias, and prelude inputs and demands ResolveModuleRequestQuery; direct batch resolution is deleted, while request derivation, site provenance, and reusable stale-input lifecycle remain to become tracked query families |
+| Module resolution replacement | In progress | CompilerSession atomically stages exact ancestry, bucket, search-root, alias, and prelude inputs and demands ResolveModuleRequest; direct batch resolution is deleted, while request derivation, site provenance, and reusable stale-input lifecycle remain to become tracked query families |
 | Landing | Blocked by implementation | Sanitizer, full tests, architecture gates, format, and differential evidence |
 
 ### 2026-07-19 Narrow Module Input Progress
@@ -564,7 +564,7 @@ admitted values and builds canonical module-key and catalog-bucket indexes.
 `stageModuleResolutionQueryInputs()` projects the exact requester ancestry,
 present and demand-specific absent buckets, per-crate search roots, dependency
 aliases, and configured preludes into one input transaction. `CompilerSession`
-then demands `ResolveModuleRequestQuery` for every semantic request and uses
+then demands `ResolveModuleRequest` for every semantic request and uses
 the resolver only to validate the query result and issue its revision-local
 receipt. The direct batch `StructuralModuleResolver::resolve()` authority is
 deleted.

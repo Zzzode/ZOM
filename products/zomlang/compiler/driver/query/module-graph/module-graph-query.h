@@ -141,12 +141,12 @@ private:
   zc::Vector<ModuleGraphSccComponent> componentValues;
 };
 
-struct ModuleGraphQuery final {
+struct ModuleGraph final {
   using Key = incremental_binding_query::CompilationRootSetQueryKey;
   using Value = ModuleGraphRecord;
 
   static constexpr query::SemanticDescriptorMetadata descriptor{
-      "ModuleGraphQuery"_zcc,
+      "ModuleGraph"_zcc,
       "zom.query.module-graph"_zcc,
       query::ReuseClass::Semantic,
       query::RetentionClass::Retained,
@@ -163,12 +163,12 @@ struct ModuleGraphQuery final {
                                   const query::TypedQueryResult<Value>& result);
 };
 
-struct ModuleGraphSccQuery final {
+struct ModuleGraphScc final {
   using Key = incremental_binding_query::CompilationRootSetQueryKey;
   using Value = ModuleGraphSccRecord;
 
   static constexpr query::SemanticDescriptorMetadata descriptor{
-      "ModuleGraphSccQuery"_zcc,
+      "ModuleGraphScc"_zcc,
       "zom.query.module-graph-scc"_zcc,
       query::ReuseClass::Semantic,
       query::RetentionClass::Retained,

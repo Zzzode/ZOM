@@ -157,7 +157,7 @@ The derived query family is:
 
 | Query | Key | Result |
 |---|---|---|
-| `SelectedModuleSourceQuery` | `ModuleKey` | optional `SourceFileKey` |
+| `SelectedModuleSource` | `ModuleKey` | optional `SourceFileKey` |
 | `ActiveModules` | `CrateKey` | canonical module sequence |
 | `ModuleDependencySites` | `ModuleKey` | detached dependency-site sequence |
 | `ModuleDependencyRequests` | `ModuleKey` | canonical stable request sequence |
@@ -165,7 +165,7 @@ The derived query family is:
 | `ModuleGraph` | `CompilationRootSetQueryKey` | stable graph result |
 | `ModuleGraphScc` | `CompilationRootSetQueryKey` | stable SCC result |
 
-`SelectedModuleSourceQuery` reads only the exact selected module catalog for
+`SelectedModuleSource` reads only the exact selected module catalog for
 the module's crate. `ActiveModules` reads the exact active crate and selected
 catalog. Dependency-site and request queries read the selected source,
 detached syntax, path configuration, aliases, and prelude configuration

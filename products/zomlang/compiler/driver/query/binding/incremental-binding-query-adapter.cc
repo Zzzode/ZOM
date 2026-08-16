@@ -648,25 +648,25 @@ zc::Maybe<UserPackageActiveSourcesInput::Value> UserPackageActiveSourcesInput::d
   return CanonicalSourceSet::decodeCanonical(bytes);
 }
 
-zc::Array<uint8_t> ActiveSourcesQuery::encodeKey(const Key& key) {
+zc::Array<uint8_t> ActiveSources::encodeKey(const Key& key) {
   return zc::heapArray<uint8_t>(key.canonicalCrateBytes());
 }
 
-zc::Maybe<ActiveSourcesQuery::Key> ActiveSourcesQuery::decodeKey(
+zc::Maybe<ActiveSources::Key> ActiveSources::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   return StableCrateQueryKey::decodeBounded(bytes);
 }
 
-zc::Array<uint8_t> ActiveSourcesQuery::encodeValue(const Value& value) {
+zc::Array<uint8_t> ActiveSources::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<ActiveSourcesQuery::Value> ActiveSourcesQuery::decodeValue(
+zc::Maybe<ActiveSources::Value> ActiveSources::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return CanonicalSourceSet::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<ActiveSourcesQuery::Value> ActiveSourcesQuery::provide(
+query::TypedQueryResult<ActiveSources::Value> ActiveSources::provide(
     query::QueryContext& context, const Key& key) {
   identity::CanonicalDecoder decoder(key.canonicalCrateBytes());
   auto crate = identity::CrateKey::decodeCanonical(decoder);
@@ -736,7 +736,7 @@ query::TypedQueryResult<ActiveSourcesQuery::Value> ActiveSourcesQuery::provide(
   return query::TypedQueryResult<Value>::value(zc::mv(ZC_ASSERT_NONNULL(result)));
 }
 
-bool ActiveSourcesQuery::verify(query::QueryContext& context, const Key& key,
+bool ActiveSources::verify(query::QueryContext& context, const Key& key,
                                 const query::TypedQueryResult<Value>& result) {
   if (result.isRuntimeFailure() || result.kind() != query::QueryValueKind::Value) { return false; }
   identity::CanonicalDecoder decoder(key.canonicalCrateBytes());
@@ -782,22 +782,22 @@ bool ActiveSourcesQuery::verify(query::QueryContext& context, const Key& key,
   return expected != zc::none && ZC_ASSERT_NONNULL(expected) == result.value();
 }
 
-zc::Array<uint8_t> ActiveCratesQuery::encodeKey(const Key& key) { return key.encodeCanonical(); }
+zc::Array<uint8_t> ActiveCrates::encodeKey(const Key& key) { return key.encodeCanonical(); }
 
-zc::Maybe<ActiveCratesQuery::Key> ActiveCratesQuery::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
+zc::Maybe<ActiveCrates::Key> ActiveCrates::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
   return CompilationRootSetQueryKey::decodeCanonical(bytes);
 }
 
-zc::Array<uint8_t> ActiveCratesQuery::encodeValue(const Value& value) {
+zc::Array<uint8_t> ActiveCrates::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<ActiveCratesQuery::Value> ActiveCratesQuery::decodeValue(
+zc::Maybe<ActiveCrates::Value> ActiveCrates::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return CanonicalCrateSet::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<ActiveCratesQuery::Value> ActiveCratesQuery::provide(
+query::TypedQueryResult<ActiveCrates::Value> ActiveCrates::provide(
     query::QueryContext& context, const Key& key) {
   zc::Vector<StablePackageQueryKey> packageRoots;
   zc::Vector<StableCrateQueryKey> crates;
@@ -861,7 +861,7 @@ query::TypedQueryResult<ActiveCratesQuery::Value> ActiveCratesQuery::provide(
   return query::TypedQueryResult<Value>::value(zc::mv(ZC_ASSERT_NONNULL(result)));
 }
 
-bool ActiveCratesQuery::verify(query::QueryContext& context, const Key& key,
+bool ActiveCrates::verify(query::QueryContext& context, const Key& key,
                                const query::TypedQueryResult<Value>& result) {
   if (result.isRuntimeFailure() || result.kind() != query::QueryValueKind::Value) { return false; }
 
@@ -918,10 +918,10 @@ bool registerIncrementalBindingQueryAdapter(query::QueryDatabase& database) {
   if (!database.registerDescriptor<UserPackageActiveSourcesInput>().isRegistered()) {
     return false;
   }
-  if (!database.registerDescriptor<ActiveSourcesQuery>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<ActiveSources>().isRegistered()) { return false; }
   if (!identity::source_query::registerSourceQueryInputs(database)) { return false; }
   if (!parser::registerParseSourceQuery(database)) { return false; }
-  if (!database.registerDescriptor<ActiveCratesQuery>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<ActiveCrates>().isRegistered()) { return false; }
   if (!registerActiveIdentityMembershipQueries(database)) { return false; }
   if (!database.registerDescriptor<IdentitySyntaxSiteInventoryQuery>().isRegistered()) {
     return false;

@@ -183,12 +183,12 @@ struct ConfiguredPreludeInput final {
 };
 
 /// \brief Semantic module-resolution query over exact fine-grained projections.
-struct ResolveModuleRequestQuery final {
+struct ResolveModuleRequest final {
   using Key = identity::ModuleResolutionKey;
   using Value = identity::ModuleResolutionCandidates;
 
   static constexpr query::SemanticDescriptorMetadata descriptor{
-      "ResolveModuleRequestQuery"_zcc,
+      "ResolveModuleRequest"_zcc,
       "zom.query.resolve-module-request"_zcc,
       query::ReuseClass::Semantic,
       query::RetentionClass::Retained,

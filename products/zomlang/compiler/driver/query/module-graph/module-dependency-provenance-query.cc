@@ -318,27 +318,27 @@ zc::Maybe<binder::BinderKeyFailure> missingSourceFailure(const identity::ModuleK
 }
 
 template <typename SourceDescriptor>
-query::CapabilityProviderResult<ModuleDependencyProvenanceQuery> forwardSourceRejection(
+query::CapabilityProviderResult<ModuleDependencyProvenance> forwardSourceRejection(
     const query::CapabilityDemandResult<SourceDescriptor>& source) {
   using SourceContract =
       query::CapabilityFailureContract<SourceDescriptor,
                                        query::SourceRejection<diagnostics::DiagnosticFact>>;
   using TargetContract =
-      query::CapabilityFailureContract<ModuleDependencyProvenanceQuery,
+      query::CapabilityFailureContract<ModuleDependencyProvenance,
                                        query::SourceRejection<diagnostics::DiagnosticFact>>;
   auto decoded = TargetContract::decode(SourceContract::encode(source.diagnostics()).asPtr());
   if (decoded == zc::none) {
-    return query::CapabilityProviderResult<ModuleDependencyProvenanceQuery>::runtimeRejected(
+    return query::CapabilityProviderResult<ModuleDependencyProvenance>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  return query::CapabilityProviderResult<ModuleDependencyProvenanceQuery>::sourceRejected<
+  return query::CapabilityProviderResult<ModuleDependencyProvenance>::sourceRejected<
       diagnostics::DiagnosticFact>(zc::mv(ZC_ASSERT_NONNULL(decoded)));
 }
 
 query::CapabilityRejectionCheck verifySourceRejection(
-    query::CapabilityQueryContext<ModuleDependencyProvenanceQuery>& context,
+    query::CapabilityQueryContext<ModuleDependencyProvenance>& context,
     const identity::ModuleKey& key, zc::ArrayPtr<const diagnostics::DiagnosticFact> diagnostics) {
-  auto selected = context.get<SelectedModuleSourceQuery>(key);
+  auto selected = context.get<SelectedModuleSource>(key);
   if (selected.isRuntimeFailure() || selected.kind() != query::QueryValueKind::Value) {
     return query::CapabilityRejectionCheck::Rejected;
   }
@@ -355,9 +355,9 @@ query::CapabilityRejectionCheck verifySourceRejection(
 }
 
 query::CapabilityRejectionCheck verifyKeyRejection(
-    query::CapabilityQueryContext<ModuleDependencyProvenanceQuery>& context,
+    query::CapabilityQueryContext<ModuleDependencyProvenance>& context,
     const identity::ModuleKey& key, const binder::BinderKeyFailure& failure) {
-  auto selected = context.get<SelectedModuleSourceQuery>(key);
+  auto selected = context.get<SelectedModuleSource>(key);
   if (selected.isRuntimeFailure() || selected.kind() != query::QueryValueKind::Absence) {
     return query::CapabilityRejectionCheck::Rejected;
   }
@@ -548,11 +548,11 @@ bool ModuleDependencyProvenanceMap::sameAs(const ModuleDependencyProvenanceMap& 
   return true;
 }
 
-zc::Array<uint8_t> ModuleDependencyProvenanceQuery::encodeKey(const Key& key) {
+zc::Array<uint8_t> ModuleDependencyProvenance::encodeKey(const Key& key) {
   return key.encode();
 }
 
-zc::Maybe<ModuleDependencyProvenanceQuery::Key> ModuleDependencyProvenanceQuery::decodeKey(
+zc::Maybe<ModuleDependencyProvenance::Key> ModuleDependencyProvenance::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   if (bytes.size() == 0 || bytes.size() > kMaximumModuleKeyBytes) { return zc::none; }
   identity::CanonicalDecoder decoder(bytes);
@@ -563,77 +563,77 @@ zc::Maybe<ModuleDependencyProvenanceQuery::Key> ModuleDependencyProvenanceQuery:
   return zc::mv(ZC_ASSERT_NONNULL(key));
 }
 
-query::CapabilityProviderResult<ModuleDependencyProvenanceQuery>
-ModuleDependencyProvenanceQuery::provide(
-    query::CapabilityQueryContext<ModuleDependencyProvenanceQuery>& context, const Key& key) {
-  auto selected = context.get<SelectedModuleSourceQuery>(key);
+query::CapabilityProviderResult<ModuleDependencyProvenance>
+ModuleDependencyProvenance::provide(
+    query::CapabilityQueryContext<ModuleDependencyProvenance>& context, const Key& key) {
+  auto selected = context.get<SelectedModuleSource>(key);
   if (selected.isRuntimeFailure()) {
-    return query::CapabilityProviderResult<ModuleDependencyProvenanceQuery>::runtimeRejected(
+    return query::CapabilityProviderResult<ModuleDependencyProvenance>::runtimeRejected(
         selected.runtimeFailure());
   }
   if (selected.kind() == query::QueryValueKind::Absence) {
     auto failure = missingSourceFailure(key);
     if (failure == zc::none) {
-      return query::CapabilityProviderResult<ModuleDependencyProvenanceQuery>::runtimeRejected(
+      return query::CapabilityProviderResult<ModuleDependencyProvenance>::runtimeRejected(
           query::QueryRuntimeFailure::InvariantViolation);
     }
-    return query::CapabilityProviderResult<ModuleDependencyProvenanceQuery>::keyRejected<
+    return query::CapabilityProviderResult<ModuleDependencyProvenance>::keyRejected<
         binder::BinderKeyFailure>(zc::mv(ZC_ASSERT_NONNULL(failure)));
   }
   if (selected.kind() != query::QueryValueKind::Value) {
-    return query::CapabilityProviderResult<ModuleDependencyProvenanceQuery>::runtimeRejected(
+    return query::CapabilityProviderResult<ModuleDependencyProvenance>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  auto sites = context.get<ModuleDependencySitesQuery>(key);
-  auto requests = context.get<ModuleDependencyRequestsQuery>(key);
+  auto sites = context.get<ModuleDependencySites>(key);
+  auto requests = context.get<ModuleDependencyRequests>(key);
   if (sites.isRuntimeFailure() || requests.isRuntimeFailure()) {
-    return query::CapabilityProviderResult<ModuleDependencyProvenanceQuery>::runtimeRejected(
+    return query::CapabilityProviderResult<ModuleDependencyProvenance>::runtimeRejected(
         sites.isRuntimeFailure() ? sites.runtimeFailure() : requests.runtimeFailure());
   }
   if (sites.kind() != query::QueryValueKind::Value ||
       requests.kind() != query::QueryValueKind::Value) {
-    return query::CapabilityProviderResult<ModuleDependencyProvenanceQuery>::runtimeRejected(
+    return query::CapabilityProviderResult<ModuleDependencyProvenance>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   auto sourceKey = identity::source_query::StableSourceQueryKey::fromVerified(selected.value());
   if (sourceKey == zc::none) {
-    return query::CapabilityProviderResult<ModuleDependencyProvenanceQuery>::runtimeRejected(
+    return query::CapabilityProviderResult<ModuleDependencyProvenance>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   auto parse = context.getCapability<parser::ParseSourceQuery>(ZC_ASSERT_NONNULL(sourceKey));
   if (parse.isRuntimeRejected()) {
-    return query::CapabilityProviderResult<ModuleDependencyProvenanceQuery>::runtimeRejected(
+    return query::CapabilityProviderResult<ModuleDependencyProvenance>::runtimeRejected(
         parse.runtimeFailure());
   }
   if (parse.isSourceRejected()) { return forwardSourceRejection(parse); }
   if (!parse.isPublished()) {
-    return query::CapabilityProviderResult<ModuleDependencyProvenanceQuery>::runtimeRejected(
+    return query::CapabilityProviderResult<ModuleDependencyProvenance>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   auto parsed = binder::CanonicalParsedModule::fromQueryResult(parse.lease().capability().clone());
   if (parsed == zc::none) {
-    return query::CapabilityProviderResult<ModuleDependencyProvenanceQuery>::runtimeRejected(
+    return query::CapabilityProviderResult<ModuleDependencyProvenance>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   auto candidate =
       buildProviderCandidate(key, ZC_ASSERT_NONNULL(parsed), sites.value(), requests.value());
   if (candidate == zc::none) {
-    return query::CapabilityProviderResult<ModuleDependencyProvenanceQuery>::runtimeRejected(
+    return query::CapabilityProviderResult<ModuleDependencyProvenance>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   auto owned = zc::heap<Capability>(zc::mv(ZC_ASSERT_NONNULL(candidate)));
   auto witness =
-      query::CapabilityCandidateContract<ModuleDependencyProvenanceQuery>::encode(*owned);
-  return query::CapabilityProviderResult<ModuleDependencyProvenanceQuery>::candidate(
+      query::CapabilityCandidateContract<ModuleDependencyProvenance>::encode(*owned);
+  return query::CapabilityProviderResult<ModuleDependencyProvenance>::candidate(
       zc::mv(owned), zc::mv(witness));
 }
 
-zc::Maybe<zc::Array<uint8_t>> ModuleDependencyProvenanceQuery::verify(
-    query::CapabilityQueryContext<ModuleDependencyProvenanceQuery>& context, const Key& key,
+zc::Maybe<zc::Array<uint8_t>> ModuleDependencyProvenance::verify(
+    query::CapabilityQueryContext<ModuleDependencyProvenance>& context, const Key& key,
     const Capability& candidate) {
-  auto selected = context.get<SelectedModuleSourceQuery>(key);
-  auto sites = context.get<ModuleDependencySitesQuery>(key);
-  auto requests = context.get<ModuleDependencyRequestsQuery>(key);
+  auto selected = context.get<SelectedModuleSource>(key);
+  auto sites = context.get<ModuleDependencySites>(key);
+  auto requests = context.get<ModuleDependencyRequests>(key);
   if (selected.isRuntimeFailure() || sites.isRuntimeFailure() || requests.isRuntimeFailure() ||
       selected.kind() != query::QueryValueKind::Value ||
       sites.kind() != query::QueryValueKind::Value ||
@@ -654,7 +654,7 @@ zc::Maybe<zc::Array<uint8_t>> ModuleDependencyProvenanceQuery::verify(
 namespace zomlang::compiler::query {
 
 using ModuleDependencyProvenanceDescriptor =
-    driver::module_graph_query::ModuleDependencyProvenanceQuery;
+    driver::module_graph_query::ModuleDependencyProvenance;
 
 StableWitnessBytes CapabilityCandidateContract<ModuleDependencyProvenanceDescriptor>::encode(
     const ModuleDependencyProvenanceDescriptor::Capability& candidate) {
@@ -716,10 +716,10 @@ namespace {
 
 #define ZOM_R28_16A_SELECT_R28_16A(name, capabilityType)                                         \
   static_assert(                                                                                 \
-      zc::isSameType<zomlang::compiler::driver::module_graph_query::name##Query::Capability,     \
+      zc::isSameType<zomlang::compiler::driver::module_graph_query::name::Capability,     \
                      zomlang::compiler::driver::module_graph_query::capabilityType>());          \
   static_assert(zc::isSameType<                                                                  \
-                zomlang::compiler::driver::module_graph_query::name##Query::FailureAlternatives, \
+                zomlang::compiler::driver::module_graph_query::name::FailureAlternatives, \
                 zomlang::compiler::query::CapabilityFailureList<                                 \
                     zomlang::compiler::query::SourceRejection<                                   \
                         zomlang::compiler::diagnostics::DiagnosticFact>,                         \

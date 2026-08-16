@@ -428,8 +428,8 @@ bool ContextualIdentityAuthorityInputVerifier::verify(
   auto encoded = candidate.encodeCanonical();
   auto decoded = ContextualIdentityAuthorityInputPayload::decodeCanonical(encoded.asPtr());
   auto graph =
-      authorityStagingSnapshot.get<module_graph_query::ModuleGraphQuery>(candidate.contextRoots());
-  auto scc = authorityStagingSnapshot.get<module_graph_query::ModuleGraphSccQuery>(
+      authorityStagingSnapshot.get<module_graph_query::ModuleGraph>(candidate.contextRoots());
+  auto scc = authorityStagingSnapshot.get<module_graph_query::ModuleGraphScc>(
       candidate.contextRoots());
   if (decoded == zc::none || ZC_ASSERT_NONNULL(decoded) != candidate || graph.isRuntimeFailure() ||
       scc.isRuntimeFailure() || graph.kind() != query::QueryValueKind::Value ||
@@ -575,8 +575,8 @@ ContextualIdentityAuthorityInputTransaction::prepare(
     const CompilationRootSetQueryKey& contextRoots,
     const ContextualIdentityAuthorityInputLedger& priorLedger) {
   if (authorityStagingSnapshot.revision() != expectedPreviousRevision) { return zc::none; }
-  auto graph = authorityStagingSnapshot.get<module_graph_query::ModuleGraphQuery>(contextRoots);
-  auto scc = authorityStagingSnapshot.get<module_graph_query::ModuleGraphSccQuery>(contextRoots);
+  auto graph = authorityStagingSnapshot.get<module_graph_query::ModuleGraph>(contextRoots);
+  auto scc = authorityStagingSnapshot.get<module_graph_query::ModuleGraphScc>(contextRoots);
   if (graph.isRuntimeFailure() || scc.isRuntimeFailure() ||
       graph.kind() != query::QueryValueKind::Value || scc.kind() != query::QueryValueKind::Value ||
       graph.value().modules().size() == 0 || scc.value().hasCycle(graph.value())) {
@@ -611,7 +611,7 @@ ContextualIdentityAuthorityInputTransaction::prepare(
     auto implementationSites =
         projectImplementationSites(admitted, implementationInventory.value());
     auto selectedSource =
-        authorityStagingSnapshot.get<module_graph_query::SelectedModuleSourceQuery>(module);
+        authorityStagingSnapshot.get<module_graph_query::SelectedModuleSource>(module);
     if (definitionSites == zc::none || implementationSites == zc::none ||
         selectedSource.isRuntimeFailure() ||
         selectedSource.kind() != query::QueryValueKind::Value) {

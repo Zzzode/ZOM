@@ -492,13 +492,13 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
         (
             session,
             DRIVER_AUTHORITY_SESSION,
-            "authorityStagingSnapshot.get<module_graph_query::ModuleGraphQuery>",
+            "authorityStagingSnapshot.get<module_graph_query::ModuleGraph>",
             "complete stable graph reconstruction",
         ),
         (
             session,
             DRIVER_AUTHORITY_SESSION,
-            "authorityStagingSnapshot.get<module_graph_query::ModuleGraphSccQuery>",
+            "authorityStagingSnapshot.get<module_graph_query::ModuleGraphScc>",
             "stable graph SCC closure comparison",
         ),
         (
@@ -685,13 +685,13 @@ def check_active_identity_materialization(files: dict[Path, str], errors: list[s
         (
             materialized_graph,
             DRIVER_MATERIALIZED_MODULE_GRAPH,
-            "MaterializeModuleGraphQuery::provide(",
+            "MaterializeModuleGraph::provide(",
             "materialized graph provider",
         ),
         (
             materialized_graph,
             DRIVER_MATERIALIZED_MODULE_GRAPH,
-            "MaterializeModuleGraphQuery::verify(",
+            "MaterializeModuleGraph::verify(",
             "independent materialized graph verifier",
         ),
         (
@@ -715,7 +715,7 @@ def check_active_identity_materialization(files: dict[Path, str], errors: list[s
         (
             graph_input,
             DRIVER_MODULE_GRAPH_INPUT,
-            "registerDescriptor<MaterializeModuleGraphQuery>()",
+            "registerDescriptor<MaterializeModuleGraph>()",
             "materialized graph registration",
         ),
         (
@@ -727,7 +727,7 @@ def check_active_identity_materialization(files: dict[Path, str], errors: list[s
         (
             test,
             DRIVER_AUTHORITY_SESSION_TEST,
-            "sealed.getCapability<graph_query::MaterializeModuleGraphQuery>(roots)",
+            "sealed.getCapability<graph_query::MaterializeModuleGraph>(roots)",
             "production materialized graph capability demand",
         ),
     ):
@@ -886,7 +886,7 @@ def check_owner_body_projection(files: dict[Path, str], errors: list[str]) -> No
         "ParseSourceQuery",
         "SelectedModuleSourceInput",
         "UserPackageActiveSourcesInput",
-        "ActiveSourcesQuery",
+        "ActiveSources",
         "CompilerSession",
         "identityRegistries",
         "moduleGraph",
@@ -958,15 +958,15 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
         ),
         ("stagedCompilationRoots", "complete stable root key"),
         (
-            "authorityStagingSnapshot.get<graph_query::ModuleGraphQuery>",
+            "authorityStagingSnapshot.get<graph_query::ModuleGraph>",
             "staging graph demand",
         ),
         (
-            "authorityStagingSnapshot.get<graph_query::ModuleGraphSccQuery>",
+            "authorityStagingSnapshot.get<graph_query::ModuleGraphScc>",
             "staging SCC demand",
         ),
         (
-            "getCapability<module_graph_query::MaterializeModuleGraphQuery>",
+            "getCapability<module_graph_query::MaterializeModuleGraph>",
             "sealed graph materialization",
         ),
         ("checkerFactIndexByModule", "checker module index"),
@@ -985,19 +985,19 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
         ("authority.coreInputs.projections()", "verified core projection enumeration"),
         ("registerDescriptor<SelectedModuleCatalogInput>()", "catalog input registration"),
         ("registerDescriptor<ModuleDependencySiteInput>()", "dependency site input registration"),
-        ("registerDescriptor<SelectedModuleSourceQuery>()", "selected source registration"),
-        ("registerDescriptor<ActiveModulesQuery>()", "active modules registration"),
+        ("registerDescriptor<SelectedModuleSource>()", "selected source registration"),
+        ("registerDescriptor<ActiveModules>()", "active modules registration"),
         (
-            "registerDescriptor<ModuleDependencyRequestsQuery>()",
+            "registerDescriptor<ModuleDependencyRequests>()",
             "dependency request registration",
         ),
-        ("registerDescriptor<ModuleDependenciesQuery>()", "dependency registration"),
-        ("SelectedModuleSourceQuery::provide(", "selected source provider"),
-        ("SelectedModuleSourceQuery::verify(", "selected source verifier"),
-        ("ActiveModulesQuery::provide(", "active modules provider"),
-        ("ActiveModulesQuery::verify(", "active modules verifier"),
-        ("ModuleDependenciesQuery::provide(", "module dependencies provider"),
-        ("ModuleDependenciesQuery::verify(", "module dependencies verifier"),
+        ("registerDescriptor<ModuleDependencies>()", "dependency registration"),
+        ("SelectedModuleSource::provide(", "selected source provider"),
+        ("SelectedModuleSource::verify(", "selected source verifier"),
+        ("ActiveModules::provide(", "active modules provider"),
+        ("ActiveModules::verify(", "active modules verifier"),
+        ("ModuleDependencies::provide(", "module dependencies provider"),
+        ("ModuleDependencies::verify(", "module dependencies verifier"),
         ("rebuildVerifierRequests(", "independent dependency request reconstruction"),
         ("resolveVerifierDependencies(", "independent dependency resolution"),
     ):
@@ -1005,14 +1005,14 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
             errors.append(f"{DRIVER_MODULE_GRAPH_INPUT}: missing {description}: {marker}")
 
     for marker, description in (
-        ("ModuleGraphQuery::provide(", "stable graph provider"),
-        ("ModuleGraphQuery::verify(", "independent stable graph verifier"),
+        ("ModuleGraph::provide(", "stable graph provider"),
+        ("ModuleGraph::verify(", "independent stable graph verifier"),
         ("evaluateVerifierGraph(", "independent stable graph reconstruction"),
-        ("ModuleGraphSccQuery::provide(", "Tarjan SCC provider"),
-        ("ModuleGraphSccQuery::verify(", "Kosaraju SCC verifier"),
+        ("ModuleGraphScc::provide(", "Tarjan SCC provider"),
+        ("ModuleGraphScc::verify(", "Kosaraju SCC verifier"),
         ("verifierOrderComponents(", "independent SCC ordering"),
-        ("registerDescriptor<ModuleGraphQuery>()", "stable graph registration"),
-        ("registerDescriptor<ModuleGraphSccQuery>()", "stable SCC registration"),
+        ("registerDescriptor<ModuleGraph>()", "stable graph registration"),
+        ("registerDescriptor<ModuleGraphScc>()", "stable SCC registration"),
     ):
         if marker not in graph_query:
             errors.append(f"{DRIVER_MODULE_GRAPH_QUERY}: missing {description}: {marker}")
@@ -1038,14 +1038,14 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
 
     for marker, description in (
         ("stageModuleResolutionQueryInputs(", "resolver input staging"),
-        ("registerDescriptor<ResolveModuleRequestQuery>()", "resolution query registration"),
+        ("registerDescriptor<ResolveModuleRequest>()", "resolution query registration"),
     ):
         if marker not in resolution_query:
             errors.append(f"{DRIVER_MODULE_RESOLUTION_QUERY}: missing {description}: {marker}")
 
     for marker, description in (
-        ("registerDescriptor<ActiveCratesQuery>()", "active crates registration"),
-        ("registerDescriptor<ActiveSourcesQuery>()", "active sources registration"),
+        ("registerDescriptor<ActiveCrates>()", "active crates registration"),
+        ("registerDescriptor<ActiveSources>()", "active sources registration"),
         ("registerDescriptor<NamedDefinitionInventoryQuery>()", "named definition registration"),
         ("registerDescriptor<ModuleBodySyntaxQuery>()", "module body registration"),
     ):
@@ -1211,7 +1211,7 @@ def self_test() -> list[str]:
         ),
         (
             DRIVER_SESSION,
-            "getCapability<module_graph_query::MaterializeModuleGraphQuery>",
+            "getCapability<module_graph_query::MaterializeModuleGraph>",
             "sealed graph materialization",
         ),
         (
@@ -1221,7 +1221,7 @@ def self_test() -> list[str]:
         ),
         (
             DRIVER_MODULE_GRAPH_INPUT,
-            "SelectedModuleSourceQuery::verify(",
+            "SelectedModuleSource::verify(",
             "selected source verifier",
         ),
         (
@@ -1246,12 +1246,12 @@ def self_test() -> list[str]:
         ),
         (
             DRIVER_MODULE_GRAPH_INPUT,
-            "ModuleDependenciesQuery::verify(",
+            "ModuleDependencies::verify(",
             "module dependencies verifier",
         ),
         (
             DRIVER_MODULE_GRAPH_QUERY,
-            "ModuleGraphQuery::verify(",
+            "ModuleGraph::verify(",
             "independent stable graph verifier",
         ),
         (
@@ -1261,7 +1261,7 @@ def self_test() -> list[str]:
         ),
         (
             DRIVER_MODULE_GRAPH_QUERY,
-            "ModuleGraphSccQuery::verify(",
+            "ModuleGraphScc::verify(",
             "Kosaraju SCC verifier",
         ),
         (
@@ -1281,12 +1281,12 @@ def self_test() -> list[str]:
         ),
         (
             DRIVER_MATERIALIZED_MODULE_GRAPH,
-            "MaterializeModuleGraphQuery::provide(",
+            "MaterializeModuleGraph::provide(",
             "materialized graph provider",
         ),
         (
             DRIVER_MATERIALIZED_MODULE_GRAPH,
-            "MaterializeModuleGraphQuery::verify(",
+            "MaterializeModuleGraph::verify(",
             "independent materialized graph verifier",
         ),
         (

@@ -736,12 +736,12 @@ query::QueryDatabase database(basic::ThreadPool& scheduler) {
   ZC_REQUIRE(result.registerDescriptor<incremental_binding_query::UserPackageActiveSourcesInput>()
                  .isRegistered());
   ZC_REQUIRE(
-      result.registerDescriptor<incremental_binding_query::ActiveSourcesQuery>().isRegistered());
+      result.registerDescriptor<incremental_binding_query::ActiveSources>().isRegistered());
   ZC_REQUIRE(
       result.registerDescriptor<identity::source_query::SourceSnapshotInput>().isRegistered());
   ZC_REQUIRE(core_library_query::registerCoreLibraryQueryProvider(result));
   ZC_REQUIRE(
-      result.registerDescriptor<incremental_binding_query::ActiveCratesQuery>().isRegistered());
+      result.registerDescriptor<incremental_binding_query::ActiveCrates>().isRegistered());
   ZC_REQUIRE(registerStableModuleGraphQueries(result));
   return result;
 }
@@ -872,7 +872,7 @@ ZC_TEST("Detached dependency sites reject duplicate stable ordinals") {
 ZC_TEST("Module graph registration installs final dependency provenance") {
   basic::ThreadPool scheduler(2);
   auto queries = database(scheduler);
-  auto result = queries.snapshot().getCapability<ModuleDependencyProvenanceQuery>(
+  auto result = queries.snapshot().getCapability<ModuleDependencyProvenance>(
       tests::test_identity_detail::module());
   ZC_REQUIRE(result.isRuntimeRejected());
   ZC_EXPECT(result.runtimeFailure() == query::QueryRuntimeFailure::FinalSealRequired);
@@ -992,30 +992,30 @@ ZC_TEST("Derived module queries project the sole catalog through prelude resolut
   ZC_REQUIRE(sourceTransaction.commit().isCommitted());
 
   auto snapshot = queries.snapshot();
-  auto selected = snapshot.get<SelectedModuleSourceQuery>(userModule);
+  auto selected = snapshot.get<SelectedModuleSource>(userModule);
   ZC_REQUIRE(!selected.isRuntimeFailure());
   ZC_REQUIRE(selected.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(selected.value().sameAs(userSource));
 
-  auto active = snapshot.get<ActiveModulesQuery>(userCrate);
+  auto active = snapshot.get<ActiveModules>(userCrate);
   ZC_REQUIRE(!active.isRuntimeFailure());
   ZC_REQUIRE(active.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(active.value().modules().size() == 1);
   ZC_EXPECT(active.value().modules()[0].encode().asPtr() == userModule.encode().asPtr());
 
-  auto sites = snapshot.get<ModuleDependencySitesQuery>(userModule);
+  auto sites = snapshot.get<ModuleDependencySites>(userModule);
   ZC_REQUIRE(!sites.isRuntimeFailure());
   ZC_REQUIRE(sites.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(sites.value().sites().size() == 0);
 
-  auto requests = snapshot.get<ModuleDependencyRequestsQuery>(userModule);
+  auto requests = snapshot.get<ModuleDependencyRequests>(userModule);
   ZC_REQUIRE(!requests.isRuntimeFailure());
   ZC_REQUIRE(requests.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(requests.value().requests().size() == 1);
   ZC_EXPECT(requests.value().requests()[0].dependencyKind() ==
             identity::ModuleDependencyKind::Prelude);
 
-  auto dependencies = snapshot.get<ModuleDependenciesQuery>(userModule);
+  auto dependencies = snapshot.get<ModuleDependencies>(userModule);
   ZC_REQUIRE(!dependencies.isRuntimeFailure());
   ZC_REQUIRE(dependencies.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(dependencies.value().dependencies().size() == 1);
@@ -1041,23 +1041,23 @@ ZC_TEST("Stable graph and independent SCC queries cover the complete core root")
   ZC_REQUIRE(roots != zc::none);
   auto snapshot = queries.snapshot();
   auto coreRoot = module(coreCrate(), "core"_zc);
-  auto coreRequests = snapshot.get<ModuleDependencyRequestsQuery>(coreRoot);
+  auto coreRequests = snapshot.get<ModuleDependencyRequests>(coreRoot);
   ZC_REQUIRE(!coreRequests.isRuntimeFailure());
   ZC_REQUIRE(coreRequests.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(coreRequests.value().requests().size() == 0);
 
-  auto coreDependencies = snapshot.get<ModuleDependenciesQuery>(coreRoot);
+  auto coreDependencies = snapshot.get<ModuleDependencies>(coreRoot);
   ZC_REQUIRE(!coreDependencies.isRuntimeFailure());
   ZC_REQUIRE(coreDependencies.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(coreDependencies.value().dependencies().size() == 0);
 
-  auto graph = snapshot.get<ModuleGraphQuery>(ZC_REQUIRE_NONNULL(roots));
+  auto graph = snapshot.get<ModuleGraph>(ZC_REQUIRE_NONNULL(roots));
   ZC_REQUIRE(!graph.isRuntimeFailure());
   ZC_REQUIRE(graph.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(graph.value().modules().size() == 3);
   ZC_EXPECT(graph.value().edges().size() == 1);
 
-  auto scc = snapshot.get<ModuleGraphSccQuery>(ZC_REQUIRE_NONNULL(roots));
+  auto scc = snapshot.get<ModuleGraphScc>(ZC_REQUIRE_NONNULL(roots));
   ZC_REQUIRE(!scc.isRuntimeFailure());
   ZC_REQUIRE(scc.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(scc.value().components().size() == 3);
@@ -1073,7 +1073,7 @@ ZC_TEST("Stable graph and independent SCC queries cover the complete core root")
       core_library_query::ContextualCoreCrateKey::from(contextRoots(core), core.clone());
   ZC_REQUIRE(contextualCore != zc::none);
   auto coreGraph =
-      snapshot.get<core_library_query::CoreModuleGraphQuery>(ZC_REQUIRE_NONNULL(contextualCore));
+      snapshot.get<core_library_query::CoreModuleGraph>(ZC_REQUIRE_NONNULL(contextualCore));
   ZC_REQUIRE(!coreGraph.isRuntimeFailure());
   ZC_REQUIRE(coreGraph.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(coreGraph.value().core().encode().asPtr() == core.encode().asPtr());
@@ -1106,8 +1106,8 @@ ZC_TEST("Nested dependency failure globally precedes an earlier outside edge") {
   auto earlier = module(core, "core"_zc);
   auto later = module(core, "core"_zc, "marker"_zc);
   auto snapshot = queries.snapshot();
-  auto earlierSource = snapshot.get<SelectedModuleSourceQuery>(earlier);
-  auto laterSource = snapshot.get<SelectedModuleSourceQuery>(later);
+  auto earlierSource = snapshot.get<SelectedModuleSource>(earlier);
+  auto laterSource = snapshot.get<SelectedModuleSource>(later);
   ZC_REQUIRE(earlierSource.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(laterSource.kind() == query::QueryValueKind::Value);
   auto earlierStable =
@@ -1172,7 +1172,7 @@ ZC_TEST("Nested dependency failure globally precedes an earlier outside edge") {
 
   auto roots = incremental_binding_query::CompilationRootSetQueryKey::singletonToolchainCore(core);
   ZC_REQUIRE(roots != zc::none);
-  auto graph = queries.snapshot().get<ModuleGraphQuery>(ZC_REQUIRE_NONNULL(roots));
+  auto graph = queries.snapshot().get<ModuleGraph>(ZC_REQUIRE_NONNULL(roots));
   ZC_REQUIRE(!graph.isRuntimeFailure());
   ZC_REQUIRE(graph.kind() == query::QueryValueKind::SemanticFailure);
   auto failure = ModuleDependencyFailureRecord::decodeCanonical(graph.semanticFailureBytes());
@@ -1199,8 +1199,8 @@ ZC_TEST("Tarjan provider and Kosaraju verifier agree after a tracked cycle mutat
   auto root = module(core, "core"_zc);
   auto marker = module(core, "core"_zc, "marker"_zc);
   auto snapshot = queries.snapshot();
-  auto rootSource = snapshot.get<SelectedModuleSourceQuery>(root);
-  auto markerSource = snapshot.get<SelectedModuleSourceQuery>(marker);
+  auto rootSource = snapshot.get<SelectedModuleSource>(root);
+  auto markerSource = snapshot.get<SelectedModuleSource>(marker);
   ZC_REQUIRE(rootSource.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(markerSource.kind() == query::QueryValueKind::Value);
   auto rootStable = identity::source_query::StableSourceQueryKey::fromVerified(rootSource.value());
@@ -1262,8 +1262,8 @@ ZC_TEST("Tarjan provider and Kosaraju verifier agree after a tracked cycle mutat
   auto roots = incremental_binding_query::CompilationRootSetQueryKey::singletonToolchainCore(core);
   ZC_REQUIRE(roots != zc::none);
   auto finalSnapshot = queries.snapshot();
-  auto graph = finalSnapshot.get<ModuleGraphQuery>(ZC_REQUIRE_NONNULL(roots));
-  auto scc = finalSnapshot.get<ModuleGraphSccQuery>(ZC_REQUIRE_NONNULL(roots));
+  auto graph = finalSnapshot.get<ModuleGraph>(ZC_REQUIRE_NONNULL(roots));
+  auto scc = finalSnapshot.get<ModuleGraphScc>(ZC_REQUIRE_NONNULL(roots));
   ZC_REQUIRE(graph.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(scc.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(graph.value().edges().size() == 3);

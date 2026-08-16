@@ -63,9 +63,9 @@ ZC_TEST("QueryDatabaseTest.GeneratedInventoryRetainsFinalFailureProjections") {
   const zc::LiteralStringConst expectedNames[] = {
       "RevisionLocalDefinitionSitesQuery"_zcc, "RevisionLocalImplementationSitesQuery"_zcc,
       "ModuleBodyProvenanceQuery"_zcc,         "NamedItemProvenanceQuery"_zcc,
-      "OwnerBodyProvenanceQuery"_zcc,          "ModuleDependencyProvenanceQuery"_zcc,
-      "MaterializeModuleGraphQuery"_zcc,       "MaterializeModuleSkeletonQuery"_zcc,
-      "MaterializeOwnerBodyQuery"_zcc,         "VerifyBoundModuleQuery"_zcc,
+      "OwnerBodyProvenanceQuery"_zcc,          "ModuleDependencyProvenance"_zcc,
+      "MaterializeModuleGraph"_zcc,       "MaterializeModuleSkeleton"_zcc,
+      "MaterializeOwnerBody"_zcc,         "VerifyBoundModule"_zcc,
   };
 
   size_t observed = 0;

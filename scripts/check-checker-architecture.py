@@ -48,8 +48,8 @@ ORDINARY_CORE_INTERFACE_CONSUMERS = (
     OWNERSHIP_OVERLAY_SOURCE,
 )
 BOOTSTRAP_CORE_INTERFACE_TYPES = (
-    "CoreBootstrapModuleInterfaceQuery",
-    "MaterializeCoreBootstrapModuleInterfaceQuery",
+    "CoreBootstrapModuleInterface",
+    "MaterializeCoreBootstrapModuleInterface",
     "CoreBootstrapModuleInterfaceRecord",
     "VerifiedCoreBootstrapModuleInterface",
 )

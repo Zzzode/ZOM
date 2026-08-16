@@ -1542,9 +1542,9 @@ struct CompilerSession::Impl {
     stagedCompilationRoots = zc::mv(ZC_ASSERT_NONNULL(contextRoots));
 
     const auto authorityStagingSnapshot = queryDatabase.snapshot();
-    auto graph = authorityStagingSnapshot.get<graph_query::ModuleGraphQuery>(
+    auto graph = authorityStagingSnapshot.get<graph_query::ModuleGraph>(
         ZC_ASSERT_NONNULL(stagedCompilationRoots));
-    auto scc = authorityStagingSnapshot.get<graph_query::ModuleGraphSccQuery>(
+    auto scc = authorityStagingSnapshot.get<graph_query::ModuleGraphScc>(
         ZC_ASSERT_NONNULL(stagedCompilationRoots));
     if (!graph.isRuntimeFailure() && graph.kind() == query::QueryValueKind::SemanticFailure) {
       auto dependencyFailure =
@@ -1584,7 +1584,7 @@ struct CompilerSession::Impl {
         auto coreKey = core_library_query::ContextualCoreCrateKey::from(
             ZC_ASSERT_NONNULL(stagedCompilationRoots).clone(), projection.crate().clone());
         if (coreKey == zc::none) { return false; }
-        auto coreGraph = authorityStagingSnapshot.get<core_library_query::CoreModuleGraphQuery>(
+        auto coreGraph = authorityStagingSnapshot.get<core_library_query::CoreModuleGraph>(
             zc::mv(ZC_ASSERT_NONNULL(coreKey)));
         if (coreGraph.isRuntimeFailure() || coreGraph.kind() != query::QueryValueKind::Value ||
             coreGraph.value().core().encode().asPtr() != projection.crate().encode().asPtr() ||
@@ -1954,7 +1954,7 @@ zc::Maybe<CompilerSession::MaterializedModuleGraphLease> CompilerSession::materi
   if (impl->finalSealedSnapshot == zc::none) { return zc::none; }
   const auto& snapshot = ZC_ASSERT_NONNULL(impl->finalSealedSnapshot);
   const auto& roots = snapshot.contextRoots();
-  auto demand = snapshot.getCapability<module_graph_query::MaterializeModuleGraphQuery>(roots);
+  auto demand = snapshot.getCapability<module_graph_query::MaterializeModuleGraph>(roots);
   if (!demand.isPublished()) { return zc::none; }
   return zc::mv(demand).takeLease();
 }
@@ -1967,12 +1967,12 @@ zc::Maybe<core::VerifiedCoreLibrary> CompilerSession::materializeCoreLibrary(
                                                                   coreCrate.clone());
   if (coreKey == zc::none) { return zc::none; }
   auto graph =
-      snapshot.get<core_library_query::CoreModuleGraphQuery>(ZC_ASSERT_NONNULL(coreKey).clone());
+      snapshot.get<core_library_query::CoreModuleGraph>(ZC_ASSERT_NONNULL(coreKey).clone());
   auto distribution =
       snapshot.get<core_library_query::CoreDistributionInput>(identity::ToolchainUnitKey::core());
   auto prelude =
-      snapshot.get<core_library_query::CorePreludeSurfaceQuery>(ZC_ASSERT_NONNULL(coreKey).clone());
-  auto authority = snapshot.getCapability<core_library_query::MaterializeCoreAuthorityQuery>(
+      snapshot.get<core_library_query::CorePreludeSurface>(ZC_ASSERT_NONNULL(coreKey).clone());
+  auto authority = snapshot.getCapability<core_library_query::MaterializeCoreAuthority>(
       zc::mv(ZC_ASSERT_NONNULL(coreKey)));
   if (graph.isRuntimeFailure() || distribution.isRuntimeFailure() || prelude.isRuntimeFailure() ||
       graph.kind() != query::QueryValueKind::Value ||
@@ -1987,7 +1987,7 @@ zc::Maybe<core::VerifiedCoreLibrary> CompilerSession::materializeCoreLibrary(
     auto moduleKey = core_library_query::ContextualCoreModuleKey::from(
         snapshot.contextRoots().clone(), module.clone());
     if (moduleKey == zc::none) { return zc::none; }
-    auto interface = snapshot.getCapability<core_library_query::FinalizeCoreModuleInterfaceQuery>(
+    auto interface = snapshot.getCapability<core_library_query::FinalizeCoreModuleInterface>(
         zc::mv(ZC_ASSERT_NONNULL(moduleKey)));
     if (!interface.isPublished()) { return zc::none; }
     auto published = core::VerifiedCoreModule::from(module.clone(), zc::mv(interface).takeLease());
@@ -2007,14 +2007,14 @@ zc::Maybe<checker::CheckerIdentityAuthority> CompilerSession::materializeChecker
   const auto& finalSnapshot = ZC_ASSERT_NONNULL(impl->finalSealedSnapshot);
   const auto& roots = finalSnapshot.contextRoots();
   auto graphDemand =
-      finalSnapshot.getCapability<module_graph_query::MaterializeModuleGraphQuery>(roots);
+      finalSnapshot.getCapability<module_graph_query::MaterializeModuleGraph>(roots);
   if (!graphDemand.isPublished()) { return zc::none; }
   zc::Vector<checker::CheckerIdentityAuthority::BoundModuleView> checkerViews;
   for (const auto& graphModule : graphDemand.lease().capability().modules()) {
     auto key = incremental_binding_query::ContextualModuleKey::from(roots.clone(),
                                                                     graphModule.key().clone());
     auto boundDemand =
-        finalSnapshot.getCapability<module_graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+        finalSnapshot.getCapability<module_graph_query::VerifyBoundModule>(zc::mv(key));
     if (!boundDemand.isPublished()) { return zc::none; }
     auto view = module_graph_query::CheckerBoundModuleView::from(zc::mv(boundDemand).takeLease());
     if (view == zc::none) { return zc::none; }
@@ -2520,7 +2520,7 @@ bool CompilerSession::checkSources() {
 
   if (impl->finalSealedSnapshot == zc::none) { return false; }
   const auto& finalSnapshot = ZC_ASSERT_NONNULL(impl->finalSealedSnapshot);
-  auto graphDemand = finalSnapshot.getCapability<module_graph_query::MaterializeModuleGraphQuery>(
+  auto graphDemand = finalSnapshot.getCapability<module_graph_query::MaterializeModuleGraph>(
       finalSnapshot.contextRoots());
   if (!graphDemand.isPublished()) { return false; }
   for (const auto& crate : graphDemand.lease().capability().crates()) {
@@ -2531,14 +2531,14 @@ bool CompilerSession::checkSources() {
     auto coreKey = core_library_query::ContextualCoreCrateKey::from(
         finalSnapshot.contextRoots().clone(), crate.key().clone());
     if (coreKey == zc::none) { return false; }
-    auto preludeSurface = finalSnapshot.get<core_library_query::CorePreludeSurfaceQuery>(
+    auto preludeSurface = finalSnapshot.get<core_library_query::CorePreludeSurface>(
         ZC_ASSERT_NONNULL(coreKey).clone());
     if (preludeSurface.isRuntimeFailure() ||
         preludeSurface.kind() != query::QueryValueKind::Value ||
         preludeSurface.value().core().encode().asPtr() != crate.key().encode().asPtr()) {
       return false;
     }
-    auto roleAuthority = finalSnapshot.get<core_library_query::CoreRoleAuthorityQuery>(
+    auto roleAuthority = finalSnapshot.get<core_library_query::CoreRoleAuthority>(
         ZC_ASSERT_NONNULL(coreKey).clone());
     if (roleAuthority.isRuntimeFailure() || roleAuthority.kind() != query::QueryValueKind::Value ||
         roleAuthority.value().core().encode().asPtr() != crate.key().encode().asPtr() ||
@@ -2548,7 +2548,7 @@ bool CompilerSession::checkSources() {
       return false;
     }
     auto materializedAuthority =
-        finalSnapshot.getCapability<core_library_query::MaterializeCoreAuthorityQuery>(
+        finalSnapshot.getCapability<core_library_query::MaterializeCoreAuthority>(
             zc::mv(ZC_ASSERT_NONNULL(coreKey)));
     if (!materializedAuthority.isPublished() ||
         materializedAuthority.lease().capability().record().revision().digest() !=
@@ -2565,7 +2565,7 @@ bool CompilerSession::checkSources() {
           finalSnapshot.contextRoots().clone(), module.key().clone());
       if (finalInterfaceKey == zc::none) { return false; }
       auto finalInterface =
-          finalSnapshot.getCapability<core_library_query::FinalizeCoreModuleInterfaceQuery>(
+          finalSnapshot.getCapability<core_library_query::FinalizeCoreModuleInterface>(
               zc::mv(ZC_ASSERT_NONNULL(finalInterfaceKey)));
       if (!finalInterface.isPublished() ||
           finalInterface.lease().capability().record().module().encode().asPtr() !=

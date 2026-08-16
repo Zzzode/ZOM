@@ -1151,7 +1151,7 @@ Transaction verifiers and keyed query verifiers perform outer-key equality,
 tracked-result equality, graph membership, and cross-input ownership checks.
 
 `SelectedModuleCatalogInput` is the sole selected module-to-source input.
-`SelectedModuleSourceQuery` is its derived narrow projection and retains the
+`SelectedModuleSource` is its derived narrow projection and retains the
 accepted RFC 0019 consumer boundary. `ModuleDependencySiteInput` stores stable
 source coordinates and no `NodeId`, span, handle, pointer, or borrowed AST
 state. The exact domains, tags, sequence order, decode limits, and mutation
@@ -1239,7 +1239,7 @@ interner access.
 revision-local authority for every identity root, generic parameter, bound
 occurrence, constant header expression, and other syntax node that
 stable-identity production or verification may cite. Its provider reads
-`SelectedModuleSourceQuery`, `ParseSourceQuery`, and
+`SelectedModuleSource`, `ParseSourceQuery`, and
 `IdentitySyntaxSiteInventoryProducer` in that order. Its verifier repeats the
 two query reads and traverses the complete parsed topology through the separate
 `IdentitySyntaxSiteInventoryVerifier`.
@@ -1260,7 +1260,7 @@ not depend on successful stable-identity admission. The inventory is published
 before local stable-identity validation can reject source.
 
 `StableIdentityAdmissionQuery(StableModuleQueryKey)` reads, in order,
-`SelectedModuleSourceQuery`, `ParseSourceQuery`,
+`SelectedModuleSource`, `ParseSourceQuery`,
 `IdentitySyntaxSiteInventoryQuery`, `CandidateProducer`, and
 `CandidateVerifier`. Its published capability retains the parse
 and identity-site leases. It is the sole source-diagnostic authority for

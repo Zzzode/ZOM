@@ -455,7 +455,7 @@ performs these reads in exact order:
 1. `ActiveDefinitionAuthorityInput`;
 2. `ActiveDefinitionAuthorityReadyInput` only when authority is absent or
    contradictory;
-3. `SelectedModuleSourceQuery`;
+3. `SelectedModuleSource`;
 4. `ParseSourceQuery`;
 5. `StableIdentityAdmissionQuery`;
 6. `NamedDefinitionInventoryQuery`;

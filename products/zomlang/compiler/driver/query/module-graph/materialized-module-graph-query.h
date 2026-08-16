@@ -471,7 +471,7 @@ protected:
 };
 
 /// \brief Final-sealed retained materializer for one complete compilation root set.
-struct MaterializeModuleGraphQuery final {
+struct MaterializeModuleGraph final {
   using Key = incremental_binding_query::CompilationRootSetQueryKey;
   using Capability = MaterializedModuleGraph;
   using FailureAlternatives =
@@ -479,7 +479,7 @@ struct MaterializeModuleGraphQuery final {
                                    query::KeyRejection<binder::BinderKeyFailure>>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "MaterializeModuleGraphQuery"_zcc,
+      "MaterializeModuleGraph"_zcc,
       "zom.query.materialize-module-graph"_zcc,
       query::RetentionClass::Retained,
       query::QueryCyclePolicy::Reject,
@@ -488,15 +488,15 @@ struct MaterializeModuleGraphQuery final {
       query::FinalFailureProjection::SourceOrKey};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static query::CapabilityProviderResult<MaterializeModuleGraphQuery> provide(
-      query::CapabilityQueryContext<MaterializeModuleGraphQuery>& context, const Key& key);
+  ZC_NODISCARD static query::CapabilityProviderResult<MaterializeModuleGraph> provide(
+      query::CapabilityQueryContext<MaterializeModuleGraph>& context, const Key& key);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verify(
-      query::CapabilityQueryContext<MaterializeModuleGraphQuery>& context, const Key& key,
+      query::CapabilityQueryContext<MaterializeModuleGraph>& context, const Key& key,
       const Capability& candidate);
 };
 
 /// \brief Final-sealed retained materializer for one contextual module skeleton.
-struct MaterializeModuleSkeletonQuery final {
+struct MaterializeModuleSkeleton final {
   using Key = incremental_binding_query::ContextualModuleKey;
   using Capability = MaterializedModuleSkeleton;
   using FailureAlternatives =
@@ -504,7 +504,7 @@ struct MaterializeModuleSkeletonQuery final {
                                    query::KeyRejection<binder::BinderKeyFailure>>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "MaterializeModuleSkeletonQuery"_zcc,
+      "MaterializeModuleSkeleton"_zcc,
       "zom.query.materialize-module-skeleton"_zcc,
       query::RetentionClass::Retained,
       query::QueryCyclePolicy::Reject,
@@ -513,15 +513,15 @@ struct MaterializeModuleSkeletonQuery final {
       query::FinalFailureProjection::SourceOrKey};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static query::CapabilityProviderResult<MaterializeModuleSkeletonQuery> provide(
-      query::CapabilityQueryContext<MaterializeModuleSkeletonQuery>& context, const Key& key);
+  ZC_NODISCARD static query::CapabilityProviderResult<MaterializeModuleSkeleton> provide(
+      query::CapabilityQueryContext<MaterializeModuleSkeleton>& context, const Key& key);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verify(
-      query::CapabilityQueryContext<MaterializeModuleSkeletonQuery>& context, const Key& key,
+      query::CapabilityQueryContext<MaterializeModuleSkeleton>& context, const Key& key,
       const Capability& candidate);
 };
 
 /// \brief Final-sealed retained materializer for one contextual owner body.
-struct MaterializeOwnerBodyQuery final {
+struct MaterializeOwnerBody final {
   using Key = incremental_binding_query::ContextualBodyOwnerKey;
   using Capability = MaterializedOwnerBody;
   using FailureAlternatives =
@@ -529,7 +529,7 @@ struct MaterializeOwnerBodyQuery final {
                                    query::KeyRejection<binder::BinderKeyFailure>>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "MaterializeOwnerBodyQuery"_zcc,
+      "MaterializeOwnerBody"_zcc,
       "zom.query.materialize-owner-body"_zcc,
       query::RetentionClass::Retained,
       query::QueryCyclePolicy::Reject,
@@ -538,15 +538,15 @@ struct MaterializeOwnerBodyQuery final {
       query::FinalFailureProjection::SourceOrKey};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static query::CapabilityProviderResult<MaterializeOwnerBodyQuery> provide(
-      query::CapabilityQueryContext<MaterializeOwnerBodyQuery>& context, const Key& key);
+  ZC_NODISCARD static query::CapabilityProviderResult<MaterializeOwnerBody> provide(
+      query::CapabilityQueryContext<MaterializeOwnerBody>& context, const Key& key);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verify(
-      query::CapabilityQueryContext<MaterializeOwnerBodyQuery>& context, const Key& key,
+      query::CapabilityQueryContext<MaterializeOwnerBody>& context, const Key& key,
       const Capability& candidate);
 };
 
 /// \brief Final-sealed retained aggregation of the graph, skeleton, and owner-body leases.
-struct VerifyBoundModuleQuery final {
+struct VerifyBoundModule final {
   using Key = incremental_binding_query::ContextualModuleKey;
   using Capability = VerifiedBoundModule;
   using FailureAlternatives =
@@ -554,7 +554,7 @@ struct VerifyBoundModuleQuery final {
                                    query::KeyRejection<binder::BinderKeyFailure>>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "VerifyBoundModuleQuery"_zcc,
+      "VerifyBoundModule"_zcc,
       "zom.query.verify-bound-module"_zcc,
       query::RetentionClass::Retained,
       query::QueryCyclePolicy::Reject,
@@ -563,10 +563,10 @@ struct VerifyBoundModuleQuery final {
       query::FinalFailureProjection::SourceOrKey};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static query::CapabilityProviderResult<VerifyBoundModuleQuery> provide(
-      query::CapabilityQueryContext<VerifyBoundModuleQuery>& context, const Key& key);
+  ZC_NODISCARD static query::CapabilityProviderResult<VerifyBoundModule> provide(
+      query::CapabilityQueryContext<VerifyBoundModule>& context, const Key& key);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verify(
-      query::CapabilityQueryContext<VerifyBoundModuleQuery>& context, const Key& key,
+      query::CapabilityQueryContext<VerifyBoundModule>& context, const Key& key,
       const Capability& candidate);
 };
 
@@ -613,48 +613,48 @@ private:
 namespace zomlang::compiler::query {
 
 template <>
-class CapabilityCandidateContract<driver::module_graph_query::MaterializeModuleGraphQuery> final {
+class CapabilityCandidateContract<driver::module_graph_query::MaterializeModuleGraph> final {
 public:
-  using Descriptor = driver::module_graph_query::MaterializeModuleGraphQuery;
+  using Descriptor = driver::module_graph_query::MaterializeModuleGraph;
   ZC_NODISCARD static StableWitnessBytes encode(const Descriptor::Capability& candidate);
   ZC_NODISCARD static zc::Maybe<zc::Own<Descriptor::Capability>> decode(
       zc::ArrayPtr<const uint8_t> bytes);
 };
 
 template <>
-class CapabilityCandidateContract<driver::module_graph_query::MaterializeModuleSkeletonQuery>
+class CapabilityCandidateContract<driver::module_graph_query::MaterializeModuleSkeleton>
     final {
 public:
-  using Descriptor = driver::module_graph_query::MaterializeModuleSkeletonQuery;
+  using Descriptor = driver::module_graph_query::MaterializeModuleSkeleton;
   ZC_NODISCARD static StableWitnessBytes encode(const Descriptor::Capability& candidate);
   ZC_NODISCARD static zc::Maybe<zc::Own<Descriptor::Capability>> decode(
       zc::ArrayPtr<const uint8_t> bytes);
 };
 
 template <>
-class CapabilityCandidateContract<driver::module_graph_query::MaterializeOwnerBodyQuery> final {
+class CapabilityCandidateContract<driver::module_graph_query::MaterializeOwnerBody> final {
 public:
-  using Descriptor = driver::module_graph_query::MaterializeOwnerBodyQuery;
+  using Descriptor = driver::module_graph_query::MaterializeOwnerBody;
   ZC_NODISCARD static StableWitnessBytes encode(const Descriptor::Capability& candidate);
   ZC_NODISCARD static zc::Maybe<zc::Own<Descriptor::Capability>> decode(
       zc::ArrayPtr<const uint8_t> bytes);
 };
 
 template <>
-class CapabilityCandidateContract<driver::module_graph_query::VerifyBoundModuleQuery> final {
+class CapabilityCandidateContract<driver::module_graph_query::VerifyBoundModule> final {
 public:
-  using Descriptor = driver::module_graph_query::VerifyBoundModuleQuery;
+  using Descriptor = driver::module_graph_query::VerifyBoundModule;
   ZC_NODISCARD static StableWitnessBytes encode(const Descriptor::Capability& candidate);
   ZC_NODISCARD static zc::Maybe<zc::Own<Descriptor::Capability>> decode(
       zc::ArrayPtr<const uint8_t> bytes);
 };
 
 template <>
-class CapabilityFailureContract<driver::module_graph_query::MaterializeModuleGraphQuery,
+class CapabilityFailureContract<driver::module_graph_query::MaterializeModuleGraph,
                                 SourceRejection<diagnostics::DiagnosticFact>>
     final {
 public:
-  using Descriptor = driver::module_graph_query::MaterializeModuleGraphQuery;
+  using Descriptor = driver::module_graph_query::MaterializeModuleGraph;
   using Sequence = CanonicalNonEmptySequence<diagnostics::DiagnosticFact>;
   ZC_NODISCARD static zc::Array<uint8_t> encode(const Sequence& diagnostics);
   ZC_NODISCARD static zc::Maybe<Sequence> decode(zc::ArrayPtr<const uint8_t> bytes);
@@ -664,11 +664,11 @@ public:
 };
 
 template <>
-class CapabilityFailureContract<driver::module_graph_query::MaterializeModuleGraphQuery,
+class CapabilityFailureContract<driver::module_graph_query::MaterializeModuleGraph,
                                 KeyRejection<binder::BinderKeyFailure>>
     final {
 public:
-  using Descriptor = driver::module_graph_query::MaterializeModuleGraphQuery;
+  using Descriptor = driver::module_graph_query::MaterializeModuleGraph;
   ZC_NODISCARD static zc::Array<uint8_t> encode(const binder::BinderKeyFailure& failure);
   ZC_NODISCARD static zc::Maybe<binder::BinderKeyFailure> decode(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static CapabilityRejectionCheck verify(CapabilityQueryContext<Descriptor>& context,
@@ -677,11 +677,11 @@ public:
 };
 
 template <>
-class CapabilityFailureContract<driver::module_graph_query::MaterializeModuleSkeletonQuery,
+class CapabilityFailureContract<driver::module_graph_query::MaterializeModuleSkeleton,
                                 SourceRejection<diagnostics::DiagnosticFact>>
     final {
 public:
-  using Descriptor = driver::module_graph_query::MaterializeModuleSkeletonQuery;
+  using Descriptor = driver::module_graph_query::MaterializeModuleSkeleton;
   using Sequence = CanonicalNonEmptySequence<diagnostics::DiagnosticFact>;
   ZC_NODISCARD static zc::Array<uint8_t> encode(const Sequence& diagnostics);
   ZC_NODISCARD static zc::Maybe<Sequence> decode(zc::ArrayPtr<const uint8_t> bytes);
@@ -691,11 +691,11 @@ public:
 };
 
 template <>
-class CapabilityFailureContract<driver::module_graph_query::MaterializeModuleSkeletonQuery,
+class CapabilityFailureContract<driver::module_graph_query::MaterializeModuleSkeleton,
                                 KeyRejection<binder::BinderKeyFailure>>
     final {
 public:
-  using Descriptor = driver::module_graph_query::MaterializeModuleSkeletonQuery;
+  using Descriptor = driver::module_graph_query::MaterializeModuleSkeleton;
   ZC_NODISCARD static zc::Array<uint8_t> encode(const binder::BinderKeyFailure& failure);
   ZC_NODISCARD static zc::Maybe<binder::BinderKeyFailure> decode(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static CapabilityRejectionCheck verify(CapabilityQueryContext<Descriptor>& context,
@@ -704,11 +704,11 @@ public:
 };
 
 template <>
-class CapabilityFailureContract<driver::module_graph_query::MaterializeOwnerBodyQuery,
+class CapabilityFailureContract<driver::module_graph_query::MaterializeOwnerBody,
                                 SourceRejection<diagnostics::DiagnosticFact>>
     final {
 public:
-  using Descriptor = driver::module_graph_query::MaterializeOwnerBodyQuery;
+  using Descriptor = driver::module_graph_query::MaterializeOwnerBody;
   using Sequence = CanonicalNonEmptySequence<diagnostics::DiagnosticFact>;
   ZC_NODISCARD static zc::Array<uint8_t> encode(const Sequence& diagnostics);
   ZC_NODISCARD static zc::Maybe<Sequence> decode(zc::ArrayPtr<const uint8_t> bytes);
@@ -718,11 +718,11 @@ public:
 };
 
 template <>
-class CapabilityFailureContract<driver::module_graph_query::MaterializeOwnerBodyQuery,
+class CapabilityFailureContract<driver::module_graph_query::MaterializeOwnerBody,
                                 KeyRejection<binder::BinderKeyFailure>>
     final {
 public:
-  using Descriptor = driver::module_graph_query::MaterializeOwnerBodyQuery;
+  using Descriptor = driver::module_graph_query::MaterializeOwnerBody;
   ZC_NODISCARD static zc::Array<uint8_t> encode(const binder::BinderKeyFailure& failure);
   ZC_NODISCARD static zc::Maybe<binder::BinderKeyFailure> decode(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static CapabilityRejectionCheck verify(CapabilityQueryContext<Descriptor>& context,
@@ -731,11 +731,11 @@ public:
 };
 
 template <>
-class CapabilityFailureContract<driver::module_graph_query::VerifyBoundModuleQuery,
+class CapabilityFailureContract<driver::module_graph_query::VerifyBoundModule,
                                 SourceRejection<diagnostics::DiagnosticFact>>
     final {
 public:
-  using Descriptor = driver::module_graph_query::VerifyBoundModuleQuery;
+  using Descriptor = driver::module_graph_query::VerifyBoundModule;
   using Sequence = CanonicalNonEmptySequence<diagnostics::DiagnosticFact>;
   ZC_NODISCARD static zc::Array<uint8_t> encode(const Sequence& diagnostics);
   ZC_NODISCARD static zc::Maybe<Sequence> decode(zc::ArrayPtr<const uint8_t> bytes);
@@ -745,11 +745,11 @@ public:
 };
 
 template <>
-class CapabilityFailureContract<driver::module_graph_query::VerifyBoundModuleQuery,
+class CapabilityFailureContract<driver::module_graph_query::VerifyBoundModule,
                                 KeyRejection<binder::BinderKeyFailure>>
     final {
 public:
-  using Descriptor = driver::module_graph_query::VerifyBoundModuleQuery;
+  using Descriptor = driver::module_graph_query::VerifyBoundModule;
   ZC_NODISCARD static zc::Array<uint8_t> encode(const binder::BinderKeyFailure& failure);
   ZC_NODISCARD static zc::Maybe<binder::BinderKeyFailure> decode(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static CapabilityRejectionCheck verify(CapabilityQueryContext<Descriptor>& context,
@@ -809,7 +809,7 @@ struct ActiveMaterialization<identity::DefinitionKey> final {
 
 #define ZOM_DECLARE_GRAPH_MATERIALIZER_PERMISSION(GlobalKey, Membership)                       \
   template <>                                                                                  \
-  struct ActiveMaterializerPermission<driver::module_graph_query::MaterializeModuleGraphQuery, \
+  struct ActiveMaterializerPermission<driver::module_graph_query::MaterializeModuleGraph, \
                                       GlobalKey,                                               \
                                       driver::incremental_binding_query::Membership##Query>    \
       final {                                                                                  \
@@ -826,7 +826,7 @@ ZOM_DECLARE_GRAPH_MATERIALIZER_PERMISSION(identity::ModuleKey, ActiveModuleMembe
 
 #define ZOM_DECLARE_SKELETON_MATERIALIZER_PERMISSION(GlobalKey, Membership)                       \
   template <>                                                                                     \
-  struct ActiveMaterializerPermission<driver::module_graph_query::MaterializeModuleSkeletonQuery, \
+  struct ActiveMaterializerPermission<driver::module_graph_query::MaterializeModuleSkeleton, \
                                       GlobalKey,                                                  \
                                       driver::incremental_binding_query::Membership##Query>       \
       final {                                                                                     \
@@ -849,7 +849,7 @@ ZOM_DECLARE_SKELETON_MATERIALIZER_PERMISSION(identity::CallableParameterKey,
 
 #define ZOM_DECLARE_OWNER_BODY_MATERIALIZER_PERMISSION(GlobalKey, Membership)                \
   template <>                                                                                \
-  struct ActiveMaterializerPermission<driver::module_graph_query::MaterializeOwnerBodyQuery, \
+  struct ActiveMaterializerPermission<driver::module_graph_query::MaterializeOwnerBody, \
                                       GlobalKey,                                             \
                                       driver::incremental_binding_query::Membership##Query>  \
       final {                                                                                \

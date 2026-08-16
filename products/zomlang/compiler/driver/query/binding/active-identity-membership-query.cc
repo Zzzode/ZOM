@@ -1133,7 +1133,7 @@ ActiveCompilationUnitMembershipQuery::provide(query::QueryContext& context, cons
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  auto crates = context.get<ActiveCratesQuery>(key.contextRoots());
+  auto crates = context.get<ActiveCrates>(key.contextRoots());
   if (crates.isRuntimeFailure()) {
     return query::TypedQueryResult<Value>::runtimeFailure(crates.runtimeFailure());
   }
@@ -1185,7 +1185,7 @@ bool ActiveCompilationUnitMembershipQuery::verify(query::QueryContext& context, 
       authority.value().contextRoots() != key.contextRoots()) {
     return false;
   }
-  auto crates = context.get<ActiveCratesQuery>(key.contextRoots());
+  auto crates = context.get<ActiveCrates>(key.contextRoots());
   if (crates.isRuntimeFailure() || crates.kind() != query::QueryValueKind::Value ||
       authority.value().completeCrates().size() != crates.value().crates().size()) {
     return false;
@@ -1294,7 +1294,7 @@ query::TypedQueryResult<ActiveSourceMembershipQuery::Value> ActiveSourceMembersh
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  auto sources = context.get<ActiveSourcesQuery>(ZC_ASSERT_NONNULL(stableCrate));
+  auto sources = context.get<ActiveSources>(ZC_ASSERT_NONNULL(stableCrate));
   if (sources.isRuntimeFailure()) {
     return query::TypedQueryResult<Value>::runtimeFailure(sources.runtimeFailure());
   }
@@ -1335,7 +1335,7 @@ bool ActiveSourceMembershipQuery::verify(query::QueryContext& context, const Key
   auto stableCrate = StableCrateQueryKey::fromVerified(key.source().crate());
   auto stableSource = identity::source_query::StableSourceQueryKey::fromVerified(key.source());
   if (stableCrate == zc::none || stableSource == zc::none) { return false; }
-  auto sources = context.get<ActiveSourcesQuery>(ZC_ASSERT_NONNULL(stableCrate));
+  auto sources = context.get<ActiveSources>(ZC_ASSERT_NONNULL(stableCrate));
   if (sources.isRuntimeFailure() || sources.kind() != query::QueryValueKind::Value) {
     return false;
   }
@@ -1371,7 +1371,7 @@ query::TypedQueryResult<ActiveModuleMembershipQuery::Value> ActiveModuleMembersh
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  auto modules = context.get<module_graph_query::ActiveModulesQuery>(key.module().crate());
+  auto modules = context.get<module_graph_query::ActiveModules>(key.module().crate());
   if (modules.isRuntimeFailure()) {
     return query::TypedQueryResult<Value>::runtimeFailure(modules.runtimeFailure());
   }
@@ -1407,7 +1407,7 @@ bool ActiveModuleMembershipQuery::verify(query::QueryContext& context, const Key
     return resultMatches(valueDomain, result.value(), Value::inactive());
   }
   if (!sameIdentity(crate.value().record(), key.module().crate())) { return false; }
-  auto modules = context.get<module_graph_query::ActiveModulesQuery>(key.module().crate());
+  auto modules = context.get<module_graph_query::ActiveModules>(key.module().crate());
   if (modules.isRuntimeFailure() || modules.kind() != query::QueryValueKind::Value) {
     return false;
   }

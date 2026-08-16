@@ -852,7 +852,7 @@ ZC_TEST("Active crates derive a singleton toolchain core from the distribution i
   auto crate = tests::test_identity_detail::coreCrate();
   auto roots = incremental_binding_query::CompilationRootSetQueryKey::singletonToolchainCore(crate);
   ZC_REQUIRE(roots != zc::none);
-  auto missing = database.snapshot().get<incremental_binding_query::ActiveCratesQuery>(
+  auto missing = database.snapshot().get<incremental_binding_query::ActiveCrates>(
       ZC_REQUIRE_NONNULL(roots));
   ZC_REQUIRE(missing.isRuntimeFailure());
   ZC_EXPECT(missing.runtimeFailure() == query::QueryRuntimeFailure::MissingInput);
@@ -868,12 +868,12 @@ ZC_TEST("Active crates derive a singleton toolchain core from the distribution i
 
   auto snapshot = database.snapshot();
   auto active =
-      snapshot.get<incremental_binding_query::ActiveCratesQuery>(ZC_REQUIRE_NONNULL(roots));
+      snapshot.get<incremental_binding_query::ActiveCrates>(ZC_REQUIRE_NONNULL(roots));
   ZC_REQUIRE(!active.isRuntimeFailure());
   ZC_REQUIRE(active.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(active.value().crates().size() == 1);
   ZC_EXPECT(active.value().crates()[0].canonicalCrateBytes() == crate.encode().asPtr());
-  auto dependencies = snapshot.dependencies<incremental_binding_query::ActiveCratesQuery>(
+  auto dependencies = snapshot.dependencies<incremental_binding_query::ActiveCrates>(
       ZC_REQUIRE_NONNULL(roots));
   ZC_REQUIRE(dependencies.size() == 2);
   const auto expectedDistributionKey =
@@ -905,11 +905,11 @@ ZC_TEST("Active sources derive exact toolchain core membership and source depend
 
   auto snapshot = database.snapshot();
   auto active =
-      snapshot.get<incremental_binding_query::ActiveSourcesQuery>(ZC_REQUIRE_NONNULL(stableCrate));
+      snapshot.get<incremental_binding_query::ActiveSources>(ZC_REQUIRE_NONNULL(stableCrate));
   ZC_REQUIRE(!active.isRuntimeFailure());
   ZC_REQUIRE(active.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(active.value().sources().size() == 3);
-  auto dependencyGroups = snapshot.dependencies<incremental_binding_query::ActiveSourcesQuery>(
+  auto dependencyGroups = snapshot.dependencies<incremental_binding_query::ActiveSources>(
       ZC_REQUIRE_NONNULL(stableCrate));
   ZC_REQUIRE(dependencyGroups.size() == 8);
   const auto expectedDistributionKey =

@@ -66,7 +66,7 @@ private:
 
   zc::Vector<StablePackageQueryKey> packageFields;
 
-  friend struct ActiveCratesQuery;
+  friend struct ActiveCrates;
   friend struct PackageGraphInput;
 };
 
@@ -94,7 +94,7 @@ private:
   friend class CanonicalCrateSet;
   friend class CompilationRootKey;
   friend struct UserPackageActiveSourcesInput;
-  friend struct ActiveSourcesQuery;
+  friend struct ActiveSources;
 };
 
 struct UserPackageCompilationRoot final {
@@ -191,7 +191,7 @@ private:
 
   zc::Vector<StableCrateQueryKey> crateFields;
 
-  friend struct ActiveCratesQuery;
+  friend struct ActiveCrates;
 };
 
 /// \brief Bounded canonical query identity projected from one verified semantic module key.
@@ -250,7 +250,7 @@ private:
   zc::Vector<identity::source_query::StableSourceQueryKey> sourceFields;
 
   friend struct UserPackageActiveSourcesInput;
-  friend struct ActiveSourcesQuery;
+  friend struct ActiveSources;
 };
 
 /// \brief Low-durability explicit active source set for one user-package crate.
@@ -268,12 +268,12 @@ struct UserPackageActiveSourcesInput final {
 };
 
 /// \brief Canonical active sources derived from user-package or toolchain-core authority.
-struct ActiveSourcesQuery final {
+struct ActiveSources final {
   using Key = StableCrateQueryKey;
   using Value = CanonicalSourceSet;
 
   static constexpr query::SemanticDescriptorMetadata descriptor{
-      "ActiveSourcesQuery"_zcc,
+      "ActiveSources"_zcc,
       "zom.query.active-sources"_zcc,
       query::ReuseClass::Semantic,
       query::RetentionClass::Retained,
@@ -291,12 +291,12 @@ struct ActiveSourcesQuery final {
 };
 
 /// \brief Canonical active crates derived from one exhaustive compilation-root set.
-struct ActiveCratesQuery final {
+struct ActiveCrates final {
   using Key = CompilationRootSetQueryKey;
   using Value = CanonicalCrateSet;
 
   static constexpr query::SemanticDescriptorMetadata descriptor{
-      "ActiveCratesQuery"_zcc,
+      "ActiveCrates"_zcc,
       "zom.query.active-crates"_zcc,
       query::ReuseClass::Semantic,
       query::RetentionClass::Retained,

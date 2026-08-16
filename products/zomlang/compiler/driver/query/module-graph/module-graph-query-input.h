@@ -417,12 +417,12 @@ private:
   zc::Vector<identity::ModuleKey> candidateValues;
 };
 
-struct SelectedModuleSourceQuery final {
+struct SelectedModuleSource final {
   using Key = identity::ModuleKey;
   using Value = identity::SourceFileKey;
 
   static constexpr query::SemanticDescriptorMetadata descriptor{
-      "SelectedModuleSourceQuery"_zcc,
+      "SelectedModuleSource"_zcc,
       "zom.query.selected-module-source"_zcc,
       query::ReuseClass::Semantic,
       query::RetentionClass::Retained,
@@ -439,12 +439,12 @@ struct SelectedModuleSourceQuery final {
                                   const query::TypedQueryResult<Value>& result);
 };
 
-struct ActiveModulesQuery final {
+struct ActiveModules final {
   using Key = identity::CrateKey;
   using Value = ActiveModuleSetRecord;
 
   static constexpr query::SemanticDescriptorMetadata descriptor{
-      "ActiveModulesQuery"_zcc,
+      "ActiveModules"_zcc,
       "zom.query.active-modules"_zcc,
       query::ReuseClass::Semantic,
       query::RetentionClass::Retained,
@@ -461,12 +461,12 @@ struct ActiveModulesQuery final {
                                   const query::TypedQueryResult<Value>& result);
 };
 
-struct ModuleDependencySitesQuery final {
+struct ModuleDependencySites final {
   using Key = identity::ModuleKey;
   using Value = DetachedModuleDependencySiteSet;
 
   static constexpr query::SemanticDescriptorMetadata descriptor{
-      "ModuleDependencySitesQuery"_zcc,
+      "ModuleDependencySites"_zcc,
       "zom.query.module-dependency-sites"_zcc,
       query::ReuseClass::Semantic,
       query::RetentionClass::Retained,
@@ -483,12 +483,12 @@ struct ModuleDependencySitesQuery final {
                                   const query::TypedQueryResult<Value>& result);
 };
 
-struct ModuleDependencyRequestsQuery final {
+struct ModuleDependencyRequests final {
   using Key = identity::ModuleKey;
   using Value = ModuleDependencyRequestSetRecord;
 
   static constexpr query::SemanticDescriptorMetadata descriptor{
-      "ModuleDependencyRequestsQuery"_zcc,
+      "ModuleDependencyRequests"_zcc,
       "zom.query.module-dependency-requests"_zcc,
       query::ReuseClass::Semantic,
       query::RetentionClass::Retained,
@@ -505,12 +505,12 @@ struct ModuleDependencyRequestsQuery final {
                                   const query::TypedQueryResult<Value>& result);
 };
 
-struct ModuleDependenciesQuery final {
+struct ModuleDependencies final {
   using Key = identity::ModuleKey;
   using Value = ModuleDependencySetRecord;
 
   static constexpr query::SemanticDescriptorMetadata descriptor{
-      "ModuleDependenciesQuery"_zcc,
+      "ModuleDependencies"_zcc,
       "zom.query.module-dependencies"_zcc,
       query::ReuseClass::Semantic,
       query::RetentionClass::Retained,

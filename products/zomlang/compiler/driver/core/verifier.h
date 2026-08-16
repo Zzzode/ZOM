@@ -31,13 +31,13 @@ public:
       query::QueryContext& context, const ContextualCoreCrateKey& key,
       const query::TypedQueryResult<CoreRoleAuthorityRecord>& result);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verifyCoreAuthority(
-      query::CapabilityQueryContext<MaterializeCoreAuthorityQuery>& context,
+      query::CapabilityQueryContext<MaterializeCoreAuthority>& context,
       const ContextualCoreCrateKey& key, const VerifiedCoreAuthorityBundle& candidate);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verifyFinalCoreModuleInterface(
-      query::CapabilityQueryContext<FinalizeCoreModuleInterfaceQuery>& context,
+      query::CapabilityQueryContext<FinalizeCoreModuleInterface>& context,
       const ContextualCoreModuleKey& key, const VerifiedCoreModuleInterface& candidate);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verifyBootstrapModuleInterface(
-      query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterfaceQuery>& context,
+      query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterface>& context,
       const ContextualCoreModuleKey& key, const VerifiedCoreBootstrapModuleInterface& candidate);
 };
 

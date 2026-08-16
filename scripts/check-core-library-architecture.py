@@ -48,7 +48,7 @@ BOOTSTRAP_PRIVATE_FILES = frozenset(
 BOOTSTRAP_IDENTIFIERS = (
     "CoreBootstrapModuleInterfaceRecord",
     "VerifiedCoreBootstrapModuleInterface",
-    "MaterializeCoreBootstrapModuleInterfaceQuery",
+    "MaterializeCoreBootstrapModuleInterface",
 )
 REQUIRED = (
     CORE / "src/core.zom",
@@ -187,13 +187,13 @@ def check(values: dict[Path, str]) -> list[str]:
     bootstrap_verifier_call = "CoreLibraryQueryVerifier::verifyBootstrapModuleInterface"
     if bootstrap_verifier_call not in provider:
         errors.append("Core bootstrap-interface provider is missing")
-    bootstrap_record_query = "CoreBootstrapModuleInterfaceQuery::provide"
+    bootstrap_record_query = "CoreBootstrapModuleInterface::provide"
     if bootstrap_record_query not in provider:
         errors.append("Core bootstrap-interface stable record query is missing")
-    export_surface_query = "CoreExportSurfaceQuery::provide"
+    export_surface_query = "CoreExportSurface::provide"
     if export_surface_query not in provider:
         errors.append("Core export-surface stable record query is missing")
-    prelude_surface_query = "CorePreludeSurfaceQuery::provide"
+    prelude_surface_query = "CorePreludeSurface::provide"
     if prelude_surface_query not in provider:
         errors.append("Core prelude-surface stable record query is missing")
     verifier = values.get(CORE_VERIFIER, "")
@@ -227,9 +227,9 @@ def check(values: dict[Path, str]) -> list[str]:
         errors.append("Core bootstrap provider is missing the imported-signature materialization")
     if "materializeCoreImportedSignatures" not in verifier:
         errors.append("Core bootstrap verifier is missing the imported-signature reconstruction")
-    if "MaterializeCoreAuthorityQuery::provide" not in provider:
+    if "MaterializeCoreAuthority::provide" not in provider:
         errors.append("Core authority materializer is missing")
-    if "FinalizeCoreModuleInterfaceQuery::provide" not in provider:
+    if "FinalizeCoreModuleInterface::provide" not in provider:
         errors.append("Core final interface materializer is missing")
     if "CoreModuleInterfaceRecord" not in provider:
         errors.append("Core final interface materializer is missing its flat record")
@@ -279,7 +279,7 @@ def check(values: dict[Path, str]) -> list[str]:
     if "PreludeInterfaceLease" in authority_header:
         errors.append("Core authority must not retain the bootstrap interface lease")
     authority_start = authority_header.find("class VerifiedCoreAuthorityBundle final {")
-    authority_end = authority_header.find("struct MaterializeCoreAuthorityQuery final {")
+    authority_end = authority_header.find("struct MaterializeCoreAuthority final {")
     if authority_start < 0 or authority_end <= authority_start:
         errors.append("Core authority has no isolated public/private API boundary")
     else:
@@ -299,8 +299,8 @@ def check(values: dict[Path, str]) -> list[str]:
                     errors.append(
                         f"Core authority must keep bootstrap retention member private: {member}"
                     )
-    authority_provider_start = provider.find("MaterializeCoreAuthorityQuery::provide")
-    authority_provider_end = provider.find("FinalizeCoreModuleInterfaceQuery::provide")
+    authority_provider_start = provider.find("MaterializeCoreAuthority::provide")
+    authority_provider_end = provider.find("FinalizeCoreModuleInterface::provide")
     authority_verifier_start = verifier.find("verifyCoreAuthority")
     authority_verifier_end = verifier.find("verifyFinalCoreModuleInterface")
     if min(authority_provider_start, authority_provider_end, authority_verifier_start, authority_verifier_end) < 0:
@@ -309,9 +309,9 @@ def check(values: dict[Path, str]) -> list[str]:
         authority_provider = provider[authority_provider_start:authority_provider_end]
         authority_verifier = verifier[authority_verifier_start:authority_verifier_end]
         for boundary in (authority_provider, authority_verifier):
-            if "VerifyBoundModuleQuery" not in boundary:
+            if "VerifyBoundModule" not in boundary:
                 errors.append("Core authority must demand the verified prelude bound module")
-            if "MaterializeCoreBootstrapModuleInterfaceQuery" in boundary:
+            if "MaterializeCoreBootstrapModuleInterface" in boundary:
                 errors.append("Core authority must not demand the bootstrap interface")
     if "policyTemplateIsCanonical" not in provider:
         errors.append("Core authority must authenticate the distribution policy template")
@@ -350,7 +350,7 @@ def check(values: dict[Path, str]) -> list[str]:
             errors.append(f"Core library {factory} factory must not be public")
     if "materializeCoreLibrary" not in session:
         errors.append("CompilerSession is missing final core library assembly")
-    if "FinalizeCoreModuleInterfaceQuery" not in session:
+    if "FinalizeCoreModuleInterface" not in session:
         errors.append("CompilerSession is missing final core interface demand")
     interface_source = values.get(INTERFACE_SOURCE, "")
     for marker in (
@@ -450,11 +450,11 @@ def main() -> int:
             "!roleDefinitionIsPublic(bound.lease().capability(), selected.definition)",
             "!materializedRolesMatchBound(bound.lease().capability(), candidate.roles())",
             "CoreLibraryQueryVerifier::verifyBootstrapModuleInterface",
-            "CoreBootstrapModuleInterfaceQuery::provide",
-            "CoreExportSurfaceQuery::provide",
-            "CorePreludeSurfaceQuery::provide",
-            "MaterializeCoreAuthorityQuery::provide",
-            "FinalizeCoreModuleInterfaceQuery::provide",
+            "CoreBootstrapModuleInterface::provide",
+            "CoreExportSurface::provide",
+            "CorePreludeSurface::provide",
+            "MaterializeCoreAuthority::provide",
+            "FinalizeCoreModuleInterface::provide",
             "policyTemplateIsCanonical",
             "shapes().encodeCanonical()",
             "policies().encodeCanonical()",
@@ -474,8 +474,8 @@ def main() -> int:
             (CORE_QUERY_HEADER, "VerifiedCoreAuthorityBundle> from("),
             (CORE_QUERY_HEADER, "roleSeedLease()"),
             (CORE_QUERY_HEADER, "preludeBoundModuleLease()"),
-            (CORE_QUERY, "module_graph_query::VerifyBoundModuleQuery"),
-            (CORE_VERIFIER, "module_graph_query::VerifyBoundModuleQuery"),
+            (CORE_QUERY, "module_graph_query::VerifyBoundModule"),
+            (CORE_VERIFIER, "module_graph_query::VerifyBoundModule"),
         ):
             mutated = dict(values)
             mutated[path] = mutated.get(path, "").replace(marker, "")
@@ -492,8 +492,8 @@ def main() -> int:
         for path in (CORE_QUERY, CORE_VERIFIER):
             mutated = dict(values)
             mutated[path] = mutated.get(path, "").replace(
-                "module_graph_query::VerifyBoundModuleQuery",
-                "MaterializeCoreBootstrapModuleInterfaceQuery",
+                "module_graph_query::VerifyBoundModule",
+                "MaterializeCoreBootstrapModuleInterface",
             )
             if not check(mutated):
                 print("core-library architecture self-test escaped")

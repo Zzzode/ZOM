@@ -1431,8 +1431,8 @@ ModuleDependencyProvenanceMap {
 The payload has no canonical value domain, public codec, cross-revision
 equality, or persistence contract. Its memo retains the exact final
 `ParseSource` capability that owns every `NodeId`, span, AST node, and source
-buffer. Complete reads are `SelectedModuleSourceQuery`,
-`ModuleDependencySitesQuery`, `ModuleDependencyRequestsQuery`, and that final
+buffer. Complete reads are `SelectedModuleSource`,
+`ModuleDependencySites`, `ModuleDependencyRequests`, and that final
 parse capability.
 
 Entries are unique and strictly ordered by complete request bytes. Source
@@ -2885,7 +2885,7 @@ with domain `zom.query.identity-syntax-site-inventory`, key
 `binder::IdentitySyntaxSiteInventory`, `AnySnapshot` admission, `Reject`
 cycle policy, and exact failures `SourceRejection<DiagnosticFact>` and
 `KeyRejection<BinderKeyFailure>`. Its provider reads
-`SelectedModuleSourceQuery`, `ParseSourceQuery`, and
+`SelectedModuleSource`, `ParseSourceQuery`, and
 `IdentitySyntaxSiteInventoryProducer` in that order. Its independent verifier
 repeats the two query reads and traverses the complete parsed module topology
 through `IdentitySyntaxSiteInventoryVerifier`.
@@ -2930,7 +2930,7 @@ retains the exact parse and identity-site-inventory leases.
 
 Its provider reads in this exact order:
 
-1. `SelectedModuleSourceQuery`;
+1. `SelectedModuleSource`;
 2. `ParseSourceQuery`;
 3. `IdentitySyntaxSiteInventoryQuery`;
 4. `CandidateProducer`; and
@@ -3003,7 +3003,7 @@ reads:
 1. `ActiveDefinitionAuthorityInput`;
 2. `ActiveDefinitionAuthorityReadyInput` only when authority is absent or
    contradictory;
-3. `SelectedModuleSourceQuery`;
+3. `SelectedModuleSource`;
 4. `ParseSourceQuery`;
 5. `StableIdentityAdmissionQuery`;
 6. `NamedDefinitionInventoryQuery`;

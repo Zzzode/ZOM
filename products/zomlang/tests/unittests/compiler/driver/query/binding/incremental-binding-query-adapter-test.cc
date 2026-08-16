@@ -717,8 +717,8 @@ ZC_TEST("Incremental binding query publishes verified stable named inventories")
             zc::none);
   auto admissionFingerprint = snapshot.keyFingerprint<StableIdentityAdmissionQuery>(moduleKey);
   ZC_REQUIRE(admissionFingerprint != zc::none);
-  auto selectedFingerprint = snapshot.keyFingerprint<module_graph_query::SelectedModuleSourceQuery>(
-      ZC_REQUIRE_NONNULL(module_graph_query::SelectedModuleSourceQuery::decodeKey(
+  auto selectedFingerprint = snapshot.keyFingerprint<module_graph_query::SelectedModuleSource>(
+      ZC_REQUIRE_NONNULL(module_graph_query::SelectedModuleSource::decodeKey(
           moduleKey.canonicalModuleBytes())));
   auto parseFingerprint = snapshot.keyFingerprint<parser::ParseSourceQuery>(sourceKey);
   ZC_REQUIRE(selectedFingerprint != zc::none);
@@ -1029,21 +1029,21 @@ ZC_TEST("Incremental binding query compilation options backdate equals and repla
 }
 
 ZC_TEST("Incremental binding query active crates use a canonical compilation root set") {
-  ZC_EXPECT(ActiveCratesQuery::descriptor.domain == "zom.query.active-crates"_zc);
-  ZC_EXPECT(ActiveCratesQuery::descriptor.reuse == query::ReuseClass::Semantic);
-  ZC_EXPECT(ActiveCratesQuery::descriptor.retention == query::RetentionClass::Retained);
+  ZC_EXPECT(ActiveCrates::descriptor.domain == "zom.query.active-crates"_zc);
+  ZC_EXPECT(ActiveCrates::descriptor.reuse == query::ReuseClass::Semantic);
+  ZC_EXPECT(ActiveCrates::descriptor.retention == query::RetentionClass::Retained);
 
   auto database = queryTestDatabase();
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
-  auto duplicate = database.registerDescriptor<ActiveCratesQuery>();
+  auto duplicate = database.registerDescriptor<ActiveCrates>();
   ZC_EXPECT(!duplicate.isRegistered());
   ZC_EXPECT(duplicate.failure() == query::DescriptorRegistrationFailure::SlotAlreadyRegistered);
 
   auto registry = targetRegistry();
   auto request = compilationRequest(registry);
   auto roots = compilationRootSet(request);
-  auto encodedRoots = ActiveCratesQuery::encodeKey(roots);
-  auto decodedRoots = ActiveCratesQuery::decodeKey(encodedRoots.asPtr());
+  auto encodedRoots = ActiveCrates::encodeKey(roots);
+  auto decodedRoots = ActiveCrates::decodeKey(encodedRoots.asPtr());
   ZC_REQUIRE(decodedRoots != zc::none);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(decodedRoots) == roots);
 
@@ -1065,21 +1065,21 @@ ZC_TEST("Incremental binding query active crates use a canonical compilation roo
   auto second = stableCrate("incremental_binding_query_aux"_zc);
   auto crates = crateSet(second, first, first);
   ZC_REQUIRE(crates.crates().size() == 2);
-  auto encodedCrates = ActiveCratesQuery::encodeValue(crates);
-  auto decodedCrates = ActiveCratesQuery::decodeValue(encodedCrates.asPtr());
+  auto encodedCrates = ActiveCrates::encodeValue(crates);
+  auto decodedCrates = ActiveCrates::decodeValue(encodedCrates.asPtr());
   ZC_REQUIRE(decodedCrates != zc::none);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(decodedCrates) == crates);
 
   const uint8_t malformed[] = {0xff};
-  ZC_EXPECT(ActiveCratesQuery::decodeKey(zc::arrayPtr(malformed)) == zc::none);
-  ZC_EXPECT(ActiveCratesQuery::decodeValue(zc::arrayPtr(malformed)) == zc::none);
+  ZC_EXPECT(ActiveCrates::decodeKey(zc::arrayPtr(malformed)) == zc::none);
+  ZC_EXPECT(ActiveCrates::decodeValue(zc::arrayPtr(malformed)) == zc::none);
 
   auto trailingRoot = zc::heapArray<uint8_t>(encodedRoots.size() + 1);
   for (size_t index = 0; index < encodedRoots.size(); ++index) {
     trailingRoot[index] = encodedRoots[index];
   }
   trailingRoot.back() = 0;
-  ZC_EXPECT(ActiveCratesQuery::decodeKey(trailingRoot.asPtr()) == zc::none);
+  ZC_EXPECT(ActiveCrates::decodeKey(trailingRoot.asPtr()) == zc::none);
 
   zc::Vector<CompilationRootKey> duplicateRoots;
   duplicateRoots.add(roots.roots()[0].clone());
@@ -1090,7 +1090,7 @@ ZC_TEST("Incremental binding query active crates use a canonical compilation roo
   duplicateCrate.encodeSequenceSize(2);
   duplicateCrate.encodeByteString(first.canonicalCrateBytes());
   duplicateCrate.encodeByteString(first.canonicalCrateBytes());
-  ZC_EXPECT(ActiveCratesQuery::decodeValue(duplicateCrate.finish().asPtr()) == zc::none);
+  ZC_EXPECT(ActiveCrates::decodeValue(duplicateCrate.finish().asPtr()) == zc::none);
 }
 
 ZC_TEST("Incremental binding query active crates derive and shield package graph changes") {
@@ -1110,19 +1110,19 @@ ZC_TEST("Incremental binding query active crates derive and shield package graph
   ZC_REQUIRE(initialWrite.set<PackageGraphInput>(packageRoots, firstGraph).isApplied());
   ZC_REQUIRE(initialWrite.commit().isCommitted());
   auto initial = database.snapshot();
-  auto initialResult = initial.get<ActiveCratesQuery>(roots);
+  auto initialResult = initial.get<ActiveCrates>(roots);
   ZC_REQUIRE(initialResult.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(initialResult.value() == firstSet);
-  auto initialMetadata = initial.metadata<ActiveCratesQuery>(roots);
+  auto initialMetadata = initial.metadata<ActiveCrates>(roots);
   ZC_REQUIRE(initialMetadata != zc::none);
 
   auto equalWrite = transaction(database);
   ZC_REQUIRE(equalWrite.set<PackageGraphInput>(packageRoots, firstGraph).isApplied());
   ZC_REQUIRE(equalWrite.commit().isCommitted());
   auto equal = database.snapshot();
-  auto equalResult = equal.get<ActiveCratesQuery>(roots);
+  auto equalResult = equal.get<ActiveCrates>(roots);
   ZC_REQUIRE(equalResult.kind() == query::QueryValueKind::Value);
-  auto equalMetadata = equal.metadata<ActiveCratesQuery>(roots);
+  auto equalMetadata = equal.metadata<ActiveCrates>(roots);
   ZC_REQUIRE(equalMetadata != zc::none);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(equalMetadata).changedAt() ==
             ZC_REQUIRE_NONNULL(initialMetadata).changedAt());
@@ -1146,10 +1146,10 @@ ZC_TEST("Incremental binding query active crates derive and shield package graph
                  .isApplied());
   ZC_REQUIRE(changedWrite.commit().isCommitted());
   auto changed = database.snapshot();
-  auto result = changed.get<ActiveCratesQuery>(roots);
+  auto result = changed.get<ActiveCrates>(roots);
   ZC_REQUIRE(result.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(result.value() == replacement);
-  auto changedMetadata = changed.metadata<ActiveCratesQuery>(roots);
+  auto changedMetadata = changed.metadata<ActiveCrates>(roots);
   ZC_REQUIRE(changedMetadata != zc::none);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(changedMetadata).changedAt() == changed.revision());
 }
@@ -1185,7 +1185,7 @@ ZC_TEST("Incremental binding query active crates unite user and toolchain core r
                  .isApplied());
   ZC_REQUIRE(write.commit().isCommitted());
 
-  auto active = database.snapshot().get<ActiveCratesQuery>(ZC_REQUIRE_NONNULL(roots));
+  auto active = database.snapshot().get<ActiveCrates>(ZC_REQUIRE_NONNULL(roots));
   ZC_REQUIRE(!active.isRuntimeFailure());
   ZC_REQUIRE(active.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(active.value() == crateSet(user, ZC_REQUIRE_NONNULL(stableCore)));
@@ -1407,8 +1407,8 @@ ZC_TEST("Incremental binding query per crate source roots are strict and replace
   ZC_EXPECT(UserPackageActiveSourcesInput::descriptor.domain ==
             "zom.query.user-package-active-sources"_zc);
   ZC_EXPECT(UserPackageActiveSourcesInput::descriptor.durability == query::Durability::Low);
-  ZC_EXPECT(ActiveSourcesQuery::descriptor.domain == "zom.query.active-sources"_zc);
-  ZC_EXPECT(ActiveSourcesQuery::descriptor.reuse == query::ReuseClass::Semantic);
+  ZC_EXPECT(ActiveSources::descriptor.domain == "zom.query.active-sources"_zc);
+  ZC_EXPECT(ActiveSources::descriptor.reuse == query::ReuseClass::Semantic);
   auto crate = stableCrate("incremental_binding_query"_zc);
   auto encodedCrate = UserPackageActiveSourcesInput::encodeKey(crate);
   auto decodedCrate = UserPackageActiveSourcesInput::decodeKey(encodedCrate.asPtr());
@@ -1437,13 +1437,13 @@ ZC_TEST("Incremental binding query per crate source roots are strict and replace
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
   auto duplicateInput = database.registerDescriptor<UserPackageActiveSourcesInput>();
   ZC_EXPECT(!duplicateInput.isRegistered());
-  auto duplicateQuery = database.registerDescriptor<ActiveSourcesQuery>();
+  auto duplicateQuery = database.registerDescriptor<ActiveSources>();
   ZC_EXPECT(!duplicateQuery.isRegistered());
   auto firstWrite = transaction(database);
   ZC_REQUIRE(firstWrite.set<UserPackageActiveSourcesInput>(crate, sources).isApplied());
   ZC_REQUIRE(firstWrite.commit().isCommitted());
   auto first = database.snapshot();
-  auto firstDerived = first.get<ActiveSourcesQuery>(crate);
+  auto firstDerived = first.get<ActiveSources>(crate);
   ZC_REQUIRE(firstDerived.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(firstDerived.value() == sources);
   auto firstMetadata = first.metadata<UserPackageActiveSourcesInput>(crate);

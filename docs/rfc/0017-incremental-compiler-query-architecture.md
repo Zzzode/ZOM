@@ -1253,7 +1253,7 @@ surfaces:
 | RFC 0017 Surface | Current Contract |
 |---|---|
 | Structural inputs | `VerifiedModuleGraphInputTransaction` atomically owns selected-module catalogs, detached dependency sites, catalog buckets, requester ancestries, search roots, dependency aliases, configured preludes, and its exact replacement ledger |
-| Derived query inventory | `SelectedModuleSourceQuery`, `ActiveModules`, `ModuleDependencySites`, `ModuleDependencyRequests`, `ModuleDependencies`, `ModuleGraph`, and `ModuleGraphScc` are derived; no derived topology fact is an input |
+| Derived query inventory | `SelectedModuleSource`, `ActiveModules`, `ModuleDependencySites`, `ModuleDependencyRequests`, `ModuleDependencies`, `ModuleGraph`, and `ModuleGraphScc` are derived; no derived topology fact is an input |
 | Reuse boundary | Detached dependency sites and requests are handle-free `Semantic` values; source locations and Binder handles are reconstructed only by revision-local capability materialization after the final barrier |
 | Graph keys and values | `ModuleGraph` and `ModuleGraphScc` use `CompilationRootSetQueryKey` and the exact stable records, domains, failure records, ordering, bounds, and keyed verifiers defined by RFC 0026 |
 | Provider algorithms | `ModuleGraph` derives complete membership and edges from active crates, active modules, and module dependencies; `ModuleGraphScc` uses Tarjan while its verifier uses Kosaraju |

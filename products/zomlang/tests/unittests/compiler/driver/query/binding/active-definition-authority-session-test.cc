@@ -1081,7 +1081,7 @@ graph_query::MaterializedModuleGraph materializedGraphFixture(bool includeDepend
                   includeDependency);
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots, includeDependency);
-  auto materialized = sealed.getCapability<graph_query::MaterializeModuleGraphQuery>(roots);
+  auto materialized = sealed.getCapability<graph_query::MaterializeModuleGraph>(roots);
   ZC_REQUIRE(materialized.isPublished());
   return materialized.lease().capability().clone();
 }
@@ -1096,7 +1096,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.SkeletonPublishesMembershipGatedIdent
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
   auto materialized =
-      sealed.getCapability<graph_query::MaterializeModuleSkeletonQuery>(zc::mv(key));
+      sealed.getCapability<graph_query::MaterializeModuleSkeleton>(zc::mv(key));
   ZC_REQUIRE(materialized.isPublished());
   const auto& capability = materialized.lease().capability();
   ZC_EXPECT(capability.contextRoots() == roots);
@@ -1169,7 +1169,7 @@ ZC_TEST(
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
   auto materialized =
-      sealed.getCapability<graph_query::MaterializeModuleSkeletonQuery>(zc::mv(key));
+      sealed.getCapability<graph_query::MaterializeModuleSkeleton>(zc::mv(key));
   ZC_REQUIRE(materialized.isPublished());
   const auto facts = materialized.lease().capability().materializedCallableParameters();
   ZC_REQUIRE(facts.size() == 3);
@@ -1191,7 +1191,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.SkeletonMaterializesHeaderScopeBindin
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
   auto materialized =
-      sealed.getCapability<graph_query::MaterializeModuleSkeletonQuery>(zc::mv(key));
+      sealed.getCapability<graph_query::MaterializeModuleSkeleton>(zc::mv(key));
   ZC_REQUIRE(materialized.isPublished());
   const auto& capability = materialized.lease().capability();
   ZC_REQUIRE(capability.materializedGenericParameters().size() == 1);
@@ -1231,7 +1231,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.SkeletonMaterializesDirectLocalExport
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
   auto materialized =
-      sealed.getCapability<graph_query::MaterializeModuleSkeletonQuery>(zc::mv(key));
+      sealed.getCapability<graph_query::MaterializeModuleSkeleton>(zc::mv(key));
   ZC_REQUIRE(materialized.isPublished());
   const auto& capability = materialized.lease().capability();
   ZC_REQUIRE(capability.identities().stableWitness().localExports().values().size() == 1);
@@ -1263,7 +1263,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.SkeletonMaterializesDirectLocalExport
                 .definition == capability.materializedDefinitions()[0].identity);
 
   auto verifiedKey = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto verified = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(verifiedKey));
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(verifiedKey));
   ZC_REQUIRE(verified.isPublished());
   ZC_REQUIRE(verified.lease()
                  .capability()
@@ -1296,7 +1296,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.SkeletonMaterializesLocalReexports") 
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
   auto materialized =
-      sealed.getCapability<graph_query::MaterializeModuleSkeletonQuery>(zc::mv(key));
+      sealed.getCapability<graph_query::MaterializeModuleSkeleton>(zc::mv(key));
   ZC_REQUIRE(materialized.isPublished());
   const auto& capability = materialized.lease().capability();
   ZC_REQUIRE(capability.materializedDefinitions().size() == 1);
@@ -1334,7 +1334,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.SkeletonMaterializesLocalReexports") 
   ZC_EXPECT(surface.exports()[0].name.name().text() == "PublicGamma"_zc);
 
   auto verifiedKey = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto verified = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(verifiedKey));
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(verifiedKey));
   ZC_REQUIRE(verified.isPublished());
   ZC_REQUIRE(verified.lease()
                  .capability()
@@ -1365,7 +1365,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.SkeletonRejectsPermissionAndLineageMu
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
   const auto encodedKey = key.encodeCanonical();
   auto materialized =
-      sealed.getCapability<graph_query::MaterializeModuleSkeletonQuery>(zc::mv(key));
+      sealed.getCapability<graph_query::MaterializeModuleSkeleton>(zc::mv(key));
   ZC_REQUIRE(materialized.isPublished());
   const auto& capability = materialized.lease().capability();
   ZC_EXPECT(capability.identities().definitions().size() == 2);
@@ -1411,7 +1411,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.SkeletonRejectsPermissionAndLineageMu
   auto foreignModule = namedSemanticModule("foreign"_zc);
   auto foreignKey = ContextualModuleKey::from(roots.clone(), foreignModule.clone());
   auto rejected =
-      sealed.getCapability<graph_query::MaterializeModuleSkeletonQuery>(zc::mv(foreignKey));
+      sealed.getCapability<graph_query::MaterializeModuleSkeleton>(zc::mv(foreignKey));
   ZC_REQUIRE(rejected.isKeyRejected());
   ZC_EXPECT(rejected.keyFailure().kind() ==
             binder::BinderKeyFailureKind::MissingSelectedModuleSource);
@@ -1438,11 +1438,11 @@ ZC_TEST("MaterializedBindingCapabilityTest.SkeletonRejectsPermissionAndLineageMu
   ZC_EXPECT(invalidCandidate == zc::none);
 
   auto wrongDomain = mutation::flipByte(encodedKey.asPtr(), 0);
-  ZC_EXPECT(graph_query::MaterializeModuleSkeletonQuery::decodeKey(wrongDomain.asPtr()) ==
+  ZC_EXPECT(graph_query::MaterializeModuleSkeleton::decodeKey(wrongDomain.asPtr()) ==
             zc::none);
   auto trailing = mutation::withTrailingByte(encodedKey.asPtr());
-  ZC_EXPECT(graph_query::MaterializeModuleSkeletonQuery::decodeKey(trailing.asPtr()) == zc::none);
-  ZC_EXPECT(graph_query::MaterializeModuleSkeletonQuery::decodeKey(
+  ZC_EXPECT(graph_query::MaterializeModuleSkeleton::decodeKey(trailing.asPtr()) == zc::none);
+  ZC_EXPECT(graph_query::MaterializeModuleSkeleton::decodeKey(
                 encodedKey.asPtr().slice(0, encodedKey.size() - 1)) == zc::none);
 }
 
@@ -1508,7 +1508,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.SkeletonRejectsHeaderMembershipWithdr
 
     auto sealed = sealDatabase(database, roots);
     auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
-    auto rejected = sealed.getCapability<graph_query::MaterializeModuleSkeletonQuery>(zc::mv(key));
+    auto rejected = sealed.getCapability<graph_query::MaterializeModuleSkeleton>(zc::mv(key));
     ZC_REQUIRE(rejected.isRuntimeRejected());
     ZC_EXPECT(rejected.runtimeFailure() == query::QueryRuntimeFailure::InvariantViolation);
   };
@@ -1535,7 +1535,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyRejectsPermissionAndLineageM
   ZC_REQUIRE(owner != zc::none);
   auto key = ContextualBodyOwnerKey::from(roots.clone(), zc::mv(ZC_REQUIRE_NONNULL(owner)));
   const auto encodedKey = key.encodeCanonical();
-  auto materialized = sealed.getCapability<graph_query::MaterializeOwnerBodyQuery>(zc::mv(key));
+  auto materialized = sealed.getCapability<graph_query::MaterializeOwnerBody>(zc::mv(key));
   ZC_REQUIRE(materialized.isPublished());
   const auto& capability = materialized.lease().capability();
   ZC_EXPECT(capability.contextRoots() == roots);
@@ -1592,7 +1592,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyRejectsPermissionAndLineageM
   ZC_REQUIRE(foreignOwner != zc::none);
   auto foreignKey =
       ContextualBodyOwnerKey::from(roots.clone(), zc::mv(ZC_REQUIRE_NONNULL(foreignOwner)));
-  auto rejected = sealed.getCapability<graph_query::MaterializeOwnerBodyQuery>(zc::mv(foreignKey));
+  auto rejected = sealed.getCapability<graph_query::MaterializeOwnerBody>(zc::mv(foreignKey));
   ZC_REQUIRE(rejected.isKeyRejected());
   ZC_EXPECT(rejected.keyFailure().kind() ==
             binder::BinderKeyFailureKind::MissingSelectedModuleSource);
@@ -1617,10 +1617,10 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyRejectsPermissionAndLineageM
   ZC_EXPECT(invalidCandidate == zc::none);
 
   auto wrongDomain = mutation::flipByte(encodedKey.asPtr(), 0);
-  ZC_EXPECT(graph_query::MaterializeOwnerBodyQuery::decodeKey(wrongDomain.asPtr()) == zc::none);
+  ZC_EXPECT(graph_query::MaterializeOwnerBody::decodeKey(wrongDomain.asPtr()) == zc::none);
   auto trailing = mutation::withTrailingByte(encodedKey.asPtr());
-  ZC_EXPECT(graph_query::MaterializeOwnerBodyQuery::decodeKey(trailing.asPtr()) == zc::none);
-  ZC_EXPECT(graph_query::MaterializeOwnerBodyQuery::decodeKey(
+  ZC_EXPECT(graph_query::MaterializeOwnerBody::decodeKey(trailing.asPtr()) == zc::none);
+  ZC_EXPECT(graph_query::MaterializeOwnerBody::decodeKey(
                 encodedKey.asPtr().slice(0, encodedKey.size() - 1)) == zc::none);
 }
 
@@ -1636,7 +1636,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyMaterializesClosureFreeVaria
   auto owner = binder::StableOwnerBodyQueryKey::from(
       semanticModule(), binder::StableBodyOwnerKey::module(semanticModule()));
   ZC_REQUIRE(owner != zc::none);
-  auto materialized = sealed.getCapability<graph_query::MaterializeOwnerBodyQuery>(
+  auto materialized = sealed.getCapability<graph_query::MaterializeOwnerBody>(
       ContextualBodyOwnerKey::from(roots.clone(), zc::mv(ZC_REQUIRE_NONNULL(owner))));
   ZC_REQUIRE(materialized.isPublished());
   const auto& capability = materialized.lease().capability();
@@ -1664,7 +1664,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyMaterializesFunctionExpressi
   auto owner = binder::StableOwnerBodyQueryKey::from(
       semanticModule(), binder::StableBodyOwnerKey::module(semanticModule()));
   ZC_REQUIRE(owner != zc::none);
-  auto materialized = sealed.getCapability<graph_query::MaterializeOwnerBodyQuery>(
+  auto materialized = sealed.getCapability<graph_query::MaterializeOwnerBody>(
       ContextualBodyOwnerKey::from(roots.clone(), zc::mv(ZC_REQUIRE_NONNULL(owner))));
   ZC_REQUIRE(materialized.isPublished());
   const auto& capability = materialized.lease().capability();
@@ -1694,7 +1694,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyProjectsExplicitClosureCaptu
   auto owner = binder::StableOwnerBodyQueryKey::from(
       semanticModule(), binder::StableBodyOwnerKey::module(semanticModule()));
   ZC_REQUIRE(owner != zc::none);
-  auto materialized = sealed.getCapability<graph_query::MaterializeOwnerBodyQuery>(
+  auto materialized = sealed.getCapability<graph_query::MaterializeOwnerBody>(
       ContextualBodyOwnerKey::from(roots.clone(), zc::mv(ZC_REQUIRE_NONNULL(owner))));
   ZC_REQUIRE(materialized.isPublished());
   const auto& captures =
@@ -1762,7 +1762,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyMaterializesReferenceAndEmpt
   auto owner = binder::StableOwnerBodyQueryKey::from(
       semanticModule(), binder::StableBodyOwnerKey::module(semanticModule()));
   ZC_REQUIRE(owner != zc::none);
-  auto materialized = sealed.getCapability<graph_query::MaterializeOwnerBodyQuery>(
+  auto materialized = sealed.getCapability<graph_query::MaterializeOwnerBody>(
       ContextualBodyOwnerKey::from(roots.clone(), zc::mv(ZC_REQUIRE_NONNULL(owner))));
   ZC_REQUIRE(materialized.isPublished());
   const auto& stable = materialized.lease().capability().stableWitness().explicitClosureCaptures();
@@ -1791,7 +1791,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyPropagatesNestedClosureFreeV
   auto owner = binder::StableOwnerBodyQueryKey::from(
       semanticModule(), binder::StableBodyOwnerKey::module(semanticModule()));
   ZC_REQUIRE(owner != zc::none);
-  auto materialized = sealed.getCapability<graph_query::MaterializeOwnerBodyQuery>(
+  auto materialized = sealed.getCapability<graph_query::MaterializeOwnerBody>(
       ContextualBodyOwnerKey::from(roots.clone(), zc::mv(ZC_REQUIRE_NONNULL(owner))));
   ZC_REQUIRE(materialized.isPublished());
   const auto& capability = materialized.lease().capability();
@@ -1816,7 +1816,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyPublishesDeferredMemberFacts
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto verified = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(key));
   ZC_REQUIRE(verified.isPublished());
 
   size_t deferredMembers = 0;
@@ -1844,7 +1844,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyMaterializesLabelsAndControl
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto verified = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(key));
   ZC_REQUIRE(verified.isPublished());
 
   size_t labels = 0;
@@ -1895,7 +1895,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyMaterializesClosureOwnedLabe
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto verified = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(key));
   ZC_REQUIRE(verified.isPublished());
 
   size_t closureLabels = 0;
@@ -1922,7 +1922,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyMaterializesShadowTargets") 
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto verified = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(key));
   ZC_REQUIRE(verified.isPublished());
 
   size_t stableShadows = 0;
@@ -1958,7 +1958,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyPublishesLexicalLookupFacts"
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto verified = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(key));
   ZC_REQUIRE(verified.isPublished());
 
   size_t resolutions = 0;
@@ -2012,7 +2012,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyMaterializesThisBindings") {
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto verified = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(key));
   ZC_REQUIRE(verified.isPublished());
 
   size_t stableBindings = 0;
@@ -2051,7 +2051,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyMaterializesThisCaptures") {
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto verified = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(key));
   ZC_REQUIRE(verified.isPublished());
 
   size_t stableCaptures = 0;
@@ -2085,7 +2085,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyProjectsContextualSelfTypes"
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto verified = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(key));
   ZC_REQUIRE(verified.isPublished());
 
   size_t contextualSelfTypes = 0;
@@ -2128,7 +2128,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyPublishesSingleSegmentTypeLo
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto verified = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(key));
   ZC_REQUIRE(verified.isPublished());
 
   size_t resolutions = 0;
@@ -2171,7 +2171,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyPublishesQualifiedTypePathFa
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto verified = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(key));
   ZC_REQUIRE(verified.isPublished());
 
   size_t rootResolutions = 0;
@@ -2211,7 +2211,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyProjectsNamespaceMismatchFac
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto verified = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(key));
   ZC_REQUIRE(verified.isPublished());
 
   size_t mismatches = 0;
@@ -2258,7 +2258,7 @@ ZC_TEST("VerifiedBoundModuleCapabilityTest.RejectsChildFailureAndLeaseLineageMut
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
   const auto encodedKey = key.encodeCanonical();
-  auto verified = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(key));
   ZC_REQUIRE(verified.isPublished());
   const auto& capability = verified.lease().capability();
   const auto& skeleton = capability.skeletonLease().capability();
@@ -2455,16 +2455,16 @@ ZC_TEST("VerifiedBoundModuleCapabilityTest.RejectsChildFailureAndLeaseLineageMut
   ZC_EXPECT(invalidCandidate == zc::none);
 
   auto foreignKey = ContextualModuleKey::from(roots.clone(), namedSemanticModule("foreign"_zc));
-  auto rejected = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(foreignKey));
+  auto rejected = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(foreignKey));
   ZC_REQUIRE(rejected.isKeyRejected());
   ZC_EXPECT(rejected.keyFailure().kind() ==
             binder::BinderKeyFailureKind::MissingSelectedModuleSource);
 
   auto wrongDomain = mutation::flipByte(encodedKey.asPtr(), 0);
-  ZC_EXPECT(graph_query::VerifyBoundModuleQuery::decodeKey(wrongDomain.asPtr()) == zc::none);
+  ZC_EXPECT(graph_query::VerifyBoundModule::decodeKey(wrongDomain.asPtr()) == zc::none);
   auto trailing = mutation::withTrailingByte(encodedKey.asPtr());
-  ZC_EXPECT(graph_query::VerifyBoundModuleQuery::decodeKey(trailing.asPtr()) == zc::none);
-  ZC_EXPECT(graph_query::VerifyBoundModuleQuery::decodeKey(
+  ZC_EXPECT(graph_query::VerifyBoundModule::decodeKey(trailing.asPtr()) == zc::none);
+  ZC_EXPECT(graph_query::VerifyBoundModule::decodeKey(
                 encodedKey.asPtr().slice(0, encodedKey.size() - 1)) == zc::none);
 }
 
@@ -2481,7 +2481,7 @@ ZC_TEST("CheckerBoundModuleView retains its verified bound-module lease") {
 
   auto view = [&]() {
     auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
-    auto demand = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+    auto demand = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(key));
     ZC_REQUIRE(demand.isPublished());
     auto candidate = graph_query::CheckerBoundModuleView::from(zc::mv(demand).takeLease());
     ZC_REQUIRE(candidate != zc::none);
@@ -2515,7 +2515,7 @@ ZC_TEST("CheckerIdentityAuthority resolves every retained identity domain") {
 
   zc::Vector<checker::CheckerIdentityAuthority::BoundModuleView> modules;
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto demand = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+  auto demand = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(key));
   ZC_REQUIRE(demand.isPublished());
   auto view = graph_query::CheckerBoundModuleView::from(zc::mv(demand).takeLease());
   ZC_REQUIRE(view != zc::none);
@@ -2563,7 +2563,7 @@ ZC_TEST("CheckerIdentityAuthority resolves every retained identity domain") {
     if (entry.handle() == supplied.module()) { continue; }
     auto moduleKey = ContextualModuleKey::from(roots.clone(), entry.key().clone());
     auto moduleDemand =
-        sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(moduleKey));
+        sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(moduleKey));
     ZC_REQUIRE(moduleDemand.isPublished());
     auto moduleView = graph_query::CheckerBoundModuleView::from(zc::mv(moduleDemand).takeLease());
     ZC_REQUIRE(moduleView != zc::none);
@@ -2667,7 +2667,7 @@ ZC_TEST("CheckerIdentityAuthority rejects a repeated module in a complete graph"
   zc::Vector<checker::CheckerIdentityAuthority::BoundModuleView> repeated;
   for (size_t index = 0; index < 2; ++index) {
     auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
-    auto demand = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+    auto demand = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(key));
     ZC_REQUIRE(demand.isPublished());
     auto view = graph_query::CheckerBoundModuleView::from(zc::mv(demand).takeLease());
     ZC_REQUIRE(view != zc::none);
@@ -2689,7 +2689,7 @@ ZC_TEST("VerifiedBoundModuleCapabilityTest.MaterializesGenericNominalDeclaration
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto verified = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(key));
   ZC_REQUIRE(verified.isPublished());
   const auto& capability = verified.lease().capability();
   ZC_EXPECT(capability.definitions().definitions().size() == 7);
@@ -2727,7 +2727,7 @@ void expectExactHeaderReadSet(const query::QuerySnapshot& snapshot,
   auto implementationFingerprint =
       snapshot.keyFingerprint<NamedImplementationInventoryQuery>(moduleKey);
   auto selectedFingerprint =
-      snapshot.keyFingerprint<graph_query::SelectedModuleSourceQuery>(semanticModule());
+      snapshot.keyFingerprint<graph_query::SelectedModuleSource>(semanticModule());
   auto parseFingerprint = snapshot.keyFingerprint<parser::ParseSourceQuery>(stableSource());
   auto definitionSitesFingerprint =
       snapshot.keyFingerprint<RevisionLocalDefinitionSitesQuery>(moduleKey);
@@ -3341,7 +3341,7 @@ ZC_TEST("Final-sealed identity and named-item capabilities publish verified valu
   }
 
   auto sealed = sealDatabase(database, roots);
-  auto materialized = sealed.getCapability<graph_query::MaterializeModuleGraphQuery>(roots);
+  auto materialized = sealed.getCapability<graph_query::MaterializeModuleGraph>(roots);
   auto sites = sealed.getCapability<IdentitySyntaxSiteInventoryQuery>(module);
   auto admission = sealed.getCapability<StableIdentityAdmissionQuery>(module);
   auto definitions = sealed.getCapability<RevisionLocalDefinitionSitesQuery>(module);
@@ -3553,7 +3553,7 @@ ZC_TEST("Final authority admits module alias source dependencies") {
 
   auto module = stableModule();
   auto staging = database.snapshot();
-  auto dependencies = staging.get<graph_query::ModuleDependenciesQuery>(semanticModule());
+  auto dependencies = staging.get<graph_query::ModuleDependencies>(semanticModule());
   ZC_REQUIRE(dependencies.kind() == query::QueryValueKind::Value);
   auto admission = staging.getCapability<StableIdentityAdmissionQuery>(module);
   ZC_REQUIRE(!admission.isRuntimeRejected());
@@ -3569,7 +3569,7 @@ ZC_TEST("Final authority admits module alias source dependencies") {
   ZC_REQUIRE(!targetExports.isRuntimeFailure());
   ZC_REQUIRE(targetExports.kind() == query::QueryValueKind::Value);
   auto dependencyProvenance =
-      sealed.getCapability<graph_query::ModuleDependencyProvenanceQuery>(semanticModule());
+      sealed.getCapability<graph_query::ModuleDependencyProvenance>(semanticModule());
   ZC_REQUIRE(dependencyProvenance.isPublished());
   ZC_REQUIRE(dependencyProvenance.lease().capability().entries().size() == 1);
   ZC_REQUIRE(dependencyProvenance.lease().capability().entries()[0].origin().sites().size() == 1);
@@ -3618,7 +3618,7 @@ ZC_TEST("Final authority admits module alias source dependencies") {
 
   auto materializedKey = ContextualModuleKey::from(roots.clone(), semanticModule());
   auto materialized =
-      sealed.getCapability<graph_query::MaterializeModuleSkeletonQuery>(zc::mv(materializedKey));
+      sealed.getCapability<graph_query::MaterializeModuleSkeleton>(zc::mv(materializedKey));
   ZC_EXPECT(!materialized.isSourceRejected());
   ZC_EXPECT(!materialized.isKeyRejected());
   ZC_EXPECT(!materialized.isRuntimeRejected());
@@ -3657,7 +3657,7 @@ ZC_TEST("Final authority admits module alias source dependencies") {
   ZC_EXPECT(aliasScopeBinding);
 
   auto verifiedKey = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto verified = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(verifiedKey));
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(verifiedKey));
   ZC_REQUIRE(verified.isPublished());
   auto view = graph_query::CheckerBoundModuleView::from(verified.lease().retain());
   ZC_REQUIRE(view != zc::none);
@@ -3695,7 +3695,7 @@ ZC_TEST("Materialized skeleton retains dependency import surface") {
   ZC_REQUIRE(transaction.commit().isCommitted());
 
   auto staging = database.snapshot();
-  auto dependencies = staging.get<graph_query::ModuleDependenciesQuery>(semanticModule());
+  auto dependencies = staging.get<graph_query::ModuleDependencies>(semanticModule());
   ZC_REQUIRE(dependencies.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(dependencies.value().dependencies().size() == 1);
   ZC_EXPECT(dependencies.value().dependencies()[0].encode().asPtr() ==
@@ -3727,11 +3727,11 @@ ZC_TEST("Materialized skeleton retains dependency import surface") {
                  .size() == 1);
   auto dependencyKey = ContextualModuleKey::from(roots.clone(), semanticModule("dependency"_zc));
   auto dependency =
-      sealed.getCapability<graph_query::MaterializeModuleSkeletonQuery>(zc::mv(dependencyKey));
+      sealed.getCapability<graph_query::MaterializeModuleSkeleton>(zc::mv(dependencyKey));
   ZC_REQUIRE(dependency.isPublished());
   auto materializedKey = ContextualModuleKey::from(roots.clone(), semanticModule());
   auto materialized =
-      sealed.getCapability<graph_query::MaterializeModuleSkeletonQuery>(zc::mv(materializedKey));
+      sealed.getCapability<graph_query::MaterializeModuleSkeleton>(zc::mv(materializedKey));
   ZC_EXPECT(!materialized.isSourceRejected());
   ZC_EXPECT(!materialized.isKeyRejected());
   ZC_EXPECT(!materialized.isRuntimeRejected());
@@ -3752,7 +3752,7 @@ ZC_TEST("Materialized skeleton retains dependency import surface") {
   ZC_EXPECT(import.canonicalTarget.value().is<binder::DefinitionBindingTarget>());
 
   auto verifiedKey = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto verified = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(verifiedKey));
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(verifiedKey));
   ZC_REQUIRE(verified.isPublished());
   auto view = graph_query::CheckerBoundModuleView::from(verified.lease().retain());
   ZC_REQUIRE(view != zc::none);
@@ -3813,7 +3813,7 @@ ZC_TEST("Verified bound module materializes an imported behavior implementation"
   auto sealed = sealDatabase(database, roots, true);
   auto skeletonKey = ContextualModuleKey::from(roots.clone(), semanticModule());
   auto skeleton =
-      sealed.getCapability<graph_query::MaterializeModuleSkeletonQuery>(zc::mv(skeletonKey));
+      sealed.getCapability<graph_query::MaterializeModuleSkeleton>(zc::mv(skeletonKey));
   ZC_REQUIRE(skeleton.isPublished());
   const auto& owners = skeleton.lease().capability().identities().stableWitness().bodyOwners();
   for (const auto& owner : owners.values()) {
@@ -3831,11 +3831,11 @@ ZC_TEST("Verified bound module materializes an imported behavior implementation"
     auto allocation = sealed.get<binder::ModuleBindingAllocationPlanQuery>(
         ContextualModuleKey::from(roots.clone(), semanticModule()));
     ZC_REQUIRE(allocation.kind() == query::QueryValueKind::Value);
-    auto body = sealed.getCapability<graph_query::MaterializeOwnerBodyQuery>(zc::mv(bodyKey));
+    auto body = sealed.getCapability<graph_query::MaterializeOwnerBody>(zc::mv(bodyKey));
     ZC_REQUIRE(body.isPublished());
   }
   auto boundKey = ContextualModuleKey::from(roots.clone(), semanticModule());
-  auto bound = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(boundKey));
+  auto bound = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(boundKey));
   ZC_REQUIRE(bound.isPublished());
 }
 
@@ -3866,7 +3866,7 @@ ZC_TEST("Materialized skeleton retains dependency foreign re-export surface") {
   ZC_REQUIRE(stable.value.localExports().values().size() == 1);
   auto materializedKey = ContextualModuleKey::from(roots.clone(), semanticModule());
   auto materialized =
-      sealed.getCapability<graph_query::MaterializeModuleSkeletonQuery>(zc::mv(materializedKey));
+      sealed.getCapability<graph_query::MaterializeModuleSkeleton>(zc::mv(materializedKey));
   ZC_EXPECT(!materialized.isSourceRejected());
   ZC_EXPECT(!materialized.isKeyRejected());
   ZC_EXPECT(!materialized.isRuntimeRejected());

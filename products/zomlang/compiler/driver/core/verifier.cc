@@ -300,7 +300,7 @@ zc::Maybe<zc::Vector<core::TypeFreeInterfaceSignatureRecord>> finalSignatures(
 }
 
 zc::Maybe<zc::Vector<binder::StableExportedBinding>> finalBindings(
-    query::CapabilityQueryContext<FinalizeCoreModuleInterfaceQuery>& context,
+    query::CapabilityQueryContext<FinalizeCoreModuleInterface>& context,
     const identity::ModuleKey& module) {
   auto names = context.get<binder::ModuleExportNames>(module.clone());
   if (names.isRuntimeFailure() || names.kind() != query::QueryValueKind::Value) { return zc::none; }
@@ -337,16 +337,16 @@ zc::Vector<CoreRoleSeedEntry> stableRoles(const VerifiedCoreRoleSeed& seed) {
 }
 
 zc::Maybe<checker::CheckerIdentityAuthority> materializeCheckerIdentities(
-    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterfaceQuery>& context,
+    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterface>& context,
     const incremental_binding_query::CompilationRootSetQueryKey& roots) {
   auto graph =
-      context.getCapability<module_graph_query::MaterializeModuleGraphQuery>(roots.clone());
+      context.getCapability<module_graph_query::MaterializeModuleGraph>(roots.clone());
   if (!graph.isPublished()) { return zc::none; }
   zc::Vector<checker::CheckerIdentityAuthority::BoundModuleView> views;
   for (const auto& module : graph.lease().capability().modules()) {
     auto key =
         incremental_binding_query::ContextualModuleKey::from(roots.clone(), module.key().clone());
-    auto bound = context.getCapability<module_graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+    auto bound = context.getCapability<module_graph_query::VerifyBoundModule>(zc::mv(key));
     if (!bound.isPublished()) { return zc::none; }
     auto view = module_graph_query::CheckerBoundModuleView::from(zc::mv(bound).takeLease());
     if (view == zc::none) { return zc::none; }
@@ -356,13 +356,13 @@ zc::Maybe<checker::CheckerIdentityAuthority> materializeCheckerIdentities(
 }
 
 zc::Maybe<core::VerifiedCoreImportedSignatureView> materializeCoreImportedSignatures(
-    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterfaceQuery>& context,
+    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterface>& context,
     const ContextualCoreModuleKey& key,
     const query::QueryCapabilityLease<const module_graph_query::VerifiedBoundModule>& bound) {
   auto graphKey =
       ContextualCoreCrateKey::from(key.contextRoots().clone(), key.module().crate().clone());
   if (graphKey == zc::none) { return zc::none; }
-  auto graph = context.get<CoreModuleGraphQuery>(zc::mv(ZC_ASSERT_NONNULL(graphKey)));
+  auto graph = context.get<CoreModuleGraph>(zc::mv(ZC_ASSERT_NONNULL(graphKey)));
   if (graph.isRuntimeFailure() || graph.kind() != query::QueryValueKind::Value) { return zc::none; }
   auto surface = bootstrapSurface(key.module(), graph.value().core());
   if (surface == zc::none) { return zc::none; }
@@ -380,7 +380,7 @@ zc::Maybe<core::VerifiedCoreImportedSignatureView> materializeCoreImportedSignat
     auto markerKey = ContextualCoreModuleKey::from(key.contextRoots().clone(),
                                                    zc::mv(ZC_ASSERT_NONNULL(marker)));
     if (markerKey == zc::none) { return zc::none; }
-    auto interface = context.getCapability<MaterializeCoreBootstrapModuleInterfaceQuery>(
+    auto interface = context.getCapability<MaterializeCoreBootstrapModuleInterface>(
         zc::mv(ZC_ASSERT_NONNULL(markerKey)));
     if (!interface.isPublished()) { return zc::none; }
     sources.add(zc::mv(interface).takeLease());
@@ -443,11 +443,11 @@ bool CoreLibraryQueryVerifier::verifyModuleGraph(
     return false;
   }
   auto activeCrates =
-      context.get<incremental_binding_query::ActiveCratesQuery>(ZC_ASSERT_NONNULL(singleton));
+      context.get<incremental_binding_query::ActiveCrates>(ZC_ASSERT_NONNULL(singleton));
   auto activeSources =
-      context.get<incremental_binding_query::ActiveSourcesQuery>(ZC_ASSERT_NONNULL(stableCrate));
-  auto activeModules = context.get<module_graph_query::ActiveModulesQuery>(key.crate());
-  auto graph = context.get<module_graph_query::ModuleGraphQuery>(ZC_ASSERT_NONNULL(singleton));
+      context.get<incremental_binding_query::ActiveSources>(ZC_ASSERT_NONNULL(stableCrate));
+  auto activeModules = context.get<module_graph_query::ActiveModules>(key.crate());
+  auto graph = context.get<module_graph_query::ModuleGraph>(ZC_ASSERT_NONNULL(singleton));
   if (activeCrates.isRuntimeFailure() || activeSources.isRuntimeFailure() ||
       activeModules.isRuntimeFailure() || graph.isRuntimeFailure()) {
     return false;
@@ -495,7 +495,7 @@ bool CoreLibraryQueryVerifier::verifyModuleGraph(
       }
     }
     if (!graphMember) { return false; }
-    auto dependencies = context.get<module_graph_query::ModuleDependenciesQuery>(entry.value);
+    auto dependencies = context.get<module_graph_query::ModuleDependencies>(entry.value);
     if (dependencies.isRuntimeFailure()) { return false; }
     if (dependencies.kind() == query::QueryValueKind::SemanticFailure) {
       return result.kind() == query::QueryValueKind::SemanticFailure &&
@@ -523,7 +523,7 @@ bool CoreLibraryQueryVerifier::verifyRoleSeed(
     const query::TypedQueryResult<CoreRoleSeedRecord>& result) {
   if (result.isRuntimeFailure()) { return false; }
   auto distribution = context.get<CoreDistributionInput>(identity::ToolchainUnitKey::core());
-  auto graph = context.get<CoreModuleGraphQuery>(key.clone());
+  auto graph = context.get<CoreModuleGraph>(key.clone());
   if (distribution.isRuntimeFailure() || graph.isRuntimeFailure()) { return false; }
   if (graph.kind() == query::QueryValueKind::SemanticFailure) {
     return result.kind() == query::QueryValueKind::SemanticFailure &&
@@ -539,7 +539,7 @@ bool CoreLibraryQueryVerifier::verifyRoleSeed(
   auto contextualMarker = incremental_binding_query::ContextualModuleKey::from(
       key.contextRoots().clone(), ZC_ASSERT_NONNULL(marker).clone());
   auto bound =
-      context.getCapability<module_graph_query::VerifyBoundModuleQuery>(zc::mv(contextualMarker));
+      context.getCapability<module_graph_query::VerifyBoundModule>(zc::mv(contextualMarker));
   if (!bound.isPublished() || bound.lease().capability().module().encode().asPtr() !=
                                   ZC_ASSERT_NONNULL(marker).encode().asPtr()) {
     return false;
@@ -606,17 +606,17 @@ bool CoreLibraryQueryVerifier::verifyBootstrapModuleInterfaceRecord(
   auto coreKey =
       ContextualCoreCrateKey::from(key.contextRoots().clone(), key.module().crate().clone());
   if (coreKey == zc::none) { return false; }
-  auto graph = context.get<CoreModuleGraphQuery>(ZC_ASSERT_NONNULL(coreKey).clone());
+  auto graph = context.get<CoreModuleGraph>(ZC_ASSERT_NONNULL(coreKey).clone());
   if (graph.isRuntimeFailure()) { return false; }
   if (graph.kind() == query::QueryValueKind::SemanticFailure) {
     return result.kind() == query::QueryValueKind::SemanticFailure &&
            result.semanticFailureBytes() == graph.semanticFailureBytes();
   }
   auto seed =
-      context.getCapability<MaterializeCoreRoleSeedQuery>(zc::mv(ZC_ASSERT_NONNULL(coreKey)));
+      context.getCapability<MaterializeCoreRoleSeed>(zc::mv(ZC_ASSERT_NONNULL(coreKey)));
   auto boundKey = incremental_binding_query::ContextualModuleKey::from(key.contextRoots().clone(),
                                                                        key.module().clone());
-  auto bound = context.getCapability<module_graph_query::VerifyBoundModuleQuery>(zc::mv(boundKey));
+  auto bound = context.getCapability<module_graph_query::VerifyBoundModule>(zc::mv(boundKey));
   if (result.kind() != query::QueryValueKind::Value ||
       graph.kind() != query::QueryValueKind::Value || !seed.isPublished() || !bound.isPublished()) {
     return false;
@@ -648,7 +648,7 @@ bool CoreLibraryQueryVerifier::verifyExportSurface(
     query::QueryContext& context, const ContextualCoreModuleKey& key,
     const query::TypedQueryResult<CoreExportSurfaceRecord>& result) {
   if (result.isRuntimeFailure()) { return false; }
-  auto interface = context.get<CoreBootstrapModuleInterfaceQuery>(key);
+  auto interface = context.get<CoreBootstrapModuleInterface>(key);
   if (interface.isRuntimeFailure() || result.kind() != query::QueryValueKind::Value ||
       interface.kind() != query::QueryValueKind::Value ||
       interface.value().module().encode().asPtr() != key.module().encode().asPtr()) {
@@ -678,7 +678,7 @@ bool CoreLibraryQueryVerifier::verifyPreludeSurface(
     query::QueryContext& context, const ContextualCoreCrateKey& key,
     const query::TypedQueryResult<CorePreludeSurfaceRecord>& result) {
   if (result.isRuntimeFailure()) { return false; }
-  auto graph = context.get<CoreModuleGraphQuery>(key.clone());
+  auto graph = context.get<CoreModuleGraph>(key.clone());
   if (graph.isRuntimeFailure()) { return false; }
   if (graph.kind() == query::QueryValueKind::SemanticFailure) {
     return result.kind() == query::QueryValueKind::SemanticFailure &&
@@ -701,8 +701,8 @@ bool CoreLibraryQueryVerifier::verifyPreludeSurface(
   auto preludeKey =
       ContextualCoreModuleKey::from(key.contextRoots().clone(), ZC_ASSERT_NONNULL(prelude).clone());
   if (markerKey == zc::none || preludeKey == zc::none) { return false; }
-  auto markerExport = context.get<CoreExportSurfaceQuery>(zc::mv(ZC_ASSERT_NONNULL(markerKey)));
-  auto preludeExport = context.get<CoreExportSurfaceQuery>(zc::mv(ZC_ASSERT_NONNULL(preludeKey)));
+  auto markerExport = context.get<CoreExportSurface>(zc::mv(ZC_ASSERT_NONNULL(markerKey)));
+  auto preludeExport = context.get<CoreExportSurface>(zc::mv(ZC_ASSERT_NONNULL(preludeKey)));
   if (markerExport.isRuntimeFailure() || preludeExport.isRuntimeFailure() ||
       markerExport.kind() != query::QueryValueKind::Value ||
       preludeExport.kind() != query::QueryValueKind::Value ||
@@ -729,8 +729,8 @@ bool CoreLibraryQueryVerifier::verifyRoleAuthority(
     const query::TypedQueryResult<CoreRoleAuthorityRecord>& result) {
   if (result.isRuntimeFailure()) { return false; }
   auto distribution = context.get<CoreDistributionInput>(identity::ToolchainUnitKey::core());
-  auto seed = context.getCapability<MaterializeCoreRoleSeedQuery>(key.clone());
-  auto prelude = context.get<CorePreludeSurfaceQuery>(key.clone());
+  auto seed = context.getCapability<MaterializeCoreRoleSeed>(key.clone());
+  auto prelude = context.get<CorePreludeSurface>(key.clone());
   if (distribution.isRuntimeFailure() || prelude.isRuntimeFailure() ||
       result.kind() != query::QueryValueKind::Value ||
       distribution.kind() != query::QueryValueKind::Value || !seed.isPublished() ||
@@ -752,12 +752,12 @@ bool CoreLibraryQueryVerifier::verifyRoleAuthority(
 }
 
 zc::Maybe<zc::Array<uint8_t>> CoreLibraryQueryVerifier::verifyCoreAuthority(
-    query::CapabilityQueryContext<MaterializeCoreAuthorityQuery>& context,
+    query::CapabilityQueryContext<MaterializeCoreAuthority>& context,
     const ContextualCoreCrateKey& key, const VerifiedCoreAuthorityBundle& candidate) {
-  auto record = context.get<CoreRoleAuthorityQuery>(key.clone());
+  auto record = context.get<CoreRoleAuthority>(key.clone());
   auto distribution = context.get<CoreDistributionInput>(identity::ToolchainUnitKey::core());
-  auto seed = context.getCapability<MaterializeCoreRoleSeedQuery>(key.clone());
-  auto graph = context.get<CoreModuleGraphQuery>(key.clone());
+  auto seed = context.getCapability<MaterializeCoreRoleSeed>(key.clone());
+  auto graph = context.get<CoreModuleGraph>(key.clone());
   if (record.isRuntimeFailure() || distribution.isRuntimeFailure() || graph.isRuntimeFailure() ||
       record.kind() != query::QueryValueKind::Value ||
       distribution.kind() != query::QueryValueKind::Value || !seed.isPublished() ||
@@ -770,7 +770,7 @@ zc::Maybe<zc::Array<uint8_t>> CoreLibraryQueryVerifier::verifyCoreAuthority(
   auto preludeKey = incremental_binding_query::ContextualModuleKey::from(
       key.contextRoots().clone(), zc::mv(ZC_ASSERT_NONNULL(preludeModule)));
   auto prelude =
-      context.getCapability<module_graph_query::VerifyBoundModuleQuery>(zc::mv(preludeKey));
+      context.getCapability<module_graph_query::VerifyBoundModule>(zc::mv(preludeKey));
   if (!prelude.isPublished()) { return zc::none; }
   auto expected = VerifiedCoreAuthorityBundle::from(
       seed.lease().capability().context(), seed.lease().capability().fingerprint().clone(),
@@ -784,15 +784,15 @@ zc::Maybe<zc::Array<uint8_t>> CoreLibraryQueryVerifier::verifyCoreAuthority(
 }
 
 zc::Maybe<zc::Array<uint8_t>> CoreLibraryQueryVerifier::verifyFinalCoreModuleInterface(
-    query::CapabilityQueryContext<FinalizeCoreModuleInterfaceQuery>& context,
+    query::CapabilityQueryContext<FinalizeCoreModuleInterface>& context,
     const ContextualCoreModuleKey& key, const VerifiedCoreModuleInterface& candidate) {
   auto coreKey =
       ContextualCoreCrateKey::from(key.contextRoots().clone(), key.module().crate().clone());
   if (coreKey == zc::none) { return zc::none; }
-  auto bootstrap = context.getCapability<MaterializeCoreBootstrapModuleInterfaceQuery>(key.clone());
+  auto bootstrap = context.getCapability<MaterializeCoreBootstrapModuleInterface>(key.clone());
   auto authority =
-      context.getCapability<MaterializeCoreAuthorityQuery>(ZC_ASSERT_NONNULL(coreKey).clone());
-  auto seedRecord = context.get<CoreRoleSeedQuery>(ZC_ASSERT_NONNULL(coreKey).clone());
+      context.getCapability<MaterializeCoreAuthority>(ZC_ASSERT_NONNULL(coreKey).clone());
+  auto seedRecord = context.get<CoreRoleSeed>(ZC_ASSERT_NONNULL(coreKey).clone());
   if (!bootstrap.isPublished() || !authority.isPublished() || seedRecord.isRuntimeFailure() ||
       seedRecord.kind() != query::QueryValueKind::Value) {
     return zc::none;
@@ -836,7 +836,7 @@ zc::Maybe<zc::Array<uint8_t>> CoreLibraryQueryVerifier::verifyFinalCoreModuleInt
     auto markerKey = ContextualCoreModuleKey::from(key.contextRoots().clone(),
                                                    seedRecord.value().markerModule().clone());
     if (markerKey == zc::none) { return zc::none; }
-    auto marker = context.getCapability<FinalizeCoreModuleInterfaceQuery>(
+    auto marker = context.getCapability<FinalizeCoreModuleInterface>(
         zc::mv(ZC_ASSERT_NONNULL(markerKey)));
     if (!marker.isPublished() || marker.lease().capability().record().module().encode().asPtr() !=
                                      seedRecord.value().markerModule().encode().asPtr()) {
@@ -879,17 +879,17 @@ zc::Maybe<zc::Array<uint8_t>> CoreLibraryQueryVerifier::verifyFinalCoreModuleInt
 }
 
 zc::Maybe<zc::Array<uint8_t>> CoreLibraryQueryVerifier::verifyBootstrapModuleInterface(
-    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterfaceQuery>& context,
+    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterface>& context,
     const ContextualCoreModuleKey& key, const VerifiedCoreBootstrapModuleInterface& candidate) {
   auto coreKey =
       ContextualCoreCrateKey::from(key.contextRoots().clone(), key.module().crate().clone());
   if (coreKey == zc::none) { return zc::none; }
-  auto graph = context.get<CoreModuleGraphQuery>(ZC_ASSERT_NONNULL(coreKey).clone());
+  auto graph = context.get<CoreModuleGraph>(ZC_ASSERT_NONNULL(coreKey).clone());
   auto seed =
-      context.getCapability<MaterializeCoreRoleSeedQuery>(zc::mv(ZC_ASSERT_NONNULL(coreKey)));
+      context.getCapability<MaterializeCoreRoleSeed>(zc::mv(ZC_ASSERT_NONNULL(coreKey)));
   auto boundKey = incremental_binding_query::ContextualModuleKey::from(key.contextRoots().clone(),
                                                                        key.module().clone());
-  auto bound = context.getCapability<module_graph_query::VerifyBoundModuleQuery>(zc::mv(boundKey));
+  auto bound = context.getCapability<module_graph_query::VerifyBoundModule>(zc::mv(boundKey));
   if (graph.isRuntimeFailure() || graph.kind() != query::QueryValueKind::Value ||
       !seed.isPublished() || !bound.isPublished()) {
     return zc::none;

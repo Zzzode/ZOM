@@ -436,11 +436,11 @@ query::TypedQueryResult<CoreModuleGraphRecord> provideCoreModuleGraph(
         query::QueryRuntimeFailure::ProviderRejected);
   }
   auto activeCrates =
-      context.get<incremental_binding_query::ActiveCratesQuery>(ZC_ASSERT_NONNULL(singleton));
+      context.get<incremental_binding_query::ActiveCrates>(ZC_ASSERT_NONNULL(singleton));
   auto activeSources =
-      context.get<incremental_binding_query::ActiveSourcesQuery>(ZC_ASSERT_NONNULL(stableCrate));
-  auto activeModules = context.get<module_graph_query::ActiveModulesQuery>(key.crate());
-  auto graph = context.get<module_graph_query::ModuleGraphQuery>(ZC_ASSERT_NONNULL(singleton));
+      context.get<incremental_binding_query::ActiveSources>(ZC_ASSERT_NONNULL(stableCrate));
+  auto activeModules = context.get<module_graph_query::ActiveModules>(key.crate());
+  auto graph = context.get<module_graph_query::ModuleGraph>(ZC_ASSERT_NONNULL(singleton));
   if (activeCrates.isRuntimeFailure() || activeSources.isRuntimeFailure() ||
       activeModules.isRuntimeFailure() || graph.isRuntimeFailure()) {
     return query::TypedQueryResult<CoreModuleGraphRecord>::runtimeFailure(
@@ -484,7 +484,7 @@ query::TypedQueryResult<CoreModuleGraphRecord> provideCoreModuleGraph(
       return query::TypedQueryResult<CoreModuleGraphRecord>::runtimeFailure(
           query::QueryRuntimeFailure::ProviderRejected);
     }
-    auto dependencies = context.get<module_graph_query::ModuleDependenciesQuery>(module);
+    auto dependencies = context.get<module_graph_query::ModuleDependencies>(module);
     if (dependencies.isRuntimeFailure()) {
       return query::TypedQueryResult<CoreModuleGraphRecord>::runtimeFailure(
           dependencies.runtimeFailure());
@@ -525,7 +525,7 @@ query::TypedQueryResult<CoreModuleGraphRecord> provideCoreModuleGraph(
 query::TypedQueryResult<CoreRoleSeedRecord> provideCoreRoleSeed(query::QueryContext& context,
                                                                 const ContextualCoreCrateKey& key) {
   auto distribution = context.get<CoreDistributionInput>(identity::ToolchainUnitKey::core());
-  auto graph = context.get<CoreModuleGraphQuery>(key.clone());
+  auto graph = context.get<CoreModuleGraph>(key.clone());
   if (distribution.isRuntimeFailure() || graph.isRuntimeFailure()) {
     return query::TypedQueryResult<CoreRoleSeedRecord>::runtimeFailure(
         distribution.isRuntimeFailure() ? distribution.runtimeFailure() : graph.runtimeFailure());
@@ -548,7 +548,7 @@ query::TypedQueryResult<CoreRoleSeedRecord> provideCoreRoleSeed(query::QueryCont
   auto contextualMarker = incremental_binding_query::ContextualModuleKey::from(
       key.contextRoots().clone(), ZC_ASSERT_NONNULL(marker).clone());
   auto bound =
-      context.getCapability<module_graph_query::VerifyBoundModuleQuery>(zc::mv(contextualMarker));
+      context.getCapability<module_graph_query::VerifyBoundModule>(zc::mv(contextualMarker));
   if (!bound.isPublished() || bound.lease().capability().module().encode().asPtr() !=
                                   ZC_ASSERT_NONNULL(marker).encode().asPtr()) {
     return query::TypedQueryResult<CoreRoleSeedRecord>::runtimeFailure(
@@ -631,11 +631,11 @@ query::TypedQueryResult<CoreRoleSeedRecord> provideCoreRoleSeed(query::QueryCont
 using CoreRoleSeedMaterialization = zc::OneOf<VerifiedCoreRoleSeed, query::QueryRuntimeFailure>;
 
 CoreRoleSeedMaterialization materializeCoreRoleSeed(
-    query::CapabilityQueryContext<MaterializeCoreRoleSeedQuery>& context,
+    query::CapabilityQueryContext<MaterializeCoreRoleSeed>& context,
     const ContextualCoreCrateKey& key) {
   auto distribution = context.get<CoreDistributionInput>(identity::ToolchainUnitKey::core());
-  auto graph = context.get<CoreModuleGraphQuery>(key.clone());
-  auto seed = context.get<CoreRoleSeedQuery>(key.clone());
+  auto graph = context.get<CoreModuleGraph>(key.clone());
+  auto seed = context.get<CoreRoleSeed>(key.clone());
   if (distribution.isRuntimeFailure() || graph.isRuntimeFailure() || seed.isRuntimeFailure() ||
       distribution.kind() != query::QueryValueKind::Value ||
       graph.kind() != query::QueryValueKind::Value || seed.kind() != query::QueryValueKind::Value ||
@@ -649,8 +649,8 @@ CoreRoleSeedMaterialization materializeCoreRoleSeed(
       incremental_binding_query::CompilationRootSetQueryKey::singletonToolchainCore(key.crate());
   if (singleton == zc::none) { return query::QueryRuntimeFailure::ProviderRejected; }
   auto activeCrates =
-      context.get<incremental_binding_query::ActiveCratesQuery>(ZC_ASSERT_NONNULL(singleton));
-  auto activeModules = context.get<module_graph_query::ActiveModulesQuery>(key.crate());
+      context.get<incremental_binding_query::ActiveCrates>(ZC_ASSERT_NONNULL(singleton));
+  auto activeModules = context.get<module_graph_query::ActiveModules>(key.crate());
   if (activeCrates.isRuntimeFailure() || activeModules.isRuntimeFailure() ||
       activeCrates.kind() != query::QueryValueKind::Value ||
       activeModules.kind() != query::QueryValueKind::Value ||
@@ -671,8 +671,8 @@ CoreRoleSeedMaterialization materializeCoreRoleSeed(
   auto contextualMarker = incremental_binding_query::ContextualModuleKey::from(
       key.contextRoots().clone(), seed.value().markerModule().clone());
   auto bound =
-      context.getCapability<module_graph_query::VerifyBoundModuleQuery>(contextualMarker.clone());
-  auto skeleton = context.getCapability<module_graph_query::MaterializeModuleSkeletonQuery>(
+      context.getCapability<module_graph_query::VerifyBoundModule>(contextualMarker.clone());
+  auto skeleton = context.getCapability<module_graph_query::MaterializeModuleSkeleton>(
       zc::mv(contextualMarker));
   if (!bound.isPublished() || !skeleton.isPublished() ||
       bound.lease().capability().contextRoots() != key.contextRoots() ||
@@ -1065,28 +1065,28 @@ zc::Array<uint8_t> CoreModuleGraphRecord::encodeCanonical() const {
   return frame(kCoreModuleGraphValueDomain, payload.asPtr());
 }
 
-zc::Array<uint8_t> CoreModuleGraphQuery::encodeKey(const Key& key) { return key.encodeCanonical(); }
+zc::Array<uint8_t> CoreModuleGraph::encodeKey(const Key& key) { return key.encodeCanonical(); }
 
-zc::Maybe<CoreModuleGraphQuery::Key> CoreModuleGraphQuery::decodeKey(
+zc::Maybe<CoreModuleGraph::Key> CoreModuleGraph::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   return ContextualCoreCrateKey::decodeCanonical(bytes);
 }
 
-zc::Array<uint8_t> CoreModuleGraphQuery::encodeValue(const Value& value) {
+zc::Array<uint8_t> CoreModuleGraph::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<CoreModuleGraphQuery::Value> CoreModuleGraphQuery::decodeValue(
+zc::Maybe<CoreModuleGraph::Value> CoreModuleGraph::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return CoreModuleGraphRecord::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<CoreModuleGraphQuery::Value> CoreModuleGraphQuery::provide(
+query::TypedQueryResult<CoreModuleGraph::Value> CoreModuleGraph::provide(
     query::QueryContext& context, const Key& key) {
   return provideCoreModuleGraph(context, key);
 }
 
-bool CoreModuleGraphQuery::verify(query::QueryContext& context, const Key& key,
+bool CoreModuleGraph::verify(query::QueryContext& context, const Key& key,
                                   const query::TypedQueryResult<Value>& result) {
   return CoreLibraryQueryVerifier::verifyModuleGraph(context, key, result);
 }
@@ -1241,27 +1241,27 @@ zc::Array<uint8_t> CoreRoleSeedRecord::encodeCanonical() const {
   return frame(kCoreRoleSeedValueDomain, payload.asPtr());
 }
 
-zc::Array<uint8_t> CoreRoleSeedQuery::encodeKey(const Key& key) { return key.encodeCanonical(); }
+zc::Array<uint8_t> CoreRoleSeed::encodeKey(const Key& key) { return key.encodeCanonical(); }
 
-zc::Maybe<CoreRoleSeedQuery::Key> CoreRoleSeedQuery::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
+zc::Maybe<CoreRoleSeed::Key> CoreRoleSeed::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
   return ContextualCoreCrateKey::decodeCanonical(bytes);
 }
 
-zc::Array<uint8_t> CoreRoleSeedQuery::encodeValue(const Value& value) {
+zc::Array<uint8_t> CoreRoleSeed::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<CoreRoleSeedQuery::Value> CoreRoleSeedQuery::decodeValue(
+zc::Maybe<CoreRoleSeed::Value> CoreRoleSeed::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return CoreRoleSeedRecord::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<CoreRoleSeedQuery::Value> CoreRoleSeedQuery::provide(
+query::TypedQueryResult<CoreRoleSeed::Value> CoreRoleSeed::provide(
     query::QueryContext& context, const Key& key) {
   return provideCoreRoleSeed(context, key);
 }
 
-bool CoreRoleSeedQuery::verify(query::QueryContext& context, const Key& key,
+bool CoreRoleSeed::verify(query::QueryContext& context, const Key& key,
                                const query::TypedQueryResult<Value>& result) {
   return CoreLibraryQueryVerifier::verifyRoleSeed(context, key, result);
 }
@@ -1381,35 +1381,35 @@ zc::Array<uint8_t> VerifiedCoreRoleSeed::encodeCanonical() const {
   return frame(kVerifiedCoreRoleSeedWitnessDomain, encoder.finish().asPtr());
 }
 
-zc::Array<uint8_t> MaterializeCoreRoleSeedQuery::encodeKey(const Key& key) {
+zc::Array<uint8_t> MaterializeCoreRoleSeed::encodeKey(const Key& key) {
   return key.encodeCanonical();
 }
 
-zc::Maybe<MaterializeCoreRoleSeedQuery::Key> MaterializeCoreRoleSeedQuery::decodeKey(
+zc::Maybe<MaterializeCoreRoleSeed::Key> MaterializeCoreRoleSeed::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   return ContextualCoreCrateKey::decodeCanonical(bytes);
 }
 
-query::CapabilityProviderResult<MaterializeCoreRoleSeedQuery> MaterializeCoreRoleSeedQuery::provide(
-    query::CapabilityQueryContext<MaterializeCoreRoleSeedQuery>& context, const Key& key) {
+query::CapabilityProviderResult<MaterializeCoreRoleSeed> MaterializeCoreRoleSeed::provide(
+    query::CapabilityQueryContext<MaterializeCoreRoleSeed>& context, const Key& key) {
   auto materialized = materializeCoreRoleSeed(context, key);
   if (materialized.is<query::QueryRuntimeFailure>()) {
-    return query::CapabilityProviderResult<MaterializeCoreRoleSeedQuery>::runtimeRejected(
+    return query::CapabilityProviderResult<MaterializeCoreRoleSeed>::runtimeRejected(
         materialized.get<query::QueryRuntimeFailure>());
   }
   auto candidate = zc::heap<Capability>(zc::mv(materialized).get<Capability>());
   auto witness =
-      query::CapabilityCandidateContract<MaterializeCoreRoleSeedQuery>::encode(*candidate);
-  return query::CapabilityProviderResult<MaterializeCoreRoleSeedQuery>::candidate(zc::mv(candidate),
+      query::CapabilityCandidateContract<MaterializeCoreRoleSeed>::encode(*candidate);
+  return query::CapabilityProviderResult<MaterializeCoreRoleSeed>::candidate(zc::mv(candidate),
                                                                                   zc::mv(witness));
 }
 
-zc::Maybe<zc::Array<uint8_t>> MaterializeCoreRoleSeedQuery::verify(
-    query::CapabilityQueryContext<MaterializeCoreRoleSeedQuery>& context, const Key& key,
+zc::Maybe<zc::Array<uint8_t>> MaterializeCoreRoleSeed::verify(
+    query::CapabilityQueryContext<MaterializeCoreRoleSeed>& context, const Key& key,
     const Capability& candidate) {
   auto distribution = context.get<CoreDistributionInput>(identity::ToolchainUnitKey::core());
-  auto graph = context.get<CoreModuleGraphQuery>(key.clone());
-  auto seed = context.get<CoreRoleSeedQuery>(key.clone());
+  auto graph = context.get<CoreModuleGraph>(key.clone());
+  auto seed = context.get<CoreRoleSeed>(key.clone());
   if (distribution.isRuntimeFailure() || graph.isRuntimeFailure() || seed.isRuntimeFailure() ||
       distribution.kind() != query::QueryValueKind::Value ||
       graph.kind() != query::QueryValueKind::Value || seed.kind() != query::QueryValueKind::Value ||
@@ -1423,8 +1423,8 @@ zc::Maybe<zc::Array<uint8_t>> MaterializeCoreRoleSeedQuery::verify(
       incremental_binding_query::CompilationRootSetQueryKey::singletonToolchainCore(key.crate());
   if (singleton == zc::none) { return zc::none; }
   auto activeCrates =
-      context.get<incremental_binding_query::ActiveCratesQuery>(ZC_ASSERT_NONNULL(singleton));
-  auto activeModules = context.get<module_graph_query::ActiveModulesQuery>(key.crate());
+      context.get<incremental_binding_query::ActiveCrates>(ZC_ASSERT_NONNULL(singleton));
+  auto activeModules = context.get<module_graph_query::ActiveModules>(key.crate());
   if (activeCrates.isRuntimeFailure() || activeModules.isRuntimeFailure() ||
       activeCrates.kind() != query::QueryValueKind::Value ||
       activeModules.kind() != query::QueryValueKind::Value ||
@@ -1441,8 +1441,8 @@ zc::Maybe<zc::Array<uint8_t>> MaterializeCoreRoleSeedQuery::verify(
   auto contextualMarker = incremental_binding_query::ContextualModuleKey::from(
       key.contextRoots().clone(), seed.value().markerModule().clone());
   auto bound =
-      context.getCapability<module_graph_query::VerifyBoundModuleQuery>(contextualMarker.clone());
-  auto skeleton = context.getCapability<module_graph_query::MaterializeModuleSkeletonQuery>(
+      context.getCapability<module_graph_query::VerifyBoundModule>(contextualMarker.clone());
+  auto skeleton = context.getCapability<module_graph_query::MaterializeModuleSkeleton>(
       zc::mv(contextualMarker));
   auto module = context.materializeActive<identity::ModuleKey,
                                           incremental_binding_query::ActiveModuleMembershipQuery>(
@@ -1545,16 +1545,16 @@ zc::Vector<CoreRoleSeedEntry> stableRolesFromMaterialized(
 }
 
 zc::Maybe<checker::CheckerIdentityAuthority> materializeCheckerIdentities(
-    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterfaceQuery>& context,
+    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterface>& context,
     const incremental_binding_query::CompilationRootSetQueryKey& roots) {
   auto graph =
-      context.getCapability<module_graph_query::MaterializeModuleGraphQuery>(roots.clone());
+      context.getCapability<module_graph_query::MaterializeModuleGraph>(roots.clone());
   if (!graph.isPublished()) { return zc::none; }
   zc::Vector<checker::CheckerIdentityAuthority::BoundModuleView> views;
   for (const auto& module : graph.lease().capability().modules()) {
     auto key =
         incremental_binding_query::ContextualModuleKey::from(roots.clone(), module.key().clone());
-    auto bound = context.getCapability<module_graph_query::VerifyBoundModuleQuery>(zc::mv(key));
+    auto bound = context.getCapability<module_graph_query::VerifyBoundModule>(zc::mv(key));
     if (!bound.isPublished()) { return zc::none; }
     auto view = module_graph_query::CheckerBoundModuleView::from(zc::mv(bound).takeLease());
     if (view == zc::none) { return zc::none; }
@@ -1564,13 +1564,13 @@ zc::Maybe<checker::CheckerIdentityAuthority> materializeCheckerIdentities(
 }
 
 zc::Maybe<core::VerifiedCoreImportedSignatureView> materializeCoreImportedSignatures(
-    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterfaceQuery>& context,
+    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterface>& context,
     const ContextualCoreModuleKey& key,
     const query::QueryCapabilityLease<const module_graph_query::VerifiedBoundModule>& bound) {
   auto graphKey =
       ContextualCoreCrateKey::from(key.contextRoots().clone(), key.module().crate().clone());
   if (graphKey == zc::none) { return zc::none; }
-  auto graph = context.get<CoreModuleGraphQuery>(zc::mv(ZC_ASSERT_NONNULL(graphKey)));
+  auto graph = context.get<CoreModuleGraph>(zc::mv(ZC_ASSERT_NONNULL(graphKey)));
   if (graph.isRuntimeFailure() || graph.kind() != query::QueryValueKind::Value) { return zc::none; }
   auto surface = initialCoreSurface(key.module(), graph.value().core());
   if (surface == zc::none) { return zc::none; }
@@ -1588,7 +1588,7 @@ zc::Maybe<core::VerifiedCoreImportedSignatureView> materializeCoreImportedSignat
     auto markerKey = ContextualCoreModuleKey::from(key.contextRoots().clone(),
                                                    zc::mv(ZC_ASSERT_NONNULL(marker)));
     if (markerKey == zc::none) { return zc::none; }
-    auto interface = context.getCapability<MaterializeCoreBootstrapModuleInterfaceQuery>(
+    auto interface = context.getCapability<MaterializeCoreBootstrapModuleInterface>(
         zc::mv(ZC_ASSERT_NONNULL(markerKey)));
     if (!interface.isPublished()) { return zc::none; }
     sources.add(zc::mv(interface).takeLease());
@@ -1639,7 +1639,7 @@ query::TypedQueryResult<CoreBootstrapModuleInterfaceRecord> provideCoreBootstrap
     return query::TypedQueryResult<CoreBootstrapModuleInterfaceRecord>::runtimeFailure(
         query::QueryRuntimeFailure::ProviderRejected);
   }
-  auto graph = context.get<CoreModuleGraphQuery>(ZC_ASSERT_NONNULL(coreKey).clone());
+  auto graph = context.get<CoreModuleGraph>(ZC_ASSERT_NONNULL(coreKey).clone());
   if (graph.isRuntimeFailure()) {
     return query::TypedQueryResult<CoreBootstrapModuleInterfaceRecord>::runtimeFailure(
         graph.runtimeFailure());
@@ -1649,10 +1649,10 @@ query::TypedQueryResult<CoreBootstrapModuleInterfaceRecord> provideCoreBootstrap
         zc::heapArray<uint8_t>(graph.semanticFailureBytes()));
   }
   auto seed =
-      context.getCapability<MaterializeCoreRoleSeedQuery>(zc::mv(ZC_ASSERT_NONNULL(coreKey)));
+      context.getCapability<MaterializeCoreRoleSeed>(zc::mv(ZC_ASSERT_NONNULL(coreKey)));
   auto boundKey = incremental_binding_query::ContextualModuleKey::from(key.contextRoots().clone(),
                                                                        key.module().clone());
-  auto bound = context.getCapability<module_graph_query::VerifyBoundModuleQuery>(zc::mv(boundKey));
+  auto bound = context.getCapability<module_graph_query::VerifyBoundModule>(zc::mv(boundKey));
   if (graph.kind() != query::QueryValueKind::Value || !seed.isPublished() || !bound.isPublished()) {
     return query::TypedQueryResult<CoreBootstrapModuleInterfaceRecord>::runtimeFailure(
         seed.isRuntimeRejected()    ? seed.runtimeFailure()
@@ -1673,17 +1673,17 @@ using CoreBootstrapInterfaceMaterialization =
     zc::OneOf<VerifiedCoreBootstrapModuleInterface, query::QueryRuntimeFailure>;
 
 CoreBootstrapInterfaceMaterialization materializeCoreBootstrapInterface(
-    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterfaceQuery>& context,
+    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterface>& context,
     const ContextualCoreModuleKey& key) {
   auto coreKey =
       ContextualCoreCrateKey::from(key.contextRoots().clone(), key.module().crate().clone());
   if (coreKey == zc::none) { return query::QueryRuntimeFailure::ProviderRejected; }
-  auto record = context.get<CoreBootstrapModuleInterfaceQuery>(key);
+  auto record = context.get<CoreBootstrapModuleInterface>(key);
   auto seed =
-      context.getCapability<MaterializeCoreRoleSeedQuery>(zc::mv(ZC_ASSERT_NONNULL(coreKey)));
+      context.getCapability<MaterializeCoreRoleSeed>(zc::mv(ZC_ASSERT_NONNULL(coreKey)));
   auto boundKey = incremental_binding_query::ContextualModuleKey::from(key.contextRoots().clone(),
                                                                        key.module().clone());
-  auto bound = context.getCapability<module_graph_query::VerifyBoundModuleQuery>(zc::mv(boundKey));
+  auto bound = context.getCapability<module_graph_query::VerifyBoundModule>(zc::mv(boundKey));
   if (record.isRuntimeFailure() || record.kind() != query::QueryValueKind::Value ||
       !seed.isPublished() || !bound.isPublished()) {
     return record.isRuntimeFailure()   ? record.runtimeFailure()
@@ -2012,7 +2012,7 @@ zc::Maybe<CoreExportSurfaceRecord> buildCoreExportSurfaceRecord(
 
 query::TypedQueryResult<CoreExportSurfaceRecord> provideCoreExportSurface(
     query::QueryContext& context, const ContextualCoreModuleKey& key) {
-  auto interface = context.get<CoreBootstrapModuleInterfaceQuery>(key);
+  auto interface = context.get<CoreBootstrapModuleInterface>(key);
   if (interface.isRuntimeFailure()) {
     return query::TypedQueryResult<CoreExportSurfaceRecord>::runtimeFailure(
         interface.runtimeFailure());
@@ -2208,30 +2208,30 @@ zc::Array<uint8_t> CoreExportSurfaceRecord::encodeCanonical() const {
   return frame(kCoreExportSurfaceValueDomain, payload.asPtr());
 }
 
-zc::Array<uint8_t> CoreExportSurfaceQuery::encodeKey(const Key& key) {
+zc::Array<uint8_t> CoreExportSurface::encodeKey(const Key& key) {
   return key.encodeCanonical();
 }
 
-zc::Maybe<CoreExportSurfaceQuery::Key> CoreExportSurfaceQuery::decodeKey(
+zc::Maybe<CoreExportSurface::Key> CoreExportSurface::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   return ContextualCoreModuleKey::decodeCanonical(bytes);
 }
 
-zc::Array<uint8_t> CoreExportSurfaceQuery::encodeValue(const Value& value) {
+zc::Array<uint8_t> CoreExportSurface::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<CoreExportSurfaceQuery::Value> CoreExportSurfaceQuery::decodeValue(
+zc::Maybe<CoreExportSurface::Value> CoreExportSurface::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return CoreExportSurfaceRecord::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<CoreExportSurfaceQuery::Value> CoreExportSurfaceQuery::provide(
+query::TypedQueryResult<CoreExportSurface::Value> CoreExportSurface::provide(
     query::QueryContext& context, const Key& key) {
   return provideCoreExportSurface(context, key);
 }
 
-bool CoreExportSurfaceQuery::verify(query::QueryContext& context, const Key& key,
+bool CoreExportSurface::verify(query::QueryContext& context, const Key& key,
                                     const query::TypedQueryResult<Value>& result) {
   return CoreLibraryQueryVerifier::verifyExportSurface(context, key, result);
 }
@@ -2301,7 +2301,7 @@ zc::Maybe<identity::Sha256Digest> computeCorePreludeSurfaceRevision(
 
 query::TypedQueryResult<CorePreludeSurfaceRecord> provideCorePreludeSurface(
     query::QueryContext& context, const ContextualCoreCrateKey& key) {
-  auto graph = context.get<CoreModuleGraphQuery>(key.clone());
+  auto graph = context.get<CoreModuleGraph>(key.clone());
   if (graph.isRuntimeFailure()) {
     return query::TypedQueryResult<CorePreludeSurfaceRecord>::runtimeFailure(
         graph.runtimeFailure());
@@ -2331,8 +2331,8 @@ query::TypedQueryResult<CorePreludeSurfaceRecord> provideCorePreludeSurface(
     return query::TypedQueryResult<CorePreludeSurfaceRecord>::runtimeFailure(
         query::QueryRuntimeFailure::ProviderRejected);
   }
-  auto markerExport = context.get<CoreExportSurfaceQuery>(zc::mv(ZC_ASSERT_NONNULL(markerKey)));
-  auto preludeExport = context.get<CoreExportSurfaceQuery>(zc::mv(ZC_ASSERT_NONNULL(preludeKey)));
+  auto markerExport = context.get<CoreExportSurface>(zc::mv(ZC_ASSERT_NONNULL(markerKey)));
+  auto preludeExport = context.get<CoreExportSurface>(zc::mv(ZC_ASSERT_NONNULL(preludeKey)));
   if (markerExport.isRuntimeFailure() || preludeExport.isRuntimeFailure() ||
       markerExport.kind() != query::QueryValueKind::Value ||
       preludeExport.kind() != query::QueryValueKind::Value ||
@@ -2737,57 +2737,57 @@ zc::Array<uint8_t> CoreRoleAuthorityRecord::encodeCanonical() const {
                    .asPtr());
 }
 
-zc::Array<uint8_t> CorePreludeSurfaceQuery::encodeKey(const Key& key) {
+zc::Array<uint8_t> CorePreludeSurface::encodeKey(const Key& key) {
   return key.encodeCanonical();
 }
 
-zc::Maybe<CorePreludeSurfaceQuery::Key> CorePreludeSurfaceQuery::decodeKey(
+zc::Maybe<CorePreludeSurface::Key> CorePreludeSurface::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   return ContextualCoreCrateKey::decodeCanonical(bytes);
 }
 
-zc::Array<uint8_t> CorePreludeSurfaceQuery::encodeValue(const Value& value) {
+zc::Array<uint8_t> CorePreludeSurface::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<CorePreludeSurfaceQuery::Value> CorePreludeSurfaceQuery::decodeValue(
+zc::Maybe<CorePreludeSurface::Value> CorePreludeSurface::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return CorePreludeSurfaceRecord::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<CorePreludeSurfaceQuery::Value> CorePreludeSurfaceQuery::provide(
+query::TypedQueryResult<CorePreludeSurface::Value> CorePreludeSurface::provide(
     query::QueryContext& context, const Key& key) {
   return provideCorePreludeSurface(context, key);
 }
 
-bool CorePreludeSurfaceQuery::verify(query::QueryContext& context, const Key& key,
+bool CorePreludeSurface::verify(query::QueryContext& context, const Key& key,
                                      const query::TypedQueryResult<Value>& result) {
   return CoreLibraryQueryVerifier::verifyPreludeSurface(context, key, result);
 }
 
-zc::Array<uint8_t> CoreRoleAuthorityQuery::encodeKey(const Key& key) {
+zc::Array<uint8_t> CoreRoleAuthority::encodeKey(const Key& key) {
   return key.encodeCanonical();
 }
 
-zc::Maybe<CoreRoleAuthorityQuery::Key> CoreRoleAuthorityQuery::decodeKey(
+zc::Maybe<CoreRoleAuthority::Key> CoreRoleAuthority::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   return ContextualCoreCrateKey::decodeCanonical(bytes);
 }
 
-zc::Array<uint8_t> CoreRoleAuthorityQuery::encodeValue(const Value& value) {
+zc::Array<uint8_t> CoreRoleAuthority::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<CoreRoleAuthorityQuery::Value> CoreRoleAuthorityQuery::decodeValue(
+zc::Maybe<CoreRoleAuthority::Value> CoreRoleAuthority::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return CoreRoleAuthorityRecord::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<CoreRoleAuthorityQuery::Value> CoreRoleAuthorityQuery::provide(
+query::TypedQueryResult<CoreRoleAuthority::Value> CoreRoleAuthority::provide(
     query::QueryContext& context, const Key& key) {
   auto distribution = context.get<CoreDistributionInput>(identity::ToolchainUnitKey::core());
-  auto seed = context.getCapability<MaterializeCoreRoleSeedQuery>(key.clone());
-  auto prelude = context.get<CorePreludeSurfaceQuery>(key.clone());
+  auto seed = context.getCapability<MaterializeCoreRoleSeed>(key.clone());
+  auto prelude = context.get<CorePreludeSurface>(key.clone());
   if (distribution.isRuntimeFailure() || prelude.isRuntimeFailure()) {
     return query::TypedQueryResult<Value>::runtimeFailure(
         distribution.isRuntimeFailure() ? distribution.runtimeFailure() : prelude.runtimeFailure());
@@ -2814,7 +2814,7 @@ query::TypedQueryResult<CoreRoleAuthorityQuery::Value> CoreRoleAuthorityQuery::p
   return query::TypedQueryResult<Value>::value(zc::mv(ZC_ASSERT_NONNULL(record)));
 }
 
-bool CoreRoleAuthorityQuery::verify(query::QueryContext& context, const Key& key,
+bool CoreRoleAuthority::verify(query::QueryContext& context, const Key& key,
                                     const query::TypedQueryResult<Value>& result) {
   return CoreLibraryQueryVerifier::verifyRoleAuthority(context, key, result);
 }
@@ -3343,7 +3343,7 @@ zc::Maybe<zc::Vector<core::TypeFreeInterfaceSignatureRecord>> finalSignatures(
 }
 
 zc::Maybe<zc::Vector<binder::StableExportedBinding>> finalBindings(
-    query::CapabilityQueryContext<FinalizeCoreModuleInterfaceQuery>& context,
+    query::CapabilityQueryContext<FinalizeCoreModuleInterface>& context,
     const identity::ModuleKey& module) {
   auto names = context.get<binder::ModuleExportNames>(module.clone());
   if (names.isRuntimeFailure() || names.kind() != query::QueryValueKind::Value) { return zc::none; }
@@ -3461,15 +3461,15 @@ zc::Maybe<zc::Vector<core::CoreMarkerShapeEntry>> finalRoles(
 }
 
 zc::OneOf<VerifiedCoreModuleInterface, query::QueryRuntimeFailure> finalizeCoreModuleInterface(
-    query::CapabilityQueryContext<FinalizeCoreModuleInterfaceQuery>& context,
+    query::CapabilityQueryContext<FinalizeCoreModuleInterface>& context,
     const ContextualCoreModuleKey& key) {
   auto coreKey =
       ContextualCoreCrateKey::from(key.contextRoots().clone(), key.module().crate().clone());
   if (coreKey == zc::none) { return query::QueryRuntimeFailure::ProviderRejected; }
-  auto bootstrap = context.getCapability<MaterializeCoreBootstrapModuleInterfaceQuery>(key.clone());
+  auto bootstrap = context.getCapability<MaterializeCoreBootstrapModuleInterface>(key.clone());
   auto authority =
-      context.getCapability<MaterializeCoreAuthorityQuery>(ZC_ASSERT_NONNULL(coreKey).clone());
-  auto seedRecord = context.get<CoreRoleSeedQuery>(ZC_ASSERT_NONNULL(coreKey).clone());
+      context.getCapability<MaterializeCoreAuthority>(ZC_ASSERT_NONNULL(coreKey).clone());
+  auto seedRecord = context.get<CoreRoleSeed>(ZC_ASSERT_NONNULL(coreKey).clone());
   if (!bootstrap.isPublished() || !authority.isPublished() || seedRecord.isRuntimeFailure() ||
       seedRecord.kind() != query::QueryValueKind::Value) {
     return bootstrap.isRuntimeRejected()   ? bootstrap.runtimeFailure()
@@ -3503,7 +3503,7 @@ zc::OneOf<VerifiedCoreModuleInterface, query::QueryRuntimeFailure> finalizeCoreM
     auto markerKey = ContextualCoreModuleKey::from(key.contextRoots().clone(),
                                                    seedRecord.value().markerModule().clone());
     if (markerKey == zc::none) { return query::QueryRuntimeFailure::ProviderRejected; }
-    auto marker = context.getCapability<FinalizeCoreModuleInterfaceQuery>(
+    auto marker = context.getCapability<FinalizeCoreModuleInterface>(
         zc::mv(ZC_ASSERT_NONNULL(markerKey)));
     if (!marker.isPublished() || marker.lease().capability().record().module().encode().asPtr() !=
                                      seedRecord.value().markerModule().encode().asPtr()) {
@@ -3798,79 +3798,79 @@ zc::Array<uint8_t> VerifiedCoreModuleInterface::encodeCanonical() const {
   return frame(kVerifiedCoreModuleInterfaceWitnessDomain, encoder.finish().asPtr());
 }
 
-zc::Array<uint8_t> CoreBootstrapModuleInterfaceQuery::encodeKey(const Key& key) {
+zc::Array<uint8_t> CoreBootstrapModuleInterface::encodeKey(const Key& key) {
   return key.encodeCanonical();
 }
 
-zc::Maybe<CoreBootstrapModuleInterfaceQuery::Key> CoreBootstrapModuleInterfaceQuery::decodeKey(
+zc::Maybe<CoreBootstrapModuleInterface::Key> CoreBootstrapModuleInterface::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   return ContextualCoreModuleKey::decodeCanonical(bytes);
 }
 
-zc::Array<uint8_t> CoreBootstrapModuleInterfaceQuery::encodeValue(const Value& value) {
+zc::Array<uint8_t> CoreBootstrapModuleInterface::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<CoreBootstrapModuleInterfaceQuery::Value> CoreBootstrapModuleInterfaceQuery::decodeValue(
+zc::Maybe<CoreBootstrapModuleInterface::Value> CoreBootstrapModuleInterface::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return CoreBootstrapModuleInterfaceRecord::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<CoreBootstrapModuleInterfaceQuery::Value>
-CoreBootstrapModuleInterfaceQuery::provide(query::QueryContext& context, const Key& key) {
+query::TypedQueryResult<CoreBootstrapModuleInterface::Value>
+CoreBootstrapModuleInterface::provide(query::QueryContext& context, const Key& key) {
   return provideCoreBootstrapModuleInterface(context, key);
 }
 
-bool CoreBootstrapModuleInterfaceQuery::verify(query::QueryContext& context, const Key& key,
+bool CoreBootstrapModuleInterface::verify(query::QueryContext& context, const Key& key,
                                                const query::TypedQueryResult<Value>& result) {
   return CoreLibraryQueryVerifier::verifyBootstrapModuleInterfaceRecord(context, key, result);
 }
 
-zc::Array<uint8_t> MaterializeCoreBootstrapModuleInterfaceQuery::encodeKey(const Key& key) {
+zc::Array<uint8_t> MaterializeCoreBootstrapModuleInterface::encodeKey(const Key& key) {
   return key.encodeCanonical();
 }
-zc::Maybe<MaterializeCoreBootstrapModuleInterfaceQuery::Key>
-MaterializeCoreBootstrapModuleInterfaceQuery::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
+zc::Maybe<MaterializeCoreBootstrapModuleInterface::Key>
+MaterializeCoreBootstrapModuleInterface::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
   return ContextualCoreModuleKey::decodeCanonical(bytes);
 }
-query::CapabilityProviderResult<MaterializeCoreBootstrapModuleInterfaceQuery>
-MaterializeCoreBootstrapModuleInterfaceQuery::provide(
-    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterfaceQuery>& context,
+query::CapabilityProviderResult<MaterializeCoreBootstrapModuleInterface>
+MaterializeCoreBootstrapModuleInterface::provide(
+    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterface>& context,
     const Key& key) {
   auto materialized = materializeCoreBootstrapInterface(context, key);
   if (materialized.is<query::QueryRuntimeFailure>()) {
-    return query::CapabilityProviderResult<MaterializeCoreBootstrapModuleInterfaceQuery>::
+    return query::CapabilityProviderResult<MaterializeCoreBootstrapModuleInterface>::
         runtimeRejected(materialized.get<query::QueryRuntimeFailure>());
   }
   auto candidate = zc::heap<Capability>(zc::mv(materialized).get<Capability>());
   auto witness =
-      query::CapabilityCandidateContract<MaterializeCoreBootstrapModuleInterfaceQuery>::encode(
+      query::CapabilityCandidateContract<MaterializeCoreBootstrapModuleInterface>::encode(
           *candidate);
-  return query::CapabilityProviderResult<MaterializeCoreBootstrapModuleInterfaceQuery>::candidate(
+  return query::CapabilityProviderResult<MaterializeCoreBootstrapModuleInterface>::candidate(
       zc::mv(candidate), zc::mv(witness));
 }
-zc::Maybe<zc::Array<uint8_t>> MaterializeCoreBootstrapModuleInterfaceQuery::verify(
-    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterfaceQuery>& context,
+zc::Maybe<zc::Array<uint8_t>> MaterializeCoreBootstrapModuleInterface::verify(
+    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterface>& context,
     const Key& key, const Capability& candidate) {
   return CoreLibraryQueryVerifier::verifyBootstrapModuleInterface(context, key, candidate);
 }
 
-zc::Array<uint8_t> MaterializeCoreAuthorityQuery::encodeKey(const Key& key) {
+zc::Array<uint8_t> MaterializeCoreAuthority::encodeKey(const Key& key) {
   return key.encodeCanonical();
 }
 
-zc::Maybe<MaterializeCoreAuthorityQuery::Key> MaterializeCoreAuthorityQuery::decodeKey(
+zc::Maybe<MaterializeCoreAuthority::Key> MaterializeCoreAuthority::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   return ContextualCoreCrateKey::decodeCanonical(bytes);
 }
 
-query::CapabilityProviderResult<MaterializeCoreAuthorityQuery>
-MaterializeCoreAuthorityQuery::provide(
-    query::CapabilityQueryContext<MaterializeCoreAuthorityQuery>& context, const Key& key) {
-  auto record = context.get<CoreRoleAuthorityQuery>(key.clone());
+query::CapabilityProviderResult<MaterializeCoreAuthority>
+MaterializeCoreAuthority::provide(
+    query::CapabilityQueryContext<MaterializeCoreAuthority>& context, const Key& key) {
+  auto record = context.get<CoreRoleAuthority>(key.clone());
   auto distribution = context.get<CoreDistributionInput>(identity::ToolchainUnitKey::core());
-  auto seed = context.getCapability<MaterializeCoreRoleSeedQuery>(key.clone());
-  auto graph = context.get<CoreModuleGraphQuery>(key.clone());
+  auto seed = context.getCapability<MaterializeCoreRoleSeed>(key.clone());
+  auto graph = context.get<CoreModuleGraph>(key.clone());
   if (record.isRuntimeFailure() || distribution.isRuntimeFailure() || graph.isRuntimeFailure() ||
       record.kind() != query::QueryValueKind::Value ||
       distribution.kind() != query::QueryValueKind::Value || !seed.isPublished() ||
@@ -3880,20 +3880,20 @@ MaterializeCoreAuthorityQuery::provide(
                          : graph.isRuntimeFailure()        ? graph.runtimeFailure()
                          : seed.isRuntimeRejected()        ? seed.runtimeFailure()
                                                     : query::QueryRuntimeFailure::ProviderRejected;
-    return query::CapabilityProviderResult<MaterializeCoreAuthorityQuery>::runtimeRejected(failure);
+    return query::CapabilityProviderResult<MaterializeCoreAuthority>::runtimeRejected(failure);
   }
   auto preludeModule = findInitialCoreModule(graph.value(), CoreBootstrapModuleSurface::Prelude);
   if (preludeModule == zc::none) {
-    return query::CapabilityProviderResult<MaterializeCoreAuthorityQuery>::runtimeRejected(
+    return query::CapabilityProviderResult<MaterializeCoreAuthority>::runtimeRejected(
         query::QueryRuntimeFailure::ProviderRejected);
   }
   auto authorityPrelude = ZC_ASSERT_NONNULL(preludeModule).clone();
   auto preludeKey = incremental_binding_query::ContextualModuleKey::from(
       key.contextRoots().clone(), zc::mv(ZC_ASSERT_NONNULL(preludeModule)));
   auto prelude =
-      context.getCapability<module_graph_query::VerifyBoundModuleQuery>(zc::mv(preludeKey));
+      context.getCapability<module_graph_query::VerifyBoundModule>(zc::mv(preludeKey));
   if (!prelude.isPublished()) {
-    return query::CapabilityProviderResult<MaterializeCoreAuthorityQuery>::runtimeRejected(
+    return query::CapabilityProviderResult<MaterializeCoreAuthority>::runtimeRejected(
         prelude.isRuntimeRejected() ? prelude.runtimeFailure()
                                     : query::QueryRuntimeFailure::ProviderRejected);
   }
@@ -3902,47 +3902,47 @@ MaterializeCoreAuthorityQuery::provide(
       record.value().clone(), distribution.value().policyTemplate().clone(),
       zc::mv(authorityPrelude), zc::mv(seed).takeLease(), zc::mv(prelude).takeLease());
   if (candidate == zc::none) {
-    return query::CapabilityProviderResult<MaterializeCoreAuthorityQuery>::runtimeRejected(
+    return query::CapabilityProviderResult<MaterializeCoreAuthority>::runtimeRejected(
         query::QueryRuntimeFailure::ProviderRejected);
   }
   auto owned = zc::heap<Capability>(zc::mv(ZC_ASSERT_NONNULL(candidate)));
-  auto witness = query::CapabilityCandidateContract<MaterializeCoreAuthorityQuery>::encode(*owned);
-  return query::CapabilityProviderResult<MaterializeCoreAuthorityQuery>::candidate(zc::mv(owned),
+  auto witness = query::CapabilityCandidateContract<MaterializeCoreAuthority>::encode(*owned);
+  return query::CapabilityProviderResult<MaterializeCoreAuthority>::candidate(zc::mv(owned),
                                                                                    zc::mv(witness));
 }
 
-zc::Maybe<zc::Array<uint8_t>> MaterializeCoreAuthorityQuery::verify(
-    query::CapabilityQueryContext<MaterializeCoreAuthorityQuery>& context, const Key& key,
+zc::Maybe<zc::Array<uint8_t>> MaterializeCoreAuthority::verify(
+    query::CapabilityQueryContext<MaterializeCoreAuthority>& context, const Key& key,
     const Capability& candidate) {
   return CoreLibraryQueryVerifier::verifyCoreAuthority(context, key, candidate);
 }
 
-zc::Array<uint8_t> FinalizeCoreModuleInterfaceQuery::encodeKey(const Key& key) {
+zc::Array<uint8_t> FinalizeCoreModuleInterface::encodeKey(const Key& key) {
   return key.encodeCanonical();
 }
 
-zc::Maybe<FinalizeCoreModuleInterfaceQuery::Key> FinalizeCoreModuleInterfaceQuery::decodeKey(
+zc::Maybe<FinalizeCoreModuleInterface::Key> FinalizeCoreModuleInterface::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   return ContextualCoreModuleKey::decodeCanonical(bytes);
 }
 
-query::CapabilityProviderResult<FinalizeCoreModuleInterfaceQuery>
-FinalizeCoreModuleInterfaceQuery::provide(
-    query::CapabilityQueryContext<FinalizeCoreModuleInterfaceQuery>& context, const Key& key) {
+query::CapabilityProviderResult<FinalizeCoreModuleInterface>
+FinalizeCoreModuleInterface::provide(
+    query::CapabilityQueryContext<FinalizeCoreModuleInterface>& context, const Key& key) {
   auto finalized = finalizeCoreModuleInterface(context, key);
   if (finalized.is<query::QueryRuntimeFailure>()) {
-    return query::CapabilityProviderResult<FinalizeCoreModuleInterfaceQuery>::runtimeRejected(
+    return query::CapabilityProviderResult<FinalizeCoreModuleInterface>::runtimeRejected(
         finalized.get<query::QueryRuntimeFailure>());
   }
   auto candidate = zc::heap<Capability>(zc::mv(finalized).get<Capability>());
   auto witness =
-      query::CapabilityCandidateContract<FinalizeCoreModuleInterfaceQuery>::encode(*candidate);
-  return query::CapabilityProviderResult<FinalizeCoreModuleInterfaceQuery>::candidate(
+      query::CapabilityCandidateContract<FinalizeCoreModuleInterface>::encode(*candidate);
+  return query::CapabilityProviderResult<FinalizeCoreModuleInterface>::candidate(
       zc::mv(candidate), zc::mv(witness));
 }
 
-zc::Maybe<zc::Array<uint8_t>> FinalizeCoreModuleInterfaceQuery::verify(
-    query::CapabilityQueryContext<FinalizeCoreModuleInterfaceQuery>& context, const Key& key,
+zc::Maybe<zc::Array<uint8_t>> FinalizeCoreModuleInterface::verify(
+    query::CapabilityQueryContext<FinalizeCoreModuleInterface>& context, const Key& key,
     const Capability& candidate) {
   return CoreLibraryQueryVerifier::verifyFinalCoreModuleInterface(context, key, candidate);
 }
@@ -4598,22 +4598,22 @@ query::InputCommitResult VerifiedCoreDistributionInputTransaction::commit(
 bool registerCoreLibraryQueryProvider(query::QueryDatabase& database) {
   auto distribution = database.registerDescriptor<CoreDistributionInput>();
   if (!distribution.isRegistered()) { return false; }
-  if (!database.registerDescriptor<CoreModuleGraphQuery>().isRegistered()) { return false; }
-  if (!database.registerDescriptor<CoreRoleSeedQuery>().isRegistered()) { return false; }
-  if (!database.registerDescriptor<CoreBootstrapModuleInterfaceQuery>().isRegistered()) {
+  if (!database.registerDescriptor<CoreModuleGraph>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<CoreRoleSeed>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<CoreBootstrapModuleInterface>().isRegistered()) {
     return false;
   }
-  if (!database.registerDescriptor<CoreExportSurfaceQuery>().isRegistered()) { return false; }
-  if (!database.registerDescriptor<CorePreludeSurfaceQuery>().isRegistered()) { return false; }
-  if (!database.registerDescriptor<CoreRoleAuthorityQuery>().isRegistered()) { return false; }
-  if (!database.registerDescriptor<MaterializeCoreRoleSeedQuery>().isRegistered()) { return false; }
-  if (!database.registerDescriptor<MaterializeCoreBootstrapModuleInterfaceQuery>().isRegistered()) {
+  if (!database.registerDescriptor<CoreExportSurface>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<CorePreludeSurface>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<CoreRoleAuthority>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<MaterializeCoreRoleSeed>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<MaterializeCoreBootstrapModuleInterface>().isRegistered()) {
     return false;
   }
-  if (!database.registerDescriptor<MaterializeCoreAuthorityQuery>().isRegistered()) {
+  if (!database.registerDescriptor<MaterializeCoreAuthority>().isRegistered()) {
     return false;
   }
-  return database.registerDescriptor<FinalizeCoreModuleInterfaceQuery>().isRegistered();
+  return database.registerDescriptor<FinalizeCoreModuleInterface>().isRegistered();
 }
 
 }  // namespace zomlang::compiler::driver::core_library_query
@@ -4621,55 +4621,55 @@ bool registerCoreLibraryQueryProvider(query::QueryDatabase& database) {
 namespace zomlang::compiler::query {
 
 StableWitnessBytes
-CapabilityCandidateContract<driver::core_library_query::MaterializeCoreRoleSeedQuery>::encode(
+CapabilityCandidateContract<driver::core_library_query::MaterializeCoreRoleSeed>::encode(
     const Descriptor::Capability& candidate) {
   return StableWitnessBytes(candidate.encodeCanonical());
 }
 
 zc::Maybe<zc::Own<CapabilityCandidateContract<
-    driver::core_library_query::MaterializeCoreRoleSeedQuery>::Descriptor::Capability>>
-CapabilityCandidateContract<driver::core_library_query::MaterializeCoreRoleSeedQuery>::decode(
+    driver::core_library_query::MaterializeCoreRoleSeed>::Descriptor::Capability>>
+CapabilityCandidateContract<driver::core_library_query::MaterializeCoreRoleSeed>::decode(
     zc::ArrayPtr<const uint8_t>) {
   return zc::none;
 }
 
 StableWitnessBytes
-CapabilityCandidateContract<driver::core_library_query::MaterializeCoreAuthorityQuery>::encode(
+CapabilityCandidateContract<driver::core_library_query::MaterializeCoreAuthority>::encode(
     const Descriptor::Capability& candidate) {
   return StableWitnessBytes(candidate.encodeCanonical());
 }
 
 zc::Maybe<zc::Own<CapabilityCandidateContract<
-    driver::core_library_query::MaterializeCoreAuthorityQuery>::Descriptor::Capability>>
-CapabilityCandidateContract<driver::core_library_query::MaterializeCoreAuthorityQuery>::decode(
+    driver::core_library_query::MaterializeCoreAuthority>::Descriptor::Capability>>
+CapabilityCandidateContract<driver::core_library_query::MaterializeCoreAuthority>::decode(
     zc::ArrayPtr<const uint8_t>) {
   return zc::none;
 }
 
 StableWitnessBytes
-CapabilityCandidateContract<driver::core_library_query::FinalizeCoreModuleInterfaceQuery>::encode(
+CapabilityCandidateContract<driver::core_library_query::FinalizeCoreModuleInterface>::encode(
     const Descriptor::Capability& candidate) {
   return StableWitnessBytes(candidate.encodeCanonical());
 }
 
 zc::Maybe<zc::Own<CapabilityCandidateContract<
-    driver::core_library_query::FinalizeCoreModuleInterfaceQuery>::Descriptor::Capability>>
-CapabilityCandidateContract<driver::core_library_query::FinalizeCoreModuleInterfaceQuery>::decode(
+    driver::core_library_query::FinalizeCoreModuleInterface>::Descriptor::Capability>>
+CapabilityCandidateContract<driver::core_library_query::FinalizeCoreModuleInterface>::decode(
     zc::ArrayPtr<const uint8_t>) {
   return zc::none;
 }
 
 StableWitnessBytes CapabilityCandidateContract<
-    driver::core_library_query::MaterializeCoreBootstrapModuleInterfaceQuery>::
+    driver::core_library_query::MaterializeCoreBootstrapModuleInterface>::
     encode(const Descriptor::Capability& candidate) {
   return StableWitnessBytes(candidate.encodeCanonical());
 }
 
 zc::Maybe<zc::Own<CapabilityCandidateContract<
-    driver::core_library_query::MaterializeCoreBootstrapModuleInterfaceQuery>::Descriptor::
+    driver::core_library_query::MaterializeCoreBootstrapModuleInterface>::Descriptor::
                       Capability>>
 CapabilityCandidateContract<
-    driver::core_library_query::MaterializeCoreBootstrapModuleInterfaceQuery>::
+    driver::core_library_query::MaterializeCoreBootstrapModuleInterface>::
     decode(zc::ArrayPtr<const uint8_t>) {
   return zc::none;
 }

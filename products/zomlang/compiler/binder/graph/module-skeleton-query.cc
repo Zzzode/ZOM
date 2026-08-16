@@ -134,7 +134,7 @@ zc::Maybe<CanonicalSequence<StableImportFact>> projectImportedFacts(
     }
     if (request.dependencyKind() == identity::ModuleDependencyKind::ModuleAlias) { continue; }
     if (operation == zc::none) { return zc::none; }
-    auto resolution = context.get<resolution_query::ResolveModuleRequestQuery>(request.clone());
+    auto resolution = context.get<resolution_query::ResolveModuleRequest>(request.clone());
     if (resolution.isRuntimeFailure() || resolution.kind() != query::QueryValueKind::Value ||
         resolution.value().candidates().size() != 1) {
       return zc::none;
@@ -266,7 +266,7 @@ zc::Maybe<CanonicalSequence<StableImportFact>> verifyImportedFacts(
       default:
         return zc::none;
     }
-    auto resolution = context.get<resolution_query::ResolveModuleRequestQuery>(request.clone());
+    auto resolution = context.get<resolution_query::ResolveModuleRequest>(request.clone());
     if (resolution.isRuntimeFailure() || resolution.kind() != query::QueryValueKind::Value ||
         resolution.value().candidates().size() != 1) {
       return zc::none;
@@ -430,7 +430,7 @@ zc::Maybe<CanonicalSequence<StableModuleAliasFact>> projectModuleAliasFacts(
         dependency.origin().kind() != graph_query::ModuleDependencyProvenanceOriginKind::Source) {
       return zc::none;
     }
-    auto resolution = context.get<resolution_query::ResolveModuleRequestQuery>(request.clone());
+    auto resolution = context.get<resolution_query::ResolveModuleRequest>(request.clone());
     if (resolution.isRuntimeFailure() || resolution.kind() != query::QueryValueKind::Value ||
         resolution.value().candidates().size() != 1) {
       return zc::none;
@@ -496,7 +496,7 @@ zc::Maybe<CanonicalSequence<StableModuleAliasFact>> verifyModuleAliasFacts(
         dependency.origin().kind() != graph_query::ModuleDependencyProvenanceOriginKind::Source) {
       return zc::none;
     }
-    auto resolution = context.get<resolution_query::ResolveModuleRequestQuery>(request.clone());
+    auto resolution = context.get<resolution_query::ResolveModuleRequest>(request.clone());
     if (resolution.isRuntimeFailure() || resolution.kind() != query::QueryValueKind::Value ||
         resolution.value().candidates().size() != 1) {
       return zc::none;
@@ -1111,7 +1111,7 @@ template <typename Context>
 HeaderAuthorityRead<HeaderCommonAuthority> readHeaderCommonAuthority(
     Context& context, const identity::ModuleKey& module,
     const binding_query::StableModuleQueryKey& moduleKey, const BinderQueryOwner& owner) {
-  auto selected = context.template get<graph_query::SelectedModuleSourceQuery>(module);
+  auto selected = context.template get<graph_query::SelectedModuleSource>(module);
   if (selected.isRuntimeFailure()) {
     return runtimeRejection<HeaderCommonAuthority>(selected.runtimeFailure());
   }
@@ -1993,7 +1993,7 @@ query::TypedQueryResult<BindModuleSkeleton::Value> BindModuleSkeleton::provide(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   auto dependencyProvenance =
-      context.getCapability<graph_query::ModuleDependencyProvenanceQuery>(key.clone());
+      context.getCapability<graph_query::ModuleDependencyProvenance>(key.clone());
   if (dependencyProvenance.isRuntimeRejected()) {
     return query::TypedQueryResult<Value>::runtimeFailure(dependencyProvenance.runtimeFailure());
   }
@@ -2041,7 +2041,7 @@ bool BindModuleSkeleton::verify(query::QueryContext& context, const Key& key,
       context.getCapability<binding_query::ModuleBodyProvenanceQuery>(ZC_ASSERT_NONNULL(moduleKey));
   if (!provenance.isPublished()) { return false; }
   auto dependencyProvenance =
-      context.getCapability<graph_query::ModuleDependencyProvenanceQuery>(key.clone());
+      context.getCapability<graph_query::ModuleDependencyProvenance>(key.clone());
   if (!dependencyProvenance.isPublished()) { return false; }
   const auto& value = result.value().storage().get<BinderQueryValue<BoundModuleSkeleton>>();
   if (value.diagnostics.values().size() != 0) { return false; }

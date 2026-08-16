@@ -235,7 +235,7 @@ zc::Maybe<ast::NodeId> verifierModuleNode(const ast::Tree& tree,
 template <typename Context>
 query::TypedQueryResult<LoadedNamedItemSource> providerSource(Context& context,
                                                               const RecoveredAuthority& authority) {
-  auto selected = context.template get<module_graph_query::SelectedModuleSourceQuery>(
+  auto selected = context.template get<module_graph_query::SelectedModuleSource>(
       authority.record.module());
   if (selected.isRuntimeFailure()) {
     if (selected.runtimeFailure() == query::QueryRuntimeFailure::MissingInput) {
@@ -289,7 +289,7 @@ query::TypedQueryResult<LoadedNamedItemSource> providerSource(Context& context,
 template <typename Context>
 query::TypedQueryResult<LoadedNamedItemSource> verifierSource(Context& context,
                                                               const RecoveredAuthority& authority) {
-  auto selected = context.template get<module_graph_query::SelectedModuleSourceQuery>(
+  auto selected = context.template get<module_graph_query::SelectedModuleSource>(
       authority.record.module());
   if (selected.isRuntimeFailure()) {
     if (selected.runtimeFailure() == query::QueryRuntimeFailure::MissingInput) {

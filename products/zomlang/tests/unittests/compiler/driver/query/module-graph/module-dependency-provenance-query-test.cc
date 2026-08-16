@@ -16,8 +16,8 @@ using ExpectedFailureAlternatives =
     query::CapabilityFailureList<query::SourceRejection<diagnostics::DiagnosticFact>,
                                  query::KeyRejection<binder::BinderKeyFailure>>;
 static_assert(
-    zc::isSameType<ModuleDependencyProvenanceQuery::Capability, ModuleDependencyProvenanceMap>());
-static_assert(zc::isSameType<ModuleDependencyProvenanceQuery::FailureAlternatives,
+    zc::isSameType<ModuleDependencyProvenance::Capability, ModuleDependencyProvenanceMap>());
+static_assert(zc::isSameType<ModuleDependencyProvenance::FailureAlternatives,
                              ExpectedFailureAlternatives>());
 
 template <typename T>
@@ -96,16 +96,16 @@ zc::Array<uint8_t> withTrailingByte(zc::ArrayPtr<const uint8_t> bytes) {
 }  // namespace
 
 ZC_TEST("ModuleDependencyProvenanceQueryTest.DescriptorAndKeyContractAreExact") {
-  ZC_EXPECT(ModuleDependencyProvenanceQuery::descriptor.admission ==
+  ZC_EXPECT(ModuleDependencyProvenance::descriptor.admission ==
             query::CapabilityAdmission::FinalSealedSnapshot);
-  ZC_EXPECT(ModuleDependencyProvenanceQuery::descriptor.retention ==
+  ZC_EXPECT(ModuleDependencyProvenance::descriptor.retention ==
             query::RetentionClass::Retained);
   auto key = tests::test_identity_detail::module();
-  auto encoded = ModuleDependencyProvenanceQuery::encodeKey(key);
-  auto decoded = ModuleDependencyProvenanceQuery::decodeKey(encoded.asPtr());
+  auto encoded = ModuleDependencyProvenance::encodeKey(key);
+  auto decoded = ModuleDependencyProvenance::decodeKey(encoded.asPtr());
   ZC_REQUIRE(decoded != zc::none);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).encode().asPtr() == encoded.asPtr());
-  ZC_EXPECT(ModuleDependencyProvenanceQuery::decodeKey(withTrailingByte(encoded.asPtr()).asPtr()) ==
+  ZC_EXPECT(ModuleDependencyProvenance::decodeKey(withTrailingByte(encoded.asPtr()).asPtr()) ==
             zc::none);
 }
 
@@ -171,9 +171,9 @@ ZC_TEST("ModuleDependencyProvenanceQueryTest.RuntimeWitnessDetectsCandidateMutat
                                 sourceOrigin(fourthSnapshot, 1, 1, 0, 6), secondWitness);
   ZC_EXPECT(!first.sameAs(changedWitness));
 
-  auto encoded = query::CapabilityCandidateContract<ModuleDependencyProvenanceQuery>::encode(first);
+  auto encoded = query::CapabilityCandidateContract<ModuleDependencyProvenance>::encode(first);
   ZC_EXPECT(encoded.bytes() == firstWitness.bytes());
-  ZC_EXPECT(query::CapabilityCandidateContract<ModuleDependencyProvenanceQuery>::decode(
+  ZC_EXPECT(query::CapabilityCandidateContract<ModuleDependencyProvenance>::decode(
                 encoded.bytes()) == zc::none);
 }
 

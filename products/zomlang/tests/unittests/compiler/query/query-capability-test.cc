@@ -340,20 +340,20 @@ void registerProductionFinalSealQueries(QueryDatabase& database) {
                  .isRegistered());
   ZC_REQUIRE(database.registerDescriptor<graph_query::SelectedModuleCatalogInput>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleDependencySiteInput>().isRegistered());
-  ZC_REQUIRE(database.registerDescriptor<graph_query::SelectedModuleSourceQuery>().isRegistered());
-  ZC_REQUIRE(database.registerDescriptor<graph_query::ActiveModulesQuery>().isRegistered());
-  ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleDependencySitesQuery>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<graph_query::SelectedModuleSource>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<graph_query::ActiveModules>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleDependencySites>().isRegistered());
   ZC_REQUIRE(
-      database.registerDescriptor<graph_query::ModuleDependencyRequestsQuery>().isRegistered());
-  ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleDependenciesQuery>().isRegistered());
-  ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleGraphQuery>().isRegistered());
-  ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleGraphSccQuery>().isRegistered());
+      database.registerDescriptor<graph_query::ModuleDependencyRequests>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleDependencies>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleGraph>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleGraphScc>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<core_query::CoreDistributionInput>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<binding_query::PackageGraphInput>().isRegistered());
   ZC_REQUIRE(
       database.registerDescriptor<binding_query::UserPackageActiveSourcesInput>().isRegistered());
-  ZC_REQUIRE(database.registerDescriptor<binding_query::ActiveSourcesQuery>().isRegistered());
-  ZC_REQUIRE(database.registerDescriptor<binding_query::ActiveCratesQuery>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<binding_query::ActiveSources>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<binding_query::ActiveCrates>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<source_query::SourceSnapshotInput>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<source_query::CompilationOptionsInput>().isRegistered());
   ZC_REQUIRE(

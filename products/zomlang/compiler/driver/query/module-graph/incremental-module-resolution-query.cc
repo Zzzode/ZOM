@@ -667,19 +667,19 @@ zc::Maybe<ConfiguredPreludeInput::Value> ConfiguredPreludeInput::decodeValue(
   return ExplicitModuleTarget::decodeCanonical(bytes);
 }
 
-zc::Array<uint8_t> ResolveModuleRequestQuery::encodeKey(const Key& key) { return key.encode(); }
-zc::Maybe<ResolveModuleRequestQuery::Key> ResolveModuleRequestQuery::decodeKey(
+zc::Array<uint8_t> ResolveModuleRequest::encodeKey(const Key& key) { return key.encode(); }
+zc::Maybe<ResolveModuleRequest::Key> ResolveModuleRequest::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   return identity::ModuleResolutionKey::decodeCanonical(bytes);
 }
-zc::Array<uint8_t> ResolveModuleRequestQuery::encodeValue(const Value& value) {
+zc::Array<uint8_t> ResolveModuleRequest::encodeValue(const Value& value) {
   return value.encode();
 }
-zc::Maybe<ResolveModuleRequestQuery::Value> ResolveModuleRequestQuery::decodeValue(
+zc::Maybe<ResolveModuleRequest::Value> ResolveModuleRequest::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return identity::ModuleResolutionCandidates::decodeCanonical(bytes);
 }
-query::TypedQueryResult<ResolveModuleRequestQuery::Value> ResolveModuleRequestQuery::provide(
+query::TypedQueryResult<ResolveModuleRequest::Value> ResolveModuleRequest::provide(
     query::QueryContext& context, const Key& key) {
   auto candidates = providerCandidates(context, key);
   if (candidates == zc::none) {
@@ -688,7 +688,7 @@ query::TypedQueryResult<ResolveModuleRequestQuery::Value> ResolveModuleRequestQu
   }
   return query::TypedQueryResult<Value>::value(zc::mv(ZC_ASSERT_NONNULL(candidates)));
 }
-bool ResolveModuleRequestQuery::verify(query::QueryContext& context, const Key& key,
+bool ResolveModuleRequest::verify(query::QueryContext& context, const Key& key,
                                        const query::TypedQueryResult<Value>& result) {
   if (result.isRuntimeFailure() || result.kind() != query::QueryValueKind::Value) { return false; }
   auto expected = verifierCandidates(context, key);
@@ -831,7 +831,7 @@ bool registerIncrementalModuleResolutionQueries(query::QueryDatabase& database) 
   if (!database.registerDescriptor<ModuleSearchRootsInput>().isRegistered()) { return false; }
   if (!database.registerDescriptor<DependencyAliasRootInput>().isRegistered()) { return false; }
   if (!database.registerDescriptor<ConfiguredPreludeInput>().isRegistered()) { return false; }
-  return database.registerDescriptor<ResolveModuleRequestQuery>().isRegistered();
+  return database.registerDescriptor<ResolveModuleRequest>().isRegistered();
 }
 
 }  // namespace zomlang::compiler::driver::incremental_module_resolution_query

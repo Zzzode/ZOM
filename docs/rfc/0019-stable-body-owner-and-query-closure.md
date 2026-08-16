@@ -461,10 +461,10 @@ The exact descriptor read sets are:
 
 | Descriptor | Ordered reads |
 |---|---|
-| `RevisionLocalDefinitionSitesQuery` | `SelectedModuleSourceQuery`; `ParseSourceQuery`; `StableIdentityAdmissionQuery`; `NamedDefinitionInventoryQuery`; independent site reconstruction |
-| `RevisionLocalImplementationSitesQuery` | `SelectedModuleSourceQuery`; `ParseSourceQuery`; `StableIdentityAdmissionQuery`; `NamedImplementationInventoryQuery`; independent site reconstruction |
-| `ModuleBodyProvenanceQuery` | `SelectedModuleSourceQuery`; `ParseSourceQuery`; `StableIdentityAdmissionQuery`; `RevisionLocalDefinitionSitesQuery`; `RevisionLocalImplementationSitesQuery`; `ModuleBodySyntaxQuery` |
-| `NamedItemProvenanceQuery` | `ActiveDefinitionAuthorityInput`; `ActiveDefinitionAuthorityReadyInput` only for absent or contradictory authority; `SelectedModuleSourceQuery`; `ParseSourceQuery`; `StableIdentityAdmissionQuery`; `NamedDefinitionInventoryQuery`; `RevisionLocalDefinitionSitesQuery`; `RevisionLocalImplementationSitesQuery`; `NamedItemSyntaxQuery` |
+| `RevisionLocalDefinitionSitesQuery` | `SelectedModuleSource`; `ParseSourceQuery`; `StableIdentityAdmissionQuery`; `NamedDefinitionInventoryQuery`; independent site reconstruction |
+| `RevisionLocalImplementationSitesQuery` | `SelectedModuleSource`; `ParseSourceQuery`; `StableIdentityAdmissionQuery`; `NamedImplementationInventoryQuery`; independent site reconstruction |
+| `ModuleBodyProvenanceQuery` | `SelectedModuleSource`; `ParseSourceQuery`; `StableIdentityAdmissionQuery`; `RevisionLocalDefinitionSitesQuery`; `RevisionLocalImplementationSitesQuery`; `ModuleBodySyntaxQuery` |
+| `NamedItemProvenanceQuery` | `ActiveDefinitionAuthorityInput`; `ActiveDefinitionAuthorityReadyInput` only for absent or contradictory authority; `SelectedModuleSource`; `ParseSourceQuery`; `StableIdentityAdmissionQuery`; `NamedDefinitionInventoryQuery`; `RevisionLocalDefinitionSitesQuery`; `RevisionLocalImplementationSitesQuery`; `NamedItemSyntaxQuery` |
 | `OwnerBodyProvenanceQuery` | exactly one typed branch, `ModuleBodyProvenanceQuery` or `NamedItemProvenanceQuery`; then the matching `ModuleBodySyntaxQuery` or complete-key `NamedItemSyntaxQuery` |
 
 The first eligible typed rejection in read order is returned, and an earlier

@@ -146,12 +146,12 @@ private:
 };
 
 /// \brief Stable semantic projection of the independently verified singleton core graph.
-struct CoreModuleGraphQuery final {
+struct CoreModuleGraph final {
   using Key = ContextualCoreCrateKey;
   using Value = CoreModuleGraphRecord;
 
   static constexpr query::SemanticDescriptorMetadata descriptor{
-      "CoreModuleGraphQuery"_zcc,
+      "CoreModuleGraph"_zcc,
       "zom.query.core-module-graph"_zcc,
       query::ReuseClass::Semantic,
       query::RetentionClass::Retained,
@@ -225,12 +225,12 @@ private:
 };
 
 /// \brief Stable semantic role projection reconstructed from core graph and identity inventory.
-struct CoreRoleSeedQuery final {
+struct CoreRoleSeed final {
   using Key = ContextualCoreCrateKey;
   using Value = CoreRoleSeedRecord;
 
   static constexpr query::SemanticDescriptorMetadata descriptor{
-      "CoreRoleSeedQuery"_zcc,
+      "CoreRoleSeed"_zcc,
       "zom.query.core-role-seed"_zcc,
       query::ReuseClass::Semantic,
       query::RetentionClass::Retained,
@@ -292,22 +292,22 @@ private:
 };
 
 /// \brief Final-sealed materializer for the lease-owning core role seed.
-struct MaterializeCoreRoleSeedQuery final {
+struct MaterializeCoreRoleSeed final {
   using Key = ContextualCoreCrateKey;
   using Capability = VerifiedCoreRoleSeed;
   using FailureAlternatives = query::CapabilityFailureList<>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "MaterializeCoreRoleSeedQuery"_zcc, "zom.query.materialize-core-role-seed"_zcc,
+      "MaterializeCoreRoleSeed"_zcc, "zom.query.materialize-core-role-seed"_zcc,
       query::RetentionClass::Retained,    query::QueryCyclePolicy::Reject,
       query::QueryCostClass::Linear,      query::CapabilityAdmission::FinalSealedSnapshot,
       query::FinalFailureProjection::None};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static query::CapabilityProviderResult<MaterializeCoreRoleSeedQuery> provide(
-      query::CapabilityQueryContext<MaterializeCoreRoleSeedQuery>& context, const Key& key);
+  ZC_NODISCARD static query::CapabilityProviderResult<MaterializeCoreRoleSeed> provide(
+      query::CapabilityQueryContext<MaterializeCoreRoleSeed>& context, const Key& key);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verify(
-      query::CapabilityQueryContext<MaterializeCoreRoleSeedQuery>& context, const Key& key,
+      query::CapabilityQueryContext<MaterializeCoreRoleSeed>& context, const Key& key,
       const Capability& candidate);
 };
 
@@ -424,12 +424,12 @@ private:
 };
 
 /// \brief Stable semantic projection of one initial core module's defined and re-exported roles.
-struct CoreExportSurfaceQuery final {
+struct CoreExportSurface final {
   using Key = ContextualCoreModuleKey;
   using Value = CoreExportSurfaceRecord;
 
   static constexpr query::SemanticDescriptorMetadata descriptor{
-      "CoreExportSurfaceQuery"_zcc,
+      "CoreExportSurface"_zcc,
       "zom.query.core-export-surface"_zcc,
       query::ReuseClass::Semantic,
       query::RetentionClass::Retained,
@@ -553,12 +553,12 @@ private:
 class VerifiedCoreBootstrapModuleInterface;
 
 /// \brief Stable semantic projection proving the initial core prelude re-exports every role.
-struct CorePreludeSurfaceQuery final {
+struct CorePreludeSurface final {
   using Key = ContextualCoreCrateKey;
   using Value = CorePreludeSurfaceRecord;
 
   static constexpr query::SemanticDescriptorMetadata descriptor{
-      "CorePreludeSurfaceQuery"_zcc,
+      "CorePreludeSurface"_zcc,
       "zom.query.core-prelude-surface"_zcc,
       query::ReuseClass::Semantic,
       query::RetentionClass::Retained,
@@ -576,12 +576,12 @@ struct CorePreludeSurfaceQuery final {
 };
 
 /// \brief Stable semantic projection authenticating the initial core role authority inputs.
-struct CoreRoleAuthorityQuery final {
+struct CoreRoleAuthority final {
   using Key = ContextualCoreCrateKey;
   using Value = CoreRoleAuthorityRecord;
 
   static constexpr query::SemanticDescriptorMetadata descriptor{
-      "CoreRoleAuthorityQuery"_zcc,
+      "CoreRoleAuthority"_zcc,
       "zom.query.core-role-authority"_zcc,
       query::ReuseClass::Semantic,
       query::RetentionClass::Retained,
@@ -633,27 +633,27 @@ private:
   ZC_NODISCARD const RoleSeedLease& roleSeedLease() const noexcept;
   ZC_NODISCARD const PreludeBoundModuleLease& preludeBoundModuleLease() const noexcept;
   zc::Own<Impl> impl;
-  friend struct MaterializeCoreAuthorityQuery;
+  friend struct MaterializeCoreAuthority;
   friend class CoreLibraryQueryVerifier;
 };
 
 /// \brief Final-sealed materializer for the lease-owning core role authority.
-struct MaterializeCoreAuthorityQuery final {
+struct MaterializeCoreAuthority final {
   using Key = ContextualCoreCrateKey;
   using Capability = VerifiedCoreAuthorityBundle;
   using FailureAlternatives = query::CapabilityFailureList<>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "MaterializeCoreAuthorityQuery"_zcc, "zom.query.materialize-core-authority"_zcc,
+      "MaterializeCoreAuthority"_zcc, "zom.query.materialize-core-authority"_zcc,
       query::RetentionClass::Retained,     query::QueryCyclePolicy::Reject,
       query::QueryCostClass::Linear,       query::CapabilityAdmission::FinalSealedSnapshot,
       query::FinalFailureProjection::None};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static query::CapabilityProviderResult<MaterializeCoreAuthorityQuery> provide(
-      query::CapabilityQueryContext<MaterializeCoreAuthorityQuery>& context, const Key& key);
+  ZC_NODISCARD static query::CapabilityProviderResult<MaterializeCoreAuthority> provide(
+      query::CapabilityQueryContext<MaterializeCoreAuthority>& context, const Key& key);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verify(
-      query::CapabilityQueryContext<MaterializeCoreAuthorityQuery>& context, const Key& key,
+      query::CapabilityQueryContext<MaterializeCoreAuthority>& context, const Key& key,
       const Capability& candidate);
 };
 
@@ -775,32 +775,32 @@ private:
 };
 
 /// \brief Final-sealed promotion from private bootstrap interfaces to final core interfaces.
-struct FinalizeCoreModuleInterfaceQuery final {
+struct FinalizeCoreModuleInterface final {
   using Key = ContextualCoreModuleKey;
   using Capability = VerifiedCoreModuleInterface;
   using FailureAlternatives = query::CapabilityFailureList<>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "FinalizeCoreModuleInterfaceQuery"_zcc, "zom.query.finalize-core-module-interface"_zcc,
+      "FinalizeCoreModuleInterface"_zcc, "zom.query.finalize-core-module-interface"_zcc,
       query::RetentionClass::Retained,        query::QueryCyclePolicy::Reject,
       query::QueryCostClass::Linear,          query::CapabilityAdmission::FinalSealedSnapshot,
       query::FinalFailureProjection::None};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static query::CapabilityProviderResult<FinalizeCoreModuleInterfaceQuery> provide(
-      query::CapabilityQueryContext<FinalizeCoreModuleInterfaceQuery>& context, const Key& key);
+  ZC_NODISCARD static query::CapabilityProviderResult<FinalizeCoreModuleInterface> provide(
+      query::CapabilityQueryContext<FinalizeCoreModuleInterface>& context, const Key& key);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verify(
-      query::CapabilityQueryContext<FinalizeCoreModuleInterfaceQuery>& context, const Key& key,
+      query::CapabilityQueryContext<FinalizeCoreModuleInterface>& context, const Key& key,
       const Capability& candidate);
 };
 
 /// \brief Stable closed declaration projection for one initial core bootstrap interface.
-struct CoreBootstrapModuleInterfaceQuery final {
+struct CoreBootstrapModuleInterface final {
   using Key = ContextualCoreModuleKey;
   using Value = CoreBootstrapModuleInterfaceRecord;
 
   static constexpr query::SemanticDescriptorMetadata descriptor{
-      "CoreBootstrapModuleInterfaceQuery"_zcc,
+      "CoreBootstrapModuleInterface"_zcc,
       "zom.query.core-bootstrap-module-interface"_zcc,
       query::ReuseClass::Semantic,
       query::RetentionClass::Retained,
@@ -818,13 +818,13 @@ struct CoreBootstrapModuleInterfaceQuery final {
 };
 
 /// \brief Final-sealed materializer for one closed initial core bootstrap interface.
-struct MaterializeCoreBootstrapModuleInterfaceQuery final {
+struct MaterializeCoreBootstrapModuleInterface final {
   using Key = ContextualCoreModuleKey;
   using Capability = VerifiedCoreBootstrapModuleInterface;
   using FailureAlternatives = query::CapabilityFailureList<>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "MaterializeCoreBootstrapModuleInterfaceQuery"_zcc,
+      "MaterializeCoreBootstrapModuleInterface"_zcc,
       "zom.query.materialize-core-bootstrap-module-interface"_zcc,
       query::RetentionClass::Retained,
       query::QueryCyclePolicy::Reject,
@@ -833,11 +833,11 @@ struct MaterializeCoreBootstrapModuleInterfaceQuery final {
       query::FinalFailureProjection::None};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static query::CapabilityProviderResult<MaterializeCoreBootstrapModuleInterfaceQuery>
-  provide(query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterfaceQuery>& context,
+  ZC_NODISCARD static query::CapabilityProviderResult<MaterializeCoreBootstrapModuleInterface>
+  provide(query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterface>& context,
           const Key& key);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verify(
-      query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterfaceQuery>& context,
+      query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterface>& context,
       const Key& key, const Capability& candidate);
 };
 
@@ -956,9 +956,9 @@ ZC_NODISCARD bool registerCoreLibraryQueryProvider(query::QueryDatabase& databas
 namespace zomlang::compiler::query {
 
 template <>
-class CapabilityCandidateContract<driver::core_library_query::MaterializeCoreRoleSeedQuery> final {
+class CapabilityCandidateContract<driver::core_library_query::MaterializeCoreRoleSeed> final {
 public:
-  using Descriptor = driver::core_library_query::MaterializeCoreRoleSeedQuery;
+  using Descriptor = driver::core_library_query::MaterializeCoreRoleSeed;
   ZC_NODISCARD static StableWitnessBytes encode(const Descriptor::Capability& candidate);
   ZC_NODISCARD static zc::Maybe<zc::Own<Descriptor::Capability>> decode(
       zc::ArrayPtr<const uint8_t> bytes);
@@ -966,29 +966,29 @@ public:
 
 template <>
 class CapabilityCandidateContract<
-    driver::core_library_query::MaterializeCoreBootstrapModuleInterfaceQuery>
+    driver::core_library_query::MaterializeCoreBootstrapModuleInterface>
     final {
 public:
-  using Descriptor = driver::core_library_query::MaterializeCoreBootstrapModuleInterfaceQuery;
+  using Descriptor = driver::core_library_query::MaterializeCoreBootstrapModuleInterface;
   ZC_NODISCARD static StableWitnessBytes encode(const Descriptor::Capability& candidate);
   ZC_NODISCARD static zc::Maybe<zc::Own<Descriptor::Capability>> decode(
       zc::ArrayPtr<const uint8_t> bytes);
 };
 
 template <>
-class CapabilityCandidateContract<driver::core_library_query::MaterializeCoreAuthorityQuery> final {
+class CapabilityCandidateContract<driver::core_library_query::MaterializeCoreAuthority> final {
 public:
-  using Descriptor = driver::core_library_query::MaterializeCoreAuthorityQuery;
+  using Descriptor = driver::core_library_query::MaterializeCoreAuthority;
   ZC_NODISCARD static StableWitnessBytes encode(const Descriptor::Capability& candidate);
   ZC_NODISCARD static zc::Maybe<zc::Own<Descriptor::Capability>> decode(
       zc::ArrayPtr<const uint8_t> bytes);
 };
 
 template <>
-class CapabilityCandidateContract<driver::core_library_query::FinalizeCoreModuleInterfaceQuery>
+class CapabilityCandidateContract<driver::core_library_query::FinalizeCoreModuleInterface>
     final {
 public:
-  using Descriptor = driver::core_library_query::FinalizeCoreModuleInterfaceQuery;
+  using Descriptor = driver::core_library_query::FinalizeCoreModuleInterface;
   ZC_NODISCARD static StableWitnessBytes encode(const Descriptor::Capability& candidate);
   ZC_NODISCARD static zc::Maybe<zc::Own<Descriptor::Capability>> decode(
       zc::ArrayPtr<const uint8_t> bytes);
@@ -996,7 +996,7 @@ public:
 
 #define ZOM_DECLARE_CORE_ROLE_SEED_MATERIALIZER_PERMISSION(GlobalKey, Membership)               \
   template <>                                                                                   \
-  struct ActiveMaterializerPermission<driver::core_library_query::MaterializeCoreRoleSeedQuery, \
+  struct ActiveMaterializerPermission<driver::core_library_query::MaterializeCoreRoleSeed, \
                                       GlobalKey,                                                \
                                       driver::incremental_binding_query::Membership##Query>     \
       final {                                                                                   \

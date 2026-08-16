@@ -79,7 +79,7 @@ query::TypedQueryResult<LoadedIdentitySource> loadIdentitySource(Context& contex
     return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(
         query::QueryRuntimeFailure::InvalidKeyEncoding);
   }
-  auto selected = context.template get<module_graph_query::SelectedModuleSourceQuery>(
+  auto selected = context.template get<module_graph_query::SelectedModuleSource>(
       ZC_ASSERT_NONNULL(module));
   if (selected.isRuntimeFailure()) {
     return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(selected.runtimeFailure());

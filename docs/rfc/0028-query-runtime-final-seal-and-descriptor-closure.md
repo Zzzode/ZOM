@@ -798,7 +798,7 @@ struct ParseSourceQuery final {
       query::SourceRejection<diagnostics::DiagnosticFact>>;
 };
 
-struct ModuleDependencyProvenanceQuery final {
+struct ModuleDependencyProvenance final {
   using Capability = ModuleDependencyProvenanceMap;
   using FailureAlternatives = query::CapabilityFailureList<
       query::SourceRejection<diagnostics::DiagnosticFact>,
@@ -842,7 +842,7 @@ ParseSource =
   | SourceRejected(CanonicalNonEmptySequence<diagnostics::DiagnosticFact>)
   | RuntimeRejected(QueryRuntimeFailure)
 
-ModuleDependencyProvenanceQuery =
+ModuleDependencyProvenance =
     Candidate
   | SourceRejected(CanonicalNonEmptySequence<diagnostics::DiagnosticFact>)
   | KeyRejected(BinderKeyFailure)
@@ -972,7 +972,7 @@ that exists independently of stable identity admission:
 | Cycle | `Reject` |
 | Failures | `SourceRejection<DiagnosticFact>`, `KeyRejection<BinderKeyFailure>` |
 
-Its provider reads exactly `SelectedModuleSourceQuery`, `ParseSourceQuery`, and
+Its provider reads exactly `SelectedModuleSource`, `ParseSourceQuery`, and
 `IdentitySyntaxSiteInventoryProducer`. Its independent verifier repeats both
 query reads and uses a separate `IdentitySyntaxSiteInventoryVerifier`
 traversal. Selected-source absence produces
@@ -1043,7 +1043,7 @@ and digest, complete equality, and byte-identical re-encoding.
 
 The provider reads in this exact order:
 
-1. `SelectedModuleSourceQuery`;
+1. `SelectedModuleSource`;
 2. `ParseSourceQuery`;
 3. `IdentitySyntaxSiteInventoryQuery`;
 4. `CandidateProducer`; and
@@ -1120,7 +1120,7 @@ prevents later classification.
 
 `RevisionLocalDefinitionSitesQuery` reads:
 
-1. `SelectedModuleSourceQuery`;
+1. `SelectedModuleSource`;
 2. `ParseSourceQuery`;
 3. `StableIdentityAdmissionQuery`;
 4. `NamedDefinitionInventoryQuery`; and
@@ -1147,7 +1147,7 @@ typed provenance succeeds is `InvariantViolation`.
 1. `ActiveDefinitionAuthorityInput`;
 2. `ActiveDefinitionAuthorityReadyInput` only when authority is absent or
    contradictory;
-3. `SelectedModuleSourceQuery`;
+3. `SelectedModuleSource`;
 4. `ParseSourceQuery`;
 5. `StableIdentityAdmissionQuery`;
 6. `NamedDefinitionInventoryQuery`;
@@ -1310,15 +1310,15 @@ and RFC 0027 query catalogs and read-set tables.
 
 ### Module Dependency Provenance Capability
 
-`ModuleDependencyProvenanceQuery` is a final-sealed revision-local capability
+`ModuleDependencyProvenance` is a final-sealed revision-local capability
 descriptor:
 
 | Property | Contract |
 |---|---|
-| Name | `ModuleDependencyProvenanceQuery` |
+| Name | `ModuleDependencyProvenance` |
 | Domain | `zom.query.module-dependency-provenance` |
 | Key | `ModuleKey` |
-| Result | `CapabilityDemandResult<ModuleDependencyProvenanceQuery>` |
+| Result | `CapabilityDemandResult<ModuleDependencyProvenance>` |
 | Capability | `ModuleDependencyProvenanceMap` |
 | Reuse | `RevisionLocal` |
 | Retention | `Retained` |
@@ -1379,8 +1379,8 @@ Provider and verifier compute the witness through separate collection code.
 The synchronized RFC 0031 stable-Binder capability row is exact:
 
 ```text
-name: ModuleDependencyProvenanceQuery
-resultType: CapabilityDemandResult<ModuleDependencyProvenanceQuery>
+name: ModuleDependencyProvenance
+resultType: CapabilityDemandResult<ModuleDependencyProvenance>
 capabilityType: ModuleDependencyProvenanceMap
 failureAlternatives:
   SourceRejection<DiagnosticFact>
@@ -1399,9 +1399,9 @@ the final capability architecture gate to recognize both checks.
 
 Complete tracked reads are:
 
-- `SelectedModuleSourceQuery(module)`;
-- `ModuleDependencySitesQuery(module)`;
-- `ModuleDependencyRequestsQuery(module)`; and
+- `SelectedModuleSource(module)`;
+- `ModuleDependencySites(module)`;
+- `ModuleDependencyRequests(module)`; and
 - the final `ParseSource` capability for the selected source.
 
 The provider reconstructs every source dependency occurrence from the retained
@@ -2093,4 +2093,4 @@ None
 | 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-transaction-ownership-20260730-d0979738` binds the T1 transaction-owner scope correction to independently approved exact four-document pre-evidence Git diff SHA-256 `d0979738a664312a018922acc7d13fe8aa3fb5efe705c806cc3cef58a3ef7539`; all three session transactions now require direct closed replacement, caller-supplied previous revision, pre-open canonical verification, and same-revision witnesses. No implementation task is completed. |
 | 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-transaction-witness-inventory-20260730-ddd640c8` binds the static transaction-witness inventory correction to independently approved exact four-document pre-evidence Git diff SHA-256 `ddd640c83235ff8d178b615f8a532f7179588b21d477ae58fe293f0ba5e87b60`; production ordinals 56 through 58 are the three static witness inputs, the test tail starts at ordinal 59, and generator checks own the complete negative matrix. No implementation task is completed. |
 | 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-transaction-callers-20260730-490a96eb` binds the complete production mutation-caller scope correction to independently approved exact four-document pre-evidence Git diff SHA-256 `490a96eba8bbb8b8b1f96008c864fd9d1eb5ef2781771385e2ce74682d57b5cf`; all three compiler-session mutation paths use the direct closed transactions, the refresh path has no adapter, and T2A ownership remains unchanged. No implementation task is completed. |
-| 2026-08-02 | IMPLEMENTING | R28-19 re-audited the landed `ModuleDependencyProvenanceQuery` transaction. Its focused sanitizer test, production and test descriptor inventories, descriptor architecture check and self-test, generator check, CompilerSession architecture check, and RFC structure check pass. RFC 0028 remains IMPLEMENTING because its materializer closure still depends on RFC 0027 R27-21, R27-22, and R27-28A. |
+| 2026-08-02 | IMPLEMENTING | R28-19 re-audited the landed `ModuleDependencyProvenance` transaction. Its focused sanitizer test, production and test descriptor inventories, descriptor architecture check and self-test, generator check, CompilerSession architecture check, and RFC structure check pass. RFC 0028 remains IMPLEMENTING because its materializer closure still depends on RFC 0027 R27-21, R27-22, and R27-28A. |

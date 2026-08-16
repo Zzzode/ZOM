@@ -369,7 +369,7 @@ identity validation.
 
 Its provider reads exactly:
 
-1. `SelectedModuleSourceQuery`;
+1. `SelectedModuleSource`;
 2. `ParseSourceQuery`; and
 3. `IdentitySyntaxSiteInventoryProducer`.
 
@@ -485,7 +485,7 @@ substitutes for the complete witness bytes.
 
 The provider reads in this exact order:
 
-1. `SelectedModuleSourceQuery`;
+1. `SelectedModuleSource`;
 2. `ParseSourceQuery`;
 3. `IdentitySyntaxSiteInventoryQuery`;
 4. `CandidateProducer`; and
@@ -624,7 +624,7 @@ prevents all later classification.
 
 `RevisionLocalDefinitionSitesQuery` reads:
 
-1. `SelectedModuleSourceQuery`;
+1. `SelectedModuleSource`;
 2. `ParseSourceQuery`;
 3. `StableIdentityAdmissionQuery`;
 4. `NamedDefinitionInventoryQuery`; and
@@ -649,7 +649,7 @@ codec disagreement are runtime rejection.
 
 `ModuleBodyProvenanceQuery` reads:
 
-1. `SelectedModuleSourceQuery`;
+1. `SelectedModuleSource`;
 2. `ParseSourceQuery`;
 3. `StableIdentityAdmissionQuery`;
 4. `RevisionLocalDefinitionSitesQuery`;
@@ -676,7 +676,7 @@ Its conditional read order is:
 1. `ActiveDefinitionAuthorityInput`;
 2. only when authority is absent or contradictory,
    `ActiveDefinitionAuthorityReadyInput`;
-3. `SelectedModuleSourceQuery`;
+3. `SelectedModuleSource`;
 4. `ParseSourceQuery`;
 5. `StableIdentityAdmissionQuery`;
 6. `NamedDefinitionInventoryQuery`;

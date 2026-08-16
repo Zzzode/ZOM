@@ -135,7 +135,7 @@ bool componentIsCyclic(const ModuleGraphRecord& graph,
 query::TypedQueryResult<ModuleGraphRecord> evaluateGraph(
     query::QueryContext& context,
     const incremental_binding_query::CompilationRootSetQueryKey& key) {
-  auto activeCrates = context.get<incremental_binding_query::ActiveCratesQuery>(key);
+  auto activeCrates = context.get<incremental_binding_query::ActiveCrates>(key);
   if (activeCrates.isRuntimeFailure()) {
     return query::TypedQueryResult<ModuleGraphRecord>::runtimeFailure(
         activeCrates.runtimeFailure());
@@ -154,7 +154,7 @@ query::TypedQueryResult<ModuleGraphRecord> evaluateGraph(
     crates.add(zc::mv(ZC_ASSERT_NONNULL(crate)));
   }
   zc::Vector<query::TypedQueryResult<ActiveModuleSetRecord>> memberships(crates.size());
-  for (const auto& crate : crates) { memberships.add(context.get<ActiveModulesQuery>(crate)); }
+  for (const auto& crate : crates) { memberships.add(context.get<ActiveModules>(crate)); }
   zc::Vector<OwnedModule> owned;
   for (size_t crateIndex = 0; crateIndex < crates.size(); ++crateIndex) {
     if (memberships[crateIndex].isRuntimeFailure()) {
@@ -191,7 +191,7 @@ query::TypedQueryResult<ModuleGraphRecord> evaluateGraph(
   for (const auto& value : owned) { modules.add(value.module.clone()); }
   zc::Vector<query::TypedQueryResult<ModuleDependencySetRecord>> dependencySets(modules.size());
   for (const auto& module : modules) {
-    dependencySets.add(context.get<ModuleDependenciesQuery>(module));
+    dependencySets.add(context.get<ModuleDependencies>(module));
   }
   for (size_t index = 0; index < modules.size(); ++index) {
     const auto& result = dependencySets[index];
@@ -243,7 +243,7 @@ query::TypedQueryResult<ModuleGraphRecord> evaluateGraph(
 query::TypedQueryResult<ModuleGraphRecord> evaluateVerifierGraph(
     query::QueryContext& context,
     const incremental_binding_query::CompilationRootSetQueryKey& key) {
-  auto activeCrates = context.get<incremental_binding_query::ActiveCratesQuery>(key);
+  auto activeCrates = context.get<incremental_binding_query::ActiveCrates>(key);
   if (activeCrates.isRuntimeFailure()) {
     return query::TypedQueryResult<ModuleGraphRecord>::runtimeFailure(
         activeCrates.runtimeFailure());
@@ -266,7 +266,7 @@ query::TypedQueryResult<ModuleGraphRecord> evaluateVerifierGraph(
   }
 
   zc::Vector<query::TypedQueryResult<ActiveModuleSetRecord>> memberships(crates.size());
-  for (const auto& crate : crates) { memberships.add(context.get<ActiveModulesQuery>(crate)); }
+  for (const auto& crate : crates) { memberships.add(context.get<ActiveModules>(crate)); }
 
   zc::TreeMap<zc::String, OwnedModule> ordered;
   zc::TreeMap<zc::String, identity::ModuleKey> duplicates;
@@ -314,7 +314,7 @@ query::TypedQueryResult<ModuleGraphRecord> evaluateVerifierGraph(
 
   zc::Vector<query::TypedQueryResult<ModuleDependencySetRecord>> dependencySets(modules.size());
   for (const auto& module : modules) {
-    dependencySets.add(context.get<ModuleDependenciesQuery>(module));
+    dependencySets.add(context.get<ModuleDependencies>(module));
   }
   for (size_t moduleIndexValue = 0; moduleIndexValue < modules.size(); ++moduleIndexValue) {
     const auto& dependencies = dependencySets[moduleIndexValue];
@@ -1033,27 +1033,27 @@ bool ModuleGraphSccRecord::hasCycle(const ModuleGraphRecord& graph) const {
   return false;
 }
 
-zc::Array<uint8_t> ModuleGraphQuery::encodeKey(const Key& key) { return key.encodeCanonical(); }
+zc::Array<uint8_t> ModuleGraph::encodeKey(const Key& key) { return key.encodeCanonical(); }
 
-zc::Maybe<ModuleGraphQuery::Key> ModuleGraphQuery::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
+zc::Maybe<ModuleGraph::Key> ModuleGraph::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
   return incremental_binding_query::CompilationRootSetQueryKey::decodeCanonical(bytes);
 }
 
-zc::Array<uint8_t> ModuleGraphQuery::encodeValue(const Value& value) {
+zc::Array<uint8_t> ModuleGraph::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<ModuleGraphQuery::Value> ModuleGraphQuery::decodeValue(
+zc::Maybe<ModuleGraph::Value> ModuleGraph::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return ModuleGraphRecord::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<ModuleGraphQuery::Value> ModuleGraphQuery::provide(
+query::TypedQueryResult<ModuleGraph::Value> ModuleGraph::provide(
     query::QueryContext& context, const Key& key) {
   return evaluateGraph(context, key);
 }
 
-bool ModuleGraphQuery::verify(query::QueryContext& context, const Key& key,
+bool ModuleGraph::verify(query::QueryContext& context, const Key& key,
                               const query::TypedQueryResult<Value>& result) {
   if (result.isRuntimeFailure()) { return false; }
   auto expected = evaluateVerifierGraph(context, key);
@@ -1069,25 +1069,25 @@ bool ModuleGraphQuery::verify(query::QueryContext& context, const Key& key,
   return false;
 }
 
-zc::Array<uint8_t> ModuleGraphSccQuery::encodeKey(const Key& key) { return key.encodeCanonical(); }
+zc::Array<uint8_t> ModuleGraphScc::encodeKey(const Key& key) { return key.encodeCanonical(); }
 
-zc::Maybe<ModuleGraphSccQuery::Key> ModuleGraphSccQuery::decodeKey(
+zc::Maybe<ModuleGraphScc::Key> ModuleGraphScc::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   return incremental_binding_query::CompilationRootSetQueryKey::decodeCanonical(bytes);
 }
 
-zc::Array<uint8_t> ModuleGraphSccQuery::encodeValue(const Value& value) {
+zc::Array<uint8_t> ModuleGraphScc::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<ModuleGraphSccQuery::Value> ModuleGraphSccQuery::decodeValue(
+zc::Maybe<ModuleGraphScc::Value> ModuleGraphScc::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return ModuleGraphSccRecord::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<ModuleGraphSccQuery::Value> ModuleGraphSccQuery::provide(
+query::TypedQueryResult<ModuleGraphScc::Value> ModuleGraphScc::provide(
     query::QueryContext& context, const Key& key) {
-  auto graph = context.get<ModuleGraphQuery>(key);
+  auto graph = context.get<ModuleGraph>(key);
   if (graph.isRuntimeFailure()) {
     return query::TypedQueryResult<Value>::runtimeFailure(graph.runtimeFailure());
   }
@@ -1113,10 +1113,10 @@ query::TypedQueryResult<ModuleGraphSccQuery::Value> ModuleGraphSccQuery::provide
   return query::TypedQueryResult<Value>::value(zc::mv(ZC_ASSERT_NONNULL(value)));
 }
 
-bool ModuleGraphSccQuery::verify(query::QueryContext& context, const Key& key,
+bool ModuleGraphScc::verify(query::QueryContext& context, const Key& key,
                                  const query::TypedQueryResult<Value>& result) {
   if (result.isRuntimeFailure()) { return false; }
-  auto graph = context.get<ModuleGraphQuery>(key);
+  auto graph = context.get<ModuleGraph>(key);
   if (graph.isRuntimeFailure() || graph.kind() != result.kind()) { return false; }
   if (graph.kind() == query::QueryValueKind::SemanticFailure) {
     return graph.semanticFailureBytes() == result.semanticFailureBytes();
@@ -1135,8 +1135,8 @@ bool ModuleGraphSccQuery::verify(query::QueryContext& context, const Key& key,
 }
 
 bool registerStableModuleGraphQueries(query::QueryDatabase& database) {
-  return database.registerDescriptor<ModuleGraphQuery>().isRegistered() &&
-         database.registerDescriptor<ModuleGraphSccQuery>().isRegistered();
+  return database.registerDescriptor<ModuleGraph>().isRegistered() &&
+         database.registerDescriptor<ModuleGraphScc>().isRegistered();
 }
 
 }  // namespace zomlang::compiler::driver::module_graph_query
