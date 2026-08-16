@@ -12,7 +12,12 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+#if defined(__linux__)
 #include <unistd.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#include <stdlib.h>
+#endif
 
 #include "zc/core/common.h"
 #include "zc/core/exception.h"
@@ -21,6 +26,7 @@
 #include "zc/core/main.h"
 #include "zc/core/string.h"
 #include "zc/core/time.h"
+#include "zc/core/vector.h"
 #include "zomlang/compiler/ast/dump.h"
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
@@ -50,6 +56,103 @@ namespace utils {
 namespace package = driver::package;
 
 static constexpr char VERSION_STRING[] = "ZomLang Version " VERSION;
+
+zc::Maybe<zc::Path> currentExecutablePath(const zc::Filesystem& filesystem) {
+#if defined(__linux__)
+  size_t capacity = 256;
+  for (;;) {
+    zc::Vector<char> path;
+    path.resize(capacity);
+    const ssize_t length = readlink("/proc/self/exe", path.begin(), path.size());
+    if (length <= 0) return zc::none;
+    if (static_cast<size_t>(length) < path.size()) {
+      path[static_cast<size_t>(length)] = '\0';
+      return filesystem.getCurrentPath().eval(zc::StringPtr(path.begin()));
+    }
+    if (capacity > static_cast<size_t>(-1) / 2) return zc::none;
+    capacity *= 2;
+  }
+#elif defined(__APPLE__)
+  uint32_t size = 0;
+  if (_NSGetExecutablePath(nullptr, &size) != -1 || size == 0) { return zc::none; }
+  zc::Vector<char> path(size);
+  path.resize(size);
+  if (_NSGetExecutablePath(path.begin(), &size) != 0 || size == 0) { return zc::none; }
+  char* resolved = realpath(path.begin(), nullptr);
+  if (resolved == nullptr) { return zc::none; }
+  auto evaluated = filesystem.getCurrentPath().eval(zc::StringPtr(resolved));
+  free(resolved);
+  return evaluated;
+#else
+  (void)filesystem;
+  return zc::none;
+#endif
+}
+
+struct HostTargetConfiguration final {
+  zc::StringPtr architecture;
+  zc::StringPtr vendor;
+  zc::StringPtr operatingSystem;
+  zc::StringPtr environment;
+  zc::StringPtr triple;
+  zc::StringPtr dataLayout;
+  ir::ObjectFormat objectFormat;
+};
+
+HostTargetConfiguration hostTargetConfiguration() {
+#if defined(__aarch64__) || defined(__arm64__)
+#if defined(__APPLE__)
+  return {"aarch64"_zc,
+          "apple"_zc,
+          "darwin"_zc,
+          "unknown"_zc,
+          "aarch64-apple-darwin"_zc,
+          "e-m:o-i64:64-i128:128-n32:64-S128-Fn32"_zc,
+          ir::ObjectFormat::MachO};
+#elif defined(__linux__)
+  return {"aarch64"_zc,
+          "unknown"_zc,
+          "linux"_zc,
+          "gnu"_zc,
+          "aarch64-unknown-linux-gnu"_zc,
+          "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32"_zc,
+          ir::ObjectFormat::Elf};
+#else
+#error "The compiler host target must have a registered profile."
+#endif
+#elif defined(__x86_64__)
+#if defined(__APPLE__)
+  return {"x86_64"_zc,
+          "apple"_zc,
+          "darwin"_zc,
+          "unknown"_zc,
+          "x86_64-apple-darwin"_zc,
+          "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"_zc,
+          ir::ObjectFormat::MachO};
+#elif defined(__linux__)
+  return {"x86_64"_zc,
+          "unknown"_zc,
+          "linux"_zc,
+          "gnu"_zc,
+          "x86_64-unknown-linux-gnu"_zc,
+          "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"_zc,
+          ir::ObjectFormat::Elf};
+#else
+#error "The compiler host target must have a registered profile."
+#endif
+#elif defined(__i386__) && defined(__linux__)
+  return {
+      "i686"_zc,
+      "unknown"_zc,
+      "linux"_zc,
+      "gnu"_zc,
+      "i686-unknown-linux-gnu"_zc,
+      "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128"_zc,
+      ir::ObjectFormat::Elf};
+#else
+#error "The compiler host target must have a registered profile."
+#endif
+}
 
 class TransientCoreSourceDirectory final : public package::FreshSourceDirectory {
 public:
@@ -94,9 +197,13 @@ public:
     return builder.build();
   }
 
-  ZC_NODISCARD zc::MainFunc getRunMain() const {
+  ZC_NODISCARD zc::MainFunc getRunMain() {
     zc::MainBuilder builder(context, VERSION_STRING, "");
-    return builder.build();
+    return builder.callAfterParsing(ZC_BIND_METHOD(*this, rejectRun)).build();
+  }
+
+  zc::MainBuilder::Validity rejectRun() {
+    return "The run command requires native code generation.";
   }
 
   void addCompileOptions(zc::MainBuilder& builder) {
@@ -135,8 +242,8 @@ public:
                    "Dump AST to stdout (shorthand for --emit=ast)")
         .addOption({"dump-dispatch"}, ZC_BIND_METHOD(*this, enableDispatchDump),
                    "Dump checked call dispatch records to stdout (shorthand for --emit=dispatch)")
-        .addOption({"syntax-only"}, ZC_BIND_METHOD(*this, enableSyntaxOnly),
-                   "Perform parsing and name binding without type checking or code generation")
+        .addOption({"check"}, ZC_BIND_METHOD(*this, enableCheck),
+                   "Check sources without emitting an artifact")
         .addOptionWithArg({'O', "optimize"}, ZC_BIND_METHOD(*this, setOptimizationLevel), "<level>",
                           "Set optimization level: 0, 1, 2, 3 (default: 0)")
         .addOptionWithArg({"panic"}, ZC_BIND_METHOD(*this, setPanicStrategy), "<strategy>",
@@ -226,11 +333,19 @@ public:
   }
 
   zc::MainBuilder::Validity addOutput(zc::StringPtr spec) {
+    if (action == CompilationAction::Check) {
+      return "Cannot combine --check with an output selector.";
+    }
+    outputActionRequested = true;
     compilerOpts.emission.outputPath = zc::str(spec);
     return true;
   }
 
   zc::MainBuilder::Validity setEmitType(zc::StringPtr type) {
+    if (action == CompilationAction::Check) {
+      return "Cannot combine --check with an output selector.";
+    }
+    outputActionRequested = true;
     if (type == "ast") {
       compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::OutputType::AST;
     } else if (type == "dispatch") {
@@ -262,18 +377,27 @@ public:
   }
 
   zc::MainBuilder::Validity enableASTDump() {
+    if (action == CompilationAction::Check) {
+      return "Cannot combine --check with an output selector.";
+    }
+    outputActionRequested = true;
     compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::OutputType::AST;
     return true;
   }
 
   zc::MainBuilder::Validity enableDispatchDump() {
+    if (action == CompilationAction::Check) {
+      return "Cannot combine --check with an output selector.";
+    }
+    outputActionRequested = true;
     compilerOpts.emission.outputType =
         basic::CompilerOptions::EmissionOptions::OutputType::Dispatch;
     return true;
   }
 
-  zc::MainBuilder::Validity enableSyntaxOnly() {
-    compilerOpts.emission.syntaxOnly = true;
+  zc::MainBuilder::Validity enableCheck() {
+    if (outputActionRequested) { return "Cannot combine --check with an output selector."; }
+    action = CompilationAction::Check;
     return true;
   }
 
@@ -331,33 +455,15 @@ public:
   }
 
   static identity::CanonicalTargetSpecificationKey hostSemanticProjection() {
-    zc::StringPtr architecture;
-    zc::StringPtr vendor;
-    zc::StringPtr operatingSystem;
-#if defined(__aarch64__) || defined(__arm64__)
-    architecture = "aarch64"_zc;
-#elif defined(__x86_64__)
-    architecture = "x86_64"_zc;
-#else
-#error "The compiler host architecture must have a registered target profile."
-#endif
-#if defined(__APPLE__)
-    vendor = "apple"_zc;
-    operatingSystem = "darwin"_zc;
-#elif defined(__linux__)
-    vendor = "unknown"_zc;
-    operatingSystem = "linux"_zc;
-#else
-#error "The compiler host operating system must have a registered target profile."
-#endif
+    const auto host = hostTargetConfiguration();
     zc::Vector<identity::TargetFeatureName> features;
     auto sortedFeatures = identity::SortedTargetFeatureSet::from(zc::mv(features));
     ZC_IF_SOME(featureValues, sortedFeatures) {
       auto projection = identity::CanonicalTargetSpecificationKey::from(
-          requireScalar<identity::TargetComponentName>(architecture),
-          requireScalar<identity::TargetComponentName>(vendor),
-          requireScalar<identity::TargetComponentName>(operatingSystem),
-          requireScalar<identity::TargetComponentName>("unknown"_zc),
+          requireScalar<identity::TargetComponentName>(host.architecture),
+          requireScalar<identity::TargetComponentName>(host.vendor),
+          requireScalar<identity::TargetComponentName>(host.operatingSystem),
+          requireScalar<identity::TargetComponentName>(host.environment),
           requireScalar<identity::TargetComponentName>("zom"_zc),
           static_cast<uint32_t>(sizeof(void*) * 8), identity::Endianness::Little,
           zc::mv(featureValues));
@@ -367,31 +473,11 @@ public:
   }
 
   static ir::TargetRegistrySnapshot targetRegistry() {
-    zc::StringPtr triple;
-    ir::ObjectFormat objectFormat;
-#if defined(__aarch64__) || defined(__arm64__)
-#if defined(__APPLE__)
-    triple = "aarch64-apple-darwin"_zc;
-#else
-    triple = "aarch64-unknown-linux"_zc;
-#endif
-#elif defined(__x86_64__)
-#if defined(__APPLE__)
-    triple = "x86_64-apple-darwin"_zc;
-#else
-    triple = "x86_64-unknown-linux"_zc;
-#endif
-#endif
-#if defined(__APPLE__)
-    objectFormat = ir::ObjectFormat::MachO;
-#else
-    objectFormat = ir::ObjectFormat::Elf;
-#endif
-    const zc::StringPtr dataLayout = sizeof(void*) == 8 ? "e-p:64:64"_zc : "e-p:32:32"_zc;
+    const auto host = hostTargetConfiguration();
     zc::Vector<ir::CanonicalTargetFeature> backendFeatures;
-    auto specification =
-        ir::CanonicalTargetSpec::from(triple, dataLayout, "generic"_zc, zc::mv(backendFeatures),
-                                      "zom"_zc, ir::BackendPanicStrategy::Abort, objectFormat);
+    auto specification = ir::CanonicalTargetSpec::from(
+        host.triple, host.dataLayout, "generic"_zc, zc::mv(backendFeatures), "zom"_zc,
+        ir::BackendPanicStrategy::Abort, host.objectFormat);
     auto name = package::RegisteredTargetProfileName::from("host"_zc);
     ZC_IF_SOME(profileName, name) {
       ZC_IF_SOME(specificationValue, specification) {
@@ -481,10 +567,12 @@ public:
   zc::Maybe<source::core::VerifiedCoreDistribution> admitCoreDistribution(
       const zc::Filesystem& filesystem) const {
     try {
-      const auto executable =
-          filesystem.getCurrentPath().eval(context.getProgramName()).parent().parent();
-      const auto coreRoot =
-          executable.clone().append(zc::Path({"share"_zc, "zom"_zc, "core"_zc, "src"_zc}));
+      auto executable = currentExecutablePath(filesystem);
+      if (executable == zc::none) { return zc::none; }
+      const auto coreRoot = ZC_ASSERT_NONNULL(executable)
+                                .parent()
+                                .parent()
+                                .append(zc::Path({"share"_zc, "zom"_zc, "core"_zc, "src"_zc}));
       auto directory = filesystem.getRoot().tryOpenSubdir(coreRoot);
       auto expected = source::core::initialCoreDistributionInput();
       if (directory == zc::none || expected == zc::none) { return zc::none; }
@@ -907,24 +995,20 @@ public:
       return zc::str("Compilation failed due to binding errors.");
     }
 
-    // 4. Syntax-only completion after verified parsing and name binding
-    if (options.emission.syntaxOnly) {
-      context.warning("Syntax and name binding checks completed successfully.");
-      return true;
-    }
-
-    // 5. Type checking
+    // 4. Type checking
     if (!session->checkSources() || session->getDiagnosticEngine().hasErrors()) {
       return zc::str("Compilation failed due to type checking errors.");
     }
 
-    // 6. Dispatch Dump
+    if (action == CompilationAction::Check) return true;
+
+    // 5. Dispatch Dump
     if (options.emission.outputType ==
         basic::CompilerOptions::EmissionOptions::OutputType::Dispatch) {
       return emitDispatch();
     }
 
-    // 7. Final Emission
+    // 6. Final Emission
     if (options.panicStrategy == basic::CompilerOptions::PanicStrategy::Unwind) {
       return diagnoseEmission<diagnostics::DiagID::PanicUnwindUnsupported>(emissionLocation());
     }
@@ -960,6 +1044,8 @@ public:
   }
 
 private:
+  enum class CompilationAction : uint8_t { Emit, Check };
+
   using ASTDumpFormat = basic::CompilerOptions::EmissionOptions::ASTDumpFormat;
 
   enum class DumpOutputKind {
@@ -1121,6 +1207,8 @@ private:
   zc::SpaceFor<driver::CompilerSession> sessionSpace;
   basic::CompilerOptions compilerOpts;
   basic::LangOptions langOpts;
+  CompilationAction action = CompilationAction::Emit;
+  bool outputActionRequested = false;
   package::RawPackageCompilationRequest packageRequest;
   zc::Vector<zc::String> manifestPaths;
   zc::Maybe<source::core::VerifiedCoreDistribution> coreDistribution;

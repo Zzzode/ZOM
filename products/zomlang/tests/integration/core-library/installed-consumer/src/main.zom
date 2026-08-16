@@ -1,1 +1,3 @@
+import core::prelude::{Copy, Linear};
+
 const value: i32 = 1;

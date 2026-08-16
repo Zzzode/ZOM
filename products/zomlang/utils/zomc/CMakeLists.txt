@@ -9,3 +9,9 @@ set_target_properties(
 add_dependencies(zomc zomcore-distribution)
 add_dependencies(zomc generate-core-library-inventory)
 install(TARGETS zomc RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(
+  FILES "${CMAKE_SOURCE_DIR}/products/zomlang/tools/gdb/zomlang_gdb.py"
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/zom/debuggers/gdb")
+install(
+  FILES "${CMAKE_SOURCE_DIR}/products/zomlang/tools/lldb/zomlang_lldb.py"
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/zom/debuggers/lldb")
