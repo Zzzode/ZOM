@@ -51,11 +51,15 @@ enum class InitializationLossKind : uint8_t {
   StorageEnded = 0x04,
 };
 
-/// \brief One event-anchored loss of availability for a root move path.
+/// \brief One event-anchored loss of availability for a move path.
+///
+/// The causal path is the exact move path whose loss produced this cause. For a direct loss it is
+/// the fact's own path; for a partial move it is the moved descendant, so an ancestor path can
+/// record which projection made it unavailable.
 struct InitializationLossCause final {
   InitializationLossKind kind;
   MirEventKey event;
-  mir::MirLocalId local;
+  MovePathKey path;
 };
 
 /// \brief Three-bit lattice join for merging initialization states at CFG join points.

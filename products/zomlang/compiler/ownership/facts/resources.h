@@ -27,6 +27,11 @@ struct DropResourceSubject final {
   MirEventKey introduction;
   MovePathKey origin;
   identity::SemanticTypeId originType;
+
+  ZC_NODISCARD DropResourceSubject clone() const {
+    return DropResourceSubject{introduction, MovePathKey{origin.owner, origin.place.clone()},
+                               originType};
+  }
 };
 
 /// \brief One checker-authorized logical resource component rooted at an initialization event.
@@ -50,11 +55,47 @@ struct DropTransfer final {
   MirEventKey event;
 };
 
+/// \brief Closed/open acceptance mode for one component drop plan.
+///
+/// A Closed drop accepts exactly Initialized and executes every component. An
+/// Open drop additionally accepts Uninitialized and MaybeInitialized, executing
+/// only each initialized alternative's components. Both modes produce
+/// Uninitialized on every alternative.
+enum class DropPlanMode : uint8_t {
+  Closed = 0x01,
+  Open = 0x02,
+};
+
+/// \brief One ordered component step in an open/closed drop plan.
+///
+/// Pre-consumption removes the component's pending drop obligation and linked
+/// linear obligation immediately before the optional action. A present action
+/// is abort-only: normal return continues to the next component, while panic
+/// enters the terminal RFC 0006 abort path with no ownership, cleanup, or
+/// unwind successor. Remaining components do not run after abort.
+struct DropPlanComponent final {
+  uint32_t factOrdinal;
+  zc::Maybe<LogicalDropAction> action;
+};
+
+/// \brief Complete open/closed component drop plan for one resource subject.
+///
+/// Components are ordered in reverse declaration order (children before parent)
+/// so each child is pre-consumed before its parent's action. The plan exists
+/// only after every component returns normally; no partial discharge is
+/// published for an aborting execution.
+struct DropPlan final {
+  DropResourceSubject subject;
+  DropPlanMode mode;
+  zc::Vector<DropPlanComponent> components;
+};
+
 /// \brief Complete logical resource inventory for one current-subset MIR function.
 struct OwnershipResourceFunction final {
   identity::DefId owner;
   zc::Vector<OwnershipResourceFact> facts;
   zc::Vector<DropTransfer> transfers;
+  zc::Vector<DropPlan> dropPlans;
 };
 
 /// \brief Untrusted logical resource inventory awaiting independent reconstruction.

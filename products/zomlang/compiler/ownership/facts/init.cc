@@ -117,6 +117,8 @@ bool validState(InitializationState state) {
 
 bool samePlace(const mir::MirPlace& left, const mir::MirPlace& right);
 
+MirEventKey cloneEvent(const MirEventKey& event);
+
 bool sameProjection(const mir::MirProjection& left, const mir::MirProjection& right) {
   if (left.kind() != right.kind() || left.inputType() != right.inputType() ||
       left.resultType() != right.resultType()) {
@@ -144,16 +146,19 @@ struct InitializationPathState final {
 };
 
 zc::Vector<InitializationLossCause> oneLossCause(InitializationLossKind kind, MirEventKey&& event,
-                                                 mir::MirLocalId local) {
+                                                 MovePathKey&& path) {
   zc::Vector<InitializationLossCause> causes;
-  causes.add(InitializationLossCause{kind, zc::mv(event), local});
+  causes.add(InitializationLossCause{kind, zc::mv(event), zc::mv(path)});
   return causes;
 }
 
 zc::Vector<InitializationLossCause> cloneLossCauses(
     zc::ArrayPtr<const InitializationLossCause> causes) {
   zc::Vector<InitializationLossCause> cloned;
-  for (const auto& cause : causes) cloned.add(cause);
+  for (const auto& cause : causes) {
+    cloned.add(InitializationLossCause{cause.kind, cloneEvent(cause.event),
+                                       MovePathKey{cause.path.owner, cause.path.place.clone()}});
+  }
   return cloned;
 }
 
@@ -184,9 +189,9 @@ MirEventKey eventAt(identity::DefId owner, MirPoint&& point, uint32_t ordinal) {
 }
 
 void setUnavailable(InitializationPathState& state, InitializationLossKind kind,
-                    MirEventKey&& event, mir::MirLocalId local, InitializationState unavailable) {
+                    MirEventKey&& event, MovePathKey&& path, InitializationState unavailable) {
   state.state = unavailable;
-  state.lossCauses = oneLossCause(kind, zc::mv(event), local);
+  state.lossCauses = oneLossCause(kind, zc::mv(event), zc::mv(path));
 }
 
 void setInitialized(InitializationPathState& state) {
@@ -242,12 +247,14 @@ bool validLocalPlace(const mir::MirFunction& function, const mir::MirPlace& plac
 }
 
 bool sameLossCause(const InitializationLossCause& left, const InitializationLossCause& right) {
-  return left.kind == right.kind && left.local == right.local && left.event == right.event;
+  return left.kind == right.kind && left.event == right.event &&
+         left.path.owner == right.path.owner && samePlace(left.path.place, right.path.place);
 }
 
 bool validLossCause(const InitializationLossCause& cause, identity::DefId owner,
                     mir::MirLocalId local) {
-  if (cause.local != local || cause.event.location.owner != owner || !cause.local.isValid()) {
+  if (cause.path.owner != owner || cause.path.place.local() != local ||
+      cause.event.location.owner != owner || !cause.path.place.local().isValid()) {
     return false;
   }
   switch (cause.kind) {
@@ -348,10 +355,18 @@ bool setUnavailable(const MovePathFunction& paths, zc::Vector<InitializationPath
                     const mir::MirPlace& place, InitializationLossKind kind, MirEventKey&& event,
                     InitializationState unavailable) {
   if (states.size() != paths.facts.size()) return false;
+  // A loss at `place` reaches the place itself, every descendant (the moved projection carries
+  // its children with it), and every ancestor (a partial move makes the aggregate unavailable).
+  // The causal path is always the operation place, so an ancestor fact records exactly which
+  // descendant moved. For a root place the ancestor test matches only the root itself, leaving
+  // storage-live and storage-dead behavior unchanged.
+  MovePathKey causePath{paths.owner, place.clone()};
   bool found = false;
   for (size_t index = 0; index < paths.facts.size(); ++index) {
-    if (!isPathWithin(place, paths.facts[index].key.place)) continue;
-    setUnavailable(states[index], kind, cloneEvent(event), place.local(), unavailable);
+    const auto& path = paths.facts[index].key.place;
+    if (!isPathWithin(place, path) && !isPathWithin(path, place)) continue;
+    setUnavailable(states[index], kind, cloneEvent(event),
+                   MovePathKey{causePath.owner, causePath.place.clone()}, unavailable);
     found = true;
   }
   return found;
@@ -560,7 +575,7 @@ zc::Maybe<InitializationFunction> deriveFunction(const mir::MirFunction& functio
           oneLossCause(InitializationLossKind::NeverInitialized,
                        eventAt(function.owner, MirPoint::entry(),
                                static_cast<uint32_t>(ZC_ASSERT_NONNULL(localIndexValue))),
-                       local.id)});
+                       cloneKey(path.key))});
     }
   }
   zc::Vector<InitializationFact> facts;
@@ -968,17 +983,24 @@ zc::Vector<InitializationLossCause> InitializationLattice::mergeLossCauses(
     zc::ArrayPtr<const InitializationLossCause> right) {
   zc::Vector<InitializationLossCause> merged;
   merged.reserve(left.size() + right.size());
-  for (const auto& cause : left) merged.add(cause);
+  for (const auto& cause : left) {
+    merged.add(InitializationLossCause{cause.kind, cloneEvent(cause.event),
+                                       MovePathKey{cause.path.owner, cause.path.place.clone()}});
+  }
   for (const auto& cause : right) {
     bool duplicate = false;
     for (const auto& existing : merged) {
-      if (existing.kind == cause.kind && existing.local == cause.local &&
-          existing.event == cause.event) {
+      if (existing.kind == cause.kind && existing.event == cause.event &&
+          existing.path.owner == cause.path.owner &&
+          samePlace(existing.path.place, cause.path.place)) {
         duplicate = true;
         break;
       }
     }
-    if (!duplicate) merged.add(cause);
+    if (!duplicate) {
+      merged.add(InitializationLossCause{cause.kind, cloneEvent(cause.event),
+                                         MovePathKey{cause.path.owner, cause.path.place.clone()}});
+    }
   }
   return merged;
 }

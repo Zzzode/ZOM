@@ -1179,17 +1179,23 @@ ZC_TEST("Initialization lattice merges distinct loss causes at control-flow merg
   using facts::InitializationLattice;
   using facts::InitializationLossCause;
   using facts::InitializationLossKind;
+  using facts::MovePathKey;
   const auto firstEvent = MirEventKey{MirLocation{identity::DefId(), MirPoint::entry()}, 0};
   const auto secondEvent = MirEventKey{MirLocation{identity::DefId(), MirPoint::entry()}, 1};
   const auto local = ZC_REQUIRE_NONNULL(mir::MirLocalId::fromOrdinal(1));
-  const InitializationLossCause neverInitialized{InitializationLossKind::NeverInitialized,
-                                                 firstEvent, local};
-  const InitializationLossCause moved{InitializationLossKind::Moved, secondEvent, local};
+  auto causeWith = [&](InitializationLossKind kind, const MirEventKey& event) {
+    zc::Vector<InitializationLossCause> causes;
+    zc::Vector<mir::MirProjection> projections;
+    causes.add(InitializationLossCause{
+        kind, event,
+        MovePathKey{identity::DefId(),
+                    mir::MirPlace(local, identity::SemanticTypeId(), zc::mv(projections),
+                                  identity::SemanticTypeId())}});
+    return causes;
+  };
   zc::Vector<InitializationLossCause> noCauses;
-  zc::Vector<InitializationLossCause> neverCauses;
-  neverCauses.add(neverInitialized);
-  zc::Vector<InitializationLossCause> movedCauses;
-  movedCauses.add(moved);
+  auto neverCauses = causeWith(InitializationLossKind::NeverInitialized, firstEvent);
+  auto movedCauses = causeWith(InitializationLossKind::Moved, secondEvent);
 
   ZC_EXPECT(InitializationLattice::mergeLossCauses(noCauses.asPtr(), noCauses.asPtr()).size() == 0);
 
@@ -1561,6 +1567,159 @@ ZC_TEST("Ownership resources retain a linear direct-call result") {
   ZC_EXPECT(foundNormalEdgeResource);
 }
 
+ZC_TEST("Ownership drop plans retain a closed linear component") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Linear};\n"
+      "struct Cell { value: i32, }\n"
+      "unsafe impl Linear for Cell;\n"
+      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+  const auto& resources = ownershipInputs(fixture.compilerSession()).resources();
+
+  ZC_REQUIRE(resources.functions().size() == 1);
+  const auto& function = resources.functions()[0];
+  ZC_REQUIRE(function.facts.size() == 1);
+  ZC_REQUIRE(function.dropPlans.size() == 1);
+  const auto& plan = function.dropPlans[0];
+  ZC_EXPECT(plan.mode == facts::DropPlanMode::Closed);
+  ZC_EXPECT(plan.subject.introduction == function.facts[0].subject.introduction);
+  ZC_EXPECT(plan.subject.origin.owner == function.facts[0].subject.origin.owner);
+  ZC_EXPECT(plan.subject.originType == function.facts[0].subject.originType);
+  ZC_REQUIRE(plan.components.size() == 1);
+  ZC_EXPECT(plan.components[0].factOrdinal == 0);
+  ZC_EXPECT(plan.components[0].action == zc::none);
+}
+
+ZC_TEST("Ownership drop plans retain a closed logical component") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Copy};\n"
+      "struct Cell { value: i32, }\n"
+      "impl !Copy for Cell;\n"
+      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+  const auto& resources = ownershipInputs(fixture.compilerSession()).resources();
+
+  ZC_REQUIRE(resources.functions().size() == 1);
+  const auto& function = resources.functions()[0];
+  ZC_REQUIRE(function.facts.size() == 1);
+  ZC_REQUIRE(function.dropPlans.size() == 1);
+  const auto& plan = function.dropPlans[0];
+  ZC_EXPECT(plan.mode == facts::DropPlanMode::Closed);
+  ZC_REQUIRE(plan.components.size() == 1);
+  ZC_EXPECT(plan.components[0].factOrdinal == 0);
+  ZC_EXPECT(plan.components[0].action == zc::none);
+  ZC_EXPECT(function.facts[0].requirement == facts::DropRequirement::Logical);
+}
+
+ZC_TEST("Ownership drop plans retain a moved resource component") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Copy};\n"
+      "struct Cell { value: i32, }\n"
+      "impl !Copy for Cell;\n"
+      "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
+  const auto& resources = ownershipInputs(fixture.compilerSession()).resources();
+
+  ZC_REQUIRE(resources.functions().size() == 1);
+  const auto& function = resources.functions()[0];
+  ZC_REQUIRE(function.facts.size() == 1);
+  ZC_REQUIRE(function.transfers.size() == 1);
+  ZC_REQUIRE(function.dropPlans.size() == 2);
+  for (const auto& plan : function.dropPlans) {
+    ZC_EXPECT(plan.mode == facts::DropPlanMode::Closed);
+    ZC_REQUIRE(plan.components.size() == 1);
+    ZC_EXPECT(plan.components[0].factOrdinal == 0);
+    ZC_EXPECT(plan.components[0].action == zc::none);
+    ZC_EXPECT(plan.subject.origin.place.local() == function.facts[0].subject.origin.place.local());
+  }
+}
+
+ZC_TEST("Resource verifier rejects a tampered drop plan mode") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Linear};\n"
+      "struct Cell { value: i32, }\n"
+      "unsafe impl Linear for Cell;\n"
+      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& inputs = ownershipInputs(session);
+
+  auto candidateResult =
+      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() == 1);
+  ZC_REQUIRE(candidate.functions[0].dropPlans.size() == 1);
+  candidate.functions[0].dropPlans[0].mode = facts::DropPlanMode::Open;
+
+  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
+      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
+  ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
+  ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
+            ir::IrFailureKind::InvalidOwnershipProof);
+}
+
+ZC_TEST("Resource verifier rejects a spurious drop plan") {
+  OwnershipPipelineFixture fixture("let value = 0;"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& inputs = ownershipInputs(session);
+
+  auto candidateResult =
+      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() == 1);
+  ZC_REQUIRE(candidate.functions[0].facts.size() == 0);
+  ZC_REQUIRE(candidate.functions[0].dropPlans.size() == 0);
+  ZC_REQUIRE(overlay.functions().size() == 1);
+  ZC_REQUIRE(overlay.functions()[0].logicalDropPlans.size() == 1);
+  const auto& overlayPlan = overlay.functions()[0].logicalDropPlans[0];
+  zc::Vector<facts::DropPlanComponent> components;
+  components.add(facts::DropPlanComponent{0, zc::none});
+  candidate.functions[0].dropPlans.add(facts::DropPlan{
+      facts::DropResourceSubject{
+          overlayPlan.initialization,
+          facts::MovePathKey{candidate.functions[0].owner, overlayPlan.root.clone()},
+          overlayPlan.root.resultType()},
+      facts::DropPlanMode::Closed, zc::mv(components)});
+
+  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
+      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
+  ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
+  ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
+            ir::IrFailureKind::InvalidOwnershipProof);
+}
+
+ZC_TEST("Resource verifier rejects a tampered drop plan component ordinal") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Linear};\n"
+      "struct Cell { value: i32, }\n"
+      "unsafe impl Linear for Cell;\n"
+      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& inputs = ownershipInputs(session);
+
+  auto candidateResult =
+      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() == 1);
+  ZC_REQUIRE(candidate.functions[0].dropPlans.size() == 1);
+  ZC_REQUIRE(candidate.functions[0].dropPlans[0].components.size() == 1);
+  candidate.functions[0].dropPlans[0].components[0].factOrdinal = 1;
+
+  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
+      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
+  ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
+  ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
+            ir::IrFailureKind::InvalidOwnershipProof);
+}
+
 ZC_TEST("Flow verifier rejects a tampered direct-call continuation") {
   OwnershipPipelineFixture fixture(
       "fun helper() -> i32 { return 0; }\n"
@@ -1881,6 +2040,103 @@ ZC_TEST("Move-path mixed-kind projection pairs conflict") {
   ZC_EXPECT(facts::placesConflict(slice, field));
   ZC_EXPECT(facts::placesConflict(downcast, slice));
   ZC_EXPECT(facts::placesConflict(slice, downcast));
+}
+
+ZC_TEST("Move-path index and subslice divergence at depth resolves through shared suffixes") {
+  // Shared field prefix, index divergence at depth 1: indices may alias.
+  auto firstIndexed = conflictPlace(1, conflictField(identity::DefId()), conflictIndex(2));
+  auto secondIndexed = conflictPlace(1, conflictField(identity::DefId()), conflictIndex(3));
+  ZC_EXPECT(facts::placesConflict(firstIndexed, secondIndexed));
+  ZC_EXPECT(facts::placesConflict(secondIndexed, firstIndexed));
+  // Shared field prefix, disjoint subslices at depth 1 separate the suffixes.
+  auto firstDisjoint = ZC_REQUIRE_NONNULL(conflictSubslice(0, 2));
+  auto secondDisjoint = ZC_REQUIRE_NONNULL(conflictSubslice(2, 4));
+  auto firstSliced = conflictPlace(1, conflictField(identity::DefId()), zc::mv(firstDisjoint));
+  auto secondSliced = conflictPlace(1, conflictField(identity::DefId()), zc::mv(secondDisjoint));
+  ZC_EXPECT(!facts::placesConflict(firstSliced, secondSliced));
+  ZC_EXPECT(!facts::placesConflict(secondSliced, firstSliced));
+  // Shared field prefix, overlapping subslices at depth 1 conflict.
+  auto firstOverlap = ZC_REQUIRE_NONNULL(conflictSubslice(0, 3));
+  auto secondOverlap = ZC_REQUIRE_NONNULL(conflictSubslice(2, 5));
+  auto firstOverlapping = conflictPlace(1, conflictField(identity::DefId()), zc::mv(firstOverlap));
+  auto secondOverlapping =
+      conflictPlace(1, conflictField(identity::DefId()), zc::mv(secondOverlap));
+  ZC_EXPECT(facts::placesConflict(firstOverlapping, secondOverlapping));
+  ZC_EXPECT(facts::placesConflict(secondOverlapping, firstOverlapping));
+  // Subslice divergence at depth 1 with a shared field suffix stays disjoint.
+  auto firstSuffix = ZC_REQUIRE_NONNULL(conflictSubslice(0, 2));
+  auto secondSuffix = ZC_REQUIRE_NONNULL(conflictSubslice(2, 4));
+  auto firstSuffixed = conflictPlace(1, zc::mv(firstSuffix), conflictField(identity::DefId()));
+  auto secondSuffixed = conflictPlace(1, zc::mv(secondSuffix), conflictField(identity::DefId()));
+  ZC_EXPECT(!facts::placesConflict(firstSuffixed, secondSuffixed));
+  ZC_EXPECT(!facts::placesConflict(secondSuffixed, firstSuffixed));
+  // A projection prefix conflicts with its deeper index descendant.
+  auto field = conflictPlace(1, conflictField(identity::DefId()));
+  ZC_EXPECT(facts::placesConflict(field, firstIndexed));
+  ZC_EXPECT(facts::placesConflict(firstIndexed, field));
+}
+
+ZC_TEST("Move-path dereference chains conflict with their projection prefixes") {
+  auto root = conflictPlace(1, zc::Vector<mir::MirProjection>{});
+  auto deref = conflictPlace(1, conflictDereference());
+  auto doubleDeref = conflictPlace(1, conflictDereference(), conflictDereference());
+  ZC_EXPECT(facts::placesConflict(root, deref));
+  ZC_EXPECT(facts::placesConflict(deref, root));
+  ZC_EXPECT(facts::placesConflict(deref, doubleDeref));
+  ZC_EXPECT(facts::placesConflict(doubleDeref, deref));
+  ZC_EXPECT(facts::placesConflict(root, doubleDeref));
+  ZC_EXPECT(facts::placesConflict(doubleDeref, root));
+  ZC_EXPECT(facts::placesConflict(deref, conflictPlace(1, conflictDereference())));
+}
+
+ZC_TEST("Move-path dereference and deep field chains separate sibling fields at depth") {
+  OwnershipPipelineFixture fixture(
+      "struct Pair { mut left: i32, mut right: i32, }\n"
+      "fun entry() -> i32 { mut pair: Pair; pair.left = 0; pair.right = 0; return pair.left; }"_zc);
+  const auto& paths = ownershipInputs(fixture.compilerSession()).movePaths();
+  ZC_REQUIRE(paths.functions().size() == 1);
+  zc::Maybe<identity::DefId> firstField;
+  zc::Maybe<identity::DefId> secondField;
+  for (const auto& fact : paths.functions()[0].facts) {
+    const auto& place = fact.key.place;
+    if (place.projections().size() != 1 ||
+        place.projections()[0].kind() != mir::MirProjectionKind::Field) {
+      continue;
+    }
+    if (firstField == zc::none) firstField = place.projections()[0].fieldValue().field;
+    else secondField = place.projections()[0].fieldValue().field;
+  }
+  ZC_REQUIRE(firstField != zc::none);
+  ZC_REQUIRE(secondField != zc::none);
+  const auto left = ZC_REQUIRE_NONNULL(firstField);
+  const auto right = ZC_REQUIRE_NONNULL(secondField);
+  ZC_REQUIRE(left != right);
+
+  // Shared dereference prefix, sibling fields at depth 1: disjoint.
+  auto derefLeft = conflictPlace(1, conflictDereference(), conflictField(left));
+  auto derefRight = conflictPlace(1, conflictDereference(), conflictField(right));
+  ZC_EXPECT(!facts::placesConflict(derefLeft, derefRight));
+  ZC_EXPECT(!facts::placesConflict(derefRight, derefLeft));
+  // Shared field prefix, sibling fields at depth 2: disjoint.
+  auto leftLeft = conflictPlace(1, conflictField(left), conflictField(left));
+  auto leftRight = conflictPlace(1, conflictField(left), conflictField(right));
+  ZC_EXPECT(!facts::placesConflict(leftLeft, leftRight));
+  ZC_EXPECT(!facts::placesConflict(leftRight, leftLeft));
+  // Sibling fields at depth 1 separate deeper projections.
+  auto rightLeft = conflictPlace(1, conflictField(right), conflictField(left));
+  ZC_EXPECT(!facts::placesConflict(leftRight, rightLeft));
+  ZC_EXPECT(!facts::placesConflict(rightLeft, leftRight));
+  // A three-projection chain conflicts with its root and immediate prefix.
+  zc::Vector<mir::MirProjection> chain;
+  chain.add(conflictField(left));
+  chain.add(conflictField(right));
+  chain.add(conflictField(left));
+  auto deepChain = conflictPlace(1, zc::mv(chain));
+  auto root = conflictPlace(1, zc::Vector<mir::MirProjection>{});
+  ZC_EXPECT(facts::placesConflict(root, deepChain));
+  ZC_EXPECT(facts::placesConflict(deepChain, root));
+  ZC_EXPECT(facts::placesConflict(leftRight, deepChain));
+  ZC_EXPECT(facts::placesConflict(deepChain, leftRight));
 }
 
 ZC_TEST("Reference definition verifier rejects tampered definition inputs") {
@@ -2973,6 +3229,111 @@ ZC_TEST("Initialization verifier rejects a tampered sibling field state") {
     ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
               ir::IrFailureKind::InvalidOwnershipProof);
   }
+}
+
+ZC_TEST("Ownership facts record the causal path in a root move loss cause") {
+  OwnershipPipelineFixture fixture(
+      "struct Cell { value: i32, }\n"
+      "import core::marker::{Copy};\n"
+      "impl !Copy for Cell;\n"
+      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+  const auto& session = fixture.compilerSession();
+  ZC_REQUIRE(session.getVerifiedOwnershipInputs().size() == 1);
+  const auto& inputs = ownershipInputs(session);
+  const auto& initialization = inputs.initialization().functions()[0].facts;
+  ZC_REQUIRE(initialization.size() == 7);
+  ZC_EXPECT(initialization[6].state == facts::InitializationState::uninitialized());
+  ZC_REQUIRE(initialization[6].lossCauses.size() == 1);
+  ZC_EXPECT(initialization[6].lossCauses[0].kind == facts::InitializationLossKind::Moved);
+  // A root move records the root itself as the causal path, with no projections.
+  ZC_EXPECT(initialization[6].lossCauses[0].path.place.projections().size() == 0);
+  ZC_EXPECT(initialization[6].lossCauses[0].path.place.local() ==
+            initialization[6].key.place.local());
+}
+
+ZC_TEST("Ownership facts record per-path causal paths for partial initialization") {
+  OwnershipPipelineFixture fixture(
+      "struct Pair { mut left: i32, mut right: bool, }\n"
+      "fun entry() -> bool { mut pair: Pair; pair.left = 0; pair.right = true; return pair.right; }"_zc);
+  const auto& session = fixture.compilerSession();
+  ZC_REQUIRE(session.getVerifiedOwnershipInputs().size() == 1);
+  const auto& inputs = ownershipInputs(session);
+  const auto& initialization = inputs.initialization().functions()[0].facts;
+  // At function entry, every dead path carries its own NeverInitialized causal path, so a
+  // partially initialized aggregate keeps per-path loss causes distinct before StorageLive
+  // replaces them with the storage root.
+  bool foundRoot = false;
+  bool foundField = false;
+  for (const auto& fact : initialization) {
+    if (fact.point.kind() != MirPointKind::Entry) continue;
+    if (fact.key.place.projections().size() == 0) {
+      ZC_EXPECT(fact.state == facts::InitializationState::dead());
+      ZC_REQUIRE(fact.lossCauses.size() == 1);
+      ZC_EXPECT(fact.lossCauses[0].kind == facts::InitializationLossKind::NeverInitialized);
+      ZC_EXPECT(fact.lossCauses[0].path.place.projections().size() == 0);
+      ZC_EXPECT(fact.lossCauses[0].path.place.local() == fact.key.place.local());
+      foundRoot = true;
+    } else {
+      ZC_EXPECT(fact.state == facts::InitializationState::dead());
+      ZC_REQUIRE(fact.lossCauses.size() == 1);
+      ZC_EXPECT(fact.lossCauses[0].kind == facts::InitializationLossKind::NeverInitialized);
+      ZC_EXPECT(fact.lossCauses[0].path.place.projections().size() == 1);
+      ZC_EXPECT(fact.lossCauses[0].path.place.local() == fact.key.place.local());
+      foundField = true;
+    }
+  }
+  ZC_EXPECT(foundRoot);
+  ZC_EXPECT(foundField);
+}
+
+ZC_TEST("Initialization verifier rejects a tampered loss cause causal path") {
+  OwnershipPipelineFixture fixture(
+      "struct Pair { mut left: i32, mut right: bool, }\n"
+      "fun entry() -> bool { mut pair: Pair; pair.left = 0; pair.right = true; return pair.right; }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
+  const auto& inputs = ownershipInputs(session);
+
+  auto candidateResult = facts::InitializationBuilder::build(
+      builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(), inputs.movePaths());
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+
+  // Find the uninitialized field's causal path at the after-first-write point.
+  zc::Maybe<facts::MovePathKey> fieldPath;
+  for (const auto& fact : candidate.functions[0].facts) {
+    if (fact.point.kind() != MirPointKind::AfterStatement ||
+        fact.point.afterStatementValue().ordinal != 0 ||
+        fact.key.place.projections().size() != 1 || fact.lossCauses.size() != 1 ||
+        fact.lossCauses[0].kind != facts::InitializationLossKind::NeverInitialized) {
+      continue;
+    }
+    fieldPath = facts::MovePathKey{fact.key.owner, fact.key.place.clone()};
+  }
+  ZC_REQUIRE(fieldPath != zc::none);
+
+  bool tampered = false;
+  for (auto& fact : candidate.functions[0].facts) {
+    if (fact.point.kind() != MirPointKind::AfterStatement ||
+        fact.point.afterStatementValue().ordinal != 0 ||
+        fact.key.place.projections().size() != 0 || fact.lossCauses.size() != 1 ||
+        fact.lossCauses[0].kind != facts::InitializationLossKind::NeverInitialized) {
+      continue;
+    }
+    // Point the root's causal path at the uninitialized field instead of the root itself.
+    fact.lossCauses[0].path = zc::mv(ZC_ASSERT_NONNULL(fieldPath));
+    tampered = true;
+  }
+  ZC_REQUIRE(tampered);
+
+  auto verifiedResult = facts::InitializationVerifier::verify(
+      zc::mv(candidate), builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(),
+      inputs.movePaths());
+  ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
+  ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
+  ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
+            ir::IrFailureKind::InvalidOwnershipProof);
 }
 
 ZC_TEST("CompilerSession publishes a mutable local overwrite through ownership facts") {
