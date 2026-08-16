@@ -21,7 +21,7 @@ Route here when **any** of these are true:
 - Ownership-event collection, ownership analysis, or the retained
   bound-module/Built-MIR lease chain changes.
 - The standard prelude source declares compiler-recognized ownership markers.
-- A change to `compiler/driver/borrow-evidence.{h,cc}` affects ownership,
+- A change to `compiler/driver/interface/borrow-evidence.{h,cc}` affects ownership,
   lifetime, or memory contracts. `module-system` remains the primary file owner;
   this subagent is the mandatory contract reviewer.
 - A forced cast or other compiler operation enters the runtime panic ABI,
@@ -54,7 +54,7 @@ docs/spec/chapters/14-memory-management.md
 subagent owns everything else in `runtime/` and is the sole primary owner of
 the compiler ownership-analysis subtree and the language ownership and memory
 contract in Chapter 14.
-`products/zomlang/compiler/driver/borrow-evidence.{h,cc}` is owned by
+`products/zomlang/compiler/driver/interface/borrow-evidence.{h,cc}` is owned by
 `module-system`; changes to its ownership or lifetime contract require this
 subagent's review but do not transfer file ownership.)
 

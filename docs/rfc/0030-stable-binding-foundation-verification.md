@@ -442,10 +442,10 @@ products/zomlang/compiler/identity/key/definition-key.cc
 products/zomlang/compiler/identity/CMakeLists.txt
 products/zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
 products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt
-products/zomlang/tests/unittests/compiler/identity/canonical-header-name-test.cc
-products/zomlang/tests/unittests/compiler/identity/canonical-header-type-test.cc
-products/zomlang/tests/unittests/compiler/identity/canonical-impl-header-test.cc
-products/zomlang/tests/unittests/compiler/identity/definition-key-test.cc
+products/zomlang/tests/unittests/compiler/identity/canonical/header-name-test.cc
+products/zomlang/tests/unittests/compiler/identity/canonical/header-type-test.cc
+products/zomlang/tests/unittests/compiler/identity/canonical/impl-header-test.cc
+products/zomlang/tests/unittests/compiler/identity/key/definition-key-test.cc
 scripts/check-stable-binding-schema.py
 scripts/check-binder-architecture.py
 scripts/check-compiler-session-architecture.py

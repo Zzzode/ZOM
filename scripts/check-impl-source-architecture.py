@@ -22,7 +22,7 @@ SIGNATURE_FACTS = Path("products/zomlang/compiler/checker/facts/signature-facts.
 PARSE_DIAGNOSTICS = Path("products/zomlang/compiler/diagnostics/defs/diagnostics-parse.def")
 PARSER_TEST = Path("products/zomlang/tests/unittests/compiler/parser/parser-test.cc")
 DRIVER_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc"
+    "products/zomlang/tests/unittests/compiler/driver/session/compiler-session-package-test.cc"
 )
 CONFORMANCE_ROOT = Path("products/zomlang/tests/conformance/corpus")
 AST_ROOT = Path("products/zomlang/tests/conformance/expectations/ast")

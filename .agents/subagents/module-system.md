@@ -44,7 +44,7 @@ docs/spec/chapters/13-modules-and-imports.md
 docs/spec/chapters/23-visibility-ladder.md
 ```
 
-`products/zomlang/compiler/driver/borrow-evidence.{h,cc}` remains under this
+`products/zomlang/compiler/driver/interface/borrow-evidence.{h,cc}` remains under this
 subagent's primary file ownership. Any change to its ownership, lifetime, or
 memory contract requires a mandatory `runtime-memory` review.
 

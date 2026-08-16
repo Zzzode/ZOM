@@ -31,7 +31,7 @@ Do **not** route here when:
 
 ```
 products/zomlang/compiler/binder/**
-!products/zomlang/compiler/binder/module-*
+!products/zomlang/compiler/binder/graph/module-* !products/zomlang/compiler/binder/surface/module-*
 products/zomlang/compiler/checker/**
 !products/zomlang/compiler/checker/checker-source-diagnostics.def
 products/zomlang/compiler/type/**
