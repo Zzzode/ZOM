@@ -24,6 +24,7 @@ class OwnershipAdmittedBoundModule;
 class OwnershipEventOverlayBuilder;
 class OwnershipEventOverlayVerifier;
 class OwnershipFinalizer;
+class DropElaborator;
 namespace facts {
 class FlowBuilder;
 class FlowVerifier;
@@ -567,6 +568,7 @@ private:
   friend class ownership::facts::ReborrowStateVerifier;
   friend class ownership::facts::ReferenceDefinitionBuilder;
   friend class ownership::facts::ReferenceDefinitionVerifier;
+  friend class ownership::DropElaborator;
   friend class ownership::OwnershipFinalizer;
 };
 
