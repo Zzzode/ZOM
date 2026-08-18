@@ -2390,7 +2390,7 @@ ZC_TEST("Reference definition verifier rejects tampered definition inputs") {
       facts::ReferenceDefinitionBuilder::build(movePaths, loans, builtMir, overlay);
   ZC_REQUIRE(rootCandidateResult.isVerified());
   auto rootCandidate = zc::mv(rootCandidateResult).takeVerified();
-  rootCandidate.definitions[0].origin.rootParameter = 1;
+  rootCandidate.definitions[0].origin.detail = facts::ParameterReferenceOrigin{1};
   auto rootResult = facts::ReferenceDefinitionVerifier::verify(zc::mv(rootCandidate), movePaths,
                                                                loans, builtMir, overlay);
   ZC_REQUIRE(rootResult.isIrInvariantRejected());
@@ -2528,6 +2528,53 @@ ZC_TEST("Parameter reborrow reference-state verifier rejects tampered point") {
 
   auto verifiedResult = facts::ReborrowStateVerifier::verify(zc::mv(candidate), inputs.references(),
                                                              inputs.regions(), builtMir, overlay);
+  ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
+  ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
+  ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
+            ir::IrFailureKind::InvalidOwnershipProof);
+}
+
+ZC_TEST("Local borrow reference definitions derive a StorageLive origin") {
+  OwnershipPipelineFixture fixture(
+      "fun borrow_local() -> &i32 { let value: i32 = 0; return &value; }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& inputs = ownershipInputs(session);
+
+  ZC_REQUIRE(inputs.references().definitions().size() == 1);
+  const auto& definition = inputs.references().definitions()[0];
+  ZC_EXPECT(definition.origin.detail.is<facts::LocalReferenceOrigin>());
+  ZC_EXPECT(definition.origin.entry.location.point.kind() == MirPointKind::BeforeStatement);
+  ZC_EXPECT(definition.origin.entry.operandOrdinal == 0);
+
+  ZC_REQUIRE(inputs.regions().regions().size() == 1);
+  const auto& region = inputs.regions().regions()[0];
+  ZC_EXPECT(region.origin.is<facts::LocalReferenceOrigin>());
+  ZC_EXPECT(region.members.size() == 6);
+
+  ZC_REQUIRE(inputs.states().states().size() == 5);
+  for (const auto& state : inputs.states().states()) {
+    ZC_EXPECT(state.origin.is<facts::LocalReferenceOrigin>());
+  }
+}
+
+ZC_TEST("Local borrow reference verifier rejects a forged parameter origin") {
+  OwnershipPipelineFixture fixture(
+      "fun borrow_local() -> &i32 { let value: i32 = 0; return &value; }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
+  const auto& movePaths = ownershipInputs(session).movePaths();
+  const auto& loans = ownershipInputs(session).loans();
+
+  auto candidateResult =
+      facts::ReferenceDefinitionBuilder::build(movePaths, loans, builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.definitions.size() == 1);
+  candidate.definitions[0].origin.detail = facts::ParameterReferenceOrigin{0};
+
+  auto verifiedResult = facts::ReferenceDefinitionVerifier::verify(zc::mv(candidate), movePaths,
+                                                                   loans, builtMir, overlay);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -4624,6 +4671,12 @@ ZC_TEST("Differential oracle matches production facts for a parameter reborrow")
   expectOracleMatchesInventory(fixture);
 }
 
+ZC_TEST("Differential oracle matches production facts for a local borrow") {
+  OwnershipPipelineFixture fixture(
+      "fun borrow_local() -> &i32 { let value: i32 = 0; return &value; }"_zc);
+  expectOracleMatchesInventory(fixture);
+}
+
 ZC_TEST("Differential oracle matches production facts for a field projection write and read") {
   OwnershipPipelineFixture fixture(
       "struct Pair { mut left: i32, right: bool, }\n"
@@ -4761,14 +4814,16 @@ ZC_TEST("Ownership diagnostic adapter maps every closed failure variant") {
                                                identity.span.clone()})});
     failures.add(MutableBorrowConflictFailure{
         identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 1,
-        causeVector(LoanFailureCause{identity.event, identity.span.clone()})});
+        causeVector(LoanFailureCause{LoanKey{identity.event}, syntheticPlace(identity),
+                                     identity.event, identity.span.clone()})});
     failures.add(UninitializedPlaceUseFailure{
         identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 2,
         causeVector(InitializationFailureCause{facts::InitializationLossKind::NeverInitialized,
                                                identity.event, identity.span.clone()})});
     failures.add(SharedBorrowConflictFailure{
         identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 3,
-        causeVector(LoanFailureCause{identity.event, identity.span.clone()})});
+        causeVector(LoanFailureCause{LoanKey{identity.event}, syntheticPlace(identity),
+                                     identity.event, identity.span.clone()})});
     failures.add(BorrowDoesNotLiveLongEnoughFailure{
         identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 4,
         causeVector(EscapeFailureCause{identity.event, identity.span.clone()})});
@@ -4779,10 +4834,12 @@ ZC_TEST("Ownership diagnostic adapter maps every closed failure variant") {
         identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 6,
         causeVector(LinearConsumptionCause{identity.event, identity.span.clone()})});
     failures.add(RawPointerBoundaryRequiresUnsafeFailure{
-        identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 7});
+        identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 7,
+        UnsafeBoundaryKey{identity.event, 0}});
     failures.add(MoveOutOfBorrowFailure{
         identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 8,
-        causeVector(MoveFailureCause{identity.event, identity.span.clone()})});
+        causeVector(LoanFailureCause{LoanKey{identity.event}, syntheticPlace(identity),
+                                     identity.event, identity.span.clone()})});
 
     emitOwnershipSourceFailures(fixture.compilerSession().getDiagnosticEngine(), parsed,
                                 failures.asPtr());
@@ -4884,6 +4941,134 @@ ZC_TEST("Ownership source failure ordering distinguishes a secondary cause span"
 
   ZC_EXPECT(OwnershipSourceFailureOrdering::less(leftFailure, rightFailure) !=
             OwnershipSourceFailureOrdering::less(rightFailure, leftFailure));
+}
+
+ZC_TEST("Ownership source failure ordering distinguishes the primary diagnostic ID") {
+  OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
+  auto identity = syntheticIdentity(fixture);
+
+  // UninitializedPlaceUse (diag 4093, variant tag 2) and SharedBorrowConflict
+  // (diag 4059, variant tag 3) share every other field. The numeric diagnostic
+  // ID order reverses the variant-tag order, proving the ordering keys on the
+  // diagnostic ID rather than the variant tag.
+  auto uninitialized = UninitializedPlaceUseFailure{
+      identity.owner,
+      identity.event,
+      identity.span.clone(),
+      syntheticPlace(identity),
+      0,
+      causeVector(InitializationFailureCause{facts::InitializationLossKind::NeverInitialized,
+                                             identity.event, identity.span.clone()})};
+  auto conflict = SharedBorrowConflictFailure{
+      identity.owner,
+      identity.event,
+      identity.span.clone(),
+      syntheticPlace(identity),
+      0,
+      causeVector(LoanFailureCause{LoanKey{identity.event}, syntheticPlace(identity),
+                                   identity.event, identity.span.clone()})};
+
+  OwnershipSourceFailure uninitializedFailure{zc::mv(uninitialized)};
+  OwnershipSourceFailure conflictFailure{zc::mv(conflict)};
+
+  ZC_EXPECT(OwnershipSourceFailureOrdering::less(conflictFailure, uninitializedFailure));
+  ZC_EXPECT(!OwnershipSourceFailureOrdering::less(uninitializedFailure, conflictFailure));
+}
+
+ZC_TEST("Ownership source failure equality distinguishes the owner key") {
+  OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
+  auto identity = syntheticIdentity(fixture);
+  const auto otherOwner = identity::DefId{};
+
+  auto make = [&](identity::DefId owner) {
+    return UseAfterMoveFailure{
+        owner,
+        identity.event,
+        identity.span.clone(),
+        syntheticPlace(identity),
+        0,
+        causeVector(InitializationFailureCause{facts::InitializationLossKind::Moved, identity.event,
+                                               identity.span.clone()})};
+  };
+
+  OwnershipSourceFailure leftFailure{make(identity.owner)};
+  OwnershipSourceFailure rightFailure{make(otherOwner)};
+
+  // The owner DefId exposes equality but no public ordering, so distinct owners
+  // are ordering-equivalent; equality still separates them for deduplication.
+  ZC_EXPECT(!OwnershipSourceFailureOrdering::equal(leftFailure, rightFailure));
+}
+
+ZC_TEST("Ownership source failure deduplication collapses byte-identical failures") {
+  OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
+  auto identity = syntheticIdentity(fixture);
+
+  auto make = [&] {
+    return UseAfterMoveFailure{
+        identity.owner,
+        identity.event,
+        identity.span.clone(),
+        syntheticPlace(identity),
+        0,
+        causeVector(InitializationFailureCause{facts::InitializationLossKind::Moved, identity.event,
+                                               identity.span.clone()})};
+  };
+
+  zc::Vector<OwnershipSourceFailure> failures;
+  failures.add(make());
+  failures.add(make());
+
+  auto deduplicated = OwnershipSourceFailureOrdering::deduplicate(zc::mv(failures));
+  ZC_EXPECT(deduplicated.size() == 1);
+}
+
+ZC_TEST("Ownership source failure deduplication retains distinct owners") {
+  OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
+  auto identity = syntheticIdentity(fixture);
+  const auto otherOwner = identity::DefId{};
+
+  auto make = [&](identity::DefId owner) {
+    return UseAfterMoveFailure{
+        owner,
+        identity.event,
+        identity.span.clone(),
+        syntheticPlace(identity),
+        0,
+        causeVector(InitializationFailureCause{facts::InitializationLossKind::Moved, identity.event,
+                                               identity.span.clone()})};
+  };
+
+  zc::Vector<OwnershipSourceFailure> failures;
+  failures.add(make(identity.owner));
+  failures.add(make(otherOwner));
+
+  auto deduplicated = OwnershipSourceFailureOrdering::deduplicate(zc::mv(failures));
+  ZC_EXPECT(deduplicated.size() == 2);
+}
+
+ZC_TEST("Ownership source failure ordering distinguishes unsafe boundaries on one place event") {
+  OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
+  auto identity = syntheticIdentity(fixture);
+
+  auto left = RawPointerBoundaryRequiresUnsafeFailure{identity.owner,
+                                                      identity.event,
+                                                      identity.span.clone(),
+                                                      syntheticPlace(identity),
+                                                      0,
+                                                      UnsafeBoundaryKey{identity.event, 0}};
+  auto right = RawPointerBoundaryRequiresUnsafeFailure{identity.owner,
+                                                       identity.event,
+                                                       identity.span.clone(),
+                                                       syntheticPlace(identity),
+                                                       0,
+                                                       UnsafeBoundaryKey{identity.event, 1}};
+
+  OwnershipSourceFailure leftFailure{zc::mv(left)};
+  OwnershipSourceFailure rightFailure{zc::mv(right)};
+
+  ZC_EXPECT(OwnershipSourceFailureOrdering::less(leftFailure, rightFailure));
+  ZC_EXPECT(!OwnershipSourceFailureOrdering::less(rightFailure, leftFailure));
+  ZC_EXPECT(!OwnershipSourceFailureOrdering::equal(leftFailure, rightFailure));
 }
 
 }  // namespace

@@ -765,7 +765,8 @@ ZC_TEST("CompilerSessionTest.PublishesSharedParameterReborrow") {
   ZC_EXPECT(reference.origin.entry.operandOrdinal == 0);
   ZC_EXPECT(reference.origin.activation.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
   ZC_EXPECT(reference.origin.activation.afterEventValue().event.operandOrdinal == 1);
-  ZC_EXPECT(reference.origin.rootParameter == 0);
+  ZC_EXPECT(
+      reference.origin.detail.get<ownership::facts::ParameterReferenceOrigin>().rootParameter == 0);
   ZC_EXPECT(reference.origin.referent.place.local() == borrow.source.local());
   ZC_REQUIRE(reference.origin.referent.place.projections().size() == 1);
   ZC_EXPECT(reference.origin.referent.place.projections()[0].kind() ==
@@ -796,7 +797,7 @@ ZC_TEST("CompilerSessionTest.PublishesSharedParameterReborrow") {
   ZC_EXPECT(region.entry.location.point.kind() == ownership::MirPointKind::Entry);
   ZC_EXPECT(region.entry.operandOrdinal == 0);
   ZC_EXPECT(region.loan.operandOrdinal == 1);
-  ZC_EXPECT(region.inputParameter == 0);
+  ZC_EXPECT(region.origin.get<ownership::facts::ParameterReferenceOrigin>().rootParameter == 0);
   ZC_REQUIRE(region.members.size() == 6);
   ZC_EXPECT(region.members[0].kind() == ownership::facts::OwnershipPointKind::AfterEvent);
   ZC_EXPECT(region.members[0].afterEventValue().event.operandOrdinal == 1);
@@ -806,7 +807,8 @@ ZC_TEST("CompilerSessionTest.PublishesSharedParameterReborrow") {
   const auto& referenceState = states.states()[0];
   ZC_EXPECT(referenceState.owner == function.owner);
   ZC_EXPECT(referenceState.loan.operandOrdinal == 1);
-  ZC_EXPECT(referenceState.inputParameter == 0);
+  ZC_EXPECT(referenceState.origin.get<ownership::facts::ParameterReferenceOrigin>().rootParameter ==
+            0);
   ZC_EXPECT(referenceState.destination.place.local() == borrow.destination.local());
   ZC_EXPECT(referenceState.point.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
   ZC_EXPECT(referenceState.point.afterEventValue().event.operandOrdinal == 2);
@@ -911,7 +913,8 @@ ZC_TEST("CompilerSessionTest.PublishesMutableParameterReborrow") {
   ZC_EXPECT(reference.origin.entry.operandOrdinal == 0);
   ZC_EXPECT(reference.origin.activation.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
   ZC_EXPECT(reference.origin.activation.afterEventValue().event.operandOrdinal == 1);
-  ZC_EXPECT(reference.origin.rootParameter == 0);
+  ZC_EXPECT(
+      reference.origin.detail.get<ownership::facts::ParameterReferenceOrigin>().rootParameter == 0);
   ZC_EXPECT(reference.origin.referent.place.local() == borrow.source.local());
   ZC_REQUIRE(reference.origin.referent.place.projections().size() == 1);
   ZC_EXPECT(reference.origin.referent.place.projections()[0].kind() ==
@@ -942,7 +945,7 @@ ZC_TEST("CompilerSessionTest.PublishesMutableParameterReborrow") {
   ZC_EXPECT(region.entry.location.point.kind() == ownership::MirPointKind::Entry);
   ZC_EXPECT(region.entry.operandOrdinal == 0);
   ZC_EXPECT(region.loan.operandOrdinal == 1);
-  ZC_EXPECT(region.inputParameter == 0);
+  ZC_EXPECT(region.origin.get<ownership::facts::ParameterReferenceOrigin>().rootParameter == 0);
   ZC_REQUIRE(region.members.size() == 6);
   ZC_EXPECT(region.members[0].kind() == ownership::facts::OwnershipPointKind::AfterEvent);
   ZC_EXPECT(region.members[0].afterEventValue().event.operandOrdinal == 1);
@@ -952,7 +955,8 @@ ZC_TEST("CompilerSessionTest.PublishesMutableParameterReborrow") {
   const auto& referenceState = states.states()[0];
   ZC_EXPECT(referenceState.owner == function.owner);
   ZC_EXPECT(referenceState.loan.operandOrdinal == 1);
-  ZC_EXPECT(referenceState.inputParameter == 0);
+  ZC_EXPECT(referenceState.origin.get<ownership::facts::ParameterReferenceOrigin>().rootParameter ==
+            0);
   ZC_EXPECT(referenceState.destination.place.local() == borrow.destination.local());
   ZC_EXPECT(referenceState.point.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
   ZC_EXPECT(referenceState.point.afterEventValue().event.operandOrdinal == 2);
@@ -1115,15 +1119,16 @@ ZC_TEST("CompilerSessionTest.PublishesOwnershipInputsForLocalAliasReborrow") {
   const auto& reference = checkedMir[0].facts().references().definitions()[0];
   ZC_EXPECT(reference.loan == loan.issue);
   ZC_EXPECT(reference.introduction == loan.commit);
-  ZC_EXPECT(reference.origin.rootParameter == 0);
+  ZC_EXPECT(
+      reference.origin.detail.get<ownership::facts::ParameterReferenceOrigin>().rootParameter == 0);
   ZC_EXPECT(reference.origin.referent.place.local() == function.locals[1].id);
   ZC_EXPECT(reference.destination.place.local() == function.locals[2].id);
   const auto& region = checkedMir[0].facts().regions().regions()[0];
   ZC_EXPECT(region.loan == loan.issue);
-  ZC_EXPECT(region.inputParameter == 0);
+  ZC_EXPECT(region.origin.get<ownership::facts::ParameterReferenceOrigin>().rootParameter == 0);
   const auto& state = checkedMir[0].facts().states().states()[0];
   ZC_EXPECT(state.loan == loan.issue);
-  ZC_EXPECT(state.inputParameter == 0);
+  ZC_EXPECT(state.origin.get<ownership::facts::ParameterReferenceOrigin>().rootParameter == 0);
   ZC_EXPECT(state.destination.place.local() == function.locals[2].id);
 }
 
@@ -1165,15 +1170,16 @@ ZC_TEST("CompilerSessionTest.PublishesOwnershipInputsForMutableLocalAliasReborro
   const auto& reference = checkedMir[0].facts().references().definitions()[0];
   ZC_EXPECT(reference.loan == loan.issue);
   ZC_EXPECT(reference.introduction == loan.commit);
-  ZC_EXPECT(reference.origin.rootParameter == 0);
+  ZC_EXPECT(
+      reference.origin.detail.get<ownership::facts::ParameterReferenceOrigin>().rootParameter == 0);
   ZC_EXPECT(reference.origin.referent.place.local() == function.locals[1].id);
   ZC_EXPECT(reference.destination.place.local() == function.locals[2].id);
   const auto& region = checkedMir[0].facts().regions().regions()[0];
   ZC_EXPECT(region.loan == loan.issue);
-  ZC_EXPECT(region.inputParameter == 0);
+  ZC_EXPECT(region.origin.get<ownership::facts::ParameterReferenceOrigin>().rootParameter == 0);
   const auto& state = checkedMir[0].facts().states().states()[0];
   ZC_EXPECT(state.loan == loan.issue);
-  ZC_EXPECT(state.inputParameter == 0);
+  ZC_EXPECT(state.origin.get<ownership::facts::ParameterReferenceOrigin>().rootParameter == 0);
   ZC_EXPECT(state.destination.place.local() == function.locals[2].id);
 }
 
