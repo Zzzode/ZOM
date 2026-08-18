@@ -649,9 +649,7 @@ ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForInitializedParam
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
   ZC_EXPECT(captured.ids.empty());
-  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 1);
-  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 1);
-  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
 ZC_TEST("CompilerSessionTest.PublishesGenericFunctionSignature") {
@@ -669,8 +667,7 @@ ZC_TEST("CompilerSessionTest.PublishesGenericFunctionSignature") {
   const auto& payload = facts[0].signatures()[0].payload.variant();
   ZC_REQUIRE(payload.is<checker::signature::CallableSignature>());
   ZC_EXPECT(payload.get<checker::signature::CallableSignature>().genericParameters.size() == 1);
-  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 1);
-  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
 ZC_TEST("CompilerSessionTest.PublishesGenericDirectBorrowSignature") {
@@ -688,9 +685,7 @@ ZC_TEST("CompilerSessionTest.PublishesGenericDirectBorrowSignature") {
   const auto& payload = facts[0].signatures()[0].payload.variant();
   ZC_REQUIRE(payload.is<checker::signature::CallableSignature>());
   ZC_EXPECT(payload.get<checker::signature::CallableSignature>().genericParameters.size() == 1);
-  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 1);
-  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 1);
-  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
 ZC_TEST("CompilerSessionTest.PublishesGenericMutableBorrowSignature") {
@@ -710,9 +705,7 @@ ZC_TEST("CompilerSessionTest.PublishesGenericMutableBorrowSignature") {
   const auto& callable = payload.get<checker::signature::CallableSignature>();
   ZC_REQUIRE(callable.parameters.size() == 1);
   ZC_EXPECT(callable.parameters[0].mode == checker::signature::ParameterMode::MutableReference);
-  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 1);
-  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 1);
-  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
 ZC_TEST("CompilerSessionTest.PublishesSharedParameterReborrow") {
@@ -726,7 +719,7 @@ ZC_TEST("CompilerSessionTest.PublishesSharedParameterReborrow") {
   ZC_EXPECT(captured.ids.empty());
   const auto& hir = session->getVerifiedHirModules()[0];
   ZC_REQUIRE(hir.parameterReborrows().size() == 1);
-  const auto& mir = session->getVerifiedBuiltMirModules()[0];
+  const auto& mir = session->getOwnershipCheckedMirModules()[0].builtMir();
   ZC_REQUIRE(mir.functions().size() == 1);
   const auto& function = mir.functions()[0];
   ZC_REQUIRE(function.blocks.size() == 1);
@@ -737,11 +730,9 @@ ZC_TEST("CompilerSessionTest.PublishesSharedParameterReborrow") {
   ZC_REQUIRE(borrow.source.projections().size() == 1);
   ZC_EXPECT(borrow.source.projections()[0].kind() == mir::MirProjectionKind::Dereference);
 
-  const auto overlays = session->getVerifiedOwnershipEventOverlays();
-  const auto ownershipInputs = session->getVerifiedOwnershipInputs();
-  ZC_REQUIRE(overlays.size() == 1);
-  ZC_REQUIRE(ownershipInputs.size() == 1);
-  const auto& inputs = ownershipInputs[0];
+  const auto checkedMir = session->getOwnershipCheckedMirModules();
+  ZC_REQUIRE(checkedMir.size() == 1);
+  const auto& inputs = checkedMir[0].facts();
   const auto& movePaths = inputs.movePaths();
   const auto& initialization = inputs.initialization();
   const auto& loans = inputs.loans();
@@ -749,7 +740,7 @@ ZC_TEST("CompilerSessionTest.PublishesSharedParameterReborrow") {
   const auto& regions = inputs.regions();
   const auto& states = inputs.states();
   ZC_EXPECT(inputs.builtRevision().digest() == mir.revision().digest());
-  ZC_EXPECT(inputs.overlayRevision().digest() == overlays[0].revision().digest());
+  ZC_EXPECT(inputs.overlayRevision().digest() == checkedMir[0].eventOverlay().revision().digest());
   ZC_EXPECT(inputs.borrowEvidenceRevision().digest() == mir.borrowEvidenceRevision().digest());
   ZC_REQUIRE(loans.loans().size() == 1);
   const auto& loan = loans.loans()[0];
@@ -868,8 +859,8 @@ ZC_TEST("CompilerSessionTest.PublishesMutableParameterReborrow") {
   const auto& reborrows = session->getVerifiedHirModules()[0].parameterReborrows();
   ZC_REQUIRE(reborrows.size() == 1);
   ZC_EXPECT(reborrows[0].mutability == type::semantic::Mutability::Mutable);
-  ZC_REQUIRE(session->getVerifiedBuiltMirModules().size() == 1);
-  const auto& functions = session->getVerifiedBuiltMirModules()[0].functions();
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  const auto& functions = session->getOwnershipCheckedMirModules()[0].builtMir().functions();
   ZC_REQUIRE(functions.size() == 1);
   const auto& function = functions[0];
   ZC_REQUIRE(function.blocks.size() == 1);
@@ -880,24 +871,23 @@ ZC_TEST("CompilerSessionTest.PublishesMutableParameterReborrow") {
   ZC_REQUIRE(borrow.source.projections().size() == 1);
   ZC_EXPECT(borrow.source.projections()[0].kind() == mir::MirProjectionKind::Dereference);
 
-  const auto overlays = session->getVerifiedOwnershipEventOverlays();
-  const auto ownershipInputs = session->getVerifiedOwnershipInputs();
-  ZC_REQUIRE(overlays.size() == 1);
-  ZC_REQUIRE(ownershipInputs.size() == 1);
-  const auto& inputs = ownershipInputs[0];
+  const auto checkedMir = session->getOwnershipCheckedMirModules();
+  ZC_REQUIRE(checkedMir.size() == 1);
+  const auto& inputs = checkedMir[0].facts();
   const auto& movePaths = inputs.movePaths();
   const auto& initialization = inputs.initialization();
   const auto& loans = inputs.loans();
   const auto& references = inputs.references();
   const auto& regions = inputs.regions();
   const auto& states = inputs.states();
-  ZC_REQUIRE(overlays[0].functions().size() == 1);
-  ZC_EXPECT(overlays[0].functions()[0].owner == function.owner);
+  ZC_REQUIRE(checkedMir[0].eventOverlay().functions().size() == 1);
+  ZC_EXPECT(checkedMir[0].eventOverlay().functions()[0].owner == function.owner);
   ZC_EXPECT(loans.builtRevision().digest() ==
-            session->getVerifiedBuiltMirModules()[0].revision().digest());
-  ZC_EXPECT(loans.overlayRevision().digest() == overlays[0].revision().digest());
-  ZC_EXPECT(loans.borrowEvidenceRevision().digest() ==
-            session->getVerifiedBuiltMirModules()[0].borrowEvidenceRevision().digest());
+            session->getOwnershipCheckedMirModules()[0].builtMir().revision().digest());
+  ZC_EXPECT(loans.overlayRevision().digest() == checkedMir[0].eventOverlay().revision().digest());
+  ZC_EXPECT(
+      loans.borrowEvidenceRevision().digest() ==
+      session->getOwnershipCheckedMirModules()[0].builtMir().borrowEvidenceRevision().digest());
   ZC_REQUIRE(loans.loans().size() == 1);
   const auto& loan = loans.loans()[0];
   ZC_EXPECT(loan.owner == function.owner);
@@ -972,7 +962,7 @@ ZC_TEST("CompilerSessionTest.PublishesMutableParameterReborrow") {
   bool foundBorrowRead = false;
   bool foundBorrowIssue = false;
   bool foundBorrowCommit = false;
-  for (const auto& slot : overlays[0].functions()[0].slots) {
+  for (const auto& slot : checkedMir[0].eventOverlay().functions()[0].slots) {
     if (slot.key.location.point.kind() != ownership::MirPointKind::BeforeStatement ||
         slot.key.location.point.beforeStatementValue().ordinal != 1) {
       continue;
@@ -1041,15 +1031,15 @@ ZC_TEST("CompilerSessionTest.PublishesGenericMutableParameterReborrow") {
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
   ZC_EXPECT(captured.ids.empty());
-  ZC_REQUIRE(session->getVerifiedBuiltMirModules().size() == 1);
-  const auto& functions = session->getVerifiedBuiltMirModules()[0].functions();
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  const auto& functions = session->getOwnershipCheckedMirModules()[0].builtMir().functions();
   ZC_REQUIRE(functions.size() == 1);
   ZC_REQUIRE(functions[0].blocks.size() == 1);
   ZC_REQUIRE(functions[0].blocks[0].statements.size() == 2);
   const auto& borrow = functions[0].blocks[0].statements[1].borrowCreationValue();
   ZC_EXPECT(borrow.kind == mir::MirBorrowKind::Mutable);
-  ZC_REQUIRE(session->getVerifiedOwnershipInputs().size() == 1);
-  const auto& inputs = session->getVerifiedOwnershipInputs()[0];
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  const auto& inputs = session->getOwnershipCheckedMirModules()[0].facts();
   ZC_REQUIRE(inputs.loans().loans().size() == 1);
   ZC_REQUIRE(inputs.references().definitions().size() == 1);
   const auto& reference = inputs.references().definitions()[0];
@@ -1069,8 +1059,7 @@ ZC_TEST("CompilerSessionTest.RejectsGenericParameterReturnWithoutBorrowContract"
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(!session->checkSources());
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::BorrowOutputRegionUnexpressible) == 1);
-  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 0);
-  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 0);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
 }
 
 ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForParameterInitializedLocalReturn") {
@@ -1083,9 +1072,7 @@ ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForParameterInitial
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
   ZC_EXPECT(captured.ids.empty());
-  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 1);
-  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 1);
-  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
 ZC_TEST("CompilerSessionTest.PublishesOwnershipInputsForLocalAliasReborrow") {
@@ -1103,7 +1090,7 @@ ZC_TEST("CompilerSessionTest.PublishesOwnershipInputsForLocalAliasReborrow") {
   ZC_REQUIRE(hir.parameterReborrows().size() == 1);
   ZC_EXPECT(hir.parameterReborrows()[0].sourceAlias != zc::none);
 
-  const auto& mir = session->getVerifiedBuiltMirModules()[0];
+  const auto& mir = session->getOwnershipCheckedMirModules()[0].builtMir();
   ZC_REQUIRE(mir.functions().size() == 1);
   const auto& function = mir.functions()[0];
   ZC_REQUIRE(function.locals.size() == 3);
@@ -1115,26 +1102,26 @@ ZC_TEST("CompilerSessionTest.PublishesOwnershipInputsForLocalAliasReborrow") {
   ZC_EXPECT(function.blocks[0].statements[1].kind() == mir::MirStatementKind::Assign);
   ZC_EXPECT(function.blocks[0].statements[3].kind() == mir::MirStatementKind::BorrowCreation);
 
-  const auto inputs = session->getVerifiedOwnershipInputs();
-  ZC_REQUIRE(inputs.size() == 1);
-  ZC_EXPECT(inputs[0].loans().loans().size() == 1);
-  ZC_EXPECT(inputs[0].references().definitions().size() == 1);
-  ZC_EXPECT(inputs[0].regions().regions().size() == 1);
-  ZC_EXPECT(inputs[0].states().states().size() == 5);
-  const auto& loan = inputs[0].loans().loans()[0];
+  const auto checkedMir = session->getOwnershipCheckedMirModules();
+  ZC_REQUIRE(checkedMir.size() == 1);
+  ZC_EXPECT(checkedMir[0].facts().loans().loans().size() == 1);
+  ZC_EXPECT(checkedMir[0].facts().references().definitions().size() == 1);
+  ZC_EXPECT(checkedMir[0].facts().regions().regions().size() == 1);
+  ZC_EXPECT(checkedMir[0].facts().states().states().size() == 5);
+  const auto& loan = checkedMir[0].facts().loans().loans()[0];
   ZC_EXPECT(loan.kind == mir::MirBorrowKind::Shared);
   ZC_EXPECT(loan.source.place.local() == function.locals[1].id);
   ZC_EXPECT(loan.destination.place.local() == function.locals[2].id);
-  const auto& reference = inputs[0].references().definitions()[0];
+  const auto& reference = checkedMir[0].facts().references().definitions()[0];
   ZC_EXPECT(reference.loan == loan.issue);
   ZC_EXPECT(reference.introduction == loan.commit);
   ZC_EXPECT(reference.origin.rootParameter == 0);
   ZC_EXPECT(reference.origin.referent.place.local() == function.locals[1].id);
   ZC_EXPECT(reference.destination.place.local() == function.locals[2].id);
-  const auto& region = inputs[0].regions().regions()[0];
+  const auto& region = checkedMir[0].facts().regions().regions()[0];
   ZC_EXPECT(region.loan == loan.issue);
   ZC_EXPECT(region.inputParameter == 0);
-  const auto& state = inputs[0].states().states()[0];
+  const auto& state = checkedMir[0].facts().states().states()[0];
   ZC_EXPECT(state.loan == loan.issue);
   ZC_EXPECT(state.inputParameter == 0);
   ZC_EXPECT(state.destination.place.local() == function.locals[2].id);
@@ -1156,7 +1143,7 @@ ZC_TEST("CompilerSessionTest.PublishesOwnershipInputsForMutableLocalAliasReborro
   ZC_EXPECT(hir.parameterReborrows()[0].sourceAlias != zc::none);
   ZC_EXPECT(hir.parameterReborrows()[0].mutability == type::semantic::Mutability::Mutable);
 
-  const auto& mir = session->getVerifiedBuiltMirModules()[0];
+  const auto& mir = session->getOwnershipCheckedMirModules()[0].builtMir();
   ZC_REQUIRE(mir.functions().size() == 1);
   const auto& function = mir.functions()[0];
   ZC_REQUIRE(function.blocks.size() == 1);
@@ -1165,26 +1152,26 @@ ZC_TEST("CompilerSessionTest.PublishesOwnershipInputsForMutableLocalAliasReborro
   ZC_EXPECT(function.blocks[0].statements[3].borrowCreationValue().kind ==
             mir::MirBorrowKind::Mutable);
 
-  const auto inputs = session->getVerifiedOwnershipInputs();
-  ZC_REQUIRE(inputs.size() == 1);
-  ZC_EXPECT(inputs[0].loans().loans().size() == 1);
-  ZC_EXPECT(inputs[0].references().definitions().size() == 1);
-  ZC_EXPECT(inputs[0].regions().regions().size() == 1);
-  ZC_EXPECT(inputs[0].states().states().size() == 5);
-  const auto& loan = inputs[0].loans().loans()[0];
+  const auto checkedMir = session->getOwnershipCheckedMirModules();
+  ZC_REQUIRE(checkedMir.size() == 1);
+  ZC_EXPECT(checkedMir[0].facts().loans().loans().size() == 1);
+  ZC_EXPECT(checkedMir[0].facts().references().definitions().size() == 1);
+  ZC_EXPECT(checkedMir[0].facts().regions().regions().size() == 1);
+  ZC_EXPECT(checkedMir[0].facts().states().states().size() == 5);
+  const auto& loan = checkedMir[0].facts().loans().loans()[0];
   ZC_EXPECT(loan.kind == mir::MirBorrowKind::Mutable);
   ZC_EXPECT(loan.source.place.local() == function.locals[1].id);
   ZC_EXPECT(loan.destination.place.local() == function.locals[2].id);
-  const auto& reference = inputs[0].references().definitions()[0];
+  const auto& reference = checkedMir[0].facts().references().definitions()[0];
   ZC_EXPECT(reference.loan == loan.issue);
   ZC_EXPECT(reference.introduction == loan.commit);
   ZC_EXPECT(reference.origin.rootParameter == 0);
   ZC_EXPECT(reference.origin.referent.place.local() == function.locals[1].id);
   ZC_EXPECT(reference.destination.place.local() == function.locals[2].id);
-  const auto& region = inputs[0].regions().regions()[0];
+  const auto& region = checkedMir[0].facts().regions().regions()[0];
   ZC_EXPECT(region.loan == loan.issue);
   ZC_EXPECT(region.inputParameter == 0);
-  const auto& state = inputs[0].states().states()[0];
+  const auto& state = checkedMir[0].facts().states().states()[0];
   ZC_EXPECT(state.loan == loan.issue);
   ZC_EXPECT(state.inputParameter == 0);
   ZC_EXPECT(state.destination.place.local() == function.locals[2].id);
@@ -1201,9 +1188,7 @@ ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForInitializedAggre
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
   ZC_EXPECT(captured.ids.empty());
-  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 1);
-  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 1);
-  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
 ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForAggregateFieldOverwrite") {
@@ -1217,10 +1202,8 @@ ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForAggregateFieldOv
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
   ZC_EXPECT(captured.ids.empty());
-  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 1);
-  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 1);
-  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 1);
-  const auto& builtMir = session->getVerifiedBuiltMirModules()[0];
+  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
+  const auto& builtMir = session->getOwnershipCheckedMirModules()[0].builtMir();
   ZC_REQUIRE(builtMir.functions().size() == 1);
   const auto& function = builtMir.functions()[0];
   ZC_REQUIRE(function.blocks.size() == 1);
@@ -1253,9 +1236,7 @@ ZC_TEST("CompilerSessionTest.RejectsUninitializedLocalUseWithoutPublishingOwners
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UninitializedPlaceUse) == 1);
   ZC_EXPECT(childDiagnosticCount(captured, diagnostics::DiagID::PlaceBecameUnavailableHere) == 1);
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::OwnershipProofInvariant) == 0);
-  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 0);
-  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 0);
-  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 0);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
 }
 
 ZC_TEST("CompilerSessionTest.RejectsUseAfterMoveWithoutPublishingOwnershipInputs") {
@@ -1274,9 +1255,7 @@ ZC_TEST("CompilerSessionTest.RejectsUseAfterMoveWithoutPublishingOwnershipInputs
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UseAfterMove) == 1);
   ZC_EXPECT(childDiagnosticCount(captured, diagnostics::DiagID::ValueMovedHere) == 1);
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::OwnershipProofInvariant) == 0);
-  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 0);
-  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 0);
-  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 0);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
 }
 
 ZC_TEST("CompilerSessionTest.AcceptsCopyAfterLocalTransfer") {
@@ -1287,9 +1266,7 @@ ZC_TEST("CompilerSessionTest.AcceptsCopyAfterLocalTransfer") {
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
   ZC_EXPECT(!session->getDiagnosticEngine().hasErrors());
-  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 1);
-  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 1);
-  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
 ZC_TEST(
@@ -1306,9 +1283,7 @@ ZC_TEST(
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UninitializedPlaceUse) == 1);
   ZC_EXPECT(childDiagnosticCount(captured, diagnostics::DiagID::PlaceBecameUnavailableHere) == 1);
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::OwnershipProofInvariant) == 0);
-  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 0);
-  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 0);
-  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 0);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
 }
 
 ZC_TEST(
@@ -1326,9 +1301,7 @@ ZC_TEST(
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UninitializedPlaceUse) == 1);
   ZC_EXPECT(childDiagnosticCount(captured, diagnostics::DiagID::PlaceBecameUnavailableHere) == 1);
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::OwnershipProofInvariant) == 0);
-  ZC_EXPECT(session->getVerifiedBuiltMirModules().size() == 0);
-  ZC_EXPECT(session->getVerifiedOwnershipEventOverlays().size() == 0);
-  ZC_EXPECT(session->getVerifiedOwnershipInputs().size() == 0);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
 }
 
 ZC_TEST("CompilerSessionTest.RejectsReservedCoreRootWithoutPublishingModuleGraph") {

@@ -19,11 +19,11 @@
 #include "zomlang/compiler/diagnostics/consumer/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
 #include "zomlang/compiler/driver/interface/coherence-builder.h"
-#include "zomlang/compiler/driver/session/compiler-session.h"
 #include "zomlang/compiler/driver/interface/imported-signature-view-projector.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
 #include "zomlang/compiler/driver/package/trusted-runtime-manifest.h"
+#include "zomlang/compiler/driver/session/compiler-session.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/tests/unittests/compiler/driver/core/core-library-test-fixture.h"
@@ -1714,8 +1714,8 @@ ZC_TEST("CompilerSession publishes the complete canonical Checker rail for an em
     ZC_EXPECT(evidence.evidence().revision().digest() ==
               hirModule.borrowEvidenceRevision().digest());
   }
-  ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
-  const auto& builtMir = session.getVerifiedBuiltMirModules()[0];
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
+  const auto& builtMir = session.getOwnershipCheckedMirModules()[0].builtMir();
   ZC_EXPECT(isUserBoundModule(identities, builtMir.module()));
   ZC_EXPECT(builtMir.module() == hirModule.module());
   ZC_EXPECT(builtMir.functions().size() == 0);
@@ -2292,8 +2292,8 @@ ZC_TEST("CompilerSession publishes scalar initializer definition and pattern fac
   ZC_EXPECT(session.getVerifiedDispatchFacts()[0].facts().size() == 0);
   ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
   ZC_EXPECT(session.getVerifiedHirModules()[0].declarations().size() == 1);
-  ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
-  const auto& builtMir = session.getVerifiedBuiltMirModules()[0];
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
+  const auto& builtMir = session.getOwnershipCheckedMirModules()[0].builtMir();
   ZC_REQUIRE(builtMir.functions().size() == 1);
   const auto& function = builtMir.functions()[0];
   ZC_EXPECT(function.owner == session.getVerifiedHirModules()[0].declarations()[0].definition);
@@ -2408,8 +2408,8 @@ ZC_TEST("CompilerSession publishes a checked scalar-return function through HIR 
   ZC_EXPECT(hirModule.blocks()[0].statements[0] == hirModule.returns()[0].node);
   ZC_EXPECT(hirModule.returns()[0].value == hirModule.expressions()[0].node);
 
-  ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
-  const auto& builtMir = session.getVerifiedBuiltMirModules()[0];
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
+  const auto& builtMir = session.getOwnershipCheckedMirModules()[0].builtMir();
   ZC_REQUIRE(builtMir.functions().size() == 1);
   const auto& function = builtMir.functions()[0];
   ZC_EXPECT(function.owner == hirModule.functions()[0].definition);
@@ -2468,8 +2468,8 @@ ZC_TEST("CompilerSession lowers a sequential local copy through HIR and Built MI
   ZC_EXPECT(hirModule.localReferences()[0].local == hirModule.locals()[0].local);
   ZC_EXPECT(hirModule.localReferences()[1].local == hirModule.locals()[1].local);
 
-  ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
-  const auto& builtMir = session.getVerifiedBuiltMirModules()[0];
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
+  const auto& builtMir = session.getOwnershipCheckedMirModules()[0].builtMir();
   ZC_REQUIRE(builtMir.functions().size() == 1);
   const auto& function = builtMir.functions()[0];
   ZC_REQUIRE(function.locals.size() == 2);
@@ -2486,13 +2486,13 @@ ZC_TEST("CompilerSession lowers a sequential local copy through HIR and Built MI
   ZC_EXPECT(mirBlock.statements[3].assignmentValue().value.useValue().operand.kind() ==
             mir::MirOperandKind::Copy);
   ZC_EXPECT(mirBlock.terminator.kind() == mir::MirTerminatorKind::Return);
-  const auto ownershipInputs = session.getVerifiedOwnershipInputs();
+  const auto ownershipInputs = session.getOwnershipCheckedMirModules();
   ZC_REQUIRE(ownershipInputs.size() == 1);
-  ZC_EXPECT(ownershipInputs[0].module() == hirModule.module());
-  ZC_EXPECT(ownershipInputs[0].builtRevision().digest() == builtMir.revision().digest());
-  ZC_EXPECT(ownershipInputs[0].resources().functions().size() == 1);
-  ZC_EXPECT(ownershipInputs[0].resources().functions()[0].facts.size() == 0);
-  ZC_EXPECT(ownershipInputs[0].resources().functions()[0].transfers.size() == 0);
+  ZC_EXPECT(ownershipInputs[0].facts().module() == hirModule.module());
+  ZC_EXPECT(ownershipInputs[0].facts().builtRevision().digest() == builtMir.revision().digest());
+  ZC_EXPECT(ownershipInputs[0].facts().resources().functions().size() == 1);
+  ZC_EXPECT(ownershipInputs[0].facts().resources().functions()[0].facts.size() == 0);
+  ZC_EXPECT(ownershipInputs[0].facts().resources().functions()[0].transfers.size() == 0);
   auto overlayInput = session.getOwnershipEventOverlayInput(hirModule.module());
   ZC_REQUIRE(overlayInput != zc::none);
   ZC_IF_SOME(input, overlayInput) {
@@ -2540,7 +2540,7 @@ ZC_TEST("CompilerSession rejects a scalar return whose type differs from the sig
   ZC_REQUIRE(captured.ids.size() == 1);
   ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::TypeCheckerTypeMismatch);
   ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
-  ZC_EXPECT(session.getVerifiedBuiltMirModules().size() == 0);
+  ZC_EXPECT(session.getOwnershipCheckedMirModules().size() == 0);
 }
 
 ZC_TEST("CompilerSession rejects unadmitted frontend syntax before Checker publication") {
@@ -2580,7 +2580,7 @@ ZC_TEST("CompilerSession rejects unadmitted frontend syntax before Checker publi
     ZC_EXPECT(session.getVerifiedDispatchFacts().size() == 0);
     ZC_EXPECT(session.getBorrowEvidenceRepository() == zc::none);
     ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
-    ZC_EXPECT(session.getVerifiedBuiltMirModules().size() == 0);
+    ZC_EXPECT(session.getOwnershipCheckedMirModules().size() == 0);
     ZC_EXPECT(session.getIrFailureGroups().size() == 0);
     ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
   };
@@ -2693,7 +2693,7 @@ ZC_TEST("CompilerSession verifies recovered literal failures without publishing 
   ZC_EXPECT(session.getVerifiedDispatchFacts().size() == 0);
   ZC_EXPECT(session.getBorrowEvidenceRepository() == zc::none);
   ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
-  ZC_EXPECT(session.getVerifiedBuiltMirModules().size() == 0);
+  ZC_EXPECT(session.getOwnershipCheckedMirModules().size() == 0);
   ZC_EXPECT(session.getIrFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }

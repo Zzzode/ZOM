@@ -23,6 +23,7 @@ namespace zomlang::compiler::ownership {
 class OwnershipAdmittedBoundModule;
 class OwnershipEventOverlayBuilder;
 class OwnershipEventOverlayVerifier;
+class OwnershipFinalizer;
 namespace facts {
 class FlowBuilder;
 class FlowVerifier;
@@ -566,6 +567,7 @@ private:
   friend class ownership::facts::ReborrowStateVerifier;
   friend class ownership::facts::ReferenceDefinitionBuilder;
   friend class ownership::facts::ReferenceDefinitionVerifier;
+  friend class ownership::OwnershipFinalizer;
 };
 
 /// \brief Lowers the complete currently supported HIR expression slice into Built MIR.

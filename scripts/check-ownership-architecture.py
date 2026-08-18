@@ -554,13 +554,14 @@ def check(values: dict[Path, str]) -> list[str]:
         "diagnostics::DiagID::ConcurrencySemanticsUnavailable",
         "diagnostics::DiagID::ControlFlowSemanticsUnavailable",
         "stagedOwnershipEventOverlays.add(zc::mv(verifiedOwnership).takeVerified());",
-        "impl->ownershipEventOverlays = zc::mv(stagedOwnershipEventOverlays);",
+        "stagedOwnershipInputs.add(zc::mv(verifiedOwnershipInputs).takeVerified());",
+        "ownership::OwnershipFinalizer::finalizeOwnership(",
+        "impl->ownershipCheckedMirModules = zc::mv(stagedOwnershipCheckedMir);",
         "zc::Vector<ownership::OwnershipAdmittedBoundModule> ownershipAdmittedModules;",
         "stagedOwnershipAdmittedModules.add(checkerBound.retain());",
         "impl->ownershipAdmittedModules = zc::mv(stagedOwnershipAdmittedModules);",
         "ownershipAdmittedModules.clear();",
-        "ownershipEventOverlays.clear();",
-        "builtMirModules.clear();",
+        "ownershipCheckedMirModules.clear();",
         "ReferenceDefinitionBuilder::build(",
         "ReferenceDefinitionVerifier::verify(",
         "ReborrowRegionBuilder::build(",
@@ -577,30 +578,25 @@ def check(values: dict[Path, str]) -> list[str]:
         "FlowVerifier::verify(",
         "verifiedFlow.verifiedValue(), verifiedMovePaths.verifiedValue()",
         "OwnershipInputVerifier::verify(",
-        "stagedOwnershipInputs.add(zc::mv(verifiedOwnershipInputs).takeVerified());",
-        "impl->ownershipInputs = zc::mv(stagedOwnershipInputs);",
-        "ownershipInputs.clear();",
     ):
         if marker not in session:
             errors.append(f"{SESSION}: missing ownership publication contract: {marker}")
-    inputs_release = session.find("ownershipInputs.clear();")
-    overlay_release = session.find("ownershipEventOverlays.clear();")
-    mir_release = session.find("builtMirModules.clear();")
+    finalize_call = session.find("ownership::OwnershipFinalizer::finalizeOwnership(")
+    checked_commit = session.find("impl->ownershipCheckedMirModules = zc::mv(stagedOwnershipCheckedMir);")
     if (
-        inputs_release != -1
-        and overlay_release != -1
-        and mir_release != -1
-        and not inputs_release < overlay_release < mir_release
+        finalize_call != -1
+        and checked_commit != -1
+        and not finalize_call < checked_commit
     ):
-        errors.append(f"{SESSION}: ownership facts must release before their retained inputs")
-    inputs_publish = session.find("impl->ownershipInputs = zc::mv(stagedOwnershipInputs);")
-    overlay_publish = session.find("impl->ownershipEventOverlays = zc::mv(stagedOwnershipEventOverlays);")
-    mir_publish = session.find("impl->builtMirModules = zc::mv(stagedBuiltMirModules);")
+        errors.append(f"{SESSION}: ownership finalize must run before the checked-MIR commit")
+    checked_release = session.find("ownershipCheckedMirModules.clear();")
+    admitted_release = session.find("ownershipAdmittedModules.clear();")
     if (
-        min(inputs_publish, overlay_publish, mir_publish) != -1
-        and not mir_publish < overlay_publish < inputs_publish
+        checked_release != -1
+        and admitted_release != -1
+        and not checked_release < admitted_release
     ):
-        errors.append(f"{SESSION}: ownership facts must publish after their retained inputs")
+        errors.append(f"{SESSION}: ownership checked MIR must release before admitted modules")
     source_verifier = session.find("InitializationSourceVerifier::verify(")
     source_rejection = session.find("if (initializationSource.isSourceRejected())")
     loan_builder = session.find("LoanBuilder::build(")
@@ -1116,7 +1112,7 @@ def main() -> int:
             "ReferenceDefinitionVerifier::verify(",
             "OwnershipInputVerifier::verify(",
             "stagedOwnershipInputs.add(zc::mv(verifiedOwnershipInputs).takeVerified());",
-            "impl->ownershipInputs = zc::mv(stagedOwnershipInputs);",
+            "impl->ownershipCheckedMirModules = zc::mv(stagedOwnershipCheckedMir);",
         ):
             publication_mutation = dict(values)
             publication_mutation[SESSION] = publication_mutation.get(SESSION, "").replace(
@@ -1127,8 +1123,8 @@ def main() -> int:
                 return 1
         release_mutation = dict(values)
         release_mutation[SESSION] = release_mutation.get(SESSION, "").replace(
-            "ownershipInputs.clear();\n    ownershipEventOverlays.clear();",
-            "ownershipEventOverlays.clear();\n    ownershipInputs.clear();",
+            "ownershipCheckedMirModules.clear();\n    hirModules.clear();\n    ownershipAdmittedModules.clear();",
+            "ownershipAdmittedModules.clear();\n    hirModules.clear();\n    ownershipCheckedMirModules.clear();",
             1,
         )
         if not check(release_mutation):

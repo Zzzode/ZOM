@@ -152,11 +152,11 @@ REQUIRED_BUILT_MIR_MARKERS = (
 )
 
 REQUIRED_SESSION_MIR_MARKERS = (
-    "zc::Vector<mir::VerifiedBuiltMir> builtMirModules",
-    "getVerifiedBuiltMirModules",
+    "zc::Vector<ownership::OwnershipCheckedMir> ownershipCheckedMirModules",
+    "getOwnershipCheckedMirModules",
     "mir::BuiltMirBuilder::build",
     "mir::BuiltMirVerifier::verify",
-    "impl->builtMirModules = zc::mv(stagedBuiltMirModules)",
+    "impl->ownershipCheckedMirModules = zc::mv(stagedOwnershipCheckedMir)",
 )
 
 FORBIDDEN_BUILT_MIR_DEPENDENCIES = (
@@ -496,7 +496,7 @@ def run_self_test() -> int:
         baseline,
         "Built MIR session publication removed",
         lambda files: remove_once(
-            files, SESSION_SOURCE, "impl->builtMirModules = zc::mv(stagedBuiltMirModules)"
+            files, SESSION_SOURCE, "impl->ownershipCheckedMirModules = zc::mv(stagedOwnershipCheckedMir)"
         ),
         "missing atomic Built MIR session marker",
     )

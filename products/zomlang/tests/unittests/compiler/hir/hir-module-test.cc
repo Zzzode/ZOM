@@ -9,9 +9,9 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
-#include "zomlang/compiler/driver/session/compiler-session.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
+#include "zomlang/compiler/driver/session/compiler-session.h"
 #include "zomlang/compiler/hir/checked-module.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
 #include "zomlang/tests/unittests/compiler/driver/core/core-library-test-fixture.h"
@@ -463,10 +463,10 @@ ZC_TEST("HIR pipeline retains verified scalar direct call arguments") {
   ZC_EXPECT(call.arguments[0].type == helper.parameters[0].type);
   ZC_EXPECT(call.arguments[0].value.tag() == checker::signature::CanonicalConstValueTag::Integer);
 
-  const auto builtMir = fixture.compilerSession().getVerifiedBuiltMirModules();
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
   ZC_REQUIRE(builtMir.size() == 1);
   zc::Maybe<const mir::MirFunction&> caller;
-  for (const auto& function : builtMir[0].functions()) {
+  for (const auto& function : builtMir[0].builtMir().functions()) {
     if (function.owner == entry.definition) caller = function;
   }
   ZC_REQUIRE(caller != zc::none);
@@ -574,9 +574,9 @@ ZC_TEST("HIR pipeline lowers a local nominal aggregate field projection") {
   ZC_EXPECT(aggregate.elements[0].value.tag() ==
             checker::signature::CanonicalConstValueTag::Integer);
 
-  const auto ownershipInputs = fixture.compilerSession().getVerifiedOwnershipInputs();
+  const auto ownershipInputs = fixture.compilerSession().getOwnershipCheckedMirModules();
   ZC_REQUIRE(ownershipInputs.size() == 1);
-  const auto& inputs = ownershipInputs[0];
+  const auto& inputs = ownershipInputs[0].facts();
   const auto& movePaths = inputs.movePaths();
   ZC_REQUIRE(movePaths.functions().size() == 1);
   const auto& paths = movePaths.functions()[0].facts;

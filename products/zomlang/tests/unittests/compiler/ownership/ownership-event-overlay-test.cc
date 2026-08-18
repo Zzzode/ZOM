@@ -233,10 +233,12 @@ public:
     ZC_REQUIRE(session.bindSources());
     ZC_REQUIRE(session.checkSources());
     ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
-    ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
+    ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   }
 
-  const mir::VerifiedBuiltMir& builtMir() const { return session.getVerifiedBuiltMirModules()[0]; }
+  const mir::VerifiedBuiltMir& builtMir() const {
+    return session.getOwnershipCheckedMirModules()[0].builtMir();
+  }
 
   checker::CheckerIdentityAuthority identities() const {
     auto authority = session.materializeCheckerIdentityAuthority();
@@ -297,9 +299,9 @@ ir::IrOperationResult<VerifiedOwnershipEventOverlay> verifyOverlay(
 }
 
 const facts::VerifiedOwnershipInputs& ownershipInputs(const driver::CompilerSession& session) {
-  const auto inputs = session.getVerifiedOwnershipInputs();
-  ZC_REQUIRE(inputs.size() == 1);
-  return inputs[0];
+  const auto checkedMir = session.getOwnershipCheckedMirModules();
+  ZC_REQUIRE(checkedMir.size() == 1);
+  return checkedMir[0].facts();
 }
 
 ir::IrOperationResult<facts::VerifiedOwnershipInputs> verifyOwnershipInputs(
@@ -308,7 +310,7 @@ ir::IrOperationResult<facts::VerifiedOwnershipInputs> verifyOwnershipInputs(
     const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& capability) {
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
 
   auto movePathCandidate = facts::MovePathBuilder::build(builtMir, overlay);
   ZC_REQUIRE(movePathCandidate.isVerified());
@@ -825,10 +827,10 @@ ZC_TEST("Ownership event overlay verifier rejects a gapped causal ordinal") {
 ZC_TEST("Move-path verifier rejects a tampered root path type chain") {
   OwnershipPipelineFixture fixture("let value = 0;"_zc);
   const auto& builtMir = fixture.builtMir();
-  const auto& overlays = fixture.compilerSession().getVerifiedOwnershipEventOverlays();
-  ZC_REQUIRE(overlays.size() == 1);
+  const auto checkedMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(checkedMir.size() == 1);
 
-  auto candidateResult = facts::MovePathBuilder::build(builtMir, overlays[0]);
+  auto candidateResult = facts::MovePathBuilder::build(builtMir, checkedMir[0].eventOverlay());
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -839,7 +841,8 @@ ZC_TEST("Move-path verifier rejects a tampered root path type chain") {
   candidate.functions[0].facts[0].key.place =
       mir::MirPlace(local, rootType, zc::mv(projections), identity::SemanticTypeId());
 
-  auto verifiedResult = facts::MovePathVerifier::verify(zc::mv(candidate), builtMir, overlays[0]);
+  auto verifiedResult =
+      facts::MovePathVerifier::verify(zc::mv(candidate), builtMir, checkedMir[0].eventOverlay());
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -849,10 +852,10 @@ ZC_TEST("Move-path verifier rejects a tampered root path type chain") {
 ZC_TEST("Move-path verifier rejects a root path with a parent") {
   OwnershipPipelineFixture fixture("let value = 0;"_zc);
   const auto& builtMir = fixture.builtMir();
-  const auto& overlays = fixture.compilerSession().getVerifiedOwnershipEventOverlays();
-  ZC_REQUIRE(overlays.size() == 1);
+  const auto checkedMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(checkedMir.size() == 1);
 
-  auto candidateResult = facts::MovePathBuilder::build(builtMir, overlays[0]);
+  auto candidateResult = facts::MovePathBuilder::build(builtMir, checkedMir[0].eventOverlay());
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -860,7 +863,8 @@ ZC_TEST("Move-path verifier rejects a root path with a parent") {
   const auto& root = candidate.functions[0].facts[0].key;
   candidate.functions[0].facts[0].parent = facts::MovePathKey{root.owner, root.place.clone()};
 
-  auto verifiedResult = facts::MovePathVerifier::verify(zc::mv(candidate), builtMir, overlays[0]);
+  auto verifiedResult =
+      facts::MovePathVerifier::verify(zc::mv(candidate), builtMir, checkedMir[0].eventOverlay());
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -870,10 +874,10 @@ ZC_TEST("Move-path verifier rejects a root path with a parent") {
 ZC_TEST("Move-path verifier rejects a self conflict pair") {
   OwnershipPipelineFixture fixture("let value = 0;"_zc);
   const auto& builtMir = fixture.builtMir();
-  const auto& overlays = fixture.compilerSession().getVerifiedOwnershipEventOverlays();
-  ZC_REQUIRE(overlays.size() == 1);
+  const auto checkedMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(checkedMir.size() == 1);
 
-  auto candidateResult = facts::MovePathBuilder::build(builtMir, overlays[0]);
+  auto candidateResult = facts::MovePathBuilder::build(builtMir, checkedMir[0].eventOverlay());
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -882,7 +886,8 @@ ZC_TEST("Move-path verifier rejects a self conflict pair") {
   candidate.functions[0].conflicts.add(
       facts::MovePathPair{{root.owner, root.place.clone()}, {root.owner, root.place.clone()}});
 
-  auto verifiedResult = facts::MovePathVerifier::verify(zc::mv(candidate), builtMir, overlays[0]);
+  auto verifiedResult =
+      facts::MovePathVerifier::verify(zc::mv(candidate), builtMir, checkedMir[0].eventOverlay());
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -894,10 +899,10 @@ ZC_TEST("Move-path verifier rejects a reversed aggregate path order") {
       "struct Cell { value: i32, }\n"
       "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc);
   const auto& builtMir = fixture.builtMir();
-  const auto& overlays = fixture.compilerSession().getVerifiedOwnershipEventOverlays();
-  ZC_REQUIRE(overlays.size() == 1);
+  const auto checkedMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(checkedMir.size() == 1);
 
-  auto candidateResult = facts::MovePathBuilder::build(builtMir, overlays[0]);
+  auto candidateResult = facts::MovePathBuilder::build(builtMir, checkedMir[0].eventOverlay());
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -906,7 +911,8 @@ ZC_TEST("Move-path verifier rejects a reversed aggregate path order") {
   candidate.functions[0].facts[0] = zc::mv(candidate.functions[0].facts[1]);
   candidate.functions[0].facts[1] = zc::mv(first);
 
-  auto verifiedResult = facts::MovePathVerifier::verify(zc::mv(candidate), builtMir, overlays[0]);
+  auto verifiedResult =
+      facts::MovePathVerifier::verify(zc::mv(candidate), builtMir, checkedMir[0].eventOverlay());
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -918,10 +924,10 @@ ZC_TEST("Move-path verifier rejects a reversed aggregate conflict pair") {
       "struct Cell { value: i32, }\n"
       "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc);
   const auto& builtMir = fixture.builtMir();
-  const auto& overlays = fixture.compilerSession().getVerifiedOwnershipEventOverlays();
-  ZC_REQUIRE(overlays.size() == 1);
+  const auto checkedMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(checkedMir.size() == 1);
 
-  auto candidateResult = facts::MovePathBuilder::build(builtMir, overlays[0]);
+  auto candidateResult = facts::MovePathBuilder::build(builtMir, checkedMir[0].eventOverlay());
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -930,7 +936,8 @@ ZC_TEST("Move-path verifier rejects a reversed aggregate conflict pair") {
   candidate.functions[0].conflicts[0].first = zc::mv(candidate.functions[0].conflicts[0].second);
   candidate.functions[0].conflicts[0].second = zc::mv(first);
 
-  auto verifiedResult = facts::MovePathVerifier::verify(zc::mv(candidate), builtMir, overlays[0]);
+  auto verifiedResult =
+      facts::MovePathVerifier::verify(zc::mv(candidate), builtMir, checkedMir[0].eventOverlay());
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -942,10 +949,10 @@ ZC_TEST("Move-path verifier rejects a missing aggregate field conflict") {
       "struct Cell { value: i32, }\n"
       "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc);
   const auto& builtMir = fixture.builtMir();
-  const auto& overlays = fixture.compilerSession().getVerifiedOwnershipEventOverlays();
-  ZC_REQUIRE(overlays.size() == 1);
+  const auto checkedMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(checkedMir.size() == 1);
 
-  auto candidateResult = facts::MovePathBuilder::build(builtMir, overlays[0]);
+  auto candidateResult = facts::MovePathBuilder::build(builtMir, checkedMir[0].eventOverlay());
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -953,7 +960,8 @@ ZC_TEST("Move-path verifier rejects a missing aggregate field conflict") {
   ZC_REQUIRE(candidate.functions[0].conflicts.size() == 1);
   candidate.functions[0].conflicts.clear();
 
-  auto verifiedResult = facts::MovePathVerifier::verify(zc::mv(candidate), builtMir, overlays[0]);
+  auto verifiedResult =
+      facts::MovePathVerifier::verify(zc::mv(candidate), builtMir, checkedMir[0].eventOverlay());
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -965,10 +973,10 @@ ZC_TEST("Move-path verifier rejects a missing multi-field aggregate conflict") {
       "struct Pair { mut left: i32, mut right: bool, }\n"
       "fun entry() -> bool { mut pair: Pair; pair.left = 0; pair.right = true; return pair.right; }"_zc);
   const auto& builtMir = fixture.builtMir();
-  const auto& overlays = fixture.compilerSession().getVerifiedOwnershipEventOverlays();
-  ZC_REQUIRE(overlays.size() == 1);
+  const auto checkedMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(checkedMir.size() == 1);
 
-  auto candidateResult = facts::MovePathBuilder::build(builtMir, overlays[0]);
+  auto candidateResult = facts::MovePathBuilder::build(builtMir, checkedMir[0].eventOverlay());
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -976,7 +984,8 @@ ZC_TEST("Move-path verifier rejects a missing multi-field aggregate conflict") {
   ZC_REQUIRE(candidate.functions[0].conflicts.size() == 2);
   candidate.functions[0].conflicts.removeLast();
 
-  auto verifiedResult = facts::MovePathVerifier::verify(zc::mv(candidate), builtMir, overlays[0]);
+  auto verifiedResult =
+      facts::MovePathVerifier::verify(zc::mv(candidate), builtMir, checkedMir[0].eventOverlay());
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -987,17 +996,17 @@ ZC_TEST("Move-path verifier rejects a tampered semantic context fingerprint") {
   OwnershipPipelineFixture fixture("let value = 0;"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
 
-  auto candidateResult =
-      facts::MovePathBuilder::build(builtMir, session.getVerifiedOwnershipEventOverlays()[0]);
+  auto candidateResult = facts::MovePathBuilder::build(
+      builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay());
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   candidate.contextFingerprint =
       identity::ContextFingerprint::fromCanonicalDigest(repeatedDigest(0xFF));
 
   auto verifiedResult = facts::MovePathVerifier::verify(
-      zc::mv(candidate), builtMir, session.getVerifiedOwnershipEventOverlays()[0]);
+      zc::mv(candidate), builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay());
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -1010,10 +1019,10 @@ ZC_TEST("Move-path verifier rejects a tampered direct call result path") {
       "fun entry() -> i32 { return helper(); }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
 
-  auto candidateResult =
-      facts::MovePathBuilder::build(builtMir, session.getVerifiedOwnershipEventOverlays()[0]);
+  auto candidateResult = facts::MovePathBuilder::build(
+      builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay());
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   bool tampered = false;
@@ -1036,7 +1045,7 @@ ZC_TEST("Move-path verifier rejects a tampered direct call result path") {
   ZC_REQUIRE(tampered);
 
   auto verifiedResult = facts::MovePathVerifier::verify(
-      zc::mv(candidate), builtMir, session.getVerifiedOwnershipEventOverlays()[0]);
+      zc::mv(candidate), builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay());
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -1048,11 +1057,12 @@ ZC_TEST("Initialization verifier rejects a tampered local state") {
   OwnershipPipelineFixture foreignFixture("let value = 0;"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult = facts::InitializationBuilder::build(
-      builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(), inputs.movePaths());
+      builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(), inputs.flow(),
+      inputs.movePaths());
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -1060,35 +1070,37 @@ ZC_TEST("Initialization verifier rejects a tampered local state") {
   candidate.functions[0].facts[4].state = facts::InitializationState::uninitialized();
 
   auto verifiedResult = facts::InitializationVerifier::verify(
-      zc::mv(candidate), builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(),
-      inputs.movePaths());
+      zc::mv(candidate), builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(),
+      inputs.flow(), inputs.movePaths());
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
             ir::IrFailureKind::InvalidOwnershipProof);
 
   auto lossCandidateResult = facts::InitializationBuilder::build(
-      builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(), inputs.movePaths());
+      builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(), inputs.flow(),
+      inputs.movePaths());
   ZC_REQUIRE(lossCandidateResult.isVerified());
   auto lossCandidate = zc::mv(lossCandidateResult).takeVerified();
   ZC_REQUIRE(lossCandidate.functions[0].facts[0].lossCauses.size() == 1);
   lossCandidate.functions[0].facts[0].lossCauses[0].kind = facts::InitializationLossKind::Moved;
 
   auto lossResult = facts::InitializationVerifier::verify(
-      zc::mv(lossCandidate), builtMir, session.getVerifiedOwnershipEventOverlays()[0],
+      zc::mv(lossCandidate), builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(),
       inputs.flow(), inputs.movePaths());
   ZC_REQUIRE(lossResult.isIrInvariantRejected());
   ZC_EXPECT(lossResult.invariantFailures().facts()[0].kind() ==
             ir::IrFailureKind::InvalidOwnershipProof);
 
   auto staleCandidateResult = facts::InitializationBuilder::build(
-      builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(), inputs.movePaths());
+      builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(), inputs.flow(),
+      inputs.movePaths());
   ZC_REQUIRE(staleCandidateResult.isVerified());
   auto staleCandidate = zc::mv(staleCandidateResult).takeVerified();
   staleCandidate.overlayRevision = OwnershipEventOverlayRevision();
 
   auto staleResult = facts::InitializationVerifier::verify(
-      zc::mv(staleCandidate), builtMir, session.getVerifiedOwnershipEventOverlays()[0],
+      zc::mv(staleCandidate), builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(),
       inputs.flow(), inputs.movePaths());
   ZC_REQUIRE(staleResult.isIrInvariantRejected());
   ZC_EXPECT(staleResult.invariantFailures().facts().size() == 1);
@@ -1096,7 +1108,7 @@ ZC_TEST("Initialization verifier rejects a tampered local state") {
             ir::IrFailureKind::InputRevisionMismatch);
 
   auto foreignFlow = facts::InitializationBuilder::build(
-      builtMir, session.getVerifiedOwnershipEventOverlays()[0],
+      builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(),
       ownershipInputs(foreignFixture.compilerSession()).flow(), inputs.movePaths());
   ZC_REQUIRE(foreignFlow.isIrInvariantRejected());
   ZC_EXPECT(foreignFlow.invariantFailures().facts().size() == 1);
@@ -1110,11 +1122,12 @@ ZC_TEST("Initialization verifier rejects a tampered field path state") {
       "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult = facts::InitializationBuilder::build(
-      builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(), inputs.movePaths());
+      builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(), inputs.flow(),
+      inputs.movePaths());
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   bool tampered = false;
@@ -1130,8 +1143,8 @@ ZC_TEST("Initialization verifier rejects a tampered field path state") {
   ZC_REQUIRE(tampered);
 
   auto verifiedResult = facts::InitializationVerifier::verify(
-      zc::mv(candidate), builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(),
-      inputs.movePaths());
+      zc::mv(candidate), builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(),
+      inputs.flow(), inputs.movePaths());
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -1142,19 +1155,20 @@ ZC_TEST("Initialization verifier rejects a tampered semantic context fingerprint
   OwnershipPipelineFixture fixture("let value = 0;"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult = facts::InitializationBuilder::build(
-      builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(), inputs.movePaths());
+      builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(), inputs.flow(),
+      inputs.movePaths());
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   candidate.contextFingerprint =
       identity::ContextFingerprint::fromCanonicalDigest(repeatedDigest(0xFE));
 
   auto verifiedResult = facts::InitializationVerifier::verify(
-      zc::mv(candidate), builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(),
-      inputs.movePaths());
+      zc::mv(candidate), builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(),
+      inputs.flow(), inputs.movePaths());
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -1320,66 +1334,70 @@ ZC_TEST("Loan verifier rejects a tampered active point, issue, commit, and forei
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& movePaths = ownershipInputs(session).movePaths();
-  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
 
-  auto candidateResult = facts::LoanBuilder::build(movePaths, builtMir,
-                                                   session.getVerifiedOwnershipEventOverlays()[0]);
+  auto candidateResult = facts::LoanBuilder::build(
+      movePaths, builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay());
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.loans.size() == 1);
   candidate.loans[0].activeFrom = facts::OwnershipPoint::beforeEvent(candidate.loans[0].issue);
-  auto activePointResult = facts::LoanVerifier::verify(
-      zc::mv(candidate), movePaths, builtMir, session.getVerifiedOwnershipEventOverlays()[0]);
+  auto activePointResult =
+      facts::LoanVerifier::verify(zc::mv(candidate), movePaths, builtMir,
+                                  session.getOwnershipCheckedMirModules()[0].eventOverlay());
   ZC_REQUIRE(activePointResult.isIrInvariantRejected());
   ZC_EXPECT(activePointResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(activePointResult.invariantFailures().facts()[0].kind() ==
             ir::IrFailureKind::InvalidOwnershipProof);
 
   auto sourceCandidateResult = facts::LoanBuilder::build(
-      movePaths, builtMir, session.getVerifiedOwnershipEventOverlays()[0]);
+      movePaths, builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay());
   ZC_REQUIRE(sourceCandidateResult.isVerified());
   auto sourceCandidate = zc::mv(sourceCandidateResult).takeVerified();
   sourceCandidate.loans[0].source.owner = identity::DefId();
-  auto sourceResult = facts::LoanVerifier::verify(zc::mv(sourceCandidate), movePaths, builtMir,
-                                                  session.getVerifiedOwnershipEventOverlays()[0]);
+  auto sourceResult =
+      facts::LoanVerifier::verify(zc::mv(sourceCandidate), movePaths, builtMir,
+                                  session.getOwnershipCheckedMirModules()[0].eventOverlay());
   ZC_REQUIRE(sourceResult.isIrInvariantRejected());
   ZC_EXPECT(sourceResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(sourceResult.invariantFailures().facts()[0].kind() ==
             ir::IrFailureKind::InvalidOwnershipProof);
 
   auto issueCandidateResult = facts::LoanBuilder::build(
-      movePaths, builtMir, session.getVerifiedOwnershipEventOverlays()[0]);
+      movePaths, builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay());
   ZC_REQUIRE(issueCandidateResult.isVerified());
   auto issueCandidate = zc::mv(issueCandidateResult).takeVerified();
   issueCandidate.loans[0].issue.operandOrdinal = 0;
-  auto issueResult = facts::LoanVerifier::verify(zc::mv(issueCandidate), movePaths, builtMir,
-                                                 session.getVerifiedOwnershipEventOverlays()[0]);
+  auto issueResult =
+      facts::LoanVerifier::verify(zc::mv(issueCandidate), movePaths, builtMir,
+                                  session.getOwnershipCheckedMirModules()[0].eventOverlay());
   ZC_REQUIRE(issueResult.isIrInvariantRejected());
   ZC_EXPECT(issueResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(issueResult.invariantFailures().facts()[0].kind() ==
             ir::IrFailureKind::InvalidOwnershipProof);
 
   auto commitCandidateResult = facts::LoanBuilder::build(
-      movePaths, builtMir, session.getVerifiedOwnershipEventOverlays()[0]);
+      movePaths, builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay());
   ZC_REQUIRE(commitCandidateResult.isVerified());
   auto commitCandidate = zc::mv(commitCandidateResult).takeVerified();
   commitCandidate.loans[0].commit.operandOrdinal = 1;
-  auto commitResult = facts::LoanVerifier::verify(zc::mv(commitCandidate), movePaths, builtMir,
-                                                  session.getVerifiedOwnershipEventOverlays()[0]);
+  auto commitResult =
+      facts::LoanVerifier::verify(zc::mv(commitCandidate), movePaths, builtMir,
+                                  session.getOwnershipCheckedMirModules()[0].eventOverlay());
   ZC_REQUIRE(commitResult.isIrInvariantRejected());
   ZC_EXPECT(commitResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(commitResult.invariantFailures().facts()[0].kind() ==
             ir::IrFailureKind::InvalidOwnershipProof);
 
   auto foreignCandidateResult = facts::LoanBuilder::build(
-      movePaths, builtMir, session.getVerifiedOwnershipEventOverlays()[0]);
+      movePaths, builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay());
   ZC_REQUIRE(foreignCandidateResult.isVerified());
   auto foreignCandidate = zc::mv(foreignCandidateResult).takeVerified();
 
   auto foreignResult = facts::LoanVerifier::verify(
       zc::mv(foreignCandidate), ownershipInputs(foreignFixture.compilerSession()).movePaths(),
       foreignFixture.builtMir(),
-      foreignFixture.compilerSession().getVerifiedOwnershipEventOverlays()[0]);
+      foreignFixture.compilerSession().getOwnershipCheckedMirModules()[0].eventOverlay());
   ZC_REQUIRE(foreignResult.isIrInvariantRejected());
   ZC_EXPECT(foreignResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(foreignResult.invariantFailures().facts()[0].kind() ==
@@ -1446,7 +1464,7 @@ ZC_TEST("Resource verifier rejects a missing logical resource function") {
       "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult =
@@ -1469,7 +1487,7 @@ ZC_TEST("Resource verifier rejects a spurious logical resource") {
   OwnershipPipelineFixture fixture("let value = 0;"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult =
@@ -1564,7 +1582,7 @@ ZC_TEST("Resource verifier rejects a tampered linear resource") {
       "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult =
@@ -1591,7 +1609,7 @@ ZC_TEST("Resource verifier rejects a tampered resource action") {
       "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult =
@@ -1619,7 +1637,7 @@ ZC_TEST("Resource verifier rejects a tampered resource subject") {
       "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult =
@@ -1749,7 +1767,7 @@ ZC_TEST("Resource verifier rejects a spurious cast route") {
       "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult =
@@ -1782,7 +1800,7 @@ ZC_TEST("Resource verifier rejects a tampered cast route subject") {
       "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult =
@@ -1817,7 +1835,7 @@ ZC_TEST("Resource verifier rejects a tampered drop plan mode") {
       "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult =
@@ -1840,7 +1858,7 @@ ZC_TEST("Resource verifier rejects a spurious drop plan") {
   OwnershipPipelineFixture fixture("let value = 0;"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult =
@@ -1878,7 +1896,7 @@ ZC_TEST("Resource verifier rejects a tampered drop plan component ordinal") {
       "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult =
@@ -1904,7 +1922,7 @@ ZC_TEST("Flow verifier rejects a tampered direct-call continuation") {
       "fun entry() -> i32 { return helper(); }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
 
   auto candidateResult = facts::FlowBuilder::build(builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
@@ -2325,7 +2343,7 @@ ZC_TEST("Reference definition verifier rejects tampered definition inputs") {
   OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& movePaths = ownershipInputs(session).movePaths();
   const auto& loans = ownershipInputs(session).loans();
 
@@ -2435,7 +2453,7 @@ ZC_TEST("Reference definition verifier rejects a forged local alias origin") {
       "fun reborrow(value: &i32) -> &i32 { let local = value; return &*local; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
   ZC_REQUIRE(builtMir.functions().size() == 1);
   const auto& function = builtMir.functions()[0];
@@ -2468,7 +2486,7 @@ ZC_TEST("Parameter reborrow region verifier rejects tampered members") {
   const auto& session = fixture.compilerSession();
   const auto& inputs = ownershipInputs(session);
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
 
   auto candidateResult = facts::ReborrowRegionBuilder::build(
       inputs.flow(), inputs.loans(), inputs.references(), builtMir, overlay);
@@ -2499,7 +2517,7 @@ ZC_TEST("Parameter reborrow reference-state verifier rejects tampered point") {
   const auto& session = fixture.compilerSession();
   const auto& inputs = ownershipInputs(session);
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
 
   auto candidateResult =
       facts::ReborrowStateBuilder::build(inputs.references(), inputs.regions(), builtMir, overlay);
@@ -2521,18 +2539,18 @@ ZC_TEST("Initialization source verifier accepts matching inputs and rejects fore
   OwnershipPipelineFixture second("let value = 1;"_zc);
   const auto& firstSession = first.compilerSession();
   const auto& secondSession = second.compilerSession();
-  ZC_REQUIRE(firstSession.getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_REQUIRE(firstSession.getOwnershipCheckedMirModules().size() == 1);
   const auto& firstInputs = ownershipInputs(firstSession);
-  ZC_REQUIRE(secondSession.getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_REQUIRE(secondSession.getOwnershipCheckedMirModules().size() == 1);
   const auto& secondInputs = ownershipInputs(secondSession);
 
   auto accepted = facts::InitializationSourceVerifier::verify(
-      first.builtMir(), firstSession.getVerifiedOwnershipEventOverlays()[0],
+      first.builtMir(), firstSession.getOwnershipCheckedMirModules()[0].eventOverlay(),
       firstInputs.initialization());
   ZC_EXPECT(accepted.isVerified());
 
   auto foreignFacts = facts::InitializationSourceVerifier::verify(
-      first.builtMir(), firstSession.getVerifiedOwnershipEventOverlays()[0],
+      first.builtMir(), firstSession.getOwnershipCheckedMirModules()[0].eventOverlay(),
       secondInputs.initialization());
   ZC_REQUIRE(foreignFacts.isIrInvariantRejected());
   auto factFailures = zc::mv(foreignFacts).takeInvariantFailures();
@@ -2540,7 +2558,7 @@ ZC_TEST("Initialization source verifier accepts matching inputs and rejects fore
   ZC_EXPECT(factFailures.facts()[0].kind() == ir::IrFailureKind::InputRevisionMismatch);
 
   auto foreignOverlay = facts::InitializationSourceVerifier::verify(
-      first.builtMir(), secondSession.getVerifiedOwnershipEventOverlays()[0],
+      first.builtMir(), secondSession.getOwnershipCheckedMirModules()[0].eventOverlay(),
       firstInputs.initialization());
   ZC_REQUIRE(foreignOverlay.isIrInvariantRejected());
   auto overlayFailures = zc::mv(foreignOverlay).takeInvariantFailures();
@@ -2554,11 +2572,12 @@ ZC_TEST("Initialization verifier rejects a tampered direct call result state") {
       "fun entry() -> i32 { return helper(); }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult = facts::InitializationBuilder::build(
-      builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(), inputs.movePaths());
+      builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(), inputs.flow(),
+      inputs.movePaths());
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   bool tampered = false;
@@ -2584,8 +2603,8 @@ ZC_TEST("Initialization verifier rejects a tampered direct call result state") {
   ZC_REQUIRE(tampered);
 
   auto verifiedResult = facts::InitializationVerifier::verify(
-      zc::mv(candidate), builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(),
-      inputs.movePaths());
+      zc::mv(candidate), builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(),
+      inputs.flow(), inputs.movePaths());
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -2598,11 +2617,12 @@ ZC_TEST("Initialization verifier rejects a tampered direct call storage end caus
       "fun entry() -> i32 { return helper(); }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult = facts::InitializationBuilder::build(
-      builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(), inputs.movePaths());
+      builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(), inputs.flow(),
+      inputs.movePaths());
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   bool tampered = false;
@@ -2631,8 +2651,8 @@ ZC_TEST("Initialization verifier rejects a tampered direct call storage end caus
   ZC_REQUIRE(tampered);
 
   auto verifiedResult = facts::InitializationVerifier::verify(
-      zc::mv(candidate), builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(),
-      inputs.movePaths());
+      zc::mv(candidate), builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(),
+      inputs.flow(), inputs.movePaths());
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -2642,11 +2662,10 @@ ZC_TEST("Initialization verifier rejects a tampered direct call storage end caus
 ZC_TEST("CompilerSession publishes verified ownership event overlays") {
   OwnershipPipelineFixture fixture("let value = 0;"_zc);
   const auto& session = fixture.compilerSession();
-  ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
-  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
-  const auto& builtMir = session.getVerifiedBuiltMirModules()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
+  const auto& builtMir = session.getOwnershipCheckedMirModules()[0].builtMir();
   const auto& movePaths = inputs.movePaths();
   const auto& initialization = inputs.initialization();
   const auto& loans = inputs.loans();
@@ -2709,8 +2728,7 @@ ZC_TEST("CompilerSession publishes verified ownership inputs for a returned func
   OwnershipPipelineFixture fixture("fun entry() -> i32 { let value = 0; return value; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
-  ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
-  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
 
   const auto& hir = session.getVerifiedHirModules()[0];
@@ -2720,7 +2738,7 @@ ZC_TEST("CompilerSession publishes verified ownership inputs for a returned func
   ZC_EXPECT(hir.locals()[0].local == hir.localReferences()[0].local);
   ZC_EXPECT(hir.localReferences()[0].category == hir::HirValueCategory::Place);
 
-  const auto& builtMir = session.getVerifiedBuiltMirModules()[0];
+  const auto& builtMir = session.getOwnershipCheckedMirModules()[0].builtMir();
   ZC_REQUIRE(builtMir.functions().size() == 1);
   const auto& function = builtMir.functions()[0];
   ZC_EXPECT(function.kind == mir::MirFunctionKind::Function);
@@ -2738,7 +2756,7 @@ ZC_TEST("CompilerSession publishes verified ownership inputs for a returned func
     ZC_EXPECT(value.place().local() == function.locals[0].id);
   }
 
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   ZC_REQUIRE(overlay.functions().size() == 1);
   ZC_EXPECT(overlay.functions()[0].owner == function.owner);
   ZC_EXPECT(overlay.functions()[0].logicalDropPlans.size() == 1);
@@ -2770,7 +2788,7 @@ ZC_TEST("Ownership facts lower a noncopy aggregate local return as a move") {
       "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  ZC_REQUIRE(session.getVerifiedOwnershipInputs().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
   ZC_REQUIRE(builtMir.functions().size() == 1);
   const auto& function = builtMir.functions()[0];
@@ -2886,7 +2904,7 @@ ZC_TEST("Resource verifier rejects a missing sequential aggregate transfer") {
       "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult =
@@ -2950,7 +2968,7 @@ ZC_TEST("Ownership resources transfer and verify a moved direct-call result") {
       "fun entry() -> Cell { return helper(); }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
   const auto& resources = inputs.resources();
 
@@ -3046,7 +3064,7 @@ ZC_TEST("Resource verifier rejects a tampered parameter move transfer") {
       "fun entry(value: Cell) -> Cell { let cell = value; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult =
@@ -3073,7 +3091,7 @@ ZC_TEST("Resource verifier rejects a missing parameter move transfer") {
       "fun entry(value: Cell) -> Cell { let cell = value; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult =
@@ -3097,7 +3115,7 @@ ZC_TEST("Ownership facts preserve a sibling aggregate field after an overwrite")
       "struct Pair { mut left: i32, right: bool, }\n"
       "fun entry() -> bool { mut pair = Pair { left: 0, right: true }; pair.left = 2; return pair.right; }"_zc);
   const auto& session = fixture.compilerSession();
-  ZC_REQUIRE(session.getVerifiedOwnershipInputs().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
   const auto& function = fixture.builtMir().functions()[0];
   ZC_REQUIRE(function.blocks.size() == 1);
@@ -3142,7 +3160,7 @@ ZC_TEST("Ownership facts preserve consecutive aggregate field overwrites") {
       "struct Pair { mut left: i32, mut right: bool, }\n"
       "fun entry() -> bool { mut pair = Pair { left: 0, right: true }; pair.left = 2; pair.right = false; return pair.right; }"_zc);
   const auto& session = fixture.compilerSession();
-  ZC_REQUIRE(session.getVerifiedOwnershipInputs().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
   const auto& function = fixture.builtMir().functions()[0];
   ZC_REQUIRE(function.blocks.size() == 1);
@@ -3178,7 +3196,7 @@ ZC_TEST("Ownership facts initialize an uninitialized aggregate field") {
       "struct Cell { mut value: i32, }\n"
       "fun entry() -> i32 { mut cell: Cell; cell.value = 0; return cell.value; }"_zc);
   const auto& session = fixture.compilerSession();
-  ZC_REQUIRE(session.getVerifiedOwnershipInputs().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
   const auto& function = fixture.builtMir().functions()[0];
   ZC_REQUIRE(function.blocks.size() == 1);
@@ -3223,7 +3241,7 @@ ZC_TEST("Ownership facts initialize distinct fields of an uninitialized aggregat
       "struct Pair { mut left: i32, mut right: bool, }\n"
       "fun entry() -> bool { mut pair: Pair; pair.left = 0; pair.right = true; return pair.right; }"_zc);
   const auto& session = fixture.compilerSession();
-  ZC_REQUIRE(session.getVerifiedOwnershipInputs().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
   const auto& block = fixture.builtMir().functions()[0].blocks[0];
   ZC_REQUIRE(block.statements.size() == 3);
@@ -3295,7 +3313,7 @@ ZC_TEST("Ownership facts overwrite an initialized field of an uninitialized aggr
       "struct Pair { mut left: i32, mut right: bool, }\n"
       "fun entry() -> i32 { mut pair: Pair; pair.left = 0; pair.right = true; pair.left = 2; return pair.left; }"_zc);
   const auto& session = fixture.compilerSession();
-  ZC_REQUIRE(session.getVerifiedOwnershipInputs().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
   const auto& block = fixture.builtMir().functions()[0].blocks[0];
   ZC_REQUIRE(block.statements.size() == 4);
@@ -3341,13 +3359,13 @@ ZC_TEST("Initialization verifier rejects a tampered partially initialized field 
       "fun entry() -> i32 { mut cell: Cell; cell.value = 0; return cell.value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
   const auto& block = builtMir.functions()[0].blocks[0];
   ZC_REQUIRE(block.terminator.returnValue().value != zc::none);
   ZC_IF_SOME(returnOperand, block.terminator.returnValue().value) {
     auto candidateResult = facts::InitializationBuilder::build(
-        builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(),
+        builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(), inputs.flow(),
         inputs.movePaths());
     ZC_REQUIRE(candidateResult.isVerified());
     auto candidate = zc::mv(candidateResult).takeVerified();
@@ -3365,8 +3383,8 @@ ZC_TEST("Initialization verifier rejects a tampered partially initialized field 
     ZC_REQUIRE(tampered);
 
     auto verifiedResult = facts::InitializationVerifier::verify(
-        zc::mv(candidate), builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(),
-        inputs.movePaths());
+        zc::mv(candidate), builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(),
+        inputs.flow(), inputs.movePaths());
     ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
     ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
     ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -3380,13 +3398,13 @@ ZC_TEST("Initialization verifier rejects a tampered sibling field state") {
       "fun entry() -> bool { mut pair = Pair { left: 0, right: true }; pair.left = 2; return pair.right; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
   const auto& block = builtMir.functions()[0].blocks[0];
   ZC_REQUIRE(block.terminator.returnValue().value != zc::none);
   ZC_IF_SOME(returnOperand, block.terminator.returnValue().value) {
     auto candidateResult = facts::InitializationBuilder::build(
-        builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(),
+        builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(), inputs.flow(),
         inputs.movePaths());
     ZC_REQUIRE(candidateResult.isVerified());
     auto candidate = zc::mv(candidateResult).takeVerified();
@@ -3404,8 +3422,8 @@ ZC_TEST("Initialization verifier rejects a tampered sibling field state") {
     ZC_REQUIRE(tampered);
 
     auto verifiedResult = facts::InitializationVerifier::verify(
-        zc::mv(candidate), builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(),
-        inputs.movePaths());
+        zc::mv(candidate), builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(),
+        inputs.flow(), inputs.movePaths());
     ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
     ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
     ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -3420,7 +3438,7 @@ ZC_TEST("Ownership facts record the causal path in a root move loss cause") {
       "impl !Copy for Cell;\n"
       "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
-  ZC_REQUIRE(session.getVerifiedOwnershipInputs().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
   const auto& initialization = inputs.initialization().functions()[0].facts;
   ZC_REQUIRE(initialization.size() == 7);
@@ -3438,7 +3456,7 @@ ZC_TEST("Ownership facts record per-path causal paths for partial initialization
       "struct Pair { mut left: i32, mut right: bool, }\n"
       "fun entry() -> bool { mut pair: Pair; pair.left = 0; pair.right = true; return pair.right; }"_zc);
   const auto& session = fixture.compilerSession();
-  ZC_REQUIRE(session.getVerifiedOwnershipInputs().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
   const auto& initialization = inputs.initialization().functions()[0].facts;
   // At function entry, every dead path carries its own NeverInitialized causal path, so a
@@ -3474,11 +3492,12 @@ ZC_TEST("Initialization verifier rejects a tampered loss cause causal path") {
       "fun entry() -> bool { mut pair: Pair; pair.left = 0; pair.right = true; return pair.right; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
 
   auto candidateResult = facts::InitializationBuilder::build(
-      builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(), inputs.movePaths());
+      builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(), inputs.flow(),
+      inputs.movePaths());
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
 
@@ -3510,8 +3529,8 @@ ZC_TEST("Initialization verifier rejects a tampered loss cause causal path") {
   ZC_REQUIRE(tampered);
 
   auto verifiedResult = facts::InitializationVerifier::verify(
-      zc::mv(candidate), builtMir, session.getVerifiedOwnershipEventOverlays()[0], inputs.flow(),
-      inputs.movePaths());
+      zc::mv(candidate), builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(),
+      inputs.flow(), inputs.movePaths());
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -3523,8 +3542,7 @@ ZC_TEST("CompilerSession publishes a mutable local overwrite through ownership f
       "fun entry() -> i32 { mut value = 0; value = 1; return value; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
-  ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
-  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
 
   const auto& hir = session.getVerifiedHirModules()[0];
@@ -3535,7 +3553,7 @@ ZC_TEST("CompilerSession publishes a mutable local overwrite through ownership f
   ZC_EXPECT(hir.localWrites()[0].local == hir.locals()[0].local);
   ZC_EXPECT(hir.localWrites()[0].local == hir.localReferences()[0].local);
 
-  const auto& function = session.getVerifiedBuiltMirModules()[0].functions()[0];
+  const auto& function = session.getOwnershipCheckedMirModules()[0].builtMir().functions()[0];
   ZC_REQUIRE(function.blocks.size() == 1);
   ZC_REQUIRE(function.blocks[0].statements.size() == 3);
   ZC_EXPECT(function.blocks[0].statements[0].kind() == mir::MirStatementKind::StorageLive);
@@ -3567,7 +3585,7 @@ ZC_TEST("CompilerSession initializes a mutable annotated local through ownership
       "fun entry() -> i32 { mut value: i32; value = 1; return value; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
-  ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
 
   const auto& hir = session.getVerifiedHirModules()[0];
@@ -3577,7 +3595,7 @@ ZC_TEST("CompilerSession initializes a mutable annotated local through ownership
   ZC_EXPECT(hir.localWrites()[0].kind == hir::HirLocalWriteKind::Initialize);
   ZC_EXPECT(hir.localWrites()[0].local == hir.locals()[0].local);
 
-  const auto& function = session.getVerifiedBuiltMirModules()[0].functions()[0];
+  const auto& function = session.getOwnershipCheckedMirModules()[0].builtMir().functions()[0];
   ZC_REQUIRE(function.blocks.size() == 1);
   ZC_REQUIRE(function.blocks[0].statements.size() == 2);
   ZC_EXPECT(function.blocks[0].statements[0].kind() == mir::MirStatementKind::StorageLive);
@@ -3606,7 +3624,7 @@ ZC_TEST("CompilerSession preserves consecutive mutable local writes through owne
       "fun entry() -> i32 { mut value = 0; value = 1; value = 2; return value; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
-  ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
 
   const auto& hir = session.getVerifiedHirModules()[0];
@@ -3617,7 +3635,7 @@ ZC_TEST("CompilerSession preserves consecutive mutable local writes through owne
   ZC_EXPECT(hir.localWrites()[0].local == hir.locals()[0].local);
   ZC_EXPECT(hir.localWrites()[1].local == hir.locals()[0].local);
 
-  const auto& function = session.getVerifiedBuiltMirModules()[0].functions()[0];
+  const auto& function = session.getOwnershipCheckedMirModules()[0].builtMir().functions()[0];
   ZC_REQUIRE(function.blocks.size() == 1);
   ZC_REQUIRE(function.blocks[0].statements.size() == 4);
   ZC_EXPECT(function.blocks[0].statements[0].kind() == mir::MirStatementKind::StorageLive);
@@ -3652,7 +3670,7 @@ ZC_TEST("CompilerSession initializes then overwrites an annotated local through 
       "fun entry() -> i32 { mut value: i32; value = 1; value = 2; return value; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
-  ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
 
   const auto& hir = session.getVerifiedHirModules()[0];
@@ -3661,7 +3679,7 @@ ZC_TEST("CompilerSession initializes then overwrites an annotated local through 
   ZC_EXPECT(hir.localWrites()[0].kind == hir::HirLocalWriteKind::Initialize);
   ZC_EXPECT(hir.localWrites()[1].kind == hir::HirLocalWriteKind::Overwrite);
 
-  const auto& function = session.getVerifiedBuiltMirModules()[0].functions()[0];
+  const auto& function = session.getOwnershipCheckedMirModules()[0].builtMir().functions()[0];
   ZC_REQUIRE(function.blocks.size() == 1);
   ZC_REQUIRE(function.blocks[0].statements.size() == 3);
   ZC_EXPECT(function.blocks[0].statements[0].kind() == mir::MirStatementKind::StorageLive);
@@ -3692,9 +3710,9 @@ ZC_TEST("CompilerSession retains following functions after consecutive local wri
       "fun entry() -> i32 { return 3; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
-  ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& hir = session.getVerifiedHirModules()[0];
-  const auto& mir = session.getVerifiedBuiltMirModules()[0];
+  const auto& mir = session.getOwnershipCheckedMirModules()[0].builtMir();
   ZC_REQUIRE(hir.functions().size() == 2);
   ZC_REQUIRE(hir.localWrites().size() == 2);
   ZC_REQUIRE(hir.returns().size() == 2);
@@ -3718,7 +3736,7 @@ ZC_TEST("Ownership facts retain a parameter initialized function local") {
       "fun entry(value: i32) -> i32 { let copy = value; return copy; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& hir = session.getVerifiedHirModules()[0];
-  const auto& builtMir = session.getVerifiedBuiltMirModules()[0];
+  const auto& builtMir = session.getOwnershipCheckedMirModules()[0].builtMir();
   ZC_REQUIRE(hir.functions().size() == 1);
   ZC_REQUIRE(hir.parameterReferences().size() == 1);
   ZC_REQUIRE(hir.locals().size() == 1);
@@ -3745,9 +3763,8 @@ ZC_TEST("Ownership event overlay records mutable receiver activation on normal c
       "struct Cell { value: i32, mutating fun read(this, amount: i32) -> i32; }\n"
       "fun entry() -> i32 { mut cell = Cell { value: 0 }; return cell.read(1); }"_zc);
   const auto& session = fixture.compilerSession();
-  ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
-  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
-  const auto& function = session.getVerifiedBuiltMirModules()[0].functions()[0];
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
+  const auto& function = session.getOwnershipCheckedMirModules()[0].builtMir().functions()[0];
   ZC_REQUIRE(function.locals.size() == 3);
   ZC_REQUIRE(function.blocks.size() == 2);
   const auto& call = function.blocks[0].terminator.callValue();
@@ -3757,7 +3774,8 @@ ZC_TEST("Ownership event overlay records mutable receiver activation on normal c
   ZC_EXPECT(call.arguments[1].kind() == mir::MirOperandKind::Constant);
 
   bool foundActivation = false;
-  for (const auto& functionOverlay : session.getVerifiedOwnershipEventOverlays()[0].functions()) {
+  for (const auto& functionOverlay :
+       session.getOwnershipCheckedMirModules()[0].eventOverlay().functions()) {
     if (functionOverlay.owner != function.owner) continue;
     for (const auto& slot : functionOverlay.slots) {
       if (slot.key.location.point.kind() != MirPointKind::Edge ||
@@ -3776,7 +3794,8 @@ ZC_TEST("Ownership event overlay records mutable receiver activation on normal c
   ZC_EXPECT(foundActivation);
 
   bool foundDeferredActivation = false;
-  for (const auto& functionOverlay : session.getVerifiedOwnershipEventOverlays()[0].functions()) {
+  for (const auto& functionOverlay :
+       session.getOwnershipCheckedMirModules()[0].eventOverlay().functions()) {
     if (functionOverlay.owner != function.owner) continue;
     ZC_REQUIRE(functionOverlay.deferredActivations.size() == 1);
     const auto& fact = functionOverlay.deferredActivations[0];
@@ -3808,16 +3827,16 @@ ZC_TEST("Ownership event overlay records mutable receiver activation on normal c
           1}));
   ZC_EXPECT(inputs.references().definitions().size() == 0);
 
-  auto candidateResult =
-      facts::LoanBuilder::build(inputs.movePaths(), session.getVerifiedBuiltMirModules()[0],
-                                session.getVerifiedOwnershipEventOverlays()[0]);
+  auto candidateResult = facts::LoanBuilder::build(
+      inputs.movePaths(), session.getOwnershipCheckedMirModules()[0].builtMir(),
+      session.getOwnershipCheckedMirModules()[0].eventOverlay());
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.loans.size() == 1);
   candidate.loans[0].activeFrom = facts::OwnershipPoint::afterEvent(candidate.loans[0].issue);
-  auto verification = facts::LoanVerifier::verify(zc::mv(candidate), inputs.movePaths(),
-                                                  session.getVerifiedBuiltMirModules()[0],
-                                                  session.getVerifiedOwnershipEventOverlays()[0]);
+  auto verification = facts::LoanVerifier::verify(
+      zc::mv(candidate), inputs.movePaths(), session.getOwnershipCheckedMirModules()[0].builtMir(),
+      session.getOwnershipCheckedMirModules()[0].eventOverlay());
   ZC_REQUIRE(verification.isIrInvariantRejected());
   ZC_EXPECT(verification.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verification.invariantFailures().facts()[0].kind() ==
@@ -3851,9 +3870,9 @@ ZC_TEST("Ownership event overlay models direct call operation and result commit"
       "fun helper() -> i32 { return 0; }\n"
       "fun entry() -> i32 { return helper(); }"_zc);
   const auto& session = fixture.compilerSession();
-  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
-  const auto& builtMir = session.getVerifiedBuiltMirModules()[0];
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
+  const auto& builtMir = session.getOwnershipCheckedMirModules()[0].builtMir();
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   zc::Maybe<const mir::MirFunction&> caller;
   for (const auto& function : builtMir.functions()) {
     if (function.blocks.size() != 2) continue;
@@ -3988,8 +4007,8 @@ ZC_TEST("Ownership event overlay models scalar direct call argument sources") {
       "fun entry() -> i32 { return helper(7); }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto overlays = session.getVerifiedOwnershipEventOverlays();
-  ZC_REQUIRE(overlays.size() == 1);
+  const auto checkedMir = session.getOwnershipCheckedMirModules();
+  ZC_REQUIRE(checkedMir.size() == 1);
   zc::Maybe<const mir::MirFunction&> caller;
   for (const auto& function : builtMir.functions()) {
     if (function.blocks.size() == 2 &&
@@ -4004,7 +4023,7 @@ ZC_TEST("Ownership event overlay models scalar direct call argument sources") {
     ZC_EXPECT(call.arguments[0].kind() == mir::MirOperandKind::Constant);
     bool foundArgumentSource = false;
     bool foundCallEffect = false;
-    for (const auto& functionOverlay : overlays[0].functions()) {
+    for (const auto& functionOverlay : checkedMir[0].eventOverlay().functions()) {
       if (functionOverlay.owner != function.owner) continue;
       for (const auto& slot : functionOverlay.slots) {
         if (slot.key.location.point.kind() != MirPointKind::BeforeTerminator ||
@@ -4034,7 +4053,8 @@ ZC_TEST("Ownership event overlay publishes source roles for copy, reborrow, and 
   OwnershipPipelineFixture copyFixture(
       "fun entry(value: i32) -> i32 { let copy = value; return copy; }"_zc);
   const auto& copyMir = copyFixture.builtMir();
-  const auto& copyOverlay = copyFixture.compilerSession().getVerifiedOwnershipEventOverlays()[0];
+  const auto& copyOverlay =
+      copyFixture.compilerSession().getOwnershipCheckedMirModules()[0].eventOverlay();
   ZC_REQUIRE(copyMir.functions().size() == 1);
   const auto& copyFunction = copyMir.functions()[0];
   ZC_REQUIRE(copyFunction.blocks.size() == 1);
@@ -4073,7 +4093,7 @@ ZC_TEST("Ownership event overlay publishes source roles for copy, reborrow, and 
       "fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& borrowMir = borrowFixture.builtMir();
   const auto& borrowOverlay =
-      borrowFixture.compilerSession().getVerifiedOwnershipEventOverlays()[0];
+      borrowFixture.compilerSession().getOwnershipCheckedMirModules()[0].eventOverlay();
   ZC_REQUIRE(borrowMir.functions().size() == 1);
   const auto& borrowFunction = borrowMir.functions()[0];
 
@@ -4134,7 +4154,7 @@ ZC_TEST("Ownership facts initialize a returned user local from a direct call") {
       "fun entry() -> i32 { let value = helper(); return value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   zc::Maybe<const mir::MirFunction&> caller;
   for (const auto& function : builtMir.functions()) {
     if (function.locals.size() != 1 || function.locals[0].kind != mir::MirLocalKind::UserLocal) {
@@ -4502,7 +4522,7 @@ ZC_TEST("Ownership event overlay oracle binds copy and move reads to complete MI
 void expectOracleMatchesInventory(const OwnershipPipelineFixture& fixture) {
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   auto evidence = fixture.cloneBorrowEvidence();
   const auto& inputs = ownershipInputs(session);
   const test_oracle::OwnershipFactsOracle oracle(builtMir, overlay, evidence);

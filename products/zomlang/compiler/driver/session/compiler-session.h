@@ -20,29 +20,30 @@
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/binder/graph/parsed-module.h"
+#include "zomlang/compiler/checker/body/marker-proof.h"
 #include "zomlang/compiler/checker/facts/checked-facts-repository.h"
 #include "zomlang/compiler/checker/facts/coherence-facts.h"
 #include "zomlang/compiler/checker/facts/cross-module-facts.h"
 #include "zomlang/compiler/checker/facts/dispatch-facts.h"
-#include "zomlang/compiler/checker/body/marker-proof.h"
 #include "zomlang/compiler/checker/facts/signature-facts.h"
-#include "zomlang/compiler/driver/interface/borrow-evidence.h"
-#include "zomlang/compiler/driver/core/query.h"
 #include "zomlang/compiler/driver/core/library.h"
+#include "zomlang/compiler/driver/core/query.h"
 #include "zomlang/compiler/driver/graph/crate-graph.h"
-#include "zomlang/compiler/driver/query/module-graph/materialized-module-graph-query.h"
+#include "zomlang/compiler/driver/interface/borrow-evidence.h"
 #include "zomlang/compiler/driver/interface/module-interface.h"
 #include "zomlang/compiler/driver/package/build-script-plan.h"
 #include "zomlang/compiler/driver/package/build-script-runtime.h"
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
 #include "zomlang/compiler/driver/package/package-resolver.h"
 #include "zomlang/compiler/driver/package/source-snapshot.h"
+#include "zomlang/compiler/driver/query/module-graph/materialized-module-graph-query.h"
 #include "zomlang/compiler/hir/hir-module.h"
 #include "zomlang/compiler/identity/brand.h"
 #include "zomlang/compiler/ir/ir-diagnostic-adapter.h"
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/compiler/mir/built-mir.h"
 #include "zomlang/compiler/ownership/facts/inputs.h"
+#include "zomlang/compiler/ownership/ownership-checked-mir.h"
 #include "zomlang/compiler/ownership/ownership-event-overlay.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
@@ -197,19 +198,16 @@ public:
   getBorrowEvidenceRepository() const noexcept;
   /// \brief Returns immutable verified HIR modules in dependency order.
   ZC_NODISCARD zc::ArrayPtr<const hir::VerifiedHirModule> getVerifiedHirModules() const noexcept;
-  /// \brief Returns immutable revision-checked Built MIR modules in dependency order.
-  ZC_NODISCARD zc::ArrayPtr<const mir::VerifiedBuiltMir> getVerifiedBuiltMirModules()
+  /// \brief Returns immutable RFC 0007 ownership-checked MIR wrappers in dependency order.
+  ///
+  /// Each wrapper owns its Built MIR, verified event overlay, and verified
+  /// ownership facts; access the payload through OwnershipCheckedMir::builtMir,
+  /// eventOverlay, and facts.
+  ZC_NODISCARD zc::ArrayPtr<const ownership::OwnershipCheckedMir> getOwnershipCheckedMirModules()
       const noexcept;
-  /// \brief Returns immutable revision-checked RFC 0007 ownership event overlays in dependency
-  /// order.
-  ZC_NODISCARD zc::ArrayPtr<const ownership::VerifiedOwnershipEventOverlay>
-  getVerifiedOwnershipEventOverlays() const noexcept;
   /// \brief Returns the exact retained checker-to-MIR handoff for one ownership overlay.
   ZC_NODISCARD zc::Maybe<ownership::OwnershipEventOverlayInput> getOwnershipEventOverlayInput(
       identity::ModuleId module) const noexcept;
-  /// \brief Returns atomic current-subset ownership-analysis inputs in dependency order.
-  ZC_NODISCARD zc::ArrayPtr<const ownership::facts::VerifiedOwnershipInputs>
-  getVerifiedOwnershipInputs() const noexcept;
   /// \brief Returns complete grouped IR failures retained after rejected lowering.
   ZC_NODISCARD zc::ArrayPtr<const ir::IrDiagnosticGroup> getIrFailureGroups() const noexcept;
   /// \brief Returns complete identity failures retained from rejected IR operations.
