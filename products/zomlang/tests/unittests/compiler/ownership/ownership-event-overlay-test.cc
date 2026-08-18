@@ -22,6 +22,7 @@
 #include "zomlang/compiler/ownership/facts/paths.h"
 #include "zomlang/compiler/ownership/facts/resources.h"
 #include "zomlang/tests/unittests/compiler/driver/core/core-library-test-fixture.h"
+#include "zomlang/tests/unittests/compiler/ownership/ownership-facts-differential-oracle.h"
 
 namespace zomlang::compiler::ownership {
 namespace {
@@ -4394,6 +4395,117 @@ ZC_TEST("Ownership event overlay oracle binds copy and move reads to complete MI
       "00010300000000000000010500000000000000000000000000000000000000000000000000000000"
       "000000000000000000000000"_zc,
       "2a05a2df34387dc8b31426748a62d9eb4c84a9c3148f401a171ef1092779d3eb"_zc);
+}
+
+// ---------------------------------------------------------------------------
+// Differential oracle: a third implementation recomputes every facts
+// inventory directly from Built MIR, the event overlay, and the borrow
+// evidence, then matches the production derivation as sets.
+// ---------------------------------------------------------------------------
+
+void expectOracleMatchesInventory(const OwnershipPipelineFixture& fixture) {
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  auto evidence = fixture.cloneBorrowEvidence();
+  const auto& inputs = ownershipInputs(session);
+  const test_oracle::OwnershipFactsOracle oracle(builtMir, overlay, evidence);
+
+  {
+    auto derived = oracle.movePaths();
+    ZC_REQUIRE(derived != zc::none);
+    ZC_IF_SOME(value, derived) {
+      ZC_EXPECT(test_oracle::matchesMovePaths(value.asPtr(), inputs.movePaths().functions()));
+    }
+  }
+  {
+    auto derived = oracle.flow();
+    ZC_REQUIRE(derived != zc::none);
+    ZC_IF_SOME(value, derived) {
+      ZC_EXPECT(test_oracle::matchesFlow(value.asPtr(), inputs.flow().functions()));
+    }
+  }
+  {
+    auto derived = oracle.initialization();
+    ZC_REQUIRE(derived != zc::none);
+    ZC_IF_SOME(value, derived) {
+      ZC_EXPECT(
+          test_oracle::matchesInitialization(value.asPtr(), inputs.initialization().functions()));
+    }
+  }
+  {
+    auto derived = oracle.loans();
+    ZC_REQUIRE(derived != zc::none);
+    ZC_IF_SOME(value, derived) {
+      ZC_EXPECT(test_oracle::matchesLoans(value.asPtr(), inputs.loans().loans()));
+    }
+  }
+  {
+    auto derived = oracle.references();
+    ZC_REQUIRE(derived != zc::none);
+    ZC_IF_SOME(value, derived) {
+      ZC_EXPECT(test_oracle::matchesReferences(value.asPtr(), inputs.references().definitions()));
+    }
+  }
+  {
+    auto derived = oracle.regions();
+    ZC_REQUIRE(derived != zc::none);
+    ZC_IF_SOME(value, derived) {
+      ZC_EXPECT(test_oracle::matchesRegions(value.asPtr(), inputs.regions().regions()));
+    }
+  }
+  {
+    auto derived = oracle.states();
+    ZC_REQUIRE(derived != zc::none);
+    ZC_IF_SOME(value, derived) {
+      ZC_EXPECT(test_oracle::matchesStates(value.asPtr(), inputs.states().states()));
+    }
+  }
+  {
+    auto derived = oracle.resources();
+    ZC_REQUIRE(derived != zc::none);
+    ZC_IF_SOME(value, derived) {
+      ZC_EXPECT(test_oracle::matchesResources(value.asPtr(), inputs.resources().functions()));
+    }
+  }
+}
+
+ZC_TEST("Differential oracle matches production facts for a scalar parameter return") {
+  OwnershipPipelineFixture fixture("fun entry(value: i32) -> i32 { return value; }"_zc);
+  expectOracleMatchesInventory(fixture);
+}
+
+ZC_TEST("Differential oracle matches production facts for an aggregate local return") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Copy};\n"
+      "struct Cell { value: i32, }\n"
+      "impl !Copy for Cell;\n"
+      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+  expectOracleMatchesInventory(fixture);
+}
+
+ZC_TEST("Differential oracle matches production facts for a sequential aggregate move") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Copy};\n"
+      "struct Cell { value: i32, }\n"
+      "impl !Copy for Cell;\n"
+      "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
+  expectOracleMatchesInventory(fixture);
+}
+
+ZC_TEST("Differential oracle matches production facts for a direct call result") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Copy};\n"
+      "struct Cell { value: i32, }\n"
+      "impl !Copy for Cell;\n"
+      "fun helper() -> Cell { let cell = Cell { value: 0 }; return cell; }\n"
+      "fun entry() -> Cell { return helper(); }"_zc);
+  expectOracleMatchesInventory(fixture);
+}
+
+ZC_TEST("Differential oracle matches production facts for a parameter reborrow") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectOracleMatchesInventory(fixture);
 }
 
 }  // namespace
