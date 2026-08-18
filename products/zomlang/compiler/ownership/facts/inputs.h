@@ -17,8 +17,13 @@
 #include "zc/core/memory.h"
 #include "zomlang/compiler/ownership/facts/flow.h"
 #include "zomlang/compiler/ownership/facts/init.h"
+#include "zomlang/compiler/ownership/facts/ownership-facts-revision.h"
 #include "zomlang/compiler/ownership/facts/resources.h"
 #include "zomlang/compiler/ownership/facts/states.h"
+
+namespace zomlang::compiler::type {
+class SemanticTypeStore;
+}  // namespace zomlang::compiler::type
 
 namespace zomlang::compiler::ownership::facts {
 
@@ -41,6 +46,7 @@ public:
   ZC_NODISCARD const OwnershipEventOverlayRevision& overlayRevision() const noexcept;
   ZC_NODISCARD const driver::borrow_evidence::BorrowEvidenceRevision& borrowEvidenceRevision()
       const noexcept;
+  ZC_NODISCARD const OwnershipFactsRevision& factsRevision() const noexcept;
   ZC_NODISCARD bool hasLiveBorrowEvidence() const noexcept;
   ZC_NODISCARD const VerifiedMovePaths& movePaths() const noexcept;
   ZC_NODISCARD const VerifiedFlow& flow() const noexcept;
@@ -54,6 +60,7 @@ public:
 private:
   struct Impl;
   explicit VerifiedOwnershipInputs(zc::Own<Impl>&& impl) noexcept;
+  void setFactsRevision(OwnershipFactsRevision revision) noexcept;
   zc::Own<Impl> impl;
 
   friend class OwnershipInputVerifier;
@@ -69,7 +76,8 @@ public:
       VerifiedReborrowStates&& states, VerifiedOwnershipResourceFacts&& resources,
       const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay,
       const driver::borrow_evidence::VerifiedBorrowEvidenceLease& lease,
-      const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& capability);
+      const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& capability,
+      const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::ownership::facts

@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "zomlang/compiler/ownership/drop-elaborated-mir.h"
-
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/driver/interface/borrow-evidence.h"
 #include "zomlang/compiler/driver/package/source-record.h"
 #include "zomlang/compiler/driver/session/compiler-session.h"
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/compiler/mir/built-mir.h"
+#include "zomlang/compiler/ownership/drop-elaborated-mir.h"
 #include "zomlang/compiler/ownership/facts/inputs.h"
 #include "zomlang/compiler/ownership/ownership-checked-mir.h"
 #include "zomlang/compiler/ownership/ownership-event-overlay.h"
@@ -316,12 +315,13 @@ ir::IrOperationResult<facts::VerifiedOwnershipInputs> verifyOwnershipInputs(
       zc::mv(resourceCandidate).takeVerified(), movePaths.verifiedValue(), builtMir, overlay);
   ZC_REQUIRE(resources.isVerified());
 
+  auto overlayInput = fixture.overlayInput();
   return facts::OwnershipInputVerifier::verify(
       zc::mv(movePaths).takeVerified(), zc::mv(flow).takeVerified(),
       zc::mv(initialization).takeVerified(), zc::mv(loans).takeVerified(),
       zc::mv(references).takeVerified(), zc::mv(regions).takeVerified(),
       zc::mv(states).takeVerified(), zc::mv(resources).takeVerified(), builtMir, overlay, lease,
-      capability);
+      capability, overlayInput.body.semanticTypes);
 }
 
 ir::IrOperationResult<OwnershipCheckedMir> buildCheckedMir(
@@ -347,7 +347,8 @@ ir::IrOperationResult<OwnershipCheckedMir> buildCheckedMir(
   ZC_REQUIRE(inputs.isVerified());
 
   return OwnershipFinalizer::finalizeOwnership(zc::mv(builtMir), zc::mv(overlay),
-                                               zc::mv(inputs).takeVerified(), capability);
+                                               zc::mv(inputs).takeVerified(), capability,
+                                               overlayInput.body.semanticTypes);
 }
 
 }  // namespace
@@ -363,8 +364,8 @@ ZC_TEST("Drop elaborator publishes a complete discharge inventory") {
   ZC_IF_SOME(value, repository) {
     auto checked = buildCheckedMir(fixture, value.capability());
     ZC_REQUIRE(checked.isVerified());
-    auto elaborated = DropElaborator::elaborateDrops(zc::mv(checked).takeVerified(),
-                                                      value.capability());
+    auto elaborated =
+        DropElaborator::elaborateDrops(zc::mv(checked).takeVerified(), value.capability());
     ZC_REQUIRE(elaborated.isVerified());
     auto result = zc::mv(elaborated).takeVerified();
     ZC_EXPECT(result.discharges().size() == 1);
@@ -395,8 +396,8 @@ ZC_TEST("Drop elaborator rejects a foreign lease") {
     ZC_IF_SOME(foreignValue, foreignRepository) {
       auto checked = buildCheckedMir(fixture, value.capability());
       ZC_REQUIRE(checked.isVerified());
-      auto elaborated = DropElaborator::elaborateDrops(zc::mv(checked).takeVerified(),
-                                                        foreignValue.capability());
+      auto elaborated =
+          DropElaborator::elaborateDrops(zc::mv(checked).takeVerified(), foreignValue.capability());
       ZC_REQUIRE(elaborated.isIrInvariantRejected());
       ZC_EXPECT(elaborated.invariantFailures().facts().size() == 1);
       ZC_EXPECT(elaborated.invariantFailures().facts()[0].kind() ==
@@ -430,8 +431,8 @@ ZC_TEST("Drop elaborator rejects a missing discharge") {
     const auto foreignRepository = foreignFixture.compilerSession().getBorrowEvidenceRepository();
     ZC_REQUIRE(foreignRepository != zc::none);
     ZC_IF_SOME(foreignValue, foreignRepository) {
-      auto elaborated = DropElaborator::elaborateDrops(zc::mv(checked).takeVerified(),
-                                                        foreignValue.capability());
+      auto elaborated =
+          DropElaborator::elaborateDrops(zc::mv(checked).takeVerified(), foreignValue.capability());
       ZC_REQUIRE(elaborated.isIrInvariantRejected());
       ZC_EXPECT(elaborated.invariantFailures().facts().size() == 1);
       ZC_EXPECT(elaborated.invariantFailures().facts()[0].kind() ==

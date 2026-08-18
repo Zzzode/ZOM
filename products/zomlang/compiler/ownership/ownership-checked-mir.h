@@ -19,7 +19,12 @@
 #include "zomlang/compiler/ir/ir-failure.h"
 #include "zomlang/compiler/mir/built-mir.h"
 #include "zomlang/compiler/ownership/facts/inputs.h"
+#include "zomlang/compiler/ownership/facts/ownership-facts-revision.h"
 #include "zomlang/compiler/ownership/ownership-event-overlay.h"
+
+namespace zomlang::compiler::type {
+class SemanticTypeStore;
+}  // namespace zomlang::compiler::type
 
 namespace zomlang::compiler::ownership {
 
@@ -55,6 +60,7 @@ public:
   ZC_NODISCARD const facts::VerifiedOwnershipInputs& facts() const noexcept;
   ZC_NODISCARD const mir::MirRevisionId& builtRevision() const noexcept;
   ZC_NODISCARD const OwnershipEventOverlayRevision& eventOverlayRevision() const noexcept;
+  ZC_NODISCARD const facts::OwnershipFactsRevision& factsRevision() const noexcept;
   ZC_NODISCARD const driver::borrow_evidence::BorrowEvidenceRevision& borrowEvidenceRevision()
       const noexcept;
 
@@ -82,7 +88,8 @@ public:
   ZC_NODISCARD static ir::IrOperationResult<OwnershipCheckedMir> finalizeOwnership(
       mir::VerifiedBuiltMir&& builtMir, VerifiedOwnershipEventOverlay&& eventOverlay,
       facts::VerifiedOwnershipInputs&& facts,
-      const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& repository);
+      const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& repository,
+      const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::ownership

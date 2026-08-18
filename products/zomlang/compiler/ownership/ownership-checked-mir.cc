@@ -15,6 +15,8 @@
 #include "zomlang/compiler/ownership/ownership-checked-mir.h"
 
 #include "zomlang/compiler/ir/ir-diagnostic-adapter.h"
+#include "zomlang/compiler/ownership/facts/ownership-facts-codec.h"
+#include "zomlang/compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::ownership {
 namespace {
@@ -182,6 +184,9 @@ const mir::MirRevisionId& OwnershipCheckedMir::builtRevision() const noexcept {
 const OwnershipEventOverlayRevision& OwnershipCheckedMir::eventOverlayRevision() const noexcept {
   return impl->eventOverlay.revision();
 }
+const facts::OwnershipFactsRevision& OwnershipCheckedMir::factsRevision() const noexcept {
+  return impl->facts.factsRevision();
+}
 const driver::borrow_evidence::BorrowEvidenceRevision& OwnershipCheckedMir::borrowEvidenceRevision()
     const noexcept {
   return impl->builtMir.borrowEvidenceRevision();
@@ -190,13 +195,20 @@ const driver::borrow_evidence::BorrowEvidenceRevision& OwnershipCheckedMir::borr
 ir::IrOperationResult<OwnershipCheckedMir> OwnershipFinalizer::finalizeOwnership(
     mir::VerifiedBuiltMir&& builtMir, VerifiedOwnershipEventOverlay&& eventOverlay,
     facts::VerifiedOwnershipInputs&& facts,
-    const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& repository) {
+    const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& repository,
+    const type::SemanticTypeStore& semanticTypes) {
   const auto identities = builtMir.retainIdentityAuthority();
   const auto& lease = builtMir.borrowEvidenceLease();
   const auto evidence = repository.lookup(lease);
   if (!matches(builtMir, eventOverlay, facts, lease, repository, evidence) ||
       !builtMir.matchesBorrowEvidenceInput(lease, repository)) {
     return reject(builtMir, identities, 0);
+  }
+  auto recomputedFactsRevision =
+      facts::OwnershipFactsCodec::compute(facts, eventOverlay, identities, semanticTypes);
+  if (recomputedFactsRevision == zc::none) { return reject(builtMir, identities, 0); }
+  ZC_IF_SOME(recomputed, recomputedFactsRevision) {
+    if (recomputed != facts.factsRevision()) { return reject(builtMir, identities, 0); }
   }
   return ir::IrOperationResult<OwnershipCheckedMir>::verified(OwnershipCheckedMir(
       zc::heap<OwnershipCheckedMir::Impl>(zc::mv(builtMir), zc::mv(eventOverlay), zc::mv(facts))));

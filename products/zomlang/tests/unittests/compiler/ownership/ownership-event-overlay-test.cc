@@ -368,12 +368,13 @@ ir::IrOperationResult<facts::VerifiedOwnershipInputs> verifyOwnershipInputs(
       zc::mv(resourceCandidate).takeVerified(), movePaths.verifiedValue(), builtMir, overlay);
   ZC_REQUIRE(resources.isVerified());
 
+  auto overlayInput = fixture.overlayInput();
   return facts::OwnershipInputVerifier::verify(
       zc::mv(movePaths).takeVerified(), zc::mv(flow).takeVerified(),
       zc::mv(initialization).takeVerified(), zc::mv(loans).takeVerified(),
       zc::mv(references).takeVerified(), zc::mv(regions).takeVerified(),
       zc::mv(states).takeVerified(), zc::mv(resources).takeVerified(), builtMir, overlay, lease,
-      capability);
+      capability, overlayInput.body.semanticTypes);
 }
 
 ZC_TEST("Ownership event overlay builder and verifier accept one scalar initializer module") {

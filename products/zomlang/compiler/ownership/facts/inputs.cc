@@ -15,6 +15,8 @@
 #include "zomlang/compiler/ownership/facts/inputs.h"
 
 #include "zomlang/compiler/ir/ir-diagnostic-adapter.h"
+#include "zomlang/compiler/ownership/facts/ownership-facts-codec.h"
+#include "zomlang/compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::ownership::facts {
 namespace {
@@ -208,6 +210,7 @@ struct VerifiedOwnershipInputs::Impl final {
   VerifiedOwnershipResourceFacts resources;
   driver::borrow_evidence::VerifiedBorrowEvidenceLease borrowEvidenceLease;
   driver::borrow_evidence::BorrowEvidenceRepositoryCapability borrowEvidenceCapability;
+  OwnershipFactsRevision factsRevision;
 };
 
 VerifiedOwnershipInputs::VerifiedOwnershipInputs(zc::Own<Impl>&& impl) noexcept
@@ -219,8 +222,7 @@ VerifiedOwnershipInputs& VerifiedOwnershipInputs::operator=(VerifiedOwnershipInp
 identity::SemanticContextBrand VerifiedOwnershipInputs::semanticContext() const noexcept {
   return impl->movePaths.semanticContext();
 }
-const identity::ContextFingerprint& VerifiedOwnershipInputs::contextFingerprint()
-    const noexcept {
+const identity::ContextFingerprint& VerifiedOwnershipInputs::contextFingerprint() const noexcept {
   return impl->movePaths.contextFingerprint();
 }
 identity::ModuleId VerifiedOwnershipInputs::module() const noexcept {
@@ -235,6 +237,12 @@ const OwnershipEventOverlayRevision& VerifiedOwnershipInputs::overlayRevision() 
 const driver::borrow_evidence::BorrowEvidenceRevision&
 VerifiedOwnershipInputs::borrowEvidenceRevision() const noexcept {
   return impl->loans.borrowEvidenceRevision();
+}
+const OwnershipFactsRevision& VerifiedOwnershipInputs::factsRevision() const noexcept {
+  return impl->factsRevision;
+}
+void VerifiedOwnershipInputs::setFactsRevision(OwnershipFactsRevision revision) noexcept {
+  impl->factsRevision = revision;
 }
 bool VerifiedOwnershipInputs::hasLiveBorrowEvidence() const noexcept {
   const auto evidence = impl->borrowEvidenceCapability.lookup(impl->borrowEvidenceLease);
@@ -271,7 +279,8 @@ ir::IrOperationResult<VerifiedOwnershipInputs> OwnershipInputVerifier::verify(
     VerifiedReborrowStates&& states, VerifiedOwnershipResourceFacts&& resources,
     const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay,
     const driver::borrow_evidence::VerifiedBorrowEvidenceLease& lease,
-    const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& capability) {
+    const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& capability,
+    const type::SemanticTypeStore& semanticTypes) {
   const auto identities = builtMir.retainIdentityAuthority();
   const auto evidence = capability.lookup(lease);
   if (!matches(movePaths, flow, initialization, loans, references, regions, states, resources,
@@ -281,11 +290,14 @@ ir::IrOperationResult<VerifiedOwnershipInputs> OwnershipInputVerifier::verify(
   }
   auto retainedLease = builtMir.retainBorrowEvidenceLease();
   auto retainedCapability = builtMir.retainBorrowEvidenceCapability();
-  return ir::IrOperationResult<VerifiedOwnershipInputs>::verified(
-      VerifiedOwnershipInputs(zc::heap<VerifiedOwnershipInputs::Impl>(
-          zc::mv(movePaths), zc::mv(flow), zc::mv(initialization), zc::mv(loans),
-          zc::mv(references), zc::mv(regions), zc::mv(states), zc::mv(resources),
-          zc::mv(retainedLease), zc::mv(retainedCapability))));
+  auto inputs = VerifiedOwnershipInputs(zc::heap<VerifiedOwnershipInputs::Impl>(
+      zc::mv(movePaths), zc::mv(flow), zc::mv(initialization), zc::mv(loans), zc::mv(references),
+      zc::mv(regions), zc::mv(states), zc::mv(resources), zc::mv(retainedLease),
+      zc::mv(retainedCapability)));
+  auto revision = OwnershipFactsCodec::compute(inputs, overlay, identities, semanticTypes);
+  if (revision == zc::none) { return reject(builtMir, identities, 0); }
+  ZC_IF_SOME(value, revision) { inputs.setFactsRevision(value); }
+  return ir::IrOperationResult<VerifiedOwnershipInputs>::verified(zc::mv(inputs));
 }
 
 }  // namespace zomlang::compiler::ownership::facts

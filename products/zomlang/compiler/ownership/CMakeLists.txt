@@ -8,6 +8,8 @@ set(OWNERSHIP_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/flow.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/init.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/loans.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/facts/ownership-facts-codec.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/facts/ownership-facts-revision.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/paths.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/resources.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/regions.cc

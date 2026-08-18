@@ -3705,7 +3705,7 @@ bool CompilerSession::checkSources() {
         stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
         stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1],
         stagedBuiltMirModules[stagedBuiltMirModules.size() - 1].borrowEvidenceLease(),
-        stagedBorrowEvidenceRepository->capability());
+        stagedBorrowEvidenceRepository->capability(), *impl->semanticTypeStore);
     if (verifiedOwnershipInputs.isCapabilityRejected()) {
       return rejectIrCapability(verifiedOwnershipInputs.capabilityFailures());
     }
@@ -3726,7 +3726,8 @@ bool CompilerSession::checkSources() {
   for (size_t index = 0; index < stagedBuiltMirModules.size(); ++index) {
     auto checked = ownership::OwnershipFinalizer::finalizeOwnership(
         zc::mv(stagedBuiltMirModules[index]), zc::mv(stagedOwnershipEventOverlays[index]),
-        zc::mv(stagedOwnershipInputs[index]), stagedBorrowEvidenceRepository->capability());
+        zc::mv(stagedOwnershipInputs[index]), stagedBorrowEvidenceRepository->capability(),
+        *impl->semanticTypeStore);
     if (checked.isCapabilityRejected()) { return rejectIrCapability(checked.capabilityFailures()); }
     if (checked.isIdentityInvariantRejected()) {
       return rejectIrIdentity(checked.identityFailures());
