@@ -181,6 +181,19 @@ struct HirParameterReborrowExpression final {
   identity::SourceSpan sourceSpan;
 };
 
+/// \brief One checked borrow of a function-local binding without a dereference projection.
+///
+/// Unlike a parameter reborrow, the borrow source is the local itself, so the MIR
+/// BorrowCreation source place carries zero projections.
+struct HirLocalBorrowExpression final {
+  HirNodeId node;
+  HirLocalId local;
+  identity::SemanticTypeId sourceType;
+  identity::SemanticTypeId type;
+  type::semantic::Mutability mutability;
+  identity::SourceSpan sourceSpan;
+};
+
 /// \brief One verified scalar constant argument retained by a direct call expression.
 struct HirDirectCallArgument final {
   identity::SemanticTypeId type;
@@ -323,6 +336,7 @@ public:
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirParameterReborrowExpression> parameterReborrows()
       const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirLocalBorrowExpression> localBorrows() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirDirectCallExpression> calls() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirReceiverCallExpression> receiverCalls() const noexcept;
   ZC_NODISCARD zc::Maybe<zc::String> dump() const;

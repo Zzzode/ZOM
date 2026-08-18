@@ -24,47 +24,48 @@
 #include "zomlang/compiler/basic/thread-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/binder/diagnostics/binding-diagnostic-adapter.h"
-#include "zomlang/compiler/binder/metadata/definition-inventory.h"
-#include "zomlang/compiler/binder/identity/local-identity.h"
-#include "zomlang/compiler/binder/graph/module-dependency-requests.h"
 #include "zomlang/compiler/binder/diagnostics/module-graph-diagnostic-adapter.h"
+#include "zomlang/compiler/binder/graph/module-dependency-requests.h"
 #include "zomlang/compiler/binder/graph/module-graph-source-failure.h"
 #include "zomlang/compiler/binder/graph/parsed-module-graph-input.h"
+#include "zomlang/compiler/binder/identity/local-identity.h"
+#include "zomlang/compiler/binder/metadata/definition-inventory.h"
 #include "zomlang/compiler/binder/stable/candidate/producer.h"
 #include "zomlang/compiler/binder/stable/candidate/verifier.h"
 #include "zomlang/compiler/checker/body/body-checker.h"
 #include "zomlang/compiler/checker/borrow/borrow-interface-diagnostic-adapter.h"
-#include "zomlang/compiler/checker/facts/checked-facts-repository.h"
-#include "zomlang/compiler/checker/diagnostics/checker-diagnostic-adapter.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
+#include "zomlang/compiler/checker/diagnostics/checker-diagnostic-adapter.h"
+#include "zomlang/compiler/checker/facts/checked-facts-repository.h"
 #include "zomlang/compiler/checker/facts/coherence-facts.h"
 #include "zomlang/compiler/checker/facts/cross-module-facts.h"
 #include "zomlang/compiler/checker/facts/signature-facts.h"
 #include "zomlang/compiler/diagnostics/consumer/consoling-diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic-ids.h"
-#include "zomlang/compiler/diagnostics/fact/diagnostic-materializer.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic.h"
+#include "zomlang/compiler/diagnostics/fact/diagnostic-materializer.h"
+#include "zomlang/compiler/driver/core/query.h"
+#include "zomlang/compiler/driver/graph/module-discovery.h"
+#include "zomlang/compiler/driver/interface/coherence-builder.h"
+#include "zomlang/compiler/driver/interface/imported-signature-view-projector.h"
+#include "zomlang/compiler/driver/interface/module-interface-diagnostic-adapter.h"
+#include "zomlang/compiler/driver/package/package-diagnostic.h"
 #include "zomlang/compiler/driver/query/binding/active-definition-authority-query.h"
 #include "zomlang/compiler/driver/query/binding/active-definition-authority-session.h"
-#include "zomlang/compiler/driver/interface/coherence-builder.h"
-#include "zomlang/compiler/driver/core/query.h"
-#include "zomlang/compiler/driver/interface/imported-signature-view-projector.h"
 #include "zomlang/compiler/driver/query/binding/incremental-binding-query-adapter.h"
-#include "zomlang/compiler/driver/query/module-graph/incremental-module-resolution-query.h"
 #include "zomlang/compiler/driver/query/binding/incremental-package-graph-query-input.h"
-#include "zomlang/compiler/driver/query/module-graph/materialized-module-graph-query.h"
-#include "zomlang/compiler/driver/graph/module-discovery.h"
-#include "zomlang/compiler/driver/query/module-graph/module-graph-query-input.h"
-#include "zomlang/compiler/driver/query/module-graph/module-graph-query.h"
-#include "zomlang/compiler/driver/interface/module-interface-diagnostic-adapter.h"
 #include "zomlang/compiler/driver/query/binding/named-identity-inventory-query.h"
 #include "zomlang/compiler/driver/query/binding/named-item-query.h"
-#include "zomlang/compiler/driver/package/package-diagnostic.h"
+#include "zomlang/compiler/driver/query/module-graph/incremental-module-resolution-query.h"
+#include "zomlang/compiler/driver/query/module-graph/materialized-module-graph-query.h"
+#include "zomlang/compiler/driver/query/module-graph/module-graph-query-input.h"
+#include "zomlang/compiler/driver/query/module-graph/module-graph-query.h"
 #include "zomlang/compiler/identity/canonical/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/compiler/identity/canonical/identity-interner-set.h"
 #include "zomlang/compiler/identity/identity-diagnostic-adapter.h"
+#include "zomlang/compiler/ownership/ownership-diagnostic-adapter.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
 #include "zomlang/compiler/parser/query/parse-source-query.h"
 #include "zomlang/compiler/source/manager.h"
@@ -1220,9 +1221,8 @@ struct CompilerSession::Impl {
               nameMatches = value == pathValue.back();
               zc::Vector<identity::ModulePathSegment> declaredPath;
               declaredPath.add(value.clone());
-              declaresToolchainModuleRoot =
-                  diagnostics::ModuleRootArgument::fromCanonicalPath(
-                      zc::mv(declaredPath)) != zc::none;
+              declaresToolchainModuleRoot = diagnostics::ModuleRootArgument::fromCanonicalPath(
+                                                zc::mv(declaredPath)) != zc::none;
             }
             if (!nameMatches && !declaresToolchainModuleRoot) {
               auto declarationSpan = parsedRecord.parsedModule().spanFor(module.source);
@@ -2006,8 +2006,7 @@ zc::Maybe<checker::CheckerIdentityAuthority> CompilerSession::materializeChecker
   if (impl->finalSealedSnapshot == zc::none) { return zc::none; }
   const auto& finalSnapshot = ZC_ASSERT_NONNULL(impl->finalSealedSnapshot);
   const auto& roots = finalSnapshot.contextRoots();
-  auto graphDemand =
-      finalSnapshot.getCapability<module_graph_query::MaterializeModuleGraph>(roots);
+  auto graphDemand = finalSnapshot.getCapability<module_graph_query::MaterializeModuleGraph>(roots);
   if (!graphDemand.isPublished()) { return zc::none; }
   zc::Vector<checker::CheckerIdentityAuthority::BoundModuleView> checkerViews;
   for (const auto& graphModule : graphDemand.lease().capability().modules()) {
@@ -2729,6 +2728,8 @@ bool CompilerSession::checkSources() {
                          checker::signature::CheckerInvariantStage::Signature, 0);
       }
       ZC_IF_SOME(parsedModule, parsed) {
+        // Surface admission failures are mapped inline until they migrate to the
+        // closed OwnershipSourceFailure union and emitOwnershipSourceFailures.
         for (const auto& failure :
              admission.get<ownership::OwnershipSurfaceSourceRejected>().failures()) {
           diagnostics::DiagID diagnostic = diagnostics::DiagID::ControlFlowSemanticsUnavailable;
@@ -3568,23 +3569,8 @@ bool CompilerSession::checkSources() {
       }
       ZC_IF_SOME(parsedModule, parsed) {
         auto failures = zc::mv(initializationSource).takeSourceFailures();
-        for (const auto& failure : failures.facts()) {
-          const auto diagnosticId =
-              failure.kind == ownership::facts::InitializationSourceFailureKind::UseAfterMove
-                  ? diagnostics::DiagID::UseAfterMove
-                  : diagnostics::DiagID::UninitializedPlaceUse;
-          const auto noteId =
-              failure.kind == ownership::facts::InitializationSourceFailureKind::UseAfterMove
-                  ? diagnostics::DiagID::ValueMovedHere
-                  : diagnostics::DiagID::PlaceBecameUnavailableHere;
-          auto diagnostic = zc::heap<diagnostics::Diagnostic>(
-              diagnosticId, locationFor(parsedModule, failure.useSpan));
-          for (const auto& cause : failure.unavailableCauses) {
-            diagnostic->addChildDiagnostic(
-                zc::heap<diagnostics::Diagnostic>(noteId, locationFor(parsedModule, cause.span)));
-          }
-          impl->diagnosticEngine->emit(*diagnostic);
-        }
+        ownership::emitOwnershipSourceFailures(*impl->diagnosticEngine, parsedModule,
+                                               failures.facts());
       }
       return false;
     }

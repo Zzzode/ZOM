@@ -8,6 +8,8 @@
 #include "zc/core/encoding.h"
 #include "zc/core/time.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/diagnostics/consumer/diagnostic-consumer.h"
+#include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
 #include "zomlang/compiler/driver/interface/borrow-evidence.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
@@ -21,6 +23,8 @@
 #include "zomlang/compiler/ownership/facts/loans.h"
 #include "zomlang/compiler/ownership/facts/paths.h"
 #include "zomlang/compiler/ownership/facts/resources.h"
+#include "zomlang/compiler/ownership/ownership-diagnostic-adapter.h"
+#include "zomlang/compiler/source/manager.h"
 #include "zomlang/tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "zomlang/tests/unittests/compiler/ownership/ownership-facts-differential-oracle.h"
 
@@ -4656,6 +4660,210 @@ ZC_TEST("Differential oracle matches production facts for a linear-logical aggre
       "unsafe impl Linear for Cell;\n"
       "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   expectOracleMatchesInventory(fixture);
+}
+
+namespace {
+
+struct AdapterCapture final {
+  zc::Vector<diagnostics::DiagID> primaryIds;
+  zc::Vector<zc::Vector<diagnostics::DiagID>> childIds;
+};
+
+class AdapterDiagnosticConsumer final : public diagnostics::DiagnosticConsumer {
+public:
+  explicit AdapterDiagnosticConsumer(AdapterCapture& capture) noexcept : capture(capture) {}
+
+  void handleDiagnostic(const source::SourceManager&,
+                        const diagnostics::Diagnostic& diagnostic) override {
+    capture.primaryIds.add(diagnostic.getId());
+    zc::Vector<diagnostics::DiagID> children;
+    for (const auto& child : diagnostic.getChildDiagnostics()) { children.add(child->getId()); }
+    capture.childIds.add(zc::mv(children));
+  }
+
+private:
+  AdapterCapture& capture;
+};
+
+struct SyntheticIdentity final {
+  identity::DefId owner;
+  MirEventKey event;
+  identity::SourceSpan span;
+  mir::MirLocalId localId;
+  identity::SemanticTypeId localType;
+};
+
+SyntheticIdentity syntheticIdentity(const OwnershipPipelineFixture& fixture) {
+  const auto& function = fixture.builtMir().functions()[0];
+  ZC_REQUIRE(function.locals.size() >= 1);
+  const auto& local = function.locals[0];
+  return {function.owner, MirEventKey{MirLocation{function.owner, MirPoint::entry()}, 0},
+          local.sourceSpan.clone(), local.id, local.type};
+}
+
+facts::MovePathKey syntheticPlace(const SyntheticIdentity& identity) {
+  return facts::MovePathKey{identity.owner,
+                            mir::MirPlace(identity.localId, identity.localType,
+                                          zc::Vector<mir::MirProjection>{}, identity.localType)};
+}
+
+template <typename Cause>
+zc::Vector<Cause> causeVector(Cause cause) {
+  zc::Vector<Cause> result;
+  result.add(zc::mv(cause));
+  return result;
+}
+
+zc::Maybe<zc::Vector<driver::ParsedModuleRecord>> materializeParsedModules(
+    const OwnershipPipelineFixture& fixture) {
+  return fixture.compilerSession().materializeParsedModules();
+}
+
+}  // namespace
+
+ZC_TEST("Ownership diagnostic adapter maps every closed failure variant") {
+  OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
+  auto parsedModules = materializeParsedModules(fixture);
+  ZC_REQUIRE(parsedModules != zc::none);
+  ZC_IF_SOME(modules, parsedModules) {
+    ZC_REQUIRE(modules.size() >= 1);
+    const auto& parsed = modules[0].parsedModule();
+    auto identity = syntheticIdentity(fixture);
+
+    AdapterCapture capture;
+    fixture.compilerSession().getDiagnosticEngine().addConsumer(
+        zc::heap<AdapterDiagnosticConsumer>(capture));
+
+    zc::Vector<OwnershipSourceFailure> failures;
+    failures.add(UseAfterMoveFailure{
+        identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 0,
+        causeVector(InitializationFailureCause{facts::InitializationLossKind::Moved, identity.event,
+                                               identity.span.clone()})});
+    failures.add(MutableBorrowConflictFailure{
+        identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 1,
+        causeVector(LoanFailureCause{identity.event, identity.span.clone()})});
+    failures.add(UninitializedPlaceUseFailure{
+        identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 2,
+        causeVector(InitializationFailureCause{facts::InitializationLossKind::NeverInitialized,
+                                               identity.event, identity.span.clone()})});
+    failures.add(SharedBorrowConflictFailure{
+        identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 3,
+        causeVector(LoanFailureCause{identity.event, identity.span.clone()})});
+    failures.add(BorrowDoesNotLiveLongEnoughFailure{
+        identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 4,
+        causeVector(EscapeFailureCause{identity.event, identity.span.clone()})});
+    failures.add(LinearNotConsumedFailure{
+        identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 5,
+        causeVector(LinearConsumptionCause{identity.event, identity.span.clone()})});
+    failures.add(LinearConsumedTwiceFailure{
+        identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 6,
+        causeVector(LinearConsumptionCause{identity.event, identity.span.clone()})});
+    failures.add(RawPointerBoundaryRequiresUnsafeFailure{
+        identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 7});
+    failures.add(MoveOutOfBorrowFailure{
+        identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 8,
+        causeVector(MoveFailureCause{identity.event, identity.span.clone()})});
+
+    emitOwnershipSourceFailures(fixture.compilerSession().getDiagnosticEngine(), parsed,
+                                failures.asPtr());
+
+    ZC_REQUIRE(capture.primaryIds.size() == 9);
+    ZC_EXPECT(capture.primaryIds[0] == diagnostics::DiagID::UseAfterMove);
+    ZC_EXPECT(capture.primaryIds[1] == diagnostics::DiagID::MutableBorrowConflicts);
+    ZC_EXPECT(capture.primaryIds[2] == diagnostics::DiagID::UninitializedPlaceUse);
+    ZC_EXPECT(capture.primaryIds[3] == diagnostics::DiagID::SharedBorrowConflicts);
+    ZC_EXPECT(capture.primaryIds[4] == diagnostics::DiagID::BorrowDoesNotLiveLongEnough);
+    ZC_EXPECT(capture.primaryIds[5] == diagnostics::DiagID::LinearNotConsumed);
+    ZC_EXPECT(capture.primaryIds[6] == diagnostics::DiagID::LinearConsumedTwice);
+    ZC_EXPECT(capture.primaryIds[7] == diagnostics::DiagID::RawPointerBoundaryRequiresUnsafe);
+    ZC_EXPECT(capture.primaryIds[8] == diagnostics::DiagID::MoveOutOfBorrow);
+
+    ZC_REQUIRE(capture.childIds.size() == 9);
+    ZC_REQUIRE(capture.childIds[0].size() == 1);
+    ZC_EXPECT(capture.childIds[0][0] == diagnostics::DiagID::ValueMovedHere);
+    ZC_REQUIRE(capture.childIds[1].size() == 1);
+    ZC_EXPECT(capture.childIds[1][0] == diagnostics::DiagID::BorrowOriginHere);
+    ZC_REQUIRE(capture.childIds[2].size() == 1);
+    ZC_EXPECT(capture.childIds[2][0] == diagnostics::DiagID::PlaceBecameUnavailableHere);
+    ZC_REQUIRE(capture.childIds[3].size() == 1);
+    ZC_EXPECT(capture.childIds[3][0] == diagnostics::DiagID::BorrowOriginHere);
+    ZC_REQUIRE(capture.childIds[4].size() == 1);
+    ZC_EXPECT(capture.childIds[4][0] == diagnostics::DiagID::BorrowReferentHere);
+    ZC_REQUIRE(capture.childIds[5].size() == 1);
+    ZC_EXPECT(capture.childIds[5][0] == diagnostics::DiagID::LinearInitializedHere);
+    ZC_REQUIRE(capture.childIds[6].size() == 1);
+    ZC_EXPECT(capture.childIds[6][0] == diagnostics::DiagID::LinearFirstConsumedHere);
+    ZC_EXPECT(capture.childIds[7].size() == 0);
+    ZC_REQUIRE(capture.childIds[8].size() == 1);
+    ZC_EXPECT(capture.childIds[8][0] == diagnostics::DiagID::BorrowOriginHere);
+  }
+}
+
+ZC_TEST("Ownership diagnostic adapter emits notes in cause order") {
+  OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
+  auto parsedModules = materializeParsedModules(fixture);
+  ZC_REQUIRE(parsedModules != zc::none);
+  ZC_IF_SOME(modules, parsedModules) {
+    ZC_REQUIRE(modules.size() >= 1);
+    const auto& parsed = modules[0].parsedModule();
+    auto identity = syntheticIdentity(fixture);
+    const auto& function = fixture.builtMir().functions()[0];
+    const auto functionSpan = function.sourceSpan.clone();
+
+    AdapterCapture capture;
+    fixture.compilerSession().getDiagnosticEngine().addConsumer(
+        zc::heap<AdapterDiagnosticConsumer>(capture));
+
+    zc::Vector<InitializationFailureCause> causes;
+    causes.add(InitializationFailureCause{facts::InitializationLossKind::Moved, identity.event,
+                                          identity.span.clone()});
+    causes.add(InitializationFailureCause{facts::InitializationLossKind::Moved, identity.event,
+                                          functionSpan.clone()});
+    causes.add(InitializationFailureCause{facts::InitializationLossKind::Moved, identity.event,
+                                          identity.span.clone()});
+
+    zc::Vector<OwnershipSourceFailure> failures;
+    failures.add(UseAfterMoveFailure{identity.owner, identity.event, identity.span.clone(),
+                                     syntheticPlace(identity), 0, zc::mv(causes)});
+
+    emitOwnershipSourceFailures(fixture.compilerSession().getDiagnosticEngine(), parsed,
+                                failures.asPtr());
+
+    ZC_REQUIRE(capture.primaryIds.size() == 1);
+    ZC_EXPECT(capture.primaryIds[0] == diagnostics::DiagID::UseAfterMove);
+    ZC_REQUIRE(capture.childIds.size() == 1);
+    ZC_REQUIRE(capture.childIds[0].size() == 3);
+    ZC_EXPECT(capture.childIds[0][0] == diagnostics::DiagID::ValueMovedHere);
+    ZC_EXPECT(capture.childIds[0][1] == diagnostics::DiagID::ValueMovedHere);
+    ZC_EXPECT(capture.childIds[0][2] == diagnostics::DiagID::ValueMovedHere);
+  }
+}
+
+ZC_TEST("Ownership source failure ordering distinguishes a secondary cause span") {
+  OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
+  auto identity = syntheticIdentity(fixture);
+  const auto& function = fixture.builtMir().functions()[0];
+  const auto functionSpan = function.sourceSpan.clone();
+
+  zc::Vector<InitializationFailureCause> leftCauses;
+  leftCauses.add(InitializationFailureCause{facts::InitializationLossKind::Moved, identity.event,
+                                            identity.span.clone()});
+  zc::Vector<InitializationFailureCause> rightCauses;
+  rightCauses.add(InitializationFailureCause{facts::InitializationLossKind::Moved, identity.event,
+                                             functionSpan.clone()});
+
+  auto left = UseAfterMoveFailure{
+      identity.owner,    identity.event, identity.span.clone(), syntheticPlace(identity), 0,
+      zc::mv(leftCauses)};
+  auto right = UseAfterMoveFailure{
+      identity.owner,     identity.event, identity.span.clone(), syntheticPlace(identity), 0,
+      zc::mv(rightCauses)};
+
+  OwnershipSourceFailure leftFailure{zc::mv(left)};
+  OwnershipSourceFailure rightFailure{zc::mv(right)};
+
+  ZC_EXPECT(OwnershipSourceFailureOrdering::less(leftFailure, rightFailure) !=
+            OwnershipSourceFailureOrdering::less(rightFailure, leftFailure));
 }
 
 }  // namespace

@@ -1,5 +1,6 @@
 set(OWNERSHIP_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/ownership-event-overlay.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/ownership-diagnostic-adapter.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/surface-admission.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/inputs.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/flow.cc

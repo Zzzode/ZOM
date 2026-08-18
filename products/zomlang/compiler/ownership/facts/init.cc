@@ -973,7 +973,7 @@ bool appendSourceFailure(const mir::MirFunction& function,
                          const InitializationFunction& initialization, const MirPoint& point,
                          const mir::MirOperand& operand, const identity::SourceSpan& useSpan,
                          uint32_t operandOrdinal, uint32_t& traversalOrdinal,
-                         zc::Vector<InitializationSourceFailure>& failures) {
+                         zc::Vector<OwnershipSourceFailure>& failures) {
   if (operand.kind() == mir::MirOperandKind::Constant) return true;
   const auto primary = eventAt(function.owner, MirPoint(point), operandOrdinal);
   if (!hasOperandRead(overlay, primary)) return false;
@@ -990,20 +990,23 @@ bool appendSourceFailure(const mir::MirFunction& function,
         break;
       }
     }
-    zc::Vector<InitializationSourceFailureCause> unavailableCauses;
-    unavailableCauses.reserve(state.lossCauses.size());
+    zc::Vector<InitializationFailureCause> causes;
+    causes.reserve(state.lossCauses.size());
     for (const auto& cause : state.lossCauses) {
       auto span = sourceSpanFor(function, overlay, cause.event);
       if (span == zc::none) return false;
-      unavailableCauses.add(InitializationSourceFailureCause{cause.kind, cause.event,
-                                                             zc::mv(ZC_ASSERT_NONNULL(span))});
+      causes.add(
+          InitializationFailureCause{cause.kind, cause.event, zc::mv(ZC_ASSERT_NONNULL(span))});
     }
-    failures.add(InitializationSourceFailure{
-        allMoves ? InitializationSourceFailureKind::UseAfterMove
-                 : InitializationSourceFailureKind::UninitializedPlaceUse,
-        function.owner, primary, useSpan.clone(),
-        MovePathKey{function.owner, operand.place().clone()}, zc::mv(unavailableCauses),
-        traversalOrdinal++});
+    auto place = MovePathKey{function.owner, operand.place().clone()};
+    const auto ordinal = traversalOrdinal++;
+    if (allMoves) {
+      failures.add(UseAfterMoveFailure{function.owner, primary, useSpan.clone(), zc::mv(place),
+                                       ordinal, zc::mv(causes)});
+    } else {
+      failures.add(UninitializedPlaceUseFailure{function.owner, primary, useSpan.clone(),
+                                                zc::mv(place), ordinal, zc::mv(causes)});
+    }
     return true;
   }
   ZC_UNREACHABLE
@@ -1014,16 +1017,16 @@ bool appendSourceFailure(const mir::MirFunction& function,
                          const InitializationFunction& initialization, const MirPoint& point,
                          const mir::MirPlace& place, const identity::SourceSpan& useSpan,
                          uint32_t operandOrdinal, uint32_t& traversalOrdinal,
-                         zc::Vector<InitializationSourceFailure>& failures) {
+                         zc::Vector<OwnershipSourceFailure>& failures) {
   auto operand = mir::MirOperand::copy(place.clone());
   return appendSourceFailure(function, overlay, initialization, point, operand, useSpan,
                              operandOrdinal, traversalOrdinal, failures);
 }
 
-zc::Maybe<zc::Vector<InitializationSourceFailure>> sourceFailures(
+zc::Maybe<zc::Vector<OwnershipSourceFailure>> sourceFailures(
     const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay,
     const VerifiedInitializationFacts& initialization) {
-  zc::Vector<InitializationSourceFailure> failures;
+  zc::Vector<OwnershipSourceFailure> failures;
   uint32_t traversalOrdinal = 0;
   for (const auto& function : builtMir.functions()) {
     auto facts = initializationFor(initialization, function.owner);
@@ -1143,43 +1146,6 @@ zc::Vector<InitializationLossCause> InitializationLattice::mergeLossCauses(
   return merged;
 }
 
-bool InitializationSourceFailureOrdering::less(const InitializationSourceFailure& left,
-                                               const InitializationSourceFailure& right) noexcept {
-  if (left.useSpan.byteStart() != right.useSpan.byteStart()) {
-    return left.useSpan.byteStart() < right.useSpan.byteStart();
-  }
-  if (left.useSpan.byteEnd() != right.useSpan.byteEnd()) {
-    return left.useSpan.byteEnd() < right.useSpan.byteEnd();
-  }
-  if (left.kind != right.kind) {
-    return static_cast<uint8_t>(left.kind) < static_cast<uint8_t>(right.kind);
-  }
-  if (left.traversalOrdinal != right.traversalOrdinal) {
-    return left.traversalOrdinal < right.traversalOrdinal;
-  }
-  if (lessEvent(left.primary, right.primary)) return true;
-  if (lessEvent(right.primary, left.primary)) return false;
-  if (left.unavailableCauses.size() != right.unavailableCauses.size()) {
-    return left.unavailableCauses.size() < right.unavailableCauses.size();
-  }
-  for (size_t index = 0; index < left.unavailableCauses.size(); ++index) {
-    const auto& leftCause = left.unavailableCauses[index];
-    const auto& rightCause = right.unavailableCauses[index];
-    if (leftCause.kind != rightCause.kind) {
-      return static_cast<uint8_t>(leftCause.kind) < static_cast<uint8_t>(rightCause.kind);
-    }
-    if (lessEvent(leftCause.event, rightCause.event)) return true;
-    if (lessEvent(rightCause.event, leftCause.event)) return false;
-    if (leftCause.span.byteStart() != rightCause.span.byteStart()) {
-      return leftCause.span.byteStart() < rightCause.span.byteStart();
-    }
-    if (leftCause.span.byteEnd() != rightCause.span.byteEnd()) {
-      return leftCause.span.byteEnd() < rightCause.span.byteEnd();
-    }
-  }
-  return false;
-}
-
 InitializationCandidate::InitializationCandidate(
     identity::SemanticContextBrand semanticContext,
     identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
@@ -1256,8 +1222,8 @@ InitializationSourceVerificationResult InitializationSourceVerifier::verify(
   }
   ZC_IF_SOME(values, failures) {
     auto sorted =
-        ir::SortedSourceFailureFacts<InitializationSourceFailure,
-                                     InitializationSourceFailureOrdering>::from(zc::mv(values));
+        ir::SortedSourceFailureFacts<OwnershipSourceFailure, OwnershipSourceFailureOrdering>::from(
+            zc::mv(values));
     ZC_IF_SOME(value, sorted) {
       return InitializationSourceVerificationResult::sourceRejected(zc::mv(value));
     }

@@ -40,11 +40,12 @@ enum class BodyProductionKind : uint8_t {
   OwnerLocalFieldWrite = 0x0f,
   ReferenceDereference = 0x10,
   ReferenceReborrow = 0x11,
-  ErrorOperator = 0x12,
-  ConcreteMethodCall = 0x13,
-  OwnerLocalMethodReference = 0x14,
-  ReadIndex = 0x15,
-  Unsupported = 0x16
+  LocalBorrow = 0x12,
+  ErrorOperator = 0x13,
+  ConcreteMethodCall = 0x14,
+  OwnerLocalMethodReference = 0x15,
+  ReadIndex = 0x16,
+  Unsupported = 0x17
 };
 
 struct BodyProductionSite final {
@@ -772,6 +773,46 @@ zc::Maybe<ReferenceReborrowShape> referenceReborrowShape(
     return ReferenceReborrowShape{dereference, source, type, reference.referent};
   }
   ZC_UNREACHABLE
+}
+
+struct LocalBorrowShape final {
+  ast::NodeId source;
+  identity::SemanticTypeId sourceType;
+  identity::SemanticTypeId type;
+  type::semantic::Mutability mutability;
+};
+
+zc::Maybe<LocalBorrowShape> localBorrowShape(
+    const BodyCheckingInput& input, ast::NodeId node,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::UnaryExpression) {
+    return zc::none;
+  }
+  const auto operation = static_cast<ast::UnaryOperatorKind>(
+      tree.node(node).payload.words[ast::kUnaryExpressionOpWord]);
+  if (operation != ast::UnaryOperatorKind::Ref && operation != ast::UnaryOperatorKind::RefMut) {
+    return zc::none;
+  }
+  const ast::NodeId operand(tree.node(node).payload.words[ast::kUnaryExpressionOperandWord]);
+  if (!tree.contains(operand) || tree.node(operand).kind != ast::SyntaxKind::IdentExpr ||
+      resolvedOwnerLocal(input.boundModule.bindings(), operand) == zc::none) {
+    return zc::none;
+  }
+  auto sourceType = ownerLocalReferenceType(input, operand, nodeTypes);
+  if (sourceType == zc::none) return zc::none;
+  const auto expectedMutability = operation == ast::UnaryOperatorKind::Ref
+                                      ? type::semantic::Mutability::Const
+                                      : type::semantic::Mutability::Mutable;
+  auto canonical = input.semanticTypes.canonicalizeClosed(
+      type::semantic::TypeData(type::semantic::ReferenceTypeData{
+          expectedMutability, ZC_ASSERT_NONNULL(sourceType)}));
+  if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
+  auto interned =
+      input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+  if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
+  return LocalBorrowShape{operand, ZC_ASSERT_NONNULL(sourceType),
+                          interned.get<type::SemanticTypeInterned>().id, expectedMutability};
 }
 
 struct DirectCallableShape final {
@@ -1658,7 +1699,13 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
               syntax.payload.words[ast::kUnaryExpressionOpWord]);
           if (operation == ast::UnaryOperatorKind::Ref ||
               operation == ast::UnaryOperatorKind::RefMut) {
-            production = BodyProductionKind::ReferenceReborrow;
+            const ast::NodeId operand(syntax.payload.words[ast::kUnaryExpressionOperandWord]);
+            if (tree.contains(operand) && tree.node(operand).kind == ast::SyntaxKind::IdentExpr &&
+                resolvedOwnerLocal(boundModule.bindings(), operand) != zc::none) {
+              production = BodyProductionKind::LocalBorrow;
+            } else {
+              production = BodyProductionKind::ReferenceReborrow;
+            }
           } else if (operation == ast::UnaryOperatorKind::Deref) {
             production = BodyProductionKind::ReferenceDereference;
           }
@@ -2147,6 +2194,14 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
         }
         ZC_IF_SOME(value, shape) { producedType = value.sourceType; }
+      } else if (site.production == BodyProductionKind::LocalBorrow) {
+        auto shape = localBorrowShape(input, site.node, nodeTypes.asPtr());
+        if (shape == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        ZC_IF_SOME(value, shape) { producedType = value.type; }
       } else if (site.production == BodyProductionKind::StructLiteral) {
         auto shape = structLiteralShape(input, site.node, nodeTypes.asPtr());
         if (shape == zc::none) {

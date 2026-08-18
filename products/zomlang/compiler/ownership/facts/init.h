@@ -20,6 +20,7 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ownership/facts/flow.h"
 #include "zomlang/compiler/ownership/facts/paths.h"
+#include "zomlang/compiler/ownership/ownership-source-failure.h"
 
 namespace zomlang::compiler::ownership::facts {
 
@@ -41,14 +42,6 @@ struct InitializationState final {
            mustBeInitialized == other.mustBeInitialized;
   }
   constexpr bool operator!=(InitializationState other) const noexcept { return !(*this == other); }
-};
-
-/// \brief The current-subset reason a root local is unavailable at one MIR point.
-enum class InitializationLossKind : uint8_t {
-  NeverInitialized = 0x01,
-  Moved = 0x02,
-  Deinitialized = 0x03,
-  StorageEnded = 0x04,
 };
 
 /// \brief One event-anchored loss of availability for a move path.
@@ -95,36 +88,6 @@ struct InitializationFunction final {
   zc::Vector<InitializationFact> facts;
 };
 
-/// \brief One source-visible root-local use rejected before initialization facts publish.
-enum class InitializationSourceFailureKind : uint8_t {
-  UseAfterMove = 0x01,
-  UninitializedPlaceUse = 0x02,
-};
-
-/// \brief One unavailable-state cause retained for a source-visible root-local use.
-struct InitializationSourceFailureCause final {
-  InitializationLossKind kind;
-  MirEventKey event;
-  identity::SourceSpan span;
-};
-
-/// \brief One source-visible root-local use rejected before initialization facts publish.
-struct InitializationSourceFailure final {
-  InitializationSourceFailureKind kind;
-  identity::DefId owner;
-  MirEventKey primary;
-  identity::SourceSpan useSpan;
-  MovePathKey place;
-  zc::Vector<InitializationSourceFailureCause> unavailableCauses;
-  uint32_t traversalOrdinal;
-};
-
-/// \brief Canonical ordering for source initialization failures.
-struct InitializationSourceFailureOrdering final {
-  ZC_NODISCARD static bool less(const InitializationSourceFailure& left,
-                                const InitializationSourceFailure& right) noexcept;
-};
-
 /// \brief Successful source-use validation over independently verified initialization facts.
 struct InitializationSourceAccepted final {};
 
@@ -135,8 +98,8 @@ struct InitializationSourceAccepted final {};
 /// are legal only at ownership proof validation.
 class InitializationSourceVerificationResult final {
 public:
-  using SourceFailures = ir::SortedSourceFailureFacts<InitializationSourceFailure,
-                                                      InitializationSourceFailureOrdering>;
+  using SourceFailures =
+      ir::SortedSourceFailureFacts<OwnershipSourceFailure, OwnershipSourceFailureOrdering>;
 
   InitializationSourceVerificationResult(InitializationSourceVerificationResult&&) noexcept =
       default;

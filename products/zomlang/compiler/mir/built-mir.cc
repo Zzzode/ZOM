@@ -983,6 +983,17 @@ zc::Maybe<const hir::HirParameterReborrowExpression&> parameterReborrowFor(
   return result;
 }
 
+zc::Maybe<const hir::HirLocalBorrowExpression&> localBorrowFor(
+    const hir::VerifiedHirModule& module, hir::HirNodeId node) {
+  zc::Maybe<const hir::HirLocalBorrowExpression&> result;
+  for (const auto& borrow : module.localBorrows()) {
+    if (borrow.node != node) continue;
+    if (result != zc::none) return zc::none;
+    result = borrow;
+  }
+  return result;
+}
+
 zc::Maybe<const hir::HirBlockStatement&> blockFor(const hir::VerifiedHirModule& module,
                                                   hir::HirNodeId node) {
   zc::Maybe<const hir::HirBlockStatement&> result;
@@ -2698,6 +2709,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
   }
   const auto parameterReturnCount = hirModule.parameterReferences().size();
   const auto parameterReborrowCount = hirModule.parameterReborrows().size();
+  const auto localBorrowCount = hirModule.localBorrows().size();
   size_t localAliasReborrowCount = 0;
   for (const auto& reborrow : hirModule.parameterReborrows()) {
     if (reborrow.sourceAlias != zc::none) ++localAliasReborrowCount;
@@ -2709,7 +2721,8 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       hirModule.declarations().size() + hirModule.functions().size() !=
           hirModule.expressions().size() + hirModule.calls().size() +
               hirModule.aggregates().size() + uninitializedLocalReturnCount + parameterReturnCount +
-              parameterReborrowCount - localAliasReborrowCount - hirModule.localWrites().size() ||
+              parameterReborrowCount - localAliasReborrowCount + localBorrowCount -
+              hirModule.localWrites().size() ||
       hirModule.functions().size() != hirModule.blocks().size() ||
       hirModule.functions().size() != hirModule.returns().size()) {
     return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
@@ -3906,6 +3919,89 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                 pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
                 continue;
               }
+            }
+          }
+        }
+        ZC_IF_SOME(local, sourceLocal) {
+          ZC_IF_SOME(returnStatement, sourceReturn) {
+            auto borrow = localBorrowFor(hirModule, referenceNode);
+            ZC_IF_SOME(localBorrow, borrow) {
+              if (local.local != localBorrow.local || local.type != localBorrow.sourceType ||
+                  localBorrow.type != declaration.resultType || definition == zc::none) {
+                return rejectMir<BuiltMirCandidate>(
+                    ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact, module,
+                    declaration.definition, identities,
+                    static_cast<uint32_t>(pending.size() + 1));
+              }
+              zc::Vector<MirSourceScope> scopes;
+              zc::Maybe<MirSourceScopeId> noParent;
+              scopes.add(
+                  MirSourceScope{scopeId(1), zc::mv(noParent), declaration.sourceSpan.clone()});
+              zc::Vector<MirLocalDeclaration> locals;
+              locals.add(MirLocalDeclaration{localId(1), MirLocalKind::UserLocal, local.type,
+                                             scopeId(1), local.sourceSpan.clone()});
+              locals.add(MirLocalDeclaration{localId(2), MirLocalKind::Temporary, localBorrow.type,
+                                             scopeId(1), localBorrow.sourceSpan.clone()});
+              zc::Vector<MirStatement> statements;
+              statements.add(MirStatement::storageLive(localId(1), local.sourceSpan.clone()));
+              ZC_IF_SOME(initializerNode, local.initializer) {
+                auto initializer = expressionFor(hirModule, initializerNode);
+                if (initializer == zc::none ||
+                    ZC_ASSERT_NONNULL(initializer).type != local.type) {
+                  return rejectMir<BuiltMirCandidate>(
+                      ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::MissingRequiredFact,
+                      module, declaration.definition, identities,
+                      static_cast<uint32_t>(pending.size() + 1));
+                }
+                zc::Vector<MirProjection> projections;
+                statements.add(MirStatement::assign(
+                    MirPlace(localId(1), local.type, zc::mv(projections), local.type),
+                    MirRvalue::use(MirOperand::constant(
+                        local.type, ZC_ASSERT_NONNULL(initializer).value.clone())),
+                    MirInitializationKind::Initialize,
+                    ZC_ASSERT_NONNULL(initializer).sourceSpan.clone()));
+              }
+              statements.add(
+                  MirStatement::storageLive(localId(2), localBorrow.sourceSpan.clone()));
+              zc::Vector<MirProjection> destinationProjections;
+              zc::Vector<MirProjection> sourceProjections;
+              statements.add(MirStatement::borrowCreation(
+                  MirPlace(localId(2), localBorrow.type, zc::mv(destinationProjections),
+                           localBorrow.type),
+                  localBorrow.mutability == type::semantic::Mutability::Const
+                      ? MirBorrowKind::Shared
+                      : MirBorrowKind::Mutable,
+                  MirPlace(localId(1), localBorrow.sourceType, zc::mv(sourceProjections),
+                           localBorrow.sourceType),
+                  localBorrow.sourceSpan.clone()));
+              zc::Vector<MirProjection> returnProjections;
+              auto returnOperand =
+                  placeUse(proofs, copy,
+                           MirPlace(localId(2), localBorrow.type, zc::mv(returnProjections),
+                                    localBorrow.type));
+              if (returnOperand == zc::none) {
+                return rejectMir<BuiltMirCandidate>(
+                    ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact, module,
+                    declaration.definition, identities,
+                    static_cast<uint32_t>(pending.size() + 1));
+              }
+              zc::Vector<MirBasicBlock> blocks;
+              blocks.add(MirBasicBlock{
+                  blockId(1), scopeId(1), zc::mv(statements),
+                  MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                             returnStatement.sourceSpan.clone())});
+              MirFunction function{declaration.definition,
+                                   MirFunctionKind::Function,
+                                   identity::DefinitionKind::Function,
+                                   declaration.resultType,
+                                   declaration.sourceSpan.clone(),
+                                   zc::mv(scopes),
+                                   zc::mv(locals),
+                                   zc::mv(blocks)};
+              zc::Array<uint8_t> ownerKey;
+              ZC_IF_SOME(key, definition) { ownerKey = key.key().encode(); }
+              pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
+              continue;
             }
           }
         }
