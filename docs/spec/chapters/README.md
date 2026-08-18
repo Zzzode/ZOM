@@ -51,5 +51,5 @@ The grammar definitions in Chapter 17 should remain consistent with the ANTLR4 g
 - [`ZomParser.g4`](../ZomParser.g4) - Parser grammar rules
 - [`ZomLexer.g4`](../ZomLexer.g4) - Lexer tokens and keywords
 
-Refer to [`../../../.agents/rules/spec-alignment.md`](../../../.agents/rules/spec-alignment.md)
+Refer to [`../../../.codex/rules/spec-alignment.md`](../../../.codex/rules/spec-alignment.md)
 for details on maintaining this consistency.

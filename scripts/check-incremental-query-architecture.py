@@ -79,11 +79,11 @@ PERFORMANCE_CORPUS = Path(
 PERFORMANCE_BASELINE = Path(
     "products/zomlang/tests/performance/incremental-query-baseline.json"
 )
-MANIFEST = Path(".agents/subagents/manifest.yaml")
-ROUTING = Path(".agents/subagents/README.md")
-TASK_ROUTER = Path(".agents/subagents/task-router.md")
-MODULE_OWNER = Path(".agents/subagents/module-system.md")
-VERIFICATION_OWNER = Path(".agents/subagents/verification.md")
+MANIFEST = Path(".codex/subagents/manifest.yaml")
+ROUTING = Path(".codex/subagents/README.md")
+TASK_ROUTER = Path(".codex/subagents/task-router.md")
+MODULE_OWNER = Path(".codex/subagents/module-system.md")
+VERIFICATION_OWNER = Path(".codex/subagents/verification.md")
 AGENTS = Path("AGENTS.md")
 
 ROUTING_FILES = (MANIFEST, ROUTING, TASK_ROUTER, MODULE_OWNER, VERIFICATION_OWNER, AGENTS)

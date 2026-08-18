@@ -52,7 +52,7 @@ The grammar definitions are maintained in sync with the ANTLR4 parser files:
 - [`ZomLexer.g4`](ZomLexer.g4) - Lexer tokens and keywords
 
 For details on grammar consistency, see the repository spec-alignment rule in
-[`../../.agents/rules/spec-alignment.md`](../../.agents/rules/spec-alignment.md).
+[`../../.codex/rules/spec-alignment.md`](../../.codex/rules/spec-alignment.md).
 
 ## Contributing
 

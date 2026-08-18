@@ -2,8 +2,8 @@
 
 Project-wide guidance for AI coding agents working on the ZOM language repository.
 
-> **Canonical design principles live in `.agents/rules/design-principles.md`**.
-> Everything below is either a reference or points into `.agents/` for detail.
+> **Canonical design principles live in `.codex/rules/design-principles.md`**.
+> Everything below is either a reference or points into `.codex/` for detail.
 
 ---
 
@@ -42,7 +42,7 @@ Project-wide guidance for AI coding agents working on the ZOM language repositor
 7. **Commit messages are ASCII-English only.** No CJK characters, no
    non-ASCII punctuation in the subject or body. `git log --oneline` must
    be cleanly grepable with an ASCII regex. See also `§ Git Commits`
-   below and `.agents/rules/design-principles.md` § Radical Refactoring.
+   below and `.codex/rules/design-principles.md` § Radical Refactoring.
 8. If a tool call fails with a syntax error, read the tool definition and retry
    with the correct shape. Do not silently skip the step.
 9. **Internal contracts are unversioned.** Do not use `V0`, `V1`, `V2`, `.v0`,
@@ -52,9 +52,9 @@ Project-wide guidance for AI coding agents working on the ZOM language repositor
    change. RFC numbers, user SemVer, and externally assigned standard or
    protocol names retain their official spelling.
 
-Additional path-scoped rules live in `.agents/rules/*.md`. Skills loadable via
-`/skill` live in `.agents/skills/*/SKILL.md`. Subagent gate specs live in
-`.agents/subagents/` (manifest at `.agents/subagents/manifest.yaml`).
+Additional path-scoped rules live in `.codex/rules/*.md`. Skills loadable via
+`/skill` live in `.codex/skills/*/SKILL.md`. Subagent gate specs live in
+`.codex/subagents/` (manifest at `.codex/subagents/manifest.yaml`).
 
 ---
 
@@ -208,20 +208,20 @@ Invoke with `/skill <name>`.
 
 | Name | File | Purpose |
 |---|---|---|
-| `build-ci` | `.agents/skills/build-ci/SKILL.md` | Configure, build, test, coverage, format, sanitizer triage |
-| `zc-library` | `.agents/skills/zc-library/SKILL.md` | Own / Vector / String / Maybe / OneOf — type choices and gotchas |
-| `lit-testing` | `.agents/skills/lit-testing/SKILL.md` | LLVM lit FileCheck tests, `regen-lit.py`, RUN/XFAIL patterns |
-| `ultracode-audit` | `.agents/skills/ultracode-audit/SKILL.md` | Multi-expert adversarial audit (scout → 6-dim audit → confirm/refute → report) |
-| `spec-alignment` | `.agents/skills/spec-alignment/SKILL.md` | `spec ↔ lexer ↔ parser ↔ AST ↔ binder` 5-way consistency check |
-| `rfc` | `.agents/skills/rfc/SKILL.md` | RFC authoring, prior-art review, status transitions, and proposal governance |
+| `build-ci` | `.codex/skills/build-ci/SKILL.md` | Configure, build, test, coverage, format, sanitizer triage |
+| `zc-library` | `.codex/skills/zc-library/SKILL.md` | Own / Vector / String / Maybe / OneOf — type choices and gotchas |
+| `lit-testing` | `.codex/skills/lit-testing/SKILL.md` | LLVM lit FileCheck tests, `regen-lit.py`, RUN/XFAIL patterns |
+| `ultracode-audit` | `.codex/skills/ultracode-audit/SKILL.md` | Multi-expert adversarial audit (scout → 6-dim audit → confirm/refute → report) |
+| `spec-alignment` | `.codex/skills/spec-alignment/SKILL.md` | `spec ↔ lexer ↔ parser ↔ AST ↔ binder` 5-way consistency check |
+| `rfc` | `.codex/skills/rfc/SKILL.md` | RFC authoring, prior-art review, status transitions, and proposal governance |
 
 ---
 
 ## Available Subagents
 
 Codex/Claude-code custom agent entrypoints (if configured) are routed by
-`.agents/subagents/task-router.md`. The minimum safe gate set for a change is selected from
-the trigger matrix in `.agents/subagents/README.md`.
+`.codex/subagents/task-router.md`. The minimum safe gate set for a change is selected from
+the trigger matrix in `.codex/subagents/README.md`.
 
 | ID | Owns | Triggered when |
 |---|---|---|
@@ -392,5 +392,5 @@ shape.
 ---
 
 *This file is the top-level entry point. Detailed rules, skills, and subagent
-specs live under `.agents/`. Read `design-principles.md` before any design decision;
-read `.agents/subagents/task-router.md` before any non-trivial implementation.*
+specs live under `.codex/`. Read `design-principles.md` before any design decision;
+read `.codex/subagents/task-router.md` before any non-trivial implementation.*

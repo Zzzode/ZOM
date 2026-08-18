@@ -17,7 +17,7 @@ SELF = Path("scripts/check-no-internal-versioning.py")
 
 POLICY_DEFINITION_FILES = {
     Path("AGENTS.md"),
-    Path(".agents/rules/design-principles.md"),
+    Path(".codex/rules/design-principles.md"),
     Path("docs/rfc/README.md"),
 }
 
