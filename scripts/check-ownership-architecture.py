@@ -35,6 +35,16 @@ RESOURCES = Path("products/zomlang/compiler/ownership/facts/resources.cc")
 RESOURCES_HEADER = Path("products/zomlang/compiler/ownership/facts/resources.h")
 INPUTS = Path("products/zomlang/compiler/ownership/facts/inputs.cc")
 INPUTS_HEADER = Path("products/zomlang/compiler/ownership/facts/inputs.h")
+FACTS_REVISION = Path("products/zomlang/compiler/ownership/facts/ownership-facts-revision.cc")
+FACTS_REVISION_HEADER = Path(
+    "products/zomlang/compiler/ownership/facts/ownership-facts-revision.h"
+)
+FACTS_CODEC = Path("products/zomlang/compiler/ownership/facts/ownership-facts-codec.cc")
+FACTS_CODEC_HEADER = Path("products/zomlang/compiler/ownership/facts/ownership-facts-codec.h")
+OWNERSHIP_CHECKED_MIR = Path("products/zomlang/compiler/ownership/ownership-checked-mir.cc")
+OWNERSHIP_CHECKED_MIR_HEADER = Path(
+    "products/zomlang/compiler/ownership/ownership-checked-mir.h"
+)
 BORROW_EVIDENCE_HEADER = Path("products/zomlang/compiler/driver/interface/borrow-evidence.h")
 BORROW_EVIDENCE_SOURCE = Path("products/zomlang/compiler/driver/interface/borrow-evidence.cc")
 HIR = Path("products/zomlang/compiler/hir/hir-module.cc")
@@ -43,6 +53,7 @@ CHECKED_MODULE = Path("products/zomlang/compiler/hir/checked-module.cc")
 CHECKED_MODULE_HEADER = Path("products/zomlang/compiler/hir/checked-module.h")
 MIR = Path("products/zomlang/compiler/mir/built-mir.cc")
 MIR_HEADER = Path("products/zomlang/compiler/mir/built-mir.h")
+BUILT_MIR_TEST = Path("products/zomlang/tests/unittests/compiler/mir/built-mir-test.cc")
 OWNERSHIP_CMAKE = Path("products/zomlang/compiler/ownership/CMakeLists.txt")
 SESSION = Path("products/zomlang/compiler/driver/session/compiler-session.cc")
 TEST = Path("products/zomlang/tests/unittests/compiler/ownership/ownership-event-overlay-test.cc")
@@ -80,6 +91,12 @@ REQUIRED = (
     RESOURCES_HEADER,
     INPUTS,
     INPUTS_HEADER,
+    FACTS_REVISION,
+    FACTS_REVISION_HEADER,
+    FACTS_CODEC,
+    FACTS_CODEC_HEADER,
+    OWNERSHIP_CHECKED_MIR,
+    OWNERSHIP_CHECKED_MIR_HEADER,
     BORROW_EVIDENCE_HEADER,
     BORROW_EVIDENCE_SOURCE,
     HIR,
@@ -88,6 +105,7 @@ REQUIRED = (
     CHECKED_MODULE_HEADER,
     MIR,
     MIR_HEADER,
+    BUILT_MIR_TEST,
     OWNERSHIP_CMAKE,
     SESSION,
     TEST,
@@ -156,7 +174,6 @@ def check(values: dict[Path, str]) -> list[str]:
     for marker in (
         "Drop elaborator publishes a complete discharge inventory",
         "Drop elaborator rejects a foreign lease",
-        "Drop elaborator rejects a stale revision",
         "Drop elaborator rejects a missing discharge",
     ):
         if marker not in drop_elaborated_test:
@@ -441,6 +458,16 @@ def check(values: dict[Path, str]) -> list[str]:
     mir_header = values.get(MIR_HEADER, "")
     if "BorrowEvidenceLookupResult borrowEvidence() const noexcept;" not in mir_header:
         errors.append(f"{MIR_HEADER}: missing ownership-only borrow-evidence lookup")
+    for marker in (
+        "UnsafeScopeBoundary = 0x07",
+        "enum class MirUnsafeScopeBoundaryKind : uint8_t { Enter = 0x01, Exit = 0x02 };",
+        "struct MirUnsafeScopeBoundaryStatement final",
+        "static MirStatement unsafeScopeBoundary(MirUnsafeScopeBoundaryKind kind,",
+        "const MirUnsafeScopeBoundaryStatement& unsafeScopeBoundaryValue() const;",
+        "friend class ownership::DropElaborator;",
+    ):
+        if marker not in mir_header:
+            errors.append(f"{MIR_HEADER}: missing unsafe-scope boundary contract: {marker}")
 
     mir = values.get(MIR, "")
     for marker in (
@@ -450,6 +477,13 @@ def check(values: dict[Path, str]) -> list[str]:
     ):
         if marker not in mir:
             errors.append(f"{MIR}: missing ownership borrow-evidence resolution: {marker}")
+    for marker in (
+        "bool validateUnsafeScopeBoundaries(const MirFunction& function)",
+        "MirUnsafeScopeBoundaryKind::Enter",
+        "MirUnsafeScopeBoundaryKind::Exit",
+    ):
+        if marker not in mir:
+            errors.append(f"{MIR}: missing unsafe-scope boundary validation: {marker}")
 
     borrow_evidence = values.get(BORROW_EVIDENCE_SOURCE, "")
     if "repository == other.repository && state == other.state" not in borrow_evidence:
@@ -483,11 +517,84 @@ def check(values: dict[Path, str]) -> list[str]:
         "const VerifiedReborrowStates& states() const noexcept;",
         "const VerifiedOwnershipResourceFacts& resources() const noexcept;",
         "const driver::borrow_evidence::VerifiedBorrowEvidenceLease& lease,",
-        "const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& capability);",
+        "const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& capability,",
         "class OwnershipInputVerifier final",
     ):
         if marker not in inputs_header:
             errors.append(f"{INPUTS_HEADER}: missing ownership-input bundle contract: {marker}")
+    for marker in (
+        "const OwnershipFactsRevision& factsRevision() const noexcept;",
+        "void setFactsRevision(OwnershipFactsRevision revision) noexcept;",
+    ):
+        if marker not in inputs_header:
+            errors.append(f"{INPUTS_HEADER}: missing ownership facts-revision contract: {marker}")
+
+    inputs = values.get(INPUTS, "")
+    for marker in (
+        "OwnershipFactsCodec::compute(inputs, overlay, identities, semanticTypes)",
+        "inputs.setFactsRevision(value);",
+    ):
+        if marker not in inputs:
+            errors.append(f"{INPUTS}: missing ownership facts-revision computation: {marker}")
+
+    facts_revision_header = values.get(FACTS_REVISION_HEADER, "")
+    for marker in (
+        "class OwnershipFactsRevision final",
+        "static OwnershipFactsRevision fromDigest(const identity::Sha256Digest& digest) noexcept;",
+        "const identity::Sha256Digest& digest() const noexcept;",
+    ):
+        if marker not in facts_revision_header:
+            errors.append(f"{FACTS_REVISION_HEADER}: missing facts-revision contract: {marker}")
+
+    facts_revision = values.get(FACTS_REVISION, "")
+    for marker in (
+        "OwnershipFactsRevision::fromDigest(",
+        "OwnershipFactsRevision::digest() const noexcept",
+    ):
+        if marker not in facts_revision:
+            errors.append(f"{FACTS_REVISION}: missing facts-revision implementation: {marker}")
+
+    facts_codec_header = values.get(FACTS_CODEC_HEADER, "")
+    for marker in (
+        "class OwnershipFactsCodec final",
+        "static zc::Maybe<zc::Array<uint8_t>> encodeFramed(",
+        "static zc::Maybe<zc::Array<uint8_t>> encode(",
+        "static zc::Maybe<OwnershipFactsRevision> compute(",
+    ):
+        if marker not in facts_codec_header:
+            errors.append(f"{FACTS_CODEC_HEADER}: missing facts-codec contract: {marker}")
+
+    facts_codec = values.get(FACTS_CODEC, "")
+    for marker in (
+        'constexpr char domain[] = "zom.ownership-facts";',
+        "canonicalGroups.size() != 13",
+        "OwnershipFactsCodec::encodeFramed(",
+        "OwnershipFactsCodec::encode(",
+        "OwnershipFactsCodec::compute(",
+        "OwnershipFactsRevision::fromDigest(hash)",
+    ):
+        if marker not in facts_codec:
+            errors.append(f"{FACTS_CODEC}: missing facts-codec implementation: {marker}")
+
+    ownership_checked_mir = values.get(OWNERSHIP_CHECKED_MIR, "")
+    for marker in (
+        "facts::OwnershipFactsCodec::compute(facts, eventOverlay, identities, semanticTypes)",
+        "if (recomputed != facts.factsRevision())",
+    ):
+        if marker not in ownership_checked_mir:
+            errors.append(
+                f"{OWNERSHIP_CHECKED_MIR}: missing facts-revision recompute contract: {marker}"
+            )
+
+    ownership_checked_mir_header = values.get(OWNERSHIP_CHECKED_MIR_HEADER, "")
+    for marker in (
+        "const facts::OwnershipFactsRevision& factsRevision() const noexcept;",
+        "friend class OwnershipFinalizer;",
+    ):
+        if marker not in ownership_checked_mir_header:
+            errors.append(
+                f"{OWNERSHIP_CHECKED_MIR_HEADER}: missing checked-MIR facts-revision contract: {marker}"
+            )
 
     compiler_session_test = values.get(COMPILER_SESSION_TEST, "")
     for marker in (
@@ -505,6 +612,8 @@ def check(values: dict[Path, str]) -> list[str]:
         "${CMAKE_CURRENT_SOURCE_DIR}/facts/inputs.cc",
         "${CMAKE_CURRENT_SOURCE_DIR}/facts/flow.cc",
         "${CMAKE_CURRENT_SOURCE_DIR}/facts/loans.cc",
+        "${CMAKE_CURRENT_SOURCE_DIR}/facts/ownership-facts-codec.cc",
+        "${CMAKE_CURRENT_SOURCE_DIR}/facts/ownership-facts-revision.cc",
         "${CMAKE_CURRENT_SOURCE_DIR}/facts/resources.cc",
         "${CMAKE_CURRENT_SOURCE_DIR}/facts/regions.cc",
         "${CMAKE_CURRENT_SOURCE_DIR}/facts/refs.cc",
@@ -693,6 +802,15 @@ def check(values: dict[Path, str]) -> list[str]:
     ):
         if marker not in test:
             errors.append(f"{TEST}: missing ownership mutation or production test: {marker}")
+
+    built_mir_test = values.get(BUILT_MIR_TEST, "")
+    for marker in (
+        "Built MIR revision matches the canonical 283-byte unsafe-scope oracle",
+        "Built MIR unsafe-scope oracle changes when any boundary byte is mutated",
+        "c49976b9fc841ecf6cd2e2d62af3442d36a22571b52291a0601e60ea92f71aa0",
+    ):
+        if marker not in built_mir_test:
+            errors.append(f"{BUILT_MIR_TEST}: missing unsafe-scope oracle test: {marker}")
 
     hir_test = values.get(HIR_TEST, "")
     for marker in (
@@ -1226,6 +1344,136 @@ def main() -> int:
         ).replace("Drop elaborator publishes a complete discharge inventory", "", 1)
         if not check(drop_elaborated_test_mutation):
             print("ownership drop-elaboration test architecture self-test escaped")
+            return 1
+        facts_revision_header_mutation = dict(values)
+        facts_revision_header_mutation[FACTS_REVISION_HEADER] = (
+            facts_revision_header_mutation.get(FACTS_REVISION_HEADER, "").replace(
+                "class OwnershipFactsRevision final",
+                "class RemovedOwnershipFactsRevision final",
+                1,
+            )
+        )
+        if not check(facts_revision_header_mutation):
+            print("ownership facts-revision header architecture self-test escaped")
+            return 1
+        facts_revision_source_mutation = dict(values)
+        facts_revision_source_mutation[FACTS_REVISION] = facts_revision_source_mutation.get(
+            FACTS_REVISION, ""
+        ).replace("OwnershipFactsRevision::fromDigest(", "OwnershipFactsRevision::staleFromDigest(", 1)
+        if not check(facts_revision_source_mutation):
+            print("ownership facts-revision source architecture self-test escaped")
+            return 1
+        facts_codec_header_mutation = dict(values)
+        facts_codec_header_mutation[FACTS_CODEC_HEADER] = facts_codec_header_mutation.get(
+            FACTS_CODEC_HEADER, ""
+        ).replace("class OwnershipFactsCodec final", "class RemovedOwnershipFactsCodec final", 1)
+        if not check(facts_codec_header_mutation):
+            print("ownership facts-codec header architecture self-test escaped")
+            return 1
+        facts_codec_domain_mutation = dict(values)
+        facts_codec_domain_mutation[FACTS_CODEC] = facts_codec_domain_mutation.get(
+            FACTS_CODEC, ""
+        ).replace(
+            'constexpr char domain[] = "zom.ownership-facts";',
+            'constexpr char domain[] = "zom.ownership-facts-stale";',
+            1,
+        )
+        if not check(facts_codec_domain_mutation):
+            print("ownership facts-codec domain architecture self-test escaped")
+            return 1
+        facts_codec_group_count_mutation = dict(values)
+        facts_codec_group_count_mutation[FACTS_CODEC] = facts_codec_group_count_mutation.get(
+            FACTS_CODEC, ""
+        ).replace("canonicalGroups.size() != 13", "canonicalGroups.size() != 12", 1)
+        if not check(facts_codec_group_count_mutation):
+            print("ownership facts-codec group-count architecture self-test escaped")
+            return 1
+        facts_codec_compute_mutation = dict(values)
+        facts_codec_compute_mutation[FACTS_CODEC] = facts_codec_compute_mutation.get(
+            FACTS_CODEC, ""
+        ).replace("OwnershipFactsCodec::compute(", "OwnershipFactsCodec::staleCompute(", 1)
+        if not check(facts_codec_compute_mutation):
+            print("ownership facts-codec compute architecture self-test escaped")
+            return 1
+        inputs_facts_revision_mutation = dict(values)
+        inputs_facts_revision_mutation[INPUTS] = inputs_facts_revision_mutation.get(
+            INPUTS, ""
+        ).replace(
+            "OwnershipFactsCodec::compute(inputs, overlay, identities, semanticTypes)",
+            "OwnershipFactsCodec::staleCompute(inputs, overlay, identities, semanticTypes)",
+            1,
+        )
+        if not check(inputs_facts_revision_mutation):
+            print("ownership inputs facts-revision architecture self-test escaped")
+            return 1
+        checked_mir_recompute_mutation = dict(values)
+        checked_mir_recompute_mutation[OWNERSHIP_CHECKED_MIR] = checked_mir_recompute_mutation.get(
+            OWNERSHIP_CHECKED_MIR, ""
+        ).replace(
+            "facts::OwnershipFactsCodec::compute(facts, eventOverlay, identities, semanticTypes)",
+            "facts::OwnershipFactsCodec::staleCompute(facts, eventOverlay, identities, semanticTypes)",
+            1,
+        )
+        if not check(checked_mir_recompute_mutation):
+            print("ownership checked-MIR recompute architecture self-test escaped")
+            return 1
+        mir_unsafe_boundary_kind_mutation = dict(values)
+        mir_unsafe_boundary_kind_mutation[MIR_HEADER] = mir_unsafe_boundary_kind_mutation.get(
+            MIR_HEADER, ""
+        ).replace(
+            "enum class MirUnsafeScopeBoundaryKind : uint8_t { Enter = 0x01, Exit = 0x02 };",
+            "enum class MirUnsafeScopeBoundaryKind : uint8_t { Enter = 0x01, Exit = 0x03 };",
+            1,
+        )
+        if not check(mir_unsafe_boundary_kind_mutation):
+            print("ownership unsafe-scope boundary kind architecture self-test escaped")
+            return 1
+        mir_unsafe_boundary_statement_mutation = dict(values)
+        mir_unsafe_boundary_statement_mutation[MIR_HEADER] = (
+            mir_unsafe_boundary_statement_mutation.get(MIR_HEADER, "").replace(
+                "struct MirUnsafeScopeBoundaryStatement final",
+                "struct RemovedMirUnsafeScopeBoundaryStatement final",
+                1,
+            )
+        )
+        if not check(mir_unsafe_boundary_statement_mutation):
+            print("ownership unsafe-scope boundary statement architecture self-test escaped")
+            return 1
+        mir_unsafe_boundary_validation_mutation = dict(values)
+        mir_unsafe_boundary_validation_mutation[MIR] = (
+            mir_unsafe_boundary_validation_mutation.get(MIR, "").replace(
+                "bool validateUnsafeScopeBoundaries(const MirFunction& function)",
+                "bool staleValidateUnsafeScopeBoundaries(const MirFunction& function)",
+                1,
+            )
+        )
+        if not check(mir_unsafe_boundary_validation_mutation):
+            print("ownership unsafe-scope boundary validation architecture self-test escaped")
+            return 1
+        built_mir_oracle_mutation = dict(values)
+        built_mir_oracle_mutation[BUILT_MIR_TEST] = built_mir_oracle_mutation.get(
+            BUILT_MIR_TEST, ""
+        ).replace(
+            "Built MIR revision matches the canonical 283-byte unsafe-scope oracle",
+            "Built MIR revision matches the stale unsafe-scope oracle",
+            1,
+        )
+        if not check(built_mir_oracle_mutation):
+            print("ownership built-MIR oracle architecture self-test escaped")
+            return 1
+        facts_codec_cmake_mutation = dict(values)
+        facts_codec_cmake_mutation[OWNERSHIP_CMAKE] = facts_codec_cmake_mutation.get(
+            OWNERSHIP_CMAKE, ""
+        ).replace("${CMAKE_CURRENT_SOURCE_DIR}/facts/ownership-facts-codec.cc", "", 1)
+        if not check(facts_codec_cmake_mutation):
+            print("ownership facts-codec build architecture self-test escaped")
+            return 1
+        facts_revision_cmake_mutation = dict(values)
+        facts_revision_cmake_mutation[OWNERSHIP_CMAKE] = facts_revision_cmake_mutation.get(
+            OWNERSHIP_CMAKE, ""
+        ).replace("${CMAKE_CURRENT_SOURCE_DIR}/facts/ownership-facts-revision.cc", "", 1)
+        if not check(facts_revision_cmake_mutation):
+            print("ownership facts-revision build architecture self-test escaped")
             return 1
         print("ownership architecture self-test passed")
         return 0
