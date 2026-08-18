@@ -130,6 +130,59 @@ inline bool sameLossCause(const facts::InitializationLossCause& left,
          sameMovePathKey(left.path, right.path);
 }
 
+// Oracle-local canonical loss-cause ordering, mirroring the production
+// `lessLossCause` in facts/init.cc. The oracle shares no derivation code with
+// production, so the comparator is duplicated here; both must agree because
+// `sameInitializationFact` compares cause vectors index-wise.
+inline bool lessEvent(const MirEventKey& left, const MirEventKey& right) {
+  if (left.location.point < right.location.point) return true;
+  if (right.location.point < left.location.point) return false;
+  return left.operandOrdinal < right.operandOrdinal;
+}
+
+inline bool lessProjection(const mir::MirProjection& left, const mir::MirProjection& right) {
+  if (left.kind() != right.kind()) {
+    return static_cast<uint8_t>(left.kind()) < static_cast<uint8_t>(right.kind());
+  }
+  switch (left.kind()) {
+    case mir::MirProjectionKind::Field:
+      return left.fieldValue().field.isValid() < right.fieldValue().field.isValid();
+    case mir::MirProjectionKind::Index:
+      return left.indexValue().index.ordinal() < right.indexValue().index.ordinal();
+    case mir::MirProjectionKind::Dereference:
+      return false;
+    case mir::MirProjectionKind::Downcast:
+      return left.downcastValue().variant.isValid() < right.downcastValue().variant.isValid();
+    case mir::MirProjectionKind::Subslice:
+      if (left.subsliceValue().first != right.subsliceValue().first) {
+        return left.subsliceValue().first < right.subsliceValue().first;
+      }
+      return left.subsliceValue().pastLast < right.subsliceValue().pastLast;
+  }
+  return false;
+}
+
+inline bool lessPlace(const mir::MirPlace& left, const mir::MirPlace& right) {
+  if (left.local() != right.local()) return left.local().ordinal() < right.local().ordinal();
+  const auto shared = zc::min(left.projections().size(), right.projections().size());
+  for (size_t index = 0; index < shared; ++index) {
+    if (lessProjection(left.projections()[index], right.projections()[index])) return true;
+    if (lessProjection(right.projections()[index], left.projections()[index])) return false;
+  }
+  return left.projections().size() < right.projections().size();
+}
+
+inline bool lessLossCause(const facts::InitializationLossCause& left,
+                          const facts::InitializationLossCause& right) {
+  if (left.kind != right.kind) {
+    return static_cast<uint8_t>(left.kind) < static_cast<uint8_t>(right.kind);
+  }
+  if (lessEvent(left.event, right.event)) return true;
+  if (lessEvent(right.event, left.event)) return false;
+  if (left.path.owner != right.path.owner) return false;
+  return lessPlace(left.path.place, right.path.place);
+}
+
 inline bool sameDropAction(const zc::Maybe<LogicalDropAction>& left,
                            const zc::Maybe<LogicalDropAction>& right) {
   if (left == zc::none) return right == zc::none;
@@ -642,15 +695,10 @@ private:
     chainLocation(flow, functionOverlay, MirPoint::entry(), current);
     for (size_t index = 0; index < function.blocks.size(); ++index) {
       const auto& block = function.blocks[index];
-      // The admitted subset is one linear block chain: every block after the
-      // first is the normal call target of the block before it.
-      if (index != 0) {
-        const auto& previous = function.blocks[index - 1];
-        if (previous.terminator.kind() != mir::MirTerminatorKind::Call ||
-            previous.terminator.callValue().normalTarget != block.id) {
-          return zc::none;
-        }
-      }
+      // Each block chains its own locations; a Call terminator chains the edge
+      // point to its normal-edge successor below. The flow no longer assumes a
+      // linear block layout, so it admits multi-predecessor joins once branch
+      // terminators land.
       for (uint32_t ordinal = 0; ordinal < block.statements.size(); ++ordinal) {
         chainLocation(flow, functionOverlay, MirPoint::beforeStatement(block.id, ordinal), current);
         chainLocation(flow, functionOverlay, MirPoint::afterStatement(block.id, ordinal), current);
@@ -730,6 +778,17 @@ private:
               cause.kind, MirEventKey(cause.event),
               facts::MovePathKey{cause.path.owner, cause.path.place.clone()}});
         }
+      }
+      // Canonical order must match the production `mergeLossCauses` sort so the
+      // differential comparison sees identical cause vectors at every fact.
+      for (size_t index = 1; index < merged.size(); ++index) {
+        auto current = zc::mv(merged[index]);
+        size_t insertion = index;
+        while (insertion != 0 && lessLossCause(current, merged[insertion - 1])) {
+          merged[insertion] = zc::mv(merged[insertion - 1]);
+          --insertion;
+        }
+        merged[insertion] = zc::mv(current);
       }
       return merged;
     }

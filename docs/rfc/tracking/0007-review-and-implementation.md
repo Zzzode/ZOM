@@ -1005,8 +1005,10 @@ canonical event-anchored cause: `NeverInitialized`, `Moved`, `Deinitialized`,
 or `StorageEnded`. Every admitted move path has one initialization row at every
 published point. Root initialization propagates to retained descendant paths,
 while a field overwrite updates that field and preserves a sibling path state
-and cause set. Successful initialization clears the cause. The current subset
-does not yet merge causes across CFG predecessors.
+and cause set. Successful initialization clears the cause. Loss causes are merged at every
+multi-predecessor join point: the union is deduplicated and published in
+canonical (kind, event, path) order, so the result is independent of
+predecessor fold order.
 
 The slice rejects a malformed local type chain, a state mutation, unknown or
 repeated block traversal, a projection other than the admitted one-field path,

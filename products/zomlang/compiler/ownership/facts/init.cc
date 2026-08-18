@@ -525,6 +525,17 @@ zc::Vector<mir::MirBlockId> predecessorBlocks(const FlowFunction& flow, mir::Mir
     }
     if (!duplicate) predecessors.add(location.edgeValue().from);
   }
+  // Deterministic fold order independent of flow point ordering; the canonical
+  // loss-cause sort makes joins order-independent, so this is defense-in-depth.
+  for (size_t index = 1; index < predecessors.size(); ++index) {
+    auto current = predecessors[index];
+    size_t insertion = index;
+    while (insertion != 0 && current.ordinal() < predecessors[insertion - 1].ordinal()) {
+      predecessors[insertion] = predecessors[insertion - 1];
+      --insertion;
+    }
+    predecessors[insertion] = current;
+  }
   return predecessors;
 }
 
@@ -552,6 +563,74 @@ zc::Maybe<zc::Vector<InitializationPathState>> joinPredecessorStates(
     }
   }
   return joined;
+}
+
+zc::Maybe<mir::MirBlockId> terminatorSuccessor(const mir::MirTerminator& terminator) {
+  if (terminator.kind() == mir::MirTerminatorKind::Call) {
+    return terminator.callValue().normalTarget;
+  }
+  return zc::none;
+}
+
+/// \brief DFS postorder of blocks reachable from the entry block, reversed so
+/// every block is visited after all its flow predecessors.
+///
+/// A back edge (a block reached while still on the current DFS path) rejects
+/// the derivation, matching the admitted acyclic subset. A block already fully
+/// expanded through another path (a diamond join) is visited once. The
+/// admitted terminator algebra has at most one successor per block, so the
+/// order is deterministic; when branch terminators land they must push
+/// successors in a deterministic order to preserve that guarantee.
+zc::Maybe<zc::Vector<size_t>> reachableBlockOrder(const mir::MirFunction& function) {
+  zc::Vector<size_t> postorder;
+  zc::Vector<mir::MirBlockId> inProgress;
+  zc::Vector<mir::MirBlockId> done;
+  struct Frame final {
+    size_t blockIndex;
+    bool expanded;
+  };
+  zc::Vector<Frame> stack;
+  stack.add(Frame{0, false});
+  while (stack.size() != 0) {
+    auto frame = zc::mv(stack[stack.size() - 1]);
+    stack.removeLast();
+    if (frame.expanded) {
+      const auto id = function.blocks[frame.blockIndex].id;
+      for (size_t index = 0; index < inProgress.size(); ++index) {
+        if (inProgress[index] == id) {
+          inProgress[index] = inProgress[inProgress.size() - 1];
+          inProgress.removeLast();
+          break;
+        }
+      }
+      done.add(id);
+      postorder.add(frame.blockIndex);
+      continue;
+    }
+    const auto& block = function.blocks[frame.blockIndex];
+    bool alreadyDone = false;
+    for (const auto previous : done) {
+      if (previous == block.id) {
+        alreadyDone = true;
+        break;
+      }
+    }
+    if (alreadyDone) continue;
+    for (const auto previous : inProgress) {
+      if (previous == block.id) return zc::none;
+    }
+    inProgress.add(block.id);
+    stack.add(Frame{frame.blockIndex, true});
+    const auto successor = terminatorSuccessor(block.terminator);
+    ZC_IF_SOME(target, successor) {
+      auto next = blockIndex(function, target);
+      if (next == zc::none) return zc::none;
+      ZC_IF_SOME(value, next) { stack.add(Frame{value, false}); }
+    }
+  }
+  zc::Vector<size_t> order;
+  for (size_t index = postorder.size(); index != 0; --index) { order.add(postorder[index - 1]); }
+  return order;
 }
 
 zc::Maybe<InitializationFunction> deriveFunction(const mir::MirFunction& function,
@@ -582,81 +661,127 @@ zc::Maybe<InitializationFunction> deriveFunction(const mir::MirFunction& functio
   if (!appendFacts(facts, MirPoint::entry(), function, paths, states.asPtr())) return zc::none;
   zc::Vector<zc::Maybe<zc::Vector<InitializationPathState>>> blockExitStates;
   for (size_t index = 0; index < function.blocks.size(); ++index) blockExitStates.add(zc::none);
-  zc::Vector<mir::MirBlockId> visited;
-  size_t current = 0;
-  for (size_t steps = 0; steps < function.blocks.size(); ++steps) {
-    const auto& block = function.blocks[current];
-    for (const auto previous : visited) {
-      if (previous == block.id) return zc::none;
-    }
-    visited.add(block.id);
-    if (current != 0) {
-      auto joined = joinPredecessorStates(function, flow, block.id, blockExitStates.asPtr());
-      if (joined == zc::none) return zc::none;
-      ZC_IF_SOME(value, joined) { states = zc::mv(value); }
-    }
-    for (size_t ordinal = 0; ordinal < block.statements.size(); ++ordinal) {
-      if (!appendFacts(facts, MirPoint::beforeStatement(block.id, static_cast<uint32_t>(ordinal)),
-                       function, paths, states.asPtr())) {
-        return zc::none;
+  auto order = reachableBlockOrder(function);
+  if (order == zc::none) return zc::none;
+  ZC_IF_SOME(blocks, order) {
+    for (const auto blockIndexValue : blocks) {
+      const auto& block = function.blocks[blockIndexValue];
+      if (blockIndexValue != 0) {
+        auto joined = joinPredecessorStates(function, flow, block.id, blockExitStates.asPtr());
+        if (joined == zc::none) return zc::none;
+        ZC_IF_SOME(value, joined) { states = zc::mv(value); }
       }
-      if (!applyStatement(function, paths, block.statements[ordinal], block.id,
-                          static_cast<uint32_t>(ordinal), states)) {
-        return zc::none;
-      }
-      if (!appendFacts(facts, MirPoint::afterStatement(block.id, static_cast<uint32_t>(ordinal)),
-                       function, paths, states.asPtr())) {
-        return zc::none;
-      }
-    }
-    if (!appendFacts(facts, MirPoint::beforeTerminator(block.id), function, paths,
-                     states.asPtr())) {
-      return zc::none;
-    }
-    if (block.terminator.kind() == mir::MirTerminatorKind::Return) {
-      ZC_IF_SOME(value, block.terminator.returnValue().value) {
-        if (!applyOperand(function, paths, value,
-                          eventAt(function.owner, MirPoint::beforeTerminator(block.id), 0),
-                          states)) {
-          if (value.kind() == mir::MirOperandKind::Constant ||
-              !validLocalPlace(function, value.place())) {
-            return zc::none;
-          }
+      for (size_t ordinal = 0; ordinal < block.statements.size(); ++ordinal) {
+        if (!appendFacts(facts, MirPoint::beforeStatement(block.id, static_cast<uint32_t>(ordinal)),
+                         function, paths, states.asPtr())) {
+          return zc::none;
+        }
+        if (!applyStatement(function, paths, block.statements[ordinal], block.id,
+                            static_cast<uint32_t>(ordinal), states)) {
+          return zc::none;
+        }
+        if (!appendFacts(facts, MirPoint::afterStatement(block.id, static_cast<uint32_t>(ordinal)),
+                         function, paths, states.asPtr())) {
+          return zc::none;
         }
       }
-      if (!appendFacts(facts, MirPoint::exit(block.id, MirExitKind::Return), function, paths,
+      if (!appendFacts(facts, MirPoint::beforeTerminator(block.id), function, paths,
                        states.asPtr())) {
         return zc::none;
       }
-      return InitializationFunction{function.owner, zc::mv(facts)};
-    }
-    if (block.terminator.kind() != mir::MirTerminatorKind::Call) return zc::none;
-    const auto& call = block.terminator.callValue();
-    if (call.unwindTarget != zc::none) return zc::none;
-    for (uint32_t ordinal = 0; ordinal < call.arguments.size(); ++ordinal) {
-      if (!applyOperand(function, paths, call.arguments[ordinal],
-                        eventAt(function.owner, MirPoint::beforeTerminator(block.id), ordinal),
-                        states)) {
+      if (block.terminator.kind() == mir::MirTerminatorKind::Return) {
+        ZC_IF_SOME(value, block.terminator.returnValue().value) {
+          if (!applyOperand(function, paths, value,
+                            eventAt(function.owner, MirPoint::beforeTerminator(block.id), 0),
+                            states)) {
+            if (value.kind() == mir::MirOperandKind::Constant ||
+                !validLocalPlace(function, value.place())) {
+              return zc::none;
+            }
+          }
+        }
+        if (!appendFacts(facts, MirPoint::exit(block.id, MirExitKind::Return), function, paths,
+                         states.asPtr())) {
+          return zc::none;
+        }
+        blockExitStates[blockIndexValue] = cloneStates(states.asPtr());
+        continue;
+      }
+      if (block.terminator.kind() != mir::MirTerminatorKind::Call) return zc::none;
+      const auto& call = block.terminator.callValue();
+      if (call.unwindTarget != zc::none) return zc::none;
+      for (uint32_t ordinal = 0; ordinal < call.arguments.size(); ++ordinal) {
+        if (!applyOperand(function, paths, call.arguments[ordinal],
+                          eventAt(function.owner, MirPoint::beforeTerminator(block.id), ordinal),
+                          states)) {
+          return zc::none;
+        }
+      }
+      if (!initialize(function, paths, call.destination, states, false)) return zc::none;
+      if (!appendFacts(facts, MirPoint::edge(block.id, 0, call.normalTarget), function, paths,
+                       states.asPtr())) {
         return zc::none;
       }
+      blockExitStates[blockIndexValue] = cloneStates(states.asPtr());
     }
-    if (!initialize(function, paths, call.destination, states, false)) return zc::none;
-    if (!appendFacts(facts, MirPoint::edge(block.id, 0, call.normalTarget), function, paths,
-                     states.asPtr())) {
-      return zc::none;
-    }
-    blockExitStates[current] = cloneStates(states.asPtr());
-    auto next = blockIndex(function, call.normalTarget);
-    if (next == zc::none) return zc::none;
-    ZC_IF_SOME(value, next) { current = value; }
   }
-  return zc::none;
+  return InitializationFunction{function.owner, zc::mv(facts)};
 }
 
 bool lessEvent(const MirEventKey& left, const MirEventKey& right) {
   if (left.location.point < right.location.point) return true;
   if (right.location.point < left.location.point) return false;
   return left.operandOrdinal < right.operandOrdinal;
+}
+
+bool lessProjection(const mir::MirProjection& left, const mir::MirProjection& right) {
+  if (left.kind() != right.kind()) {
+    return static_cast<uint8_t>(left.kind()) < static_cast<uint8_t>(right.kind());
+  }
+  switch (left.kind()) {
+    case mir::MirProjectionKind::Field:
+      // Field identities are context handles without a public ordinal; an
+      // admitted cause set never ties two distinct fields at one projection
+      // position, so validity is a deterministic structural fallback.
+      return left.fieldValue().field.isValid() < right.fieldValue().field.isValid();
+    case mir::MirProjectionKind::Index:
+      return left.indexValue().index.ordinal() < right.indexValue().index.ordinal();
+    case mir::MirProjectionKind::Dereference:
+      return false;
+    case mir::MirProjectionKind::Downcast:
+      return left.downcastValue().variant.isValid() < right.downcastValue().variant.isValid();
+    case mir::MirProjectionKind::Subslice:
+      if (left.subsliceValue().first != right.subsliceValue().first) {
+        return left.subsliceValue().first < right.subsliceValue().first;
+      }
+      return left.subsliceValue().pastLast < right.subsliceValue().pastLast;
+  }
+  return false;
+}
+
+bool lessPlace(const mir::MirPlace& left, const mir::MirPlace& right) {
+  if (left.local() != right.local()) return left.local().ordinal() < right.local().ordinal();
+  const auto shared = zc::min(left.projections().size(), right.projections().size());
+  for (size_t index = 0; index < shared; ++index) {
+    if (lessProjection(left.projections()[index], right.projections()[index])) return true;
+    if (lessProjection(right.projections()[index], left.projections()[index])) return false;
+  }
+  return left.projections().size() < right.projections().size();
+}
+
+/// \brief Canonical loss-cause ordering: kind, then event, then path.
+///
+/// Cause sets are function-local, so every path shares one owner; the owner
+/// check defends the invariant and the place structure is the effective key.
+/// Two causes equal under this ordering are duplicates.
+bool lessLossCause(const InitializationLossCause& left, const InitializationLossCause& right) {
+  if (left.kind != right.kind) {
+    return static_cast<uint8_t>(left.kind) < static_cast<uint8_t>(right.kind);
+  }
+  if (lessEvent(left.event, right.event)) return true;
+  if (lessEvent(right.event, left.event)) return false;
+  if (left.path.owner != right.path.owner) return false;
+  return lessPlace(left.path.place, right.path.place);
 }
 
 bool sameFunctions(zc::ArrayPtr<const InitializationFunction> left,
@@ -1001,6 +1126,19 @@ zc::Vector<InitializationLossCause> InitializationLattice::mergeLossCauses(
       merged.add(InitializationLossCause{cause.kind, cloneEvent(cause.event),
                                          MovePathKey{cause.path.owner, cause.path.place.clone()}});
     }
+  }
+  // Canonicalize the union: loss causes arrive in arbitrary predecessor order,
+  // so the published vector is sorted by (kind, event, path) independent of
+  // input order. The dedup above collapsed equal causes to one entry, so the
+  // sort is stable for the remaining distinct causes.
+  for (size_t index = 1; index < merged.size(); ++index) {
+    auto current = zc::mv(merged[index]);
+    size_t insertion = index;
+    while (insertion != 0 && lessLossCause(current, merged[insertion - 1])) {
+      merged[insertion] = zc::mv(merged[insertion - 1]);
+      --insertion;
+    }
+    merged[insertion] = zc::mv(current);
   }
   return merged;
 }

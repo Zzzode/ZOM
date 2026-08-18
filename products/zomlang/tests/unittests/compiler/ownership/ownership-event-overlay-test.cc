@@ -1216,6 +1216,99 @@ ZC_TEST("Initialization lattice merges distinct loss causes at control-flow merg
   ZC_EXPECT(duplicated[0].kind == InitializationLossKind::NeverInitialized);
 }
 
+namespace {
+
+void addLossCause(zc::Vector<facts::InitializationLossCause>& causes,
+                  facts::InitializationLossKind kind, uint32_t eventOrdinal,
+                  mir::MirLocalId local) {
+  zc::Vector<mir::MirProjection> projections;
+  causes.add(facts::InitializationLossCause{
+      kind, MirEventKey{MirLocation{identity::DefId(), MirPoint::entry()}, eventOrdinal},
+      facts::MovePathKey{identity::DefId(),
+                         mir::MirPlace(local, identity::SemanticTypeId(), zc::mv(projections),
+                                       identity::SemanticTypeId())}});
+}
+
+bool sameTestLossCause(const facts::InitializationLossCause& left,
+                       const facts::InitializationLossCause& right) {
+  return left.kind == right.kind && left.event == right.event &&
+         left.path.owner == right.path.owner && left.path.place.local() == right.path.place.local();
+}
+
+}  // namespace
+
+
+ZC_TEST("Initialization lattice mergeLossCauses is order-independent") {
+  using facts::InitializationLattice;
+  using facts::InitializationLossKind;
+  const auto local = ZC_REQUIRE_NONNULL(mir::MirLocalId::fromOrdinal(1));
+  zc::Vector<facts::InitializationLossCause> left;
+  addLossCause(left, InitializationLossKind::NeverInitialized, 0, local);
+  addLossCause(left, InitializationLossKind::Moved, 1, local);
+  zc::Vector<facts::InitializationLossCause> right;
+  addLossCause(right, InitializationLossKind::Deinitialized, 2, local);
+  addLossCause(right, InitializationLossKind::StorageEnded, 3, local);
+
+  auto forward = InitializationLattice::mergeLossCauses(left.asPtr(), right.asPtr());
+  auto reverse = InitializationLattice::mergeLossCauses(right.asPtr(), left.asPtr());
+  ZC_REQUIRE(forward.size() == reverse.size());
+  for (size_t index = 0; index < forward.size(); ++index) {
+    ZC_EXPECT(sameTestLossCause(forward[index], reverse[index]));
+  }
+}
+
+ZC_TEST("Initialization lattice mergeLossCauses deduplicates overlapping inputs") {
+  using facts::InitializationLattice;
+  using facts::InitializationLossKind;
+  const auto local = ZC_REQUIRE_NONNULL(mir::MirLocalId::fromOrdinal(1));
+  zc::Vector<facts::InitializationLossCause> moved;
+  addLossCause(moved, InitializationLossKind::Moved, 0, local);
+  zc::Vector<facts::InitializationLossCause> both;
+  addLossCause(both, InitializationLossKind::Moved, 0, local);
+  addLossCause(both, InitializationLossKind::Deinitialized, 1, local);
+
+  auto self = InitializationLattice::mergeLossCauses(moved.asPtr(), moved.asPtr());
+  ZC_REQUIRE(self.size() == 1);
+  ZC_EXPECT(self[0].kind == InitializationLossKind::Moved);
+
+  auto overlapping = InitializationLattice::mergeLossCauses(both.asPtr(), moved.asPtr());
+  ZC_REQUIRE(overlapping.size() == 2);
+  ZC_EXPECT(overlapping[0].kind == InitializationLossKind::Moved);
+  ZC_EXPECT(overlapping[1].kind == InitializationLossKind::Deinitialized);
+}
+
+ZC_TEST("Initialization lattice mergeLossCauses publishes canonical kind-event-path order") {
+  using facts::InitializationLattice;
+  using facts::InitializationLossKind;
+  const auto firstLocal = ZC_REQUIRE_NONNULL(mir::MirLocalId::fromOrdinal(1));
+  const auto secondLocal = ZC_REQUIRE_NONNULL(mir::MirLocalId::fromOrdinal(2));
+  // Scrambled inputs whose canonical order is B, C, D, A:
+  //  B = NeverInitialized (smallest kind), event 0, local 1
+  //  C = Moved, event 0, local 1
+  //  D = Moved, event 0, local 2 (same kind+event as C, larger path)
+  //  A = Moved, event 1, local 1 (same kind+path as C, larger event)
+  zc::Vector<facts::InitializationLossCause> left;
+  addLossCause(left, InitializationLossKind::Moved, 1, firstLocal);
+  addLossCause(left, InitializationLossKind::Moved, 0, secondLocal);
+  zc::Vector<facts::InitializationLossCause> right;
+  addLossCause(right, InitializationLossKind::Moved, 0, firstLocal);
+  addLossCause(right, InitializationLossKind::NeverInitialized, 0, firstLocal);
+
+  auto merged = InitializationLattice::mergeLossCauses(left.asPtr(), right.asPtr());
+  ZC_REQUIRE(merged.size() == 4);
+  ZC_EXPECT(merged[0].kind == InitializationLossKind::NeverInitialized);
+  ZC_EXPECT(merged[0].event.operandOrdinal == 0);
+  ZC_EXPECT(merged[1].kind == InitializationLossKind::Moved);
+  ZC_EXPECT(merged[1].event.operandOrdinal == 0);
+  ZC_EXPECT(merged[1].path.place.local() == firstLocal);
+  ZC_EXPECT(merged[2].kind == InitializationLossKind::Moved);
+  ZC_EXPECT(merged[2].event.operandOrdinal == 0);
+  ZC_EXPECT(merged[2].path.place.local() == secondLocal);
+  ZC_EXPECT(merged[3].kind == InitializationLossKind::Moved);
+  ZC_EXPECT(merged[3].event.operandOrdinal == 1);
+  ZC_EXPECT(merged[3].path.place.local() == firstLocal);
+}
+
 ZC_TEST("Loan verifier rejects a tampered active point, issue, commit, and foreign lineage") {
   OwnershipPipelineFixture fixture(
       "fun reborrow(value: &mut i32) -> &mut i32 { return &mut *value; }"_zc);

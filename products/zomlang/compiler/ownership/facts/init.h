@@ -67,9 +67,11 @@ struct InitializationLossCause final {
 /// At a control-flow merge, storage is live only when it is live on every incoming path, a place
 /// may be initialized when at least one incoming path initializes it, and it must be initialized
 /// only when every incoming path initializes it. Loss causes from all predecessors are retained.
+/// `mergeLossCauses` deduplicates its inputs and publishes the union in canonical
+/// (kind, event, path) order, so the result is independent of predecessor fold order.
 struct InitializationLattice final {
-  ZC_NODISCARD static constexpr InitializationState joinState(
-      InitializationState left, InitializationState right) noexcept {
+  ZC_NODISCARD static constexpr InitializationState joinState(InitializationState left,
+                                                              InitializationState right) noexcept {
     return InitializationState{left.storageLive && right.storageLive,
                                left.mayBeInitialized || right.mayBeInitialized,
                                left.mustBeInitialized && right.mustBeInitialized};
