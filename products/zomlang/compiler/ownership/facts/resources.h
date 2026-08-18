@@ -55,6 +55,20 @@ struct DropTransfer final {
   MirEventKey event;
 };
 
+/// \brief One type-changing cast that preserves a resource subject across the cast.
+///
+/// A checked cast (transmute) reinterprets a resource from one type to another
+/// without changing its ownership. The subject's introduction event, origin
+/// move path, and origin type are preserved unchanged; the route records the
+/// exact source and destination move paths and the cast event so the verifier
+/// can independently reconstruct the subject-preservation relation.
+struct CastResourceRoute final {
+  DropResourceSubject subject;
+  MovePathKey from;
+  MovePathKey to;
+  MirEventKey event;
+};
+
 /// \brief Closed/open acceptance mode for one component drop plan.
 ///
 /// A Closed drop accepts exactly Initialized and executes every component. An
@@ -95,6 +109,7 @@ struct OwnershipResourceFunction final {
   identity::DefId owner;
   zc::Vector<OwnershipResourceFact> facts;
   zc::Vector<DropTransfer> transfers;
+  zc::Vector<CastResourceRoute> castRoutes;
   zc::Vector<DropPlan> dropPlans;
 };
 

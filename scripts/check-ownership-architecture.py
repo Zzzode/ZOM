@@ -362,13 +362,17 @@ def check(values: dict[Path, str]) -> list[str]:
         "isParameterRootTransfer(",
         "resourceAt(",
         "sameTransfers(",
+        "sameCastRoutes(",
         "sameFunctions(candidate.functions",
     ):
         if marker not in resources:
             errors.append(f"{RESOURCES}: missing logical-resource production contract: {marker}")
-    transfer_marker = "DropTransfer{MovePathKey{mirFunction.owner, transferValue.source.clone()},"
-    if resources.count(transfer_marker) != 2:
+    transfer_marker = "DropTransfer{MovePathKey{mirFunction.owner,transferValue.source.clone()},"
+    if "".join(resources.split()).count(transfer_marker) != 2:
         errors.append(f"{RESOURCES}: missing complete logical-resource transfer coverage")
+    cast_route_marker = "CastResourceRoute{DropResourceSubject{"
+    if "".join(resources.split()).count(cast_route_marker) != 1:
+        errors.append(f"{RESOURCES}: missing complete logical-resource cast-route coverage")
     resources_header = values.get(RESOURCES_HEADER, "")
     for marker in (
         "struct DropResourceSubject final",
@@ -384,6 +388,7 @@ def check(values: dict[Path, str]) -> list[str]:
         "MovePathKey from;",
         "MovePathKey to;",
         "MirEventKey event;",
+        "struct CastResourceRoute final",
         "class VerifiedOwnershipResourceFacts final",
     ):
         if marker not in resources_header:
@@ -1045,6 +1050,13 @@ def main() -> int:
         )
         if not check(resource_transfer_mutation):
             print("ownership resource-transfer architecture self-test escaped")
+            return 1
+        resource_cast_route_mutation = dict(values)
+        resource_cast_route_mutation[RESOURCES] = resource_cast_route_mutation.get(
+            RESOURCES, ""
+        ).replace("sameCastRoutes(", "staleSameCastRoutes(")
+        if not check(resource_cast_route_mutation):
+            print("ownership resource-cast-route architecture self-test escaped")
             return 1
         resource_cmake_mutation = dict(values)
         resource_cmake_mutation[OWNERSHIP_CMAKE] = resource_cmake_mutation.get(

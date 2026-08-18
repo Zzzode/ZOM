@@ -225,6 +225,7 @@ bool sameMovePath(const MovePathKey& left, const MovePathKey& right) {
 
 zc::Maybe<uint32_t> resourceAt(const zc::Vector<OwnershipResourceFact>& facts,
                                const zc::Vector<DropTransfer>& transfers,
+                               const zc::Vector<CastResourceRoute>& castRoutes,
                                const MovePathKey& place) {
   for (uint32_t ordinal = 0; ordinal < facts.size(); ++ordinal) {
     MovePathKey current{facts[ordinal].subject.origin.owner,
@@ -232,6 +233,11 @@ zc::Maybe<uint32_t> resourceAt(const zc::Vector<OwnershipResourceFact>& facts,
     for (const auto& transfer : transfers) {
       if (sameMovePath(current, transfer.from)) {
         current = MovePathKey{transfer.to.owner, transfer.to.place.clone()};
+      }
+    }
+    for (const auto& route : castRoutes) {
+      if (sameMovePath(current, route.from)) {
+        current = MovePathKey{route.to.owner, route.to.place.clone()};
       }
     }
     if (sameMovePath(current, place)) return ordinal;
@@ -305,6 +311,7 @@ zc::Maybe<zc::Vector<OwnershipResourceFunction>> derive(
     ZC_IF_SOME(value, overlayFunction) {
       zc::Vector<OwnershipResourceFact> facts;
       zc::Vector<DropTransfer> transfers;
+      zc::Vector<CastResourceRoute> castRoutes;
       zc::Vector<DropPlan> dropPlans;
       for (uint32_t pass = 0; pass < 2; ++pass) {
         for (const auto& plan : value.logicalDropPlans) {
@@ -331,6 +338,7 @@ zc::Maybe<zc::Vector<OwnershipResourceFunction>> derive(
             ZC_IF_SOME(expectedRequirement, componentRequirement) {
               auto introduction = plan.initialization;
               auto origin = MovePathKey{mirFunction.owner, component.place.clone()};
+              zc::Maybe<identity::SemanticTypeId> castOriginType;
               zc::Maybe<uint32_t> factOrdinal;
               if (transfer != zc::none) {
                 ZC_IF_SOME(transferValue, transfer) {
@@ -347,28 +355,63 @@ zc::Maybe<zc::Vector<OwnershipResourceFunction>> derive(
                                        transferValue.event});
                     }
                   } else {
-                    auto resource = resourceAt(facts, transfers, source);
-                    if (resource == zc::none) continue;
-                    ZC_IF_SOME(resourceOrdinal, resource) {
-                      const auto& sourceFact = facts[resourceOrdinal];
-                      if (sourceFact.subject.originType != component.valueType ||
-                          sourceFact.requirement != expectedRequirement ||
-                          !sameActions(sourceFact.dropAction, component.dropAction)) {
-                        return zc::none;
+                    auto resource = resourceAt(facts, transfers, castRoutes, source);
+                    if (resource == zc::none) {
+                      // A parameter root moved through a type-changing cast
+                      // introduces the resource at the parameter entry and
+                      // preserves its subject across the cast.
+                      if (parameterOrdinal != zc::none &&
+                          transferValue.source.projections().size() == 0 &&
+                          samePlace(plan.root, component.place)) {
+                        ZC_IF_SOME(entryOrdinal, parameterOrdinal) {
+                          introduction = MirEventKey{
+                              MirLocation{mirFunction.owner, MirPoint::entry()}, entryOrdinal};
+                          origin = MovePathKey{source.owner, source.place.clone()};
+                          castOriginType = transferValue.source.resultType();
+                          castRoutes.add(CastResourceRoute{
+                              DropResourceSubject{introduction,
+                                                  MovePathKey{source.owner, source.place.clone()},
+                                                  transferValue.source.resultType()},
+                              MovePathKey{mirFunction.owner, transferValue.source.clone()},
+                              MovePathKey{mirFunction.owner, component.place.clone()},
+                              transferValue.event});
+                        }
+                      } else {
+                        continue;
                       }
-                      transfers.add(
-                          DropTransfer{MovePathKey{mirFunction.owner, transferValue.source.clone()},
-                                       MovePathKey{mirFunction.owner, component.place.clone()},
-                                       transferValue.event});
-                      factOrdinal = resourceOrdinal;
+                    } else {
+                      ZC_IF_SOME(resourceOrdinal, resource) {
+                        const auto& sourceFact = facts[resourceOrdinal];
+                        if (sourceFact.requirement != expectedRequirement ||
+                            !sameActions(sourceFact.dropAction, component.dropAction)) {
+                          return zc::none;
+                        }
+                        if (sourceFact.subject.originType != component.valueType) {
+                          // Type-changing cast: preserve the resource subject
+                          // across the cast and record the exact route.
+                          castRoutes.add(CastResourceRoute{
+                              sourceFact.subject.clone(),
+                              MovePathKey{mirFunction.owner, transferValue.source.clone()},
+                              MovePathKey{mirFunction.owner, component.place.clone()},
+                              transferValue.event});
+                        } else {
+                          transfers.add(DropTransfer{
+                              MovePathKey{mirFunction.owner, transferValue.source.clone()},
+                              MovePathKey{mirFunction.owner, component.place.clone()},
+                              transferValue.event});
+                        }
+                        factOrdinal = resourceOrdinal;
+                      }
                     }
                   }
                 }
               }
               if (factOrdinal == zc::none) {
                 factOrdinal = static_cast<uint32_t>(facts.size());
+                identity::SemanticTypeId subjectType = component.valueType;
+                if (castOriginType != zc::none) subjectType = ZC_ASSERT_NONNULL(castOriginType);
                 facts.add(OwnershipResourceFact{
-                    DropResourceSubject{introduction, zc::mv(origin), component.valueType},
+                    DropResourceSubject{introduction, zc::mv(origin), subjectType},
                     expectedRequirement, component.dropAction, component.declarationOrdinal});
               }
               ZC_IF_SOME(ordinal, factOrdinal) {
@@ -380,13 +423,12 @@ zc::Maybe<zc::Vector<OwnershipResourceFunction>> derive(
             }
           }
           ZC_IF_SOME(subject, rootSubject) {
-            dropPlans.add(
-                DropPlan{zc::mv(subject), DropPlanMode::Closed, zc::mv(planComponents)});
+            dropPlans.add(DropPlan{zc::mv(subject), DropPlanMode::Closed, zc::mv(planComponents)});
           }
         }
       }
       functions.add(OwnershipResourceFunction{mirFunction.owner, zc::mv(facts), zc::mv(transfers),
-                                              zc::mv(dropPlans)});
+                                              zc::mv(castRoutes), zc::mv(dropPlans)});
     }
   }
   return functions;
@@ -407,6 +449,12 @@ bool sameTransfers(const DropTransfer& left, const DropTransfer& right) {
   return left.from.owner == right.from.owner && samePlace(left.from.place, right.from.place) &&
          left.to.owner == right.to.owner && samePlace(left.to.place, right.to.place) &&
          left.event == right.event;
+}
+
+bool sameCastRoutes(const CastResourceRoute& left, const CastResourceRoute& right) {
+  return sameSubjects(left.subject, right.subject) && left.from.owner == right.from.owner &&
+         samePlace(left.from.place, right.from.place) && left.to.owner == right.to.owner &&
+         samePlace(left.to.place, right.to.place) && left.event == right.event;
 }
 
 bool samePlanComponents(const DropPlanComponent& left, const DropPlanComponent& right) {
@@ -431,6 +479,7 @@ bool sameFunctions(zc::ArrayPtr<const OwnershipResourceFunction> left,
     if (left[functionIndex].owner != right[functionIndex].owner ||
         left[functionIndex].facts.size() != right[functionIndex].facts.size() ||
         left[functionIndex].transfers.size() != right[functionIndex].transfers.size() ||
+        left[functionIndex].castRoutes.size() != right[functionIndex].castRoutes.size() ||
         left[functionIndex].dropPlans.size() != right[functionIndex].dropPlans.size()) {
       return false;
     }
@@ -443,6 +492,12 @@ bool sameFunctions(zc::ArrayPtr<const OwnershipResourceFunction> left,
          ++transferIndex) {
       if (!sameTransfers(left[functionIndex].transfers[transferIndex],
                          right[functionIndex].transfers[transferIndex])) {
+        return false;
+      }
+    }
+    for (size_t routeIndex = 0; routeIndex < left[functionIndex].castRoutes.size(); ++routeIndex) {
+      if (!sameCastRoutes(left[functionIndex].castRoutes[routeIndex],
+                          right[functionIndex].castRoutes[routeIndex])) {
         return false;
       }
     }
