@@ -26,8 +26,8 @@
 #include "zomlang/compiler/hir/hir-module.h"
 #include "zomlang/compiler/identity/brand.h"
 #include "zomlang/compiler/identity/canonical/canonical-encoder.h"
-#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
 #include "zomlang/compiler/identity/crypto/sha256.h"
+#include "zomlang/compiler/identity/semantic/context-fingerprint.h"
 #include "zomlang/compiler/ir/ir-failure.h"
 #include "zomlang/compiler/ir/ir-identity.h"
 #include "zomlang/compiler/mir/built-mir.h"
@@ -289,6 +289,87 @@ struct LogicalDropPlan final {
   zc::Vector<LogicalDropPlanComponent> components;
 };
 
+/// \brief Canonical identity of one unsafe occurrence within one MIR event.
+///
+/// Within an event, unsafeOrdinal is the zero-based contiguous index in the
+/// overlay function's encoded unsafeOccurrences subsequence for that event.
+struct UnsafeBoundaryKey final {
+  MirEventKey event;
+  uint32_t unsafeOrdinal;
+
+  bool operator==(const UnsafeBoundaryKey& other) const noexcept {
+    return event == other.event && unsafeOrdinal == other.unsafeOrdinal;
+  }
+  bool operator!=(const UnsafeBoundaryKey& other) const noexcept { return !(*this == other); }
+};
+
+/// \brief One verified unsafe operation occurrence projected to one MIR event.
+///
+/// The builder emits one candidate occurrence for each RFC 0005 UnsafeScopeFact.
+/// acknowledgement is Some of the dominating enter effect only when the checked
+/// fact records acknowledged = true; it is None otherwise.
+struct MirUnsafeOccurrence final {
+  UnsafeBoundaryKey key;
+  checker::checked::UnsafeOperation operation;
+  checker::checked::UnsafeRequirement requirement;
+  zc::Maybe<MirEventKey> acknowledgement;
+  identity::SourceSpan sourceSpan;
+};
+
+/// \brief Canonical identity of one checked-cast carrier.
+struct CastCarrierKey final {
+  MirEventKey check;
+
+  bool operator==(const CastCarrierKey& other) const noexcept { return check == other.check; }
+  bool operator!=(const CastCarrierKey& other) const noexcept { return !(*this == other); }
+};
+
+/// \brief Closed route-proof algebra for one checked-cast resource transfer.
+struct CastResourceRouteIdentity final {};
+struct CastResourceRouteUnionInject final {
+  identity::SemanticTypeId alternative;
+};
+struct CastResourceRouteDynErase final {
+  checker::checked::InterfaceInstantiation interface;
+  identity::ImplId impl;
+  checker::checked::WitnessArgumentsId witnesses;
+};
+struct CastResourceRouteDynUpcast final {
+  zc::Vector<identity::DefId> path;
+};
+struct CastResourceRouteCheckedPayload final {
+  checker::checked::CastKind kind;
+};
+using CastResourceRouteProof =
+    zc::OneOf<CastResourceRouteIdentity, CastResourceRouteUnionInject, CastResourceRouteDynErase,
+              CastResourceRouteDynUpcast, CastResourceRouteCheckedPayload>;
+
+/// \brief One verified resource route from a cast carrier to its result place.
+struct CastResourceRoute final {
+  mir::MirPlace carrier;
+  mir::MirPlace result;
+  CastResourceRouteProof proof;
+};
+
+/// \brief One verified checked-cast resource plan in the event overlay.
+///
+/// The overlay builder computes and the verifier independently recomputes one
+/// plan for each RFC 0005 CheckedCastFact that reaches a MIR checked-cast
+/// terminator. The plan records the carrier/result types, the mode and kind,
+/// the carrier-initialization and success-transfer event keys, and the
+/// complete sorted unique route set.
+struct VerifiedCastResourcePlanFact final {
+  CastCarrierKey key;
+  checker::checked::CastMode mode;
+  checker::checked::CastKind kind;
+  identity::SemanticTypeId carrierType;
+  identity::SemanticTypeId targetType;
+  identity::SemanticTypeId resultType;
+  MirEventKey carrierPlan;
+  MirEventKey successPlan;
+  zc::Vector<CastResourceRoute> routes;
+};
+
 /// \brief Exact live checker and IR capabilities required to construct one ownership overlay.
 struct OwnershipEventOverlayInput final {
   const OwnershipAdmittedBoundModule& admitted;
@@ -306,6 +387,8 @@ struct OwnershipFunctionEventOverlay final {
   zc::Vector<DeferredActivationFact> deferredActivations;
   zc::Vector<OwnershipMarkerUse> markerUses;
   zc::Vector<LogicalDropPlan> logicalDropPlans;
+  zc::Vector<MirUnsafeOccurrence> unsafeOccurrences;
+  zc::Vector<VerifiedCastResourcePlanFact> castResourcePlans;
 };
 
 /// \brief Untrusted mutable overlay product admitted only by the independent verifier.

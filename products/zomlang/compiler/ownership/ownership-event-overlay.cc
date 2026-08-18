@@ -17,8 +17,8 @@
 #include "zomlang/compiler/checker/body/marker-proof.h"
 #include "zomlang/compiler/driver/core/marker-authority.h"
 #include "zomlang/compiler/identity/canonical/canonical-encoder.h"
-#include "zomlang/compiler/identity/key/definition-key.h"
 #include "zomlang/compiler/identity/crypto/sha256.h"
+#include "zomlang/compiler/identity/key/definition-key.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
 
 namespace zomlang::compiler::ownership {
@@ -404,6 +404,129 @@ zc::Maybe<zc::Array<uint8_t>> encodeLogicalDropPlan(
   return encoder.finish();
 }
 
+zc::Maybe<zc::Array<uint8_t>> encodeUnsafeBoundaryKey(
+    const UnsafeBoundaryKey& key, const checker::CheckerIdentityAuthority& identities) {
+  auto event = encodeEventKey(key.event, identities);
+  if (event == zc::none) return zc::none;
+  identity::CanonicalEncoder encoder;
+  ZC_IF_SOME(value, event) { encoder.encodeByteString(value.asPtr()); }
+  encoder.encodeUint32(key.unsafeOrdinal);
+  return encoder.finish();
+}
+
+zc::Maybe<zc::Array<uint8_t>> encodeUnsafeOccurrence(
+    const MirUnsafeOccurrence& occurrence, const checker::CheckerIdentityAuthority& identities) {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeUint8(static_cast<uint8_t>(occurrence.operation));
+  encoder.encodeUint8(static_cast<uint8_t>(occurrence.requirement));
+  if (occurrence.acknowledgement == zc::none) {
+    encoder.encodeUint8(0x00);
+  } else {
+    encoder.encodeUint8(0x01);
+    zc::Maybe<zc::Array<uint8_t>> ack;
+    ZC_IF_SOME(ackEvent, occurrence.acknowledgement) { ack = encodeEventKey(ackEvent, identities); }
+    if (ack == zc::none) return zc::none;
+    ZC_IF_SOME(value, ack) { encoder.encodeByteString(value.asPtr()); }
+  }
+  occurrence.sourceSpan.encode(encoder);
+  return encoder.finish();
+}
+
+zc::Maybe<zc::Array<uint8_t>> encodeRouteProof(const CastResourceRouteProof& proof,
+                                               const checker::CheckerIdentityAuthority& identities,
+                                               const type::SemanticTypeStore& semanticTypes) {
+  identity::CanonicalEncoder encoder;
+  if (proof.is<CastResourceRouteIdentity>()) {
+    encoder.encodeUint8(0x01);
+  } else if (proof.is<CastResourceRouteUnionInject>()) {
+    encoder.encodeUint8(0x02);
+    if (!encodeSemanticType(encoder, proof.get<CastResourceRouteUnionInject>().alternative,
+                            semanticTypes)) {
+      return zc::none;
+    }
+  } else if (proof.is<CastResourceRouteDynErase>()) {
+    encoder.encodeUint8(0x03);
+    const auto& erase = proof.get<CastResourceRouteDynErase>();
+    auto interfaceDef = identities.definition(erase.interface.interface);
+    if (interfaceDef == zc::none) return zc::none;
+    ZC_IF_SOME(value, interfaceDef) {
+      auto bytes = value.key().encode();
+      encoder.encodeByteString(bytes.asPtr());
+    }
+    encoder.encodeSequenceSize(erase.interface.arguments.size());
+    for (const auto arg : erase.interface.arguments) {
+      if (!encodeSemanticType(encoder, arg, semanticTypes)) return zc::none;
+    }
+    auto impl = identities.implementation(erase.impl);
+    if (impl == zc::none) return zc::none;
+    ZC_IF_SOME(value, impl) {
+      auto bytes = value.key().encode();
+      encoder.encodeByteString(bytes.asPtr());
+    }
+    // WitnessArgumentsId is a StoreHandle whose slot is private to its tag.
+    // Encode validity only; the body checker emits empty cast maps today, so
+    // this branch is groundwork for future RFC 0005 cast lowering.
+    encoder.encodeUint8(erase.witnesses.isValid() ? 0x01 : 0x00);
+  } else if (proof.is<CastResourceRouteDynUpcast>()) {
+    encoder.encodeUint8(0x04);
+    const auto& upcast = proof.get<CastResourceRouteDynUpcast>();
+    encoder.encodeSequenceSize(upcast.path.size());
+    for (const auto def : upcast.path) {
+      auto entry = identities.definition(def);
+      if (entry == zc::none) return zc::none;
+      ZC_IF_SOME(value, entry) {
+        auto bytes = value.key().encode();
+        encoder.encodeByteString(bytes.asPtr());
+      }
+    }
+  } else if (proof.is<CastResourceRouteCheckedPayload>()) {
+    encoder.encodeUint8(0x05);
+    encoder.encodeUint8(static_cast<uint8_t>(proof.get<CastResourceRouteCheckedPayload>().kind));
+  } else {
+    return zc::none;
+  }
+  return encoder.finish();
+}
+
+zc::Maybe<zc::Array<uint8_t>> encodeCastResourceRoute(
+    const CastResourceRoute& route, const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes) {
+  auto carrier = encodePlace(route.carrier, identities, semanticTypes);
+  auto result = encodePlace(route.result, identities, semanticTypes);
+  auto proof = encodeRouteProof(route.proof, identities, semanticTypes);
+  if (carrier == zc::none || result == zc::none || proof == zc::none) return zc::none;
+  identity::CanonicalEncoder encoder;
+  ZC_IF_SOME(value, carrier) { encoder.encodeByteString(value.asPtr()); }
+  ZC_IF_SOME(value, result) { encoder.encodeByteString(value.asPtr()); }
+  ZC_IF_SOME(value, proof) { encoder.encodeByteString(value.asPtr()); }
+  return encoder.finish();
+}
+
+zc::Maybe<zc::Array<uint8_t>> encodeCastResourcePlan(
+    const VerifiedCastResourcePlanFact& plan, const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes) {
+  auto carrierPlan = encodeEventKey(plan.carrierPlan, identities);
+  auto successPlan = encodeEventKey(plan.successPlan, identities);
+  if (carrierPlan == zc::none || successPlan == zc::none) return zc::none;
+  identity::CanonicalEncoder encoder;
+  encoder.encodeUint8(static_cast<uint8_t>(plan.mode));
+  encoder.encodeUint8(static_cast<uint8_t>(plan.kind));
+  if (!encodeSemanticType(encoder, plan.carrierType, semanticTypes) ||
+      !encodeSemanticType(encoder, plan.targetType, semanticTypes) ||
+      !encodeSemanticType(encoder, plan.resultType, semanticTypes)) {
+    return zc::none;
+  }
+  ZC_IF_SOME(value, carrierPlan) { encoder.encodeByteString(value.asPtr()); }
+  ZC_IF_SOME(value, successPlan) { encoder.encodeByteString(value.asPtr()); }
+  encoder.encodeSequenceSize(plan.routes.size());
+  for (const auto& route : plan.routes) {
+    auto record = encodeCastResourceRoute(route, identities, semanticTypes);
+    if (record == zc::none) return zc::none;
+    ZC_IF_SOME(value, record) { encoder.encodeByteString(value.asPtr()); }
+  }
+  return encoder.finish();
+}
+
 zc::Maybe<zc::Array<uint8_t>> encodeFunctionOverlay(
     const OwnershipFunctionEventOverlay& overlay,
     const checker::CheckerIdentityAuthority& identities,
@@ -470,7 +593,24 @@ zc::Maybe<zc::Array<uint8_t>> encodeFunctionOverlay(
     }
     ZC_IF_SOME(recordBytes, record) { encoder.encodeByteString(recordBytes.asPtr()); }
   }
-  encoder.encodeSequenceSize(0);
+  encoder.encodeSequenceSize(overlay.unsafeOccurrences.size());
+  zc::Array<uint8_t> previousUnsafeKey;
+  bool hasPreviousUnsafeKey = false;
+  for (const auto& occurrence : overlay.unsafeOccurrences) {
+    if (occurrence.key.event.location.owner != overlay.owner) return zc::none;
+    auto key = encodeUnsafeBoundaryKey(occurrence.key, identities);
+    auto record = encodeUnsafeOccurrence(occurrence, identities);
+    if (key == zc::none || record == zc::none) return zc::none;
+    ZC_IF_SOME(keyBytes, key) {
+      if (hasPreviousUnsafeKey && !lessBytes(previousUnsafeKey.asPtr(), keyBytes.asPtr())) {
+        return zc::none;
+      }
+      encoder.encodeByteString(keyBytes.asPtr());
+      previousUnsafeKey = zc::heapArray(keyBytes.asPtr());
+      hasPreviousUnsafeKey = true;
+    }
+    ZC_IF_SOME(recordBytes, record) { encoder.encodeByteString(recordBytes.asPtr()); }
+  }
   encoder.encodeSequenceSize(overlay.markerUses.size());
   zc::Array<uint8_t> previousMarkerKey;
   bool hasPreviousMarkerKey = false;
@@ -508,7 +648,24 @@ zc::Maybe<zc::Array<uint8_t>> encodeFunctionOverlay(
     }
     ZC_IF_SOME(recordBytes, record) { encoder.encodeByteString(recordBytes.asPtr()); }
   }
-  encoder.encodeSequenceSize(0);
+  encoder.encodeSequenceSize(overlay.castResourcePlans.size());
+  zc::Array<uint8_t> previousCastKey;
+  bool hasPreviousCastKey = false;
+  for (const auto& plan : overlay.castResourcePlans) {
+    if (plan.key.check.location.owner != overlay.owner) return zc::none;
+    auto key = encodeEventKey(plan.key.check, identities);
+    auto record = encodeCastResourcePlan(plan, identities, semanticTypes);
+    if (key == zc::none || record == zc::none) return zc::none;
+    ZC_IF_SOME(keyBytes, key) {
+      if (hasPreviousCastKey && !lessBytes(previousCastKey.asPtr(), keyBytes.asPtr())) {
+        return zc::none;
+      }
+      encoder.encodeByteString(keyBytes.asPtr());
+      previousCastKey = zc::heapArray(keyBytes.asPtr());
+      hasPreviousCastKey = true;
+    }
+    ZC_IF_SOME(recordBytes, record) { encoder.encodeByteString(recordBytes.asPtr()); }
+  }
   return encoder.finish();
 }
 
@@ -1244,9 +1401,10 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
     auto sourceMap = projectSourceMap(function, slots);
     if (sourceMap == zc::none) return zc::none;
     ZC_IF_SOME(value, sourceMap) {
-      functions.add(OwnershipFunctionEventOverlay{function.owner, zc::mv(slots), zc::mv(value),
-                                                  zc::mv(deferredActivations), zc::mv(markerUses),
-                                                  zc::mv(logicalDropPlans)});
+      functions.add(OwnershipFunctionEventOverlay{
+          function.owner, zc::mv(slots), zc::mv(value), zc::mv(deferredActivations),
+          zc::mv(markerUses), zc::mv(logicalDropPlans), zc::Vector<MirUnsafeOccurrence>{},
+          zc::Vector<VerifiedCastResourcePlanFact>{}});
     }
   }
   if (!sortFunctions(functions, identities)) return zc::none;
@@ -1496,9 +1654,10 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
     auto sourceMap = projectSourceMap(function, slots);
     if (sourceMap == zc::none) return zc::none;
     ZC_IF_SOME(value, sourceMap) {
-      functions.add(OwnershipFunctionEventOverlay{function.owner, zc::mv(slots), zc::mv(value),
-                                                  zc::mv(deferredActivations), zc::mv(markerUses),
-                                                  zc::mv(logicalDropPlans)});
+      functions.add(OwnershipFunctionEventOverlay{
+          function.owner, zc::mv(slots), zc::mv(value), zc::mv(deferredActivations),
+          zc::mv(markerUses), zc::mv(logicalDropPlans), zc::Vector<MirUnsafeOccurrence>{},
+          zc::Vector<VerifiedCastResourcePlanFact>{}});
     }
   }
   if (!sortFunctions(functions, identities)) return zc::none;
