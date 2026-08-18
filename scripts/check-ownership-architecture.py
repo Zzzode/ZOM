@@ -9,6 +9,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OVERLAY = Path("products/zomlang/compiler/ownership/ownership-event-overlay.cc")
+DROP_ELABORATED = Path("products/zomlang/compiler/ownership/drop-elaborated-mir.cc")
+DROP_ELABORATED_HEADER = Path("products/zomlang/compiler/ownership/drop-elaborated-mir.h")
+DROP_ELABORATED_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/ownership/ownership-drop-elaboration-test.cc"
+)
 ADMISSION_HEADER = Path("products/zomlang/compiler/ownership/surface-admission.h")
 ADMISSION_SOURCE = Path("products/zomlang/compiler/ownership/surface-admission.cc")
 MOVE_PATHS = Path("products/zomlang/compiler/ownership/facts/paths.cc")
@@ -51,6 +56,9 @@ COMPILER_SESSION_TEST = Path(
 TEST_CMAKE = Path("products/zomlang/tests/conformance/CMakeLists.txt")
 REQUIRED = (
     OVERLAY,
+    DROP_ELABORATED,
+    DROP_ELABORATED_HEADER,
+    DROP_ELABORATED_TEST,
     ADMISSION_HEADER,
     ADMISSION_SOURCE,
     MOVE_PATHS,
@@ -117,6 +125,42 @@ def check(values: dict[Path, str]) -> list[str]:
     ):
         if marker not in overlay:
             errors.append(f"{OVERLAY}: missing required retained-overlay contract: {marker}")
+
+    drop_elaborated = values.get(DROP_ELABORATED, "")
+    for marker in (
+        "DropElaborator::elaborateDrops(",
+        "elaborateLinear(",
+        "reject<DropElaboratedMir>(",
+        "ir::IrFailureKind::InputRevisionMismatch",
+        "ir::IrFailureKind::InvalidCleanup",
+        "ir::IrFailurePhase::OwnershipProofValidation",
+        "zc::mv(impl->checked)",
+    ):
+        if marker not in drop_elaborated:
+            errors.append(f"{DROP_ELABORATED}: missing drop-elaboration contract: {marker}")
+
+    drop_elaborated_header = values.get(DROP_ELABORATED_HEADER, "")
+    for marker in (
+        "class DropElaboratedMir final",
+        "class DropElaborator final",
+        "enum class DropDischargeKind : uint8_t",
+        "struct DropDischargeRecord final",
+        "zc::ArrayPtr<const DropDischargeRecord> discharges() const noexcept;",
+        "OwnershipCheckedMir takeCheckedMir() && noexcept;",
+        "static ir::IrOperationResult<DropElaboratedMir> elaborateDrops(",
+    ):
+        if marker not in drop_elaborated_header:
+            errors.append(f"{DROP_ELABORATED_HEADER}: missing drop-elaboration contract: {marker}")
+
+    drop_elaborated_test = values.get(DROP_ELABORATED_TEST, "")
+    for marker in (
+        "Drop elaborator publishes a complete discharge inventory",
+        "Drop elaborator rejects a foreign lease",
+        "Drop elaborator rejects a stale revision",
+        "Drop elaborator rejects a missing discharge",
+    ):
+        if marker not in drop_elaborated_test:
+            errors.append(f"{DROP_ELABORATED_TEST}: missing drop-elaboration test: {marker}")
 
     admission_header = values.get(ADMISSION_HEADER, "")
     for marker in (
@@ -319,7 +363,7 @@ def check(values: dict[Path, str]) -> list[str]:
         "struct ReborrowRegion final",
         "MirEventKey entry;",
         "MirEventKey loan;",
-        "uint32_t inputParameter;",
+        "zc::OneOf<ParameterReferenceOrigin, LocalReferenceOrigin> origin;",
         "zc::Vector<OwnershipPoint> members;",
         "class VerifiedReborrowRegions final",
     ):
@@ -341,7 +385,7 @@ def check(values: dict[Path, str]) -> list[str]:
         "struct ReborrowState final",
         "OwnershipPoint point;",
         "MirEventKey loan;",
-        "uint32_t inputParameter;",
+        "zc::OneOf<ParameterReferenceOrigin, LocalReferenceOrigin> origin;",
         "MovePathKey destination;",
         "class VerifiedReborrowStates final",
     ):
@@ -457,6 +501,7 @@ def check(values: dict[Path, str]) -> list[str]:
 
     ownership_cmake = values.get(OWNERSHIP_CMAKE, "")
     for marker in (
+        "${CMAKE_CURRENT_SOURCE_DIR}/drop-elaborated-mir.cc",
         "${CMAKE_CURRENT_SOURCE_DIR}/facts/inputs.cc",
         "${CMAKE_CURRENT_SOURCE_DIR}/facts/flow.cc",
         "${CMAKE_CURRENT_SOURCE_DIR}/facts/loans.cc",
@@ -982,6 +1027,17 @@ def main() -> int:
         if not check(region_members_mutation):
             print("ownership region-members architecture self-test escaped")
             return 1
+        region_origin_mutation = dict(values)
+        region_origin_mutation[REGIONS_HEADER] = region_origin_mutation.get(
+            REGIONS_HEADER, ""
+        ).replace(
+            "zc::OneOf<ParameterReferenceOrigin, LocalReferenceOrigin> origin;",
+            "zc::OneOf<ParameterReferenceOrigin, LocalReferenceOrigin> staleOrigin;",
+            1,
+        )
+        if not check(region_origin_mutation):
+            print("ownership region-origin architecture self-test escaped")
+            return 1
         region_session_mutation = dict(values)
         region_session_mutation[SESSION] = region_session_mutation.get(SESSION, "").replace(
             "ReborrowRegionVerifier::verify(", "ReborrowRegionVerifier::staleVerify(", 1
@@ -995,6 +1051,17 @@ def main() -> int:
         ).replace("OwnershipPoint point;", "OwnershipPoint stalePoint;", 1)
         if not check(state_point_mutation):
             print("ownership reference-state point architecture self-test escaped")
+            return 1
+        state_origin_mutation = dict(values)
+        state_origin_mutation[STATES_HEADER] = state_origin_mutation.get(
+            STATES_HEADER, ""
+        ).replace(
+            "zc::OneOf<ParameterReferenceOrigin, LocalReferenceOrigin> origin;",
+            "zc::OneOf<ParameterReferenceOrigin, LocalReferenceOrigin> staleOrigin;",
+            1,
+        )
+        if not check(state_origin_mutation):
+            print("ownership reference-state origin architecture self-test escaped")
             return 1
         loan_cmake_mutation = dict(values)
         loan_cmake_mutation[OWNERSHIP_CMAKE] = loan_cmake_mutation.get(
@@ -1129,6 +1196,36 @@ def main() -> int:
         )
         if not check(release_mutation):
             print("ownership teardown architecture self-test escaped")
+            return 1
+        drop_elaborated_source_mutation = dict(values)
+        drop_elaborated_source_mutation[DROP_ELABORATED] = drop_elaborated_source_mutation.get(
+            DROP_ELABORATED, ""
+        ).replace("DropElaborator::elaborateDrops(", "DropElaborator::staleElaborateDrops(", 1)
+        if not check(drop_elaborated_source_mutation):
+            print("ownership drop-elaboration source architecture self-test escaped")
+            return 1
+        drop_elaborated_header_mutation = dict(values)
+        drop_elaborated_header_mutation[DROP_ELABORATED_HEADER] = (
+            drop_elaborated_header_mutation.get(DROP_ELABORATED_HEADER, "").replace(
+                "class DropElaboratedMir final", "class RemovedDropElaboratedMir final", 1
+            )
+        )
+        if not check(drop_elaborated_header_mutation):
+            print("ownership drop-elaboration header architecture self-test escaped")
+            return 1
+        drop_elaborated_cmake_mutation = dict(values)
+        drop_elaborated_cmake_mutation[OWNERSHIP_CMAKE] = drop_elaborated_cmake_mutation.get(
+            OWNERSHIP_CMAKE, ""
+        ).replace("${CMAKE_CURRENT_SOURCE_DIR}/drop-elaborated-mir.cc", "", 1)
+        if not check(drop_elaborated_cmake_mutation):
+            print("ownership drop-elaboration build architecture self-test escaped")
+            return 1
+        drop_elaborated_test_mutation = dict(values)
+        drop_elaborated_test_mutation[DROP_ELABORATED_TEST] = drop_elaborated_test_mutation.get(
+            DROP_ELABORATED_TEST, ""
+        ).replace("Drop elaborator publishes a complete discharge inventory", "", 1)
+        if not check(drop_elaborated_test_mutation):
+            print("ownership drop-elaboration test architecture self-test escaped")
             return 1
         print("ownership architecture self-test passed")
         return 0
