@@ -478,8 +478,7 @@ zc::Maybe<ast::NodeId> localBorrowReference(const ast::Tree& tree, ast::NodeId e
   if (operation != ast::UnaryOperatorKind::Ref && operation != ast::UnaryOperatorKind::RefMut) {
     return zc::none;
   }
-  const ast::NodeId operand(
-      tree.node(expression).payload.words[ast::kUnaryExpressionOperandWord]);
+  const ast::NodeId operand(tree.node(expression).payload.words[ast::kUnaryExpressionOperandWord]);
   if (!tree.contains(operand) || tree.node(operand).kind != ast::SyntaxKind::IdentExpr) {
     return zc::none;
   }
@@ -707,9 +706,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
 
 bool noUnsupportedFacts(const checker::checked::VerifiedCheckedFacts& facts) {
   return facts.coercions().size() == 0 && facts.casts().size() == 0 &&
-         facts.compoundAssignments().size() == 0 &&
-         facts.observedOperations().size() == 0 && facts.captures().size() == 0 &&
-         facts.exhaustiveness().size() == 0 &&
+         facts.compoundAssignments().size() == 0 && facts.observedOperations().size() == 0 &&
+         facts.captures().size() == 0 && facts.exhaustiveness().size() == 0 &&
          facts.unsafeOperations().size() == 0 && facts.projections().size() == 0 &&
          facts.obligations().size() == 0 && facts.errorUnionShapes().size() == 0 &&
          facts.errorOperators().size() == 0;
@@ -1202,7 +1200,8 @@ zc::ArrayPtr<const HirParameterReferenceExpression> VerifiedHirModule::parameter
   return impl->parameterReferences.asPtr();
 }
 
-zc::ArrayPtr<const HirParameterIndexExpression> VerifiedHirModule::parameterIndexes() const noexcept {
+zc::ArrayPtr<const HirParameterIndexExpression> VerifiedHirModule::parameterIndexes()
+    const noexcept {
   return impl->parameterIndexes.asPtr();
 }
 
@@ -1765,8 +1764,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                 zc::mv(noInitializer),
                                 ZC_ASSERT_NONNULL(patternSpan).clone(),
                                 zc::mv(noInitializerSpan)};
-        if (!shape.returnsLocalField && !shape.returnsLocalReborrow &&
-            !shape.returnsLocalBorrow) {
+        if (!shape.returnsLocalField && !shape.returnsLocalReborrow && !shape.returnsLocalBorrow) {
           localReference =
               HirLocalReferenceExpression{HirNodeId(), HirLocalId(), nodeType.value,
                                           HirValueCategory::Place, valueSpanValue.clone()};
@@ -2186,13 +2184,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
               call.receiver == zc::none || call.receiverMode == zc::none ||
               call.receiverAdjustment == zc::none || call.arguments.size() != 1 ||
               call.successType != nodeType.value || call.resultType != nodeType.value ||
-              call.substitutions != zc::none || call.witnesses != zc::none || call.raises != zc::none ||
-              !root.is<checker::checked::CallableParameterPlaceRoot>() ||
+              call.substitutions != zc::none || call.witnesses != zc::none ||
+              call.raises != zc::none || !root.is<checker::checked::CallableParameterPlaceRoot>() ||
               root.get<checker::checked::CallableParameterPlaceRoot>().parameter !=
                   ZC_ASSERT_NONNULL(parameter) ||
               place.projections.size() != 1 ||
               !place.projections[0].variant().is<checker::checked::IndexProjection>() ||
-              place.projections[0].variant().get<checker::checked::IndexProjection>().index != index ||
+              place.projections[0].variant().get<checker::checked::IndexProjection>().index !=
+                  index ||
               place.type != nodeType.value || place.mutablePlace || place.movable ||
               indexFact.node != shape.value ||
               indexFact.collectionType != facts.nodeTypes().entries()[baseTypeSlot].value ||
@@ -2214,8 +2213,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
               receiver.sourceType != facts.nodeTypes().entries()[baseTypeSlot].value ||
               receiver.parameterType != receiver.sourceType || receiver.adjustment != zc::none ||
               mode != checker::checked::ReceiverMode::Shared ||
-              adjustment.source != receiver.sourceType || adjustment.destination != receiver.parameterType ||
-              adjustment.steps.size() != 1 ||
+              adjustment.source != receiver.sourceType ||
+              adjustment.destination != receiver.parameterType || adjustment.steps.size() != 1 ||
               adjustment.steps[0] != checker::checked::ReceiverAdjustmentStep::BorrowShared ||
               argument.sourceNode != index ||
               argument.sourceType != facts.nodeTypes().entries()[indexTypeSlot].value ||
@@ -2225,10 +2224,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                                  ir::IrFailureKind::InvalidFact, module, registries,
                                                  ordinal + 2);
           }
-          parameterIndex = HirParameterIndexExpression{
-              HirNodeId(), entry.key().clone(), receiver.sourceType, argument.sourceType,
-              literalFact.literal.clone(), nodeType.value, HirValueCategory::Place,
-              valueSpanValue.clone(), ZC_ASSERT_NONNULL(indexSpan).clone()};
+          parameterIndex = HirParameterIndexExpression{HirNodeId(),
+                                                       entry.key().clone(),
+                                                       receiver.sourceType,
+                                                       argument.sourceType,
+                                                       literalFact.literal.clone(),
+                                                       nodeType.value,
+                                                       HirValueCategory::Place,
+                                                       valueSpanValue.clone(),
+                                                       ZC_ASSERT_NONNULL(indexSpan).clone()};
         }
       }
       if (!shape.returnsLocalBorrow &&
@@ -2377,21 +2381,21 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                  .data()
                  .is<type::semantic::ReferenceTypeData>() ||
             borrowTypeLookup.get<type::SemanticTypeLookup>()
-                        .data()
-                        .get<type::semantic::ReferenceTypeData>()
-                        .mutability != expectedMutability ||
+                    .data()
+                    .get<type::semantic::ReferenceTypeData>()
+                    .mutability != expectedMutability ||
             borrowTypeLookup.get<type::SemanticTypeLookup>()
-                        .data()
-                        .get<type::semantic::ReferenceTypeData>()
-                        .referent != sourceType ||
+                    .data()
+                    .get<type::semantic::ReferenceTypeData>()
+                    .referent != sourceType ||
             ZC_ASSERT_NONNULL(local).type != sourceType) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);
         }
-        localBorrow = HirLocalBorrowExpression{
-            HirNodeId(), HirLocalId(), sourceType, nodeType.value, expectedMutability,
-            valueSpanValue.clone()};
+        localBorrow =
+            HirLocalBorrowExpression{HirNodeId(),    HirLocalId(),       sourceType,
+                                     nodeType.value, expectedMutability, valueSpanValue.clone()};
       }
       ast::NodeId callNode = shape.value;
       if (!shape.returnsReceiverCall) {
@@ -2681,8 +2685,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                       zc::mv(callArguments), ZC_ASSERT_NONNULL(callSpan).clone()};
         }
       } else if (literal == zc::none && aggregate == zc::none && parameterReference == zc::none &&
-                 parameterIndex == zc::none &&
-                 shape.localInitializer != zc::none) {
+                 parameterIndex == zc::none && shape.localInitializer != zc::none) {
         return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                              ir::IrFailureKind::MissingRequiredFact, module,
                                              registries, ordinal + 2);
@@ -2904,8 +2907,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     }
     if (function.literal == zc::none && function.call == zc::none &&
         function.receiverCall == zc::none && function.aggregate == zc::none &&
-        !uninitializedLocal && !hasParameterReference && !hasParameterIndex && !hasParameterReborrow &&
-        !hasLocalBorrow && function.localWrites.size() == 0) {
+        !uninitializedLocal && !hasParameterReference && !hasParameterIndex &&
+        !hasParameterReborrow && !hasLocalBorrow && function.localWrites.size() == 0) {
       return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                            ir::IrFailureKind::MissingRequiredFact, module,
                                            registries, 1);
@@ -2917,14 +2920,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
          (function.literal != zc::none || function.call != zc::none ||
           function.aggregate != zc::none || (hasParameterReborrow && !localAliasReborrow))) ||
         (hasParameterIndex &&
-         (function.literal != zc::none || function.call != zc::none || function.receiverCall != zc::none ||
-          function.aggregate != zc::none || function.local != zc::none ||
-          function.localReference != zc::none || hasParameterReference || hasParameterReborrow)) ||
+         (function.literal != zc::none || function.call != zc::none ||
+          function.receiverCall != zc::none || function.aggregate != zc::none ||
+          function.local != zc::none || function.localReference != zc::none ||
+          hasParameterReference || hasParameterReborrow)) ||
         (hasParameterReborrow && (function.literal != zc::none || function.call != zc::none ||
                                   function.aggregate != zc::none)) ||
-        (hasLocalBorrow && (function.literal != zc::none || function.call != zc::none ||
-                            function.receiverCall != zc::none || function.aggregate != zc::none ||
-                            hasParameterReference || hasParameterIndex || hasParameterReborrow))) {
+        (hasLocalBorrow && (function.call != zc::none || function.receiverCall != zc::none ||
+                            function.aggregate != zc::none || hasParameterReference ||
+                            hasParameterIndex || hasParameterReborrow))) {
       return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                            ir::IrFailureKind::AdditionalFact, module, registries,
                                            1);
@@ -3008,7 +3012,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       pending.size() + pendingFunctions.size() - directCallCount - aggregateCount -
           uninitializedLocalReturnCount - parameterReferenceCount - parameterReborrowCount +
           localAliasReborrowCount + localWriteCount + aggregateElementCount +
-          directCallArgumentCount + receiverCallArgumentCount - localBorrowCount) {
+          directCallArgumentCount + receiverCallArgumentCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 3);
   }
@@ -3031,7 +3035,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 7);
   }
-  if (facts.places().size() != localFieldProjectionCount + localFieldWriteCount + parameterIndexCount ||
+  if (facts.places().size() !=
+          localFieldProjectionCount + localFieldWriteCount + parameterIndexCount ||
       facts.indexes().size() != parameterIndexCount ||
       facts.markerObligations().size() != parameterIndexCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -3170,6 +3175,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     returns.add(HirReturnStatement{returnId, value.resultType, valueId, value.returnSpan.clone()});
     ZC_IF_SOME(literal, value.literal) {
       HirNodeId expressionId = valueId;
+      identity::SemanticTypeId expressionType = value.resultType;
       identity::SourceSpan expressionSpan = value.valueSpan.clone();
       ZC_IF_SOME(local, value.local) {
         if (initializerId == zc::none || local.initializerSpan == zc::none) {
@@ -3178,9 +3184,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                                registries, 1);
         }
         ZC_IF_SOME(value, initializerId) { expressionId = value; }
+        expressionType = local.type;
         ZC_IF_SOME(span, local.initializerSpan) { expressionSpan = span.clone(); }
       }
-      expressions.add(HirScalarLiteralExpression{expressionId, value.resultType, literal.clone(),
+      expressions.add(HirScalarLiteralExpression{expressionId, expressionType, literal.clone(),
                                                  HirValueCategory::Value, zc::mv(expressionSpan)});
     }
     if (value.localWrites.size() != value.localWriteLiterals.size() ||
@@ -3230,8 +3237,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     }
     ZC_IF_SOME(index, value.parameterIndex) {
       parameterIndexes.add(HirParameterIndexExpression{
-          valueId, index.parameter.clone(), index.receiverType, index.indexType, index.index.clone(),
-          index.type, index.category, index.sourceSpan.clone(), index.indexSpan.clone()});
+          valueId, index.parameter.clone(), index.receiverType, index.indexType,
+          index.index.clone(), index.type, index.category, index.sourceSpan.clone(),
+          index.indexSpan.clone()});
     }
     ZC_IF_SOME(reborrow, value.parameterReborrow) {
       zc::Maybe<HirLocalId> sourceAlias;
@@ -3241,9 +3249,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
           reborrow.type, reborrow.mutability, reborrow.sourceSpan.clone()});
     }
     ZC_IF_SOME(borrow, value.localBorrow) {
-      localBorrows.add(HirLocalBorrowExpression{
-          valueId, hirLocalId(1), borrow.sourceType, borrow.type, borrow.mutability,
-          borrow.sourceSpan.clone()});
+      localBorrows.add(HirLocalBorrowExpression{valueId, hirLocalId(1), borrow.sourceType,
+                                                borrow.type, borrow.mutability,
+                                                borrow.sourceSpan.clone()});
     }
     ZC_IF_SOME(call, value.call) {
       HirNodeId callId = valueId;
@@ -3354,8 +3362,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       candidate.impl->checkedModule.dispatchFacts().facts().size() !=
           directCallCount + receiverCallCount ||
       !noUnsupportedFacts(facts) || candidate.impl->patterns.size() != declarationCount ||
-      candidate.impl->localReferences.size() + localFieldProjectionCount +
-              localAliasReborrowCount + localBorrowCount !=
+      candidate.impl->localReferences.size() + localFieldProjectionCount + localAliasReborrowCount +
+              localBorrowCount !=
           localReturnCount ||
       parameterReferenceCount + parameterIndexCount + parameterReborrowCount >
           functionCount + localAliasReborrowCount ||
@@ -3364,8 +3372,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       candidate.impl->expressions.size() != declarationCount + functionCount - directCallCount -
                                                 aggregateCount - uninitializedLocalReturnCount -
                                                 parameterReferenceCount - parameterReborrowCount +
-                                                localAliasReborrowCount + localWriteCount -
-                                                localBorrowCount ||
+                                                localAliasReborrowCount + localWriteCount ||
       executableDefinitions != declarationCount + functionCount ||
       facts.definitionTypes().size() != declarationCount ||
       facts.nodeTypes().size() !=
@@ -3378,12 +3385,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           declarationCount + functionCount - directCallCount - aggregateCount -
               uninitializedLocalReturnCount - parameterReferenceCount - parameterReborrowCount +
               localAliasReborrowCount + localWriteCount + aggregateElementCount +
-              directCallArgumentCount + receiverCallArgumentCount - localBorrowCount ||
+              directCallArgumentCount + receiverCallArgumentCount ||
       facts.calls().size() != directCallCount + receiverCallCount + parameterIndexCount ||
       facts.patterns().size() != declarationCount || facts.aggregates().size() != aggregateCount ||
       facts.members().size() !=
           localFieldProjectionCount + localFieldWriteCount + receiverCallCount ||
-      facts.places().size() != localFieldProjectionCount + localFieldWriteCount + parameterIndexCount ||
+      facts.places().size() !=
+          localFieldProjectionCount + localFieldWriteCount + parameterIndexCount ||
       facts.indexes().size() != parameterIndexCount ||
       facts.markerObligations().size() != parameterIndexCount) {
     return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -3990,6 +3998,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             index + 1);
       }
       localReference = reference;
+    }
+    zc::Maybe<const HirLocalBorrowExpression&> localBorrow;
+    for (const auto& borrow : candidate.impl->localBorrows) {
+      if (borrow.node != valueNode) continue;
+      if (localBorrow != zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::AdditionalFact, module, registries,
+                                            index + 1);
+      }
+      localBorrow = borrow;
     }
     zc::Maybe<const HirReceiverCallExpression&> receiverCall;
     const auto receiverReferenceNode = hirId(valueNode.ordinal());
@@ -4964,7 +4982,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                            (!localHasInitializer && ZC_ASSERT_NONNULL(localWrite).kind !=
                                                         HirLocalWriteKind::Initialize))) ||
         (returnsLocal && !returnsLocalAliasReborrow && localReference == zc::none &&
-         localFieldProjection == zc::none) ||
+         localFieldProjection == zc::none && localBorrow == zc::none) ||
         function.node.ordinal() != expectedFunction ||
         block.node.ordinal() != expectedFunction + 1 || returnStatement.node != returnNode ||
         function.body != block.node ||
@@ -5407,6 +5425,75 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
       }
       nextFunction += static_cast<uint32_t>(5 + functionLocalWriteCount * 2);
+      continue;
+    }
+
+    if (returnsLocal && source.returnsLocalBorrow) {
+      ast::NodeId localInitializer;
+      ZC_IF_SOME(value, source.localInitializer) { localInitializer = value; }
+      auto initializerTypeIndex = factIndex(facts.nodeTypes(), localInitializer);
+      auto returnTypeIndex = factIndex(facts.nodeTypes(), sourceReturnValueNode);
+      auto binding = resolvedOwnerLocal(bound.bindings(), source.localReference);
+      auto patternSpan = bound.parsedModule().spanFor(tree.node(source.localPattern).range);
+      auto initializerSpan = bound.parsedModule().spanFor(tree.node(localInitializer).range);
+      auto referenceSpan = bound.parsedModule().spanFor(tree.node(sourceReturnValueNode).range);
+      if (initializerTypeIndex == zc::none || returnTypeIndex == zc::none || binding == zc::none ||
+          patternSpan == zc::none || initializerSpan == zc::none || referenceSpan == zc::none ||
+          !ownerLocalMatches(definitions, ZC_ASSERT_NONNULL(binding), source.localPattern, tree)) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      ZC_IF_SOME(local, localBinding) {
+        ZC_IF_SOME(borrow, localBorrow) {
+          size_t initializerTypeSlot = 0;
+          size_t returnTypeSlot = 0;
+          ZC_IF_SOME(value, initializerTypeIndex) { initializerTypeSlot = value; }
+          ZC_IF_SOME(value, returnTypeIndex) { returnTypeSlot = value; }
+          const auto operation = static_cast<ast::UnaryOperatorKind>(
+              tree.node(source.value).payload.words[ast::kUnaryExpressionOpWord]);
+          const auto expectedMutability = operation == ast::UnaryOperatorKind::Ref
+                                              ? type::semantic::Mutability::Const
+                                              : type::semantic::Mutability::Mutable;
+          if (local.node != hirId(expectedFunction + 2) || local.initializer == zc::none ||
+              local.initializerSpan == zc::none ||
+              local.initializer != hirId(expectedFunction + 3) || local.local != hirLocalId(1) ||
+              borrow.local != local.local || borrow.sourceType != local.type ||
+              borrow.type != function.resultType || borrow.mutability != expectedMutability ||
+              block.statements[0] != local.node ||
+              facts.nodeTypes().entries()[initializerTypeSlot].value != local.type ||
+              facts.nodeTypes().entries()[returnTypeSlot].value != function.resultType ||
+              !sameSpan(local.sourceSpan, ZC_ASSERT_NONNULL(patternSpan)) ||
+              !sameSpan(ZC_ASSERT_NONNULL(local.initializerSpan),
+                        ZC_ASSERT_NONNULL(initializerSpan)) ||
+              !sameSpan(borrow.sourceSpan, ZC_ASSERT_NONNULL(referenceSpan))) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          ZC_IF_SOME(expression, literalExpression) {
+            auto literalIndex = factIndex(facts.literals(), localInitializer);
+            if (literalIndex == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+            size_t literalSlot = 0;
+            ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+            if (expression.type != local.type || expression.category != HirValueCategory::Value ||
+                !sameSpan(expression.sourceSpan, ZC_ASSERT_NONNULL(local.initializerSpan)) ||
+                facts.literals().entries()[literalSlot].value.type != local.type ||
+                !sameConstant(expression.value,
+                              facts.literals().entries()[literalSlot].value.literal, module,
+                              registries, semanticTypes)) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+          }
+        }
+      }
+      nextFunction += 6;
       continue;
     }
 
