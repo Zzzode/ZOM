@@ -132,6 +132,8 @@ bool MirPoint::operator<(const MirPoint& other) const noexcept {
 
 namespace {
 
+namespace signature = checker::signature;
+
 bool lessBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept;
 
 bool encodeMirPoint(identity::CanonicalEncoder& encoder, const MirPoint& point) {
@@ -977,19 +979,498 @@ bool sortMarkerUses(zc::Vector<OwnershipMarkerUse>& uses,
   return true;
 }
 
+struct TypeSubstitution final {
+  identity::GenericParameterKey parameter;
+  identity::SemanticTypeId argument;
+};
+
+constexpr uint32_t kMaximumRebuildDepth = 256;
+constexpr uint32_t kMaximumRebuildNodes = 65536;
+
+/// \brief Rebuilds closed component types with generic-parameter substitution.
+///
+/// Replicates the marker-proof ComponentTypeRebuilder against the session-owned
+/// semantic type store, which exposes canonicalizeClosed and intern publicly.
+class ComponentTypeRebuilder final {
+public:
+  ComponentTypeRebuilder(type::SemanticTypeStore& semanticTypes,
+                         zc::ArrayPtr<const TypeSubstitution> substitutions) noexcept
+      : semanticTypes(semanticTypes), substitutions(substitutions) {}
+
+  zc::Maybe<identity::SemanticTypeId> rebuild(identity::SemanticTypeId source) {
+    uint32_t nodes = 0;
+    return rebuild(source, 0, nodes);
+  }
+
+private:
+  zc::Maybe<identity::SemanticTypeId> publish(type::semantic::TypeData&& data) {
+    auto admitted = semanticTypes.canonicalizeClosed(zc::mv(data));
+    if (!admitted.is<type::semantic::CanonicalTypeData>()) return zc::none;
+    auto interned = semanticTypes.intern(zc::mv(admitted).get<type::semantic::CanonicalTypeData>());
+    if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
+    return interned.get<type::SemanticTypeInterned>().id;
+  }
+
+  zc::Maybe<identity::SemanticTypeId> rebuild(identity::SemanticTypeId source, uint32_t depth,
+                                              uint32_t& nodes) {
+    if (depth > kMaximumRebuildDepth || nodes == kMaximumRebuildNodes) return zc::none;
+    ++nodes;
+    auto lookup = semanticTypes.get(source);
+    if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
+    const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+    if (data.is<type::semantic::PrimitiveTypeData>()) return source;
+    if (data.is<type::semantic::TypeParameterTypeData>()) {
+      const auto& parameter = data.get<type::semantic::TypeParameterTypeData>().parameter;
+      for (const auto& substitution : substitutions) {
+        if (substitution.parameter == parameter) return substitution.argument;
+      }
+      return zc::none;
+    }
+    if (data.is<type::semantic::InterfaceSelfTypeData>()) return zc::none;
+
+    const auto rebuildSequence = [&](zc::ArrayPtr<const identity::SemanticTypeId> values)
+        -> zc::Maybe<zc::Vector<identity::SemanticTypeId>> {
+      zc::Vector<identity::SemanticTypeId> rebuilt(values.size());
+      for (const auto value : values) {
+        auto item = rebuild(value, depth + 1, nodes);
+        if (item == zc::none) return zc::none;
+        ZC_IF_SOME(id, item) { rebuilt.add(id); }
+      }
+      return rebuilt;
+    };
+
+    if (data.is<type::semantic::TupleTypeData>()) {
+      auto elements = rebuildSequence(data.get<type::semantic::TupleTypeData>().elements.asPtr());
+      if (elements == zc::none) return zc::none;
+      ZC_IF_SOME(value, elements) {
+        return publish(type::semantic::TypeData(type::semantic::TupleTypeData{zc::mv(value)}));
+      }
+    }
+    if (data.is<type::semantic::ObjectTypeData>()) {
+      zc::Vector<type::semantic::ObjectFieldData> fields;
+      for (const auto& field : data.get<type::semantic::ObjectTypeData>().fields) {
+        auto fieldType = rebuild(field.type, depth + 1, nodes);
+        if (fieldType == zc::none) return zc::none;
+        ZC_IF_SOME(value, fieldType) {
+          fields.add(type::semantic::ObjectFieldData{field.name.clone(), value, field.mutability,
+                                                     field.presence});
+        }
+      }
+      return publish(type::semantic::TypeData(type::semantic::ObjectTypeData{zc::mv(fields)}));
+    }
+    if (data.is<type::semantic::DynamicArrayTypeData>()) {
+      auto element =
+          rebuild(data.get<type::semantic::DynamicArrayTypeData>().element, depth + 1, nodes);
+      if (element == zc::none) return zc::none;
+      ZC_IF_SOME(value, element) {
+        return publish(type::semantic::TypeData(type::semantic::DynamicArrayTypeData{value}));
+      }
+    }
+    if (data.is<type::semantic::SliceTypeData>()) {
+      auto element = rebuild(data.get<type::semantic::SliceTypeData>().element, depth + 1, nodes);
+      if (element == zc::none) return zc::none;
+      ZC_IF_SOME(value, element) {
+        return publish(type::semantic::TypeData(type::semantic::SliceTypeData{value}));
+      }
+    }
+    if (data.is<type::semantic::FixedArrayTypeData>()) {
+      const auto& array = data.get<type::semantic::FixedArrayTypeData>();
+      auto element = rebuild(array.element, depth + 1, nodes);
+      if (element == zc::none) return zc::none;
+      ZC_IF_SOME(value, element) {
+        return publish(
+            type::semantic::TypeData(type::semantic::FixedArrayTypeData{value, array.length}));
+      }
+    }
+    if (data.is<type::semantic::FunctionTypeData>()) {
+      const auto& function = data.get<type::semantic::FunctionTypeData>();
+      auto parameters = rebuildSequence(function.parameters.asPtr());
+      auto success = rebuild(function.success, depth + 1, nodes);
+      if (parameters == zc::none || success == zc::none) return zc::none;
+      zc::Maybe<identity::SemanticTypeId> raises;
+      ZC_IF_SOME(value, function.raises) {
+        auto rebuilt = rebuild(value, depth + 1, nodes);
+        if (rebuilt == zc::none) return zc::none;
+        ZC_IF_SOME(id, rebuilt) { raises = id; }
+      }
+      ZC_IF_SOME(parameterValues, parameters) {
+        ZC_IF_SOME(successValue, success) {
+          return publish(type::semantic::TypeData(type::semantic::FunctionTypeData{
+              zc::mv(parameterValues), successValue, zc::mv(raises)}));
+        }
+      }
+    }
+    if (data.is<type::semantic::NominalTypeData>()) {
+      const auto& nominal = data.get<type::semantic::NominalTypeData>();
+      auto arguments = rebuildSequence(nominal.arguments.asPtr());
+      if (arguments == zc::none) return zc::none;
+      ZC_IF_SOME(value, arguments) {
+        return publish(type::semantic::TypeData(
+            type::semantic::NominalTypeData{nominal.definition, zc::mv(value)}));
+      }
+    }
+    if (data.is<type::semantic::UnionTypeData>()) {
+      auto alternatives =
+          rebuildSequence(data.get<type::semantic::UnionTypeData>().alternatives.asPtr());
+      if (alternatives == zc::none) return zc::none;
+      ZC_IF_SOME(value, alternatives) {
+        return publish(type::semantic::TypeData(type::semantic::UnionTypeData{zc::mv(value)}));
+      }
+    }
+    if (data.is<type::semantic::IntersectionTypeData>()) {
+      auto conjuncts =
+          rebuildSequence(data.get<type::semantic::IntersectionTypeData>().conjuncts.asPtr());
+      if (conjuncts == zc::none) return zc::none;
+      ZC_IF_SOME(value, conjuncts) {
+        return publish(
+            type::semantic::TypeData(type::semantic::IntersectionTypeData{zc::mv(value)}));
+      }
+    }
+    if (data.is<type::semantic::ReferenceTypeData>()) {
+      const auto& reference = data.get<type::semantic::ReferenceTypeData>();
+      auto referent = rebuild(reference.referent, depth + 1, nodes);
+      if (referent == zc::none) return zc::none;
+      ZC_IF_SOME(value, referent) {
+        return publish(type::semantic::TypeData(
+            type::semantic::ReferenceTypeData{reference.mutability, value}));
+      }
+    }
+    if (data.is<type::semantic::RawPointerTypeData>()) {
+      const auto& pointer = data.get<type::semantic::RawPointerTypeData>();
+      auto pointee = rebuild(pointer.pointee, depth + 1, nodes);
+      if (pointee == zc::none) return zc::none;
+      ZC_IF_SOME(value, pointee) {
+        return publish(type::semantic::TypeData(
+            type::semantic::RawPointerTypeData{pointer.mutability, value}));
+      }
+    }
+    if (data.is<type::semantic::ExistentialTypeData>()) {
+      const auto& existential = data.get<type::semantic::ExistentialTypeData>();
+      auto rebuildInterface = [&](const type::semantic::ExistentialInterfaceData& interface)
+          -> zc::Maybe<type::semantic::ExistentialInterfaceData> {
+        auto arguments = rebuildSequence(interface.arguments.asPtr());
+        if (arguments == zc::none) return zc::none;
+        ZC_IF_SOME(value, arguments) {
+          return type::semantic::ExistentialInterfaceData{interface.definition, zc::mv(value)};
+        }
+        return zc::none;
+      };
+      auto principal = rebuildInterface(existential.principal);
+      if (principal == zc::none) return zc::none;
+      zc::Vector<type::semantic::ExistentialInterfaceData> additional;
+      for (const auto& interface : existential.additionalInterfaces) {
+        auto rebuilt = rebuildInterface(interface);
+        if (rebuilt == zc::none) return zc::none;
+        ZC_IF_SOME(value, rebuilt) { additional.add(zc::mv(value)); }
+      }
+      zc::Vector<identity::DefId> markers(existential.markers.size());
+      for (const auto marker : existential.markers) { markers.add(marker); }
+      zc::Vector<type::semantic::AssociatedTypeBindingData> bindings;
+      for (const auto& binding : existential.associatedBindings) {
+        auto bindingType = rebuild(binding.type, depth + 1, nodes);
+        if (bindingType == zc::none) return zc::none;
+        ZC_IF_SOME(value, bindingType) {
+          bindings.add(type::semantic::AssociatedTypeBindingData{binding.associated, value});
+        }
+      }
+      ZC_IF_SOME(principalValue, principal) {
+        return publish(type::semantic::TypeData(type::semantic::ExistentialTypeData{
+            zc::mv(principalValue), zc::mv(additional), zc::mv(markers), zc::mv(bindings)}));
+      }
+    }
+    if (data.is<type::semantic::InterfaceBoundTypeData>()) {
+      const auto& interface = data.get<type::semantic::InterfaceBoundTypeData>().interface;
+      auto arguments = rebuildSequence(interface.arguments.asPtr());
+      if (arguments == zc::none) return zc::none;
+      ZC_IF_SOME(value, arguments) {
+        return publish(type::semantic::TypeData(type::semantic::InterfaceBoundTypeData{
+            type::semantic::InterfaceInstantiation{interface.interface, zc::mv(value)}}));
+      }
+    }
+    return zc::none;
+  }
+
+  type::SemanticTypeStore& semanticTypes;
+  zc::ArrayPtr<const TypeSubstitution> substitutions;
+};
+
+const signature::SemanticSignature* resolveSignaturePointer(const OwnershipEventOverlayInput& input,
+                                                            identity::DefId definition) {
+  const signature::SemanticSignature* local = nullptr;
+  for (const auto& value : input.body.signatureFacts.signatures()) {
+    if (value.definition == definition) {
+      local = &value;
+      break;
+    }
+  }
+  const signature::SemanticSignature* imported = nullptr;
+  auto importedMaybe = input.body.importedSignatures.supportDefinition(definition);
+  ZC_IF_SOME(value, importedMaybe) { imported = &value; }
+  if (local != nullptr && imported != nullptr) return nullptr;
+  if (local != nullptr) return local;
+  return imported;
+}
+
+zc::Maybe<identity::DefId> materializedDefinitionForType(const OwnershipEventOverlayInput& input,
+                                                         identity::DefId definition) {
+  auto entry = input.body.identities.definition(definition);
+  ZC_IF_SOME(value, entry) { return value.handle(); }
+  return zc::none;
+}
+
+zc::Maybe<const identity::DefinitionKey&> definitionKeyForType(
+    const OwnershipEventOverlayInput& input, identity::DefId definition) {
+  auto entry = input.body.identities.definition(definition);
+  ZC_IF_SOME(value, entry) { return value.key(); }
+  return zc::none;
+}
+
+bool genericSubstitutions(const OwnershipEventOverlayInput& input, identity::DefId definition,
+                          const signature::NominalSignature& nominalSignature,
+                          const type::semantic::NominalTypeData& subject,
+                          zc::Vector<TypeSubstitution>& output) {
+  if (nominalSignature.genericParameters.size() != subject.arguments.size()) return false;
+  auto ownerKey = definitionKeyForType(input, definition);
+  if (ownerKey == zc::none) return false;
+  for (size_t index = 0; index < nominalSignature.genericParameters.size(); ++index) {
+    const auto& generic = nominalSignature.genericParameters[index];
+    if (generic.index != index) return false;
+    for (size_t previous = 0; previous < index; ++previous) {
+      if (nominalSignature.genericParameters[previous].parameter == generic.parameter) {
+        return false;
+      }
+    }
+    auto parameter = input.body.identities.genericParameter(generic.parameter);
+    if (parameter == zc::none) return false;
+    ZC_IF_SOME(value, parameter) {
+      const auto& record = value.record();
+      auto owner = record.owner().definitionKey();
+      if (record.kind() != identity::GenericParameterKind::Type || record.ordinal() != index ||
+          owner == zc::none) {
+        return false;
+      }
+      bool matchesOwner = false;
+      ZC_IF_SOME(key, owner) {
+        ZC_IF_SOME(expected, ownerKey) { matchesOwner = key == expected; }
+      }
+      if (!matchesOwner) return false;
+    }
+    output.add(TypeSubstitution{generic.parameter.clone(), subject.arguments[index]});
+  }
+  return true;
+}
+
+struct StoredField final {
+  identity::DefId field;
+  identity::SemanticTypeId type;
+};
+
+/// \brief Enumerates the stored fields of one closed nominal struct type in declaration order.
+///
+/// Returns none for types with no projectable stored fields (primitives, tuples, objects,
+/// enums, or any type whose signature cannot be resolved).
+zc::Maybe<zc::Vector<StoredField>> enumerateStoredFields(const OwnershipEventOverlayInput& input,
+                                                         identity::SemanticTypeId typeId) {
+  auto lookup = input.body.semanticTypes.get(typeId);
+  if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  if (!data.is<type::semantic::NominalTypeData>()) return zc::none;
+  const auto& nominal = data.get<type::semantic::NominalTypeData>();
+  auto materialized = materializedDefinitionForType(input, nominal.definition);
+  if (materialized == zc::none) return zc::none;
+  identity::DefId definition;
+  ZC_IF_SOME(value, materialized) { definition = value; }
+  const auto* selected = resolveSignaturePointer(input, definition);
+  if (selected == nullptr) return zc::none;
+  if (selected->definitionKind != identity::DefinitionKind::Struct) return zc::none;
+  if (!selected->payload.variant().is<signature::NominalSignature>()) return zc::none;
+  const auto& nominalSignature = selected->payload.variant().get<signature::NominalSignature>();
+  zc::Vector<TypeSubstitution> substitutions;
+  if (!genericSubstitutions(input, definition, nominalSignature, nominal, substitutions)) {
+    return zc::none;
+  }
+  ComponentTypeRebuilder rebuilder(input.body.semanticTypes, substitutions.asPtr());
+  zc::Vector<StoredField> fields;
+  for (const auto field : nominalSignature.fields) {
+    const auto* fieldSignature = resolveSignaturePointer(input, field);
+    if (fieldSignature == nullptr) return zc::none;
+    if (fieldSignature->definitionKind != identity::DefinitionKind::Field ||
+        !fieldSignature->payload.variant().is<signature::ValueSignature>() ||
+        !fieldSignature->scope.variant().is<signature::MemberSignatureScope>() ||
+        fieldSignature->scope.variant().get<signature::MemberSignatureScope>().owner !=
+            definition) {
+      return zc::none;
+    }
+    auto component =
+        rebuilder.rebuild(fieldSignature->payload.variant().get<signature::ValueSignature>().type);
+    if (component == zc::none) return zc::none;
+    ZC_IF_SOME(value, component) { fields.add(StoredField{field, value}); }
+  }
+  return fields;
+}
+
+bool typeHasDirectDeinitializer(identity::SemanticTypeId type) {
+  // Direct deinitializer derivation is not yet implemented; every type is action-free.
+  (void)type;
+  return false;
+}
+
+struct ProjectionQueryNode final {
+  mir::MirPlace place;
+  identity::SemanticTypeId valueType;
+  OwnershipMarkerUseKey copyKey;
+  OwnershipMarkerUseKey linearKey;
+  bool copyPositive;
+  bool linearPositive;
+  zc::Vector<ProjectionQueryNode> children;
+};
+
+/// \brief Phase one: query Copy and Linear at one place and recursively discover descendants.
+zc::Maybe<ProjectionQueryNode> discoverProjectionNode(zc::Vector<OwnershipMarkerUse>& markerUses,
+                                                      checker::marker::MarkerProofEngine& proofs,
+                                                      const OwnershipEventOverlayInput& input,
+                                                      const MirEventKey& initialization,
+                                                      mir::MirPlace&& place, identity::DefId copy,
+                                                      identity::DefId linear) {
+  const auto valueType = place.resultType();
+  const auto local = place.local();
+  const auto rootType = place.rootType();
+  auto copyDecision = markerDecision(proofs, copy, valueType);
+  if (copyDecision == zc::none) return zc::none;
+  auto linearDecision = markerDecision(proofs, linear, valueType);
+  if (linearDecision == zc::none) return zc::none;
+  OwnershipMarkerUseKey copyKey{initialization, copy, valueType,
+                                input.body.markerPolicies.revision(),
+                                input.body.coherence.revision()};
+  OwnershipMarkerUseKey linearKey{initialization, linear, valueType,
+                                  input.body.markerPolicies.revision(),
+                                  input.body.coherence.revision()};
+  bool copyPositive = false;
+  bool linearPositive = false;
+  ZC_IF_SOME(decision, copyDecision) {
+    copyPositive = decision.is<OwnershipMarkerDecisionPositive>();
+    markerUses.add(OwnershipMarkerUse{copyKey, zc::mv(decision)});
+  }
+  ZC_IF_SOME(decision, linearDecision) {
+    linearPositive = decision.is<OwnershipMarkerDecisionPositive>();
+    markerUses.add(OwnershipMarkerUse{linearKey, zc::mv(decision)});
+  }
+  zc::Vector<ProjectionQueryNode> children;
+  if (!typeHasDirectDeinitializer(valueType)) {
+    auto fields = enumerateStoredFields(input, valueType);
+    ZC_IF_SOME(fieldList, fields) {
+      for (const auto& field : fieldList) {
+        zc::Vector<mir::MirProjection> projections;
+        for (const auto& proj : place.projections()) { projections.add(proj.clone()); }
+        projections.add(mir::MirProjection::field(field.field, valueType, field.type));
+        mir::MirPlace childPlace(local, rootType, zc::mv(projections), field.type);
+        auto child = discoverProjectionNode(markerUses, proofs, input, initialization,
+                                            zc::mv(childPlace), copy, linear);
+        if (child == zc::none) return zc::none;
+        ZC_IF_SOME(value, child) { children.add(zc::mv(value)); }
+      }
+    }
+  }
+  return ProjectionQueryNode{zc::mv(place), valueType,      copyKey,         linearKey,
+                             copyPositive,  linearPositive, zc::mv(children)};
+}
+
+/// \brief Phase two: postorder fold of one projection query node into drop-plan components.
+zc::Maybe<zc::Vector<LogicalDropPlanComponent>> foldProjectionTree(ProjectionQueryNode&& node) {
+  if (typeHasDirectDeinitializer(node.valueType)) {
+    // Case 1: direct deinitializer action; emit maximal component, suppress descendants.
+    zc::Vector<LogicalDropPlanComponent> result;
+    zc::Maybe<LogicalDropAction> action;
+    result.add(LogicalDropPlanComponent{zc::mv(node.place), node.valueType, zc::mv(action),
+                                        node.copyKey, node.linearKey, 0});
+    return result;
+  }
+  if (node.linearPositive && node.copyPositive) {
+    // Case 2: Linear+ Copy+; require every immediate child Copy+; emit root only.
+    for (const auto& child : node.children) {
+      if (!child.copyPositive) return zc::none;
+    }
+    zc::Vector<LogicalDropPlanComponent> result;
+    zc::Maybe<LogicalDropAction> noAction;
+    result.add(LogicalDropPlanComponent{zc::mv(node.place), node.valueType, zc::mv(noAction),
+                                        node.copyKey, node.linearKey, 0});
+    return result;
+  }
+  // Fold children in reverse declaration order (cleanup order: last-declared field first).
+  zc::Vector<LogicalDropPlanComponent> childComponents;
+  for (size_t i = node.children.size(); i > 0; --i) {
+    auto folded = foldProjectionTree(zc::mv(node.children[i - 1]));
+    if (folded == zc::none) return zc::none;
+    ZC_IF_SOME(value, folded) {
+      for (auto& comp : value) { childComponents.add(zc::mv(comp)); }
+    }
+  }
+  if (node.linearPositive) {
+    // Case 3: Linear+ Copy-; emit root; Builtin action when child fold is non-empty.
+    zc::Vector<LogicalDropPlanComponent> result;
+    zc::Maybe<LogicalDropAction> action;
+    if (!childComponents.empty()) {
+      action = LogicalDropAction(LogicalDropBuiltinAction{node.valueType});
+    }
+    result.add(LogicalDropPlanComponent{zc::mv(node.place), node.valueType, zc::mv(action),
+                                        node.copyKey, node.linearKey, 0});
+    return result;
+  }
+  // Case 4: Linear-.
+  if (!childComponents.empty()) {
+    // Retain child fold, omit current.
+    return childComponents;
+  }
+  if (node.copyPositive) {
+    // Copy+ leaf: emit nothing.
+    return zc::Vector<LogicalDropPlanComponent>{};
+  }
+  // Copy- leaf: emit one action-free component.
+  zc::Vector<LogicalDropPlanComponent> result;
+  zc::Maybe<LogicalDropAction> noAction;
+  result.add(LogicalDropPlanComponent{zc::mv(node.place), node.valueType, zc::mv(noAction),
+                                      node.copyKey, node.linearKey, 0});
+  return result;
+}
+
 bool appendLogicalDropPlan(zc::Vector<LogicalDropPlan>& plans,
+                           zc::Vector<OwnershipMarkerUse>& markerUses,
+                           checker::marker::MarkerProofEngine& proofs,
                            const OwnershipEventOverlayInput& input,
                            const MirEventKey& initialization, const mir::MirPlace& root,
-                           const OwnershipMarkerUse& copyUse, const OwnershipMarkerUse& linearUse) {
-  zc::Vector<LogicalDropPlanComponent> components;
+                           const OwnershipMarkerUse& copyUse, const OwnershipMarkerUse& linearUse,
+                           identity::DefId copy, identity::DefId linear) {
+  // Capture root decisions before descendant discovery appends to markerUses and invalidates refs.
   const bool copyPositive = copyUse.decision.is<OwnershipMarkerDecisionPositive>();
   const bool linearPositive = linearUse.decision.is<OwnershipMarkerDecisionPositive>();
-  if (!copyPositive || linearPositive) {
-    zc::Maybe<LogicalDropAction> noAction;
-    components.add(LogicalDropPlanComponent{root.clone(), root.resultType(), zc::mv(noAction),
-                                            copyUse.key, linearUse.key, 0});
+  const OwnershipMarkerUseKey copyKey = copyUse.key;
+  const OwnershipMarkerUseKey linearKey = linearUse.key;
+  zc::Vector<ProjectionQueryNode> children;
+  if (!typeHasDirectDeinitializer(root.resultType())) {
+    auto fields = enumerateStoredFields(input, root.resultType());
+    ZC_IF_SOME(fieldList, fields) {
+      for (const auto& field : fieldList) {
+        zc::Vector<mir::MirProjection> projections;
+        for (const auto& proj : root.projections()) { projections.add(proj.clone()); }
+        projections.add(mir::MirProjection::field(field.field, root.resultType(), field.type));
+        mir::MirPlace childPlace(root.local(), root.rootType(), zc::mv(projections), field.type);
+        auto child = discoverProjectionNode(markerUses, proofs, input, initialization,
+                                            zc::mv(childPlace), copy, linear);
+        if (child == zc::none) return false;
+        ZC_IF_SOME(value, child) { children.add(zc::mv(value)); }
+      }
+    }
   }
-  plans.add(LogicalDropPlan{initialization, root.clone(), zc::mv(components)});
+  ProjectionQueryNode rootNode{root.clone(), root.resultType(), copyKey,         linearKey,
+                               copyPositive, linearPositive,    zc::mv(children)};
+  auto components = foldProjectionTree(zc::mv(rootNode));
+  if (components == zc::none) return false;
+  ZC_IF_SOME(value, components) {
+    for (uint32_t ordinal = 0; ordinal < value.size(); ++ordinal) {
+      value[ordinal].declarationOrdinal = ordinal;
+    }
+    plans.add(LogicalDropPlan{initialization, root.clone(), zc::mv(value)});
+  }
   return true;
 }
 
@@ -1241,10 +1722,10 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
                 return zc::none;
               }
               if (markerUses.size() < 2 ||
-                  !appendLogicalDropPlan(logicalDropPlans, input, initialization,
-                                         statement.assignmentValue().destination,
+                  !appendLogicalDropPlan(logicalDropPlans, markerUses, proofs, input,
+                                         initialization, statement.assignmentValue().destination,
                                          markerUses[markerUses.size() - 2],
-                                         markerUses[markerUses.size() - 1])) {
+                                         markerUses[markerUses.size() - 1], copy, linear)) {
                 return zc::none;
               }
             }
@@ -1381,9 +1862,9 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
           return zc::none;
         }
         if (markerUses.size() < 2 ||
-            !appendLogicalDropPlan(logicalDropPlans, input, initialization, call.destination,
-                                   markerUses[markerUses.size() - 2],
-                                   markerUses[markerUses.size() - 1])) {
+            !appendLogicalDropPlan(logicalDropPlans, markerUses, proofs, input, initialization,
+                                   call.destination, markerUses[markerUses.size() - 2],
+                                   markerUses[markerUses.size() - 1], copy, linear)) {
           return zc::none;
         }
       }
@@ -1494,10 +1975,10 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
                 return zc::none;
               }
               if (markerUses.size() < 2 ||
-                  !appendLogicalDropPlan(logicalDropPlans, input, initialization,
-                                         statement.assignmentValue().destination,
+                  !appendLogicalDropPlan(logicalDropPlans, markerUses, proofs, input,
+                                         initialization, statement.assignmentValue().destination,
                                          markerUses[markerUses.size() - 2],
-                                         markerUses[markerUses.size() - 1])) {
+                                         markerUses[markerUses.size() - 1], copy, linear)) {
                 return zc::none;
               }
             }
@@ -1634,9 +2115,9 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
           return zc::none;
         }
         if (markerUses.size() < 2 ||
-            !appendLogicalDropPlan(logicalDropPlans, input, initialization, call.destination,
-                                   markerUses[markerUses.size() - 2],
-                                   markerUses[markerUses.size() - 1])) {
+            !appendLogicalDropPlan(logicalDropPlans, markerUses, proofs, input, initialization,
+                                   call.destination, markerUses[markerUses.size() - 2],
+                                   markerUses[markerUses.size() - 1], copy, linear)) {
           return zc::none;
         }
       }
