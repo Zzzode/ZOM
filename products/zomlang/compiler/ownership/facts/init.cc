@@ -1221,9 +1221,10 @@ InitializationSourceVerificationResult InitializationSourceVerifier::verify(
     return reject(builtMir, identities, ir::IrFailureKind::InvalidOwnershipProof, 0);
   }
   ZC_IF_SOME(values, failures) {
+    auto deduplicated = OwnershipSourceFailureOrdering::deduplicate(zc::mv(values));
     auto sorted =
         ir::SortedSourceFailureFacts<OwnershipSourceFailure, OwnershipSourceFailureOrdering>::from(
-            zc::mv(values));
+            zc::mv(deduplicated));
     ZC_IF_SOME(value, sorted) {
       return InitializationSourceVerificationResult::sourceRejected(zc::mv(value));
     }

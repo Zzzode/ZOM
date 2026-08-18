@@ -101,7 +101,11 @@ ir::IrOperationResult<OwnershipCheckedMir> reject(
       ZC_UNREACHABLE
     }
     zc::Vector<ir::IrFailureFact> failures;
-    failures.add(zc::mv(admitted).get<ir::AcceptedIrFailureDescriptor>().fact);
+    if (admitted.is<ir::AcceptedIrFailureDescriptor>()) {
+      failures.add(zc::mv(admitted).get<ir::AcceptedIrFailureDescriptor>().fact);
+    } else {
+      failures.add(zc::mv(admitted).get<ir::FallbackIrFailureDescriptor>().fact);
+    }
     auto sorted = ir::SortedIrInvariantFailureFacts::from(zc::mv(failures));
     ZC_IF_SOME(values, sorted) {
       return ir::IrOperationResult<OwnershipCheckedMir>::irInvariantRejected(zc::mv(values));
