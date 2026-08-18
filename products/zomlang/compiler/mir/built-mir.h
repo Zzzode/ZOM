@@ -263,7 +263,11 @@ enum class MirStatementKind : uint8_t {
   BorrowCreation = 0x04,
   SetDiscriminant = 0x05,
   Deinitialize = 0x06,
+  UnsafeScopeBoundary = 0x07,
 };
+
+/// \brief Direction of one unsafe-scope boundary marker.
+enum class MirUnsafeScopeBoundaryKind : uint8_t { Enter = 0x01, Exit = 0x02 };
 
 struct MirAssignmentStatement final {
   MirPlace destination;
@@ -288,6 +292,10 @@ struct MirSetDiscriminantStatement final {
 struct MirDeinitializeStatement final {
   MirPlace destination;
 };
+struct MirUnsafeScopeBoundaryStatement final {
+  MirUnsafeScopeBoundaryKind kind;
+  MirSourceScopeId scope;
+};
 
 /// \brief Closed statement algebra retaining explicit storage and initialization state.
 class MirStatement final {
@@ -310,6 +318,9 @@ public:
                                                    identity::SourceSpan&& sourceSpan) noexcept;
   ZC_NODISCARD static MirStatement deinitialize(MirPlace&& destination,
                                                 identity::SourceSpan&& sourceSpan) noexcept;
+  ZC_NODISCARD static MirStatement unsafeScopeBoundary(MirUnsafeScopeBoundaryKind kind,
+                                                       MirSourceScopeId scope,
+                                                       identity::SourceSpan&& sourceSpan) noexcept;
   ZC_NODISCARD MirStatement clone() const;
   ZC_NODISCARD MirStatementKind kind() const noexcept;
   /// \brief Returns presentation-only source ownership for this MIR operation.
@@ -319,6 +330,7 @@ public:
   ZC_NODISCARD const MirBorrowCreationStatement& borrowCreationValue() const;
   ZC_NODISCARD const MirSetDiscriminantStatement& setDiscriminantValue() const;
   ZC_NODISCARD const MirDeinitializeStatement& deinitializeValue() const;
+  ZC_NODISCARD const MirUnsafeScopeBoundaryStatement& unsafeScopeBoundaryValue() const;
 
 private:
   MirStatement(MirAssignmentStatement&& value, identity::SourceSpan&& sourceSpan) noexcept;
@@ -327,8 +339,10 @@ private:
   MirStatement(MirBorrowCreationStatement&& value, identity::SourceSpan&& sourceSpan) noexcept;
   MirStatement(MirSetDiscriminantStatement&& value, identity::SourceSpan&& sourceSpan) noexcept;
   MirStatement(MirDeinitializeStatement&& value, identity::SourceSpan&& sourceSpan) noexcept;
+  MirStatement(MirUnsafeScopeBoundaryStatement value, identity::SourceSpan&& sourceSpan) noexcept;
   zc::OneOf<MirAssignmentStatement, MirStorageLiveStatement, MirStorageDeadStatement,
-            MirBorrowCreationStatement, MirSetDiscriminantStatement, MirDeinitializeStatement>
+            MirBorrowCreationStatement, MirSetDiscriminantStatement, MirDeinitializeStatement,
+            MirUnsafeScopeBoundaryStatement>
       value;
   identity::SourceSpan sourceSpanValue;
 };

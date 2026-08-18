@@ -1775,6 +1775,16 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
             emit(0, OwnershipEventStage::Effect, zc::mv(effectRoles));
             break;
           }
+          case mir::MirStatementKind::UnsafeScopeBoundary: {
+            const auto& boundary = statement.unsafeScopeBoundaryValue();
+            zc::Vector<OwnershipEventRole> effectRoles;
+            effectRoles.add(OwnershipEventRole::Operation);
+            if (boundary.kind == mir::MirUnsafeScopeBoundaryKind::Enter) {
+              effectRoles.add(OwnershipEventRole::UnsafeAcknowledgement);
+            }
+            emit(0, OwnershipEventStage::Effect, zc::mv(effectRoles));
+            break;
+          }
         }
         ++statementOrdinal;
       }
@@ -2025,6 +2035,16 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
             zc::Vector<OwnershipEventRole> roles;
             roles.add(OwnershipEventRole::Operation);
             roles.add(OwnershipEventRole::Deinitialize);
+            record(0, OwnershipEventStage::Effect, zc::mv(roles));
+            break;
+          }
+          case mir::MirStatementKind::UnsafeScopeBoundary: {
+            const auto& boundary = statement.unsafeScopeBoundaryValue();
+            zc::Vector<OwnershipEventRole> roles;
+            roles.add(OwnershipEventRole::Operation);
+            if (boundary.kind == mir::MirUnsafeScopeBoundaryKind::Enter) {
+              roles.add(OwnershipEventRole::UnsafeAcknowledgement);
+            }
             record(0, OwnershipEventStage::Effect, zc::mv(roles));
             break;
           }

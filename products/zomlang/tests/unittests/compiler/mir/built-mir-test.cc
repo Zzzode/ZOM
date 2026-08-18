@@ -36,6 +36,18 @@ MirLocalId local(uint32_t ordinal) {
   return ZC_REQUIRE_NONNULL(result);
 }
 
+MirSourceScopeId sourceScope(uint32_t ordinal) {
+  auto result = MirSourceScopeId::fromOrdinal(ordinal);
+  ZC_REQUIRE(result != zc::none);
+  return ZC_REQUIRE_NONNULL(result);
+}
+
+zc::Array<uint8_t> decoded(zc::StringPtr hex) {
+  auto bytes = zc::decodeHex(hex);
+  ZC_REQUIRE(bytes != zc::none);
+  return zc::mv(ZC_REQUIRE_NONNULL(bytes));
+}
+
 identity::SourceSpan sourceSpan() {
   auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
                                                           zc::heapArray<uint8_t>(8, uint8_t{0}));
@@ -236,6 +248,83 @@ ZC_TEST("Built MIR call effects commit mutable receiver activation only on norma
   ZC_REQUIRE(value.effect.activatedMutableReceiver() != zc::none);
   ZC_IF_SOME(temporary, value.effect.activatedMutableReceiver()) {
     ZC_EXPECT(temporary == receiverTemporary);
+  }
+}
+
+ZC_TEST("Built MIR unsafe scope boundary statement retains kind scope and clone") {
+  const auto enter = MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Enter,
+                                                       sourceScope(1), sourceSpan());
+  ZC_EXPECT(enter.kind() == MirStatementKind::UnsafeScopeBoundary);
+  ZC_EXPECT(enter.unsafeScopeBoundaryValue().kind == MirUnsafeScopeBoundaryKind::Enter);
+  ZC_EXPECT(enter.unsafeScopeBoundaryValue().scope == sourceScope(1));
+  ZC_EXPECT(enter.sourceSpan().byteStart() == 1);
+  const auto exit = MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Exit,
+                                                      sourceScope(2), sourceSpan());
+  ZC_EXPECT(exit.unsafeScopeBoundaryValue().kind == MirUnsafeScopeBoundaryKind::Exit);
+  ZC_EXPECT(exit.unsafeScopeBoundaryValue().scope == sourceScope(2));
+  const auto clonedEnter = enter.clone();
+  ZC_EXPECT(clonedEnter.kind() == MirStatementKind::UnsafeScopeBoundary);
+  ZC_EXPECT(clonedEnter.unsafeScopeBoundaryValue().kind == MirUnsafeScopeBoundaryKind::Enter);
+  ZC_EXPECT(clonedEnter.unsafeScopeBoundaryValue().scope == sourceScope(1));
+  ZC_EXPECT(clonedEnter.sourceSpan().byteEnd() == 7);
+}
+
+zc::String framedUnsafeScopeDigest(zc::ArrayPtr<const uint8_t> functionRecord) {
+  zc::Vector<zc::Array<uint8_t>> functions;
+  functions.add(zc::heapArray(functionRecord));
+  const uint8_t module[] = {0xa1};
+  auto encoded = MirRevisionCodec::encodeBuiltFramed(repeatedDigest(0x00), zc::arrayPtr(module),
+                                                     repeatedDigest(0x22), repeatedDigest(0x33),
+                                                     repeatedDigest(0x44), functions.asPtr());
+  ZC_REQUIRE(encoded != zc::none);
+  auto digest = identity::sha256(ZC_REQUIRE_NONNULL(encoded).asPtr());
+  ZC_REQUIRE(digest != zc::none);
+  return zc::encodeHex(ZC_REQUIRE_NONNULL(digest).bytes());
+}
+
+ZC_TEST("Built MIR revision matches the canonical 283-byte unsafe-scope oracle") {
+  // RFC 0007: one 113-byte component-test canonical function record with one
+  // root source scope, no locals, and one block whose statements are exactly
+  // UnsafeScopeBoundary(Enter, scope=1) then UnsafeScopeBoundary(Exit, scope=1),
+  // followed by Return(None).
+  auto record = decoded(
+      "0000000000000001b101020000000000000001d1c10000000000000000000000000000000000000000000000010000000100c10000000000000000000000000000000000000000000000000000000000000001000000010000000100000000000000020701000000010702000000010100"_zc);
+  ZC_EXPECT(record.size() == 113);
+  zc::Vector<zc::Array<uint8_t>> functions;
+  functions.add(zc::mv(record));
+  expectOracle(
+      zc::mv(functions),
+      "7a6f6d2e6d69722d7265766973696f6e0000000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333334444444444444444444444444444444444444444444444444444444444444444000000000000000100000000000000710000000000000001b101020000000000000001d1c10000000000000000000000000000000000000000000000010000000100c10000000000000000000000000000000000000000000000000000000000000001000000010000000100000000000000020701000000010702000000010100"_zc,
+      "c49976b9fc841ecf6cd2e2d62af3442d36a22571b52291a0601e60ea92f71aa0"_zc);
+}
+
+ZC_TEST("Built MIR unsafe-scope oracle changes when any boundary byte is mutated") {
+  auto record = decoded(
+      "0000000000000001b101020000000000000001d1c10000000000000000000000000000000000000000000000010000000100c10000000000000000000000000000000000000000000000000000000000000001000000010000000100000000000000020701000000010702000000010100"_zc);
+  ZC_REQUIRE(record.size() == 113);
+  // The enter statement occupies the six bytes before the exit statement:
+  // outer tag 0x07, inner kind 0x01, uint32 scope ordinal 0x00000001.
+  const size_t enterTag = record.size() - 14;
+  const size_t enterKind = record.size() - 13;
+  const size_t enterScope = record.size() - 9;
+  ZC_REQUIRE(record[enterTag] == 0x07);
+  ZC_REQUIRE(record[enterKind] == 0x01);
+  ZC_REQUIRE(record[enterScope] == 0x01);
+  const auto baseline = framedUnsafeScopeDigest(record.asPtr());
+  {
+    auto mutated = zc::heapArray(record.asPtr());
+    mutated[enterTag] = 0x08;
+    ZC_EXPECT(framedUnsafeScopeDigest(mutated.asPtr()) != baseline);
+  }
+  {
+    auto mutated = zc::heapArray(record.asPtr());
+    mutated[enterKind] = 0x03;
+    ZC_EXPECT(framedUnsafeScopeDigest(mutated.asPtr()) != baseline);
+  }
+  {
+    auto mutated = zc::heapArray(record.asPtr());
+    mutated[enterScope] = 0x02;
+    ZC_EXPECT(framedUnsafeScopeDigest(mutated.asPtr()) != baseline);
   }
 }
 

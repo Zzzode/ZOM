@@ -498,6 +498,8 @@ bool applyStatement(const mir::MirFunction& function, const MovePathFunction& pa
                             InitializationLossKind::Deinitialized, statementEvent(),
                             InitializationState::uninitialized());
     }
+    case mir::MirStatementKind::UnsafeScopeBoundary:
+      return true;
   }
   return false;
 }
@@ -1058,6 +1060,7 @@ zc::Maybe<zc::Vector<OwnershipSourceFailure>> sourceFailures(
           case mir::MirStatementKind::StorageDead:
           case mir::MirStatementKind::SetDiscriminant:
           case mir::MirStatementKind::Deinitialize:
+          case mir::MirStatementKind::UnsafeScopeBoundary:
             break;
         }
       }

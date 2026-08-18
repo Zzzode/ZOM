@@ -572,6 +572,7 @@ private:
             break;
           case mir::MirStatementKind::StorageLive:
           case mir::MirStatementKind::StorageDead:
+          case mir::MirStatementKind::UnsafeScopeBoundary:
             break;
         }
       }
@@ -995,6 +996,8 @@ private:
                                 facts::InitializationLossKind::Deinitialized, statementEvent(),
                                 facts::InitializationState::uninitialized());
         }
+        case mir::MirStatementKind::UnsafeScopeBoundary:
+          return true;
       }
       return false;
     }

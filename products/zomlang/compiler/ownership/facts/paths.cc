@@ -380,6 +380,8 @@ zc::Maybe<MovePathFunction> deriveFunction(const mir::MirFunction& function,
         case mir::MirStatementKind::Deinitialize:
           if (!appendPlace(paths, statement.deinitializeValue().destination)) return zc::none;
           break;
+        case mir::MirStatementKind::UnsafeScopeBoundary:
+          break;
       }
     }
     if (block.terminator.kind() == mir::MirTerminatorKind::Return) {
@@ -472,6 +474,8 @@ bool validateFunction(const mir::MirFunction& function) {
           break;
         case mir::MirStatementKind::Deinitialize:
           if (!matchesPlace(function, statement.deinitializeValue().destination)) return false;
+          break;
+        case mir::MirStatementKind::UnsafeScopeBoundary:
           break;
       }
     }

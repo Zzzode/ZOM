@@ -285,6 +285,9 @@ MirStatement::MirStatement(MirSetDiscriminantStatement&& value,
 MirStatement::MirStatement(MirDeinitializeStatement&& value,
                            identity::SourceSpan&& sourceSpan) noexcept
     : value(zc::mv(value)), sourceSpanValue(zc::mv(sourceSpan)) {}
+MirStatement::MirStatement(MirUnsafeScopeBoundaryStatement value,
+                           identity::SourceSpan&& sourceSpan) noexcept
+    : value(value), sourceSpanValue(zc::mv(sourceSpan)) {}
 
 MirStatement MirStatement::assign(MirPlace&& destination, MirRvalue&& value,
                                   MirInitializationKind initialization,
@@ -321,6 +324,12 @@ MirStatement MirStatement::deinitialize(MirPlace&& destination,
   return MirStatement(MirDeinitializeStatement{zc::mv(destination)}, zc::mv(sourceSpan));
 }
 
+MirStatement MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind kind,
+                                               MirSourceScopeId scope,
+                                               identity::SourceSpan&& sourceSpan) noexcept {
+  return MirStatement(MirUnsafeScopeBoundaryStatement{kind, scope}, zc::mv(sourceSpan));
+}
+
 MirStatement MirStatement::clone() const {
   switch (kind()) {
     case MirStatementKind::Assign: {
@@ -344,6 +353,10 @@ MirStatement MirStatement::clone() const {
     }
     case MirStatementKind::Deinitialize:
       return deinitialize(deinitializeValue().destination.clone(), sourceSpan().clone());
+    case MirStatementKind::UnsafeScopeBoundary: {
+      const auto& boundary = unsafeScopeBoundaryValue();
+      return unsafeScopeBoundary(boundary.kind, boundary.scope, sourceSpan().clone());
+    }
   }
   ZC_UNREACHABLE
 }
@@ -354,7 +367,8 @@ MirStatementKind MirStatement::kind() const noexcept {
   if (value.is<MirStorageDeadStatement>()) return MirStatementKind::StorageDead;
   if (value.is<MirBorrowCreationStatement>()) return MirStatementKind::BorrowCreation;
   if (value.is<MirSetDiscriminantStatement>()) return MirStatementKind::SetDiscriminant;
-  return MirStatementKind::Deinitialize;
+  if (value.is<MirDeinitializeStatement>()) return MirStatementKind::Deinitialize;
+  return MirStatementKind::UnsafeScopeBoundary;
 }
 
 const identity::SourceSpan& MirStatement::sourceSpan() const noexcept { return sourceSpanValue; }
@@ -378,6 +392,10 @@ const MirSetDiscriminantStatement& MirStatement::setDiscriminantValue() const {
 
 const MirDeinitializeStatement& MirStatement::deinitializeValue() const {
   return value.get<MirDeinitializeStatement>();
+}
+
+const MirUnsafeScopeBoundaryStatement& MirStatement::unsafeScopeBoundaryValue() const {
+  return value.get<MirUnsafeScopeBoundaryStatement>();
 }
 
 MirTerminator::MirTerminator(MirReturnTerminator&& value,
@@ -762,6 +780,12 @@ bool encodeStatement(identity::CanonicalEncoder& encoder, const MirStatement& st
     case MirStatementKind::Deinitialize:
       return encodePlace(encoder, statement.deinitializeValue().destination, identities,
                          semanticTypes);
+    case MirStatementKind::UnsafeScopeBoundary: {
+      const auto& boundary = statement.unsafeScopeBoundaryValue();
+      encoder.encodeUint8(static_cast<uint8_t>(boundary.kind));
+      encoder.encodeUint32(boundary.scope.ordinal());
+      return boundary.scope.isValid();
+    }
   }
   return false;
 }
@@ -2550,6 +2574,48 @@ bool validDirectCallReturnFunction(const MirFunction& function,
   return false;
 }
 
+// Validates the RFC 0007 unsafe-scope boundary structural contract: every
+// boundary names a nonzero source scope owned by the enclosing function,
+// enter and exit markers are properly nested (an exit closes only the
+// innermost open scope), and every enter has one matching exit. Dominance and
+// the per-path exit-cut rule require CFG analysis and land together with HIR
+// unsafe-block lowering; production lowering emits no boundary today.
+bool validateUnsafeScopeBoundaries(const MirFunction& function) {
+  for (const auto& scope : function.sourceScopes) {
+    if (!scope.id.isValid()) return false;
+  }
+  zc::Vector<MirSourceScopeId> openScopes;
+  for (const auto& block : function.blocks) {
+    for (const auto& statement : block.statements) {
+      if (statement.kind() != MirStatementKind::UnsafeScopeBoundary) continue;
+      const auto& boundary = statement.unsafeScopeBoundaryValue();
+      if (!boundary.scope.isValid()) return false;
+      bool ownsScope = false;
+      for (const auto& scope : function.sourceScopes) {
+        if (scope.id == boundary.scope) {
+          ownsScope = true;
+          break;
+        }
+      }
+      if (!ownsScope) return false;
+      if (boundary.kind == MirUnsafeScopeBoundaryKind::Enter) {
+        for (const auto& open : openScopes) {
+          if (open == boundary.scope) return false;
+        }
+        openScopes.add(boundary.scope);
+      } else if (boundary.kind == MirUnsafeScopeBoundaryKind::Exit) {
+        if (openScopes.empty() || openScopes[openScopes.size() - 1] != boundary.scope) {
+          return false;
+        }
+        openScopes.removeLast();
+      } else {
+        return false;
+      }
+    }
+  }
+  return openScopes.empty();
+}
+
 }  // namespace
 
 MirRevisionId MirRevisionId::fromDigest(const identity::Sha256Digest& digest) noexcept {
@@ -2859,6 +2925,12 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
     }
     ZC_UNREACHABLE
   }
+  // RFC 0007 unsafe-scope lowering is intentionally absent: the HIR module has
+  // no unsafe-block node yet, so production lowering emits no
+  // MirUnsafeScopeBoundary statement. When HIR gains unsafe blocks, emit
+  // UnsafeScopeBoundary(Enter) at each scope entry and UnsafeScopeBoundary(Exit)
+  // at each scope exit; the statement schema, codec, and verifier contract are
+  // already in place.
   for (const auto& declaration : hirModule.functions()) {
     auto sourceBlock = blockFor(hirModule, declaration.body);
     if (sourceBlock == zc::none) {
@@ -4701,6 +4773,11 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
   zc::Array<uint8_t> previousOwner;
   for (size_t index = 0; index < candidate.functions.size(); ++index) {
     const auto& function = candidate.functions[index];
+    if (!validateUnsafeScopeBoundaries(function)) {
+      return rejectMir<VerifiedBuiltMir>(
+          ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::InvalidControlFlow, module,
+          function.owner, identities, static_cast<uint32_t>(index + 1));
+    }
     zc::Maybe<const hir::HirValueDeclaration&> declaration;
     for (const auto& value : hirModule.declarations()) {
       if (value.definition != function.owner) continue;
