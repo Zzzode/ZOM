@@ -7,7 +7,7 @@ description: Correct use of zc core library types (Own, Ptr, ArrayPtr, Vector, S
 
 Ensures every piece of C++ code in the repo uses `zc` types correctly,
 never falls back to `std` for things zc already provides, and obeys the
-ownership / Pimpl / naming rules codified in `.agents/rules/cpp-zc.md`.
+ownership / Pimpl / naming rules codified in `.codex/rules/cpp-zc.md`.
 
 ---
 
@@ -41,7 +41,7 @@ When reviewing any C++ diff, scan for these patterns and block until fixed:
 3. **`zc::String copy = ownedString;`** — `String` is non-copyable. Use `zc::mv`.
 4. **`std::string`, `std::vector`, `std::unique_ptr`, `std::optional`** —
    unless wrapped in the explicit "std:: required — zc has no X yet" comment
-   and the tracking-issue link per `.agents/rules/cpp-zc.md` § `std::` Usage.
+   and the tracking-issue link per `.codex/rules/cpp-zc.md` § `std::` Usage.
 5. **Raw `T*` in a public header or a class member that is clearly owning.**
 6. **`const_cast`** — strictly prohibited. No exceptions.
 7. **`maybe.orDefault(someDefault)`** silently hides failure paths. Mandate
@@ -112,5 +112,5 @@ If you encounter a use case that genuinely has no clean `zc` idiom:
 2. Document the gap precisely (what you need, why the existing zc types fail).
 3. Delegate to the `runtime-memory` subagent to add the missing abstraction
    to `zc/` first, then come back and use it.
-4. Update the "Known exceptions" table in `.agents/rules/cpp-zc.md` if a
+4. Update the "Known exceptions" table in `.codex/rules/cpp-zc.md` if a
    temporary `std::` escape hatch is truly unavoidable.

@@ -40,7 +40,7 @@ cmake --build --preset sanitizer -j
 ```
 
 Build errors → surface them verbatim. If the error is in a header owned by
-zc or the compiler, identify the owning subagent (see `.agents/subagents/`)
+zc or the compiler, identify the owning subagent (see `.codex/subagents/`)
 and delegate a fix rather than patching blind.
 
 **Never** disable a warning or suppress a sanitizer to "make it build."
@@ -72,7 +72,7 @@ When a test fails:
    FileCheck mismatch, XFAIL start passing, etc.
 3. If it is a FileCheck mismatch and the new output is semantically correct
    per the latest spec, run the `regen-lit.py` helper for that test
-   (see `.agents/rules/testing.md` § After a Parser or Spec Change), read
+   (see `.codex/rules/testing.md` § After a Parser or Spec Change), read
    the regenerated diff, and land it.
 
 ---

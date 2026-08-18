@@ -65,7 +65,7 @@ subagent's review but do not transfer file ownership.)
       `ArrayPtr`, or `T&` depending on ownership semantics.
 - [ ] `zc::Vector<T>` — never `zc::Vector<zc::Own<T>>`.
 - [ ] Every `std::` usage has the "std:: required — zc has no X yet"
-      comment + tracking issue. Keep the list in `.agents/rules/cpp-zc.md`
+      comment + tracking issue. Keep the list in `.codex/rules/cpp-zc.md`
       current.
 - [ ] No `new` / `delete` / `malloc` / `free` outside `zc/` internals
       or explicit FFI wrappers.

@@ -23,7 +23,7 @@ subagents:
   - id: task-router
     name: Task Router
     owns:
-      - ".agents/subagents/**"
+      - ".codex/subagents/**"
       - "AGENTS.md"
     triggers: [ "route", "assign", "split", "owner", "delegate", "task split", "workflow", "forced cast", "as!" ]
     required-skills: [ build-ci ]
@@ -33,7 +33,7 @@ subagents:
     name: RFC Governance
     owns:
       - "docs/rfc/**"
-      - ".agents/skills/rfc/**"
+      - ".codex/skills/rfc/**"
     triggers: [ "RFC", "rfc", "proposal", "design intake", "governance", "template", "status transition", "accepted design", "prior art" ]
     required-skills: [ rfc ]
     escalation-to: [ spec-audit ]

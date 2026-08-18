@@ -83,7 +83,7 @@ python3 products/zomlang/tests/tools/regen-lit.py \
 3. If the diff shows unintended AST shape or an extra error diagnostic → fix
    the code change first, regenerate again.
 4. If a test now passes that was `XFAIL` → remove the `XFAIL` marker in the
-   same commit (see `.agents/rules/testing.md` § XFAIL Hygiene).
+   same commit (see `.codex/rules/testing.md` § XFAIL Hygiene).
 
 To regenerate the whole suite (rare — only after a broad refactor like
 `SyntaxKind` renumbering):

@@ -28,7 +28,7 @@ Do not route here when:
 
 ```text
 docs/rfc/**
-.agents/skills/rfc/**
+.codex/skills/rfc/**
 ```
 
 ## Review Checklist (applies to every PR this subagent touches)

@@ -27,7 +27,7 @@ Do **not** route here when:
 ## Owns
 
 ```
-.agents/subagents/**
+.codex/subagents/**
 AGENTS.md
 ```
 

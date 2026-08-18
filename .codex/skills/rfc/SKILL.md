@@ -15,8 +15,8 @@ Read these files before drafting or reviewing an RFC:
 
 - `docs/rfc/README.md`
 - `docs/rfc/0000-template.md`
-- `.agents/rules/design-principles.md`
-- `.agents/subagents/manifest.yaml`
+- `.codex/rules/design-principles.md`
+- `.codex/subagents/manifest.yaml`
 
 For technical RFCs, also read the affected spec, design, compiler, runtime, or
 test files before writing recommendations.

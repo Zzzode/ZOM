@@ -88,7 +88,7 @@ cgroup v2 are not internal schema revisions and are unaffected by this rule.
 2. Delete the old surface entirely (macros, overloads, aliases, flags).
 3. Fix every call site in the repository in the same commit.
 4. Update spec chapters + tests + lit expectations in the same commit.
-5. Update AGENTS / .agents/rules docs if this changes a documented default.
+5. Update AGENTS / .codex/rules docs if this changes a documented default.
 ```
 
 One commit. No migration epoch.

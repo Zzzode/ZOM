@@ -7,7 +7,7 @@ paths:
 
 > Applies to `lexer/`, `parser/`, `ast/`, `binder/`, `checker/`, `type/`,
 > `identity/`, `hir/`, `mir/`, `ir/`, `diagnostics/`, and `driver/`. See
-> `.agents/skills/spec-alignment/SKILL.md` for
+> `.codex/skills/spec-alignment/SKILL.md` for
 > the five-way consistency check between spec and implementation.
 
 ---

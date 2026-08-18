@@ -5,7 +5,7 @@ description: Run the five-way consistency check between lexical chapter, ZomLexe
 
 # Spec ↔ Implementation Alignment Skill
 
-The automated enforcer of `.agents/rules/spec-alignment.md`. Invoke it
+The automated enforcer of `.codex/rules/spec-alignment.md`. Invoke it
 *before* merging any change that touches `docs/spec/**` or
 `products/zomlang/compiler/{lexer,parser,ast,binder,checker}/**`.
 
