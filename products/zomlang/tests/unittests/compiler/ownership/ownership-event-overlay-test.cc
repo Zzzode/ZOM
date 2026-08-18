@@ -1237,7 +1237,6 @@ bool sameTestLossCause(const facts::InitializationLossCause& left,
 
 }  // namespace
 
-
 ZC_TEST("Initialization lattice mergeLossCauses is order-independent") {
   using facts::InitializationLattice;
   using facts::InitializationLossKind;
@@ -4598,6 +4597,64 @@ ZC_TEST("Differential oracle matches production facts for a direct call result")
 
 ZC_TEST("Differential oracle matches production facts for a parameter reborrow") {
   OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectOracleMatchesInventory(fixture);
+}
+
+ZC_TEST("Differential oracle matches production facts for a field projection write and read") {
+  OwnershipPipelineFixture fixture(
+      "struct Pair { mut left: i32, right: bool, }\n"
+      "fun entry() -> bool { mut pair = Pair { left: 0, right: true }; pair.left = 2; return "
+      "pair.right; }"_zc);
+  expectOracleMatchesInventory(fixture);
+}
+
+ZC_TEST("Differential oracle matches production facts for a partial aggregate initialization") {
+  OwnershipPipelineFixture fixture(
+      "struct Pair { mut left: i32, mut right: bool, }\n"
+      "fun entry() -> bool { mut pair: Pair; pair.left = 0; pair.right = true; return pair.right; }"_zc);
+  expectOracleMatchesInventory(fixture);
+}
+
+ZC_TEST("Differential oracle matches production facts for a mutable receiver activation") {
+  OwnershipPipelineFixture fixture(
+      "struct Cell { value: i32, mutating fun read(this, amount: i32) -> i32; }\n"
+      "fun entry() -> i32 { mut cell = Cell { value: 0 }; return cell.read(1); }"_zc);
+  expectOracleMatchesInventory(fixture);
+}
+
+ZC_TEST("Differential oracle matches production facts for a linear aggregate return") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Linear};\n"
+      "struct Cell { value: i32, }\n"
+      "unsafe impl Linear for Cell;\n"
+      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+  expectOracleMatchesInventory(fixture);
+}
+
+ZC_TEST("Differential oracle matches production facts for a parameter move into a local") {
+  OwnershipPipelineFixture fixture(
+      "struct Cell { value: i32, }\n"
+      "import core::marker::{Copy};\n"
+      "impl !Copy for Cell;\n"
+      "fun entry(value: Cell) -> Cell { let cell = value; return cell; }"_zc);
+  expectOracleMatchesInventory(fixture);
+}
+
+ZC_TEST("Differential oracle matches production facts for a multi-function call chain") {
+  OwnershipPipelineFixture fixture(
+      "fun inner() -> i32 { return 0; }\n"
+      "fun middle() -> i32 { return inner(); }\n"
+      "fun entry() -> i32 { return middle(); }"_zc);
+  expectOracleMatchesInventory(fixture);
+}
+
+ZC_TEST("Differential oracle matches production facts for a linear-logical aggregate return") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Copy, Linear};\n"
+      "struct Cell { value: i32, }\n"
+      "impl !Copy for Cell;\n"
+      "unsafe impl Linear for Cell;\n"
+      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 
