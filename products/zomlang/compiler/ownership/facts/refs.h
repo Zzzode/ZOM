@@ -15,17 +15,30 @@
 #pragma once
 
 #include "zc/core/memory.h"
+#include "zc/core/one-of.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ownership/facts/loans.h"
 #include "zomlang/compiler/ownership/facts/paths.h"
 
 namespace zomlang::compiler::ownership::facts {
 
-/// \brief The parameter entry and child-loan activation behind one reborrow definition.
+/// \brief Parameter-reborrow origin detail carrying the root parameter ordinal.
+struct ParameterReferenceOrigin final {
+  uint32_t rootParameter;
+
+  bool operator==(const ParameterReferenceOrigin&) const = default;
+};
+
+/// \brief Local-borrow origin detail for a borrow of a function-local binding.
+struct LocalReferenceOrigin final {
+  bool operator==(const LocalReferenceOrigin&) const = default;
+};
+
+/// \brief The origin (parameter entry or local introduction) behind one reference definition.
 struct ReferenceInputOrigin final {
   MirEventKey entry;
   OwnershipPoint activation;
-  uint32_t rootParameter;
+  zc::OneOf<ParameterReferenceOrigin, LocalReferenceOrigin> detail;
   MovePathKey referent;
 };
 

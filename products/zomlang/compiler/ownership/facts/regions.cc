@@ -211,12 +211,14 @@ zc::Maybe<zc::Vector<ReborrowRegion>> derive(const VerifiedFlow& flow,
     auto loan = loanFor(loans, reference);
     if (loan == zc::none) return zc::none;
     ZC_IF_SOME(value, loan) {
-      if (value.activeFrom != reference.origin.activation ||
-          reference.origin.entry.location.owner != reference.owner ||
-          reference.origin.entry.location.point.kind() != MirPointKind::Entry ||
-          reference.origin.entry.operandOrdinal != 0) {
-        return zc::none;
-      }
+      const bool entryShapeValid =
+          reference.origin.entry.location.owner == reference.owner &&
+          reference.origin.entry.operandOrdinal == 0 &&
+          ((reference.origin.detail.is<ParameterReferenceOrigin>() &&
+            reference.origin.entry.location.point.kind() == MirPointKind::Entry) ||
+           (reference.origin.detail.is<LocalReferenceOrigin>() &&
+            reference.origin.entry.location.point.kind() == MirPointKind::BeforeStatement));
+      if (value.activeFrom != reference.origin.activation || !entryShapeValid) { return zc::none; }
       zc::Vector<OwnershipPoint> members;
       members.add(value.activeFrom);
       members.add(reference.livePoints.afterCommit);
@@ -226,7 +228,7 @@ zc::Maybe<zc::Vector<ReborrowRegion>> derive(const VerifiedFlow& flow,
       members.add(reference.livePoints.afterReturn);
       if (!flowContainsMembers(flow, reference.owner, members.asPtr())) return zc::none;
       regions.add(ReborrowRegion{reference.owner, reference.origin.entry, reference.loan,
-                                 reference.origin.rootParameter, zc::mv(members)});
+                                 reference.origin.detail, zc::mv(members)});
     }
   }
   return regions;
@@ -237,8 +239,7 @@ bool sameRegions(zc::ArrayPtr<const ReborrowRegion> left,
   if (left.size() != right.size()) return false;
   for (size_t index = 0; index < left.size(); ++index) {
     if (left[index].owner != right[index].owner || left[index].entry != right[index].entry ||
-        left[index].loan != right[index].loan ||
-        left[index].inputParameter != right[index].inputParameter ||
+        left[index].loan != right[index].loan || left[index].origin != right[index].origin ||
         !sameMembers(left[index].members.asPtr(), right[index].members.asPtr())) {
       return false;
     }
@@ -276,8 +277,7 @@ VerifiedReborrowRegions& VerifiedReborrowRegions::operator=(VerifiedReborrowRegi
 identity::SemanticContextBrand VerifiedReborrowRegions::semanticContext() const noexcept {
   return impl->candidate.semanticContext;
 }
-const identity::ContextFingerprint& VerifiedReborrowRegions::contextFingerprint()
-    const noexcept {
+const identity::ContextFingerprint& VerifiedReborrowRegions::contextFingerprint() const noexcept {
   return impl->candidate.contextFingerprint;
 }
 identity::ModuleId VerifiedReborrowRegions::module() const noexcept {

@@ -140,8 +140,7 @@ bool isAdmittedReceiverCall(const ast::Tree& tree, ast::NodeId expression) {
           ast::MemberAccessKind::Dot) {
     return false;
   }
-  const ast::NodeId receiver(
-      tree.node(callee).payload.words[ast::kMemberExpressionObjectWord]);
+  const ast::NodeId receiver(tree.node(callee).payload.words[ast::kMemberExpressionObjectWord]);
   return tree.contains(receiver) && tree.node(receiver).kind == ast::SyntaxKind::IdentExpr &&
          hasAdmittedArguments(tree, call);
 }
@@ -171,6 +170,22 @@ bool isAdmittedReferenceReborrow(const ast::Tree& tree, ast::NodeId expression) 
   return tree.contains(reference) && tree.node(reference).kind == ast::SyntaxKind::IdentExpr;
 }
 
+bool isAdmittedLocalBorrow(const ast::Tree& tree, ast::NodeId expression) {
+  if (!tree.contains(expression) ||
+      tree.node(expression).kind != ast::SyntaxKind::UnaryExpression) {
+    return false;
+  }
+  const auto& borrow = tree.node(expression);
+  const auto borrowOperator =
+      static_cast<ast::UnaryOperatorKind>(borrow.payload.words[ast::kUnaryExpressionOpWord]);
+  if (borrowOperator != ast::UnaryOperatorKind::Ref &&
+      borrowOperator != ast::UnaryOperatorKind::RefMut) {
+    return false;
+  }
+  const ast::NodeId operand(borrow.payload.words[ast::kUnaryExpressionOperandWord]);
+  return tree.contains(operand) && tree.node(operand).kind == ast::SyntaxKind::IdentExpr;
+}
+
 bool isAdmittedErrorPostfix(const ast::Tree& tree, ast::NodeId expression) {
   if (!tree.contains(expression) ||
       tree.node(expression).kind != ast::SyntaxKind::PostfixExpression) {
@@ -193,7 +208,7 @@ bool isAdmittedReturnValue(const ast::Tree& tree, ast::NodeId value) {
   return isScalarLiteral(tree.node(value).kind) ||
          tree.node(value).kind == ast::SyntaxKind::IdentExpr || isAdmittedDirectCall(tree, value) ||
          isAdmittedReceiverCall(tree, value) || isAdmittedReferenceReborrow(tree, value) ||
-         isAdmittedErrorPostfix(tree, value);
+         isAdmittedLocalBorrow(tree, value) || isAdmittedErrorPostfix(tree, value);
 }
 
 bool isAdmittedAggregateInitializer(const ast::Tree& tree, ast::NodeId initializer) {
@@ -371,8 +386,7 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
     returnReference =
         ast::NodeId(tree.node(returnValue).payload.words[ast::kMemberExpressionObjectWord]);
   } else if (returnsReceiverCall) {
-    const ast::NodeId callee(
-        tree.node(returnValue).payload.words[ast::kCallExpressionCalleeWord]);
+    const ast::NodeId callee(tree.node(returnValue).payload.words[ast::kCallExpressionCalleeWord]);
     returnReference =
         ast::NodeId(tree.node(callee).payload.words[ast::kMemberExpressionObjectWord]);
   } else if (isAdmittedReferenceReborrow(tree, returnValue)) {
@@ -380,6 +394,9 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
         tree.node(returnValue).payload.words[ast::kUnaryExpressionOperandWord]);
     returnReference =
         ast::NodeId(tree.node(dereference).payload.words[ast::kUnaryExpressionOperandWord]);
+  } else if (isAdmittedLocalBorrow(tree, returnValue)) {
+    returnReference =
+        ast::NodeId(tree.node(returnValue).payload.words[ast::kUnaryExpressionOperandWord]);
   }
   if (!matchesLocalReference(tree, pattern, returnReference)) return false;
   if (!tree.contains(initializer) && statements.size == 2) return true;

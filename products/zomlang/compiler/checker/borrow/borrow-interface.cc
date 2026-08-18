@@ -626,7 +626,7 @@ BorrowInterfaceBuildResult BorrowInterfaceBuilder::build(const BorrowInterfaceBu
         returnRelation = BorrowReturnRelation::directRoot(directInputs[0]);
       } else if (directInputs.size() > 1 && hasReceiver) {
         returnRelation = BorrowReturnRelation::directRoot(BorrowInputRegion::receiver());
-      } else {
+      } else if (directInputs.size() > 1) {
         sourceFailures.add(BorrowSignatureFailure{
             BorrowSignatureFailureKind::AmbiguousDirectResult, semanticSignature.definition,
             semanticSignature.declarationSpan.clone(), semanticSignature.declarationSpan.clone(),

@@ -20,12 +20,12 @@
 
 namespace zomlang::compiler::ownership::facts {
 
-/// \brief One reference value present at one exact point of an admitted parameter reborrow.
+/// \brief One reference value present at one exact point of an admitted reference origin.
 struct ReborrowState final {
   identity::DefId owner;
   OwnershipPoint point;
   MirEventKey loan;
-  uint32_t inputParameter;
+  zc::OneOf<ParameterReferenceOrigin, LocalReferenceOrigin> origin;
   MovePathKey destination;
 };
 
@@ -51,7 +51,7 @@ public:
   zc::Vector<ReborrowState> states;
 };
 
-/// \brief Immutable bounded reference states for admitted parameter reborrows.
+/// \brief Immutable bounded reference states for admitted reference origins.
 class VerifiedReborrowStates final {
 public:
   ~VerifiedReborrowStates() noexcept(false);
@@ -76,7 +76,7 @@ private:
   friend class ReborrowStateVerifier;
 };
 
-/// \brief Derives point-exact reference values for the admitted parameter-reborrow shape.
+/// \brief Derives point-exact reference values for the admitted reference-origin shape.
 class ReborrowStateBuilder final {
 public:
   ZC_NODISCARD static ir::IrOperationResult<ReborrowStateCandidate> build(
@@ -84,7 +84,7 @@ public:
       const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay);
 };
 
-/// \brief Independently reconstructs bounded parameter-reborrow reference states.
+/// \brief Independently reconstructs bounded reference states.
 class ReborrowStateVerifier final {
 public:
   ZC_NODISCARD static ir::IrOperationResult<VerifiedReborrowStates> verify(

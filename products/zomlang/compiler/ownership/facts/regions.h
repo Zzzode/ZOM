@@ -21,16 +21,16 @@
 
 namespace zomlang::compiler::ownership::facts {
 
-/// \brief One loan region derived for an admitted parameter reborrow.
+/// \brief One loan region derived for an admitted parameter reborrow or local borrow.
 struct ReborrowRegion final {
   identity::DefId owner;
   MirEventKey entry;
   MirEventKey loan;
-  uint32_t inputParameter;
+  zc::OneOf<ParameterReferenceOrigin, LocalReferenceOrigin> origin;
   zc::Vector<OwnershipPoint> members;
 };
 
-/// \brief Untrusted parameter-reborrow region inventory awaiting reconstruction.
+/// \brief Untrusted loan-region inventory awaiting reconstruction.
 class ReborrowRegionCandidate final {
 public:
   ReborrowRegionCandidate(identity::SemanticContextBrand semanticContext,
@@ -52,7 +52,7 @@ public:
   zc::Vector<ReborrowRegion> regions;
 };
 
-/// \brief Immutable bounded loan-region inventory for admitted parameter reborrows.
+/// \brief Immutable bounded loan-region inventory for admitted reference origins.
 class VerifiedReborrowRegions final {
 public:
   ~VerifiedReborrowRegions() noexcept(false);
@@ -77,7 +77,7 @@ private:
   friend class ReborrowRegionVerifier;
 };
 
-/// \brief Derives bounded loan membership for the admitted parameter-reborrow shape.
+/// \brief Derives bounded loan membership for the admitted reference-origin shape.
 class ReborrowRegionBuilder final {
 public:
   ZC_NODISCARD static ir::IrOperationResult<ReborrowRegionCandidate> build(
@@ -86,7 +86,7 @@ public:
       const VerifiedOwnershipEventOverlay& overlay);
 };
 
-/// \brief Independently reconstructs bounded parameter-reborrow region membership.
+/// \brief Independently reconstructs bounded loan-region membership.
 class ReborrowRegionVerifier final {
 public:
   ZC_NODISCARD static ir::IrOperationResult<VerifiedReborrowRegions> verify(

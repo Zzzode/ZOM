@@ -306,6 +306,34 @@ zc::Maybe<uint32_t> parameterOrigin(const mir::MirFunction& function, const mir:
   return origin;
 }
 
+zc::Maybe<MirEventKey> localOrigin(const mir::MirFunction& function, const mir::MirPlace& source) {
+  if (source.projections().size() != 0) return zc::none;
+  zc::Maybe<const mir::MirLocalDeclaration&> sourceLocal;
+  for (const auto& local : function.locals) {
+    if (local.id != source.local()) continue;
+    if (sourceLocal != zc::none) return zc::none;
+    sourceLocal = local;
+  }
+  if (sourceLocal == zc::none) return zc::none;
+  ZC_IF_SOME(local, sourceLocal) {
+    if (local.kind != mir::MirLocalKind::UserLocal) return zc::none;
+  }
+  zc::Maybe<MirEventKey> origin;
+  for (const auto& block : function.blocks) {
+    for (uint32_t ordinal = 0; ordinal < block.statements.size(); ++ordinal) {
+      const auto& statement = block.statements[ordinal];
+      if (statement.kind() != mir::MirStatementKind::StorageLive ||
+          statement.storageLocal() != source.local()) {
+        continue;
+      }
+      if (origin != zc::none) return zc::none;
+      origin =
+          MirEventKey{MirLocation{function.owner, MirPoint::beforeStatement(block.id, ordinal)}, 0};
+    }
+  }
+  return origin;
+}
+
 zc::Maybe<zc::Vector<ReferenceDefinition>> derive(
     const VerifiedMovePaths& movePaths, const VerifiedLoanFacts& loans,
     const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay,
@@ -322,33 +350,46 @@ zc::Maybe<zc::Vector<ReferenceDefinition>> derive(
       returned = returnedFrom(function, loan.destination.place, overlay);
     }
     if (returned == zc::none) continue;
-    if (loan.source.place.projections().size() != 1 ||
-        loan.source.place.projections()[0].kind() != mir::MirProjectionKind::Dereference ||
-        loan.destination.place.projections().size() != 0) {
-      return zc::none;
-    }
-    zc::Maybe<uint32_t> parameterOrdinal;
-    ZC_IF_SOME(function, sourceFunction) {
-      parameterOrdinal = parameterOrigin(function, loan.source.place);
-    }
-    if (parameterOrdinal == zc::none) return zc::none;
-    ZC_IF_SOME(ordinal, parameterOrdinal) {
-      if (!hasEntryRoot(overlay, loan.owner, ordinal) ||
-          !hasDirectRootParameter(evidence, loan.owner, ordinal)) {
-        return zc::none;
+    const bool isParameterReborrow =
+        loan.source.place.projections().size() == 1 &&
+        loan.source.place.projections()[0].kind() == mir::MirProjectionKind::Dereference;
+    const bool isLocalBorrow = loan.source.place.projections().size() == 0;
+    if (!isParameterReborrow && !isLocalBorrow) return zc::none;
+    if (loan.destination.place.projections().size() != 0) return zc::none;
+    MirEventKey entryEvent{MirLocation{loan.owner, MirPoint::entry()}, 0};
+    zc::OneOf<ParameterReferenceOrigin, LocalReferenceOrigin> detail{LocalReferenceOrigin{}};
+    if (isParameterReborrow) {
+      zc::Maybe<uint32_t> parameterOrdinal;
+      ZC_IF_SOME(function, sourceFunction) {
+        parameterOrdinal = parameterOrigin(function, loan.source.place);
       }
-      ZC_IF_SOME(returnEvent, returned) {
-        auto points = livePoints(loan.commit, returnEvent);
-        if (points == zc::none) return zc::none;
-        ZC_IF_SOME(value, points) {
-          definitions.add(ReferenceDefinition{
-              loan.owner, loan.commit, loan.issue,
-              ReferenceInputOrigin{MirEventKey{MirLocation{loan.owner, MirPoint::entry()}, ordinal},
-                                   loan.activeFrom, ordinal,
-                                   MovePathKey{loan.source.owner, loan.source.place.clone()}},
-              returnEvent, MovePathKey{loan.destination.owner, loan.destination.place.clone()},
-              zc::mv(value)});
+      if (parameterOrdinal == zc::none) return zc::none;
+      ZC_IF_SOME(ordinal, parameterOrdinal) {
+        if (!hasEntryRoot(overlay, loan.owner, ordinal) ||
+            !hasDirectRootParameter(evidence, loan.owner, ordinal)) {
+          return zc::none;
         }
+        entryEvent = MirEventKey{MirLocation{loan.owner, MirPoint::entry()}, ordinal};
+        detail = ParameterReferenceOrigin{ordinal};
+      }
+    } else {
+      zc::Maybe<MirEventKey> localEntry;
+      ZC_IF_SOME(function, sourceFunction) {
+        localEntry = localOrigin(function, loan.source.place);
+      }
+      if (localEntry == zc::none) return zc::none;
+      ZC_IF_SOME(event, localEntry) { entryEvent = event; }
+    }
+    ZC_IF_SOME(returnEvent, returned) {
+      auto points = livePoints(loan.commit, returnEvent);
+      if (points == zc::none) return zc::none;
+      ZC_IF_SOME(value, points) {
+        definitions.add(ReferenceDefinition{
+            loan.owner, loan.commit, loan.issue,
+            ReferenceInputOrigin{entryEvent, loan.activeFrom, detail,
+                                 MovePathKey{loan.source.owner, loan.source.place.clone()}},
+            returnEvent, MovePathKey{loan.destination.owner, loan.destination.place.clone()},
+            zc::mv(value)});
       }
     }
   }
@@ -364,7 +405,7 @@ bool sameDefinitions(zc::ArrayPtr<const ReferenceDefinition> left,
         left[index].loan != right[index].loan ||
         left[index].origin.entry != right[index].origin.entry ||
         left[index].origin.activation != right[index].origin.activation ||
-        left[index].origin.rootParameter != right[index].origin.rootParameter ||
+        left[index].origin.detail != right[index].origin.detail ||
         left[index].origin.referent.owner != right[index].origin.referent.owner ||
         !samePlace(left[index].origin.referent.place, right[index].origin.referent.place) ||
         left[index].returned != right[index].returned ||

@@ -156,7 +156,7 @@ zc::Maybe<const ReborrowRegion&> regionFor(const VerifiedReborrowRegions& region
   zc::Maybe<const ReborrowRegion&> result;
   for (const auto& region : regions.regions()) {
     if (region.owner != reference.owner || region.loan != reference.loan ||
-        region.inputParameter != reference.origin.rootParameter) {
+        region.origin != reference.origin.detail) {
       continue;
     }
     if (result != zc::none) return zc::none;
@@ -182,7 +182,7 @@ zc::Maybe<zc::Vector<ReborrowState>> derive(const VerifiedReferenceDefinitions& 
       }
       for (size_t index = 1; index < value.members.size(); ++index) {
         states.add(ReborrowState{
-            reference.owner, value.members[index], reference.loan, reference.origin.rootParameter,
+            reference.owner, value.members[index], reference.loan, reference.origin.detail,
             MovePathKey{reference.destination.owner, reference.destination.place.clone()}});
       }
     }
@@ -194,8 +194,7 @@ bool sameStates(zc::ArrayPtr<const ReborrowState> left, zc::ArrayPtr<const Rebor
   if (left.size() != right.size()) return false;
   for (size_t index = 0; index < left.size(); ++index) {
     if (left[index].owner != right[index].owner || left[index].point != right[index].point ||
-        left[index].loan != right[index].loan ||
-        left[index].inputParameter != right[index].inputParameter ||
+        left[index].loan != right[index].loan || left[index].origin != right[index].origin ||
         left[index].destination.owner != right[index].destination.owner ||
         !samePlace(left[index].destination.place, right[index].destination.place)) {
       return false;
@@ -234,8 +233,7 @@ VerifiedReborrowStates& VerifiedReborrowStates::operator=(VerifiedReborrowStates
 identity::SemanticContextBrand VerifiedReborrowStates::semanticContext() const noexcept {
   return impl->candidate.semanticContext;
 }
-const identity::ContextFingerprint& VerifiedReborrowStates::contextFingerprint()
-    const noexcept {
+const identity::ContextFingerprint& VerifiedReborrowStates::contextFingerprint() const noexcept {
   return impl->candidate.contextFingerprint;
 }
 identity::ModuleId VerifiedReborrowStates::module() const noexcept {
