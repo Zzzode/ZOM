@@ -179,8 +179,7 @@ zc::Maybe<zc::Vector<DropDischargeRecord>> elaborateLinear(
         // pre-consumed before its parent's action.
         if (index > 0) {
           const auto previousOrdinal = plan.components[index - 1].factOrdinal;
-          if (facts[previousOrdinal].declarationOrdinal <=
-              facts[factOrdinal].declarationOrdinal) {
+          if (facts[previousOrdinal].declarationOrdinal <= facts[factOrdinal].declarationOrdinal) {
             return zc::none;
           }
         }
@@ -198,8 +197,7 @@ zc::Maybe<zc::Vector<DropDischargeRecord>> elaborateLinear(
       const auto& block = mirFunction->blocks[0];
       discharges.add(DropDischargeRecord{
           MirEventKey{
-              MirLocation{resourceFunction.owner,
-                          MirPoint::exit(block.id, MirExitKind::Return)},
+              MirLocation{resourceFunction.owner, MirPoint::exit(block.id, MirExitKind::Return)},
               0},
           facts::MovePathKey{plan.subject.origin.owner, plan.subject.origin.place.clone()},
           DropDischargeKind::LogicalDrop, plan.mode, zc::mv(components)});
@@ -235,9 +233,7 @@ const identity::ContextFingerprint& DropElaboratedMir::contextFingerprint() cons
   return impl->checked.contextFingerprint();
 }
 identity::ModuleId DropElaboratedMir::module() const noexcept { return impl->checked.module(); }
-const OwnershipCheckedMir& DropElaboratedMir::checkedMir() const noexcept {
-  return impl->checked;
-}
+const OwnershipCheckedMir& DropElaboratedMir::checkedMir() const noexcept { return impl->checked; }
 zc::ArrayPtr<const DropDischargeRecord> DropElaboratedMir::discharges() const noexcept {
   return impl->discharges.asPtr();
 }
@@ -256,16 +252,16 @@ ir::IrOperationResult<DropElaboratedMir> DropElaborator::elaborateDrops(
   const auto evidence = repository.lookup(lease);
   if (!matches(builtMir, overlay, facts, lease, repository, evidence) ||
       !builtMir.matchesBorrowEvidenceInput(lease, repository)) {
-    return reject<DropElaboratedMir>(builtMir, identities,
-                                     ir::IrFailureKind::InputRevisionMismatch, 0);
+    return reject<DropElaboratedMir>(builtMir, identities, ir::IrFailureKind::InputRevisionMismatch,
+                                     0);
   }
   auto discharges = elaborateLinear(facts.resources(), builtMir.functions());
   if (discharges == zc::none) {
     return reject<DropElaboratedMir>(builtMir, identities, ir::IrFailureKind::InvalidCleanup, 1);
   }
   ZC_IF_SOME(value, discharges) {
-    return ir::IrOperationResult<DropElaboratedMir>::verified(DropElaboratedMir(
-        zc::heap<DropElaboratedMir::Impl>(zc::mv(checked), zc::mv(value))));
+    return ir::IrOperationResult<DropElaboratedMir>::verified(
+        DropElaboratedMir(zc::heap<DropElaboratedMir::Impl>(zc::mv(checked), zc::mv(value))));
   }
   ZC_UNREACHABLE
 }
