@@ -161,8 +161,10 @@ zc::Maybe<zc::Vector<DropDischargeRecord>> elaborateLinear(
     const auto& facts = resourceFunction.facts;
     const auto& plans = resourceFunction.dropPlans;
 
-    // Track which fact ordinals have been discharged. Every pending drop
-    // obligation must be discharged by exactly one drop plan.
+    // Track which fact ordinals have at least one discharge path. A resource
+    // moved between places legitimately appears in multiple closed drop plans,
+    // one per move site, so a fact may be covered by more than one plan; only a
+    // fact with no plan at all is a missing discharge.
     zc::Vector<bool> discharged;
     for (size_t i = 0; i < facts.size(); ++i) discharged.add(false);
 
@@ -171,7 +173,6 @@ zc::Maybe<zc::Vector<DropDischargeRecord>> elaborateLinear(
       for (size_t index = 0; index < plan.components.size(); ++index) {
         const auto factOrdinal = plan.components[index].factOrdinal;
         if (factOrdinal >= facts.size()) return zc::none;
-        if (discharged[factOrdinal]) return zc::none;
         discharged[factOrdinal] = true;
 
         // Components must be in reverse declaration order so each child is

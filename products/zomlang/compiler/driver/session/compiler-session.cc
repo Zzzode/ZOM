@@ -65,6 +65,7 @@
 #include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/compiler/identity/canonical/identity-interner-set.h"
 #include "zomlang/compiler/identity/identity-diagnostic-adapter.h"
+#include "zomlang/compiler/ownership/drop-elaborated-mir.h"
 #include "zomlang/compiler/ownership/ownership-checked-mir.h"
 #include "zomlang/compiler/ownership/ownership-diagnostic-adapter.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
@@ -634,6 +635,7 @@ struct CompilerSession::Impl {
   zc::Vector<checker::dispatch::VerifiedDispatchFacts> dispatchFacts;
   zc::Vector<hir::VerifiedHirModule> hirModules;
   zc::Vector<ownership::OwnershipCheckedMir> ownershipCheckedMirModules;
+  zc::Vector<ownership::DropElaboratedMir> dropElaboratedMirModules;
   zc::Vector<ir::IrDiagnosticGroup> irFailureGroups;
   zc::Vector<identity::IdentityInvariant> irIdentityInvariantFailures;
   bool verifiedCheckedSources = false;
@@ -641,6 +643,7 @@ struct CompilerSession::Impl {
   zc::Vector<checker::signature::CheckerVerificationFailure> checkerFailures;
 
   void releaseSessionLeases() noexcept(false) {
+    dropElaboratedMirModules.clear();
     ownershipCheckedMirModules.clear();
     hirModules.clear();
     ownershipAdmittedModules.clear();
@@ -2131,6 +2134,11 @@ zc::ArrayPtr<const ownership::OwnershipCheckedMir> CompilerSession::getOwnership
   return impl->ownershipCheckedMirModules;
 }
 
+zc::ArrayPtr<const ownership::DropElaboratedMir> CompilerSession::getDropElaboratedMirModules()
+    const noexcept {
+  return impl->dropElaboratedMirModules;
+}
+
 zc::Maybe<ownership::OwnershipEventOverlayInput> CompilerSession::getOwnershipEventOverlayInput(
     identity::ModuleId module) const noexcept {
   if (impl->checkerIdentityAuthority == zc::none || impl->markerPolicies == zc::none ||
@@ -2757,6 +2765,7 @@ bool CompilerSession::checkSources() {
   zc::Vector<ownership::facts::VerifiedOwnershipInputs> stagedOwnershipInputs;
   zc::Vector<ownership::OwnershipAdmittedBoundModule> stagedOwnershipAdmittedModules;
   zc::Vector<ownership::OwnershipCheckedMir> stagedOwnershipCheckedMir;
+  zc::Vector<ownership::DropElaboratedMir> stagedDropElaboratedMir;
   zc::Vector<size_t> checkerFactModuleIndices;
   zc::Vector<size_t> checkerFactIndexByModule;
   zc::Vector<size_t> ordinaryBoundModuleIndices;
@@ -3718,11 +3727,13 @@ bool CompilerSession::checkSources() {
     stagedOwnershipInputs.add(zc::mv(verifiedOwnershipInputs).takeVerified());
     stagedOwnershipAdmittedModules.add(checkerBound.retain());
   }
-  // Finalize ownership: consume Built MIR, the verified event overlay, and the
-  // verified facts into one fail-closed OwnershipCheckedMir wrapper per module.
-  // A rejected finalization destroys its consumed local input and publishes no
-  // predecessor or partial successor; the session retains its previous
-  // transaction until every wrapper is committed atomically below.
+  // Finalize ownership and elaborate drops: consume Built MIR, the verified
+  // event overlay, and the verified facts into one fail-closed
+  // OwnershipCheckedMir wrapper per module, then validate every pending drop
+  // obligation into one DropElaboratedMir successor. A rejected finalization or
+  // elaboration destroys its consumed local input and publishes no predecessor
+  // or partial successor; the session retains its previous transaction until
+  // every wrapper is committed atomically below.
   for (size_t index = 0; index < stagedBuiltMirModules.size(); ++index) {
     auto checked = ownership::OwnershipFinalizer::finalizeOwnership(
         zc::mv(stagedBuiltMirModules[index]), zc::mv(stagedOwnershipEventOverlays[index]),
@@ -3733,10 +3744,24 @@ bool CompilerSession::checkSources() {
       return rejectIrIdentity(checked.identityFailures());
     }
     if (checked.isIrInvariantRejected()) { return rejectIrInvariant(checked.invariantFailures()); }
-    stagedOwnershipCheckedMir.add(zc::mv(checked).takeVerified());
+    auto elaborated = ownership::DropElaborator::elaborateDrops(
+        zc::mv(checked).takeVerified(), stagedBorrowEvidenceRepository->capability());
+    if (elaborated.isCapabilityRejected()) {
+      return rejectIrCapability(elaborated.capabilityFailures());
+    }
+    if (elaborated.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(elaborated.identityFailures());
+    }
+    if (elaborated.isIrInvariantRejected()) {
+      return rejectIrInvariant(elaborated.invariantFailures());
+    }
+    auto dropElaborated = zc::mv(elaborated).takeVerified();
+    stagedOwnershipCheckedMir.add(zc::mv(dropElaborated).takeCheckedMir());
+    stagedDropElaboratedMir.add(zc::mv(dropElaborated));
   }
   if (stagedHirModules.size() != ordinaryBoundModuleIndices.size() ||
       stagedOwnershipCheckedMir.size() != ordinaryBoundModuleIndices.size() ||
+      stagedDropElaboratedMir.size() != ordinaryBoundModuleIndices.size() ||
       stagedOwnershipAdmittedModules.size() != ordinaryBoundModuleIndices.size() ||
       impl->diagnosticEngine->hasErrors()) {
     return false;
@@ -3756,6 +3781,7 @@ bool CompilerSession::checkSources() {
   impl->borrowEvidenceRepository = zc::mv(stagedBorrowEvidenceRepository);
   impl->hirModules = zc::mv(stagedHirModules);
   impl->ownershipCheckedMirModules = zc::mv(stagedOwnershipCheckedMir);
+  impl->dropElaboratedMirModules = zc::mv(stagedDropElaboratedMir);
   impl->ownershipAdmittedModules = zc::mv(stagedOwnershipAdmittedModules);
   impl->verifiedCheckedSources = true;
   return true;

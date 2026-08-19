@@ -121,8 +121,10 @@ private:
 /// For the current linear MIR subset (single block, no branches), the
 /// elaboration then validates that every pending drop obligation in the
 /// verified resource facts has a complete discharge path through the linear
-/// CFG. It rejects a missing discharge, an obligation already moved or
-/// discharged, or a component order violation with IrInvariantRejected at
+/// CFG. A resource moved between places legitimately appears in multiple
+/// closed drop plans, one per move site, so a fact may be covered by more
+/// than one plan. The elaborator rejects a missing discharge (a fact with no
+/// plan at all) or a component order violation with IrInvariantRejected at
 /// OwnershipProofValidation.
 class DropElaborator final {
 public:

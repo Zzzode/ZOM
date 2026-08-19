@@ -42,6 +42,7 @@
 #include "zomlang/compiler/ir/ir-diagnostic-adapter.h"
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/compiler/mir/built-mir.h"
+#include "zomlang/compiler/ownership/drop-elaborated-mir.h"
 #include "zomlang/compiler/ownership/facts/inputs.h"
 #include "zomlang/compiler/ownership/ownership-checked-mir.h"
 #include "zomlang/compiler/ownership/ownership-event-overlay.h"
@@ -204,6 +205,13 @@ public:
   /// ownership facts; access the payload through OwnershipCheckedMir::builtMir,
   /// eventOverlay, and facts.
   ZC_NODISCARD zc::ArrayPtr<const ownership::OwnershipCheckedMir> getOwnershipCheckedMirModules()
+      const noexcept;
+  /// \brief Returns immutable RFC 0007 drop-elaborated MIR wrappers in dependency order.
+  ///
+  /// Each wrapper retains its recorded drop-discharge inventory; the owned
+  /// OwnershipCheckedMir payload is published separately through
+  /// getOwnershipCheckedMirModules after DropElaboratedMir::takeCheckedMir.
+  ZC_NODISCARD zc::ArrayPtr<const ownership::DropElaboratedMir> getDropElaboratedMirModules()
       const noexcept;
   /// \brief Returns the exact retained checker-to-MIR handoff for one ownership overlay.
   ZC_NODISCARD zc::Maybe<ownership::OwnershipEventOverlayInput> getOwnershipEventOverlayInput(
