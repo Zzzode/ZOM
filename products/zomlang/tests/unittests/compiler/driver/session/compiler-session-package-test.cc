@@ -2600,8 +2600,6 @@ ZC_TEST("CompilerSession rejects unadmitted frontend syntax before Checker publi
           diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
   rejects("fun entry() -> i32 { return 1 + 2; }"_zc,
           diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
-  rejects("fun entry() -> i32 { return unsafe { 1 }; }"_zc,
-          diagnostics::DiagID::ExpressionStatementSemanticsUnavailable, 1);
   rejects("fun entry() -> i64 { return 1 as i64; }"_zc,
           diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
   rejects(

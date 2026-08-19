@@ -332,6 +332,7 @@ struct PendingFunctionDeclaration final {
   zc::Maybe<HirParameterReborrowExpression> parameterReborrow;
   zc::Maybe<HirLocalBorrowExpression> localBorrow;
   zc::Maybe<PendingSequentialLocalReturn> sequentialLocalReturn;
+  zc::Maybe<identity::SourceSpan> unsafeBlockSpan;
   zc::Array<uint8_t> orderingKey;
 };
 
@@ -389,6 +390,7 @@ struct FunctionReturnShape final {
   bool sequentialReturnUsesSource = false;
   bool returnsReceiverCall = false;
   bool returnsLocalBorrow = false;
+  zc::Maybe<ast::NodeId> unsafeBlock;
 };
 
 zc::Maybe<ast::NodeId> statementItem(const ast::Tree& tree, ast::NodeId statement) {
@@ -501,12 +503,35 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   }
   ast::NodeId returnNode;
   ZC_IF_SOME(statement, returnStatement) { returnNode = statement; }
-  const ast::NodeId value(tree.node(returnNode).payload.words[ast::kReturnStmtValueWord]);
+  ast::NodeId value(tree.node(returnNode).payload.words[ast::kReturnStmtValueWord]);
   if (!tree.contains(value)) return zc::none;
+  zc::Maybe<ast::NodeId> unsafeBlock;
+  if (statements.size == 1 && tree.node(value).kind == ast::SyntaxKind::UnsafeBlockExpr) {
+    const ast::NodeId unsafeBody(tree.node(value).payload.words[ast::kUnsafeBlockExprBodyWord]);
+    if (!tree.contains(unsafeBody) || tree.node(unsafeBody).kind != ast::SyntaxKind::BlockStmt) {
+      return zc::none;
+    }
+    const auto& unsafeBodyNode = tree.node(unsafeBody);
+    const ast::NodeList unsafeStatements{
+        unsafeBodyNode.payload.words[ast::kBlockStmtStmtsFirstWord],
+        unsafeBodyNode.payload.words[ast::kBlockStmtStmtsSizeWord]};
+    if (!tree.contains(unsafeStatements) || unsafeStatements.empty()) return zc::none;
+    auto unsafeItem = statementItem(tree, tree.list(unsafeStatements)[unsafeStatements.size - 1]);
+    if (unsafeItem == zc::none) return zc::none;
+    ast::NodeId innerStatement;
+    ZC_IF_SOME(item, unsafeItem) { innerStatement = item; }
+    if (tree.node(innerStatement).kind != ast::SyntaxKind::ExpressionStatement) return zc::none;
+    const ast::NodeId innerValue(
+        tree.node(innerStatement).payload.words[ast::kExpressionStatementExpressionWord]);
+    if (!tree.contains(innerValue)) return zc::none;
+    if (isScalarLiteral(tree.node(innerValue).kind)) { unsafeBlock = value; }
+    value = innerValue;
+  }
   if (statements.size == 1) {
     return FunctionReturnShape{
-        body,  returnNode, value,         ast::NodeId(), zc::none,      {},   false, ast::NodeId(),
-        false, false,      ast::NodeId(), ast::NodeId(), ast::NodeId(), false};
+        body,          returnNode,    value, ast::NodeId(), zc::none,      {},
+        false,         ast::NodeId(), false, false,         ast::NodeId(), ast::NodeId(),
+        ast::NodeId(), false,         false, false,         false,         zc::mv(unsafeBlock)};
   }
   if (statements.size == 3) {
     auto sourceDeclarator = localDeclarator(tree, tree.list(statements)[0]);
@@ -547,7 +572,10 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                                  sourceInitializer,
                                  destinationInitializer,
                                  true,
-                                 returnsSource};
+                                 returnsSource,
+                                 false,
+                                 false,
+                                 zc::mv(unsafeBlock)};
     }
   }
   auto localStatement = statementItem(tree, tree.list(statements)[0]);
@@ -620,7 +648,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                                false,
                                false,
                                returnsReceiverCall,
-                               localBorrow != zc::none};
+                               localBorrow != zc::none,
+                               zc::mv(unsafeBlock)};
   }
   if (tree.contains(initializer) && !isScalarLiteral(tree.node(initializer).kind) &&
       tree.node(initializer).kind != ast::SyntaxKind::CallExpression &&
@@ -645,7 +674,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                                false,
                                false,
                                returnsReceiverCall,
-                               localBorrow != zc::none};
+                               localBorrow != zc::none,
+                               zc::mv(unsafeBlock)};
   }
   if (static_cast<ast::BindingDeclarationKind>(
           tree.node(letNode).payload.words[ast::kLetStmtKindWord]) !=
@@ -701,7 +731,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                              false,
                              false,
                              returnsReceiverCall,
-                             localBorrow != zc::none};
+                             localBorrow != zc::none,
+                             zc::mv(unsafeBlock)};
 }
 
 bool noUnsupportedFacts(const checker::checked::VerifiedCheckedFacts& facts) {
@@ -923,7 +954,8 @@ struct HirModuleCandidate::Impl final {
        zc::Vector<HirParameterReborrowExpression>&& parameterReborrows,
        zc::Vector<HirLocalBorrowExpression>&& localBorrows,
        zc::Vector<HirDirectCallExpression>&& calls,
-       zc::Vector<HirReceiverCallExpression>&& receiverCalls) noexcept
+       zc::Vector<HirReceiverCallExpression>&& receiverCalls,
+       zc::Vector<HirUnsafeBlockExpression>&& unsafeBlocks) noexcept
       : checkedModule(zc::mv(checkedModule)),
         declarations(zc::mv(declarations)),
         functions(zc::mv(functions)),
@@ -941,7 +973,8 @@ struct HirModuleCandidate::Impl final {
         parameterReborrows(zc::mv(parameterReborrows)),
         localBorrows(zc::mv(localBorrows)),
         calls(zc::mv(calls)),
-        receiverCalls(zc::mv(receiverCalls)) {}
+        receiverCalls(zc::mv(receiverCalls)),
+        unsafeBlocks(zc::mv(unsafeBlocks)) {}
 
   VerifiedCheckedModule checkedModule;
   zc::Vector<HirValueDeclaration> declarations;
@@ -961,6 +994,7 @@ struct HirModuleCandidate::Impl final {
   zc::Vector<HirLocalBorrowExpression> localBorrows;
   zc::Vector<HirDirectCallExpression> calls;
   zc::Vector<HirReceiverCallExpression> receiverCalls;
+  zc::Vector<HirUnsafeBlockExpression> unsafeBlocks;
 };
 
 HirModuleCandidate::HirModuleCandidate(zc::Own<Impl>&& impl) noexcept : impl(zc::mv(impl)) {}
@@ -987,7 +1021,8 @@ struct VerifiedHirModule::Impl final {
        zc::Vector<HirParameterReborrowExpression>&& parameterReborrows,
        zc::Vector<HirLocalBorrowExpression>&& localBorrows,
        zc::Vector<HirDirectCallExpression>&& calls,
-       zc::Vector<HirReceiverCallExpression>&& receiverCalls) noexcept
+       zc::Vector<HirReceiverCallExpression>&& receiverCalls,
+       zc::Vector<HirUnsafeBlockExpression>&& unsafeBlocks) noexcept
       : admittedCheckedModule(zc::mv(admittedCheckedModule)),
         boundModule(zc::mv(boundModule)),
         identities(zc::mv(identities)),
@@ -1023,7 +1058,8 @@ struct VerifiedHirModule::Impl final {
         parameterReborrows(zc::mv(parameterReborrows)),
         localBorrows(zc::mv(localBorrows)),
         calls(zc::mv(calls)),
-        receiverCalls(zc::mv(receiverCalls)) {
+        receiverCalls(zc::mv(receiverCalls)),
+        unsafeBlocks(zc::mv(unsafeBlocks)) {
     for (const auto& interface : this->admittedCheckedModule.visibleImportedInterfaces()) {
       visibleImportedInterfaces.add(
           ModuleInterfaceLineage{interface.module, interface.revision.clone()});
@@ -1065,6 +1101,7 @@ struct VerifiedHirModule::Impl final {
   zc::Vector<HirLocalBorrowExpression> localBorrows;
   zc::Vector<HirDirectCallExpression> calls;
   zc::Vector<HirReceiverCallExpression> receiverCalls;
+  zc::Vector<HirUnsafeBlockExpression> unsafeBlocks;
 };
 
 VerifiedHirModule::VerifiedHirModule(zc::Own<Impl>&& impl) noexcept : impl(zc::mv(impl)) {}
@@ -1222,6 +1259,10 @@ zc::ArrayPtr<const HirReceiverCallExpression> VerifiedHirModule::receiverCalls()
   return impl->receiverCalls.asPtr();
 }
 
+zc::ArrayPtr<const HirUnsafeBlockExpression> VerifiedHirModule::unsafeBlocks() const noexcept {
+  return impl->unsafeBlocks.asPtr();
+}
+
 zc::Maybe<zc::String> VerifiedHirModule::dump() const {
   auto moduleKey = impl->identities.module(impl->module);
   const auto& checkedLease = impl->admittedCheckedModule.checkedEvidenceLease();
@@ -1375,6 +1416,17 @@ zc::Maybe<zc::String> VerifiedHirModule::dump() const {
     append(output, zc::encodeHex(resultType.get<type::SemanticTypeLookup>().key().bytes()));
     append(output, "\n"_zc);
   }
+  for (const auto& unsafeBlock : impl->unsafeBlocks) {
+    auto resultType = impl->semanticTypes.get(unsafeBlock.type);
+    if (!resultType.is<type::SemanticTypeLookup>()) return zc::none;
+    append(output, "unsafe-block h"_zc);
+    append(output, zc::str(unsafeBlock.node.ordinal()));
+    append(output, " body=h"_zc);
+    append(output, zc::str(unsafeBlock.body.ordinal()));
+    append(output, " type="_zc);
+    append(output, zc::encodeHex(resultType.get<type::SemanticTypeLookup>().key().bytes()));
+    append(output, "\n"_zc);
+  }
   return zc::str(output.releaseAsArray());
 }
 
@@ -1452,6 +1504,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                              ir::IrFailureKind::MissingRequiredFact, module,
                                              registries, ordinal + 2);
+      }
+      zc::Maybe<identity::SourceSpan> unsafeBlockSpan;
+      ZC_IF_SOME(unsafeNode, shape.unsafeBlock) {
+        auto unsafeSpan = bound.parsedModule().spanFor(tree.node(unsafeNode).range);
+        if (unsafeSpan == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
+        ZC_IF_SOME(span, unsafeSpan) { unsafeBlockSpan = span.clone(); }
       }
       size_t nodeTypeSlot = 0;
       ZC_IF_SOME(index, nodeTypeIndex) { nodeTypeSlot = index; }
@@ -1708,6 +1770,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                                         zc::none,
                                                         zc::none,
                                                         zc::mv(sequential),
+                                                        zc::none,
                                                         zc::mv(orderingKey)});
         continue;
       }
@@ -2713,6 +2776,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                                       zc::mv(parameterReborrow),
                                                       zc::mv(localBorrow),
                                                       zc::none,
+                                                      zc::mv(unsafeBlockSpan),
                                                       zc::mv(orderingKey)});
       continue;
     }
@@ -2881,6 +2945,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
   size_t aggregateElementCount = 0;
   size_t localFieldProjectionCount = 0;
   size_t localFieldWriteCount = 0;
+  size_t unsafeBlockCount = 0;
   for (const auto& function : pendingFunctions) {
     const bool hasSequentialLocalReturn = function.sequentialLocalReturn != zc::none;
     if (hasSequentialLocalReturn) {
@@ -2962,6 +3027,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       if (reborrow.sourceAlias != zc::none) ++localAliasReborrowCount;
     }
     if (hasLocalBorrow) ++localBorrowCount;
+    if (function.unsafeBlockSpan != zc::none) ++unsafeBlockCount;
     if ((function.local == zc::none) != (function.localReference == zc::none) &&
         function.localFieldProjection == zc::none && !localAliasReborrow && !hasLocalBorrow) {
       return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -3000,7 +3066,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
           localReturnCount - uninitializedLocalReturnCount + localWriteCount * 3 +
           aggregateElementCount + localFieldProjectionCount + localFieldWriteCount +
           parameterIndexCount * 2 + parameterReborrowCount * 2 + directCallArgumentCount +
-          receiverCallArgumentCount + localBorrowCount) {
+          receiverCallArgumentCount + localBorrowCount + unsafeBlockCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 1);
   }
@@ -3070,6 +3136,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
   zc::Vector<HirLocalBorrowExpression> localBorrows;
   zc::Vector<HirDirectCallExpression> calls;
   zc::Vector<HirReceiverCallExpression> receiverCalls;
+  zc::Vector<HirUnsafeBlockExpression> unsafeBlocks;
   uint32_t next = 1;
   for (auto& value : pending) {
     const auto declarationId = hirId(next++);
@@ -3099,7 +3166,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       const auto returnValueId = hirId(next++);
       functions.add(HirFunctionDeclaration{functionId, value.definition, value.resultType,
                                            zc::mv(value.parameters), value.visibility.clone(),
-                                           value.linkage, value.declarationSpan.clone(), bodyId});
+                                           value.linkage, value.declarationSpan.clone(), bodyId,
+                                           zc::none});
       zc::Vector<HirNodeId> statements;
       statements.add(sourceLocalId);
       statements.add(destinationLocalId);
@@ -3164,9 +3232,17 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     HirNodeId receiverId;
     if (value.receiverCall != zc::none) { receiverId = hirId(next++); }
     const auto valueId = hirId(next++);
+    zc::Maybe<HirNodeId> unsafeBlockId;
+    if (value.unsafeBlockSpan != zc::none) {
+      unsafeBlockId = hirId(next++);
+      unsafeBlocks.add(HirUnsafeBlockExpression{ZC_ASSERT_NONNULL(unsafeBlockId), valueId,
+                                                value.resultType,
+                                                ZC_ASSERT_NONNULL(value.unsafeBlockSpan).clone()});
+    }
     functions.add(HirFunctionDeclaration{functionId, value.definition, value.resultType,
                                          zc::mv(value.parameters), value.visibility.clone(),
-                                         value.linkage, value.declarationSpan.clone(), bodyId});
+                                         value.linkage, value.declarationSpan.clone(), bodyId,
+                                         zc::mv(unsafeBlockId)});
     zc::Vector<HirNodeId> statements;
     if (value.local != zc::none) { statements.add(localId); }
     for (const auto writeId : writeIds) { statements.add(writeId); }
@@ -3296,7 +3372,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       zc::mv(returns), zc::mv(patterns), zc::mv(expressions), zc::mv(aggregates), zc::mv(locals),
       zc::mv(localWrites), zc::mv(localReferences), zc::mv(localFieldProjections),
       zc::mv(parameterReferences), zc::mv(parameterIndexes), zc::mv(parameterReborrows),
-      zc::mv(localBorrows), zc::mv(calls), zc::mv(receiverCalls));
+      zc::mv(localBorrows), zc::mv(calls), zc::mv(receiverCalls), zc::mv(unsafeBlocks));
   return ir::IrOperationResult<HirModuleCandidate>::verified(HirModuleCandidate(zc::mv(impl)));
 }
 
@@ -3325,6 +3401,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   size_t localFieldWriteCount = 0;
   size_t localAliasReborrowCount = 0;
   size_t aggregateElementCount = 0;
+  const auto unsafeBlockCount = candidate.impl->unsafeBlocks.size();
   for (const auto& write : candidate.impl->localWrites) {
     if (write.field != zc::none) ++localFieldWriteCount;
   }
@@ -3380,7 +3457,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               localReturnCount - uninitializedLocalReturnCount + localWriteCount * 3 +
               aggregateElementCount + localFieldProjectionCount + localFieldWriteCount +
               parameterIndexCount * 2 + parameterReborrowCount * 2 + directCallArgumentCount +
-              receiverCallArgumentCount + localBorrowCount ||
+              receiverCallArgumentCount + localBorrowCount + unsafeBlockCount ||
       facts.literals().size() !=
           declarationCount + functionCount - directCallCount - aggregateCount -
               uninitializedLocalReturnCount - parameterReferenceCount - parameterReborrowCount +
@@ -5038,6 +5115,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                           ir::IrFailureKind::MissingRequiredFact, module,
                                           registries, index + 1);
     }
+    if ((source.unsafeBlock != zc::none) != (function.unsafeBlock != zc::none)) {
+      return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                          ir::IrFailureKind::InvalidFact, module, registries,
+                                          index + 1);
+    }
     const auto sourceReturnValueNode = source.value;
     ast::NodeId sourceValueNode = sourceReturnValueNode;
     ZC_IF_SOME(initializer, source.localInitializer) { sourceValueNode = initializer; }
@@ -5724,10 +5806,46 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
       }
-      nextFunction +=
-          returnsLocal
-              ? static_cast<uint32_t>((localHasInitializer ? 6 : 5) + functionLocalWriteCount * 2)
-              : 4;
+      if (source.unsafeBlock != zc::none) {
+        const auto expectedUnsafeBlock = hirId(expectedFunction + 4);
+        if (function.unsafeBlock != expectedUnsafeBlock) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        zc::Maybe<const HirUnsafeBlockExpression&> unsafeBlock;
+        for (const auto& candidate : candidate.impl->unsafeBlocks) {
+          if (candidate.node != expectedUnsafeBlock) continue;
+          if (unsafeBlock != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          unsafeBlock = candidate;
+        }
+        if (unsafeBlock == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        ZC_IF_SOME(block, unsafeBlock) {
+          auto sourceUnsafeSpan =
+              bound.parsedModule().spanFor(tree.node(ZC_ASSERT_NONNULL(source.unsafeBlock)).range);
+          if (block.body != valueNode || block.type != function.resultType ||
+              sourceUnsafeSpan == zc::none ||
+              !sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(sourceUnsafeSpan))) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        }
+        nextFunction += 5;
+      } else {
+        nextFunction +=
+            returnsLocal
+                ? static_cast<uint32_t>((localHasInitializer ? 6 : 5) + functionLocalWriteCount * 2)
+                : 4;
+      }
       continue;
     }
 
@@ -5867,7 +5985,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       zc::mv(candidate.impl->localFieldProjections), zc::mv(candidate.impl->parameterReferences),
       zc::mv(candidate.impl->parameterIndexes), zc::mv(candidate.impl->parameterReborrows),
       zc::mv(candidate.impl->localBorrows), zc::mv(candidate.impl->calls),
-      zc::mv(candidate.impl->receiverCalls));
+      zc::mv(candidate.impl->receiverCalls), zc::mv(candidate.impl->unsafeBlocks));
   return ir::IrOperationResult<VerifiedHirModule>::verified(VerifiedHirModule(zc::mv(impl)));
 }
 

@@ -208,7 +208,8 @@ bool isAdmittedReturnValue(const ast::Tree& tree, ast::NodeId value) {
   return isScalarLiteral(tree.node(value).kind) ||
          tree.node(value).kind == ast::SyntaxKind::IdentExpr || isAdmittedDirectCall(tree, value) ||
          isAdmittedReceiverCall(tree, value) || isAdmittedReferenceReborrow(tree, value) ||
-         isAdmittedLocalBorrow(tree, value) || isAdmittedErrorPostfix(tree, value);
+         isAdmittedLocalBorrow(tree, value) || isAdmittedErrorPostfix(tree, value) ||
+         tree.node(value).kind == ast::SyntaxKind::UnsafeBlockExpr;
 }
 
 bool isAdmittedAggregateInitializer(const ast::Tree& tree, ast::NodeId initializer) {
@@ -570,48 +571,66 @@ OwnershipSurfaceAdmissionResult OwnershipSurfaceAdmissionBuilder::admit(
     driver::module_graph_query::CheckerBoundModuleView&& boundModule) {
   zc::Vector<OwnershipSurfaceFailure> failures;
   uint32_t traversalOrdinal = 0;
-  ast::visitTreePreOrder(
-      boundModule.tree(), boundModule.tree().root(), [&](ast::NodeId, const ast::Node& syntax) {
-        ZC_IREQUIRE(traversalOrdinal != UINT32_MAX, "ownership surface traversal overflow");
-        const uint32_t ordinal = traversalOrdinal++;
-        OwnershipSurfaceSyntaxKind kind;
-        if (syntax.kind == ast::SyntaxKind::SpawnExpression) {
-          kind = OwnershipSurfaceSyntaxKind::Spawn;
-        } else if (syntax.kind == ast::SyntaxKind::SuspendStatement) {
-          kind = OwnershipSurfaceSyntaxKind::Suspend;
-        } else if (syntax.kind == ast::SyntaxKind::IfStmt) {
-          kind = OwnershipSurfaceSyntaxKind::Conditional;
-        } else if (syntax.kind == ast::SyntaxKind::MatchStmt) {
-          kind = OwnershipSurfaceSyntaxKind::Match;
-        } else if (syntax.kind == ast::SyntaxKind::WhileStmt ||
-                   syntax.kind == ast::SyntaxKind::ForStmt ||
-                   syntax.kind == ast::SyntaxKind::ForInStatement ||
-                   syntax.kind == ast::SyntaxKind::DoWhileStatement) {
-          kind = OwnershipSurfaceSyntaxKind::Loop;
-        } else if (syntax.kind == ast::SyntaxKind::BreakStmt ||
-                   syntax.kind == ast::SyntaxKind::ContinueStatement) {
-          kind = OwnershipSurfaceSyntaxKind::LoopControl;
-        } else if (syntax.kind == ast::SyntaxKind::LabeledStatement) {
-          kind = OwnershipSurfaceSyntaxKind::Label;
-        } else if (syntax.kind == ast::SyntaxKind::ReturnStmt &&
-                   !boundModule.tree().contains(
-                       ast::NodeId(syntax.payload.words[ast::kReturnStmtValueWord]))) {
-          kind = OwnershipSurfaceSyntaxKind::VoidReturn;
-        } else if (syntax.kind == ast::SyntaxKind::ExpressionStatement &&
-                   !isAdmittedExpressionStatement(boundModule.tree(), syntax)) {
-          kind = OwnershipSurfaceSyntaxKind::ExpressionStatement;
-        } else if (syntax.kind == ast::SyntaxKind::FunctionDecl &&
-                   requiresFunctionBodyFailure(boundModule.tree(), syntax)) {
-          kind = OwnershipSurfaceSyntaxKind::FunctionBody;
-        } else {
-          return;
-        }
-        auto span = boundModule.parsedModule().spanFor(syntax.range);
-        ZC_IREQUIRE(span != zc::none, "ownership surface syntax must retain a source span");
-        ZC_IF_SOME(value, span) {
-          insertFailure(failures, OwnershipSurfaceFailure{kind, value.clone(), ordinal});
-        }
-      });
+  // Custom traversal that skips the interior of unsafe blocks: their tail
+  // expression is admitted as the block's value, not as a standalone
+  // expression statement.
+  auto walk = [&](ast::NodeId nodeId, auto&& self) -> void {
+    const auto& syntax = boundModule.tree().node(nodeId);
+    ZC_IREQUIRE(traversalOrdinal != UINT32_MAX, "ownership surface traversal overflow");
+    const uint32_t ordinal = traversalOrdinal++;
+    OwnershipSurfaceSyntaxKind kind;
+    bool rejected = false;
+    if (syntax.kind == ast::SyntaxKind::SpawnExpression) {
+      kind = OwnershipSurfaceSyntaxKind::Spawn;
+      rejected = true;
+    } else if (syntax.kind == ast::SyntaxKind::SuspendStatement) {
+      kind = OwnershipSurfaceSyntaxKind::Suspend;
+      rejected = true;
+    } else if (syntax.kind == ast::SyntaxKind::IfStmt) {
+      kind = OwnershipSurfaceSyntaxKind::Conditional;
+      rejected = true;
+    } else if (syntax.kind == ast::SyntaxKind::MatchStmt) {
+      kind = OwnershipSurfaceSyntaxKind::Match;
+      rejected = true;
+    } else if (syntax.kind == ast::SyntaxKind::WhileStmt ||
+               syntax.kind == ast::SyntaxKind::ForStmt ||
+               syntax.kind == ast::SyntaxKind::ForInStatement ||
+               syntax.kind == ast::SyntaxKind::DoWhileStatement) {
+      kind = OwnershipSurfaceSyntaxKind::Loop;
+      rejected = true;
+    } else if (syntax.kind == ast::SyntaxKind::BreakStmt ||
+               syntax.kind == ast::SyntaxKind::ContinueStatement) {
+      kind = OwnershipSurfaceSyntaxKind::LoopControl;
+      rejected = true;
+    } else if (syntax.kind == ast::SyntaxKind::LabeledStatement) {
+      kind = OwnershipSurfaceSyntaxKind::Label;
+      rejected = true;
+    } else if (syntax.kind == ast::SyntaxKind::ReturnStmt &&
+               !boundModule.tree().contains(
+                   ast::NodeId(syntax.payload.words[ast::kReturnStmtValueWord]))) {
+      kind = OwnershipSurfaceSyntaxKind::VoidReturn;
+      rejected = true;
+    } else if (syntax.kind == ast::SyntaxKind::ExpressionStatement &&
+               !isAdmittedExpressionStatement(boundModule.tree(), syntax)) {
+      kind = OwnershipSurfaceSyntaxKind::ExpressionStatement;
+      rejected = true;
+    } else if (syntax.kind == ast::SyntaxKind::FunctionDecl &&
+               requiresFunctionBodyFailure(boundModule.tree(), syntax)) {
+      kind = OwnershipSurfaceSyntaxKind::FunctionBody;
+      rejected = true;
+    }
+    if (rejected) {
+      auto span = boundModule.parsedModule().spanFor(syntax.range);
+      ZC_IREQUIRE(span != zc::none, "ownership surface syntax must retain a source span");
+      ZC_IF_SOME(value, span) {
+        insertFailure(failures, OwnershipSurfaceFailure{kind, value.clone(), ordinal});
+      }
+    }
+    if (syntax.kind == ast::SyntaxKind::UnsafeBlockExpr) return;
+    ast::visitChildNodeIds(boundModule.tree(), syntax,
+                           [&](ast::NodeId child) { self(child, self); });
+  };
+  walk(boundModule.tree().root(), walk);
   if (failures.size() != 0) {
     return OwnershipSurfaceSourceRejected(
         zc::heap<OwnershipSurfaceSourceRejected::Impl>(zc::mv(failures)));

@@ -1040,6 +1040,17 @@ zc::Maybe<const hir::HirReturnStatement&> returnFor(const hir::VerifiedHirModule
   return result;
 }
 
+zc::Maybe<const hir::HirUnsafeBlockExpression&> unsafeBlockFor(const hir::VerifiedHirModule& module,
+                                                               hir::HirNodeId node) {
+  zc::Maybe<const hir::HirUnsafeBlockExpression&> result;
+  for (const auto& block : module.unsafeBlocks()) {
+    if (block.node != node) continue;
+    if (result != zc::none) return zc::none;
+    result = block;
+  }
+  return result;
+}
+
 bool sameConstant(const checker::checked::CanonicalConstValue& left,
                   const checker::checked::CanonicalConstValue& right, identity::ModuleId module,
                   const checker::CheckerIdentityAuthority& identities,
@@ -1153,7 +1164,7 @@ bool validScalarFunction(const MirFunction& function, const hir::HirValueDeclara
   return validReturn;
 }
 
-bool validScalarReturnFunction(const MirFunction& function,
+bool validScalarReturnFunction(const MirFunction& function, const hir::VerifiedHirModule& hirModule,
                                const hir::HirFunctionDeclaration& declaration,
                                const hir::HirBlockStatement& sourceBlock,
                                const hir::HirReturnStatement& sourceReturn,
@@ -1161,14 +1172,20 @@ bool validScalarReturnFunction(const MirFunction& function,
                                identity::ModuleId module,
                                const checker::CheckerIdentityAuthority& identities,
                                const type::SemanticTypeStore& semanticTypes) {
+  zc::Maybe<const hir::HirUnsafeBlockExpression&> unsafeBlock;
+  ZC_IF_SOME(unsafeNode, declaration.unsafeBlock) {
+    unsafeBlock = unsafeBlockFor(hirModule, unsafeNode);
+    if (unsafeBlock == zc::none) return false;
+  }
+  const bool hasUnsafeBlock = unsafeBlock != zc::none;
   if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
       function.resultType != declaration.resultType ||
-      !sameSpan(function.sourceSpan, declaration.sourceSpan) || function.sourceScopes.size() != 1 ||
-      function.locals.size() != 0 || function.blocks.size() != 1 ||
-      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 1 ||
-      sourceBlock.statements[0] != sourceReturn.node || sourceReturn.value != expression.node ||
-      sourceReturn.resultType != declaration.resultType ||
+      !sameSpan(function.sourceSpan, declaration.sourceSpan) ||
+      function.sourceScopes.size() != (hasUnsafeBlock ? 2 : 1) || function.locals.size() != 0 ||
+      function.blocks.size() != 1 || declaration.body != sourceBlock.node ||
+      sourceBlock.statements.size() != 1 || sourceBlock.statements[0] != sourceReturn.node ||
+      sourceReturn.value != expression.node || sourceReturn.resultType != declaration.resultType ||
       expression.type != declaration.resultType) {
     return false;
   }
@@ -1176,11 +1193,32 @@ bool validScalarReturnFunction(const MirFunction& function,
   const auto& block = function.blocks[0];
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
       !sameSpan(scope.sourceSpan, declaration.sourceSpan) || block.id != blockId(1) ||
-      block.sourceScope != scope.id || block.statements.size() != 0 ||
+      block.sourceScope != scope.id || block.statements.size() != (hasUnsafeBlock ? 2 : 0) ||
       block.terminator.kind() != MirTerminatorKind::Return ||
       block.terminator.returnValue().value == zc::none ||
       !sameSpan(block.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
+  }
+  if (hasUnsafeBlock) {
+    ZC_IF_SOME(unsafeBlockRef, unsafeBlock) {
+      const auto& unsafeScope = function.sourceScopes[1];
+      if (unsafeScope.id != scopeId(2) || unsafeScope.parent != scopeId(1) ||
+          !sameSpan(unsafeScope.sourceSpan, unsafeBlockRef.sourceSpan)) {
+        return false;
+      }
+      if (block.statements[0].kind() != MirStatementKind::UnsafeScopeBoundary ||
+          block.statements[1].kind() != MirStatementKind::UnsafeScopeBoundary) {
+        return false;
+      }
+      const auto& enter = block.statements[0].unsafeScopeBoundaryValue();
+      const auto& exit = block.statements[1].unsafeScopeBoundaryValue();
+      if (enter.kind != MirUnsafeScopeBoundaryKind::Enter || enter.scope != scopeId(2) ||
+          exit.kind != MirUnsafeScopeBoundaryKind::Exit || exit.scope != scopeId(2) ||
+          !sameSpan(block.statements[0].sourceSpan(), unsafeBlockRef.sourceSpan) ||
+          !sameSpan(block.statements[1].sourceSpan(), unsafeBlockRef.sourceSpan)) {
+        return false;
+      }
+    }
   }
   bool validReturn = false;
   ZC_IF_SOME(value, block.terminator.returnValue().value) {
@@ -2578,8 +2616,7 @@ bool validDirectCallReturnFunction(const MirFunction& function,
 // boundary names a nonzero source scope owned by the enclosing function,
 // enter and exit markers are properly nested (an exit closes only the
 // innermost open scope), and every enter has one matching exit. Dominance and
-// the per-path exit-cut rule require CFG analysis and land together with HIR
-// unsafe-block lowering; production lowering emits no boundary today.
+// the per-path exit-cut rule require CFG analysis and remain future work.
 bool validateUnsafeScopeBoundaries(const MirFunction& function) {
   for (const auto& scope : function.sourceScopes) {
     if (!scope.id.isValid()) return false;
@@ -2925,12 +2962,10 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
     }
     ZC_UNREACHABLE
   }
-  // RFC 0007 unsafe-scope lowering is intentionally absent: the HIR module has
-  // no unsafe-block node yet, so production lowering emits no
-  // MirUnsafeScopeBoundary statement. When HIR gains unsafe blocks, emit
-  // UnsafeScopeBoundary(Enter) at each scope entry and UnsafeScopeBoundary(Exit)
-  // at each scope exit; the statement schema, codec, and verifier contract are
-  // already in place.
+  // RFC 0007 unsafe-scope lowering: the scalar-return path emits
+  // UnsafeScopeBoundary(Enter)/UnsafeScopeBoundary(Exit) around the returned
+  // constant when the HIR function declaration carries an unsafe-block node.
+  // Other function shapes do not yet lower unsafe blocks.
   for (const auto& declaration : hirModule.functions()) {
     auto sourceBlock = blockFor(hirModule, declaration.body);
     if (sourceBlock == zc::none) {
@@ -4616,6 +4651,23 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       scopes.add(MirSourceScope{scopeId(1), zc::mv(noParent), declaration.sourceSpan.clone()});
       zc::Vector<MirLocalDeclaration> locals;
       zc::Vector<MirStatement> statements;
+      ZC_IF_SOME(unsafeNode, declaration.unsafeBlock) {
+        auto unsafeBlock = unsafeBlockFor(hirModule, unsafeNode);
+        if (unsafeBlock == zc::none) {
+          return rejectMir<BuiltMirCandidate>(
+              ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::MissingRequiredFact, module,
+              declaration.definition, identities, static_cast<uint32_t>(pending.size() + 1));
+        }
+        ZC_IF_SOME(block, unsafeBlock) {
+          auto unsafeSpan = block.sourceSpan.clone();
+          zc::Maybe<MirSourceScopeId> functionScope = scopeId(1);
+          scopes.add(MirSourceScope{scopeId(2), zc::mv(functionScope), unsafeSpan.clone()});
+          statements.add(MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Enter,
+                                                           scopeId(2), unsafeSpan.clone()));
+          statements.add(MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Exit,
+                                                           scopeId(2), zc::mv(unsafeSpan)));
+        }
+      }
       auto returnOperand = MirOperand::constant(declaration.resultType, literal.value.clone());
       zc::Vector<MirBasicBlock> blocks;
       blocks.add(
@@ -5326,8 +5378,9 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
             }
           }
           ZC_IF_SOME(sourceExpression, expression) {
-            valid = validScalarReturnFunction(function, sourceDeclaration, block, returnStatement,
-                                              sourceExpression, module, identities, semanticTypes);
+            valid = validScalarReturnFunction(function, hirModule, sourceDeclaration, block,
+                                              returnStatement, sourceExpression, module, identities,
+                                              semanticTypes);
           }
           ZC_IF_SOME(sourceCall, call) {
             valid = validDirectCallReturnFunction(function, sourceDeclaration, block,

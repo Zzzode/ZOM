@@ -10,10 +10,10 @@
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
 #include "zomlang/compiler/binder/metadata/definition-inventory.h"
-#include "zomlang/compiler/checker/inference/inference-recovery-context.h"
 #include "zomlang/compiler/checker/body/marker-proof.h"
-#include "zomlang/compiler/checker/operator-kind.h"
 #include "zomlang/compiler/checker/facts/scalar-literal-facts.h"
+#include "zomlang/compiler/checker/inference/inference-recovery-context.h"
+#include "zomlang/compiler/checker/operator-kind.h"
 #include "zomlang/compiler/driver/core/marker-authority.h"
 #include "zomlang/compiler/type/semantic-type-data.h"
 
@@ -45,6 +45,7 @@ enum class BodyProductionKind : uint8_t {
   ConcreteMethodCall = 0x14,
   OwnerLocalMethodReference = 0x15,
   ReadIndex = 0x16,
+  UnsafeBlock = 0x18,
   Unsupported = 0x17
 };
 
@@ -804,9 +805,8 @@ zc::Maybe<LocalBorrowShape> localBorrowShape(
   const auto expectedMutability = operation == ast::UnaryOperatorKind::Ref
                                       ? type::semantic::Mutability::Const
                                       : type::semantic::Mutability::Mutable;
-  auto canonical = input.semanticTypes.canonicalizeClosed(
-      type::semantic::TypeData(type::semantic::ReferenceTypeData{
-          expectedMutability, ZC_ASSERT_NONNULL(sourceType)}));
+  auto canonical = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+      type::semantic::ReferenceTypeData{expectedMutability, ZC_ASSERT_NONNULL(sourceType)}));
   if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
   auto interned =
       input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
@@ -1720,6 +1720,9 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           }
           break;
         }
+        case ast::SyntaxKind::UnsafeBlockExpr:
+          production = BodyProductionKind::UnsafeBlock;
+          break;
         default:
           break;
       }
@@ -1847,9 +1850,11 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       const bool concreteMethodCall = site.production == BodyProductionKind::ConcreteMethodCall;
       const bool errorOperator = site.production == BodyProductionKind::ErrorOperator;
       const bool indexed = site.production == BodyProductionKind::ReadIndex;
+      const bool unsafeBlock = site.production == BodyProductionKind::UnsafeBlock;
       if ((stage == 0 && (structured || projected || fieldWrite || directCall ||
-                          concreteMethodCall || errorOperator || indexed)) ||
-          (stage == 1 && ((!structured && !directCall) || errorOperator || indexed)) ||
+                          concreteMethodCall || errorOperator || indexed || unsafeBlock)) ||
+          (stage == 1 &&
+           (((!structured && !directCall) || errorOperator || indexed) && !unsafeBlock)) ||
           (stage == 2 && ((!projected && !indexed) || methodReference)) ||
           (stage == 3 && (!fieldWrite && !concreteMethodCall && !methodReference)) ||
           (stage == 4 && !errorOperator)) {
@@ -1864,7 +1869,49 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                site.key.sourceSpan.clone(), factPath(site.primaryGroup));
       }
       zc::Maybe<identity::SemanticTypeId> producedType;
-      if (site.production == BodyProductionKind::IdentifierReference) {
+      if (site.production == BodyProductionKind::UnsafeBlock) {
+        const auto& unsafeBlock = input.boundModule.tree().node(site.node);
+        const ast::NodeId body(unsafeBlock.payload.words[ast::kUnsafeBlockExprBodyWord]);
+        if (!input.boundModule.tree().contains(body) ||
+            input.boundModule.tree().node(body).kind != ast::SyntaxKind::BlockStmt) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        const auto& blockNode = input.boundModule.tree().node(body);
+        const ast::NodeList statements{blockNode.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                       blockNode.payload.words[ast::kBlockStmtStmtsSizeWord]};
+        if (!input.boundModule.tree().contains(statements) || statements.empty()) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        ast::NodeId tailStatement = input.boundModule.tree().list(statements)[statements.size - 1];
+        if (input.boundModule.tree().node(tailStatement).kind ==
+            ast::SyntaxKind::StatementListItem) {
+          tailStatement = ast::NodeId(input.boundModule.tree()
+                                          .node(tailStatement)
+                                          .payload.words[ast::kStatementListItemItemWord]);
+        }
+        if (!input.boundModule.tree().contains(tailStatement) ||
+            input.boundModule.tree().node(tailStatement).kind !=
+                ast::SyntaxKind::ExpressionStatement) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        const ast::NodeId tailExpression(
+            input.boundModule.tree()
+                .node(tailStatement)
+                .payload.words[ast::kExpressionStatementExpressionWord]);
+        auto tailType = factEntry(nodeTypes.asPtr(), tailExpression);
+        if (tailType == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        ZC_IF_SOME(value, tailType) { producedType = value.value; }
+      } else if (site.production == BodyProductionKind::IdentifierReference) {
         auto shape = directCallableShape(input, site.node);
         ZC_IF_SOME(value, shape) { producedType = value.calleeType; }
         if (producedType == zc::none) {

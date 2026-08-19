@@ -230,6 +230,18 @@ struct HirReceiverCallExpression final {
   identity::SourceSpan sourceSpan;
 };
 
+/// \brief One checked unsafe block expression retained for ownership boundary lowering.
+///
+/// The body is the scalar expression produced by the block tail; MIR lowering wraps it in
+/// Enter/Exit unsafe-scope boundary statements so the ownership overlay can acknowledge the
+/// unsafe region.
+struct HirUnsafeBlockExpression final {
+  HirNodeId node;
+  HirNodeId body;
+  identity::SemanticTypeId type;
+  identity::SourceSpan sourceSpan;
+};
+
 /// \brief One scalar return statement in immutable semantic HIR.
 struct HirReturnStatement final {
   HirNodeId node;
@@ -255,6 +267,7 @@ struct HirFunctionDeclaration final {
   HirLinkage linkage;
   identity::SourceSpan sourceSpan;
   HirNodeId body;
+  zc::Maybe<HirNodeId> unsafeBlock;
 };
 
 /// \brief One module-scope let, mut, or const declaration in semantic HIR.
@@ -332,13 +345,13 @@ public:
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirParameterReferenceExpression> parameterReferences()
       const noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const HirParameterIndexExpression> parameterIndexes()
-      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirParameterIndexExpression> parameterIndexes() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirParameterReborrowExpression> parameterReborrows()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirLocalBorrowExpression> localBorrows() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirDirectCallExpression> calls() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirReceiverCallExpression> receiverCalls() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirUnsafeBlockExpression> unsafeBlocks() const noexcept;
   ZC_NODISCARD zc::Maybe<zc::String> dump() const;
 
 private:
