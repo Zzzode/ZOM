@@ -3,6 +3,7 @@ set(OWNERSHIP_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/ownership-checked-mir.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/drop-elaborated-mir.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/ownership-diagnostic-adapter.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/source-suppression.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/surface-admission.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/inputs.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/flow.cc

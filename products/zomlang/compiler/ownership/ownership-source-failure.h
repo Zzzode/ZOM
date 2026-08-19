@@ -148,11 +148,13 @@ struct LinearConsumedTwiceFailure final {
 };
 
 /// \brief Raw pointer boundary requires an unsafe block.
+///
+/// The RFC 0007 record carries no move path: the complete boundary key is the
+/// canonical anchor, and `primary` must equal `boundary.event`.
 struct RawPointerBoundaryRequiresUnsafeFailure final {
   identity::DefId owner;
   MirEventKey primary;
   identity::SourceSpan useSpan;
-  facts::MovePathKey place;
   uint32_t traversalOrdinal;
   UnsafeBoundaryKey boundary;
 };
@@ -401,7 +403,6 @@ inline bool equalFailure(const OwnershipSourceFailure& left,
       const auto& rightValue = right.get<RawPointerBoundaryRequiresUnsafeFailure>();
       return leftValue.owner == rightValue.owner && leftValue.primary == rightValue.primary &&
              equalSpan(leftValue.useSpan, rightValue.useSpan) &&
-             equalMovePath(leftValue.place, rightValue.place) &&
              leftValue.traversalOrdinal == rightValue.traversalOrdinal &&
              leftValue.boundary == rightValue.boundary;
     }

@@ -15,6 +15,7 @@
 #include "zomlang/compiler/ownership/facts/init.h"
 
 #include "zomlang/compiler/ir/ir-diagnostic-adapter.h"
+#include "zomlang/compiler/ownership/source-suppression.h"
 
 namespace zomlang::compiler::ownership::facts {
 namespace {
@@ -970,12 +971,49 @@ bool hasOperandRead(const OwnershipFunctionEventOverlay& overlay, const MirEvent
   return false;
 }
 
+bool sameMarkerUseKey(const OwnershipMarkerUseKey& left, const OwnershipMarkerUseKey& right) {
+  return left.event == right.event && left.marker == right.marker &&
+         left.subject == right.subject &&
+         left.markerPolicyRevision.digest() == right.markerPolicyRevision.digest() &&
+         left.coherenceRevision.digest() == right.coherenceRevision.digest();
+}
+
+/// \brief Returns the places carrying a Positive Linear obligation, derived
+/// from the overlay's logical-drop plans and their marker decisions.
+///
+/// Each drop-plan component records the marker-use key queried for its Linear
+/// obligation; the place is Linear-positive exactly when that key resolves to
+/// an `OwnershipMarkerDecisionPositive` in the overlay's marker-use inventory.
+zc::Vector<mir::MirPlace> linearPositivePlaces(const OwnershipFunctionEventOverlay& overlay) {
+  zc::Vector<mir::MirPlace> places;
+  for (const auto& plan : overlay.logicalDropPlans) {
+    for (const auto& component : plan.components) {
+      for (const auto& use : overlay.markerUses) {
+        if (!sameMarkerUseKey(use.key, component.linearDecision)) continue;
+        if (use.decision.is<OwnershipMarkerDecisionPositive>()) {
+          places.add(component.place.clone());
+        }
+        break;
+      }
+    }
+  }
+  return places;
+}
+
+bool isLinearPositive(const mir::MirPlace& place, const zc::Vector<mir::MirPlace>& linearPlaces) {
+  for (const auto& linear : linearPlaces) {
+    if (samePlace(place, linear)) return true;
+  }
+  return false;
+}
+
 bool appendSourceFailure(const mir::MirFunction& function,
                          const OwnershipFunctionEventOverlay& overlay,
                          const InitializationFunction& initialization, const MirPoint& point,
                          const mir::MirOperand& operand, const identity::SourceSpan& useSpan,
                          uint32_t operandOrdinal, uint32_t& traversalOrdinal,
-                         zc::Vector<OwnershipSourceFailure>& failures) {
+                         zc::Vector<OwnershipSourceFailure>& failures,
+                         const zc::Vector<mir::MirPlace>& linearPlaces) {
   if (operand.kind() == mir::MirOperandKind::Constant) return true;
   const auto primary = eventAt(function.owner, MirPoint(point), operandOrdinal);
   if (!hasOperandRead(overlay, primary)) return false;
@@ -1001,13 +1039,29 @@ bool appendSourceFailure(const mir::MirFunction& function,
           InitializationFailureCause{cause.kind, cause.event, zc::mv(ZC_ASSERT_NONNULL(span))});
     }
     auto place = MovePathKey{function.owner, operand.place().clone()};
-    const auto ordinal = traversalOrdinal++;
     if (allMoves) {
+      // Rule 3: a second consumption of a Positive Linear obligation emits
+      // LinearConsumedTwice with every sorted reaching first-consumption cause.
+      // The suppression pass removes the UseAfterMove cascade at this event.
+      if (operand.kind() == mir::MirOperandKind::Move &&
+          isLinearPositive(operand.place(), linearPlaces)) {
+        zc::Vector<LinearConsumptionCause> consumptionCauses;
+        consumptionCauses.reserve(causes.size());
+        for (const auto& cause : causes) {
+          consumptionCauses.add(LinearConsumptionCause{cause.event, cause.span.clone()});
+        }
+        ZC_IREQUIRE(traversalOrdinal != UINT32_MAX, "ownership source traversal overflow");
+        failures.add(LinearConsumedTwiceFailure{function.owner, primary, useSpan.clone(),
+                                                cloneKey(place), traversalOrdinal++,
+                                                zc::mv(consumptionCauses)});
+      }
+      ZC_IREQUIRE(traversalOrdinal != UINT32_MAX, "ownership source traversal overflow");
       failures.add(UseAfterMoveFailure{function.owner, primary, useSpan.clone(), zc::mv(place),
-                                       ordinal, zc::mv(causes)});
+                                       traversalOrdinal++, zc::mv(causes)});
     } else {
+      ZC_IREQUIRE(traversalOrdinal != UINT32_MAX, "ownership source traversal overflow");
       failures.add(UninitializedPlaceUseFailure{function.owner, primary, useSpan.clone(),
-                                                zc::mv(place), ordinal, zc::mv(causes)});
+                                                zc::mv(place), traversalOrdinal++, zc::mv(causes)});
     }
     return true;
   }
@@ -1019,10 +1073,38 @@ bool appendSourceFailure(const mir::MirFunction& function,
                          const InitializationFunction& initialization, const MirPoint& point,
                          const mir::MirPlace& place, const identity::SourceSpan& useSpan,
                          uint32_t operandOrdinal, uint32_t& traversalOrdinal,
-                         zc::Vector<OwnershipSourceFailure>& failures) {
+                         zc::Vector<OwnershipSourceFailure>& failures,
+                         const zc::Vector<mir::MirPlace>& linearPlaces) {
   auto operand = mir::MirOperand::copy(place.clone());
   return appendSourceFailure(function, overlay, initialization, point, operand, useSpan,
-                             operandOrdinal, traversalOrdinal, failures);
+                             operandOrdinal, traversalOrdinal, failures, linearPlaces);
+}
+
+/// \brief Rule 7: each missing unsafe acknowledgement emits the failure for its
+/// complete boundary key.
+///
+/// Acknowledged occurrences are skipped. Unsafe primaries are independent: they
+/// neither suppress another unsafe occurrence nor any independent safe
+/// ownership failure, so the caller retains every emitted failure and the
+/// suppression pass leaves them untouched.
+bool appendUnsafeAcknowledgementFailures(zc::Vector<OwnershipSourceFailure>& failures,
+                                         const mir::VerifiedBuiltMir& builtMir,
+                                         const VerifiedOwnershipEventOverlay& overlay,
+                                         uint32_t& traversalOrdinal) {
+  for (const auto& function : builtMir.functions()) {
+    auto functionOverlay = overlayFor(overlay, function.owner);
+    if (functionOverlay == zc::none) return false;
+    ZC_IF_SOME(slice, functionOverlay) {
+      for (const auto& occurrence : slice.unsafeOccurrences) {
+        if (occurrence.acknowledgement != zc::none) continue;
+        ZC_IREQUIRE(traversalOrdinal != UINT32_MAX, "ownership source traversal overflow");
+        failures.add(RawPointerBoundaryRequiresUnsafeFailure{
+            occurrence.key.event.location.owner, occurrence.key.event,
+            occurrence.sourceSpan.clone(), traversalOrdinal++, occurrence.key});
+      }
+    }
+  }
+  return true;
 }
 
 zc::Maybe<zc::Vector<OwnershipSourceFailure>> sourceFailures(
@@ -1034,6 +1116,7 @@ zc::Maybe<zc::Vector<OwnershipSourceFailure>> sourceFailures(
     auto facts = initializationFor(initialization, function.owner);
     auto functionOverlay = overlayFor(overlay, function.owner);
     if (facts == zc::none || functionOverlay == zc::none) return zc::none;
+    const auto linearPlaces = linearPositivePlaces(ZC_ASSERT_NONNULL(functionOverlay));
     for (const auto& block : function.blocks) {
       for (uint32_t ordinal = 0; ordinal < block.statements.size(); ++ordinal) {
         const auto& statement = block.statements[ordinal];
@@ -1041,10 +1124,10 @@ zc::Maybe<zc::Vector<OwnershipSourceFailure>> sourceFailures(
         switch (statement.kind()) {
           case mir::MirStatementKind::Assign:
             if (statement.assignmentValue().value.kind() != mir::MirRvalueKind::Use) break;
-            if (!appendSourceFailure(function, ZC_ASSERT_NONNULL(functionOverlay),
-                                     ZC_ASSERT_NONNULL(facts), point,
-                                     statement.assignmentValue().value.useValue().operand,
-                                     statement.sourceSpan(), 0, traversalOrdinal, failures)) {
+            if (!appendSourceFailure(
+                    function, ZC_ASSERT_NONNULL(functionOverlay), ZC_ASSERT_NONNULL(facts), point,
+                    statement.assignmentValue().value.useValue().operand, statement.sourceSpan(), 0,
+                    traversalOrdinal, failures, linearPlaces)) {
               return zc::none;
             }
             break;
@@ -1052,7 +1135,7 @@ zc::Maybe<zc::Vector<OwnershipSourceFailure>> sourceFailures(
             if (!appendSourceFailure(function, ZC_ASSERT_NONNULL(functionOverlay),
                                      ZC_ASSERT_NONNULL(facts), point,
                                      statement.borrowCreationValue().source, statement.sourceSpan(),
-                                     0, traversalOrdinal, failures)) {
+                                     0, traversalOrdinal, failures, linearPlaces)) {
               return zc::none;
             }
             break;
@@ -1069,7 +1152,8 @@ zc::Maybe<zc::Vector<OwnershipSourceFailure>> sourceFailures(
         ZC_IF_SOME(value, block.terminator.returnValue().value) {
           if (!appendSourceFailure(function, ZC_ASSERT_NONNULL(functionOverlay),
                                    ZC_ASSERT_NONNULL(facts), point, value,
-                                   block.terminator.sourceSpan(), 0, traversalOrdinal, failures)) {
+                                   block.terminator.sourceSpan(), 0, traversalOrdinal, failures,
+                                   linearPlaces)) {
             return zc::none;
           }
         }
@@ -1079,12 +1163,15 @@ zc::Maybe<zc::Vector<OwnershipSourceFailure>> sourceFailures(
           if (!appendSourceFailure(function, ZC_ASSERT_NONNULL(functionOverlay),
                                    ZC_ASSERT_NONNULL(facts), point, argument,
                                    block.terminator.sourceSpan(), argumentOrdinal++,
-                                   traversalOrdinal, failures)) {
+                                   traversalOrdinal, failures, linearPlaces)) {
             return zc::none;
           }
         }
       }
     }
+  }
+  if (!appendUnsafeAcknowledgementFailures(failures, builtMir, overlay, traversalOrdinal)) {
+    return zc::none;
   }
   return failures;
 }
@@ -1224,7 +1311,8 @@ InitializationSourceVerificationResult InitializationSourceVerifier::verify(
     return reject(builtMir, identities, ir::IrFailureKind::InvalidOwnershipProof, 0);
   }
   ZC_IF_SOME(values, failures) {
-    auto deduplicated = OwnershipSourceFailureOrdering::deduplicate(zc::mv(values));
+    auto suppressed = SourceSuppression::suppress(zc::mv(values));
+    auto deduplicated = OwnershipSourceFailureOrdering::deduplicate(zc::mv(suppressed));
     auto sorted =
         ir::SortedSourceFailureFacts<OwnershipSourceFailure, OwnershipSourceFailureOrdering>::from(
             zc::mv(deduplicated));
