@@ -24,6 +24,7 @@
 #include "zomlang/compiler/ownership/facts/paths.h"
 #include "zomlang/compiler/ownership/facts/resources.h"
 #include "zomlang/compiler/ownership/ownership-diagnostic-adapter.h"
+#include "zomlang/compiler/ownership/source-suppression.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "zomlang/tests/unittests/compiler/ownership/ownership-facts-differential-oracle.h"
@@ -4522,6 +4523,213 @@ ZC_TEST("Ownership event overlay projects standard marker decisions on resource 
   ZC_EXPECT(foundUnsatisfied);
 }
 
+ZC_TEST("Ownership marker proof construction records a positive Copy decision") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Copy};\n"
+      "struct Cell { value: i32, }\n"
+      "unsafe impl Copy for Cell;\n"
+      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+  auto candidateResult = buildOverlay(fixture);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  auto verifiedResult = verifyOverlay(zc::mv(candidate), fixture);
+  ZC_REQUIRE(verifiedResult.isVerified());
+  auto overlay = zc::mv(verifiedResult).takeVerified();
+  ZC_REQUIRE(overlay.functions().size() == 1);
+  const auto& function = overlay.functions()[0];
+  ZC_REQUIRE(function.logicalDropPlans.size() == 1);
+  const auto cellType = function.logicalDropPlans[0].root.resultType();
+  const auto copyMarker = fixture.overlayInput().body.standardMarkers.copy();
+  const auto linearMarker = fixture.overlayInput().body.standardMarkers.linear();
+
+  bool foundCopyPositive = false;
+  bool foundLinearUnsatisfied = false;
+  for (const auto& use : function.markerUses) {
+    if (use.key.subject != cellType) continue;
+    if (use.key.marker == copyMarker) {
+      ZC_EXPECT(use.decision.is<OwnershipMarkerDecisionPositive>());
+      foundCopyPositive = true;
+    }
+    if (use.key.marker == linearMarker) {
+      ZC_EXPECT(use.decision.is<OwnershipMarkerDecisionUnsatisfied>());
+      foundLinearUnsatisfied = true;
+    }
+  }
+  ZC_EXPECT(foundCopyPositive);
+  ZC_EXPECT(foundLinearUnsatisfied);
+}
+
+ZC_TEST("Ownership marker proof construction records a positive Linear decision") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Linear};\n"
+      "struct Cell { value: i32, }\n"
+      "unsafe impl Linear for Cell;\n"
+      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+  auto candidateResult = buildOverlay(fixture);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  auto verifiedResult = verifyOverlay(zc::mv(candidate), fixture);
+  ZC_REQUIRE(verifiedResult.isVerified());
+  auto overlay = zc::mv(verifiedResult).takeVerified();
+  ZC_REQUIRE(overlay.functions().size() == 1);
+  const auto& function = overlay.functions()[0];
+  ZC_REQUIRE(function.logicalDropPlans.size() == 1);
+  const auto cellType = function.logicalDropPlans[0].root.resultType();
+  const auto copyMarker = fixture.overlayInput().body.standardMarkers.copy();
+  const auto linearMarker = fixture.overlayInput().body.standardMarkers.linear();
+
+  // Cell has no explicit Copy impl, so Copy is derived structurally: the i32
+  // field is Copy+ (builtin), therefore Cell is Copy+ via structural proof.
+  bool foundLinearPositive = false;
+  bool foundCopyPositive = false;
+  for (const auto& use : function.markerUses) {
+    if (use.key.subject != cellType) continue;
+    if (use.key.marker == linearMarker) {
+      ZC_EXPECT(use.decision.is<OwnershipMarkerDecisionPositive>());
+      foundLinearPositive = true;
+    }
+    if (use.key.marker == copyMarker) {
+      ZC_EXPECT(use.decision.is<OwnershipMarkerDecisionPositive>());
+      foundCopyPositive = true;
+    }
+  }
+  ZC_EXPECT(foundLinearPositive);
+  ZC_EXPECT(foundCopyPositive);
+}
+
+ZC_TEST("Ownership descendant query tree enumerates aggregate field descendants") {
+  OwnershipPipelineFixture fixture(
+      "struct Pair { left: i32, right: bool, }\n"
+      "fun entry() -> Pair { let pair = Pair { left: 0, right: true }; return pair; }"_zc);
+  auto candidateResult = buildOverlay(fixture);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  auto verifiedResult = verifyOverlay(zc::mv(candidate), fixture);
+  ZC_REQUIRE(verifiedResult.isVerified());
+  auto overlay = zc::mv(verifiedResult).takeVerified();
+  ZC_REQUIRE(overlay.functions().size() == 1);
+  const auto& function = overlay.functions()[0];
+  ZC_REQUIRE(function.logicalDropPlans.size() == 1);
+  const auto pairType = function.logicalDropPlans[0].root.resultType();
+
+  // Recover the closed component types from the aggregate literal elements.
+  const auto& mirFunction = fixture.builtMir().functions()[0];
+  const auto& assignment = mirFunction.blocks[0].statements[1].assignmentValue();
+  const auto& aggregate = assignment.value.nominalAggregateValue();
+  ZC_REQUIRE(aggregate.elements.size() == 2);
+  const auto i32Type = aggregate.elements[0].operand.constantValue().type;
+  const auto boolType = aggregate.elements[1].operand.constantValue().type;
+  const auto copyMarker = fixture.overlayInput().body.standardMarkers.copy();
+  const auto linearMarker = fixture.overlayInput().body.standardMarkers.linear();
+
+  // The descendant query tree must emit Copy and Linear queries for every node:
+  // the Pair root, the i32 field, and the bool field.
+  bool foundPairCopy = false;
+  bool foundPairLinear = false;
+  bool foundI32Copy = false;
+  bool foundI32Linear = false;
+  bool foundBoolCopy = false;
+  bool foundBoolLinear = false;
+  for (const auto& use : function.markerUses) {
+    if (use.key.subject == pairType) {
+      if (use.key.marker == copyMarker) foundPairCopy = true;
+      if (use.key.marker == linearMarker) foundPairLinear = true;
+    }
+    if (use.key.subject == i32Type) {
+      if (use.key.marker == copyMarker) foundI32Copy = true;
+      if (use.key.marker == linearMarker) foundI32Linear = true;
+    }
+    if (use.key.subject == boolType) {
+      if (use.key.marker == copyMarker) foundBoolCopy = true;
+      if (use.key.marker == linearMarker) foundBoolLinear = true;
+    }
+  }
+  ZC_EXPECT(foundPairCopy);
+  ZC_EXPECT(foundPairLinear);
+  ZC_EXPECT(foundI32Copy);
+  ZC_EXPECT(foundI32Linear);
+  ZC_EXPECT(foundBoolCopy);
+  ZC_EXPECT(foundBoolLinear);
+}
+
+ZC_TEST("Ownership postorder fold emits a maximal linear component for an aggregate") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Linear};\n"
+      "struct Pair { left: i32, right: bool, }\n"
+      "unsafe impl Linear for Pair;\n"
+      "fun entry() -> Pair { let pair = Pair { left: 0, right: true }; return pair; }"_zc);
+  auto candidateResult = buildOverlay(fixture);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  auto verifiedResult = verifyOverlay(zc::mv(candidate), fixture);
+  ZC_REQUIRE(verifiedResult.isVerified());
+  auto overlay = zc::mv(verifiedResult).takeVerified();
+  ZC_REQUIRE(overlay.functions().size() == 1);
+  const auto& function = overlay.functions()[0];
+  ZC_REQUIRE(function.logicalDropPlans.size() == 1);
+  const auto& plan = function.logicalDropPlans[0];
+  const auto pairType = plan.root.resultType();
+
+  // Pair is Linear+ (explicit) and Copy+ (structural: i32 and bool are Copy+).
+  // Case 2 of the fold: emit root only, no action, suppress descendants.
+  ZC_REQUIRE(plan.components.size() == 1);
+  const auto& component = plan.components[0];
+  ZC_EXPECT(component.place.resultType() == pairType);
+  ZC_EXPECT(component.valueType == pairType);
+  ZC_EXPECT(component.dropAction == zc::none);
+  ZC_EXPECT(component.declarationOrdinal == 0);
+}
+
+ZC_TEST("Ownership postorder fold suppresses components for a copy aggregate") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Copy};\n"
+      "struct Pair { left: i32, right: bool, }\n"
+      "unsafe impl Copy for Pair;\n"
+      "fun entry() -> Pair { let pair = Pair { left: 0, right: true }; return pair; }"_zc);
+  auto candidateResult = buildOverlay(fixture);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  auto verifiedResult = verifyOverlay(zc::mv(candidate), fixture);
+  ZC_REQUIRE(verifiedResult.isVerified());
+  auto overlay = zc::mv(verifiedResult).takeVerified();
+  ZC_REQUIRE(overlay.functions().size() == 1);
+  const auto& function = overlay.functions()[0];
+  ZC_REQUIRE(function.logicalDropPlans.size() == 1);
+  const auto& plan = function.logicalDropPlans[0];
+
+  // Pair is Copy+ (explicit) and Linear- (no policy).  Case 4 of the fold:
+  // Copy+ leaf with empty child fold emits nothing.
+  ZC_EXPECT(plan.components.size() == 0);
+}
+
+ZC_TEST("Ownership postorder fold retains a logical component for a non-copy aggregate") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Copy};\n"
+      "struct Pair { left: i32, right: bool, }\n"
+      "impl !Copy for Pair;\n"
+      "fun entry() -> Pair { let pair = Pair { left: 0, right: true }; return pair; }"_zc);
+  auto candidateResult = buildOverlay(fixture);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  auto verifiedResult = verifyOverlay(zc::mv(candidate), fixture);
+  ZC_REQUIRE(verifiedResult.isVerified());
+  auto overlay = zc::mv(verifiedResult).takeVerified();
+  ZC_REQUIRE(overlay.functions().size() == 1);
+  const auto& function = overlay.functions()[0];
+  ZC_REQUIRE(function.logicalDropPlans.size() == 1);
+  const auto& plan = function.logicalDropPlans[0];
+  const auto pairType = plan.root.resultType();
+
+  // Pair is Copy- (explicit negative) and Linear- (no policy).  Case 4 of the
+  // fold: Copy- leaf with empty child fold emits one action-free component.
+  ZC_REQUIRE(plan.components.size() == 1);
+  const auto& component = plan.components[0];
+  ZC_EXPECT(component.place.resultType() == pairType);
+  ZC_EXPECT(component.valueType == pairType);
+  ZC_EXPECT(component.dropAction == zc::none);
+  ZC_EXPECT(component.declarationOrdinal == 0);
+}
+
 ZC_TEST("Ownership event overlay test encoder matches the RFC 0007 empty oracle") {
   zc::Vector<zc::Array<uint8_t>> functions;
   expectOverlayOracle(
@@ -4541,6 +4749,126 @@ ZC_TEST("Ownership event overlay test encoder matches the RFC 0007 empty-functio
       zc::mv(functions),
       "7a6f6d2e6f776e6572736869702d6576656e742d6f7665726c61790000000000000000000000000000000000000000000000000000000000000000000000000000000001a144444444444444444444444444444444444444444444444444444444444444442222222222222222222222222222222222222222222222222222222222222222000000000000000100000000000000390000000000000001b1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"_zc,
       "5e36e3dd6068992f4e3b99ea9eb7df4e3836f9f8c40eb9821238a3c6090d724c"_zc);
+}
+
+zc::Array<uint8_t> unsafeCollisionFunctionOracle() {
+  const uint8_t owner[] = {0xb1};
+  const uint8_t sourceFile[] = {0xc1};
+  const uint8_t slotRoles[] = {0x01, 0x14};  // Operation, UnsafeOperation
+
+  auto eventKey = encodeStatementEventKeyOracle(zc::arrayPtr(owner), 1, 0, 0);
+  auto slotValue =
+      encodeEventSlotOracle(eventKey.asPtr(), 0x02 /* Effect */, zc::arrayPtr(slotRoles));
+
+  auto encodeOccurrenceKey = [&](uint32_t ordinal) {
+    identity::CanonicalEncoder encoder;
+    for (uint8_t byte : eventKey) { encoder.encodeUint8(byte); }
+    encoder.encodeUint32(ordinal);
+    return encoder.finish();
+  };
+  auto occurrenceKey0 = encodeOccurrenceKey(0);
+  auto occurrenceKey1 = encodeOccurrenceKey(1);
+
+  // Occurrence value: raw event key + ordinal + operation + requirement +
+  // acknowledgement tag + raw acknowledgement event key + source span. The
+  // source span is a raw source-file byte followed by two u64 bounds, matching
+  // the RFC 0007 oracle layout.
+  auto encodeOccurrenceValue = [&](uint32_t ordinal, uint8_t operation) {
+    identity::CanonicalEncoder encoder;
+    for (uint8_t byte : eventKey) { encoder.encodeUint8(byte); }
+    encoder.encodeUint32(ordinal);
+    encoder.encodeUint8(operation);
+    encoder.encodeUint8(0x02);  // UnsafeRequirement::RawPointerBoundary
+    encoder.encodeUint8(0x01);  // acknowledgement present
+    for (uint8_t byte : eventKey) { encoder.encodeUint8(byte); }
+    encoder.encodeUint8(sourceFile[0]);
+    encoder.encodeUint64(ordinal);
+    encoder.encodeUint64(ordinal + 1);
+    return encoder.finish();
+  };
+  auto occurrenceValue0 = encodeOccurrenceValue(0, 0x01 /* RawDereference */);
+  auto occurrenceValue1 = encodeOccurrenceValue(1, 0x02 /* RawCast */);
+
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString(zc::arrayPtr(owner));
+  encoder.encodeSequenceSize(1);  // slots
+  encoder.encodeByteString(eventKey.asPtr());
+  encoder.encodeByteString(slotValue.asPtr());
+  encoder.encodeSequenceSize(0);  // deferredActivations
+  encoder.encodeSequenceSize(2);  // unsafeOccurrences
+  encoder.encodeByteString(occurrenceKey0.asPtr());
+  encoder.encodeByteString(occurrenceValue0.asPtr());
+  encoder.encodeByteString(occurrenceKey1.asPtr());
+  encoder.encodeByteString(occurrenceValue1.asPtr());
+  encoder.encodeSequenceSize(0);  // markerUses
+  encoder.encodeSequenceSize(0);  // logicalDropPlans
+  encoder.encodeSequenceSize(0);  // castResourcePlans
+  return encoder.finish();
+}
+
+ZC_TEST("Ownership event overlay test encoder matches the RFC 0007 unsafe-collision oracle") {
+  zc::Vector<zc::Array<uint8_t>> functions;
+  functions.add(unsafeCollisionFunctionOracle());
+  expectOverlayOracle(zc::mv(functions),
+                      "7a6f6d2e6f776e6572736869702d6576656e742d6f7665726c61790000000000000000000000"
+                      "0000000000000000000000"
+                      "00000000000000000000000000000000000001a1444444444444444444444444444444444444"
+                      "4444444444444444444444"
+                      "4444442222222222222222222222222222222222222222222222222222222222222222000000"
+                      "0000000001000000000000"
+                      "016c0000000000000001b1000000000000000100000000000000160000000000000001b10200"
+                      "0000010000000000000000"
+                      "00000000000000310000000000000001b1020000000100000000000000000200000000000000"
+                      "0200000000000000010100"
+                      "000000000000011400000000000000000000000000000002000000000000001a000000000000"
+                      "0001b10200000001000000"
+                      "00000000000000000000000000000000440000000000000001b1020000000100000000000000"
+                      "0000000000010201000000"
+                      "0000000001b102000000010000000000000000c1000000000000000000000000000000010000"
+                      "00000000001a0000000000"
+                      "000001b1020000000100000000000000000000000100000000000000440000000000000001b1"
+                      "0200000001000000000000"
+                      "0000000000010202010000000000000001b102000000010000000000000000c1000000000000"
+                      "0001000000000000000200"
+                      "0000000000000000000000000000000000000000000000"_zc,
+                      "bb0547e574d4e5929b0c23807103b8566895fe9df68de0e9cfff01d3a9679f85"_zc);
+}
+
+ZC_TEST("Ownership event overlay unsafe-collision oracle changes when any input byte is mutated") {
+  auto record = unsafeCollisionFunctionOracle();
+  ZC_REQUIRE(record.size() == 364);
+  zc::Vector<zc::Array<uint8_t>> baselineFunctions;
+  baselineFunctions.add(zc::heapArray(record.asPtr()));
+  auto baseline = encodeFixedOverlayOracle(baselineFunctions.asPtr());
+  auto baselineDigest = identity::sha256(baseline.asPtr());
+  ZC_REQUIRE(baselineDigest != zc::none);
+
+  struct Mutation final {
+    size_t offset;
+    uint8_t expected;
+    uint8_t mutated;
+  };
+  const Mutation mutations[] = {
+      {8, 0xb1, 0xb2},    // owner
+      {77, 0x02, 0x01},   // slot stage (Effect -> Before)
+      {188, 0x01, 0x03},  // occurrence 0 operation (RawDereference -> 0x03)
+      {298, 0x02, 0x04},  // occurrence 1 operation (RawCast -> 0x04)
+  };
+
+  for (const auto& mutation : mutations) {
+    ZC_REQUIRE(mutation.offset < record.size());
+    ZC_REQUIRE(record[mutation.offset] == mutation.expected);
+    auto mutated = zc::heapArray(record.asPtr());
+    mutated[mutation.offset] = mutation.mutated;
+    zc::Vector<zc::Array<uint8_t>> mutatedFunctions;
+    mutatedFunctions.add(zc::mv(mutated));
+    auto changed = encodeFixedOverlayOracle(mutatedFunctions.asPtr());
+    auto changedDigest = identity::sha256(changed.asPtr());
+    ZC_REQUIRE(changedDigest != zc::none);
+    ZC_IF_SOME(before, baselineDigest) {
+      ZC_IF_SOME(after, changedDigest) { ZC_EXPECT(before != after); }
+    }
+  }
 }
 
 ZC_TEST("Ownership event overlay oracle binds copy and move reads to complete MIR points") {
@@ -4834,9 +5162,9 @@ ZC_TEST("Ownership diagnostic adapter maps every closed failure variant") {
     failures.add(LinearConsumedTwiceFailure{
         identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 6,
         causeVector(LinearConsumptionCause{identity.event, identity.span.clone()})});
-    failures.add(RawPointerBoundaryRequiresUnsafeFailure{
-        identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 7,
-        UnsafeBoundaryKey{identity.event, 0}});
+    failures.add(RawPointerBoundaryRequiresUnsafeFailure{identity.owner, identity.event,
+                                                         identity.span.clone(), 7,
+                                                         UnsafeBoundaryKey{identity.event, 0}});
     failures.add(MoveOutOfBorrowFailure{
         identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 8,
         causeVector(LoanFailureCause{LoanKey{identity.event}, syntheticPlace(identity),
@@ -5051,18 +5379,12 @@ ZC_TEST("Ownership source failure ordering distinguishes unsafe boundaries on on
   OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
   auto identity = syntheticIdentity(fixture);
 
-  auto left = RawPointerBoundaryRequiresUnsafeFailure{identity.owner,
-                                                      identity.event,
-                                                      identity.span.clone(),
-                                                      syntheticPlace(identity),
-                                                      0,
-                                                      UnsafeBoundaryKey{identity.event, 0}};
-  auto right = RawPointerBoundaryRequiresUnsafeFailure{identity.owner,
-                                                       identity.event,
-                                                       identity.span.clone(),
-                                                       syntheticPlace(identity),
-                                                       0,
-                                                       UnsafeBoundaryKey{identity.event, 1}};
+  auto left =
+      RawPointerBoundaryRequiresUnsafeFailure{identity.owner, identity.event, identity.span.clone(),
+                                              0, UnsafeBoundaryKey{identity.event, 0}};
+  auto right =
+      RawPointerBoundaryRequiresUnsafeFailure{identity.owner, identity.event, identity.span.clone(),
+                                              0, UnsafeBoundaryKey{identity.event, 1}};
 
   OwnershipSourceFailure leftFailure{zc::mv(left)};
   OwnershipSourceFailure rightFailure{zc::mv(right)};
@@ -5070,6 +5392,303 @@ ZC_TEST("Ownership source failure ordering distinguishes unsafe boundaries on on
   ZC_EXPECT(OwnershipSourceFailureOrdering::less(leftFailure, rightFailure));
   ZC_EXPECT(!OwnershipSourceFailureOrdering::less(rightFailure, leftFailure));
   ZC_EXPECT(!OwnershipSourceFailureOrdering::equal(leftFailure, rightFailure));
+}
+
+ZC_TEST("Ownership event overlay projects unsafe scope boundaries from a scalar return") {
+  OwnershipPipelineFixture fixture("fun answer() -> i32 { return unsafe { 42 }; }"_zc);
+  const auto& builtMir = fixture.builtMir();
+  ZC_REQUIRE(builtMir.functions().size() == 1);
+  const auto& function = builtMir.functions()[0];
+  ZC_REQUIRE(function.sourceScopes.size() == 2);
+  ZC_EXPECT(function.sourceScopes[1].id.ordinal() == 2);
+  ZC_IF_SOME(parent, function.sourceScopes[1].parent) { ZC_EXPECT(parent.ordinal() == 1); }
+  ZC_REQUIRE(function.blocks.size() == 1);
+  const auto& block = function.blocks[0];
+  ZC_REQUIRE(block.statements.size() == 2);
+  ZC_EXPECT(block.statements[0].kind() == mir::MirStatementKind::UnsafeScopeBoundary);
+  ZC_EXPECT(block.statements[0].unsafeScopeBoundaryValue().kind ==
+            mir::MirUnsafeScopeBoundaryKind::Enter);
+  ZC_EXPECT(block.statements[0].unsafeScopeBoundaryValue().scope.ordinal() == 2);
+  ZC_EXPECT(block.statements[1].kind() == mir::MirStatementKind::UnsafeScopeBoundary);
+  ZC_EXPECT(block.statements[1].unsafeScopeBoundaryValue().kind ==
+            mir::MirUnsafeScopeBoundaryKind::Exit);
+  ZC_EXPECT(block.statements[1].unsafeScopeBoundaryValue().scope.ordinal() == 2);
+
+  auto candidateResult = buildOverlay(fixture);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() == 1);
+  const auto& overlayFunction = candidate.functions[0];
+  bool foundEnter = false;
+  bool foundExit = false;
+  bool foundUnsafeAcknowledgement = false;
+  for (const auto& slot : overlayFunction.slots) {
+    if (slot.key.location.point.kind() != MirPointKind::BeforeStatement) continue;
+    if (slot.key.location.point.beforeStatementValue().block != block.id) continue;
+    const auto ordinal = slot.key.location.point.beforeStatementValue().ordinal;
+    if (ordinal == 0) {
+      ZC_EXPECT(slot.stage == OwnershipEventStage::Effect);
+      bool hasOperation = false;
+      bool hasUnsafeAcknowledgement = false;
+      for (const auto role : slot.roles) {
+        if (role == OwnershipEventRole::Operation) hasOperation = true;
+        if (role == OwnershipEventRole::UnsafeAcknowledgement) hasUnsafeAcknowledgement = true;
+      }
+      ZC_EXPECT(hasOperation);
+      ZC_EXPECT(hasUnsafeAcknowledgement);
+      foundEnter = true;
+      foundUnsafeAcknowledgement = foundUnsafeAcknowledgement || hasUnsafeAcknowledgement;
+    }
+    if (ordinal == 1) {
+      ZC_EXPECT(slot.stage == OwnershipEventStage::Effect);
+      bool hasOperation = false;
+      for (const auto role : slot.roles) {
+        if (role == OwnershipEventRole::Operation) hasOperation = true;
+      }
+      ZC_EXPECT(hasOperation);
+      foundExit = true;
+    }
+  }
+  ZC_EXPECT(foundEnter);
+  ZC_EXPECT(foundExit);
+  ZC_EXPECT(foundUnsafeAcknowledgement);
+
+  auto verifiedResult = verifyOverlay(zc::mv(candidate), fixture);
+  ZC_REQUIRE(verifiedResult.isVerified());
+}
+
+ZC_TEST("Source suppression rule 3 suppresses UseAfterMove at the second-consumption event") {
+  OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
+  auto identity = syntheticIdentity(fixture);
+  const auto event = identity.event;
+
+  auto movedUse = [&](uint32_t ordinal) {
+    return UseAfterMoveFailure{
+        identity.owner,
+        event,
+        identity.span.clone(),
+        syntheticPlace(identity),
+        ordinal,
+        causeVector(InitializationFailureCause{facts::InitializationLossKind::Moved, event,
+                                               identity.span.clone()})};
+  };
+  auto twice = [&](uint32_t ordinal) {
+    return LinearConsumedTwiceFailure{
+        identity.owner,
+        event,
+        identity.span.clone(),
+        syntheticPlace(identity),
+        ordinal,
+        causeVector(LinearConsumptionCause{event, identity.span.clone()})};
+  };
+
+  zc::Vector<OwnershipSourceFailure> failures;
+  failures.add(twice(0));
+  failures.add(movedUse(1));
+
+  auto retained = SourceSuppression::suppress(zc::mv(failures));
+  ZC_REQUIRE(retained.size() == 1);
+  ZC_EXPECT(retained[0].is<LinearConsumedTwiceFailure>());
+}
+
+ZC_TEST("Source suppression rule 4 suppresses UseAfterMove at the blocked-move event") {
+  OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
+  auto identity = syntheticIdentity(fixture);
+  const auto event = identity.event;
+
+  auto movedUse = [&](uint32_t ordinal) {
+    return UseAfterMoveFailure{
+        identity.owner,
+        event,
+        identity.span.clone(),
+        syntheticPlace(identity),
+        ordinal,
+        causeVector(InitializationFailureCause{facts::InitializationLossKind::Moved, event,
+                                               identity.span.clone()})};
+  };
+  auto blocked = [&](uint32_t ordinal) {
+    return MoveOutOfBorrowFailure{
+        identity.owner,
+        event,
+        identity.span.clone(),
+        syntheticPlace(identity),
+        ordinal,
+        causeVector(LoanFailureCause{LoanKey{event}, syntheticPlace(identity), event,
+                                     identity.span.clone()})};
+  };
+
+  zc::Vector<OwnershipSourceFailure> failures;
+  failures.add(blocked(0));
+  failures.add(movedUse(1));
+
+  auto retained = SourceSuppression::suppress(zc::mv(failures));
+  ZC_REQUIRE(retained.size() == 1);
+  ZC_EXPECT(retained[0].is<MoveOutOfBorrowFailure>());
+}
+
+ZC_TEST("Source suppression rule 7 retains unsafe and independent safe failures") {
+  OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
+  auto identity = syntheticIdentity(fixture);
+  const auto event = identity.event;
+
+  auto unsafe = [&](uint32_t ordinal) {
+    return RawPointerBoundaryRequiresUnsafeFailure{identity.owner, event, identity.span.clone(),
+                                                   ordinal, UnsafeBoundaryKey{event, 0}};
+  };
+  auto movedUse = [&](uint32_t ordinal) {
+    return UseAfterMoveFailure{
+        identity.owner,
+        event,
+        identity.span.clone(),
+        syntheticPlace(identity),
+        ordinal,
+        causeVector(InitializationFailureCause{facts::InitializationLossKind::Moved, event,
+                                               identity.span.clone()})};
+  };
+
+  zc::Vector<OwnershipSourceFailure> failures;
+  failures.add(unsafe(0));
+  failures.add(movedUse(1));
+
+  auto retained = SourceSuppression::suppress(zc::mv(failures));
+  ZC_REQUIRE(retained.size() == 2);
+  ZC_EXPECT(retained[0].is<RawPointerBoundaryRequiresUnsafeFailure>());
+  ZC_EXPECT(retained[1].is<UseAfterMoveFailure>());
+}
+
+ZC_TEST("Source suppression retains UseAfterMove at a different event") {
+  OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
+  auto identity = syntheticIdentity(fixture);
+  const auto event = identity.event;
+  const MirEventKey otherEvent{MirLocation{identity.owner, MirPoint::entry()}, 1};
+
+  auto movedUse = [&](MirEventKey failureEvent, uint32_t ordinal) {
+    return UseAfterMoveFailure{
+        identity.owner,
+        failureEvent,
+        identity.span.clone(),
+        syntheticPlace(identity),
+        ordinal,
+        causeVector(InitializationFailureCause{facts::InitializationLossKind::Moved, failureEvent,
+                                               identity.span.clone()})};
+  };
+  auto twice = [&](uint32_t ordinal) {
+    return LinearConsumedTwiceFailure{
+        identity.owner,
+        event,
+        identity.span.clone(),
+        syntheticPlace(identity),
+        ordinal,
+        causeVector(LinearConsumptionCause{event, identity.span.clone()})};
+  };
+
+  zc::Vector<OwnershipSourceFailure> failures;
+  failures.add(twice(0));
+  failures.add(movedUse(otherEvent, 1));
+
+  auto retained = SourceSuppression::suppress(zc::mv(failures));
+  ZC_REQUIRE(retained.size() == 2);
+}
+
+ZC_TEST("Source suppression retains UninitializedPlaceUse at a suppressed event") {
+  OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
+  auto identity = syntheticIdentity(fixture);
+  const auto event = identity.event;
+
+  auto uninitialized = [&](uint32_t ordinal) {
+    return UninitializedPlaceUseFailure{
+        identity.owner,
+        event,
+        identity.span.clone(),
+        syntheticPlace(identity),
+        ordinal,
+        causeVector(InitializationFailureCause{facts::InitializationLossKind::NeverInitialized,
+                                               event, identity.span.clone()})};
+  };
+  auto twice = [&](uint32_t ordinal) {
+    return LinearConsumedTwiceFailure{
+        identity.owner,
+        event,
+        identity.span.clone(),
+        syntheticPlace(identity),
+        ordinal,
+        causeVector(LinearConsumptionCause{event, identity.span.clone()})};
+  };
+
+  zc::Vector<OwnershipSourceFailure> failures;
+  failures.add(twice(0));
+  failures.add(uninitialized(1));
+
+  auto retained = SourceSuppression::suppress(zc::mv(failures));
+  ZC_REQUIRE(retained.size() == 2);
+  ZC_EXPECT(retained[0].is<LinearConsumedTwiceFailure>());
+  ZC_EXPECT(retained[1].is<UninitializedPlaceUseFailure>());
+}
+
+ZC_TEST("Source suppression retains every first-consumption cause on the primary") {
+  OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
+  auto identity = syntheticIdentity(fixture);
+  const auto event = identity.event;
+  const MirEventKey firstConsumption{MirLocation{identity.owner, MirPoint::entry()}, 2};
+
+  zc::Vector<LinearConsumptionCause> causes;
+  causes.add(LinearConsumptionCause{event, identity.span.clone()});
+  causes.add(LinearConsumptionCause{firstConsumption, identity.span.clone()});
+
+  auto movedUse = [&](uint32_t ordinal) {
+    return UseAfterMoveFailure{
+        identity.owner,
+        event,
+        identity.span.clone(),
+        syntheticPlace(identity),
+        ordinal,
+        causeVector(InitializationFailureCause{facts::InitializationLossKind::Moved, event,
+                                               identity.span.clone()})};
+  };
+
+  zc::Vector<OwnershipSourceFailure> failures;
+  failures.add(LinearConsumedTwiceFailure{identity.owner, event, identity.span.clone(),
+                                          syntheticPlace(identity), 0, zc::mv(causes)});
+  failures.add(movedUse(1));
+
+  auto retained = SourceSuppression::suppress(zc::mv(failures));
+  ZC_REQUIRE(retained.size() == 1);
+  ZC_REQUIRE(retained[0].is<LinearConsumedTwiceFailure>());
+  ZC_EXPECT(retained[0].get<LinearConsumedTwiceFailure>().causes.size() == 2);
+}
+
+ZC_TEST("Source suppression is a no-op without a suppressing primary") {
+  OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
+  auto identity = syntheticIdentity(fixture);
+  const auto event = identity.event;
+
+  auto movedUse = [&](uint32_t ordinal) {
+    return UseAfterMoveFailure{
+        identity.owner,
+        event,
+        identity.span.clone(),
+        syntheticPlace(identity),
+        ordinal,
+        causeVector(InitializationFailureCause{facts::InitializationLossKind::Moved, event,
+                                               identity.span.clone()})};
+  };
+  auto uninitialized = [&](uint32_t ordinal) {
+    return UninitializedPlaceUseFailure{
+        identity.owner,
+        event,
+        identity.span.clone(),
+        syntheticPlace(identity),
+        ordinal,
+        causeVector(InitializationFailureCause{facts::InitializationLossKind::NeverInitialized,
+                                               event, identity.span.clone()})};
+  };
+
+  zc::Vector<OwnershipSourceFailure> failures;
+  failures.add(movedUse(0));
+  failures.add(uninitialized(1));
+
+  auto retained = SourceSuppression::suppress(zc::mv(failures));
+  ZC_REQUIRE(retained.size() == 2);
 }
 
 }  // namespace

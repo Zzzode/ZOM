@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
@@ -476,6 +477,12 @@ ZC_TEST("Facts oracle matches production for a local borrow return") {
   expectOracleMatchesInventory(fixture);
 }
 
+ZC_TEST("Facts oracle matches production for a mutable local borrow return") {
+  OwnershipPipelineFixture fixture(
+      "fun entry() -> &mut i32 { mut value: i32 = 0; return &mut value; }"_zc);
+  expectOracleMatchesInventory(fixture);
+}
+
 // ---------------------------------------------------------------------------
 // 512-byte overlay collision oracle.
 // ---------------------------------------------------------------------------
@@ -530,6 +537,216 @@ ZC_TEST("Ownership event overlay local-borrow oracle changes when any input byte
     ZC_REQUIRE(mutatedDigest != zc::none);
     ZC_IF_SOME(baseline, baselineDigest) {
       ZC_IF_SOME(changed, mutatedDigest) { ZC_EXPECT(baseline != changed); }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// RFC 0007 ownership-facts byte oracles.
+//
+// A test-owned encoder reproduces the exact facts framing layout from the RFC
+// (domain + null + context fingerprint + module key + MIR revision + overlay
+// revision + borrow-evidence revision + function sequence) without calling the
+// production OwnershipFactsCodec, whose group layout differs. Each test
+// asserts the exact byte count, the full preimage hex, and the SHA-256 digest
+// from the RFC, plus mutation sensitivity.
+// ---------------------------------------------------------------------------
+
+zc::Array<uint8_t> decoded(zc::StringPtr hex) {
+  auto bytes = zc::decodeHex(hex);
+  ZC_REQUIRE(bytes != zc::none);
+  return zc::mv(ZC_REQUIRE_NONNULL(bytes));
+}
+
+zc::Array<uint8_t> encodeFactsOracle(const identity::Sha256Digest& contextFingerprint,
+                                     zc::ArrayPtr<const uint8_t> expandedModuleKey,
+                                     const identity::Sha256Digest& mirRevision,
+                                     const identity::Sha256Digest& overlayRevision,
+                                     const identity::Sha256Digest& borrowEvidenceRevision,
+                                     zc::ArrayPtr<const zc::Array<uint8_t>> functions) {
+  identity::CanonicalEncoder encoder;
+  constexpr char domain[] = "zom.ownership-facts";
+  for (size_t index = 0; index + 1 < sizeof(domain); ++index) {
+    encoder.encodeUint8(static_cast<uint8_t>(domain[index]));
+  }
+  encoder.encodeUint8(0);
+  encoder.encodeDigest(contextFingerprint);
+  encoder.encodeByteString(expandedModuleKey);
+  encoder.encodeDigest(mirRevision);
+  encoder.encodeDigest(overlayRevision);
+  encoder.encodeDigest(borrowEvidenceRevision);
+  encoder.encodeSequenceSize(functions.size());
+  for (const auto& function : functions) { encoder.encodeByteString(function.asPtr()); }
+  return encoder.finish();
+}
+
+zc::Array<uint8_t> encodeFixedFactsOracle(zc::ArrayPtr<const zc::Array<uint8_t>> functions) {
+  const uint8_t module[] = {0xa1};
+  return encodeFactsOracle(repeatedDigest(0x00), zc::arrayPtr(module), repeatedDigest(0x22),
+                           repeatedDigest(0x55), repeatedDigest(0x33), functions);
+}
+
+void expectFactsOracle(zc::Vector<zc::Array<uint8_t>>&& functions, zc::StringPtr expectedPreimage,
+                       zc::StringPtr expectedDigest) {
+  auto bytes = encodeFixedFactsOracle(functions.asPtr());
+  ZC_EXPECT(zc::encodeHex(bytes.asPtr()) == expectedPreimage);
+  auto digest = identity::sha256(bytes.asPtr());
+  ZC_REQUIRE(digest != zc::none);
+  ZC_IF_SOME(value, digest) { ZC_EXPECT(zc::encodeHex(value.bytes()) == expectedDigest); }
+}
+
+zc::Array<uint8_t> emptyFunctionFactsOracle() {
+  const uint8_t owner[] = {0xb1};
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString(zc::arrayPtr(owner));
+  for (int index = 0; index < 13; ++index) { encoder.encodeSequenceSize(0); }
+  return encoder.finish();
+}
+
+zc::Array<uint8_t> pointStateFunctionFactsOracle() {
+  const uint8_t owner[] = {0xb1};
+  const uint8_t pointKey[] = {0x01, 0x01};
+  // The 74-byte pointState value from the RFC 0007 oracle: one
+  // OwnershipResourceStateAlternative with empty drop-obligation,
+  // linear-obligation, and cast-carrier state maps.
+  auto pointValue = decoded(
+      "0101000000000000000000000000000000000000000000000000000000000000000100000000000000180000000000000000000000000000000000000000000000000000000000000000"_zc);
+
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString(zc::arrayPtr(owner));
+  encoder.encodeSequenceSize(0);  // movePaths
+  encoder.encodeSequenceSize(0);  // conflicts
+  encoder.encodeSequenceSize(1);  // pointStates
+  encoder.encodeByteString(zc::arrayPtr(pointKey));
+  encoder.encodeByteString(pointValue.asPtr());
+  for (int index = 0; index < 10; ++index) { encoder.encodeSequenceSize(0); }
+  return encoder.finish();
+}
+
+ZC_TEST("Ownership facts test encoder matches the RFC 0007 empty oracle") {
+  zc::Vector<zc::Array<uint8_t>> functions;
+  expectFactsOracle(zc::mv(functions),
+                    "7a6f6d2e6f776e6572736869702d66616374730000000000000000000000000000000000000000"
+                    "00000000000000000000"
+                    "0000000000000000000001a1222222222222222222222222222222222222222222222222222222"
+                    "22222222225555555555"
+                    "555555555555555555555555555555555555555555555555555555333333333333333333333333"
+                    "33333333333333333333"
+                    "333333333333333333330000000000000000"_zc,
+                    "3fc9636b5e668ec6b10fac4ce2c76b0a20d87f9b25dd51b7729141ed33296b93"_zc);
+}
+
+ZC_TEST("Ownership facts test encoder matches the RFC 0007 function-framing oracle") {
+  zc::Vector<zc::Array<uint8_t>> functions;
+  functions.add(emptyFunctionFactsOracle());
+  expectFactsOracle(
+      zc::mv(functions),
+      "7a6f6d2e6f776e6572736869702d6661637473000000000000000000000000000000000000000000000000000000"
+      "000000"
+      "0000000000000000000001a122222222222222222222222222222222222222222222222222222222222222225555"
+      "555555"
+      "55555555555555555555555555555555555555555555555555555533333333333333333333333333333333333333"
+      "333333"
+      "33333333333333333333000000000000000100000000000000710000000000000001b10000000000000000000000"
+      "000000"
+      "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      "000000"
+      "0000000000000000000000000000000000000000000000000000000000000000000000000000000000"_zc,
+      "b2d0e68fd7a597ddabb36e3d2c78cf96a596561921fb965e856fdd26363bfba2"_zc);
+}
+
+ZC_TEST("Ownership facts test encoder matches the RFC 0007 point-state oracle") {
+  zc::Vector<zc::Array<uint8_t>> functions;
+  functions.add(pointStateFunctionFactsOracle());
+  expectFactsOracle(zc::mv(functions),
+                    "7a6f6d2e6f776e6572736869702d66616374730000000000000000000000000000000000000000"
+                    "00000000000000000000"
+                    "0000000000000000000001a1222222222222222222222222222222222222222222222222222222"
+                    "22222222225555555555"
+                    "555555555555555555555555555555555555555555555555555555333333333333333333333333"
+                    "33333333333333333333"
+                    "33333333333333333333000000000000000100000000000000cd0000000000000001b100000000"
+                    "00000000000000000000"
+                    "0000000000000000000100000000000000020101000000000000004a0101000000000000000000"
+                    "00000000000000000000"
+                    "000000000000000000000000010000000000000018000000000000000000000000000000000000"
+                    "00000000000000000000"
+                    "000000000000000000000000000000000000000000000000000000000000000000000000000000"
+                    "00000000000000000000"
+                    "0000000000000000000000000000000000000000000000000000000000000000000000"_zc,
+                    "f5acb38c2474aea982f75216e69997d0aa8d2634eebdabc7fc6d59e01a2d6577"_zc);
+}
+
+ZC_TEST("Ownership facts oracles change when any input byte is mutated") {
+  // 165-byte empty oracle: mutate the module key byte in the framed output.
+  {
+    zc::Vector<zc::Array<uint8_t>> functions;
+    auto baseline = encodeFixedFactsOracle(functions.asPtr());
+    ZC_REQUIRE(baseline.size() == 165);
+    auto baselineDigest = identity::sha256(baseline.asPtr());
+    ZC_REQUIRE(baselineDigest != zc::none);
+    auto mutated = zc::heapArray(baseline.asPtr());
+    mutated[60] = 0xa2;  // module key byte
+    auto mutatedDigest = identity::sha256(mutated.asPtr());
+    ZC_REQUIRE(mutatedDigest != zc::none);
+    ZC_IF_SOME(before, baselineDigest) {
+      ZC_IF_SOME(after, mutatedDigest) { ZC_EXPECT(before != after); }
+    }
+  }
+
+  // 286-byte function-framing oracle: mutate the owner byte.
+  {
+    auto record = emptyFunctionFactsOracle();
+    ZC_REQUIRE(record.size() == 113);
+    zc::Vector<zc::Array<uint8_t>> baselineFunctions;
+    baselineFunctions.add(zc::heapArray(record.asPtr()));
+    auto baseline = encodeFixedFactsOracle(baselineFunctions.asPtr());
+    auto baselineDigest = identity::sha256(baseline.asPtr());
+    ZC_REQUIRE(baselineDigest != zc::none);
+    auto mutated = zc::heapArray(record.asPtr());
+    mutated[8] = 0xb2;  // owner
+    zc::Vector<zc::Array<uint8_t>> mutatedFunctions;
+    mutatedFunctions.add(zc::mv(mutated));
+    auto changed = encodeFixedFactsOracle(mutatedFunctions.asPtr());
+    auto changedDigest = identity::sha256(changed.asPtr());
+    ZC_REQUIRE(changedDigest != zc::none);
+    ZC_IF_SOME(before, baselineDigest) {
+      ZC_IF_SOME(after, changedDigest) { ZC_EXPECT(before != after); }
+    }
+  }
+
+  // 378-byte point-state oracle: mutate the owner and point-state key bytes.
+  {
+    auto record = pointStateFunctionFactsOracle();
+    ZC_REQUIRE(record.size() == 205);
+    zc::Vector<zc::Array<uint8_t>> baselineFunctions;
+    baselineFunctions.add(zc::heapArray(record.asPtr()));
+    auto baseline = encodeFixedFactsOracle(baselineFunctions.asPtr());
+    auto baselineDigest = identity::sha256(baseline.asPtr());
+    ZC_REQUIRE(baselineDigest != zc::none);
+
+    struct Mutation final {
+      size_t offset;
+      uint8_t expected;
+      uint8_t mutated;
+    };
+    const Mutation mutations[] = {
+        {8, 0xb1, 0xb2},   // owner
+        {41, 0x01, 0x03},  // pointStates key byte 0
+    };
+    for (const auto& mutation : mutations) {
+      ZC_REQUIRE(mutation.offset < record.size());
+      ZC_REQUIRE(record[mutation.offset] == mutation.expected);
+      auto mutated = zc::heapArray(record.asPtr());
+      mutated[mutation.offset] = mutation.mutated;
+      zc::Vector<zc::Array<uint8_t>> mutatedFunctions;
+      mutatedFunctions.add(zc::mv(mutated));
+      auto changed = encodeFixedFactsOracle(mutatedFunctions.asPtr());
+      auto changedDigest = identity::sha256(changed.asPtr());
+      ZC_REQUIRE(changedDigest != zc::none);
+      ZC_IF_SOME(before, baselineDigest) {
+        ZC_IF_SOME(after, changedDigest) { ZC_EXPECT(before != after); }
+      }
     }
   }
 }
