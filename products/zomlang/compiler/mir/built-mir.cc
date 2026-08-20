@@ -1651,19 +1651,25 @@ bool validInitializedLocalFieldSequenceReturnFunction(
 }
 
 bool validLocalReturnFunction(
-    const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
-    const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& sourceLocal,
-    const hir::HirScalarLiteralExpression& initializer, const hir::HirReturnStatement& sourceReturn,
-    const hir::HirLocalReferenceExpression& reference, identity::ModuleId module,
-    const checker::CheckerIdentityAuthority& identities,
+    const MirFunction& function, const hir::VerifiedHirModule& hirModule,
+    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& sourceBlock,
+    const hir::HirLocalBinding& sourceLocal, const hir::HirScalarLiteralExpression& initializer,
+    const hir::HirReturnStatement& sourceReturn, const hir::HirLocalReferenceExpression& reference,
+    identity::ModuleId module, const checker::CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes, checker::marker::MarkerProofEngine& proofs,
     identity::DefId copy) {
+  zc::Maybe<const hir::HirUnsafeBlockExpression&> unsafeBlock;
+  ZC_IF_SOME(unsafeNode, declaration.unsafeBlock) {
+    unsafeBlock = unsafeBlockFor(hirModule, unsafeNode);
+    if (unsafeBlock == zc::none) return false;
+  }
+  const bool hasUnsafeBlock = unsafeBlock != zc::none;
   if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
-      function.resultType != declaration.resultType || function.sourceScopes.size() != 1 ||
-      function.locals.size() != 1 || function.blocks.size() != 1 ||
-      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 2 ||
-      sourceBlock.statements[0] != sourceLocal.node ||
+      function.resultType != declaration.resultType ||
+      function.sourceScopes.size() != (hasUnsafeBlock ? 2 : 1) || function.locals.size() != 1 ||
+      function.blocks.size() != 1 || declaration.body != sourceBlock.node ||
+      sourceBlock.statements.size() != 2 || sourceBlock.statements[0] != sourceLocal.node ||
       sourceBlock.statements[1] != sourceReturn.node ||
       sourceLocal.initializer != initializer.node || sourceReturn.value != reference.node ||
       sourceLocal.local != reference.local || sourceLocal.type != declaration.resultType ||
@@ -1677,7 +1683,8 @@ bool validLocalReturnFunction(
       !sameSpan(scope.sourceSpan, declaration.sourceSpan) || local.id != localId(1) ||
       local.kind != MirLocalKind::UserLocal || local.type != sourceLocal.type ||
       local.sourceScope != scope.id || !sameSpan(local.sourceSpan, sourceLocal.sourceSpan) ||
-      block.id != blockId(1) || block.sourceScope != scope.id || block.statements.size() != 2 ||
+      block.id != blockId(1) || block.sourceScope != scope.id ||
+      block.statements.size() != (hasUnsafeBlock ? 4 : 2) ||
       block.statements[0].kind() != MirStatementKind::StorageLive ||
       block.statements[0].storageLocal() != local.id ||
       !sameSpan(block.statements[0].sourceSpan(), sourceLocal.sourceSpan) ||
@@ -1695,6 +1702,27 @@ bool validLocalReturnFunction(
       block.terminator.returnValue().value == zc::none ||
       !sameSpan(block.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
+  }
+  if (hasUnsafeBlock) {
+    ZC_IF_SOME(unsafeBlockRef, unsafeBlock) {
+      const auto& unsafeScope = function.sourceScopes[1];
+      if (unsafeScope.id != scopeId(2) || unsafeScope.parent != scopeId(1) ||
+          !sameSpan(unsafeScope.sourceSpan, unsafeBlockRef.sourceSpan)) {
+        return false;
+      }
+      if (block.statements[2].kind() != MirStatementKind::UnsafeScopeBoundary ||
+          block.statements[3].kind() != MirStatementKind::UnsafeScopeBoundary) {
+        return false;
+      }
+      const auto& enter = block.statements[2].unsafeScopeBoundaryValue();
+      const auto& exit = block.statements[3].unsafeScopeBoundaryValue();
+      if (enter.kind != MirUnsafeScopeBoundaryKind::Enter || enter.scope != scopeId(2) ||
+          exit.kind != MirUnsafeScopeBoundaryKind::Exit || exit.scope != scopeId(2) ||
+          !sameSpan(block.statements[2].sourceSpan(), unsafeBlockRef.sourceSpan) ||
+          !sameSpan(block.statements[3].sourceSpan(), unsafeBlockRef.sourceSpan)) {
+        return false;
+      }
+    }
   }
   const auto& constant =
       block.statements[1].assignmentValue().value.useValue().operand.constantValue();
@@ -2117,8 +2145,9 @@ bool validLocalWriteInitializationReturnFunction(
 }
 
 bool validSequentialLocalReturnFunction(
-    const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
-    const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& sourceLocal,
+    const MirFunction& function, const hir::VerifiedHirModule& hirModule,
+    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& sourceBlock,
+    const hir::HirLocalBinding& sourceLocal,
     const zc::Maybe<const hir::HirScalarLiteralExpression&>& literal,
     const zc::Maybe<const hir::HirNominalAggregateExpression&>& aggregate,
     const hir::HirLocalBinding& destinationLocal,
@@ -2128,12 +2157,18 @@ bool validSequentialLocalReturnFunction(
     const checker::CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes, checker::marker::MarkerProofEngine& proofs,
     identity::DefId copy) {
+  zc::Maybe<const hir::HirUnsafeBlockExpression&> unsafeBlock;
+  ZC_IF_SOME(unsafeNode, declaration.unsafeBlock) {
+    unsafeBlock = unsafeBlockFor(hirModule, unsafeNode);
+    if (unsafeBlock == zc::none) return false;
+  }
+  const bool hasUnsafeBlock = unsafeBlock != zc::none;
   if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
-      function.resultType != declaration.resultType || function.sourceScopes.size() != 1 ||
-      function.locals.size() != 2 || function.blocks.size() != 1 ||
-      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 3 ||
-      sourceBlock.statements[0] != sourceLocal.node ||
+      function.resultType != declaration.resultType ||
+      function.sourceScopes.size() != (hasUnsafeBlock ? 2 : 1) || function.locals.size() != 2 ||
+      function.blocks.size() != 1 || declaration.body != sourceBlock.node ||
+      sourceBlock.statements.size() != 3 || sourceBlock.statements[0] != sourceLocal.node ||
       sourceBlock.statements[1] != destinationLocal.node ||
       sourceBlock.statements[2] != sourceReturn.node ||
       ((literal == zc::none) == (aggregate == zc::none)) ||
@@ -2160,7 +2195,7 @@ bool validSequentialLocalReturnFunction(
       destination.id != localId(2) || destination.kind != MirLocalKind::UserLocal ||
       destination.type != destinationLocal.type || destination.sourceScope != scope.id ||
       !sameSpan(destination.sourceSpan, destinationLocal.sourceSpan) || block.id != blockId(1) ||
-      block.sourceScope != scope.id || block.statements.size() != 4 ||
+      block.sourceScope != scope.id || block.statements.size() != (hasUnsafeBlock ? 6 : 4) ||
       block.statements[0].kind() != MirStatementKind::StorageLive ||
       block.statements[0].storageLocal() != source.id ||
       !sameSpan(block.statements[0].sourceSpan(), sourceLocal.sourceSpan) ||
@@ -2173,6 +2208,27 @@ bool validSequentialLocalReturnFunction(
       block.terminator.returnValue().value == zc::none ||
       !sameSpan(block.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
+  }
+  if (hasUnsafeBlock) {
+    ZC_IF_SOME(unsafeBlockRef, unsafeBlock) {
+      const auto& unsafeScope = function.sourceScopes[1];
+      if (unsafeScope.id != scopeId(2) || unsafeScope.parent != scopeId(1) ||
+          !sameSpan(unsafeScope.sourceSpan, unsafeBlockRef.sourceSpan)) {
+        return false;
+      }
+      if (block.statements[4].kind() != MirStatementKind::UnsafeScopeBoundary ||
+          block.statements[5].kind() != MirStatementKind::UnsafeScopeBoundary) {
+        return false;
+      }
+      const auto& enter = block.statements[4].unsafeScopeBoundaryValue();
+      const auto& exit = block.statements[5].unsafeScopeBoundaryValue();
+      if (enter.kind != MirUnsafeScopeBoundaryKind::Enter || enter.scope != scopeId(2) ||
+          exit.kind != MirUnsafeScopeBoundaryKind::Exit || exit.scope != scopeId(2) ||
+          !sameSpan(block.statements[4].sourceSpan(), unsafeBlockRef.sourceSpan) ||
+          !sameSpan(block.statements[5].sourceSpan(), unsafeBlockRef.sourceSpan)) {
+        return false;
+      }
+    }
   }
   const auto& sourceAssignment = block.statements[1].assignmentValue();
   if (sourceAssignment.initialization != MirInitializationKind::Initialize ||
@@ -3227,6 +3283,25 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                       declaration.definition, identities,
                                                       static_cast<uint32_t>(pending.size() + 1));
                 }
+                ZC_IF_SOME(unsafeNode, declaration.unsafeBlock) {
+                  auto unsafeBlock = unsafeBlockFor(hirModule, unsafeNode);
+                  if (unsafeBlock == zc::none) {
+                    return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
+                                                        ir::IrFailureKind::MissingRequiredFact,
+                                                        module, declaration.definition, identities,
+                                                        static_cast<uint32_t>(pending.size() + 1));
+                  }
+                  ZC_IF_SOME(block, unsafeBlock) {
+                    auto unsafeSpan = block.sourceSpan.clone();
+                    zc::Maybe<MirSourceScopeId> functionScope = scopeId(1);
+                    scopes.add(
+                        MirSourceScope{scopeId(2), zc::mv(functionScope), unsafeSpan.clone()});
+                    statements.add(MirStatement::unsafeScopeBoundary(
+                        MirUnsafeScopeBoundaryKind::Enter, scopeId(2), unsafeSpan.clone()));
+                    statements.add(MirStatement::unsafeScopeBoundary(
+                        MirUnsafeScopeBoundaryKind::Exit, scopeId(2), zc::mv(unsafeSpan)));
+                  }
+                }
                 zc::Vector<MirBasicBlock> blocks;
                 blocks.add(MirBasicBlock{
                     blockId(1), scopeId(1), zc::mv(statements),
@@ -3341,6 +3416,24 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
             return rejectMir<BuiltMirCandidate>(
                 ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact, module,
                 declaration.definition, identities, static_cast<uint32_t>(pending.size() + 1));
+          }
+          ZC_IF_SOME(unsafeNode, declaration.unsafeBlock) {
+            auto unsafeBlock = unsafeBlockFor(hirModule, unsafeNode);
+            if (unsafeBlock == zc::none) {
+              return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  declaration.definition, identities,
+                                                  static_cast<uint32_t>(pending.size() + 1));
+            }
+            ZC_IF_SOME(block, unsafeBlock) {
+              auto unsafeSpan = block.sourceSpan.clone();
+              zc::Maybe<MirSourceScopeId> functionScope = scopeId(1);
+              scopes.add(MirSourceScope{scopeId(2), zc::mv(functionScope), unsafeSpan.clone()});
+              statements.add(MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Enter,
+                                                               scopeId(2), unsafeSpan.clone()));
+              statements.add(MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Exit,
+                                                               scopeId(2), zc::mv(unsafeSpan)));
+            }
           }
           zc::Vector<MirBasicBlock> blocks;
           blocks.add(
@@ -4459,6 +4552,25 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                       declaration.definition, identities,
                                                       static_cast<uint32_t>(pending.size() + 1));
                 }
+                ZC_IF_SOME(unsafeNode, declaration.unsafeBlock) {
+                  auto unsafeBlock = unsafeBlockFor(hirModule, unsafeNode);
+                  if (unsafeBlock == zc::none) {
+                    return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
+                                                        ir::IrFailureKind::MissingRequiredFact,
+                                                        module, declaration.definition, identities,
+                                                        static_cast<uint32_t>(pending.size() + 1));
+                  }
+                  ZC_IF_SOME(block, unsafeBlock) {
+                    auto unsafeSpan = block.sourceSpan.clone();
+                    zc::Maybe<MirSourceScopeId> functionScope = scopeId(1);
+                    scopes.add(
+                        MirSourceScope{scopeId(2), zc::mv(functionScope), unsafeSpan.clone()});
+                    statements.add(MirStatement::unsafeScopeBoundary(
+                        MirUnsafeScopeBoundaryKind::Enter, scopeId(2), unsafeSpan.clone()));
+                    statements.add(MirStatement::unsafeScopeBoundary(
+                        MirUnsafeScopeBoundaryKind::Exit, scopeId(2), zc::mv(unsafeSpan)));
+                  }
+                }
                 zc::Vector<MirBasicBlock> blocks;
                 blocks.add(MirBasicBlock{
                     blockId(1), scopeId(1), zc::mv(statements),
@@ -4985,7 +5097,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
                   ZC_IF_SOME(returnStatement, sourceReturn) {
                     ZC_IF_SOME(reference, returnReference) {
                       valid = validSequentialLocalReturnFunction(
-                          function, sourceDeclaration, block, source, literal, aggregate,
+                          function, hirModule, sourceDeclaration, block, source, literal, aggregate,
                           destination, initializer, returnStatement, reference, module, identities,
                           semanticTypes, proofs, copy);
                     }
@@ -5345,9 +5457,9 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
             ZC_IF_SOME(localInitializer, initializer) {
               if (sourceOverwrite == zc::none) {
                 ZC_IF_SOME(reference, localReference) {
-                  valid = validLocalReturnFunction(function, sourceDeclaration, block, local,
-                                                   localInitializer, returnStatement, reference,
-                                                   module, identities, semanticTypes, proofs, copy);
+                  valid = validLocalReturnFunction(
+                      function, hirModule, sourceDeclaration, block, local, localInitializer,
+                      returnStatement, reference, module, identities, semanticTypes, proofs, copy);
                 }
               }
             }

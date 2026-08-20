@@ -506,7 +506,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   ast::NodeId value(tree.node(returnNode).payload.words[ast::kReturnStmtValueWord]);
   if (!tree.contains(value)) return zc::none;
   zc::Maybe<ast::NodeId> unsafeBlock;
-  if (statements.size == 1 && tree.node(value).kind == ast::SyntaxKind::UnsafeBlockExpr) {
+  if (tree.node(value).kind == ast::SyntaxKind::UnsafeBlockExpr) {
     const ast::NodeId unsafeBody(tree.node(value).payload.words[ast::kUnsafeBlockExprBodyWord]);
     if (!tree.contains(unsafeBody) || tree.node(unsafeBody).kind != ast::SyntaxKind::BlockStmt) {
       return zc::none;
@@ -524,7 +524,12 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     const ast::NodeId innerValue(
         tree.node(innerStatement).payload.words[ast::kExpressionStatementExpressionWord]);
     if (!tree.contains(innerValue)) return zc::none;
-    if (isScalarLiteral(tree.node(innerValue).kind)) { unsafeBlock = value; }
+    // The scalar-return path is the only single-statement shape that lowers
+    // unsafe blocks; other single-statement inner expressions keep the shape
+    // but drop the unsafe-block marker.
+    if (statements.size != 1 || isScalarLiteral(tree.node(innerValue).kind)) {
+      unsafeBlock = value;
+    }
     value = innerValue;
   }
   if (statements.size == 1) {
@@ -632,6 +637,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     return zc::none;
   }
   if (!tree.contains(initializer) && statements.size == 2) {
+    // A local borrow requires the referent to be initialized at the borrow point.
+    if (localBorrow != zc::none) return zc::none;
     return FunctionReturnShape{body,
                                returnNode,
                                value,
@@ -1770,7 +1777,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                                         zc::none,
                                                         zc::none,
                                                         zc::mv(sequential),
-                                                        zc::none,
+                                                        zc::mv(unsafeBlockSpan),
                                                         zc::mv(orderingKey)});
         continue;
       }
@@ -2957,6 +2964,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
           aggregateElementCount += aggregate.elements.size();
         }
       }
+      if (function.unsafeBlockSpan != zc::none) ++unsafeBlockCount;
       continue;
     }
     bool missingInitializer = false;
@@ -3164,10 +3172,17 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       const auto destinationInitializerId = hirId(next++);
       const auto returnId = hirId(next++);
       const auto returnValueId = hirId(next++);
+      zc::Maybe<HirNodeId> unsafeBlockId;
+      if (value.unsafeBlockSpan != zc::none) {
+        unsafeBlockId = hirId(next++);
+        unsafeBlocks.add(HirUnsafeBlockExpression{
+            ZC_ASSERT_NONNULL(unsafeBlockId), returnValueId, value.resultType,
+            ZC_ASSERT_NONNULL(value.unsafeBlockSpan).clone()});
+      }
       functions.add(HirFunctionDeclaration{functionId, value.definition, value.resultType,
                                            zc::mv(value.parameters), value.visibility.clone(),
                                            value.linkage, value.declarationSpan.clone(), bodyId,
-                                           zc::none});
+                                           zc::mv(unsafeBlockId)});
       zc::Vector<HirNodeId> statements;
       statements.add(sourceLocalId);
       statements.add(destinationLocalId);
@@ -3969,9 +3984,76 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
       }
-      nextFunction += 8;
+      if ((source.unsafeBlock != zc::none) != (function.unsafeBlock != zc::none)) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      if (source.unsafeBlock != zc::none) {
+        const auto expectedUnsafeBlock = hirId(expectedFunction + 8);
+        if (function.unsafeBlock != expectedUnsafeBlock) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        zc::Maybe<const HirUnsafeBlockExpression&> unsafeBlock;
+        for (const auto& candidate : candidate.impl->unsafeBlocks) {
+          if (candidate.node != expectedUnsafeBlock) continue;
+          if (unsafeBlock != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          unsafeBlock = candidate;
+        }
+        if (unsafeBlock == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        ZC_IF_SOME(block, unsafeBlock) {
+          auto sourceUnsafeSpan =
+              bound.parsedModule().spanFor(tree.node(ZC_ASSERT_NONNULL(source.unsafeBlock)).range);
+          if (block.body != returnStatement.value || block.type != function.resultType ||
+              sourceUnsafeSpan == zc::none ||
+              !sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(sourceUnsafeSpan))) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        }
+        nextFunction += 9;
+      } else {
+        nextFunction += 8;
+      }
       continue;
     }
+    // Verifies the unsafe block HIR node for a function shape. Returns the
+    // number of extra HIR nodes the unsafe block contributes (0 when absent, 1
+    // when present and valid), or zc::none when present but invalid.
+    auto verifyUnsafeBlock = [&](const FunctionReturnShape& source, uint32_t baseIncrement,
+                                 HirNodeId bodyNode) -> zc::Maybe<uint32_t> {
+      if (source.unsafeBlock == zc::none) return zc::Maybe<uint32_t>(0u);
+      const auto expectedUnsafeBlock = hirId(expectedFunction + baseIncrement);
+      if (function.unsafeBlock != expectedUnsafeBlock) return zc::none;
+      zc::Maybe<const HirUnsafeBlockExpression&> unsafeBlock;
+      for (const auto& candidateBlock : candidate.impl->unsafeBlocks) {
+        if (candidateBlock.node != expectedUnsafeBlock) continue;
+        if (unsafeBlock != zc::none) return zc::none;
+        unsafeBlock = candidateBlock;
+      }
+      if (unsafeBlock == zc::none) return zc::none;
+      ZC_IF_SOME(block, unsafeBlock) {
+        auto sourceUnsafeSpan = bound.parsedModule().spanFor(
+            bound.tree().node(ZC_ASSERT_NONNULL(source.unsafeBlock)).range);
+        if (block.body != bodyNode || block.type != function.resultType ||
+            sourceUnsafeSpan == zc::none ||
+            !sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(sourceUnsafeSpan))) {
+          return zc::none;
+        }
+      }
+      return zc::Maybe<uint32_t>(1u);
+    };
     zc::Maybe<const HirLocalBinding&> localBinding;
     for (const auto& local : candidate.impl->locals) {
       if (local.node != hirId(expectedFunction + 2)) continue;
@@ -4390,7 +4472,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               index + 1);
         }
       }
-      nextFunction += 7;
+      const auto baseIncrement = static_cast<uint32_t>(7);
+      auto unsafeExtra = verifyUnsafeBlock(source, baseIncrement, receiverCallNode);
+      if (unsafeExtra == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
       continue;
     }
     zc::Maybe<const HirNominalAggregateExpression&> aggregateExpression;
@@ -4630,9 +4719,23 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
-        nextFunction += 7;
+        const auto baseIncrement = static_cast<uint32_t>(initializesField ? 7 : 5);
+        auto unsafeExtra = verifyUnsafeBlock(source, baseIncrement, valueNode);
+        if (unsafeExtra == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
       } else {
-        nextFunction += 5;
+        const auto baseIncrement = static_cast<uint32_t>(5);
+        auto unsafeExtra = verifyUnsafeBlock(source, baseIncrement, valueNode);
+        if (unsafeExtra == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
       }
       continue;
     }
@@ -4759,7 +4862,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               index + 1);
         }
       }
-      nextFunction += 6;
+      const auto baseIncrement = static_cast<uint32_t>(6);
+      auto unsafeExtra = verifyUnsafeBlock(source, baseIncrement, valueNode);
+      if (unsafeExtra == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
       continue;
     }
     if (aggregateExpression != zc::none) {
@@ -5021,7 +5131,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
       }
-      nextFunction += 6 + functionLocalWriteCount * 2;
+      const auto baseIncrement = static_cast<uint32_t>(6 + functionLocalWriteCount * 2);
+      auto unsafeExtra = verifyUnsafeBlock(source, baseIncrement, valueNode);
+      if (unsafeExtra == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
       continue;
     }
     const bool uninitializedLocal = returnsLocal && !localHasInitializer && !hasLocalWrite;
@@ -5251,7 +5368,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
     }
     if (localFieldProjection != zc::none && !localHasInitializer && hasLocalWrite) {
-      nextFunction += static_cast<uint32_t>(5 + functionLocalWriteCount * 2);
+      const auto baseIncrement = static_cast<uint32_t>(5 + functionLocalWriteCount * 2);
+      auto unsafeExtra = verifyUnsafeBlock(source, baseIncrement, valueNode);
+      if (unsafeExtra == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
       continue;
     }
     const auto& signature = signatures.definitions[signatureSlot];
@@ -5412,7 +5536,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               index + 1);
         }
       }
-      nextFunction += 6;
+      const auto baseIncrement = static_cast<uint32_t>(6);
+      auto unsafeExtra = verifyUnsafeBlock(source, baseIncrement, valueNode);
+      if (unsafeExtra == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
       continue;
     }
 
@@ -5446,7 +5577,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
       }
-      nextFunction += 5;
+      const auto baseIncrement = static_cast<uint32_t>(5);
+      auto unsafeExtra = verifyUnsafeBlock(source, baseIncrement, valueNode);
+      if (unsafeExtra == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
       continue;
     }
 
@@ -5506,7 +5644,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
       }
-      nextFunction += static_cast<uint32_t>(5 + functionLocalWriteCount * 2);
+      const auto baseIncrement = static_cast<uint32_t>(5 + functionLocalWriteCount * 2);
+      auto unsafeExtra = verifyUnsafeBlock(source, baseIncrement, valueNode);
+      if (unsafeExtra == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
       continue;
     }
 
@@ -5575,7 +5720,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
       }
-      nextFunction += 6;
+      const auto baseIncrement = static_cast<uint32_t>(6);
+      auto unsafeExtra = verifyUnsafeBlock(source, baseIncrement, valueNode);
+      if (unsafeExtra == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
       continue;
     }
 
@@ -5806,7 +5958,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
       }
-      if (source.unsafeBlock != zc::none) {
+      if (source.unsafeBlock != zc::none && !returnsLocal) {
         const auto expectedUnsafeBlock = hirId(expectedFunction + 4);
         if (function.unsafeBlock != expectedUnsafeBlock) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -5841,10 +5993,17 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         nextFunction += 5;
       } else {
-        nextFunction +=
+        const auto baseIncrement =
             returnsLocal
                 ? static_cast<uint32_t>((localHasInitializer ? 6 : 5) + functionLocalWriteCount * 2)
                 : 4;
+        auto unsafeExtra = verifyUnsafeBlock(source, baseIncrement, valueNode);
+        if (unsafeExtra == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
       }
       continue;
     }
@@ -5963,10 +6122,17 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
       }
     }
-    nextFunction +=
+    const auto baseIncrement =
         returnsLocal
             ? static_cast<uint32_t>((localHasInitializer ? 6 : 5) + functionLocalWriteCount * 2)
             : 4;
+    auto unsafeExtra = verifyUnsafeBlock(source, baseIncrement, valueNode);
+    if (unsafeExtra == zc::none) {
+      return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                          ir::IrFailureKind::InvalidFact, module, registries,
+                                          index + 1);
+    }
+    nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
   }
 
   auto retainedBoundModule = candidate.impl->checkedModule.retainAdmittedBoundModule();
