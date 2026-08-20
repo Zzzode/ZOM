@@ -318,6 +318,185 @@ void expectReborrowStateLineageRejection(const OwnershipPipelineFixture& fixture
   expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
 }
 
+// Shared lineage tamper operations. Every ownership candidate carries the same
+// five lineage fields (plus a borrow-evidence revision on borrow-derived
+// candidates), so the same tamper applies to every candidate type.
+
+auto tamperSemanticContext = [](auto& candidate, const auto& builtMir, const auto&) {
+  candidate.semanticContext = identity::SemanticContextBrand{};
+  ZC_REQUIRE(candidate.semanticContext != builtMir.semanticContext());
+};
+
+auto tamperContextFingerprint = [](auto& candidate, const auto& builtMir, const auto&) {
+  candidate.contextFingerprint =
+      identity::ContextFingerprint::fromCanonicalDigest(identity::Sha256Digest{});
+  ZC_REQUIRE(candidate.contextFingerprint.digest() != builtMir.contextFingerprint().digest());
+};
+
+auto tamperModuleIdentity = [](auto& candidate, const auto& builtMir, const auto&) {
+  candidate.module = identity::ModuleId{};
+  ZC_REQUIRE(candidate.module != builtMir.module());
+};
+
+auto tamperBuiltRevision = [](auto& candidate, const auto& builtMir, const auto&) {
+  candidate.builtRevision = mir::MirRevisionId::fromDigest(identity::Sha256Digest{});
+  ZC_REQUIRE(candidate.builtRevision.digest() != builtMir.revision().digest());
+};
+
+auto tamperOverlayRevision = [](auto& candidate, const auto&, const auto& overlay) {
+  candidate.overlayRevision = OwnershipEventOverlayRevision::fromDigest(identity::Sha256Digest{});
+  ZC_REQUIRE(candidate.overlayRevision.digest() != overlay.revision().digest());
+};
+
+/// Builds a move-path candidate from the fixture, applies one lineage tamper,
+/// and requires the independent verifier to reject it with an input revision
+/// mismatch.
+template <typename Tamper>
+void expectMovePathLineageRejection(const OwnershipPipelineFixture& fixture, Tamper&& tamper) {
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = sessionOverlay(fixture.compilerSession());
+
+  auto candidateResult = facts::MovePathBuilder::build(builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() != 0);
+  tamper(candidate, builtMir, overlay);
+
+  auto verifiedResult = facts::MovePathVerifier::verify(zc::mv(candidate), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
+}
+
+/// Builds a flow candidate from the fixture, applies one lineage tamper, and
+/// requires the independent verifier to reject it with an input revision
+/// mismatch.
+template <typename Tamper>
+void expectFlowLineageRejection(const OwnershipPipelineFixture& fixture, Tamper&& tamper) {
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = sessionOverlay(fixture.compilerSession());
+
+  auto candidateResult = facts::FlowBuilder::build(builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() != 0);
+  tamper(candidate, builtMir, overlay);
+
+  auto verifiedResult = facts::FlowVerifier::verify(zc::mv(candidate), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
+}
+
+/// Builds a loan candidate from the fixture, applies one lineage tamper, and
+/// requires the independent verifier to reject it with an input revision
+/// mismatch.
+template <typename Tamper>
+void expectLoanLineageRejection(const OwnershipPipelineFixture& fixture, Tamper&& tamper) {
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = sessionOverlay(session);
+  const auto& inputs = ownershipInputs(session);
+
+  auto candidateResult = facts::LoanBuilder::build(inputs.movePaths(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.loans.size() != 0);
+  tamper(candidate, builtMir, overlay);
+
+  auto verifiedResult =
+      facts::LoanVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
+}
+
+/// Builds a reference-definition candidate from the fixture, applies one
+/// lineage tamper, and requires the independent verifier to reject it with an
+/// input revision mismatch.
+template <typename Tamper>
+void expectReferenceDefinitionLineageRejection(const OwnershipPipelineFixture& fixture,
+                                               Tamper&& tamper) {
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = sessionOverlay(session);
+  const auto& inputs = ownershipInputs(session);
+
+  auto candidateResult = facts::ReferenceDefinitionBuilder::build(
+      inputs.movePaths(), inputs.loans(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.definitions.size() != 0);
+  tamper(candidate, builtMir, overlay);
+
+  auto verifiedResult = facts::ReferenceDefinitionVerifier::verify(
+      zc::mv(candidate), inputs.movePaths(), inputs.loans(), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
+}
+
+/// Builds a reborrow-region candidate from the fixture, applies one lineage
+/// tamper, and requires the independent verifier to reject it with an input
+/// revision mismatch.
+template <typename Tamper>
+void expectReborrowRegionLineageRejection(const OwnershipPipelineFixture& fixture,
+                                          Tamper&& tamper) {
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = sessionOverlay(session);
+  const auto& inputs = ownershipInputs(session);
+
+  auto candidateResult = facts::ReborrowRegionBuilder::build(
+      inputs.flow(), inputs.loans(), inputs.references(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.regions.size() != 0);
+  tamper(candidate, builtMir, overlay);
+
+  auto verifiedResult = facts::ReborrowRegionVerifier::verify(
+      zc::mv(candidate), inputs.flow(), inputs.loans(), inputs.references(), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
+}
+
+/// Builds an initialization candidate from the fixture, applies one lineage
+/// tamper, and requires the independent verifier to reject it with an input
+/// revision mismatch.
+template <typename Tamper>
+void expectInitializationLineageRejection(const OwnershipPipelineFixture& fixture,
+                                          Tamper&& tamper) {
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = sessionOverlay(session);
+  const auto& inputs = ownershipInputs(session);
+
+  auto candidateResult =
+      facts::InitializationBuilder::build(builtMir, overlay, inputs.flow(), inputs.movePaths());
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() != 0);
+  tamper(candidate, builtMir, overlay);
+
+  auto verifiedResult = facts::InitializationVerifier::verify(zc::mv(candidate), builtMir, overlay,
+                                                              inputs.flow(), inputs.movePaths());
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
+}
+
+/// Builds an ownership-resource candidate from the fixture, applies one
+/// lineage tamper, and requires the independent verifier to reject it with an
+/// input revision mismatch.
+template <typename Tamper>
+void expectOwnershipResourceLineageRejection(const OwnershipPipelineFixture& fixture,
+                                             Tamper&& tamper) {
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = sessionOverlay(session);
+  const auto& inputs = ownershipInputs(session);
+
+  auto candidateResult =
+      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() != 0);
+  tamper(candidate, builtMir, overlay);
+
+  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
+      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
+}
+
 }  // namespace
 
 // Every ownership fact carries lineage fields that bind it to the Built MIR,
@@ -568,6 +747,236 @@ ZC_TEST("Ownership lineage mutation rejects a foreign borrow evidence revision")
     ZC_REQUIRE(candidate.borrowEvidenceRevision.digest() !=
                builtMir.borrowEvidenceRevision().digest());
   });
+}
+
+// --- MovePathCandidate lineage tamper tests ---
+
+ZC_TEST("Ownership lineage mutation rejects a foreign move-path semantic context brand") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectMovePathLineageRejection(fixture, tamperSemanticContext);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign move-path context fingerprint") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectMovePathLineageRejection(fixture, tamperContextFingerprint);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign move-path module identity") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectMovePathLineageRejection(fixture, tamperModuleIdentity);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign move-path built revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectMovePathLineageRejection(fixture, tamperBuiltRevision);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign move-path overlay revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectMovePathLineageRejection(fixture, tamperOverlayRevision);
+}
+
+// --- FlowCandidate lineage tamper tests ---
+
+ZC_TEST("Ownership lineage mutation rejects a foreign flow semantic context brand") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectFlowLineageRejection(fixture, tamperSemanticContext);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign flow context fingerprint") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectFlowLineageRejection(fixture, tamperContextFingerprint);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign flow module identity") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectFlowLineageRejection(fixture, tamperModuleIdentity);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign flow built revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectFlowLineageRejection(fixture, tamperBuiltRevision);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign flow overlay revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectFlowLineageRejection(fixture, tamperOverlayRevision);
+}
+
+// --- LoanCandidate lineage tamper tests ---
+
+ZC_TEST("Ownership lineage mutation rejects a foreign loan semantic context brand") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectLoanLineageRejection(fixture, tamperSemanticContext);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign loan context fingerprint") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectLoanLineageRejection(fixture, tamperContextFingerprint);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign loan module identity") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectLoanLineageRejection(fixture, tamperModuleIdentity);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign loan built revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectLoanLineageRejection(fixture, tamperBuiltRevision);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign loan overlay revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectLoanLineageRejection(fixture, tamperOverlayRevision);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign loan borrow evidence revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture foreign("fun entry() -> i32 { return 0; }"_zc);
+  ZC_REQUIRE(fixture.builtMir().borrowEvidenceRevision().digest() !=
+             foreign.builtMir().borrowEvidenceRevision().digest());
+  expectLoanLineageRejection(
+      fixture, [&foreign](auto& candidate, const auto& builtMir, const auto&) {
+        candidate.borrowEvidenceRevision = foreign.builtMir().borrowEvidenceRevision();
+        ZC_REQUIRE(candidate.borrowEvidenceRevision.digest() !=
+                   builtMir.borrowEvidenceRevision().digest());
+      });
+}
+
+// --- ReferenceDefinitionCandidate lineage tamper tests ---
+
+ZC_TEST(
+    "Ownership lineage mutation rejects a foreign reference-definition semantic context brand") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectReferenceDefinitionLineageRejection(fixture, tamperSemanticContext);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign reference-definition context fingerprint") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectReferenceDefinitionLineageRejection(fixture, tamperContextFingerprint);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign reference-definition module identity") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectReferenceDefinitionLineageRejection(fixture, tamperModuleIdentity);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign reference-definition built revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectReferenceDefinitionLineageRejection(fixture, tamperBuiltRevision);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign reference-definition overlay revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectReferenceDefinitionLineageRejection(fixture, tamperOverlayRevision);
+}
+
+ZC_TEST(
+    "Ownership lineage mutation rejects a foreign reference-definition borrow evidence revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture foreign("fun entry() -> i32 { return 0; }"_zc);
+  ZC_REQUIRE(fixture.builtMir().borrowEvidenceRevision().digest() !=
+             foreign.builtMir().borrowEvidenceRevision().digest());
+  expectReferenceDefinitionLineageRejection(
+      fixture, [&foreign](auto& candidate, const auto& builtMir, const auto&) {
+        candidate.borrowEvidenceRevision = foreign.builtMir().borrowEvidenceRevision();
+        ZC_REQUIRE(candidate.borrowEvidenceRevision.digest() !=
+                   builtMir.borrowEvidenceRevision().digest());
+      });
+}
+
+// --- ReborrowRegionCandidate lineage tamper tests ---
+
+ZC_TEST("Ownership lineage mutation rejects a foreign reborrow-region semantic context brand") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectReborrowRegionLineageRejection(fixture, tamperSemanticContext);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign reborrow-region context fingerprint") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectReborrowRegionLineageRejection(fixture, tamperContextFingerprint);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign reborrow-region module identity") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectReborrowRegionLineageRejection(fixture, tamperModuleIdentity);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign reborrow-region built revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectReborrowRegionLineageRejection(fixture, tamperBuiltRevision);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign reborrow-region overlay revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectReborrowRegionLineageRejection(fixture, tamperOverlayRevision);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign reborrow-region borrow evidence revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture foreign("fun entry() -> i32 { return 0; }"_zc);
+  ZC_REQUIRE(fixture.builtMir().borrowEvidenceRevision().digest() !=
+             foreign.builtMir().borrowEvidenceRevision().digest());
+  expectReborrowRegionLineageRejection(
+      fixture, [&foreign](auto& candidate, const auto& builtMir, const auto&) {
+        candidate.borrowEvidenceRevision = foreign.builtMir().borrowEvidenceRevision();
+        ZC_REQUIRE(candidate.borrowEvidenceRevision.digest() !=
+                   builtMir.borrowEvidenceRevision().digest());
+      });
+}
+
+// --- InitializationCandidate lineage tamper tests ---
+
+ZC_TEST("Ownership lineage mutation rejects a foreign initialization semantic context brand") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectInitializationLineageRejection(fixture, tamperSemanticContext);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign initialization context fingerprint") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectInitializationLineageRejection(fixture, tamperContextFingerprint);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign initialization module identity") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectInitializationLineageRejection(fixture, tamperModuleIdentity);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign initialization built revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectInitializationLineageRejection(fixture, tamperBuiltRevision);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign initialization overlay revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectInitializationLineageRejection(fixture, tamperOverlayRevision);
+}
+
+// --- OwnershipResourceCandidate lineage tamper tests ---
+
+ZC_TEST("Ownership lineage mutation rejects a foreign resource semantic context brand") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectOwnershipResourceLineageRejection(fixture, tamperSemanticContext);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign resource context fingerprint") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectOwnershipResourceLineageRejection(fixture, tamperContextFingerprint);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign resource module identity") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectOwnershipResourceLineageRejection(fixture, tamperModuleIdentity);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign resource built revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectOwnershipResourceLineageRejection(fixture, tamperBuiltRevision);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign resource overlay revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectOwnershipResourceLineageRejection(fixture, tamperOverlayRevision);
 }
 
 }  // namespace zomlang::compiler::ownership
