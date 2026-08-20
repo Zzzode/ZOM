@@ -400,7 +400,11 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
         ast::NodeId(tree.node(returnValue).payload.words[ast::kUnaryExpressionOperandWord]);
   }
   if (!matchesLocalReference(tree, pattern, returnReference)) return false;
-  if (!tree.contains(initializer) && statements.size == 2) return true;
+  if (!tree.contains(initializer) && statements.size == 2) {
+    // A local borrow requires the referent to be initialized at the borrow point.
+    if (isAdmittedLocalBorrow(tree, returnValue)) return false;
+    return true;
+  }
   if (statements.size == 2) return true;
   if (static_cast<ast::BindingDeclarationKind>(declaration.payload.words[ast::kLetStmtKindWord]) !=
       ast::BindingDeclarationKind::Mut) {

@@ -88,6 +88,12 @@ struct UseAfterMoveFailure final {
 };
 
 /// \brief Mutable borrow conflicts with an active borrow.
+///
+/// No production producer yet: borrow-conflict diagnostics remain outside the
+/// current subset (see the "Loans, references, and regions" slice, whose
+/// conflict diagnostics are still unavailable). Activates when conflict
+/// checking emits it for a mutable borrow whose place carries an active
+/// incompatible loan.
 struct MutableBorrowConflictFailure final {
   identity::DefId owner;
   MirEventKey primary;
@@ -108,6 +114,10 @@ struct UninitializedPlaceUseFailure final {
 };
 
 /// \brief Shared borrow conflicts with an active mutable borrow.
+///
+/// No production producer yet: activates with the same borrow-conflict
+/// checking slice as `MutableBorrowConflictFailure`, for a shared borrow whose
+/// place carries an active mutable loan.
 struct SharedBorrowConflictFailure final {
   identity::DefId owner;
   MirEventKey primary;
@@ -118,6 +128,11 @@ struct SharedBorrowConflictFailure final {
 };
 
 /// \brief Borrowed value does not live long enough.
+///
+/// No production producer yet: escape checks remain outside the current subset
+/// (see the "Loans, references, and regions" slice, whose escape checks are
+/// still unavailable). Activates when escape analysis emits it for a borrow
+/// whose referent outlives its origin.
 struct BorrowDoesNotLiveLongEnoughFailure final {
   identity::DefId owner;
   MirEventKey primary;
@@ -128,6 +143,11 @@ struct BorrowDoesNotLiveLongEnoughFailure final {
 };
 
 /// \brief Linear value is not consumed on all normal paths.
+///
+/// No production producer yet: the drop elaborator validates linear obligation
+/// discharge but does not yet emit this source failure. Activates when
+/// linear-obligation source diagnostics land for a value that remains
+/// unconsumed on some normal exit.
 struct LinearNotConsumedFailure final {
   identity::DefId owner;
   MirEventKey primary;
@@ -160,6 +180,12 @@ struct RawPointerBoundaryRequiresUnsafeFailure final {
 };
 
 /// \brief Cannot move a value while it is borrowed.
+///
+/// No production producer yet: move-out-of-borrow checking remains outside the
+/// current subset. Suppression rule 4 already references this variant (it
+/// suppresses the `UseAfterMove` cascade at a `MoveOutOfBorrow` primary
+/// because a blocked move does not move, drop, or consume the place); it
+/// activates when move-conflict checking emits the primary.
 struct MoveOutOfBorrowFailure final {
   identity::DefId owner;
   MirEventKey primary;
