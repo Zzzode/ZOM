@@ -1829,6 +1829,101 @@ ZC_TEST("Resource verifier rejects a tampered cast route subject") {
             ir::IrFailureKind::InvalidOwnershipProof);
 }
 
+ZC_TEST("Linear resource produces one obligation with return consumption") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Copy, Linear};\n"
+      "struct Cell { value: i32, }\n"
+      "impl !Copy for Cell;\n"
+      "unsafe impl Linear for Cell;\n"
+      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+  const auto& resources = ownershipInputs(fixture.compilerSession()).resources();
+
+  ZC_REQUIRE(resources.functions().size() == 1);
+  const auto& function = resources.functions()[0];
+  ZC_REQUIRE(function.linearObligations.size() == 1);
+  const auto& obligation = function.linearObligations[0];
+  ZC_EXPECT(obligation.transfers.size() == 0);
+  ZC_REQUIRE(obligation.consumptions.size() == 1);
+  ZC_EXPECT(obligation.consumptions[0].kind == facts::LinearConsumptionKind::Return);
+  ZC_REQUIRE(function.linearCarriers.size() == 1);
+  ZC_EXPECT(function.linearCarriers[0].incoming.size() == 0);
+  ZC_REQUIRE(function.linearSccs.size() == 1);
+  ZC_EXPECT(function.linearSccs[0].carriers.size() == 1);
+}
+
+ZC_TEST("Linear resource tracks transfer and return consumption across carriers") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Copy, Linear};\n"
+      "struct Cell { value: i32, }\n"
+      "impl !Copy for Cell;\n"
+      "unsafe impl Linear for Cell;\n"
+      "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
+  const auto& resources = ownershipInputs(fixture.compilerSession()).resources();
+
+  ZC_REQUIRE(resources.functions().size() == 1);
+  const auto& function = resources.functions()[0];
+  ZC_REQUIRE(function.linearObligations.size() == 1);
+  const auto& obligation = function.linearObligations[0];
+  ZC_REQUIRE(obligation.transfers.size() == 1);
+  ZC_REQUIRE(obligation.consumptions.size() == 1);
+  ZC_EXPECT(obligation.consumptions[0].kind == facts::LinearConsumptionKind::Return);
+  ZC_REQUIRE(function.linearCarriers.size() == 2);
+  ZC_EXPECT(function.linearCarriers[0].incoming.size() == 0);
+  ZC_REQUIRE(function.linearCarriers[1].incoming.size() == 1);
+  ZC_EXPECT(function.linearCarriers[1].incoming[0].transfer.event == obligation.transfers[0].event);
+  ZC_REQUIRE(function.linearSccs.size() == 2);
+  ZC_EXPECT(function.linearSccs[0].carriers.size() == 1);
+  ZC_EXPECT(function.linearSccs[1].carriers.size() == 1);
+}
+
+ZC_TEST("Resource verifier rejects a tampered linear carrier") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Copy, Linear};\n"
+      "struct Cell { value: i32, }\n"
+      "impl !Copy for Cell;\n"
+      "unsafe impl Linear for Cell;\n"
+      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
+  const auto& inputs = ownershipInputs(session);
+
+  auto candidateResult =
+      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() == 1);
+  ZC_REQUIRE(candidate.functions[0].linearCarriers.size() == 1);
+  candidate.functions[0].linearCarriers[0].key.creation.operandOrdinal = 999;
+
+  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
+      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
+  ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
+  ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
+            ir::IrFailureKind::InvalidOwnershipProof);
+}
+
+ZC_TEST("Same-type move emits no cast-carrier roles") {
+  OwnershipPipelineFixture fixture(
+      "import core::marker::{Copy};\n"
+      "struct Cell { value: i32, }\n"
+      "impl !Copy for Cell;\n"
+      "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
+
+  ZC_REQUIRE(overlay.functions().size() == 1);
+  for (const auto& slot : overlay.functions()[0].slots) {
+    for (const auto role : slot.roles) {
+      ZC_EXPECT(role != OwnershipEventRole::CastCarrierInitialize);
+      ZC_EXPECT(role != OwnershipEventRole::CastCarrierTransfer);
+      ZC_EXPECT(role != OwnershipEventRole::CastCarrierDrop);
+    }
+  }
+  ZC_EXPECT(overlay.functions()[0].castResourcePlans.size() == 0);
+}
+
 ZC_TEST("Resource verifier rejects a tampered drop plan mode") {
   OwnershipPipelineFixture fixture(
       "import core::marker::{Linear};\n"
@@ -2581,6 +2676,46 @@ ZC_TEST("Local borrow reference verifier rejects a forged parameter origin") {
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
             ir::IrFailureKind::InvalidOwnershipProof);
+}
+
+ZC_TEST("Local borrow loan facts record a shared borrow kind") {
+  OwnershipPipelineFixture fixture(
+      "fun borrow_local() -> &i32 { let value: i32 = 0; return &value; }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& inputs = ownershipInputs(session);
+
+  ZC_REQUIRE(inputs.loans().loans().size() == 1);
+  const auto& loan = inputs.loans().loans()[0];
+  ZC_EXPECT(loan.kind == mir::MirBorrowKind::Shared);
+  ZC_EXPECT(loan.source.place.projections().size() == 0);
+  ZC_EXPECT(loan.destination.place.projections().size() == 0);
+}
+
+ZC_TEST("Mutable local borrow reference definitions derive a StorageLive origin") {
+  OwnershipPipelineFixture fixture(
+      "fun borrow_local_mut() -> &mut i32 { mut value: i32 = 0; return &mut value; }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& inputs = ownershipInputs(session);
+
+  ZC_REQUIRE(inputs.loans().loans().size() == 1);
+  const auto& loan = inputs.loans().loans()[0];
+  ZC_EXPECT(loan.kind == mir::MirBorrowKind::Mutable);
+
+  ZC_REQUIRE(inputs.references().definitions().size() == 1);
+  const auto& definition = inputs.references().definitions()[0];
+  ZC_EXPECT(definition.origin.detail.is<facts::LocalReferenceOrigin>());
+  ZC_EXPECT(definition.origin.entry.location.point.kind() == MirPointKind::BeforeStatement);
+  ZC_EXPECT(definition.origin.entry.operandOrdinal == 0);
+
+  ZC_REQUIRE(inputs.regions().regions().size() == 1);
+  const auto& region = inputs.regions().regions()[0];
+  ZC_EXPECT(region.origin.is<facts::LocalReferenceOrigin>());
+  ZC_EXPECT(region.members.size() == 6);
+
+  ZC_REQUIRE(inputs.states().states().size() == 5);
+  for (const auto& state : inputs.states().states()) {
+    ZC_EXPECT(state.origin.is<facts::LocalReferenceOrigin>());
+  }
 }
 
 ZC_TEST("Initialization source verifier accepts matching inputs and rejects foreign lineage") {
@@ -5006,6 +5141,12 @@ ZC_TEST("Differential oracle matches production facts for a local borrow") {
   expectOracleMatchesInventory(fixture);
 }
 
+ZC_TEST("Differential oracle matches production facts for a mutable local borrow") {
+  OwnershipPipelineFixture fixture(
+      "fun borrow_local_mut() -> &mut i32 { mut value: i32 = 0; return &mut value; }"_zc);
+  expectOracleMatchesInventory(fixture);
+}
+
 ZC_TEST("Differential oracle matches production facts for a field projection write and read") {
   OwnershipPipelineFixture fixture(
       "struct Pair { mut left: i32, right: bool, }\n"
@@ -5452,6 +5593,128 @@ ZC_TEST("Ownership event overlay projects unsafe scope boundaries from a scalar 
   ZC_EXPECT(foundEnter);
   ZC_EXPECT(foundExit);
   ZC_EXPECT(foundUnsafeAcknowledgement);
+
+  auto verifiedResult = verifyOverlay(zc::mv(candidate), fixture);
+  ZC_REQUIRE(verifiedResult.isVerified());
+}
+
+ZC_TEST("Ownership event overlay projects unsafe scope boundaries from a sequential return") {
+  OwnershipPipelineFixture fixture(
+      "fun answer() -> i32 { let source = 42; let dest = source; return unsafe { dest }; }"_zc);
+  const auto& builtMir = fixture.builtMir();
+  ZC_REQUIRE(builtMir.functions().size() == 1);
+  const auto& function = builtMir.functions()[0];
+  ZC_REQUIRE(function.sourceScopes.size() == 2);
+  ZC_EXPECT(function.sourceScopes[1].id.ordinal() == 2);
+  ZC_IF_SOME(parent, function.sourceScopes[1].parent) { ZC_EXPECT(parent.ordinal() == 1); }
+  ZC_REQUIRE(function.blocks.size() == 1);
+  const auto& block = function.blocks[0];
+  ZC_REQUIRE(block.statements.size() == 6);
+  ZC_EXPECT(block.statements[0].kind() == mir::MirStatementKind::StorageLive);
+  ZC_EXPECT(block.statements[1].kind() == mir::MirStatementKind::Assign);
+  ZC_EXPECT(block.statements[2].kind() == mir::MirStatementKind::StorageLive);
+  ZC_EXPECT(block.statements[3].kind() == mir::MirStatementKind::Assign);
+  ZC_EXPECT(block.statements[4].kind() == mir::MirStatementKind::UnsafeScopeBoundary);
+  ZC_EXPECT(block.statements[4].unsafeScopeBoundaryValue().kind ==
+            mir::MirUnsafeScopeBoundaryKind::Enter);
+  ZC_EXPECT(block.statements[4].unsafeScopeBoundaryValue().scope.ordinal() == 2);
+  ZC_EXPECT(block.statements[5].kind() == mir::MirStatementKind::UnsafeScopeBoundary);
+  ZC_EXPECT(block.statements[5].unsafeScopeBoundaryValue().kind ==
+            mir::MirUnsafeScopeBoundaryKind::Exit);
+  ZC_EXPECT(block.statements[5].unsafeScopeBoundaryValue().scope.ordinal() == 2);
+
+  auto candidateResult = buildOverlay(fixture);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() == 1);
+  const auto& overlayFunction = candidate.functions[0];
+  bool foundEnter = false;
+  bool foundExit = false;
+  for (const auto& slot : overlayFunction.slots) {
+    if (slot.key.location.point.kind() != MirPointKind::BeforeStatement) continue;
+    if (slot.key.location.point.beforeStatementValue().block != block.id) continue;
+    const auto ordinal = slot.key.location.point.beforeStatementValue().ordinal;
+    if (ordinal == 4) {
+      ZC_EXPECT(slot.stage == OwnershipEventStage::Effect);
+      bool hasOperation = false;
+      for (const auto role : slot.roles) {
+        if (role == OwnershipEventRole::Operation) hasOperation = true;
+      }
+      ZC_EXPECT(hasOperation);
+      foundEnter = true;
+    }
+    if (ordinal == 5) {
+      ZC_EXPECT(slot.stage == OwnershipEventStage::Effect);
+      bool hasOperation = false;
+      for (const auto role : slot.roles) {
+        if (role == OwnershipEventRole::Operation) hasOperation = true;
+      }
+      ZC_EXPECT(hasOperation);
+      foundExit = true;
+    }
+  }
+  ZC_EXPECT(foundEnter);
+  ZC_EXPECT(foundExit);
+
+  auto verifiedResult = verifyOverlay(zc::mv(candidate), fixture);
+  ZC_REQUIRE(verifiedResult.isVerified());
+}
+
+ZC_TEST("Ownership event overlay projects unsafe scope boundaries from a local return") {
+  OwnershipPipelineFixture fixture(
+      "fun answer() -> i32 { let local = 42; return unsafe { local }; }"_zc);
+  const auto& builtMir = fixture.builtMir();
+  ZC_REQUIRE(builtMir.functions().size() == 1);
+  const auto& function = builtMir.functions()[0];
+  ZC_REQUIRE(function.sourceScopes.size() == 2);
+  ZC_EXPECT(function.sourceScopes[1].id.ordinal() == 2);
+  ZC_IF_SOME(parent, function.sourceScopes[1].parent) { ZC_EXPECT(parent.ordinal() == 1); }
+  ZC_REQUIRE(function.blocks.size() == 1);
+  const auto& block = function.blocks[0];
+  ZC_REQUIRE(block.statements.size() == 4);
+  ZC_EXPECT(block.statements[0].kind() == mir::MirStatementKind::StorageLive);
+  ZC_EXPECT(block.statements[1].kind() == mir::MirStatementKind::Assign);
+  ZC_EXPECT(block.statements[2].kind() == mir::MirStatementKind::UnsafeScopeBoundary);
+  ZC_EXPECT(block.statements[2].unsafeScopeBoundaryValue().kind ==
+            mir::MirUnsafeScopeBoundaryKind::Enter);
+  ZC_EXPECT(block.statements[2].unsafeScopeBoundaryValue().scope.ordinal() == 2);
+  ZC_EXPECT(block.statements[3].kind() == mir::MirStatementKind::UnsafeScopeBoundary);
+  ZC_EXPECT(block.statements[3].unsafeScopeBoundaryValue().kind ==
+            mir::MirUnsafeScopeBoundaryKind::Exit);
+  ZC_EXPECT(block.statements[3].unsafeScopeBoundaryValue().scope.ordinal() == 2);
+
+  auto candidateResult = buildOverlay(fixture);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() == 1);
+  const auto& overlayFunction = candidate.functions[0];
+  bool foundEnter = false;
+  bool foundExit = false;
+  for (const auto& slot : overlayFunction.slots) {
+    if (slot.key.location.point.kind() != MirPointKind::BeforeStatement) continue;
+    if (slot.key.location.point.beforeStatementValue().block != block.id) continue;
+    const auto ordinal = slot.key.location.point.beforeStatementValue().ordinal;
+    if (ordinal == 2) {
+      ZC_EXPECT(slot.stage == OwnershipEventStage::Effect);
+      bool hasOperation = false;
+      for (const auto role : slot.roles) {
+        if (role == OwnershipEventRole::Operation) hasOperation = true;
+      }
+      ZC_EXPECT(hasOperation);
+      foundEnter = true;
+    }
+    if (ordinal == 3) {
+      ZC_EXPECT(slot.stage == OwnershipEventStage::Effect);
+      bool hasOperation = false;
+      for (const auto role : slot.roles) {
+        if (role == OwnershipEventRole::Operation) hasOperation = true;
+      }
+      ZC_EXPECT(hasOperation);
+      foundExit = true;
+    }
+  }
+  ZC_EXPECT(foundEnter);
+  ZC_EXPECT(foundExit);
 
   auto verifiedResult = verifyOverlay(zc::mv(candidate), fixture);
   ZC_REQUIRE(verifiedResult.isVerified());

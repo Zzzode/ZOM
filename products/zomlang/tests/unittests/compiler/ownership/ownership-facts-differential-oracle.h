@@ -1917,9 +1917,14 @@ private:
     for (const auto& plan : pending) {
       if (!applyPlan(*plan.plan, plan.isTransfer)) return zc::none;
     }
-    return facts::OwnershipResourceFunction{function.owner, zc::mv(resourceFacts),
-                                            zc::mv(transfers), zc::mv(castRoutes),
-                                            zc::mv(dropPlans)};
+    return facts::OwnershipResourceFunction{function.owner,
+                                            zc::mv(resourceFacts),
+                                            zc::mv(transfers),
+                                            zc::mv(castRoutes),
+                                            zc::mv(dropPlans),
+                                            {},
+                                            {},
+                                            {}};
   }
 
   const mir::VerifiedBuiltMir& builtMir;

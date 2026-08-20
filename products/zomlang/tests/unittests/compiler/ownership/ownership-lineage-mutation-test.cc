@@ -296,6 +296,28 @@ void expectPublishedRejection(const Result& result, ir::IrFailureKind expected) 
   ZC_EXPECT(result.invariantFailures().facts()[0].kind() == expected);
 }
 
+/// Builds a reborrow-state candidate from the fixture, applies one lineage
+/// tamper, and requires the independent verifier to reject it with an input
+/// revision mismatch, publishing no ownership output.
+template <typename Tamper>
+void expectReborrowStateLineageRejection(const OwnershipPipelineFixture& fixture, Tamper&& tamper) {
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = sessionOverlay(session);
+  const auto& inputs = ownershipInputs(session);
+
+  auto candidateResult =
+      facts::ReborrowStateBuilder::build(inputs.references(), inputs.regions(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.states.size() != 0);
+  tamper(candidate, builtMir, overlay);
+
+  auto verifiedResult = facts::ReborrowStateVerifier::verify(zc::mv(candidate), inputs.references(),
+                                                             inputs.regions(), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
+}
+
 }  // namespace
 
 // Every ownership fact carries lineage fields that bind it to the Built MIR,
@@ -473,6 +495,79 @@ ZC_TEST("Ownership lineage mutation rejects a tampered logical drop plan subject
   auto verifiedResult = facts::OwnershipResourceVerifier::verify(
       zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   expectPublishedRejection(verifiedResult, ir::IrFailureKind::InvalidOwnershipProof);
+}
+
+// Every ownership candidate carries the semantic-context brand, context
+// fingerprint, module identity, built/overlay revisions, and borrow-evidence
+// revision that bind it to its inputs. Tampering any one lineage field must
+// make the independent verifier reject the candidate with an input revision
+// mismatch, publishing the rejection instead of an ownership output.
+
+ZC_TEST("Ownership lineage mutation rejects a foreign semantic context brand") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectReborrowStateLineageRejection(
+      fixture, [](facts::ReborrowStateCandidate& candidate, const mir::VerifiedBuiltMir& builtMir,
+                  const VerifiedOwnershipEventOverlay&) {
+        candidate.semanticContext = identity::SemanticContextBrand{};
+        ZC_REQUIRE(candidate.semanticContext != builtMir.semanticContext());
+      });
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign context fingerprint") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectReborrowStateLineageRejection(
+      fixture, [](facts::ReborrowStateCandidate& candidate, const mir::VerifiedBuiltMir& builtMir,
+                  const VerifiedOwnershipEventOverlay&) {
+        candidate.contextFingerprint =
+            identity::ContextFingerprint::fromCanonicalDigest(identity::Sha256Digest{});
+        ZC_REQUIRE(candidate.contextFingerprint.digest() != builtMir.contextFingerprint().digest());
+      });
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign module identity") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectReborrowStateLineageRejection(
+      fixture, [](facts::ReborrowStateCandidate& candidate, const mir::VerifiedBuiltMir& builtMir,
+                  const VerifiedOwnershipEventOverlay&) {
+        candidate.module = identity::ModuleId{};
+        ZC_REQUIRE(candidate.module != builtMir.module());
+      });
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign built revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectReborrowStateLineageRejection(
+      fixture, [](facts::ReborrowStateCandidate& candidate, const mir::VerifiedBuiltMir& builtMir,
+                  const VerifiedOwnershipEventOverlay&) {
+        candidate.builtRevision = mir::MirRevisionId::fromDigest(identity::Sha256Digest{});
+        ZC_REQUIRE(candidate.builtRevision.digest() != builtMir.revision().digest());
+      });
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign overlay revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectReborrowStateLineageRejection(fixture, [](facts::ReborrowStateCandidate& candidate,
+                                                  const mir::VerifiedBuiltMir&,
+                                                  const VerifiedOwnershipEventOverlay& overlay) {
+    candidate.overlayRevision = OwnershipEventOverlayRevision::fromDigest(identity::Sha256Digest{});
+    ZC_REQUIRE(candidate.overlayRevision.digest() != overlay.revision().digest());
+  });
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign borrow evidence revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  // BorrowEvidenceRevision has no public digest constructor, so a second,
+  // genuinely different compilation donates a foreign-but-valid revision.
+  OwnershipPipelineFixture foreign("fun entry() -> i32 { return 0; }"_zc);
+  ZC_REQUIRE(fixture.builtMir().borrowEvidenceRevision().digest() !=
+             foreign.builtMir().borrowEvidenceRevision().digest());
+  expectReborrowStateLineageRejection(fixture, [&foreign](facts::ReborrowStateCandidate& candidate,
+                                                          const mir::VerifiedBuiltMir& builtMir,
+                                                          const VerifiedOwnershipEventOverlay&) {
+    candidate.borrowEvidenceRevision = foreign.builtMir().borrowEvidenceRevision();
+    ZC_REQUIRE(candidate.borrowEvidenceRevision.digest() !=
+               builtMir.borrowEvidenceRevision().digest());
+  });
 }
 
 }  // namespace zomlang::compiler::ownership
