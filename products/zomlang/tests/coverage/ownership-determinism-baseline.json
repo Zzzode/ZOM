@@ -1,0 +1,25 @@
+{
+  "baseRevision": "109947943519ec2d380a3e8d71813b40bc68bde5",
+  "headRevision": "900a50d1212546afd4e09cc1bd2f2677259fb01c",
+  "inputs": [
+    "05-statements/uninitialized_local_return_neg_01.zom",
+    "05-statements/uninitialized_aggregate_field_return_neg_01.zom",
+    "05-statements/uninitialized_aggregate_sibling_field_return_neg_01.zom"
+  ],
+  "outputs": {
+    "05-statements/uninitialized_aggregate_field_return_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "b69cbbe8b4d88521af64876e0656c1eecf6a331b1c55d2d5f320f7295779842d"
+    },
+    "05-statements/uninitialized_aggregate_sibling_field_return_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "8f99d407104a0d06e5001739b7b57680add96b6de9524ce0b2c7bfe88e0b2471"
+    },
+    "05-statements/uninitialized_local_return_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "3602ce5467e5e90ca7129597d76f85182b1688c7b0fb445d1b1f3c9ef7efd4d8"
+    }
+  },
+  "repeats": 3,
+  "schema": "zom.rfc0007.ownership-determinism-baseline"
+}

@@ -42,6 +42,40 @@ jobs:
       - name: Check RFC metadata
         run: python3 scripts/check-rfc.py
 
+  check-english-only:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.10"
+
+      - name: Check English-only gate
+        run: |
+          python3 scripts/check-english-only.py --self-test
+          python3 scripts/check-english-only.py --check
+
+  check-diff-hygiene:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.10"
+
+      - name: Check diff hygiene
+        run: |
+          python3 scripts/check-diff-hygiene.py --self-test
+          python3 scripts/check-diff-hygiene.py --check
+
   check-format:
     runs-on: ubuntu-latest
 
@@ -81,6 +115,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
@@ -179,6 +215,14 @@ jobs:
             exit 1
           fi
           echo "Coverage file validation passed"
+
+      - name: Generate ownership coverage report
+        run: python3 scripts/run-ownership-coverage.py
+
+      - name: Check ownership coverage floor and baseline
+        run: |
+          python3 scripts/check-ownership-coverage.py --self-test
+          python3 scripts/check-ownership-coverage.py
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

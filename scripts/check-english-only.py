@@ -18,6 +18,11 @@ DEFAULT_BASE_FILE = Path(
 )
 BASE_RECORD = re.compile(rb"[0-9a-f]{40}\n")
 
+# The project rule files quote forbidden scripts as counter-examples in the
+# English-only and no-legacy-prose rules.  They are the sole tolerated
+# exception and must never gain additional East Asian text.
+EXEMPT_PATHS = frozenset({Path("AGENTS.md"), Path("CLAUDE.md")})
+
 SCRIPT_RANGES = (
     ("Han", 0x2E80, 0x2FDF),
     ("Han", 0x3400, 0x4DBF),
@@ -241,6 +246,8 @@ def scan_text(path: Path, text: str) -> list[Finding]:
 def scan_changed_text(root: Path, changes: list[ChangedPath]) -> list[Finding]:
     findings: list[Finding] = []
     for change in changes:
+        if change.path in EXEMPT_PATHS:
+            continue
         text = read_text(root / change.path)
         if text is not None:
             findings.extend(scan_text(change.path, text))

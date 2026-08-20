@@ -83,7 +83,11 @@ scripts/check-rfc0016-coverage.py
 scripts/check-ownership-architecture.py
 scripts/run-ownership-coverage.py
 scripts/check-ownership-coverage.py
+scripts/check-diff-hygiene.py
+scripts/check-ownership-determinism.py
 products/zomlang/tests/coverage/ownership-exemptions.json
+products/zomlang/tests/coverage/ownership-coverage-baseline.json
+products/zomlang/tests/coverage/ownership-determinism-baseline.json
 products/zomlang/tests/performance/incremental-query-corpus.json
 products/zomlang/tests/performance/incremental-query-baseline.json
 cmake/utils/common.cmake
@@ -144,6 +148,20 @@ cmake/utils/unittests.cmake
 - [ ] `python3 scripts/check-english-only.py --check --base-file
       products/zomlang/tests/coverage/implementation-series-base.txt` and
       `python3 scripts/check-english-only.py --self-test` pass.
+- [ ] `python3 scripts/check-diff-hygiene.py --check` and
+      `python3 scripts/check-diff-hygiene.py --self-test` pass.
+- [ ] `python3 scripts/check-ownership-coverage.py --self-test` passes; when
+      the coverage preset is built, `python3 scripts/run-ownership-coverage.py`
+      followed by `python3 scripts/check-ownership-coverage.py` passes with no
+      per-file baseline regression and no aggregate baseline regression.
+- [ ] `python3 scripts/check-ownership-determinism.py --check --zomc <zomc>`
+      and `python3 scripts/check-ownership-determinism.py --self-test` pass;
+      repeated processes produce byte-identical ownership diagnostics and the
+      recorded baseline hashes match.  The worker-count 1/2/4/8 permutation
+      matrix is enforced at the unit-test level for the query/driver rail
+      (`active-definition-authority-session-test.cc`) and the ownership rail
+      revision determinism (`ownership-event-overlay-test.cc`); a CLI
+      worker-count control is a compiler change outside this gate.
 - [ ] `python3 scripts/check-spec-alignment.py --check --report
       <build-local-report>` and
       `python3 scripts/check-spec-alignment.py --self-test` pass.

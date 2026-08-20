@@ -280,6 +280,84 @@ set_tests_properties(ownership-architecture-negative PROPERTIES
 )
 
 add_test(
+  NAME ownership-coverage-checker-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-ownership-coverage.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(ownership-coverage-checker-negative PROPERTIES
+  LABELS "conformance;ownership;coverage;negative"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME english-only
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-english-only.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(english-only PROPERTIES
+  LABELS "conformance;english-only;architecture"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME english-only-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-english-only.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(english-only-negative PROPERTIES
+  LABELS "conformance;english-only;architecture;negative"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME diff-hygiene
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-diff-hygiene.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(diff-hygiene PROPERTIES
+  LABELS "conformance;diff-hygiene;architecture"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME diff-hygiene-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-diff-hygiene.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(diff-hygiene-negative PROPERTIES
+  LABELS "conformance;diff-hygiene;architecture;negative"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME ownership-determinism
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-ownership-determinism.py
+          --check --zomc "$<TARGET_FILE:zomc>"
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(ownership-determinism PROPERTIES
+  LABELS "conformance;ownership;determinism"
+  TIMEOUT 300
+)
+
+add_test(
+  NAME ownership-determinism-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-ownership-determinism.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(ownership-determinism-negative PROPERTIES
+  LABELS "conformance;ownership;determinism;negative"
+  TIMEOUT 120
+)
+
+add_test(
   NAME incremental-query-architecture
   COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-incremental-query-architecture.py --check
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
