@@ -1,0 +1,4 @@
+fun entry() -> &i32 {
+    let x: i32 = 1;
+    return unsafe { &x };
+}

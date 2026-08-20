@@ -1,0 +1,54 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/unsafe_local_borrow_pos_61.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #22 @1:1..5:1 file_name="unsafe_local_borrow_pos_61.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #21 @1:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #20 @1:1..4:2 name="entry"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:10..1:12 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             ReferenceTypeExpr #3 @1:16..1:20 is_mut=false
+// CHECK-NEXT:               elem:
+// CHECK-NEXT:                 PredefinedTypeExpr #2 @1:17..1:20 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #19 @1:21..4:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #10 @2:5..2:20
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #9 @2:5..2:20 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #8 @2:9..2:19 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #7 @2:9..2:19
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #4 @2:9..2:10 name="x"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 PredefinedTypeExpr #5 @2:12..2:15 kind=I32
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 IntLiteral #6 @2:18..2:19 base=10 value="1"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #18 @3:5..3:26
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #17 @3:5..3:26
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         UnsafeBlockExpr #16 @3:12..3:25
+// CHECK-NEXT:                           body:
+// CHECK-NEXT:                             BlockStmt #15 @3:19..3:25
+// CHECK-NEXT:                               stmts:
+// CHECK-NEXT:                                 StatementListItem #14 @3:21..3:23
+// CHECK-NEXT:                                   item:
+// CHECK-NEXT:                                     ExpressionStatement #13 @3:21..3:23
+// CHECK-NEXT:                                       expression:
+// CHECK-NEXT:                                         UnaryExpression #12 @3:21..3:23 op=Ref
+// CHECK-NEXT:                                           operand:
+// CHECK-NEXT:                                             IdentExpr #11 @3:22..3:23 name="x"
+// CHECK-NEXT:                                   attrs: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

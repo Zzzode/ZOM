@@ -1,0 +1,4 @@
+fun entry(p: &i32) -> &i32 {
+    let y = p;
+    return unsafe { &*y };
+}

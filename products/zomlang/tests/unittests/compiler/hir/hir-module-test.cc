@@ -670,5 +670,47 @@ ZC_TEST("Checked-module assembly ignores interfaces outside the exact imported v
   }
 }
 
+ZC_TEST("HIR pipeline lowers an unsafe block wrapping a parameter reborrow") {
+  HirPipelineFixture fixture("fun entry() -> i32 { return unsafe { 1 }; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.unsafeBlocks().size() == 1);
+}
+
+ZC_TEST("HIR pipeline lowers an unsafe block wrapping a local borrow") {
+  HirPipelineFixture fixture("fun entry() -> &i32 { let x: i32 = 1; return unsafe { &x }; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.localBorrows().size() == 1);
+  ZC_REQUIRE(module.unsafeBlocks().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& borrow = module.localBorrows()[0];
+  const auto& unsafeBlock = module.unsafeBlocks()[0];
+  ZC_EXPECT(function.unsafeBlock != zc::none);
+  ZC_EXPECT(unsafeBlock.node == ZC_ASSERT_NONNULL(function.unsafeBlock));
+  ZC_EXPECT(unsafeBlock.body == borrow.node);
+  ZC_EXPECT(unsafeBlock.type == function.resultType);
+  ZC_EXPECT(borrow.type == function.resultType);
+}
+
+ZC_TEST("HIR pipeline lowers an unsafe block wrapping a local-alias reborrow") {
+  HirPipelineFixture fixture("fun entry(p: &i32) -> &i32 { let y = p; return unsafe { &*y }; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.parameterReborrows().size() == 1);
+  ZC_REQUIRE(module.unsafeBlocks().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& reborrow = module.parameterReborrows()[0];
+  const auto& unsafeBlock = module.unsafeBlocks()[0];
+  ZC_EXPECT(function.unsafeBlock != zc::none);
+  ZC_EXPECT(unsafeBlock.node == ZC_ASSERT_NONNULL(function.unsafeBlock));
+  ZC_EXPECT(unsafeBlock.body == reborrow.node);
+  ZC_EXPECT(unsafeBlock.type == function.resultType);
+  ZC_EXPECT(reborrow.type == function.resultType);
+  ZC_EXPECT(reborrow.sourceAlias != zc::none);
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::hir

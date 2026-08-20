@@ -524,10 +524,11 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     const ast::NodeId innerValue(
         tree.node(innerStatement).payload.words[ast::kExpressionStatementExpressionWord]);
     if (!tree.contains(innerValue)) return zc::none;
-    // The scalar-return path is the only single-statement shape that lowers
-    // unsafe blocks; other single-statement inner expressions keep the shape
-    // but drop the unsafe-block marker.
-    if (statements.size != 1 || isScalarLiteral(tree.node(innerValue).kind)) {
+    // The scalar-return and parameter-reborrow paths lower unsafe blocks for
+    // single-statement shapes; other single-statement inner expressions keep
+    // the shape but drop the unsafe-block marker.
+    if (statements.size != 1 || isScalarLiteral(tree.node(innerValue).kind) ||
+        reborrowReference(tree, innerValue) != zc::none) {
       unsafeBlock = value;
     }
     value = innerValue;
@@ -5810,18 +5811,20 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     }
 
     ZC_IF_SOME(reborrow, parameterReborrow) {
-      const auto& source = tree.node(sourceValueNode);
-      if (source.kind != ast::SyntaxKind::UnaryExpression ||
-          (static_cast<ast::UnaryOperatorKind>(source.payload.words[ast::kUnaryExpressionOpWord]) !=
+      const auto& sourceNode = tree.node(sourceValueNode);
+      if (sourceNode.kind != ast::SyntaxKind::UnaryExpression ||
+          (static_cast<ast::UnaryOperatorKind>(
+               sourceNode.payload.words[ast::kUnaryExpressionOpWord]) !=
                ast::UnaryOperatorKind::Ref &&
-           static_cast<ast::UnaryOperatorKind>(source.payload.words[ast::kUnaryExpressionOpWord]) !=
+           static_cast<ast::UnaryOperatorKind>(
+               sourceNode.payload.words[ast::kUnaryExpressionOpWord]) !=
                ast::UnaryOperatorKind::RefMut) ||
           !sameSpan(reborrow.sourceSpan, ZC_ASSERT_NONNULL(sourceValueSpan))) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
       }
-      const ast::NodeId dereference(source.payload.words[ast::kUnaryExpressionOperandWord]);
+      const ast::NodeId dereference(sourceNode.payload.words[ast::kUnaryExpressionOperandWord]);
       if (!tree.contains(dereference) ||
           tree.node(dereference).kind != ast::SyntaxKind::UnaryExpression ||
           static_cast<ast::UnaryOperatorKind>(
@@ -5849,8 +5852,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       ZC_IF_SOME(value, dereferenceTypeIndex) { dereferenceTypeSlot = value; }
       const auto parameterType = facts.nodeTypes().entries()[parameterTypeSlot].value;
       const auto referentType = facts.nodeTypes().entries()[dereferenceTypeSlot].value;
-      const auto operation =
-          static_cast<ast::UnaryOperatorKind>(source.payload.words[ast::kUnaryExpressionOpWord]);
+      const auto operation = static_cast<ast::UnaryOperatorKind>(
+          sourceNode.payload.words[ast::kUnaryExpressionOpWord]);
       const auto expectedMutability = operation == ast::UnaryOperatorKind::Ref
                                           ? type::semantic::Mutability::Const
                                           : type::semantic::Mutability::Mutable;
@@ -5894,7 +5897,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
       }
-      nextFunction += 4;
+      const auto baseIncrement = 4;
+      auto unsafeExtra = verifyUnsafeBlock(source, baseIncrement, valueNode);
+      if (unsafeExtra == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
       continue;
     }
 
