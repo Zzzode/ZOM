@@ -1018,6 +1018,18 @@ bool isCallableDeclaration(const ast::Tree& tree, ast::NodeId declaration,
     }
     parameters = ast::NodeId(syntax.payload.words[ast::kMethodDeclParamsIdWord]);
     returnType = ast::NodeId(syntax.payload.words[ast::kMethodDeclRetTyWord]);
+  } else if (definitionKind == identity::DefinitionKind::Constructor &&
+             syntax.kind == ast::SyntaxKind::ConstructorDecl) {
+    if (tree.contains(ast::NodeId(syntax.payload.words[ast::kConstructorDeclRaisesTyWord]))) {
+      return false;
+    }
+    parameters = ast::NodeId(syntax.payload.words[ast::kConstructorDeclParamsIdWord]);
+  } else if (definitionKind == identity::DefinitionKind::Destructor &&
+             syntax.kind == ast::SyntaxKind::DestructorDecl) {
+    if (tree.contains(ast::NodeId(syntax.payload.words[ast::kDestructorDeclRaisesTyWord]))) {
+      return false;
+    }
+    parameters = ast::NodeId(syntax.payload.words[ast::kDestructorDeclParamsIdWord]);
   } else {
     return false;
   }
@@ -1898,7 +1910,7 @@ zc::Maybe<zc::Vector<ParameterSignature>> buildCallableParameters(
 }
 
 zc::Maybe<ReceiverSignature> buildCallableReceiver(const SignatureFactsBuildInput& input,
-                                                    identity::DefId owner) {
+                                                   identity::DefId owner) {
   auto authority = input.identities.definitionAuthority(owner);
   if (authority == zc::none) return zc::none;
   ZC_IF_SOME(value, authority) {
@@ -3482,10 +3494,24 @@ private:
 
   bool callableHeaderMatches(identity::DefId definition, const CallableSignature& signature) const {
     auto definitionAuthority = identities.definitionAuthority(definition);
+    if (definitionAuthority == zc::none) { return false; }
     ZC_IF_SOME(authority, definitionAuthority) {
-      if (!authority.verify()) return false;
-      ZC_IF_SOME(overload, authority.overloadHeaderAuthority()) {
-        const auto& header = overload.header();
+      if (!authority.verify()) { return false; }
+      auto overload = authority.overloadHeaderAuthority();
+      if (overload == zc::none) {
+        // Destructors do not carry an overload header in the binder. Verify the
+        // canonical destructor shape directly: no generics, no receiver, and no
+        // ordinary parameters.
+        auto entry = identities.definition(definition);
+        if (entry == zc::none) { return false; }
+        ZC_IF_SOME(value, entry) {
+          if (value.record().kind() != identity::DefinitionKind::Destructor) { return false; }
+        }
+        return signature.genericParameters.size() == 0 && signature.receiver == zc::none &&
+               signature.parameters.size() == 0;
+      }
+      ZC_IF_SOME(overloadValue, overload) {
+        const auto& header = overloadValue.header();
         if (header.genericParameters().size() != signature.genericParameters.size() ||
             header.parameters().size() != signature.parameters.size() ||
             (header.receiver() == zc::none) != (signature.receiver == zc::none)) {
@@ -5043,8 +5069,8 @@ zc::Maybe<MarkerShapeInventoryRevision> MarkerShapeInventoryRevision::computeFra
 
 struct VerifiedMarkerShapeInventory::Impl final {
   Impl(identity::SemanticContextBrand semanticContext,
-       identity::ContextFingerprint&& contextFingerprint,
-       MarkerShapeInventoryRevision&& revision, zc::Vector<InterfaceMarkerShapeFact>&& shapes)
+       identity::ContextFingerprint&& contextFingerprint, MarkerShapeInventoryRevision&& revision,
+       zc::Vector<InterfaceMarkerShapeFact>&& shapes)
       : semanticContext(semanticContext),
         contextFingerprint(zc::mv(contextFingerprint)),
         revision(zc::mv(revision)),
@@ -5312,8 +5338,8 @@ zc::Maybe<const MarkerPolicy&> VerifiedMarkerPolicyRegistry::policy(
 
 MarkerShapeInventoryBuildResult MarkerShapeInventoryBuilder::build(
     identity::SemanticContextBrand semanticContext,
-    const identity::ContextFingerprint& contextFingerprint,
-    identity::ModuleId diagnosticModule, zc::ArrayPtr<const MarkerShapeModuleInput> modules,
+    const identity::ContextFingerprint& contextFingerprint, identity::ModuleId diagnosticModule,
+    zc::ArrayPtr<const MarkerShapeModuleInput> modules,
     const CheckerIdentityAuthority& identities) {
   if (!semanticContext.isValid()) { return buildReject(invalidContextInvariant(0)); }
   if (identities.module(diagnosticModule) == zc::none ||
@@ -5692,8 +5718,7 @@ const MarkerPolicyRegistryRevision& VerifiedSignatureFacts::markerPolicyRegistry
 identity::SemanticContextBrand VerifiedSignatureFacts::semanticContext() const noexcept {
   return impl->semanticContext;
 }
-const identity::ContextFingerprint& VerifiedSignatureFacts::contextFingerprint()
-    const noexcept {
+const identity::ContextFingerprint& VerifiedSignatureFacts::contextFingerprint() const noexcept {
   return impl->contextFingerprint;
 }
 identity::ModuleId VerifiedSignatureFacts::module() const noexcept { return impl->module; }
@@ -6875,7 +6900,9 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
       ast::NodeId parameters;
       ast::NodeId returnType;
       if ((definitionKind != identity::DefinitionKind::Function &&
-           definitionKind != identity::DefinitionKind::Method) ||
+           definitionKind != identity::DefinitionKind::Method &&
+           definitionKind != identity::DefinitionKind::Constructor &&
+           definitionKind != identity::DefinitionKind::Destructor) ||
           !isCallableDeclaration(tree, definition.node, definitionKind, parameters, returnType)) {
         return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                             definition.node.value));

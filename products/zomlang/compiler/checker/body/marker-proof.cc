@@ -592,6 +592,17 @@ struct MarkerProofEngine::Impl final {
         }
         const auto& nominalSignature =
             selected.payload.variant().get<signature::NominalSignature>();
+        for (const auto member : nominalSignature.members) {
+          auto memberEntry = identities.definition(member);
+          if (memberEntry == zc::none) {
+            return reject(localSignatures.module(), marker, CheckerInvariantKind::InvalidFact);
+          }
+          ZC_IF_SOME(value, memberEntry) {
+            if (value.record().kind() == identity::DefinitionKind::Destructor) {
+              return MarkerProofUnsatisfied{};
+            }
+          }
+        }
         zc::Vector<TypeSubstitution> substitutions;
         if (!genericSubstitutions(definition, nominalSignature, nominalType, substitutions)) {
           return reject(localSignatures.module(), marker, CheckerInvariantKind::InvalidFact);

@@ -11,11 +11,11 @@
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
 #include "zomlang/compiler/driver/interface/coherence-builder.h"
-#include "zomlang/compiler/driver/session/compiler-session.h"
 #include "zomlang/compiler/driver/interface/imported-signature-view-projector.h"
 #include "zomlang/compiler/driver/interface/module-interface.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
+#include "zomlang/compiler/driver/session/compiler-session.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
 #include "zomlang/tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
@@ -903,6 +903,23 @@ ZC_TEST("MarkerProofEngine proves nominal structs and enums structurally") {
   ZC_EXPECT(enumEvidence.components[0].componentType == i32);
   ZC_REQUIRE(enumEvidence.components[0].path.size() == 1);
   ZC_EXPECT(enumEvidence.components[0].path[0].variant().is<signature::EnumVariantPayloadStep>());
+}
+
+ZC_TEST("MarkerProofEngine withholds structural proof for a nominal with a direct destructor") {
+  auto source = zc::str(kMarkerProofSource,
+                        "struct ManagedResource { value: i32; deinit() {} }\n"
+                        "struct PlainResource { value: i32; }\n"
+                        "struct ManagedBox<T> { value: T; deinit() {} }\n"_zc);
+  MarkerProofFixture fixture(source);
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  const identity::SemanticTypeId arguments[] = {i32};
+  const auto managed = fixture.nominal("ManagedResource"_zc);
+  const auto plain = fixture.nominal("PlainResource"_zc);
+  const auto managedBox = fixture.nominal("ManagedBox"_zc, zc::arrayPtr(arguments));
+
+  ZC_EXPECT(fixture.prove(managed).is<MarkerProofUnsatisfied>());
+  ZC_EXPECT(fixture.prove(plain).is<MarkerProofPositive>());
+  ZC_EXPECT(fixture.prove(managedBox).is<MarkerProofUnsatisfied>());
 }
 
 ZC_TEST("MarkerProofEngine proves configured arrays and references structurally") {
