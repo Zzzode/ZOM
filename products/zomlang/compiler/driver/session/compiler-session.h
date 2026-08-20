@@ -206,13 +206,14 @@ public:
   /// eventOverlay, and facts.
   ZC_NODISCARD zc::ArrayPtr<const ownership::OwnershipCheckedMir> getOwnershipCheckedMirModules()
       const noexcept;
-  /// \brief Returns immutable RFC 0007 drop-elaborated MIR wrappers in dependency order.
+  /// \brief Returns immutable RFC 0007 verified executable MIR wrappers in dependency order.
   ///
-  /// Each wrapper retains its recorded drop-discharge inventory; the owned
-  /// OwnershipCheckedMir payload is published separately through
-  /// getOwnershipCheckedMirModules after DropElaboratedMir::takeCheckedMir.
-  ZC_NODISCARD zc::ArrayPtr<const ownership::DropElaboratedMir> getDropElaboratedMirModules()
-      const noexcept;
+  /// Each terminal wrapper owns the full successor chain (drop-elaborated,
+  /// coroutine-elaborated) and retains the recorded drop-discharge inventory;
+  /// the owned OwnershipCheckedMir payload is published separately through
+  /// getOwnershipCheckedMirModules after VerifiedExecutableMir::takeCheckedMir.
+  ZC_NODISCARD zc::ArrayPtr<const ownership::VerifiedExecutableMir>
+  getVerifiedExecutableMirModules() const noexcept;
   /// \brief Returns the exact retained checker-to-MIR handoff for one ownership overlay.
   ZC_NODISCARD zc::Maybe<ownership::OwnershipEventOverlayInput> getOwnershipEventOverlayInput(
       identity::ModuleId module) const noexcept;

@@ -151,6 +151,79 @@ const mir::MirFunction* findFunction(zc::ArrayPtr<const mir::MirFunction> functi
   return nullptr;
 }
 
+bool sameProjection(const mir::MirProjection& left, const mir::MirProjection& right) {
+  if (left.kind() != right.kind() || left.inputType() != right.inputType() ||
+      left.resultType() != right.resultType()) {
+    return false;
+  }
+  switch (left.kind()) {
+    case mir::MirProjectionKind::Field:
+      return left.fieldValue().field == right.fieldValue().field;
+    case mir::MirProjectionKind::Index:
+      return left.indexValue().index == right.indexValue().index;
+    case mir::MirProjectionKind::Dereference:
+      return true;
+    case mir::MirProjectionKind::Downcast:
+      return left.downcastValue().variant == right.downcastValue().variant;
+    case mir::MirProjectionKind::Subslice:
+      return left.subsliceValue().first == right.subsliceValue().first &&
+             left.subsliceValue().pastLast == right.subsliceValue().pastLast;
+  }
+  return false;
+}
+
+bool samePlace(const mir::MirPlace& left, const mir::MirPlace& right) {
+  if (left.local() != right.local() || left.rootType() != right.rootType() ||
+      left.resultType() != right.resultType() ||
+      left.projections().size() != right.projections().size()) {
+    return false;
+  }
+  for (size_t index = 0; index < left.projections().size(); ++index) {
+    if (!sameProjection(left.projections()[index], right.projections()[index])) return false;
+  }
+  return true;
+}
+
+bool sameMovePath(const facts::MovePathKey& left, const facts::MovePathKey& right) {
+  return left.owner == right.owner && samePlace(left.place, right.place);
+}
+
+/// \brief Returns the current place of a linear obligation after applying its
+/// verified transfers in event order.
+facts::MovePathKey obligationCurrentPlace(const facts::LinearObligationFact& obligation) {
+  if (obligation.transfers.size() == 0) {
+    return facts::MovePathKey{obligation.key.place.owner, obligation.key.place.place.clone()};
+  }
+  const auto& last = obligation.transfers[obligation.transfers.size() - 1];
+  return facts::MovePathKey{last.to.owner, last.to.place.clone()};
+}
+
+/// \brief Finds the linear obligation whose key matches the given subject.
+zc::Maybe<uint32_t> findLinearObligation(
+    zc::ArrayPtr<const facts::LinearObligationFact> obligations,
+    const facts::DropResourceSubject& subject) {
+  for (uint32_t index = 0; index < obligations.size(); ++index) {
+    if (obligations[index].key.introduction == subject.introduction &&
+        sameMovePath(obligations[index].key.place, subject.origin)) {
+      return index;
+    }
+  }
+  return zc::none;
+}
+
+/// \brief Maps a verified linear-consumption kind to its discharge kind.
+DropDischargeKind dischargeKind(facts::LinearConsumptionKind kind) {
+  switch (kind) {
+    case facts::LinearConsumptionKind::Return:
+      return DropDischargeKind::ReturnTransfer;
+    case facts::LinearConsumptionKind::ConsumingCall:
+      return DropDischargeKind::ConsumingCallTransfer;
+    case facts::LinearConsumptionKind::LogicalDrop:
+      return DropDischargeKind::LogicalDrop;
+  }
+  ZC_UNREACHABLE
+}
+
 zc::Maybe<zc::Vector<DropDischargeRecord>> elaborateLinear(
     const facts::VerifiedOwnershipResourceFacts& resources,
     zc::ArrayPtr<const mir::MirFunction> mirFunctions) {
@@ -160,6 +233,7 @@ zc::Maybe<zc::Vector<DropDischargeRecord>> elaborateLinear(
     if (mirFunction == nullptr || mirFunction->blocks.size() == 0) return zc::none;
     const auto& facts = resourceFunction.facts;
     const auto& plans = resourceFunction.dropPlans;
+    const auto& obligations = resourceFunction.linearObligations;
 
     // Track which fact ordinals have at least one discharge path. A resource
     // moved between places legitimately appears in multiple closed drop plans,
@@ -167,6 +241,11 @@ zc::Maybe<zc::Vector<DropDischargeRecord>> elaborateLinear(
     // fact with no plan at all is a missing discharge.
     zc::Vector<bool> discharged;
     for (size_t i = 0; i < facts.size(); ++i) discharged.add(false);
+
+    // Track which linear obligations are consumed by the emitted cleanup. Every
+    // Positive Linear obligation must be consumed by exactly one discharge.
+    zc::Vector<bool> consumedObligations;
+    for (size_t i = 0; i < obligations.size(); ++i) consumedObligations.add(false);
 
     for (const auto& plan : plans) {
       if (plan.components.size() == 0) return zc::none;
@@ -194,29 +273,103 @@ zc::Maybe<zc::Vector<DropDischargeRecord>> elaborateLinear(
             fact.declarationOrdinal});
       }
 
-      const auto& block = mirFunction->blocks[0];
+      // Classify the discharge from the verified linear-consumption inventory.
+      // A return operand selects ReturnTransfer at the return cutpoint, a
+      // consuming-call operand selects ConsumingCallTransfer at the call
+      // cutpoint, and an obligation with no terminator consumption is dropped
+      // at the function exit with LogicalDrop. A purely Logical resource (no
+      // linear obligation) is dropped at the exit with no linked consume.
+      DropDischargeKind kind = DropDischargeKind::LogicalDrop;
+      MirEventKey event{MirLocation{resourceFunction.owner,
+                                    MirPoint::exit(mirFunction->blocks[0].id, MirExitKind::Return)},
+                        0};
+      zc::Maybe<facts::LinearConsumption> linkedConsume;
+      ZC_IF_SOME(obligationIndex, findLinearObligation(obligations, plan.subject)) {
+        consumedObligations[obligationIndex] = true;
+        const auto& obligation = obligations[obligationIndex];
+        if (obligation.consumptions.size() > 0) {
+          // The current subset admits exactly one terminator consumption per
+          // linear obligation; the verified facts enforce this.
+          const auto& consumption = obligation.consumptions[0];
+          kind = dischargeKind(consumption.kind);
+          event = consumption.event;
+          linkedConsume = consumption.clone();
+        } else {
+          // The obligation is dropped at the function exit. Synthesize the
+          // linked LogicalDrop consume at the obligation's current place.
+          kind = DropDischargeKind::LogicalDrop;
+          linkedConsume = facts::LinearConsumption{
+              obligationCurrentPlace(obligation),
+              MirEventKey{
+                  MirLocation{resourceFunction.owner,
+                              MirPoint::exit(mirFunction->blocks[0].id, MirExitKind::Return)},
+                  0},
+              facts::LinearConsumptionKind::LogicalDrop};
+        }
+      }
+
       discharges.add(DropDischargeRecord{
-          MirEventKey{
-              MirLocation{resourceFunction.owner, MirPoint::exit(block.id, MirExitKind::Return)},
-              0},
-          facts::MovePathKey{plan.subject.origin.owner, plan.subject.origin.place.clone()},
-          DropDischargeKind::LogicalDrop, plan.mode, zc::mv(components)});
+          zc::mv(event),
+          facts::MovePathKey{plan.subject.origin.owner, plan.subject.origin.place.clone()}, kind,
+          plan.mode, zc::mv(components), zc::mv(linkedConsume)});
     }
 
     // Every pending drop obligation must have a complete discharge path.
     for (bool done : discharged) {
       if (!done) return zc::none;
     }
+    // Every Positive Linear obligation must be consumed by the emitted cleanup.
+    for (bool consumed : consumedObligations) {
+      if (!consumed) return zc::none;
+    }
   }
   return discharges;
+}
+
+/// \brief Certifies that the emitted cleanup discharges every Positive Linear
+/// obligation exactly once. The terminal verifier re-validates this after the
+/// full successor chain has rechecked the lineage.
+bool cleanupConsumed(const DropElaboratedMir& elaborated) {
+  const auto& resources = elaborated.checkedMir().facts().resources();
+  const auto discharges = elaborated.discharges();
+  for (const auto& function : resources.functions()) {
+    for (const auto& obligation : function.linearObligations) {
+      bool consumed = false;
+      for (const auto& discharge : discharges) {
+        if (discharge.linearConsume == zc::none) continue;
+        ZC_IF_SOME(consume, discharge.linearConsume) {
+          for (const auto& consumption : obligation.consumptions) {
+            if (consume.event == consumption.event && consume.kind == consumption.kind) {
+              consumed = true;
+              break;
+            }
+          }
+          if (!consumed && consume.kind == facts::LinearConsumptionKind::LogicalDrop &&
+              sameMovePath(consume.place, obligationCurrentPlace(obligation))) {
+            consumed = true;
+          }
+        }
+        if (consumed) break;
+      }
+      if (!consumed) return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace
 
 struct DropElaboratedMir::Impl final {
   Impl(OwnershipCheckedMir&& checked, zc::Vector<DropDischargeRecord>&& discharges) noexcept
-      : checked(zc::mv(checked)), discharges(zc::mv(discharges)) {}
+      : semanticContext(checked.semanticContext()),
+        contextFingerprint(checked.contextFingerprint().clone()),
+        module(checked.module()),
+        checked(zc::mv(checked)),
+        discharges(zc::mv(discharges)) {}
 
+  identity::SemanticContextBrand semanticContext;
+  identity::ContextFingerprint contextFingerprint;
+  identity::ModuleId module;
   OwnershipCheckedMir checked;
   zc::Vector<DropDischargeRecord> discharges;
 };
@@ -227,12 +380,12 @@ DropElaboratedMir::DropElaboratedMir(DropElaboratedMir&&) noexcept = default;
 DropElaboratedMir& DropElaboratedMir::operator=(DropElaboratedMir&&) noexcept = default;
 
 identity::SemanticContextBrand DropElaboratedMir::semanticContext() const noexcept {
-  return impl->checked.semanticContext();
+  return impl->semanticContext;
 }
 const identity::ContextFingerprint& DropElaboratedMir::contextFingerprint() const noexcept {
-  return impl->checked.contextFingerprint();
+  return impl->contextFingerprint;
 }
-identity::ModuleId DropElaboratedMir::module() const noexcept { return impl->checked.module(); }
+identity::ModuleId DropElaboratedMir::module() const noexcept { return impl->module; }
 const OwnershipCheckedMir& DropElaboratedMir::checkedMir() const noexcept { return impl->checked; }
 zc::ArrayPtr<const DropDischargeRecord> DropElaboratedMir::discharges() const noexcept {
   return impl->discharges.asPtr();
@@ -245,17 +398,12 @@ ir::IrOperationResult<DropElaboratedMir> DropElaborator::elaborateDrops(
     OwnershipCheckedMir&& checked,
     const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& repository) {
   const auto& builtMir = checked.builtMir();
-  const auto& overlay = checked.eventOverlay();
-  const auto& facts = checked.facts();
-  const auto identities = builtMir.retainIdentityAuthority();
-  const auto& lease = builtMir.borrowEvidenceLease();
-  const auto evidence = repository.lookup(lease);
-  if (!matches(builtMir, overlay, facts, lease, repository, evidence) ||
-      !builtMir.matchesBorrowEvidenceInput(lease, repository)) {
+  const auto identities = retainIdentityAuthority(builtMir);
+  if (!recheckLineage(checked, repository)) {
     return reject<DropElaboratedMir>(builtMir, identities, ir::IrFailureKind::InputRevisionMismatch,
                                      0);
   }
-  auto discharges = elaborateLinear(facts.resources(), builtMir.functions());
+  auto discharges = elaborateLinear(checked.facts().resources(), builtMir.functions());
   if (discharges == zc::none) {
     return reject<DropElaboratedMir>(builtMir, identities, ir::IrFailureKind::InvalidCleanup, 1);
   }
@@ -264,6 +412,117 @@ ir::IrOperationResult<DropElaboratedMir> DropElaborator::elaborateDrops(
         DropElaboratedMir(zc::heap<DropElaboratedMir::Impl>(zc::mv(checked), zc::mv(value))));
   }
   ZC_UNREACHABLE
+}
+
+bool DropElaborator::recheckLineage(
+    const OwnershipCheckedMir& checked,
+    const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& capability) {
+  const auto& builtMir = checked.builtMir();
+  const auto& overlay = checked.eventOverlay();
+  const auto& facts = checked.facts();
+  const auto& lease = builtMir.borrowEvidenceLease();
+  const auto evidence = capability.lookup(lease);
+  return matches(builtMir, overlay, facts, lease, capability, evidence) &&
+         builtMir.matchesBorrowEvidenceInput(lease, capability);
+}
+
+checker::CheckerIdentityAuthority DropElaborator::retainIdentityAuthority(
+    const mir::VerifiedBuiltMir& builtMir) {
+  return builtMir.retainIdentityAuthority();
+}
+
+struct CoroutineElaboratedMir::Impl final {
+  explicit Impl(DropElaboratedMir&& elaborated) noexcept : elaborated(zc::mv(elaborated)) {}
+
+  DropElaboratedMir elaborated;
+};
+
+CoroutineElaboratedMir::CoroutineElaboratedMir(zc::Own<Impl>&& impl) noexcept
+    : impl(zc::mv(impl)) {}
+CoroutineElaboratedMir::~CoroutineElaboratedMir() noexcept(false) = default;
+CoroutineElaboratedMir::CoroutineElaboratedMir(CoroutineElaboratedMir&&) noexcept = default;
+CoroutineElaboratedMir& CoroutineElaboratedMir::operator=(CoroutineElaboratedMir&&) noexcept =
+    default;
+
+identity::SemanticContextBrand CoroutineElaboratedMir::semanticContext() const noexcept {
+  return impl->elaborated.semanticContext();
+}
+const identity::ContextFingerprint& CoroutineElaboratedMir::contextFingerprint() const noexcept {
+  return impl->elaborated.contextFingerprint();
+}
+identity::ModuleId CoroutineElaboratedMir::module() const noexcept {
+  return impl->elaborated.module();
+}
+zc::ArrayPtr<const DropDischargeRecord> CoroutineElaboratedMir::discharges() const noexcept {
+  return impl->elaborated.discharges();
+}
+DropElaboratedMir CoroutineElaboratedMir::takeDropElaboratedMir() && noexcept {
+  return zc::mv(impl->elaborated);
+}
+OwnershipCheckedMir CoroutineElaboratedMir::takeCheckedMir() && noexcept {
+  return zc::mv(impl->elaborated).takeCheckedMir();
+}
+
+ir::IrOperationResult<CoroutineElaboratedMir> CoroutineElaborator::elaborateCoroutines(
+    DropElaboratedMir&& elaborated,
+    const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& repository) {
+  const auto& builtMir = elaborated.checkedMir().builtMir();
+  const auto identities = DropElaborator::retainIdentityAuthority(builtMir);
+  if (!DropElaborator::recheckLineage(elaborated.checkedMir(), repository)) {
+    return reject<CoroutineElaboratedMir>(builtMir, identities,
+                                          ir::IrFailureKind::InputRevisionMismatch, 0);
+  }
+  // The current MIR subset admits no coroutine suspension points: the closed
+  // terminator algebra (Return, Unreachable, Call) cannot represent one. A
+  // future coroutine subset must extend the algebra and reject any suspension
+  // point here before publication.
+  return ir::IrOperationResult<CoroutineElaboratedMir>::verified(
+      CoroutineElaboratedMir(zc::heap<CoroutineElaboratedMir::Impl>(zc::mv(elaborated))));
+}
+
+struct VerifiedExecutableMir::Impl final {
+  explicit Impl(CoroutineElaboratedMir&& elaborated) noexcept : elaborated(zc::mv(elaborated)) {}
+
+  CoroutineElaboratedMir elaborated;
+};
+
+VerifiedExecutableMir::VerifiedExecutableMir(zc::Own<Impl>&& impl) noexcept : impl(zc::mv(impl)) {}
+VerifiedExecutableMir::~VerifiedExecutableMir() noexcept(false) = default;
+VerifiedExecutableMir::VerifiedExecutableMir(VerifiedExecutableMir&&) noexcept = default;
+VerifiedExecutableMir& VerifiedExecutableMir::operator=(VerifiedExecutableMir&&) noexcept = default;
+
+identity::SemanticContextBrand VerifiedExecutableMir::semanticContext() const noexcept {
+  return impl->elaborated.semanticContext();
+}
+const identity::ContextFingerprint& VerifiedExecutableMir::contextFingerprint() const noexcept {
+  return impl->elaborated.contextFingerprint();
+}
+identity::ModuleId VerifiedExecutableMir::module() const noexcept {
+  return impl->elaborated.module();
+}
+zc::ArrayPtr<const DropDischargeRecord> VerifiedExecutableMir::discharges() const noexcept {
+  return impl->elaborated.discharges();
+}
+OwnershipCheckedMir VerifiedExecutableMir::takeCheckedMir() && noexcept {
+  return zc::mv(impl->elaborated).takeCheckedMir();
+}
+
+ir::IrOperationResult<VerifiedExecutableMir> ExecutableMirVerifier::verifyExecutableMir(
+    CoroutineElaboratedMir&& elaborated,
+    const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& repository) {
+  const auto& dropElaborated = elaborated.impl->elaborated;
+  const auto& builtMir = dropElaborated.checkedMir().builtMir();
+  const auto identities = DropElaborator::retainIdentityAuthority(builtMir);
+  if (!DropElaborator::recheckLineage(dropElaborated.checkedMir(), repository)) {
+    return reject<VerifiedExecutableMir>(builtMir, identities,
+                                         ir::IrFailureKind::InputRevisionMismatch, 0);
+  }
+  if (!cleanupConsumed(dropElaborated)) {
+    return reject<VerifiedExecutableMir>(builtMir, identities, ir::IrFailureKind::InvalidCleanup,
+                                         1);
+  }
+  return ir::IrOperationResult<VerifiedExecutableMir>::verified(
+      VerifiedExecutableMir(zc::heap<VerifiedExecutableMir::Impl>(zc::mv(elaborated))));
 }
 
 }  // namespace zomlang::compiler::ownership

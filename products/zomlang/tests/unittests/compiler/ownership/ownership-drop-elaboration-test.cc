@@ -353,12 +353,28 @@ ir::IrOperationResult<OwnershipCheckedMir> buildCheckedMir(
 
 }  // namespace
 
-ZC_TEST("Drop elaborator publishes a complete discharge inventory") {
-  DropElaborationFixture fixture(
-      "import core::marker::{Linear};\n"
-      "struct Cell { value: i32, }\n"
-      "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+namespace {
+
+zc::StringPtr linearReturnSource() {
+  return "import core::marker::{Copy, Linear};\n"
+         "struct Cell { value: i32, }\n"
+         "impl !Copy for Cell;\n"
+         "unsafe impl Linear for Cell;\n"
+         "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc;
+}
+
+zc::StringPtr linearMoveReturnSource() {
+  return "import core::marker::{Copy, Linear};\n"
+         "struct Cell { value: i32, }\n"
+         "impl !Copy for Cell;\n"
+         "unsafe impl Linear for Cell;\n"
+         "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc;
+}
+
+}  // namespace
+
+ZC_TEST("Drop elaborator classifies a returned linear resource as ReturnTransfer") {
+  DropElaborationFixture fixture(linearReturnSource());
   const auto repository = fixture.compilerSession().getBorrowEvidenceRepository();
   ZC_REQUIRE(repository != zc::none);
   ZC_IF_SOME(value, repository) {
@@ -370,24 +386,44 @@ ZC_TEST("Drop elaborator publishes a complete discharge inventory") {
     auto result = zc::mv(elaborated).takeVerified();
     ZC_EXPECT(result.discharges().size() == 1);
     const auto& discharge = result.discharges()[0];
-    ZC_EXPECT(discharge.kind == DropDischargeKind::LogicalDrop);
+    ZC_EXPECT(discharge.kind == DropDischargeKind::ReturnTransfer);
     ZC_EXPECT(discharge.mode == facts::DropPlanMode::Closed);
     ZC_EXPECT(discharge.components.size() == 1);
     ZC_EXPECT(discharge.components[0].declarationOrdinal == 0);
+    ZC_REQUIRE(discharge.linearConsume != zc::none);
+    ZC_IF_SOME(consume, discharge.linearConsume) {
+      ZC_EXPECT(consume.kind == facts::LinearConsumptionKind::Return);
+      ZC_EXPECT(consume.event.location.point.kind() == MirPointKind::BeforeTerminator);
+    }
+  }
+}
+
+ZC_TEST("Drop elaborator classifies a moved-then-returned linear resource as ReturnTransfer") {
+  DropElaborationFixture fixture(linearMoveReturnSource());
+  const auto repository = fixture.compilerSession().getBorrowEvidenceRepository();
+  ZC_REQUIRE(repository != zc::none);
+  ZC_IF_SOME(value, repository) {
+    auto checked = buildCheckedMir(fixture, value.capability());
+    ZC_REQUIRE(checked.isVerified());
+    auto elaborated =
+        DropElaborator::elaborateDrops(zc::mv(checked).takeVerified(), value.capability());
+    ZC_REQUIRE(elaborated.isVerified());
+    auto result = zc::mv(elaborated).takeVerified();
+    ZC_EXPECT(result.discharges().size() >= 1);
+    for (const auto& discharge : result.discharges()) {
+      ZC_EXPECT(discharge.kind == DropDischargeKind::ReturnTransfer);
+      ZC_EXPECT(discharge.mode == facts::DropPlanMode::Closed);
+      ZC_REQUIRE(discharge.linearConsume != zc::none);
+      ZC_IF_SOME(consume, discharge.linearConsume) {
+        ZC_EXPECT(consume.kind == facts::LinearConsumptionKind::Return);
+      }
+    }
   }
 }
 
 ZC_TEST("Drop elaborator rejects a foreign lease") {
-  DropElaborationFixture fixture(
-      "import core::marker::{Linear};\n"
-      "struct Cell { value: i32, }\n"
-      "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
-  DropElaborationFixture foreignFixture(
-      "import core::marker::{Linear};\n"
-      "struct Cell { value: i32, }\n"
-      "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+  DropElaborationFixture fixture(linearReturnSource());
+  DropElaborationFixture foreignFixture(linearReturnSource());
   const auto repository = fixture.compilerSession().getBorrowEvidenceRepository();
   const auto foreignRepository = foreignFixture.compilerSession().getBorrowEvidenceRepository();
   ZC_REQUIRE(repository != zc::none);
@@ -406,38 +442,133 @@ ZC_TEST("Drop elaborator rejects a foreign lease") {
   }
 }
 
-ZC_TEST("Drop elaborator rejects a missing discharge") {
-  DropElaborationFixture fixture(
-      "import core::marker::{Linear};\n"
-      "struct Cell { value: i32, }\n"
-      "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+ZC_TEST("Coroutine elaborator publishes a wrapper with the discharge inventory") {
+  DropElaborationFixture fixture(linearReturnSource());
   const auto repository = fixture.compilerSession().getBorrowEvidenceRepository();
   ZC_REQUIRE(repository != zc::none);
   ZC_IF_SOME(value, repository) {
     auto checked = buildCheckedMir(fixture, value.capability());
     ZC_REQUIRE(checked.isVerified());
-    // The elaborator revalidates that every pending drop obligation has a
-    // complete discharge path. A foreign capability fails the lease and
-    // revision match before the linear discharge validation, selecting
-    // InputRevisionMismatch. The InvalidCleanup path is exercised when the
-    // resource facts carry an undischarged obligation, which the verified
-    // production pipeline prevents by construction.
-    DropElaborationFixture foreignFixture(
-        "import core::marker::{Linear};\n"
-        "struct Cell { value: i32, }\n"
-        "unsafe impl Linear for Cell;\n"
-        "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
-    const auto foreignRepository = foreignFixture.compilerSession().getBorrowEvidenceRepository();
-    ZC_REQUIRE(foreignRepository != zc::none);
+    auto elaborated =
+        DropElaborator::elaborateDrops(zc::mv(checked).takeVerified(), value.capability());
+    ZC_REQUIRE(elaborated.isVerified());
+    auto coroutineElaborated = CoroutineElaborator::elaborateCoroutines(
+        zc::mv(elaborated).takeVerified(), value.capability());
+    ZC_REQUIRE(coroutineElaborated.isVerified());
+    auto result = zc::mv(coroutineElaborated).takeVerified();
+    ZC_EXPECT(result.discharges().size() == 1);
+    ZC_EXPECT(result.discharges()[0].kind == DropDischargeKind::ReturnTransfer);
+    ZC_EXPECT(result.module() == fixture.builtMir().module());
+  }
+}
+
+ZC_TEST("Coroutine elaborator rejects a foreign lease") {
+  DropElaborationFixture fixture(linearReturnSource());
+  DropElaborationFixture foreignFixture(linearReturnSource());
+  const auto repository = fixture.compilerSession().getBorrowEvidenceRepository();
+  const auto foreignRepository = foreignFixture.compilerSession().getBorrowEvidenceRepository();
+  ZC_REQUIRE(repository != zc::none);
+  ZC_REQUIRE(foreignRepository != zc::none);
+  ZC_IF_SOME(value, repository) {
     ZC_IF_SOME(foreignValue, foreignRepository) {
+      auto checked = buildCheckedMir(fixture, value.capability());
+      ZC_REQUIRE(checked.isVerified());
       auto elaborated =
-          DropElaborator::elaborateDrops(zc::mv(checked).takeVerified(), foreignValue.capability());
-      ZC_REQUIRE(elaborated.isIrInvariantRejected());
-      ZC_EXPECT(elaborated.invariantFailures().facts().size() == 1);
-      ZC_EXPECT(elaborated.invariantFailures().facts()[0].kind() ==
+          DropElaborator::elaborateDrops(zc::mv(checked).takeVerified(), value.capability());
+      ZC_REQUIRE(elaborated.isVerified());
+      auto coroutineElaborated = CoroutineElaborator::elaborateCoroutines(
+          zc::mv(elaborated).takeVerified(), foreignValue.capability());
+      ZC_REQUIRE(coroutineElaborated.isIrInvariantRejected());
+      ZC_EXPECT(coroutineElaborated.invariantFailures().facts().size() == 1);
+      ZC_EXPECT(coroutineElaborated.invariantFailures().facts()[0].kind() ==
                 ir::IrFailureKind::InputRevisionMismatch);
     }
+  }
+}
+
+ZC_TEST("Executable mir verifier certifies cleanup consumption") {
+  DropElaborationFixture fixture(linearReturnSource());
+  const auto repository = fixture.compilerSession().getBorrowEvidenceRepository();
+  ZC_REQUIRE(repository != zc::none);
+  ZC_IF_SOME(value, repository) {
+    auto checked = buildCheckedMir(fixture, value.capability());
+    ZC_REQUIRE(checked.isVerified());
+    auto elaborated =
+        DropElaborator::elaborateDrops(zc::mv(checked).takeVerified(), value.capability());
+    ZC_REQUIRE(elaborated.isVerified());
+    auto coroutineElaborated = CoroutineElaborator::elaborateCoroutines(
+        zc::mv(elaborated).takeVerified(), value.capability());
+    ZC_REQUIRE(coroutineElaborated.isVerified());
+    auto verified = ExecutableMirVerifier::verifyExecutableMir(
+        zc::mv(coroutineElaborated).takeVerified(), value.capability());
+    ZC_REQUIRE(verified.isVerified());
+    auto result = zc::mv(verified).takeVerified();
+    ZC_EXPECT(result.discharges().size() == 1);
+    ZC_EXPECT(result.discharges()[0].kind == DropDischargeKind::ReturnTransfer);
+    ZC_EXPECT(result.module() == fixture.builtMir().module());
+  }
+}
+
+ZC_TEST("Executable mir verifier certifies a moved-then-returned cleanup") {
+  DropElaborationFixture fixture(linearMoveReturnSource());
+  const auto repository = fixture.compilerSession().getBorrowEvidenceRepository();
+  ZC_REQUIRE(repository != zc::none);
+  ZC_IF_SOME(value, repository) {
+    auto checked = buildCheckedMir(fixture, value.capability());
+    ZC_REQUIRE(checked.isVerified());
+    auto elaborated =
+        DropElaborator::elaborateDrops(zc::mv(checked).takeVerified(), value.capability());
+    ZC_REQUIRE(elaborated.isVerified());
+    auto coroutineElaborated = CoroutineElaborator::elaborateCoroutines(
+        zc::mv(elaborated).takeVerified(), value.capability());
+    ZC_REQUIRE(coroutineElaborated.isVerified());
+    auto verified = ExecutableMirVerifier::verifyExecutableMir(
+        zc::mv(coroutineElaborated).takeVerified(), value.capability());
+    ZC_REQUIRE(verified.isVerified());
+    auto result = zc::mv(verified).takeVerified();
+    ZC_EXPECT(result.discharges().size() >= 1);
+    for (const auto& discharge : result.discharges()) {
+      ZC_EXPECT(discharge.kind == DropDischargeKind::ReturnTransfer);
+    }
+  }
+}
+
+ZC_TEST("Executable mir verifier rejects a foreign lease") {
+  DropElaborationFixture fixture(linearReturnSource());
+  DropElaborationFixture foreignFixture(linearReturnSource());
+  const auto repository = fixture.compilerSession().getBorrowEvidenceRepository();
+  const auto foreignRepository = foreignFixture.compilerSession().getBorrowEvidenceRepository();
+  ZC_REQUIRE(repository != zc::none);
+  ZC_REQUIRE(foreignRepository != zc::none);
+  ZC_IF_SOME(value, repository) {
+    ZC_IF_SOME(foreignValue, foreignRepository) {
+      auto checked = buildCheckedMir(fixture, value.capability());
+      ZC_REQUIRE(checked.isVerified());
+      auto elaborated =
+          DropElaborator::elaborateDrops(zc::mv(checked).takeVerified(), value.capability());
+      ZC_REQUIRE(elaborated.isVerified());
+      auto coroutineElaborated = CoroutineElaborator::elaborateCoroutines(
+          zc::mv(elaborated).takeVerified(), value.capability());
+      ZC_REQUIRE(coroutineElaborated.isVerified());
+      auto verified = ExecutableMirVerifier::verifyExecutableMir(
+          zc::mv(coroutineElaborated).takeVerified(), foreignValue.capability());
+      ZC_REQUIRE(verified.isIrInvariantRejected());
+      ZC_EXPECT(verified.invariantFailures().facts().size() == 1);
+      ZC_EXPECT(verified.invariantFailures().facts()[0].kind() ==
+                ir::IrFailureKind::InputRevisionMismatch);
+    }
+  }
+}
+
+ZC_TEST("Session publishes verified executable mir modules after checkSources") {
+  DropElaborationFixture fixture(linearReturnSource());
+  const auto& session = fixture.compilerSession();
+  const auto executables = session.getVerifiedExecutableMirModules();
+  ZC_EXPECT(executables.size() == 1);
+  if (executables.size() == 1) {
+    ZC_EXPECT(executables[0].discharges().size() == 1);
+    ZC_EXPECT(executables[0].discharges()[0].kind == DropDischargeKind::ReturnTransfer);
+    ZC_EXPECT(executables[0].module() == fixture.builtMir().module());
   }
 }
 
