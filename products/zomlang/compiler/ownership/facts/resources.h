@@ -18,6 +18,7 @@
 
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/ownership/facts/linear-source.h"
 #include "zomlang/compiler/ownership/facts/paths.h"
 
 namespace zomlang::compiler::ownership::facts {
@@ -302,6 +303,26 @@ public:
   ZC_NODISCARD static ir::IrOperationResult<VerifiedOwnershipResourceFacts> verify(
       OwnershipResourceCandidate&& candidate, const VerifiedMovePaths& movePaths,
       const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay);
+
+  /// \brief Validates linear obligations against verified resource facts and
+  /// emits one `LinearNotConsumedFailure` per obligation whose consumptions
+  /// sequence is empty on a normal exit.
+  ///
+  /// With the current straight-line MIR subset (single `Return` terminator), an
+  /// obligation is pending at the normal exit exactly when it has no `Return`
+  /// or `ConsumingCall` consumption in the verified resource facts. Suppression
+  /// rule 8 (one failure per obligation) is a producer invariant: the verifier
+  /// iterates each obligation exactly once. The result is separate from RFC
+  /// 0010 feature-boundary results; ownership source rejections are legal only
+  /// at ownership proof validation.
+  ZC_NODISCARD static LinearSourceVerificationResult verifyLinearSource(
+      const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay,
+      const VerifiedOwnershipResourceFacts& resources);
+
+private:
+  ZC_NODISCARD static LinearSourceVerificationResult rejectLinearSource(
+      const mir::VerifiedBuiltMir& builtMir, const checker::CheckerIdentityAuthority& identities,
+      ir::IrFailureKind kind, uint32_t ordinal);
 };
 
 }  // namespace zomlang::compiler::ownership::facts

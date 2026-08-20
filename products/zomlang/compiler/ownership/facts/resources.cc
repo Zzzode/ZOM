@@ -15,6 +15,7 @@
 #include "zomlang/compiler/ownership/facts/resources.h"
 
 #include "zomlang/compiler/ir/ir-diagnostic-adapter.h"
+#include "zomlang/compiler/ownership/source-suppression.h"
 
 namespace zomlang::compiler::ownership::facts {
 namespace {
@@ -843,6 +844,101 @@ bool sameFunctions(zc::ArrayPtr<const OwnershipResourceFunction> left,
   return true;
 }
 
+zc::Maybe<const OwnershipFunctionEventOverlay&> overlayFor(
+    const VerifiedOwnershipEventOverlay& overlay, identity::DefId owner) {
+  for (const auto& function : overlay.functions()) {
+    if (function.owner == owner) return function;
+  }
+  return zc::none;
+}
+
+zc::Maybe<identity::SourceSpan> sourceSpanFor(const mir::MirFunction& function,
+                                              const OwnershipFunctionEventOverlay& overlay,
+                                              const MirEventKey& event) {
+  for (const auto& source : overlay.sourceMap) {
+    if (source.key == event) return source.span.clone();
+  }
+  if (event.location.owner != function.owner) return zc::none;
+  const auto& point = event.location.point;
+  if (point.kind() == MirPointKind::Entry) {
+    if (event.operandOrdinal >= function.locals.size()) return zc::none;
+    return function.locals[event.operandOrdinal].sourceSpan.clone();
+  }
+  mir::MirBlockId block;
+  switch (point.kind()) {
+    case MirPointKind::BeforeStatement:
+      block = point.beforeStatementValue().block;
+      break;
+    case MirPointKind::AfterStatement:
+      block = point.afterStatementValue().block;
+      break;
+    case MirPointKind::BeforeTerminator:
+      block = point.beforeTerminatorValue().block;
+      break;
+    case MirPointKind::Edge:
+      block = point.edgeValue().from;
+      break;
+    case MirPointKind::Exit:
+      block = point.exitValue().block;
+      break;
+    case MirPointKind::Entry:
+      ZC_UNREACHABLE
+  }
+  for (const auto& candidate : function.blocks) {
+    if (candidate.id != block) continue;
+    if (point.kind() == MirPointKind::BeforeStatement) {
+      const auto ordinal = point.beforeStatementValue().ordinal;
+      if (ordinal >= candidate.statements.size()) return zc::none;
+      return candidate.statements[ordinal].sourceSpan().clone();
+    }
+    if (point.kind() == MirPointKind::AfterStatement) {
+      const auto ordinal = point.afterStatementValue().ordinal;
+      if (ordinal >= candidate.statements.size()) return zc::none;
+      return candidate.statements[ordinal].sourceSpan().clone();
+    }
+    return candidate.terminator.sourceSpan().clone();
+  }
+  return zc::none;
+}
+
+zc::Maybe<zc::Vector<OwnershipSourceFailure>> linearSourceFailures(
+    const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay,
+    const VerifiedOwnershipResourceFacts& resources) {
+  zc::Vector<OwnershipSourceFailure> failures;
+  uint32_t traversalOrdinal = 0;
+  for (const auto& resourceFunction : resources.functions()) {
+    zc::Maybe<const mir::MirFunction&> mirFunction;
+    for (const auto& candidate : builtMir.functions()) {
+      if (candidate.owner == resourceFunction.owner) {
+        mirFunction = candidate;
+        break;
+      }
+    }
+    if (mirFunction == zc::none) return zc::none;
+    auto functionOverlay = overlayFor(overlay, resourceFunction.owner);
+    if (functionOverlay == zc::none) return zc::none;
+    ZC_IF_SOME(function, mirFunction) {
+      ZC_IF_SOME(functionOverlayValue, functionOverlay) {
+        for (const auto& obligation : resourceFunction.linearObligations) {
+          if (obligation.consumptions.size() != 0) continue;
+          auto span = sourceSpanFor(function, functionOverlayValue, obligation.key.introduction);
+          if (span == zc::none) return zc::none;
+          ZC_IF_SOME(spanValue, span) {
+            failures.add(LinearNotConsumedFailure{
+                resourceFunction.owner,
+                obligation.key.introduction,
+                zc::mv(spanValue),
+                MovePathKey{obligation.key.place.owner, obligation.key.place.place.clone()},
+                traversalOrdinal++,
+                {}});
+          }
+        }
+      }
+    }
+  }
+  return failures;
+}
+
 }  // namespace
 
 OwnershipResourceCandidate::OwnershipResourceCandidate(
@@ -933,6 +1029,54 @@ ir::IrOperationResult<VerifiedOwnershipResourceFacts> OwnershipResourceVerifier:
   return ir::IrOperationResult<VerifiedOwnershipResourceFacts>::verified(
       VerifiedOwnershipResourceFacts(
           zc::heap<VerifiedOwnershipResourceFacts::Impl>(zc::mv(candidate))));
+}
+
+LinearSourceVerificationResult OwnershipResourceVerifier::verifyLinearSource(
+    const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay,
+    const VerifiedOwnershipResourceFacts& resources) {
+  if (resources.semanticContext() != builtMir.semanticContext() ||
+      resources.contextFingerprint().digest() != builtMir.contextFingerprint().digest() ||
+      resources.module() != builtMir.module() ||
+      resources.builtRevision().digest() != builtMir.revision().digest() ||
+      resources.overlayRevision().digest() != overlay.revision().digest() ||
+      overlay.semanticContext() != builtMir.semanticContext() ||
+      overlay.contextFingerprint().digest() != builtMir.contextFingerprint().digest() ||
+      overlay.module() != builtMir.module() ||
+      overlay.builtRevision().digest() != builtMir.revision().digest()) {
+    const auto identities = builtMir.retainIdentityAuthority();
+    return rejectLinearSource(builtMir, identities, ir::IrFailureKind::InputRevisionMismatch, 0);
+  }
+  auto failures = linearSourceFailures(builtMir, overlay, resources);
+  if (failures == zc::none) {
+    const auto identities = builtMir.retainIdentityAuthority();
+    return rejectLinearSource(builtMir, identities, ir::IrFailureKind::InvalidOwnershipProof, 0);
+  }
+  ZC_IF_SOME(values, failures) {
+    auto suppressed = SourceSuppression::suppress(zc::mv(values));
+    auto deduplicated = OwnershipSourceFailureOrdering::deduplicate(zc::mv(suppressed));
+    auto sorted =
+        ir::SortedSourceFailureFacts<OwnershipSourceFailure, OwnershipSourceFailureOrdering>::from(
+            zc::mv(deduplicated));
+    ZC_IF_SOME(value, sorted) {
+      return LinearSourceVerificationResult::sourceRejected(zc::mv(value));
+    }
+  }
+  return LinearSourceVerificationResult::verified(LinearSourceAccepted{});
+}
+
+LinearSourceVerificationResult OwnershipResourceVerifier::rejectLinearSource(
+    const mir::VerifiedBuiltMir& builtMir, const checker::CheckerIdentityAuthority& identities,
+    ir::IrFailureKind kind, uint32_t ordinal) {
+  auto rejected = reject<LinearSourceAccepted>(builtMir, identities, kind, ordinal);
+  if (rejected.isIdentityInvariantRejected()) {
+    return LinearSourceVerificationResult::identityInvariantRejected(
+        zc::mv(rejected).takeIdentityFailures());
+  }
+  if (rejected.isIrInvariantRejected()) {
+    return LinearSourceVerificationResult::irInvariantRejected(
+        zc::mv(rejected).takeInvariantFailures());
+  }
+  ZC_UNREACHABLE
 }
 
 }  // namespace zomlang::compiler::ownership::facts
