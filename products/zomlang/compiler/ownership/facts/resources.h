@@ -20,6 +20,7 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ownership/facts/linear-source.h"
 #include "zomlang/compiler/ownership/facts/paths.h"
+#include "zomlang/compiler/ownership/facts/raw-provenance.h"
 
 namespace zomlang::compiler::ownership::facts {
 
@@ -244,6 +245,17 @@ struct OwnershipResourceFunction final {
   zc::Vector<LinearObligationFact> linearObligations;
   zc::Vector<LinearCarrierFact> linearCarriers;
   zc::Vector<LinearCarrierScc> linearSccs;
+  /// \brief Closed finite four-class raw-origin universe for this function.
+  ///
+  /// Exactly the sorted union of `Reference`, `RawInput`, `StaticAddress`, and
+  /// `UnsafeAddress` root seeds. Empty when the function has no raw-pointer
+  /// roots. Derived carriers cannot introduce an origin.
+  zc::Vector<RawProvenanceOrigin> rawOriginUniverse;
+  /// \brief Complete raw-provenance carrier inventory for this function.
+  ///
+  /// One fact per carrier, with the least fixed-point origin closure over the
+  /// predecessor graph. Empty when the function has no raw-pointer roots.
+  zc::Vector<RawProvenanceFact> rawProvenance;
 };
 
 /// \brief Untrusted logical resource inventory awaiting independent reconstruction.

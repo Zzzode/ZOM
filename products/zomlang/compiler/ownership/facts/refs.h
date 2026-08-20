@@ -40,6 +40,11 @@ struct ReferenceInputOrigin final {
   OwnershipPoint activation;
   zc::OneOf<ParameterReferenceOrigin, LocalReferenceOrigin> detail;
   MovePathKey referent;
+
+  ZC_NODISCARD ReferenceInputOrigin clone() const {
+    return ReferenceInputOrigin{entry, activation, detail,
+                                MovePathKey{referent.owner, referent.place.clone()}};
+  }
 };
 
 /// \brief Exact current-subset ownership points for one reference value's liveness.

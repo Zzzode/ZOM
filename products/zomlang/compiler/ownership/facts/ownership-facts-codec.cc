@@ -292,6 +292,81 @@ void encodeOrigin(identity::CanonicalEncoder& encoder,
   }
 }
 
+// ---- Raw-provenance encoders ----
+
+zc::Maybe<zc::Array<uint8_t>> encodeRawProvenanceCarrierKey(
+    const RawProvenanceCarrierKey& key, const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes) {
+  identity::CanonicalEncoder encoder;
+  auto introduction = encodeEventKey(key.introduction, identities);
+  if (introduction == zc::none) return zc::none;
+  ZC_IF_SOME(bytes, introduction) { encoder.encodeByteString(bytes.asPtr()); }
+  auto destination = encodeMovePathKey(key.destination, identities, semanticTypes);
+  if (destination == zc::none) return zc::none;
+  ZC_IF_SOME(bytes, destination) { encoder.encodeByteString(bytes.asPtr()); }
+  return encoder.finish();
+}
+
+zc::Maybe<zc::Array<uint8_t>> encodeRawProvenanceOrigin(
+    const RawProvenanceOrigin& origin, const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes) {
+  identity::CanonicalEncoder encoder;
+  if (origin.is<RawReferenceOrigin>()) {
+    encoder.encodeUint8(0x01);  // Reference
+    const auto& ref = origin.get<RawReferenceOrigin>().origin;
+    auto entry = encodeEventKey(ref.entry, identities);
+    if (entry == zc::none) return zc::none;
+    ZC_IF_SOME(bytes, entry) { encoder.encodeByteString(bytes.asPtr()); }
+    auto activation = encodeOwnershipPoint(ref.activation, identities);
+    if (activation == zc::none) return zc::none;
+    ZC_IF_SOME(bytes, activation) { encoder.encodeByteString(bytes.asPtr()); }
+    encodeOrigin(encoder, ref.detail);
+    auto referent = encodeMovePathKey(ref.referent, identities, semanticTypes);
+    if (referent == zc::none) return zc::none;
+    ZC_IF_SOME(bytes, referent) { encoder.encodeByteString(bytes.asPtr()); }
+  } else if (origin.is<RawInputOrigin>()) {
+    encoder.encodeUint8(0x02);  // RawInput
+    const auto& input = origin.get<RawInputOrigin>();
+    encoder.encodeUint8(input.isReceiver ? 0x01 : 0x00);
+    encoder.encodeUint32(input.parameterIndex);
+  } else if (origin.is<RawStaticAddressOrigin>()) {
+    encoder.encodeUint8(0x03);  // StaticAddress
+    auto creation = encodeEventKey(origin.get<RawStaticAddressOrigin>().creation, identities);
+    if (creation == zc::none) return zc::none;
+    ZC_IF_SOME(bytes, creation) { encoder.encodeByteString(bytes.asPtr()); }
+  } else {
+    encoder.encodeUint8(0x04);  // UnsafeAddress
+    const auto& boundary = origin.get<RawUnsafeAddressOrigin>().boundary;
+    auto event = encodeEventKey(boundary.event, identities);
+    if (event == zc::none) return zc::none;
+    ZC_IF_SOME(bytes, event) { encoder.encodeByteString(bytes.asPtr()); }
+    encoder.encodeUint32(boundary.unsafeOrdinal);
+  }
+  return encoder.finish();
+}
+
+zc::Maybe<zc::Array<uint8_t>> encodeRawProvenanceFact(
+    const RawProvenanceFact& fact, const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes) {
+  identity::CanonicalEncoder encoder;
+  auto key = encodeRawProvenanceCarrierKey(fact.key, identities, semanticTypes);
+  if (key == zc::none) return zc::none;
+  ZC_IF_SOME(bytes, key) { encoder.encodeByteString(bytes.asPtr()); }
+  encoder.encodeSequenceSize(fact.predecessors.size());
+  for (const auto& predecessor : fact.predecessors) {
+    auto pred = encodeRawProvenanceCarrierKey(predecessor, identities, semanticTypes);
+    if (pred == zc::none) return zc::none;
+    ZC_IF_SOME(bytes, pred) { encoder.encodeByteString(bytes.asPtr()); }
+  }
+  encoder.encodeSequenceSize(fact.origins.size());
+  for (const auto& origin : fact.origins) {
+    auto originBytes = encodeRawProvenanceOrigin(origin, identities, semanticTypes);
+    if (originBytes == zc::none) return zc::none;
+    ZC_IF_SOME(bytes, originBytes) { encoder.encodeByteString(bytes.asPtr()); }
+  }
+  return encoder.finish();
+}
+
 void encodeOwner(identity::CanonicalEncoder& encoder, identity::DefId owner,
                  const checker::CheckerIdentityAuthority& identities) {
   auto definition = identities.definition(owner);
@@ -632,6 +707,18 @@ zc::Maybe<zc::Array<uint8_t>> encodeResourcesGroup(
         if (carrierBytes == zc::none) return zc::none;
         ZC_IF_SOME(bytes, carrierBytes) { encoder.encodeByteString(bytes.asPtr()); }
       }
+    }
+    encoder.encodeSequenceSize(function.rawOriginUniverse.size());
+    for (const auto& origin : function.rawOriginUniverse) {
+      auto originBytes = encodeRawProvenanceOrigin(origin, identities, semanticTypes);
+      if (originBytes == zc::none) return zc::none;
+      ZC_IF_SOME(bytes, originBytes) { encoder.encodeByteString(bytes.asPtr()); }
+    }
+    encoder.encodeSequenceSize(function.rawProvenance.size());
+    for (const auto& fact : function.rawProvenance) {
+      auto factBytes = encodeRawProvenanceFact(fact, identities, semanticTypes);
+      if (factBytes == zc::none) return zc::none;
+      ZC_IF_SOME(bytes, factBytes) { encoder.encodeByteString(bytes.asPtr()); }
     }
   }
   return encoder.finish();

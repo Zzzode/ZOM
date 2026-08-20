@@ -26,6 +26,8 @@
 #include "zomlang/compiler/ownership/ownership-diagnostic-adapter.h"
 #include "zomlang/compiler/ownership/source-suppression.h"
 #include "zomlang/compiler/source/manager.h"
+#include "zomlang/compiler/type/semantic-type-data.h"
+#include "zomlang/compiler/type/semantic-type-store.h"
 #include "zomlang/tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "zomlang/tests/unittests/compiler/ownership/ownership-facts-differential-oracle.h"
 
@@ -5952,6 +5954,95 @@ ZC_TEST("Source suppression is a no-op without a suppressing primary") {
 
   auto retained = SourceSuppression::suppress(zc::mv(failures));
   ZC_REQUIRE(retained.size() == 2);
+}
+
+namespace {
+
+identity::SemanticTypeId internType(type::SemanticTypeStore& semanticTypes,
+                                    type::semantic::TypeData&& data) {
+  auto canonical = semanticTypes.canonicalizeClosed(zc::mv(data));
+  ZC_REQUIRE(canonical.is<type::semantic::CanonicalTypeData>());
+  auto result = semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+  ZC_REQUIRE(result.is<type::SemanticTypeInterned>());
+  return result.get<type::SemanticTypeInterned>().id;
+}
+
+identity::SemanticTypeId internRawPointer(type::SemanticTypeStore& semanticTypes,
+                                          identity::SemanticTypeId pointee) {
+  return internType(semanticTypes, type::semantic::TypeData(type::semantic::RawPointerTypeData{
+                                       type::semantic::Mutability::Mutable, pointee}));
+}
+
+identity::SemanticTypeId internReference(type::SemanticTypeStore& semanticTypes,
+                                         identity::SemanticTypeId referent) {
+  return internType(semanticTypes, type::semantic::TypeData(type::semantic::ReferenceTypeData{
+                                       type::semantic::Mutability::Const, referent}));
+}
+
+identity::SemanticTypeId internPrimitive(type::SemanticTypeStore& semanticTypes,
+                                         type::semantic::PrimitiveKind kind) {
+  return internType(semanticTypes,
+                    type::semantic::TypeData(type::semantic::PrimitiveTypeData{kind}));
+}
+
+}  // namespace
+
+ZC_TEST("Ownership event overlay verifier rejects a forged raw-to-reference cast plan") {
+  OwnershipPipelineFixture fixture("let value = 0;"_zc);
+
+  auto overlayInput = fixture.overlayInput();
+  auto& semanticTypes = overlayInput.body.semanticTypes;
+  const auto primitiveId = internPrimitive(semanticTypes, type::semantic::PrimitiveKind::I32);
+  const auto rawPointerId = internRawPointer(semanticTypes, primitiveId);
+  const auto referenceId = internReference(semanticTypes, primitiveId);
+
+  auto candidateResult = buildOverlay(fixture);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() == 1);
+  ZC_REQUIRE(candidate.functions[0].slots.size() > 0);
+  const auto eventKey = candidate.functions[0].slots[0].key;
+
+  zc::Vector<CastResourceRoute> routes;
+  candidate.functions[0].castResourcePlans.add(
+      VerifiedCastResourcePlanFact{CastCarrierKey{eventKey}, checker::checked::CastMode::Guaranteed,
+                                   checker::checked::CastKind::RawPointerReinterpret, rawPointerId,
+                                   referenceId, referenceId, eventKey, eventKey, zc::mv(routes)});
+
+  auto verifiedResult = verifyOverlay(zc::mv(candidate), fixture);
+  ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
+  ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
+  ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() == ir::IrFailureKind::InvalidFact);
+}
+
+ZC_TEST(
+    "Ownership event overlay verifier rejects a forged raw-to-reference cast plan on result type") {
+  OwnershipPipelineFixture fixture("let value = 0;"_zc);
+
+  auto overlayInput = fixture.overlayInput();
+  auto& semanticTypes = overlayInput.body.semanticTypes;
+  const auto primitiveId = internPrimitive(semanticTypes, type::semantic::PrimitiveKind::I32);
+  const auto rawPointerId = internRawPointer(semanticTypes, primitiveId);
+  const auto referenceId = internReference(semanticTypes, primitiveId);
+
+  auto candidateResult = buildOverlay(fixture);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() == 1);
+  ZC_REQUIRE(candidate.functions[0].slots.size() > 0);
+  const auto eventKey = candidate.functions[0].slots[0].key;
+
+  // Target is a raw pointer (not reference), but result is a reference.
+  zc::Vector<CastResourceRoute> routes;
+  candidate.functions[0].castResourcePlans.add(
+      VerifiedCastResourcePlanFact{CastCarrierKey{eventKey}, checker::checked::CastMode::Guaranteed,
+                                   checker::checked::CastKind::RawPointerReinterpret, rawPointerId,
+                                   rawPointerId, referenceId, eventKey, eventKey, zc::mv(routes)});
+
+  auto verifiedResult = verifyOverlay(zc::mv(candidate), fixture);
+  ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
+  ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
+  ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() == ir::IrFailureKind::InvalidFact);
 }
 
 }  // namespace

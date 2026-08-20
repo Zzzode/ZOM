@@ -2308,6 +2308,27 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
   return functions;
 }
 
+// --- Strict raw-to-reference rejection ---
+
+bool isRawPointerType(const type::SemanticTypeStore& semanticTypes, identity::SemanticTypeId id) {
+  auto lookup = semanticTypes.get(id);
+  if (!lookup.is<type::SemanticTypeLookup>()) return false;
+  return lookup.get<type::SemanticTypeLookup>().data().is<type::semantic::RawPointerTypeData>();
+}
+
+bool isReferenceType(const type::SemanticTypeStore& semanticTypes, identity::SemanticTypeId id) {
+  auto lookup = semanticTypes.get(id);
+  if (!lookup.is<type::SemanticTypeLookup>()) return false;
+  return lookup.get<type::SemanticTypeLookup>().data().is<type::semantic::ReferenceTypeData>();
+}
+
+bool hasRawToReferenceCast(const VerifiedCastResourcePlanFact& plan,
+                           const type::SemanticTypeStore& semanticTypes) {
+  if (!isRawPointerType(semanticTypes, plan.carrierType)) return false;
+  return isReferenceType(semanticTypes, plan.targetType) ||
+         isReferenceType(semanticTypes, plan.resultType);
+}
+
 }  // namespace
 
 zc::Maybe<zc::Array<uint8_t>> OwnershipEventOverlayCodec::encodeFramed(
@@ -2399,6 +2420,19 @@ ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifi
     return rejectOwnership<VerifiedOwnershipEventOverlay>(
         ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InputRevisionMismatch,
         module, firstFunctionDefinition(builtMir), identities, 0);
+  }
+  // Strict raw-to-reference rejection: a cast whose checked source semantic type
+  // is a raw pointer and whose target or result type is a safe reference is
+  // never admitted, including inside unsafe. A forged overlay route selecting
+  // raw-to-reference is InvalidFact before ownership analysis.
+  for (const auto& function : candidate.functions) {
+    for (const auto& plan : function.castResourcePlans) {
+      if (hasRawToReferenceCast(plan, input.body.semanticTypes)) {
+        return rejectOwnership<VerifiedOwnershipEventOverlay>(
+            ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InvalidFact, module,
+            function.owner, identities, 0);
+      }
+    }
   }
   auto expectedFunctions = reconstructExpectedFunctions(input, identities);
   if (expectedFunctions == zc::none) {

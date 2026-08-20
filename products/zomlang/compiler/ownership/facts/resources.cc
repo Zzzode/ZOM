@@ -683,10 +683,17 @@ zc::Maybe<zc::Vector<OwnershipResourceFunction>> derive(
       auto linear = deriveLinear(mirFunction, facts, transfers, castRoutes);
       if (linear == zc::none) return zc::none;
       ZC_IF_SOME(linearValue, linear) {
+        // The current MIR subset has no raw-pointer roots (no reference-to-raw
+        // casts, no raw-typed parameters, no static-address roots, and no
+        // acknowledged unsafe address-creating operations), so the raw-origin
+        // universe and raw-provenance inventory are empty. The computation
+        // structure is in place for when raw operations enter the subset.
+        zc::Vector<RawProvenanceOrigin> rawOriginUniverse;
+        zc::Vector<RawProvenanceFact> rawProvenance;
         functions.add(OwnershipResourceFunction{
             mirFunction.owner, zc::mv(facts), zc::mv(transfers), zc::mv(castRoutes),
             zc::mv(dropPlans), zc::mv(linearValue.obligations), zc::mv(linearValue.carriers),
-            zc::mv(linearValue.sccs)});
+            zc::mv(linearValue.sccs), zc::mv(rawOriginUniverse), zc::mv(rawProvenance)});
       }
     }
   }
@@ -781,6 +788,56 @@ bool sameLinearSccs(const LinearCarrierScc& left, const LinearCarrierScc& right)
   return true;
 }
 
+// --- Raw-provenance origin, carrier, and fact comparison ---
+
+bool sameReferenceInputOrigins(const ReferenceInputOrigin& left,
+                               const ReferenceInputOrigin& right) {
+  return left.entry == right.entry && left.activation == right.activation &&
+         left.detail == right.detail && sameMovePath(left.referent, right.referent);
+}
+
+bool sameRawProvenanceOrigins(const RawProvenanceOrigin& left, const RawProvenanceOrigin& right) {
+  if (left.is<RawReferenceOrigin>() != right.is<RawReferenceOrigin>() ||
+      left.is<RawInputOrigin>() != right.is<RawInputOrigin>() ||
+      left.is<RawStaticAddressOrigin>() != right.is<RawStaticAddressOrigin>()) {
+    return false;
+  }
+  if (left.is<RawReferenceOrigin>()) {
+    return sameReferenceInputOrigins(left.get<RawReferenceOrigin>().origin,
+                                     right.get<RawReferenceOrigin>().origin);
+  }
+  if (left.is<RawInputOrigin>()) {
+    return left.get<RawInputOrigin>() == right.get<RawInputOrigin>();
+  }
+  if (left.is<RawStaticAddressOrigin>()) {
+    return left.get<RawStaticAddressOrigin>() == right.get<RawStaticAddressOrigin>();
+  }
+  return left.get<RawUnsafeAddressOrigin>() == right.get<RawUnsafeAddressOrigin>();
+}
+
+bool sameRawProvenanceCarrierKeys(const RawProvenanceCarrierKey& left,
+                                  const RawProvenanceCarrierKey& right) {
+  return left.introduction == right.introduction &&
+         sameMovePath(left.destination, right.destination);
+}
+
+bool sameRawProvenanceFacts(const RawProvenanceFact& left, const RawProvenanceFact& right) {
+  if (!sameRawProvenanceCarrierKeys(left.key, right.key) ||
+      left.predecessors.size() != right.predecessors.size() ||
+      left.origins.size() != right.origins.size()) {
+    return false;
+  }
+  for (size_t index = 0; index < left.predecessors.size(); ++index) {
+    if (!sameRawProvenanceCarrierKeys(left.predecessors[index], right.predecessors[index])) {
+      return false;
+    }
+  }
+  for (size_t index = 0; index < left.origins.size(); ++index) {
+    if (!sameRawProvenanceOrigins(left.origins[index], right.origins[index])) return false;
+  }
+  return true;
+}
+
 bool sameFunctions(zc::ArrayPtr<const OwnershipResourceFunction> left,
                    zc::ArrayPtr<const OwnershipResourceFunction> right) {
   if (left.size() != right.size()) return false;
@@ -793,7 +850,10 @@ bool sameFunctions(zc::ArrayPtr<const OwnershipResourceFunction> left,
         left[functionIndex].linearObligations.size() !=
             right[functionIndex].linearObligations.size() ||
         left[functionIndex].linearCarriers.size() != right[functionIndex].linearCarriers.size() ||
-        left[functionIndex].linearSccs.size() != right[functionIndex].linearSccs.size()) {
+        left[functionIndex].linearSccs.size() != right[functionIndex].linearSccs.size() ||
+        left[functionIndex].rawOriginUniverse.size() !=
+            right[functionIndex].rawOriginUniverse.size() ||
+        left[functionIndex].rawProvenance.size() != right[functionIndex].rawProvenance.size()) {
       return false;
     }
     for (size_t factIndex = 0; factIndex < left[functionIndex].facts.size(); ++factIndex) {
@@ -837,6 +897,19 @@ bool sameFunctions(zc::ArrayPtr<const OwnershipResourceFunction> left,
     for (size_t sccIndex = 0; sccIndex < left[functionIndex].linearSccs.size(); ++sccIndex) {
       if (!sameLinearSccs(left[functionIndex].linearSccs[sccIndex],
                           right[functionIndex].linearSccs[sccIndex])) {
+        return false;
+      }
+    }
+    for (size_t originIndex = 0; originIndex < left[functionIndex].rawOriginUniverse.size();
+         ++originIndex) {
+      if (!sameRawProvenanceOrigins(left[functionIndex].rawOriginUniverse[originIndex],
+                                    right[functionIndex].rawOriginUniverse[originIndex])) {
+        return false;
+      }
+    }
+    for (size_t rawIndex = 0; rawIndex < left[functionIndex].rawProvenance.size(); ++rawIndex) {
+      if (!sameRawProvenanceFacts(left[functionIndex].rawProvenance[rawIndex],
+                                  right[functionIndex].rawProvenance[rawIndex])) {
         return false;
       }
     }
