@@ -69,6 +69,135 @@ struct CastResourceRoute final {
   MirEventKey event;
 };
 
+/// \brief Canonical identity of one linear obligation.
+///
+/// A Positive Linear marker decision creates one obligation at each
+/// initialization. The key pairs the obligation's introduction event with its
+/// origin move path.
+struct LinearObligationKey final {
+  MirEventKey introduction;
+  MovePathKey place;
+
+  ZC_NODISCARD LinearObligationKey clone() const {
+    return LinearObligationKey{introduction, MovePathKey{place.owner, place.place.clone()}};
+  }
+};
+
+/// \brief Canonical identity of one linear carrier.
+///
+/// A carrier names one static generation of an obligation's value. The root
+/// carrier has creation == obligation.introduction and place ==
+/// obligation.place. A transferred carrier is keyed by the transfer event and
+/// destination place.
+struct LinearCarrierKey final {
+  LinearObligationKey obligation;
+  MirEventKey creation;
+  MovePathKey place;
+
+  ZC_NODISCARD LinearCarrierKey clone() const {
+    return LinearCarrierKey{obligation.clone(), creation,
+                            MovePathKey{place.owner, place.place.clone()}};
+  }
+};
+
+/// \brief One ownership-preserving transfer of a linear obligation.
+struct LinearTransfer final {
+  MovePathKey from;
+  MovePathKey to;
+  MirEventKey event;
+
+  ZC_NODISCARD LinearTransfer clone() const {
+    return LinearTransfer{MovePathKey{from.owner, from.place.clone()},
+                          MovePathKey{to.owner, to.place.clone()}, event};
+  }
+};
+
+/// \brief Closed consumption kind algebra for one linear obligation.
+enum class LinearConsumptionKind : uint8_t {
+  Return = 0x01,
+  ConsumingCall = 0x02,
+  LogicalDrop = 0x03,
+};
+
+/// \brief One consumption of a linear obligation.
+struct LinearConsumption final {
+  MovePathKey place;
+  MirEventKey event;
+  LinearConsumptionKind kind;
+
+  ZC_NODISCARD LinearConsumption clone() const {
+    return LinearConsumption{MovePathKey{place.owner, place.place.clone()}, event, kind};
+  }
+};
+
+/// \brief One verified linear obligation in the resource inventory.
+///
+/// The transfers sequence contains exactly the static transfers reached by the
+/// obligation; the consumptions sequence contains exactly the consuming events
+/// reached by the obligation.
+struct LinearObligationFact final {
+  LinearObligationKey key;
+  identity::SemanticTypeId subject;
+  zc::Vector<LinearTransfer> transfers;
+  zc::Vector<LinearConsumption> consumptions;
+
+  ZC_NODISCARD LinearObligationFact clone() const {
+    zc::Vector<LinearTransfer> clonedTransfers;
+    for (const auto& transfer : transfers) clonedTransfers.add(transfer.clone());
+    zc::Vector<LinearConsumption> clonedConsumptions;
+    for (const auto& consumption : consumptions) clonedConsumptions.add(consumption.clone());
+    return LinearObligationFact{key.clone(), subject, zc::mv(clonedTransfers),
+                                zc::mv(clonedConsumptions)};
+  }
+};
+
+/// \brief One transition between two linear carriers.
+///
+/// The predecessor names the carrier that reached the transfer event; the
+/// transfer records the exact source, destination, and event.
+struct LinearCarrierTransition final {
+  LinearCarrierKey predecessor;
+  LinearTransfer transfer;
+
+  ZC_NODISCARD LinearCarrierTransition clone() const {
+    return LinearCarrierTransition{predecessor.clone(), transfer.clone()};
+  }
+};
+
+/// \brief One verified linear carrier in the resource inventory.
+///
+/// A root carrier has an empty incoming sequence. A transferred carrier has
+/// one incoming transition for every reaching predecessor alternative at the
+/// transfer event; distinct predecessors that converge at the same destination
+/// produce one carrier with multiple incoming transitions.
+struct LinearCarrierFact final {
+  LinearCarrierKey key;
+  zc::Vector<LinearCarrierTransition> incoming;
+
+  ZC_NODISCARD LinearCarrierFact clone() const {
+    zc::Vector<LinearCarrierTransition> clonedIncoming;
+    for (const auto& transition : incoming) clonedIncoming.add(transition.clone());
+    return LinearCarrierFact{key.clone(), zc::mv(clonedIncoming)};
+  }
+};
+
+/// \brief One strongly connected component of mutually-reachable linear carriers.
+///
+/// The carrier relation may contain SCCs when a value is transferred around a
+/// loop. Every carrier is reachable from the obligation's unique root, and no
+/// transition may target the root. With the current straight-line MIR (no loop
+/// terminators), every SCC is a singleton, but the computation is exact for
+/// future loop support.
+struct LinearCarrierScc final {
+  zc::Vector<LinearCarrierKey> carriers;
+
+  ZC_NODISCARD LinearCarrierScc clone() const {
+    zc::Vector<LinearCarrierKey> clonedCarriers;
+    for (const auto& carrier : carriers) clonedCarriers.add(carrier.clone());
+    return LinearCarrierScc{zc::mv(clonedCarriers)};
+  }
+};
+
 /// \brief Closed/open acceptance mode for one component drop plan.
 ///
 /// A Closed drop accepts exactly Initialized and executes every component. An
@@ -111,6 +240,9 @@ struct OwnershipResourceFunction final {
   zc::Vector<DropTransfer> transfers;
   zc::Vector<CastResourceRoute> castRoutes;
   zc::Vector<DropPlan> dropPlans;
+  zc::Vector<LinearObligationFact> linearObligations;
+  zc::Vector<LinearCarrierFact> linearCarriers;
+  zc::Vector<LinearCarrierScc> linearSccs;
 };
 
 /// \brief Untrusted logical resource inventory awaiting independent reconstruction.

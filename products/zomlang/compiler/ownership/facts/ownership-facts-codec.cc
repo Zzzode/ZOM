@@ -76,8 +76,8 @@ bool encodeMirPoint(identity::CanonicalEncoder& encoder, const MirPoint& point) 
   return false;
 }
 
-zc::Maybe<zc::Array<uint8_t>> encodeEventKey(
-    const MirEventKey& event, const checker::CheckerIdentityAuthority& identities) {
+zc::Maybe<zc::Array<uint8_t>> encodeEventKey(const MirEventKey& event,
+                                             const checker::CheckerIdentityAuthority& identities) {
   identity::CanonicalEncoder encoder;
   auto owner = identities.definition(event.location.owner);
   if (owner == zc::none) return zc::none;
@@ -98,9 +98,9 @@ bool encodeSemanticType(identity::CanonicalEncoder& encoder, identity::SemanticT
   return true;
 }
 
-zc::Maybe<zc::Array<uint8_t>> encodePlace(
-    const mir::MirPlace& place, const checker::CheckerIdentityAuthority& identities,
-    const type::SemanticTypeStore& semanticTypes) {
+zc::Maybe<zc::Array<uint8_t>> encodePlace(const mir::MirPlace& place,
+                                          const checker::CheckerIdentityAuthority& identities,
+                                          const type::SemanticTypeStore& semanticTypes) {
   if (!place.local().isValid() || !place.hasConsistentTypeChain()) return zc::none;
   identity::CanonicalEncoder encoder;
   encoder.encodeUint32(place.local().ordinal());
@@ -183,9 +183,9 @@ bool encodeLogicalDropAction(identity::CanonicalEncoder& encoder,
 
 // ---- Facts-level primitive encoders ----
 
-zc::Maybe<zc::Array<uint8_t>> encodeMovePathKey(
-    const MovePathKey& key, const checker::CheckerIdentityAuthority& identities,
-    const type::SemanticTypeStore& semanticTypes) {
+zc::Maybe<zc::Array<uint8_t>> encodeMovePathKey(const MovePathKey& key,
+                                                const checker::CheckerIdentityAuthority& identities,
+                                                const type::SemanticTypeStore& semanticTypes) {
   identity::CanonicalEncoder encoder;
   auto owner = identities.definition(key.owner);
   if (owner == zc::none) return zc::none;
@@ -196,6 +196,65 @@ zc::Maybe<zc::Array<uint8_t>> encodeMovePathKey(
   auto place = encodePlace(key.place, identities, semanticTypes);
   if (place == zc::none) return zc::none;
   ZC_IF_SOME(bytes, place) { encoder.encodeByteString(bytes.asPtr()); }
+  return encoder.finish();
+}
+
+zc::Maybe<zc::Array<uint8_t>> encodeLinearObligationKey(
+    const LinearObligationKey& key, const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes) {
+  identity::CanonicalEncoder encoder;
+  auto introduction = encodeEventKey(key.introduction, identities);
+  if (introduction == zc::none) return zc::none;
+  ZC_IF_SOME(bytes, introduction) { encoder.encodeByteString(bytes.asPtr()); }
+  auto place = encodeMovePathKey(key.place, identities, semanticTypes);
+  if (place == zc::none) return zc::none;
+  ZC_IF_SOME(bytes, place) { encoder.encodeByteString(bytes.asPtr()); }
+  return encoder.finish();
+}
+
+zc::Maybe<zc::Array<uint8_t>> encodeLinearCarrierKey(
+    const LinearCarrierKey& key, const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes) {
+  identity::CanonicalEncoder encoder;
+  auto obligation = encodeLinearObligationKey(key.obligation, identities, semanticTypes);
+  if (obligation == zc::none) return zc::none;
+  ZC_IF_SOME(bytes, obligation) { encoder.encodeByteString(bytes.asPtr()); }
+  auto creation = encodeEventKey(key.creation, identities);
+  if (creation == zc::none) return zc::none;
+  ZC_IF_SOME(bytes, creation) { encoder.encodeByteString(bytes.asPtr()); }
+  auto place = encodeMovePathKey(key.place, identities, semanticTypes);
+  if (place == zc::none) return zc::none;
+  ZC_IF_SOME(bytes, place) { encoder.encodeByteString(bytes.asPtr()); }
+  return encoder.finish();
+}
+
+zc::Maybe<zc::Array<uint8_t>> encodeLinearTransfer(
+    const LinearTransfer& transfer, const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes) {
+  identity::CanonicalEncoder encoder;
+  auto from = encodeMovePathKey(transfer.from, identities, semanticTypes);
+  if (from == zc::none) return zc::none;
+  ZC_IF_SOME(bytes, from) { encoder.encodeByteString(bytes.asPtr()); }
+  auto to = encodeMovePathKey(transfer.to, identities, semanticTypes);
+  if (to == zc::none) return zc::none;
+  ZC_IF_SOME(bytes, to) { encoder.encodeByteString(bytes.asPtr()); }
+  auto event = encodeEventKey(transfer.event, identities);
+  if (event == zc::none) return zc::none;
+  ZC_IF_SOME(bytes, event) { encoder.encodeByteString(bytes.asPtr()); }
+  return encoder.finish();
+}
+
+zc::Maybe<zc::Array<uint8_t>> encodeLinearConsumption(
+    const LinearConsumption& consumption, const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes) {
+  identity::CanonicalEncoder encoder;
+  auto place = encodeMovePathKey(consumption.place, identities, semanticTypes);
+  if (place == zc::none) return zc::none;
+  ZC_IF_SOME(bytes, place) { encoder.encodeByteString(bytes.asPtr()); }
+  auto event = encodeEventKey(consumption.event, identities);
+  if (event == zc::none) return zc::none;
+  ZC_IF_SOME(bytes, event) { encoder.encodeByteString(bytes.asPtr()); }
+  encoder.encodeUint8(static_cast<uint8_t>(consumption.kind));
   return encoder.finish();
 }
 
@@ -250,8 +309,7 @@ void encodeOwner(identity::CanonicalEncoder& encoder, identity::DefId owner,
 // ---- Facts inventory group encoders (groups 1-8) ----
 
 zc::Maybe<zc::Array<uint8_t>> encodeMovePathsGroup(
-    const VerifiedOwnershipInputs& inputs,
-    const checker::CheckerIdentityAuthority& identities,
+    const VerifiedOwnershipInputs& inputs, const checker::CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes) {
   identity::CanonicalEncoder encoder;
   const auto functions = inputs.movePaths().functions();
@@ -286,9 +344,8 @@ zc::Maybe<zc::Array<uint8_t>> encodeMovePathsGroup(
   return encoder.finish();
 }
 
-zc::Maybe<zc::Array<uint8_t>> encodeFlowGroup(
-    const VerifiedOwnershipInputs& inputs,
-    const checker::CheckerIdentityAuthority& identities) {
+zc::Maybe<zc::Array<uint8_t>> encodeFlowGroup(const VerifiedOwnershipInputs& inputs,
+                                              const checker::CheckerIdentityAuthority& identities) {
   identity::CanonicalEncoder encoder;
   const auto functions = inputs.flow().functions();
   encoder.encodeSequenceSize(functions.size());
@@ -312,10 +369,9 @@ zc::Maybe<zc::Array<uint8_t>> encodeFlowGroup(
   return encoder.finish();
 }
 
-zc::Maybe<zc::Array<uint8_t>> encodeInitGroup(
-    const VerifiedOwnershipInputs& inputs,
-    const checker::CheckerIdentityAuthority& identities,
-    const type::SemanticTypeStore& semanticTypes) {
+zc::Maybe<zc::Array<uint8_t>> encodeInitGroup(const VerifiedOwnershipInputs& inputs,
+                                              const checker::CheckerIdentityAuthority& identities,
+                                              const type::SemanticTypeStore& semanticTypes) {
   identity::CanonicalEncoder encoder;
   const auto functions = inputs.initialization().functions();
   encoder.encodeSequenceSize(functions.size());
@@ -348,10 +404,9 @@ zc::Maybe<zc::Array<uint8_t>> encodeInitGroup(
   return encoder.finish();
 }
 
-zc::Maybe<zc::Array<uint8_t>> encodeLoansGroup(
-    const VerifiedOwnershipInputs& inputs,
-    const checker::CheckerIdentityAuthority& identities,
-    const type::SemanticTypeStore& semanticTypes) {
+zc::Maybe<zc::Array<uint8_t>> encodeLoansGroup(const VerifiedOwnershipInputs& inputs,
+                                               const checker::CheckerIdentityAuthority& identities,
+                                               const type::SemanticTypeStore& semanticTypes) {
   identity::CanonicalEncoder encoder;
   const auto loans = inputs.loans().loans();
   encoder.encodeSequenceSize(loans.size());
@@ -376,8 +431,7 @@ zc::Maybe<zc::Array<uint8_t>> encodeLoansGroup(
 }
 
 zc::Maybe<zc::Array<uint8_t>> encodeReferenceDefinitionsGroup(
-    const VerifiedOwnershipInputs& inputs,
-    const checker::CheckerIdentityAuthority& identities,
+    const VerifiedOwnershipInputs& inputs, const checker::CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes) {
   identity::CanonicalEncoder encoder;
   const auto definitions = inputs.references().definitions();
@@ -410,8 +464,8 @@ zc::Maybe<zc::Array<uint8_t>> encodeReferenceDefinitionsGroup(
     auto beforeReturnCfg = encodeOwnershipPoint(live.beforeReturnCfg, identities);
     auto beforeReturn = encodeOwnershipPoint(live.beforeReturn, identities);
     auto afterReturn = encodeOwnershipPoint(live.afterReturn, identities);
-    if (afterCommit == zc::none || afterCommitCfg == zc::none ||
-        beforeReturnCfg == zc::none || beforeReturn == zc::none || afterReturn == zc::none) {
+    if (afterCommit == zc::none || afterCommitCfg == zc::none || beforeReturnCfg == zc::none ||
+        beforeReturn == zc::none || afterReturn == zc::none) {
       return zc::none;
     }
     ZC_IF_SOME(bytes, afterCommit) { encoder.encodeByteString(bytes.asPtr()); }
@@ -424,8 +478,7 @@ zc::Maybe<zc::Array<uint8_t>> encodeReferenceDefinitionsGroup(
 }
 
 zc::Maybe<zc::Array<uint8_t>> encodeRegionsGroup(
-    const VerifiedOwnershipInputs& inputs,
-    const checker::CheckerIdentityAuthority& identities,
+    const VerifiedOwnershipInputs& inputs, const checker::CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes) {
   identity::CanonicalEncoder encoder;
   const auto regions = inputs.regions().regions();
@@ -448,10 +501,9 @@ zc::Maybe<zc::Array<uint8_t>> encodeRegionsGroup(
   return encoder.finish();
 }
 
-zc::Maybe<zc::Array<uint8_t>> encodeStatesGroup(
-    const VerifiedOwnershipInputs& inputs,
-    const checker::CheckerIdentityAuthority& identities,
-    const type::SemanticTypeStore& semanticTypes) {
+zc::Maybe<zc::Array<uint8_t>> encodeStatesGroup(const VerifiedOwnershipInputs& inputs,
+                                                const checker::CheckerIdentityAuthority& identities,
+                                                const type::SemanticTypeStore& semanticTypes) {
   identity::CanonicalEncoder encoder;
   const auto states = inputs.states().states();
   encoder.encodeSequenceSize(states.size());
@@ -483,8 +535,7 @@ bool encodeDropResourceSubject(identity::CanonicalEncoder& encoder,
 }
 
 zc::Maybe<zc::Array<uint8_t>> encodeResourcesGroup(
-    const VerifiedOwnershipInputs& inputs,
-    const checker::CheckerIdentityAuthority& identities,
+    const VerifiedOwnershipInputs& inputs, const checker::CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes) {
   identity::CanonicalEncoder encoder;
   const auto functions = inputs.resources().functions();
@@ -539,6 +590,49 @@ zc::Maybe<zc::Array<uint8_t>> encodeResourcesGroup(
         }
       }
     }
+    encoder.encodeSequenceSize(function.linearObligations.size());
+    for (const auto& obligation : function.linearObligations) {
+      auto obligationKey = encodeLinearObligationKey(obligation.key, identities, semanticTypes);
+      if (obligationKey == zc::none) return zc::none;
+      ZC_IF_SOME(bytes, obligationKey) { encoder.encodeByteString(bytes.asPtr()); }
+      if (!encodeSemanticType(encoder, obligation.subject, semanticTypes)) return zc::none;
+      encoder.encodeSequenceSize(obligation.transfers.size());
+      for (const auto& transfer : obligation.transfers) {
+        auto transferBytes = encodeLinearTransfer(transfer, identities, semanticTypes);
+        if (transferBytes == zc::none) return zc::none;
+        ZC_IF_SOME(bytes, transferBytes) { encoder.encodeByteString(bytes.asPtr()); }
+      }
+      encoder.encodeSequenceSize(obligation.consumptions.size());
+      for (const auto& consumption : obligation.consumptions) {
+        auto consumptionBytes = encodeLinearConsumption(consumption, identities, semanticTypes);
+        if (consumptionBytes == zc::none) return zc::none;
+        ZC_IF_SOME(bytes, consumptionBytes) { encoder.encodeByteString(bytes.asPtr()); }
+      }
+    }
+    encoder.encodeSequenceSize(function.linearCarriers.size());
+    for (const auto& carrier : function.linearCarriers) {
+      auto carrierKey = encodeLinearCarrierKey(carrier.key, identities, semanticTypes);
+      if (carrierKey == zc::none) return zc::none;
+      ZC_IF_SOME(bytes, carrierKey) { encoder.encodeByteString(bytes.asPtr()); }
+      encoder.encodeSequenceSize(carrier.incoming.size());
+      for (const auto& transition : carrier.incoming) {
+        auto pred = encodeLinearCarrierKey(transition.predecessor, identities, semanticTypes);
+        if (pred == zc::none) return zc::none;
+        ZC_IF_SOME(bytes, pred) { encoder.encodeByteString(bytes.asPtr()); }
+        auto transferBytes = encodeLinearTransfer(transition.transfer, identities, semanticTypes);
+        if (transferBytes == zc::none) return zc::none;
+        ZC_IF_SOME(bytes, transferBytes) { encoder.encodeByteString(bytes.asPtr()); }
+      }
+    }
+    encoder.encodeSequenceSize(function.linearSccs.size());
+    for (const auto& scc : function.linearSccs) {
+      encoder.encodeSequenceSize(scc.carriers.size());
+      for (const auto& carrier : scc.carriers) {
+        auto carrierBytes = encodeLinearCarrierKey(carrier, identities, semanticTypes);
+        if (carrierBytes == zc::none) return zc::none;
+        ZC_IF_SOME(bytes, carrierBytes) { encoder.encodeByteString(bytes.asPtr()); }
+      }
+    }
   }
   return encoder.finish();
 }
@@ -566,24 +660,24 @@ zc::Maybe<zc::Array<uint8_t>> encodeMarkerUseKey(
   return encoder.finish();
 }
 
-zc::Maybe<zc::Array<uint8_t>> encodeMarkerUse(
-    const OwnershipMarkerUse& use, const checker::CheckerIdentityAuthority& identities,
-    const type::SemanticTypeStore& semanticTypes) {
+zc::Maybe<zc::Array<uint8_t>> encodeMarkerUse(const OwnershipMarkerUse& use,
+                                              const checker::CheckerIdentityAuthority& identities,
+                                              const type::SemanticTypeStore& semanticTypes) {
   auto key = encodeMarkerUseKey(use.key, identities, semanticTypes);
   if (key == zc::none) return zc::none;
   identity::CanonicalEncoder encoder;
   ZC_IF_SOME(value, key) { encoder.encodeByteString(value.asPtr()); }
   if (use.decision.is<OwnershipMarkerDecisionPositive>()) {
     const auto& proof = use.decision.get<OwnershipMarkerDecisionPositive>().proof;
-    auto record = signature::SignatureFactsCanonicalCodec::encodeMarkerFact(
-        proof, identities, semanticTypes);
+    auto record =
+        signature::SignatureFactsCanonicalCodec::encodeMarkerFact(proof, identities, semanticTypes);
     if (record == zc::none) return zc::none;
     encoder.encodeUint8(0x01);
     ZC_IF_SOME(value, record) { encoder.encodeByteString(value.asPtr()); }
   } else if (use.decision.is<OwnershipMarkerDecisionExplicitNegative>()) {
     const auto& proof = use.decision.get<OwnershipMarkerDecisionExplicitNegative>().explicitFact;
-    auto record = signature::SignatureFactsCanonicalCodec::encodeMarkerFact(
-        proof, identities, semanticTypes);
+    auto record =
+        signature::SignatureFactsCanonicalCodec::encodeMarkerFact(proof, identities, semanticTypes);
     if (record == zc::none) return zc::none;
     encoder.encodeUint8(0x02);
     ZC_IF_SOME(value, record) { encoder.encodeByteString(value.asPtr()); }
@@ -593,9 +687,9 @@ zc::Maybe<zc::Array<uint8_t>> encodeMarkerUse(
   return encoder.finish();
 }
 
-zc::Maybe<zc::Array<uint8_t>> encodeRouteProof(
-    const CastResourceRouteProof& proof, const checker::CheckerIdentityAuthority& identities,
-    const type::SemanticTypeStore& semanticTypes) {
+zc::Maybe<zc::Array<uint8_t>> encodeRouteProof(const CastResourceRouteProof& proof,
+                                               const checker::CheckerIdentityAuthority& identities,
+                                               const type::SemanticTypeStore& semanticTypes) {
   identity::CanonicalEncoder encoder;
   if (proof.is<CastResourceRouteIdentity>()) {
     encoder.encodeUint8(0x01);
@@ -788,8 +882,7 @@ zc::Maybe<zc::Array<uint8_t>> encodeMetadataGroup(const VerifiedOwnershipInputs&
 }  // namespace
 
 zc::Maybe<zc::Array<uint8_t>> OwnershipFactsCodec::encodeFramed(
-    const identity::Sha256Digest& contextFingerprint,
-    zc::ArrayPtr<const uint8_t> expandedModuleKey,
+    const identity::Sha256Digest& contextFingerprint, zc::ArrayPtr<const uint8_t> expandedModuleKey,
     zc::ArrayPtr<const zc::Array<uint8_t>> canonicalGroups) {
   if (expandedModuleKey.size() == 0 || canonicalGroups.size() != 13) return zc::none;
   identity::CanonicalEncoder encoder;
@@ -828,7 +921,8 @@ zc::Maybe<zc::Array<uint8_t>> OwnershipFactsCodec::encode(
   if (!addGroup(encodeFlowGroup(inputs, identities))) return zc::none;
   if (!addGroup(encodeInitGroup(inputs, identities, semanticTypes))) return zc::none;
   if (!addGroup(encodeLoansGroup(inputs, identities, semanticTypes))) return zc::none;
-  if (!addGroup(encodeReferenceDefinitionsGroup(inputs, identities, semanticTypes))) return zc::none;
+  if (!addGroup(encodeReferenceDefinitionsGroup(inputs, identities, semanticTypes)))
+    return zc::none;
   if (!addGroup(encodeRegionsGroup(inputs, identities, semanticTypes))) return zc::none;
   if (!addGroup(encodeStatesGroup(inputs, identities, semanticTypes))) return zc::none;
   if (!addGroup(encodeResourcesGroup(inputs, identities, semanticTypes))) return zc::none;

@@ -295,6 +295,258 @@ bool isParameterRootTransfer(const LogicalDropPlan& plan, const LogicalDropPlanC
          component.valueType == transfer.source.resultType();
 }
 
+// --- Linear obligation, carrier, and SCC derivation ---
+
+bool sameLinearObligationKeys(const LinearObligationKey& left, const LinearObligationKey& right) {
+  return left.introduction == right.introduction && sameMovePath(left.place, right.place);
+}
+
+bool sameLinearCarrierKeys(const LinearCarrierKey& left, const LinearCarrierKey& right) {
+  return sameLinearObligationKeys(left.obligation, right.obligation) &&
+         left.creation == right.creation && sameMovePath(left.place, right.place);
+}
+
+struct LinearMovement {
+  MovePathKey from;
+  MovePathKey to;
+  MirEventKey event;
+};
+
+struct LinearObligationState {
+  LinearObligationKey key;
+  identity::SemanticTypeId subject;
+  zc::Vector<LinearTransfer> transfers;
+  zc::Vector<LinearConsumption> consumptions;
+  MovePathKey currentPlace;
+  LinearCarrierKey currentCarrier;
+};
+
+bool eventBefore(const MirEventKey& left, const MirEventKey& right) {
+  if (left.location.point != right.location.point) {
+    return left.location.point < right.location.point;
+  }
+  return left.operandOrdinal < right.operandOrdinal;
+}
+
+zc::Maybe<uint32_t> linearObligationAt(const zc::Vector<LinearObligationState>& states,
+                                       const MovePathKey& place) {
+  for (uint32_t i = 0; i < states.size(); ++i) {
+    if (sameMovePath(states[i].currentPlace, place)) return i;
+  }
+  return zc::none;
+}
+
+zc::Maybe<uint32_t> findLinearCarrier(const zc::Vector<LinearCarrierFact>& carriers,
+                                      const LinearCarrierKey& key) {
+  for (uint32_t i = 0; i < carriers.size(); ++i) {
+    if (sameLinearCarrierKeys(carriers[i].key, key)) return i;
+  }
+  return zc::none;
+}
+
+void tarjanLinearScc(uint32_t node, const zc::Vector<zc::Vector<uint32_t>>& adjacency,
+                     zc::Vector<uint32_t>& indices, zc::Vector<uint32_t>& lowlinks,
+                     zc::Vector<bool>& onStack, zc::Vector<uint32_t>& stack, uint32_t& nextIndex,
+                     zc::Vector<zc::Vector<uint32_t>>& sccs) {
+  indices[node] = nextIndex;
+  lowlinks[node] = nextIndex;
+  ++nextIndex;
+  stack.add(node);
+  onStack[node] = true;
+  for (uint32_t successor : adjacency[node]) {
+    if (indices[successor] == UINT32_MAX) {
+      tarjanLinearScc(successor, adjacency, indices, lowlinks, onStack, stack, nextIndex, sccs);
+      if (lowlinks[successor] < lowlinks[node]) lowlinks[node] = lowlinks[successor];
+    } else if (onStack[successor]) {
+      if (indices[successor] < lowlinks[node]) lowlinks[node] = indices[successor];
+    }
+  }
+  if (lowlinks[node] == indices[node]) {
+    zc::Vector<uint32_t> scc;
+    while (true) {
+      uint32_t top = stack[stack.size() - 1];
+      stack.resize(stack.size() - 1);
+      onStack[top] = false;
+      scc.add(top);
+      if (top == node) break;
+    }
+    sccs.add(zc::mv(scc));
+  }
+}
+
+struct LinearDerivation {
+  zc::Vector<LinearObligationFact> obligations;
+  zc::Vector<LinearCarrierFact> carriers;
+  zc::Vector<LinearCarrierScc> sccs;
+};
+
+zc::Maybe<LinearDerivation> deriveLinear(const mir::MirFunction& function,
+                                         const zc::Vector<OwnershipResourceFact>& facts,
+                                         const zc::Vector<DropTransfer>& transfers,
+                                         const zc::Vector<CastResourceRoute>& castRoutes) {
+  zc::Vector<LinearObligationState> states;
+  zc::Vector<LinearCarrierFact> carriers;
+  for (const auto& fact : facts) {
+    if (fact.requirement != DropRequirement::Linear &&
+        fact.requirement != DropRequirement::LinearLogical) {
+      continue;
+    }
+    auto origin = MovePathKey{fact.subject.origin.owner, fact.subject.origin.place.clone()};
+    LinearObligationKey obligationKey{fact.subject.introduction,
+                                      MovePathKey{origin.owner, origin.place.clone()}};
+    auto rootCarrier = LinearCarrierKey{
+        obligationKey.clone(),
+        MirEventKey{fact.subject.introduction.location, fact.subject.introduction.operandOrdinal},
+        MovePathKey{origin.owner, origin.place.clone()}};
+    carriers.add(LinearCarrierFact{rootCarrier.clone(), {}});
+    states.add(LinearObligationState{zc::mv(obligationKey),
+                                     fact.subject.originType,
+                                     {},
+                                     {},
+                                     MovePathKey{origin.owner, origin.place.clone()},
+                                     zc::mv(rootCarrier)});
+  }
+  if (states.size() == 0) return LinearDerivation{{}, {}, {}};
+
+  // Merge transfers and cast routes into one movement sequence sorted by event.
+  zc::Vector<LinearMovement> movements;
+  for (const auto& transfer : transfers) {
+    movements.add(
+        LinearMovement{MovePathKey{transfer.from.owner, transfer.from.place.clone()},
+                       MovePathKey{transfer.to.owner, transfer.to.place.clone()},
+                       MirEventKey{transfer.event.location, transfer.event.operandOrdinal}});
+  }
+  for (const auto& route : castRoutes) {
+    movements.add(LinearMovement{MovePathKey{route.from.owner, route.from.place.clone()},
+                                 MovePathKey{route.to.owner, route.to.place.clone()},
+                                 MirEventKey{route.event.location, route.event.operandOrdinal}});
+  }
+  zc::Vector<uint32_t> order;
+  for (uint32_t i = 0; i < movements.size(); ++i) order.add(i);
+  for (uint32_t i = 1; i < order.size(); ++i) {
+    uint32_t key = order[i];
+    int64_t j = static_cast<int64_t>(i) - 1;
+    while (j >= 0 && eventBefore(movements[key].event, movements[order[j]].event)) {
+      order[j + 1] = order[j];
+      --j;
+    }
+    order[j + 1] = key;
+  }
+
+  // Process movements: each linear movement creates a transferred carrier.
+  for (uint32_t movementIndex : order) {
+    const auto& movement = movements[movementIndex];
+    auto obligationIndex = linearObligationAt(states, movement.from);
+    if (obligationIndex == zc::none) continue;
+    ZC_IF_SOME(obligationOrdinal, obligationIndex) {
+      auto& state = states[obligationOrdinal];
+      auto transfer =
+          LinearTransfer{MovePathKey{movement.from.owner, movement.from.place.clone()},
+                         MovePathKey{movement.to.owner, movement.to.place.clone()},
+                         MirEventKey{movement.event.location, movement.event.operandOrdinal}};
+      state.transfers.add(transfer.clone());
+      auto newCarrierKey = LinearCarrierKey{
+          state.key.clone(), MirEventKey{movement.event.location, movement.event.operandOrdinal},
+          MovePathKey{movement.to.owner, movement.to.place.clone()}};
+      auto transition = LinearCarrierTransition{state.currentCarrier.clone(), transfer.clone()};
+      auto existing = findLinearCarrier(carriers, newCarrierKey);
+      if (existing != zc::none) {
+        ZC_IF_SOME(carrierOrdinal, existing) {
+          carriers[carrierOrdinal].incoming.add(transition.clone());
+        }
+      } else {
+        carriers.add(LinearCarrierFact{newCarrierKey.clone(), {}});
+        carriers[carriers.size() - 1].incoming.add(transition.clone());
+      }
+      state.currentCarrier = zc::mv(newCarrierKey);
+      state.currentPlace = MovePathKey{movement.to.owner, movement.to.place.clone()};
+    }
+  }
+
+  // Scan terminators for linear consumptions (returns and consuming calls).
+  for (const auto& block : function.blocks) {
+    const auto& terminator = block.terminator;
+    if (terminator.kind() == mir::MirTerminatorKind::Return) {
+      const auto& ret = terminator.returnValue();
+      if (ret.value == zc::none) continue;
+      ZC_IF_SOME(operand, ret.value) {
+        if (operand.kind() != mir::MirOperandKind::Move) continue;
+        auto place = MovePathKey{function.owner, operand.place().clone()};
+        auto obligationIndex = linearObligationAt(states, place);
+        if (obligationIndex == zc::none) continue;
+        ZC_IF_SOME(obligationOrdinal, obligationIndex) {
+          auto event =
+              MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)}, 0};
+          states[obligationOrdinal].consumptions.add(
+              LinearConsumption{zc::mv(place), zc::mv(event), LinearConsumptionKind::Return});
+        }
+      }
+    } else if (terminator.kind() == mir::MirTerminatorKind::Call) {
+      const auto& call = terminator.callValue();
+      for (uint32_t argIndex = 0; argIndex < call.arguments.size(); ++argIndex) {
+        const auto& operand = call.arguments[argIndex];
+        if (operand.kind() != mir::MirOperandKind::Move) continue;
+        auto place = MovePathKey{function.owner, operand.place().clone()};
+        auto obligationIndex = linearObligationAt(states, place);
+        if (obligationIndex == zc::none) continue;
+        ZC_IF_SOME(obligationOrdinal, obligationIndex) {
+          auto event = MirEventKey{
+              MirLocation{function.owner, MirPoint::beforeTerminator(block.id)}, argIndex};
+          states[obligationOrdinal].consumptions.add(LinearConsumption{
+              zc::mv(place), zc::mv(event), LinearConsumptionKind::ConsumingCall});
+        }
+      }
+    }
+  }
+
+  // Build obligation facts from states.
+  zc::Vector<LinearObligationFact> obligations;
+  for (auto& state : states) {
+    obligations.add(LinearObligationFact{state.key.clone(), state.subject, zc::mv(state.transfers),
+                                         zc::mv(state.consumptions)});
+  }
+
+  // Compute SCCs over the carrier transition graph (Tarjan's algorithm).
+  zc::Vector<LinearCarrierScc> sccs;
+  if (carriers.size() > 0) {
+    zc::Vector<zc::Vector<uint32_t>> adjacency;
+    for (uint32_t i = 0; i < carriers.size(); ++i) adjacency.add(zc::Vector<uint32_t>{});
+    for (uint32_t i = 0; i < carriers.size(); ++i) {
+      for (const auto& transition : carriers[i].incoming) {
+        auto predIndex = findLinearCarrier(carriers, transition.predecessor);
+        if (predIndex != zc::none) {
+          ZC_IF_SOME(pred, predIndex) { adjacency[pred].add(i); }
+        }
+      }
+    }
+    zc::Vector<uint32_t> indices;
+    zc::Vector<uint32_t> lowlinks;
+    zc::Vector<bool> onStack;
+    for (uint32_t i = 0; i < carriers.size(); ++i) {
+      indices.add(UINT32_MAX);
+      lowlinks.add(0);
+      onStack.add(false);
+    }
+    zc::Vector<uint32_t> stack;
+    uint32_t nextIndex = 0;
+    zc::Vector<zc::Vector<uint32_t>> rawSccs;
+    for (uint32_t i = 0; i < carriers.size(); ++i) {
+      if (indices[i] == UINT32_MAX) {
+        tarjanLinearScc(i, adjacency, indices, lowlinks, onStack, stack, nextIndex, rawSccs);
+      }
+    }
+    for (auto& rawScc : rawSccs) {
+      zc::Vector<LinearCarrierKey> sccCarriers;
+      for (uint32_t carrierOrdinal : rawScc) {
+        sccCarriers.add(carriers[carrierOrdinal].key.clone());
+      }
+      sccs.add(LinearCarrierScc{zc::mv(sccCarriers)});
+    }
+  }
+
+  return LinearDerivation{zc::mv(obligations), zc::mv(carriers), zc::mv(sccs)};
+}
+
 zc::Maybe<zc::Vector<OwnershipResourceFunction>> derive(
     const VerifiedMovePaths& movePaths, const mir::VerifiedBuiltMir& builtMir,
     const VerifiedOwnershipEventOverlay& overlay) {
@@ -427,8 +679,14 @@ zc::Maybe<zc::Vector<OwnershipResourceFunction>> derive(
           }
         }
       }
-      functions.add(OwnershipResourceFunction{mirFunction.owner, zc::mv(facts), zc::mv(transfers),
-                                              zc::mv(castRoutes), zc::mv(dropPlans)});
+      auto linear = deriveLinear(mirFunction, facts, transfers, castRoutes);
+      if (linear == zc::none) return zc::none;
+      ZC_IF_SOME(linearValue, linear) {
+        functions.add(OwnershipResourceFunction{
+            mirFunction.owner, zc::mv(facts), zc::mv(transfers), zc::mv(castRoutes),
+            zc::mv(dropPlans), zc::mv(linearValue.obligations), zc::mv(linearValue.carriers),
+            zc::mv(linearValue.sccs)});
+      }
     }
   }
   return functions;
@@ -472,6 +730,56 @@ bool sameDropPlans(const DropPlan& left, const DropPlan& right) {
   return true;
 }
 
+bool sameLinearTransfers(const LinearTransfer& left, const LinearTransfer& right) {
+  return sameMovePath(left.from, right.from) && sameMovePath(left.to, right.to) &&
+         left.event == right.event;
+}
+
+bool sameLinearConsumptions(const LinearConsumption& left, const LinearConsumption& right) {
+  return sameMovePath(left.place, right.place) && left.event == right.event &&
+         left.kind == right.kind;
+}
+
+bool sameLinearObligations(const LinearObligationFact& left, const LinearObligationFact& right) {
+  if (!sameLinearObligationKeys(left.key, right.key) || left.subject != right.subject ||
+      left.transfers.size() != right.transfers.size() ||
+      left.consumptions.size() != right.consumptions.size()) {
+    return false;
+  }
+  for (size_t index = 0; index < left.transfers.size(); ++index) {
+    if (!sameLinearTransfers(left.transfers[index], right.transfers[index])) return false;
+  }
+  for (size_t index = 0; index < left.consumptions.size(); ++index) {
+    if (!sameLinearConsumptions(left.consumptions[index], right.consumptions[index])) return false;
+  }
+  return true;
+}
+
+bool sameLinearCarrierTransitions(const LinearCarrierTransition& left,
+                                  const LinearCarrierTransition& right) {
+  return sameLinearCarrierKeys(left.predecessor, right.predecessor) &&
+         sameLinearTransfers(left.transfer, right.transfer);
+}
+
+bool sameLinearCarriers(const LinearCarrierFact& left, const LinearCarrierFact& right) {
+  if (!sameLinearCarrierKeys(left.key, right.key) ||
+      left.incoming.size() != right.incoming.size()) {
+    return false;
+  }
+  for (size_t index = 0; index < left.incoming.size(); ++index) {
+    if (!sameLinearCarrierTransitions(left.incoming[index], right.incoming[index])) return false;
+  }
+  return true;
+}
+
+bool sameLinearSccs(const LinearCarrierScc& left, const LinearCarrierScc& right) {
+  if (left.carriers.size() != right.carriers.size()) return false;
+  for (size_t index = 0; index < left.carriers.size(); ++index) {
+    if (!sameLinearCarrierKeys(left.carriers[index], right.carriers[index])) return false;
+  }
+  return true;
+}
+
 bool sameFunctions(zc::ArrayPtr<const OwnershipResourceFunction> left,
                    zc::ArrayPtr<const OwnershipResourceFunction> right) {
   if (left.size() != right.size()) return false;
@@ -480,7 +788,11 @@ bool sameFunctions(zc::ArrayPtr<const OwnershipResourceFunction> left,
         left[functionIndex].facts.size() != right[functionIndex].facts.size() ||
         left[functionIndex].transfers.size() != right[functionIndex].transfers.size() ||
         left[functionIndex].castRoutes.size() != right[functionIndex].castRoutes.size() ||
-        left[functionIndex].dropPlans.size() != right[functionIndex].dropPlans.size()) {
+        left[functionIndex].dropPlans.size() != right[functionIndex].dropPlans.size() ||
+        left[functionIndex].linearObligations.size() !=
+            right[functionIndex].linearObligations.size() ||
+        left[functionIndex].linearCarriers.size() != right[functionIndex].linearCarriers.size() ||
+        left[functionIndex].linearSccs.size() != right[functionIndex].linearSccs.size()) {
       return false;
     }
     for (size_t factIndex = 0; factIndex < left[functionIndex].facts.size(); ++factIndex) {
@@ -504,6 +816,26 @@ bool sameFunctions(zc::ArrayPtr<const OwnershipResourceFunction> left,
     for (size_t planIndex = 0; planIndex < left[functionIndex].dropPlans.size(); ++planIndex) {
       if (!sameDropPlans(left[functionIndex].dropPlans[planIndex],
                          right[functionIndex].dropPlans[planIndex])) {
+        return false;
+      }
+    }
+    for (size_t obligationIndex = 0; obligationIndex < left[functionIndex].linearObligations.size();
+         ++obligationIndex) {
+      if (!sameLinearObligations(left[functionIndex].linearObligations[obligationIndex],
+                                 right[functionIndex].linearObligations[obligationIndex])) {
+        return false;
+      }
+    }
+    for (size_t carrierIndex = 0; carrierIndex < left[functionIndex].linearCarriers.size();
+         ++carrierIndex) {
+      if (!sameLinearCarriers(left[functionIndex].linearCarriers[carrierIndex],
+                              right[functionIndex].linearCarriers[carrierIndex])) {
+        return false;
+      }
+    }
+    for (size_t sccIndex = 0; sccIndex < left[functionIndex].linearSccs.size(); ++sccIndex) {
+      if (!sameLinearSccs(left[functionIndex].linearSccs[sccIndex],
+                          right[functionIndex].linearSccs[sccIndex])) {
         return false;
       }
     }

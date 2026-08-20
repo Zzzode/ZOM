@@ -1638,6 +1638,107 @@ bool sortFunctions(zc::Vector<OwnershipFunctionEventOverlay>& functions,
   return true;
 }
 
+bool sameMirPlace(const mir::MirPlace& left, const mir::MirPlace& right) {
+  if (left.local() != right.local() || left.rootType() != right.rootType() ||
+      left.resultType() != right.resultType() ||
+      left.projections().size() != right.projections().size()) {
+    return false;
+  }
+  for (size_t index = 0; index < left.projections().size(); ++index) {
+    const auto& lp = left.projections()[index];
+    const auto& rp = right.projections()[index];
+    if (lp.kind() != rp.kind() || lp.inputType() != rp.inputType() ||
+        lp.resultType() != rp.resultType()) {
+      return false;
+    }
+    switch (lp.kind()) {
+      case mir::MirProjectionKind::Field:
+        if (lp.fieldValue().field != rp.fieldValue().field) return false;
+        break;
+      case mir::MirProjectionKind::Index:
+        if (lp.indexValue().index != rp.indexValue().index) return false;
+        break;
+      case mir::MirProjectionKind::Dereference:
+        break;
+      case mir::MirProjectionKind::Downcast:
+        if (lp.downcastValue().variant != rp.downcastValue().variant) return false;
+        break;
+      case mir::MirProjectionKind::Subslice:
+        if (lp.subsliceValue().first != rp.subsliceValue().first ||
+            lp.subsliceValue().pastLast != rp.subsliceValue().pastLast) {
+          return false;
+        }
+        break;
+    }
+  }
+  return true;
+}
+
+/// \brief Returns true when a move assignment reinterprets a value to a different type.
+///
+/// A type-changing move is the MIR projection of a checked-cast transmute: the
+/// operand's bits are preserved but its result type differs from the destination.
+/// The overlay emits cast-carrier roles and a resource plan for each such move.
+bool isTypeChangingMove(const mir::MirAssignmentStatement& assignment) {
+  if (assignment.value.kind() != mir::MirRvalueKind::Use) return false;
+  const auto& operand = assignment.value.useValue().operand;
+  if (operand.kind() != mir::MirOperandKind::Move) return false;
+  return operand.place().resultType() != assignment.destination.resultType();
+}
+
+/// \brief Builds one verified cast-resource plan for a type-changing move assignment.
+///
+/// The carrier is initialized at the source event and transferred at the commit
+/// event. A type-changing move has no failure edge, so the mode is Guaranteed and
+/// the route proof is Identity (the resource subject is preserved unchanged).
+zc::Maybe<VerifiedCastResourcePlanFact> buildCastResourcePlan(
+    const mir::MirFunction& function, const mir::MirBasicBlock& block, uint32_t statementOrdinal,
+    const mir::MirAssignmentStatement& assignment) {
+  const auto& operand = assignment.value.useValue().operand;
+  const MirEventKey carrierEvent{
+      MirLocation{function.owner, MirPoint::beforeStatement(block.id, statementOrdinal)}, 0};
+  const MirEventKey successEvent{
+      MirLocation{function.owner, MirPoint::beforeStatement(block.id, statementOrdinal)}, 2};
+  zc::Vector<CastResourceRoute> routes;
+  routes.add(CastResourceRoute{operand.place().clone(), assignment.destination.clone(),
+                               CastResourceRouteProof(CastResourceRouteIdentity{})});
+  return VerifiedCastResourcePlanFact{CastCarrierKey{carrierEvent},
+                                      checker::checked::CastMode::Guaranteed,
+                                      checker::checked::CastKind::RawPointerReinterpret,
+                                      operand.place().resultType(),
+                                      assignment.destination.resultType(),
+                                      assignment.destination.resultType(),
+                                      carrierEvent,
+                                      successEvent,
+                                      zc::mv(routes)};
+}
+
+bool sortCastResourcePlans(zc::Vector<VerifiedCastResourcePlanFact>& plans,
+                           const checker::CheckerIdentityAuthority& identities) {
+  zc::Vector<zc::Array<uint8_t>> keys;
+  for (const auto& plan : plans) {
+    auto key = encodeEventKey(plan.key.check, identities);
+    if (key == zc::none) return false;
+    ZC_IF_SOME(value, key) { keys.add(zc::mv(value)); }
+  }
+  for (size_t index = 1; index < plans.size(); ++index) {
+    auto currentPlan = zc::mv(plans[index]);
+    auto currentKey = zc::mv(keys[index]);
+    size_t insertion = index;
+    while (insertion > 0 && lessBytes(currentKey.asPtr(), keys[insertion - 1].asPtr())) {
+      plans[insertion] = zc::mv(plans[insertion - 1]);
+      keys[insertion] = zc::mv(keys[insertion - 1]);
+      --insertion;
+    }
+    plans[insertion] = zc::mv(currentPlan);
+    keys[insertion] = zc::mv(currentKey);
+  }
+  for (size_t index = 1; index < keys.size(); ++index) {
+    if (!lessBytes(keys[index - 1].asPtr(), keys[index].asPtr())) return false;
+  }
+  return true;
+}
+
 zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
     const OwnershipEventOverlayInput& input, const checker::CheckerIdentityAuthority& identities) {
   const auto& builtMir = input.built;
@@ -1653,6 +1754,8 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
     zc::Vector<DeferredActivationFact> deferredActivations;
     zc::Vector<OwnershipMarkerUse> markerUses;
     zc::Vector<LogicalDropPlan> logicalDropPlans;
+    zc::Vector<VerifiedCastResourcePlanFact> castResourcePlans;
+    zc::Vector<mir::MirPlace> castDestinations;
     for (uint32_t ordinal = 0; ordinal < function.locals.size(); ++ordinal) {
       zc::Vector<OwnershipEventRole> roles;
       const MirEventKey event{MirLocation{function.owner, MirPoint::entry()}, ordinal};
@@ -1674,6 +1777,7 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
           case mir::MirStatementKind::Assign: {
             zc::Vector<OwnershipEventRole> operandRoles;
             const auto& rvalue = statement.assignmentValue().value;
+            const bool typeChangingCast = isTypeChangingMove(statement.assignmentValue());
             if (rvalue.kind() == mir::MirRvalueKind::Use) {
               const auto& operand = rvalue.useValue().operand;
               switch (operand.kind()) {
@@ -1684,6 +1788,9 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
                 case mir::MirOperandKind::Move:
                   operandRoles.add(OwnershipEventRole::OperandRead);
                   operandRoles.add(OwnershipEventRole::OperandMove);
+                  if (typeChangingCast) {
+                    operandRoles.add(OwnershipEventRole::CastCarrierInitialize);
+                  }
                   break;
                 case mir::MirOperandKind::Constant:
                   operandRoles.add(OwnershipEventRole::ConstantOperand);
@@ -1709,7 +1816,15 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
             emit(1, OwnershipEventStage::Effect, zc::mv(effectRoles));
             zc::Vector<OwnershipEventRole> commitRoles;
             commitRoles.add(OwnershipEventRole::DestinationWrite);
+            if (typeChangingCast) { commitRoles.add(OwnershipEventRole::CastCarrierTransfer); }
             emit(2, OwnershipEventStage::Commit, zc::mv(commitRoles));
+            if (typeChangingCast) {
+              auto plan = buildCastResourcePlan(function, block, statementOrdinal,
+                                                statement.assignmentValue());
+              if (plan == zc::none) return zc::none;
+              ZC_IF_SOME(value, plan) { castResourcePlans.add(zc::mv(value)); }
+              castDestinations.add(statement.assignmentValue().destination.clone());
+            }
             const MirEventKey initialization{
                 MirLocation{function.owner, MirPoint::beforeStatement(block.id, statementOrdinal)},
                 2};
@@ -1772,6 +1887,13 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
             zc::Vector<OwnershipEventRole> effectRoles;
             effectRoles.add(OwnershipEventRole::Operation);
             effectRoles.add(OwnershipEventRole::Deinitialize);
+            const auto& deinitPlace = statement.deinitializeValue().destination;
+            for (const auto& castDestination : castDestinations) {
+              if (sameMirPlace(deinitPlace, castDestination)) {
+                effectRoles.add(OwnershipEventRole::CastCarrierDrop);
+                break;
+              }
+            }
             emit(0, OwnershipEventStage::Effect, zc::mv(effectRoles));
             break;
           }
@@ -1889,13 +2011,14 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
     sortDeferredActivations(deferredActivations);
     if (!sortMarkerUses(markerUses, identities, input.body.semanticTypes)) return zc::none;
     if (!sortLogicalDropPlans(logicalDropPlans, identities)) return zc::none;
+    if (!sortCastResourcePlans(castResourcePlans, identities)) return zc::none;
     auto sourceMap = projectSourceMap(function, slots);
     if (sourceMap == zc::none) return zc::none;
     ZC_IF_SOME(value, sourceMap) {
       functions.add(OwnershipFunctionEventOverlay{
           function.owner, zc::mv(slots), zc::mv(value), zc::mv(deferredActivations),
           zc::mv(markerUses), zc::mv(logicalDropPlans), zc::Vector<MirUnsafeOccurrence>{},
-          zc::Vector<VerifiedCastResourcePlanFact>{}});
+          zc::mv(castResourcePlans)});
     }
   }
   if (!sortFunctions(functions, identities)) return zc::none;
@@ -1917,6 +2040,8 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
     zc::Vector<DeferredActivationFact> deferredActivations;
     zc::Vector<OwnershipMarkerUse> markerUses;
     zc::Vector<LogicalDropPlan> logicalDropPlans;
+    zc::Vector<VerifiedCastResourcePlanFact> castResourcePlans;
+    zc::Vector<mir::MirPlace> castDestinations;
     for (uint32_t ordinal = 0; ordinal < function.locals.size(); ++ordinal) {
       zc::Vector<OwnershipEventRole> roles;
       const MirEventKey event{MirLocation{function.owner, MirPoint::entry()}, ordinal};
@@ -1938,6 +2063,7 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
           case mir::MirStatementKind::Assign: {
             zc::Vector<OwnershipEventRole> source;
             const auto& rvalue = statement.assignmentValue().value;
+            const bool typeChangingCast = isTypeChangingMove(statement.assignmentValue());
             if (rvalue.kind() == mir::MirRvalueKind::Use) {
               switch (rvalue.useValue().operand.kind()) {
                 case mir::MirOperandKind::Copy:
@@ -1947,6 +2073,7 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
                 case mir::MirOperandKind::Move:
                   source.add(OwnershipEventRole::OperandRead);
                   source.add(OwnershipEventRole::OperandMove);
+                  if (typeChangingCast) { source.add(OwnershipEventRole::CastCarrierInitialize); }
                   break;
                 case mir::MirOperandKind::Constant:
                   source.add(OwnershipEventRole::ConstantOperand);
@@ -1972,7 +2099,15 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
             record(1, OwnershipEventStage::Effect, zc::mv(effect));
             zc::Vector<OwnershipEventRole> commit;
             commit.add(OwnershipEventRole::DestinationWrite);
+            if (typeChangingCast) { commit.add(OwnershipEventRole::CastCarrierTransfer); }
             record(2, OwnershipEventStage::Commit, zc::mv(commit));
+            if (typeChangingCast) {
+              auto plan = buildCastResourcePlan(function, block, statementOrdinal,
+                                                statement.assignmentValue());
+              if (plan == zc::none) return zc::none;
+              ZC_IF_SOME(value, plan) { castResourcePlans.add(zc::mv(value)); }
+              castDestinations.add(statement.assignmentValue().destination.clone());
+            }
             const MirEventKey initialization{
                 MirLocation{function.owner, MirPoint::beforeStatement(block.id, statementOrdinal)},
                 2};
@@ -2035,6 +2170,13 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
             zc::Vector<OwnershipEventRole> roles;
             roles.add(OwnershipEventRole::Operation);
             roles.add(OwnershipEventRole::Deinitialize);
+            const auto& deinitPlace = statement.deinitializeValue().destination;
+            for (const auto& castDestination : castDestinations) {
+              if (sameMirPlace(deinitPlace, castDestination)) {
+                roles.add(OwnershipEventRole::CastCarrierDrop);
+                break;
+              }
+            }
             record(0, OwnershipEventStage::Effect, zc::mv(roles));
             break;
           }
@@ -2152,13 +2294,14 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
     sortDeferredActivations(deferredActivations);
     if (!sortMarkerUses(markerUses, identities, input.body.semanticTypes)) return zc::none;
     if (!sortLogicalDropPlans(logicalDropPlans, identities)) return zc::none;
+    if (!sortCastResourcePlans(castResourcePlans, identities)) return zc::none;
     auto sourceMap = projectSourceMap(function, slots);
     if (sourceMap == zc::none) return zc::none;
     ZC_IF_SOME(value, sourceMap) {
       functions.add(OwnershipFunctionEventOverlay{
           function.owner, zc::mv(slots), zc::mv(value), zc::mv(deferredActivations),
           zc::mv(markerUses), zc::mv(logicalDropPlans), zc::Vector<MirUnsafeOccurrence>{},
-          zc::Vector<VerifiedCastResourcePlanFact>{}});
+          zc::mv(castResourcePlans)});
     }
   }
   if (!sortFunctions(functions, identities)) return zc::none;
