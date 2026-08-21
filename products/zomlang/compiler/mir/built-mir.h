@@ -31,6 +31,7 @@ class FlowVerifier;
 class InitializationBuilder;
 class InitializationSourceVerifier;
 class InitializationVerifier;
+class BorrowSourceVerifier;
 class LoanBuilder;
 class LoanVerifier;
 class MovePathBuilder;
@@ -565,6 +566,7 @@ private:
   friend class ownership::OwnershipEventOverlayBuilder;
   friend class ownership::OwnershipEventOverlayVerifier;
   friend class ownership::facts::InitializationSourceVerifier;
+  friend class ownership::facts::BorrowSourceVerifier;
   friend class ownership::facts::FlowBuilder;
   friend class ownership::facts::FlowVerifier;
   friend class ownership::facts::InitializationBuilder;

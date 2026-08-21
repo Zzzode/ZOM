@@ -15,6 +15,7 @@
 #pragma once
 
 #include "zc/core/memory.h"
+#include "zomlang/compiler/ownership/facts/borrow-source.h"
 #include "zomlang/compiler/ownership/facts/flow.h"
 #include "zomlang/compiler/ownership/facts/init.h"
 #include "zomlang/compiler/ownership/facts/ownership-facts-revision.h"
