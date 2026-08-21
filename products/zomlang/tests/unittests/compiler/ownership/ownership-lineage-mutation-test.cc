@@ -654,8 +654,9 @@ ZC_TEST("Ownership lineage mutation rejects a tampered marker-derived drop requi
 
 ZC_TEST("Ownership lineage mutation rejects a tampered logical drop plan subject") {
   OwnershipPipelineFixture fixture(
-      "import core::marker::{Linear};\n"
+      "import core::marker::{Copy, Linear};\n"
       "struct Cell { value: i32, }\n"
+      "impl !Copy for Cell;\n"
       "unsafe impl Linear for Cell;\n"
       "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
