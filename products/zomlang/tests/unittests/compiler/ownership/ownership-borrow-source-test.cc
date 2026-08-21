@@ -266,20 +266,17 @@ private:
 
 ZC_TEST("Borrow source verifier accepts a parameter reborrow") {
   BorrowSourcePipelineFixture fixture("fun entry(p: &i32) -> &i32 { return &*p; }"_zc);
-  auto result = facts::BorrowSourceVerifier::verify(fixture.builtMir(), fixture.overlay(),
-                                                    fixture.inputs().movePaths(),
-                                                    fixture.inputs().loans(),
-                                                    fixture.inputs().references());
+  auto result = facts::BorrowSourceVerifier::verify(
+      fixture.builtMir(), fixture.overlay(), fixture.inputs().movePaths(), fixture.inputs().loans(),
+      fixture.inputs().references());
   ZC_EXPECT(result.isVerified());
 }
 
 ZC_TEST("Borrow source verifier accepts a mutable parameter reborrow") {
-  BorrowSourcePipelineFixture fixture(
-      "fun entry(p: &mut i32) -> &mut i32 { return &mut *p; }"_zc);
-  auto result = facts::BorrowSourceVerifier::verify(fixture.builtMir(), fixture.overlay(),
-                                                    fixture.inputs().movePaths(),
-                                                    fixture.inputs().loans(),
-                                                    fixture.inputs().references());
+  BorrowSourcePipelineFixture fixture("fun entry(p: &mut i32) -> &mut i32 { return &mut *p; }"_zc);
+  auto result = facts::BorrowSourceVerifier::verify(
+      fixture.builtMir(), fixture.overlay(), fixture.inputs().movePaths(), fixture.inputs().loans(),
+      fixture.inputs().references());
   ZC_EXPECT(result.isVerified());
 }
 
@@ -292,20 +289,18 @@ ZC_TEST("Borrow source verifier accepts a mutable parameter reborrow") {
 ZC_TEST("Borrow source verifier rejects a returned local borrow") {
   BorrowSourcePipelineFixture fixture(
       "fun entry() -> &i32 { let value: i32 = 0; return &value; }"_zc);
-  auto result = facts::BorrowSourceVerifier::verify(fixture.builtMir(), fixture.overlay(),
-                                                    fixture.inputs().movePaths(),
-                                                    fixture.inputs().loans(),
-                                                    fixture.inputs().references());
+  auto result = facts::BorrowSourceVerifier::verify(
+      fixture.builtMir(), fixture.overlay(), fixture.inputs().movePaths(), fixture.inputs().loans(),
+      fixture.inputs().references());
   ZC_EXPECT(result.isSourceRejected());
 }
 
 ZC_TEST("Borrow source verifier rejects a returned mutable local borrow") {
   BorrowSourcePipelineFixture fixture(
       "fun entry() -> &mut i32 { mut value: i32 = 0; return &mut value; }"_zc);
-  auto result = facts::BorrowSourceVerifier::verify(fixture.builtMir(), fixture.overlay(),
-                                                    fixture.inputs().movePaths(),
-                                                    fixture.inputs().loans(),
-                                                    fixture.inputs().references());
+  auto result = facts::BorrowSourceVerifier::verify(
+      fixture.builtMir(), fixture.overlay(), fixture.inputs().movePaths(), fixture.inputs().loans(),
+      fixture.inputs().references());
   ZC_EXPECT(result.isSourceRejected());
 }
 
