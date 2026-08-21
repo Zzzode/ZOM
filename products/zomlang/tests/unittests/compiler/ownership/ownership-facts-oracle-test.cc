@@ -472,14 +472,13 @@ ZC_TEST("Facts oracle matches production for an aggregate local return") {
   expectOracleMatchesInventory(fixture);
 }
 
-ZC_TEST("Facts oracle matches production for a local borrow return") {
-  OwnershipPipelineFixture fixture("fun entry() -> &i32 { let value: i32 = 0; return &value; }"_zc);
+ZC_TEST("Facts oracle matches production for a parameter reborrow return") {
+  OwnershipPipelineFixture fixture("fun entry(p: &i32) -> &i32 { return &*p; }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 
-ZC_TEST("Facts oracle matches production for a mutable local borrow return") {
-  OwnershipPipelineFixture fixture(
-      "fun entry() -> &mut i32 { mut value: i32 = 0; return &mut value; }"_zc);
+ZC_TEST("Facts oracle matches production for a mutable parameter reborrow return") {
+  OwnershipPipelineFixture fixture("fun entry(p: &mut i32) -> &mut i32 { return &mut *p; }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 

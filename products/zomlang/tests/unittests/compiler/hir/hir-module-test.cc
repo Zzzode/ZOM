@@ -677,21 +677,22 @@ ZC_TEST("HIR pipeline lowers an unsafe block wrapping a parameter reborrow") {
   ZC_REQUIRE(module.unsafeBlocks().size() == 1);
 }
 
-ZC_TEST("HIR pipeline lowers an unsafe block wrapping a local borrow") {
-  HirPipelineFixture fixture("fun entry() -> &i32 { let x: i32 = 1; return unsafe { &x }; }"_zc);
+ZC_TEST("HIR pipeline lowers an unsafe block wrapping a direct parameter reborrow") {
+  HirPipelineFixture fixture("fun entry(p: &i32) -> &i32 { return unsafe { &*p }; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.returns().size() == 1);
-  ZC_REQUIRE(module.localBorrows().size() == 1);
+  ZC_REQUIRE(module.parameterReborrows().size() == 1);
   ZC_REQUIRE(module.unsafeBlocks().size() == 1);
   const auto& function = module.functions()[0];
-  const auto& borrow = module.localBorrows()[0];
+  const auto& reborrow = module.parameterReborrows()[0];
   const auto& unsafeBlock = module.unsafeBlocks()[0];
   ZC_EXPECT(function.unsafeBlock != zc::none);
   ZC_EXPECT(unsafeBlock.node == ZC_ASSERT_NONNULL(function.unsafeBlock));
-  ZC_EXPECT(unsafeBlock.body == borrow.node);
+  ZC_EXPECT(unsafeBlock.body == reborrow.node);
   ZC_EXPECT(unsafeBlock.type == function.resultType);
-  ZC_EXPECT(borrow.type == function.resultType);
+  ZC_EXPECT(reborrow.type == function.resultType);
+  ZC_EXPECT(reborrow.sourceAlias == zc::none);
 }
 
 ZC_TEST("HIR pipeline lowers an unsafe block wrapping a local-alias reborrow") {
