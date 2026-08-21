@@ -35,8 +35,8 @@ struct RawProvenanceCarrierKey final {
   MovePathKey destination;
 
   ZC_NODISCARD RawProvenanceCarrierKey clone() const {
-    return RawProvenanceCarrierKey{
-        introduction, MovePathKey{destination.owner, destination.place.clone()}};
+    return RawProvenanceCarrierKey{introduction,
+                                   MovePathKey{destination.owner, destination.place.clone()}};
   }
 };
 
@@ -96,12 +96,9 @@ using RawProvenanceOrigin =
 /// variants are trivially copyable.
 inline RawProvenanceOrigin cloneRawProvenanceOrigin(const RawProvenanceOrigin& origin) {
   if (origin.is<RawReferenceOrigin>()) {
-    return RawProvenanceOrigin{
-        RawReferenceOrigin{origin.get<RawReferenceOrigin>().origin.clone()}};
+    return RawProvenanceOrigin{RawReferenceOrigin{origin.get<RawReferenceOrigin>().origin.clone()}};
   }
-  if (origin.is<RawInputOrigin>()) {
-    return RawProvenanceOrigin{origin.get<RawInputOrigin>()};
-  }
+  if (origin.is<RawInputOrigin>()) { return RawProvenanceOrigin{origin.get<RawInputOrigin>()}; }
   if (origin.is<RawStaticAddressOrigin>()) {
     return RawProvenanceOrigin{origin.get<RawStaticAddressOrigin>()};
   }

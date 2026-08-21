@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "zomlang/compiler/ownership/facts/raw-provenance.h"
-
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ir/ir-identity.h"
 #include "zomlang/compiler/mir/built-mir.h"
+#include "zomlang/compiler/ownership/facts/raw-provenance.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-type-context.h"
 
 namespace zomlang::compiler::ownership::facts {
@@ -102,11 +101,8 @@ ZC_TEST("cloneRawProvenanceOrigin clones RawUnsafeAddressOrigin") {
 }
 
 ZC_TEST("cloneRawProvenanceOrigin clones RawReferenceOrigin") {
-  ReferenceInputOrigin refOrigin{
-      makeEventKey(1),
-      OwnershipPoint::cfg(MirPoint::entry()),
-      ParameterReferenceOrigin{0},
-      makeMovePathKey(1)};
+  ReferenceInputOrigin refOrigin{makeEventKey(1), OwnershipPoint::cfg(MirPoint::entry()),
+                                 ParameterReferenceOrigin{0}, makeMovePathKey(1)};
   RawProvenanceOrigin origin{RawReferenceOrigin{refOrigin.clone()}};
   auto cloned = cloneRawProvenanceOrigin(origin);
 
