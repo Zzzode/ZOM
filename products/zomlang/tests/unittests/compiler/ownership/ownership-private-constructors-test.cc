@@ -81,8 +81,7 @@ ZC_TEST("OwnershipVerifiedTypes.HaveNoPublicConstructionPath") {
   static_assert(__is_constructible(facts::VerifiedReborrowStates, facts::VerifiedReborrowStates&&));
 
   static_assert(!__is_constructible(facts::VerifiedEscapeFacts));
-  static_assert(
-      !__is_constructible(facts::VerifiedEscapeFacts, const facts::VerifiedEscapeFacts&));
+  static_assert(!__is_constructible(facts::VerifiedEscapeFacts, const facts::VerifiedEscapeFacts&));
   static_assert(__is_constructible(facts::VerifiedEscapeFacts, facts::VerifiedEscapeFacts&&));
 
   static_assert(!__is_constructible(facts::VerifiedOwnershipResourceFacts));
