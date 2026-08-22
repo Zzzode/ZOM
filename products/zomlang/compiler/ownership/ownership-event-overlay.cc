@@ -1309,10 +1309,34 @@ zc::Maybe<zc::Vector<StoredField>> enumerateStoredFields(const OwnershipEventOve
   return fields;
 }
 
-bool typeHasDirectDeinitializer(identity::SemanticTypeId type) {
-  // Direct deinitializer derivation is not yet implemented; every type is action-free.
-  (void)type;
-  return false;
+/// \brief Resolves the declared deinitializer of one closed nominal struct type.
+///
+/// Returns the deinitializer definition for struct nominals that declare one,
+/// and none for primitives, tuples, objects, enums, or structs without a deinitializer.
+zc::Maybe<identity::DefId> directDeinitializerForType(const OwnershipEventOverlayInput& input,
+                                                      identity::SemanticTypeId typeId) {
+  auto lookup = input.body.semanticTypes.get(typeId);
+  if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  if (!data.is<type::semantic::NominalTypeData>()) return zc::none;
+  const auto& nominal = data.get<type::semantic::NominalTypeData>();
+  auto materialized = materializedDefinitionForType(input, nominal.definition);
+  if (materialized == zc::none) return zc::none;
+  identity::DefId definition;
+  ZC_IF_SOME(value, materialized) { definition = value; }
+  const auto* selected = resolveSignaturePointer(input, definition);
+  if (selected == nullptr) return zc::none;
+  if (selected->definitionKind != identity::DefinitionKind::Struct) return zc::none;
+  if (!selected->payload.variant().is<signature::NominalSignature>()) return zc::none;
+  const auto& nominalSignature = selected->payload.variant().get<signature::NominalSignature>();
+  for (const auto member : nominalSignature.members) {
+    auto memberEntry = input.body.identities.definition(member);
+    if (memberEntry == zc::none) return zc::none;
+    ZC_IF_SOME(value, memberEntry) {
+      if (value.record().kind() == identity::DefinitionKind::Destructor) { return member; }
+    }
+  }
+  return zc::none;
 }
 
 struct ProjectionQueryNode final {
@@ -1322,6 +1346,7 @@ struct ProjectionQueryNode final {
   OwnershipMarkerUseKey linearKey;
   bool copyPositive;
   bool linearPositive;
+  zc::Maybe<identity::DefId> directDeinitializer;
   zc::Vector<ProjectionQueryNode> children;
 };
 
@@ -1355,8 +1380,9 @@ zc::Maybe<ProjectionQueryNode> discoverProjectionNode(zc::Vector<OwnershipMarker
     linearPositive = decision.is<OwnershipMarkerDecisionPositive>();
     markerUses.add(OwnershipMarkerUse{linearKey, zc::mv(decision)});
   }
+  auto directDeinitializer = directDeinitializerForType(input, valueType);
   zc::Vector<ProjectionQueryNode> children;
-  if (!typeHasDirectDeinitializer(valueType)) {
+  if (directDeinitializer == zc::none) {
     auto fields = enumerateStoredFields(input, valueType);
     ZC_IF_SOME(fieldList, fields) {
       for (const auto& field : fieldList) {
@@ -1371,16 +1397,25 @@ zc::Maybe<ProjectionQueryNode> discoverProjectionNode(zc::Vector<OwnershipMarker
       }
     }
   }
-  return ProjectionQueryNode{zc::mv(place), valueType,      copyKey,         linearKey,
-                             copyPositive,  linearPositive, zc::mv(children)};
+  return ProjectionQueryNode{zc::mv(place),
+                             valueType,
+                             copyKey,
+                             linearKey,
+                             copyPositive,
+                             linearPositive,
+                             zc::mv(directDeinitializer),
+                             zc::mv(children)};
 }
 
 /// \brief Phase two: postorder fold of one projection query node into drop-plan components.
 zc::Maybe<zc::Vector<LogicalDropPlanComponent>> foldProjectionTree(ProjectionQueryNode&& node) {
-  if (typeHasDirectDeinitializer(node.valueType)) {
+  if (node.directDeinitializer != zc::none) {
     // Case 1: direct deinitializer action; emit maximal component, suppress descendants.
-    zc::Vector<LogicalDropPlanComponent> result;
     zc::Maybe<LogicalDropAction> action;
+    ZC_IF_SOME(deinitializer, node.directDeinitializer) {
+      action = LogicalDropAction(LogicalDropDeclaredAction{deinitializer});
+    }
+    zc::Vector<LogicalDropPlanComponent> result;
     result.add(LogicalDropPlanComponent{zc::mv(node.place), node.valueType, zc::mv(action),
                                         node.copyKey, node.linearKey, 0});
     return result;
@@ -1445,8 +1480,9 @@ bool appendLogicalDropPlan(zc::Vector<LogicalDropPlan>& plans,
   const bool linearPositive = linearUse.decision.is<OwnershipMarkerDecisionPositive>();
   const OwnershipMarkerUseKey copyKey = copyUse.key;
   const OwnershipMarkerUseKey linearKey = linearUse.key;
+  auto directDeinitializer = directDeinitializerForType(input, root.resultType());
   zc::Vector<ProjectionQueryNode> children;
-  if (!typeHasDirectDeinitializer(root.resultType())) {
+  if (directDeinitializer == zc::none) {
     auto fields = enumerateStoredFields(input, root.resultType());
     ZC_IF_SOME(fieldList, fields) {
       for (const auto& field : fieldList) {
@@ -1461,8 +1497,9 @@ bool appendLogicalDropPlan(zc::Vector<LogicalDropPlan>& plans,
       }
     }
   }
-  ProjectionQueryNode rootNode{root.clone(), root.resultType(), copyKey,         linearKey,
-                               copyPositive, linearPositive,    zc::mv(children)};
+  ProjectionQueryNode rootNode{
+      root.clone(),   root.resultType(),           copyKey,         linearKey, copyPositive,
+      linearPositive, zc::mv(directDeinitializer), zc::mv(children)};
   auto components = foldProjectionTree(zc::mv(rootNode));
   if (components == zc::none) return false;
   ZC_IF_SOME(value, components) {

@@ -4867,6 +4867,162 @@ ZC_TEST("Ownership postorder fold retains a logical component for a non-copy agg
   ZC_EXPECT(component.declarationOrdinal == 0);
 }
 
+/// \brief Resolves the materialized struct definition behind one nominal type.
+zc::Maybe<identity::DefId> nominalStructDefinition(const OwnershipEventOverlayInput& input,
+                                                   identity::SemanticTypeId typeId) {
+  auto lookup = input.body.semanticTypes.get(typeId);
+  if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  if (!data.is<type::semantic::NominalTypeData>()) return zc::none;
+  const auto& nominal = data.get<type::semantic::NominalTypeData>();
+  auto entry = input.body.identities.definition(nominal.definition);
+  if (entry == zc::none) return zc::none;
+  identity::DefId materialized;
+  ZC_IF_SOME(value, entry) { materialized = value.handle(); }
+  return materialized;
+}
+
+/// \brief Independently derives the declared deinitializer of one nominal struct type.
+///
+/// Test oracle mirroring directDeinitializerForType through the overlay input's public
+/// authority surface, so the expected DefId does not come from the production path.
+zc::Maybe<identity::DefId> expectedDeinitializer(const OwnershipEventOverlayInput& input,
+                                                 identity::SemanticTypeId typeId) {
+  auto definition = nominalStructDefinition(input, typeId);
+  if (definition == zc::none) return zc::none;
+  identity::DefId structDefinition;
+  ZC_IF_SOME(value, definition) { structDefinition = value; }
+  for (const auto& signature : input.body.signatureFacts.signatures()) {
+    if (signature.definition != structDefinition) continue;
+    if (signature.definitionKind != identity::DefinitionKind::Struct) return zc::none;
+    if (!signature.payload.variant().is<checker::signature::NominalSignature>()) return zc::none;
+    const auto& nominalSignature =
+        signature.payload.variant().get<checker::signature::NominalSignature>();
+    for (const auto member : nominalSignature.members) {
+      auto memberEntry = input.body.identities.definition(member);
+      if (memberEntry == zc::none) return zc::none;
+      ZC_IF_SOME(memberValue, memberEntry) {
+        if (memberValue.record().kind() == identity::DefinitionKind::Destructor) { return member; }
+      }
+    }
+    return zc::none;
+  }
+  return zc::none;
+}
+
+ZC_TEST(
+    "Ownership deinitializer attachment yields one maximal root component with a declared action") {
+  OwnershipPipelineFixture fixture(
+      "struct Managed { value: i32; deinit() {} }\n"
+      "fun entry() -> Managed { let managed = Managed { value: 0 }; return managed; }"_zc);
+  auto candidateResult = buildOverlay(fixture);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  auto verifiedResult = verifyOverlay(zc::mv(candidate), fixture);
+  ZC_REQUIRE(verifiedResult.isVerified());
+  auto overlay = zc::mv(verifiedResult).takeVerified();
+  ZC_REQUIRE(overlay.functions().size() == 1);
+  const auto& function = overlay.functions()[0];
+  ZC_REQUIRE(function.logicalDropPlans.size() == 1);
+  const auto& plan = function.logicalDropPlans[0];
+  const auto managedType = plan.root.resultType();
+
+  // The deinitializer cutoff suppresses field descendants: one maximal root
+  // component carrying the declared deinitializer action.
+  ZC_REQUIRE(plan.components.size() == 1);
+  const auto& component = plan.components[0];
+  ZC_EXPECT(component.place.resultType() == managedType);
+  ZC_EXPECT(component.valueType == managedType);
+  ZC_REQUIRE(component.dropAction != zc::none);
+  ZC_IF_SOME(action, component.dropAction) {
+    ZC_REQUIRE(action.is<LogicalDropDeclaredAction>());
+    auto expected = expectedDeinitializer(fixture.overlayInput(), managedType);
+    ZC_REQUIRE(expected != zc::none);
+    ZC_IF_SOME(deinitializer, expected) {
+      ZC_EXPECT(action.get<LogicalDropDeclaredAction>().deinitializer == deinitializer);
+    }
+  }
+  ZC_EXPECT(component.declarationOrdinal == 0);
+
+  // No marker use may target the suppressed i32 field descendant; every query
+  // targets the Managed root.
+  for (const auto& use : function.markerUses) { ZC_EXPECT(use.key.subject == managedType); }
+}
+
+ZC_TEST("Ownership deinitializer attachment stops descendant discovery at the outer root") {
+  // The Outer parameter is transferred through a let binding so the drop plan is
+  // generated on the Use-rvalue destination path.  This avoids the aggregate
+  // literal admission restriction (scalar values only) while still producing a
+  // drop plan for a nominal type that carries a nested nominal field.
+  OwnershipPipelineFixture fixture(
+      "struct Inner { value: i32, }\n"
+      "struct Outer { inner: Inner, deinit() {} }\n"
+      "fun entry(outer: Outer) -> Outer { let result = outer; return result; }"_zc);
+  auto candidateResult = buildOverlay(fixture);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  auto verifiedResult = verifyOverlay(zc::mv(candidate), fixture);
+  ZC_REQUIRE(verifiedResult.isVerified());
+  auto overlay = zc::mv(verifiedResult).takeVerified();
+  ZC_REQUIRE(overlay.functions().size() == 1);
+  const auto& function = overlay.functions()[0];
+  ZC_REQUIRE(function.logicalDropPlans.size() == 1);
+  const auto& plan = function.logicalDropPlans[0];
+  const auto outerType = plan.root.resultType();
+
+  // The Outer deinitializer stops discovery at the outer root: one maximal
+  // component carrying the declared action, no Inner or i32 descendants.
+  ZC_REQUIRE(plan.components.size() == 1);
+  const auto& component = plan.components[0];
+  ZC_EXPECT(component.place.resultType() == outerType);
+  ZC_EXPECT(component.valueType == outerType);
+  ZC_REQUIRE(component.dropAction != zc::none);
+  ZC_IF_SOME(action, component.dropAction) {
+    ZC_REQUIRE(action.is<LogicalDropDeclaredAction>());
+    auto expected = expectedDeinitializer(fixture.overlayInput(), outerType);
+    ZC_REQUIRE(expected != zc::none);
+    ZC_IF_SOME(deinitializer, expected) {
+      ZC_EXPECT(action.get<LogicalDropDeclaredAction>().deinitializer == deinitializer);
+    }
+  }
+  ZC_EXPECT(component.declarationOrdinal == 0);
+
+  // Every marker use targets the Outer root; the Inner field and its i32
+  // descendant are suppressed by the deinitializer cutoff.
+  for (const auto& use : function.markerUses) { ZC_EXPECT(use.key.subject == outerType); }
+}
+
+ZC_TEST("Ownership event overlay verifier rejects a tampered deinitializer") {
+  OwnershipPipelineFixture fixture(
+      "struct Managed { value: i32; deinit() {} }\n"
+      "fun entry() -> Managed { let managed = Managed { value: 0 }; return managed; }"_zc);
+  auto candidateResult = buildOverlay(fixture);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() == 1);
+  auto& function = candidate.functions[0];
+  ZC_REQUIRE(function.logicalDropPlans.size() == 1);
+  auto& plan = function.logicalDropPlans[0];
+  ZC_REQUIRE(plan.components.size() == 1);
+  auto& component = plan.components[0];
+  ZC_REQUIRE(component.dropAction != zc::none);
+  ZC_IF_SOME(action, component.dropAction) { ZC_REQUIRE(action.is<LogicalDropDeclaredAction>()); }
+  // Replace the deinitializer with the struct definition, a resolvable but
+  // foreign DefId that encodes to different canonical bytes.
+  const auto managedType = plan.root.resultType();
+  auto foreign = nominalStructDefinition(fixture.overlayInput(), managedType);
+  ZC_REQUIRE(foreign != zc::none);
+  ZC_IF_SOME(definition, foreign) {
+    component.dropAction = LogicalDropAction(LogicalDropDeclaredAction{definition});
+  }
+
+  auto verifiedResult = verifyOverlay(zc::mv(candidate), fixture);
+  ZC_EXPECT(verifiedResult.isIrInvariantRejected());
+  ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
+  ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
+            ir::IrFailureKind::CanonicalCodecMismatch);
+}
+
 ZC_TEST("Ownership event overlay test encoder matches the RFC 0007 empty oracle") {
   zc::Vector<zc::Array<uint8_t>> functions;
   expectOverlayOracle(
