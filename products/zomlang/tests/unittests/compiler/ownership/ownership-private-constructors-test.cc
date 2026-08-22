@@ -15,6 +15,7 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ir/ir-failure.h"
 #include "zomlang/compiler/ownership/facts/borrow-source.h"
+#include "zomlang/compiler/ownership/facts/escape.h"
 #include "zomlang/compiler/ownership/facts/flow.h"
 #include "zomlang/compiler/ownership/facts/init.h"
 #include "zomlang/compiler/ownership/facts/inputs.h"
@@ -78,6 +79,11 @@ ZC_TEST("OwnershipVerifiedTypes.HaveNoPublicConstructionPath") {
   static_assert(
       !__is_constructible(facts::VerifiedReborrowStates, const facts::VerifiedReborrowStates&));
   static_assert(__is_constructible(facts::VerifiedReborrowStates, facts::VerifiedReborrowStates&&));
+
+  static_assert(!__is_constructible(facts::VerifiedEscapeFacts));
+  static_assert(
+      !__is_constructible(facts::VerifiedEscapeFacts, const facts::VerifiedEscapeFacts&));
+  static_assert(__is_constructible(facts::VerifiedEscapeFacts, facts::VerifiedEscapeFacts&&));
 
   static_assert(!__is_constructible(facts::VerifiedOwnershipResourceFacts));
   static_assert(!__is_constructible(facts::VerifiedOwnershipResourceFacts,
