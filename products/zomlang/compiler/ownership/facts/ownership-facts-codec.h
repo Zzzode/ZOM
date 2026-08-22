@@ -33,6 +33,9 @@ namespace zomlang::compiler::ownership::facts {
 /// reborrow regions, reborrow states, ownership resources), the four overlay-derived
 /// inventories (logical drop plans, unsafe occurrences, cast resource plans, marker
 /// decisions), and the metadata group (semantic context brand and lineage revisions).
+/// The ownership resources group (group 8) encodes nine subsequences: facts,
+/// transfers, cast routes, drop plans, linear obligations, linear carriers,
+/// linear SCCs, raw-origin universe, and raw provenance.
 /// The module identity is bound through the expanded module key in the frame header.
 class OwnershipFactsCodec final {
 public:

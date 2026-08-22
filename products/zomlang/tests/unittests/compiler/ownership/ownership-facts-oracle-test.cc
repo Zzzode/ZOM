@@ -21,6 +21,7 @@
 #include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/compiler/ownership/facts/inputs.h"
+#include "zomlang/compiler/ownership/facts/ownership-facts-codec.h"
 #include "zomlang/compiler/ownership/ownership-checked-mir.h"
 #include "zomlang/tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "zomlang/tests/unittests/compiler/ownership/ownership-facts-differential-oracle.h"
@@ -746,6 +747,94 @@ ZC_TEST("Ownership facts oracles change when any input byte is mutated") {
       ZC_IF_SOME(before, baselineDigest) {
         ZC_IF_SOME(after, changedDigest) { ZC_EXPECT(before != after); }
       }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Production codec byte oracles.
+//
+// These tests exercise the production OwnershipFactsCodec directly (not the
+// test-owned encodeFactsOracle encoder) to verify that the production encoding
+// is deterministic, non-empty, and sensitive to input changes.
+// ---------------------------------------------------------------------------
+
+/// \brief Encodes ownership facts using the production codec for a fixture.
+static zc::Maybe<zc::Array<uint8_t>> encodeProductionFacts(
+    const OwnershipPipelineFixture& fixture) {
+  const auto& session = fixture.compilerSession();
+  const auto& checkedMir = session.getOwnershipCheckedMirModules();
+  ZC_REQUIRE(checkedMir.size() == 1);
+  const auto& inputs = checkedMir[0].facts();
+  const auto& overlay = checkedMir[0].eventOverlay();
+  auto identities = session.materializeCheckerIdentityAuthority();
+  ZC_REQUIRE(identities != zc::none);
+  auto semanticTypes = session.getSemanticTypeStore();
+  ZC_REQUIRE(semanticTypes != zc::none);
+  ZC_IF_SOME(id, identities) {
+    ZC_IF_SOME(types, semanticTypes) {
+      return facts::OwnershipFactsCodec::encode(inputs, overlay, id, types);
+    }
+  }
+  return zc::none;
+}
+
+ZC_TEST("Production ownership facts codec produces a deterministic non-empty encoding") {
+  OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
+  auto first = encodeProductionFacts(fixture);
+  ZC_REQUIRE(first != zc::none);
+  ZC_IF_SOME(firstBytes, first) {
+    ZC_EXPECT(firstBytes.size() > 0);
+    // Encode again to verify determinism: same inputs must produce same bytes.
+    auto second = encodeProductionFacts(fixture);
+    ZC_REQUIRE(second != zc::none);
+    ZC_IF_SOME(secondBytes, second) {
+      ZC_EXPECT(firstBytes.size() == secondBytes.size());
+      auto firstDigest = identity::sha256(firstBytes.asPtr());
+      auto secondDigest = identity::sha256(secondBytes.asPtr());
+      ZC_REQUIRE(firstDigest != zc::none);
+      ZC_REQUIRE(secondDigest != zc::none);
+      ZC_IF_SOME(d1, firstDigest) {
+        ZC_IF_SOME(d2, secondDigest) { ZC_EXPECT(d1 == d2); }
+      }
+    }
+  }
+}
+
+ZC_TEST("Production ownership facts codec is sensitive to source changes") {
+  OwnershipPipelineFixture fixtureA("let a = 0;"_zc);
+  OwnershipPipelineFixture fixtureB("let a = 0; let b = 1;"_zc);
+  auto encodedA = encodeProductionFacts(fixtureA);
+  auto encodedB = encodeProductionFacts(fixtureB);
+  ZC_REQUIRE(encodedA != zc::none);
+  ZC_REQUIRE(encodedB != zc::none);
+  ZC_IF_SOME(bytesA, encodedA) {
+    ZC_IF_SOME(bytesB, encodedB) {
+      auto digestA = identity::sha256(bytesA.asPtr());
+      auto digestB = identity::sha256(bytesB.asPtr());
+      ZC_REQUIRE(digestA != zc::none);
+      ZC_REQUIRE(digestB != zc::none);
+      ZC_IF_SOME(d1, digestA) {
+        ZC_IF_SOME(d2, digestB) {
+          // Different sources must produce different encodings.
+          ZC_EXPECT(d1 != d2);
+        }
+      }
+    }
+  }
+}
+
+ZC_TEST("Production ownership facts codec encodes a parameter reborrow") {
+  OwnershipPipelineFixture fixture("fun entry(p: &i32) -> &i32 { return &*p; }"_zc);
+  auto encoded = encodeProductionFacts(fixture);
+  ZC_REQUIRE(encoded != zc::none);
+  ZC_IF_SOME(bytes, encoded) {
+    ZC_EXPECT(bytes.size() > 0);
+    auto digest = identity::sha256(bytes.asPtr());
+    ZC_REQUIRE(digest != zc::none);
+    ZC_IF_SOME(d, digest) {
+      // Verify the digest is non-zero (a real encoding, not a default value).
+      ZC_EXPECT(d != identity::Sha256Digest{});
     }
   }
 }
