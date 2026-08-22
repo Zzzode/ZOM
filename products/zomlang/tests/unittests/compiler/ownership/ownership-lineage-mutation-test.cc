@@ -24,6 +24,7 @@
 #include "zomlang/compiler/ir/ir-failure.h"
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/compiler/mir/built-mir.h"
+#include "zomlang/compiler/ownership/facts/escape.h"
 #include "zomlang/compiler/ownership/facts/flow.h"
 #include "zomlang/compiler/ownership/facts/init.h"
 #include "zomlang/compiler/ownership/facts/inputs.h"
@@ -494,6 +495,33 @@ void expectOwnershipResourceLineageRejection(const OwnershipPipelineFixture& fix
 
   auto verifiedResult = facts::OwnershipResourceVerifier::verify(
       zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
+}
+
+/// Builds an escape candidate from the fixture, applies one lineage tamper,
+/// and requires the independent verifier to reject it with an input revision
+/// mismatch.
+///
+/// The current straight-line MIR subset admits no escape operands, so the
+/// builder emits an empty inventory; the verifier checks all six lineage
+/// fields before the emptiness check, so every lineage tamper still rejects
+/// with an input revision mismatch.
+template <typename Tamper>
+void expectEscapeLineageRejection(const OwnershipPipelineFixture& fixture, Tamper&& tamper) {
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = sessionOverlay(session);
+  const auto& inputs = ownershipInputs(session);
+
+  auto candidateResult = facts::EscapeBuilder::build(
+      inputs.flow(), inputs.loans(), inputs.references(), inputs.resources(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  tamper(candidate, builtMir, overlay);
+
+  auto verifiedResult =
+      facts::EscapeVerifier::verify(zc::mv(candidate), inputs.flow(), inputs.loans(),
+                                    inputs.references(), inputs.resources(), builtMir, overlay);
   expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
 }
 
@@ -978,6 +1006,80 @@ ZC_TEST("Ownership lineage mutation rejects a foreign resource built revision") 
 ZC_TEST("Ownership lineage mutation rejects a foreign resource overlay revision") {
   OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectOwnershipResourceLineageRejection(fixture, tamperOverlayRevision);
+}
+
+// --- EscapeCandidate lineage tamper tests ---
+
+ZC_TEST("Ownership lineage mutation rejects a foreign escape semantic context brand") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectEscapeLineageRejection(fixture, tamperSemanticContext);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign escape context fingerprint") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectEscapeLineageRejection(fixture, tamperContextFingerprint);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign escape module identity") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectEscapeLineageRejection(fixture, tamperModuleIdentity);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign escape built revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectEscapeLineageRejection(fixture, tamperBuiltRevision);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign escape overlay revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  expectEscapeLineageRejection(fixture, tamperOverlayRevision);
+}
+
+ZC_TEST("Ownership lineage mutation rejects a foreign escape borrow evidence revision") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture foreign("fun entry() -> i32 { return 0; }"_zc);
+  ZC_REQUIRE(fixture.builtMir().borrowEvidenceRevision().digest() !=
+             foreign.builtMir().borrowEvidenceRevision().digest());
+  expectEscapeLineageRejection(
+      fixture, [&foreign](auto& candidate, const auto& builtMir, const auto&) {
+        candidate.borrowEvidenceRevision = foreign.builtMir().borrowEvidenceRevision();
+        ZC_REQUIRE(candidate.borrowEvidenceRevision.digest() !=
+                   builtMir.borrowEvidenceRevision().digest());
+      });
+}
+
+ZC_TEST("Ownership lineage mutation rejects a spurious escape fact") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = sessionOverlay(session);
+  const auto& inputs = ownershipInputs(session);
+
+  auto candidateResult = facts::EscapeBuilder::build(
+      inputs.flow(), inputs.loans(), inputs.references(), inputs.resources(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.escapes.empty());
+
+  // The verifier rejects any non-empty inventory without inspecting row
+  // content, so a synthetic-but-well-formed row suffices. Donate a real
+  // move-path key from the fixture to keep the fabricated row well-formed.
+  const auto& movePathFunctions = inputs.movePaths().functions();
+  ZC_REQUIRE(movePathFunctions.size() != 0);
+  ZC_REQUIRE(movePathFunctions[0].facts.size() != 0);
+  facts::MovePathKey source{movePathFunctions[0].facts[0].key.owner,
+                            movePathFunctions[0].facts[0].key.place.clone()};
+  zc::Vector<facts::EscapeOriginCause> origins;
+  zc::Vector<facts::RawProvenanceCarrierKey> rawCarriers;
+  candidate.escapes.add(
+      facts::EscapeFact{MirEventKey{MirLocation{identity::DefId{}, MirPoint::entry()}, 0},
+                        zc::mv(source), facts::EscapeKind::returnEscape(), zc::mv(origins),
+                        zc::mv(rawCarriers), facts::EscapeProof::owned()});
+
+  auto verifiedResult =
+      facts::EscapeVerifier::verify(zc::mv(candidate), inputs.flow(), inputs.loans(),
+                                    inputs.references(), inputs.resources(), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InvalidOwnershipProof);
 }
 
 }  // namespace zomlang::compiler::ownership
