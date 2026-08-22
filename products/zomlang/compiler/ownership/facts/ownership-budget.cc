@@ -50,8 +50,7 @@ zc::Maybe<uint64_t> computeResourceBound(const OwnershipBudgetFactors& factors) 
   // product(b in B, 1 + Ab + Ab*Cb)
   for (size_t i = 0; i < factors.dropCarrierCounts.size(); ++i) {
     const uint64_t ab = factors.dropCarrierCounts[i];
-    const uint64_t cb =
-        i < factors.dropDischargeCounts.size() ? factors.dropDischargeCounts[i] : 0;
+    const uint64_t cb = i < factors.dropDischargeCounts.size() ? factors.dropDischargeCounts[i] : 0;
     auto abCb = checkedMul(ab, cb);
     uint64_t product = ZC_UNWRAP_OR_RETURN(abCb, zc::none);
     auto next = checkedMul(k, 1 + ab + product);
@@ -73,8 +72,7 @@ zc::Maybe<uint64_t> computeResourceBound(const OwnershipBudgetFactors& factors) 
 }  // namespace
 
 OwnershipBudgetCheckResult OwnershipBudgetVerifier::check(
-    const OwnershipBudgetFactors& factors,
-    const OwnershipBudgetCounters& counters) noexcept {
+    const OwnershipBudgetFactors& factors, const OwnershipBudgetCounters& counters) noexcept {
   const uint64_t p = factors.cutpointCount();
   const uint64_t m = factors.movePaths;
   const uint64_t d = factors.lossCauses;

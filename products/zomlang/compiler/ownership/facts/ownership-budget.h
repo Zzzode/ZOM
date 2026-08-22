@@ -145,8 +145,7 @@ public:
   /// \param counters The per-analysis monotone solver counters.
   /// \return A result indicating whether every counter is within budget.
   ZC_NODISCARD static OwnershipBudgetCheckResult check(
-      const OwnershipBudgetFactors& factors,
-      const OwnershipBudgetCounters& counters) noexcept;
+      const OwnershipBudgetFactors& factors, const OwnershipBudgetCounters& counters) noexcept;
 };
 
 }  // namespace zomlang::compiler::ownership::facts

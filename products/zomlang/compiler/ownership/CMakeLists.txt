@@ -15,6 +15,7 @@ set(OWNERSHIP_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/ownership-facts-revision.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/paths.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/resources.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/facts/escape.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/regions.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/refs.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/states.cc

@@ -72,7 +72,8 @@ private:
     SourceFailures failures;
   };
 
-  ZC_NODISCARD static BorrowSourceVerificationResult verified(BorrowSourceAccepted&& value) noexcept {
+  ZC_NODISCARD static BorrowSourceVerificationResult verified(
+      BorrowSourceAccepted&& value) noexcept {
     return BorrowSourceVerificationResult(Verified{zc::mv(value)});
   }
   ZC_NODISCARD static BorrowSourceVerificationResult sourceRejected(

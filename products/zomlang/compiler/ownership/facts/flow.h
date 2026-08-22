@@ -37,9 +37,8 @@ struct FlowFunction final {
 class FlowCandidate final {
 public:
   FlowCandidate(identity::SemanticContextBrand semanticContext,
-                identity::ContextFingerprint&& contextFingerprint,
-                identity::ModuleId module, mir::MirRevisionId builtRevision,
-                OwnershipEventOverlayRevision overlayRevision,
+                identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
+                mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
                 zc::Vector<FlowFunction>&& functions) noexcept;
   FlowCandidate(FlowCandidate&&) noexcept = default;
   FlowCandidate& operator=(FlowCandidate&&) noexcept = delete;

@@ -54,16 +54,14 @@ struct MovePathFunction final {
 /// are disjoint exactly when their half-open ranges are disjoint; every other
 /// projection pair (indices, dereferences, and all mixed-kind pairs) may
 /// alias. A place that is a projection prefix of another conflicts with it.
-ZC_NODISCARD bool placesConflict(const mir::MirPlace& first,
-                                 const mir::MirPlace& second) noexcept;
+ZC_NODISCARD bool placesConflict(const mir::MirPlace& first, const mir::MirPlace& second) noexcept;
 
 /// \brief Untrusted move-path inventory awaiting independent reconstruction.
 class MovePathCandidate final {
 public:
   MovePathCandidate(identity::SemanticContextBrand semanticContext,
-                    identity::ContextFingerprint&& contextFingerprint,
-                    identity::ModuleId module, mir::MirRevisionId builtRevision,
-                    OwnershipEventOverlayRevision overlayRevision,
+                    identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
+                    mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
                     zc::Vector<MovePathFunction>&& functions) noexcept;
   MovePathCandidate(MovePathCandidate&&) noexcept = default;
   MovePathCandidate& operator=(MovePathCandidate&&) noexcept = delete;

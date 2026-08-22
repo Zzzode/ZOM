@@ -38,9 +38,8 @@ struct LoanFact final {
 class LoanCandidate final {
 public:
   LoanCandidate(identity::SemanticContextBrand semanticContext,
-                identity::ContextFingerprint&& contextFingerprint,
-                identity::ModuleId module, mir::MirRevisionId builtRevision,
-                OwnershipEventOverlayRevision overlayRevision,
+                identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
+                mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
                 driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
                 zc::Vector<LoanFact>&& loans) noexcept;
   LoanCandidate(LoanCandidate&&) noexcept = default;

@@ -224,9 +224,7 @@ struct EventPosition final {
     if (blockIndex != other.blockIndex) return blockIndex < other.blockIndex;
     return localIndex < other.localIndex;
   }
-  bool operator<=(const EventPosition& other) const noexcept {
-    return !(other < *this);
-  }
+  bool operator<=(const EventPosition& other) const noexcept { return !(other < *this); }
 };
 
 zc::Maybe<uint32_t> findBlockIndex(const mir::MirFunction& function, mir::MirBlockId block) {
@@ -298,13 +296,11 @@ bool beforeInFunction(const mir::MirFunction& function, const MirEventKey& left,
 
 /// \brief Finds the last read of one destination local in program order.
 zc::Maybe<MirEventKey> lastUseOfDestination(const mir::MirFunction& function,
-                                             const mir::MirPlace& destination) {
+                                            const mir::MirPlace& destination) {
   zc::Maybe<MirEventKey> lastUse;
   auto consider = [&](const MirEventKey& event) {
     ZC_IF_SOME(current, lastUse) {
-      if (beforeInFunction(function, current, event)) {
-        lastUse = event;
-      }
+      if (beforeInFunction(function, current, event)) { lastUse = event; }
       return;
     }
     lastUse = event;
@@ -339,8 +335,8 @@ zc::Maybe<MirEventKey> lastUseOfDestination(const mir::MirFunction& function,
           if ((value.kind() == mir::MirOperandKind::Copy ||
                value.kind() == mir::MirOperandKind::Move) &&
               value.place().local() == destination.local()) {
-            consider(MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
-                                 0});
+            consider(
+                MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)}, 0});
           }
         }
       }
@@ -349,8 +345,7 @@ zc::Maybe<MirEventKey> lastUseOfDestination(const mir::MirFunction& function,
       const auto& call = block.terminator.callValue();
       for (uint32_t argIndex = 0; argIndex < call.arguments.size(); ++argIndex) {
         const auto& arg = call.arguments[argIndex];
-        if ((arg.kind() == mir::MirOperandKind::Copy ||
-             arg.kind() == mir::MirOperandKind::Move) &&
+        if ((arg.kind() == mir::MirOperandKind::Copy || arg.kind() == mir::MirOperandKind::Move) &&
             arg.place().local() == destination.local()) {
           consider(MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
                                argIndex});
@@ -369,7 +364,7 @@ zc::Maybe<MirEventKey> activationEvent(const mir::MirFunction& function, const L
   if (point.kind() == MirPointKind::BeforeStatement) {
     return MirEventKey{
         MirLocation{function.owner, MirPoint::afterStatement(point.beforeStatementValue().block,
-                                                              point.beforeStatementValue().ordinal)},
+                                                             point.beforeStatementValue().ordinal)},
         0};
   }
   return zc::none;
@@ -388,9 +383,7 @@ bool loanActiveAt(const mir::MirFunction& function, const LoanFact& loan,
   ZC_IF_SOME(activationValue, activation) {
     if (beforeInFunction(function, event, activationValue)) return false;
     auto lastUse = lastUseOfDestination(function, loan.destination.place);
-    ZC_IF_SOME(lastUseValue, lastUse) {
-      return !beforeInFunction(function, lastUseValue, event);
-    }
+    ZC_IF_SOME(lastUseValue, lastUse) { return !beforeInFunction(function, lastUseValue, event); }
   }
   return false;
 }
@@ -445,7 +438,8 @@ void escapeFailures(const mir::VerifiedBuiltMir& builtMir,
   }
 }
 
-/// \brief Emits borrow-conflict failures for BorrowCreation statements with active overlapping loans.
+/// \brief Emits borrow-conflict failures for BorrowCreation statements with active overlapping
+/// loans.
 ///
 /// A mutable borrow conflicts with every active overlapping loan. A shared
 /// borrow conflicts only with an active mutable loan. Reborrows of a loan
@@ -479,10 +473,9 @@ void borrowConflictFailures(const mir::VerifiedBuiltMir& builtMir,
             auto loanSpan = sourceSpanFor(function, functionOverlayValue, loan.issue);
             if (loanSpan == zc::none) continue;
             ZC_IF_SOME(spanValue, loanSpan) {
-              causes.add(LoanFailureCause{
-                  LoanKey{loan.issue},
-                  MovePathKey{loan.source.owner, loan.source.place.clone()}, loan.issue,
-                  zc::mv(spanValue)});
+              causes.add(LoanFailureCause{LoanKey{loan.issue},
+                                          MovePathKey{loan.source.owner, loan.source.place.clone()},
+                                          loan.issue, zc::mv(spanValue)});
             }
           }
           if (causes.size() == 0) continue;
@@ -539,10 +532,9 @@ void moveOutOfBorrowFailures(const mir::VerifiedBuiltMir& builtMir,
             auto loanSpan = sourceSpanFor(function, functionOverlayValue, loan.issue);
             if (loanSpan == zc::none) continue;
             ZC_IF_SOME(spanValue, loanSpan) {
-              causes.add(LoanFailureCause{
-                  LoanKey{loan.issue},
-                  MovePathKey{loan.source.owner, loan.source.place.clone()}, loan.issue,
-                  zc::mv(spanValue)});
+              causes.add(LoanFailureCause{LoanKey{loan.issue},
+                                          MovePathKey{loan.source.owner, loan.source.place.clone()},
+                                          loan.issue, zc::mv(spanValue)});
             }
           }
           if (causes.size() == 0) continue;
@@ -552,10 +544,10 @@ void moveOutOfBorrowFailures(const mir::VerifiedBuiltMir& builtMir,
           if (moveSpan == zc::none) continue;
           ZC_IF_SOME(pathValue, movePath) {
             ZC_IF_SOME(spanValue, moveSpan) {
-              failures.add(MoveOutOfBorrowFailure{
-                  function.owner, moveEvent, zc::mv(spanValue),
-                  MovePathKey{pathValue.owner, pathValue.place.clone()}, traversalOrdinal++,
-                  zc::mv(causes)});
+              failures.add(
+                  MoveOutOfBorrowFailure{function.owner, moveEvent, zc::mv(spanValue),
+                                         MovePathKey{pathValue.owner, pathValue.place.clone()},
+                                         traversalOrdinal++, zc::mv(causes)});
             }
           }
         }
@@ -575,9 +567,8 @@ void moveOutOfBorrowFailures(const mir::VerifiedBuiltMir& builtMir,
               if (loanSpan == zc::none) continue;
               ZC_IF_SOME(spanValue, loanSpan) {
                 causes.add(LoanFailureCause{
-                    LoanKey{loan.issue},
-                    MovePathKey{loan.source.owner, loan.source.place.clone()}, loan.issue,
-                    zc::mv(spanValue)});
+                    LoanKey{loan.issue}, MovePathKey{loan.source.owner, loan.source.place.clone()},
+                    loan.issue, zc::mv(spanValue)});
               }
             }
             if (causes.size() == 0) continue;
@@ -587,10 +578,10 @@ void moveOutOfBorrowFailures(const mir::VerifiedBuiltMir& builtMir,
             if (moveSpan == zc::none) continue;
             ZC_IF_SOME(pathValue, movePath) {
               ZC_IF_SOME(spanValue, moveSpan) {
-                failures.add(MoveOutOfBorrowFailure{
-                    function.owner, moveEvent, zc::mv(spanValue),
-                    MovePathKey{pathValue.owner, pathValue.place.clone()}, traversalOrdinal++,
-                    zc::mv(causes)});
+                failures.add(
+                    MoveOutOfBorrowFailure{function.owner, moveEvent, zc::mv(spanValue),
+                                           MovePathKey{pathValue.owner, pathValue.place.clone()},
+                                           traversalOrdinal++, zc::mv(causes)});
               }
             }
           }

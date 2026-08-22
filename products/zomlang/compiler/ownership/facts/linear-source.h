@@ -69,7 +69,8 @@ private:
     SourceFailures failures;
   };
 
-  ZC_NODISCARD static LinearSourceVerificationResult verified(LinearSourceAccepted&& value) noexcept {
+  ZC_NODISCARD static LinearSourceVerificationResult verified(
+      LinearSourceAccepted&& value) noexcept {
     return LinearSourceVerificationResult(Verified{zc::mv(value)});
   }
   ZC_NODISCARD static LinearSourceVerificationResult sourceRejected(

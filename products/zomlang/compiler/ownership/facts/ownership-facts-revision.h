@@ -28,7 +28,8 @@ class OwnershipFactsRevision final {
 public:
   constexpr OwnershipFactsRevision() noexcept = default;
 
-  ZC_NODISCARD static OwnershipFactsRevision fromDigest(const identity::Sha256Digest& digest) noexcept;
+  ZC_NODISCARD static OwnershipFactsRevision fromDigest(
+      const identity::Sha256Digest& digest) noexcept;
 
   ZC_NODISCARD const identity::Sha256Digest& digest() const noexcept;
 
