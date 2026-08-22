@@ -7,6 +7,7 @@ set(OWNERSHIP_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/surface-admission.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/inputs.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/flow.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/facts/flow-subset.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/init.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/borrow-source.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/loans.cc

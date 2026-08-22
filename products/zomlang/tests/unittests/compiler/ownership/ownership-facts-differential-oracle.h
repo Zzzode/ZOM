@@ -546,6 +546,11 @@ private:
           if (argument.kind() != mir::MirOperandKind::Constant)
             collectPlace(paths, argument.place());
         }
+      } else if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
+        const auto& discriminant = block.terminator.switchIntValue().discriminant;
+        if (discriminant.kind() != mir::MirOperandKind::Constant) {
+          collectPlace(paths, discriminant.place());
+        }
       }
       for (size_t ordinal = block.statements.size(); ordinal != 0; --ordinal) {
         const auto& statement = block.statements[ordinal - 1];
@@ -715,6 +720,24 @@ private:
         const auto& call = block.terminator.callValue();
         if (call.unwindTarget != zc::none) return zc::none;
         chainLocation(flow, functionOverlay, MirPoint::edge(block.id, 0, call.normalTarget),
+                      current);
+      } else if (block.terminator.kind() == mir::MirTerminatorKind::Goto) {
+        chainLocation(flow, functionOverlay,
+                      MirPoint::edge(block.id, 0, block.terminator.gotoValue().target), current);
+      } else if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
+        const auto& switchInt = block.terminator.switchIntValue();
+        // Every edge fans out from the beforeTerminator point, matching the
+        // production CFG derivation.
+        zc::Maybe<facts::OwnershipPoint> branchPoint = current;
+        for (uint32_t ordinal = 0; ordinal < switchInt.arms.size(); ++ordinal) {
+          current = branchPoint;
+          chainLocation(flow, functionOverlay,
+                        MirPoint::edge(block.id, ordinal, switchInt.arms[ordinal].target), current);
+        }
+        current = branchPoint;
+        chainLocation(flow, functionOverlay,
+                      MirPoint::edge(block.id, static_cast<uint32_t>(switchInt.arms.size()),
+                                     switchInt.defaultTarget),
                       current);
       } else {
         return zc::none;
@@ -1006,9 +1029,26 @@ private:
       zc::Maybe<zc::Vector<PathState>> joined;
       for (size_t index = 0; index < function.blocks.size(); ++index) {
         const auto& block = function.blocks[index];
-        if (block.terminator.kind() != mir::MirTerminatorKind::Call) continue;
-        if (block.terminator.callValue().normalTarget != target) continue;
-        auto edge = stateAt(MirPoint::edge(block.id, 0, target));
+        const auto& terminator = block.terminator;
+        zc::Maybe<uint32_t> edgeOrdinal;
+        if (terminator.kind() == mir::MirTerminatorKind::Call) {
+          if (terminator.callValue().normalTarget == target) edgeOrdinal = uint32_t{0};
+        } else if (terminator.kind() == mir::MirTerminatorKind::Goto) {
+          if (terminator.gotoValue().target == target) edgeOrdinal = uint32_t{0};
+        } else if (terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
+          const auto& switchInt = terminator.switchIntValue();
+          for (uint32_t ordinal = 0; ordinal < switchInt.arms.size(); ++ordinal) {
+            if (switchInt.arms[ordinal].target == target) {
+              edgeOrdinal = ordinal;
+              break;
+            }
+          }
+          if (edgeOrdinal == zc::none && switchInt.defaultTarget == target) {
+            edgeOrdinal = static_cast<uint32_t>(switchInt.arms.size());
+          }
+        }
+        if (edgeOrdinal == zc::none) continue;
+        auto edge = stateAt(MirPoint::edge(block.id, ZC_ASSERT_NONNULL(edgeOrdinal), target));
         if (edge == zc::none) return zc::none;
         ZC_IF_SOME(edgeStates, edge) {
           if (joined == zc::none) {
@@ -1147,12 +1187,10 @@ private:
               result = zc::none;
             } else {
               const auto& terminator = function.blocks[ZC_ASSERT_NONNULL(index)].terminator;
-              if (terminator.kind() != mir::MirTerminatorKind::Call) {
-                result = zc::none;
-              } else {
+              auto next = cloneStates(states.asPtr());
+              bool applied = true;
+              if (terminator.kind() == mir::MirTerminatorKind::Call) {
                 const auto& call = terminator.callValue();
-                auto next = cloneStates(states.asPtr());
-                bool applied = true;
                 for (uint32_t ordinal = 0; ordinal < call.arguments.size(); ++ordinal) {
                   if (!applyOperand(next, call.arguments[ordinal],
                                     event(function.owner, MirPoint::beforeTerminator(location.from),
@@ -1162,11 +1200,22 @@ private:
                   }
                 }
                 if (applied && !initialize(next, call.destination, false)) applied = false;
-                if (applied) {
-                  result = zc::mv(next);
-                } else {
-                  result = zc::none;
+              } else if (terminator.kind() == mir::MirTerminatorKind::Goto) {
+                // No operands: the edge state is the beforeTerminator state.
+              } else if (terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
+                const auto& switchInt = terminator.switchIntValue();
+                if (!applyOperand(
+                        next, switchInt.discriminant,
+                        event(function.owner, MirPoint::beforeTerminator(location.from), 0))) {
+                  applied = false;
                 }
+              } else {
+                applied = false;
+              }
+              if (applied) {
+                result = zc::mv(next);
+              } else {
+                result = zc::none;
               }
             }
           }
@@ -1236,6 +1285,21 @@ private:
       }
       if (block.terminator.kind() == mir::MirTerminatorKind::Call) {
         if (!append(MirPoint::edge(block.id, 0, block.terminator.callValue().normalTarget))) {
+          return zc::none;
+        }
+      } else if (block.terminator.kind() == mir::MirTerminatorKind::Goto) {
+        if (!append(MirPoint::edge(block.id, 0, block.terminator.gotoValue().target))) {
+          return zc::none;
+        }
+      } else if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
+        const auto& switchInt = block.terminator.switchIntValue();
+        for (uint32_t ordinal = 0; ordinal < switchInt.arms.size(); ++ordinal) {
+          if (!append(MirPoint::edge(block.id, ordinal, switchInt.arms[ordinal].target))) {
+            return zc::none;
+          }
+        }
+        if (!append(MirPoint::edge(block.id, static_cast<uint32_t>(switchInt.arms.size()),
+                                   switchInt.defaultTarget))) {
           return zc::none;
         }
       } else {

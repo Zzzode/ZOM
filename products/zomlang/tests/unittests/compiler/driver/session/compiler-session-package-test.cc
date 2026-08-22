@@ -2366,6 +2366,72 @@ ZC_TEST("CompilerSession publishes scalar initializer definition and pattern fac
   }
 }
 
+ZC_TEST("CompilerSession rejects goto and switch-int terminators in scalar initializer MIR") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+      resolvedSourceSnapshots("app"_zc, "let value = 0;"_zc));
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+  installCore(session);
+
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  ZC_REQUIRE(session.checkSources());
+  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
+  auto overlayInput =
+      session.getOwnershipEventOverlayInput(session.getVerifiedHirModules()[0].module());
+  ZC_REQUIRE(overlayInput != zc::none);
+  ZC_IF_SOME(input, overlayInput) {
+    const mir::BuiltMirInput mirInput{session.getVerifiedHirModules()[0], input.body};
+
+    // Goto terminator: the target resolves to the only block, but the scalar
+    // initializer contract requires a Return terminator, so the verifier
+    // rejects the candidate as an invalid fact.
+    auto gotoCandidate = mir::BuiltMirBuilder::build(mirInput);
+    ZC_REQUIRE(gotoCandidate.isVerified());
+    auto corruptedGoto = zc::mv(gotoCandidate).takeVerified();
+    auto gotoSpan = corruptedGoto.functions[0].blocks[0].terminator.sourceSpan().clone();
+    corruptedGoto.functions[0].blocks[0].terminator =
+        mir::MirTerminator::gotoTarget(corruptedGoto.functions[0].blocks[0].id, zc::mv(gotoSpan));
+    auto gotoRejected = mir::BuiltMirVerifier::verify(zc::mv(corruptedGoto), mirInput);
+    ZC_REQUIRE(gotoRejected.isIrInvariantRejected());
+    ZC_REQUIRE(gotoRejected.invariantFailures().facts().size() == 1);
+    ZC_EXPECT(gotoRejected.invariantFailures().facts()[0].kind() == ir::IrFailureKind::InvalidFact);
+
+    // SwitchInt terminator: arm and default target the only block, but the
+    // scalar initializer contract requires a Return terminator, so the
+    // verifier rejects the candidate as an invalid fact.
+    auto switchCandidate = mir::BuiltMirBuilder::build(mirInput);
+    ZC_REQUIRE(switchCandidate.isVerified());
+    auto corruptedSwitch = zc::mv(switchCandidate).takeVerified();
+    auto switchSpan = corruptedSwitch.functions[0].blocks[0].terminator.sourceSpan().clone();
+    auto discriminant =
+        mir::MirOperand::constant(corruptedSwitch.functions[0].resultType,
+                                  checker::checked::CanonicalConstValue::boolean(true));
+    zc::Vector<mir::MirSwitchIntArm> arms;
+    arms.add(mir::MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true),
+                                  corruptedSwitch.functions[0].blocks[0].id});
+    corruptedSwitch.functions[0].blocks[0].terminator = mir::MirTerminator::switchInt(
+        zc::mv(discriminant), zc::mv(arms), corruptedSwitch.functions[0].blocks[0].id,
+        zc::mv(switchSpan));
+    auto switchRejected = mir::BuiltMirVerifier::verify(zc::mv(corruptedSwitch), mirInput);
+    ZC_REQUIRE(switchRejected.isIrInvariantRejected());
+    ZC_REQUIRE(switchRejected.invariantFailures().facts().size() == 1);
+    ZC_EXPECT(switchRejected.invariantFailures().facts()[0].kind() ==
+              ir::IrFailureKind::InvalidFact);
+  }
+}
+
 ZC_TEST("CompilerSession publishes a checked scalar-return function through HIR and Built MIR") {
   basic::LangOptions languageOptions;
   basic::CompilerOptions compilerOptions;

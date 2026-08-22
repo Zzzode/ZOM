@@ -15,6 +15,7 @@
 #include "zomlang/compiler/ownership/facts/flow.h"
 
 #include "zomlang/compiler/ir/ir-diagnostic-adapter.h"
+#include "zomlang/compiler/ownership/facts/flow-subset.h"
 
 namespace zomlang::compiler::ownership::facts {
 namespace {
@@ -148,6 +149,13 @@ bool inputsMatch(const mir::VerifiedBuiltMir& builtMir,
          overlay.builtRevision().digest() == builtMir.revision().digest();
 }
 
+bool allFunctionsAdmitted(const mir::VerifiedBuiltMir& builtMir) {
+  for (const auto& function : builtMir.functions()) {
+    if (!isAdmittedFlowSubset(function)) return false;
+  }
+  return true;
+}
+
 zc::Maybe<const OwnershipFunctionEventOverlay&> overlayFor(
     const VerifiedOwnershipEventOverlay& overlay, identity::DefId owner) {
   zc::Maybe<const OwnershipFunctionEventOverlay&> result;
@@ -225,99 +233,179 @@ bool hasAllSlotPoints(const FlowFunction& flow, const OwnershipFunctionEventOver
   return true;
 }
 
-zc::Maybe<FlowFunction> deriveFunction(const mir::MirFunction& function,
-                                       const OwnershipFunctionEventOverlay& overlay) {
-  if (function.blocks.size() == 0) return zc::none;
+/// \brief Why a flow derivation rejected a function, so the builder can emit
+/// the precise failure kind for the offending control-flow shape.
+enum class FlowRejection : uint8_t { Proof, ControlFlow };
+
+struct FlowFunctionOutcome final {
+  zc::Maybe<FlowFunction> value;
+  FlowRejection rejection = FlowRejection::Proof;
+};
+
+FlowFunctionOutcome deriveFunction(const mir::MirFunction& function,
+                                   const OwnershipFunctionEventOverlay& overlay) {
+  if (function.blocks.size() == 0) return {zc::none, FlowRejection::Proof};
+  if (!isAdmittedFlowSubset(function)) return {zc::none, FlowRejection::ControlFlow};
   FlowFunction flow{function.owner, zc::Vector<OwnershipPoint>(), zc::Vector<FlowEdge>()};
   zc::Maybe<OwnershipPoint> current;
-  if (!appendLocation(flow, overlay, MirPoint::entry(), current)) return zc::none;
+  if (!appendLocation(flow, overlay, MirPoint::entry(), current)) {
+    return {zc::none, FlowRejection::Proof};
+  }
 
-  zc::Vector<mir::MirBlockId> pending;
-  zc::Vector<mir::MirBlockId> visited;
-  pending.add(function.blocks[0].id);
-  while (pending.size() != 0) {
-    const auto blockId = pending[pending.size() - 1];
-    pending.removeLast();
-    bool alreadyVisited = false;
-    for (const auto id : visited) {
-      if (id == blockId) alreadyVisited = true;
+  // Iterative DFS over the successor graph with gray (in-progress) / black
+  // (done) coloring, mirroring the subset predicate and
+  // InitializationBuilder::reachableBlockOrder. A successor reached while still
+  // gray is a back edge: the admitted subset is acyclic, so loops are rejected
+  // until fixpoint iteration lands. A successor already black is a diamond
+  // join and is expanded once.
+  zc::Vector<mir::MirBlockId> inProgress;
+  zc::Vector<mir::MirBlockId> done;
+  struct Frame final {
+    mir::MirBlockId blockId;
+    bool expanded;
+  };
+  zc::Vector<Frame> stack;
+  stack.add(Frame{function.blocks[0].id, false});
+  while (stack.size() != 0) {
+    auto frame = zc::mv(stack[stack.size() - 1]);
+    stack.removeLast();
+    if (frame.expanded) {
+      for (size_t index = 0; index < inProgress.size(); ++index) {
+        if (inProgress[index] == frame.blockId) {
+          inProgress[index] = inProgress[inProgress.size() - 1];
+          inProgress.removeLast();
+          break;
+        }
+      }
+      done.add(frame.blockId);
+      continue;
     }
-    if (alreadyVisited) continue;
-    auto blockPosition = blockIndex(function, blockId);
-    if (blockPosition == zc::none) return zc::none;
+    bool alreadyDone = false;
+    for (const auto previous : done) {
+      if (previous == frame.blockId) {
+        alreadyDone = true;
+        break;
+      }
+    }
+    if (alreadyDone) continue;
+    for (const auto previous : inProgress) {
+      if (previous == frame.blockId) return {zc::none, FlowRejection::ControlFlow};
+    }
+    auto blockPosition = blockIndex(function, frame.blockId);
+    if (blockPosition == zc::none) return {zc::none, FlowRejection::Proof};
     size_t currentBlock = 0;
     ZC_IF_SOME(value, blockPosition) { currentBlock = value; }
     const auto& block = function.blocks[currentBlock];
     auto start = blockStart(block);
-    if (start == zc::none) return zc::none;
+    if (start == zc::none) return {zc::none, FlowRejection::Proof};
     OwnershipPoint startPoint = OwnershipPoint::cfg(zc::mv(ZC_ASSERT_NONNULL(start)));
     if (block.id == function.blocks[0].id &&
         !appendEdge(flow, ZC_ASSERT_NONNULL(current), startPoint)) {
-      return zc::none;
+      return {zc::none, FlowRejection::Proof};
     }
     current = zc::mv(startPoint);
     for (uint32_t ordinal = 0; ordinal < block.statements.size(); ++ordinal) {
       if (!appendLocation(flow, overlay, MirPoint::beforeStatement(block.id, ordinal), current) ||
           !appendLocation(flow, overlay, MirPoint::afterStatement(block.id, ordinal), current)) {
-        return zc::none;
+        return {zc::none, FlowRejection::Proof};
       }
     }
-    if (!appendLocation(flow, overlay, MirPoint::beforeTerminator(block.id), current))
-      return zc::none;
+    if (!appendLocation(flow, overlay, MirPoint::beforeTerminator(block.id), current)) {
+      return {zc::none, FlowRejection::Proof};
+    }
     if (block.terminator.kind() == mir::MirTerminatorKind::Return) {
       if (!appendLocation(flow, overlay, MirPoint::exit(block.id, MirExitKind::Return), current) ||
           current == zc::none) {
-        return zc::none;
+        return {zc::none, FlowRejection::Proof};
       }
-      visited.add(block.id);
+      inProgress.add(block.id);
+      stack.add(Frame{block.id, true});
       continue;
     }
     if (block.terminator.kind() == mir::MirTerminatorKind::Unreachable) {
       if (!appendLocation(flow, overlay, MirPoint::exit(block.id, MirExitKind::Unreachable),
                           current) ||
           current == zc::none) {
-        return zc::none;
+        return {zc::none, FlowRejection::Proof};
       }
-      visited.add(block.id);
+      inProgress.add(block.id);
+      stack.add(Frame{block.id, true});
       continue;
     }
-    if (block.terminator.kind() != mir::MirTerminatorKind::Call) return zc::none;
-    const auto& call = block.terminator.callValue();
-    if (call.unwindTarget != zc::none ||
-        !appendLocation(flow, overlay, MirPoint::edge(block.id, 0, call.normalTarget), current)) {
-      return zc::none;
+    // The beforeTerminator location is the common predecessor of every edge;
+    // each successor chains from it so a branch terminator fans out correctly.
+    zc::Maybe<OwnershipPoint> branchPoint = current;
+    auto chainEdge = [&](uint32_t edgeOrdinal, mir::MirBlockId target) -> bool {
+      current = branchPoint;
+      if (!appendLocation(flow, overlay, MirPoint::edge(block.id, edgeOrdinal, target), current)) {
+        return false;
+      }
+      auto next = blockIndex(function, target);
+      if (next == zc::none || current == zc::none) return false;
+      size_t nextBlock = 0;
+      ZC_IF_SOME(value, next) { nextBlock = value; }
+      auto nextStart = blockStart(function.blocks[nextBlock]);
+      if (nextStart == zc::none ||
+          !appendEdge(flow, ZC_ASSERT_NONNULL(current),
+                      OwnershipPoint::cfg(zc::mv(ZC_ASSERT_NONNULL(nextStart))))) {
+        return false;
+      }
+      stack.add(Frame{target, false});
+      return true;
+    };
+    inProgress.add(block.id);
+    stack.add(Frame{block.id, true});
+    if (block.terminator.kind() == mir::MirTerminatorKind::Call) {
+      const auto& call = block.terminator.callValue();
+      if (call.unwindTarget != zc::none || !chainEdge(0, call.normalTarget)) {
+        return {zc::none, FlowRejection::Proof};
+      }
+      continue;
     }
-    auto next = blockIndex(function, call.normalTarget);
-    if (next == zc::none || current == zc::none) return zc::none;
-    size_t nextBlock = 0;
-    ZC_IF_SOME(value, next) { nextBlock = value; }
-    auto nextStart = blockStart(function.blocks[nextBlock]);
-    if (nextStart == zc::none ||
-        !appendEdge(flow, ZC_ASSERT_NONNULL(current),
-                    OwnershipPoint::cfg(zc::mv(ZC_ASSERT_NONNULL(nextStart))))) {
-      return zc::none;
+    if (block.terminator.kind() == mir::MirTerminatorKind::Goto) {
+      if (!chainEdge(0, block.terminator.gotoValue().target)) {
+        return {zc::none, FlowRejection::Proof};
+      }
+      continue;
     }
-    pending.add(call.normalTarget);
-    visited.add(block.id);
+    if (block.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+      return {zc::none, FlowRejection::Proof};
+    }
+    const auto& switchInt = block.terminator.switchIntValue();
+    for (uint32_t ordinal = 0; ordinal < switchInt.arms.size(); ++ordinal) {
+      if (!chainEdge(ordinal, switchInt.arms[ordinal].target)) {
+        return {zc::none, FlowRejection::Proof};
+      }
+    }
+    if (!chainEdge(static_cast<uint32_t>(switchInt.arms.size()), switchInt.defaultTarget)) {
+      return {zc::none, FlowRejection::Proof};
+    }
   }
-  if (!hasAllSlotPoints(flow, overlay)) return zc::none;
-  return flow;
+  if (!hasAllSlotPoints(flow, overlay)) return {zc::none, FlowRejection::Proof};
+  return {zc::mv(flow), FlowRejection::Proof};
 }
 
-zc::Maybe<zc::Vector<FlowFunction>> derive(const mir::VerifiedBuiltMir& builtMir,
-                                           const VerifiedOwnershipEventOverlay& overlay) {
-  if (builtMir.functions().size() != overlay.functions().size()) return zc::none;
+struct FlowOutcome final {
+  zc::Maybe<zc::Vector<FlowFunction>> functions;
+  FlowRejection rejection = FlowRejection::Proof;
+};
+
+FlowOutcome derive(const mir::VerifiedBuiltMir& builtMir,
+                   const VerifiedOwnershipEventOverlay& overlay) {
+  if (builtMir.functions().size() != overlay.functions().size()) {
+    return {zc::none, FlowRejection::Proof};
+  }
   zc::Vector<FlowFunction> functions;
   for (const auto& function : builtMir.functions()) {
     auto functionOverlay = overlayFor(overlay, function.owner);
-    if (functionOverlay == zc::none) return zc::none;
+    if (functionOverlay == zc::none) return {zc::none, FlowRejection::Proof};
     ZC_IF_SOME(value, functionOverlay) {
-      auto flow = deriveFunction(function, value);
-      if (flow == zc::none) return zc::none;
-      ZC_IF_SOME(derived, flow) { functions.add(zc::mv(derived)); }
+      auto outcome = deriveFunction(function, value);
+      if (outcome.value == zc::none) return {zc::none, outcome.rejection};
+      ZC_IF_SOME(derived, outcome.value) { functions.add(zc::mv(derived)); }
     }
   }
-  return functions;
+  return {zc::mv(functions), FlowRejection::Proof};
 }
 
 }  // namespace
@@ -366,11 +454,17 @@ ir::IrOperationResult<FlowCandidate> FlowBuilder::build(
   if (!inputsMatch(builtMir, overlay)) {
     return reject<FlowCandidate>(builtMir, identities, ir::IrFailureKind::InputRevisionMismatch, 0);
   }
-  auto functions = derive(builtMir, overlay);
-  if (functions == zc::none) {
+  if (!allFunctionsAdmitted(builtMir)) {
+    return reject<FlowCandidate>(builtMir, identities, ir::IrFailureKind::InvalidControlFlow, 2);
+  }
+  auto derived = derive(builtMir, overlay);
+  if (derived.functions == zc::none) {
+    if (derived.rejection == FlowRejection::ControlFlow) {
+      return reject<FlowCandidate>(builtMir, identities, ir::IrFailureKind::InvalidControlFlow, 2);
+    }
     return reject<FlowCandidate>(builtMir, identities, ir::IrFailureKind::InvalidOwnershipProof, 1);
   }
-  ZC_IF_SOME(value, functions) {
+  ZC_IF_SOME(value, derived.functions) {
     return ir::IrOperationResult<FlowCandidate>::verified(
         FlowCandidate(builtMir.semanticContext(), builtMir.contextFingerprint().clone(),
                       builtMir.module(), builtMir.revision(), overlay.revision(), zc::mv(value)));
@@ -390,8 +484,17 @@ ir::IrOperationResult<VerifiedFlow> FlowVerifier::verify(
       !inputsMatch(builtMir, overlay)) {
     return reject<VerifiedFlow>(builtMir, identities, ir::IrFailureKind::InputRevisionMismatch, 0);
   }
+  if (!allFunctionsAdmitted(builtMir)) {
+    return reject<VerifiedFlow>(builtMir, identities, ir::IrFailureKind::InvalidControlFlow, 2);
+  }
   auto expected = derive(builtMir, overlay);
-  if (expected == zc::none || !sameFunctions(candidate.functions, ZC_ASSERT_NONNULL(expected))) {
+  if (expected.functions == zc::none) {
+    if (expected.rejection == FlowRejection::ControlFlow) {
+      return reject<VerifiedFlow>(builtMir, identities, ir::IrFailureKind::InvalidControlFlow, 2);
+    }
+    return reject<VerifiedFlow>(builtMir, identities, ir::IrFailureKind::InvalidOwnershipProof, 1);
+  }
+  if (!sameFunctions(candidate.functions, ZC_ASSERT_NONNULL(expected.functions))) {
     return reject<VerifiedFlow>(builtMir, identities, ir::IrFailureKind::InvalidOwnershipProof, 1);
   }
   return ir::IrOperationResult<VerifiedFlow>::verified(

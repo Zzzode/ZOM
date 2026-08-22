@@ -402,6 +402,13 @@ zc::Maybe<MovePathFunction> deriveFunction(const mir::MirFunction& function,
         }
       }
     }
+    if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
+      const auto& discriminant = block.terminator.switchIntValue().discriminant;
+      if (discriminant.kind() != mir::MirOperandKind::Constant &&
+          !appendPlace(paths, discriminant.place())) {
+        return zc::none;
+      }
+    }
   }
 
   zc::Vector<MovePathFact> facts;
@@ -490,6 +497,9 @@ bool validateFunction(const mir::MirFunction& function) {
       for (const auto& argument : call.arguments) {
         if (!validOperand(function, argument)) return false;
       }
+    }
+    if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
+      if (!validOperand(function, block.terminator.switchIntValue().discriminant)) return false;
     }
   }
   return true;

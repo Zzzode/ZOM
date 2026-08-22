@@ -15,6 +15,7 @@
 #include "zomlang/compiler/ownership/facts/resources.h"
 
 #include "zomlang/compiler/ir/ir-diagnostic-adapter.h"
+#include "zomlang/compiler/ownership/facts/flow-subset.h"
 #include "zomlang/compiler/ownership/source-suppression.h"
 
 namespace zomlang::compiler::ownership::facts {
@@ -181,6 +182,13 @@ bool inputsMatch(const VerifiedMovePaths& movePaths, const mir::VerifiedBuiltMir
          builtMir.module() == overlay.module() &&
          builtMir.checkedFactsRevision().digest() == overlay.checkedFactsRevision().digest() &&
          builtMir.revision().digest() == overlay.builtRevision().digest();
+}
+
+bool allFunctionsAdmitted(const mir::VerifiedBuiltMir& builtMir) {
+  for (const auto& function : builtMir.functions()) {
+    if (!isAdmittedFlowSubset(function)) return false;
+  }
+  return true;
 }
 
 zc::Maybe<DropRequirement> requirement(const LogicalDropPlanComponent& component,
@@ -385,6 +393,10 @@ zc::Maybe<LinearDerivation> deriveLinear(const mir::MirFunction& function,
                                          const zc::Vector<OwnershipResourceFact>& facts,
                                          const zc::Vector<DropTransfer>& transfers,
                                          const zc::Vector<CastResourceRoute>& castRoutes) {
+  // The movement sequence is sorted by structural event order, which is a total
+  // order only for a single-path function. The admitted subset admits joins, so
+  // the linear derivation is sound for the current single-path production MIR.
+  if (!isAdmittedFlowSubset(function)) return zc::none;
   zc::Vector<LinearObligationState> states;
   zc::Vector<LinearCarrierFact> carriers;
   for (const auto& fact : facts) {
@@ -497,6 +509,10 @@ zc::Maybe<LinearDerivation> deriveLinear(const mir::MirFunction& function,
               zc::mv(place), zc::mv(event), LinearConsumptionKind::ConsumingCall});
         }
       }
+    } else if (terminator.kind() == mir::MirTerminatorKind::Goto) {
+      // Goto carries no operands and no linear consumptions.
+    } else if (terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
+      // The discriminant is a read, not a linear consumption.
     }
   }
 
@@ -1068,6 +1084,10 @@ ir::IrOperationResult<OwnershipResourceCandidate> OwnershipResourceBuilder::buil
     return reject<OwnershipResourceCandidate>(builtMir, identities,
                                               ir::IrFailureKind::InputRevisionMismatch, 0);
   }
+  if (!allFunctionsAdmitted(builtMir)) {
+    return reject<OwnershipResourceCandidate>(builtMir, identities,
+                                              ir::IrFailureKind::InvalidControlFlow, 2);
+  }
   auto functions = derive(movePaths, builtMir, overlay);
   if (functions == zc::none) {
     return reject<OwnershipResourceCandidate>(builtMir, identities,
@@ -1093,6 +1113,10 @@ ir::IrOperationResult<VerifiedOwnershipResourceFacts> OwnershipResourceVerifier:
       !inputsMatch(movePaths, builtMir, overlay)) {
     return reject<VerifiedOwnershipResourceFacts>(builtMir, identities,
                                                   ir::IrFailureKind::InputRevisionMismatch, 0);
+  }
+  if (!allFunctionsAdmitted(builtMir)) {
+    return reject<VerifiedOwnershipResourceFacts>(builtMir, identities,
+                                                  ir::IrFailureKind::InvalidControlFlow, 2);
   }
   auto expected = derive(movePaths, builtMir, overlay);
   if (expected == zc::none || !sameFunctions(candidate.functions, ZC_ASSERT_NONNULL(expected))) {

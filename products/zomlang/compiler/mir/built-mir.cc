@@ -406,6 +406,11 @@ MirTerminator::MirTerminator(MirUnreachableTerminator value,
     : value(value), sourceSpanValue(zc::mv(sourceSpan)) {}
 MirTerminator::MirTerminator(MirCallTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept
     : value(zc::mv(value)), sourceSpanValue(zc::mv(sourceSpan)) {}
+MirTerminator::MirTerminator(MirGotoTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept
+    : value(zc::mv(value)), sourceSpanValue(zc::mv(sourceSpan)) {}
+MirTerminator::MirTerminator(MirSwitchIntTerminator&& value,
+                             identity::SourceSpan&& sourceSpan) noexcept
+    : value(zc::mv(value)), sourceSpanValue(zc::mv(sourceSpan)) {}
 
 MirTerminator MirTerminator::returnValue(MirOperand&& value,
                                          identity::SourceSpan&& sourceSpan) noexcept {
@@ -462,6 +467,18 @@ MirTerminator MirTerminator::call(identity::DefId callee, zc::Vector<MirOperand>
                        zc::mv(sourceSpan));
 }
 
+MirTerminator MirTerminator::gotoTarget(MirBlockId target,
+                                        identity::SourceSpan&& sourceSpan) noexcept {
+  return MirTerminator(MirGotoTerminator{target}, zc::mv(sourceSpan));
+}
+
+MirTerminator MirTerminator::switchInt(MirOperand&& discriminant,
+                                       zc::Vector<MirSwitchIntArm>&& arms, MirBlockId defaultTarget,
+                                       identity::SourceSpan&& sourceSpan) noexcept {
+  return MirTerminator(MirSwitchIntTerminator{zc::mv(discriminant), zc::mv(arms), defaultTarget},
+                       zc::mv(sourceSpan));
+}
+
 MirTerminator MirTerminator::clone() const {
   if (kind() == MirTerminatorKind::Unreachable) return unreachable(sourceSpan().clone());
   if (kind() == MirTerminatorKind::Call) {
@@ -473,6 +490,18 @@ MirTerminator MirTerminator::clone() const {
     return call(source.callee, zc::mv(arguments), source.effect.clone(), source.destination.clone(),
                 source.normalTarget, zc::mv(unwindTarget), sourceSpan().clone());
   }
+  if (kind() == MirTerminatorKind::Goto) {
+    return gotoTarget(gotoValue().target, sourceSpan().clone());
+  }
+  if (kind() == MirTerminatorKind::SwitchInt) {
+    const auto& source = switchIntValue();
+    zc::Vector<MirSwitchIntArm> arms;
+    for (const auto& arm : source.arms) {
+      arms.add(MirSwitchIntArm{arm.value.clone(), arm.target});
+    }
+    return switchInt(source.discriminant.clone(), zc::mv(arms), source.defaultTarget,
+                     sourceSpan().clone());
+  }
   ZC_IF_SOME(operand, returnValue().value) {
     return MirTerminator::returnValue(operand.clone(), sourceSpan().clone());
   }
@@ -482,7 +511,9 @@ MirTerminator MirTerminator::clone() const {
 MirTerminatorKind MirTerminator::kind() const noexcept {
   if (value.is<MirReturnTerminator>()) return MirTerminatorKind::Return;
   if (value.is<MirUnreachableTerminator>()) return MirTerminatorKind::Unreachable;
-  return MirTerminatorKind::Call;
+  if (value.is<MirCallTerminator>()) return MirTerminatorKind::Call;
+  if (value.is<MirGotoTerminator>()) return MirTerminatorKind::Goto;
+  return MirTerminatorKind::SwitchInt;
 }
 
 const identity::SourceSpan& MirTerminator::sourceSpan() const noexcept { return sourceSpanValue; }
@@ -492,6 +523,12 @@ const MirReturnTerminator& MirTerminator::returnValue() const {
 }
 
 const MirCallTerminator& MirTerminator::callValue() const { return value.get<MirCallTerminator>(); }
+
+const MirGotoTerminator& MirTerminator::gotoValue() const { return value.get<MirGotoTerminator>(); }
+
+const MirSwitchIntTerminator& MirTerminator::switchIntValue() const {
+  return value.get<MirSwitchIntTerminator>();
+}
 
 namespace {
 
@@ -796,6 +833,27 @@ bool encodeTerminator(identity::CanonicalEncoder& encoder, const MirTerminator& 
                       const type::SemanticTypeStore& semanticTypes) {
   encoder.encodeUint8(static_cast<uint8_t>(terminator.kind()));
   if (terminator.kind() == MirTerminatorKind::Unreachable) return true;
+  if (terminator.kind() == MirTerminatorKind::Goto) {
+    const auto& gotoTerminator = terminator.gotoValue();
+    encoder.encodeUint32(gotoTerminator.target.ordinal());
+    return gotoTerminator.target.isValid();
+  }
+  if (terminator.kind() == MirTerminatorKind::SwitchInt) {
+    const auto& switchInt = terminator.switchIntValue();
+    if (!encodeOperand(encoder, switchInt.discriminant, module, identities, semanticTypes)) {
+      return false;
+    }
+    encoder.encodeSequenceSize(switchInt.arms.size());
+    for (const auto& arm : switchInt.arms) {
+      if (!encodeConstant(encoder, arm.value, module, identities, semanticTypes) ||
+          !arm.target.isValid()) {
+        return false;
+      }
+      encoder.encodeUint32(arm.target.ordinal());
+    }
+    encoder.encodeUint32(switchInt.defaultTarget.ordinal());
+    return switchInt.defaultTarget.isValid();
+  }
   if (terminator.kind() == MirTerminatorKind::Call) {
     const auto& call = terminator.callValue();
     if (!encodeDefinition(encoder, call.callee, identities) ||
@@ -2787,6 +2845,43 @@ bool validateUnsafeScopeBoundaries(const MirFunction& function) {
     }
   }
   return openScopes.empty();
+}
+
+bool blockExists(const MirFunction& function, MirBlockId id) {
+  for (const auto& block : function.blocks) {
+    if (block.id == id) return true;
+  }
+  return false;
+}
+
+/// \brief Validates that every terminator edge targets a block in the same
+/// function. Return and Unreachable carry no edges; Call, Goto, and
+/// SwitchInt targets must resolve.
+bool validateTerminatorTargets(const MirFunction& function) {
+  for (const auto& block : function.blocks) {
+    const auto& terminator = block.terminator;
+    if (terminator.kind() == MirTerminatorKind::Call) {
+      const auto& call = terminator.callValue();
+      if (!call.normalTarget.isValid() || !blockExists(function, call.normalTarget)) return false;
+      ZC_IF_SOME(unwind, call.unwindTarget) {
+        if (!unwind.isValid() || !blockExists(function, unwind)) return false;
+      }
+    } else if (terminator.kind() == MirTerminatorKind::Goto) {
+      const auto& gotoTerminator = terminator.gotoValue();
+      if (!gotoTerminator.target.isValid() || !blockExists(function, gotoTerminator.target)) {
+        return false;
+      }
+    } else if (terminator.kind() == MirTerminatorKind::SwitchInt) {
+      const auto& switchInt = terminator.switchIntValue();
+      for (const auto& arm : switchInt.arms) {
+        if (!arm.target.isValid() || !blockExists(function, arm.target)) return false;
+      }
+      if (!switchInt.defaultTarget.isValid() || !blockExists(function, switchInt.defaultTarget)) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 }  // namespace
@@ -5073,6 +5168,11 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
   for (size_t index = 0; index < candidate.functions.size(); ++index) {
     const auto& function = candidate.functions[index];
     if (!validateUnsafeScopeBoundaries(function)) {
+      return rejectMir<VerifiedBuiltMir>(
+          ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::InvalidControlFlow, module,
+          function.owner, identities, static_cast<uint32_t>(index + 1));
+    }
+    if (!validateTerminatorTargets(function)) {
       return rejectMir<VerifiedBuiltMir>(
           ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::InvalidControlFlow, module,
           function.owner, identities, static_cast<uint32_t>(index + 1));

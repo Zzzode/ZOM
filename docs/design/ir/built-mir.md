@@ -40,7 +40,7 @@ The data model can represent:
 | Rvalue | `Use` |
 | Initialization | `Initialize` or `Overwrite` |
 | Statement | `Assign`, `StorageLive`, `StorageDead`, `BorrowCreation`, `SetDiscriminant`, or `Deinitialize` |
-| Terminator | `Return` or `Unreachable` |
+| Terminator | `Return`, `Unreachable`, `Call`, `Goto`, or `SwitchInt` |
 | Local kind | `ModuleInitializerResult` or `Temporary` |
 | Function kind | `ModuleInitializer` or `Function` |
 
@@ -86,9 +86,11 @@ The production builder does not emit:
 - temporary locals;
 - overwrite assignment;
 - `StorageDead`, `BorrowCreation`, `SetDiscriminant`, or `Deinitialize`;
-- `Unreachable`; or
-- general branches, calls, drops, assertions, panics, or multi-block control
-  flow, which are not present in the current terminator algebra.
+- `Unreachable`;
+- `Goto` and `SwitchInt` branch terminators, which the algebra represents but
+  no production lowering emits; or
+- drops, assertions, panics, unwind edges, or general multi-block control
+  flow beyond the admitted call shapes.
 
 ## Revision And Canonical Records
 

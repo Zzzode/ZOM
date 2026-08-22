@@ -15,6 +15,7 @@
 #include "zomlang/compiler/ownership/facts/borrow-source.h"
 
 #include "zomlang/compiler/ir/ir-diagnostic-adapter.h"
+#include "zomlang/compiler/ownership/facts/flow-subset.h"
 #include "zomlang/compiler/ownership/source-suppression.h"
 
 namespace zomlang::compiler::ownership::facts {
@@ -117,6 +118,13 @@ zc::Maybe<const OwnershipFunctionEventOverlay&> overlayFor(
     if (function.owner == owner) return function;
   }
   return zc::none;
+}
+
+bool allFunctionsAdmitted(const mir::VerifiedBuiltMir& builtMir) {
+  for (const auto& function : builtMir.functions()) {
+    if (!isAdmittedFlowSubset(function)) return false;
+  }
+  return true;
 }
 
 zc::Maybe<identity::SourceSpan> sourceSpanFor(const mir::MirFunction& function,
@@ -350,6 +358,14 @@ zc::Maybe<MirEventKey> lastUseOfDestination(const mir::MirFunction& function,
           consider(MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
                                argIndex});
         }
+      }
+    }
+    if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
+      const auto& discriminant = block.terminator.switchIntValue().discriminant;
+      if ((discriminant.kind() == mir::MirOperandKind::Copy ||
+           discriminant.kind() == mir::MirOperandKind::Move) &&
+          discriminant.place().local() == destination.local()) {
+        consider(MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)}, 0});
       }
     }
   }
@@ -586,6 +602,42 @@ void moveOutOfBorrowFailures(const mir::VerifiedBuiltMir& builtMir,
             }
           }
         }
+        if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
+          const auto& discriminant = block.terminator.switchIntValue().discriminant;
+          if (discriminant.kind() == mir::MirOperandKind::Move) {
+            const MirEventKey moveEvent{
+                MirLocation{function.owner, MirPoint::beforeTerminator(block.id)}, 0};
+            zc::Vector<LoanFailureCause> causes;
+            for (const auto& loan : loans.loans()) {
+              if (loan.owner != function.owner) continue;
+              if (!loanActiveAt(function, loan, moveEvent)) continue;
+              if (!placesConflict(discriminant.place(), loan.source.place)) continue;
+              auto loanSpan = sourceSpanFor(function, functionOverlayValue, loan.issue);
+              if (loanSpan == zc::none) continue;
+              ZC_IF_SOME(spanValue, loanSpan) {
+                causes.add(LoanFailureCause{
+                    LoanKey{loan.issue}, MovePathKey{loan.source.owner, loan.source.place.clone()},
+                    loan.issue, zc::mv(spanValue)});
+              }
+            }
+            if (causes.size() != 0) {
+              auto movePath = findMovePath(movePaths, function.owner, discriminant.place());
+              if (movePath != zc::none) {
+                auto moveSpan = sourceSpanFor(function, functionOverlayValue, moveEvent);
+                if (moveSpan != zc::none) {
+                  ZC_IF_SOME(pathValue, movePath) {
+                    ZC_IF_SOME(spanValue, moveSpan) {
+                      failures.add(MoveOutOfBorrowFailure{
+                          function.owner, moveEvent, zc::mv(spanValue),
+                          MovePathKey{pathValue.owner, pathValue.place.clone()}, traversalOrdinal++,
+                          zc::mv(causes)});
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -595,6 +647,12 @@ zc::Maybe<zc::Vector<OwnershipSourceFailure>> borrowSourceFailures(
     const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay,
     const VerifiedMovePaths& movePaths, const VerifiedLoanFacts& loans,
     const VerifiedReferenceDefinitions& references) {
+  // eventPosition and beforeInFunction compute program order as (blockIndex,
+  // localIndex), a linear block-order assumption that is not branch-aware. The
+  // admitted subset admits branches, so this ordering is only sound for the
+  // current single-path production MIR; branch-aware ordering is tracked
+  // separately.
+  if (!allFunctionsAdmitted(builtMir)) return zc::none;
   zc::Vector<OwnershipSourceFailure> failures;
   uint32_t traversalOrdinal = 0;
   escapeFailures(builtMir, overlay, references, failures, traversalOrdinal);
@@ -630,6 +688,10 @@ BorrowSourceVerificationResult BorrowSourceVerifier::verify(
       overlay.builtRevision().digest() != builtMir.revision().digest()) {
     const auto identities = builtMir.retainIdentityAuthority();
     return reject(builtMir, identities, ir::IrFailureKind::InputRevisionMismatch, 0);
+  }
+  if (!allFunctionsAdmitted(builtMir)) {
+    const auto identities = builtMir.retainIdentityAuthority();
+    return reject(builtMir, identities, ir::IrFailureKind::InvalidControlFlow, 2);
   }
   auto failures = borrowSourceFailures(builtMir, overlay, movePaths, loans, references);
   if (failures == zc::none) {

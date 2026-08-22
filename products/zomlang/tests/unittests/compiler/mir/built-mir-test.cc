@@ -210,6 +210,41 @@ ZC_TEST("Built MIR value algebras clone every supported projection statement and
   ZC_EXPECT(returning.clone().kind() == MirTerminatorKind::Return);
   ZC_EXPECT(voidReturn.clone().kind() == MirTerminatorKind::Return);
   ZC_EXPECT(unreachable.clone().kind() == MirTerminatorKind::Unreachable);
+
+  const auto gotoTarget = MirBlockId::fromOrdinal(2);
+  ZC_REQUIRE(gotoTarget != zc::none);
+  auto gotoTerminator = MirTerminator::gotoTarget(ZC_REQUIRE_NONNULL(gotoTarget), sourceSpan());
+  ZC_EXPECT(gotoTerminator.kind() == MirTerminatorKind::Goto);
+  ZC_EXPECT(gotoTerminator.gotoValue().target == ZC_REQUIRE_NONNULL(gotoTarget));
+  auto clonedGoto = gotoTerminator.clone();
+  ZC_EXPECT(clonedGoto.kind() == MirTerminatorKind::Goto);
+  ZC_EXPECT(clonedGoto.gotoValue().target == ZC_REQUIRE_NONNULL(gotoTarget));
+  ZC_EXPECT(clonedGoto.sourceSpan().byteEnd() == 7);
+
+  zc::Vector<MirSwitchIntArm> arms;
+  const auto armTarget = MirBlockId::fromOrdinal(3);
+  ZC_REQUIRE(armTarget != zc::none);
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true),
+                           ZC_REQUIRE_NONNULL(armTarget)});
+  const auto defaultTarget = MirBlockId::fromOrdinal(4);
+  ZC_REQUIRE(defaultTarget != zc::none);
+  auto switchIntTerminator =
+      MirTerminator::switchInt(MirOperand::move(place(firstLocal, type, field, variant)),
+                               zc::mv(arms), ZC_REQUIRE_NONNULL(defaultTarget), sourceSpan());
+  ZC_EXPECT(switchIntTerminator.kind() == MirTerminatorKind::SwitchInt);
+  const auto& switchIntValue = switchIntTerminator.switchIntValue();
+  ZC_EXPECT(switchIntValue.discriminant.kind() == MirOperandKind::Move);
+  ZC_REQUIRE(switchIntValue.arms.size() == 1);
+  ZC_EXPECT(switchIntValue.arms[0].target == ZC_REQUIRE_NONNULL(armTarget));
+  ZC_EXPECT(switchIntValue.defaultTarget == ZC_REQUIRE_NONNULL(defaultTarget));
+  auto clonedSwitchInt = switchIntTerminator.clone();
+  ZC_EXPECT(clonedSwitchInt.kind() == MirTerminatorKind::SwitchInt);
+  const auto& clonedSwitchIntValue = clonedSwitchInt.switchIntValue();
+  ZC_EXPECT(clonedSwitchIntValue.discriminant.kind() == MirOperandKind::Move);
+  ZC_REQUIRE(clonedSwitchIntValue.arms.size() == 1);
+  ZC_EXPECT(clonedSwitchIntValue.arms[0].target == ZC_REQUIRE_NONNULL(armTarget));
+  ZC_EXPECT(clonedSwitchIntValue.defaultTarget == ZC_REQUIRE_NONNULL(defaultTarget));
+  ZC_EXPECT(clonedSwitchInt.sourceSpan().byteStart() == 1);
 }
 
 ZC_TEST("Built MIR call effects commit mutable receiver activation only on normal edges") {
@@ -269,7 +304,7 @@ ZC_TEST("Built MIR unsafe scope boundary statement retains kind scope and clone"
   ZC_EXPECT(clonedEnter.sourceSpan().byteEnd() == 7);
 }
 
-zc::String framedUnsafeScopeDigest(zc::ArrayPtr<const uint8_t> functionRecord) {
+zc::String framedFunctionDigest(zc::ArrayPtr<const uint8_t> functionRecord) {
   zc::Vector<zc::Array<uint8_t>> functions;
   functions.add(zc::heapArray(functionRecord));
   const uint8_t module[] = {0xa1};
@@ -310,21 +345,99 @@ ZC_TEST("Built MIR unsafe-scope oracle changes when any boundary byte is mutated
   ZC_REQUIRE(record[enterTag] == 0x07);
   ZC_REQUIRE(record[enterKind] == 0x01);
   ZC_REQUIRE(record[enterScope] == 0x01);
-  const auto baseline = framedUnsafeScopeDigest(record.asPtr());
+  const auto baseline = framedFunctionDigest(record.asPtr());
   {
     auto mutated = zc::heapArray(record.asPtr());
     mutated[enterTag] = 0x08;
-    ZC_EXPECT(framedUnsafeScopeDigest(mutated.asPtr()) != baseline);
+    ZC_EXPECT(framedFunctionDigest(mutated.asPtr()) != baseline);
   }
   {
     auto mutated = zc::heapArray(record.asPtr());
     mutated[enterKind] = 0x03;
-    ZC_EXPECT(framedUnsafeScopeDigest(mutated.asPtr()) != baseline);
+    ZC_EXPECT(framedFunctionDigest(mutated.asPtr()) != baseline);
   }
   {
     auto mutated = zc::heapArray(record.asPtr());
     mutated[enterScope] = 0x02;
-    ZC_EXPECT(framedUnsafeScopeDigest(mutated.asPtr()) != baseline);
+    ZC_EXPECT(framedFunctionDigest(mutated.asPtr()) != baseline);
+  }
+}
+
+ZC_TEST("Built MIR revision matches the canonical 274-byte goto oracle") {
+  // One root source scope, no locals, and one block with no statements whose
+  // terminator is Goto(target=2). The identity and source-span bytes reuse
+  // the unsafe-scope oracle fixture; only the statement count and terminator
+  // encoding differ.
+  auto record = decoded(
+      "0000000000000001b101020000000000000001d1c10000000000000000000000000000000000000000000000010000000100c10000000000000000000000000000000000000000000000000000000000000001000000010000000100000000000000000400000002"_zc);
+  ZC_EXPECT(record.size() == 104);
+  zc::Vector<zc::Array<uint8_t>> functions;
+  functions.add(zc::mv(record));
+  expectOracle(
+      zc::mv(functions),
+      "7a6f6d2e6d69722d7265766973696f6e0000000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333334444444444444444444444444444444444444444444444444444444444444444000000000000000100000000000000680000000000000001b101020000000000000001d1c10000000000000000000000000000000000000000000000010000000100c10000000000000000000000000000000000000000000000000000000000000001000000010000000100000000000000000400000002"_zc,
+      "abd657b45b17565cdf47bc2ae9b134991152959b965d237729b3416067df8988"_zc);
+}
+
+ZC_TEST("Built MIR revision matches the canonical 316-byte switch-int oracle") {
+  // One root source scope, no locals, and one block with no statements whose
+  // terminator is SwitchInt with a constant bool discriminant, one arm
+  // (bool=true -> block 3), and a default target of block 4. The identity
+  // and source-span bytes reuse the unsafe-scope oracle fixture.
+  auto record = decoded(
+      "0000000000000001b101020000000000000001d1c10000000000000000000000000000000000000000000000010000000100c100000000000000000000000000000000000000000000000000000000000000010000000100000001000000000000000005030000000000000001d1000000000000000203010000000000000001000000000000000203010000000300000004"_zc);
+  ZC_EXPECT(record.size() == 146);
+  zc::Vector<zc::Array<uint8_t>> functions;
+  functions.add(zc::mv(record));
+  expectOracle(
+      zc::mv(functions),
+      "7a6f6d2e6d69722d7265766973696f6e0000000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333334444444444444444444444444444444444444444444444444444444444444444000000000000000100000000000000920000000000000001b101020000000000000001d1c10000000000000000000000000000000000000000000000010000000100c100000000000000000000000000000000000000000000000000000000000000010000000100000001000000000000000005030000000000000001d1000000000000000203010000000000000001000000000000000203010000000300000004"_zc,
+      "4ce0d6a06e820c4a2481e5bb86dee7019b2f845b401985cbb963371aed45ae4f"_zc);
+}
+
+ZC_TEST("Built MIR goto oracle changes when the terminator tag or target is mutated") {
+  auto record = decoded(
+      "0000000000000001b101020000000000000001d1c10000000000000000000000000000000000000000000000010000000100c10000000000000000000000000000000000000000000000000000000000000001000000010000000100000000000000000400000002"_zc);
+  ZC_REQUIRE(record.size() == 104);
+  // The terminator occupies the last five bytes: outer tag 0x04, uint32
+  // target ordinal 0x00000002.
+  const size_t tag = record.size() - 5;
+  const size_t target = record.size() - 1;
+  ZC_REQUIRE(record[tag] == 0x04);
+  ZC_REQUIRE(record[target] == 0x02);
+  const auto baseline = framedFunctionDigest(record.asPtr());
+  {
+    auto mutated = zc::heapArray(record.asPtr());
+    mutated[tag] = 0x05;
+    ZC_EXPECT(framedFunctionDigest(mutated.asPtr()) != baseline);
+  }
+  {
+    auto mutated = zc::heapArray(record.asPtr());
+    mutated[target] = 0x03;
+    ZC_EXPECT(framedFunctionDigest(mutated.asPtr()) != baseline);
+  }
+}
+
+ZC_TEST("Built MIR switch-int oracle changes when the terminator tag or default is mutated") {
+  auto record = decoded(
+      "0000000000000001b101020000000000000001d1c10000000000000000000000000000000000000000000000010000000100c100000000000000000000000000000000000000000000000000000000000000010000000100000001000000000000000005030000000000000001d1000000000000000203010000000000000001000000000000000203010000000300000004"_zc);
+  ZC_REQUIRE(record.size() == 146);
+  // The terminator occupies the last 47 bytes: outer tag 0x05, constant
+  // discriminant operand, one arm (bool=true -> block 3), default block 4.
+  const size_t tag = record.size() - 47;
+  const size_t defaultTarget = record.size() - 1;
+  ZC_REQUIRE(record[tag] == 0x05);
+  ZC_REQUIRE(record[defaultTarget] == 0x04);
+  const auto baseline = framedFunctionDigest(record.asPtr());
+  {
+    auto mutated = zc::heapArray(record.asPtr());
+    mutated[tag] = 0x04;
+    ZC_EXPECT(framedFunctionDigest(mutated.asPtr()) != baseline);
+  }
+  {
+    auto mutated = zc::heapArray(record.asPtr());
+    mutated[defaultTarget] = 0x05;
+    ZC_EXPECT(framedFunctionDigest(mutated.asPtr()) != baseline);
   }
 }
 

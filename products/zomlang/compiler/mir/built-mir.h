@@ -350,7 +350,13 @@ private:
   identity::SourceSpan sourceSpanValue;
 };
 
-enum class MirTerminatorKind : uint8_t { Return = 0x01, Unreachable = 0x02, Call = 0x03 };
+enum class MirTerminatorKind : uint8_t {
+  Return = 0x01,
+  Unreachable = 0x02,
+  Call = 0x03,
+  Goto = 0x04,
+  SwitchInt = 0x05,
+};
 
 struct MirReturnTerminator final {
   zc::Maybe<MirOperand> value;
@@ -395,6 +401,18 @@ struct MirCallTerminator final {
   MirBlockId normalTarget;
   zc::Maybe<MirBlockId> unwindTarget;
 };
+struct MirGotoTerminator final {
+  MirBlockId target;
+};
+struct MirSwitchIntArm final {
+  checker::checked::CanonicalConstValue value;
+  MirBlockId target;
+};
+struct MirSwitchIntTerminator final {
+  MirOperand discriminant;
+  zc::Vector<MirSwitchIntArm> arms;
+  MirBlockId defaultTarget;
+};
 
 /// \brief Closed terminator algebra for the currently supported Built MIR subset.
 class MirTerminator final {
@@ -412,18 +430,30 @@ public:
                                          MirBlockId normalTarget,
                                          zc::Maybe<MirBlockId>&& unwindTarget,
                                          identity::SourceSpan&& sourceSpan) noexcept;
+  ZC_NODISCARD static MirTerminator gotoTarget(MirBlockId target,
+                                               identity::SourceSpan&& sourceSpan) noexcept;
+  ZC_NODISCARD static MirTerminator switchInt(MirOperand&& discriminant,
+                                              zc::Vector<MirSwitchIntArm>&& arms,
+                                              MirBlockId defaultTarget,
+                                              identity::SourceSpan&& sourceSpan) noexcept;
   ZC_NODISCARD MirTerminator clone() const;
   ZC_NODISCARD MirTerminatorKind kind() const noexcept;
   /// \brief Returns presentation-only source ownership for this MIR terminator.
   ZC_NODISCARD const identity::SourceSpan& sourceSpan() const noexcept;
   ZC_NODISCARD const MirReturnTerminator& returnValue() const;
   ZC_NODISCARD const MirCallTerminator& callValue() const;
+  ZC_NODISCARD const MirGotoTerminator& gotoValue() const;
+  ZC_NODISCARD const MirSwitchIntTerminator& switchIntValue() const;
 
 private:
   MirTerminator(MirReturnTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept;
   MirTerminator(MirUnreachableTerminator value, identity::SourceSpan&& sourceSpan) noexcept;
   MirTerminator(MirCallTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept;
-  zc::OneOf<MirReturnTerminator, MirUnreachableTerminator, MirCallTerminator> value;
+  MirTerminator(MirGotoTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept;
+  MirTerminator(MirSwitchIntTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept;
+  zc::OneOf<MirReturnTerminator, MirUnreachableTerminator, MirCallTerminator, MirGotoTerminator,
+            MirSwitchIntTerminator>
+      value;
   identity::SourceSpan sourceSpanValue;
 };
 

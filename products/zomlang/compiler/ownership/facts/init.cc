@@ -15,6 +15,7 @@
 #include "zomlang/compiler/ownership/facts/init.h"
 
 #include "zomlang/compiler/ir/ir-diagnostic-adapter.h"
+#include "zomlang/compiler/ownership/facts/flow-subset.h"
 #include "zomlang/compiler/ownership/source-suppression.h"
 
 namespace zomlang::compiler::ownership::facts {
@@ -568,11 +569,22 @@ zc::Maybe<zc::Vector<InitializationPathState>> joinPredecessorStates(
   return joined;
 }
 
-zc::Maybe<mir::MirBlockId> terminatorSuccessor(const mir::MirTerminator& terminator) {
+zc::Vector<mir::MirBlockId> terminatorSuccessors(const mir::MirTerminator& terminator) {
+  zc::Vector<mir::MirBlockId> successors;
   if (terminator.kind() == mir::MirTerminatorKind::Call) {
-    return terminator.callValue().normalTarget;
+    successors.add(terminator.callValue().normalTarget);
+    return successors;
   }
-  return zc::none;
+  if (terminator.kind() == mir::MirTerminatorKind::Goto) {
+    successors.add(terminator.gotoValue().target);
+    return successors;
+  }
+  if (terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
+    const auto& switchInt = terminator.switchIntValue();
+    for (const auto& arm : switchInt.arms) successors.add(arm.target);
+    successors.add(switchInt.defaultTarget);
+  }
+  return successors;
 }
 
 /// \brief DFS postorder of blocks reachable from the entry block, reversed so
@@ -580,10 +592,9 @@ zc::Maybe<mir::MirBlockId> terminatorSuccessor(const mir::MirTerminator& termina
 ///
 /// A back edge (a block reached while still on the current DFS path) rejects
 /// the derivation, matching the admitted acyclic subset. A block already fully
-/// expanded through another path (a diamond join) is visited once. The
-/// admitted terminator algebra has at most one successor per block, so the
-/// order is deterministic; when branch terminators land they must push
-/// successors in a deterministic order to preserve that guarantee.
+/// expanded through another path (a diamond join) is visited once. Successors
+/// are pushed in terminator order (SwitchInt arms in vector order, then the
+/// default target) so the traversal is deterministic.
 zc::Maybe<zc::Vector<size_t>> reachableBlockOrder(const mir::MirFunction& function) {
   zc::Vector<size_t> postorder;
   zc::Vector<mir::MirBlockId> inProgress;
@@ -624,9 +635,8 @@ zc::Maybe<zc::Vector<size_t>> reachableBlockOrder(const mir::MirFunction& functi
     }
     inProgress.add(block.id);
     stack.add(Frame{frame.blockIndex, true});
-    const auto successor = terminatorSuccessor(block.terminator);
-    ZC_IF_SOME(target, successor) {
-      auto next = blockIndex(function, target);
+    for (const auto successor : terminatorSuccessors(block.terminator)) {
+      auto next = blockIndex(function, successor);
       if (next == zc::none) return zc::none;
       ZC_IF_SOME(value, next) { stack.add(Frame{value, false}); }
     }
@@ -640,6 +650,7 @@ zc::Maybe<InitializationFunction> deriveFunction(const mir::MirFunction& functio
                                                  const FlowFunction& flow,
                                                  const MovePathFunction& paths) {
   if (function.blocks.size() == 0) return zc::none;
+  if (!isAdmittedFlowSubset(function)) return zc::none;
   zc::Vector<InitializationPathState> states;
   for (const auto& path : paths.facts) {
     if (path.key.owner != function.owner || !validLocalPlace(function, path.key.place)) {
@@ -705,6 +716,36 @@ zc::Maybe<InitializationFunction> deriveFunction(const mir::MirFunction& functio
         }
         if (!appendFacts(facts, MirPoint::exit(block.id, MirExitKind::Return), function, paths,
                          states.asPtr())) {
+          return zc::none;
+        }
+        blockExitStates[blockIndexValue] = cloneStates(states.asPtr());
+        continue;
+      }
+      if (block.terminator.kind() == mir::MirTerminatorKind::Goto) {
+        if (!appendFacts(facts, MirPoint::edge(block.id, 0, block.terminator.gotoValue().target),
+                         function, paths, states.asPtr())) {
+          return zc::none;
+        }
+        blockExitStates[blockIndexValue] = cloneStates(states.asPtr());
+        continue;
+      }
+      if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
+        const auto& switchInt = block.terminator.switchIntValue();
+        if (!applyOperand(function, paths, switchInt.discriminant,
+                          eventAt(function.owner, MirPoint::beforeTerminator(block.id), 0),
+                          states)) {
+          return zc::none;
+        }
+        for (uint32_t ordinal = 0; ordinal < switchInt.arms.size(); ++ordinal) {
+          if (!appendFacts(facts, MirPoint::edge(block.id, ordinal, switchInt.arms[ordinal].target),
+                           function, paths, states.asPtr())) {
+            return zc::none;
+          }
+        }
+        if (!appendFacts(facts,
+                         MirPoint::edge(block.id, static_cast<uint32_t>(switchInt.arms.size()),
+                                        switchInt.defaultTarget),
+                         function, paths, states.asPtr())) {
           return zc::none;
         }
         blockExitStates[blockIndexValue] = cloneStates(states.asPtr());
@@ -829,6 +870,13 @@ bool inputsMatch(const mir::VerifiedBuiltMir& builtMir,
       movePaths.overlayRevision().digest() != overlay.revision().digest() ||
       movePaths.functions().size() != builtMir.functions().size()) {
     return false;
+  }
+  return true;
+}
+
+bool allFunctionsAdmitted(const mir::VerifiedBuiltMir& builtMir) {
+  for (const auto& function : builtMir.functions()) {
+    if (!isAdmittedFlowSubset(function)) return false;
   }
   return true;
 }
@@ -1167,6 +1215,13 @@ zc::Maybe<zc::Vector<OwnershipSourceFailure>> sourceFailures(
             return zc::none;
           }
         }
+      } else if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
+        if (!appendSourceFailure(
+                function, ZC_ASSERT_NONNULL(functionOverlay), ZC_ASSERT_NONNULL(facts), point,
+                block.terminator.switchIntValue().discriminant, block.terminator.sourceSpan(), 0,
+                traversalOrdinal, failures, linearPlaces)) {
+          return zc::none;
+        }
       }
     }
   }
@@ -1347,6 +1402,10 @@ ir::IrOperationResult<InitializationCandidate> InitializationBuilder::build(
     return rejectInvariant<InitializationCandidate>(builtMir, identities,
                                                     ir::IrFailureKind::InputRevisionMismatch, 0);
   }
+  if (!allFunctionsAdmitted(builtMir)) {
+    return rejectInvariant<InitializationCandidate>(builtMir, identities,
+                                                    ir::IrFailureKind::InvalidControlFlow, 2);
+  }
   auto functions = derive(builtMir, overlay, flow, movePaths);
   if (functions == zc::none) {
     return rejectInvariant<InitializationCandidate>(builtMir, identities,
@@ -1373,6 +1432,10 @@ ir::IrOperationResult<VerifiedInitializationFacts> InitializationVerifier::verif
       !inputsMatch(builtMir, overlay, flow, movePaths)) {
     return rejectInvariant<VerifiedInitializationFacts>(
         builtMir, identities, ir::IrFailureKind::InputRevisionMismatch, 0);
+  }
+  if (!allFunctionsAdmitted(builtMir)) {
+    return rejectInvariant<VerifiedInitializationFacts>(builtMir, identities,
+                                                        ir::IrFailureKind::InvalidControlFlow, 2);
   }
   auto expected = derive(builtMir, overlay, flow, movePaths);
   if (expected == zc::none || !sameFunctions(candidate.functions, ZC_ASSERT_NONNULL(expected))) {

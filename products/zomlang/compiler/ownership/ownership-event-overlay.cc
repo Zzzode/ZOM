@@ -2036,6 +2036,39 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
                                    markerUses[markerUses.size() - 1], copy, linear)) {
           return zc::none;
         }
+      } else if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
+        const auto& discriminant = block.terminator.switchIntValue().discriminant;
+        zc::Vector<OwnershipEventRole> operandRoles;
+        switch (discriminant.kind()) {
+          case mir::MirOperandKind::Copy:
+            operandRoles.add(OwnershipEventRole::OperandRead);
+            operandRoles.add(OwnershipEventRole::OperandCopy);
+            break;
+          case mir::MirOperandKind::Move:
+            operandRoles.add(OwnershipEventRole::OperandRead);
+            operandRoles.add(OwnershipEventRole::OperandMove);
+            break;
+          case mir::MirOperandKind::Constant:
+            operandRoles.add(OwnershipEventRole::ConstantOperand);
+            break;
+        }
+        slots.add(MirEventSlot{
+            MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
+                        terminatorOrdinal++},
+            OwnershipEventStage::Source, zc::mv(operandRoles)});
+        if (discriminant.kind() == mir::MirOperandKind::Copy) {
+          const MirEventKey event{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
+                                  0};
+          if (!appendMarkerUse(markerUses, proofs, input, event, copy,
+                               discriminant.place().resultType())) {
+            return zc::none;
+          }
+        }
+      } else if (block.terminator.kind() != mir::MirTerminatorKind::Goto &&
+                 block.terminator.kind() != mir::MirTerminatorKind::Unreachable) {
+        // Goto and Unreachable carry no operands and emit only the Effect slot.
+        // Any other terminator kind is outside the overlay's closed algebra.
+        return zc::none;
       }
       zc::Vector<OwnershipEventRole> effectRoles;
       effectRoles.add(OwnershipEventRole::Operation);
@@ -2319,6 +2352,39 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
                                    markerUses[markerUses.size() - 1], copy, linear)) {
           return zc::none;
         }
+      } else if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
+        const auto& discriminant = block.terminator.switchIntValue().discriminant;
+        zc::Vector<OwnershipEventRole> operandRoles;
+        switch (discriminant.kind()) {
+          case mir::MirOperandKind::Copy:
+            operandRoles.add(OwnershipEventRole::OperandRead);
+            operandRoles.add(OwnershipEventRole::OperandCopy);
+            break;
+          case mir::MirOperandKind::Move:
+            operandRoles.add(OwnershipEventRole::OperandRead);
+            operandRoles.add(OwnershipEventRole::OperandMove);
+            break;
+          case mir::MirOperandKind::Constant:
+            operandRoles.add(OwnershipEventRole::ConstantOperand);
+            break;
+        }
+        slots.add(MirEventSlot{
+            MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
+                        terminatorOrdinal++},
+            OwnershipEventStage::Source, zc::mv(operandRoles)});
+        if (discriminant.kind() == mir::MirOperandKind::Copy) {
+          const MirEventKey event{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
+                                  0};
+          if (!appendMarkerUse(markerUses, proofs, input, event, copy,
+                               discriminant.place().resultType())) {
+            return zc::none;
+          }
+        }
+      } else if (block.terminator.kind() != mir::MirTerminatorKind::Goto &&
+                 block.terminator.kind() != mir::MirTerminatorKind::Unreachable) {
+        // Goto and Unreachable carry no operands and emit only the Effect slot.
+        // Any other terminator kind is outside the overlay's closed algebra.
+        return zc::none;
       }
       zc::Vector<OwnershipEventRole> effect;
       effect.add(OwnershipEventRole::Operation);

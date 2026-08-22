@@ -71,7 +71,8 @@ bool legalKind(IrRejectedBranch branch, IrFailurePhase phase, IrFailureKind kind
       return kind == IrFailureKind::InvalidControlFlow || kind == IrFailureKind::InvalidPlace ||
              kind == IrFailureKind::UnresolvedDispatch;
     case IrFailurePhase::OwnershipProofValidation:
-      return kind == IrFailureKind::InvalidPlace || kind == IrFailureKind::InvalidOwnershipProof;
+      return kind == IrFailureKind::InvalidPlace || kind == IrFailureKind::InvalidOwnershipProof ||
+             kind == IrFailureKind::InvalidControlFlow;
     case IrFailurePhase::CleanupElaboration:
       return kind == IrFailureKind::InvalidControlFlow || kind == IrFailureKind::InvalidPlace ||
              kind == IrFailureKind::InvalidOwnershipProof || kind == IrFailureKind::InvalidCleanup;
