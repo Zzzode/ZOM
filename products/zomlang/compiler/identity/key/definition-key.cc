@@ -192,6 +192,9 @@ zc::Array<uint8_t> DefinitionKey::encode() const {
 bool DefinitionKey::operator==(const DefinitionKey& other) const noexcept {
   return digestValue == other.digestValue;
 }
+bool DefinitionKey::operator<(const DefinitionKey& other) const noexcept {
+  return digestValue < other.digestValue;
+}
 
 ImplKey::ImplKey(const Sha256Digest& digest) noexcept : digestValue(digest) {}
 ImplKey ImplKey::compute(const ImplIdentityRecord& record) {

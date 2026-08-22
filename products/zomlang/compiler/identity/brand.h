@@ -54,6 +54,9 @@ public:
     return token == other.token;
   }
   constexpr bool operator!=(SemanticContextBrand other) const noexcept { return !(*this == other); }
+  constexpr bool operator<(SemanticContextBrand other) const noexcept {
+    return token < other.token;
+  }
 
 private:
   explicit constexpr SemanticContextBrand(uint64_t value) noexcept : token(value) {}

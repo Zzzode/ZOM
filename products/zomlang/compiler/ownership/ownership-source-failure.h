@@ -237,14 +237,18 @@ inline bool lessProjection(const mir::MirProjection& left,
   }
   switch (left.kind()) {
     case mir::MirProjectionKind::Field:
-      // The field DefId is ordering-equivalent (equality only).
+      if (left.fieldValue().field != right.fieldValue().field) {
+        return left.fieldValue().field < right.fieldValue().field;
+      }
       return false;
     case mir::MirProjectionKind::Index:
       return left.indexValue().index.ordinal() < right.indexValue().index.ordinal();
     case mir::MirProjectionKind::Dereference:
       return false;
     case mir::MirProjectionKind::Downcast:
-      // The variant DefId is ordering-equivalent (equality only).
+      if (left.downcastValue().variant != right.downcastValue().variant) {
+        return left.downcastValue().variant < right.downcastValue().variant;
+      }
       return false;
     case mir::MirProjectionKind::Subslice:
       if (left.subsliceValue().first != right.subsliceValue().first) {
@@ -268,9 +272,7 @@ inline bool lessPlace(const mir::MirPlace& left, const mir::MirPlace& right) noe
 }
 
 inline bool lessMovePath(const facts::MovePathKey& left, const facts::MovePathKey& right) noexcept {
-  // The owner DefId is ordering-equivalent (equality only); see the owner
-  // rationale in OwnershipSourceFailureOrdering::less.
-  if (left.owner != right.owner) return false;
+  if (left.owner != right.owner) return left.owner < right.owner;
   return lessPlace(left.place, right.place);
 }
 
@@ -532,15 +534,15 @@ inline bool lessPayload(const OwnershipSourceFailure& left,
 /// \brief Canonical global ordering for closed ownership source failures.
 ///
 /// Order: primary span byteStart, byteEnd, numeric primary diagnostic ID,
-/// traversalOrdinal, expanded owner key, primary MirEventKey, variant tag, then
-/// the remaining complete payload (cause sequence or unsafe boundary).
+/// traversalOrdinal, owner DefId (context-local handle order), primary
+/// MirEventKey, variant tag, then the remaining complete payload (cause
+/// sequence or unsafe boundary).
 ///
-/// The owner DefId exposes equality but no public ordering; the RFC's expanded
-/// owner key requires identity-authority expansion that this header cannot
-/// perform. Distinct owners are ordering-equivalent here. traversalOrdinal is
-/// unique per failure within one analysis batch, so owner equivalence never
-/// decides the within-batch order; `equalFailure` still distinguishes distinct
-/// owners for deduplication.
+/// The owner DefId orders by its context brand and arena slot. This is a
+/// deterministic context-local ordering, not the RFC's expanded-owner-key
+/// ordering (which requires identity-authority expansion to canonical digest
+/// bytes). The expanded-key ordering remains a future improvement; the
+/// current ordering is sufficient for deterministic sort and deduplication.
 struct OwnershipSourceFailureOrdering final {
   ZC_NODISCARD static bool less(const OwnershipSourceFailure& left,
                                 const OwnershipSourceFailure& right) noexcept {
@@ -550,7 +552,7 @@ struct OwnershipSourceFailureOrdering final {
     if (leftKey.spanEnd != rightKey.spanEnd) return leftKey.spanEnd < rightKey.spanEnd;
     if (leftKey.diagId != rightKey.diagId) return leftKey.diagId < rightKey.diagId;
     if (leftKey.ordinal != rightKey.ordinal) return leftKey.ordinal < rightKey.ordinal;
-    // Owner is ordering-equivalent; see the struct comment.
+    if (leftKey.owner != rightKey.owner) return leftKey.owner < rightKey.owner;
     if (detail::lessEvent(detail::primaryEvent(left), detail::primaryEvent(right))) return true;
     if (detail::lessEvent(detail::primaryEvent(right), detail::primaryEvent(left))) return false;
     if (leftKey.tag != rightKey.tag) return leftKey.tag < rightKey.tag;

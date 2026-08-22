@@ -37,6 +37,12 @@ public:
 
   bool operator==(const Sha256Digest& other) const noexcept { return bytes() == other.bytes(); }
   bool operator!=(const Sha256Digest& other) const noexcept { return !(*this == other); }
+  bool operator<(const Sha256Digest& other) const noexcept {
+    for (size_t i = 0; i < 32; ++i) {
+      if (value[i] != other.value[i]) return value[i] < other.value[i];
+    }
+    return false;
+  }
 
 private:
   uint8_t value[32] = {};

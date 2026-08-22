@@ -50,6 +50,10 @@ public:
     return context == other.context && slot == other.slot;
   }
   constexpr bool operator!=(ContextHandle other) const noexcept { return !(*this == other); }
+  constexpr bool operator<(ContextHandle other) const noexcept {
+    if (context != other.context) return context < other.context;
+    return slot < other.slot;
+  }
 
 private:
   constexpr ContextHandle(SemanticContextBrand owner, uint32_t value) noexcept

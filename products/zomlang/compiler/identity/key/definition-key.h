@@ -69,6 +69,7 @@ public:
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
   bool operator==(const DefinitionKey& other) const noexcept;
   bool operator!=(const DefinitionKey& other) const noexcept { return !(*this == other); }
+  bool operator<(const DefinitionKey& other) const noexcept;
 
 private:
   explicit DefinitionKey(const Sha256Digest& digest) noexcept;

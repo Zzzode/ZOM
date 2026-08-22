@@ -5466,9 +5466,11 @@ ZC_TEST("Ownership source failure equality distinguishes the owner key") {
   OwnershipSourceFailure leftFailure{make(identity.owner)};
   OwnershipSourceFailure rightFailure{make(otherOwner)};
 
-  // The owner DefId exposes equality but no public ordering, so distinct owners
-  // are ordering-equivalent; equality still separates them for deduplication.
+  // Distinct owners now have deterministic context-local ordering (context
+  // brand then arena slot). Equality still separates them for deduplication.
   ZC_EXPECT(!OwnershipSourceFailureOrdering::equal(leftFailure, rightFailure));
+  ZC_EXPECT(OwnershipSourceFailureOrdering::less(leftFailure, rightFailure) !=
+            OwnershipSourceFailureOrdering::less(rightFailure, leftFailure));
 }
 
 ZC_TEST("Ownership source failure deduplication collapses byte-identical failures") {
