@@ -10,6 +10,7 @@ set(OWNERSHIP_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/init.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/borrow-source.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/loans.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/facts/ownership-budget.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/ownership-facts-codec.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/ownership-facts-revision.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/paths.cc
