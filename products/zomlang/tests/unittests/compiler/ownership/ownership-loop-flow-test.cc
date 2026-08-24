@@ -231,11 +231,14 @@ ZC_TEST("Flow subset rejects a loop exit dangling to a nonexistent block") {
 
 // ---------------------------------------------------------------------------
 // Session pipeline fixture (for the builder/verifier regression on the most
-// complex producible CFG shape). The frontend does not yet lower loops to
-// MIR, so end-to-end loop flow graphs are not producible here; the gate
+// complex producible CFG shape). The empty-body admitted `while(param){}` loop
+// now lowers end-to-end to a reducible four-block CFG (see hir-module-test.cc
+// "HIR pipeline lowers an admitted while loop"); what the frontend still cannot
+// produce end-to-end is a loop whose body mutates locals, so loop dataflow-fold
+// coverage below drives the builder/verifier seams on hand-built MIR. The gate
 // tests above are the enforcement point for loop admission and irreducible
-// rejection. The conditional-return diamond below is the closest producible
-// shape and exercises the same DFS fan-out path.
+// rejection. The conditional-return diamond below exercises the same DFS
+// fan-out path through the session pipeline.
 // ---------------------------------------------------------------------------
 
 template <typename Scalar>
@@ -533,14 +536,15 @@ ZC_TEST("Region membership fixpoint converges on a conditional diamond") {
 // ---------------------------------------------------------------------------
 //
 // These drive the InitializationBuilder::deriveFunctionForTesting seam
-// directly. The frontend does not yet lower loops to MIR, so a VerifiedBuiltMir
-// carrying a back edge is not producible through the pipeline; the monotone
-// worklist fixpoint that converges initialization state on reducible loops is
-// therefore exercised on hand-built functions, flow graphs, and move paths.
-// The former single topological pass fail-closed on any back edge (its
-// reachable-order helper returned none), even though the flow subset admits
-// reducible loops. The scope here is the per-function InitializationFunction
-// fact inventory only.
+// directly. The empty-body admitted `while(param){}` loop lowers end-to-end
+// today, but the frontend cannot yet produce a loop whose body mutates locals,
+// so a VerifiedBuiltMir carrying a back edge over an evolving initialization
+// state is not producible through the pipeline; the monotone worklist fixpoint
+// that converges initialization state on reducible loops is therefore exercised
+// on hand-built functions, flow graphs, and move paths. The former single
+// topological pass fail-closed on any back edge (its reachable-order helper
+// returned none), even though the flow subset admits reducible loops. The scope
+// here is the per-function InitializationFunction fact inventory only.
 
 namespace {
 

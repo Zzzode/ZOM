@@ -179,7 +179,7 @@ flowchart TD
     M --> D
 ```
 
-**CRITICAL KNOWN GAPS (as of 2026-08-23)** that are tracked by audit findings
+**CRITICAL KNOWN GAPS (as of 2026-08-25)** that are tracked by audit findings
 and must be handled with principle #4 (delete or implement, no drift):
 
 1. **RFC 0007 is implementing, not complete.** The enablement transaction
@@ -187,18 +187,24 @@ and must be handled with principle #4 (delete or implement, no drift):
    initialization and drop facts; the borrow-source rail (conflicting loans,
    move-out-of-borrow, and returned-local-borrow escape, `ZOM4061`) now runs in
    `checkSources`; session cleanup integration (drop/coroutine elaboration and
-   executable-MIR verification). Still in progress and fail-closed: the Built
-   MIR ownership overlay for general region liveness, escape/capture-boundary
-   production logic, loans/references/regions completeness, marker/linear/unsafe
-   boundaries, and verified ownership facts/typestate. No incomplete slice may
-   publish `VerifiedOwnershipFacts`, `OwnershipCheckedMir`, or a successor
-   artifact until its complete proof and validation contracts are implemented.
+   executable-MIR verification); and conditional and while-loop CFG lowering,
+   emitting `Goto` (0x04) and `SwitchInt` (0x05) terminators and a `Comparison`
+   (0x03) rvalue for four-block diamond conditionals and reducible four-block
+   while loops, admitted by the dominator-based flow-subset verifier. Still in
+   progress and fail-closed: the Built MIR ownership overlay for general region
+   liveness, escape/capture-boundary production logic, loans/references/regions
+   completeness, marker/linear/unsafe boundaries, and verified ownership
+   facts/typestate. No incomplete slice may publish `VerifiedOwnershipFacts`,
+   `OwnershipCheckedMir`, or a successor artifact until its complete proof and
+   validation contracts are implemented.
 2. **RFC 0013 is implementing, not complete.** BorrowEvidence, CheckedModule,
-   HIR lineage, and Built MIR are implemented; `OwnershipProofValidation` is a
-   pass-through whose remaining escape/outlives, Contained point-set, and
-   DirectInput cross-checks await admitted store/closure escapes and a signature
-   extension, and production ownership-result publication remains gated on RFC
-   0007.
+   HIR lineage, and Built MIR are implemented; `OwnershipProofValidation::validate`
+   now runs on the production path and publishes one `ValidatedOwnershipProofs`
+   per module. Only the three named cross-checks (Store/ClosureCapture
+   escape-to-region outlives, Contained required-point-set containment, and
+   DirectInput proof-to-borrow-input match) remain deferred pending admitted
+   store/closure escapes and a `validate` signature extension, and production
+   ownership-result publication remains gated on RFC 0007.
 3. **RFC 0010 has no target LIR or backend implementation.** Semantic HIR and
    evidence-bound Built MIR are present, while target legalization, ABI
    lowering, LLVM IR, object emission, and linking are absent.

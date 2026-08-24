@@ -706,10 +706,14 @@ general CFG propagation, joins, loops, escaping references, or the complete RFC 
 point and every before/after event cutpoint, including a direct call's normal
 continuation edge and its destination commit. The flow derivation has an
 explicit `Unreachable` exit case and preserves the continuation edge before
-entering its target block. Production lowering and Built MIR verification still
-publish only linear blocks and direct call continuations; branch, join, loop,
-unwind, escape propagation, and a production `Unreachable` terminator remain
-unavailable until those terminators are lowered and independently verified.
+entering its target block. Production lowering now emits `Goto` (0x04) and
+`SwitchInt` (0x05) terminators and a `Comparison` (0x03) rvalue, lowering
+four-block diamond conditional returns and reducible four-block while-loop CFGs;
+the flow-subset verifier reconstructs and validates these shapes through
+dominator-based retreating-edge admission (`facts/flow-subset.cc`). Unwind edges,
+escape propagation, general (non-current-subset) region liveness, and
+closure/capture boundaries remain unavailable until they are lowered and
+independently verified.
 `VerifiedInitializationFacts` consumes the same flow inventory and rejects any
 fact point outside its owning function's verified CFG projection.
 The bounded reference-state inventory independently reconstructs the reference value at the five
@@ -1157,6 +1161,47 @@ three now would add unreachable, untestable branches, contrary to design
 principle #4. This slice completes neither general region liveness, escape
 production, nor the capture-boundary contract; the row above remains
 `In Progress`.
+
+### Conditional And Loop CFG Lowering Executable Evidence
+
+Production lowering now emits branch, join, and reducible loop control flow
+through the `Goto` (0x04) and `SwitchInt` (0x05) terminators and the
+`Comparison` (0x03) rvalue defined in `mir/built-mir.h` (terminator kinds at
+`built-mir.h:390-391`, rvalue kind at `built-mir.h:230`, and the six-value
+`MirComparisonOperator` Eq/Ne/Lt/Le/Gt/Ge tags 0x01-0x06 at
+`built-mir.h:239-246`). The HIR module recognizes the admitted shapes: the
+scalar-comparison operator family in `hir/hir-module.cc:316-323`
+(`isScalarComparisonOperation` over Eq/Ne/Lt/Le/Gt/Ge) and the leading
+`while (param) { }` loop admission in `hir/hir-module.cc:664-673`. The following
+end-to-end pipeline tests in `tests/unittests/compiler/hir/hir-module-test.cc`
+compile source through the session and assert the lowered Built MIR CFG:
+
+- The minimal reducible while loop `fun spin(cond: bool) -> i32 { while (cond)
+  { } return 0; }` lowers to a four-block CFG (entry `Goto`, `SwitchInt` header,
+  reducible back-edge `Goto` body, `Return` exit) at
+  `hir-module-test.cc:736-802`.
+- A two-arm scalar-literal conditional lowers to a four-block diamond
+  (`SwitchInt` head, per-arm `Goto`, join `Return`) at
+  `hir-module-test.cc:804-853`.
+- A two-arm parameter conditional lowers each arm to a parameter-return
+  assignment plus `Goto` at `hir-module-test.cc:854-903`.
+- An equality-comparison conditional condition materializes one `Comparison`
+  rvalue with operator `Eq` (0x01) at `hir-module-test.cc:905-965`, and a
+  less-than relational condition emits operator `Lt` (0x03) at
+  `hir-module-test.cc:967-993`.
+
+These shapes are flow-verified: the dominator-based flow-subset verifier in
+`ownership/facts/flow-subset.cc:34` (`isAdmittedFlowSubset`) reconstructs and
+admits the reducible loop and diamond CFGs, and rejects irreducible or dangling
+control flow (gate tests in this file). They do NOT yet establish general
+region-membership or escape ownership proof over the new CFG shapes: the escape
+builder derives only `Return` escapes for the admitted subset, general region
+liveness over branch/loop points is not produced, and the three deferred
+`OwnershipProofValidation` cross-checks remain unimplemented. The
+`Loans, references, and regions`, `Marker, linear, unsafe, and capture
+boundaries`, and `Verified ownership facts and typestate` rows therefore remain
+`In Progress`; fail-closed admission stays the enforcement boundary for every
+shape outside the flow subset.
 
 ## Verification Evidence
 
