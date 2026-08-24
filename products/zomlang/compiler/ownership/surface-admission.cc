@@ -307,6 +307,54 @@ zc::Maybe<ast::NodeId> localDeclarator(const ast::Tree& tree, ast::NodeId statem
   return declarator;
 }
 
+/// \brief Shape-matches a `while` loop that has an admitted semantic contract.
+///
+/// The narrowly admitted loop form is a `while` whose condition is a bare
+/// identifier (resolved to a bool parameter downstream) and whose body is an
+/// empty block. This is a genuine reducible loop that Built MIR can lower to a
+/// four-block CFG with a reducible back-edge.
+bool isAdmittedLoopStatement(const ast::Tree& tree, ast::NodeId whileStmt) {
+  if (!tree.contains(whileStmt) || tree.node(whileStmt).kind != ast::SyntaxKind::WhileStmt) {
+    return false;
+  }
+  const auto& loop = tree.node(whileStmt);
+  const ast::NodeId condition(loop.payload.words[ast::kWhileStmtCondWord]);
+  const ast::NodeId body(loop.payload.words[ast::kWhileStmtBodyWord]);
+  if (!tree.contains(condition) || tree.node(condition).kind != ast::SyntaxKind::IdentExpr) {
+    return false;
+  }
+  if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return false;
+  const auto& block = tree.node(body);
+  const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                 block.payload.words[ast::kBlockStmtStmtsSizeWord]};
+  return tree.contains(statements) && statements.empty();
+}
+
+bool isAdmittedConditionalBody(const ast::Tree& tree, ast::NodeId ifStmt) {
+  const auto& ifNode = tree.node(ifStmt);
+  const ast::NodeId thenStmt(ifNode.payload.words[ast::kIfStmtThenStmtWord]);
+  const ast::NodeId elseStmt(ifNode.payload.words[ast::kIfStmtElseStmtWord]);
+  if (!tree.contains(thenStmt) || !tree.contains(elseStmt)) return false;
+  if (tree.node(thenStmt).kind != ast::SyntaxKind::BlockStmt ||
+      tree.node(elseStmt).kind != ast::SyntaxKind::BlockStmt) {
+    return false;
+  }
+  auto branchReturns = [&](ast::NodeId branch) -> bool {
+    const auto& branchNode = tree.node(branch);
+    const ast::NodeList branchStmts{branchNode.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                    branchNode.payload.words[ast::kBlockStmtStmtsSizeWord]};
+    if (!tree.contains(branchStmts) || branchStmts.empty()) return false;
+    auto tail = statementItem(tree, tree.list(branchStmts)[branchStmts.size - 1]);
+    if (tail == zc::none) return false;
+    ast::NodeId tailStmt;
+    ZC_IF_SOME(value, tail) { tailStmt = value; }
+    if (tree.node(tailStmt).kind != ast::SyntaxKind::ReturnStmt) return false;
+    const ast::NodeId returnValue(tree.node(tailStmt).payload.words[ast::kReturnStmtValueWord]);
+    return tree.contains(returnValue) && isAdmittedReturnValue(tree, returnValue);
+  };
+  return branchReturns(thenStmt) && branchReturns(elseStmt);
+}
+
 bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
   const ast::NodeId body(function.payload.words[ast::kFunctionDeclBodyWord]);
   if (!tree.contains(body)) return true;
@@ -315,6 +363,36 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
   if (!tree.contains(statements) || statements.empty()) return false;
+  if (statements.size == 1) {
+    auto item = statementItem(tree, tree.list(statements)[0]);
+    if (item != zc::none) {
+      ast::NodeId stmt;
+      ZC_IF_SOME(value, item) { stmt = value; }
+      if (tree.node(stmt).kind == ast::SyntaxKind::IfStmt) {
+        return isAdmittedConditionalBody(tree, stmt);
+      }
+    }
+  }
+  if (statements.size == 2) {
+    // A leading admitted `while` loop followed by a scalar return is an admitted
+    // function body. The loop condition is a bool parameter reference and the
+    // loop body is empty, so the loop lowers to a reducible four-block CFG.
+    auto leadingItem = statementItem(tree, tree.list(statements)[0]);
+    if (leadingItem != zc::none) {
+      ast::NodeId leadingStmt;
+      ZC_IF_SOME(value, leadingItem) { leadingStmt = value; }
+      if (tree.node(leadingStmt).kind == ast::SyntaxKind::WhileStmt) {
+        if (!isAdmittedLoopStatement(tree, leadingStmt)) return false;
+        auto tailItem = statementItem(tree, tree.list(statements)[1]);
+        if (tailItem == zc::none) return false;
+        ast::NodeId tailStmt;
+        ZC_IF_SOME(value, tailItem) { tailStmt = value; }
+        if (tree.node(tailStmt).kind != ast::SyntaxKind::ReturnStmt) return false;
+        const ast::NodeId returnValue(tree.node(tailStmt).payload.words[ast::kReturnStmtValueWord]);
+        return tree.contains(returnValue) && isScalarLiteral(tree.node(returnValue).kind);
+      }
+    }
+  }
   auto finalStatement = statementItem(tree, tree.list(statements)[statements.size - 1]);
   if (finalStatement == zc::none) return false;
   ZC_IF_SOME(statement, finalStatement) {
@@ -450,9 +528,8 @@ bool hasSpecificSurfaceFailure(const ast::Tree& tree, ast::NodeId body) {
     if (found) return;
     if (syntax.kind == ast::SyntaxKind::SpawnExpression ||
         syntax.kind == ast::SyntaxKind::SuspendStatement ||
-        syntax.kind == ast::SyntaxKind::IfStmt || syntax.kind == ast::SyntaxKind::MatchStmt ||
-        syntax.kind == ast::SyntaxKind::WhileStmt || syntax.kind == ast::SyntaxKind::ForStmt ||
-        syntax.kind == ast::SyntaxKind::ForInStatement ||
+        syntax.kind == ast::SyntaxKind::MatchStmt || syntax.kind == ast::SyntaxKind::WhileStmt ||
+        syntax.kind == ast::SyntaxKind::ForStmt || syntax.kind == ast::SyntaxKind::ForInStatement ||
         syntax.kind == ast::SyntaxKind::DoWhileStatement ||
         syntax.kind == ast::SyntaxKind::BreakStmt ||
         syntax.kind == ast::SyntaxKind::ContinueStatement ||
@@ -590,13 +667,11 @@ OwnershipSurfaceAdmissionResult OwnershipSurfaceAdmissionBuilder::admit(
     } else if (syntax.kind == ast::SyntaxKind::SuspendStatement) {
       kind = OwnershipSurfaceSyntaxKind::Suspend;
       rejected = true;
-    } else if (syntax.kind == ast::SyntaxKind::IfStmt) {
-      kind = OwnershipSurfaceSyntaxKind::Conditional;
-      rejected = true;
     } else if (syntax.kind == ast::SyntaxKind::MatchStmt) {
       kind = OwnershipSurfaceSyntaxKind::Match;
       rejected = true;
-    } else if (syntax.kind == ast::SyntaxKind::WhileStmt ||
+    } else if ((syntax.kind == ast::SyntaxKind::WhileStmt &&
+                !isAdmittedLoopStatement(boundModule.tree(), nodeId)) ||
                syntax.kind == ast::SyntaxKind::ForStmt ||
                syntax.kind == ast::SyntaxKind::ForInStatement ||
                syntax.kind == ast::SyntaxKind::DoWhileStatement) {

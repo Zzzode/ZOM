@@ -116,7 +116,9 @@ bool matches(const VerifiedMovePaths& movePaths, const VerifiedFlow& flow,
              const VerifiedInitializationFacts& initialization, const VerifiedLoanFacts& loans,
              const VerifiedReferenceDefinitions& references, const VerifiedReborrowRegions& regions,
              const VerifiedReborrowStates& states, const VerifiedOwnershipResourceFacts& resources,
-             const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay,
+             const VerifiedEscapeFacts& escapes, const VerifiedCaptureFacts& captures,
+             const VerifiedRegionOutlives& outlives, const mir::VerifiedBuiltMir& builtMir,
+             const VerifiedOwnershipEventOverlay& overlay,
              const driver::borrow_evidence::VerifiedBorrowEvidenceLease& lease,
              const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& capability,
              const driver::borrow_evidence::BorrowEvidenceLookupResult& evidence) {
@@ -144,6 +146,9 @@ bool matches(const VerifiedMovePaths& movePaths, const VerifiedFlow& flow,
          regions.semanticContext() == builtMir.semanticContext() &&
          states.semanticContext() == builtMir.semanticContext() &&
          resources.semanticContext() == builtMir.semanticContext() &&
+         escapes.semanticContext() == builtMir.semanticContext() &&
+         captures.semanticContext() == builtMir.semanticContext() &&
+         outlives.semanticContext() == builtMir.semanticContext() &&
          movePaths.contextFingerprint().digest() == builtMir.contextFingerprint().digest() &&
          flow.contextFingerprint().digest() == builtMir.contextFingerprint().digest() &&
          initialization.contextFingerprint().digest() == builtMir.contextFingerprint().digest() &&
@@ -152,10 +157,15 @@ bool matches(const VerifiedMovePaths& movePaths, const VerifiedFlow& flow,
          regions.contextFingerprint().digest() == builtMir.contextFingerprint().digest() &&
          states.contextFingerprint().digest() == builtMir.contextFingerprint().digest() &&
          resources.contextFingerprint().digest() == builtMir.contextFingerprint().digest() &&
+         escapes.contextFingerprint().digest() == builtMir.contextFingerprint().digest() &&
+         captures.contextFingerprint().digest() == builtMir.contextFingerprint().digest() &&
+         outlives.contextFingerprint().digest() == builtMir.contextFingerprint().digest() &&
          movePaths.module() == builtMir.module() && flow.module() == builtMir.module() &&
          initialization.module() == builtMir.module() && loans.module() == builtMir.module() &&
          references.module() == builtMir.module() && regions.module() == builtMir.module() &&
          states.module() == builtMir.module() && resources.module() == builtMir.module() &&
+         escapes.module() == builtMir.module() && captures.module() == builtMir.module() &&
+         outlives.module() == builtMir.module() &&
          movePaths.builtRevision().digest() == builtMir.revision().digest() &&
          flow.builtRevision().digest() == builtMir.revision().digest() &&
          initialization.builtRevision().digest() == builtMir.revision().digest() &&
@@ -164,6 +174,9 @@ bool matches(const VerifiedMovePaths& movePaths, const VerifiedFlow& flow,
          regions.builtRevision().digest() == builtMir.revision().digest() &&
          states.builtRevision().digest() == builtMir.revision().digest() &&
          resources.builtRevision().digest() == builtMir.revision().digest() &&
+         escapes.builtRevision().digest() == builtMir.revision().digest() &&
+         captures.builtRevision().digest() == builtMir.revision().digest() &&
+         outlives.builtRevision().digest() == builtMir.revision().digest() &&
          movePaths.overlayRevision().digest() == overlay.revision().digest() &&
          flow.overlayRevision().digest() == overlay.revision().digest() &&
          initialization.overlayRevision().digest() == overlay.revision().digest() &&
@@ -172,11 +185,17 @@ bool matches(const VerifiedMovePaths& movePaths, const VerifiedFlow& flow,
          regions.overlayRevision().digest() == overlay.revision().digest() &&
          states.overlayRevision().digest() == overlay.revision().digest() &&
          resources.overlayRevision().digest() == overlay.revision().digest() &&
+         escapes.overlayRevision().digest() == overlay.revision().digest() &&
+         captures.overlayRevision().digest() == overlay.revision().digest() &&
+         outlives.overlayRevision().digest() == overlay.revision().digest() &&
          loans.borrowEvidenceRevision().digest() == builtMir.borrowEvidenceRevision().digest() &&
          references.borrowEvidenceRevision().digest() ==
              builtMir.borrowEvidenceRevision().digest() &&
          regions.borrowEvidenceRevision().digest() == builtMir.borrowEvidenceRevision().digest() &&
-         states.borrowEvidenceRevision().digest() == builtMir.borrowEvidenceRevision().digest();
+         states.borrowEvidenceRevision().digest() == builtMir.borrowEvidenceRevision().digest() &&
+         escapes.borrowEvidenceRevision().digest() == builtMir.borrowEvidenceRevision().digest() &&
+         captures.borrowEvidenceRevision().digest() == builtMir.borrowEvidenceRevision().digest() &&
+         outlives.borrowEvidenceRevision().digest() == builtMir.borrowEvidenceRevision().digest();
 }
 
 }  // namespace
@@ -186,6 +205,8 @@ struct VerifiedOwnershipInputs::Impl final {
        VerifiedInitializationFacts&& initialization, VerifiedLoanFacts&& loans,
        VerifiedReferenceDefinitions&& references, VerifiedReborrowRegions&& regions,
        VerifiedReborrowStates&& states, VerifiedOwnershipResourceFacts&& resources,
+       VerifiedEscapeFacts&& escapes, VerifiedCaptureFacts&& captures,
+       VerifiedRegionOutlives&& outlives,
        driver::borrow_evidence::VerifiedBorrowEvidenceLease&& borrowEvidenceLease,
        driver::borrow_evidence::BorrowEvidenceRepositoryCapability&&
            borrowEvidenceCapability) noexcept
@@ -197,6 +218,9 @@ struct VerifiedOwnershipInputs::Impl final {
         regions(zc::mv(regions)),
         states(zc::mv(states)),
         resources(zc::mv(resources)),
+        escapes(zc::mv(escapes)),
+        captures(zc::mv(captures)),
+        outlives(zc::mv(outlives)),
         borrowEvidenceLease(zc::mv(borrowEvidenceLease)),
         borrowEvidenceCapability(zc::mv(borrowEvidenceCapability)) {}
 
@@ -208,6 +232,9 @@ struct VerifiedOwnershipInputs::Impl final {
   VerifiedReborrowRegions regions;
   VerifiedReborrowStates states;
   VerifiedOwnershipResourceFacts resources;
+  VerifiedEscapeFacts escapes;
+  VerifiedCaptureFacts captures;
+  VerifiedRegionOutlives outlives;
   driver::borrow_evidence::VerifiedBorrowEvidenceLease borrowEvidenceLease;
   driver::borrow_evidence::BorrowEvidenceRepositoryCapability borrowEvidenceCapability;
   OwnershipFactsRevision factsRevision;
@@ -271,20 +298,31 @@ const VerifiedReborrowStates& VerifiedOwnershipInputs::states() const noexcept {
 const VerifiedOwnershipResourceFacts& VerifiedOwnershipInputs::resources() const noexcept {
   return impl->resources;
 }
+const VerifiedEscapeFacts& VerifiedOwnershipInputs::escapes() const noexcept {
+  return impl->escapes;
+}
+const VerifiedCaptureFacts& VerifiedOwnershipInputs::captures() const noexcept {
+  return impl->captures;
+}
+const VerifiedRegionOutlives& VerifiedOwnershipInputs::outlives() const noexcept {
+  return impl->outlives;
+}
 
 ir::IrOperationResult<VerifiedOwnershipInputs> OwnershipInputVerifier::verify(
     VerifiedMovePaths&& movePaths, VerifiedFlow&& flow,
     VerifiedInitializationFacts&& initialization, VerifiedLoanFacts&& loans,
     VerifiedReferenceDefinitions&& references, VerifiedReborrowRegions&& regions,
     VerifiedReborrowStates&& states, VerifiedOwnershipResourceFacts&& resources,
-    const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay,
+    VerifiedEscapeFacts&& escapes, VerifiedCaptureFacts&& captures,
+    VerifiedRegionOutlives&& outlives, const mir::VerifiedBuiltMir& builtMir,
+    const VerifiedOwnershipEventOverlay& overlay,
     const driver::borrow_evidence::VerifiedBorrowEvidenceLease& lease,
     const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& capability,
     const type::SemanticTypeStore& semanticTypes) {
   const auto identities = builtMir.retainIdentityAuthority();
   const auto evidence = capability.lookup(lease);
   if (!matches(movePaths, flow, initialization, loans, references, regions, states, resources,
-               builtMir, overlay, lease, capability, evidence) ||
+               escapes, captures, outlives, builtMir, overlay, lease, capability, evidence) ||
       !builtMir.matchesBorrowEvidenceInput(lease, capability)) {
     return reject(builtMir, identities, 0);
   }
@@ -292,8 +330,8 @@ ir::IrOperationResult<VerifiedOwnershipInputs> OwnershipInputVerifier::verify(
   auto retainedCapability = builtMir.retainBorrowEvidenceCapability();
   auto inputs = VerifiedOwnershipInputs(zc::heap<VerifiedOwnershipInputs::Impl>(
       zc::mv(movePaths), zc::mv(flow), zc::mv(initialization), zc::mv(loans), zc::mv(references),
-      zc::mv(regions), zc::mv(states), zc::mv(resources), zc::mv(retainedLease),
-      zc::mv(retainedCapability)));
+      zc::mv(regions), zc::mv(states), zc::mv(resources), zc::mv(escapes), zc::mv(captures),
+      zc::mv(outlives), zc::mv(retainedLease), zc::mv(retainedCapability)));
   auto revision = OwnershipFactsCodec::compute(inputs, overlay, identities, semanticTypes);
   if (revision == zc::none) { return reject(builtMir, identities, 0); }
   ZC_IF_SOME(value, revision) { inputs.setFactsRevision(value); }

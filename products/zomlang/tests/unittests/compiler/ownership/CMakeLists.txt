@@ -7,3 +7,5 @@ set_tests_properties(ownership-event-overlay-test PROPERTIES TIMEOUT 1800 RUN_SE
 set_tests_properties(ownership-lineage-mutation-test PROPERTIES TIMEOUT 1800 RUN_SERIAL TRUE)
 set_tests_properties(ownership-drop-elaboration-test PROPERTIES TIMEOUT 1800 RUN_SERIAL TRUE)
 set_tests_properties(ownership-linear-source-test PROPERTIES TIMEOUT 1800 RUN_SERIAL TRUE)
+set_tests_properties(ownership-capture-test PROPERTIES TIMEOUT 1800 RUN_SERIAL TRUE)
+set_tests_properties(ownership-loop-flow-test PROPERTIES TIMEOUT 1800 RUN_SERIAL TRUE)

@@ -51,6 +51,7 @@ ALLOWED_AST_WITHOUT_GRAMMAR_CHECKS = {
     Path("05-statements/basic-statements.check"),
     Path("05-statements/break-continue.check"),
     Path("05-statements/control-flow/conditionals.check"),
+    Path("05-statements/control-flow/loops-admitted.check"),
     Path("05-statements/control-flow/loops/break-continue.check"),
     Path("05-statements/control-flow/loops.check"),
     Path("05-statements/control-flow.check"),

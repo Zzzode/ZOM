@@ -308,6 +308,25 @@ struct PendingSequentialLocalReturn final {
   bool returnsSource;
 };
 
+struct PendingConditionalReturn final {
+  HirParameterReferenceExpression condition;
+  checker::checked::CanonicalConstValue thenLiteral;
+  identity::SemanticTypeId thenType;
+  checker::checked::CanonicalConstValue elseLiteral;
+  identity::SemanticTypeId elseType;
+  identity::SourceSpan conditionalSpan;
+  identity::SourceSpan thenSpan;
+  identity::SourceSpan elseSpan;
+};
+
+struct PendingLoopReturn final {
+  HirParameterReferenceExpression condition;
+  checker::checked::CanonicalConstValue returnLiteral;
+  identity::SemanticTypeId returnType;
+  identity::SourceSpan loopSpan;
+  identity::SourceSpan returnValueSpan;
+};
+
 struct PendingFunctionDeclaration final {
   identity::DefId definition;
   identity::SemanticTypeId resultType;
@@ -334,6 +353,8 @@ struct PendingFunctionDeclaration final {
   zc::Maybe<PendingSequentialLocalReturn> sequentialLocalReturn;
   zc::Maybe<identity::SourceSpan> unsafeBlockSpan;
   zc::Array<uint8_t> orderingKey;
+  zc::Maybe<PendingConditionalReturn> conditionalReturn;
+  zc::Maybe<PendingLoopReturn> loopReturn;
 };
 
 void sortPendingDeclarations(zc::Vector<PendingValueDeclaration>& values) {
@@ -391,6 +412,13 @@ struct FunctionReturnShape final {
   bool returnsReceiverCall = false;
   bool returnsLocalBorrow = false;
   zc::Maybe<ast::NodeId> unsafeBlock;
+  bool isConditional = false;
+  ast::NodeId condition;
+  ast::NodeId thenReturnValue;
+  ast::NodeId elseReturnValue;
+  bool isLoop = false;
+  ast::NodeId loopCondition{};
+  ast::NodeId loopStatement{};
 };
 
 zc::Maybe<ast::NodeId> statementItem(const ast::Tree& tree, ast::NodeId statement) {
@@ -496,6 +524,54 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
   if (!tree.contains(statements) || statements.empty()) return zc::none;
+  if (statements.size == 1) {
+    auto conditionalItem = statementItem(tree, tree.list(statements)[0]);
+    if (conditionalItem != zc::none) {
+      ast::NodeId conditionalStmt;
+      ZC_IF_SOME(value, conditionalItem) { conditionalStmt = value; }
+      if (tree.node(conditionalStmt).kind == ast::SyntaxKind::IfStmt) {
+        const auto& ifNode = tree.node(conditionalStmt);
+        const ast::NodeId thenStmt(ifNode.payload.words[ast::kIfStmtThenStmtWord]);
+        const ast::NodeId elseStmt(ifNode.payload.words[ast::kIfStmtElseStmtWord]);
+        if (tree.contains(thenStmt) && tree.contains(elseStmt) &&
+            tree.node(thenStmt).kind == ast::SyntaxKind::BlockStmt &&
+            tree.node(elseStmt).kind == ast::SyntaxKind::BlockStmt) {
+          auto branchReturnValue = [&](ast::NodeId branch) -> zc::Maybe<ast::NodeId> {
+            const auto& branchNode = tree.node(branch);
+            const ast::NodeList branchStmts{branchNode.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                            branchNode.payload.words[ast::kBlockStmtStmtsSizeWord]};
+            if (!tree.contains(branchStmts) || branchStmts.empty()) return zc::none;
+            auto tail = statementItem(tree, tree.list(branchStmts)[branchStmts.size - 1]);
+            if (tail == zc::none) return zc::none;
+            ast::NodeId tailStmt;
+            ZC_IF_SOME(value, tail) { tailStmt = value; }
+            if (tree.node(tailStmt).kind != ast::SyntaxKind::ReturnStmt) return zc::none;
+            const ast::NodeId returnValue(
+                tree.node(tailStmt).payload.words[ast::kReturnStmtValueWord]);
+            if (!tree.contains(returnValue)) return zc::none;
+            return returnValue;
+          };
+          auto thenValue = branchReturnValue(thenStmt);
+          auto elseValue = branchReturnValue(elseStmt);
+          if (thenValue != zc::none && elseValue != zc::none) {
+            ast::NodeId thenNode;
+            ast::NodeId elseNode;
+            ZC_IF_SOME(value, thenValue) { thenNode = value; }
+            ZC_IF_SOME(value, elseValue) { elseNode = value; }
+            const ast::NodeId condition(ifNode.payload.words[ast::kIfStmtCondWord]);
+            return FunctionReturnShape{body,          conditionalStmt, conditionalStmt,
+                                       ast::NodeId(), zc::none,        {},
+                                       false,         ast::NodeId(),   false,
+                                       false,         ast::NodeId(),   ast::NodeId(),
+                                       ast::NodeId(), false,           false,
+                                       false,         false,           zc::none,
+                                       true,          condition,       thenNode,
+                                       elseNode};
+          }
+        }
+      }
+    }
+  }
   auto returnStatement = statementItem(tree, tree.list(statements)[statements.size - 1]);
   if (returnStatement == zc::none) return zc::none;
   ZC_IF_SOME(statement, returnStatement) {
@@ -505,6 +581,38 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   ZC_IF_SOME(statement, returnStatement) { returnNode = statement; }
   ast::NodeId value(tree.node(returnNode).payload.words[ast::kReturnStmtValueWord]);
   if (!tree.contains(value)) return zc::none;
+  if (statements.size == 2) {
+    // Admitted loop shape: a leading `while` loop with a bare identifier
+    // condition and an empty body, followed by a scalar return.
+    auto leadingItem = statementItem(tree, tree.list(statements)[0]);
+    if (leadingItem != zc::none) {
+      ast::NodeId leadingStmt;
+      ZC_IF_SOME(item, leadingItem) { leadingStmt = item; }
+      if (tree.node(leadingStmt).kind == ast::SyntaxKind::WhileStmt) {
+        const auto& loop = tree.node(leadingStmt);
+        const ast::NodeId loopCondition(loop.payload.words[ast::kWhileStmtCondWord]);
+        const ast::NodeId loopBody(loop.payload.words[ast::kWhileStmtBodyWord]);
+        if (!tree.contains(loopCondition) ||
+            tree.node(loopCondition).kind != ast::SyntaxKind::IdentExpr ||
+            !tree.contains(loopBody) || tree.node(loopBody).kind != ast::SyntaxKind::BlockStmt ||
+            !isScalarLiteral(tree.node(value).kind)) {
+          return zc::none;
+        }
+        const auto& loopBlock = tree.node(loopBody);
+        const ast::NodeList loopStatements{loopBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                           loopBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
+        if (!tree.contains(loopStatements) || !loopStatements.empty()) return zc::none;
+        FunctionReturnShape shape{};
+        shape.body = body;
+        shape.returnStatement = returnNode;
+        shape.value = value;
+        shape.isLoop = true;
+        shape.loopCondition = loopCondition;
+        shape.loopStatement = leadingStmt;
+        return shape;
+      }
+    }
+  }
   zc::Maybe<ast::NodeId> unsafeBlock;
   if (tree.node(value).kind == ast::SyntaxKind::UnsafeBlockExpr) {
     const ast::NodeId unsafeBody(tree.node(value).payload.words[ast::kUnsafeBlockExprBodyWord]);
@@ -534,10 +642,14 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     value = innerValue;
   }
   if (statements.size == 1) {
-    return FunctionReturnShape{
-        body,          returnNode,    value, ast::NodeId(), zc::none,      {},
-        false,         ast::NodeId(), false, false,         ast::NodeId(), ast::NodeId(),
-        ast::NodeId(), false,         false, false,         false,         zc::mv(unsafeBlock)};
+    return FunctionReturnShape{body,          returnNode,    value,
+                               ast::NodeId(), zc::none,      {},
+                               false,         ast::NodeId(), false,
+                               false,         ast::NodeId(), ast::NodeId(),
+                               ast::NodeId(), false,         false,
+                               false,         false,         zc::mv(unsafeBlock),
+                               false,         ast::NodeId(), ast::NodeId(),
+                               ast::NodeId()};
   }
   if (statements.size == 3) {
     auto sourceDeclarator = localDeclarator(tree, tree.list(statements)[0]);
@@ -581,7 +693,11 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                                  returnsSource,
                                  false,
                                  false,
-                                 zc::mv(unsafeBlock)};
+                                 zc::mv(unsafeBlock),
+                                 false,
+                                 ast::NodeId(),
+                                 ast::NodeId(),
+                                 ast::NodeId()};
     }
   }
   auto localStatement = statementItem(tree, tree.list(statements)[0]);
@@ -657,7 +773,11 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                                false,
                                returnsReceiverCall,
                                localBorrow != zc::none,
-                               zc::mv(unsafeBlock)};
+                               zc::mv(unsafeBlock),
+                               false,
+                               ast::NodeId(),
+                               ast::NodeId(),
+                               ast::NodeId()};
   }
   if (tree.contains(initializer) && !isScalarLiteral(tree.node(initializer).kind) &&
       tree.node(initializer).kind != ast::SyntaxKind::CallExpression &&
@@ -683,7 +803,11 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                                false,
                                returnsReceiverCall,
                                localBorrow != zc::none,
-                               zc::mv(unsafeBlock)};
+                               zc::mv(unsafeBlock),
+                               false,
+                               ast::NodeId(),
+                               ast::NodeId(),
+                               ast::NodeId()};
   }
   if (static_cast<ast::BindingDeclarationKind>(
           tree.node(letNode).payload.words[ast::kLetStmtKindWord]) !=
@@ -740,7 +864,11 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                              false,
                              returnsReceiverCall,
                              localBorrow != zc::none,
-                             zc::mv(unsafeBlock)};
+                             zc::mv(unsafeBlock),
+                             false,
+                             ast::NodeId(),
+                             ast::NodeId(),
+                             ast::NodeId()};
 }
 
 bool noUnsupportedFacts(const checker::checked::VerifiedCheckedFacts& facts) {
@@ -963,7 +1091,9 @@ struct HirModuleCandidate::Impl final {
        zc::Vector<HirLocalBorrowExpression>&& localBorrows,
        zc::Vector<HirDirectCallExpression>&& calls,
        zc::Vector<HirReceiverCallExpression>&& receiverCalls,
-       zc::Vector<HirUnsafeBlockExpression>&& unsafeBlocks) noexcept
+       zc::Vector<HirUnsafeBlockExpression>&& unsafeBlocks,
+       zc::Vector<HirConditionalExpression>&& conditionals,
+       zc::Vector<HirLoopStatement>&& loops) noexcept
       : checkedModule(zc::mv(checkedModule)),
         declarations(zc::mv(declarations)),
         functions(zc::mv(functions)),
@@ -982,7 +1112,9 @@ struct HirModuleCandidate::Impl final {
         localBorrows(zc::mv(localBorrows)),
         calls(zc::mv(calls)),
         receiverCalls(zc::mv(receiverCalls)),
-        unsafeBlocks(zc::mv(unsafeBlocks)) {}
+        unsafeBlocks(zc::mv(unsafeBlocks)),
+        conditionals(zc::mv(conditionals)),
+        loops(zc::mv(loops)) {}
 
   VerifiedCheckedModule checkedModule;
   zc::Vector<HirValueDeclaration> declarations;
@@ -1003,6 +1135,8 @@ struct HirModuleCandidate::Impl final {
   zc::Vector<HirDirectCallExpression> calls;
   zc::Vector<HirReceiverCallExpression> receiverCalls;
   zc::Vector<HirUnsafeBlockExpression> unsafeBlocks;
+  zc::Vector<HirConditionalExpression> conditionals;
+  zc::Vector<HirLoopStatement> loops;
 };
 
 HirModuleCandidate::HirModuleCandidate(zc::Own<Impl>&& impl) noexcept : impl(zc::mv(impl)) {}
@@ -1030,7 +1164,9 @@ struct VerifiedHirModule::Impl final {
        zc::Vector<HirLocalBorrowExpression>&& localBorrows,
        zc::Vector<HirDirectCallExpression>&& calls,
        zc::Vector<HirReceiverCallExpression>&& receiverCalls,
-       zc::Vector<HirUnsafeBlockExpression>&& unsafeBlocks) noexcept
+       zc::Vector<HirUnsafeBlockExpression>&& unsafeBlocks,
+       zc::Vector<HirConditionalExpression>&& conditionals,
+       zc::Vector<HirLoopStatement>&& loops) noexcept
       : admittedCheckedModule(zc::mv(admittedCheckedModule)),
         boundModule(zc::mv(boundModule)),
         identities(zc::mv(identities)),
@@ -1067,7 +1203,9 @@ struct VerifiedHirModule::Impl final {
         localBorrows(zc::mv(localBorrows)),
         calls(zc::mv(calls)),
         receiverCalls(zc::mv(receiverCalls)),
-        unsafeBlocks(zc::mv(unsafeBlocks)) {
+        unsafeBlocks(zc::mv(unsafeBlocks)),
+        conditionals(zc::mv(conditionals)),
+        loops(zc::mv(loops)) {
     for (const auto& interface : this->admittedCheckedModule.visibleImportedInterfaces()) {
       visibleImportedInterfaces.add(
           ModuleInterfaceLineage{interface.module, interface.revision.clone()});
@@ -1110,6 +1248,8 @@ struct VerifiedHirModule::Impl final {
   zc::Vector<HirDirectCallExpression> calls;
   zc::Vector<HirReceiverCallExpression> receiverCalls;
   zc::Vector<HirUnsafeBlockExpression> unsafeBlocks;
+  zc::Vector<HirConditionalExpression> conditionals;
+  zc::Vector<HirLoopStatement> loops;
 };
 
 VerifiedHirModule::VerifiedHirModule(zc::Own<Impl>&& impl) noexcept : impl(zc::mv(impl)) {}
@@ -1271,6 +1411,14 @@ zc::ArrayPtr<const HirUnsafeBlockExpression> VerifiedHirModule::unsafeBlocks() c
   return impl->unsafeBlocks.asPtr();
 }
 
+zc::ArrayPtr<const HirConditionalExpression> VerifiedHirModule::conditionals() const noexcept {
+  return impl->conditionals.asPtr();
+}
+
+zc::ArrayPtr<const HirLoopStatement> VerifiedHirModule::loops() const noexcept {
+  return impl->loops.asPtr();
+}
+
 zc::Maybe<zc::String> VerifiedHirModule::dump() const {
   auto moduleKey = impl->identities.module(impl->module);
   const auto& checkedLease = impl->admittedCheckedModule.checkedEvidenceLease();
@@ -1422,6 +1570,25 @@ zc::Maybe<zc::String> VerifiedHirModule::dump() const {
     append(output, zc::encodeHex(calleeType.get<type::SemanticTypeLookup>().key().bytes()));
     append(output, " result="_zc);
     append(output, zc::encodeHex(resultType.get<type::SemanticTypeLookup>().key().bytes()));
+    append(output, " nargs="_zc);
+    append(output, zc::str(call.arguments.size()));
+    for (size_t index = 0; index < call.arguments.size(); ++index) {
+      const auto& argument = call.arguments[index];
+      auto argumentType = impl->semanticTypes.get(argument.type);
+      if (!argumentType.is<type::SemanticTypeLookup>()) return zc::none;
+      append(output, " arg"_zc);
+      append(output, zc::str(index));
+      append(output, "-type="_zc);
+      append(output, zc::encodeHex(argumentType.get<type::SemanticTypeLookup>().key().bytes()));
+      append(output, " arg"_zc);
+      append(output, zc::str(index));
+      append(output, "-value="_zc);
+      auto encoded =
+          checker::signature::SignatureFactsCanonicalCodec::encodeCanonicalConstValueFromAuthority(
+              argument.value, impl->module, impl->identities, impl->semanticTypes);
+      if (encoded == zc::none) return zc::none;
+      ZC_IF_SOME(bytes, encoded) { append(output, zc::encodeHex(bytes.asPtr())); }
+    }
     append(output, "\n"_zc);
   }
   for (const auto& unsafeBlock : impl->unsafeBlocks) {
@@ -1431,6 +1598,32 @@ zc::Maybe<zc::String> VerifiedHirModule::dump() const {
     append(output, zc::str(unsafeBlock.node.ordinal()));
     append(output, " body=h"_zc);
     append(output, zc::str(unsafeBlock.body.ordinal()));
+    append(output, " type="_zc);
+    append(output, zc::encodeHex(resultType.get<type::SemanticTypeLookup>().key().bytes()));
+    append(output, "\n"_zc);
+  }
+  for (const auto& conditional : impl->conditionals) {
+    auto resultType = impl->semanticTypes.get(conditional.type);
+    if (!resultType.is<type::SemanticTypeLookup>()) return zc::none;
+    append(output, "conditional h"_zc);
+    append(output, zc::str(conditional.node.ordinal()));
+    append(output, " condition=h"_zc);
+    append(output, zc::str(conditional.condition.ordinal()));
+    append(output, " then=h"_zc);
+    append(output, zc::str(conditional.thenReturnValue.ordinal()));
+    append(output, " else=h"_zc);
+    append(output, zc::str(conditional.elseReturnValue.ordinal()));
+    append(output, " type="_zc);
+    append(output, zc::encodeHex(resultType.get<type::SemanticTypeLookup>().key().bytes()));
+    append(output, "\n"_zc);
+  }
+  for (const auto& loop : impl->loops) {
+    auto resultType = impl->semanticTypes.get(loop.type);
+    if (!resultType.is<type::SemanticTypeLookup>()) return zc::none;
+    append(output, "loop h"_zc);
+    append(output, zc::str(loop.node.ordinal()));
+    append(output, " condition=h"_zc);
+    append(output, zc::str(loop.condition.ordinal()));
     append(output, " type="_zc);
     append(output, zc::encodeHex(resultType.get<type::SemanticTypeLookup>().key().bytes()));
     append(output, "\n"_zc);
@@ -1503,6 +1696,337 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       ZC_IF_SOME(value, bodyShape) { shape = value; }
       ZC_IF_SOME(index, signaturePosition) { signatureSlot = index; }
       ZC_IF_SOME(index, rootPosition) { rootSlot = index; }
+      if (shape.isConditional) {
+        // Conditional shape: if/else with scalar returns in both branches.
+        auto conditionTypeIndex = factIndex(facts.nodeTypes(), shape.condition);
+        auto thenTypeIndex = factIndex(facts.nodeTypes(), shape.thenReturnValue);
+        auto elseTypeIndex = factIndex(facts.nodeTypes(), shape.elseReturnValue);
+        auto thenLiteralIndex = factIndex(facts.literals(), shape.thenReturnValue);
+        auto elseLiteralIndex = factIndex(facts.literals(), shape.elseReturnValue);
+        auto bodySpan = bound.parsedModule().spanFor(tree.node(shape.body).range);
+        auto returnSpan = bound.parsedModule().spanFor(tree.node(shape.returnStatement).range);
+        auto valueSpan = bound.parsedModule().spanFor(tree.node(shape.value).range);
+        auto conditionSpan = bound.parsedModule().spanFor(tree.node(shape.condition).range);
+        auto thenSpan = bound.parsedModule().spanFor(tree.node(shape.thenReturnValue).range);
+        auto elseSpan = bound.parsedModule().spanFor(tree.node(shape.elseReturnValue).range);
+        if (conditionTypeIndex == zc::none || thenTypeIndex == zc::none ||
+            elseTypeIndex == zc::none || thenLiteralIndex == zc::none ||
+            elseLiteralIndex == zc::none || bodySpan == zc::none || returnSpan == zc::none ||
+            valueSpan == zc::none || conditionSpan == zc::none || thenSpan == zc::none ||
+            elseSpan == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
+        const auto& signature = signatures.definitions[signatureSlot];
+        const auto& root = signatures.roots[rootSlot];
+        if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+            !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>()) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        const auto& callable =
+            signature.payload.variant().get<checker::signature::CallableSignature>();
+        auto functionVisibility = visibility(root.visibility);
+        auto functionLinkage = linkage(callable);
+        if (functionVisibility == zc::none || functionLinkage == zc::none ||
+            signature.definitionKind != identity::DefinitionKind::Function ||
+            root.sourceModule != module || root.canonicalDefinition != definition.definition ||
+            callable.receiver != zc::none || callable.raises != zc::none ||
+            !sameSpan(signature.declarationSpan, definition.source)) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        const ast::NodeId parameterListNode(
+            tree.node(definition.node).payload.words[ast::kFunctionDeclParamsIdWord]);
+        if (!tree.contains(parameterListNode) ||
+            tree.node(parameterListNode).kind != ast::SyntaxKind::FunctionParameterList) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        const auto& parameterList = tree.node(parameterListNode);
+        const ast::NodeList parameterNodes{
+            parameterList.payload.words[ast::kFunctionParameterListParamsFirstWord],
+            parameterList.payload.words[ast::kFunctionParameterListParamsSizeWord]};
+        if (!tree.contains(parameterNodes) || parameterNodes.size != callable.parameters.size()) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
+        zc::Vector<HirParameter> parameters(callable.parameters.size());
+        for (size_t index = 0; index < callable.parameters.size(); ++index) {
+          const auto parameterNode = tree.list(parameterNodes)[index];
+          const auto& parameter = callable.parameters[index];
+          if (!tree.contains(parameterNode) ||
+              tree.node(parameterNode).kind != ast::SyntaxKind::FunctionParameterDecl ||
+              parameter.hasDefault || !typeExists(parameter.type, checkedModule.semanticTypes())) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          auto parameterSpan = bound.parsedModule().spanFor(tree.node(parameterNode).range);
+          if (parameterSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          ZC_IF_SOME(span, parameterSpan) {
+            parameters.add(HirParameter{parameter.parameter.clone(), parameter.type, span.clone()});
+          }
+        }
+        if (!typeExists(callable.success, checkedModule.semanticTypes())) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        size_t thenTypeSlot = 0;
+        size_t elseTypeSlot = 0;
+        size_t thenLiteralSlot = 0;
+        size_t elseLiteralSlot = 0;
+        ZC_IF_SOME(index, thenTypeIndex) { thenTypeSlot = index; }
+        ZC_IF_SOME(index, elseTypeIndex) { elseTypeSlot = index; }
+        ZC_IF_SOME(index, thenLiteralIndex) { thenLiteralSlot = index; }
+        ZC_IF_SOME(index, elseLiteralIndex) { elseLiteralSlot = index; }
+        const auto thenType = facts.nodeTypes().entries()[thenTypeSlot].value;
+        const auto elseType = facts.nodeTypes().entries()[elseTypeSlot].value;
+        const auto& thenLiteral = facts.literals().entries()[thenLiteralSlot].value;
+        const auto& elseLiteral = facts.literals().entries()[elseLiteralSlot].value;
+        if (thenType != callable.success || elseType != callable.success) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        auto conditionParameter = resolvedCallableParameter(bound.bindings(), shape.condition);
+        if (conditionParameter == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        identity::CallableParameterId conditionHandle;
+        ZC_IF_SOME(value, conditionParameter) { conditionHandle = value; }
+        auto conditionAuthority = registries.callableParameter(conditionHandle);
+        if (conditionAuthority == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
+        HirVisibility visibilityValue = HirVisibility::external();
+        HirLinkage linkageValue = HirLinkage::Internal;
+        ZC_IF_SOME(value, functionVisibility) { visibilityValue = zc::mv(value); }
+        ZC_IF_SOME(value, functionLinkage) { linkageValue = value; }
+        identity::SourceSpan bodySpanValue = definition.source.clone();
+        identity::SourceSpan returnSpanValue = definition.source.clone();
+        identity::SourceSpan valueSpanValue = definition.source.clone();
+        ZC_IF_SOME(value, bodySpan) { bodySpanValue = value.clone(); }
+        ZC_IF_SOME(value, returnSpan) { returnSpanValue = value.clone(); }
+        ZC_IF_SOME(value, valueSpan) { valueSpanValue = value.clone(); }
+        zc::Array<uint8_t> orderingKey = definition.key.encode();
+        size_t conditionTypeSlot = 0;
+        ZC_IF_SOME(index, conditionTypeIndex) { conditionTypeSlot = index; }
+        const auto conditionType = facts.nodeTypes().entries()[conditionTypeSlot].value;
+        ZC_IF_SOME(entry, conditionAuthority) {
+          auto conditionRef = HirParameterReferenceExpression{
+              HirNodeId(), entry.key().clone(), conditionType, HirValueCategory::Place,
+              ZC_ASSERT_NONNULL(conditionSpan).clone()};
+          auto conditionalReturn = PendingConditionalReturn{zc::mv(conditionRef),
+                                                            thenLiteral.literal.clone(),
+                                                            thenType,
+                                                            elseLiteral.literal.clone(),
+                                                            elseType,
+                                                            valueSpanValue.clone(),
+                                                            ZC_ASSERT_NONNULL(thenSpan).clone(),
+                                                            ZC_ASSERT_NONNULL(elseSpan).clone()};
+          pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
+                                                          callable.success,
+                                                          zc::mv(parameters),
+                                                          zc::mv(visibilityValue),
+                                                          linkageValue,
+                                                          definition.source.clone(),
+                                                          bodySpanValue.clone(),
+                                                          returnSpanValue.clone(),
+                                                          valueSpanValue.clone(),
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          {},
+                                                          {},
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::mv(orderingKey),
+                                                          zc::mv(conditionalReturn),
+                                                          zc::none});
+        }
+        continue;
+      }
+      if (shape.isLoop) {
+        // Loop shape: a `while` with a bool parameter condition and empty body,
+        // followed by a scalar return.
+        auto conditionTypeIndex = factIndex(facts.nodeTypes(), shape.loopCondition);
+        auto returnTypeIndex = factIndex(facts.nodeTypes(), shape.value);
+        auto returnLiteralIndex = factIndex(facts.literals(), shape.value);
+        auto bodySpan = bound.parsedModule().spanFor(tree.node(shape.body).range);
+        auto returnSpan = bound.parsedModule().spanFor(tree.node(shape.returnStatement).range);
+        auto valueSpan = bound.parsedModule().spanFor(tree.node(shape.value).range);
+        auto conditionSpan = bound.parsedModule().spanFor(tree.node(shape.loopCondition).range);
+        auto loopSpan = bound.parsedModule().spanFor(tree.node(shape.loopStatement).range);
+        if (conditionTypeIndex == zc::none || returnTypeIndex == zc::none ||
+            returnLiteralIndex == zc::none || bodySpan == zc::none || returnSpan == zc::none ||
+            valueSpan == zc::none || conditionSpan == zc::none || loopSpan == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
+        const auto& signature = signatures.definitions[signatureSlot];
+        const auto& root = signatures.roots[rootSlot];
+        if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+            !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>()) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        const auto& callable =
+            signature.payload.variant().get<checker::signature::CallableSignature>();
+        auto functionVisibility = visibility(root.visibility);
+        auto functionLinkage = linkage(callable);
+        if (functionVisibility == zc::none || functionLinkage == zc::none ||
+            signature.definitionKind != identity::DefinitionKind::Function ||
+            root.sourceModule != module || root.canonicalDefinition != definition.definition ||
+            callable.receiver != zc::none || callable.raises != zc::none ||
+            !sameSpan(signature.declarationSpan, definition.source)) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        const ast::NodeId parameterListNode(
+            tree.node(definition.node).payload.words[ast::kFunctionDeclParamsIdWord]);
+        if (!tree.contains(parameterListNode) ||
+            tree.node(parameterListNode).kind != ast::SyntaxKind::FunctionParameterList) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        const auto& parameterList = tree.node(parameterListNode);
+        const ast::NodeList parameterNodes{
+            parameterList.payload.words[ast::kFunctionParameterListParamsFirstWord],
+            parameterList.payload.words[ast::kFunctionParameterListParamsSizeWord]};
+        if (!tree.contains(parameterNodes) || parameterNodes.size != callable.parameters.size()) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
+        zc::Vector<HirParameter> parameters(callable.parameters.size());
+        for (size_t index = 0; index < callable.parameters.size(); ++index) {
+          const auto parameterNode = tree.list(parameterNodes)[index];
+          const auto& parameter = callable.parameters[index];
+          if (!tree.contains(parameterNode) ||
+              tree.node(parameterNode).kind != ast::SyntaxKind::FunctionParameterDecl ||
+              parameter.hasDefault || !typeExists(parameter.type, checkedModule.semanticTypes())) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          auto parameterSpan = bound.parsedModule().spanFor(tree.node(parameterNode).range);
+          if (parameterSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          ZC_IF_SOME(span, parameterSpan) {
+            parameters.add(HirParameter{parameter.parameter.clone(), parameter.type, span.clone()});
+          }
+        }
+        if (!typeExists(callable.success, checkedModule.semanticTypes())) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        size_t returnTypeSlot = 0;
+        size_t returnLiteralSlot = 0;
+        ZC_IF_SOME(index, returnTypeIndex) { returnTypeSlot = index; }
+        ZC_IF_SOME(index, returnLiteralIndex) { returnLiteralSlot = index; }
+        const auto returnType = facts.nodeTypes().entries()[returnTypeSlot].value;
+        const auto& returnLiteral = facts.literals().entries()[returnLiteralSlot].value;
+        if (returnType != callable.success) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        auto conditionParameter = resolvedCallableParameter(bound.bindings(), shape.loopCondition);
+        if (conditionParameter == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        identity::CallableParameterId conditionHandle;
+        ZC_IF_SOME(value, conditionParameter) { conditionHandle = value; }
+        auto conditionAuthority = registries.callableParameter(conditionHandle);
+        if (conditionAuthority == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
+        HirVisibility visibilityValue = HirVisibility::external();
+        HirLinkage linkageValue = HirLinkage::Internal;
+        ZC_IF_SOME(value, functionVisibility) { visibilityValue = zc::mv(value); }
+        ZC_IF_SOME(value, functionLinkage) { linkageValue = value; }
+        identity::SourceSpan bodySpanValue = definition.source.clone();
+        identity::SourceSpan returnSpanValue = definition.source.clone();
+        identity::SourceSpan valueSpanValue = definition.source.clone();
+        ZC_IF_SOME(value, bodySpan) { bodySpanValue = value.clone(); }
+        ZC_IF_SOME(value, returnSpan) { returnSpanValue = value.clone(); }
+        ZC_IF_SOME(value, valueSpan) { valueSpanValue = value.clone(); }
+        zc::Array<uint8_t> orderingKey = definition.key.encode();
+        size_t conditionTypeSlot = 0;
+        ZC_IF_SOME(index, conditionTypeIndex) { conditionTypeSlot = index; }
+        const auto conditionType = facts.nodeTypes().entries()[conditionTypeSlot].value;
+        ZC_IF_SOME(entry, conditionAuthority) {
+          auto conditionRef = HirParameterReferenceExpression{
+              HirNodeId(), entry.key().clone(), conditionType, HirValueCategory::Place,
+              ZC_ASSERT_NONNULL(conditionSpan).clone()};
+          auto loopReturn =
+              PendingLoopReturn{zc::mv(conditionRef), returnLiteral.literal.clone(), returnType,
+                                ZC_ASSERT_NONNULL(loopSpan).clone(), valueSpanValue.clone()};
+          pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
+                                                          callable.success,
+                                                          zc::mv(parameters),
+                                                          zc::mv(visibilityValue),
+                                                          linkageValue,
+                                                          definition.source.clone(),
+                                                          bodySpanValue.clone(),
+                                                          returnSpanValue.clone(),
+                                                          valueSpanValue.clone(),
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          {},
+                                                          {},
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::mv(orderingKey),
+                                                          zc::none,
+                                                          zc::mv(loopReturn)});
+        }
+        continue;
+      }
       auto nodeTypeIndex = factIndex(facts.nodeTypes(), shape.value);
       auto bodySpan = bound.parsedModule().spanFor(tree.node(shape.body).range);
       auto returnSpan = bound.parsedModule().spanFor(tree.node(shape.returnStatement).range);
@@ -1779,7 +2303,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                                         zc::none,
                                                         zc::mv(sequential),
                                                         zc::mv(unsafeBlockSpan),
-                                                        zc::mv(orderingKey)});
+                                                        zc::mv(orderingKey),
+                                                        zc::none,
+                                                        zc::none});
         continue;
       }
       if (shape.returnsLocal) {
@@ -2785,7 +3311,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                                       zc::mv(localBorrow),
                                                       zc::none,
                                                       zc::mv(unsafeBlockSpan),
-                                                      zc::mv(orderingKey)});
+                                                      zc::mv(orderingKey),
+                                                      zc::none,
+                                                      zc::none});
       continue;
     }
     if (definition.record.kind() != identity::DefinitionKind::Static &&
@@ -2954,6 +3482,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
   size_t localFieldProjectionCount = 0;
   size_t localFieldWriteCount = 0;
   size_t unsafeBlockCount = 0;
+  size_t conditionalCount = 0;
+  size_t loopCount = 0;
   for (const auto& function : pendingFunctions) {
     const bool hasSequentialLocalReturn = function.sequentialLocalReturn != zc::none;
     if (hasSequentialLocalReturn) {
@@ -2966,6 +3496,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         }
       }
       if (function.unsafeBlockSpan != zc::none) ++unsafeBlockCount;
+      continue;
+    }
+    if (function.conditionalReturn != zc::none) {
+      ++conditionalCount;
+      continue;
+    }
+    if (function.loopReturn != zc::none) {
+      ++loopCount;
       continue;
     }
     bool missingInitializer = false;
@@ -3075,7 +3613,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
           localReturnCount - uninitializedLocalReturnCount + localWriteCount * 3 +
           aggregateElementCount + localFieldProjectionCount + localFieldWriteCount +
           parameterIndexCount * 2 + parameterReborrowCount * 2 + directCallArgumentCount +
-          receiverCallArgumentCount + localBorrowCount + unsafeBlockCount) {
+          receiverCallArgumentCount + localBorrowCount + unsafeBlockCount + conditionalCount * 2 +
+          loopCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 1);
   }
@@ -3087,7 +3626,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       pending.size() + pendingFunctions.size() - directCallCount - aggregateCount -
           uninitializedLocalReturnCount - parameterReferenceCount - parameterReborrowCount +
           localAliasReborrowCount + localWriteCount + aggregateElementCount +
-          directCallArgumentCount + receiverCallArgumentCount) {
+          directCallArgumentCount + receiverCallArgumentCount + conditionalCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 3);
   }
@@ -3146,6 +3685,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
   zc::Vector<HirDirectCallExpression> calls;
   zc::Vector<HirReceiverCallExpression> receiverCalls;
   zc::Vector<HirUnsafeBlockExpression> unsafeBlocks;
+  zc::Vector<HirConditionalExpression> conditionals;
+  zc::Vector<HirLoopStatement> loops;
   uint32_t next = 1;
   for (auto& value : pending) {
     const auto declarationId = hirId(next++);
@@ -3216,6 +3757,64 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
           returnValueId, sequential.returnsSource ? hirLocalId(1) : hirLocalId(2),
           sequential.returnReference.type, sequential.returnReference.category,
           sequential.returnReference.sourceSpan.clone()});
+      continue;
+    }
+    ZC_IF_SOME(conditional, value.conditionalReturn) {
+      const auto conditionId = hirId(next++);
+      const auto thenValueId = hirId(next++);
+      const auto elseValueId = hirId(next++);
+      const auto conditionalId = hirId(next++);
+      const auto returnId = hirId(next++);
+      functions.add(HirFunctionDeclaration{functionId, value.definition, value.resultType,
+                                           zc::mv(value.parameters), value.visibility.clone(),
+                                           value.linkage, value.declarationSpan.clone(), bodyId,
+                                           zc::none});
+      zc::Vector<HirNodeId> statements;
+      statements.add(returnId);
+      blocks.add(HirBlockStatement{bodyId, zc::mv(statements), value.bodySpan.clone()});
+      returns.add(
+          HirReturnStatement{returnId, value.resultType, conditionalId, value.returnSpan.clone()});
+      parameterReferences.add(HirParameterReferenceExpression{
+          conditionId, conditional.condition.parameter.clone(), conditional.condition.type,
+          conditional.condition.category, conditional.condition.sourceSpan.clone()});
+      expressions.add(HirScalarLiteralExpression{
+          thenValueId, conditional.thenType, conditional.thenLiteral.clone(),
+          HirValueCategory::Value, conditional.thenSpan.clone()});
+      expressions.add(HirScalarLiteralExpression{
+          elseValueId, conditional.elseType, conditional.elseLiteral.clone(),
+          HirValueCategory::Value, conditional.elseSpan.clone()});
+      conditionals.add(HirConditionalExpression{
+          conditionalId, conditionId, thenValueId, elseValueId, value.resultType,
+          HirValueCategory::Value, conditional.conditionalSpan.clone()});
+      continue;
+    }
+    ZC_IF_SOME(loop, value.loopReturn) {
+      // Loop materialization fixed-id layout, relative to the function id:
+      //   +0 function, +1 body block, +2 condition parameter reference,
+      //   +3 return value literal, +4 loop statement, +5 return statement.
+      // The body block holds two statements: the loop statement then the return.
+      const auto conditionId = hirId(next++);
+      const auto returnValueId = hirId(next++);
+      const auto loopId = hirId(next++);
+      const auto returnId = hirId(next++);
+      functions.add(HirFunctionDeclaration{functionId, value.definition, value.resultType,
+                                           zc::mv(value.parameters), value.visibility.clone(),
+                                           value.linkage, value.declarationSpan.clone(), bodyId,
+                                           zc::none});
+      zc::Vector<HirNodeId> statements;
+      statements.add(loopId);
+      statements.add(returnId);
+      blocks.add(HirBlockStatement{bodyId, zc::mv(statements), value.bodySpan.clone()});
+      returns.add(
+          HirReturnStatement{returnId, value.resultType, returnValueId, value.returnSpan.clone()});
+      parameterReferences.add(HirParameterReferenceExpression{
+          conditionId, loop.condition.parameter.clone(), loop.condition.type,
+          loop.condition.category, loop.condition.sourceSpan.clone()});
+      expressions.add(
+          HirScalarLiteralExpression{returnValueId, loop.returnType, loop.returnLiteral.clone(),
+                                     HirValueCategory::Value, loop.returnValueSpan.clone()});
+      loops.add(HirLoopStatement{loopId, conditionId, loop.condition.type, HirValueCategory::Place,
+                                 loop.loopSpan.clone()});
       continue;
     }
     HirNodeId localId;
@@ -3388,7 +3987,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       zc::mv(returns), zc::mv(patterns), zc::mv(expressions), zc::mv(aggregates), zc::mv(locals),
       zc::mv(localWrites), zc::mv(localReferences), zc::mv(localFieldProjections),
       zc::mv(parameterReferences), zc::mv(parameterIndexes), zc::mv(parameterReborrows),
-      zc::mv(localBorrows), zc::mv(calls), zc::mv(receiverCalls), zc::mv(unsafeBlocks));
+      zc::mv(localBorrows), zc::mv(calls), zc::mv(receiverCalls), zc::mv(unsafeBlocks),
+      zc::mv(conditionals), zc::mv(loops));
   return ir::IrOperationResult<HirModuleCandidate>::verified(HirModuleCandidate(zc::mv(impl)));
 }
 
@@ -3418,6 +4018,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   size_t localAliasReborrowCount = 0;
   size_t aggregateElementCount = 0;
   const auto unsafeBlockCount = candidate.impl->unsafeBlocks.size();
+  const auto conditionalCount = candidate.impl->conditionals.size();
+  const auto loopCount = candidate.impl->loops.size();
   for (const auto& write : candidate.impl->localWrites) {
     if (write.field != zc::none) ++localFieldWriteCount;
   }
@@ -3462,10 +4064,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           functionCount + localAliasReborrowCount ||
       candidate.impl->blocks.size() != functionCount ||
       candidate.impl->returns.size() != functionCount ||
-      candidate.impl->expressions.size() != declarationCount + functionCount - directCallCount -
-                                                aggregateCount - uninitializedLocalReturnCount -
-                                                parameterReferenceCount - parameterReborrowCount +
-                                                localAliasReborrowCount + localWriteCount ||
+      candidate.impl->expressions.size() !=
+          declarationCount + functionCount - directCallCount - aggregateCount -
+              uninitializedLocalReturnCount - parameterReferenceCount - parameterReborrowCount +
+              localAliasReborrowCount + localWriteCount + conditionalCount * 2 + loopCount ||
       executableDefinitions != declarationCount + functionCount ||
       facts.definitionTypes().size() != declarationCount ||
       facts.nodeTypes().size() !=
@@ -3473,12 +4075,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               localReturnCount - uninitializedLocalReturnCount + localWriteCount * 3 +
               aggregateElementCount + localFieldProjectionCount + localFieldWriteCount +
               parameterIndexCount * 2 + parameterReborrowCount * 2 + directCallArgumentCount +
-              receiverCallArgumentCount + localBorrowCount + unsafeBlockCount ||
-      facts.literals().size() !=
-          declarationCount + functionCount - directCallCount - aggregateCount -
-              uninitializedLocalReturnCount - parameterReferenceCount - parameterReborrowCount +
-              localAliasReborrowCount + localWriteCount + aggregateElementCount +
-              directCallArgumentCount + receiverCallArgumentCount ||
+              receiverCallArgumentCount + localBorrowCount + unsafeBlockCount +
+              conditionalCount * 2 + loopCount ||
+      facts.literals().size() != declarationCount + functionCount - directCallCount -
+                                     aggregateCount - uninitializedLocalReturnCount -
+                                     parameterReferenceCount - parameterReborrowCount +
+                                     localAliasReborrowCount + localWriteCount +
+                                     aggregateElementCount + directCallArgumentCount +
+                                     receiverCallArgumentCount + conditionalCount * 2 + loopCount ||
       facts.calls().size() != directCallCount + receiverCallCount + parameterIndexCount ||
       facts.patterns().size() != declarationCount || facts.aggregates().size() != aggregateCount ||
       facts.members().size() !=
@@ -4029,7 +4633,439 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
       continue;
     }
-    // Verifies the unsafe block HIR node for a function shape. Returns the
+    // Conditional shape: if/else with scalar returns in both branches.
+    {
+      auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+      if (sourceDefinitionIndex == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      size_t definitionSlot = 0;
+      ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+      const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+      const auto& tree = bound.tree();
+      if (!hasExecutableBody(sourceDefinition, definitions) ||
+          !definitionBelongsToModule(sourceDefinition, definitions) ||
+          sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+          !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+          !tree.contains(sourceDefinition.node)) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      auto sourceShape = functionReturnShape(tree, tree.node(sourceDefinition.node));
+      if (sourceShape == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      FunctionReturnShape source{};
+      ZC_IF_SOME(value, sourceShape) { source = value; }
+      if (source.isConditional) {
+        auto signaturePosition =
+            signatureIndex(signatures.definitions.asPtr(), function.definition);
+        auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
+        if (signaturePosition == zc::none || rootPosition == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t signatureSlot = 0;
+        size_t rootSlot = 0;
+        ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
+        ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
+        const auto& signature = signatures.definitions[signatureSlot];
+        const auto& root = signatures.roots[rootSlot];
+        auto expectedVisibility = visibility(root.visibility);
+        if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+            !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>() ||
+            expectedVisibility == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const auto& callable =
+            signature.payload.variant().get<checker::signature::CallableSignature>();
+        auto expectedLinkage = linkage(callable);
+        if (expectedLinkage == zc::none || signature.definition != function.definition ||
+            signature.definitionKind != identity::DefinitionKind::Function ||
+            root.canonicalDefinition != function.definition || root.sourceModule != module ||
+            callable.receiver != zc::none || callable.raises != zc::none ||
+            callable.success != function.resultType ||
+            !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
+            !sameSpan(function.sourceSpan, sourceDefinition.source) ||
+            !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
+            function.linkage != ZC_ASSERT_NONNULL(expectedLinkage) ||
+            function.parameters.size() != callable.parameters.size()) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        for (size_t parameterIndex = 0; parameterIndex < function.parameters.size();
+             ++parameterIndex) {
+          const auto& parameter = function.parameters[parameterIndex];
+          const auto& sourceParameter = callable.parameters[parameterIndex];
+          if (parameter.key != sourceParameter.parameter ||
+              parameter.type != sourceParameter.type || sourceParameter.hasDefault ||
+              !typeExists(parameter.type, semanticTypes)) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        }
+        auto bodySpan = bound.parsedModule().spanFor(tree.node(source.body).range);
+        auto returnSpan = bound.parsedModule().spanFor(tree.node(source.returnStatement).range);
+        auto conditionSpan = bound.parsedModule().spanFor(tree.node(source.condition).range);
+        auto thenSpan = bound.parsedModule().spanFor(tree.node(source.thenReturnValue).range);
+        auto elseSpan = bound.parsedModule().spanFor(tree.node(source.elseReturnValue).range);
+        if (bodySpan == zc::none || returnSpan == zc::none || conditionSpan == zc::none ||
+            thenSpan == zc::none || elseSpan == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        auto conditionTypeIndex = factIndex(facts.nodeTypes(), source.condition);
+        auto thenTypeIndex = factIndex(facts.nodeTypes(), source.thenReturnValue);
+        auto elseTypeIndex = factIndex(facts.nodeTypes(), source.elseReturnValue);
+        auto thenLiteralIndex = factIndex(facts.literals(), source.thenReturnValue);
+        auto elseLiteralIndex = factIndex(facts.literals(), source.elseReturnValue);
+        if (conditionTypeIndex == zc::none || thenTypeIndex == zc::none ||
+            elseTypeIndex == zc::none || thenLiteralIndex == zc::none ||
+            elseLiteralIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t conditionTypeSlot = 0;
+        size_t thenTypeSlot = 0;
+        size_t elseTypeSlot = 0;
+        size_t thenLiteralSlot = 0;
+        size_t elseLiteralSlot = 0;
+        ZC_IF_SOME(value, conditionTypeIndex) { conditionTypeSlot = value; }
+        ZC_IF_SOME(value, thenTypeIndex) { thenTypeSlot = value; }
+        ZC_IF_SOME(value, elseTypeIndex) { elseTypeSlot = value; }
+        ZC_IF_SOME(value, thenLiteralIndex) { thenLiteralSlot = value; }
+        ZC_IF_SOME(value, elseLiteralIndex) { elseLiteralSlot = value; }
+        const auto conditionType = facts.nodeTypes().entries()[conditionTypeSlot].value;
+        const auto thenType = facts.nodeTypes().entries()[thenTypeSlot].value;
+        const auto elseType = facts.nodeTypes().entries()[elseTypeSlot].value;
+        const auto& thenLiteral = facts.literals().entries()[thenLiteralSlot].value;
+        const auto& elseLiteral = facts.literals().entries()[elseLiteralSlot].value;
+        if (thenType != function.resultType || elseType != function.resultType) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto conditionParameter = resolvedCallableParameter(bound.bindings(), source.condition);
+        if (conditionParameter == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        identity::CallableParameterId conditionHandle;
+        ZC_IF_SOME(value, conditionParameter) { conditionHandle = value; }
+        auto conditionAuthority = registries.callableParameter(conditionHandle);
+        if (conditionAuthority == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        zc::Maybe<const HirConditionalExpression&> conditionalValue;
+        for (const auto& candidate : candidate.impl->conditionals) {
+          if (candidate.node != hirId(expectedFunction + 5)) continue;
+          if (conditionalValue != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          conditionalValue = candidate;
+        }
+        zc::Maybe<const HirParameterReferenceExpression&> conditionReference;
+        for (const auto& reference : candidate.impl->parameterReferences) {
+          if (reference.node != hirId(expectedFunction + 2)) continue;
+          if (conditionReference != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          conditionReference = reference;
+        }
+        zc::Maybe<const HirScalarLiteralExpression&> thenValue;
+        zc::Maybe<const HirScalarLiteralExpression&> elseValue;
+        for (const auto& expression : candidate.impl->expressions) {
+          if (expression.node == hirId(expectedFunction + 3)) {
+            if (thenValue != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::AdditionalFact, module,
+                                                  registries, index + 1);
+            }
+            thenValue = expression;
+          }
+          if (expression.node == hirId(expectedFunction + 4)) {
+            if (elseValue != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::AdditionalFact, module,
+                                                  registries, index + 1);
+            }
+            elseValue = expression;
+          }
+        }
+        if (conditionalValue == zc::none || conditionReference == zc::none ||
+            thenValue == zc::none || elseValue == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        ZC_IF_SOME(conditional, conditionalValue) {
+          ZC_IF_SOME(conditionRef, conditionReference) {
+            ZC_IF_SOME(thenLit, thenValue) {
+              ZC_IF_SOME(elseLit, elseValue) {
+                ZC_IF_SOME(authority, conditionAuthority) {
+                  if (function.node != hirId(expectedFunction) ||
+                      block.node != hirId(expectedFunction + 1) || function.body != block.node ||
+                      block.statements.size() != 1 || block.statements[0] != returnStatement.node ||
+                      returnStatement.node != hirId(expectedFunction + 6) ||
+                      returnStatement.value != conditional.node ||
+                      returnStatement.resultType != function.resultType ||
+                      conditional.condition != conditionRef.node ||
+                      conditional.thenReturnValue != thenLit.node ||
+                      conditional.elseReturnValue != elseLit.node ||
+                      conditional.type != function.resultType ||
+                      conditional.category != HirValueCategory::Value ||
+                      conditionRef.parameter != authority.key() ||
+                      conditionRef.type != conditionType ||
+                      conditionRef.category != HirValueCategory::Place ||
+                      thenLit.type != thenType || thenLit.category != HirValueCategory::Value ||
+                      elseLit.type != elseType || elseLit.category != HirValueCategory::Value ||
+                      !sameConstant(thenLit.value, thenLiteral.literal, module, registries,
+                                    semanticTypes) ||
+                      !sameConstant(elseLit.value, elseLiteral.literal, module, registries,
+                                    semanticTypes) ||
+                      !sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(bodySpan)) ||
+                      !sameSpan(returnStatement.sourceSpan, ZC_ASSERT_NONNULL(returnSpan)) ||
+                      !sameSpan(conditional.sourceSpan, ZC_ASSERT_NONNULL(returnSpan)) ||
+                      !sameSpan(conditionRef.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan)) ||
+                      !sameSpan(thenLit.sourceSpan, ZC_ASSERT_NONNULL(thenSpan)) ||
+                      !sameSpan(elseLit.sourceSpan, ZC_ASSERT_NONNULL(elseSpan)) ||
+                      !typeExists(function.resultType, semanticTypes) ||
+                      !typeExists(conditionType, semanticTypes)) {
+                    return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                        ir::IrFailureKind::InvalidFact, module,
+                                                        registries, index + 1);
+                  }
+                }
+              }
+            }
+          }
+        }
+        nextFunction += 7;
+        continue;
+      }
+    }
+    // Loop shape: a `while` with a bool parameter condition and empty body,
+    // followed by a scalar return.
+    {
+      auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+      if (sourceDefinitionIndex == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      size_t definitionSlot = 0;
+      ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+      const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+      const auto& tree = bound.tree();
+      if (!hasExecutableBody(sourceDefinition, definitions) ||
+          !definitionBelongsToModule(sourceDefinition, definitions) ||
+          sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+          !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+          !tree.contains(sourceDefinition.node)) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      auto sourceShape = functionReturnShape(tree, tree.node(sourceDefinition.node));
+      if (sourceShape == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      FunctionReturnShape source{};
+      ZC_IF_SOME(value, sourceShape) { source = value; }
+      if (source.isLoop) {
+        auto signaturePosition =
+            signatureIndex(signatures.definitions.asPtr(), function.definition);
+        auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
+        if (signaturePosition == zc::none || rootPosition == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t signatureSlot = 0;
+        size_t rootSlot = 0;
+        ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
+        ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
+        const auto& signature = signatures.definitions[signatureSlot];
+        const auto& root = signatures.roots[rootSlot];
+        auto expectedVisibility = visibility(root.visibility);
+        if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+            !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>() ||
+            expectedVisibility == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const auto& callable =
+            signature.payload.variant().get<checker::signature::CallableSignature>();
+        auto expectedLinkage = linkage(callable);
+        if (expectedLinkage == zc::none || signature.definition != function.definition ||
+            signature.definitionKind != identity::DefinitionKind::Function ||
+            root.canonicalDefinition != function.definition || root.sourceModule != module ||
+            callable.receiver != zc::none || callable.raises != zc::none ||
+            callable.success != function.resultType ||
+            !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
+            !sameSpan(function.sourceSpan, sourceDefinition.source) ||
+            !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
+            function.linkage != ZC_ASSERT_NONNULL(expectedLinkage) ||
+            function.parameters.size() != callable.parameters.size()) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        for (size_t parameterIndex = 0; parameterIndex < function.parameters.size();
+             ++parameterIndex) {
+          const auto& parameter = function.parameters[parameterIndex];
+          const auto& sourceParameter = callable.parameters[parameterIndex];
+          if (parameter.key != sourceParameter.parameter ||
+              parameter.type != sourceParameter.type || sourceParameter.hasDefault ||
+              !typeExists(parameter.type, semanticTypes)) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        }
+        auto bodySpan = bound.parsedModule().spanFor(tree.node(source.body).range);
+        auto returnSpan = bound.parsedModule().spanFor(tree.node(source.returnStatement).range);
+        auto conditionSpan = bound.parsedModule().spanFor(tree.node(source.loopCondition).range);
+        auto loopSpan = bound.parsedModule().spanFor(tree.node(source.loopStatement).range);
+        auto valueSpan = bound.parsedModule().spanFor(tree.node(source.value).range);
+        if (bodySpan == zc::none || returnSpan == zc::none || conditionSpan == zc::none ||
+            loopSpan == zc::none || valueSpan == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        auto conditionTypeIndex = factIndex(facts.nodeTypes(), source.loopCondition);
+        auto returnTypeIndex = factIndex(facts.nodeTypes(), source.value);
+        auto returnLiteralIndex = factIndex(facts.literals(), source.value);
+        if (conditionTypeIndex == zc::none || returnTypeIndex == zc::none ||
+            returnLiteralIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t conditionTypeSlot = 0;
+        size_t returnTypeSlot = 0;
+        size_t returnLiteralSlot = 0;
+        ZC_IF_SOME(value, conditionTypeIndex) { conditionTypeSlot = value; }
+        ZC_IF_SOME(value, returnTypeIndex) { returnTypeSlot = value; }
+        ZC_IF_SOME(value, returnLiteralIndex) { returnLiteralSlot = value; }
+        const auto conditionType = facts.nodeTypes().entries()[conditionTypeSlot].value;
+        const auto returnType = facts.nodeTypes().entries()[returnTypeSlot].value;
+        const auto& returnLiteral = facts.literals().entries()[returnLiteralSlot].value;
+        if (returnType != function.resultType) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto conditionParameter = resolvedCallableParameter(bound.bindings(), source.loopCondition);
+        if (conditionParameter == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        identity::CallableParameterId conditionHandle;
+        ZC_IF_SOME(value, conditionParameter) { conditionHandle = value; }
+        auto conditionAuthority = registries.callableParameter(conditionHandle);
+        if (conditionAuthority == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        zc::Maybe<const HirLoopStatement&> loopValue;
+        for (const auto& candidateLoop : candidate.impl->loops) {
+          if (candidateLoop.node != hirId(expectedFunction + 4)) continue;
+          if (loopValue != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          loopValue = candidateLoop;
+        }
+        zc::Maybe<const HirParameterReferenceExpression&> conditionReference;
+        for (const auto& reference : candidate.impl->parameterReferences) {
+          if (reference.node != hirId(expectedFunction + 2)) continue;
+          if (conditionReference != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          conditionReference = reference;
+        }
+        zc::Maybe<const HirScalarLiteralExpression&> returnValue;
+        for (const auto& expression : candidate.impl->expressions) {
+          if (expression.node != hirId(expectedFunction + 3)) continue;
+          if (returnValue != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          returnValue = expression;
+        }
+        if (loopValue == zc::none || conditionReference == zc::none || returnValue == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        ZC_IF_SOME(loop, loopValue) {
+          ZC_IF_SOME(conditionRef, conditionReference) {
+            ZC_IF_SOME(returnLit, returnValue) {
+              ZC_IF_SOME(authority, conditionAuthority) {
+                if (function.node != hirId(expectedFunction) ||
+                    block.node != hirId(expectedFunction + 1) || function.body != block.node ||
+                    block.statements.size() != 2 || block.statements[0] != loop.node ||
+                    block.statements[1] != returnStatement.node ||
+                    returnStatement.node != hirId(expectedFunction + 5) ||
+                    returnStatement.value != returnLit.node ||
+                    returnStatement.resultType != function.resultType ||
+                    loop.condition != conditionRef.node || loop.type != conditionType ||
+                    loop.category != HirValueCategory::Place ||
+                    conditionRef.parameter != authority.key() ||
+                    conditionRef.type != conditionType ||
+                    conditionRef.category != HirValueCategory::Place ||
+                    returnLit.type != returnType || returnLit.category != HirValueCategory::Value ||
+                    !sameConstant(returnLit.value, returnLiteral.literal, module, registries,
+                                  semanticTypes) ||
+                    !sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(bodySpan)) ||
+                    !sameSpan(returnStatement.sourceSpan, ZC_ASSERT_NONNULL(returnSpan)) ||
+                    !sameSpan(loop.sourceSpan, ZC_ASSERT_NONNULL(loopSpan)) ||
+                    !sameSpan(conditionRef.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan)) ||
+                    !sameSpan(returnLit.sourceSpan, ZC_ASSERT_NONNULL(valueSpan)) ||
+                    !typeExists(function.resultType, semanticTypes) ||
+                    !typeExists(conditionType, semanticTypes)) {
+                  return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                      ir::IrFailureKind::InvalidFact, module,
+                                                      registries, index + 1);
+                }
+              }
+            }
+          }
+        }
+        nextFunction += 6;
+        continue;
+      }
+    }
     // number of extra HIR nodes the unsafe block contributes (0 when absent, 1
     // when present and valid), or zc::none when present but invalid.
     auto verifyUnsafeBlock = [&](const FunctionReturnShape& source, uint32_t baseIncrement,
@@ -6161,7 +7197,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       zc::mv(candidate.impl->localFieldProjections), zc::mv(candidate.impl->parameterReferences),
       zc::mv(candidate.impl->parameterIndexes), zc::mv(candidate.impl->parameterReborrows),
       zc::mv(candidate.impl->localBorrows), zc::mv(candidate.impl->calls),
-      zc::mv(candidate.impl->receiverCalls), zc::mv(candidate.impl->unsafeBlocks));
+      zc::mv(candidate.impl->receiverCalls), zc::mv(candidate.impl->unsafeBlocks),
+      zc::mv(candidate.impl->conditionals), zc::mv(candidate.impl->loops));
   return ir::IrOperationResult<VerifiedHirModule>::verified(VerifiedHirModule(zc::mv(impl)));
 }
 

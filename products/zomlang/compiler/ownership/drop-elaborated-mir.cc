@@ -15,6 +15,7 @@
 #include "zomlang/compiler/ownership/drop-elaborated-mir.h"
 
 #include "zomlang/compiler/ir/ir-diagnostic-adapter.h"
+#include "zomlang/compiler/ownership/facts/flow-subset.h"
 
 namespace zomlang::compiler::ownership {
 namespace {
@@ -224,13 +225,62 @@ DropDischargeKind dischargeKind(facts::LinearConsumptionKind kind) {
   ZC_UNREACHABLE
 }
 
+/// \brief Collects the block ids of every normal-return exit of a function.
+///
+/// A normal-return exit is a block whose terminator is Return. Unreachable is a
+/// divergent exit that owns no drop discharge, and Call/Goto/SwitchInt are
+/// internal edges. Unwind exits do not occur: the admitted flow subset rejects
+/// any Call with an unwind target, so the multi-block walk only ever observes
+/// normal edges. The returned order follows the function's block order.
+zc::Vector<mir::MirBlockId> normalReturnExitBlocks(const mir::MirFunction& function) {
+  zc::Vector<mir::MirBlockId> exits;
+  for (const auto& block : function.blocks) {
+    if (block.terminator.kind() == mir::MirTerminatorKind::Return) exits.add(block.id);
+  }
+  return exits;
+}
+
+/// \brief Finds the initialization inventory for one function owner.
+const facts::InitializationFunction* findInitialization(
+    zc::ArrayPtr<const facts::InitializationFunction> initialization, identity::DefId owner) {
+  for (const auto& function : initialization) {
+    if (function.owner == owner) return &function;
+  }
+  return nullptr;
+}
+
+/// \brief Returns true when the move path is initialized at the given normal
+/// return exit in the verified initialization facts.
+///
+/// A logical resource is dropped at a normal-return exit only where its subject
+/// is live-and-initialized. The initialization builder records one
+/// `MirPoint::exit(block, Return)` fact per return block; the subject is
+/// discharged at that exit when the fact's state is initialized.
+bool initializedAtReturnExit(const facts::InitializationFunction& initialization,
+                             const facts::MovePathKey& place, mir::MirBlockId exitBlock) {
+  for (const auto& fact : initialization.facts) {
+    if (fact.point.kind() != MirPointKind::Exit) continue;
+    const auto& exitPoint = fact.point.exitValue();
+    if (exitPoint.kind != MirExitKind::Return || exitPoint.block != exitBlock) continue;
+    if (!sameMovePath(fact.key, place)) continue;
+    return fact.state == facts::InitializationState::initialized();
+  }
+  return false;
+}
+
 zc::Maybe<zc::Vector<DropDischargeRecord>> elaborateLinear(
-    const facts::VerifiedOwnershipResourceFacts& resources,
-    zc::ArrayPtr<const mir::MirFunction> mirFunctions) {
+    zc::ArrayPtr<const facts::OwnershipResourceFunction> resources,
+    zc::ArrayPtr<const mir::MirFunction> mirFunctions,
+    zc::ArrayPtr<const facts::InitializationFunction> initialization) {
   zc::Vector<DropDischargeRecord> discharges;
-  for (const auto& resourceFunction : resources.functions()) {
+  for (const auto& resourceFunction : resources) {
     const auto* mirFunction = findFunction(mirFunctions, resourceFunction.owner);
     if (mirFunction == nullptr || mirFunction->blocks.size() == 0) return zc::none;
+    // Only walk topologies the flow subset admits (reducible CFG of Call, Goto,
+    // and SwitchInt edges ending in Return or Unreachable, no unwind edges).
+    if (!facts::isAdmittedFlowSubset(*mirFunction)) return zc::none;
+    const auto* initFunction = findInitialization(initialization, resourceFunction.owner);
+    const auto exits = normalReturnExitBlocks(*mirFunction);
     const auto& facts = resourceFunction.facts;
     const auto& plans = resourceFunction.dropPlans;
     const auto& obligations = resourceFunction.linearObligations;
@@ -243,7 +293,7 @@ zc::Maybe<zc::Vector<DropDischargeRecord>> elaborateLinear(
     for (size_t i = 0; i < facts.size(); ++i) discharged.add(false);
 
     // Track which linear obligations are consumed by the emitted cleanup. Every
-    // Positive Linear obligation must be consumed by exactly one discharge.
+    // Positive Linear obligation must be consumed by the emitted discharges.
     zc::Vector<bool> consumedObligations;
     for (size_t i = 0; i < obligations.size(); ++i) consumedObligations.add(false);
 
@@ -264,54 +314,81 @@ zc::Maybe<zc::Vector<DropDischargeRecord>> elaborateLinear(
         }
       }
 
-      zc::Vector<DropDischargeComponent> components;
-      for (const auto& component : plan.components) {
-        const auto& fact = facts[component.factOrdinal];
-        components.add(DropDischargeComponent{
-            facts::MovePathKey{fact.subject.origin.owner, fact.subject.origin.place.clone()},
-            fact.subject.clone(), fact.subject.originType, component.action,
-            fact.declarationOrdinal});
-      }
+      // Build the ordered component prototype once; it is cloned per emitted
+      // discharge because a linear value consumed on more than one branch fans
+      // out to one record per consumption.
+      auto buildComponents = [&]() {
+        zc::Vector<DropDischargeComponent> components;
+        for (const auto& component : plan.components) {
+          const auto& fact = facts[component.factOrdinal];
+          components.add(DropDischargeComponent{
+              facts::MovePathKey{fact.subject.origin.owner, fact.subject.origin.place.clone()},
+              fact.subject.clone(), fact.subject.originType, component.action,
+              fact.declarationOrdinal});
+        }
+        return components;
+      };
 
-      // Classify the discharge from the verified linear-consumption inventory.
-      // A return operand selects ReturnTransfer at the return cutpoint, a
-      // consuming-call operand selects ConsumingCallTransfer at the call
-      // cutpoint, and an obligation with no terminator consumption is dropped
-      // at the function exit with LogicalDrop. A purely Logical resource (no
-      // linear obligation) is dropped at the exit with no linked consume.
-      DropDischargeKind kind = DropDischargeKind::LogicalDrop;
-      MirEventKey event{MirLocation{resourceFunction.owner,
-                                    MirPoint::exit(mirFunction->blocks[0].id, MirExitKind::Return)},
-                        0};
-      zc::Maybe<facts::LinearConsumption> linkedConsume;
       ZC_IF_SOME(obligationIndex, findLinearObligation(obligations, plan.subject)) {
         consumedObligations[obligationIndex] = true;
         const auto& obligation = obligations[obligationIndex];
         if (obligation.consumptions.size() > 0) {
-          // The current subset admits exactly one terminator consumption per
-          // linear obligation; the verified facts enforce this.
-          const auto& consumption = obligation.consumptions[0];
-          kind = dischargeKind(consumption.kind);
-          event = consumption.event;
-          linkedConsume = consumption.clone();
+          // Emit one discharge per consumption. A linear value returned on both
+          // arms of a SwitchInt diamond yields two ReturnTransfer records; a
+          // value returned on one arm and consumed by a call on another yields
+          // one ReturnTransfer and one ConsumingCallTransfer. Each discharge
+          // event is the consumption's own block-correct cutpoint.
+          for (const auto& consumption : obligation.consumptions) {
+            discharges.add(DropDischargeRecord{
+                consumption.event,
+                facts::MovePathKey{plan.subject.origin.owner, plan.subject.origin.place.clone()},
+                dischargeKind(consumption.kind), plan.mode, buildComponents(),
+                consumption.clone()});
+          }
         } else {
-          // The obligation is dropped at the function exit. Synthesize the
-          // linked LogicalDrop consume at the obligation's current place.
-          kind = DropDischargeKind::LogicalDrop;
-          linkedConsume = facts::LinearConsumption{
-              obligationCurrentPlace(obligation),
-              MirEventKey{
-                  MirLocation{resourceFunction.owner,
-                              MirPoint::exit(mirFunction->blocks[0].id, MirExitKind::Return)},
-                  0},
-              facts::LinearConsumptionKind::LogicalDrop};
+          // The obligation reaches a normal exit unconsumed by a return or call:
+          // it is dropped at each normal-return exit with LogicalDrop. Synthesize
+          // the linked LogicalDrop consume at the obligation's current place and
+          // the exit's cutpoint.
+          const auto currentPlace = obligationCurrentPlace(obligation);
+          if (exits.size() == 0) return zc::none;
+          for (const auto exitBlock : exits) {
+            MirEventKey event{
+                MirLocation{resourceFunction.owner, MirPoint::exit(exitBlock, MirExitKind::Return)},
+                0};
+            discharges.add(DropDischargeRecord{
+                event,
+                facts::MovePathKey{plan.subject.origin.owner, plan.subject.origin.place.clone()},
+                DropDischargeKind::LogicalDrop, plan.mode, buildComponents(),
+                facts::LinearConsumption{
+                    facts::MovePathKey{currentPlace.owner, currentPlace.place.clone()}, event,
+                    facts::LinearConsumptionKind::LogicalDrop}});
+          }
+        }
+      } else {
+        // A purely Logical resource (no linear obligation) is dropped with
+        // LogicalDrop at each normal-return exit where the subject is
+        // live-and-initialized in the verified initialization facts. A subject
+        // that is moved out before every normal-return exit (its ownership
+        // transferred into the return value or a callee) is initialized at no
+        // exit and correctly emits zero drops: the drop obligation left with the
+        // move, so there is nothing to discharge here. The plan's fact is still
+        // marked discharged above, so the completeness check below holds.
+        const auto subjectPlace =
+            facts::MovePathKey{plan.subject.origin.owner, plan.subject.origin.place.clone()};
+        for (const auto exitBlock : exits) {
+          if (initFunction != nullptr &&
+              !initializedAtReturnExit(*initFunction, subjectPlace, exitBlock)) {
+            continue;
+          }
+          MirEventKey event{
+              MirLocation{resourceFunction.owner, MirPoint::exit(exitBlock, MirExitKind::Return)},
+              0};
+          discharges.add(DropDischargeRecord{
+              event, facts::MovePathKey{subjectPlace.owner, subjectPlace.place.clone()},
+              DropDischargeKind::LogicalDrop, plan.mode, buildComponents(), zc::none});
         }
       }
-
-      discharges.add(DropDischargeRecord{
-          zc::mv(event),
-          facts::MovePathKey{plan.subject.origin.owner, plan.subject.origin.place.clone()}, kind,
-          plan.mode, zc::mv(components), zc::mv(linkedConsume)});
     }
 
     // Every pending drop obligation must have a complete discharge path.
@@ -403,7 +480,9 @@ ir::IrOperationResult<DropElaboratedMir> DropElaborator::elaborateDrops(
     return reject<DropElaboratedMir>(builtMir, identities, ir::IrFailureKind::InputRevisionMismatch,
                                      0);
   }
-  auto discharges = elaborateLinear(checked.facts().resources(), builtMir.functions());
+  auto discharges = DropElaborator::computeDischarges(checked.facts().resources().functions(),
+                                                      builtMir.functions(),
+                                                      checked.facts().initialization().functions());
   if (discharges == zc::none) {
     return reject<DropElaboratedMir>(builtMir, identities, ir::IrFailureKind::InvalidCleanup, 1);
   }
@@ -412,6 +491,13 @@ ir::IrOperationResult<DropElaboratedMir> DropElaborator::elaborateDrops(
         DropElaboratedMir(zc::heap<DropElaboratedMir::Impl>(zc::mv(checked), zc::mv(value))));
   }
   ZC_UNREACHABLE
+}
+
+zc::Maybe<zc::Vector<DropDischargeRecord>> DropElaborator::computeDischarges(
+    zc::ArrayPtr<const facts::OwnershipResourceFunction> resources,
+    zc::ArrayPtr<const mir::MirFunction> mirFunctions,
+    zc::ArrayPtr<const facts::InitializationFunction> initialization) {
+  return elaborateLinear(resources, mirFunctions, initialization);
 }
 
 bool DropElaborator::recheckLineage(

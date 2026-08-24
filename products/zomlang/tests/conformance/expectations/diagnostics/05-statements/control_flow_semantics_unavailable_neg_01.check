@@ -4,6 +4,6 @@
 // CHECK-LITERAL: Error [ZOM4096]: Control-flow syntax has no admitted semantic contract
 // CHECK-LITERAL:   --> conformance/05-statements/control_flow_semantics_unavailable_neg_01.zom:2:3
 // CHECK-LITERAL:   |
-// CHECK-LITERAL: 2 |   if (true) { return 1; } else { return 2; }
+// CHECK-LITERAL: 2 |   while (true) { return 1; }
 // CHECK-LITERAL:   |   ^
 // CHECK-NOT: ZOM9943

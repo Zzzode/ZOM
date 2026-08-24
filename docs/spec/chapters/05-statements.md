@@ -284,6 +284,26 @@ while (true) {
 
 The condition is evaluated before each iteration. If it is `false`, the loop terminates.
 
+#### Admitted ownership-surface loop shape
+
+The parser accepts the full `while` grammar above. The ownership surface admits
+only one narrow `while` shape for semantic lowering today: a `while` whose
+condition is a bare parameter identifier of type `bool` and whose body is an
+empty block, appearing as the first statement of a function body that ends in a
+scalar `return`. For example:
+
+```zom
+fun spin(cond: bool) -> i32 { while (cond) { } return 0; }
+```
+
+This shape lowers end-to-end through semantic HIR into a reducible four-block
+Built MIR loop: a header block whose `SwitchInt` branches into the loop body on
+a true condition and to the exit otherwise, and a body block that jumps back to
+the header (a reducible back-edge). Every other `while` form, along with all
+`do-while`, C-style `for`, and `for-in` loops, has no admitted semantic contract
+yet and is rejected with `ZOM4096` (control-flow syntax has no admitted semantic
+contract).
+
 ### `do-while` Loops
 
 ```ebnf

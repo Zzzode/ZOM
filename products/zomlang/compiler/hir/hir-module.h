@@ -242,6 +242,34 @@ struct HirUnsafeBlockExpression final {
   identity::SourceSpan sourceSpan;
 };
 
+/// \brief One checked if/else conditional expression retained for multi-block MIR lowering.
+///
+/// The condition is a bool expression; each branch yields a scalar return value. MIR lowering
+/// emits a SwitchInt terminator on the entry block, one block per branch, and a Return
+/// terminator in each branch block.
+struct HirConditionalExpression final {
+  HirNodeId node;
+  HirNodeId condition;
+  HirNodeId thenReturnValue;
+  HirNodeId elseReturnValue;
+  identity::SemanticTypeId type;
+  HirValueCategory category;
+  identity::SourceSpan sourceSpan;
+};
+
+/// \brief One admitted `while` loop retained for reducible multi-block MIR lowering.
+///
+/// The condition is a bool parameter reference and the loop body is empty. MIR lowering emits a
+/// header block whose SwitchInt terminator branches to the body on a true discriminant and to the
+/// exit otherwise; the body block jumps back to the header, forming a reducible back-edge.
+struct HirLoopStatement final {
+  HirNodeId node;
+  HirNodeId condition;
+  identity::SemanticTypeId type;
+  HirValueCategory category;
+  identity::SourceSpan sourceSpan;
+};
+
 /// \brief One scalar return statement in immutable semantic HIR.
 struct HirReturnStatement final {
   HirNodeId node;
@@ -352,6 +380,8 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const HirDirectCallExpression> calls() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirReceiverCallExpression> receiverCalls() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirUnsafeBlockExpression> unsafeBlocks() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirConditionalExpression> conditionals() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirLoopStatement> loops() const noexcept;
   ZC_NODISCARD zc::Maybe<zc::String> dump() const;
 
 private:

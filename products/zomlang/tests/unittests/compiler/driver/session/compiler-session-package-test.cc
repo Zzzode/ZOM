@@ -24,6 +24,8 @@
 #include "zomlang/compiler/driver/package/source-record.h"
 #include "zomlang/compiler/driver/package/trusted-runtime-manifest.h"
 #include "zomlang/compiler/driver/session/compiler-session.h"
+#include "zomlang/compiler/hir/hir-module.h"
+#include "zomlang/compiler/ownership/facts/region-membership.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/tests/unittests/compiler/driver/core/core-library-test-fixture.h"
@@ -2580,6 +2582,83 @@ ZC_TEST("CompilerSession lowers a sequential local copy through HIR and Built MI
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
+ZC_TEST("CompilerSession lowers a conditional return through HIR") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+      resolvedSourceSnapshots(
+          "app"_zc,
+          "fun answer(cond: bool) -> i32 { if (cond) { return 1; } else { return 2; } }"_zc));
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+  installCore(session);
+
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  ZC_REQUIRE(session.checkSources());
+  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+
+  ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
+  const auto& hirModule = session.getVerifiedHirModules()[0];
+  ZC_REQUIRE(hirModule.functions().size() == 1);
+  ZC_REQUIRE(hirModule.blocks().size() == 1);
+  ZC_REQUIRE(hirModule.returns().size() == 1);
+  ZC_REQUIRE(hirModule.conditionals().size() == 1);
+  ZC_REQUIRE(hirModule.parameterReferences().size() == 1);
+  ZC_REQUIRE(hirModule.expressions().size() == 2);
+  const auto& function = hirModule.functions()[0];
+  const auto& block = hirModule.blocks()[0];
+  const auto& returnStmt = hirModule.returns()[0];
+  const auto& conditional = hirModule.conditionals()[0];
+  const auto& conditionRef = hirModule.parameterReferences()[0];
+  const auto& thenLiteral = hirModule.expressions()[0];
+  const auto& elseLiteral = hirModule.expressions()[1];
+  ZC_EXPECT(function.body == block.node);
+  ZC_REQUIRE(block.statements.size() == 1);
+  ZC_EXPECT(block.statements[0] == returnStmt.node);
+  ZC_EXPECT(returnStmt.value == conditional.node);
+  ZC_EXPECT(conditional.condition == conditionRef.node);
+  ZC_EXPECT(conditional.thenReturnValue == thenLiteral.node);
+  ZC_EXPECT(conditional.elseReturnValue == elseLiteral.node);
+  ZC_EXPECT(conditional.type == function.resultType);
+  ZC_EXPECT(conditionRef.category == hir::HirValueCategory::Place);
+  ZC_EXPECT(thenLiteral.category == hir::HirValueCategory::Value);
+  ZC_EXPECT(elseLiteral.category == hir::HirValueCategory::Value);
+
+  // The if/else body lowers to a Goto-joined diamond: bb1 SwitchInt with a
+  // StorageLive of the result local, bb2/bb3 each initialize the result local
+  // and Goto the join block, and bb4 performs the single Return.
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
+  const auto& builtMir = session.getOwnershipCheckedMirModules()[0].builtMir();
+  ZC_REQUIRE(builtMir.functions().size() == 1);
+  const auto& mirFunction = builtMir.functions()[0];
+  ZC_REQUIRE(mirFunction.blocks.size() == 4);
+  ZC_EXPECT(mirFunction.blocks[0].statements.size() == 1);
+  ZC_EXPECT(mirFunction.blocks[0].statements[0].kind() == mir::MirStatementKind::StorageLive);
+  ZC_EXPECT(mirFunction.blocks[0].terminator.kind() == mir::MirTerminatorKind::SwitchInt);
+  ZC_EXPECT(mirFunction.blocks[1].statements.size() == 1);
+  ZC_EXPECT(mirFunction.blocks[1].statements[0].kind() == mir::MirStatementKind::Assign);
+  ZC_EXPECT(mirFunction.blocks[1].terminator.kind() == mir::MirTerminatorKind::Goto);
+  ZC_EXPECT(mirFunction.blocks[1].terminator.gotoValue().target == mirFunction.blocks[3].id);
+  ZC_EXPECT(mirFunction.blocks[2].statements.size() == 1);
+  ZC_EXPECT(mirFunction.blocks[2].statements[0].kind() == mir::MirStatementKind::Assign);
+  ZC_EXPECT(mirFunction.blocks[2].terminator.kind() == mir::MirTerminatorKind::Goto);
+  ZC_EXPECT(mirFunction.blocks[2].terminator.gotoValue().target == mirFunction.blocks[3].id);
+  ZC_EXPECT(mirFunction.blocks[3].statements.size() == 0);
+  ZC_EXPECT(mirFunction.blocks[3].terminator.kind() == mir::MirTerminatorKind::Return);
+
+  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
+}
+
 ZC_TEST("CompilerSession rejects a scalar return whose type differs from the signature") {
   basic::LangOptions languageOptions;
   basic::CompilerOptions compilerOptions;
@@ -2672,8 +2751,6 @@ ZC_TEST("CompilerSession rejects unadmitted frontend syntax before Checker publi
       "class Cell { value: i32 }\n"
       "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc,
       diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
-  rejects("fun entry() -> i32 { if (true) { return 1; } else { return 2; } }"_zc,
-          diagnostics::DiagID::ControlFlowSemanticsUnavailable, 1);
   rejects("fun entry() -> i32 { while (false) { return 1; } return 2; }"_zc,
           diagnostics::DiagID::ControlFlowSemanticsUnavailable, 1);
   rejects("fun entry() { for (;;) { break; } }"_zc,
@@ -3141,6 +3218,91 @@ ZC_TEST("CompilerSession reports non-literal stable array lengths as source fail
   ZC_EXPECT(!session.parseSources());
   ZC_REQUIRE(captured.ids.size() == 1);
   ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::ConstantExpressionNotAllowed);
+}
+
+// A parameter reborrow compiles through the full pipeline and publishes escape
+// facts in the session output. The escape fact names the direct borrow input
+// and carries a Direct route origin rooted at the input region. Region
+// memberships are derived from the session-published verified inputs and
+// confirm the input region is live at the function entry point.
+
+ZC_TEST("CompilerSession publishes escape facts and region memberships for a parameter reborrow") {
+  constexpr zc::StringPtr sourceText = "fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc;
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+      resolvedSourceSnapshots("app"_zc, sourceText));
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+  installCore(session);
+
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  ZC_REQUIRE(session.checkSources());
+  ZC_EXPECT(!session.getDiagnosticEngine().hasErrors());
+
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
+  const auto& checkedMir = session.getOwnershipCheckedMirModules()[0];
+  const auto& facts = checkedMir.facts();
+
+  // Escape facts are published in the session output.
+  const auto escapes = facts.escapes().escapes();
+  ZC_REQUIRE(escapes.size() == 1);
+  ZC_EXPECT(escapes[0].kind.isReturn());
+  ZC_REQUIRE(escapes[0].proof.isDirectInput());
+  ZC_EXPECT(escapes[0].proof.directInputValue().input.isParameter());
+  ZC_EXPECT(escapes[0].proof.directInputValue().input.parameterValue().index == 0);
+  ZC_REQUIRE(escapes[0].origins.size() == 1);
+  ZC_EXPECT(escapes[0].origins[0].route.isDirect());
+  ZC_EXPECT(escapes[0].origins[0].origin.root.region.isInput());
+
+  // Region memberships are derived from session-published verified inputs.
+  auto membershipCandidate = ownership::facts::RegionMembershipBuilder::build(
+      facts.flow(), facts.loans(), checkedMir.builtMir(), checkedMir.eventOverlay());
+  ZC_REQUIRE(membershipCandidate.isVerified());
+  auto membershipsVerified = ownership::facts::RegionMembershipVerifier::verify(
+      zc::mv(membershipCandidate).takeVerified(), facts.flow(), facts.loans(),
+      checkedMir.builtMir(), checkedMir.eventOverlay());
+  ZC_REQUIRE(membershipsVerified.isVerified());
+  const auto memberships = membershipsVerified.verifiedValue().memberships();
+  ZC_EXPECT(memberships.size() != 0);
+
+  // The input region for parameter 0 must be live at the function entry point.
+  const auto owner = checkedMir.builtMir().functions()[0].owner;
+  const auto inputRegion = ownership::facts::RegionKey::inputRegion(
+      owner, ownership::facts::BorrowInputKey::parameter(0));
+  bool inputLiveAtEntry = false;
+  for (const auto& membership : memberships) {
+    if (membership.region == inputRegion &&
+        membership.point.kind() == ownership::facts::OwnershipPointKind::Cfg &&
+        membership.point.cfgValue().point.kind() == ownership::MirPointKind::Entry) {
+      inputLiveAtEntry = true;
+      break;
+    }
+  }
+  ZC_EXPECT(inputLiveAtEntry);
+
+  // The session-published outlives inventory must record that the input region
+  // outlives the reborrow loan: the input is live from entry and never killed,
+  // so every point carrying the loan also carries the input.
+  const auto outlives = facts.outlives().outlives();
+  ZC_EXPECT(outlives.size() != 0);
+  bool inputOutlivesLoan = false;
+  for (const auto& fact : outlives) {
+    if (fact.from == inputRegion && fact.to.isLoan()) {
+      inputOutlivesLoan = true;
+      break;
+    }
+  }
+  ZC_EXPECT(inputOutlivesLoan);
 }
 
 }  // namespace zomlang::compiler::driver

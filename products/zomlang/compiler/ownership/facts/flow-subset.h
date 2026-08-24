@@ -20,12 +20,15 @@ namespace zomlang::compiler::ownership::facts {
 
 /// \brief Returns true when the function's block topology is in the admitted flow subset.
 ///
-/// The admitted subset is an acyclic CFG whose blocks are connected by Call, Goto, and
+/// The admitted subset is a reducible CFG whose blocks are connected by Call, Goto, and
 /// SwitchInt terminators, ending in Return or Unreachable. Every Call has no unwind target
-/// and every successor target resolves to an existing block. The successor graph is acyclic
-/// and covers every block (no unreachable blocks). Joins are admitted: a block reached
-/// through another path is expanded once by the flow derivation. Back edges (loops) are
-/// rejected until fixpoint iteration lands.
+/// and every successor target resolves to an existing block. The successor graph covers
+/// every block (no unreachable blocks). Joins are admitted: a block reached through another
+/// path is expanded once by the flow derivation. Loops are admitted: a back edge is
+/// accepted when its target dominates its source (a single-entry loop header). Irreducible
+/// control flow (a retreating edge whose target does not dominate its source, i.e. a loop
+/// with multiple entry points) is rejected. Dataflow analyses over the admitted subset
+/// converge by fixpoint iteration.
 bool isAdmittedFlowSubset(const mir::MirFunction& function);
 
 }  // namespace zomlang::compiler::ownership::facts

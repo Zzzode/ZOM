@@ -46,6 +46,7 @@
 #include "zomlang/compiler/ownership/facts/inputs.h"
 #include "zomlang/compiler/ownership/ownership-checked-mir.h"
 #include "zomlang/compiler/ownership/ownership-event-overlay.h"
+#include "zomlang/compiler/ownership/ownership-proof-validation.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
 namespace zomlang {
@@ -93,6 +94,20 @@ private:
   source::BufferId bufferValue;
   binder::VerifiedParsedModule parsedModuleValue;
   friend class CompilerSession;
+};
+
+/// \brief Test-only view of Built MIR staged before a borrow-source rejection.
+///
+/// Populated only when checkSources() rejects a module at the borrow-source
+/// stage (for example a returned function-local borrow, ZOM4061). It is never
+/// read by any production query accessor and never populated for a committed
+/// module. It lets ownership fact-derivation tests reconstruct fact families
+/// from verified MIR that was built and verified before the rejection but never
+/// reached publication.
+struct StagedOwnershipMirForTesting final {
+  const mir::VerifiedBuiltMir& builtMir;
+  const ownership::VerifiedOwnershipEventOverlay& eventOverlay;
+  const borrow_evidence::BorrowEvidenceRepository& borrowEvidence;
 };
 
 /// \brief Atomic package-session input validated before session state changes.
@@ -206,6 +221,12 @@ public:
   /// eventOverlay, and facts.
   ZC_NODISCARD zc::ArrayPtr<const ownership::OwnershipCheckedMir> getOwnershipCheckedMirModules()
       const noexcept;
+  /// \brief Returns immutable RFC 0013 validated ownership proofs in dependency order.
+  ///
+  /// Each validated proof owns the escape proofs, region memberships, capture
+  /// facts, and the validation report for one module.
+  ZC_NODISCARD zc::ArrayPtr<const ownership::ValidatedOwnershipProofs> getValidatedOwnershipProofs()
+      const noexcept;
   /// \brief Returns immutable RFC 0007 verified executable MIR wrappers in dependency order.
   ///
   /// Each terminal wrapper owns the full successor chain (drop-elaborated,
@@ -217,6 +238,16 @@ public:
   /// \brief Returns the exact retained checker-to-MIR handoff for one ownership overlay.
   ZC_NODISCARD zc::Maybe<ownership::OwnershipEventOverlayInput> getOwnershipEventOverlayInput(
       identity::ModuleId module) const noexcept;
+  /// \brief Test-only: Built MIR, overlay, and borrow evidence staged before a
+  /// borrow-source rejection.
+  ///
+  /// Returns none unless the most recent checkSources() rejected exactly one
+  /// module at the borrow-source stage (ZOM4061). The staged products are never
+  /// committed to any production accessor and never read by production
+  /// consumers; this exists so ownership fact-derivation tests can drive the
+  /// fact builders against verified MIR for sources the borrow checker rejects.
+  ZC_NODISCARD zc::Maybe<StagedOwnershipMirForTesting> firstStagedBorrowSourceRejectionForTesting()
+      const noexcept;
   /// \brief Returns complete grouped IR failures retained after rejected lowering.
   ZC_NODISCARD zc::ArrayPtr<const ir::IrDiagnosticGroup> getIrFailureGroups() const noexcept;
   /// \brief Returns complete identity failures retained from rejected IR operations.

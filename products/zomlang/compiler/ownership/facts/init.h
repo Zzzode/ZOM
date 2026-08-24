@@ -235,6 +235,15 @@ public:
   ZC_NODISCARD static ir::IrOperationResult<InitializationCandidate> build(
       const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay,
       const VerifiedFlow& flow, const VerifiedMovePaths& movePaths);
+
+  /// \brief Test-only seam over the per-function derivation core.
+  ///
+  /// The production `build` path only accepts a `VerifiedBuiltMir`, which the
+  /// full pipeline cannot yet emit for a loop, so the reducible-loop worklist
+  /// fixpoint is exercised by driving hand-built MIR functions through this
+  /// entry. It runs the identical `deriveFunction` core as `build`.
+  ZC_NODISCARD static zc::Maybe<InitializationFunction> deriveFunctionForTesting(
+      const mir::MirFunction& function, const FlowFunction& flow, const MovePathFunction& paths);
 };
 
 /// \brief Independently validates and publishes initialization facts.

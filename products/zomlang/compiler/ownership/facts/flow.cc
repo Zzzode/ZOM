@@ -254,10 +254,10 @@ FlowFunctionOutcome deriveFunction(const mir::MirFunction& function,
 
   // Iterative DFS over the successor graph with gray (in-progress) / black
   // (done) coloring, mirroring the subset predicate and
-  // InitializationBuilder::reachableBlockOrder. A successor reached while still
-  // gray is a back edge: the admitted subset is acyclic, so loops are rejected
-  // until fixpoint iteration lands. A successor already black is a diamond
-  // join and is expanded once.
+  // InitializationBuilder::reachableBlockOrder. The admitted subset is
+  // reducible: a successor reached while still gray is a loop back edge,
+  // whose edge point is emitted without re-expanding the target. A
+  // successor already black is a diamond join and is expanded once.
   zc::Vector<mir::MirBlockId> inProgress;
   zc::Vector<mir::MirBlockId> done;
   struct Frame final {
@@ -288,9 +288,6 @@ FlowFunctionOutcome deriveFunction(const mir::MirFunction& function,
       }
     }
     if (alreadyDone) continue;
-    for (const auto previous : inProgress) {
-      if (previous == frame.blockId) return {zc::none, FlowRejection::ControlFlow};
-    }
     auto blockPosition = blockIndex(function, frame.blockId);
     if (blockPosition == zc::none) return {zc::none, FlowRejection::Proof};
     size_t currentBlock = 0;
@@ -349,6 +346,16 @@ FlowFunctionOutcome deriveFunction(const mir::MirFunction& function,
           !appendEdge(flow, ZC_ASSERT_NONNULL(current),
                       OwnershipPoint::cfg(zc::mv(ZC_ASSERT_NONNULL(nextStart))))) {
         return false;
+      }
+      // A successor still on the current DFS path is a loop back edge, and a
+      // successor already fully expanded is a diamond join. In both cases the
+      // target's points are already in the graph, so the edge above is the
+      // only new artifact: do not re-expand it.
+      for (const auto previous : inProgress) {
+        if (previous == target) return true;
+      }
+      for (const auto previous : done) {
+        if (previous == target) return true;
       }
       stack.add(Frame{target, false});
       return true;

@@ -1,0 +1,14 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/return_initialized_local_reference_escape_neg_52.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4061]: Borrowed value does not live long enough
+// CHECK:   --> {{.*}}05-statements/return_initialized_local_reference_escape_neg_52.zom:3:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |     return &value;
+// CHECK-LITERAL:   |     ^
+// CHECK-LITERAL: Note [ZOM4062]: Borrowed value is created here
+// CHECK:   --> {{.*}}05-statements/return_initialized_local_reference_escape_neg_52.zom:3:12
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |     return &value;
+// CHECK-LITERAL:   |            ^

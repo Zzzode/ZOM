@@ -1,6 +1,7 @@
 set(OWNERSHIP_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/ownership-event-overlay.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/ownership-checked-mir.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/ownership-proof-validation.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/drop-elaborated-mir.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/ownership-diagnostic-adapter.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/source-suppression.cc
@@ -17,7 +18,10 @@ set(OWNERSHIP_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/paths.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/resources.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/escape.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/facts/capture.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/regions.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/facts/region-membership.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/facts/region-outlives.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/refs.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/states.cc
 )

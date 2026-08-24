@@ -13,24 +13,18 @@
 // limitations under the License.
 
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/diagnostics/core/diagnostic-engine.h"
 #include "zomlang/compiler/driver/interface/borrow-evidence.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
 #include "zomlang/compiler/driver/session/compiler-session.h"
-#include "zomlang/compiler/identity/canonical/canonical-encoder.h"
 #include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/ir/ir-failure.h"
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/compiler/mir/built-mir.h"
-#include "zomlang/compiler/ownership/facts/borrow-source.h"
+#include "zomlang/compiler/ownership/facts/capture.h"
 #include "zomlang/compiler/ownership/facts/inputs.h"
-#include "zomlang/compiler/ownership/facts/loans.h"
 #include "zomlang/compiler/ownership/facts/paths.h"
-#include "zomlang/compiler/ownership/facts/refs.h"
 #include "zomlang/compiler/ownership/ownership-event-overlay.h"
-#include "zomlang/compiler/ownership/ownership-source-failure.h"
-#include "zomlang/compiler/source/manager.h"
 #include "zomlang/tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 
 namespace zomlang::compiler::ownership {
@@ -38,19 +32,20 @@ namespace {
 
 namespace driver = zomlang::compiler::driver;
 namespace package = driver::package;
+namespace facts = zomlang::compiler::ownership::facts;
 
 template <typename Scalar>
 Scalar scalar(zc::StringPtr text) {
   auto result = Scalar::fromCanonical(text);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid borrow-source fixture scalar");
+  ZC_FAIL_REQUIRE("invalid capture fixture scalar");
 }
 
 identity::SortedFeatureSet emptyFeatures() {
   zc::Vector<identity::FeatureName> values;
   auto result = identity::SortedFeatureSet::from(zc::mv(values));
   ZC_IF_SOME(value, result) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid borrow-source fixture feature set");
+  ZC_FAIL_REQUIRE("invalid capture fixture feature set");
 }
 
 identity::CanonicalPackageSource packageSource() {
@@ -90,13 +85,13 @@ identity::CanonicalTargetSpecificationKey targetProjection() {
         zc::mv(values));
     ZC_IF_SOME(value, result) { return zc::mv(value); }
   }
-  ZC_FAIL_REQUIRE("invalid borrow-source fixture target projection");
+  ZC_FAIL_REQUIRE("invalid capture fixture target projection");
 }
 
 package::RegisteredTargetProfileName targetProfileName() {
   auto result = package::RegisteredTargetProfileName::from("host"_zc);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid borrow-source fixture target profile name");
+  ZC_FAIL_REQUIRE("invalid capture fixture target profile name");
 }
 
 ir::TargetRegistrySnapshot targetRegistry() {
@@ -115,7 +110,7 @@ ir::TargetRegistrySnapshot targetRegistry() {
   ZC_IF_SOME(value, profile) { profiles.add(zc::mv(value)); }
   auto registry = ir::TargetRegistrySnapshot::from(targetProfileName(), zc::mv(profiles));
   ZC_IF_SOME(value, registry) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid borrow-source fixture target registry");
+  ZC_FAIL_REQUIRE("invalid capture fixture target registry");
 }
 
 package::RegisteredTargetSelection targetSelection(const ir::TargetRegistrySnapshot& registry) {
@@ -125,7 +120,7 @@ package::RegisteredTargetSelection targetSelection(const ir::TargetRegistrySnaps
     auto result = targets.select(zc::none, package::PackagePanicStrategy::Unwind);
     ZC_IF_SOME(value, result) { return zc::mv(value); }
   }
-  ZC_FAIL_REQUIRE("invalid borrow-source fixture target selection");
+  ZC_FAIL_REQUIRE("invalid capture fixture target selection");
 }
 
 ir::VerifiedTargetSelection verifiedTargetSelection(const ir::TargetRegistrySnapshot& registry) {
@@ -144,7 +139,7 @@ package::VerifiedPackageCompilationRequest compilationRequest(
       zc::mv(roots), targetSelection(registry), targetSelection(registry),
       package::SelectedLanguageOptions{}, package::PackageLockMode::PreferLocked);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid borrow-source fixture compilation request");
+  ZC_FAIL_REQUIRE("invalid capture fixture compilation request");
 }
 
 class MemoryFreshDirectory final : public package::FreshSourceDirectory {
@@ -216,10 +211,9 @@ zc::Vector<package::ResolvedPackageSourceSnapshot> resolvedSnapshots(zc::StringP
   return snapshots;
 }
 
-/// Fixture that runs the full session pipeline and requires success.
-class BorrowSourcePipelineFixture final {
+class CapturePipelineFixture final {
 public:
-  explicit BorrowSourcePipelineFixture(zc::StringPtr sourceText)
+  explicit CapturePipelineFixture(zc::StringPtr sourceText)
       : session(contextFactory, languageOptions, compilerOptions) {
     auto registry = targetRegistry();
     auto input = driver::VerifiedPackageSessionInput::from(
@@ -244,47 +238,14 @@ public:
     return session.getOwnershipCheckedMirModules()[0].builtMir();
   }
 
-  const VerifiedOwnershipEventOverlay& overlay() const {
-    return session.getOwnershipCheckedMirModules()[0].eventOverlay();
-  }
-
   const facts::VerifiedOwnershipInputs& inputs() const {
     return session.getOwnershipCheckedMirModules()[0].facts();
   }
 
-private:
-  basic::LangOptions languageOptions;
-  basic::CompilerOptions compilerOptions;
-  identity::SemanticContextFactory contextFactory;
-  driver::CompilerSession session;
-};
-
-/// Fixture that runs parse and bind but leaves the ownership check to the test,
-/// so a test can observe a `checkSources()` rejection. The accept-only
-/// `BorrowSourcePipelineFixture` cannot express this because its constructor
-/// requires the check to succeed.
-class BorrowSourceCheckFixture final {
-public:
-  explicit BorrowSourceCheckFixture(zc::StringPtr sourceText)
-      : session(contextFactory, languageOptions, compilerOptions) {
-    auto registry = targetRegistry();
-    auto input = driver::VerifiedPackageSessionInput::from(
-        compilationRequest(registry), verifiedTargetSelection(registry),
-        verifiedTargetSelection(registry),
-        resolution(session.getPackageResolutionMemoryResource(), sourceText),
-        resolvedSnapshots(sourceText));
-    ZC_REQUIRE(input != zc::none);
-    ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
-    driver::core_library_test::installCoreDistribution(session);
-    const auto roots = session.getFinalizedCompilationRoots();
-    ZC_REQUIRE(roots.size() == 1);
-    ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
-    ZC_REQUIRE(session.parseSources());
-    ZC_REQUIRE(session.bindSources());
+  const VerifiedOwnershipEventOverlay& overlay() const {
+    return session.getOwnershipCheckedMirModules()[0].eventOverlay();
   }
 
-  driver::CompilerSession& compilerSession() noexcept { return session; }
-
 private:
   basic::LangOptions languageOptions;
   basic::CompilerOptions compilerOptions;
@@ -292,43 +253,190 @@ private:
   driver::CompilerSession session;
 };
 
+/// Asserts that a rejected ownership operation published exactly one invariant
+/// failure of the expected kind and produced no verified ownership output.
+template <typename Result>
+void expectPublishedRejection(const Result& result, ir::IrFailureKind expected) {
+  ZC_EXPECT(!result.isVerified());
+  ZC_REQUIRE(result.isIrInvariantRejected());
+  ZC_EXPECT(result.invariantFailures().facts().size() == 1);
+  ZC_EXPECT(result.invariantFailures().facts()[0].kind() == expected);
+}
+
+// Closures are not yet admitted by surface admission, so every admitted
+// function produces an empty capture inventory. The builder derives the empty
+// inventory and the verifier independently confirms it; the session pipeline
+// publishes it through the verified ownership inputs bundle.
+
+ZC_TEST("Ownership capture derivation produces no captures for a scalar function") {
+  CapturePipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  const auto& inputs = fixture.inputs();
+
+  ZC_EXPECT(inputs.captures().captures().size() == 0);
+}
+
+ZC_TEST("Ownership capture derivation produces no captures for a reborrow function") {
+  CapturePipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  const auto& inputs = fixture.inputs();
+
+  // The reborrow fixture carries references and escapes but no closures, so
+  // the capture inventory stays empty alongside the non-empty escape inventory.
+  ZC_EXPECT(inputs.escapes().escapes().size() == 1);
+  ZC_EXPECT(inputs.captures().captures().size() == 0);
+}
+
+// The verifier independently reconstructs the expected (empty) inventory. A
+// candidate that carries a capture the reconstruction cannot derive must be
+// rejected as an invalid ownership proof.
+
+ZC_TEST("Ownership capture derivation rejects a spurious capture fact") {
+  CapturePipelineFixture fixture("fun entry() -> i32 { let x = 42; return x; }"_zc);
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = fixture.overlay();
+  const auto& inputs = fixture.inputs();
+
+  auto candidateResult = facts::CaptureBuilder::build(inputs.movePaths(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.captures.size() == 0);
+
+  // Fabricate a well-formed capture the reconstruction cannot derive. Donate a
+  // real move-path key from the fixture to keep the fabricated row well-formed.
+  const auto& movePathFunctions = inputs.movePaths().functions();
+  ZC_REQUIRE(movePathFunctions.size() != 0);
+  ZC_REQUIRE(movePathFunctions[0].facts.size() != 0);
+  facts::MovePathKey closure{movePathFunctions[0].facts[0].key.owner,
+                             movePathFunctions[0].facts[0].key.place.clone()};
+  facts::MovePathKey captured{movePathFunctions[0].facts[0].key.owner,
+                              movePathFunctions[0].facts[0].key.place.clone()};
+  const auto construction = MirEventKey{MirLocation{identity::DefId{}, MirPoint::entry()}, 0};
+  candidate.captures.add(facts::CaptureFact{
+      construction, zc::mv(closure), zc::mv(captured),
+      facts::RegionKey::closureValueRegion(construction,
+                                           facts::MovePathKey{movePathFunctions[0].facts[0].key.owner,
+                                                              movePathFunctions[0].facts[0].key.place
+                                                                  .clone()}),
+      facts::RegionKey::staticRegion(identity::DefId{})});
+
+  auto verifiedResult =
+      facts::CaptureVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InvalidOwnershipProof);
+}
+
+// Every ownership candidate carries the semantic-context brand, context
+// fingerprint, module identity, built/overlay revisions, and borrow-evidence
+// revision that bind it to its inputs. Tampering any one lineage field must
+// make the independent verifier reject the candidate with an input revision
+// mismatch, publishing the rejection instead of an ownership output.
+
+ZC_TEST("Ownership capture derivation rejects a foreign semantic context brand") {
+  CapturePipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = fixture.overlay();
+  const auto& inputs = fixture.inputs();
+
+  auto candidateResult = facts::CaptureBuilder::build(inputs.movePaths(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  candidate.semanticContext = identity::SemanticContextBrand{};
+  ZC_REQUIRE(candidate.semanticContext != builtMir.semanticContext());
+
+  auto verifiedResult =
+      facts::CaptureVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
+}
+
+ZC_TEST("Ownership capture derivation rejects a foreign context fingerprint") {
+  CapturePipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = fixture.overlay();
+  const auto& inputs = fixture.inputs();
+
+  auto candidateResult = facts::CaptureBuilder::build(inputs.movePaths(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  candidate.contextFingerprint =
+      identity::ContextFingerprint::fromCanonicalDigest(identity::Sha256Digest{});
+  ZC_REQUIRE(candidate.contextFingerprint.digest() != builtMir.contextFingerprint().digest());
+
+  auto verifiedResult =
+      facts::CaptureVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
+}
+
+ZC_TEST("Ownership capture derivation rejects a foreign module identity") {
+  CapturePipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = fixture.overlay();
+  const auto& inputs = fixture.inputs();
+
+  auto candidateResult = facts::CaptureBuilder::build(inputs.movePaths(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  candidate.module = identity::ModuleId{};
+  ZC_REQUIRE(candidate.module != builtMir.module());
+
+  auto verifiedResult =
+      facts::CaptureVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
+}
+
+ZC_TEST("Ownership capture derivation rejects a foreign built revision") {
+  CapturePipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = fixture.overlay();
+  const auto& inputs = fixture.inputs();
+
+  auto candidateResult = facts::CaptureBuilder::build(inputs.movePaths(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  candidate.builtRevision = mir::MirRevisionId::fromDigest(identity::Sha256Digest{});
+  ZC_REQUIRE(candidate.builtRevision.digest() != builtMir.revision().digest());
+
+  auto verifiedResult =
+      facts::CaptureVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
+}
+
+ZC_TEST("Ownership capture derivation rejects a foreign overlay revision") {
+  CapturePipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = fixture.overlay();
+  const auto& inputs = fixture.inputs();
+
+  auto candidateResult = facts::CaptureBuilder::build(inputs.movePaths(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  candidate.overlayRevision = OwnershipEventOverlayRevision::fromDigest(identity::Sha256Digest{});
+  ZC_REQUIRE(candidate.overlayRevision.digest() != overlay.revision().digest());
+
+  auto verifiedResult =
+      facts::CaptureVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
+}
+
+ZC_TEST("Ownership capture derivation rejects a foreign borrow evidence revision") {
+  CapturePipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  // BorrowEvidenceRevision has no public digest constructor, so a second,
+  // genuinely different compilation donates a foreign-but-valid revision.
+  CapturePipelineFixture foreign("fun other() -> i32 { return 1; }"_zc);
+  ZC_REQUIRE(fixture.builtMir().borrowEvidenceRevision().digest() !=
+             foreign.builtMir().borrowEvidenceRevision().digest());
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = fixture.overlay();
+  const auto& inputs = fixture.inputs();
+
+  auto candidateResult = facts::CaptureBuilder::build(inputs.movePaths(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  candidate.borrowEvidenceRevision = foreign.builtMir().borrowEvidenceRevision();
+  ZC_REQUIRE(candidate.borrowEvidenceRevision.digest() !=
+             builtMir.borrowEvidenceRevision().digest());
+
+  auto verifiedResult =
+      facts::CaptureVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
+}
+
 }  // namespace
-
-// The borrow-source verifier accepts a parameter reborrow because the parameter
-// outlives the function return.
-
-ZC_TEST("Borrow source verifier accepts a parameter reborrow") {
-  BorrowSourcePipelineFixture fixture("fun entry(p: &i32) -> &i32 { return &*p; }"_zc);
-  auto result = facts::BorrowSourceVerifier::verify(
-      fixture.builtMir(), fixture.overlay(), fixture.inputs().movePaths(), fixture.inputs().loans(),
-      fixture.inputs().references());
-  ZC_EXPECT(result.isVerified());
-}
-
-ZC_TEST("Borrow source verifier accepts a mutable parameter reborrow") {
-  BorrowSourcePipelineFixture fixture("fun entry(p: &mut i32) -> &mut i32 { return &mut *p; }"_zc);
-  auto result = facts::BorrowSourceVerifier::verify(
-      fixture.builtMir(), fixture.overlay(), fixture.inputs().movePaths(), fixture.inputs().loans(),
-      fixture.inputs().references());
-  ZC_EXPECT(result.isVerified());
-}
-
-// A returned reference whose origin is a function-local binding cannot escape:
-// the local storage dies before the caller can use it. The borrow-source
-// verifier is wired into the check pipeline, so `checkSources()` itself rejects
-// the module and records a ZOM4061 borrow-does-not-live-long-enough error.
-
-ZC_TEST("Check pipeline rejects a returned local borrow") {
-  BorrowSourceCheckFixture fixture("fun entry() -> &i32 { let value: i32 = 0; return &value; }"_zc);
-  ZC_EXPECT(!fixture.compilerSession().checkSources());
-  ZC_EXPECT(fixture.compilerSession().getDiagnosticEngine().hasErrors());
-}
-
-ZC_TEST("Check pipeline rejects a returned mutable local borrow") {
-  BorrowSourceCheckFixture fixture(
-      "fun entry() -> &mut i32 { mut value: i32 = 0; return &mut value; }"_zc);
-  ZC_EXPECT(!fixture.compilerSession().checkSources());
-  ZC_EXPECT(fixture.compilerSession().getDiagnosticEngine().hasErrors());
-}
-
 }  // namespace zomlang::compiler::ownership

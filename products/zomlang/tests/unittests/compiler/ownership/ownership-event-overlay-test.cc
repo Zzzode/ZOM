@@ -291,6 +291,68 @@ private:
   driver::CompilerSession session;
 };
 
+/// Fixture that runs the session pipeline for a source the borrow checker
+/// rejects at the borrow-source stage (a returned function-local borrow,
+/// ZOM4061). checkSources() fails, so the committed ownership facts are
+/// unavailable; the Built MIR, event overlay, and borrow-evidence repository
+/// staged just before the rejection are exposed for fact reconstruction.
+class RejectedBorrowPipelineFixture final {
+public:
+  explicit RejectedBorrowPipelineFixture(zc::StringPtr sourceText)
+      : session(contextFactory, languageOptions, compilerOptions) {
+    auto registry = targetRegistry();
+    auto input = driver::VerifiedPackageSessionInput::from(
+        compilationRequest(registry), verifiedTargetSelection(registry),
+        verifiedTargetSelection(registry),
+        resolution(session.getPackageResolutionMemoryResource(), sourceText),
+        resolvedSnapshots(sourceText));
+    ZC_REQUIRE(input != zc::none);
+    ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+    driver::core_library_test::installCoreDistribution(session);
+    const auto roots = session.getFinalizedCompilationRoots();
+    ZC_REQUIRE(roots.size() == 1);
+    ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+    ZC_REQUIRE(session.parseSources());
+    ZC_REQUIRE(session.bindSources());
+    ZC_REQUIRE(!session.checkSources());
+    ZC_REQUIRE(session.getDiagnosticEngine().hasErrors());
+    ZC_REQUIRE(session.firstStagedBorrowSourceRejectionForTesting() != zc::none);
+  }
+
+  const mir::VerifiedBuiltMir& builtMir() const {
+    ZC_IF_SOME(staged, session.firstStagedBorrowSourceRejectionForTesting()) {
+      return staged.builtMir;
+    }
+    ZC_UNREACHABLE
+  }
+
+  const VerifiedOwnershipEventOverlay& overlay() const {
+    ZC_IF_SOME(staged, session.firstStagedBorrowSourceRejectionForTesting()) {
+      return staged.eventOverlay;
+    }
+    ZC_UNREACHABLE
+  }
+
+  driver::borrow_evidence::VerifiedBorrowEvidence cloneBorrowEvidence() const {
+    ZC_IF_SOME(staged, session.firstStagedBorrowSourceRejectionForTesting()) {
+      const auto evidence =
+          staged.borrowEvidence.capability().lookup(builtMir().borrowEvidenceLease());
+      ZC_REQUIRE(evidence.isResolved());
+      return evidence.evidence().clone();
+    }
+    ZC_UNREACHABLE
+  }
+
+  driver::CompilerSession& compilerSession() noexcept { return session; }
+  const driver::CompilerSession& compilerSession() const noexcept { return session; }
+
+private:
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  driver::CompilerSession session;
+};
+
 ir::IrOperationResult<OwnershipEventOverlayCandidate> buildOverlay(
     const OwnershipPipelineFixture& fixture) {
   return OwnershipEventOverlayBuilder::build(fixture.overlayInput());
@@ -371,13 +433,131 @@ ir::IrOperationResult<facts::VerifiedOwnershipInputs> verifyOwnershipInputs(
       zc::mv(resourceCandidate).takeVerified(), movePaths.verifiedValue(), builtMir, overlay);
   ZC_REQUIRE(resources.isVerified());
 
+  auto captureCandidate =
+      facts::CaptureBuilder::build(movePaths.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(captureCandidate.isVerified());
+  auto captures = facts::CaptureVerifier::verify(zc::mv(captureCandidate).takeVerified(),
+                                                 movePaths.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(captures.isVerified());
+
+  auto membershipCandidate = facts::RegionMembershipBuilder::build(
+      flow.verifiedValue(), loans.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(membershipCandidate.isVerified());
+  auto memberships = facts::RegionMembershipVerifier::verify(
+      zc::mv(membershipCandidate).takeVerified(), flow.verifiedValue(), loans.verifiedValue(),
+      builtMir, overlay);
+  ZC_REQUIRE(memberships.isVerified());
+
+  auto escapeCandidate = facts::EscapeBuilder::build(
+      flow.verifiedValue(), loans.verifiedValue(), references.verifiedValue(),
+      resources.verifiedValue(), captures.verifiedValue(), memberships.verifiedValue(), builtMir,
+      overlay);
+  ZC_REQUIRE(escapeCandidate.isVerified());
+  auto escapes = facts::EscapeVerifier::verify(
+      zc::mv(escapeCandidate).takeVerified(), flow.verifiedValue(), loans.verifiedValue(),
+      references.verifiedValue(), resources.verifiedValue(), captures.verifiedValue(),
+      memberships.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(escapes.isVerified());
+
+  auto outlivesCandidate =
+      facts::RegionOutlivesBuilder::build(memberships.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(outlivesCandidate.isVerified());
+  auto outlives = facts::RegionOutlivesVerifier::verify(
+      zc::mv(outlivesCandidate).takeVerified(), memberships.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(outlives.isVerified());
+
   auto overlayInput = fixture.overlayInput();
   return facts::OwnershipInputVerifier::verify(
       zc::mv(movePaths).takeVerified(), zc::mv(flow).takeVerified(),
       zc::mv(initialization).takeVerified(), zc::mv(loans).takeVerified(),
       zc::mv(references).takeVerified(), zc::mv(regions).takeVerified(),
-      zc::mv(states).takeVerified(), zc::mv(resources).takeVerified(), builtMir, overlay, lease,
-      capability, overlayInput.body.semanticTypes);
+      zc::mv(states).takeVerified(), zc::mv(resources).takeVerified(),
+      zc::mv(escapes).takeVerified(), zc::mv(captures).takeVerified(),
+      zc::mv(outlives).takeVerified(), builtMir, overlay, lease, capability,
+      overlayInput.body.semanticTypes);
+}
+
+/// Fact families rebuilt from a rejected-borrow fixture's staged Built MIR and
+/// event overlay. The borrow checker rejects the only sources that produce a
+/// function-local loan, so these families cannot be read from committed session
+/// facts and are reconstructed here from the same builders the production
+/// pipeline runs.
+struct RejectedBorrowInventory final {
+  facts::VerifiedMovePaths movePaths;
+  facts::VerifiedFlow flow;
+  facts::VerifiedInitializationFacts initialization;
+  facts::VerifiedLoanFacts loans;
+  facts::VerifiedReferenceDefinitions references;
+  facts::VerifiedReborrowRegions regions;
+  facts::VerifiedReborrowStates states;
+  facts::VerifiedOwnershipResourceFacts resources;
+};
+
+RejectedBorrowInventory buildRejectedBorrowInventory(const RejectedBorrowPipelineFixture& fixture) {
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = fixture.overlay();
+
+  auto movePathCandidate = facts::MovePathBuilder::build(builtMir, overlay);
+  ZC_REQUIRE(movePathCandidate.isVerified());
+  auto movePaths =
+      facts::MovePathVerifier::verify(zc::mv(movePathCandidate).takeVerified(), builtMir, overlay);
+  ZC_REQUIRE(movePaths.isVerified());
+
+  auto flowCandidate = facts::FlowBuilder::build(builtMir, overlay);
+  ZC_REQUIRE(flowCandidate.isVerified());
+  auto flow = facts::FlowVerifier::verify(zc::mv(flowCandidate).takeVerified(), builtMir, overlay);
+  ZC_REQUIRE(flow.isVerified());
+
+  auto initializationCandidate = facts::InitializationBuilder::build(
+      builtMir, overlay, flow.verifiedValue(), movePaths.verifiedValue());
+  ZC_REQUIRE(initializationCandidate.isVerified());
+  auto initialization = facts::InitializationVerifier::verify(
+      zc::mv(initializationCandidate).takeVerified(), builtMir, overlay, flow.verifiedValue(),
+      movePaths.verifiedValue());
+  ZC_REQUIRE(initialization.isVerified());
+
+  auto loanCandidate = facts::LoanBuilder::build(movePaths.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(loanCandidate.isVerified());
+  auto loans = facts::LoanVerifier::verify(zc::mv(loanCandidate).takeVerified(),
+                                           movePaths.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(loans.isVerified());
+
+  auto referenceCandidate = facts::ReferenceDefinitionBuilder::build(
+      movePaths.verifiedValue(), loans.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(referenceCandidate.isVerified());
+  auto references = facts::ReferenceDefinitionVerifier::verify(
+      zc::mv(referenceCandidate).takeVerified(), movePaths.verifiedValue(), loans.verifiedValue(),
+      builtMir, overlay);
+  ZC_REQUIRE(references.isVerified());
+
+  auto regionCandidate = facts::ReborrowRegionBuilder::build(
+      flow.verifiedValue(), loans.verifiedValue(), references.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(regionCandidate.isVerified());
+  auto regions = facts::ReborrowRegionVerifier::verify(
+      zc::mv(regionCandidate).takeVerified(), flow.verifiedValue(), loans.verifiedValue(),
+      references.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(regions.isVerified());
+
+  auto stateCandidate = facts::ReborrowStateBuilder::build(
+      references.verifiedValue(), regions.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(stateCandidate.isVerified());
+  auto states = facts::ReborrowStateVerifier::verify(zc::mv(stateCandidate).takeVerified(),
+                                                     references.verifiedValue(),
+                                                     regions.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(states.isVerified());
+
+  auto resourceCandidate =
+      facts::OwnershipResourceBuilder::build(movePaths.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(resourceCandidate.isVerified());
+  auto resources = facts::OwnershipResourceVerifier::verify(
+      zc::mv(resourceCandidate).takeVerified(), movePaths.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(resources.isVerified());
+
+  return RejectedBorrowInventory{
+      zc::mv(movePaths).takeVerified(),      zc::mv(flow).takeVerified(),
+      zc::mv(initialization).takeVerified(), zc::mv(loans).takeVerified(),
+      zc::mv(references).takeVerified(),     zc::mv(regions).takeVerified(),
+      zc::mv(states).takeVerified(),         zc::mv(resources).takeVerified()};
 }
 
 ZC_TEST("Ownership event overlay builder and verifier accept one scalar initializer module") {
@@ -2634,46 +2814,53 @@ ZC_TEST("Parameter reborrow reference-state verifier rejects tampered point") {
 }
 
 ZC_TEST("Local borrow reference definitions derive a StorageLive origin") {
-  OwnershipPipelineFixture fixture(
+  RejectedBorrowPipelineFixture fixture(
       "fun borrow_local() -> &i32 { let value: i32 = 0; return &value; }"_zc);
-  const auto& session = fixture.compilerSession();
-  const auto& inputs = ownershipInputs(session);
+  const auto inventory = buildRejectedBorrowInventory(fixture);
 
-  ZC_REQUIRE(inputs.references().definitions().size() == 1);
-  const auto& definition = inputs.references().definitions()[0];
+  ZC_REQUIRE(inventory.references.definitions().size() == 1);
+  const auto& definition = inventory.references.definitions()[0];
   ZC_EXPECT(definition.origin.detail.is<facts::LocalReferenceOrigin>());
   ZC_EXPECT(definition.origin.entry.location.point.kind() == MirPointKind::BeforeStatement);
   ZC_EXPECT(definition.origin.entry.operandOrdinal == 0);
 
-  ZC_REQUIRE(inputs.regions().regions().size() == 1);
-  const auto& region = inputs.regions().regions()[0];
+  ZC_REQUIRE(inventory.regions.regions().size() == 1);
+  const auto& region = inventory.regions.regions()[0];
   ZC_EXPECT(region.origin.is<facts::LocalReferenceOrigin>());
   ZC_EXPECT(region.members.size() == 6);
 
-  ZC_REQUIRE(inputs.states().states().size() == 5);
-  for (const auto& state : inputs.states().states()) {
+  ZC_REQUIRE(inventory.states.states().size() == 5);
+  for (const auto& state : inventory.states.states()) {
     ZC_EXPECT(state.origin.is<facts::LocalReferenceOrigin>());
   }
 }
 
 ZC_TEST("Local borrow reference verifier rejects a forged parameter origin") {
-  OwnershipPipelineFixture fixture(
+  RejectedBorrowPipelineFixture fixture(
       "fun borrow_local() -> &i32 { let value: i32 = 0; return &value; }"_zc);
-  const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
-  const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
-  const auto& movePaths = ownershipInputs(session).movePaths();
-  const auto& loans = ownershipInputs(session).loans();
+  const auto& overlay = fixture.overlay();
 
-  auto candidateResult =
-      facts::ReferenceDefinitionBuilder::build(movePaths, loans, builtMir, overlay);
+  auto movePathCandidate = facts::MovePathBuilder::build(builtMir, overlay);
+  ZC_REQUIRE(movePathCandidate.isVerified());
+  auto movePaths =
+      facts::MovePathVerifier::verify(zc::mv(movePathCandidate).takeVerified(), builtMir, overlay);
+  ZC_REQUIRE(movePaths.isVerified());
+  auto loanCandidate = facts::LoanBuilder::build(movePaths.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(loanCandidate.isVerified());
+  auto loans = facts::LoanVerifier::verify(zc::mv(loanCandidate).takeVerified(),
+                                           movePaths.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(loans.isVerified());
+
+  auto candidateResult = facts::ReferenceDefinitionBuilder::build(
+      movePaths.verifiedValue(), loans.verifiedValue(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.definitions.size() == 1);
   candidate.definitions[0].origin.detail = facts::ParameterReferenceOrigin{0};
 
-  auto verifiedResult = facts::ReferenceDefinitionVerifier::verify(zc::mv(candidate), movePaths,
-                                                                   loans, builtMir, overlay);
+  auto verifiedResult = facts::ReferenceDefinitionVerifier::verify(
+      zc::mv(candidate), movePaths.verifiedValue(), loans.verifiedValue(), builtMir, overlay);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -2681,41 +2868,39 @@ ZC_TEST("Local borrow reference verifier rejects a forged parameter origin") {
 }
 
 ZC_TEST("Local borrow loan facts record a shared borrow kind") {
-  OwnershipPipelineFixture fixture(
+  RejectedBorrowPipelineFixture fixture(
       "fun borrow_local() -> &i32 { let value: i32 = 0; return &value; }"_zc);
-  const auto& session = fixture.compilerSession();
-  const auto& inputs = ownershipInputs(session);
+  const auto inventory = buildRejectedBorrowInventory(fixture);
 
-  ZC_REQUIRE(inputs.loans().loans().size() == 1);
-  const auto& loan = inputs.loans().loans()[0];
+  ZC_REQUIRE(inventory.loans.loans().size() == 1);
+  const auto& loan = inventory.loans.loans()[0];
   ZC_EXPECT(loan.kind == mir::MirBorrowKind::Shared);
   ZC_EXPECT(loan.source.place.projections().size() == 0);
   ZC_EXPECT(loan.destination.place.projections().size() == 0);
 }
 
 ZC_TEST("Mutable local borrow reference definitions derive a StorageLive origin") {
-  OwnershipPipelineFixture fixture(
+  RejectedBorrowPipelineFixture fixture(
       "fun borrow_local_mut() -> &mut i32 { mut value: i32 = 0; return &mut value; }"_zc);
-  const auto& session = fixture.compilerSession();
-  const auto& inputs = ownershipInputs(session);
+  const auto inventory = buildRejectedBorrowInventory(fixture);
 
-  ZC_REQUIRE(inputs.loans().loans().size() == 1);
-  const auto& loan = inputs.loans().loans()[0];
+  ZC_REQUIRE(inventory.loans.loans().size() == 1);
+  const auto& loan = inventory.loans.loans()[0];
   ZC_EXPECT(loan.kind == mir::MirBorrowKind::Mutable);
 
-  ZC_REQUIRE(inputs.references().definitions().size() == 1);
-  const auto& definition = inputs.references().definitions()[0];
+  ZC_REQUIRE(inventory.references.definitions().size() == 1);
+  const auto& definition = inventory.references.definitions()[0];
   ZC_EXPECT(definition.origin.detail.is<facts::LocalReferenceOrigin>());
   ZC_EXPECT(definition.origin.entry.location.point.kind() == MirPointKind::BeforeStatement);
   ZC_EXPECT(definition.origin.entry.operandOrdinal == 0);
 
-  ZC_REQUIRE(inputs.regions().regions().size() == 1);
-  const auto& region = inputs.regions().regions()[0];
+  ZC_REQUIRE(inventory.regions.regions().size() == 1);
+  const auto& region = inventory.regions.regions()[0];
   ZC_EXPECT(region.origin.is<facts::LocalReferenceOrigin>());
   ZC_EXPECT(region.members.size() == 6);
 
-  ZC_REQUIRE(inputs.states().states().size() == 5);
-  for (const auto& state : inputs.states().states()) {
+  ZC_REQUIRE(inventory.states.states().size() == 5);
+  for (const auto& state : inventory.states.states()) {
     ZC_EXPECT(state.origin.is<facts::LocalReferenceOrigin>());
   }
 }
@@ -5255,6 +5440,76 @@ void expectOracleMatchesInventory(const OwnershipPipelineFixture& fixture) {
   }
 }
 
+/// Differential oracle check for a source the borrow checker rejects: the
+/// oracle is compared against fact families rebuilt from the staged Built MIR
+/// rather than committed session facts, exercising the identical comparisons as
+/// expectOracleMatchesInventory.
+void expectOracleMatchesRejectedInventory(const RejectedBorrowPipelineFixture& fixture) {
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = fixture.overlay();
+  auto evidence = fixture.cloneBorrowEvidence();
+  const auto inventory = buildRejectedBorrowInventory(fixture);
+  const test_oracle::OwnershipFactsOracle oracle(builtMir, overlay, evidence);
+
+  {
+    auto derived = oracle.movePaths();
+    ZC_REQUIRE(derived != zc::none);
+    ZC_IF_SOME(value, derived) {
+      ZC_EXPECT(test_oracle::matchesMovePaths(value.asPtr(), inventory.movePaths.functions()));
+    }
+  }
+  {
+    auto derived = oracle.flow();
+    ZC_REQUIRE(derived != zc::none);
+    ZC_IF_SOME(value, derived) {
+      ZC_EXPECT(test_oracle::matchesFlow(value.asPtr(), inventory.flow.functions()));
+    }
+  }
+  {
+    auto derived = oracle.initialization();
+    ZC_REQUIRE(derived != zc::none);
+    ZC_IF_SOME(value, derived) {
+      ZC_EXPECT(
+          test_oracle::matchesInitialization(value.asPtr(), inventory.initialization.functions()));
+    }
+  }
+  {
+    auto derived = oracle.loans();
+    ZC_REQUIRE(derived != zc::none);
+    ZC_IF_SOME(value, derived) {
+      ZC_EXPECT(test_oracle::matchesLoans(value.asPtr(), inventory.loans.loans()));
+    }
+  }
+  {
+    auto derived = oracle.references();
+    ZC_REQUIRE(derived != zc::none);
+    ZC_IF_SOME(value, derived) {
+      ZC_EXPECT(test_oracle::matchesReferences(value.asPtr(), inventory.references.definitions()));
+    }
+  }
+  {
+    auto derived = oracle.regions();
+    ZC_REQUIRE(derived != zc::none);
+    ZC_IF_SOME(value, derived) {
+      ZC_EXPECT(test_oracle::matchesRegions(value.asPtr(), inventory.regions.regions()));
+    }
+  }
+  {
+    auto derived = oracle.states();
+    ZC_REQUIRE(derived != zc::none);
+    ZC_IF_SOME(value, derived) {
+      ZC_EXPECT(test_oracle::matchesStates(value.asPtr(), inventory.states.states()));
+    }
+  }
+  {
+    auto derived = oracle.resources();
+    ZC_REQUIRE(derived != zc::none);
+    ZC_IF_SOME(value, derived) {
+      ZC_EXPECT(test_oracle::matchesResources(value.asPtr(), inventory.resources.functions()));
+    }
+  }
+}
+
 ZC_TEST("Differential oracle matches production facts for a scalar parameter return") {
   OwnershipPipelineFixture fixture("fun entry(value: i32) -> i32 { return value; }"_zc);
   expectOracleMatchesInventory(fixture);
@@ -5294,15 +5549,15 @@ ZC_TEST("Differential oracle matches production facts for a parameter reborrow")
 }
 
 ZC_TEST("Differential oracle matches production facts for a local borrow") {
-  OwnershipPipelineFixture fixture(
+  RejectedBorrowPipelineFixture fixture(
       "fun borrow_local() -> &i32 { let value: i32 = 0; return &value; }"_zc);
-  expectOracleMatchesInventory(fixture);
+  expectOracleMatchesRejectedInventory(fixture);
 }
 
 ZC_TEST("Differential oracle matches production facts for a mutable local borrow") {
-  OwnershipPipelineFixture fixture(
+  RejectedBorrowPipelineFixture fixture(
       "fun borrow_local_mut() -> &mut i32 { mut value: i32 = 0; return &mut value; }"_zc);
-  expectOracleMatchesInventory(fixture);
+  expectOracleMatchesRejectedInventory(fixture);
 }
 
 ZC_TEST("Differential oracle matches production facts for a field projection write and read") {

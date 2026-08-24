@@ -18,6 +18,8 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/driver/interface/borrow-evidence.h"
 #include "zomlang/compiler/ir/ir-failure.h"
+#include "zomlang/compiler/mir/built-mir.h"
+#include "zomlang/compiler/ownership/facts/init.h"
 #include "zomlang/compiler/ownership/facts/resources.h"
 #include "zomlang/compiler/ownership/ownership-checked-mir.h"
 #include "zomlang/compiler/ownership/ownership-event-overlay.h"
@@ -68,10 +70,12 @@ struct DropDischargeRecord final {
 /// DropElaboratedMir is the sole committed successor of OwnershipCheckedMir.
 /// The elaborator consumes the checked wrapper, rechecks every revision, lease,
 /// and identity without dereferencing unvalidated handles, validates that every
-/// pending drop obligation has a complete discharge path through the linear
+/// pending drop obligation has a complete discharge path across the admitted
 /// CFG, classifies each discharge kind from the verified linear-consumption
 /// inventory, binds each discharge event to its exact cutpoint, and links the
-/// LinearConsume consumed by every Positive Linear discharge. It either
+/// LinearConsume consumed by every Positive Linear discharge. A linear value
+/// consumed on more than one branch (for example returned on both arms of a
+/// SwitchInt diamond) yields one discharge record per consumption. It either
 /// publishes one wrapper or publishes no value. A rejected operation destroys
 /// its consumed local input and returns no predecessor or partial successor.
 ///
@@ -125,29 +129,48 @@ private:
 /// swapped, or post-teardown lease or capability selects RFC 0010
 /// InputRevisionMismatch before candidate construction.
 ///
-/// For the current linear MIR subset (single block, no branches), the
-/// elaboration then validates that every pending drop obligation in the
-/// verified resource facts has a complete discharge path through the linear
-/// CFG. A resource moved between places legitimately appears in multiple
-/// closed drop plans, one per move site, so a fact may be covered by more
-/// than one plan. The elaborator rejects a missing discharge (a fact with no
-/// plan at all) or a component order violation with IrInvariantRejected at
-/// OwnershipProofValidation.
+/// For the admitted flow subset (a reducible CFG connected by Call, Goto, and
+/// SwitchInt terminators and ending in Return or Unreachable), the elaboration
+/// validates that every pending drop obligation in the verified resource facts
+/// has a complete discharge path across the CFG. A resource moved between
+/// places legitimately appears in multiple closed drop plans, one per move
+/// site, so a fact may be covered by more than one plan. The elaborator rejects
+/// a missing discharge (a fact with no plan at all) or a component order
+/// violation with IrInvariantRejected at OwnershipProofValidation.
 ///
-/// Each discharge is classified from the verified linear-consumption
-/// inventory: a return operand selects ReturnTransfer, a consuming-call
-/// operand selects ConsumingCallTransfer, and an obligation with no terminator
-/// consumption is dropped at the function exit with LogicalDrop. The discharge
-/// event is bound to the exact consumption cutpoint (BeforeTerminator for a
-/// return or call, the return exit for a drop). Every Positive Linear
-/// discharge records the linked LinearConsume; every linear obligation must be
-/// consumed by exactly one emitted discharge, and an unconsumed or
-/// doubly-consumed obligation selects InvalidCleanup.
+/// Each discharge is classified from the verified linear-consumption inventory.
+/// A linear obligation records one consumption per consuming event: a value
+/// returned on both arms of a SwitchInt diamond yields one ReturnTransfer per
+/// return, and a value returned on one arm and consumed by a call on another
+/// yields one ReturnTransfer plus one ConsumingCallTransfer. Every recorded
+/// consumption becomes one discharge, bound to that consumption's exact
+/// cutpoint (BeforeTerminator for a return or call). An obligation with no
+/// terminator consumption, and a purely Logical resource with no linear
+/// obligation, is dropped with LogicalDrop at each normal-return exit block
+/// (MirExitKind::Return) where the subject is initialized in the verified
+/// initialization facts. Every Positive Linear obligation must be consumed by
+/// the emitted cleanup; an unconsumed obligation selects InvalidCleanup. This
+/// pass records the MIR-level discharge inventory only: it emits no destructor
+/// call code, runtime drop-flag, landing pad, or unwind-path cleanup, which are
+/// backend concerns outside the ownership rail.
 class DropElaborator final {
 public:
   ZC_NODISCARD static ir::IrOperationResult<DropElaboratedMir> elaborateDrops(
       OwnershipCheckedMir&& checked,
       const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& repository);
+
+  /// \brief Pure discharge-inventory computation over verified facts and CFG.
+  ///
+  /// Exposed as a test seam so the multi-block cleanup graph can be exercised
+  /// with hand-built MIR without forging a sealed OwnershipCheckedMir. Returns
+  /// none on any missing discharge, component-order violation, unadmitted
+  /// topology, or unconsumed linear obligation. elaborateDrops calls this with
+  /// the checked module's resource facts, Built MIR functions, and
+  /// initialization functions.
+  ZC_NODISCARD static zc::Maybe<zc::Vector<DropDischargeRecord>> computeDischarges(
+      zc::ArrayPtr<const facts::OwnershipResourceFunction> resources,
+      zc::ArrayPtr<const mir::MirFunction> mirFunctions,
+      zc::ArrayPtr<const facts::InitializationFunction> initialization);
 
   /// \brief Rechecks the full ownership-rail lineage without dereferencing
   /// unvalidated handles.

@@ -1711,6 +1711,28 @@ bool sameMirPlace(const mir::MirPlace& left, const mir::MirPlace& right) {
   return true;
 }
 
+/// \brief Reports whether one statement constructs a closure value.
+///
+/// Closure construction is not yet admitted by surface admission, so no MIR
+/// statement can construct a closure today and this reports false for every
+/// statement. This is the single capture-boundary hook shared by the builder
+/// and the verifier: when closures are admitted, the predicate gains the
+/// closure check and both paths start emitting OwnershipEventRole::Capture on
+/// the construction commit event.
+bool isClosureConstruction(const mir::MirStatement& statement) noexcept {
+  switch (statement.kind()) {
+    case mir::MirStatementKind::Assign:
+    case mir::MirStatementKind::StorageLive:
+    case mir::MirStatementKind::StorageDead:
+    case mir::MirStatementKind::BorrowCreation:
+    case mir::MirStatementKind::SetDiscriminant:
+    case mir::MirStatementKind::Deinitialize:
+    case mir::MirStatementKind::UnsafeScopeBoundary:
+      return false;
+  }
+  return false;
+}
+
 /// \brief Returns true when a move assignment reinterprets a value to a different type.
 ///
 /// A type-changing move is the MIR projection of a checked-cast transmute: the
@@ -1854,6 +1876,7 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
             zc::Vector<OwnershipEventRole> commitRoles;
             commitRoles.add(OwnershipEventRole::DestinationWrite);
             if (typeChangingCast) { commitRoles.add(OwnershipEventRole::CastCarrierTransfer); }
+            if (isClosureConstruction(statement)) { commitRoles.add(OwnershipEventRole::Capture); }
             emit(2, OwnershipEventStage::Commit, zc::mv(commitRoles));
             if (typeChangingCast) {
               auto plan = buildCastResourcePlan(function, block, statementOrdinal,
@@ -2170,6 +2193,7 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
             zc::Vector<OwnershipEventRole> commit;
             commit.add(OwnershipEventRole::DestinationWrite);
             if (typeChangingCast) { commit.add(OwnershipEventRole::CastCarrierTransfer); }
+            if (isClosureConstruction(statement)) { commit.add(OwnershipEventRole::Capture); }
             record(2, OwnershipEventStage::Commit, zc::mv(commit));
             if (typeChangingCast) {
               auto plan = buildCastResourcePlan(function, block, statementOrdinal,

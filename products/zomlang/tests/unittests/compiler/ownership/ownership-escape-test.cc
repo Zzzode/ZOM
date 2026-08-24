@@ -63,6 +63,18 @@ ReferenceOrigin makeReferenceOrigin(uint32_t localOrdinal, uint32_t eventOrdinal
                          makeEventKey(activationOrdinal)};
 }
 
+ReferenceOrigin makeStaticReferenceOrigin(uint32_t localOrdinal, uint32_t eventOrdinal = 0,
+                                          uint32_t activationOrdinal = 1) {
+  auto staticRegion = RegionKey::staticRegion(identity::DefId{});
+  return ReferenceOrigin{ReferenceRoot{staticRegion.clone(), makeMovePathKey(localOrdinal),
+                                       makeEventKey(eventOrdinal)},
+                         zc::mv(staticRegion), makeEventKey(activationOrdinal)};
+}
+
+RegionMembership makeMembership(RegionKey region, OwnershipPoint point) {
+  return RegionMembership{zc::mv(region), zc::mv(point)};
+}
+
 // ---------------------------------------------------------------------------
 // BorrowInputKey
 // ---------------------------------------------------------------------------
@@ -295,6 +307,14 @@ ZC_TEST("EscapeKindTest.CloneProducesEqualKind") {
   ZC_EXPECT(original == cloned);
 }
 
+ZC_TEST("EscapeKindTest.CloneProducesEqualClosureCaptureKind") {
+  auto original = EscapeKind::closureCaptureEscape(
+      makeMovePathKey(1), RegionKey::closureValueRegion(makeEventKey(0), makeMovePathKey(1)));
+  auto cloned = original.clone();
+  ZC_EXPECT(original == cloned);
+  ZC_EXPECT(cloned.isClosureCapture());
+}
+
 // ---------------------------------------------------------------------------
 // EscapeOriginRoute
 // ---------------------------------------------------------------------------
@@ -406,6 +426,76 @@ ZC_TEST("EscapeProofTest.TagsAreCanonical") {
   points.add(OwnershipPoint::cfg(MirPoint::entry()));
   ZC_EXPECT(EscapeProof::contained(zc::mv(points)).tag() == 0x04);
   ZC_EXPECT(EscapeProof::addressOnly().tag() == 0x05);
+}
+
+// ---------------------------------------------------------------------------
+// staticEscapeProofAdmissible
+// ---------------------------------------------------------------------------
+
+ZC_TEST("StaticEscapeProofAdmissibleTest.AcceptsStaticOriginsWithMembership") {
+  zc::Vector<EscapeOriginCause> origins;
+  origins.add(EscapeOriginCause{makeStaticReferenceOrigin(1, 0, 1), EscapeOriginRoute::direct()});
+  zc::Vector<RegionMembership> memberships;
+  memberships.add(makeMembership(RegionKey::staticRegion(identity::DefId{}),
+                                 OwnershipPoint::beforeEvent(makeEventKey(0))));
+  ZC_EXPECT(staticEscapeProofAdmissible(origins.asPtr(), memberships.asPtr(), makeEventKey(0)));
+}
+
+ZC_TEST("StaticEscapeProofAdmissibleTest.RejectsEmptyOrigins") {
+  zc::Vector<EscapeOriginCause> origins;
+  zc::Vector<RegionMembership> memberships;
+  memberships.add(makeMembership(RegionKey::staticRegion(identity::DefId{}),
+                                 OwnershipPoint::beforeEvent(makeEventKey(0))));
+  ZC_EXPECT(!staticEscapeProofAdmissible(origins.asPtr(), memberships.asPtr(), makeEventKey(0)));
+}
+
+ZC_TEST("StaticEscapeProofAdmissibleTest.RejectsNonStaticRoot") {
+  zc::Vector<EscapeOriginCause> origins;
+  origins.add(EscapeOriginCause{makeReferenceOrigin(1, 0, 1), EscapeOriginRoute::direct()});
+  zc::Vector<RegionMembership> memberships;
+  memberships.add(makeMembership(makeLoanRegion(), OwnershipPoint::beforeEvent(makeEventKey(0))));
+  ZC_EXPECT(!staticEscapeProofAdmissible(origins.asPtr(), memberships.asPtr(), makeEventKey(0)));
+}
+
+ZC_TEST("StaticEscapeProofAdmissibleTest.RejectsMissingMembership") {
+  zc::Vector<EscapeOriginCause> origins;
+  origins.add(EscapeOriginCause{makeStaticReferenceOrigin(1, 0, 1), EscapeOriginRoute::direct()});
+  zc::Vector<RegionMembership> memberships;
+  ZC_EXPECT(!staticEscapeProofAdmissible(origins.asPtr(), memberships.asPtr(), makeEventKey(0)));
+}
+
+ZC_TEST("StaticEscapeProofAdmissibleTest.RejectsMembershipAtWrongEvent") {
+  zc::Vector<EscapeOriginCause> origins;
+  origins.add(EscapeOriginCause{makeStaticReferenceOrigin(1, 0, 1), EscapeOriginRoute::direct()});
+  zc::Vector<RegionMembership> memberships;
+  memberships.add(makeMembership(RegionKey::staticRegion(identity::DefId{}),
+                                 OwnershipPoint::beforeEvent(makeEventKey(1))));
+  ZC_EXPECT(!staticEscapeProofAdmissible(origins.asPtr(), memberships.asPtr(), makeEventKey(0)));
+}
+
+// ---------------------------------------------------------------------------
+// addressOnlyEscapeProofAdmissible
+// ---------------------------------------------------------------------------
+
+ZC_TEST("AddressOnlyEscapeProofAdmissibleTest.AcceptsEmptyOriginsWithCarriers") {
+  zc::Vector<EscapeOriginCause> origins;
+  zc::Vector<RawProvenanceCarrierKey> carriers;
+  carriers.add(makeCarrierKey(1));
+  ZC_EXPECT(addressOnlyEscapeProofAdmissible(origins.asPtr(), carriers.asPtr()));
+}
+
+ZC_TEST("AddressOnlyEscapeProofAdmissibleTest.RejectsNonEmptyOrigins") {
+  zc::Vector<EscapeOriginCause> origins;
+  origins.add(EscapeOriginCause{makeReferenceOrigin(1, 0, 1), EscapeOriginRoute::direct()});
+  zc::Vector<RawProvenanceCarrierKey> carriers;
+  carriers.add(makeCarrierKey(1));
+  ZC_EXPECT(!addressOnlyEscapeProofAdmissible(origins.asPtr(), carriers.asPtr()));
+}
+
+ZC_TEST("AddressOnlyEscapeProofAdmissibleTest.RejectsEmptyCarriers") {
+  zc::Vector<EscapeOriginCause> origins;
+  zc::Vector<RawProvenanceCarrierKey> carriers;
+  ZC_EXPECT(!addressOnlyEscapeProofAdmissible(origins.asPtr(), carriers.asPtr()));
 }
 
 // ---------------------------------------------------------------------------

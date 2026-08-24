@@ -45,8 +45,14 @@ class ReborrowStateBuilder;
 class ReborrowStateVerifier;
 class ReferenceDefinitionBuilder;
 class ReferenceDefinitionVerifier;
+class RegionMembershipBuilder;
+class RegionMembershipVerifier;
 class EscapeBuilder;
 class EscapeVerifier;
+class CaptureBuilder;
+class CaptureVerifier;
+class RegionOutlivesBuilder;
+class RegionOutlivesVerifier;
 }  // namespace facts
 }  // namespace zomlang::compiler::ownership
 
@@ -616,8 +622,14 @@ private:
   friend class ownership::facts::ReborrowStateVerifier;
   friend class ownership::facts::ReferenceDefinitionBuilder;
   friend class ownership::facts::ReferenceDefinitionVerifier;
+  friend class ownership::facts::RegionMembershipBuilder;
+  friend class ownership::facts::RegionMembershipVerifier;
   friend class ownership::facts::EscapeBuilder;
   friend class ownership::facts::EscapeVerifier;
+  friend class ownership::facts::CaptureBuilder;
+  friend class ownership::facts::CaptureVerifier;
+  friend class ownership::facts::RegionOutlivesBuilder;
+  friend class ownership::facts::RegionOutlivesVerifier;
   friend class ownership::DropElaborator;
   friend class ownership::OwnershipFinalizer;
 };

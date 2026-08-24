@@ -16,9 +16,12 @@
 
 #include "zc/core/memory.h"
 #include "zomlang/compiler/ownership/facts/borrow-source.h"
+#include "zomlang/compiler/ownership/facts/capture.h"
+#include "zomlang/compiler/ownership/facts/escape.h"
 #include "zomlang/compiler/ownership/facts/flow.h"
 #include "zomlang/compiler/ownership/facts/init.h"
 #include "zomlang/compiler/ownership/facts/ownership-facts-revision.h"
+#include "zomlang/compiler/ownership/facts/region-outlives.h"
 #include "zomlang/compiler/ownership/facts/resources.h"
 #include "zomlang/compiler/ownership/facts/states.h"
 
@@ -57,6 +60,9 @@ public:
   ZC_NODISCARD const VerifiedReborrowRegions& regions() const noexcept;
   ZC_NODISCARD const VerifiedReborrowStates& states() const noexcept;
   ZC_NODISCARD const VerifiedOwnershipResourceFacts& resources() const noexcept;
+  ZC_NODISCARD const VerifiedEscapeFacts& escapes() const noexcept;
+  ZC_NODISCARD const VerifiedCaptureFacts& captures() const noexcept;
+  ZC_NODISCARD const VerifiedRegionOutlives& outlives() const noexcept;
 
 private:
   struct Impl;
@@ -75,7 +81,9 @@ public:
       VerifiedInitializationFacts&& initialization, VerifiedLoanFacts&& loans,
       VerifiedReferenceDefinitions&& references, VerifiedReborrowRegions&& regions,
       VerifiedReborrowStates&& states, VerifiedOwnershipResourceFacts&& resources,
-      const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay,
+      VerifiedEscapeFacts&& escapes, VerifiedCaptureFacts&& captures,
+      VerifiedRegionOutlives&& outlives, const mir::VerifiedBuiltMir& builtMir,
+      const VerifiedOwnershipEventOverlay& overlay,
       const driver::borrow_evidence::VerifiedBorrowEvidenceLease& lease,
       const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& capability,
       const type::SemanticTypeStore& semanticTypes);

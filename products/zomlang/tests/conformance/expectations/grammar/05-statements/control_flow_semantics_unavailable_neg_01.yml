@@ -1,5 +1,5 @@
-section: "05-statements conditional syntax"
-covers_rule: "ifStatement"
+section: "05-statements while syntax"
+covers_rule: "whileStatement"
 expected: "ACCEPT"
 notes:
   - "Syntax is valid; diagnostics runner checks the ownership-surface semantic rejection."

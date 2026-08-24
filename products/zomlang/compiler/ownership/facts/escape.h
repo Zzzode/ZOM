@@ -18,10 +18,12 @@
 
 #include "zc/core/common.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/ownership/facts/capture.h"
 #include "zomlang/compiler/ownership/facts/flow.h"
 #include "zomlang/compiler/ownership/facts/points.h"
 #include "zomlang/compiler/ownership/facts/raw-provenance.h"
 #include "zomlang/compiler/ownership/facts/region-key.h"
+#include "zomlang/compiler/ownership/facts/region-membership.h"
 #include "zomlang/compiler/ownership/facts/resources.h"
 #include "zomlang/compiler/ownership/ownership-event-overlay.h"
 
@@ -323,6 +325,29 @@ struct EscapeFact final {
   EscapeProof proof;
 };
 
+/// \brief Validates the Static proof requirements for one escape.
+///
+/// A Static proof requires a non-empty origin sequence, every origin root
+/// region to be Static, and every origin active region to be live at
+/// BeforeEvent(key) in the verified region-membership inventory. The admitted
+/// subset admits no static references, so no produced fact carries a Static
+/// proof; this predicate is the RFC 0013 validation gate for when static
+/// references reach MIR.
+ZC_NODISCARD bool staticEscapeProofAdmissible(zc::ArrayPtr<const EscapeOriginCause> origins,
+                                              zc::ArrayPtr<const RegionMembership> memberships,
+                                              const MirEventKey& key) noexcept;
+
+/// \brief Validates the AddressOnly proof requirements for one escape.
+///
+/// An AddressOnly proof requires an empty origin sequence and a non-empty
+/// raw-carrier sequence: the escaping value is an address carried through raw
+/// provenance rather than a full reference. The admitted subset admits no raw
+/// carriers, so no produced fact carries an AddressOnly proof; this predicate
+/// is the RFC 0013 validation gate for when raw carriers reach MIR.
+ZC_NODISCARD bool addressOnlyEscapeProofAdmissible(
+    zc::ArrayPtr<const EscapeOriginCause> origins,
+    zc::ArrayPtr<const RawProvenanceCarrierKey> rawCarriers) noexcept;
+
 /// \brief Untrusted escape inventory awaiting independent reconstruction.
 class EscapeCandidate final {
 public:
@@ -370,12 +395,19 @@ private:
 };
 
 /// \brief Derives escape facts for the admitted escape-operand subset.
+///
+/// Return escapes derive from verified reference definitions, store escapes
+/// from reference stores in the event overlay (not yet admitted), and
+/// closure-capture escapes from verified capture facts (empty until closures
+/// reach MIR). The proof classifier additionally recognizes Static and
+/// AddressOnly proofs as infrastructure for those admitted subsets.
 class EscapeBuilder final {
 public:
   ZC_NODISCARD static ir::IrOperationResult<EscapeCandidate> build(
       const VerifiedFlow& flow, const VerifiedLoanFacts& loans,
       const VerifiedReferenceDefinitions& references,
-      const VerifiedOwnershipResourceFacts& resources, const mir::VerifiedBuiltMir& builtMir,
+      const VerifiedOwnershipResourceFacts& resources, const VerifiedCaptureFacts& captures,
+      const VerifiedRegionMemberships& memberships, const mir::VerifiedBuiltMir& builtMir,
       const VerifiedOwnershipEventOverlay& overlay);
 };
 
@@ -385,7 +417,8 @@ public:
   ZC_NODISCARD static ir::IrOperationResult<VerifiedEscapeFacts> verify(
       EscapeCandidate&& candidate, const VerifiedFlow& flow, const VerifiedLoanFacts& loans,
       const VerifiedReferenceDefinitions& references,
-      const VerifiedOwnershipResourceFacts& resources, const mir::VerifiedBuiltMir& builtMir,
+      const VerifiedOwnershipResourceFacts& resources, const VerifiedCaptureFacts& captures,
+      const VerifiedRegionMemberships& memberships, const mir::VerifiedBuiltMir& builtMir,
       const VerifiedOwnershipEventOverlay& overlay);
 };
 

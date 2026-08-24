@@ -1,0 +1,1 @@
+fun spin(cond: bool) -> i32 { while (cond) { } return 0; }

@@ -28,14 +28,13 @@ namespace zomlang::compiler::ownership {
 enum class OwnershipSurfaceSyntaxKind : uint8_t {
   Spawn = 0x01,
   Suspend = 0x02,
-  Conditional = 0x03,
-  Match = 0x04,
-  Loop = 0x05,
-  LoopControl = 0x06,
-  Label = 0x07,
-  VoidReturn = 0x08,
-  ExpressionStatement = 0x09,
-  FunctionBody = 0x0a,
+  Match = 0x03,
+  Loop = 0x04,
+  LoopControl = 0x05,
+  Label = 0x06,
+  VoidReturn = 0x07,
+  ExpressionStatement = 0x08,
+  FunctionBody = 0x09,
 };
 
 /// \brief One source-ordered ownership-surface rejection.

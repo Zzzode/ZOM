@@ -28,8 +28,8 @@ namespace identity = zomlang::compiler::identity;
 namespace checker = zomlang::compiler::checker;
 
 identity::SourceSpan testSpan() {
-  auto snapshot = identity::ImmutableSourceSnapshot::from(
-      tests::test_identity_detail::source(), zc::heapArray<uint8_t>(8, uint8_t{0}));
+  auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
+                                                          zc::heapArray<uint8_t>(8, uint8_t{0}));
   ZC_REQUIRE(snapshot != zc::none);
   ZC_IF_SOME(value, snapshot) {
     auto span = value.span(1, 7);
@@ -46,9 +46,7 @@ mir::MirBlockId blockId(uint32_t ordinal) {
 
 mir::MirTerminator returnTerminator() { return mir::MirTerminator::returnVoid(testSpan()); }
 
-mir::MirTerminator unreachableTerminator() {
-  return mir::MirTerminator::unreachable(testSpan());
-}
+mir::MirTerminator unreachableTerminator() { return mir::MirTerminator::unreachable(testSpan()); }
 
 mir::MirTerminator gotoTerminator(mir::MirBlockId target) {
   return mir::MirTerminator::gotoTarget(target, testSpan());
@@ -144,7 +142,7 @@ ZC_TEST("Flow subset admits an acyclic SwitchInt diamond with a join") {
 }
 
 // ---------------------------------------------------------------------------
-// Rejected: empty or cyclic topology
+// Rejected: empty topology
 // ---------------------------------------------------------------------------
 
 ZC_TEST("Flow subset rejects a function with no blocks") {
@@ -153,27 +151,36 @@ ZC_TEST("Flow subset rejects a function with no blocks") {
   ZC_EXPECT(!isAdmittedFlowSubset(function));
 }
 
-ZC_TEST("Flow subset rejects a self-loop Goto") {
+// ---------------------------------------------------------------------------
+// Admitted: reducible loops
+// ---------------------------------------------------------------------------
+
+ZC_TEST("Flow subset admits a self-loop Goto") {
+  // A node always dominates itself, so a self-loop is a reducible back edge.
   zc::Vector<mir::MirBasicBlock> blocks;
   blocks.add(makeBlock(blockId(1), gotoTerminator(blockId(1))));
   auto function = makeFunction(zc::mv(blocks));
-  ZC_EXPECT(!isAdmittedFlowSubset(function));
+  ZC_EXPECT(isAdmittedFlowSubset(function));
 }
 
-ZC_TEST("Flow subset rejects a two-block Goto loop") {
+ZC_TEST("Flow subset admits a two-block Goto loop") {
+  // bb0 dominates bb1, so the retreating edge bb1 -> bb0 is a reducible back
+  // edge and the loop is admitted.
   zc::Vector<mir::MirBasicBlock> blocks;
   blocks.add(makeBlock(blockId(1), gotoTerminator(blockId(2))));
   blocks.add(makeBlock(blockId(2), gotoTerminator(blockId(1))));
   auto function = makeFunction(zc::mv(blocks));
-  ZC_EXPECT(!isAdmittedFlowSubset(function));
+  ZC_EXPECT(isAdmittedFlowSubset(function));
 }
 
-ZC_TEST("Flow subset rejects a Call loop back to the entry block") {
+ZC_TEST("Flow subset admits a Call loop back to the entry block") {
+  // The mutable-receiver activation shape with a loop: bb0 calls to bb1, bb1
+  // calls back to bb0. bb0 dominates bb1, so the back edge is reducible.
   zc::Vector<mir::MirBasicBlock> blocks;
   blocks.add(makeBlock(blockId(1), callTerminator(blockId(2), zc::none)));
   blocks.add(makeBlock(blockId(2), callTerminator(blockId(1), zc::none)));
   auto function = makeFunction(zc::mv(blocks));
-  ZC_EXPECT(!isAdmittedFlowSubset(function));
+  ZC_EXPECT(isAdmittedFlowSubset(function));
 }
 
 // ---------------------------------------------------------------------------
@@ -223,8 +230,7 @@ ZC_TEST("Flow subset rejects a Call to a nonexistent normal target") {
 
 ZC_TEST("Flow subset rejects a SwitchInt arm targeting a nonexistent block") {
   zc::Vector<mir::MirSwitchIntArm> arms;
-  arms.add(mir::MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true),
-                                blockId(99)});
+  arms.add(mir::MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), blockId(99)});
   zc::Vector<mir::MirBasicBlock> blocks;
   blocks.add(makeBlock(blockId(1), switchIntTerminator(zc::mv(arms), blockId(2))));
   blocks.add(makeBlock(blockId(2), returnTerminator()));

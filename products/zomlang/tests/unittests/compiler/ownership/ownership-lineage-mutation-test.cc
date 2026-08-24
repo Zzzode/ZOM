@@ -265,6 +265,56 @@ private:
   driver::CompilerSession session;
 };
 
+/// Fixture for sources the borrow-source verifier rejects (for example a
+/// returned function-local borrow). checkSources() fails, so the Built MIR and
+/// event overlay are read from the staged rejection view instead of the
+/// published ownership-checked modules. This lets fact-derivation tests
+/// reconstruct inventories for the only source shape that produces a local
+/// loan.
+class RejectedBorrowPipelineFixture final {
+public:
+  explicit RejectedBorrowPipelineFixture(zc::StringPtr sourceText)
+      : session(contextFactory, languageOptions, compilerOptions) {
+    auto registry = targetRegistry();
+    auto input = driver::VerifiedPackageSessionInput::from(
+        compilationRequest(registry), verifiedTargetSelection(registry),
+        verifiedTargetSelection(registry),
+        resolution(session.getPackageResolutionMemoryResource(), sourceText),
+        resolvedSnapshots(sourceText));
+    ZC_REQUIRE(input != zc::none);
+    ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+    driver::core_library_test::installCoreDistribution(session);
+    const auto roots = session.getFinalizedCompilationRoots();
+    ZC_REQUIRE(roots.size() == 1);
+    ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+    ZC_REQUIRE(session.parseSources());
+    ZC_REQUIRE(session.bindSources());
+    ZC_REQUIRE(!session.checkSources());
+    ZC_REQUIRE(session.getDiagnosticEngine().hasErrors());
+    ZC_REQUIRE(session.firstStagedBorrowSourceRejectionForTesting() != zc::none);
+  }
+
+  const mir::VerifiedBuiltMir& builtMir() const {
+    ZC_IF_SOME(staged, session.firstStagedBorrowSourceRejectionForTesting()) {
+      return staged.builtMir;
+    }
+    ZC_UNREACHABLE
+  }
+
+  const VerifiedOwnershipEventOverlay& overlay() const {
+    ZC_IF_SOME(staged, session.firstStagedBorrowSourceRejectionForTesting()) {
+      return staged.eventOverlay;
+    }
+    ZC_UNREACHABLE
+  }
+
+private:
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  driver::CompilerSession session;
+};
+
 ir::IrOperationResult<OwnershipEventOverlayCandidate> buildOverlay(
     const OwnershipPipelineFixture& fixture) {
   return OwnershipEventOverlayBuilder::build(fixture.overlayInput());
@@ -285,6 +335,23 @@ const VerifiedOwnershipEventOverlay& sessionOverlay(const driver::CompilerSessio
   const auto checkedMir = session.getOwnershipCheckedMirModules();
   ZC_REQUIRE(checkedMir.size() == 1);
   return checkedMir[0].eventOverlay();
+}
+
+/// Builds and independently verifies the region-membership inventory for one
+/// fixture. The escape builder and verifier consume memberships to validate
+/// Static proof containment, so every escape call site reconstructs them from
+/// the same verified flow and loan inputs.
+ir::IrOperationResult<facts::VerifiedRegionMemberships> buildVerifiedMemberships(
+    const OwnershipPipelineFixture& fixture) {
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = sessionOverlay(session);
+  const auto& inputs = ownershipInputs(session);
+  auto candidate =
+      facts::RegionMembershipBuilder::build(inputs.flow(), inputs.loans(), builtMir, overlay);
+  ZC_REQUIRE(candidate.isVerified());
+  return facts::RegionMembershipVerifier::verify(zc::mv(candidate).takeVerified(), inputs.flow(),
+                                                 inputs.loans(), builtMir, overlay);
 }
 
 /// Asserts that a rejected ownership operation published exactly one invariant
@@ -502,26 +569,29 @@ void expectOwnershipResourceLineageRejection(const OwnershipPipelineFixture& fix
 /// and requires the independent verifier to reject it with an input revision
 /// mismatch.
 ///
-/// The current straight-line MIR subset admits no escape operands, so the
-/// builder emits an empty inventory; the verifier checks all six lineage
-/// fields before the emptiness check, so every lineage tamper still rejects
-/// with an input revision mismatch.
+/// The reborrow fixture returns one reference, so the builder emits one
+/// escape fact; the verifier checks all six lineage fields before
+/// reconstructing the expected inventory, so every lineage tamper still
+/// rejects with an input revision mismatch.
 template <typename Tamper>
 void expectEscapeLineageRejection(const OwnershipPipelineFixture& fixture, Tamper&& tamper) {
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = sessionOverlay(session);
   const auto& inputs = ownershipInputs(session);
+  auto memberships = buildVerifiedMemberships(fixture);
+  ZC_REQUIRE(memberships.isVerified());
 
   auto candidateResult = facts::EscapeBuilder::build(
-      inputs.flow(), inputs.loans(), inputs.references(), inputs.resources(), builtMir, overlay);
+      inputs.flow(), inputs.loans(), inputs.references(), inputs.resources(), inputs.captures(),
+      memberships.verifiedValue(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   tamper(candidate, builtMir, overlay);
 
-  auto verifiedResult =
-      facts::EscapeVerifier::verify(zc::mv(candidate), inputs.flow(), inputs.loans(),
-                                    inputs.references(), inputs.resources(), builtMir, overlay);
+  auto verifiedResult = facts::EscapeVerifier::verify(
+      zc::mv(candidate), inputs.flow(), inputs.loans(), inputs.references(), inputs.resources(),
+      inputs.captures(), memberships.verifiedValue(), builtMir, overlay);
   expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
 }
 
@@ -1054,16 +1124,20 @@ ZC_TEST("Ownership lineage mutation rejects a spurious escape fact") {
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = sessionOverlay(session);
   const auto& inputs = ownershipInputs(session);
+  auto memberships = buildVerifiedMemberships(fixture);
+  ZC_REQUIRE(memberships.isVerified());
 
   auto candidateResult = facts::EscapeBuilder::build(
-      inputs.flow(), inputs.loans(), inputs.references(), inputs.resources(), builtMir, overlay);
+      inputs.flow(), inputs.loans(), inputs.references(), inputs.resources(), inputs.captures(),
+      memberships.verifiedValue(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
-  ZC_REQUIRE(candidate.escapes.empty());
+  ZC_REQUIRE(candidate.escapes.size() == 1);
 
-  // The verifier rejects any non-empty inventory without inspecting row
-  // content, so a synthetic-but-well-formed row suffices. Donate a real
-  // move-path key from the fixture to keep the fabricated row well-formed.
+  // The verifier independently reconstructs the one-row inventory, so adding
+  // a second synthetic-but-well-formed row makes the ordinals diverge and
+  // rejects the candidate. Donate a real move-path key from the fixture to
+  // keep the fabricated row well-formed.
   const auto& movePathFunctions = inputs.movePaths().functions();
   ZC_REQUIRE(movePathFunctions.size() != 0);
   ZC_REQUIRE(movePathFunctions[0].facts.size() != 0);
@@ -1076,10 +1150,237 @@ ZC_TEST("Ownership lineage mutation rejects a spurious escape fact") {
                         zc::mv(source), facts::EscapeKind::returnEscape(), zc::mv(origins),
                         zc::mv(rawCarriers), facts::EscapeProof::owned()});
 
-  auto verifiedResult =
-      facts::EscapeVerifier::verify(zc::mv(candidate), inputs.flow(), inputs.loans(),
-                                    inputs.references(), inputs.resources(), builtMir, overlay);
+  auto verifiedResult = facts::EscapeVerifier::verify(
+      zc::mv(candidate), inputs.flow(), inputs.loans(), inputs.references(), inputs.resources(),
+      inputs.captures(), memberships.verifiedValue(), builtMir, overlay);
   expectPublishedRejection(verifiedResult, ir::IrFailureKind::InvalidOwnershipProof);
+}
+
+// --- Escape derivation tests ---
+
+ZC_TEST("Ownership escape derivation produces one return escape for a parameter reborrow") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& inputs = ownershipInputs(session);
+
+  const auto escapes = inputs.escapes().escapes();
+  ZC_REQUIRE(escapes.size() == 1);
+  const auto& fact = escapes[0];
+  ZC_EXPECT(fact.kind.isReturn());
+  ZC_EXPECT(fact.rawCarriers.size() == 0);
+  ZC_REQUIRE(fact.proof.isDirectInput());
+  ZC_EXPECT(fact.proof.directInputValue().input.isParameter());
+  ZC_EXPECT(fact.proof.directInputValue().input.parameterValue().index == 0);
+  ZC_REQUIRE(fact.origins.size() == 1);
+  ZC_EXPECT(fact.origins[0].route.isDirect());
+  ZC_EXPECT(fact.origins[0].origin.root.region.isInput());
+  ZC_EXPECT(fact.origins[0].origin.root.region.inputValue().input.isParameter());
+  ZC_EXPECT(fact.origins[0].origin.root.region.inputValue().input.parameterValue().index == 0);
+  ZC_EXPECT(fact.origins[0].origin.active.isInput());
+}
+
+ZC_TEST("Ownership escape derivation produces no escapes for a scalar function") {
+  OwnershipPipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& inputs = ownershipInputs(session);
+
+  ZC_EXPECT(inputs.escapes().escapes().size() == 0);
+}
+
+ZC_TEST("Ownership escape derivation rejects a tampered escape kind") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = sessionOverlay(session);
+  const auto& inputs = ownershipInputs(session);
+  auto memberships = buildVerifiedMemberships(fixture);
+  ZC_REQUIRE(memberships.isVerified());
+
+  auto candidateResult = facts::EscapeBuilder::build(
+      inputs.flow(), inputs.loans(), inputs.references(), inputs.resources(), inputs.captures(),
+      memberships.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.escapes.size() == 1);
+  // Tamper the kind from Return to Store; the verifier independently
+  // reconstructs Return and rejects the wrong-kind row.
+  candidate.escapes[0].kind = facts::EscapeKind::storeEscape(
+      facts::MovePathKey{candidate.escapes[0].source.owner,
+                         candidate.escapes[0].source.place.clone()},
+      facts::RegionKey::staticRegion(candidate.escapes[0].source.owner));
+
+  auto verifiedResult = facts::EscapeVerifier::verify(
+      zc::mv(candidate), inputs.flow(), inputs.loans(), inputs.references(), inputs.resources(),
+      inputs.captures(), memberships.verifiedValue(), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InvalidOwnershipProof);
+}
+
+ZC_TEST("Ownership escape derivation rejects a missing escape row") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = sessionOverlay(session);
+  const auto& inputs = ownershipInputs(session);
+  auto memberships = buildVerifiedMemberships(fixture);
+  ZC_REQUIRE(memberships.isVerified());
+
+  auto candidateResult = facts::EscapeBuilder::build(
+      inputs.flow(), inputs.loans(), inputs.references(), inputs.resources(), inputs.captures(),
+      memberships.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.escapes.size() == 1);
+  // Drop the only row; the verifier reconstructs one and rejects the missing row.
+  candidate.escapes.clear();
+
+  auto verifiedResult = facts::EscapeVerifier::verify(
+      zc::mv(candidate), inputs.flow(), inputs.loans(), inputs.references(), inputs.resources(),
+      inputs.captures(), memberships.verifiedValue(), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InvalidOwnershipProof);
+}
+
+// A returned local borrow roots at the loan region, not at an input region. The
+// escape proof names the reference's complete live point set so the loan region
+// can be checked for containment at every required point. The borrow-source
+// rejection makes the pipeline reject the module, so the escape inventory is
+// reconstructed from the staged Built MIR rather than the published facts.
+
+ZC_TEST("Ownership escape derivation produces a contained return escape for a local borrow") {
+  RejectedBorrowPipelineFixture fixture(
+      "fun entry() -> &i32 { let value: i32 = 0; return &value; }"_zc);
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = fixture.overlay();
+
+  auto movePathCandidate = facts::MovePathBuilder::build(builtMir, overlay);
+  ZC_REQUIRE(movePathCandidate.isVerified());
+  auto movePaths =
+      facts::MovePathVerifier::verify(zc::mv(movePathCandidate).takeVerified(), builtMir, overlay);
+  ZC_REQUIRE(movePaths.isVerified());
+
+  auto flowCandidate = facts::FlowBuilder::build(builtMir, overlay);
+  ZC_REQUIRE(flowCandidate.isVerified());
+  auto flow = facts::FlowVerifier::verify(zc::mv(flowCandidate).takeVerified(), builtMir, overlay);
+  ZC_REQUIRE(flow.isVerified());
+
+  auto loanCandidate = facts::LoanBuilder::build(movePaths.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(loanCandidate.isVerified());
+  auto loans = facts::LoanVerifier::verify(zc::mv(loanCandidate).takeVerified(),
+                                           movePaths.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(loans.isVerified());
+
+  auto referenceCandidate = facts::ReferenceDefinitionBuilder::build(
+      movePaths.verifiedValue(), loans.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(referenceCandidate.isVerified());
+  auto references = facts::ReferenceDefinitionVerifier::verify(
+      zc::mv(referenceCandidate).takeVerified(), movePaths.verifiedValue(), loans.verifiedValue(),
+      builtMir, overlay);
+  ZC_REQUIRE(references.isVerified());
+
+  auto resourceCandidate =
+      facts::OwnershipResourceBuilder::build(movePaths.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(resourceCandidate.isVerified());
+  auto resources = facts::OwnershipResourceVerifier::verify(
+      zc::mv(resourceCandidate).takeVerified(), movePaths.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(resources.isVerified());
+
+  auto captureCandidate =
+      facts::CaptureBuilder::build(movePaths.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(captureCandidate.isVerified());
+  auto captures = facts::CaptureVerifier::verify(zc::mv(captureCandidate).takeVerified(),
+                                                 movePaths.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(captures.isVerified());
+
+  auto membershipCandidate = facts::RegionMembershipBuilder::build(
+      flow.verifiedValue(), loans.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(membershipCandidate.isVerified());
+  auto memberships = facts::RegionMembershipVerifier::verify(
+      zc::mv(membershipCandidate).takeVerified(), flow.verifiedValue(), loans.verifiedValue(),
+      builtMir, overlay);
+  ZC_REQUIRE(memberships.isVerified());
+
+  auto escapeCandidate = facts::EscapeBuilder::build(
+      flow.verifiedValue(), loans.verifiedValue(), references.verifiedValue(),
+      resources.verifiedValue(), captures.verifiedValue(), memberships.verifiedValue(), builtMir,
+      overlay);
+  ZC_REQUIRE(escapeCandidate.isVerified());
+  auto escapesResult = facts::EscapeVerifier::verify(
+      zc::mv(escapeCandidate).takeVerified(), flow.verifiedValue(), loans.verifiedValue(),
+      references.verifiedValue(), resources.verifiedValue(), captures.verifiedValue(),
+      memberships.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(escapesResult.isVerified());
+
+  const auto escapes = escapesResult.verifiedValue().escapes();
+  ZC_REQUIRE(escapes.size() == 1);
+  const auto& fact = escapes[0];
+  ZC_EXPECT(fact.kind.isReturn());
+  ZC_EXPECT(fact.rawCarriers.size() == 0);
+  ZC_REQUIRE(fact.proof.isContained());
+  ZC_EXPECT(fact.proof.containedValue().requiredPoints.size() == 5);
+  ZC_REQUIRE(fact.origins.size() == 1);
+  ZC_EXPECT(fact.origins[0].route.isDirect());
+  ZC_EXPECT(fact.origins[0].origin.root.region.isLoan());
+  ZC_EXPECT(fact.origins[0].origin.active.isLoan());
+}
+
+// The verifier independently reconstructs the expected escape inventory. A
+// candidate that carries an escape the reconstruction does not derive (a
+// spurious row on an otherwise empty scalar function) must be rejected.
+
+ZC_TEST("Ownership escape derivation rejects a spurious escape on a scalar function") {
+  OwnershipPipelineFixture fixture("fun entry() -> i32 { let x = 42; return x; }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = sessionOverlay(session);
+  const auto& inputs = ownershipInputs(session);
+  auto memberships = buildVerifiedMemberships(fixture);
+  ZC_REQUIRE(memberships.isVerified());
+
+  // A scalar function produces no reference definitions and therefore no
+  // escape facts, even though it carries move-path facts for its local.
+  ZC_REQUIRE(inputs.references().definitions().size() == 0);
+  auto candidateResult = facts::EscapeBuilder::build(
+      inputs.flow(), inputs.loans(), inputs.references(), inputs.resources(), inputs.captures(),
+      memberships.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.escapes.size() == 0);
+
+  // Fabricate a well-formed escape the reconstruction cannot derive. Donate a
+  // real move-path key from the fixture to keep the fabricated row well-formed.
+  const auto& movePathFunctions = inputs.movePaths().functions();
+  ZC_REQUIRE(movePathFunctions.size() != 0);
+  ZC_REQUIRE(movePathFunctions[0].facts.size() != 0);
+  facts::MovePathKey source{movePathFunctions[0].facts[0].key.owner,
+                            movePathFunctions[0].facts[0].key.place.clone()};
+  zc::Vector<facts::EscapeOriginCause> origins;
+  zc::Vector<facts::RawProvenanceCarrierKey> rawCarriers;
+  candidate.escapes.add(
+      facts::EscapeFact{MirEventKey{MirLocation{identity::DefId{}, MirPoint::entry()}, 0},
+                        zc::mv(source), facts::EscapeKind::returnEscape(), zc::mv(origins),
+                        zc::mv(rawCarriers), facts::EscapeProof::owned()});
+
+  auto verifiedResult = facts::EscapeVerifier::verify(
+      zc::mv(candidate), inputs.flow(), inputs.loans(), inputs.references(), inputs.resources(),
+      inputs.captures(), memberships.verifiedValue(), builtMir, overlay);
+  expectPublishedRejection(verifiedResult, ir::IrFailureKind::InvalidOwnershipProof);
+}
+
+// The admitted subset produces only Return escapes: the capture inventory is
+// empty (closures are not admitted) and the overlay carries no Escape-role
+// slot off the return path (reference stores are not admitted), so the
+// extended Store and ClosureCapture derivations emit no rows.
+
+ZC_TEST("Ownership escape derivation emits only return escapes for the admitted subset") {
+  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& inputs = ownershipInputs(session);
+
+  ZC_REQUIRE(inputs.captures().captures().size() == 0);
+  const auto escapes = inputs.escapes().escapes();
+  ZC_REQUIRE(escapes.size() == 1);
+  ZC_EXPECT(escapes[0].kind.isReturn());
+  ZC_EXPECT(!escapes[0].kind.isStore());
+  ZC_EXPECT(!escapes[0].kind.isClosureCapture());
 }
 
 }  // namespace zomlang::compiler::ownership

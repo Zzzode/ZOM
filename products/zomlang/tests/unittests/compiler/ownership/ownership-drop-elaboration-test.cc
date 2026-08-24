@@ -16,13 +16,18 @@
 #include "zomlang/compiler/driver/interface/borrow-evidence.h"
 #include "zomlang/compiler/driver/package/source-record.h"
 #include "zomlang/compiler/driver/session/compiler-session.h"
+#include "zomlang/compiler/identity/source-snapshot.h"
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/compiler/mir/built-mir.h"
 #include "zomlang/compiler/ownership/drop-elaborated-mir.h"
+#include "zomlang/compiler/ownership/facts/init.h"
 #include "zomlang/compiler/ownership/facts/inputs.h"
+#include "zomlang/compiler/ownership/facts/resources.h"
 #include "zomlang/compiler/ownership/ownership-checked-mir.h"
 #include "zomlang/compiler/ownership/ownership-event-overlay.h"
 #include "zomlang/tests/unittests/compiler/driver/core/core-library-test-fixture.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-type-context.h"
 
 namespace zomlang::compiler::ownership {
 namespace {
@@ -315,13 +320,48 @@ ir::IrOperationResult<facts::VerifiedOwnershipInputs> verifyOwnershipInputs(
       zc::mv(resourceCandidate).takeVerified(), movePaths.verifiedValue(), builtMir, overlay);
   ZC_REQUIRE(resources.isVerified());
 
+  auto captureCandidate =
+      facts::CaptureBuilder::build(movePaths.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(captureCandidate.isVerified());
+  auto captures = facts::CaptureVerifier::verify(zc::mv(captureCandidate).takeVerified(),
+                                                 movePaths.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(captures.isVerified());
+
+  auto membershipCandidate = facts::RegionMembershipBuilder::build(
+      flow.verifiedValue(), loans.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(membershipCandidate.isVerified());
+  auto memberships = facts::RegionMembershipVerifier::verify(
+      zc::mv(membershipCandidate).takeVerified(), flow.verifiedValue(), loans.verifiedValue(),
+      builtMir, overlay);
+  ZC_REQUIRE(memberships.isVerified());
+
+  auto escapeCandidate = facts::EscapeBuilder::build(
+      flow.verifiedValue(), loans.verifiedValue(), references.verifiedValue(),
+      resources.verifiedValue(), captures.verifiedValue(), memberships.verifiedValue(), builtMir,
+      overlay);
+  ZC_REQUIRE(escapeCandidate.isVerified());
+  auto escapes = facts::EscapeVerifier::verify(
+      zc::mv(escapeCandidate).takeVerified(), flow.verifiedValue(), loans.verifiedValue(),
+      references.verifiedValue(), resources.verifiedValue(), captures.verifiedValue(),
+      memberships.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(escapes.isVerified());
+
+  auto outlivesCandidate =
+      facts::RegionOutlivesBuilder::build(memberships.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(outlivesCandidate.isVerified());
+  auto outlives = facts::RegionOutlivesVerifier::verify(
+      zc::mv(outlivesCandidate).takeVerified(), memberships.verifiedValue(), builtMir, overlay);
+  ZC_REQUIRE(outlives.isVerified());
+
   auto overlayInput = fixture.overlayInput();
   return facts::OwnershipInputVerifier::verify(
       zc::mv(movePaths).takeVerified(), zc::mv(flow).takeVerified(),
       zc::mv(initialization).takeVerified(), zc::mv(loans).takeVerified(),
       zc::mv(references).takeVerified(), zc::mv(regions).takeVerified(),
-      zc::mv(states).takeVerified(), zc::mv(resources).takeVerified(), builtMir, overlay, lease,
-      capability, overlayInput.body.semanticTypes);
+      zc::mv(states).takeVerified(), zc::mv(resources).takeVerified(),
+      zc::mv(escapes).takeVerified(), zc::mv(captures).takeVerified(),
+      zc::mv(outlives).takeVerified(), builtMir, overlay, lease, capability,
+      overlayInput.body.semanticTypes);
 }
 
 ir::IrOperationResult<OwnershipCheckedMir> buildCheckedMir(
@@ -570,6 +610,361 @@ ZC_TEST("Session publishes verified executable mir modules after checkSources") 
     ZC_EXPECT(executables[0].discharges()[0].kind == DropDischargeKind::ReturnTransfer);
     ZC_EXPECT(executables[0].module() == fixture.builtMir().module());
   }
+}
+
+// ---------------------------------------------------------------------------
+// Multi-block cleanup graph (hand-built MIR + facts, no session)
+// ---------------------------------------------------------------------------
+//
+// These cases drive the pure DropElaborator::computeDischarges seam directly.
+// A sealed OwnershipCheckedMir cannot be hand-forged (it needs the full
+// verified lease/evidence lineage), so the discharge algorithm is exercised on
+// hand-built resource facts, MIR functions, and initialization functions. The
+// scope is the MIR-level DropDischargeRecord inventory only.
+
+namespace {
+
+identity::SourceSpan handSpan() {
+  auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
+                                                          zc::heapArray<uint8_t>(8, uint8_t{0}));
+  ZC_REQUIRE(snapshot != zc::none);
+  ZC_IF_SOME(value, snapshot) {
+    auto span = value.span(1, 7);
+    ZC_IF_SOME(admitted, span) { return zc::mv(admitted); }
+  }
+  ZC_FAIL_REQUIRE("invalid drop-elaboration hand-built source span");
+}
+
+mir::MirBlockId handBlockId(uint32_t ordinal) {
+  return ZC_REQUIRE_NONNULL(mir::MirBlockId::fromOrdinal(ordinal));
+}
+
+mir::MirBasicBlock handBlock(mir::MirBlockId id, mir::MirTerminator&& terminator) {
+  return mir::MirBasicBlock{id, mir::MirSourceScopeId{}, zc::Vector<mir::MirStatement>{},
+                            zc::mv(terminator)};
+}
+
+mir::MirTerminator handReturn() { return mir::MirTerminator::returnVoid(handSpan()); }
+
+mir::MirTerminator handGoto(mir::MirBlockId target) {
+  return mir::MirTerminator::gotoTarget(target, handSpan());
+}
+
+mir::MirTerminator handSwitchInt(mir::MirBlockId trueTarget, mir::MirBlockId defaultTarget) {
+  const auto type = tests::testSemanticType();
+  auto discriminant =
+      mir::MirOperand::constant(type, checker::checked::CanonicalConstValue::boolean(true));
+  zc::Vector<mir::MirSwitchIntArm> arms;
+  arms.add(mir::MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), trueTarget});
+  return mir::MirTerminator::switchInt(zc::mv(discriminant), zc::mv(arms), defaultTarget,
+                                       handSpan());
+}
+
+mir::MirFunction handFunction(identity::DefId owner, zc::Vector<mir::MirBasicBlock>&& blocks) {
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          tests::testSemanticType(),
+                          handSpan(),
+                          zc::Vector<mir::MirSourceScope>{},
+                          zc::Vector<mir::MirLocalDeclaration>{},
+                          zc::mv(blocks)};
+}
+
+// Builds the SwitchInt diamond A1 emits: bb1 switches to bb2/bb3, both Goto
+// bb4, bb4 returns. Both bb2 and bb3 are also acceptable as direct-return arms
+// (used for the returned-on-both-arms case) via the returnBranches flag.
+mir::MirFunction handDiamond(identity::DefId owner, bool returnBranches) {
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(handBlock(handBlockId(1), handSwitchInt(handBlockId(2), handBlockId(3))));
+  if (returnBranches) {
+    blocks.add(handBlock(handBlockId(2), handReturn()));
+    blocks.add(handBlock(handBlockId(3), handReturn()));
+  } else {
+    blocks.add(handBlock(handBlockId(2), handGoto(handBlockId(4))));
+    blocks.add(handBlock(handBlockId(3), handGoto(handBlockId(4))));
+    blocks.add(handBlock(handBlockId(4), handReturn()));
+  }
+  return handFunction(owner, zc::mv(blocks));
+}
+
+mir::MirPlace handPlace(uint32_t local) {
+  zc::Vector<mir::MirProjection> projections;
+  return mir::MirPlace(ZC_REQUIRE_NONNULL(mir::MirLocalId::fromOrdinal(local)),
+                       identity::SemanticTypeId(), zc::mv(projections), identity::SemanticTypeId());
+}
+
+facts::MovePathKey handMovePath(identity::DefId owner, uint32_t local) {
+  return facts::MovePathKey{owner, handPlace(local)};
+}
+
+MirEventKey handEvent(identity::DefId owner, MirPoint&& point) {
+  return MirEventKey{MirLocation{owner, zc::mv(point)}, 0};
+}
+
+facts::DropResourceSubject handSubject(identity::DefId owner, uint32_t local, MirEventKey intro) {
+  return facts::DropResourceSubject{intro, handMovePath(owner, local), identity::SemanticTypeId()};
+}
+
+}  // namespace
+
+// A linear resource created in the entry block and returned on both arms of a
+// SwitchInt diamond yields one ReturnTransfer discharge per return, each bound
+// to its own block's before-terminator cutpoint.
+ZC_TEST("Drop elaborator fans one ReturnTransfer per branch return") {
+  const auto owner = tests::testDefinition(0);
+  auto function = handDiamond(owner, /*returnBranches=*/true);
+
+  const auto intro = handEvent(owner, MirPoint::beforeStatement(handBlockId(1), 0));
+  const auto returnB2 = handEvent(owner, MirPoint::beforeTerminator(handBlockId(2)));
+  const auto returnB3 = handEvent(owner, MirPoint::beforeTerminator(handBlockId(3)));
+
+  facts::OwnershipResourceFunction resourceFunction;
+  resourceFunction.owner = owner;
+  resourceFunction.facts.add(facts::OwnershipResourceFact{
+      handSubject(owner, 1, intro), facts::DropRequirement::Linear, zc::none, 0});
+  zc::Vector<facts::DropPlanComponent> components;
+  components.add(facts::DropPlanComponent{0, zc::none});
+  resourceFunction.dropPlans.add(facts::DropPlan{handSubject(owner, 1, intro),
+                                                 facts::DropPlanMode::Closed, zc::mv(components)});
+  zc::Vector<facts::LinearConsumption> consumptions;
+  consumptions.add(facts::LinearConsumption{handMovePath(owner, 1), returnB2,
+                                            facts::LinearConsumptionKind::Return});
+  consumptions.add(facts::LinearConsumption{handMovePath(owner, 1), returnB3,
+                                            facts::LinearConsumptionKind::Return});
+  resourceFunction.linearObligations.add(facts::LinearObligationFact{
+      facts::LinearObligationKey{intro, handMovePath(owner, 1)}, identity::SemanticTypeId(),
+      zc::Vector<facts::LinearTransfer>{}, zc::mv(consumptions)});
+
+  zc::Vector<facts::OwnershipResourceFunction> resources;
+  resources.add(zc::mv(resourceFunction));
+  zc::Vector<mir::MirFunction> functions;
+  functions.add(zc::mv(function));
+  zc::Vector<facts::InitializationFunction> initialization;
+
+  auto discharges = DropElaborator::computeDischarges(resources.asPtr(), functions.asPtr(),
+                                                      initialization.asPtr());
+  ZC_REQUIRE(discharges != zc::none);
+  ZC_IF_SOME(records, discharges) {
+    ZC_REQUIRE(records.size() == 2);
+    ZC_EXPECT(records[0].kind == DropDischargeKind::ReturnTransfer);
+    ZC_EXPECT(records[1].kind == DropDischargeKind::ReturnTransfer);
+    ZC_EXPECT(records[0].event == returnB2);
+    ZC_EXPECT(records[1].event == returnB3);
+    ZC_EXPECT(records[0].event != records[1].event);
+    ZC_REQUIRE(records[0].linearConsume != zc::none);
+    ZC_REQUIRE(records[1].linearConsume != zc::none);
+  }
+}
+
+// A linear resource returned on one arm and consumed by a call on the other
+// yields one ReturnTransfer and one ConsumingCallTransfer with distinct events.
+ZC_TEST("Drop elaborator fans a mixed return and consuming-call cleanup") {
+  const auto owner = tests::testDefinition(0);
+  auto function = handDiamond(owner, /*returnBranches=*/true);
+
+  const auto intro = handEvent(owner, MirPoint::beforeStatement(handBlockId(1), 0));
+  const auto returnB2 = handEvent(owner, MirPoint::beforeTerminator(handBlockId(2)));
+  const auto callB3 = handEvent(owner, MirPoint::beforeTerminator(handBlockId(3)));
+
+  facts::OwnershipResourceFunction resourceFunction;
+  resourceFunction.owner = owner;
+  resourceFunction.facts.add(facts::OwnershipResourceFact{
+      handSubject(owner, 1, intro), facts::DropRequirement::Linear, zc::none, 0});
+  zc::Vector<facts::DropPlanComponent> components;
+  components.add(facts::DropPlanComponent{0, zc::none});
+  resourceFunction.dropPlans.add(facts::DropPlan{handSubject(owner, 1, intro),
+                                                 facts::DropPlanMode::Closed, zc::mv(components)});
+  zc::Vector<facts::LinearConsumption> consumptions;
+  consumptions.add(facts::LinearConsumption{handMovePath(owner, 1), returnB2,
+                                            facts::LinearConsumptionKind::Return});
+  consumptions.add(facts::LinearConsumption{handMovePath(owner, 1), callB3,
+                                            facts::LinearConsumptionKind::ConsumingCall});
+  resourceFunction.linearObligations.add(facts::LinearObligationFact{
+      facts::LinearObligationKey{intro, handMovePath(owner, 1)}, identity::SemanticTypeId(),
+      zc::Vector<facts::LinearTransfer>{}, zc::mv(consumptions)});
+
+  zc::Vector<facts::OwnershipResourceFunction> resources;
+  resources.add(zc::mv(resourceFunction));
+  zc::Vector<mir::MirFunction> functions;
+  functions.add(zc::mv(function));
+  zc::Vector<facts::InitializationFunction> initialization;
+
+  auto discharges = DropElaborator::computeDischarges(resources.asPtr(), functions.asPtr(),
+                                                      initialization.asPtr());
+  ZC_REQUIRE(discharges != zc::none);
+  ZC_IF_SOME(records, discharges) {
+    ZC_REQUIRE(records.size() == 2);
+    ZC_EXPECT(records[0].kind == DropDischargeKind::ReturnTransfer);
+    ZC_EXPECT(records[1].kind == DropDischargeKind::ConsumingCallTransfer);
+    ZC_EXPECT(records[0].event != records[1].event);
+  }
+}
+
+// A single-block linear return still yields exactly one ReturnTransfer through
+// the pure seam: the multi-block generalization preserves the linear case.
+ZC_TEST("Drop elaborator computeDischarges yields one record for a single-block return") {
+  const auto owner = tests::testDefinition(0);
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(handBlock(handBlockId(1), handReturn()));
+  auto function = handFunction(owner, zc::mv(blocks));
+
+  const auto intro = handEvent(owner, MirPoint::beforeStatement(handBlockId(1), 0));
+  const auto ret = handEvent(owner, MirPoint::beforeTerminator(handBlockId(1)));
+
+  facts::OwnershipResourceFunction resourceFunction;
+  resourceFunction.owner = owner;
+  resourceFunction.facts.add(facts::OwnershipResourceFact{
+      handSubject(owner, 1, intro), facts::DropRequirement::Linear, zc::none, 0});
+  zc::Vector<facts::DropPlanComponent> components;
+  components.add(facts::DropPlanComponent{0, zc::none});
+  resourceFunction.dropPlans.add(facts::DropPlan{handSubject(owner, 1, intro),
+                                                 facts::DropPlanMode::Closed, zc::mv(components)});
+  zc::Vector<facts::LinearConsumption> consumptions;
+  consumptions.add(
+      facts::LinearConsumption{handMovePath(owner, 1), ret, facts::LinearConsumptionKind::Return});
+  resourceFunction.linearObligations.add(facts::LinearObligationFact{
+      facts::LinearObligationKey{intro, handMovePath(owner, 1)}, identity::SemanticTypeId(),
+      zc::Vector<facts::LinearTransfer>{}, zc::mv(consumptions)});
+
+  zc::Vector<facts::OwnershipResourceFunction> resources;
+  resources.add(zc::mv(resourceFunction));
+  zc::Vector<mir::MirFunction> functions;
+  functions.add(zc::mv(function));
+  zc::Vector<facts::InitializationFunction> initialization;
+
+  auto discharges = DropElaborator::computeDischarges(resources.asPtr(), functions.asPtr(),
+                                                      initialization.asPtr());
+  ZC_REQUIRE(discharges != zc::none);
+  ZC_IF_SOME(records, discharges) {
+    ZC_REQUIRE(records.size() == 1);
+    ZC_EXPECT(records[0].kind == DropDischargeKind::ReturnTransfer);
+  }
+}
+
+// A purely logical resource (no linear obligation) initialized at both return
+// exits of a diamond yields one LogicalDrop discharge per normal-return exit.
+ZC_TEST("Drop elaborator emits a logical drop at each initialized return exit") {
+  const auto owner = tests::testDefinition(0);
+  auto function = handDiamond(owner, /*returnBranches=*/true);
+
+  const auto intro = handEvent(owner, MirPoint::beforeStatement(handBlockId(1), 0));
+
+  facts::OwnershipResourceFunction resourceFunction;
+  resourceFunction.owner = owner;
+  resourceFunction.facts.add(facts::OwnershipResourceFact{
+      handSubject(owner, 1, intro), facts::DropRequirement::Logical, zc::none, 0});
+  zc::Vector<facts::DropPlanComponent> components;
+  components.add(facts::DropPlanComponent{0, zc::none});
+  resourceFunction.dropPlans.add(facts::DropPlan{handSubject(owner, 1, intro),
+                                                 facts::DropPlanMode::Closed, zc::mv(components)});
+
+  // Initialization facts mark the subject initialized at both return exits.
+  facts::InitializationFunction initFunction;
+  initFunction.owner = owner;
+  initFunction.facts.add(facts::InitializationFact{
+      MirPoint::exit(handBlockId(2), MirExitKind::Return), handMovePath(owner, 1),
+      facts::InitializationState::initialized(), zc::Vector<facts::InitializationLossCause>{}});
+  initFunction.facts.add(facts::InitializationFact{
+      MirPoint::exit(handBlockId(3), MirExitKind::Return), handMovePath(owner, 1),
+      facts::InitializationState::initialized(), zc::Vector<facts::InitializationLossCause>{}});
+
+  zc::Vector<facts::OwnershipResourceFunction> resources;
+  resources.add(zc::mv(resourceFunction));
+  zc::Vector<mir::MirFunction> functions;
+  functions.add(zc::mv(function));
+  zc::Vector<facts::InitializationFunction> initialization;
+  initialization.add(zc::mv(initFunction));
+
+  auto discharges = DropElaborator::computeDischarges(resources.asPtr(), functions.asPtr(),
+                                                      initialization.asPtr());
+  ZC_REQUIRE(discharges != zc::none);
+  ZC_IF_SOME(records, discharges) {
+    ZC_REQUIRE(records.size() == 2);
+    ZC_EXPECT(records[0].kind == DropDischargeKind::LogicalDrop);
+    ZC_EXPECT(records[1].kind == DropDischargeKind::LogicalDrop);
+    ZC_EXPECT(records[0].linearConsume == zc::none);
+    ZC_EXPECT(records[1].linearConsume == zc::none);
+  }
+}
+
+// A purely logical resource moved out before every normal-return exit (its
+// ownership transferred into the return value) is initialized at no exit, so it
+// correctly discharges to zero LogicalDrop records. The plan is still complete:
+// the drop obligation left with the move. This must not be rejected as a
+// missing discharge. Regression for the elaborateLinear moved-out logical case.
+ZC_TEST("Drop elaborator emits no logical drop when the subject is moved out at every return") {
+  const auto owner = tests::testDefinition(0);
+  auto function = handDiamond(owner, /*returnBranches=*/true);
+
+  const auto intro = handEvent(owner, MirPoint::beforeStatement(handBlockId(1), 0));
+
+  facts::OwnershipResourceFunction resourceFunction;
+  resourceFunction.owner = owner;
+  resourceFunction.facts.add(facts::OwnershipResourceFact{
+      handSubject(owner, 1, intro), facts::DropRequirement::Logical, zc::none, 0});
+  zc::Vector<facts::DropPlanComponent> components;
+  components.add(facts::DropPlanComponent{0, zc::none});
+  resourceFunction.dropPlans.add(facts::DropPlan{handSubject(owner, 1, intro),
+                                                 facts::DropPlanMode::Closed, zc::mv(components)});
+
+  // Initialization facts mark the subject NOT initialized at either return exit:
+  // it was moved out into the return value before the exits.
+  facts::InitializationFunction initFunction;
+  initFunction.owner = owner;
+  initFunction.facts.add(facts::InitializationFact{
+      MirPoint::exit(handBlockId(2), MirExitKind::Return), handMovePath(owner, 1),
+      facts::InitializationState::dead(), zc::Vector<facts::InitializationLossCause>{}});
+  initFunction.facts.add(facts::InitializationFact{
+      MirPoint::exit(handBlockId(3), MirExitKind::Return), handMovePath(owner, 1),
+      facts::InitializationState::dead(), zc::Vector<facts::InitializationLossCause>{}});
+
+  zc::Vector<facts::OwnershipResourceFunction> resources;
+  resources.add(zc::mv(resourceFunction));
+  zc::Vector<mir::MirFunction> functions;
+  functions.add(zc::mv(function));
+  zc::Vector<facts::InitializationFunction> initialization;
+  initialization.add(zc::mv(initFunction));
+
+  auto discharges = DropElaborator::computeDischarges(resources.asPtr(), functions.asPtr(),
+                                                      initialization.asPtr());
+  ZC_REQUIRE(discharges != zc::none);
+  ZC_IF_SOME(records, discharges) { ZC_EXPECT(records.size() == 0); }
+}
+
+// A Positive Linear obligation left with no consumption on any path has no
+// return/call discharge; with no normal-return exit reachable it fails closed.
+ZC_TEST("Drop elaborator rejects an unconsumed linear obligation with no exit") {
+  const auto owner = tests::testDefinition(0);
+  // A single Unreachable block: divergent exit, no normal return.
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(handBlock(handBlockId(1), mir::MirTerminator::unreachable(handSpan())));
+  auto function = handFunction(owner, zc::mv(blocks));
+
+  const auto intro = handEvent(owner, MirPoint::beforeStatement(handBlockId(1), 0));
+
+  facts::OwnershipResourceFunction resourceFunction;
+  resourceFunction.owner = owner;
+  resourceFunction.facts.add(facts::OwnershipResourceFact{
+      handSubject(owner, 1, intro), facts::DropRequirement::Linear, zc::none, 0});
+  zc::Vector<facts::DropPlanComponent> components;
+  components.add(facts::DropPlanComponent{0, zc::none});
+  resourceFunction.dropPlans.add(facts::DropPlan{handSubject(owner, 1, intro),
+                                                 facts::DropPlanMode::Closed, zc::mv(components)});
+  // Obligation with an empty consumptions sequence and no normal-return exit.
+  resourceFunction.linearObligations.add(facts::LinearObligationFact{
+      facts::LinearObligationKey{intro, handMovePath(owner, 1)}, identity::SemanticTypeId(),
+      zc::Vector<facts::LinearTransfer>{}, zc::Vector<facts::LinearConsumption>{}});
+
+  zc::Vector<facts::OwnershipResourceFunction> resources;
+  resources.add(zc::mv(resourceFunction));
+  zc::Vector<mir::MirFunction> functions;
+  functions.add(zc::mv(function));
+  zc::Vector<facts::InitializationFunction> initialization;
+
+  auto discharges = DropElaborator::computeDischarges(resources.asPtr(), functions.asPtr(),
+                                                      initialization.asPtr());
+  ZC_EXPECT(discharges == zc::none);
 }
 
 }  // namespace zomlang::compiler::ownership
