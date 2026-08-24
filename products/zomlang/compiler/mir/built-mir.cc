@@ -3313,10 +3313,13 @@ bool validLocalCallReturnFunction(
   for (size_t index = 0; index < call.arguments.size(); ++index) {
     const auto& actual = terminator.arguments[index];
     const auto& expected = call.arguments[index];
-    if (actual.kind() != MirOperandKind::Constant || actual.constantValue().type != expected.type ||
-        !sameConstant(actual.constantValue().value, expected.value, module, identities,
-                      semanticTypes)) {
-      return false;
+    if (expected.value == zc::none) return false;
+    ZC_IF_SOME(value, expected.value) {
+      if (actual.kind() != MirOperandKind::Constant ||
+          actual.constantValue().type != expected.type ||
+          !sameConstant(actual.constantValue().value, value, module, identities, semanticTypes)) {
+        return false;
+      }
     }
   }
   ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
@@ -3451,10 +3454,13 @@ bool validReceiverCallReturnFunction(
   for (size_t index = 0; index < call.arguments.size(); ++index) {
     const auto& actual = terminator.arguments[index + 1];
     const auto& expected = call.arguments[index];
-    if (actual.kind() != MirOperandKind::Constant || actual.constantValue().type != expected.type ||
-        !sameConstant(actual.constantValue().value, expected.value, module, identities,
-                      semanticTypes)) {
-      return false;
+    if (expected.value == zc::none) return false;
+    ZC_IF_SOME(value, expected.value) {
+      if (actual.kind() != MirOperandKind::Constant ||
+          actual.constantValue().type != expected.type ||
+          !sameConstant(actual.constantValue().value, value, module, identities, semanticTypes)) {
+        return false;
+      }
     }
   }
   ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
@@ -3478,38 +3484,61 @@ bool validDirectCallReturnFunction(const MirFunction& function,
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
       function.resultType != declaration.resultType ||
       !sameSpan(function.sourceSpan, declaration.sourceSpan) || function.sourceScopes.size() != 1 ||
-      function.locals.size() != 2 || function.blocks.size() != 2 ||
+      function.locals.size() != declaration.parameters.size() + 2 || function.blocks.size() != 2 ||
       declaration.body != sourceBlock.node || sourceBlock.statements.size() != 1 ||
       sourceBlock.statements[0] != sourceReturn.node || sourceReturn.value != call.node ||
       sourceReturn.resultType != declaration.resultType ||
       call.resultType != declaration.resultType) {
     return false;
   }
+  const uint32_t parameterCount = static_cast<uint32_t>(declaration.parameters.size());
   const auto& scope = function.sourceScopes[0];
-  const auto& temporary = function.locals[0];
-  const auto& result = function.locals[1];
+  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+    const auto& parameterLocal = function.locals[i];
+    if (parameterLocal.id != localId(static_cast<uint32_t>(i + 1)) ||
+        parameterLocal.kind != MirLocalKind::Parameter ||
+        parameterLocal.type != declaration.parameters[i].type ||
+        parameterLocal.sourceScope != scopeId(1) ||
+        !sameSpan(parameterLocal.sourceSpan, declaration.parameters[i].sourceSpan)) {
+      return false;
+    }
+  }
+  auto parameterLocalIndex = [&](const identity::CallableParameterKey& key,
+                                 size_t& outIndex) -> bool {
+    for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+      if (declaration.parameters[i].key == key) {
+        outIndex = i;
+        return true;
+      }
+    }
+    return false;
+  };
+  const auto temporaryLocalId = localId(parameterCount + 1);
+  const auto resultLocalId = localId(parameterCount + 2);
+  const auto& temporary = function.locals[parameterCount];
+  const auto& result = function.locals[parameterCount + 1];
   const auto& entry = function.blocks[0];
   const auto& continuation = function.blocks[1];
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
-      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || temporary.id != localId(1) ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || temporary.id != temporaryLocalId ||
       temporary.kind != MirLocalKind::Temporary || temporary.type != declaration.resultType ||
       temporary.sourceScope != scope.id || !sameSpan(temporary.sourceSpan, call.sourceSpan) ||
-      result.id != localId(2) || result.kind != MirLocalKind::FunctionResult ||
+      result.id != resultLocalId || result.kind != MirLocalKind::FunctionResult ||
       result.type != declaration.resultType || result.sourceScope != scope.id ||
       !sameSpan(result.sourceSpan, sourceReturn.sourceSpan) || entry.id != blockId(1) ||
       entry.sourceScope != scope.id || entry.statements.size() != 1 ||
       entry.statements[0].kind() != MirStatementKind::StorageLive ||
-      entry.statements[0].storageLocal() != temporary.id ||
+      entry.statements[0].storageLocal() != temporaryLocalId ||
       !sameSpan(entry.statements[0].sourceSpan(), call.sourceSpan) ||
       entry.terminator.kind() != MirTerminatorKind::Call || continuation.id != blockId(2) ||
       continuation.sourceScope != scope.id || continuation.statements.size() != 3 ||
       continuation.statements[0].kind() != MirStatementKind::StorageLive ||
-      continuation.statements[0].storageLocal() != result.id ||
+      continuation.statements[0].storageLocal() != resultLocalId ||
       !sameSpan(continuation.statements[0].sourceSpan(), sourceReturn.sourceSpan) ||
       continuation.statements[1].kind() != MirStatementKind::Assign ||
       continuation.statements[1].assignmentValue().initialization !=
           MirInitializationKind::Initialize ||
-      continuation.statements[1].assignmentValue().destination.local() != result.id ||
+      continuation.statements[1].assignmentValue().destination.local() != resultLocalId ||
       continuation.statements[1].assignmentValue().destination.rootType() != result.type ||
       continuation.statements[1].assignmentValue().destination.resultType() != result.type ||
       continuation.statements[1].assignmentValue().destination.projections().size() != 0 ||
@@ -3517,7 +3546,7 @@ bool validDirectCallReturnFunction(const MirFunction& function,
       continuation.statements[1].assignmentValue().value.useValue().operand.kind() !=
           MirOperandKind::Move ||
       continuation.statements[1].assignmentValue().value.useValue().operand.place().local() !=
-          temporary.id ||
+          temporaryLocalId ||
       continuation.statements[1].assignmentValue().value.useValue().operand.place().rootType() !=
           temporary.type ||
       continuation.statements[1].assignmentValue().value.useValue().operand.place().resultType() !=
@@ -3530,7 +3559,7 @@ bool validDirectCallReturnFunction(const MirFunction& function,
               .size() != 0 ||
       !sameSpan(continuation.statements[1].sourceSpan(), sourceReturn.sourceSpan) ||
       continuation.statements[2].kind() != MirStatementKind::StorageDead ||
-      continuation.statements[2].storageLocal() != temporary.id ||
+      continuation.statements[2].storageLocal() != temporaryLocalId ||
       !sameSpan(continuation.statements[2].sourceSpan(), sourceReturn.sourceSpan) ||
       continuation.terminator.kind() != MirTerminatorKind::Return ||
       continuation.terminator.returnValue().value == zc::none ||
@@ -3540,7 +3569,7 @@ bool validDirectCallReturnFunction(const MirFunction& function,
   }
   const auto& terminator = entry.terminator.callValue();
   if (terminator.callee != call.callee || terminator.arguments.size() != call.arguments.size() ||
-      terminator.destination.local() != temporary.id ||
+      terminator.destination.local() != temporaryLocalId ||
       terminator.destination.rootType() != temporary.type ||
       terminator.destination.resultType() != temporary.type ||
       terminator.destination.projections().size() != 0 ||
@@ -3551,15 +3580,31 @@ bool validDirectCallReturnFunction(const MirFunction& function,
   for (size_t index = 0; index < call.arguments.size(); ++index) {
     const auto& actual = terminator.arguments[index];
     const auto& expected = call.arguments[index];
-    if (actual.kind() != MirOperandKind::Constant || actual.constantValue().type != expected.type ||
-        !sameConstant(actual.constantValue().value, expected.value, module, identities,
-                      semanticTypes)) {
-      return false;
+    ZC_IF_SOME(value, expected.value) {
+      if (actual.kind() != MirOperandKind::Constant ||
+          actual.constantValue().type != expected.type ||
+          !sameConstant(actual.constantValue().value, value, module, identities, semanticTypes)) {
+        return false;
+      }
+      continue;
     }
+    ZC_IF_SOME(parameter, expected.parameter) {
+      size_t parameterIndex = 0;
+      if (!parameterLocalIndex(parameter, parameterIndex) ||
+          !matchesPlaceUse(actual, proofs, copy, expected.type) ||
+          actual.place().local() != localId(static_cast<uint32_t>(parameterIndex + 1)) ||
+          actual.place().rootType() != expected.type ||
+          actual.place().resultType() != expected.type ||
+          actual.place().projections().size() != 0) {
+        return false;
+      }
+      continue;
+    }
+    return false;
   }
   ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, result.type) &&
-           value.place().local() == result.id && value.place().rootType() == result.type &&
+           value.place().local() == resultLocalId && value.place().rootType() == result.type &&
            value.place().resultType() == result.type && value.place().projections().size() == 0;
   }
   return false;
@@ -4157,8 +4202,19 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                   }
                   zc::Vector<MirOperand> arguments;
                   arguments.add(zc::mv(ZC_ASSERT_NONNULL(receiverArgument)));
+                  bool constantArguments = true;
                   for (const auto& argument : call.arguments) {
-                    arguments.add(MirOperand::constant(argument.type, argument.value.clone()));
+                    ZC_IF_SOME(value, argument.value) {
+                      arguments.add(MirOperand::constant(argument.type, value.clone()));
+                    } else {
+                      constantArguments = false;
+                    }
+                  }
+                  if (!constantArguments) {
+                    return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
+                                                        ir::IrFailureKind::InvalidFact, module,
+                                                        declaration.definition, identities,
+                                                        static_cast<uint32_t>(pending.size() + 1));
                   }
                   zc::Vector<MirProjection> resultProjections;
                   zc::Maybe<MirBlockId> noUnwind;
@@ -6327,8 +6383,19 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                     MirStatement::storageLive(localId(1), local.sourceSpan.clone()));
                 zc::Vector<MirProjection> destinationProjections;
                 zc::Vector<MirOperand> arguments;
+                bool constantArguments = true;
                 for (const auto& argument : directCall.arguments) {
-                  arguments.add(MirOperand::constant(argument.type, argument.value.clone()));
+                  ZC_IF_SOME(value, argument.value) {
+                    arguments.add(MirOperand::constant(argument.type, value.clone()));
+                  } else {
+                    constantArguments = false;
+                  }
+                }
+                if (!constantArguments) {
+                  return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
+                                                      ir::IrFailureKind::InvalidFact, module,
+                                                      declaration.definition, identities,
+                                                      static_cast<uint32_t>(pending.size() + 1));
                 }
                 zc::Maybe<MirBlockId> noUnwind;
                 auto callTerminator = MirTerminator::call(
@@ -6436,42 +6503,90 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       continue;
     }
     ZC_IF_SOME(directCall, call) {
+      // A direct-call return lowers the caller's parameters to leading parameter
+      // locals so a parameter-reference argument can be copied/moved as a place
+      // operand. The call-result temporary and the function-result local follow
+      // the parameters.
+      const uint32_t parameterCount = static_cast<uint32_t>(declaration.parameters.size());
+      const auto temporaryLocal = localId(parameterCount + 1);
+      const auto resultLocalId = localId(parameterCount + 2);
+      auto parameterLocalIndex = [&](const identity::CallableParameterKey& key,
+                                     size_t& outIndex) -> bool {
+        for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+          if (declaration.parameters[i].key == key) {
+            outIndex = i;
+            return true;
+          }
+        }
+        return false;
+      };
       zc::Vector<MirSourceScope> scopes;
       zc::Maybe<MirSourceScopeId> noParent;
       scopes.add(MirSourceScope{scopeId(1), zc::mv(noParent), declaration.sourceSpan.clone()});
       zc::Vector<MirLocalDeclaration> locals;
-      locals.add(MirLocalDeclaration{localId(1), MirLocalKind::Temporary, declaration.resultType,
-                                     scopeId(1), directCall.sourceSpan.clone()});
-      locals.add(MirLocalDeclaration{localId(2), MirLocalKind::FunctionResult,
+      for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+        locals.add(MirLocalDeclaration{localId(static_cast<uint32_t>(i + 1)),
+                                       MirLocalKind::Parameter, declaration.parameters[i].type,
+                                       scopeId(1), declaration.parameters[i].sourceSpan.clone()});
+      }
+      locals.add(MirLocalDeclaration{temporaryLocal, MirLocalKind::Temporary,
+                                     declaration.resultType, scopeId(1),
+                                     directCall.sourceSpan.clone()});
+      locals.add(MirLocalDeclaration{resultLocalId, MirLocalKind::FunctionResult,
                                      declaration.resultType, scopeId(1), returnSpan.clone()});
       zc::Vector<MirStatement> entryStatements;
-      entryStatements.add(MirStatement::storageLive(localId(1), directCall.sourceSpan.clone()));
+      entryStatements.add(MirStatement::storageLive(temporaryLocal, directCall.sourceSpan.clone()));
       zc::Vector<MirProjection> destinationProjections;
       zc::Vector<MirOperand> arguments;
+      bool argumentsResolved = true;
       for (const auto& argument : directCall.arguments) {
-        arguments.add(MirOperand::constant(argument.type, argument.value.clone()));
+        ZC_IF_SOME(value, argument.value) {
+          arguments.add(MirOperand::constant(argument.type, value.clone()));
+        }
+        ZC_IF_SOME(parameter, argument.parameter) {
+          size_t parameterIndex = 0;
+          if (!parameterLocalIndex(parameter, parameterIndex)) {
+            argumentsResolved = false;
+            break;
+          }
+          zc::Vector<MirProjection> argumentProjections;
+          auto operand =
+              placeUse(proofs, copy,
+                       MirPlace(localId(static_cast<uint32_t>(parameterIndex + 1)), argument.type,
+                                zc::mv(argumentProjections), argument.type));
+          if (operand == zc::none) {
+            argumentsResolved = false;
+            break;
+          }
+          arguments.add(zc::mv(ZC_ASSERT_NONNULL(operand)));
+        }
+      }
+      if (!argumentsResolved) {
+        return rejectMir<BuiltMirCandidate>(
+            ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact, module,
+            declaration.definition, identities, static_cast<uint32_t>(pending.size() + 1));
       }
       zc::Maybe<MirBlockId> noUnwind;
       auto callTerminator =
           MirTerminator::call(directCall.callee, zc::mv(arguments), MirCallEffect::noActivation(),
-                              MirPlace(localId(1), declaration.resultType,
+                              MirPlace(temporaryLocal, declaration.resultType,
                                        zc::mv(destinationProjections), declaration.resultType),
                               blockId(2), zc::mv(noUnwind), directCall.sourceSpan.clone());
       zc::Vector<MirStatement> continuationStatements;
-      continuationStatements.add(MirStatement::storageLive(localId(2), returnSpan.clone()));
+      continuationStatements.add(MirStatement::storageLive(resultLocalId, returnSpan.clone()));
       zc::Vector<MirProjection> resultProjections;
       zc::Vector<MirProjection> temporaryProjections;
       continuationStatements.add(MirStatement::assign(
-          MirPlace(localId(2), declaration.resultType, zc::mv(resultProjections),
+          MirPlace(resultLocalId, declaration.resultType, zc::mv(resultProjections),
                    declaration.resultType),
           MirRvalue::use(
-              MirOperand::move(MirPlace(localId(1), declaration.resultType,
+              MirOperand::move(MirPlace(temporaryLocal, declaration.resultType,
                                         zc::mv(temporaryProjections), declaration.resultType))),
           MirInitializationKind::Initialize, returnSpan.clone()));
-      continuationStatements.add(MirStatement::storageDead(localId(1), returnSpan.clone()));
+      continuationStatements.add(MirStatement::storageDead(temporaryLocal, returnSpan.clone()));
       zc::Vector<MirProjection> returnProjections;
       auto returnOperand = placeUse(proofs, copy,
-                                    MirPlace(localId(2), declaration.resultType,
+                                    MirPlace(resultLocalId, declaration.resultType,
                                              zc::mv(returnProjections), declaration.resultType));
       if (returnOperand == zc::none) {
         return rejectMir<BuiltMirCandidate>(

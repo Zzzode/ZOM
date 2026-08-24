@@ -113,7 +113,13 @@ bool hasAdmittedArguments(const ast::Tree& tree, const ast::Node& call) {
     return false;
   }
   for (const auto argument : tree.list(arguments)) {
-    if (!tree.contains(argument) || !isScalarLiteral(tree.node(argument).kind)) return false;
+    // Admit a scalar-literal or an identifier argument (a parameter or local
+    // reference resolved downstream). Type and callee-argument matching is a
+    // checker/HIR decision and stays out of surface admission.
+    if (!tree.contains(argument) || (!isScalarLiteral(tree.node(argument).kind) &&
+                                     tree.node(argument).kind != ast::SyntaxKind::IdentExpr)) {
+      return false;
+    }
   }
   return true;
 }

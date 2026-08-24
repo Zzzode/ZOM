@@ -463,7 +463,11 @@ ZC_TEST("HIR pipeline retains verified scalar direct call arguments") {
   ZC_EXPECT(call.resultType == entry.resultType);
   ZC_REQUIRE(call.arguments.size() == 1);
   ZC_EXPECT(call.arguments[0].type == helper.parameters[0].type);
-  ZC_EXPECT(call.arguments[0].value.tag() == checker::signature::CanonicalConstValueTag::Integer);
+  ZC_REQUIRE(call.arguments[0].value != zc::none);
+  ZC_EXPECT(call.arguments[0].parameter == zc::none);
+  ZC_IF_SOME(value, call.arguments[0].value) {
+    ZC_EXPECT(value.tag() == checker::signature::CanonicalConstValueTag::Integer);
+  }
 
   const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
   ZC_REQUIRE(builtMir.size() == 1);
@@ -482,6 +486,47 @@ ZC_TEST("HIR pipeline retains verified scalar direct call arguments") {
     ZC_EXPECT(mirCall.arguments[0].constantValue().type == call.arguments[0].type);
     ZC_EXPECT(mirCall.arguments[0].constantValue().value.tag() ==
               checker::signature::CanonicalConstValueTag::Integer);
+  }
+}
+
+ZC_TEST("HIR pipeline lowers a direct call parameter argument to a place operand") {
+  HirPipelineFixture fixture(
+      "fun helper(value: i32) -> i32 { return value; }\n"
+      "fun entry(input: i32) -> i32 { return helper(input); }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 2);
+  ZC_REQUIRE(module.calls().size() == 1);
+  const auto& helper = module.functions()[0];
+  const auto& entry = module.functions()[1];
+  const auto& call = module.calls()[0];
+  ZC_EXPECT(call.callee == helper.definition);
+  ZC_EXPECT(call.resultType == entry.resultType);
+  ZC_REQUIRE(call.arguments.size() == 1);
+  ZC_EXPECT(call.arguments[0].type == helper.parameters[0].type);
+  // A parameter-reference argument carries a parameter key and no constant.
+  ZC_EXPECT(call.arguments[0].value == zc::none);
+  ZC_REQUIRE(call.arguments[0].parameter != zc::none);
+  ZC_REQUIRE(entry.parameters.size() == 1);
+  ZC_IF_SOME(key, call.arguments[0].parameter) { ZC_EXPECT(key == entry.parameters[0].key); }
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> caller;
+  for (const auto& function : builtMir[0].builtMir().functions()) {
+    if (function.owner == entry.definition) caller = function;
+  }
+  ZC_REQUIRE(caller != zc::none);
+  ZC_IF_SOME(function, caller) {
+    ZC_REQUIRE(function.blocks.size() == 2);
+    const auto& terminator = function.blocks[0].terminator;
+    ZC_REQUIRE(terminator.kind() == mir::MirTerminatorKind::Call);
+    const auto& mirCall = terminator.callValue();
+    ZC_REQUIRE(mirCall.arguments.size() == 1);
+    // The parameter argument lowers to a place-use (copy) of the leading
+    // parameter local, not a constant operand.
+    ZC_EXPECT(mirCall.arguments[0].kind() == mir::MirOperandKind::Copy);
+    ZC_EXPECT(mirCall.arguments[0].place().local() == function.locals[0].id);
+    ZC_EXPECT(mirCall.arguments[0].place().resultType() == call.arguments[0].type);
   }
 }
 

@@ -195,10 +195,18 @@ struct HirLocalBorrowExpression final {
   identity::SourceSpan sourceSpan;
 };
 
-/// \brief One verified scalar constant argument retained by a direct call expression.
+/// \brief One verified argument retained by a direct or receiver call expression.
+///
+/// An argument is either a scalar constant (`value` populated) or a reference to
+/// a function parameter lowered to a place operand (`parameter` populated).
+/// Exactly one of the two is populated; the argument kind is discriminated by
+/// which, mirroring the literal-XOR-parameter shape of a conditional arm. A
+/// constant lowers to a `MirOperand::constant`; a parameter reference lowers to
+/// a copy/move place-use of the caller's parameter local.
 struct HirDirectCallArgument final {
   identity::SemanticTypeId type;
-  checker::checked::CanonicalConstValue value;
+  zc::Maybe<checker::checked::CanonicalConstValue> value;
+  zc::Maybe<identity::CallableParameterKey> parameter;
   identity::SourceSpan sourceSpan;
 };
 

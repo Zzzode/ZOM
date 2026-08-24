@@ -1695,14 +1695,24 @@ zc::Maybe<zc::String> VerifiedHirModule::dump() const {
       append(output, zc::str(index));
       append(output, "-type="_zc);
       append(output, zc::encodeHex(argumentType.get<type::SemanticTypeLookup>().key().bytes()));
-      append(output, " arg"_zc);
-      append(output, zc::str(index));
-      append(output, "-value="_zc);
-      auto encoded =
-          checker::signature::SignatureFactsCanonicalCodec::encodeCanonicalConstValueFromAuthority(
-              argument.value, impl->module, impl->identities, impl->semanticTypes);
-      if (encoded == zc::none) return zc::none;
-      ZC_IF_SOME(bytes, encoded) { append(output, zc::encodeHex(bytes.asPtr())); }
+      // An argument is a constant or a parameter reference; encode a discriminating
+      // tag so the two shapes never collide in the canonical text.
+      ZC_IF_SOME(value, argument.value) {
+        append(output, " arg"_zc);
+        append(output, zc::str(index));
+        append(output, "-const="_zc);
+        auto encoded = checker::signature::SignatureFactsCanonicalCodec::
+            encodeCanonicalConstValueFromAuthority(value, impl->module, impl->identities,
+                                                   impl->semanticTypes);
+        if (encoded == zc::none) return zc::none;
+        ZC_IF_SOME(bytes, encoded) { append(output, zc::encodeHex(bytes.asPtr())); }
+      }
+      ZC_IF_SOME(parameter, argument.parameter) {
+        append(output, " arg"_zc);
+        append(output, zc::str(index));
+        append(output, "-param="_zc);
+        append(output, zc::encodeHex(parameter.encode().asPtr()));
+      }
     }
     append(output, "\n"_zc);
   }
@@ -3680,8 +3690,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                                          ir::IrFailureKind::InvalidFact, module,
                                                          registries, ordinal + 2);
                   }
-                  callArguments.add(HirDirectCallArgument{argumentType, literal.literal.clone(),
-                                                          ZC_ASSERT_NONNULL(argumentSpan).clone()});
+                  callArguments.add(
+                      HirDirectCallArgument{argumentType, literal.literal.clone(),
+                                            zc::Maybe<identity::CallableParameterKey>(),
+                                            ZC_ASSERT_NONNULL(argumentSpan).clone()});
                 }
                 receiverCall = HirReceiverCallExpression{HirNodeId(),
                                                          HirNodeId(),
@@ -3767,23 +3779,22 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
           for (size_t index = 0; index < argumentNodes.size(); ++index) {
             const auto argument = argumentNodes[index];
             auto argumentTypeIndex = factIndex(facts.nodeTypes(), argument);
-            auto literalIndex = factIndex(facts.literals(), argument);
             auto argumentKey = checkedNodeKey(tree, bound.parsedModule(), argument);
             auto argumentSpan = bound.parsedModule().spanFor(tree.node(argument).range);
-            if (!tree.contains(argument) || !isScalarLiteral(tree.node(argument).kind) ||
-                argumentTypeIndex == zc::none || literalIndex == zc::none ||
+            const bool isLiteralArgument =
+                tree.contains(argument) && isScalarLiteral(tree.node(argument).kind);
+            const bool isParameterArgument =
+                tree.contains(argument) && tree.node(argument).kind == ast::SyntaxKind::IdentExpr;
+            if ((!isLiteralArgument && !isParameterArgument) || argumentTypeIndex == zc::none ||
                 argumentKey == zc::none || argumentSpan == zc::none) {
               return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                    ir::IrFailureKind::MissingRequiredFact, module,
                                                    registries, ordinal + 2);
             }
             size_t argumentTypeSlot = 0;
-            size_t literalSlot = 0;
             ZC_IF_SOME(value, argumentTypeIndex) { argumentTypeSlot = value; }
-            ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
             const auto& checkedArgument = invocation.arguments[index];
             const auto& dispatchArgument = dispatch.fact.arguments[index];
-            const auto& literal = facts.literals().entries()[literalSlot].value;
             const auto argumentType = facts.nodeTypes().entries()[argumentTypeSlot].value;
             if (checkedArgument.sourceNode != argument ||
                 checkedArgument.sourceType != argumentType ||
@@ -3792,14 +3803,53 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                 !sameNodeKey(dispatchArgument.sourceNode, ZC_ASSERT_NONNULL(argumentKey)) ||
                 dispatchArgument.sourceType != argumentType ||
                 dispatchArgument.parameterType != argumentType ||
-                dispatchArgument.adjustment != zc::none || literal.node != argument ||
-                literal.type != argumentType ||
-                !sameSpan(literal.sourceSpan, ZC_ASSERT_NONNULL(argumentSpan))) {
+                dispatchArgument.adjustment != zc::none) {
               return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                    ir::IrFailureKind::InvalidFact, module,
                                                    registries, ordinal + 2);
             }
-            callArguments.add(HirDirectCallArgument{argumentType, literal.literal.clone(),
+            if (isLiteralArgument) {
+              auto literalIndex = factIndex(facts.literals(), argument);
+              if (literalIndex == zc::none) {
+                return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                     ir::IrFailureKind::MissingRequiredFact, module,
+                                                     registries, ordinal + 2);
+              }
+              size_t literalSlot = 0;
+              ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+              const auto& literal = facts.literals().entries()[literalSlot].value;
+              if (literal.node != argument || literal.type != argumentType ||
+                  !sameSpan(literal.sourceSpan, ZC_ASSERT_NONNULL(argumentSpan))) {
+                return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                     ir::IrFailureKind::InvalidFact, module,
+                                                     registries, ordinal + 2);
+              }
+              zc::Maybe<identity::CallableParameterKey> noParameter;
+              callArguments.add(HirDirectCallArgument{argumentType, literal.literal.clone(),
+                                                      zc::mv(noParameter),
+                                                      ZC_ASSERT_NONNULL(argumentSpan).clone()});
+              continue;
+            }
+            auto parameter = resolvedCallableParameter(bound.bindings(), argument);
+            zc::Maybe<identity::CallableParameterKey> parameterKey;
+            ZC_IF_SOME(handle, parameter) {
+              auto authority = registries.callableParameter(handle);
+              ZC_IF_SOME(entry, authority) {
+                for (const auto& candidate : parameters) {
+                  if (candidate.key == entry.key() && candidate.type == argumentType) {
+                    parameterKey = entry.key().clone();
+                  }
+                }
+              }
+            }
+            if (parameterKey == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            zc::Maybe<checker::checked::CanonicalConstValue> noValue;
+            callArguments.add(HirDirectCallArgument{argumentType, zc::mv(noValue),
+                                                    zc::mv(parameterKey),
                                                     ZC_ASSERT_NONNULL(argumentSpan).clone()});
           }
           call =
@@ -3994,6 +4044,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
 
   size_t directCallCount = 0;
   size_t directCallArgumentCount = 0;
+  size_t directCallLiteralArgumentCount = 0;
   size_t receiverCallCount = 0;
   size_t receiverCallArgumentCount = 0;
   size_t localReturnCount = 0;
@@ -4105,6 +4156,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     ZC_IF_SOME(call, function.call) {
       ++directCallCount;
       directCallArgumentCount += call.arguments.size();
+      for (const auto& argument : call.arguments) {
+        if (argument.value != zc::none) ++directCallLiteralArgumentCount;
+      }
     }
     ZC_IF_SOME(call, function.receiverCall) {
       ++receiverCallCount;
@@ -4183,7 +4237,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       pending.size() + pendingFunctions.size() - directCallCount - aggregateCount -
           uninitializedLocalReturnCount - parameterReferenceCount - parameterReborrowCount +
           localAliasReborrowCount + localWriteCount + aggregateElementCount +
-          directCallArgumentCount + receiverCallArgumentCount + conditionalLiteralArmCount +
+          directCallLiteralArgumentCount + receiverCallArgumentCount + conditionalLiteralArmCount +
           equalityLiteralOperandCount - conditionalCount + comparisonReturnLiteralOperandCount -
           comparisonReturnCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -4626,7 +4680,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       }
       zc::Vector<HirDirectCallArgument> arguments;
       for (const auto& argument : call.arguments) {
-        arguments.add(HirDirectCallArgument{argument.type, argument.value.clone(),
+        zc::Maybe<checker::checked::CanonicalConstValue> value;
+        ZC_IF_SOME(constant, argument.value) { value = constant.clone(); }
+        zc::Maybe<identity::CallableParameterKey> parameter;
+        ZC_IF_SOME(key, argument.parameter) { parameter = key.clone(); }
+        arguments.add(HirDirectCallArgument{argument.type, zc::mv(value), zc::mv(parameter),
                                             argument.sourceSpan.clone()});
       }
       calls.add(HirDirectCallExpression{callId, call.callee, call.calleeType, call.resultType,
@@ -4642,7 +4700,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       for (const auto adjustment : call.receiverAdjustments) { adjustments.add(adjustment); }
       zc::Vector<HirDirectCallArgument> arguments;
       for (const auto& argument : call.arguments) {
-        arguments.add(HirDirectCallArgument{argument.type, argument.value.clone(),
+        zc::Maybe<checker::checked::CanonicalConstValue> value;
+        ZC_IF_SOME(constant, argument.value) { value = constant.clone(); }
+        zc::Maybe<identity::CallableParameterKey> parameter;
+        ZC_IF_SOME(key, argument.parameter) { parameter = key.clone(); }
+        arguments.add(HirDirectCallArgument{argument.type, zc::mv(value), zc::mv(parameter),
                                             argument.sourceSpan.clone()});
       }
       receiverCalls.add(HirReceiverCallExpression{
@@ -4675,6 +4737,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   const auto directCallCount = candidate.impl->calls.size();
   const auto receiverCallCount = candidate.impl->receiverCalls.size();
   size_t directCallArgumentCount = 0;
+  size_t directCallLiteralArgumentCount = 0;
   size_t receiverCallArgumentCount = 0;
   const auto localReturnCount = candidate.impl->locals.size();
   const auto localWriteCount = candidate.impl->localWrites.size();
@@ -4702,6 +4765,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   }
   for (const auto& call : candidate.impl->calls) {
     directCallArgumentCount += call.arguments.size();
+    for (const auto& argument : call.arguments) {
+      if (argument.value != zc::none) ++directCallLiteralArgumentCount;
+    }
   }
   for (const auto& call : candidate.impl->receiverCalls) {
     receiverCallArgumentCount += call.arguments.size();
@@ -4754,7 +4820,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           declarationCount + functionCount - directCallCount - aggregateCount -
               uninitializedLocalReturnCount - parameterReferenceCount - parameterReborrowCount +
               localAliasReborrowCount + localWriteCount + aggregateElementCount +
-              directCallArgumentCount + receiverCallArgumentCount + conditionalCount * 2 +
+              directCallLiteralArgumentCount + receiverCallArgumentCount + conditionalCount * 2 +
               equalityConditionalCount + loopCount ||
       facts.calls().size() !=
           directCallCount + receiverCallCount + parameterIndexCount + equalityConditionalCount ||
@@ -6594,12 +6660,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         const auto& hirArgument = ZC_ASSERT_NONNULL(receiverCall).arguments[argumentIndex];
         const auto& literal = facts.literals().entries()[literalSlot].value;
         const auto argumentType = facts.nodeTypes().entries()[argumentTypeSlot].value;
+        bool constantMatches = false;
+        ZC_IF_SOME(value, hirArgument.value) {
+          constantMatches = sameConstant(value, literal.literal, module, registries, semanticTypes);
+        }
         if (checkedArgument.sourceNode != argument || checkedArgument.sourceType != argumentType ||
             checkedArgument.parameterType != argumentType ||
             checkedArgument.adjustment != zc::none || literal.node != argument ||
             literal.type != argumentType || hirArgument.type != argumentType ||
-            !sameConstant(hirArgument.value, literal.literal, module, registries, semanticTypes) ||
-            !sameSpan(literal.sourceSpan, ZC_ASSERT_NONNULL(argumentSpan)) ||
+            hirArgument.value == zc::none || hirArgument.parameter != zc::none ||
+            !constantMatches || !sameSpan(literal.sourceSpan, ZC_ASSERT_NONNULL(argumentSpan)) ||
             !sameSpan(hirArgument.sourceSpan, ZC_ASSERT_NONNULL(argumentSpan))) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
@@ -8229,24 +8299,23 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       for (size_t argumentIndex = 0; argumentIndex < argumentNodes.size(); ++argumentIndex) {
         const auto argument = argumentNodes[argumentIndex];
         auto argumentTypeIndex = factIndex(facts.nodeTypes(), argument);
-        auto literalIndex = factIndex(facts.literals(), argument);
         auto argumentKey = checkedNodeKey(tree, bound.parsedModule(), argument);
         auto argumentSpan = bound.parsedModule().spanFor(tree.node(argument).range);
-        if (!tree.contains(argument) || !isScalarLiteral(tree.node(argument).kind) ||
-            argumentTypeIndex == zc::none || literalIndex == zc::none || argumentKey == zc::none ||
-            argumentSpan == zc::none) {
+        const bool isLiteralArgument =
+            tree.contains(argument) && isScalarLiteral(tree.node(argument).kind);
+        const bool isParameterArgument =
+            tree.contains(argument) && tree.node(argument).kind == ast::SyntaxKind::IdentExpr;
+        if ((!isLiteralArgument && !isParameterArgument) || argumentTypeIndex == zc::none ||
+            argumentKey == zc::none || argumentSpan == zc::none) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::MissingRequiredFact, module,
                                               registries, index + 1);
         }
         size_t argumentTypeSlot = 0;
-        size_t literalSlot = 0;
         ZC_IF_SOME(value, argumentTypeIndex) { argumentTypeSlot = value; }
-        ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
         const auto& checkedArgument = invocation.arguments[argumentIndex];
         const auto& dispatchArgument = dispatch.fact.arguments[argumentIndex];
         const auto& hirArgument = call.arguments[argumentIndex];
-        const auto& literal = facts.literals().entries()[literalSlot].value;
         const auto argumentType = facts.nodeTypes().entries()[argumentTypeSlot].value;
         if (checkedArgument.sourceNode != argument || checkedArgument.sourceType != argumentType ||
             checkedArgument.parameterType != argumentType ||
@@ -8254,11 +8323,52 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             !sameNodeKey(dispatchArgument.sourceNode, ZC_ASSERT_NONNULL(argumentKey)) ||
             dispatchArgument.sourceType != argumentType ||
             dispatchArgument.parameterType != argumentType ||
-            dispatchArgument.adjustment != zc::none || literal.node != argument ||
-            literal.type != argumentType || hirArgument.type != argumentType ||
-            !sameConstant(hirArgument.value, literal.literal, module, registries, semanticTypes) ||
-            !sameSpan(literal.sourceSpan, ZC_ASSERT_NONNULL(argumentSpan)) ||
+            dispatchArgument.adjustment != zc::none || hirArgument.type != argumentType ||
             !sameSpan(hirArgument.sourceSpan, ZC_ASSERT_NONNULL(argumentSpan))) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        if (isLiteralArgument) {
+          auto literalIndex = factIndex(facts.literals(), argument);
+          if (literalIndex == zc::none || hirArgument.value == zc::none ||
+              hirArgument.parameter != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          size_t literalSlot = 0;
+          ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+          const auto& literal = facts.literals().entries()[literalSlot].value;
+          bool constantMatches = false;
+          ZC_IF_SOME(value, hirArgument.value) {
+            constantMatches =
+                sameConstant(value, literal.literal, module, registries, semanticTypes);
+          }
+          if (literal.node != argument || literal.type != argumentType || !constantMatches ||
+              !sameSpan(literal.sourceSpan, ZC_ASSERT_NONNULL(argumentSpan))) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          continue;
+        }
+        // Parameter-reference argument: the HIR must carry the parameter key that
+        // the argument node resolves to and no constant.
+        if (hirArgument.parameter == zc::none || hirArgument.value != zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto parameter = resolvedCallableParameter(bound.bindings(), argument);
+        bool parameterMatches = false;
+        ZC_IF_SOME(handle, parameter) {
+          auto authority = registries.callableParameter(handle);
+          ZC_IF_SOME(entry, authority) {
+            ZC_IF_SOME(key, hirArgument.parameter) { parameterMatches = key == entry.key(); }
+          }
+        }
+        if (!parameterMatches) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);

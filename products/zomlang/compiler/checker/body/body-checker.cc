@@ -2207,25 +2207,38 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             const auto argument = argumentNodes[index];
             auto argumentType = factEntry(nodeTypes.asPtr(), argument);
             auto literal = factEntry(literals.asPtr(), argument);
-            if (!input.boundModule.tree().contains(argument) ||
-                !isScalarLiteral(input.boundModule.tree().node(argument).kind) ||
-                argumentType == zc::none || literal == zc::none) {
+            const bool isLiteralArgument =
+                input.boundModule.tree().contains(argument) &&
+                isScalarLiteral(input.boundModule.tree().node(argument).kind);
+            const bool isParameterArgument =
+                input.boundModule.tree().contains(argument) &&
+                input.boundModule.tree().node(argument).kind == ast::SyntaxKind::IdentExpr &&
+                resolvedCallableParameter(input.boundModule.bindings(), argument) != zc::none;
+            if ((!isLiteralArgument && !isParameterArgument) || argumentType == zc::none ||
+                (isLiteralArgument && literal == zc::none)) {
               return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                      site.key.schemaPreorder, zc::none, site.node,
                                      site.key.sourceSpan.clone(), factPath(site.primaryGroup));
             }
             ZC_IF_SOME(type, argumentType) {
-              ZC_IF_SOME(literalFact, literal) {
-                if (type.value != value.parameters[index] || literalFact.value.node != argument ||
-                    literalFact.value.type != type.value) {
-                  return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
-                                         site.key.schemaPreorder, zc::none, site.node,
-                                         site.key.sourceSpan.clone(), factPath(site.primaryGroup));
-                }
-                zc::Maybe<checked::CoercionAdjustment> noAdjustment;
-                checkedArguments.add(checked::CheckedArgumentFact{
-                    argument, type.value, value.parameters[index], zc::mv(noAdjustment)});
+              if (type.value != value.parameters[index]) {
+                return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                       site.key.schemaPreorder, zc::none, site.node,
+                                       site.key.sourceSpan.clone(), factPath(site.primaryGroup));
               }
+              if (isLiteralArgument) {
+                ZC_IF_SOME(literalFact, literal) {
+                  if (literalFact.value.node != argument || literalFact.value.type != type.value) {
+                    return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                           site.key.schemaPreorder, zc::none, site.node,
+                                           site.key.sourceSpan.clone(),
+                                           factPath(site.primaryGroup));
+                  }
+                }
+              }
+              zc::Maybe<checked::CoercionAdjustment> noAdjustment;
+              checkedArguments.add(checked::CheckedArgumentFact{
+                  argument, type.value, value.parameters[index], zc::mv(noAdjustment)});
             }
           }
           zc::Maybe<checked::CanonicalSubstitutionId> noSubstitutions;
