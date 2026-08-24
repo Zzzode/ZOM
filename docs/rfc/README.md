@@ -114,6 +114,7 @@ not reused.
 | [RFC 0043](0043-platform-link-and-executable-publication.md) | Platform Link And Executable Publication | DRAFT | compiler | compiler | rfc | [Acceptance Criteria](0043-platform-link-and-executable-publication.md#acceptance-criteria) | TBD |
 | [RFC 0044](0044-source-formatter-architecture.md) | Source Formatter Architecture | DRAFT | tooling | compiler | rfc | [Acceptance Criteria](0044-source-formatter-architecture.md#acceptance-criteria) | TBD |
 | [RFC 0045](0045-native-debugging-and-debug-adapter.md) | Native Debugging And Debug Adapter | DRAFT | tooling | compiler | rfc | [Acceptance Criteria](0045-native-debugging-and-debug-adapter.md#acceptance-criteria) | TBD |
+| [RFC 0046](0046-forced-error-operator-panic-abort-abi.md) | Forced Error Operator Panic Abort ABI | DRAFT | compiler | compiler | rfc | [Acceptance Criteria](0046-forced-error-operator-panic-abort-abi.md#acceptance-criteria) | TBD |
 
 ## Status Values
 
