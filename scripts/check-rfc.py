@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RFC_DIR = ROOT / "docs" / "rfc"
 README = RFC_DIR / "README.md"
-MANIFEST = ROOT / ".agents" / "subagents" / "manifest.yaml"
+MANIFEST = ROOT / ".codex" / "subagents" / "manifest.yaml"
 
 ALLOWED_STATUSES = {
     "DRAFT",
