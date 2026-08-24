@@ -799,5 +799,106 @@ ZC_TEST("HIR pipeline lowers an admitted while loop") {
   }
 }
 
+ZC_TEST("HIR pipeline lowers a two-arm scalar-literal conditional") {
+  HirPipelineFixture fixture(
+      "fun pick(c: bool) -> i32 { if (c) { return 1; } else { return 2; } }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.conditionals().size() == 1);
+  // The condition is the sole parameter reference; both arms are scalar literals.
+  ZC_REQUIRE(module.parameterReferences().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 2);
+  const auto& function = module.functions()[0];
+  const auto& conditional = module.conditionals()[0];
+  const auto& condition = module.parameterReferences()[0];
+  ZC_EXPECT(conditional.condition == condition.node);
+  ZC_EXPECT(condition.parameter == function.parameters[0].key);
+  ZC_EXPECT(conditional.type == function.resultType);
+
+  // The conditional lowers to a four-block CFG: SwitchInt on the c parameter,
+  // one constant-initializing branch per arm, and a single join Return.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> pick;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) pick = mirFunction;
+  }
+  ZC_REQUIRE(pick != zc::none);
+  ZC_IF_SOME(mirFunction, pick) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 4);
+    ZC_REQUIRE(mirFunction.blocks[0].terminator.kind() == mir::MirTerminatorKind::SwitchInt);
+    const auto& switchInt = mirFunction.blocks[0].terminator.switchIntValue();
+    ZC_EXPECT(switchInt.discriminant.kind() == mir::MirOperandKind::Copy);
+    ZC_EXPECT(switchInt.discriminant.place().local() == mirFunction.locals[0].id);
+    // bb2 / bb3: Assign(result = constant, Initialize) ; Goto(bb4)
+    ZC_REQUIRE(mirFunction.blocks[1].statements.size() == 1);
+    ZC_EXPECT(mirFunction.blocks[1].statements[0].kind() == mir::MirStatementKind::Assign);
+    ZC_EXPECT(
+        mirFunction.blocks[1].statements[0].assignmentValue().value.useValue().operand.kind() ==
+        mir::MirOperandKind::Constant);
+    ZC_EXPECT(mirFunction.blocks[1].terminator.kind() == mir::MirTerminatorKind::Goto);
+    ZC_REQUIRE(mirFunction.blocks[2].statements.size() == 1);
+    ZC_EXPECT(
+        mirFunction.blocks[2].statements[0].assignmentValue().value.useValue().operand.kind() ==
+        mir::MirOperandKind::Constant);
+    ZC_EXPECT(mirFunction.blocks[2].terminator.kind() == mir::MirTerminatorKind::Goto);
+    // bb4 join: Return(placeUse(result))
+    ZC_EXPECT(mirFunction.blocks[3].statements.size() == 0);
+    ZC_EXPECT(mirFunction.blocks[3].terminator.kind() == mir::MirTerminatorKind::Return);
+  }
+}
+
+ZC_TEST("HIR pipeline lowers a two-arm parameter conditional") {
+  HirPipelineFixture fixture(
+      "fun choose(c: bool, a: i32, b: i32) -> i32 { if (c) { return a; } else { return b; } }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.conditionals().size() == 1);
+  // Both arms are parameter references, plus the condition: three references and
+  // zero scalar-literal expressions for this function.
+  ZC_REQUIRE(module.parameterReferences().size() == 3);
+  ZC_REQUIRE(module.expressions().size() == 0);
+  const auto& function = module.functions()[0];
+  const auto& conditional = module.conditionals()[0];
+  ZC_EXPECT(conditional.type == function.resultType);
+
+  // The conditional lowers to a four-block CFG: SwitchInt on the c parameter,
+  // one place-use-initializing branch per parameter arm, and a single join Return.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> choose;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) choose = mirFunction;
+  }
+  ZC_REQUIRE(choose != zc::none);
+  ZC_IF_SOME(mirFunction, choose) {
+    // Three parameter locals (c, a, b) plus the function result.
+    ZC_REQUIRE(mirFunction.locals.size() == 4);
+    ZC_REQUIRE(mirFunction.blocks.size() == 4);
+    // bb1 header: SwitchInt on the c parameter local (index 0).
+    ZC_REQUIRE(mirFunction.blocks[0].terminator.kind() == mir::MirTerminatorKind::SwitchInt);
+    const auto& switchInt = mirFunction.blocks[0].terminator.switchIntValue();
+    ZC_EXPECT(switchInt.discriminant.kind() == mir::MirOperandKind::Copy);
+    ZC_EXPECT(switchInt.discriminant.place().local() == mirFunction.locals[0].id);
+    // bb2: Assign(result = copy/move of the a parameter local) ; Goto(bb4)
+    ZC_REQUIRE(mirFunction.blocks[1].statements.size() == 1);
+    const auto& thenAssign = mirFunction.blocks[1].statements[0].assignmentValue();
+    ZC_EXPECT(thenAssign.value.useValue().operand.kind() != mir::MirOperandKind::Constant);
+    ZC_EXPECT(thenAssign.value.useValue().operand.place().local() == mirFunction.locals[1].id);
+    ZC_EXPECT(mirFunction.blocks[1].terminator.kind() == mir::MirTerminatorKind::Goto);
+    // bb3: Assign(result = copy/move of the b parameter local) ; Goto(bb4)
+    ZC_REQUIRE(mirFunction.blocks[2].statements.size() == 1);
+    const auto& elseAssign = mirFunction.blocks[2].statements[0].assignmentValue();
+    ZC_EXPECT(elseAssign.value.useValue().operand.kind() != mir::MirOperandKind::Constant);
+    ZC_EXPECT(elseAssign.value.useValue().operand.place().local() == mirFunction.locals[2].id);
+    ZC_EXPECT(mirFunction.blocks[2].terminator.kind() == mir::MirTerminatorKind::Goto);
+    // bb4 join: Return(placeUse(result))
+    ZC_EXPECT(mirFunction.blocks[3].statements.size() == 0);
+    ZC_EXPECT(mirFunction.blocks[3].terminator.kind() == mir::MirTerminatorKind::Return);
+  }
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::hir

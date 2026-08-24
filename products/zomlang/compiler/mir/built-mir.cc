@@ -1310,18 +1310,41 @@ bool validScalarReturnFunction(const MirFunction& function, const hir::VerifiedH
   return validReturn;
 }
 
-bool validConditionalReturnFunction(const MirFunction& function,
-                                    const hir::HirFunctionDeclaration& declaration,
-                                    const hir::HirBlockStatement& sourceBlock,
-                                    const hir::HirReturnStatement& sourceReturn,
-                                    const hir::HirConditionalExpression& conditional,
-                                    const hir::HirParameterReferenceExpression& conditionRef,
-                                    const hir::HirScalarLiteralExpression& thenValue,
-                                    const hir::HirScalarLiteralExpression& elseValue,
-                                    checker::marker::MarkerProofEngine& proofs,
-                                    identity::DefId copy, identity::ModuleId module,
-                                    const checker::CheckerIdentityAuthority& identities,
-                                    const type::SemanticTypeStore& semanticTypes) {
+// One conditional arm as seen by the MIR verifier: either a scalar-literal
+// expression or a parameter reference. Exactly one Maybe is populated.
+struct ConditionalArmView final {
+  zc::Maybe<const hir::HirScalarLiteralExpression&> literal;
+  zc::Maybe<const hir::HirParameterReferenceExpression&> parameter;
+};
+
+bool validConditionalReturnFunction(
+    const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
+    const hir::HirBlockStatement& sourceBlock, const hir::HirReturnStatement& sourceReturn,
+    const hir::HirConditionalExpression& conditional,
+    const hir::HirParameterReferenceExpression& conditionRef, const ConditionalArmView& thenArm,
+    const ConditionalArmView& elseArm, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copy, identity::ModuleId module,
+    const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes) {
+  // Resolve each arm to its node id and semantic type independent of arm kind.
+  auto armNode = [](const ConditionalArmView& arm) -> zc::Maybe<hir::HirNodeId> {
+    ZC_IF_SOME(value, arm.literal) { return value.node; }
+    ZC_IF_SOME(value, arm.parameter) { return value.node; }
+    return zc::none;
+  };
+  auto armType = [](const ConditionalArmView& arm) -> zc::Maybe<identity::SemanticTypeId> {
+    ZC_IF_SOME(value, arm.literal) { return value.type; }
+    ZC_IF_SOME(value, arm.parameter) { return value.type; }
+    return zc::none;
+  };
+  auto thenNode = armNode(thenArm);
+  auto elseNode = armNode(elseArm);
+  auto thenTypeValue = armType(thenArm);
+  auto elseTypeValue = armType(elseArm);
+  if (thenNode == zc::none || elseNode == zc::none || thenTypeValue == zc::none ||
+      elseTypeValue == zc::none) {
+    return false;
+  }
   if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
       function.resultType != declaration.resultType ||
@@ -1330,9 +1353,12 @@ bool validConditionalReturnFunction(const MirFunction& function,
       declaration.body != sourceBlock.node || sourceBlock.statements.size() != 1 ||
       sourceBlock.statements[0] != sourceReturn.node || sourceReturn.value != conditional.node ||
       sourceReturn.resultType != declaration.resultType ||
-      conditional.condition != conditionRef.node || conditional.thenReturnValue != thenValue.node ||
-      conditional.elseReturnValue != elseValue.node || conditional.type != declaration.resultType ||
-      thenValue.type != declaration.resultType || elseValue.type != declaration.resultType) {
+      conditional.condition != conditionRef.node ||
+      conditional.thenReturnValue != ZC_ASSERT_NONNULL(thenNode) ||
+      conditional.elseReturnValue != ZC_ASSERT_NONNULL(elseNode) ||
+      conditional.type != declaration.resultType ||
+      ZC_ASSERT_NONNULL(thenTypeValue) != declaration.resultType ||
+      ZC_ASSERT_NONNULL(elseTypeValue) != declaration.resultType) {
     return false;
   }
   const auto& scope = function.sourceScopes[0];
@@ -1386,16 +1412,18 @@ bool validConditionalReturnFunction(const MirFunction& function,
       ZC_ASSERT_NONNULL(falseValue)) {
     return false;
   }
-  size_t conditionIndex = 0;
-  bool found = false;
-  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
-    if (declaration.parameters[i].key == conditionRef.parameter) {
-      conditionIndex = i;
-      found = true;
-      break;
+  auto parameterLocalIndex = [&](const hir::HirParameterReferenceExpression& reference,
+                                 size_t& outIndex) -> bool {
+    for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+      if (declaration.parameters[i].key == reference.parameter) {
+        outIndex = i;
+        return true;
+      }
     }
-  }
-  if (!found) return false;
+    return false;
+  };
+  size_t conditionIndex = 0;
+  if (!parameterLocalIndex(conditionRef, conditionIndex)) return false;
   if (switchInt.discriminant.kind() != MirOperandKind::Copy ||
       switchInt.discriminant.place().local() !=
           localId(static_cast<uint32_t>(conditionIndex + 1)) ||
@@ -1404,10 +1432,12 @@ bool validConditionalReturnFunction(const MirFunction& function,
       switchInt.discriminant.place().projections().size() != 0) {
     return false;
   }
-  // Each branch initializes the result local with its constant, then jumps to
-  // the join block. The single Return in the join reads that result local.
+  // Each branch initializes the result local with the arm value, then jumps to
+  // the join block. The single Return in the join reads that result local. A
+  // literal arm assigns a constant; a parameter arm assigns a place-use of the
+  // parameter local.
   auto branchInitializesResult = [&](const MirBasicBlock& branch,
-                                     const hir::HirScalarLiteralExpression& value) -> bool {
+                                     const ConditionalArmView& arm) -> bool {
     if (branch.statements[0].kind() != MirStatementKind::Assign) { return false; }
     const auto& assignment = branch.statements[0].assignmentValue();
     if (assignment.initialization != MirInitializationKind::Initialize ||
@@ -1415,17 +1445,29 @@ bool validConditionalReturnFunction(const MirFunction& function,
         assignment.destination.rootType() != declaration.resultType ||
         assignment.destination.resultType() != declaration.resultType ||
         assignment.destination.projections().size() != 0 ||
-        assignment.value.kind() != MirRvalueKind::Use ||
-        assignment.value.useValue().operand.kind() != MirOperandKind::Constant ||
-        assignment.value.useValue().operand.constantValue().type != value.type ||
-        !sameConstant(assignment.value.useValue().operand.constantValue().value, value.value,
-                      module, identities, semanticTypes)) {
+        assignment.value.kind() != MirRvalueKind::Use) {
       return false;
     }
-    return true;
+    const auto& operand = assignment.value.useValue().operand;
+    ZC_IF_SOME(literal, arm.literal) {
+      return operand.kind() == MirOperandKind::Constant &&
+             operand.constantValue().type == literal.type &&
+             sameConstant(operand.constantValue().value, literal.value, module, identities,
+                          semanticTypes);
+    }
+    ZC_IF_SOME(parameter, arm.parameter) {
+      size_t parameterIndex = 0;
+      if (!parameterLocalIndex(parameter, parameterIndex)) return false;
+      return matchesPlaceUse(operand, proofs, copy, parameter.type) &&
+             operand.place().local() == localId(static_cast<uint32_t>(parameterIndex + 1)) &&
+             operand.place().rootType() == parameter.type &&
+             operand.place().resultType() == parameter.type &&
+             operand.place().projections().size() == 0;
+    }
+    return false;
   };
-  if (!branchInitializesResult(thenBlock, thenValue) ||
-      !branchInitializesResult(elseBlock, elseValue)) {
+  if (!branchInitializesResult(thenBlock, thenArm) ||
+      !branchInitializesResult(elseBlock, elseArm)) {
     return false;
   }
   ZC_IF_SOME(value, joinBlock.terminator.returnValue().value) {
@@ -4650,124 +4692,174 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
           auto conditional = conditionalFor(hirModule, referenceNode);
           ZC_IF_SOME(conditionalValue, conditional) {
             auto conditionRef = parameterReferenceFor(hirModule, conditionalValue.condition);
+            // Each arm value resolves to a scalar-literal expression or a bare
+            // parameter reference. Exactly one lookup succeeds per arm.
             auto thenExpr = expressionFor(hirModule, conditionalValue.thenReturnValue);
             auto elseExpr = expressionFor(hirModule, conditionalValue.elseReturnValue);
+            auto thenParam = parameterReferenceFor(hirModule, conditionalValue.thenReturnValue);
+            auto elseParam = parameterReferenceFor(hirModule, conditionalValue.elseReturnValue);
+            const bool thenOk = (thenExpr != zc::none) != (thenParam != zc::none);
+            const bool elseOk = (elseExpr != zc::none) != (elseParam != zc::none);
             ZC_IF_SOME(condition, conditionRef) {
-              ZC_IF_SOME(thenValue, thenExpr) {
-                ZC_IF_SOME(elseValue, elseExpr) {
-                  size_t conditionIndex = 0;
-                  bool found = false;
+              if (thenOk && elseOk) {
+                // Resolve the local index of a parameter referenced by an arm.
+                auto parameterLocalIndex =
+                    [&](const hir::HirParameterReferenceExpression& reference,
+                        size_t& outIndex) -> bool {
                   for (size_t i = 0; i < declaration.parameters.size(); ++i) {
-                    if (declaration.parameters[i].key == condition.parameter) {
-                      conditionIndex = i;
-                      found = true;
-                      break;
+                    if (declaration.parameters[i].key == reference.parameter) {
+                      outIndex = i;
+                      return true;
                     }
                   }
-                  if (!found || conditionalValue.type != declaration.resultType ||
-                      thenValue.type != declaration.resultType ||
-                      elseValue.type != declaration.resultType || definition == zc::none) {
-                    return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
-                                                        ir::IrFailureKind::InvalidFact, module,
-                                                        declaration.definition, identities,
-                                                        static_cast<uint32_t>(pending.size() + 1));
-                  }
-                  const auto conditionLocal = localId(static_cast<uint32_t>(conditionIndex + 1));
-                  const auto resultLocal =
-                      localId(static_cast<uint32_t>(declaration.parameters.size() + 1));
-                  zc::Vector<MirSourceScope> scopes;
-                  zc::Maybe<MirSourceScopeId> noParent;
-                  scopes.add(
-                      MirSourceScope{scopeId(1), zc::mv(noParent), declaration.sourceSpan.clone()});
-                  zc::Vector<MirLocalDeclaration> locals;
-                  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
-                    locals.add(MirLocalDeclaration{localId(static_cast<uint32_t>(i + 1)),
-                                                   MirLocalKind::Parameter,
-                                                   declaration.parameters[i].type, scopeId(1),
-                                                   declaration.parameters[i].sourceSpan.clone()});
-                  }
-                  locals.add(MirLocalDeclaration{resultLocal, MirLocalKind::FunctionResult,
-                                                 declaration.resultType, scopeId(1),
-                                                 returnStatement.sourceSpan.clone()});
-                  zc::Vector<MirProjection> conditionProjections;
-                  auto discriminant =
-                      placeUse(proofs, copy,
-                               MirPlace(conditionLocal, condition.type,
-                                        zc::mv(conditionProjections), condition.type));
-                  if (discriminant == zc::none) {
-                    return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
-                                                        ir::IrFailureKind::InvalidFact, module,
-                                                        declaration.definition, identities,
-                                                        static_cast<uint32_t>(pending.size() + 1));
-                  }
-                  zc::Vector<MirProjection> returnProjections;
-                  auto returnOperand =
-                      placeUse(proofs, copy,
-                               MirPlace(resultLocal, declaration.resultType,
-                                        zc::mv(returnProjections), declaration.resultType));
-                  if (returnOperand == zc::none) {
-                    return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
-                                                        ir::IrFailureKind::InvalidFact, module,
-                                                        declaration.definition, identities,
-                                                        static_cast<uint32_t>(pending.size() + 1));
-                  }
-                  zc::Vector<MirSwitchIntArm> arms;
-                  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true),
-                                           blockId(2)});
-                  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false),
-                                           blockId(3)});
-                  auto thenConstant = MirOperand::constant(thenValue.type, thenValue.value.clone());
-                  auto elseConstant = MirOperand::constant(elseValue.type, elseValue.value.clone());
-                  // The result local is allocated at function entry (dominating both
-                  // branches); each branch initializes it and jumps to the single join
-                  // block, which performs the one Return. This is the first builder site
-                  // that emits MirGotoTerminator.
-                  zc::Vector<MirStatement> entryStatements;
-                  entryStatements.add(
-                      MirStatement::storageLive(resultLocal, returnStatement.sourceSpan.clone()));
-                  zc::Vector<MirProjection> thenDestinationProjections;
-                  zc::Vector<MirStatement> thenStatements;
-                  thenStatements.add(MirStatement::assign(
-                      MirPlace(resultLocal, declaration.resultType,
-                               zc::mv(thenDestinationProjections), declaration.resultType),
-                      MirRvalue::use(zc::mv(thenConstant)), MirInitializationKind::Initialize,
-                      thenValue.sourceSpan.clone()));
-                  zc::Vector<MirProjection> elseDestinationProjections;
-                  zc::Vector<MirStatement> elseStatements;
-                  elseStatements.add(MirStatement::assign(
-                      MirPlace(resultLocal, declaration.resultType,
-                               zc::mv(elseDestinationProjections), declaration.resultType),
-                      MirRvalue::use(zc::mv(elseConstant)), MirInitializationKind::Initialize,
-                      elseValue.sourceSpan.clone()));
-                  zc::Vector<MirBasicBlock> blocks;
-                  blocks.add(MirBasicBlock{
-                      blockId(1), scopeId(1), zc::mv(entryStatements),
-                      MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
-                                               zc::mv(arms), blockId(3),
-                                               conditionalValue.sourceSpan.clone())});
-                  blocks.add(MirBasicBlock{
-                      blockId(2), scopeId(1), zc::mv(thenStatements),
-                      MirTerminator::gotoTarget(blockId(4), thenValue.sourceSpan.clone())});
-                  blocks.add(MirBasicBlock{
-                      blockId(3), scopeId(1), zc::mv(elseStatements),
-                      MirTerminator::gotoTarget(blockId(4), elseValue.sourceSpan.clone())});
-                  blocks.add(MirBasicBlock{
-                      blockId(4), scopeId(1), zc::Vector<MirStatement>{},
-                      MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
-                                                 returnStatement.sourceSpan.clone())});
-                  MirFunction function{declaration.definition,
-                                       MirFunctionKind::Function,
-                                       identity::DefinitionKind::Function,
-                                       declaration.resultType,
-                                       declaration.sourceSpan.clone(),
-                                       zc::mv(scopes),
-                                       zc::mv(locals),
-                                       zc::mv(blocks)};
-                  zc::Array<uint8_t> ownerKey;
-                  ZC_IF_SOME(key, definition) { ownerKey = key.key().encode(); }
-                  pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
-                  continue;
+                  return false;
+                };
+                size_t conditionIndex = 0;
+                bool found = parameterLocalIndex(condition, conditionIndex);
+                identity::SemanticTypeId thenType;
+                identity::SemanticTypeId elseType;
+                ZC_IF_SOME(value, thenExpr) { thenType = value.type; }
+                ZC_IF_SOME(value, thenParam) { thenType = value.type; }
+                ZC_IF_SOME(value, elseExpr) { elseType = value.type; }
+                ZC_IF_SOME(value, elseParam) { elseType = value.type; }
+                bool armParametersResolved = true;
+                size_t thenParamIndex = 0;
+                size_t elseParamIndex = 0;
+                ZC_IF_SOME(value, thenParam) {
+                  armParametersResolved &= parameterLocalIndex(value, thenParamIndex);
                 }
+                ZC_IF_SOME(value, elseParam) {
+                  armParametersResolved &= parameterLocalIndex(value, elseParamIndex);
+                }
+                if (!found || !armParametersResolved ||
+                    conditionalValue.type != declaration.resultType ||
+                    thenType != declaration.resultType || elseType != declaration.resultType ||
+                    definition == zc::none) {
+                  return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
+                                                      ir::IrFailureKind::InvalidFact, module,
+                                                      declaration.definition, identities,
+                                                      static_cast<uint32_t>(pending.size() + 1));
+                }
+                const auto conditionLocal = localId(static_cast<uint32_t>(conditionIndex + 1));
+                const auto resultLocal =
+                    localId(static_cast<uint32_t>(declaration.parameters.size() + 1));
+                zc::Vector<MirSourceScope> scopes;
+                zc::Maybe<MirSourceScopeId> noParent;
+                scopes.add(
+                    MirSourceScope{scopeId(1), zc::mv(noParent), declaration.sourceSpan.clone()});
+                zc::Vector<MirLocalDeclaration> locals;
+                for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+                  locals.add(MirLocalDeclaration{localId(static_cast<uint32_t>(i + 1)),
+                                                 MirLocalKind::Parameter,
+                                                 declaration.parameters[i].type, scopeId(1),
+                                                 declaration.parameters[i].sourceSpan.clone()});
+                }
+                locals.add(MirLocalDeclaration{resultLocal, MirLocalKind::FunctionResult,
+                                               declaration.resultType, scopeId(1),
+                                               returnStatement.sourceSpan.clone()});
+                zc::Vector<MirProjection> conditionProjections;
+                auto discriminant =
+                    placeUse(proofs, copy,
+                             MirPlace(conditionLocal, condition.type, zc::mv(conditionProjections),
+                                      condition.type));
+                if (discriminant == zc::none) {
+                  return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
+                                                      ir::IrFailureKind::InvalidFact, module,
+                                                      declaration.definition, identities,
+                                                      static_cast<uint32_t>(pending.size() + 1));
+                }
+                zc::Vector<MirProjection> returnProjections;
+                auto returnOperand =
+                    placeUse(proofs, copy,
+                             MirPlace(resultLocal, declaration.resultType,
+                                      zc::mv(returnProjections), declaration.resultType));
+                if (returnOperand == zc::none) {
+                  return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
+                                                      ir::IrFailureKind::InvalidFact, module,
+                                                      declaration.definition, identities,
+                                                      static_cast<uint32_t>(pending.size() + 1));
+                }
+                // Materialize an arm operand: constant for a literal arm, or a
+                // place-use of the parameter local for a parameter arm.
+                auto armOperand =
+                    [&](zc::Maybe<const hir::HirScalarLiteralExpression&> literal,
+                        zc::Maybe<const hir::HirParameterReferenceExpression&> parameter,
+                        size_t parameterIndex) -> zc::Maybe<MirOperand> {
+                  ZC_IF_SOME(value, literal) {
+                    return MirOperand::constant(value.type, value.value.clone());
+                  }
+                  ZC_IF_SOME(value, parameter) {
+                    zc::Vector<MirProjection> projections;
+                    return placeUse(proofs, copy,
+                                    MirPlace(localId(static_cast<uint32_t>(parameterIndex + 1)),
+                                             value.type, zc::mv(projections), value.type));
+                  }
+                  return zc::none;
+                };
+                auto thenOperand = armOperand(thenExpr, thenParam, thenParamIndex);
+                auto elseOperand = armOperand(elseExpr, elseParam, elseParamIndex);
+                if (thenOperand == zc::none || elseOperand == zc::none) {
+                  return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
+                                                      ir::IrFailureKind::InvalidFact, module,
+                                                      declaration.definition, identities,
+                                                      static_cast<uint32_t>(pending.size() + 1));
+                }
+                identity::SourceSpan thenSpan = conditionalValue.sourceSpan.clone();
+                identity::SourceSpan elseSpan = conditionalValue.sourceSpan.clone();
+                ZC_IF_SOME(value, thenExpr) { thenSpan = value.sourceSpan.clone(); }
+                ZC_IF_SOME(value, thenParam) { thenSpan = value.sourceSpan.clone(); }
+                ZC_IF_SOME(value, elseExpr) { elseSpan = value.sourceSpan.clone(); }
+                ZC_IF_SOME(value, elseParam) { elseSpan = value.sourceSpan.clone(); }
+                zc::Vector<MirSwitchIntArm> arms;
+                arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true),
+                                         blockId(2)});
+                arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false),
+                                         blockId(3)});
+                // The result local is allocated at function entry (dominating both
+                // branches); each branch initializes it and jumps to the single join
+                // block, which performs the one Return.
+                zc::Vector<MirStatement> entryStatements;
+                entryStatements.add(
+                    MirStatement::storageLive(resultLocal, returnStatement.sourceSpan.clone()));
+                zc::Vector<MirProjection> thenDestinationProjections;
+                zc::Vector<MirStatement> thenStatements;
+                thenStatements.add(MirStatement::assign(
+                    MirPlace(resultLocal, declaration.resultType,
+                             zc::mv(thenDestinationProjections), declaration.resultType),
+                    MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(thenOperand))),
+                    MirInitializationKind::Initialize, thenSpan.clone()));
+                zc::Vector<MirProjection> elseDestinationProjections;
+                zc::Vector<MirStatement> elseStatements;
+                elseStatements.add(MirStatement::assign(
+                    MirPlace(resultLocal, declaration.resultType,
+                             zc::mv(elseDestinationProjections), declaration.resultType),
+                    MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(elseOperand))),
+                    MirInitializationKind::Initialize, elseSpan.clone()));
+                zc::Vector<MirBasicBlock> blocks;
+                blocks.add(MirBasicBlock{
+                    blockId(1), scopeId(1), zc::mv(entryStatements),
+                    MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)), zc::mv(arms),
+                                             blockId(3), conditionalValue.sourceSpan.clone())});
+                blocks.add(MirBasicBlock{blockId(2), scopeId(1), zc::mv(thenStatements),
+                                         MirTerminator::gotoTarget(blockId(4), thenSpan.clone())});
+                blocks.add(MirBasicBlock{blockId(3), scopeId(1), zc::mv(elseStatements),
+                                         MirTerminator::gotoTarget(blockId(4), elseSpan.clone())});
+                blocks.add(MirBasicBlock{
+                    blockId(4), scopeId(1), zc::Vector<MirStatement>{},
+                    MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                               returnStatement.sourceSpan.clone())});
+                MirFunction function{declaration.definition,
+                                     MirFunctionKind::Function,
+                                     identity::DefinitionKind::Function,
+                                     declaration.resultType,
+                                     declaration.sourceSpan.clone(),
+                                     zc::mv(scopes),
+                                     zc::mv(locals),
+                                     zc::mv(blocks)};
+                zc::Array<uint8_t> ownerKey;
+                ZC_IF_SOME(key, definition) { ownerKey = key.key().encode(); }
+                pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
+                continue;
               }
             }
           }
@@ -6333,15 +6425,21 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
           }
           ZC_IF_SOME(sourceConditional, conditional) {
             auto conditionRef = parameterReferenceFor(hirModule, sourceConditional.condition);
-            auto thenExpr = expressionFor(hirModule, sourceConditional.thenReturnValue);
-            auto elseExpr = expressionFor(hirModule, sourceConditional.elseReturnValue);
+            // Each arm resolves to a scalar-literal expression or a parameter
+            // reference; exactly one lookup succeeds per arm.
+            ConditionalArmView thenArm{
+                expressionFor(hirModule, sourceConditional.thenReturnValue),
+                parameterReferenceFor(hirModule, sourceConditional.thenReturnValue)};
+            ConditionalArmView elseArm{
+                expressionFor(hirModule, sourceConditional.elseReturnValue),
+                parameterReferenceFor(hirModule, sourceConditional.elseReturnValue)};
+            const bool thenOk = (thenArm.literal != zc::none) != (thenArm.parameter != zc::none);
+            const bool elseOk = (elseArm.literal != zc::none) != (elseArm.parameter != zc::none);
             ZC_IF_SOME(condRef, conditionRef) {
-              ZC_IF_SOME(thenVal, thenExpr) {
-                ZC_IF_SOME(elseVal, elseExpr) {
-                  valid = validConditionalReturnFunction(
-                      function, sourceDeclaration, block, returnStatement, sourceConditional,
-                      condRef, thenVal, elseVal, proofs, copy, module, identities, semanticTypes);
-                }
+              if (thenOk && elseOk) {
+                valid = validConditionalReturnFunction(
+                    function, sourceDeclaration, block, returnStatement, sourceConditional, condRef,
+                    thenArm, elseArm, proofs, copy, module, identities, semanticTypes);
               }
             }
           }
