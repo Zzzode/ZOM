@@ -611,6 +611,10 @@ zc::Maybe<StructLiteralShape> structLiteralShape(
   ZC_UNREACHABLE
 }
 
+// Forward declaration: scalar-literal classification is defined below but is
+// consulted by the primitive-comparison shape helper above it.
+bool isScalarLiteral(ast::SyntaxKind kind) noexcept;
+
 zc::Maybe<identity::SemanticTypeId> callableParameterReferenceType(const BodyCheckingInput& input,
                                                                    ast::NodeId node) {
   auto parameter = resolvedCallableParameter(input.boundModule.bindings(), node);
@@ -791,7 +795,8 @@ bool isPrimitiveScalarType(const type::SemanticTypeStore& semanticTypes,
 
 zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
     const BodyCheckingInput& input, ast::NodeId node,
-    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
+    zc::ArrayPtr<const checked::LiteralFactMap::Entry> literals) {
   const auto& tree = input.boundModule.tree();
   if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::BinaryExpr) return zc::none;
   const auto& syntax = tree.node(node);
@@ -803,43 +808,72 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   if (operation == zc::none) return zc::none;
   const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
   const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
-  if (!tree.contains(left) || !tree.contains(right) ||
-      tree.node(left).kind != ast::SyntaxKind::IdentExpr ||
-      tree.node(right).kind != ast::SyntaxKind::IdentExpr) {
+  if (!tree.contains(left) || !tree.contains(right)) return zc::none;
+  // Each operand is either a parameter reference (an IdentExpr resolving to a
+  // callable parameter) or a scalar literal. At least one must be a parameter;
+  // a literal-vs-literal comparison has no parameter to lower.
+  const bool leftIsParameter = tree.node(left).kind == ast::SyntaxKind::IdentExpr;
+  const bool rightIsParameter = tree.node(right).kind == ast::SyntaxKind::IdentExpr;
+  const bool leftIsLiteral = isScalarLiteral(tree.node(left).kind);
+  const bool rightIsLiteral = isScalarLiteral(tree.node(right).kind);
+  if ((!leftIsParameter && !leftIsLiteral) || (!rightIsParameter && !rightIsLiteral) ||
+      (!leftIsParameter && !rightIsParameter)) {
     return zc::none;
   }
-  auto leftType = callableParameterReferenceType(input, left);
-  auto rightType = callableParameterReferenceType(input, right);
-  if (leftType == zc::none || rightType == zc::none) return zc::none;
-  zc::Maybe<const checked::NodeTypeMap::Entry&> leftFact;
-  zc::Maybe<const checked::NodeTypeMap::Entry&> rightFact;
-  for (const auto& entry : nodeTypes) {
-    if (entry.key == left) leftFact = entry;
-    if (entry.key == right) rightFact = entry;
+  // Derive the shared operand type from a parameter operand; both operands must
+  // agree on this primitive scalar type.
+  zc::Maybe<identity::SemanticTypeId> operandType;
+  if (leftIsParameter) {
+    operandType = callableParameterReferenceType(input, left);
+  } else if (rightIsParameter) {
+    operandType = callableParameterReferenceType(input, right);
   }
-  if (leftFact == zc::none || rightFact == zc::none) return zc::none;
-  ZC_IF_SOME(leftValue, leftType) {
-    ZC_IF_SOME(rightValue, rightType) {
-      ZC_IF_SOME(leftEntry, leftFact) {
-        ZC_IF_SOME(rightEntry, rightFact) {
-          if (leftEntry.value != leftValue || rightEntry.value != rightValue ||
-              leftValue != rightValue || !isPrimitiveScalarType(input.semanticTypes, leftValue)) {
-            return zc::none;
-          }
-          auto canonical = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
-              type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::Bool}));
-          if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
-          auto interned = input.semanticTypes.intern(
-              zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
-          if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
-          return PrimitiveBinaryOperationShape{left, right, leftValue,
-                                               interned.get<type::SemanticTypeInterned>().id,
-                                               ZC_ASSERT_NONNULL(operation)};
-        }
-      }
+  if (operandType == zc::none) return zc::none;
+  identity::SemanticTypeId operand;
+  ZC_IF_SOME(value, operandType) { operand = value; }
+  if (!isPrimitiveScalarType(input.semanticTypes, operand)) return zc::none;
+  // Cross-check one operand's node-type fact (and, for a literal operand, its
+  // literal fact) against the shared operand type. The literal template mirrors
+  // the call-argument literal validation.
+  auto operandMatches = [&](ast::NodeId operandNode, bool isParameter, bool isLiteral) -> bool {
+    zc::Maybe<const checked::NodeTypeMap::Entry&> typeFact;
+    for (const auto& entry : nodeTypes) {
+      if (entry.key == operandNode) typeFact = entry;
     }
+    if (typeFact == zc::none) return false;
+    bool typeOk = false;
+    ZC_IF_SOME(entry, typeFact) { typeOk = entry.value == operand; }
+    if (!typeOk) return false;
+    if (isParameter) {
+      auto parameterType = callableParameterReferenceType(input, operandNode);
+      bool parameterOk = false;
+      ZC_IF_SOME(value, parameterType) { parameterOk = value == operand; }
+      return parameterOk;
+    }
+    if (!isLiteral) return false;
+    zc::Maybe<const checked::LiteralFactMap::Entry&> literalFact;
+    for (const auto& entry : literals) {
+      if (entry.key == operandNode) literalFact = entry;
+    }
+    bool literalOk = false;
+    ZC_IF_SOME(entry, literalFact) {
+      literalOk = entry.value.node == operandNode && entry.value.type == operand;
+    }
+    return literalOk;
+  };
+  if (!operandMatches(left, leftIsParameter, leftIsLiteral) ||
+      !operandMatches(right, rightIsParameter, rightIsLiteral)) {
+    return zc::none;
   }
-  return zc::none;
+  auto canonical = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+      type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::Bool}));
+  if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
+  auto interned =
+      input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+  if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
+  return PrimitiveBinaryOperationShape{left, right, operand,
+                                       interned.get<type::SemanticTypeInterned>().id,
+                                       ZC_ASSERT_NONNULL(operation)};
 }
 
 struct ReferenceReborrowShape final {
@@ -1816,20 +1850,28 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           production = BodyProductionKind::StructLiteral;
           break;
         case ast::SyntaxKind::BinaryExpr: {
-          // Admit the six relational comparisons of two same-typed scalar
-          // parameters; every other binary shape stays unsupported so its
-          // existing rejection stands.
+          // Admit the six relational comparisons where each operand is a scalar
+          // parameter reference or a scalar literal and at least one operand is a
+          // parameter; every other binary shape stays unsupported so its existing
+          // rejection stands. A literal-vs-literal comparison has no parameter to
+          // lower and is left unsupported.
           const auto operation =
               static_cast<ast::BinaryOperatorKind>(syntax.payload.words[ast::kBinaryExprOpWord]);
           if (scalarComparisonOperation(operation) == zc::none) break;
           const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
           const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
-          if (tree.contains(left) && tree.contains(right) &&
-              tree.node(left).kind == ast::SyntaxKind::IdentExpr &&
-              tree.node(right).kind == ast::SyntaxKind::IdentExpr &&
-              resolvedCallableParameter(boundModule.bindings(), left) != zc::none &&
-              resolvedCallableParameter(boundModule.bindings(), right) != zc::none) {
-            production = BodyProductionKind::PrimitiveBinaryOperation;
+          if (tree.contains(left) && tree.contains(right)) {
+            const bool leftIsParameter =
+                tree.node(left).kind == ast::SyntaxKind::IdentExpr &&
+                resolvedCallableParameter(boundModule.bindings(), left) != zc::none;
+            const bool rightIsParameter =
+                tree.node(right).kind == ast::SyntaxKind::IdentExpr &&
+                resolvedCallableParameter(boundModule.bindings(), right) != zc::none;
+            const bool leftOk = leftIsParameter || isScalarLiteral(tree.node(left).kind);
+            const bool rightOk = rightIsParameter || isScalarLiteral(tree.node(right).kind);
+            if (leftOk && rightOk && (leftIsParameter || rightIsParameter)) {
+              production = BodyProductionKind::PrimitiveBinaryOperation;
+            }
           }
           break;
         }
@@ -2273,7 +2315,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           }
         }
       } else if (site.production == BodyProductionKind::PrimitiveBinaryOperation) {
-        auto shape = primitiveBinaryOperationShape(input, site.node, nodeTypes.asPtr());
+        auto shape =
+            primitiveBinaryOperationShape(input, site.node, nodeTypes.asPtr(), literals.asPtr());
         if (shape == zc::none) {
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,

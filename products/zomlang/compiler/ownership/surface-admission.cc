@@ -333,21 +333,24 @@ bool isAdmittedLoopStatement(const ast::Tree& tree, ast::NodeId whileStmt) {
 bool isAdmittedConditionalBody(const ast::Tree& tree, ast::NodeId ifStmt) {
   const auto& ifNode = tree.node(ifStmt);
   // Admit two structural condition shapes: a bare identifier (a bool parameter
-  // reference) or a binary comparison of two identifiers. Which comparison
-  // operators are actually supported is a checker decision (only `Eq` produces a
-  // primitive-callable fact today); a non-`Eq` comparison is admitted here and
-  // rejected downstream by the checker, keeping the operator-support contract in
+  // reference) or a binary comparison whose operands are each an identifier or a
+  // scalar literal, with at least one identifier operand. A literal-vs-literal
+  // comparison has no parameter to lower and would constant-fold, so it fails
+  // closed here. Which comparison operators are actually supported is a checker
+  // decision (this admits every relational-shaped comparison and the checker
+  // rejects the unsupported operators), keeping the operator-support contract in
   // a single place. Every other condition shape fails closed.
   const ast::NodeId condition(ifNode.payload.words[ast::kIfStmtCondWord]);
   if (!tree.contains(condition)) return false;
   if (tree.node(condition).kind == ast::SyntaxKind::BinaryExpr) {
     const ast::NodeId left(tree.node(condition).payload.words[ast::kBinaryExprLhsWord]);
     const ast::NodeId right(tree.node(condition).payload.words[ast::kBinaryExprRhsWord]);
-    if (!tree.contains(left) || !tree.contains(right) ||
-        tree.node(left).kind != ast::SyntaxKind::IdentExpr ||
-        tree.node(right).kind != ast::SyntaxKind::IdentExpr) {
-      return false;
-    }
+    if (!tree.contains(left) || !tree.contains(right)) return false;
+    const bool leftIdent = tree.node(left).kind == ast::SyntaxKind::IdentExpr;
+    const bool rightIdent = tree.node(right).kind == ast::SyntaxKind::IdentExpr;
+    const bool leftOk = leftIdent || isScalarLiteral(tree.node(left).kind);
+    const bool rightOk = rightIdent || isScalarLiteral(tree.node(right).kind);
+    if (!leftOk || !rightOk || (!leftIdent && !rightIdent)) return false;
   } else if (tree.node(condition).kind != ast::SyntaxKind::IdentExpr) {
     return false;
   }

@@ -346,12 +346,14 @@ struct PendingConditionalArm final {
   identity::SourceSpan sourceSpan;
 };
 
-// One relational-comparison condition holds the two parameter references it
-// compares plus the shared operand type, the produced bool type, and the
-// selected comparison operator.
+// One relational-comparison condition holds its two operands, the shared operand
+// type, the produced bool type, and the selected comparison operator. Each
+// operand is either a scalar literal or a parameter reference (the same
+// literal-XOR-parameter shape as a conditional arm); at least one is a
+// parameter.
 struct PendingEqualityCondition final {
-  HirParameterReferenceExpression left;
-  HirParameterReferenceExpression right;
+  PendingConditionalArm left;
+  PendingConditionalArm right;
   identity::SemanticTypeId operandType;
   identity::SemanticTypeId type;
   checker::PrimitiveOperation operation;
@@ -468,11 +470,15 @@ struct FunctionReturnShape final {
   zc::Maybe<ast::NodeId> unsafeBlock;
   bool isConditional = false;
   ast::NodeId condition;
-  // When the condition is an `a == b` equality comparison of two parameters, the
-  // condition node is a BinaryExpr and these hold its two IdentExpr operands.
+  // When the condition is an `a CMP b` relational comparison, the condition node
+  // is a BinaryExpr and these hold its two operands. Each operand is either an
+  // IdentExpr parameter reference or a scalar literal; the two literal flags
+  // record which. At least one operand is a parameter.
   bool conditionIsEquality = false;
   ast::NodeId conditionLeft;
   ast::NodeId conditionRight;
+  bool conditionLeftIsLiteral = false;
+  bool conditionRightIsLiteral = false;
   ast::NodeId thenReturnValue;
   ast::NodeId elseReturnValue;
   bool isLoop = false;
@@ -627,23 +633,30 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
             shape.thenReturnValue = thenNode;
             shape.elseReturnValue = elseNode;
             // Detect the relational-comparison condition: a comparison
-            // BinaryExpr over two IdentExpr operands for one of the six
-            // relational operators. A bare identifier condition keeps the
-            // parameter-reference lowering.
+            // BinaryExpr for one of the six relational operators whose operands
+            // are each an IdentExpr parameter reference or a scalar literal, with
+            // at least one parameter operand. A bare identifier condition keeps
+            // the parameter-reference lowering.
             if (tree.contains(condition) &&
                 tree.node(condition).kind == ast::SyntaxKind::BinaryExpr &&
                 isRelationalBinaryOperator(static_cast<ast::BinaryOperatorKind>(
                     tree.node(condition).payload.words[ast::kBinaryExprOpWord]))) {
               const ast::NodeId left(tree.node(condition).payload.words[ast::kBinaryExprLhsWord]);
               const ast::NodeId right(tree.node(condition).payload.words[ast::kBinaryExprRhsWord]);
-              if (!tree.contains(left) || !tree.contains(right) ||
-                  tree.node(left).kind != ast::SyntaxKind::IdentExpr ||
-                  tree.node(right).kind != ast::SyntaxKind::IdentExpr) {
+              if (!tree.contains(left) || !tree.contains(right)) return zc::none;
+              const bool leftIdent = tree.node(left).kind == ast::SyntaxKind::IdentExpr;
+              const bool rightIdent = tree.node(right).kind == ast::SyntaxKind::IdentExpr;
+              const bool leftLiteral = isScalarLiteral(tree.node(left).kind);
+              const bool rightLiteral = isScalarLiteral(tree.node(right).kind);
+              if ((!leftIdent && !leftLiteral) || (!rightIdent && !rightLiteral) ||
+                  (!leftIdent && !rightIdent)) {
                 return zc::none;
               }
               shape.conditionIsEquality = true;
               shape.conditionLeft = left;
               shape.conditionRight = right;
+              shape.conditionLeftIsLiteral = !leftIdent;
+              shape.conditionRightIsLiteral = !rightIdent;
             }
             return shape;
           }
@@ -1880,29 +1893,17 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         const auto conditionType = facts.nodeTypes().entries()[conditionTypeSlot].value;
         PendingConditionalCondition pendingCondition;
         if (shape.conditionIsEquality) {
-          // The equality condition consumes the checked Eq call fact whose two
-          // arguments are the left and right parameter references.
-          auto leftParameter = resolvedCallableParameter(bound.bindings(), shape.conditionLeft);
-          auto rightParameter = resolvedCallableParameter(bound.bindings(), shape.conditionRight);
+          // The comparison condition consumes the checked relational call fact
+          // whose two arguments are the left and right operands. Each operand is
+          // either a parameter reference or a scalar literal; at least one is a
+          // parameter, from which the shared operand type is derived.
           auto leftTypeIndex = factIndex(facts.nodeTypes(), shape.conditionLeft);
           auto rightTypeIndex = factIndex(facts.nodeTypes(), shape.conditionRight);
           auto callIndex = factIndex(facts.calls(), shape.condition);
           auto leftSpan = bound.parsedModule().spanFor(tree.node(shape.conditionLeft).range);
           auto rightSpan = bound.parsedModule().spanFor(tree.node(shape.conditionRight).range);
-          if (leftParameter == zc::none || rightParameter == zc::none ||
-              leftTypeIndex == zc::none || rightTypeIndex == zc::none || callIndex == zc::none ||
+          if (leftTypeIndex == zc::none || rightTypeIndex == zc::none || callIndex == zc::none ||
               leftSpan == zc::none || rightSpan == zc::none) {
-            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                 ir::IrFailureKind::MissingRequiredFact, module,
-                                                 registries, ordinal + 2);
-          }
-          identity::CallableParameterId leftHandle;
-          identity::CallableParameterId rightHandle;
-          ZC_IF_SOME(value, leftParameter) { leftHandle = value; }
-          ZC_IF_SOME(value, rightParameter) { rightHandle = value; }
-          auto leftAuthority = registries.callableParameter(leftHandle);
-          auto rightAuthority = registries.callableParameter(rightHandle);
-          if (leftAuthority == zc::none || rightAuthority == zc::none) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::MissingRequiredFact, module,
                                                  registries, ordinal + 2);
@@ -1918,7 +1919,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
           const auto& callFact = facts.calls().entries()[callSlot].value;
           const auto& call = callFact.invocation;
           const auto& selected = call.selected.variant();
-          // The two operands must share the primitive scalar type and the
+          // Both operand type facts must share the primitive scalar type and the
           // comparison call fact must match the relational-comparison contract
           // exactly for one of the six supported operators.
           if (operandType != rightType || callFact.node != shape.condition ||
@@ -1937,46 +1938,74 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                                  ir::IrFailureKind::InvalidFact, module, registries,
                                                  ordinal + 2);
           }
-          bool leftMatches = false;
-          bool rightMatches = false;
-          ZC_IF_SOME(leftEntry, leftAuthority) {
-            for (const auto& parameterCandidate : parameters) {
-              if (parameterCandidate.key == leftEntry.key() &&
-                  parameterCandidate.type == operandType) {
-                leftMatches = true;
+          // Build one operand: a parameter operand resolves to a parameter
+          // reference; a literal operand consumes its checked literal fact. Both
+          // operands must share the derived operand type.
+          bool operandRejected = false;
+          auto buildOperand =
+              [&](ast::NodeId operandNode, bool isLiteral,
+                  const identity::SourceSpan& operandSpan) -> zc::Maybe<PendingConditionalArm> {
+            if (!isLiteral) {
+              auto parameter = resolvedCallableParameter(bound.bindings(), operandNode);
+              if (parameter == zc::none) {
+                operandRejected = true;
+                return zc::none;
               }
-            }
-          }
-          ZC_IF_SOME(rightEntry, rightAuthority) {
-            for (const auto& parameterCandidate : parameters) {
-              if (parameterCandidate.key == rightEntry.key() &&
-                  parameterCandidate.type == operandType) {
-                rightMatches = true;
+              identity::CallableParameterId handle;
+              ZC_IF_SOME(value, parameter) { handle = value; }
+              auto authority = registries.callableParameter(handle);
+              if (authority == zc::none) {
+                operandRejected = true;
+                return zc::none;
               }
+              zc::Maybe<PendingConditionalArm> built;
+              ZC_IF_SOME(entry, authority) {
+                bool matches = false;
+                for (const auto& parameterCandidate : parameters) {
+                  if (parameterCandidate.key == entry.key() &&
+                      parameterCandidate.type == operandType) {
+                    matches = true;
+                  }
+                }
+                if (!matches) {
+                  operandRejected = true;
+                } else {
+                  auto reference =
+                      HirParameterReferenceExpression{HirNodeId(), entry.key().clone(), operandType,
+                                                      HirValueCategory::Place, operandSpan.clone()};
+                  built = PendingConditionalArm{zc::none, zc::mv(reference), operandType,
+                                                operandSpan.clone()};
+                }
+              }
+              return built;
             }
-          }
-          if (!leftMatches || !rightMatches) {
+            auto literalIndex = factIndex(facts.literals(), operandNode);
+            if (literalIndex == zc::none) {
+              operandRejected = true;
+              return zc::none;
+            }
+            size_t literalSlot = 0;
+            ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+            const auto& literalFact = facts.literals().entries()[literalSlot].value;
+            return PendingConditionalArm{literalFact.literal.clone(), zc::none, operandType,
+                                         operandSpan.clone()};
+          };
+          auto leftOperand = buildOperand(shape.conditionLeft, shape.conditionLeftIsLiteral,
+                                          ZC_ASSERT_NONNULL(leftSpan));
+          auto rightOperand = buildOperand(shape.conditionRight, shape.conditionRightIsLiteral,
+                                           ZC_ASSERT_NONNULL(rightSpan));
+          if (operandRejected || leftOperand == zc::none || rightOperand == zc::none) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::InvalidFact, module, registries,
                                                  ordinal + 2);
           }
-          ZC_IF_SOME(leftEntry, leftAuthority) {
-            ZC_IF_SOME(rightEntry, rightAuthority) {
-              auto leftRef = HirParameterReferenceExpression{HirNodeId(), leftEntry.key().clone(),
-                                                             operandType, HirValueCategory::Place,
-                                                             ZC_ASSERT_NONNULL(leftSpan).clone()};
-              auto rightRef = HirParameterReferenceExpression{HirNodeId(), rightEntry.key().clone(),
-                                                              operandType, HirValueCategory::Place,
-                                                              ZC_ASSERT_NONNULL(rightSpan).clone()};
-              pendingCondition.equality = PendingEqualityCondition{
-                  zc::mv(leftRef),
-                  zc::mv(rightRef),
-                  operandType,
-                  conditionType,
-                  selected.get<checker::checked::PrimitiveCallable>().operation,
-                  ZC_ASSERT_NONNULL(conditionSpan).clone()};
-            }
-          }
+          pendingCondition.equality = PendingEqualityCondition{
+              zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+              zc::mv(ZC_ASSERT_NONNULL(rightOperand)),
+              operandType,
+              conditionType,
+              selected.get<checker::checked::PrimitiveCallable>().operation,
+              ZC_ASSERT_NONNULL(conditionSpan).clone()};
         } else {
           auto conditionParameter = resolvedCallableParameter(bound.bindings(), shape.condition);
           if (conditionParameter == zc::none) {
@@ -3706,6 +3735,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
   size_t conditionalCount = 0;
   size_t equalityConditionalCount = 0;
   size_t conditionalLiteralArmCount = 0;
+  // Number of comparison-condition operands that are scalar literals rather than
+  // parameter references. Each such operand adds one scalar-literal expression
+  // and one literal fact beyond the arm literals.
+  size_t equalityLiteralOperandCount = 0;
   size_t loopCount = 0;
   for (const auto& function : pendingFunctions) {
     const bool hasSequentialLocalReturn = function.sequentialLocalReturn != zc::none;
@@ -3724,7 +3757,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     if (function.conditionalReturn != zc::none) {
       ++conditionalCount;
       ZC_IF_SOME(conditional, function.conditionalReturn) {
-        if (conditional.condition.equality != zc::none) { ++equalityConditionalCount; }
+        ZC_IF_SOME(equality, conditional.condition.equality) {
+          ++equalityConditionalCount;
+          for (const auto* operand : {&equality.left, &equality.right}) {
+            if (operand->literal != zc::none) { ++equalityLiteralOperandCount; }
+          }
+        }
         for (const auto* arm : {&conditional.thenArm, &conditional.elseArm}) {
           if (arm->literal != zc::none) { ++conditionalLiteralArmCount; }
         }
@@ -3855,8 +3893,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       pending.size() + pendingFunctions.size() - directCallCount - aggregateCount -
           uninitializedLocalReturnCount - parameterReferenceCount - parameterReborrowCount +
           localAliasReborrowCount + localWriteCount + aggregateElementCount +
-          directCallArgumentCount + receiverCallArgumentCount + conditionalLiteralArmCount -
-          conditionalCount) {
+          directCallArgumentCount + receiverCallArgumentCount + conditionalLiteralArmCount +
+          equalityLiteralOperandCount - conditionalCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 3);
   }
@@ -4015,6 +4053,22 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
               armId, arm.type, literal.clone(), HirValueCategory::Value, arm.sourceSpan.clone()});
         }
       };
+      // Materialize one comparison operand: a parameter operand becomes a
+      // parameter reference into parameterReferences, a literal operand becomes a
+      // scalar literal into expressions. The node ordinal is fixed either way, so
+      // the equality node's left/right ids remain node-kind-agnostic.
+      auto materializeOperand = [&](HirNodeId operandId, PendingConditionalArm& operand) {
+        ZC_IF_SOME(reference, operand.parameter) {
+          parameterReferences.add(
+              HirParameterReferenceExpression{operandId, reference.parameter.clone(), operand.type,
+                                              HirValueCategory::Place, operand.sourceSpan.clone()});
+        }
+        ZC_IF_SOME(literal, operand.literal) {
+          expressions.add(HirScalarLiteralExpression{operandId, operand.type, literal.clone(),
+                                                     HirValueCategory::Value,
+                                                     operand.sourceSpan.clone()});
+        }
+      };
       ZC_IF_SOME(equality, conditional.condition.equality) {
         const auto leftId = hirId(next++);
         const auto rightId = hirId(next++);
@@ -4032,12 +4086,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         blocks.add(HirBlockStatement{bodyId, zc::mv(statements), value.bodySpan.clone()});
         returns.add(HirReturnStatement{returnId, value.resultType, conditionalId,
                                        value.returnSpan.clone()});
-        parameterReferences.add(HirParameterReferenceExpression{
-            leftId, equality.left.parameter.clone(), equality.operandType, equality.left.category,
-            equality.left.sourceSpan.clone()});
-        parameterReferences.add(HirParameterReferenceExpression{
-            rightId, equality.right.parameter.clone(), equality.operandType,
-            equality.right.category, equality.right.sourceSpan.clone()});
+        materializeOperand(leftId, equality.left);
+        materializeOperand(rightId, equality.right);
         equalityComparisons.add(HirEqualityComparisonExpression{
             equalityId, leftId, rightId, equality.operandType, equality.type,
             HirValueCategory::Value, equality.operation, equality.sourceSpan.clone()});
@@ -5157,29 +5207,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               index + 1);
         }
         if (conditionIsEquality) {
-          // Locate and cross-check the two operand parameter references and the
-          // equality-comparison node against the checked Eq call fact.
-          auto leftParameter = resolvedCallableParameter(bound.bindings(), source.conditionLeft);
-          auto rightParameter = resolvedCallableParameter(bound.bindings(), source.conditionRight);
+          // Cross-check the two operand nodes and the comparison node against the
+          // checked relational call fact. Each operand is a parameter reference
+          // or a scalar literal; the shared operand type comes from the fact.
           auto leftTypeIndex = factIndex(facts.nodeTypes(), source.conditionLeft);
           auto rightTypeIndex = factIndex(facts.nodeTypes(), source.conditionRight);
           auto callIndex = factIndex(facts.calls(), source.condition);
           auto leftSpan = bound.parsedModule().spanFor(tree.node(source.conditionLeft).range);
           auto rightSpan = bound.parsedModule().spanFor(tree.node(source.conditionRight).range);
-          if (leftParameter == zc::none || rightParameter == zc::none ||
-              leftTypeIndex == zc::none || rightTypeIndex == zc::none || callIndex == zc::none ||
+          if (leftTypeIndex == zc::none || rightTypeIndex == zc::none || callIndex == zc::none ||
               leftSpan == zc::none || rightSpan == zc::none) {
-            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                ir::IrFailureKind::MissingRequiredFact, module,
-                                                registries, index + 1);
-          }
-          identity::CallableParameterId leftHandle;
-          identity::CallableParameterId rightHandle;
-          ZC_IF_SOME(value, leftParameter) { leftHandle = value; }
-          ZC_IF_SOME(value, rightParameter) { rightHandle = value; }
-          auto leftAuthority = registries.callableParameter(leftHandle);
-          auto rightAuthority = registries.callableParameter(rightHandle);
-          if (leftAuthority == zc::none || rightAuthority == zc::none) {
             return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::MissingRequiredFact, module,
                                                 registries, index + 1);
@@ -5211,18 +5248,65 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);
           }
-          auto findReference =
-              [&](HirNodeId node) -> zc::Maybe<const HirParameterReferenceExpression&> {
-            zc::Maybe<const HirParameterReferenceExpression&> reference;
-            for (const auto& candidateReference : candidate.impl->parameterReferences) {
-              if (candidateReference.node != node) continue;
-              if (reference != zc::none) return zc::none;
-              reference = candidateReference;
+          // Verify one comparison operand: a parameter operand resolves to a
+          // parameter reference at the fixed node id; a literal operand resolves
+          // to a scalar-literal expression matching its checked literal fact.
+          auto verifyOperand = [&](bool isLiteral, ast::NodeId operandSourceNode,
+                                   HirNodeId operandId,
+                                   const identity::SourceSpan& operandSpan) -> bool {
+            if (!isLiteral) {
+              auto parameter = resolvedCallableParameter(bound.bindings(), operandSourceNode);
+              if (parameter == zc::none) return false;
+              identity::CallableParameterId handle;
+              ZC_IF_SOME(value, parameter) { handle = value; }
+              auto authority = registries.callableParameter(handle);
+              if (authority == zc::none) return false;
+              zc::Maybe<const HirParameterReferenceExpression&> reference;
+              for (const auto& candidateReference : candidate.impl->parameterReferences) {
+                if (candidateReference.node != operandId) continue;
+                if (reference != zc::none) return false;
+                reference = candidateReference;
+              }
+              bool ok = false;
+              ZC_IF_SOME(referenceValue, reference) {
+                ZC_IF_SOME(authorityValue, authority) {
+                  ok = referenceValue.parameter == authorityValue.key() &&
+                       referenceValue.type == operandType &&
+                       referenceValue.category == HirValueCategory::Place &&
+                       sameSpan(referenceValue.sourceSpan, operandSpan);
+                }
+              }
+              return ok;
             }
-            return reference;
+            auto literalIndex = factIndex(facts.literals(), operandSourceNode);
+            if (literalIndex == zc::none) return false;
+            size_t literalSlot = 0;
+            ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+            const auto& literalFact = facts.literals().entries()[literalSlot].value;
+            zc::Maybe<const HirScalarLiteralExpression&> expressionValue;
+            for (const auto& expression : candidate.impl->expressions) {
+              if (expression.node != operandId) continue;
+              if (expressionValue != zc::none) return false;
+              expressionValue = expression;
+            }
+            bool ok = false;
+            ZC_IF_SOME(expression, expressionValue) {
+              ok = expression.type == operandType &&
+                   expression.category == HirValueCategory::Value &&
+                   sameConstant(expression.value, literalFact.literal, module, registries,
+                                semanticTypes) &&
+                   sameSpan(expression.sourceSpan, operandSpan);
+            }
+            return ok;
           };
-          auto leftReference = findReference(hirId(expectedFunction + 2));
-          auto rightReference = findReference(hirId(expectedFunction + 3));
+          if (!verifyOperand(source.conditionLeftIsLiteral, source.conditionLeft,
+                             hirId(expectedFunction + 2), ZC_ASSERT_NONNULL(leftSpan)) ||
+              !verifyOperand(source.conditionRightIsLiteral, source.conditionRight,
+                             hirId(expectedFunction + 3), ZC_ASSERT_NONNULL(rightSpan))) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
           zc::Maybe<const HirEqualityComparisonExpression&> equalityValue;
           for (const auto& equality : candidate.impl->equalityComparisons) {
             if (equality.node != hirId(expectedFunction + 4)) continue;
@@ -5233,38 +5317,23 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
             equalityValue = equality;
           }
-          if (leftReference == zc::none || rightReference == zc::none ||
-              equalityValue == zc::none) {
+          if (equalityValue == zc::none) {
             return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::MissingRequiredFact, module,
                                                 registries, index + 1);
           }
           bool equalityOk = false;
-          ZC_IF_SOME(leftRef, leftReference) {
-            ZC_IF_SOME(rightRef, rightReference) {
-              ZC_IF_SOME(equality, equalityValue) {
-                ZC_IF_SOME(conditional, conditionalValue) {
-                  ZC_IF_SOME(leftEntry, leftAuthority) {
-                    ZC_IF_SOME(rightEntry, rightAuthority) {
-                      equalityOk =
-                          leftRef.parameter == leftEntry.key() && leftRef.type == operandType &&
-                          leftRef.category == HirValueCategory::Place &&
-                          sameSpan(leftRef.sourceSpan, ZC_ASSERT_NONNULL(leftSpan)) &&
-                          rightRef.parameter == rightEntry.key() && rightRef.type == operandType &&
-                          rightRef.category == HirValueCategory::Place &&
-                          sameSpan(rightRef.sourceSpan, ZC_ASSERT_NONNULL(rightSpan)) &&
-                          equality.left == leftRef.node && equality.right == rightRef.node &&
-                          equality.operandType == operandType && equality.type == conditionType &&
-                          equality.category == HirValueCategory::Value &&
-                          equality.operation ==
-                              selected.get<checker::checked::PrimitiveCallable>().operation &&
-                          sameSpan(equality.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan)) &&
-                          conditional.condition == equality.node &&
-                          typeExists(operandType, semanticTypes);
-                    }
-                  }
-                }
-              }
+          ZC_IF_SOME(equality, equalityValue) {
+            ZC_IF_SOME(conditional, conditionalValue) {
+              equalityOk = equality.left == hirId(expectedFunction + 2) &&
+                           equality.right == hirId(expectedFunction + 3) &&
+                           equality.operandType == operandType && equality.type == conditionType &&
+                           equality.category == HirValueCategory::Value &&
+                           equality.operation ==
+                               selected.get<checker::checked::PrimitiveCallable>().operation &&
+                           sameSpan(equality.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan)) &&
+                           conditional.condition == equality.node &&
+                           typeExists(operandType, semanticTypes);
             }
           }
           if (!equalityOk) {

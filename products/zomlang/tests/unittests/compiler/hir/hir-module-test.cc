@@ -1137,5 +1137,62 @@ ZC_TEST(
   ZC_EXPECT(framedDigest(record.asPtr()) == baseline);
 }
 
+ZC_TEST("HIR pipeline lowers a parameter-and-literal relational conditional condition") {
+  HirPipelineFixture fixture(
+      "fun lt(a: i32) -> i32 { if (a < 5) { return 1; } else { return 2; } }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.conditionals().size() == 1);
+  ZC_REQUIRE(module.equalityComparisons().size() == 1);
+  // The `a < 5` condition materializes the equality comparison, one operand
+  // parameter reference (a), and the literal operand `5` into expressions along
+  // with the two scalar-literal arms.
+  ZC_REQUIRE(module.parameterReferences().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 3);
+  const auto& function = module.functions()[0];
+  const auto& conditional = module.conditionals()[0];
+  const auto& equality = module.equalityComparisons()[0];
+  const auto& operandRef = module.parameterReferences()[0];
+  ZC_EXPECT(conditional.condition == equality.node);
+  ZC_EXPECT(equality.operation == checker::PrimitiveOperation::Lt);
+  // The left operand is the parameter reference; the right operand id points at
+  // a scalar-literal expression, proving the operand id is node-kind-agnostic.
+  ZC_EXPECT(equality.left == operandRef.node);
+  ZC_EXPECT(operandRef.parameter == function.parameters[0].key);
+  bool rightIsLiteralExpression = false;
+  for (const auto& expression : module.expressions()) {
+    if (expression.node == equality.right) rightIsLiteralExpression = true;
+  }
+  ZC_EXPECT(rightIsLiteralExpression);
+  ZC_EXPECT(equality.operandType == function.parameters[0].type);
+
+  // The condition lowers to a four-block CFG whose entry block computes the
+  // comparison of a parameter copy and a constant into a bool temporary.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lt;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lt = mirFunction;
+  }
+  ZC_REQUIRE(lt != zc::none);
+  ZC_IF_SOME(mirFunction, lt) {
+    // One parameter local (a), the function result, and the bool temporary.
+    ZC_REQUIRE(mirFunction.locals.size() == 3);
+    ZC_REQUIRE(mirFunction.blocks.size() == 4);
+    ZC_REQUIRE(mirFunction.blocks[0].statements.size() == 3);
+    const auto& compareAssign = mirFunction.blocks[0].statements[2].assignmentValue();
+    ZC_REQUIRE(compareAssign.value.kind() == mir::MirRvalueKind::Comparison);
+    const auto& comparison = compareAssign.value.comparisonValue();
+    ZC_EXPECT(comparison.op == mir::MirComparisonOperator::Lt);
+    // The comparison feeds one Copy operand (the parameter) and one Constant
+    // operand (the literal).
+    ZC_EXPECT(comparison.left.kind() == mir::MirOperandKind::Copy);
+    ZC_EXPECT(comparison.left.place().local() == mirFunction.locals[0].id);
+    ZC_EXPECT(comparison.right.kind() == mir::MirOperandKind::Constant);
+    ZC_REQUIRE(mirFunction.blocks[0].terminator.kind() == mir::MirTerminatorKind::SwitchInt);
+    ZC_EXPECT(mirFunction.blocks[3].terminator.kind() == mir::MirTerminatorKind::Return);
+  }
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::hir

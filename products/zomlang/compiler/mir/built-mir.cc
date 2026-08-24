@@ -1561,10 +1561,8 @@ bool validEqualityConditionalReturnFunction(
   auto elseNode = armNode(elseArm);
   auto thenTypeValue = armType(thenArm);
   auto elseTypeValue = armType(elseArm);
-  auto leftRef = parameterReferenceFor(hirModule, equality.left);
-  auto rightRef = parameterReferenceFor(hirModule, equality.right);
   if (thenNode == zc::none || elseNode == zc::none || thenTypeValue == zc::none ||
-      elseTypeValue == zc::none || leftRef == zc::none || rightRef == zc::none) {
+      elseTypeValue == zc::none) {
     return false;
   }
   // The equality condition allocates one extra bool temporary after the function
@@ -1619,18 +1617,36 @@ bool validEqualityConditionalReturnFunction(
     }
     return false;
   };
+  // Each comparison operand is a scalar-literal expression or a parameter
+  // reference; exactly one lookup succeeds per operand, at least one is a
+  // parameter, and the shared operand type comes from a parameter operand.
+  auto leftLiteral = expressionFor(hirModule, equality.left);
+  auto leftRef = parameterReferenceFor(hirModule, equality.left);
+  auto rightLiteral = expressionFor(hirModule, equality.right);
+  auto rightRef = parameterReferenceFor(hirModule, equality.right);
+  const bool leftOperandOk = (leftLiteral != zc::none) != (leftRef != zc::none);
+  const bool rightOperandOk = (rightLiteral != zc::none) != (rightRef != zc::none);
+  if (!leftOperandOk || !rightOperandOk || (leftRef == zc::none && rightRef == zc::none)) {
+    return false;
+  }
   size_t leftIndex = 0;
   size_t rightIndex = 0;
   identity::SemanticTypeId operandType;
-  bool refsOk = false;
-  ZC_IF_SOME(leftValue, leftRef) {
-    ZC_IF_SOME(rightValue, rightRef) {
-      operandType = leftValue.type;
-      refsOk = parameterLocalIndex(leftValue, leftIndex) &&
-               parameterLocalIndex(rightValue, rightIndex) && leftValue.type == rightValue.type &&
-               equality.operandType == leftValue.type;
-    }
+  bool refsOk = true;
+  ZC_IF_SOME(value, leftRef) {
+    operandType = value.type;
+    refsOk &= parameterLocalIndex(value, leftIndex);
   }
+  ZC_IF_SOME(value, rightRef) {
+    operandType = value.type;
+    refsOk &= parameterLocalIndex(value, rightIndex);
+  }
+  ZC_IF_SOME(leftValue, leftRef) {
+    ZC_IF_SOME(rightValue, rightRef) { refsOk &= leftValue.type == rightValue.type; }
+  }
+  refsOk &= equality.operandType == operandType;
+  ZC_IF_SOME(value, leftLiteral) { refsOk &= value.type == operandType; }
+  ZC_IF_SOME(value, rightLiteral) { refsOk &= value.type == operandType; }
   if (!refsOk) return false;
   const auto& entry = function.blocks[0];
   const auto& thenBlock = function.blocks[1];
@@ -1670,23 +1686,38 @@ bool validEqualityConditionalReturnFunction(
     return false;
   }
   const auto& comparison = tempAssign.value.comparisonValue();
-  const auto leftLocal = localId(static_cast<uint32_t>(leftIndex + 1));
-  const auto rightLocal = localId(static_cast<uint32_t>(rightIndex + 1));
   // The MIR comparison operator must be the one mapped from the HIR-carried
   // relational operator; any other byte is a lowering defect.
   auto expectedOperator = mirComparisonOperatorFor(equality.operation);
   if (expectedOperator == zc::none || comparison.op != ZC_ASSERT_NONNULL(expectedOperator) ||
-      comparison.resultType != equality.type ||
-      !matchesPlaceUse(comparison.left, proofs, copy, operandType) ||
-      comparison.left.place().local() != leftLocal ||
-      comparison.left.place().rootType() != operandType ||
-      comparison.left.place().resultType() != operandType ||
-      comparison.left.place().projections().size() != 0 ||
-      !matchesPlaceUse(comparison.right, proofs, copy, operandType) ||
-      comparison.right.place().local() != rightLocal ||
-      comparison.right.place().rootType() != operandType ||
-      comparison.right.place().resultType() != operandType ||
-      comparison.right.place().projections().size() != 0) {
+      comparison.resultType != equality.type) {
+    return false;
+  }
+  // Each comparison operand matches its HIR operand: a literal operand is a
+  // Constant of the operand type and value; a parameter operand is a copy of the
+  // parameter local with zero projections.
+  auto operandMatches = [&](const MirOperand& operand,
+                            zc::Maybe<const hir::HirScalarLiteralExpression&> literal,
+                            zc::Maybe<const hir::HirParameterReferenceExpression&> parameter,
+                            size_t parameterIndex) -> bool {
+    ZC_IF_SOME(value, literal) {
+      return operand.kind() == MirOperandKind::Constant &&
+             operand.constantValue().type == operandType &&
+             sameConstant(operand.constantValue().value, value.value, module, identities,
+                          semanticTypes);
+    }
+    ZC_IF_SOME(value, parameter) {
+      (void)value;
+      const auto local = localId(static_cast<uint32_t>(parameterIndex + 1));
+      return matchesPlaceUse(operand, proofs, copy, operandType) &&
+             operand.place().local() == local && operand.place().rootType() == operandType &&
+             operand.place().resultType() == operandType &&
+             operand.place().projections().size() == 0;
+    }
+    return false;
+  };
+  if (!operandMatches(comparison.left, leftLiteral, leftRef, leftIndex) ||
+      !operandMatches(comparison.right, rightLiteral, rightRef, rightIndex)) {
     return false;
   }
   const auto& switchInt = entry.terminator.switchIntValue();
@@ -5141,8 +5172,15 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
             auto equality = equalityComparisonFor(hirModule, conditionalValue.condition);
             ZC_IF_SOME(equalityValue, equality) {
               if (thenOk && elseOk) {
+                // Each comparison operand is a scalar-literal expression or a
+                // parameter reference; exactly one lookup succeeds per operand,
+                // and at least one operand is a parameter.
+                auto leftLiteral = expressionFor(hirModule, equalityValue.left);
                 auto leftRef = parameterReferenceFor(hirModule, equalityValue.left);
+                auto rightLiteral = expressionFor(hirModule, equalityValue.right);
                 auto rightRef = parameterReferenceFor(hirModule, equalityValue.right);
+                const bool leftOperandOk = (leftLiteral != zc::none) != (leftRef != zc::none);
+                const bool rightOperandOk = (rightLiteral != zc::none) != (rightRef != zc::none);
                 auto parameterLocalIndex =
                     [&](const hir::HirParameterReferenceExpression& reference,
                         size_t& outIndex) -> bool {
@@ -5169,15 +5207,32 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                 ZC_IF_SOME(value, elseParam) {
                   armParametersResolved &= parameterLocalIndex(value, elseParamIndex);
                 }
-                size_t leftIndex = 0;
-                size_t rightIndex = 0;
-                bool operandsResolved = leftRef != zc::none && rightRef != zc::none;
+                // Derive the shared operand type from a parameter operand; at
+                // least one operand is a parameter.
+                identity::SemanticTypeId operandType;
+                bool operandTypeResolved = false;
                 ZC_IF_SOME(value, leftRef) {
-                  operandsResolved &= parameterLocalIndex(value, leftIndex);
+                  operandType = value.type;
+                  operandTypeResolved = true;
                 }
                 ZC_IF_SOME(value, rightRef) {
-                  operandsResolved &= parameterLocalIndex(value, rightIndex);
+                  operandType = value.type;
+                  operandTypeResolved = true;
                 }
+                size_t leftIndex = 0;
+                size_t rightIndex = 0;
+                bool operandsResolved = leftOperandOk && rightOperandOk && operandTypeResolved &&
+                                        (leftRef != zc::none || rightRef != zc::none);
+                ZC_IF_SOME(value, leftRef) {
+                  operandsResolved &=
+                      parameterLocalIndex(value, leftIndex) && value.type == operandType;
+                }
+                ZC_IF_SOME(value, rightRef) {
+                  operandsResolved &=
+                      parameterLocalIndex(value, rightIndex) && value.type == operandType;
+                }
+                ZC_IF_SOME(value, leftLiteral) { operandsResolved &= value.type == operandType; }
+                ZC_IF_SOME(value, rightLiteral) { operandsResolved &= value.type == operandType; }
                 if (!operandsResolved || !armParametersResolved ||
                     conditionalValue.type != declaration.resultType ||
                     thenType != declaration.resultType || elseType != declaration.resultType ||
@@ -5187,17 +5242,13 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                       declaration.definition, identities,
                                                       static_cast<uint32_t>(pending.size() + 1));
                 }
-                const auto leftLocal = localId(static_cast<uint32_t>(leftIndex + 1));
-                const auto rightLocal = localId(static_cast<uint32_t>(rightIndex + 1));
                 const auto resultLocal =
                     localId(static_cast<uint32_t>(declaration.parameters.size() + 1));
                 // The comparison result is a bool temporary allocated after the
                 // parameters and the function result.
                 const auto conditionTemp =
                     localId(static_cast<uint32_t>(declaration.parameters.size() + 2));
-                identity::SemanticTypeId operandType;
                 identity::SemanticTypeId boolType = equalityValue.type;
-                ZC_IF_SOME(value, leftRef) { operandType = value.type; }
                 zc::Vector<MirSourceScope> scopes;
                 zc::Maybe<MirSourceScopeId> noParent;
                 scopes.add(
@@ -5214,16 +5265,26 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                returnStatement.sourceSpan.clone()});
                 locals.add(MirLocalDeclaration{conditionTemp, MirLocalKind::Temporary, boolType,
                                                scopeId(1), equalityValue.sourceSpan.clone()});
-                // Build the comparison operands, the discriminant read of the
-                // temporary, and the join-block return operand.
-                zc::Vector<MirProjection> leftProjections;
-                auto leftOperand = placeUse(
-                    proofs, copy,
-                    MirPlace(leftLocal, operandType, zc::mv(leftProjections), operandType));
-                zc::Vector<MirProjection> rightProjections;
-                auto rightOperand = placeUse(
-                    proofs, copy,
-                    MirPlace(rightLocal, operandType, zc::mv(rightProjections), operandType));
+                // Build each comparison operand: a literal operand becomes a
+                // constant; a parameter operand becomes a copy of its local.
+                auto comparisonOperand =
+                    [&](zc::Maybe<const hir::HirScalarLiteralExpression&> literal,
+                        zc::Maybe<const hir::HirParameterReferenceExpression&> parameter,
+                        size_t parameterIndex) -> zc::Maybe<MirOperand> {
+                  ZC_IF_SOME(value, literal) {
+                    return MirOperand::constant(value.type, value.value.clone());
+                  }
+                  ZC_IF_SOME(value, parameter) {
+                    (void)value;
+                    zc::Vector<MirProjection> projections;
+                    return placeUse(proofs, copy,
+                                    MirPlace(localId(static_cast<uint32_t>(parameterIndex + 1)),
+                                             operandType, zc::mv(projections), operandType));
+                  }
+                  return zc::none;
+                };
+                auto leftOperand = comparisonOperand(leftLiteral, leftRef, leftIndex);
+                auto rightOperand = comparisonOperand(rightLiteral, rightRef, rightIndex);
                 zc::Vector<MirProjection> discriminantProjections;
                 auto discriminant = placeUse(
                     proofs, copy,

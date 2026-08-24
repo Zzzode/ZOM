@@ -613,4 +613,79 @@ ZC_TEST("PrimitiveBinaryOperation.RejectsMismatchedScalarOperandTypes") {
   ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
 }
 
+ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveEqualityCallFactForParameterAndLiteral") {
+  PrimitiveBinaryFixture fixture(
+      "fun eq(a: i32) -> bool { if (a == 0) { return true; } else { return false; } }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_REQUIRE(facts.calls().entries().size() == 1);
+  const auto& call = soleEqualityCall(facts);
+  const auto& selected = call.invocation.selected.variant();
+  ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+  ZC_EXPECT(selected.get<checked::PrimitiveCallable>().operation == PrimitiveOperation::Eq);
+
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  const auto boolType = fixture.primitive(type::semantic::PrimitiveKind::Bool);
+  ZC_EXPECT(call.invocation.calleeType == i32);
+  ZC_EXPECT(call.invocation.resultType == boolType);
+  ZC_REQUIRE(call.invocation.arguments.size() == 2);
+  ZC_EXPECT(call.invocation.arguments[0].sourceType == i32);
+  ZC_EXPECT(call.invocation.arguments[1].sourceType == i32);
+
+  // The literal operand carries a literal-backed CheckedArgumentFact whose node
+  // resolves to a scalar-literal node with a matching literal fact.
+  bool literalArgumentBacked = false;
+  for (const auto& literal : facts.literals().entries()) {
+    if (literal.value.node == call.invocation.arguments[1].sourceNode &&
+        literal.value.type == i32) {
+      literalArgumentBacked = true;
+    }
+  }
+  ZC_EXPECT(literalArgumentBacked);
+}
+
+ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveEqualityCallFactForLiteralAndParameter") {
+  PrimitiveBinaryFixture fixture(
+      "fun eq(a: i32) -> bool { if (0 == a) { return true; } else { return false; } }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_REQUIRE(facts.calls().entries().size() == 1);
+  const auto& call = soleEqualityCall(facts);
+  const auto& selected = call.invocation.selected.variant();
+  ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+  ZC_EXPECT(selected.get<checked::PrimitiveCallable>().operation == PrimitiveOperation::Eq);
+
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  ZC_REQUIRE(call.invocation.arguments.size() == 2);
+  bool literalArgumentBacked = false;
+  for (const auto& literal : facts.literals().entries()) {
+    if (literal.value.node == call.invocation.arguments[0].sourceNode &&
+        literal.value.type == i32) {
+      literalArgumentBacked = true;
+    }
+  }
+  ZC_EXPECT(literalArgumentBacked);
+}
+
+ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveOrderingCallFactForParameterAndLiteral") {
+  PrimitiveBinaryFixture fixture(
+      "fun lt(a: i32) -> bool { if (a < 5) { return true; } else { return false; } }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_REQUIRE(facts.calls().entries().size() == 1);
+  const auto& call = soleEqualityCall(facts);
+  const auto& selected = call.invocation.selected.variant();
+  ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+  ZC_EXPECT(selected.get<checked::PrimitiveCallable>().operation == PrimitiveOperation::Lt);
+}
+
+ZC_TEST("PrimitiveBinaryOperation.RejectsMismatchedLiteralOperandType") {
+  // The parameter is i32 while the literal is a float; the operand types differ
+  // so the comparison fails closed.
+  PrimitiveBinaryFixture fixture(
+      "fun eq(a: i32) -> bool { if (a == 1.0) { return true; } else { return false; } }\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
+}
+
 }  // namespace zomlang::compiler::checker::body
