@@ -358,6 +358,56 @@ The `rfc` governance owner remains pending. This technical approval does not
 populate proposal frontmatter, record an acceptance decision, or authorize
 implementation until governance approves the tracker and atomic transition.
 
+### 2026-08-24 Error-Operator Lowering Blocker Verification (no status change)
+
+This entry records the verified current-code state of the `?!`, `!!`, and `as!`
+operators against the "Built MIR control flow", "Cleanup and drop elaboration",
+and "Runtime and CLI cutover" tracker rows, all of which remain `Pending`. It
+authorizes no implementation and changes no status; it documents why an
+end-to-end error-operator lowering slice is not frontend-reachable today.
+
+Confirmed present (front end, already landed):
+
+- Lexing/parsing of `?!` (`ErrorPropagate`), `!!` (`ErrorUnwrap`), and `?:`
+  (`ErrorDefault`) as postfix/`ast::PostfixExpression` productions, and `as!`
+  as an `ast::CastExpression` with forced mode; all AST-tested under
+  `tests/conformance/corpus/11-error/` and `.../04-expressions/`.
+- Checker type model for `raises` (`type::FunctionTypeData.raises`, signature
+  and dispatch facts), error-union shape/operator fact types
+  (`checker/inference/checked-facts.h`), and all four diagnostic codes
+  (`ErrorPropagateOutsideRaises`, `ErrorUnwrapNonUnion`, `ErrorPropagateNonUnion`,
+  `ErrorUnionEmpty`).
+- The RFC 0005 error-union layout descriptor, codec, and revision
+  (`compiler/ir/error-union-layout*`) as verified pure data with an exact oracle.
+
+Confirmed blocking (each gates the next):
+
+1. The checker's `BodyProductionKind::ErrorOperator` production stage currently
+   emits no success-path `ErrorOperatorFact`/`ErrorUnionShapeFact`: the single
+   handler unconditionally calls `rejectNonUnionErrorOperator`
+   (`checker/body/body-checker.cc`), so a well-formed `?!`/`!!` produces no
+   positive facts. Positive fact emission is unbuilt.
+2. Semantic HIR fails closed on any error-union fact and on any `raises`
+   function or call: `noUnsupportedFacts` requires zero `errorOperators`,
+   `errorUnionShapes`, and `casts`, and every function/invocation acceptance
+   predicate rejects `callable.raises != zc::none` /
+   `invocation.raises != zc::none`. A raising function cannot reach HIR, and
+   `?!` requires a raising enclosing function, so `?!` cannot lower without an
+   HIR error-union return representation.
+3. Built MIR has no panic/abort terminator or statement (only `Unreachable`),
+   and RFC 0006 Chapter 11.3.2 intentionally leaves panic formatting, unwind,
+   and abort undefined at this stage. `!!` and `as!` are cast-or-panic /
+   unwrap-or-panic forms; lowering them requires the panic ABI and unwind
+   contract that this RFC's own `Cleanup and drop elaboration` and
+   `Runtime and CLI cutover` rows own. Implementing a panic edge now would
+   invent an unsigned contract, which the spec-alignment rules forbid.
+
+Conclusion: the reachable frontend surface for the error operators is already
+landed; the remaining work is the RFC 0006 Built-MIR / panic-ABI slice, which
+depends on the RFC 0013 MIR ownership integration (advanced separately) and the
+accepted panic-lifetime contract. No partial error-operator MIR lowering may be
+published ahead of those, and none is by this entry.
+
 ## Owner Review Checklist
 
 | Owner | Review State | Blocking Surface |

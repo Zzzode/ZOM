@@ -179,17 +179,26 @@ flowchart TD
     M --> D
 ```
 
-**CRITICAL KNOWN GAPS (as of 2026-07-20)** that are tracked by audit findings
+**CRITICAL KNOWN GAPS (as of 2026-08-23)** that are tracked by audit findings
 and must be handled with principle #4 (delete or implement, no drift):
 
-1. **RFC 0007 is accepted, not implementing.** The frontend publishes verified
-   borrow contracts and evidence, but production ownership facts remain
-   fail-closed until the accepted ownership-event, dataflow, unsafe-boundary,
-   and concurrency contracts enter implementation through the recorded
-   enablement transaction.
+1. **RFC 0007 is implementing, not complete.** The enablement transaction
+   completed 2026-07-24 (`ACCEPTED -> IMPLEMENTING`). Implemented: move paths,
+   initialization and drop facts; the borrow-source rail (conflicting loans,
+   move-out-of-borrow, and returned-local-borrow escape, `ZOM4061`) now runs in
+   `checkSources`; session cleanup integration (drop/coroutine elaboration and
+   executable-MIR verification). Still in progress and fail-closed: the Built
+   MIR ownership overlay for general region liveness, escape/capture-boundary
+   production logic, loans/references/regions completeness, marker/linear/unsafe
+   boundaries, and verified ownership facts/typestate. No incomplete slice may
+   publish `VerifiedOwnershipFacts`, `OwnershipCheckedMir`, or a successor
+   artifact until its complete proof and validation contracts are implemented.
 2. **RFC 0013 is implementing, not complete.** BorrowEvidence, CheckedModule,
-   HIR lineage, and Built MIR are implemented; OwnershipProofValidation and
-   production ownership-result publication remain gated on RFC 0007.
+   HIR lineage, and Built MIR are implemented; `OwnershipProofValidation` is a
+   pass-through whose remaining escape/outlives, Contained point-set, and
+   DirectInput cross-checks await admitted store/closure escapes and a signature
+   extension, and production ownership-result publication remains gated on RFC
+   0007.
 3. **RFC 0010 has no target LIR or backend implementation.** Semantic HIR and
    evidence-bound Built MIR are present, while target legalization, ABI
    lowering, LLVM IR, object emission, and linking are absent.

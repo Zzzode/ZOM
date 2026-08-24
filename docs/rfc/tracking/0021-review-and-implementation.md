@@ -61,6 +61,42 @@ complete, revisioned ABI-classifier registry owned by RFC 0021. RFC 0016 owns
 the selected classifier ID and target capability boundary; RFC 0021 owns the
 decision program because it defines `FnAbi`.
 
+### 2026-08-24 Governance Readiness Note (no approval)
+
+This entry records the exact sequence required before any `compiler/lir` or
+`compiler/backend` code may land. It does not approve the proposal; frontmatter
+remains authoritative and RFC 0021 stays `DRAFT`.
+
+Prerequisite chain (each gate blocks the next):
+
+1. RFC 0016 (`REVIEW`, `approvers: []`, `decision: TBD`) must reach `ACCEPTED`:
+   the eight required owners (task-router, rfc, module-system, error-system,
+   ir-backend, runtime-memory, spec-audit, verification) must approve the exact
+   frozen snapshot `e421dc3b...`; `scripts/check-rfc.py` blocks `ACCEPTED` until
+   `decision` is not `TBD` and `approvers` covers every required owner. Record
+   the ACCEPTED proposal SHA-256.
+2. Rebind this tracker's Bound Proposal Snapshots RFC 0016 row (and the RFC 0021
+   normative-authority clause) from the current REVIEW hash `efe800c6...` to the
+   RFC 0016 ACCEPTED hash; no earlier review evidence carries forward across a
+   snapshot change.
+3. RFC 0021 `DRAFT -> REVIEW` (a `DRAFT -> ACCEPTED` skip is rejected by
+   `check-rfc.py`), then `REVIEW -> ACCEPTED` on ten-owner approval of one frozen
+   snapshot with `decision` set, then `ACCEPTED -> IMPLEMENTING` with the
+   implementation pointer set. Only after this is LIR/backend code authorized;
+   the first authorized slice is the LIR identity/carrier/layout/ABI/revision
+   codec foundation (pure data, no live executable MIR).
+
+Open operational blocker (independent of owner sign-off): RFC 0016 requires
+`llvmorg-22.1.8` API provenance, but this environment resolves llvm-config /
+clang 19.1.5. RFC 0016 cannot enter IMPLEMENTING until the toolchain is aligned
+through the accepted CMake/CI transaction; ambient LLVM must not be admitted.
+These sign-offs and the toolchain alignment are human/governance actions and are
+not performed by this note. Item 11 (FFI) is additionally backend-blocked: its
+`FfiConversion`/`FfiWrapper` keys require a live `VerifiedTargetSelection`
+context bundle and the RFC 0006 error-union layout promoted to a live LIR
+service; only the pre-LIR `VerifiedFfiBoundaryFacts` eligibility verifier is
+frontend-reachable ahead of that.
+
 ## Bound Proposal Snapshots
 
 | RFC | File SHA-256 | State |
