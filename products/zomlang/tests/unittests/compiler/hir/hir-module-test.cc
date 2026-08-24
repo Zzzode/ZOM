@@ -5,6 +5,7 @@
 
 #include "zomlang/compiler/hir/hir-module.h"
 
+#include "zc/core/encoding.h"
 #include "zc/core/time.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
@@ -13,6 +14,7 @@
 #include "zomlang/compiler/driver/package/source-record.h"
 #include "zomlang/compiler/driver/session/compiler-session.h"
 #include "zomlang/compiler/hir/checked-module.h"
+#include "zomlang/compiler/identity/crypto/sha256.h"
 #include "zomlang/compiler/ownership/surface-admission.h"
 #include "zomlang/tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 
@@ -898,6 +900,241 @@ ZC_TEST("HIR pipeline lowers a two-arm parameter conditional") {
     ZC_EXPECT(mirFunction.blocks[3].statements.size() == 0);
     ZC_EXPECT(mirFunction.blocks[3].terminator.kind() == mir::MirTerminatorKind::Return);
   }
+}
+
+ZC_TEST("HIR pipeline lowers an equality-comparison conditional condition") {
+  HirPipelineFixture fixture(
+      "fun eq(a: i32, b: i32) -> i32 { if (a == b) { return 1; } else { return 2; } }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.conditionals().size() == 1);
+  // The `a == b` condition materializes one equality comparison plus its two
+  // operand parameter references; both arms are scalar literals.
+  ZC_REQUIRE(module.equalityComparisons().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 2);
+  ZC_REQUIRE(module.expressions().size() == 2);
+  const auto& function = module.functions()[0];
+  const auto& conditional = module.conditionals()[0];
+  const auto& equality = module.equalityComparisons()[0];
+  const auto& left = module.parameterReferences()[0];
+  const auto& right = module.parameterReferences()[1];
+  ZC_EXPECT(conditional.condition == equality.node);
+  ZC_EXPECT(equality.left == left.node);
+  ZC_EXPECT(equality.right == right.node);
+  ZC_EXPECT(left.parameter == function.parameters[0].key);
+  ZC_EXPECT(right.parameter == function.parameters[1].key);
+  ZC_EXPECT(equality.operandType == function.parameters[0].type);
+  ZC_EXPECT(conditional.type == function.resultType);
+
+  // The condition lowers to a four-block CFG whose entry block computes the
+  // comparison into a bool temporary that feeds the SwitchInt discriminant.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> eq;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) eq = mirFunction;
+  }
+  ZC_REQUIRE(eq != zc::none);
+  ZC_IF_SOME(mirFunction, eq) {
+    // Two parameter locals (a, b), the function result, and the bool temporary.
+    ZC_REQUIRE(mirFunction.locals.size() == 4);
+    ZC_REQUIRE(mirFunction.blocks.size() == 4);
+    // bb1 entry: StorageLive(result), StorageLive(temp), Assign(temp = a == b).
+    ZC_REQUIRE(mirFunction.blocks[0].statements.size() == 3);
+    ZC_EXPECT(mirFunction.blocks[0].statements[0].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirFunction.blocks[0].statements[1].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirFunction.blocks[0].statements[2].kind() == mir::MirStatementKind::Assign);
+    const auto& compareAssign = mirFunction.blocks[0].statements[2].assignmentValue();
+    ZC_REQUIRE(compareAssign.value.kind() == mir::MirRvalueKind::Comparison);
+    const auto& comparison = compareAssign.value.comparisonValue();
+    ZC_EXPECT(comparison.op == mir::MirComparisonOperator::Eq);
+    ZC_EXPECT(comparison.left.place().local() == mirFunction.locals[0].id);
+    ZC_EXPECT(comparison.right.place().local() == mirFunction.locals[1].id);
+    ZC_REQUIRE(mirFunction.blocks[0].terminator.kind() == mir::MirTerminatorKind::SwitchInt);
+    const auto& switchInt = mirFunction.blocks[0].terminator.switchIntValue();
+    ZC_EXPECT(switchInt.discriminant.kind() == mir::MirOperandKind::Copy);
+    // The discriminant reads the bool temporary (the fourth local), not a parameter.
+    ZC_EXPECT(switchInt.discriminant.place().local() == mirFunction.locals[3].id);
+    // bb2 / bb3: constant-initializing branches; bb4: single join Return.
+    ZC_EXPECT(mirFunction.blocks[1].terminator.kind() == mir::MirTerminatorKind::Goto);
+    ZC_EXPECT(mirFunction.blocks[2].terminator.kind() == mir::MirTerminatorKind::Goto);
+    ZC_EXPECT(mirFunction.blocks[3].statements.size() == 0);
+    ZC_EXPECT(mirFunction.blocks[3].terminator.kind() == mir::MirTerminatorKind::Return);
+  }
+}
+
+ZC_TEST("HIR pipeline lowers a less-than relational conditional condition") {
+  HirPipelineFixture fixture(
+      "fun lt(a: i32, b: i32) -> i32 { if (a < b) { return 1; } else { return 2; } }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.conditionals().size() == 1);
+  ZC_REQUIRE(module.equalityComparisons().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& equality = module.equalityComparisons()[0];
+  // The HIR comparison node carries the relational operator selected by the
+  // checked PrimitiveCallable.
+  ZC_EXPECT(equality.operation == checker::PrimitiveOperation::Lt);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lt;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lt = mirFunction;
+  }
+  ZC_REQUIRE(lt != zc::none);
+  ZC_IF_SOME(mirFunction, lt) {
+    const auto& compareAssign = mirFunction.blocks[0].statements[2].assignmentValue();
+    ZC_REQUIRE(compareAssign.value.kind() == mir::MirRvalueKind::Comparison);
+    // The MIR Comparison rvalue op is the operator mapped from the HIR Lt.
+    ZC_EXPECT(compareAssign.value.comparisonValue().op == mir::MirComparisonOperator::Lt);
+  }
+}
+
+ZC_TEST("Built MIR comparison rvalue byte oracle is stable and mutation sensitive") {
+  HirPipelineFixture fixture(
+      "fun eq(a: i32, b: i32) -> i32 { if (a == b) { return 1; } else { return 2; } }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::VerifiedBuiltMir&> verified = builtMir[0].builtMir();
+
+  // Locate the one canonical function record that carries the Comparison rvalue.
+  // The record is produced by the live canonical encoder; no bytes are fabricated.
+  zc::Maybe<zc::Array<uint8_t>> comparisonRecord;
+  ZC_IF_SOME(mir, verified) {
+    ZC_REQUIRE(mir.functions().size() == mir.canonicalFunctionRecords().size());
+    for (size_t index = 0; index < mir.functions().size(); ++index) {
+      if (mir.functions()[index].owner != function.definition) continue;
+      comparisonRecord = zc::heapArray(mir.canonicalFunctionRecords()[index].asPtr());
+    }
+  }
+  ZC_REQUIRE(comparisonRecord != zc::none);
+
+  // Frame the live record and derive its digest from the live encoder. The
+  // Comparison rvalue encodes tag 0x03, operator 0x01 (Eq), then two Copy
+  // operands (0x01) and the bool result type; find that exact byte window.
+  auto framedDigest = [](zc::ArrayPtr<const uint8_t> record) -> zc::String {
+    uint8_t moduleKey[32];
+    for (auto& value : moduleKey) value = uint8_t{0};
+    ZC_IF_SOME(fingerprint, identity::Sha256Digest::fromBytes(zc::arrayPtr(moduleKey))) {
+      const uint8_t moduleId[] = {0xa1};
+      zc::Vector<zc::Array<uint8_t>> records;
+      records.add(zc::heapArray(record));
+      auto encoded =
+          mir::MirRevisionCodec::encodeBuiltFramed(fingerprint, zc::arrayPtr(moduleId), fingerprint,
+                                                   fingerprint, fingerprint, records.asPtr());
+      ZC_REQUIRE(encoded != zc::none);
+      auto digest = identity::sha256(ZC_REQUIRE_NONNULL(encoded).asPtr());
+      ZC_REQUIRE(digest != zc::none);
+      return zc::encodeHex(ZC_REQUIRE_NONNULL(digest).bytes());
+    }
+    ZC_FAIL_REQUIRE("invalid digest fixture");
+  };
+
+  zc::Array<uint8_t> record = zc::mv(ZC_REQUIRE_NONNULL(comparisonRecord));
+  zc::Maybe<size_t> comparisonOffset;
+  for (size_t i = 0; i + 2 < record.size(); ++i) {
+    if (record[i] == 0x03 && record[i + 1] == 0x01 && record[i + 2] == 0x01) {
+      ZC_REQUIRE(comparisonOffset == zc::none);
+      comparisonOffset = i;
+    }
+  }
+  ZC_REQUIRE(comparisonOffset != zc::none);
+  const size_t comparisonKind = ZC_REQUIRE_NONNULL(comparisonOffset);
+  const size_t operatorByte = comparisonKind + 1;
+  const size_t leftOperandKind = comparisonKind + 2;
+  ZC_REQUIRE(record[comparisonKind] == 0x03);
+  ZC_REQUIRE(record[operatorByte] == 0x01);
+  ZC_REQUIRE(record[leftOperandKind] == 0x01);
+
+  const auto baseline = framedDigest(record.asPtr());
+
+  // Mutating the comparison operator changes the derived digest.
+  {
+    auto mutated = zc::heapArray(record.asPtr());
+    mutated[operatorByte] = 0x02;
+    ZC_EXPECT(framedDigest(mutated.asPtr()) != baseline);
+  }
+  // Mutating the left operand kind (Copy -> Move) changes the derived digest.
+  {
+    auto mutated = zc::heapArray(record.asPtr());
+    mutated[leftOperandKind] = 0x02;
+    ZC_EXPECT(framedDigest(mutated.asPtr()) != baseline);
+  }
+  // Re-framing the unmutated record reproduces the same digest exactly.
+  ZC_EXPECT(framedDigest(record.asPtr()) == baseline);
+}
+
+ZC_TEST(
+    "Built MIR less-than comparison rvalue emits the Lt operator byte through the live encoder") {
+  HirPipelineFixture fixture(
+      "fun lt(a: i32, b: i32) -> i32 { if (a < b) { return 1; } else { return 2; } }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::VerifiedBuiltMir&> verified = builtMir[0].builtMir();
+
+  // Pull the live canonical function record for the `a < b` function; no bytes
+  // are fabricated.
+  zc::Maybe<zc::Array<uint8_t>> comparisonRecord;
+  ZC_IF_SOME(mir, verified) {
+    ZC_REQUIRE(mir.functions().size() == mir.canonicalFunctionRecords().size());
+    for (size_t index = 0; index < mir.functions().size(); ++index) {
+      if (mir.functions()[index].owner != function.definition) continue;
+      comparisonRecord = zc::heapArray(mir.canonicalFunctionRecords()[index].asPtr());
+    }
+  }
+  ZC_REQUIRE(comparisonRecord != zc::none);
+
+  auto framedDigest = [](zc::ArrayPtr<const uint8_t> record) -> zc::String {
+    uint8_t moduleKey[32];
+    for (auto& value : moduleKey) value = uint8_t{0};
+    ZC_IF_SOME(fingerprint, identity::Sha256Digest::fromBytes(zc::arrayPtr(moduleKey))) {
+      const uint8_t moduleId[] = {0xa1};
+      zc::Vector<zc::Array<uint8_t>> records;
+      records.add(zc::heapArray(record));
+      auto encoded =
+          mir::MirRevisionCodec::encodeBuiltFramed(fingerprint, zc::arrayPtr(moduleId), fingerprint,
+                                                   fingerprint, fingerprint, records.asPtr());
+      ZC_REQUIRE(encoded != zc::none);
+      auto digest = identity::sha256(ZC_REQUIRE_NONNULL(encoded).asPtr());
+      ZC_REQUIRE(digest != zc::none);
+      return zc::encodeHex(ZC_REQUIRE_NONNULL(digest).bytes());
+    }
+    ZC_FAIL_REQUIRE("invalid digest fixture");
+  };
+
+  // The Comparison rvalue encodes tag 0x03, operator 0x03 (Lt), then two Copy
+  // operands (0x01); find that exact byte window in the live record.
+  zc::Array<uint8_t> record = zc::mv(ZC_REQUIRE_NONNULL(comparisonRecord));
+  zc::Maybe<size_t> comparisonOffset;
+  for (size_t i = 0; i + 2 < record.size(); ++i) {
+    if (record[i] == 0x03 && record[i + 1] == 0x03 && record[i + 2] == 0x01) {
+      ZC_REQUIRE(comparisonOffset == zc::none);
+      comparisonOffset = i;
+    }
+  }
+  ZC_REQUIRE(comparisonOffset != zc::none);
+  const size_t comparisonKind = ZC_REQUIRE_NONNULL(comparisonOffset);
+  const size_t operatorByte = comparisonKind + 1;
+  // The operator byte is the new Lt tag emitted by the live encoder.
+  ZC_REQUIRE(record[operatorByte] == 0x03);
+
+  const auto baseline = framedDigest(record.asPtr());
+  // Mutating the Lt operator byte to any other operator changes the digest, and
+  // re-framing the unmutated record reproduces it exactly.
+  {
+    auto mutated = zc::heapArray(record.asPtr());
+    mutated[operatorByte] = 0x01;
+    ZC_EXPECT(framedDigest(mutated.asPtr()) != baseline);
+  }
+  ZC_EXPECT(framedDigest(record.asPtr()) == baseline);
 }
 
 }  // namespace

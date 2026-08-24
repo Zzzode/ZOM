@@ -311,6 +311,34 @@ struct PendingSequentialLocalReturn final {
 // One conditional arm carries either a scalar literal value or a reference to a
 // function parameter. Exactly one of the two Maybe fields is populated; the arm
 // kind is discriminated by which one is set.
+// Returns true for the six relational comparison operators of same-typed
+// scalars that the conditional-condition lowering supports.
+bool isScalarComparisonOperation(checker::PrimitiveOperation operation) {
+  switch (operation) {
+    case checker::PrimitiveOperation::Eq:
+    case checker::PrimitiveOperation::Ne:
+    case checker::PrimitiveOperation::Lt:
+    case checker::PrimitiveOperation::Le:
+    case checker::PrimitiveOperation::Gt:
+    case checker::PrimitiveOperation::Ge:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Returns true when the syntactic binary operator is one of the six relational
+// comparisons supported as a conditional condition. Strict identity operators
+// and every arithmetic, bitwise, or logical operator are excluded.
+bool isRelationalBinaryOperator(ast::BinaryOperatorKind syntax) {
+  ZC_IF_SOME(kind, checker::OperatorKind::fromBinary(syntax)) {
+    const auto& variant = kind.variant();
+    return variant.is<checker::PrimitiveOperation>() &&
+           isScalarComparisonOperation(variant.get<checker::PrimitiveOperation>());
+  }
+  return false;
+}
+
 struct PendingConditionalArm final {
   zc::Maybe<checker::checked::CanonicalConstValue> literal;
   zc::Maybe<HirParameterReferenceExpression> parameter;
@@ -318,8 +346,28 @@ struct PendingConditionalArm final {
   identity::SourceSpan sourceSpan;
 };
 
+// One relational-comparison condition holds the two parameter references it
+// compares plus the shared operand type, the produced bool type, and the
+// selected comparison operator.
+struct PendingEqualityCondition final {
+  HirParameterReferenceExpression left;
+  HirParameterReferenceExpression right;
+  identity::SemanticTypeId operandType;
+  identity::SemanticTypeId type;
+  checker::PrimitiveOperation operation;
+  identity::SourceSpan sourceSpan;
+};
+
+// One conditional condition is either a bare bool parameter reference or an
+// `a == b` equality comparison of two parameter references. Exactly one of the
+// two Maybe fields is populated; the condition kind is discriminated by which.
+struct PendingConditionalCondition final {
+  zc::Maybe<HirParameterReferenceExpression> parameter;
+  zc::Maybe<PendingEqualityCondition> equality;
+};
+
 struct PendingConditionalReturn final {
-  HirParameterReferenceExpression condition;
+  PendingConditionalCondition condition;
   PendingConditionalArm thenArm;
   PendingConditionalArm elseArm;
   identity::SourceSpan conditionalSpan;
@@ -420,6 +468,11 @@ struct FunctionReturnShape final {
   zc::Maybe<ast::NodeId> unsafeBlock;
   bool isConditional = false;
   ast::NodeId condition;
+  // When the condition is an `a == b` equality comparison of two parameters, the
+  // condition node is a BinaryExpr and these hold its two IdentExpr operands.
+  bool conditionIsEquality = false;
+  ast::NodeId conditionLeft;
+  ast::NodeId conditionRight;
   ast::NodeId thenReturnValue;
   ast::NodeId elseReturnValue;
   bool isLoop = false;
@@ -565,14 +618,34 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
             ZC_IF_SOME(value, thenValue) { thenNode = value; }
             ZC_IF_SOME(value, elseValue) { elseNode = value; }
             const ast::NodeId condition(ifNode.payload.words[ast::kIfStmtCondWord]);
-            return FunctionReturnShape{body,          conditionalStmt, conditionalStmt,
-                                       ast::NodeId(), zc::none,        {},
-                                       false,         ast::NodeId(),   false,
-                                       false,         ast::NodeId(),   ast::NodeId(),
-                                       ast::NodeId(), false,           false,
-                                       false,         false,           zc::none,
-                                       true,          condition,       thenNode,
-                                       elseNode};
+            FunctionReturnShape shape{};
+            shape.body = body;
+            shape.returnStatement = conditionalStmt;
+            shape.value = conditionalStmt;
+            shape.isConditional = true;
+            shape.condition = condition;
+            shape.thenReturnValue = thenNode;
+            shape.elseReturnValue = elseNode;
+            // Detect the relational-comparison condition: a comparison
+            // BinaryExpr over two IdentExpr operands for one of the six
+            // relational operators. A bare identifier condition keeps the
+            // parameter-reference lowering.
+            if (tree.contains(condition) &&
+                tree.node(condition).kind == ast::SyntaxKind::BinaryExpr &&
+                isRelationalBinaryOperator(static_cast<ast::BinaryOperatorKind>(
+                    tree.node(condition).payload.words[ast::kBinaryExprOpWord]))) {
+              const ast::NodeId left(tree.node(condition).payload.words[ast::kBinaryExprLhsWord]);
+              const ast::NodeId right(tree.node(condition).payload.words[ast::kBinaryExprRhsWord]);
+              if (!tree.contains(left) || !tree.contains(right) ||
+                  tree.node(left).kind != ast::SyntaxKind::IdentExpr ||
+                  tree.node(right).kind != ast::SyntaxKind::IdentExpr) {
+                return zc::none;
+              }
+              shape.conditionIsEquality = true;
+              shape.conditionLeft = left;
+              shape.conditionRight = right;
+            }
+            return shape;
           }
         }
       }
@@ -648,14 +721,12 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     value = innerValue;
   }
   if (statements.size == 1) {
-    return FunctionReturnShape{body,          returnNode,    value,
-                               ast::NodeId(), zc::none,      {},
-                               false,         ast::NodeId(), false,
-                               false,         ast::NodeId(), ast::NodeId(),
-                               ast::NodeId(), false,         false,
-                               false,         false,         zc::mv(unsafeBlock),
-                               false,         ast::NodeId(), ast::NodeId(),
-                               ast::NodeId()};
+    FunctionReturnShape shape{};
+    shape.body = body;
+    shape.returnStatement = returnNode;
+    shape.value = value;
+    shape.unsafeBlock = zc::mv(unsafeBlock);
+    return shape;
   }
   if (statements.size == 3) {
     auto sourceDeclarator = localDeclarator(tree, tree.list(statements)[0]);
@@ -682,28 +753,21 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
           (!returnsSource && !returnsDestination)) {
         return zc::none;
       }
-      return FunctionReturnShape{body,
-                                 returnNode,
-                                 value,
-                                 destinationPattern,
-                                 destinationInitializer,
-                                 {},
-                                 true,
-                                 value,
-                                 false,
-                                 false,
-                                 sourcePattern,
-                                 sourceInitializer,
-                                 destinationInitializer,
-                                 true,
-                                 returnsSource,
-                                 false,
-                                 false,
-                                 zc::mv(unsafeBlock),
-                                 false,
-                                 ast::NodeId(),
-                                 ast::NodeId(),
-                                 ast::NodeId()};
+      FunctionReturnShape shape{};
+      shape.body = body;
+      shape.returnStatement = returnNode;
+      shape.value = value;
+      shape.localPattern = destinationPattern;
+      shape.localInitializer = destinationInitializer;
+      shape.returnsLocal = true;
+      shape.localReference = value;
+      shape.sourceLocalPattern = sourcePattern;
+      shape.sourceLocalInitializer = sourceInitializer;
+      shape.destinationLocalInitializer = destinationInitializer;
+      shape.isSequentialLocalReturn = true;
+      shape.sequentialReturnUsesSource = returnsSource;
+      shape.unsafeBlock = zc::mv(unsafeBlock);
+      return shape;
     }
   }
   auto localStatement = statementItem(tree, tree.list(statements)[0]);
@@ -762,28 +826,19 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   if (!tree.contains(initializer) && statements.size == 2) {
     // A local borrow requires the referent to be initialized at the borrow point.
     if (localBorrow != zc::none) return zc::none;
-    return FunctionReturnShape{body,
-                               returnNode,
-                               value,
-                               pattern,
-                               zc::none,
-                               {},
-                               true,
-                               localReference,
-                               returnsLocalField,
-                               reborrow != zc::none,
-                               ast::NodeId(),
-                               ast::NodeId(),
-                               ast::NodeId(),
-                               false,
-                               false,
-                               returnsReceiverCall,
-                               localBorrow != zc::none,
-                               zc::mv(unsafeBlock),
-                               false,
-                               ast::NodeId(),
-                               ast::NodeId(),
-                               ast::NodeId()};
+    FunctionReturnShape shape{};
+    shape.body = body;
+    shape.returnStatement = returnNode;
+    shape.value = value;
+    shape.localPattern = pattern;
+    shape.returnsLocal = true;
+    shape.localReference = localReference;
+    shape.returnsLocalField = returnsLocalField;
+    shape.returnsLocalReborrow = reborrow != zc::none;
+    shape.returnsReceiverCall = returnsReceiverCall;
+    shape.returnsLocalBorrow = localBorrow != zc::none;
+    shape.unsafeBlock = zc::mv(unsafeBlock);
+    return shape;
   }
   if (tree.contains(initializer) && !isScalarLiteral(tree.node(initializer).kind) &&
       tree.node(initializer).kind != ast::SyntaxKind::CallExpression &&
@@ -792,28 +847,20 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     return zc::none;
   }
   if (statements.size == 2) {
-    return FunctionReturnShape{body,
-                               returnNode,
-                               value,
-                               pattern,
-                               initializer,
-                               {},
-                               true,
-                               localReference,
-                               returnsLocalField,
-                               reborrow != zc::none,
-                               ast::NodeId(),
-                               ast::NodeId(),
-                               ast::NodeId(),
-                               false,
-                               false,
-                               returnsReceiverCall,
-                               localBorrow != zc::none,
-                               zc::mv(unsafeBlock),
-                               false,
-                               ast::NodeId(),
-                               ast::NodeId(),
-                               ast::NodeId()};
+    FunctionReturnShape shape{};
+    shape.body = body;
+    shape.returnStatement = returnNode;
+    shape.value = value;
+    shape.localPattern = pattern;
+    shape.localInitializer = initializer;
+    shape.returnsLocal = true;
+    shape.localReference = localReference;
+    shape.returnsLocalField = returnsLocalField;
+    shape.returnsLocalReborrow = reborrow != zc::none;
+    shape.returnsReceiverCall = returnsReceiverCall;
+    shape.returnsLocalBorrow = localBorrow != zc::none;
+    shape.unsafeBlock = zc::mv(unsafeBlock);
+    return shape;
   }
   if (static_cast<ast::BindingDeclarationKind>(
           tree.node(letNode).payload.words[ast::kLetStmtKindWord]) !=
@@ -853,28 +900,21 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   }
   zc::Maybe<ast::NodeId> localInitializer;
   if (tree.contains(initializer)) { localInitializer = initializer; }
-  return FunctionReturnShape{body,
-                             returnNode,
-                             value,
-                             pattern,
-                             zc::mv(localInitializer),
-                             ast::NodeList{statements.first + 1, statements.size - 2},
-                             true,
-                             localReference,
-                             returnsLocalField,
-                             reborrow != zc::none,
-                             ast::NodeId(),
-                             ast::NodeId(),
-                             ast::NodeId(),
-                             false,
-                             false,
-                             returnsReceiverCall,
-                             localBorrow != zc::none,
-                             zc::mv(unsafeBlock),
-                             false,
-                             ast::NodeId(),
-                             ast::NodeId(),
-                             ast::NodeId()};
+  FunctionReturnShape shape{};
+  shape.body = body;
+  shape.returnStatement = returnNode;
+  shape.value = value;
+  shape.localPattern = pattern;
+  shape.localInitializer = zc::mv(localInitializer);
+  shape.localWrites = ast::NodeList{statements.first + 1, statements.size - 2};
+  shape.returnsLocal = true;
+  shape.localReference = localReference;
+  shape.returnsLocalField = returnsLocalField;
+  shape.returnsLocalReborrow = reborrow != zc::none;
+  shape.returnsReceiverCall = returnsReceiverCall;
+  shape.returnsLocalBorrow = localBorrow != zc::none;
+  shape.unsafeBlock = zc::mv(unsafeBlock);
+  return shape;
 }
 
 bool noUnsupportedFacts(const checker::checked::VerifiedCheckedFacts& facts) {
@@ -1098,6 +1138,7 @@ struct HirModuleCandidate::Impl final {
        zc::Vector<HirDirectCallExpression>&& calls,
        zc::Vector<HirReceiverCallExpression>&& receiverCalls,
        zc::Vector<HirUnsafeBlockExpression>&& unsafeBlocks,
+       zc::Vector<HirEqualityComparisonExpression>&& equalityComparisons,
        zc::Vector<HirConditionalExpression>&& conditionals,
        zc::Vector<HirLoopStatement>&& loops) noexcept
       : checkedModule(zc::mv(checkedModule)),
@@ -1119,6 +1160,7 @@ struct HirModuleCandidate::Impl final {
         calls(zc::mv(calls)),
         receiverCalls(zc::mv(receiverCalls)),
         unsafeBlocks(zc::mv(unsafeBlocks)),
+        equalityComparisons(zc::mv(equalityComparisons)),
         conditionals(zc::mv(conditionals)),
         loops(zc::mv(loops)) {}
 
@@ -1141,6 +1183,7 @@ struct HirModuleCandidate::Impl final {
   zc::Vector<HirDirectCallExpression> calls;
   zc::Vector<HirReceiverCallExpression> receiverCalls;
   zc::Vector<HirUnsafeBlockExpression> unsafeBlocks;
+  zc::Vector<HirEqualityComparisonExpression> equalityComparisons;
   zc::Vector<HirConditionalExpression> conditionals;
   zc::Vector<HirLoopStatement> loops;
 };
@@ -1171,6 +1214,7 @@ struct VerifiedHirModule::Impl final {
        zc::Vector<HirDirectCallExpression>&& calls,
        zc::Vector<HirReceiverCallExpression>&& receiverCalls,
        zc::Vector<HirUnsafeBlockExpression>&& unsafeBlocks,
+       zc::Vector<HirEqualityComparisonExpression>&& equalityComparisons,
        zc::Vector<HirConditionalExpression>&& conditionals,
        zc::Vector<HirLoopStatement>&& loops) noexcept
       : admittedCheckedModule(zc::mv(admittedCheckedModule)),
@@ -1210,6 +1254,7 @@ struct VerifiedHirModule::Impl final {
         calls(zc::mv(calls)),
         receiverCalls(zc::mv(receiverCalls)),
         unsafeBlocks(zc::mv(unsafeBlocks)),
+        equalityComparisons(zc::mv(equalityComparisons)),
         conditionals(zc::mv(conditionals)),
         loops(zc::mv(loops)) {
     for (const auto& interface : this->admittedCheckedModule.visibleImportedInterfaces()) {
@@ -1254,6 +1299,7 @@ struct VerifiedHirModule::Impl final {
   zc::Vector<HirDirectCallExpression> calls;
   zc::Vector<HirReceiverCallExpression> receiverCalls;
   zc::Vector<HirUnsafeBlockExpression> unsafeBlocks;
+  zc::Vector<HirEqualityComparisonExpression> equalityComparisons;
   zc::Vector<HirConditionalExpression> conditionals;
   zc::Vector<HirLoopStatement> loops;
 };
@@ -1419,6 +1465,11 @@ zc::ArrayPtr<const HirUnsafeBlockExpression> VerifiedHirModule::unsafeBlocks() c
 
 zc::ArrayPtr<const HirConditionalExpression> VerifiedHirModule::conditionals() const noexcept {
   return impl->conditionals.asPtr();
+}
+
+zc::ArrayPtr<const HirEqualityComparisonExpression> VerifiedHirModule::equalityComparisons()
+    const noexcept {
+  return impl->equalityComparisons.asPtr();
 }
 
 zc::ArrayPtr<const HirLoopStatement> VerifiedHirModule::loops() const noexcept {
@@ -1604,6 +1655,19 @@ zc::Maybe<zc::String> VerifiedHirModule::dump() const {
     append(output, zc::str(unsafeBlock.node.ordinal()));
     append(output, " body=h"_zc);
     append(output, zc::str(unsafeBlock.body.ordinal()));
+    append(output, " type="_zc);
+    append(output, zc::encodeHex(resultType.get<type::SemanticTypeLookup>().key().bytes()));
+    append(output, "\n"_zc);
+  }
+  for (const auto& equality : impl->equalityComparisons) {
+    auto resultType = impl->semanticTypes.get(equality.type);
+    if (!resultType.is<type::SemanticTypeLookup>()) return zc::none;
+    append(output, "equality h"_zc);
+    append(output, zc::str(equality.node.ordinal()));
+    append(output, " left=h"_zc);
+    append(output, zc::str(equality.left.ordinal()));
+    append(output, " right=h"_zc);
+    append(output, zc::str(equality.right.ordinal()));
     append(output, " type="_zc);
     append(output, zc::encodeHex(resultType.get<type::SemanticTypeLookup>().key().bytes()));
     append(output, "\n"_zc);
@@ -1797,20 +1861,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);
         }
-        auto conditionParameter = resolvedCallableParameter(bound.bindings(), shape.condition);
-        if (conditionParameter == zc::none) {
-          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                               ir::IrFailureKind::InvalidFact, module, registries,
-                                               ordinal + 2);
-        }
-        identity::CallableParameterId conditionHandle;
-        ZC_IF_SOME(value, conditionParameter) { conditionHandle = value; }
-        auto conditionAuthority = registries.callableParameter(conditionHandle);
-        if (conditionAuthority == zc::none) {
-          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                               ir::IrFailureKind::MissingRequiredFact, module,
-                                               registries, ordinal + 2);
-        }
+        // Resolve the condition: either a bare bool parameter reference or an
+        // `a == b` equality comparison of two same-typed scalar parameters. The
+        // equality form consumes the checker Eq call fact.
         HirVisibility visibilityValue = HirVisibility::external();
         HirLinkage linkageValue = HirLinkage::Internal;
         ZC_IF_SOME(value, functionVisibility) { visibilityValue = zc::mv(value); }
@@ -1825,6 +1878,126 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         size_t conditionTypeSlot = 0;
         ZC_IF_SOME(index, conditionTypeIndex) { conditionTypeSlot = index; }
         const auto conditionType = facts.nodeTypes().entries()[conditionTypeSlot].value;
+        PendingConditionalCondition pendingCondition;
+        if (shape.conditionIsEquality) {
+          // The equality condition consumes the checked Eq call fact whose two
+          // arguments are the left and right parameter references.
+          auto leftParameter = resolvedCallableParameter(bound.bindings(), shape.conditionLeft);
+          auto rightParameter = resolvedCallableParameter(bound.bindings(), shape.conditionRight);
+          auto leftTypeIndex = factIndex(facts.nodeTypes(), shape.conditionLeft);
+          auto rightTypeIndex = factIndex(facts.nodeTypes(), shape.conditionRight);
+          auto callIndex = factIndex(facts.calls(), shape.condition);
+          auto leftSpan = bound.parsedModule().spanFor(tree.node(shape.conditionLeft).range);
+          auto rightSpan = bound.parsedModule().spanFor(tree.node(shape.conditionRight).range);
+          if (leftParameter == zc::none || rightParameter == zc::none ||
+              leftTypeIndex == zc::none || rightTypeIndex == zc::none || callIndex == zc::none ||
+              leftSpan == zc::none || rightSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          identity::CallableParameterId leftHandle;
+          identity::CallableParameterId rightHandle;
+          ZC_IF_SOME(value, leftParameter) { leftHandle = value; }
+          ZC_IF_SOME(value, rightParameter) { rightHandle = value; }
+          auto leftAuthority = registries.callableParameter(leftHandle);
+          auto rightAuthority = registries.callableParameter(rightHandle);
+          if (leftAuthority == zc::none || rightAuthority == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t leftTypeSlot = 0;
+          size_t rightTypeSlot = 0;
+          size_t callSlot = 0;
+          ZC_IF_SOME(index, leftTypeIndex) { leftTypeSlot = index; }
+          ZC_IF_SOME(index, rightTypeIndex) { rightTypeSlot = index; }
+          ZC_IF_SOME(index, callIndex) { callSlot = index; }
+          const auto operandType = facts.nodeTypes().entries()[leftTypeSlot].value;
+          const auto rightType = facts.nodeTypes().entries()[rightTypeSlot].value;
+          const auto& callFact = facts.calls().entries()[callSlot].value;
+          const auto& call = callFact.invocation;
+          const auto& selected = call.selected.variant();
+          // The two operands must share the primitive scalar type and the
+          // comparison call fact must match the relational-comparison contract
+          // exactly for one of the six supported operators.
+          if (operandType != rightType || callFact.node != shape.condition ||
+              !selected.is<checker::checked::PrimitiveCallable>() ||
+              !isScalarComparisonOperation(
+                  selected.get<checker::checked::PrimitiveCallable>().operation) ||
+              call.calleeType != operandType || call.receiver != zc::none ||
+              call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
+              call.arguments.size() != 2 || call.arguments[0].sourceNode != shape.conditionLeft ||
+              call.arguments[0].sourceType != operandType ||
+              call.arguments[1].sourceNode != shape.conditionRight ||
+              call.arguments[1].sourceType != operandType || call.successType != conditionType ||
+              call.resultType != conditionType || call.substitutions != zc::none ||
+              call.witnesses != zc::none || call.raises != zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          bool leftMatches = false;
+          bool rightMatches = false;
+          ZC_IF_SOME(leftEntry, leftAuthority) {
+            for (const auto& parameterCandidate : parameters) {
+              if (parameterCandidate.key == leftEntry.key() &&
+                  parameterCandidate.type == operandType) {
+                leftMatches = true;
+              }
+            }
+          }
+          ZC_IF_SOME(rightEntry, rightAuthority) {
+            for (const auto& parameterCandidate : parameters) {
+              if (parameterCandidate.key == rightEntry.key() &&
+                  parameterCandidate.type == operandType) {
+                rightMatches = true;
+              }
+            }
+          }
+          if (!leftMatches || !rightMatches) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          ZC_IF_SOME(leftEntry, leftAuthority) {
+            ZC_IF_SOME(rightEntry, rightAuthority) {
+              auto leftRef = HirParameterReferenceExpression{HirNodeId(), leftEntry.key().clone(),
+                                                             operandType, HirValueCategory::Place,
+                                                             ZC_ASSERT_NONNULL(leftSpan).clone()};
+              auto rightRef = HirParameterReferenceExpression{HirNodeId(), rightEntry.key().clone(),
+                                                              operandType, HirValueCategory::Place,
+                                                              ZC_ASSERT_NONNULL(rightSpan).clone()};
+              pendingCondition.equality = PendingEqualityCondition{
+                  zc::mv(leftRef),
+                  zc::mv(rightRef),
+                  operandType,
+                  conditionType,
+                  selected.get<checker::checked::PrimitiveCallable>().operation,
+                  ZC_ASSERT_NONNULL(conditionSpan).clone()};
+            }
+          }
+        } else {
+          auto conditionParameter = resolvedCallableParameter(bound.bindings(), shape.condition);
+          if (conditionParameter == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          identity::CallableParameterId conditionHandle;
+          ZC_IF_SOME(value, conditionParameter) { conditionHandle = value; }
+          auto conditionAuthority = registries.callableParameter(conditionHandle);
+          if (conditionAuthority == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          ZC_IF_SOME(entry, conditionAuthority) {
+            pendingCondition.parameter = HirParameterReferenceExpression{
+                HirNodeId(), entry.key().clone(), conditionType, HirValueCategory::Place,
+                ZC_ASSERT_NONNULL(conditionSpan).clone()};
+          }
+        }
         // Build one conditional arm from its return-value node. A scalar-literal
         // arm carries the checked literal fact; a bare-identifier arm resolves to
         // a function parameter reference (no literal fact is required for it).
@@ -1883,12 +2056,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);
         }
-        ZC_IF_SOME(entry, conditionAuthority) {
-          auto conditionRef = HirParameterReferenceExpression{
-              HirNodeId(), entry.key().clone(), conditionType, HirValueCategory::Place,
-              ZC_ASSERT_NONNULL(conditionSpan).clone()};
+        {
           auto conditionalReturn =
-              PendingConditionalReturn{zc::mv(conditionRef), zc::mv(ZC_ASSERT_NONNULL(thenArm)),
+              PendingConditionalReturn{zc::mv(pendingCondition), zc::mv(ZC_ASSERT_NONNULL(thenArm)),
                                        zc::mv(ZC_ASSERT_NONNULL(elseArm)), valueSpanValue.clone()};
           pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                           callable.success,
@@ -3534,6 +3704,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
   size_t localFieldWriteCount = 0;
   size_t unsafeBlockCount = 0;
   size_t conditionalCount = 0;
+  size_t equalityConditionalCount = 0;
   size_t conditionalLiteralArmCount = 0;
   size_t loopCount = 0;
   for (const auto& function : pendingFunctions) {
@@ -3553,6 +3724,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     if (function.conditionalReturn != zc::none) {
       ++conditionalCount;
       ZC_IF_SOME(conditional, function.conditionalReturn) {
+        if (conditional.condition.equality != zc::none) { ++equalityConditionalCount; }
         for (const auto* arm : {&conditional.thenArm, &conditional.elseArm}) {
           if (arm->literal != zc::none) { ++conditionalLiteralArmCount; }
         }
@@ -3671,7 +3843,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
           aggregateElementCount + localFieldProjectionCount + localFieldWriteCount +
           parameterIndexCount * 2 + parameterReborrowCount * 2 + directCallArgumentCount +
           receiverCallArgumentCount + localBorrowCount + unsafeBlockCount + conditionalCount * 2 +
-          loopCount) {
+          equalityConditionalCount * 2 + loopCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 1);
   }
@@ -3688,9 +3860,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 3);
   }
-  if (facts.calls().size() != directCallCount + receiverCallCount + parameterIndexCount ||
+  if (facts.calls().size() !=
+          directCallCount + receiverCallCount + parameterIndexCount + equalityConditionalCount ||
       checkedModule.dispatchFacts().facts().size() !=
-          directCallCount + receiverCallCount + parameterIndexCount) {
+          directCallCount + receiverCallCount + parameterIndexCount + equalityConditionalCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 4);
   }
@@ -3743,6 +3916,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
   zc::Vector<HirDirectCallExpression> calls;
   zc::Vector<HirReceiverCallExpression> receiverCalls;
   zc::Vector<HirUnsafeBlockExpression> unsafeBlocks;
+  zc::Vector<HirEqualityComparisonExpression> equalityComparisons;
   zc::Vector<HirConditionalExpression> conditionals;
   zc::Vector<HirLoopStatement> loops;
   uint32_t next = 1;
@@ -3818,12 +3992,62 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       continue;
     }
     ZC_IF_SOME(conditional, value.conditionalReturn) {
-      // Conditional materialization fixed-id layout, relative to the function id:
+      // Conditional materialization fixed-id layout, relative to the function id.
+      //
+      // Parameter condition (7 nodes):
       //   +0 function, +1 body block, +2 condition parameter reference,
       //   +3 then value, +4 else value, +5 conditional, +6 return.
-      // Each arm value (+3 / +4) is emitted either as a scalar literal into
-      // expressions or, for a parameter arm, as a parameter reference into
-      // parameterReferences; the arm node ordinal is unchanged either way.
+      // Equality condition `a == b` (9 nodes):
+      //   +0 function, +1 body block, +2 left operand reference,
+      //   +3 right operand reference, +4 equality comparison, +5 then value,
+      //   +6 else value, +7 conditional, +8 return.
+      // Each arm value is emitted either as a scalar literal into expressions or,
+      // for a parameter arm, as a parameter reference into parameterReferences;
+      // the arm node ordinal is unchanged either way.
+      auto materializeArm = [&](HirNodeId armId, PendingConditionalArm& arm) {
+        ZC_IF_SOME(reference, arm.parameter) {
+          parameterReferences.add(
+              HirParameterReferenceExpression{armId, reference.parameter.clone(), arm.type,
+                                              HirValueCategory::Place, arm.sourceSpan.clone()});
+        }
+        ZC_IF_SOME(literal, arm.literal) {
+          expressions.add(HirScalarLiteralExpression{
+              armId, arm.type, literal.clone(), HirValueCategory::Value, arm.sourceSpan.clone()});
+        }
+      };
+      ZC_IF_SOME(equality, conditional.condition.equality) {
+        const auto leftId = hirId(next++);
+        const auto rightId = hirId(next++);
+        const auto equalityId = hirId(next++);
+        const auto thenValueId = hirId(next++);
+        const auto elseValueId = hirId(next++);
+        const auto conditionalId = hirId(next++);
+        const auto returnId = hirId(next++);
+        functions.add(HirFunctionDeclaration{functionId, value.definition, value.resultType,
+                                             zc::mv(value.parameters), value.visibility.clone(),
+                                             value.linkage, value.declarationSpan.clone(), bodyId,
+                                             zc::none});
+        zc::Vector<HirNodeId> statements;
+        statements.add(returnId);
+        blocks.add(HirBlockStatement{bodyId, zc::mv(statements), value.bodySpan.clone()});
+        returns.add(HirReturnStatement{returnId, value.resultType, conditionalId,
+                                       value.returnSpan.clone()});
+        parameterReferences.add(HirParameterReferenceExpression{
+            leftId, equality.left.parameter.clone(), equality.operandType, equality.left.category,
+            equality.left.sourceSpan.clone()});
+        parameterReferences.add(HirParameterReferenceExpression{
+            rightId, equality.right.parameter.clone(), equality.operandType,
+            equality.right.category, equality.right.sourceSpan.clone()});
+        equalityComparisons.add(HirEqualityComparisonExpression{
+            equalityId, leftId, rightId, equality.operandType, equality.type,
+            HirValueCategory::Value, equality.operation, equality.sourceSpan.clone()});
+        materializeArm(thenValueId, conditional.thenArm);
+        materializeArm(elseValueId, conditional.elseArm);
+        conditionals.add(HirConditionalExpression{
+            conditionalId, equalityId, thenValueId, elseValueId, value.resultType,
+            HirValueCategory::Value, conditional.conditionalSpan.clone()});
+        continue;
+      }
       const auto conditionId = hirId(next++);
       const auto thenValueId = hirId(next++);
       const auto elseValueId = hirId(next++);
@@ -3838,20 +4062,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       blocks.add(HirBlockStatement{bodyId, zc::mv(statements), value.bodySpan.clone()});
       returns.add(
           HirReturnStatement{returnId, value.resultType, conditionalId, value.returnSpan.clone()});
-      parameterReferences.add(HirParameterReferenceExpression{
-          conditionId, conditional.condition.parameter.clone(), conditional.condition.type,
-          conditional.condition.category, conditional.condition.sourceSpan.clone()});
-      auto materializeArm = [&](HirNodeId armId, PendingConditionalArm& arm) {
-        ZC_IF_SOME(reference, arm.parameter) {
-          parameterReferences.add(
-              HirParameterReferenceExpression{armId, reference.parameter.clone(), arm.type,
-                                              HirValueCategory::Place, arm.sourceSpan.clone()});
-        }
-        ZC_IF_SOME(literal, arm.literal) {
-          expressions.add(HirScalarLiteralExpression{
-              armId, arm.type, literal.clone(), HirValueCategory::Value, arm.sourceSpan.clone()});
-        }
-      };
+      ZC_IF_SOME(parameter, conditional.condition.parameter) {
+        parameterReferences.add(HirParameterReferenceExpression{
+            conditionId, parameter.parameter.clone(), parameter.type, parameter.category,
+            parameter.sourceSpan.clone()});
+      }
       materializeArm(thenValueId, conditional.thenArm);
       materializeArm(elseValueId, conditional.elseArm);
       conditionals.add(HirConditionalExpression{
@@ -4059,7 +4274,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       zc::mv(localWrites), zc::mv(localReferences), zc::mv(localFieldProjections),
       zc::mv(parameterReferences), zc::mv(parameterIndexes), zc::mv(parameterReborrows),
       zc::mv(localBorrows), zc::mv(calls), zc::mv(receiverCalls), zc::mv(unsafeBlocks),
-      zc::mv(conditionals), zc::mv(loops));
+      zc::mv(equalityComparisons), zc::mv(conditionals), zc::mv(loops));
   return ir::IrOperationResult<HirModuleCandidate>::verified(HirModuleCandidate(zc::mv(impl)));
 }
 
@@ -4090,6 +4305,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   size_t aggregateElementCount = 0;
   const auto unsafeBlockCount = candidate.impl->unsafeBlocks.size();
   const auto conditionalCount = candidate.impl->conditionals.size();
+  const auto equalityConditionalCount = candidate.impl->equalityComparisons.size();
   const auto loopCount = candidate.impl->loops.size();
   for (const auto& write : candidate.impl->localWrites) {
     if (write.field != zc::none) ++localFieldWriteCount;
@@ -4126,19 +4342,21 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       candidate.impl->checkedModule.borrowEvidenceLease().key().revision.digest() !=
           candidate.impl->checkedModule.borrowEvidenceRevision().digest() ||
       candidate.impl->checkedModule.dispatchFacts().facts().size() !=
-          directCallCount + receiverCallCount ||
+          directCallCount + receiverCallCount + equalityConditionalCount ||
       !noUnsupportedFacts(facts) || candidate.impl->patterns.size() != declarationCount ||
       candidate.impl->localReferences.size() + localFieldProjectionCount + localAliasReborrowCount +
               localBorrowCount !=
           localReturnCount ||
       parameterReferenceCount + parameterIndexCount + parameterReborrowCount >
-          functionCount + localAliasReborrowCount + conditionalCount * 2 ||
+          functionCount + localAliasReborrowCount + conditionalCount * 2 +
+              equalityConditionalCount * 2 ||
       candidate.impl->blocks.size() != functionCount ||
       candidate.impl->returns.size() != functionCount ||
       candidate.impl->expressions.size() !=
           declarationCount + functionCount - directCallCount - aggregateCount -
               uninitializedLocalReturnCount - parameterReferenceCount - parameterReborrowCount +
-              localAliasReborrowCount + localWriteCount + conditionalCount * 2 + loopCount ||
+              localAliasReborrowCount + localWriteCount + conditionalCount * 2 +
+              equalityConditionalCount + loopCount ||
       executableDefinitions != declarationCount + functionCount ||
       facts.definitionTypes().size() != declarationCount ||
       facts.nodeTypes().size() !=
@@ -4147,14 +4365,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               aggregateElementCount + localFieldProjectionCount + localFieldWriteCount +
               parameterIndexCount * 2 + parameterReborrowCount * 2 + directCallArgumentCount +
               receiverCallArgumentCount + localBorrowCount + unsafeBlockCount +
-              conditionalCount * 2 + loopCount ||
-      facts.literals().size() != declarationCount + functionCount - directCallCount -
-                                     aggregateCount - uninitializedLocalReturnCount -
-                                     parameterReferenceCount - parameterReborrowCount +
-                                     localAliasReborrowCount + localWriteCount +
-                                     aggregateElementCount + directCallArgumentCount +
-                                     receiverCallArgumentCount + conditionalCount * 2 + loopCount ||
-      facts.calls().size() != directCallCount + receiverCallCount + parameterIndexCount ||
+              conditionalCount * 2 + equalityConditionalCount * 2 + loopCount ||
+      facts.literals().size() !=
+          declarationCount + functionCount - directCallCount - aggregateCount -
+              uninitializedLocalReturnCount - parameterReferenceCount - parameterReborrowCount +
+              localAliasReborrowCount + localWriteCount + aggregateElementCount +
+              directCallArgumentCount + receiverCallArgumentCount + conditionalCount * 2 +
+              equalityConditionalCount + loopCount ||
+      facts.calls().size() !=
+          directCallCount + receiverCallCount + parameterIndexCount + equalityConditionalCount ||
       facts.patterns().size() != declarationCount || facts.aggregates().size() != aggregateCount ||
       facts.members().size() !=
           localFieldProjectionCount + localFieldWriteCount + receiverCallCount ||
@@ -4828,43 +5047,19 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
-        auto conditionParameter = resolvedCallableParameter(bound.bindings(), source.condition);
-        if (conditionParameter == zc::none) {
-          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                              ir::IrFailureKind::InvalidFact, module, registries,
-                                              index + 1);
-        }
-        identity::CallableParameterId conditionHandle;
-        ZC_IF_SOME(value, conditionParameter) { conditionHandle = value; }
-        auto conditionAuthority = registries.callableParameter(conditionHandle);
-        if (conditionAuthority == zc::none) {
-          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                              ir::IrFailureKind::MissingRequiredFact, module,
-                                              registries, index + 1);
-        }
-        zc::Maybe<const HirConditionalExpression&> conditionalValue;
-        for (const auto& candidate : candidate.impl->conditionals) {
-          if (candidate.node != hirId(expectedFunction + 5)) continue;
-          if (conditionalValue != zc::none) {
-            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                ir::IrFailureKind::AdditionalFact, module,
-                                                registries, index + 1);
-          }
-          conditionalValue = candidate;
-        }
-        zc::Maybe<const HirParameterReferenceExpression&> conditionReference;
-        for (const auto& reference : candidate.impl->parameterReferences) {
-          if (reference.node != hirId(expectedFunction + 2)) continue;
-          if (conditionReference != zc::none) {
-            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                ir::IrFailureKind::AdditionalFact, module,
-                                                registries, index + 1);
-          }
-          conditionReference = reference;
-        }
-        // Each arm value node (+3 / +4) resolves to a scalar-literal expression
-        // or a parameter reference depending on its AST kind. Locate the matching
-        // materialized node and cross-check it against the source fact.
+        // The condition is either a bare bool parameter reference or an `a == b`
+        // equality comparison of two same-typed scalar parameters. The two forms
+        // materialize different node counts, so the arm/conditional/return
+        // offsets and the nextFunction increment differ between them.
+        const bool conditionIsEquality = source.conditionIsEquality;
+        const uint32_t thenOffset = conditionIsEquality ? 5 : 3;
+        const uint32_t elseOffset = conditionIsEquality ? 6 : 4;
+        const uint32_t conditionalOffset = conditionIsEquality ? 7 : 5;
+        const uint32_t returnOffset = conditionIsEquality ? 8 : 6;
+        const uint32_t functionNodeCount = conditionIsEquality ? 9 : 7;
+        // Common arm verification: each arm value node resolves to a
+        // scalar-literal expression or a parameter reference depending on its AST
+        // kind. Locate the matching materialized node and cross-check it.
         auto verifyArm = [&](bool isParameter, ast::NodeId armSourceNode, HirNodeId armId,
                              identity::SemanticTypeId armType, zc::Maybe<size_t> literalSlotIndex,
                              const identity::SourceSpan& armSpan) -> bool {
@@ -4911,49 +5106,221 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
           return ok;
         };
-        if (conditionalValue == zc::none || conditionReference == zc::none) {
+        zc::Maybe<const HirConditionalExpression&> conditionalValue;
+        for (const auto& candidate : candidate.impl->conditionals) {
+          if (candidate.node != hirId(expectedFunction + conditionalOffset)) continue;
+          if (conditionalValue != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          conditionalValue = candidate;
+        }
+        if (conditionalValue == zc::none) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::MissingRequiredFact, module,
                                               registries, index + 1);
         }
-        if (!verifyArm(thenIsParameter, source.thenReturnValue, hirId(expectedFunction + 3),
-                       thenType, thenLiteralIndex, ZC_ASSERT_NONNULL(thenSpan)) ||
-            !verifyArm(elseIsParameter, source.elseReturnValue, hirId(expectedFunction + 4),
-                       elseType, elseLiteralIndex, ZC_ASSERT_NONNULL(elseSpan))) {
+        if (!verifyArm(thenIsParameter, source.thenReturnValue,
+                       hirId(expectedFunction + thenOffset), thenType, thenLiteralIndex,
+                       ZC_ASSERT_NONNULL(thenSpan)) ||
+            !verifyArm(elseIsParameter, source.elseReturnValue,
+                       hirId(expectedFunction + elseOffset), elseType, elseLiteralIndex,
+                       ZC_ASSERT_NONNULL(elseSpan))) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
+        // Verify the shared function/block/return skeleton and arm node ids.
+        bool skeletonOk = false;
         ZC_IF_SOME(conditional, conditionalValue) {
-          ZC_IF_SOME(conditionRef, conditionReference) {
-            ZC_IF_SOME(authority, conditionAuthority) {
-              if (function.node != hirId(expectedFunction) ||
-                  block.node != hirId(expectedFunction + 1) || function.body != block.node ||
-                  block.statements.size() != 1 || block.statements[0] != returnStatement.node ||
-                  returnStatement.node != hirId(expectedFunction + 6) ||
-                  returnStatement.value != conditional.node ||
-                  returnStatement.resultType != function.resultType ||
-                  conditional.condition != conditionRef.node ||
-                  conditional.thenReturnValue != hirId(expectedFunction + 3) ||
-                  conditional.elseReturnValue != hirId(expectedFunction + 4) ||
-                  conditional.type != function.resultType ||
-                  conditional.category != HirValueCategory::Value ||
-                  conditionRef.parameter != authority.key() || conditionRef.type != conditionType ||
-                  conditionRef.category != HirValueCategory::Place ||
-                  !sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(bodySpan)) ||
-                  !sameSpan(returnStatement.sourceSpan, ZC_ASSERT_NONNULL(returnSpan)) ||
-                  !sameSpan(conditional.sourceSpan, ZC_ASSERT_NONNULL(returnSpan)) ||
-                  !sameSpan(conditionRef.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan)) ||
-                  !typeExists(function.resultType, semanticTypes) ||
-                  !typeExists(conditionType, semanticTypes)) {
-                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                    ir::IrFailureKind::InvalidFact, module,
-                                                    registries, index + 1);
+          skeletonOk = function.node == hirId(expectedFunction) &&
+                       block.node == hirId(expectedFunction + 1) && function.body == block.node &&
+                       block.statements.size() == 1 &&
+                       block.statements[0] == returnStatement.node &&
+                       returnStatement.node == hirId(expectedFunction + returnOffset) &&
+                       returnStatement.value == conditional.node &&
+                       returnStatement.resultType == function.resultType &&
+                       conditional.thenReturnValue == hirId(expectedFunction + thenOffset) &&
+                       conditional.elseReturnValue == hirId(expectedFunction + elseOffset) &&
+                       conditional.type == function.resultType &&
+                       conditional.category == HirValueCategory::Value &&
+                       sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(bodySpan)) &&
+                       sameSpan(returnStatement.sourceSpan, ZC_ASSERT_NONNULL(returnSpan)) &&
+                       sameSpan(conditional.sourceSpan, ZC_ASSERT_NONNULL(returnSpan)) &&
+                       typeExists(function.resultType, semanticTypes) &&
+                       typeExists(conditionType, semanticTypes);
+        }
+        if (!skeletonOk) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        if (conditionIsEquality) {
+          // Locate and cross-check the two operand parameter references and the
+          // equality-comparison node against the checked Eq call fact.
+          auto leftParameter = resolvedCallableParameter(bound.bindings(), source.conditionLeft);
+          auto rightParameter = resolvedCallableParameter(bound.bindings(), source.conditionRight);
+          auto leftTypeIndex = factIndex(facts.nodeTypes(), source.conditionLeft);
+          auto rightTypeIndex = factIndex(facts.nodeTypes(), source.conditionRight);
+          auto callIndex = factIndex(facts.calls(), source.condition);
+          auto leftSpan = bound.parsedModule().spanFor(tree.node(source.conditionLeft).range);
+          auto rightSpan = bound.parsedModule().spanFor(tree.node(source.conditionRight).range);
+          if (leftParameter == zc::none || rightParameter == zc::none ||
+              leftTypeIndex == zc::none || rightTypeIndex == zc::none || callIndex == zc::none ||
+              leftSpan == zc::none || rightSpan == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          identity::CallableParameterId leftHandle;
+          identity::CallableParameterId rightHandle;
+          ZC_IF_SOME(value, leftParameter) { leftHandle = value; }
+          ZC_IF_SOME(value, rightParameter) { rightHandle = value; }
+          auto leftAuthority = registries.callableParameter(leftHandle);
+          auto rightAuthority = registries.callableParameter(rightHandle);
+          if (leftAuthority == zc::none || rightAuthority == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          size_t leftTypeSlot = 0;
+          size_t rightTypeSlot = 0;
+          size_t callSlot = 0;
+          ZC_IF_SOME(value, leftTypeIndex) { leftTypeSlot = value; }
+          ZC_IF_SOME(value, rightTypeIndex) { rightTypeSlot = value; }
+          ZC_IF_SOME(value, callIndex) { callSlot = value; }
+          const auto operandType = facts.nodeTypes().entries()[leftTypeSlot].value;
+          const auto rightType = facts.nodeTypes().entries()[rightTypeSlot].value;
+          const auto& callFact = facts.calls().entries()[callSlot].value;
+          const auto& call = callFact.invocation;
+          const auto& selected = call.selected.variant();
+          if (operandType != rightType || callFact.node != source.condition ||
+              !selected.is<checker::checked::PrimitiveCallable>() ||
+              !isScalarComparisonOperation(
+                  selected.get<checker::checked::PrimitiveCallable>().operation) ||
+              call.calleeType != operandType || call.receiver != zc::none ||
+              call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
+              call.arguments.size() != 2 || call.arguments[0].sourceNode != source.conditionLeft ||
+              call.arguments[0].sourceType != operandType ||
+              call.arguments[1].sourceNode != source.conditionRight ||
+              call.arguments[1].sourceType != operandType || call.successType != conditionType ||
+              call.resultType != conditionType || call.substitutions != zc::none ||
+              call.witnesses != zc::none || call.raises != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          auto findReference =
+              [&](HirNodeId node) -> zc::Maybe<const HirParameterReferenceExpression&> {
+            zc::Maybe<const HirParameterReferenceExpression&> reference;
+            for (const auto& candidateReference : candidate.impl->parameterReferences) {
+              if (candidateReference.node != node) continue;
+              if (reference != zc::none) return zc::none;
+              reference = candidateReference;
+            }
+            return reference;
+          };
+          auto leftReference = findReference(hirId(expectedFunction + 2));
+          auto rightReference = findReference(hirId(expectedFunction + 3));
+          zc::Maybe<const HirEqualityComparisonExpression&> equalityValue;
+          for (const auto& equality : candidate.impl->equalityComparisons) {
+            if (equality.node != hirId(expectedFunction + 4)) continue;
+            if (equalityValue != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::AdditionalFact, module,
+                                                  registries, index + 1);
+            }
+            equalityValue = equality;
+          }
+          if (leftReference == zc::none || rightReference == zc::none ||
+              equalityValue == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          bool equalityOk = false;
+          ZC_IF_SOME(leftRef, leftReference) {
+            ZC_IF_SOME(rightRef, rightReference) {
+              ZC_IF_SOME(equality, equalityValue) {
+                ZC_IF_SOME(conditional, conditionalValue) {
+                  ZC_IF_SOME(leftEntry, leftAuthority) {
+                    ZC_IF_SOME(rightEntry, rightAuthority) {
+                      equalityOk =
+                          leftRef.parameter == leftEntry.key() && leftRef.type == operandType &&
+                          leftRef.category == HirValueCategory::Place &&
+                          sameSpan(leftRef.sourceSpan, ZC_ASSERT_NONNULL(leftSpan)) &&
+                          rightRef.parameter == rightEntry.key() && rightRef.type == operandType &&
+                          rightRef.category == HirValueCategory::Place &&
+                          sameSpan(rightRef.sourceSpan, ZC_ASSERT_NONNULL(rightSpan)) &&
+                          equality.left == leftRef.node && equality.right == rightRef.node &&
+                          equality.operandType == operandType && equality.type == conditionType &&
+                          equality.category == HirValueCategory::Value &&
+                          equality.operation ==
+                              selected.get<checker::checked::PrimitiveCallable>().operation &&
+                          sameSpan(equality.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan)) &&
+                          conditional.condition == equality.node &&
+                          typeExists(operandType, semanticTypes);
+                    }
+                  }
+                }
               }
             }
           }
+          if (!equalityOk) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        } else {
+          auto conditionParameter = resolvedCallableParameter(bound.bindings(), source.condition);
+          if (conditionParameter == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          identity::CallableParameterId conditionHandle;
+          ZC_IF_SOME(value, conditionParameter) { conditionHandle = value; }
+          auto conditionAuthority = registries.callableParameter(conditionHandle);
+          if (conditionAuthority == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          zc::Maybe<const HirParameterReferenceExpression&> conditionReference;
+          for (const auto& reference : candidate.impl->parameterReferences) {
+            if (reference.node != hirId(expectedFunction + 2)) continue;
+            if (conditionReference != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::AdditionalFact, module,
+                                                  registries, index + 1);
+            }
+            conditionReference = reference;
+          }
+          if (conditionReference == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          bool conditionOk = false;
+          ZC_IF_SOME(conditional, conditionalValue) {
+            ZC_IF_SOME(conditionRef, conditionReference) {
+              ZC_IF_SOME(authority, conditionAuthority) {
+                conditionOk = conditional.condition == conditionRef.node &&
+                              conditionRef.parameter == authority.key() &&
+                              conditionRef.type == conditionType &&
+                              conditionRef.category == HirValueCategory::Place &&
+                              sameSpan(conditionRef.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan));
+              }
+            }
+          }
+          if (!conditionOk) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
         }
-        nextFunction += 7;
+        nextFunction += functionNodeCount;
         continue;
       }
     }
@@ -7292,7 +7659,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       zc::mv(candidate.impl->parameterIndexes), zc::mv(candidate.impl->parameterReborrows),
       zc::mv(candidate.impl->localBorrows), zc::mv(candidate.impl->calls),
       zc::mv(candidate.impl->receiverCalls), zc::mv(candidate.impl->unsafeBlocks),
-      zc::mv(candidate.impl->conditionals), zc::mv(candidate.impl->loops));
+      zc::mv(candidate.impl->equalityComparisons), zc::mv(candidate.impl->conditionals),
+      zc::mv(candidate.impl->loops));
   return ir::IrOperationResult<VerifiedHirModule>::verified(VerifiedHirModule(zc::mv(impl)));
 }
 

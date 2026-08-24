@@ -46,6 +46,7 @@ enum class BodyProductionKind : uint8_t {
   OwnerLocalMethodReference = 0x15,
   ReadIndex = 0x16,
   UnsafeBlock = 0x18,
+  PrimitiveBinaryOperation = 0x19,
   Unsupported = 0x17
 };
 
@@ -719,6 +720,126 @@ zc::Maybe<checked::MarkerEvidence> copyEvidence(const BodyCheckingInput& input,
     return zc::mv(proof).get<marker::MarkerProofPositive>().proof.evidence;
   }
   ZC_UNREACHABLE
+}
+
+/// \brief Shape of an equality comparison between two same-typed scalar parameters.
+///
+/// Restricted to `Eq` over two `IdentExpr` operands that both resolve to
+/// callable parameters of the same primitive scalar type. Anything else leaves
+/// the BinaryExpr production unsupported so the existing rejection stands.
+struct PrimitiveBinaryOperationShape final {
+  ast::NodeId leftNode;
+  ast::NodeId rightNode;
+  identity::SemanticTypeId operandType;
+  identity::SemanticTypeId boolType;
+  PrimitiveOperation operation;
+};
+
+/// \brief Projects a binary operator to its primitive operation when it is one
+/// of the six relational comparisons of same-typed scalars.
+///
+/// Reuses `OperatorKind::fromBinary` so the operator mapping lives in exactly
+/// one place. Strict identity (`===` / `!==`) and every arithmetic, bitwise, or
+/// logical operator return none so their existing rejection stands.
+zc::Maybe<PrimitiveOperation> scalarComparisonOperation(ast::BinaryOperatorKind syntax) {
+  ZC_IF_SOME(kind, OperatorKind::fromBinary(syntax)) {
+    const auto& variant = kind.variant();
+    if (!variant.is<PrimitiveOperation>()) return zc::none;
+    switch (variant.get<PrimitiveOperation>()) {
+      case PrimitiveOperation::Eq:
+      case PrimitiveOperation::Ne:
+      case PrimitiveOperation::Lt:
+      case PrimitiveOperation::Le:
+      case PrimitiveOperation::Gt:
+      case PrimitiveOperation::Ge:
+        return variant.get<PrimitiveOperation>();
+      default:
+        return zc::none;
+    }
+  }
+  return zc::none;
+}
+
+/// \brief Returns true only for primitive scalar types eligible for `Eq`.
+bool isPrimitiveScalarType(const type::SemanticTypeStore& semanticTypes,
+                           identity::SemanticTypeId type) {
+  auto lookup = semanticTypes.get(type);
+  if (!lookup.is<type::SemanticTypeLookup>()) return false;
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  if (!data.is<type::semantic::PrimitiveTypeData>()) return false;
+  const auto kind = data.get<type::semantic::PrimitiveTypeData>().kind;
+  switch (kind) {
+    case type::semantic::PrimitiveKind::I8:
+    case type::semantic::PrimitiveKind::I16:
+    case type::semantic::PrimitiveKind::I32:
+    case type::semantic::PrimitiveKind::I64:
+    case type::semantic::PrimitiveKind::U8:
+    case type::semantic::PrimitiveKind::U16:
+    case type::semantic::PrimitiveKind::U32:
+    case type::semantic::PrimitiveKind::U64:
+    case type::semantic::PrimitiveKind::Isize:
+    case type::semantic::PrimitiveKind::Usize:
+    case type::semantic::PrimitiveKind::F32:
+    case type::semantic::PrimitiveKind::F64:
+    case type::semantic::PrimitiveKind::Bool:
+    case type::semantic::PrimitiveKind::Char:
+      return true;
+    default:
+      return false;
+  }
+}
+
+zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
+    const BodyCheckingInput& input, ast::NodeId node,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::BinaryExpr) return zc::none;
+  const auto& syntax = tree.node(node);
+  // Restrict to the six relational comparisons of same-typed scalars; strict
+  // identity and every arithmetic, bitwise, or logical operator stay
+  // unsupported so their existing rejection stands.
+  auto operation = scalarComparisonOperation(
+      static_cast<ast::BinaryOperatorKind>(syntax.payload.words[ast::kBinaryExprOpWord]));
+  if (operation == zc::none) return zc::none;
+  const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
+  if (!tree.contains(left) || !tree.contains(right) ||
+      tree.node(left).kind != ast::SyntaxKind::IdentExpr ||
+      tree.node(right).kind != ast::SyntaxKind::IdentExpr) {
+    return zc::none;
+  }
+  auto leftType = callableParameterReferenceType(input, left);
+  auto rightType = callableParameterReferenceType(input, right);
+  if (leftType == zc::none || rightType == zc::none) return zc::none;
+  zc::Maybe<const checked::NodeTypeMap::Entry&> leftFact;
+  zc::Maybe<const checked::NodeTypeMap::Entry&> rightFact;
+  for (const auto& entry : nodeTypes) {
+    if (entry.key == left) leftFact = entry;
+    if (entry.key == right) rightFact = entry;
+  }
+  if (leftFact == zc::none || rightFact == zc::none) return zc::none;
+  ZC_IF_SOME(leftValue, leftType) {
+    ZC_IF_SOME(rightValue, rightType) {
+      ZC_IF_SOME(leftEntry, leftFact) {
+        ZC_IF_SOME(rightEntry, rightFact) {
+          if (leftEntry.value != leftValue || rightEntry.value != rightValue ||
+              leftValue != rightValue || !isPrimitiveScalarType(input.semanticTypes, leftValue)) {
+            return zc::none;
+          }
+          auto canonical = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+              type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::Bool}));
+          if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
+          auto interned = input.semanticTypes.intern(
+              zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+          if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
+          return PrimitiveBinaryOperationShape{left, right, leftValue,
+                                               interned.get<type::SemanticTypeInterned>().id,
+                                               ZC_ASSERT_NONNULL(operation)};
+        }
+      }
+    }
+  }
+  return zc::none;
 }
 
 struct ReferenceReborrowShape final {
@@ -1694,6 +1815,24 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
         case ast::SyntaxKind::StructLiteralExpr:
           production = BodyProductionKind::StructLiteral;
           break;
+        case ast::SyntaxKind::BinaryExpr: {
+          // Admit the six relational comparisons of two same-typed scalar
+          // parameters; every other binary shape stays unsupported so its
+          // existing rejection stands.
+          const auto operation =
+              static_cast<ast::BinaryOperatorKind>(syntax.payload.words[ast::kBinaryExprOpWord]);
+          if (scalarComparisonOperation(operation) == zc::none) break;
+          const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
+          if (tree.contains(left) && tree.contains(right) &&
+              tree.node(left).kind == ast::SyntaxKind::IdentExpr &&
+              tree.node(right).kind == ast::SyntaxKind::IdentExpr &&
+              resolvedCallableParameter(boundModule.bindings(), left) != zc::none &&
+              resolvedCallableParameter(boundModule.bindings(), right) != zc::none) {
+            production = BodyProductionKind::PrimitiveBinaryOperation;
+          }
+          break;
+        }
         case ast::SyntaxKind::UnaryExpression: {
           const auto operation = static_cast<ast::UnaryOperatorKind>(
               syntax.payload.words[ast::kUnaryExpressionOpWord]);
@@ -1851,10 +1990,12 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       const bool errorOperator = site.production == BodyProductionKind::ErrorOperator;
       const bool indexed = site.production == BodyProductionKind::ReadIndex;
       const bool unsafeBlock = site.production == BodyProductionKind::UnsafeBlock;
-      if ((stage == 0 && (structured || projected || fieldWrite || directCall ||
-                          concreteMethodCall || errorOperator || indexed || unsafeBlock)) ||
-          (stage == 1 &&
-           (((!structured && !directCall) || errorOperator || indexed) && !unsafeBlock)) ||
+      const bool primitiveBinary = site.production == BodyProductionKind::PrimitiveBinaryOperation;
+      if ((stage == 0 &&
+           (structured || projected || fieldWrite || directCall || concreteMethodCall ||
+            errorOperator || indexed || unsafeBlock || primitiveBinary)) ||
+          (stage == 1 && (((!structured && !directCall) || errorOperator || indexed) &&
+                          !unsafeBlock && !primitiveBinary)) ||
           (stage == 2 && ((!projected && !indexed) || methodReference)) ||
           (stage == 3 && (!fieldWrite && !concreteMethodCall && !methodReference)) ||
           (stage == 4 && !errorOperator)) {
@@ -2130,6 +2271,41 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                               checked::Polarity::Positive, zc::mv(copy)},
                 zc::Array<uint8_t>()});
           }
+        }
+      } else if (site.production == BodyProductionKind::PrimitiveBinaryOperation) {
+        auto shape = primitiveBinaryOperationShape(input, site.node, nodeTypes.asPtr());
+        if (shape == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        ZC_IF_SOME(value, shape) {
+          producedType = value.boolType;
+          zc::Maybe<checked::CheckedArgumentFact> noReceiver;
+          zc::Maybe<signature::ReceiverMode> noReceiverMode;
+          zc::Maybe<checked::ReceiverAdjustment> noReceiverAdjustment;
+          zc::Vector<checked::CheckedArgumentFact> arguments;
+          zc::Maybe<checked::CoercionAdjustment> noLeftAdjustment;
+          zc::Maybe<checked::CoercionAdjustment> noRightAdjustment;
+          arguments.add(checked::CheckedArgumentFact{value.leftNode, value.operandType,
+                                                     value.operandType, zc::mv(noLeftAdjustment)});
+          arguments.add(checked::CheckedArgumentFact{value.rightNode, value.operandType,
+                                                     value.operandType, zc::mv(noRightAdjustment)});
+          zc::Maybe<checked::CanonicalSubstitutionId> noSubstitutions;
+          zc::Maybe<checked::WitnessArgumentsId> noWitnesses;
+          zc::Maybe<identity::SemanticTypeId> noRaises;
+          calls.add(checked::CallFactMap::Entry{
+              site.node,
+              checked::TypedCallFact{
+                  site.node,
+                  checked::CheckedCallEnvelope{
+                      checked::SelectedCallable(checked::PrimitiveCallable{value.operation}),
+                      value.operandType, zc::mv(noReceiver), zc::mv(noReceiverMode),
+                      zc::mv(noReceiverAdjustment), zc::mv(arguments), value.boolType,
+                      value.boolType, zc::mv(noSubstitutions), zc::mv(noWitnesses),
+                      zc::mv(noRaises)},
+                  site.key.sourceSpan.clone()},
+              zc::Array<uint8_t>()});
         }
       } else if (site.production == BodyProductionKind::LocalWrite) {
         const auto& assignment = input.boundModule.tree().node(site.node);

@@ -227,7 +227,23 @@ private:
 };
 
 enum class MirBorrowKind : uint8_t { Shared = 0x01, Mutable = 0x02 };
-enum class MirRvalueKind : uint8_t { Use = 0x01, NominalAggregate = 0x02 };
+enum class MirRvalueKind : uint8_t { Use = 0x01, NominalAggregate = 0x02, Comparison = 0x03 };
+
+/// \brief Closed comparison operator produced by primitive comparison lowering.
+///
+/// Covers the six relational comparisons of same-typed primitive scalars. The
+/// field is modeled as an operator rather than a boolean so the encoded byte is
+/// self-describing and each comparison kind is distinguishable in the canonical
+/// stream. These bytes flow through `encodeRvalue`; changing a tag is a codec
+/// change.
+enum class MirComparisonOperator : uint8_t {
+  Eq = 0x01,
+  Ne = 0x02,
+  Lt = 0x03,
+  Le = 0x04,
+  Gt = 0x05,
+  Ge = 0x06
+};
 
 struct MirUseRvalue final {
   MirOperand operand;
@@ -241,6 +257,12 @@ struct MirNominalAggregateRvalue final {
   identity::SemanticTypeId type;
   zc::Vector<MirNominalAggregateElement> elements;
 };
+struct MirComparisonRvalue final {
+  MirComparisonOperator op;
+  MirOperand left;
+  MirOperand right;
+  identity::SemanticTypeId resultType;
+};
 
 /// \brief Canonical target-independent assignment value for the Built MIR boundary.
 class MirRvalue final {
@@ -253,15 +275,20 @@ public:
   ZC_NODISCARD static MirRvalue nominalAggregate(
       identity::DefId definition, identity::SemanticTypeId type,
       zc::Vector<MirNominalAggregateElement>&& elements) noexcept;
+  ZC_NODISCARD static MirRvalue comparison(MirComparisonOperator op, MirOperand&& left,
+                                           MirOperand&& right,
+                                           identity::SemanticTypeId resultType) noexcept;
   ZC_NODISCARD MirRvalue clone() const;
   ZC_NODISCARD MirRvalueKind kind() const noexcept;
   ZC_NODISCARD const MirUseRvalue& useValue() const;
   ZC_NODISCARD const MirNominalAggregateRvalue& nominalAggregateValue() const;
+  ZC_NODISCARD const MirComparisonRvalue& comparisonValue() const;
 
 private:
   explicit MirRvalue(MirUseRvalue&& value) noexcept;
   explicit MirRvalue(MirNominalAggregateRvalue&& value) noexcept;
-  zc::OneOf<MirUseRvalue, MirNominalAggregateRvalue> value;
+  explicit MirRvalue(MirComparisonRvalue&& value) noexcept;
+  zc::OneOf<MirUseRvalue, MirNominalAggregateRvalue, MirComparisonRvalue> value;
 };
 
 enum class MirInitializationKind : uint8_t { Initialize = 0x01, Overwrite = 0x02 };

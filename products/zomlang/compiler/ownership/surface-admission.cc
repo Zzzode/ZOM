@@ -332,6 +332,25 @@ bool isAdmittedLoopStatement(const ast::Tree& tree, ast::NodeId whileStmt) {
 
 bool isAdmittedConditionalBody(const ast::Tree& tree, ast::NodeId ifStmt) {
   const auto& ifNode = tree.node(ifStmt);
+  // Admit two structural condition shapes: a bare identifier (a bool parameter
+  // reference) or a binary comparison of two identifiers. Which comparison
+  // operators are actually supported is a checker decision (only `Eq` produces a
+  // primitive-callable fact today); a non-`Eq` comparison is admitted here and
+  // rejected downstream by the checker, keeping the operator-support contract in
+  // a single place. Every other condition shape fails closed.
+  const ast::NodeId condition(ifNode.payload.words[ast::kIfStmtCondWord]);
+  if (!tree.contains(condition)) return false;
+  if (tree.node(condition).kind == ast::SyntaxKind::BinaryExpr) {
+    const ast::NodeId left(tree.node(condition).payload.words[ast::kBinaryExprLhsWord]);
+    const ast::NodeId right(tree.node(condition).payload.words[ast::kBinaryExprRhsWord]);
+    if (!tree.contains(left) || !tree.contains(right) ||
+        tree.node(left).kind != ast::SyntaxKind::IdentExpr ||
+        tree.node(right).kind != ast::SyntaxKind::IdentExpr) {
+      return false;
+    }
+  } else if (tree.node(condition).kind != ast::SyntaxKind::IdentExpr) {
+    return false;
+  }
   const ast::NodeId thenStmt(ifNode.payload.words[ast::kIfStmtThenStmtWord]);
   const ast::NodeId elseStmt(ifNode.payload.words[ast::kIfStmtElseStmtWord]);
   if (!tree.contains(thenStmt) || !tree.contains(elseStmt)) return false;

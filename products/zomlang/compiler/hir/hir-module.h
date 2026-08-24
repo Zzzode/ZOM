@@ -10,6 +10,7 @@
 #include "zc/core/one-of.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/checker/operator-kind.h"
 #include "zomlang/compiler/hir/checked-module.h"
 #include "zomlang/compiler/hir/hir-node-id.h"
 #include "zomlang/compiler/type/semantic-type-data.h"
@@ -242,10 +243,32 @@ struct HirUnsafeBlockExpression final {
   identity::SourceSpan sourceSpan;
 };
 
+/// \brief One checked relational comparison of two parameter references retained
+/// as a conditional condition.
+///
+/// Both operands are parameter-reference node ids materialized in
+/// `parameterReferences`. The operand type is the shared scalar type carried by
+/// the checked comparison call fact and the result type is bool. `operation` is
+/// one of the six relational comparisons (`Eq`, `Ne`, `Lt`, `Le`, `Gt`, `Ge`)
+/// selected by the checked `PrimitiveCallable`. MIR lowering assigns the
+/// comparison into a bool temporary consumed as the SwitchInt discriminant.
+struct HirEqualityComparisonExpression final {
+  HirNodeId node;
+  HirNodeId left;
+  HirNodeId right;
+  identity::SemanticTypeId operandType;
+  identity::SemanticTypeId type;
+  HirValueCategory category;
+  checker::PrimitiveOperation operation;
+  identity::SourceSpan sourceSpan;
+};
+
 /// \brief One checked if/else conditional expression retained for multi-block MIR lowering.
 ///
-/// The condition is a bool expression; each branch yields a scalar return value. MIR lowering
-/// emits a SwitchInt terminator on the entry block, one block per branch, and a Return
+/// The condition is a bool expression; each branch yields a scalar return value. The condition
+/// node id resolves either to a `HirParameterReferenceExpression` (a bare bool parameter) or to a
+/// `HirEqualityComparisonExpression` (an `a == b` comparison of two same-typed scalar parameters).
+/// MIR lowering emits a SwitchInt terminator on the entry block, one block per branch, and a Return
 /// terminator in each branch block.
 struct HirConditionalExpression final {
   HirNodeId node;
@@ -380,6 +403,8 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const HirDirectCallExpression> calls() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirReceiverCallExpression> receiverCalls() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirUnsafeBlockExpression> unsafeBlocks() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirEqualityComparisonExpression> equalityComparisons()
+      const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirConditionalExpression> conditionals() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirLoopStatement> loops() const noexcept;
   ZC_NODISCARD zc::Maybe<zc::String> dump() const;
