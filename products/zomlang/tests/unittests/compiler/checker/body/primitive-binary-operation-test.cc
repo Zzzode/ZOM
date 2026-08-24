@@ -688,4 +688,34 @@ ZC_TEST("PrimitiveBinaryOperation.RejectsMismatchedLiteralOperandType") {
   ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
 }
 
+ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveComparisonCallFactForReturnPositionComparison") {
+  // The checker keys on the BinaryExpr node, not its syntactic position, so a
+  // `return a < b` body produces the same PrimitiveCallable fact as the
+  // conditional-condition form.
+  PrimitiveBinaryFixture fixture("fun lt(a: i32, b: i32) -> bool { return a < b; }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_REQUIRE(facts.calls().entries().size() == 1);
+  const auto& call = soleEqualityCall(facts);
+  const auto& selected = call.invocation.selected.variant();
+  ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+  ZC_EXPECT(selected.get<checked::PrimitiveCallable>().operation == PrimitiveOperation::Lt);
+
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  const auto boolType = fixture.primitive(type::semantic::PrimitiveKind::Bool);
+  ZC_EXPECT(call.invocation.calleeType == i32);
+  ZC_EXPECT(call.invocation.successType == boolType);
+  ZC_EXPECT(call.invocation.resultType == boolType);
+  ZC_EXPECT(call.invocation.receiver == zc::none);
+  ZC_REQUIRE(call.invocation.arguments.size() == 2);
+  ZC_EXPECT(call.invocation.arguments[0].sourceType == i32);
+  ZC_EXPECT(call.invocation.arguments[1].sourceType == i32);
+
+  bool binaryNodeIsBool = false;
+  for (const auto& entry : facts.nodeTypes().entries()) {
+    if (entry.key == call.node) binaryNodeIsBool = entry.value == boolType;
+  }
+  ZC_EXPECT(binaryNodeIsBool);
+}
+
 }  // namespace zomlang::compiler::checker::body

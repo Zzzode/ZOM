@@ -1194,5 +1194,104 @@ ZC_TEST("HIR pipeline lowers a parameter-and-literal relational conditional cond
   }
 }
 
+ZC_TEST("HIR pipeline lowers a return-position relational comparison") {
+  HirPipelineFixture fixture("fun lt(a: i32, b: i32) -> bool { return a < b; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  // The comparison result is returned directly: no conditional is produced, only
+  // the comparison node plus its two operand parameter references.
+  ZC_REQUIRE(module.conditionals().size() == 0);
+  ZC_REQUIRE(module.equalityComparisons().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 2);
+  ZC_REQUIRE(module.expressions().size() == 0);
+  const auto& function = module.functions()[0];
+  const auto& equality = module.equalityComparisons()[0];
+  const auto& returnStatement = module.returns()[0];
+  const auto& left = module.parameterReferences()[0];
+  const auto& right = module.parameterReferences()[1];
+  // The return statement feeds the comparison node directly (no conditional).
+  ZC_EXPECT(returnStatement.value == equality.node);
+  ZC_EXPECT(equality.left == left.node);
+  ZC_EXPECT(equality.right == right.node);
+  ZC_EXPECT(equality.operation == checker::PrimitiveOperation::Lt);
+  ZC_EXPECT(left.parameter == function.parameters[0].key);
+  ZC_EXPECT(right.parameter == function.parameters[1].key);
+  ZC_EXPECT(equality.operandType == function.parameters[0].type);
+  ZC_EXPECT(equality.type == function.resultType);
+
+  // The body lowers to a single block: StorageLive(result), Assign(result =
+  // a < b), then Return(placeUse(result)). No branching.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lt;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lt = mirFunction;
+  }
+  ZC_REQUIRE(lt != zc::none);
+  ZC_IF_SOME(mirFunction, lt) {
+    // Two parameter locals (a, b) plus the bool function result. No temporary is
+    // needed because the comparison writes the result local directly.
+    ZC_REQUIRE(mirFunction.locals.size() == 3);
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    ZC_REQUIRE(mirFunction.blocks[0].statements.size() == 2);
+    ZC_EXPECT(mirFunction.blocks[0].statements[0].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirFunction.blocks[0].statements[1].kind() == mir::MirStatementKind::Assign);
+    const auto& compareAssign = mirFunction.blocks[0].statements[1].assignmentValue();
+    ZC_REQUIRE(compareAssign.value.kind() == mir::MirRvalueKind::Comparison);
+    const auto& comparison = compareAssign.value.comparisonValue();
+    ZC_EXPECT(comparison.op == mir::MirComparisonOperator::Lt);
+    ZC_EXPECT(comparison.left.place().local() == mirFunction.locals[0].id);
+    ZC_EXPECT(comparison.right.place().local() == mirFunction.locals[1].id);
+    // The assignment initializes the function-result local (the third local).
+    ZC_EXPECT(compareAssign.destination.local() == mirFunction.locals[2].id);
+    // The single block returns the result local directly.
+    ZC_REQUIRE(mirFunction.blocks[0].terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_IF_SOME(returnValue, mirFunction.blocks[0].terminator.returnValue().value) {
+      ZC_EXPECT(returnValue.place().local() == mirFunction.locals[2].id);
+    }
+  }
+}
+
+ZC_TEST("HIR pipeline lowers all six relational operators in return position") {
+  struct Case final {
+    zc::StringPtr source;
+    checker::PrimitiveOperation operation;
+    mir::MirComparisonOperator mirOperator;
+  };
+  const Case cases[] = {{"fun f(a: i32, b: i32) -> bool { return a == b; }"_zc,
+                         checker::PrimitiveOperation::Eq, mir::MirComparisonOperator::Eq},
+                        {"fun f(a: i32, b: i32) -> bool { return a != b; }"_zc,
+                         checker::PrimitiveOperation::Ne, mir::MirComparisonOperator::Ne},
+                        {"fun f(a: i32, b: i32) -> bool { return a < b; }"_zc,
+                         checker::PrimitiveOperation::Lt, mir::MirComparisonOperator::Lt},
+                        {"fun f(a: i32, b: i32) -> bool { return a <= b; }"_zc,
+                         checker::PrimitiveOperation::Le, mir::MirComparisonOperator::Le},
+                        {"fun f(a: i32, b: i32) -> bool { return a > b; }"_zc,
+                         checker::PrimitiveOperation::Gt, mir::MirComparisonOperator::Gt},
+                        {"fun f(a: i32, b: i32) -> bool { return a >= b; }"_zc,
+                         checker::PrimitiveOperation::Ge, mir::MirComparisonOperator::Ge}};
+  for (const auto& testCase : cases) {
+    HirPipelineFixture fixture(testCase.source);
+    const auto& module = fixture.hirModule();
+    ZC_REQUIRE(module.equalityComparisons().size() == 1);
+    ZC_REQUIRE(module.conditionals().size() == 0);
+    ZC_EXPECT(module.equalityComparisons()[0].operation == testCase.operation);
+    const auto& function = module.functions()[0];
+    const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+    ZC_REQUIRE(builtMir.size() == 1);
+    zc::Maybe<const mir::MirFunction&> lowered;
+    for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+      if (mirFunction.owner == function.definition) lowered = mirFunction;
+    }
+    ZC_REQUIRE(lowered != zc::none);
+    ZC_IF_SOME(mirFunction, lowered) {
+      const auto& compareAssign = mirFunction.blocks[0].statements[1].assignmentValue();
+      ZC_REQUIRE(compareAssign.value.kind() == mir::MirRvalueKind::Comparison);
+      ZC_EXPECT(compareAssign.value.comparisonValue().op == testCase.mirOperator);
+    }
+  }
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::hir

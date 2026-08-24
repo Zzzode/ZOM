@@ -203,12 +203,32 @@ bool isAdmittedErrorPostfix(const ast::Tree& tree, ast::NodeId expression) {
                                     isAdmittedDirectCall(tree, operand));
 }
 
+// Structurally admits a relational comparison whose operands are each an
+// identifier (a parameter reference resolved downstream) or a scalar literal,
+// with at least one identifier operand. Which comparison operators are actually
+// supported is a checker decision, so this admits every relational-shaped
+// BinaryExpr and the checker rejects the unsupported operators, keeping the
+// operator-support contract in a single place. A literal-vs-literal comparison
+// has no parameter to lower and fails closed here.
+bool isAdmittedComparison(const ast::Tree& tree, ast::NodeId value) {
+  if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::BinaryExpr) return false;
+  const ast::NodeId left(tree.node(value).payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId right(tree.node(value).payload.words[ast::kBinaryExprRhsWord]);
+  if (!tree.contains(left) || !tree.contains(right)) return false;
+  const bool leftIdent = tree.node(left).kind == ast::SyntaxKind::IdentExpr;
+  const bool rightIdent = tree.node(right).kind == ast::SyntaxKind::IdentExpr;
+  const bool leftOk = leftIdent || isScalarLiteral(tree.node(left).kind);
+  const bool rightOk = rightIdent || isScalarLiteral(tree.node(right).kind);
+  return leftOk && rightOk && (leftIdent || rightIdent);
+}
+
 bool isAdmittedReturnValue(const ast::Tree& tree, ast::NodeId value) {
   if (!tree.contains(value)) return false;
   return isScalarLiteral(tree.node(value).kind) ||
          tree.node(value).kind == ast::SyntaxKind::IdentExpr || isAdmittedDirectCall(tree, value) ||
          isAdmittedReceiverCall(tree, value) || isAdmittedReferenceReborrow(tree, value) ||
          isAdmittedLocalBorrow(tree, value) || isAdmittedErrorPostfix(tree, value) ||
+         isAdmittedComparison(tree, value) ||
          tree.node(value).kind == ast::SyntaxKind::UnsafeBlockExpr;
 }
 

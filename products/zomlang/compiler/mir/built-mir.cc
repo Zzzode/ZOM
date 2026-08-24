@@ -1783,6 +1783,155 @@ bool validEqualityConditionalReturnFunction(
   return false;
 }
 
+// Verifies a `return <a CMP b>` function: a single block that computes the
+// comparison into the bool function-result local and returns it. Each operand is
+// a scalar-literal constant or a copy of the compared parameter local. The
+// entry-block layout is StorageLive(result), Assign(result = Comparison{...}),
+// then a Return reading the result local.
+bool validComparisonReturnFunction(const MirFunction& function,
+                                   const hir::VerifiedHirModule& hirModule,
+                                   const hir::HirFunctionDeclaration& declaration,
+                                   const hir::HirBlockStatement& sourceBlock,
+                                   const hir::HirReturnStatement& sourceReturn,
+                                   const hir::HirEqualityComparisonExpression& comparison,
+                                   checker::marker::MarkerProofEngine& proofs, identity::DefId copy,
+                                   identity::ModuleId module,
+                                   const checker::CheckerIdentityAuthority& identities,
+                                   const type::SemanticTypeStore& semanticTypes) {
+  // The comparison allocates one bool result local after the parameters.
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.resultType != declaration.resultType ||
+      !sameSpan(function.sourceSpan, declaration.sourceSpan) || function.sourceScopes.size() != 1 ||
+      function.locals.size() != declaration.parameters.size() + 1 || function.blocks.size() != 1 ||
+      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 1 ||
+      sourceBlock.statements[0] != sourceReturn.node || sourceReturn.value != comparison.node ||
+      sourceReturn.resultType != declaration.resultType ||
+      comparison.type != declaration.resultType) {
+    return false;
+  }
+  const auto& scope = function.sourceScopes[0];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan)) {
+    return false;
+  }
+  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+    const auto& local = function.locals[i];
+    if (local.id != localId(static_cast<uint32_t>(i + 1)) ||
+        local.kind != MirLocalKind::Parameter || local.type != declaration.parameters[i].type ||
+        local.sourceScope != scopeId(1) ||
+        !sameSpan(local.sourceSpan, declaration.parameters[i].sourceSpan)) {
+      return false;
+    }
+  }
+  const auto resultLocal = localId(static_cast<uint32_t>(declaration.parameters.size() + 1));
+  const auto& result = function.locals[declaration.parameters.size()];
+  if (result.id != resultLocal || result.kind != MirLocalKind::FunctionResult ||
+      result.type != declaration.resultType || result.sourceScope != scopeId(1) ||
+      !sameSpan(result.sourceSpan, sourceReturn.sourceSpan)) {
+    return false;
+  }
+  auto parameterLocalIndex = [&](const hir::HirParameterReferenceExpression& reference,
+                                 size_t& outIndex) -> bool {
+    for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+      if (declaration.parameters[i].key == reference.parameter) {
+        outIndex = i;
+        return true;
+      }
+    }
+    return false;
+  };
+  // Each operand is a scalar-literal expression or a parameter reference;
+  // exactly one lookup succeeds per operand, at least one is a parameter, and the
+  // shared operand type comes from a parameter operand.
+  auto leftLiteral = expressionFor(hirModule, comparison.left);
+  auto leftRef = parameterReferenceFor(hirModule, comparison.left);
+  auto rightLiteral = expressionFor(hirModule, comparison.right);
+  auto rightRef = parameterReferenceFor(hirModule, comparison.right);
+  const bool leftOperandOk = (leftLiteral != zc::none) != (leftRef != zc::none);
+  const bool rightOperandOk = (rightLiteral != zc::none) != (rightRef != zc::none);
+  if (!leftOperandOk || !rightOperandOk || (leftRef == zc::none && rightRef == zc::none)) {
+    return false;
+  }
+  size_t leftIndex = 0;
+  size_t rightIndex = 0;
+  identity::SemanticTypeId operandType;
+  bool refsOk = true;
+  ZC_IF_SOME(value, leftRef) {
+    operandType = value.type;
+    refsOk &= parameterLocalIndex(value, leftIndex);
+  }
+  ZC_IF_SOME(value, rightRef) {
+    operandType = value.type;
+    refsOk &= parameterLocalIndex(value, rightIndex);
+  }
+  ZC_IF_SOME(leftValue, leftRef) {
+    ZC_IF_SOME(rightValue, rightRef) { refsOk &= leftValue.type == rightValue.type; }
+  }
+  refsOk &= comparison.operandType == operandType;
+  ZC_IF_SOME(value, leftLiteral) { refsOk &= value.type == operandType; }
+  ZC_IF_SOME(value, rightLiteral) { refsOk &= value.type == operandType; }
+  if (!refsOk) return false;
+  const auto& entry = function.blocks[0];
+  if (entry.id != blockId(1) || entry.sourceScope != scopeId(1) || entry.statements.size() != 2 ||
+      entry.statements[0].kind() != MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != resultLocal ||
+      !sameSpan(entry.statements[0].sourceSpan(), sourceReturn.sourceSpan) ||
+      entry.statements[1].kind() != MirStatementKind::Assign ||
+      !sameSpan(entry.statements[1].sourceSpan(), comparison.sourceSpan) ||
+      entry.terminator.kind() != MirTerminatorKind::Return ||
+      !sameSpan(entry.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+    return false;
+  }
+  const auto& assignment = entry.statements[1].assignmentValue();
+  if (assignment.initialization != MirInitializationKind::Initialize ||
+      assignment.destination.local() != resultLocal ||
+      assignment.destination.rootType() != declaration.resultType ||
+      assignment.destination.resultType() != declaration.resultType ||
+      assignment.destination.projections().size() != 0 ||
+      assignment.value.kind() != MirRvalueKind::Comparison) {
+    return false;
+  }
+  const auto& comparisonValue = assignment.value.comparisonValue();
+  auto expectedOperator = mirComparisonOperatorFor(comparison.operation);
+  if (expectedOperator == zc::none || comparisonValue.op != ZC_ASSERT_NONNULL(expectedOperator) ||
+      comparisonValue.resultType != comparison.type) {
+    return false;
+  }
+  auto operandMatches = [&](const MirOperand& operand,
+                            zc::Maybe<const hir::HirScalarLiteralExpression&> literal,
+                            zc::Maybe<const hir::HirParameterReferenceExpression&> parameter,
+                            size_t parameterIndex) -> bool {
+    ZC_IF_SOME(value, literal) {
+      return operand.kind() == MirOperandKind::Constant &&
+             operand.constantValue().type == operandType &&
+             sameConstant(operand.constantValue().value, value.value, module, identities,
+                          semanticTypes);
+    }
+    ZC_IF_SOME(value, parameter) {
+      (void)value;
+      const auto local = localId(static_cast<uint32_t>(parameterIndex + 1));
+      return matchesPlaceUse(operand, proofs, copy, operandType) &&
+             operand.place().local() == local && operand.place().rootType() == operandType &&
+             operand.place().resultType() == operandType &&
+             operand.place().projections().size() == 0;
+    }
+    return false;
+  };
+  if (!operandMatches(comparisonValue.left, leftLiteral, leftRef, leftIndex) ||
+      !operandMatches(comparisonValue.right, rightLiteral, rightRef, rightIndex)) {
+    return false;
+  }
+  ZC_IF_SOME(value, entry.terminator.returnValue().value) {
+    return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
+           value.place().local() == resultLocal &&
+           value.place().rootType() == declaration.resultType &&
+           value.place().resultType() == declaration.resultType &&
+           value.place().projections().size() == 0;
+  }
+  return false;
+}
+
 bool validLoopReturnFunction(
     const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
     const hir::HirBlockStatement& sourceBlock, const hir::HirReturnStatement& sourceReturn,
@@ -5394,6 +5543,144 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
           }
         }
       }
+      if (block.statements.size() == 1) {
+        // Comparison-return shape: `return <a CMP b>`. The comparison result is
+        // computed into a bool temporary in the single entry block and returned
+        // directly (no branching). Each operand is a scalar-literal constant or a
+        // copy of the compared parameter local.
+        auto sourceReturn = returnFor(hirModule, block.statements[0]);
+        hir::HirNodeId referenceNode;
+        ZC_IF_SOME(returnStatement, sourceReturn) { referenceNode = returnStatement.value; }
+        auto comparison = equalityComparisonFor(hirModule, referenceNode);
+        auto definition = identities.definition(declaration.definition);
+        ZC_IF_SOME(returnStatement, sourceReturn) {
+          ZC_IF_SOME(comparisonValue, comparison) {
+            auto leftLiteral = expressionFor(hirModule, comparisonValue.left);
+            auto leftRef = parameterReferenceFor(hirModule, comparisonValue.left);
+            auto rightLiteral = expressionFor(hirModule, comparisonValue.right);
+            auto rightRef = parameterReferenceFor(hirModule, comparisonValue.right);
+            const bool leftOperandOk = (leftLiteral != zc::none) != (leftRef != zc::none);
+            const bool rightOperandOk = (rightLiteral != zc::none) != (rightRef != zc::none);
+            auto parameterLocalIndex = [&](const hir::HirParameterReferenceExpression& reference,
+                                           size_t& outIndex) -> bool {
+              for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+                if (declaration.parameters[i].key == reference.parameter) {
+                  outIndex = i;
+                  return true;
+                }
+              }
+              return false;
+            };
+            // Derive the shared operand type from a parameter operand; at least
+            // one operand is a parameter.
+            identity::SemanticTypeId operandType;
+            bool operandTypeResolved = false;
+            ZC_IF_SOME(value, leftRef) {
+              operandType = value.type;
+              operandTypeResolved = true;
+            }
+            ZC_IF_SOME(value, rightRef) {
+              operandType = value.type;
+              operandTypeResolved = true;
+            }
+            size_t leftIndex = 0;
+            size_t rightIndex = 0;
+            bool operandsResolved = leftOperandOk && rightOperandOk && operandTypeResolved &&
+                                    (leftRef != zc::none || rightRef != zc::none);
+            ZC_IF_SOME(value, leftRef) {
+              operandsResolved &=
+                  parameterLocalIndex(value, leftIndex) && value.type == operandType;
+            }
+            ZC_IF_SOME(value, rightRef) {
+              operandsResolved &=
+                  parameterLocalIndex(value, rightIndex) && value.type == operandType;
+            }
+            ZC_IF_SOME(value, leftLiteral) { operandsResolved &= value.type == operandType; }
+            ZC_IF_SOME(value, rightLiteral) { operandsResolved &= value.type == operandType; }
+            if (operandsResolved && comparisonValue.type == declaration.resultType &&
+                comparisonValue.operandType == operandType && definition != zc::none &&
+                mirComparisonOperatorFor(comparisonValue.operation) != zc::none) {
+              // The result local holds the bool comparison result.
+              const auto resultLocal =
+                  localId(static_cast<uint32_t>(declaration.parameters.size() + 1));
+              const identity::SemanticTypeId boolType = comparisonValue.type;
+              zc::Vector<MirSourceScope> scopes;
+              zc::Maybe<MirSourceScopeId> noParent;
+              scopes.add(
+                  MirSourceScope{scopeId(1), zc::mv(noParent), declaration.sourceSpan.clone()});
+              zc::Vector<MirLocalDeclaration> locals;
+              for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+                locals.add(MirLocalDeclaration{localId(static_cast<uint32_t>(i + 1)),
+                                               MirLocalKind::Parameter,
+                                               declaration.parameters[i].type, scopeId(1),
+                                               declaration.parameters[i].sourceSpan.clone()});
+              }
+              locals.add(MirLocalDeclaration{resultLocal, MirLocalKind::FunctionResult,
+                                             declaration.resultType, scopeId(1),
+                                             returnStatement.sourceSpan.clone()});
+              // Build each comparison operand: a literal operand becomes a
+              // constant; a parameter operand becomes a copy of its local.
+              auto comparisonOperand =
+                  [&](zc::Maybe<const hir::HirScalarLiteralExpression&> literal,
+                      zc::Maybe<const hir::HirParameterReferenceExpression&> parameter,
+                      size_t parameterIndex) -> zc::Maybe<MirOperand> {
+                ZC_IF_SOME(value, literal) {
+                  return MirOperand::constant(value.type, value.value.clone());
+                }
+                ZC_IF_SOME(value, parameter) {
+                  (void)value;
+                  zc::Vector<MirProjection> projections;
+                  return placeUse(proofs, copy,
+                                  MirPlace(localId(static_cast<uint32_t>(parameterIndex + 1)),
+                                           operandType, zc::mv(projections), operandType));
+                }
+                return zc::none;
+              };
+              auto leftOperand = comparisonOperand(leftLiteral, leftRef, leftIndex);
+              auto rightOperand = comparisonOperand(rightLiteral, rightRef, rightIndex);
+              zc::Vector<MirProjection> returnProjections;
+              auto returnOperand =
+                  placeUse(proofs, copy,
+                           MirPlace(resultLocal, declaration.resultType, zc::mv(returnProjections),
+                                    declaration.resultType));
+              if (leftOperand == zc::none || rightOperand == zc::none ||
+                  returnOperand == zc::none) {
+                return rejectMir<BuiltMirCandidate>(
+                    ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact, module,
+                    declaration.definition, identities, static_cast<uint32_t>(pending.size() + 1));
+              }
+              zc::Vector<MirStatement> statements;
+              statements.add(
+                  MirStatement::storageLive(resultLocal, returnStatement.sourceSpan.clone()));
+              zc::Vector<MirProjection> destinationProjections;
+              statements.add(MirStatement::assign(
+                  MirPlace(resultLocal, boolType, zc::mv(destinationProjections), boolType),
+                  MirRvalue::comparison(
+                      ZC_ASSERT_NONNULL(mirComparisonOperatorFor(comparisonValue.operation)),
+                      zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                      zc::mv(ZC_ASSERT_NONNULL(rightOperand)), boolType),
+                  MirInitializationKind::Initialize, comparisonValue.sourceSpan.clone()));
+              zc::Vector<MirBasicBlock> blocks;
+              blocks.add(
+                  MirBasicBlock{blockId(1), scopeId(1), zc::mv(statements),
+                                MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                           returnStatement.sourceSpan.clone())});
+              MirFunction function{declaration.definition,
+                                   MirFunctionKind::Function,
+                                   identity::DefinitionKind::Function,
+                                   declaration.resultType,
+                                   declaration.sourceSpan.clone(),
+                                   zc::mv(scopes),
+                                   zc::mv(locals),
+                                   zc::mv(blocks)};
+              zc::Array<uint8_t> ownerKey;
+              ZC_IF_SOME(key, definition) { ownerKey = key.key().encode(); }
+              pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
+              continue;
+            }
+          }
+        }
+      }
       if (block.statements.size() == 2) {
         auto sourceLocal = localFor(hirModule, block.statements[0]);
         auto sourceReturn = returnFor(hirModule, block.statements[1]);
@@ -6758,6 +7045,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       auto parameterReference = parameterReferenceFor(hirModule, expressionNode);
       auto parameterReborrow = parameterReborrowFor(hirModule, expressionNode);
       auto conditional = conditionalFor(hirModule, expressionNode);
+      auto comparisonReturn = equalityComparisonFor(hirModule, expressionNode);
       auto sourceLocal = localFor(hirModule, localNode);
       auto sourceOverwrite = localWriteFor(hirModule, overwriteNode);
       auto localReference = localReferenceFor(hirModule, expressionNode);
@@ -6779,6 +7067,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       const bool isParameterReborrow = parameterReborrow != zc::none;
       const bool isLocalBorrow = localBorrow != zc::none;
       const bool isConditionalReturn = conditional != zc::none;
+      const bool isComparisonReturn = comparisonReturn != zc::none;
       bool isLocalAliasReborrow = false;
       ZC_IF_SOME(local, sourceLocal) {
         ZC_IF_SOME(reborrow, parameterReborrow) {
@@ -6803,7 +7092,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       }
       if (sourceBlock == zc::none || sourceReturn == zc::none ||
           (!isLocalFieldReturn && !isLocalReturn && !isParameterReturn && !isParameterReborrow &&
-           !isLocalBorrow && !isConditionalReturn &&
+           !isLocalBorrow && !isConditionalReturn && !isComparisonReturn &&
            (expression == zc::none) == (call == zc::none)) ||
           (!isLocalFieldReturn && isParameterReturn &&
            (isLocalReturn || isParameterReborrow || expression != zc::none || call != zc::none)) ||
@@ -6982,6 +7271,11 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
                     identities, semanticTypes);
               }
             }
+          }
+          ZC_IF_SOME(sourceComparison, comparisonReturn) {
+            valid = validComparisonReturnFunction(function, hirModule, sourceDeclaration, block,
+                                                  returnStatement, sourceComparison, proofs, copy,
+                                                  module, identities, semanticTypes);
           }
         }
       }
