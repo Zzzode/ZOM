@@ -1,4 +1,6 @@
 set(IR_SRC
+  ${CMAKE_CURRENT_SOURCE_DIR}/error-union-layout-codec.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/error-union-layout-revision.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/ir-diagnostic-adapter.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/ir-failure.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/ir-identity.cc
