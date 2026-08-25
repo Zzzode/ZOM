@@ -298,14 +298,39 @@ struct PendingValueDeclaration final {
   zc::Array<uint8_t> orderingKey;
 };
 
-struct PendingSequentialLocalReturn final {
-  HirLocalBinding source;
-  HirLocalBinding destination;
+// One initializer kind admitted for a sequential local binding. A reference is
+// discriminated further by whether it names an earlier local or a parameter.
+enum class SequentialInitializerKind : uint8_t {
+  Literal,
+  Aggregate,
+  LocalReference,
+  ParameterReference
+};
+
+// One materialized binding in a sequential N-local body. Exactly one payload is
+// populated per initializer kind: `literal` for a scalar literal, `aggregate`
+// for a closed nominal aggregate, `parameter` for a parameter reference, and
+// `referencedLocal` for a reference to an earlier local (zero-based index). All
+// bindings share the function result type.
+struct PendingSequentialBinding final {
+  identity::SemanticTypeId type;
+  identity::SourceSpan patternSpan;
+  identity::SourceSpan initializerSpan;
+  SequentialInitializerKind kind;
   zc::Maybe<checker::checked::CanonicalConstValue> literal;
   zc::Maybe<HirNominalAggregateExpression> aggregate;
-  HirLocalReferenceExpression initializerReference;
-  HirLocalReferenceExpression returnReference;
-  bool returnsSource;
+  zc::Maybe<identity::CallableParameterKey> parameter;
+  size_t referencedLocal;
+};
+
+struct PendingSequentialLocalReturn final {
+  zc::Vector<PendingSequentialBinding> bindings;
+  identity::SemanticTypeId type;
+  // The returned place: a parameter (`returnParameter` populated) or one of the
+  // declared locals (`returnLocal` holds its zero-based index).
+  zc::Maybe<identity::CallableParameterKey> returnParameter;
+  size_t returnLocal;
+  identity::SourceSpan returnValueSpan;
 };
 
 // One conditional arm carries either a scalar literal value or a reference to a
@@ -501,11 +526,11 @@ struct FunctionReturnShape final {
   ast::NodeId localReference;
   bool returnsLocalField = false;
   bool returnsLocalReborrow = false;
-  ast::NodeId sourceLocalPattern;
-  ast::NodeId sourceLocalInitializer;
-  ast::NodeId destinationLocalInitializer;
+  // Sequential-local shape: N leading `let id: T = <literal | aggregate |
+  // identifier>;` statements followed by `return <identifier>;`. Per-binding
+  // detail is derived from the block node on demand via sequentialLocalShape so
+  // this struct stays copyable; only the discriminator is stored here.
   bool isSequentialLocalReturn = false;
-  bool sequentialReturnUsesSource = false;
   bool returnsReceiverCall = false;
   bool returnsLocalBorrow = false;
   zc::Maybe<ast::NodeId> unsafeBlock;
@@ -629,6 +654,115 @@ zc::Maybe<ast::NodeId> localBorrowReference(const ast::Tree& tree, ast::NodeId e
     return zc::none;
   }
   return operand;
+}
+
+struct SequentialLocalBinding final {
+  ast::NodeId declarator;
+  ast::NodeId pattern;
+  ast::NodeId initializer;
+  SequentialInitializerKind initializerKind;
+  // Populated for LocalReference: the zero-based index of the earlier binding it
+  // references. Unused for the other kinds.
+  size_t referencedLocal = 0;
+};
+
+struct SequentialLocalShape final {
+  ast::NodeId body;
+  ast::NodeId returnStatement;
+  ast::NodeId returnValue;
+  zc::Vector<SequentialLocalBinding> bindings;
+  // The zero-based index of the returned local, or none when the return names a
+  // parameter.
+  zc::Maybe<size_t> returnsLocal;
+};
+
+// Classifies a function body as the sequential N-local shape: N (>= 2) leading
+// `let id: T = <literal | aggregate | identifier>;` statements followed by a
+// single `return <identifier>;`. Each identifier initializer names an earlier
+// local or a parameter; the return names one of the locals or a parameter.
+// Returns none for any other body. The result is recomputed from the AST wher-
+// ever the per-binding layout is needed, keeping FunctionReturnShape copyable
+// and guaranteeing the producer and verifiers derive one identical layout.
+zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast::NodeId body) {
+  if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return zc::none;
+  const auto& block = tree.node(body);
+  const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                 block.payload.words[ast::kBlockStmtStmtsSizeWord]};
+  if (!tree.contains(statements) || statements.size < 3) return zc::none;
+  const size_t bindingCount = statements.size - 1;
+  SequentialLocalShape shape{};
+  shape.body = body;
+  for (size_t index = 0; index < bindingCount; ++index) {
+    auto declaratorNode = localDeclarator(tree, tree.list(statements)[index]);
+    if (declaratorNode == zc::none) return zc::none;
+    ast::NodeId declarator;
+    ZC_IF_SOME(value, declaratorNode) { declarator = value; }
+    const ast::NodeId pattern(
+        tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
+    const ast::NodeId initializer(
+        tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+    if (!tree.contains(initializer)) return zc::none;
+    SequentialInitializerKind kind;
+    size_t referencedLocal = 0;
+    if (isScalarLiteral(tree.node(initializer).kind)) {
+      kind = SequentialInitializerKind::Literal;
+    } else if (tree.node(initializer).kind == ast::SyntaxKind::StructLiteralExpr) {
+      kind = SequentialInitializerKind::Aggregate;
+    } else if (tree.node(initializer).kind == ast::SyntaxKind::IdentExpr) {
+      kind = SequentialInitializerKind::ParameterReference;
+      for (size_t earlier = 0; earlier < index; ++earlier) {
+        if (matchesLocalReference(tree, shape.bindings[earlier].pattern, initializer)) {
+          kind = SequentialInitializerKind::LocalReference;
+          referencedLocal = earlier;
+          break;
+        }
+      }
+    } else {
+      return zc::none;
+    }
+    shape.bindings.add(
+        SequentialLocalBinding{declarator, pattern, initializer, kind, referencedLocal});
+  }
+  auto returnItem = statementItem(tree, tree.list(statements)[statements.size - 1]);
+  if (returnItem == zc::none) return zc::none;
+  ast::NodeId returnNode;
+  ZC_IF_SOME(value, returnItem) { returnNode = value; }
+  if (tree.node(returnNode).kind != ast::SyntaxKind::ReturnStmt) return zc::none;
+  ast::NodeId returnValue(tree.node(returnNode).payload.words[ast::kReturnStmtValueWord]);
+  if (!tree.contains(returnValue)) return zc::none;
+  // Unwrap an unsafe-block-wrapped return so `return unsafe { x }` classifies the
+  // same as `return x`; the unsafe boundary itself is retained by the outer
+  // FunctionReturnShape via its own unsafe-block detection.
+  if (tree.node(returnValue).kind == ast::SyntaxKind::UnsafeBlockExpr) {
+    const ast::NodeId unsafeBody(
+        tree.node(returnValue).payload.words[ast::kUnsafeBlockExprBodyWord]);
+    if (!tree.contains(unsafeBody) || tree.node(unsafeBody).kind != ast::SyntaxKind::BlockStmt) {
+      return zc::none;
+    }
+    const auto& unsafeBodyNode = tree.node(unsafeBody);
+    const ast::NodeList unsafeStatements{
+        unsafeBodyNode.payload.words[ast::kBlockStmtStmtsFirstWord],
+        unsafeBodyNode.payload.words[ast::kBlockStmtStmtsSizeWord]};
+    if (!tree.contains(unsafeStatements) || unsafeStatements.empty()) return zc::none;
+    auto innerItem = statementItem(tree, tree.list(unsafeStatements)[unsafeStatements.size - 1]);
+    if (innerItem == zc::none) return zc::none;
+    ast::NodeId innerStatement;
+    ZC_IF_SOME(value, innerItem) { innerStatement = value; }
+    if (tree.node(innerStatement).kind != ast::SyntaxKind::ExpressionStatement) return zc::none;
+    returnValue = ast::NodeId(
+        tree.node(innerStatement).payload.words[ast::kExpressionStatementExpressionWord]);
+    if (!tree.contains(returnValue)) return zc::none;
+  }
+  if (tree.node(returnValue).kind != ast::SyntaxKind::IdentExpr) return zc::none;
+  shape.returnStatement = returnNode;
+  shape.returnValue = returnValue;
+  for (size_t index = 0; index < shape.bindings.size(); ++index) {
+    if (matchesLocalReference(tree, shape.bindings[index].pattern, returnValue)) {
+      shape.returnsLocal = index;
+      break;
+    }
+  }
+  return shape;
 }
 
 zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
@@ -824,44 +958,16 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     shape.unsafeBlock = zc::mv(unsafeBlock);
     return shape;
   }
-  if (statements.size == 3) {
-    auto sourceDeclarator = localDeclarator(tree, tree.list(statements)[0]);
-    auto destinationDeclarator = localDeclarator(tree, tree.list(statements)[1]);
-    if (sourceDeclarator != zc::none && destinationDeclarator != zc::none) {
-      if (tree.node(value).kind != ast::SyntaxKind::IdentExpr) return zc::none;
-      ast::NodeId source;
-      ast::NodeId destination;
-      ZC_IF_SOME(item, sourceDeclarator) { source = item; }
-      ZC_IF_SOME(item, destinationDeclarator) { destination = item; }
-      const ast::NodeId sourcePattern(
-          tree.node(source).payload.words[ast::kVariableDeclaratorPatternWord]);
-      const ast::NodeId sourceInitializer(
-          tree.node(source).payload.words[ast::kVariableDeclaratorInitWord]);
-      const ast::NodeId destinationPattern(
-          tree.node(destination).payload.words[ast::kVariableDeclaratorPatternWord]);
-      const ast::NodeId destinationInitializer(
-          tree.node(destination).payload.words[ast::kVariableDeclaratorInitWord]);
-      const bool returnsSource = matchesLocalReference(tree, sourcePattern, value);
-      const bool returnsDestination = matchesLocalReference(tree, destinationPattern, value);
-      if ((!isScalarLiteral(tree.node(sourceInitializer).kind) &&
-           tree.node(sourceInitializer).kind != ast::SyntaxKind::StructLiteralExpr) ||
-          !matchesLocalReference(tree, sourcePattern, destinationInitializer) ||
-          (!returnsSource && !returnsDestination)) {
-        return zc::none;
-      }
+  {
+    auto sequential = sequentialLocalShape(tree, body);
+    if (sequential != zc::none) {
       FunctionReturnShape shape{};
       shape.body = body;
       shape.returnStatement = returnNode;
       shape.value = value;
-      shape.localPattern = destinationPattern;
-      shape.localInitializer = destinationInitializer;
       shape.returnsLocal = true;
       shape.localReference = value;
-      shape.sourceLocalPattern = sourcePattern;
-      shape.sourceLocalInitializer = sourceInitializer;
-      shape.destinationLocalInitializer = destinationInitializer;
       shape.isSequentialLocalReturn = true;
-      shape.sequentialReturnUsesSource = returnsSource;
       shape.unsafeBlock = zc::mv(unsafeBlock);
       return shape;
     }
@@ -2722,144 +2828,212 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       zc::Maybe<HirParameterReborrowExpression> parameterReborrow;
       zc::Maybe<HirLocalBorrowExpression> localBorrow;
       if (shape.isSequentialLocalReturn) {
-        auto sourceBinding =
-            resolvedOwnerLocal(bound.bindings(), shape.destinationLocalInitializer);
-        auto destinationBinding =
-            ownerLocalBindingForPattern(bound.definitions(), shape.localPattern, tree);
-        const bool sourceIsLiteral = isScalarLiteral(tree.node(shape.sourceLocalInitializer).kind);
-        const bool sourceIsAggregate =
-            tree.node(shape.sourceLocalInitializer).kind == ast::SyntaxKind::StructLiteralExpr;
-        auto literalIndex = factIndex(facts.literals(), shape.sourceLocalInitializer);
-        auto aggregateIndex = factIndex(facts.aggregates(), shape.sourceLocalInitializer);
-        auto sourceTypeIndex = factIndex(facts.nodeTypes(), shape.sourceLocalInitializer);
-        auto initializerTypeIndex = factIndex(facts.nodeTypes(), shape.destinationLocalInitializer);
-        auto returnTypeIndex = factIndex(facts.nodeTypes(), shape.value);
-        auto sourcePatternSpan =
-            bound.parsedModule().spanFor(tree.node(shape.sourceLocalPattern).range);
-        auto destinationPatternSpan =
-            bound.parsedModule().spanFor(tree.node(shape.localPattern).range);
-        auto sourceInitializerSpan =
-            bound.parsedModule().spanFor(tree.node(shape.sourceLocalInitializer).range);
-        auto destinationInitializerSpan =
-            bound.parsedModule().spanFor(tree.node(shape.destinationLocalInitializer).range);
-        if (sourceBinding == zc::none || destinationBinding == zc::none ||
-            sourceBinding == destinationBinding || (!sourceIsLiteral && !sourceIsAggregate) ||
-            (sourceIsLiteral && literalIndex == zc::none) ||
-            (sourceIsAggregate && aggregateIndex == zc::none) || sourceTypeIndex == zc::none ||
-            initializerTypeIndex == zc::none || returnTypeIndex == zc::none ||
-            sourcePatternSpan == zc::none || destinationPatternSpan == zc::none ||
-            sourceInitializerSpan == zc::none || destinationInitializerSpan == zc::none ||
-            !ownerLocalMatches(bound.definitions(), ZC_ASSERT_NONNULL(sourceBinding),
-                               shape.sourceLocalPattern, tree) ||
-            !ownerLocalMatches(bound.definitions(), ZC_ASSERT_NONNULL(destinationBinding),
-                               shape.localPattern, tree)) {
+        auto sequentialShapeMaybe = sequentialLocalShape(tree, shape.body);
+        if (sequentialShapeMaybe == zc::none) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                ir::IrFailureKind::MissingRequiredFact, module,
                                                registries, ordinal + 2);
         }
-        size_t literalSlot = 0;
-        size_t aggregateSlot = 0;
-        size_t sourceTypeSlot = 0;
-        size_t initializerTypeSlot = 0;
+        SequentialLocalShape sequentialShape{};
+        ZC_IF_SOME(value, sequentialShapeMaybe) { sequentialShape = zc::mv(value); }
+        const auto returnTypeIndex = factIndex(facts.nodeTypes(), sequentialShape.returnValue);
+        if (returnTypeIndex == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
         size_t returnTypeSlot = 0;
-        ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
-        ZC_IF_SOME(index, aggregateIndex) { aggregateSlot = index; }
-        ZC_IF_SOME(index, sourceTypeIndex) { sourceTypeSlot = index; }
-        ZC_IF_SOME(index, initializerTypeIndex) { initializerTypeSlot = index; }
         ZC_IF_SOME(index, returnTypeIndex) { returnTypeSlot = index; }
-        const auto sourceType = facts.nodeTypes().entries()[sourceTypeSlot].value;
-        const auto initializerType = facts.nodeTypes().entries()[initializerTypeSlot].value;
-        const auto returnType = facts.nodeTypes().entries()[returnTypeSlot].value;
-        if (sourceType != initializerType || initializerType != returnType ||
-            returnType != callable.success ||
-            !typeExists(sourceType, checkedModule.semanticTypes())) {
+        const auto sequentialType = facts.nodeTypes().entries()[returnTypeSlot].value;
+        if (sequentialType != callable.success ||
+            !typeExists(sequentialType, checkedModule.semanticTypes())) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);
         }
-        zc::Maybe<checker::checked::CanonicalConstValue> sequentialLiteral;
-        zc::Maybe<HirNominalAggregateExpression> sequentialAggregate;
-        if (sourceIsLiteral) {
-          const auto& sourceLiteral = facts.literals().entries()[literalSlot].value;
-          if (sourceLiteral.type != sourceType ||
-              !sameSpan(sourceLiteral.sourceSpan, ZC_ASSERT_NONNULL(sourceInitializerSpan))) {
-            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                 ir::IrFailureKind::InvalidFact, module, registries,
-                                                 ordinal + 2);
+        zc::Vector<PendingSequentialBinding> pendingBindings;
+        zc::Vector<binder::OwnerLocalBindingId> localBindingIds;
+        bool rejected = false;
+        for (size_t bindingIndex = 0; bindingIndex < sequentialShape.bindings.size();
+             ++bindingIndex) {
+          const auto& binding = sequentialShape.bindings[bindingIndex];
+          auto ownerBinding =
+              ownerLocalBindingForPattern(bound.definitions(), binding.pattern, tree);
+          auto patternSpan = bound.parsedModule().spanFor(tree.node(binding.pattern).range);
+          auto initializerSpan = bound.parsedModule().spanFor(tree.node(binding.initializer).range);
+          auto initializerTypeIndex = factIndex(facts.nodeTypes(), binding.initializer);
+          if (ownerBinding == zc::none || patternSpan == zc::none || initializerSpan == zc::none ||
+              initializerTypeIndex == zc::none ||
+              !ownerLocalMatches(bound.definitions(), ZC_ASSERT_NONNULL(ownerBinding),
+                                 binding.pattern, tree)) {
+            rejected = true;
+            break;
           }
-          sequentialLiteral = sourceLiteral.literal.clone();
-        } else {
-          const auto& sourceAggregate = facts.aggregates().entries()[aggregateSlot].value;
-          if (sourceAggregate.node != shape.sourceLocalInitializer ||
-              !sourceAggregate.kind.variant().is<checker::checked::NominalAggregate>() ||
-              sourceAggregate.resultType != sourceType ||
-              !sameSpan(sourceAggregate.sourceSpan, ZC_ASSERT_NONNULL(sourceInitializerSpan))) {
-            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                 ir::IrFailureKind::InvalidFact, module, registries,
-                                                 ordinal + 2);
+          // Every binding shares the function result type in this slice.
+          size_t initializerTypeSlot = 0;
+          ZC_IF_SOME(index, initializerTypeIndex) { initializerTypeSlot = index; }
+          if (facts.nodeTypes().entries()[initializerTypeSlot].value != sequentialType) {
+            rejected = true;
+            break;
           }
-          zc::Vector<HirNominalAggregateElement> elements;
-          for (const auto& sourceElement : sourceAggregate.elements) {
-            if (sourceElement.field == zc::none ||
-                sourceElement.sourceType != sourceElement.destinationType ||
-                sourceElement.adjustment != zc::none) {
-              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                   ir::IrFailureKind::InvalidFact, module,
-                                                   registries, ordinal + 2);
-            }
-            auto elementLiteral = factIndex(facts.literals(), sourceElement.sourceNode);
-            auto elementSpan =
-                bound.parsedModule().spanFor(tree.node(sourceElement.sourceNode).range);
-            if (elementLiteral == zc::none || elementSpan == zc::none) {
-              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                   ir::IrFailureKind::MissingRequiredFact, module,
-                                                   registries, ordinal + 2);
-            }
-            size_t elementSlot = 0;
-            ZC_IF_SOME(index, elementLiteral) { elementSlot = index; }
-            const auto& literalFact = facts.literals().entries()[elementSlot].value;
-            if (literalFact.type != sourceElement.destinationType ||
-                !sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(elementSpan))) {
-              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                   ir::IrFailureKind::InvalidFact, module,
-                                                   registries, ordinal + 2);
-            }
-            ZC_IF_SOME(field, sourceElement.field) {
-              elements.add(HirNominalAggregateElement{field, sourceElement.destinationType,
-                                                      literalFact.literal.clone(),
-                                                      ZC_ASSERT_NONNULL(elementSpan).clone()});
-            }
+          // Locals must be distinct bindings.
+          for (const auto existing : localBindingIds) {
+            if (existing == ZC_ASSERT_NONNULL(ownerBinding)) rejected = true;
           }
-          sequentialAggregate = HirNominalAggregateExpression{
-              HirNodeId(),
-              sourceAggregate.kind.variant().get<checker::checked::NominalAggregate>().definition,
-              sourceType,
-              zc::mv(elements),
-              HirValueCategory::Value,
-              ZC_ASSERT_NONNULL(sourceInitializerSpan).clone()};
+          if (rejected) break;
+          localBindingIds.add(ZC_ASSERT_NONNULL(ownerBinding));
+          zc::Maybe<checker::checked::CanonicalConstValue> bindingLiteral;
+          zc::Maybe<HirNominalAggregateExpression> bindingAggregate;
+          zc::Maybe<identity::CallableParameterKey> bindingParameter;
+          if (binding.initializerKind == SequentialInitializerKind::Literal) {
+            auto literalIndex = factIndex(facts.literals(), binding.initializer);
+            if (literalIndex == zc::none) {
+              rejected = true;
+              break;
+            }
+            size_t literalSlot = 0;
+            ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+            const auto& literalFact = facts.literals().entries()[literalSlot].value;
+            if (literalFact.type != sequentialType ||
+                !sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+              rejected = true;
+              break;
+            }
+            bindingLiteral = literalFact.literal.clone();
+          } else if (binding.initializerKind == SequentialInitializerKind::Aggregate) {
+            auto aggregateIndex = factIndex(facts.aggregates(), binding.initializer);
+            if (aggregateIndex == zc::none) {
+              rejected = true;
+              break;
+            }
+            size_t aggregateSlot = 0;
+            ZC_IF_SOME(index, aggregateIndex) { aggregateSlot = index; }
+            const auto& sourceAggregate = facts.aggregates().entries()[aggregateSlot].value;
+            if (sourceAggregate.node != binding.initializer ||
+                !sourceAggregate.kind.variant().is<checker::checked::NominalAggregate>() ||
+                sourceAggregate.resultType != sequentialType ||
+                !sameSpan(sourceAggregate.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+              rejected = true;
+              break;
+            }
+            zc::Vector<HirNominalAggregateElement> elements;
+            for (const auto& sourceElement : sourceAggregate.elements) {
+              if (sourceElement.field == zc::none ||
+                  sourceElement.sourceType != sourceElement.destinationType ||
+                  sourceElement.adjustment != zc::none) {
+                rejected = true;
+                break;
+              }
+              auto elementLiteral = factIndex(facts.literals(), sourceElement.sourceNode);
+              auto elementSpan =
+                  bound.parsedModule().spanFor(tree.node(sourceElement.sourceNode).range);
+              if (elementLiteral == zc::none || elementSpan == zc::none) {
+                rejected = true;
+                break;
+              }
+              size_t elementSlot = 0;
+              ZC_IF_SOME(index, elementLiteral) { elementSlot = index; }
+              const auto& literalFact = facts.literals().entries()[elementSlot].value;
+              if (literalFact.type != sourceElement.destinationType ||
+                  !sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(elementSpan))) {
+                rejected = true;
+                break;
+              }
+              ZC_IF_SOME(field, sourceElement.field) {
+                elements.add(HirNominalAggregateElement{field, sourceElement.destinationType,
+                                                        literalFact.literal.clone(),
+                                                        ZC_ASSERT_NONNULL(elementSpan).clone()});
+              }
+            }
+            if (rejected) break;
+            bindingAggregate = HirNominalAggregateExpression{
+                HirNodeId(),
+                sourceAggregate.kind.variant().get<checker::checked::NominalAggregate>().definition,
+                sequentialType,
+                zc::mv(elements),
+                HirValueCategory::Value,
+                ZC_ASSERT_NONNULL(initializerSpan).clone()};
+          } else if (binding.initializerKind == SequentialInitializerKind::LocalReference) {
+            // A reference to an earlier local must resolve to that owner binding.
+            auto referenceBinding = resolvedOwnerLocal(bound.bindings(), binding.initializer);
+            if (referenceBinding == zc::none ||
+                ZC_ASSERT_NONNULL(referenceBinding) != localBindingIds[binding.referencedLocal]) {
+              rejected = true;
+              break;
+            }
+          } else {
+            // A reference to a parameter must resolve to a declared parameter.
+            auto parameterHandle = resolvedCallableParameter(bound.bindings(), binding.initializer);
+            if (parameterHandle == zc::none) {
+              rejected = true;
+              break;
+            }
+            zc::Maybe<identity::CallableParameterKey> resolvedKey;
+            ZC_IF_SOME(handle, parameterHandle) {
+              auto authority = registries.callableParameter(handle);
+              ZC_IF_SOME(entry, authority) {
+                for (const auto& parameter : parameters) {
+                  if (parameter.key == entry.key() && parameter.type == sequentialType) {
+                    resolvedKey = entry.key().clone();
+                  }
+                }
+              }
+            }
+            if (resolvedKey == zc::none) {
+              rejected = true;
+              break;
+            }
+            bindingParameter = zc::mv(resolvedKey);
+          }
+          pendingBindings.add(PendingSequentialBinding{
+              sequentialType, ZC_ASSERT_NONNULL(patternSpan).clone(),
+              ZC_ASSERT_NONNULL(initializerSpan).clone(), binding.initializerKind,
+              zc::mv(bindingLiteral), zc::mv(bindingAggregate), zc::mv(bindingParameter),
+              binding.referencedLocal});
         }
-        zc::Maybe<HirNodeId> sourceInitializerNode{HirNodeId()};
-        zc::Maybe<identity::SourceSpan> sourceInitializerSource(
-            ZC_ASSERT_NONNULL(sourceInitializerSpan).clone());
-        zc::Maybe<HirNodeId> destinationInitializerNode{HirNodeId()};
-        zc::Maybe<identity::SourceSpan> destinationInitializerSource(
-            ZC_ASSERT_NONNULL(destinationInitializerSpan).clone());
-        PendingSequentialLocalReturn sequential{
-            HirLocalBinding{HirNodeId(), HirLocalId(), sourceType, zc::mv(sourceInitializerNode),
-                            ZC_ASSERT_NONNULL(sourcePatternSpan).clone(),
-                            zc::mv(sourceInitializerSource)},
-            HirLocalBinding{HirNodeId(), HirLocalId(), sourceType,
-                            zc::mv(destinationInitializerNode),
-                            ZC_ASSERT_NONNULL(destinationPatternSpan).clone(),
-                            zc::mv(destinationInitializerSource)},
-            zc::mv(sequentialLiteral),
-            zc::mv(sequentialAggregate),
-            HirLocalReferenceExpression{HirNodeId(), HirLocalId(), sourceType,
-                                        HirValueCategory::Place,
-                                        ZC_ASSERT_NONNULL(destinationInitializerSpan).clone()},
-            HirLocalReferenceExpression{HirNodeId(), HirLocalId(), sourceType,
-                                        HirValueCategory::Place, valueSpanValue.clone()},
-            shape.sequentialReturnUsesSource};
+        if (rejected) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        // The returned value names a parameter or one of the declared locals.
+        zc::Maybe<identity::CallableParameterKey> returnParameter;
+        size_t returnLocal = 0;
+        ZC_IF_SOME(index, sequentialShape.returnsLocal) { returnLocal = index; }
+        if (sequentialShape.returnsLocal == zc::none) {
+          auto parameterHandle =
+              resolvedCallableParameter(bound.bindings(), sequentialShape.returnValue);
+          if (parameterHandle == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          ZC_IF_SOME(handle, parameterHandle) {
+            auto authority = registries.callableParameter(handle);
+            ZC_IF_SOME(entry, authority) {
+              for (const auto& parameter : parameters) {
+                if (parameter.key == entry.key() && parameter.type == sequentialType) {
+                  returnParameter = entry.key().clone();
+                }
+              }
+            }
+          }
+          if (returnParameter == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+        }
+        auto returnValueSpan =
+            bound.parsedModule().spanFor(tree.node(sequentialShape.returnValue).range);
+        if (returnValueSpan == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
+        PendingSequentialLocalReturn sequential{zc::mv(pendingBindings), sequentialType,
+                                                zc::mv(returnParameter), returnLocal,
+                                                ZC_ASSERT_NONNULL(returnValueSpan).clone()};
         pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                         callable.success,
                                                         zc::mv(parameters),
@@ -4114,6 +4288,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
   // and one literal fact beyond the arm literals.
   size_t equalityLiteralOperandCount = 0;
   size_t loopCount = 0;
+  // Per-function excess of literal facts a sequential N-local body carries over
+  // the single-literal baseline the shared literal equation grants each
+  // function: sum of (literal-bearing bindings - 1). Zero for the former
+  // two-local literal or aggregate source, so existing bodies keep exact counts.
+  size_t sequentialLiteralAdjustment = 0;
   // Comparison-return functions (`return <a CMP b>`) and, of their two operands,
   // the count that are scalar literals rather than parameter references.
   size_t comparisonReturnCount = 0;
@@ -4121,13 +4300,39 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
   for (const auto& function : pendingFunctions) {
     const bool hasSequentialLocalReturn = function.sequentialLocalReturn != zc::none;
     if (hasSequentialLocalReturn) {
-      ++localReturnCount;
-      ++localReturnCount;
       ZC_IF_SOME(sequential, function.sequentialLocalReturn) {
-        ZC_IF_SOME(aggregate, sequential.aggregate) {
-          ++aggregateCount;
-          aggregateElementCount += aggregate.elements.size();
+        // Each binding declares one local; its initializer node carries a node
+        // type fact, counted by localReturnCount (+1 per binding, matching the
+        // N node types plus the return value node covered by the per-function
+        // baseline). Aggregate bindings add their element literals. The shared
+        // literal equation grants exactly one literal per function; a sequential
+        // body instead carries L literal-initializer + A aggregate-initializer
+        // "literal-bearing" bindings, so sequentialLiteralAdjustment records the
+        // per-function excess (L + A - 1). Parameter- and local-reference
+        // initializers carry no literal and no dedicated fact, so they only
+        // contribute the localReturnCount node type. This term is zero for the
+        // former two-local literal/aggregate source (L + A == 1), so existing
+        // bodies keep their exact counts.
+        size_t literalBearingBindings = 0;
+        for (const auto& binding : sequential.bindings) {
+          ++localReturnCount;
+          switch (binding.kind) {
+            case SequentialInitializerKind::Literal:
+              ++literalBearingBindings;
+              break;
+            case SequentialInitializerKind::Aggregate:
+              ++aggregateCount;
+              ++literalBearingBindings;
+              ZC_IF_SOME(aggregate, binding.aggregate) {
+                aggregateElementCount += aggregate.elements.size();
+              }
+              break;
+            case SequentialInitializerKind::LocalReference:
+            case SequentialInitializerKind::ParameterReference:
+              break;
+          }
         }
+        sequentialLiteralAdjustment += static_cast<size_t>(literalBearingBindings) - 1;
       }
       if (function.unsafeBlockSpan != zc::none) ++unsafeBlockCount;
       continue;
@@ -4285,7 +4490,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
           localAliasReborrowCount + localWriteCount + aggregateElementCount +
           directCallLiteralArgumentCount + receiverCallArgumentCount + conditionalLiteralArmCount +
           equalityLiteralOperandCount - conditionalCount + comparisonReturnLiteralOperandCount -
-          comparisonReturnCount) {
+          comparisonReturnCount + sequentialLiteralAdjustment) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 3);
   }
@@ -4370,10 +4575,20 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     const auto functionId = hirId(next++);
     const auto bodyId = hirId(next++);
     ZC_IF_SOME(sequential, value.sequentialLocalReturn) {
-      const auto sourceLocalId = hirId(next++);
-      const auto sourceInitializerId = hirId(next++);
-      const auto destinationLocalId = hirId(next++);
-      const auto destinationInitializerId = hirId(next++);
+      // Sequential N-local fixed-id layout, relative to the function id F:
+      //   F+0 function, F+1 body block;
+      //   binding i (0-based): localNode = F+2+2i, initializerNode = F+3+2i;
+      //   returnNode = F+2+2N, returnValueNode = F+3+2N;
+      //   unsafeBlock  = F+4+2N (only when the body carries an unsafe block).
+      // The materializer and the HIR verifier both derive this from the binding
+      // count N, so their node counts always agree.
+      const size_t bindingCount = sequential.bindings.size();
+      zc::Vector<HirNodeId> localNodeIds;
+      zc::Vector<HirNodeId> initializerNodeIds;
+      for (size_t index = 0; index < bindingCount; ++index) {
+        localNodeIds.add(hirId(next++));
+        initializerNodeIds.add(hirId(next++));
+      }
       const auto returnId = hirId(next++);
       const auto returnValueId = hirId(next++);
       zc::Maybe<HirNodeId> unsafeBlockId;
@@ -4388,37 +4603,58 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                            value.linkage, value.declarationSpan.clone(), bodyId,
                                            zc::mv(unsafeBlockId)});
       zc::Vector<HirNodeId> statements;
-      statements.add(sourceLocalId);
-      statements.add(destinationLocalId);
+      for (const auto localNodeId : localNodeIds) { statements.add(localNodeId); }
       statements.add(returnId);
       blocks.add(HirBlockStatement{bodyId, zc::mv(statements), value.bodySpan.clone()});
       returns.add(
           HirReturnStatement{returnId, value.resultType, returnValueId, value.returnSpan.clone()});
-      ZC_IF_SOME(literal, sequential.literal) {
-        expressions.add(HirScalarLiteralExpression{
-            sourceInitializerId, sequential.source.type, literal.clone(), HirValueCategory::Value,
-            ZC_ASSERT_NONNULL(sequential.source.initializerSpan).clone()});
+      for (size_t index = 0; index < bindingCount; ++index) {
+        auto& binding = sequential.bindings[index];
+        const auto localNodeId = localNodeIds[index];
+        const auto initializerNodeId = initializerNodeIds[index];
+        switch (binding.kind) {
+          case SequentialInitializerKind::Literal:
+            ZC_IF_SOME(literal, binding.literal) {
+              expressions.add(HirScalarLiteralExpression{initializerNodeId, binding.type,
+                                                         literal.clone(), HirValueCategory::Value,
+                                                         binding.initializerSpan.clone()});
+            }
+            break;
+          case SequentialInitializerKind::Aggregate:
+            ZC_IF_SOME(aggregate, binding.aggregate) {
+              aggregates.add(HirNominalAggregateExpression{
+                  initializerNodeId, aggregate.definition, aggregate.type,
+                  zc::mv(aggregate.elements), aggregate.category, aggregate.sourceSpan.clone()});
+            }
+            break;
+          case SequentialInitializerKind::LocalReference:
+            localReferences.add(HirLocalReferenceExpression{
+                initializerNodeId, hirLocalId(static_cast<uint32_t>(binding.referencedLocal + 1)),
+                binding.type, HirValueCategory::Place, binding.initializerSpan.clone()});
+            break;
+          case SequentialInitializerKind::ParameterReference:
+            ZC_IF_SOME(parameter, binding.parameter) {
+              parameterReferences.add(HirParameterReferenceExpression{
+                  initializerNodeId, parameter.clone(), binding.type, HirValueCategory::Place,
+                  binding.initializerSpan.clone()});
+            }
+            break;
+        }
+        locals.add(HirLocalBinding{localNodeId, hirLocalId(static_cast<uint32_t>(index + 1)),
+                                   binding.type, initializerNodeId, binding.patternSpan.clone(),
+                                   binding.initializerSpan.clone()});
       }
-      ZC_IF_SOME(aggregate, sequential.aggregate) {
-        aggregates.add(HirNominalAggregateExpression{
-            sourceInitializerId, aggregate.definition, aggregate.type, zc::mv(aggregate.elements),
-            aggregate.category, aggregate.sourceSpan.clone()});
+      // The returned value references a parameter or one of the declared locals.
+      ZC_IF_SOME(parameter, sequential.returnParameter) {
+        parameterReferences.add(HirParameterReferenceExpression{
+            returnValueId, parameter.clone(), sequential.type, HirValueCategory::Place,
+            sequential.returnValueSpan.clone()});
       }
-      locals.add(HirLocalBinding{sourceLocalId, hirLocalId(1), sequential.source.type,
-                                 sourceInitializerId, sequential.source.sourceSpan.clone(),
-                                 ZC_ASSERT_NONNULL(sequential.source.initializerSpan).clone()});
-      locals.add(
-          HirLocalBinding{destinationLocalId, hirLocalId(2), sequential.destination.type,
-                          destinationInitializerId, sequential.destination.sourceSpan.clone(),
-                          ZC_ASSERT_NONNULL(sequential.destination.initializerSpan).clone()});
-      localReferences.add(HirLocalReferenceExpression{
-          destinationInitializerId, hirLocalId(1), sequential.initializerReference.type,
-          sequential.initializerReference.category,
-          sequential.initializerReference.sourceSpan.clone()});
-      localReferences.add(HirLocalReferenceExpression{
-          returnValueId, sequential.returnsSource ? hirLocalId(1) : hirLocalId(2),
-          sequential.returnReference.type, sequential.returnReference.category,
-          sequential.returnReference.sourceSpan.clone()});
+      if (sequential.returnParameter == zc::none) {
+        localReferences.add(HirLocalReferenceExpression{
+            returnValueId, hirLocalId(static_cast<uint32_t>(sequential.returnLocal + 1)),
+            sequential.type, HirValueCategory::Place, sequential.returnValueSpan.clone()});
+      }
       continue;
     }
     ZC_IF_SOME(conditional, value.conditionalReturn) {
@@ -4822,6 +5058,78 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   for (const auto& local : candidate.impl->locals) {
     if (local.initializer == zc::none) ++uninitializedLocalReturnCount;
   }
+  // Sequential N-local corrections. The shared count equations assume one value
+  // node and one local reference per function local; a sequential body instead
+  // produces one value node per literal/aggregate/parameter-reference
+  // initializer plus a parameter return, and one local reference per
+  // local-reference initializer plus a local return. These tallies re-derive the
+  // true contributions from the candidate HIR so the localReferences,
+  // expressions, and literals equations balance for any N. All corrections are
+  // zero for the former two-local literal or aggregate source.
+  size_t sequentialLiteralInitializers = 0;
+  size_t sequentialAggregateInitializers = 0;
+  size_t sequentialParameterInitializers = 0;
+  size_t sequentialLocalInitializers = 0;
+  size_t sequentialLocalCount = 0;
+  size_t sequentialFunctionCount = 0;
+  size_t sequentialParameterReturns = 0;
+  size_t sequentialLocalReturns = 0;
+  {
+    const auto& tree = bound.tree();
+    for (const auto& functionDeclaration : candidate.impl->functions) {
+      auto sourceDefinitionIndex = definitionIndex(definitions, functionDeclaration.definition);
+      if (sourceDefinitionIndex == zc::none) continue;
+      size_t definitionSlot = 0;
+      ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+      const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+      if (!tree.contains(sourceDefinition.node)) continue;
+      auto shape = functionReturnShape(tree, tree.node(sourceDefinition.node));
+      bool sequential = false;
+      ast::NodeId sourceBody;
+      ZC_IF_SOME(value, shape) {
+        sequential = value.isSequentialLocalReturn;
+        sourceBody = value.body;
+      }
+      if (!sequential) continue;
+      auto sequentialShape = sequentialLocalShape(tree, sourceBody);
+      ZC_IF_SOME(value, sequentialShape) {
+        ++sequentialFunctionCount;
+        sequentialLocalCount += value.bindings.size();
+        for (const auto& binding : value.bindings) {
+          switch (binding.initializerKind) {
+            case SequentialInitializerKind::Literal:
+              ++sequentialLiteralInitializers;
+              break;
+            case SequentialInitializerKind::Aggregate:
+              ++sequentialAggregateInitializers;
+              break;
+            case SequentialInitializerKind::ParameterReference:
+              ++sequentialParameterInitializers;
+              break;
+            case SequentialInitializerKind::LocalReference:
+              ++sequentialLocalInitializers;
+              break;
+          }
+        }
+        if (value.returnsLocal == zc::none) {
+          ++sequentialParameterReturns;
+        } else {
+          ++sequentialLocalReturns;
+        }
+      }
+    }
+  }
+  // localReferences: sequential locals contribute N to the localReturnCount
+  // baseline but only L_loc + R_loc actual local references. Add the shortfall to
+  // the left side.
+  const size_t sequentialLocalReferenceCorrection =
+      sequentialLocalCount - (sequentialLocalInitializers + sequentialLocalReturns);
+  // expressions and literals: each sequential function contributes one baseline
+  // value node minus its aggregate and parameter-reference credits, but the true
+  // scalar-literal count is L_lit. Both equations need the same correction.
+  const size_t sequentialLiteralCorrection =
+      sequentialLiteralInitializers + sequentialAggregateInitializers +
+      sequentialParameterInitializers + sequentialParameterReturns - sequentialFunctionCount;
   const auto executableDefinitions = executableDefinitionCount(definitions);
   const auto borrowCapability = candidate.impl->checkedModule.borrowEvidenceCapability();
   const auto borrowEvidence =
@@ -4841,18 +5149,19 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           directCallCount + receiverCallCount + equalityConditionalCount ||
       !noUnsupportedFacts(facts) || candidate.impl->patterns.size() != declarationCount ||
       candidate.impl->localReferences.size() + localFieldProjectionCount + localAliasReborrowCount +
-              localBorrowCount !=
+              localBorrowCount + sequentialLocalReferenceCorrection !=
           localReturnCount ||
       parameterReferenceCount + parameterIndexCount + parameterReborrowCount >
           functionCount + localAliasReborrowCount + conditionalCount * 2 +
-              equalityConditionalCount * 2 ||
+              equalityConditionalCount * 2 + sequentialParameterInitializers +
+              sequentialParameterReturns ||
       candidate.impl->blocks.size() != functionCount ||
       candidate.impl->returns.size() != functionCount ||
       candidate.impl->expressions.size() !=
           declarationCount + functionCount - directCallCount - aggregateCount -
               uninitializedLocalReturnCount - parameterReferenceCount - parameterReborrowCount +
               localAliasReborrowCount + localWriteCount + conditionalCount * 2 +
-              equalityConditionalCount + loopCount ||
+              equalityConditionalCount + loopCount + sequentialLiteralCorrection ||
       executableDefinitions != declarationCount + functionCount ||
       facts.definitionTypes().size() != declarationCount ||
       facts.nodeTypes().size() !=
@@ -4867,7 +5176,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               uninitializedLocalReturnCount - parameterReferenceCount - parameterReborrowCount +
               localAliasReborrowCount + localWriteCount + aggregateElementCount +
               directCallLiteralArgumentCount + receiverCallArgumentCount + conditionalCount * 2 +
-              equalityConditionalCount + loopCount ||
+              equalityConditionalCount + loopCount + sequentialLiteralCorrection ||
       facts.calls().size() !=
           directCallCount + receiverCallCount + parameterIndexCount + equalityConditionalCount ||
       facts.patterns().size() != declarationCount || facts.aggregates().size() != aggregateCount ||
@@ -5079,14 +5388,25 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     const auto& block = candidate.impl->blocks[index];
     const auto& returnStatement = candidate.impl->returns[index];
     const uint32_t expectedFunction = nextFunction;
-    bool hasSequentialDestination = false;
-    for (const auto& local : candidate.impl->locals) {
-      if (local.node == hirId(expectedFunction + 4)) {
-        hasSequentialDestination = true;
-        break;
+    // Sequential N-local shape: recompute the source classification and verify
+    // the materialized bindings against it and against checked facts. The layout
+    // (function id F): F+2+2i localNode, F+3+2i initializerNode for binding i,
+    // then F+2+2N returnNode, F+3+2N returnValueNode, F+4+2N unsafe block.
+    bool isSequentialShape = false;
+    {
+      auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+      if (sourceDefinitionIndex != zc::none) {
+        size_t definitionSlot = 0;
+        ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+        const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+        const auto& tree = bound.tree();
+        if (tree.contains(sourceDefinition.node)) {
+          auto probe = functionReturnShape(tree, tree.node(sourceDefinition.node));
+          ZC_IF_SOME(value, probe) { isSequentialShape = value.isSequentialLocalReturn; }
+        }
       }
     }
-    if (block.statements.size() == 3 && hasSequentialDestination) {
+    if (isSequentialShape) {
       auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
       if (sourceDefinitionIndex == zc::none) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -5106,136 +5426,30 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
       }
-      auto sourceShape = functionReturnShape(tree, tree.node(sourceDefinition.node));
-      if (sourceShape == zc::none) {
+      auto sequentialShapeMaybe = zc::Maybe<SequentialLocalShape>(zc::none);
+      // Recompute the classified source shape directly from the function body.
+      auto functionShape = functionReturnShape(tree, tree.node(sourceDefinition.node));
+      if (functionShape == zc::none) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::MissingRequiredFact, module,
                                             registries, index + 1);
       }
-      FunctionReturnShape source{};
-      ZC_IF_SOME(value, sourceShape) { source = value; }
-      zc::Maybe<const HirLocalBinding&> sourceLocal;
-      zc::Maybe<const HirLocalBinding&> destinationLocal;
-      zc::Maybe<const HirScalarLiteralExpression&> literal;
-      zc::Maybe<const HirNominalAggregateExpression&> aggregate;
-      zc::Maybe<const HirLocalReferenceExpression&> initializerReference;
-      zc::Maybe<const HirLocalReferenceExpression&> returnReference;
-      for (const auto& local : candidate.impl->locals) {
-        if (local.node == hirId(expectedFunction + 2)) {
-          if (sourceLocal != zc::none) {
-            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                ir::IrFailureKind::AdditionalFact, module,
-                                                registries, index + 1);
-          }
-          sourceLocal = local;
-        }
-        if (local.node == hirId(expectedFunction + 4)) {
-          if (destinationLocal != zc::none) {
-            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                ir::IrFailureKind::AdditionalFact, module,
-                                                registries, index + 1);
-          }
-          destinationLocal = local;
-        }
-      }
-      for (const auto& expression : candidate.impl->expressions) {
-        if (expression.node != hirId(expectedFunction + 3)) continue;
-        if (literal != zc::none) {
-          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                              ir::IrFailureKind::AdditionalFact, module, registries,
-                                              index + 1);
-        }
-        literal = expression;
-      }
-      for (const auto& expression : candidate.impl->aggregates) {
-        if (expression.node != hirId(expectedFunction + 3)) continue;
-        if (aggregate != zc::none) {
-          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                              ir::IrFailureKind::AdditionalFact, module, registries,
-                                              index + 1);
-        }
-        aggregate = expression;
-      }
-      for (const auto& reference : candidate.impl->localReferences) {
-        if (reference.node == hirId(expectedFunction + 5)) {
-          if (initializerReference != zc::none) {
-            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                ir::IrFailureKind::AdditionalFact, module,
-                                                registries, index + 1);
-          }
-          initializerReference = reference;
-        }
-        if (reference.node == hirId(expectedFunction + 7)) {
-          if (returnReference != zc::none) {
-            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                ir::IrFailureKind::AdditionalFact, module,
-                                                registries, index + 1);
-          }
-          returnReference = reference;
-        }
-      }
-      auto sourceBinding = resolvedOwnerLocal(bound.bindings(), source.destinationLocalInitializer);
-      auto destinationBinding = ownerLocalBindingForPattern(definitions, source.localPattern, tree);
-      const bool sourceIsLiteral = isScalarLiteral(tree.node(source.sourceLocalInitializer).kind);
-      const bool sourceIsAggregate =
-          tree.node(source.sourceLocalInitializer).kind == ast::SyntaxKind::StructLiteralExpr;
-      auto literalIndex = factIndex(facts.literals(), source.sourceLocalInitializer);
-      auto aggregateIndex = factIndex(facts.aggregates(), source.sourceLocalInitializer);
-      auto sourceTypeIndex = factIndex(facts.nodeTypes(), source.sourceLocalInitializer);
-      auto initializerTypeIndex = factIndex(facts.nodeTypes(), source.destinationLocalInitializer);
-      auto returnTypeIndex = factIndex(facts.nodeTypes(), source.value);
-      auto sourcePatternSpan =
-          bound.parsedModule().spanFor(tree.node(source.sourceLocalPattern).range);
-      auto destinationPatternSpan =
-          bound.parsedModule().spanFor(tree.node(source.localPattern).range);
-      auto sourceInitializerSpan =
-          bound.parsedModule().spanFor(tree.node(source.sourceLocalInitializer).range);
-      auto destinationInitializerSpan =
-          bound.parsedModule().spanFor(tree.node(source.destinationLocalInitializer).range);
-      auto returnSpan = bound.parsedModule().spanFor(tree.node(source.returnStatement).range);
-      auto returnValueSpan = bound.parsedModule().spanFor(tree.node(source.value).range);
-      if (!source.isSequentialLocalReturn || sourceLocal == zc::none ||
-          destinationLocal == zc::none || ((literal == zc::none) == (aggregate == zc::none)) ||
-          (!sourceIsLiteral && !sourceIsAggregate) ||
-          (sourceIsLiteral && literalIndex == zc::none) ||
-          (sourceIsAggregate && aggregateIndex == zc::none) || initializerReference == zc::none ||
-          returnReference == zc::none || sourceBinding == zc::none ||
-          destinationBinding == zc::none || sourceBinding == destinationBinding ||
-          sourceTypeIndex == zc::none || initializerTypeIndex == zc::none ||
-          returnTypeIndex == zc::none || sourcePatternSpan == zc::none ||
-          destinationPatternSpan == zc::none || sourceInitializerSpan == zc::none ||
-          destinationInitializerSpan == zc::none || returnSpan == zc::none ||
-          returnValueSpan == zc::none ||
-          !ownerLocalMatches(definitions, ZC_ASSERT_NONNULL(sourceBinding),
-                             source.sourceLocalPattern, tree) ||
-          !ownerLocalMatches(definitions, ZC_ASSERT_NONNULL(destinationBinding),
-                             source.localPattern, tree)) {
+      ast::NodeId sourceBody;
+      ZC_IF_SOME(value, functionShape) { sourceBody = value.body; }
+      sequentialShapeMaybe = sequentialLocalShape(tree, sourceBody);
+      if (sequentialShapeMaybe == zc::none) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::MissingRequiredFact, module,
                                             registries, index + 1);
       }
-      size_t literalSlot = 0;
-      size_t aggregateSlot = 0;
-      size_t sourceTypeSlot = 0;
-      size_t initializerTypeSlot = 0;
-      size_t returnTypeSlot = 0;
-      ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
-      ZC_IF_SOME(value, aggregateIndex) { aggregateSlot = value; }
-      ZC_IF_SOME(value, sourceTypeIndex) { sourceTypeSlot = value; }
-      ZC_IF_SOME(value, initializerTypeIndex) { initializerTypeSlot = value; }
-      ZC_IF_SOME(value, returnTypeIndex) { returnTypeSlot = value; }
-      const auto sourceType = facts.nodeTypes().entries()[sourceTypeSlot].value;
-      const auto initializerType = facts.nodeTypes().entries()[initializerTypeSlot].value;
-      const auto returnType = facts.nodeTypes().entries()[returnTypeSlot].value;
-      const auto& sourceLocalValue = ZC_ASSERT_NONNULL(sourceLocal);
-      const auto& destinationLocalValue = ZC_ASSERT_NONNULL(destinationLocal);
-      const auto& initializerReferenceValue = ZC_ASSERT_NONNULL(initializerReference);
-      const auto& returnReferenceValue = ZC_ASSERT_NONNULL(returnReference);
+      SequentialLocalShape source{};
+      ZC_IF_SOME(value, sequentialShapeMaybe) { source = zc::mv(value); }
+      const size_t bindingCount = source.bindings.size();
+      // Signature and function metadata.
       auto signaturePosition = signatureIndex(signatures.definitions.asPtr(), function.definition);
       auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
-      auto bodySpan = bound.parsedModule().spanFor(tree.node(source.body).range);
+      auto bodySpan = bound.parsedModule().spanFor(tree.node(sourceBody).range);
       if (signaturePosition == zc::none || rootPosition == zc::none || bodySpan == zc::none ||
-          !tree.contains(sourceDefinition.node) ||
           tree.node(sourceDefinition.node).kind != ast::SyntaxKind::FunctionDecl) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::MissingRequiredFact, module,
@@ -5258,17 +5472,29 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       const auto& callable =
           signature.payload.variant().get<checker::signature::CallableSignature>();
       auto expectedLinkage = linkage(callable);
+      auto returnTypeIndex = factIndex(facts.nodeTypes(), source.returnValue);
+      if (returnTypeIndex == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      size_t returnTypeSlot = 0;
+      ZC_IF_SOME(value, returnTypeIndex) { returnTypeSlot = value; }
+      const auto sequentialType = facts.nodeTypes().entries()[returnTypeSlot].value;
       if (expectedLinkage == zc::none || signature.definition != function.definition ||
           signature.definitionKind != identity::DefinitionKind::Function ||
           root.canonicalDefinition != function.definition || root.sourceModule != module ||
           callable.receiver != zc::none || callable.raises != zc::none ||
-          callable.success != function.resultType ||
+          callable.success != function.resultType || function.resultType != sequentialType ||
+          !typeExists(sequentialType, semanticTypes) ||
           !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
           !sameSpan(function.sourceSpan, sourceDefinition.source) ||
           !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
           function.linkage != ZC_ASSERT_NONNULL(expectedLinkage) ||
           !sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(bodySpan)) ||
-          function.parameters.size() != callable.parameters.size()) {
+          function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
+          function.body != block.node || function.parameters.size() != callable.parameters.size() ||
+          block.statements.size() != bindingCount + 1) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
@@ -5284,138 +5510,304 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               index + 1);
         }
       }
-      if (function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
-          function.body != block.node || sourceLocalValue.node != hirId(expectedFunction + 2) ||
-          sourceLocalValue.local != hirLocalId(1) ||
-          sourceLocalValue.initializer != hirId(expectedFunction + 3) ||
-          destinationLocalValue.node != hirId(expectedFunction + 4) ||
-          destinationLocalValue.local != hirLocalId(2) ||
-          destinationLocalValue.initializer != hirId(expectedFunction + 5) ||
-          returnStatement.node != hirId(expectedFunction + 6) ||
-          returnStatement.value != hirId(expectedFunction + 7) ||
-          block.statements[0] != sourceLocalValue.node ||
-          block.statements[1] != destinationLocalValue.node ||
-          block.statements[2] != returnStatement.node ||
-          initializerReferenceValue.local != sourceLocalValue.local ||
-          initializerReferenceValue.type != sourceType ||
-          initializerReferenceValue.category != HirValueCategory::Place ||
-          returnReferenceValue.local != (source.sequentialReturnUsesSource
-                                             ? sourceLocalValue.local
-                                             : destinationLocalValue.local) ||
-          returnReferenceValue.type != sourceType ||
-          returnReferenceValue.category != HirValueCategory::Place ||
-          sourceLocalValue.type != sourceType || destinationLocalValue.type != sourceType ||
-          function.resultType != sourceType || returnStatement.resultType != sourceType ||
-          initializerType != sourceType || returnType != sourceType ||
-          !sameSpan(sourceLocalValue.sourceSpan, ZC_ASSERT_NONNULL(sourcePatternSpan)) ||
-          !sameSpan(ZC_ASSERT_NONNULL(sourceLocalValue.initializerSpan),
-                    ZC_ASSERT_NONNULL(sourceInitializerSpan)) ||
-          !sameSpan(destinationLocalValue.sourceSpan, ZC_ASSERT_NONNULL(destinationPatternSpan)) ||
-          !sameSpan(ZC_ASSERT_NONNULL(destinationLocalValue.initializerSpan),
-                    ZC_ASSERT_NONNULL(destinationInitializerSpan)) ||
-          !sameSpan(initializerReferenceValue.sourceSpan,
-                    ZC_ASSERT_NONNULL(destinationInitializerSpan)) ||
-          !sameSpan(returnReferenceValue.sourceSpan, ZC_ASSERT_NONNULL(returnValueSpan)) ||
-          !sameSpan(returnStatement.sourceSpan, ZC_ASSERT_NONNULL(returnSpan)) ||
-          !typeExists(sourceType, semanticTypes)) {
+      const uint32_t returnNodeOrdinal =
+          expectedFunction + 2 + static_cast<uint32_t>(2 * bindingCount);
+      // Verify the return statement structure.
+      auto returnSpan = bound.parsedModule().spanFor(tree.node(source.returnStatement).range);
+      auto returnValueSpan = bound.parsedModule().spanFor(tree.node(source.returnValue).range);
+      if (returnStatement.node != hirId(returnNodeOrdinal) ||
+          returnStatement.value != hirId(returnNodeOrdinal + 1) ||
+          returnStatement.resultType != sequentialType || returnSpan == zc::none ||
+          returnValueSpan == zc::none ||
+          !sameSpan(returnStatement.sourceSpan, ZC_ASSERT_NONNULL(returnSpan))) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
       }
-      ZC_IF_SOME(value, literal) {
-        const auto& sourceLiteral = facts.literals().entries()[literalSlot].value;
-        if (!sourceIsLiteral || value.node != hirId(expectedFunction + 3) ||
-            value.type != sourceType || value.category != HirValueCategory::Value ||
-            sourceLiteral.type != sourceType ||
-            !sameConstant(value.value, sourceLiteral.literal, module, registries, semanticTypes) ||
-            !sameSpan(value.sourceSpan, ZC_ASSERT_NONNULL(sourceInitializerSpan))) {
-          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                              ir::IrFailureKind::InvalidFact, module, registries,
-                                              index + 1);
+      // Verify each binding: its local node, initializer node, type, spans, and
+      // the checked fact for its initializer.
+      bool bindingsValid = true;
+      zc::Vector<binder::OwnerLocalBindingId> localBindingIds;
+      for (size_t bindingIndex = 0; bindingIndex < bindingCount && bindingsValid; ++bindingIndex) {
+        const auto& binding = source.bindings[bindingIndex];
+        const uint32_t localNodeOrdinal =
+            expectedFunction + 2 + static_cast<uint32_t>(2 * bindingIndex);
+        const uint32_t initializerNodeOrdinal = localNodeOrdinal + 1;
+        zc::Maybe<const HirLocalBinding&> localBinding;
+        for (const auto& local : candidate.impl->locals) {
+          if (local.node != hirId(localNodeOrdinal)) continue;
+          if (localBinding != zc::none) { bindingsValid = false; }
+          localBinding = local;
         }
-      }
-      ZC_IF_SOME(value, aggregate) {
-        const auto& checkedAggregate = facts.aggregates().entries()[aggregateSlot].value;
-        if (!sourceIsAggregate || value.node != hirId(expectedFunction + 3) ||
-            value.type != sourceType || value.category != HirValueCategory::Value ||
-            checkedAggregate.node != source.sourceLocalInitializer ||
-            !checkedAggregate.kind.variant().is<checker::checked::NominalAggregate>() ||
-            checkedAggregate.kind.variant().get<checker::checked::NominalAggregate>().definition !=
-                value.definition ||
-            checkedAggregate.resultType != value.type ||
-            !sameSpan(checkedAggregate.sourceSpan, ZC_ASSERT_NONNULL(sourceInitializerSpan)) ||
-            checkedAggregate.elements.size() != value.elements.size()) {
-          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                              ir::IrFailureKind::InvalidFact, module, registries,
-                                              index + 1);
+        if (localBinding == zc::none || block.statements[bindingIndex] != hirId(localNodeOrdinal)) {
+          bindingsValid = false;
+          break;
         }
-        for (size_t elementIndex = 0; elementIndex < value.elements.size(); ++elementIndex) {
-          const auto& checkedElement = checkedAggregate.elements[elementIndex];
-          const auto& element = value.elements[elementIndex];
-          auto elementLiteral = factIndex(facts.literals(), checkedElement.sourceNode);
-          if (checkedElement.field == zc::none || checkedElement.index != elementIndex ||
-              checkedElement.sourceType != checkedElement.destinationType ||
-              checkedElement.adjustment != zc::none || elementLiteral == zc::none ||
-              ZC_ASSERT_NONNULL(checkedElement.field) != element.field ||
-              checkedElement.destinationType != element.type) {
-            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                ir::IrFailureKind::InvalidFact, module, registries,
-                                                index + 1);
+        const auto& localValue = ZC_ASSERT_NONNULL(localBinding);
+        auto patternSpan = bound.parsedModule().spanFor(tree.node(binding.pattern).range);
+        auto initializerSpan = bound.parsedModule().spanFor(tree.node(binding.initializer).range);
+        auto ownerBinding = ownerLocalBindingForPattern(definitions, binding.pattern, tree);
+        if (patternSpan == zc::none || initializerSpan == zc::none || ownerBinding == zc::none ||
+            localValue.local != hirLocalId(static_cast<uint32_t>(bindingIndex + 1)) ||
+            localValue.initializer != hirId(initializerNodeOrdinal) ||
+            localValue.type != sequentialType ||
+            !sameSpan(localValue.sourceSpan, ZC_ASSERT_NONNULL(patternSpan)) ||
+            localValue.initializerSpan == zc::none ||
+            !sameSpan(ZC_ASSERT_NONNULL(localValue.initializerSpan),
+                      ZC_ASSERT_NONNULL(initializerSpan)) ||
+            !ownerLocalMatches(definitions, ZC_ASSERT_NONNULL(ownerBinding), binding.pattern,
+                               tree)) {
+          bindingsValid = false;
+          break;
+        }
+        for (const auto existing : localBindingIds) {
+          if (existing == ZC_ASSERT_NONNULL(ownerBinding)) bindingsValid = false;
+        }
+        if (!bindingsValid) break;
+        localBindingIds.add(ZC_ASSERT_NONNULL(ownerBinding));
+        // Every binding initializer node carries the function result type.
+        auto initializerTypeIndex = factIndex(facts.nodeTypes(), binding.initializer);
+        if (initializerTypeIndex == zc::none) {
+          bindingsValid = false;
+          break;
+        }
+        size_t initializerTypeSlot = 0;
+        ZC_IF_SOME(value, initializerTypeIndex) { initializerTypeSlot = value; }
+        if (facts.nodeTypes().entries()[initializerTypeSlot].value != sequentialType) {
+          bindingsValid = false;
+          break;
+        }
+        if (binding.initializerKind == SequentialInitializerKind::Literal) {
+          zc::Maybe<const HirScalarLiteralExpression&> literal;
+          for (const auto& expression : candidate.impl->expressions) {
+            if (expression.node != hirId(initializerNodeOrdinal)) continue;
+            if (literal != zc::none) bindingsValid = false;
+            literal = expression;
           }
-          size_t elementSlot = 0;
-          ZC_IF_SOME(item, elementLiteral) { elementSlot = item; }
-          const auto& checkedLiteral = facts.literals().entries()[elementSlot].value;
-          if (checkedLiteral.type != element.type ||
-              !sameConstant(checkedLiteral.literal, element.value, module, registries,
+          auto literalIndex = factIndex(facts.literals(), binding.initializer);
+          if (!bindingsValid || literal == zc::none || literalIndex == zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          size_t literalSlot = 0;
+          ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+          const auto& literalFact = facts.literals().entries()[literalSlot].value;
+          const auto& literalValue = ZC_ASSERT_NONNULL(literal);
+          if (literalValue.type != sequentialType ||
+              literalValue.category != HirValueCategory::Value ||
+              literalFact.type != sequentialType ||
+              !sameConstant(literalValue.value, literalFact.literal, module, registries,
                             semanticTypes) ||
-              !sameSpan(checkedLiteral.sourceSpan, element.sourceSpan)) {
-            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                ir::IrFailureKind::InvalidFact, module, registries,
-                                                index + 1);
+              !sameSpan(literalValue.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+            bindingsValid = false;
+            break;
+          }
+        } else if (binding.initializerKind == SequentialInitializerKind::Aggregate) {
+          zc::Maybe<const HirNominalAggregateExpression&> aggregate;
+          for (const auto& expression : candidate.impl->aggregates) {
+            if (expression.node != hirId(initializerNodeOrdinal)) continue;
+            if (aggregate != zc::none) bindingsValid = false;
+            aggregate = expression;
+          }
+          auto aggregateIndex = factIndex(facts.aggregates(), binding.initializer);
+          if (!bindingsValid || aggregate == zc::none || aggregateIndex == zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          size_t aggregateSlot = 0;
+          ZC_IF_SOME(value, aggregateIndex) { aggregateSlot = value; }
+          const auto& checkedAggregate = facts.aggregates().entries()[aggregateSlot].value;
+          const auto& aggregateValue = ZC_ASSERT_NONNULL(aggregate);
+          if (aggregateValue.type != sequentialType ||
+              aggregateValue.category != HirValueCategory::Value ||
+              checkedAggregate.node != binding.initializer ||
+              !checkedAggregate.kind.variant().is<checker::checked::NominalAggregate>() ||
+              checkedAggregate.kind.variant()
+                      .get<checker::checked::NominalAggregate>()
+                      .definition != aggregateValue.definition ||
+              checkedAggregate.resultType != aggregateValue.type ||
+              !sameSpan(checkedAggregate.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan)) ||
+              checkedAggregate.elements.size() != aggregateValue.elements.size()) {
+            bindingsValid = false;
+            break;
+          }
+          for (size_t elementIndex = 0; elementIndex < aggregateValue.elements.size();
+               ++elementIndex) {
+            const auto& checkedElement = checkedAggregate.elements[elementIndex];
+            const auto& element = aggregateValue.elements[elementIndex];
+            auto elementLiteral = factIndex(facts.literals(), checkedElement.sourceNode);
+            if (checkedElement.field == zc::none || checkedElement.index != elementIndex ||
+                checkedElement.sourceType != checkedElement.destinationType ||
+                checkedElement.adjustment != zc::none || elementLiteral == zc::none ||
+                ZC_ASSERT_NONNULL(checkedElement.field) != element.field ||
+                checkedElement.destinationType != element.type) {
+              bindingsValid = false;
+              break;
+            }
+            size_t elementSlot = 0;
+            ZC_IF_SOME(item, elementLiteral) { elementSlot = item; }
+            const auto& checkedLiteral = facts.literals().entries()[elementSlot].value;
+            if (checkedLiteral.type != element.type ||
+                !sameConstant(checkedLiteral.literal, element.value, module, registries,
+                              semanticTypes) ||
+                !sameSpan(checkedLiteral.sourceSpan, element.sourceSpan)) {
+              bindingsValid = false;
+              break;
+            }
+          }
+        } else if (binding.initializerKind == SequentialInitializerKind::LocalReference) {
+          zc::Maybe<const HirLocalReferenceExpression&> reference;
+          for (const auto& localReference : candidate.impl->localReferences) {
+            if (localReference.node != hirId(initializerNodeOrdinal)) continue;
+            if (reference != zc::none) bindingsValid = false;
+            reference = localReference;
+          }
+          auto referenceBinding = resolvedOwnerLocal(bound.bindings(), binding.initializer);
+          if (!bindingsValid || reference == zc::none || referenceBinding == zc::none ||
+              binding.referencedLocal >= localBindingIds.size() ||
+              ZC_ASSERT_NONNULL(referenceBinding) != localBindingIds[binding.referencedLocal] ||
+              ZC_ASSERT_NONNULL(reference).local !=
+                  hirLocalId(static_cast<uint32_t>(binding.referencedLocal + 1)) ||
+              ZC_ASSERT_NONNULL(reference).type != sequentialType ||
+              ZC_ASSERT_NONNULL(reference).category != HirValueCategory::Place ||
+              !sameSpan(ZC_ASSERT_NONNULL(reference).sourceSpan,
+                        ZC_ASSERT_NONNULL(initializerSpan))) {
+            bindingsValid = false;
+            break;
+          }
+        } else {
+          zc::Maybe<const HirParameterReferenceExpression&> reference;
+          for (const auto& parameterReference : candidate.impl->parameterReferences) {
+            if (parameterReference.node != hirId(initializerNodeOrdinal)) continue;
+            if (reference != zc::none) bindingsValid = false;
+            reference = parameterReference;
+          }
+          auto parameterHandle = resolvedCallableParameter(bound.bindings(), binding.initializer);
+          if (!bindingsValid || reference == zc::none || parameterHandle == zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          bool parameterMatches = false;
+          ZC_IF_SOME(handle, parameterHandle) {
+            auto authority = registries.callableParameter(handle);
+            ZC_IF_SOME(entry, authority) {
+              parameterMatches = ZC_ASSERT_NONNULL(reference).parameter == entry.key();
+            }
+          }
+          if (!parameterMatches || ZC_ASSERT_NONNULL(reference).type != sequentialType ||
+              ZC_ASSERT_NONNULL(reference).category != HirValueCategory::Place ||
+              !sameSpan(ZC_ASSERT_NONNULL(reference).sourceSpan,
+                        ZC_ASSERT_NONNULL(initializerSpan))) {
+            bindingsValid = false;
+            break;
           }
         }
       }
-      if ((source.unsafeBlock != zc::none) != (function.unsafeBlock != zc::none)) {
+      if (!bindingsValid) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
       }
-      if (source.unsafeBlock != zc::none) {
-        const auto expectedUnsafeBlock = hirId(expectedFunction + 8);
+      // Verify the returned place: a parameter or one of the declared locals.
+      if (source.returnsLocal != zc::none) {
+        size_t returnLocal = 0;
+        ZC_IF_SOME(value, source.returnsLocal) { returnLocal = value; }
+        zc::Maybe<const HirLocalReferenceExpression&> returnReference;
+        for (const auto& localReference : candidate.impl->localReferences) {
+          if (localReference.node != hirId(returnNodeOrdinal + 1)) continue;
+          if (returnReference != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          returnReference = localReference;
+        }
+        if (returnReference == zc::none ||
+            ZC_ASSERT_NONNULL(returnReference).local !=
+                hirLocalId(static_cast<uint32_t>(returnLocal + 1)) ||
+            ZC_ASSERT_NONNULL(returnReference).type != sequentialType ||
+            ZC_ASSERT_NONNULL(returnReference).category != HirValueCategory::Place ||
+            !sameSpan(ZC_ASSERT_NONNULL(returnReference).sourceSpan,
+                      ZC_ASSERT_NONNULL(returnValueSpan))) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+      } else {
+        zc::Maybe<const HirParameterReferenceExpression&> returnReference;
+        for (const auto& parameterReference : candidate.impl->parameterReferences) {
+          if (parameterReference.node != hirId(returnNodeOrdinal + 1)) continue;
+          if (returnReference != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          returnReference = parameterReference;
+        }
+        auto parameterHandle = resolvedCallableParameter(bound.bindings(), source.returnValue);
+        bool parameterMatches = false;
+        if (returnReference != zc::none) {
+          ZC_IF_SOME(handle, parameterHandle) {
+            auto authority = registries.callableParameter(handle);
+            ZC_IF_SOME(entry, authority) {
+              parameterMatches = ZC_ASSERT_NONNULL(returnReference).parameter == entry.key();
+            }
+          }
+        }
+        if (returnReference == zc::none || parameterHandle == zc::none || !parameterMatches ||
+            ZC_ASSERT_NONNULL(returnReference).type != sequentialType ||
+            ZC_ASSERT_NONNULL(returnReference).category != HirValueCategory::Place ||
+            !sameSpan(ZC_ASSERT_NONNULL(returnReference).sourceSpan,
+                      ZC_ASSERT_NONNULL(returnValueSpan))) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+      }
+      // Unsafe-block boundary sits at F+4+2N.
+      FunctionReturnShape returnShape{};
+      ZC_IF_SOME(value, functionShape) { returnShape = value; }
+      if ((returnShape.unsafeBlock != zc::none) != (function.unsafeBlock != zc::none)) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      if (returnShape.unsafeBlock != zc::none) {
+        const auto expectedUnsafeBlock = hirId(returnNodeOrdinal + 2);
         if (function.unsafeBlock != expectedUnsafeBlock) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
         zc::Maybe<const HirUnsafeBlockExpression&> unsafeBlock;
-        for (const auto& candidate : candidate.impl->unsafeBlocks) {
-          if (candidate.node != expectedUnsafeBlock) continue;
+        for (const auto& candidateBlock : candidate.impl->unsafeBlocks) {
+          if (candidateBlock.node != expectedUnsafeBlock) continue;
           if (unsafeBlock != zc::none) {
             return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::AdditionalFact, module,
                                                 registries, index + 1);
           }
-          unsafeBlock = candidate;
+          unsafeBlock = candidateBlock;
         }
         if (unsafeBlock == zc::none) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::MissingRequiredFact, module,
                                               registries, index + 1);
         }
-        ZC_IF_SOME(block, unsafeBlock) {
-          auto sourceUnsafeSpan =
-              bound.parsedModule().spanFor(tree.node(ZC_ASSERT_NONNULL(source.unsafeBlock)).range);
-          if (block.body != returnStatement.value || block.type != function.resultType ||
+        ZC_IF_SOME(unsafe, unsafeBlock) {
+          auto sourceUnsafeSpan = bound.parsedModule().spanFor(
+              tree.node(ZC_ASSERT_NONNULL(returnShape.unsafeBlock)).range);
+          if (unsafe.body != returnStatement.value || unsafe.type != function.resultType ||
               sourceUnsafeSpan == zc::none ||
-              !sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(sourceUnsafeSpan))) {
+              !sameSpan(unsafe.sourceSpan, ZC_ASSERT_NONNULL(sourceUnsafeSpan))) {
             return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);
           }
         }
-        nextFunction += 9;
+        nextFunction += static_cast<uint32_t>(2 * bindingCount + 5);
       } else {
-        nextFunction += 8;
+        nextFunction += static_cast<uint32_t>(2 * bindingCount + 4);
       }
       continue;
     }

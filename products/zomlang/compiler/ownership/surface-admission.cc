@@ -453,28 +453,40 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
   if (!tree.contains(returnValue)) return true;
   if (statements.size == 1) return isAdmittedReturnValue(tree, returnValue);
 
-  if (statements.size == 3) {
-    auto sourceDeclarator = localDeclarator(tree, tree.list(statements)[0]);
-    auto destinationDeclarator = localDeclarator(tree, tree.list(statements)[1]);
-    if (sourceDeclarator != zc::none && destinationDeclarator != zc::none) {
+  // Sequential local shape: two or more leading `let <ident>: T = <initializer>;`
+  // statements followed by a single `return <ident>;`. Each initializer is a
+  // scalar literal, a closed nominal aggregate, or an identifier reference (a
+  // parameter or an earlier local, resolved downstream). The returned value is
+  // an identifier (a parameter or one of the declared locals). This is the sole
+  // admitted shape whose leading statements are all `let` declarations, so it is
+  // detected structurally and either admitted or rejected here; every other
+  // multi-statement shape has a non-`let` leading statement and falls through.
+  if (statements.size >= 3) {
+    bool allLeadingLets = true;
+    for (size_t index = 0; index + 1 < statements.size; ++index) {
+      if (localDeclarator(tree, tree.list(statements)[index]) == zc::none) {
+        allLeadingLets = false;
+        break;
+      }
+    }
+    if (allLeadingLets) {
       if (tree.node(returnValue).kind != ast::SyntaxKind::IdentExpr) return false;
-      ast::NodeId source;
-      ast::NodeId destination;
-      ZC_IF_SOME(value, sourceDeclarator) { source = value; }
-      ZC_IF_SOME(value, destinationDeclarator) { destination = value; }
-      const ast::NodeId sourcePattern(
-          tree.node(source).payload.words[ast::kVariableDeclaratorPatternWord]);
-      const ast::NodeId sourceInitializer(
-          tree.node(source).payload.words[ast::kVariableDeclaratorInitWord]);
-      const ast::NodeId destinationPattern(
-          tree.node(destination).payload.words[ast::kVariableDeclaratorPatternWord]);
-      const ast::NodeId destinationInitializer(
-          tree.node(destination).payload.words[ast::kVariableDeclaratorInitWord]);
-      return (isScalarLiteral(tree.node(sourceInitializer).kind) ||
-              isAdmittedAggregateInitializer(tree, sourceInitializer)) &&
-             matchesLocalReference(tree, sourcePattern, destinationInitializer) &&
-             (matchesLocalReference(tree, sourcePattern, returnValue) ||
-              matchesLocalReference(tree, destinationPattern, returnValue));
+      for (size_t index = 0; index + 1 < statements.size; ++index) {
+        auto declarator = localDeclarator(tree, tree.list(statements)[index]);
+        ast::NodeId declaratorNode;
+        ZC_IF_SOME(value, declarator) { declaratorNode = value; }
+        const ast::NodeId initializer(
+            tree.node(declaratorNode).payload.words[ast::kVariableDeclaratorInitWord]);
+        if (!tree.contains(initializer)) return false;
+        // A scalar literal, an aggregate, or an identifier reference. No binary,
+        // call, borrow, or other initializer kind is admitted in this shape.
+        if (!isScalarLiteral(tree.node(initializer).kind) &&
+            tree.node(initializer).kind != ast::SyntaxKind::IdentExpr &&
+            !isAdmittedAggregateInitializer(tree, initializer)) {
+          return false;
+        }
+      }
+      return true;
     }
   }
 

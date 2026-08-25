@@ -612,6 +612,64 @@ ZC_TEST("HIR pipeline preserves a returned function local without binder identit
   }
 }
 
+ZC_TEST("HIR pipeline lowers a three-binding sequential local body") {
+  HirPipelineFixture fixture(
+      "fun entry(a: i32) -> i32 { let x: i32 = a; let y: i32 = x; let z: i32 = 5; return z; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  // Three bindings: x copies parameter a (one parameter reference), y copies
+  // local x (one local reference), z is a literal (one scalar expression). The
+  // return of z adds a second local reference.
+  ZC_REQUIRE(module.locals().size() == 3);
+  ZC_REQUIRE(module.expressions().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 1);
+  ZC_REQUIRE(module.localReferences().size() == 2);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& returned = module.returns()[0];
+  // Fixed-id layout: F+0 function, F+1 block, then binding i at F+2+2i local and
+  // F+3+2i initializer, then return at F+2+2N and its value at F+3+2N (N = 3).
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(block.statements.size() == 4);
+  const auto& xLocal = module.locals()[0];
+  const auto& yLocal = module.locals()[1];
+  const auto& zLocal = module.locals()[2];
+  ZC_EXPECT(xLocal.node.ordinal() == 3);
+  ZC_EXPECT(yLocal.node.ordinal() == 5);
+  ZC_EXPECT(zLocal.node.ordinal() == 7);
+  ZC_EXPECT(xLocal.local.ordinal() == 1);
+  ZC_EXPECT(yLocal.local.ordinal() == 2);
+  ZC_EXPECT(zLocal.local.ordinal() == 3);
+  ZC_EXPECT(block.statements[0] == xLocal.node);
+  ZC_EXPECT(block.statements[1] == yLocal.node);
+  ZC_EXPECT(block.statements[2] == zLocal.node);
+  ZC_EXPECT(block.statements[3] == returned.node);
+  ZC_EXPECT(returned.node.ordinal() == 9);
+  ZC_EXPECT(returned.value.ordinal() == 10);
+  // x's initializer is a parameter reference at node 4.
+  const auto& parameterReference = module.parameterReferences()[0];
+  ZC_EXPECT(parameterReference.node == xLocal.initializer);
+  ZC_EXPECT(parameterReference.node.ordinal() == 4);
+  ZC_EXPECT(parameterReference.category == HirValueCategory::Place);
+  // y's initializer is a local reference to x (node 6); the return value is a
+  // local reference to z (node 10).
+  const auto& yInitializer = module.localReferences()[0];
+  const auto& returnReference = module.localReferences()[1];
+  ZC_EXPECT(yInitializer.node == yLocal.initializer);
+  ZC_EXPECT(yInitializer.node.ordinal() == 6);
+  ZC_EXPECT(yInitializer.local == xLocal.local);
+  ZC_EXPECT(returnReference.node == returned.value);
+  ZC_EXPECT(returnReference.node.ordinal() == 10);
+  ZC_EXPECT(returnReference.local == zLocal.local);
+  // z's initializer is the scalar literal at node 8.
+  const auto& literal = module.expressions()[0];
+  ZC_EXPECT(literal.node == zLocal.initializer);
+  ZC_EXPECT(literal.node.ordinal() == 8);
+}
+
 ZC_TEST("HIR pipeline lowers a local nominal aggregate field projection") {
   HirPipelineFixture fixture(
       "struct Cell { value: i32, }\n"

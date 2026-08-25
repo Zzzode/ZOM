@@ -3231,6 +3231,52 @@ ZC_TEST("Ownership facts preserve sequential scalar local copies without resourc
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
+ZC_TEST("Built MIR lowers three sequential scalar locals to StorageLive/Assign pairs") {
+  OwnershipPipelineFixture fixture(
+      "fun entry(a: i32) -> i32 { let x: i32 = a; let y: i32 = x; let z: i32 = 5; return z; }"_zc);
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  ZC_REQUIRE(builtMir.functions().size() == 1);
+  const auto& function = builtMir.functions()[0];
+  // One parameter local plus three user locals.
+  ZC_REQUIRE(function.locals.size() == 4);
+  ZC_EXPECT(function.locals[0].kind == mir::MirLocalKind::Parameter);
+  ZC_EXPECT(function.locals[1].kind == mir::MirLocalKind::UserLocal);
+  ZC_EXPECT(function.locals[2].kind == mir::MirLocalKind::UserLocal);
+  ZC_EXPECT(function.locals[3].kind == mir::MirLocalKind::UserLocal);
+  ZC_REQUIRE(function.blocks.size() == 1);
+  const auto& block = function.blocks[0];
+  // Three bindings: StorageLive + Assign each (6 statements), then Return.
+  ZC_REQUIRE(block.statements.size() == 6);
+  for (size_t index = 0; index < 3; ++index) {
+    ZC_EXPECT(block.statements[index * 2].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(block.statements[index * 2].storageLocal() == function.locals[index + 1].id);
+    ZC_EXPECT(block.statements[index * 2 + 1].kind() == mir::MirStatementKind::Assign);
+    ZC_EXPECT(block.statements[index * 2 + 1].assignmentValue().destination.local() ==
+              function.locals[index + 1].id);
+  }
+  // x copies parameter a.
+  ZC_EXPECT(block.statements[1].assignmentValue().value.kind() == mir::MirRvalueKind::Use);
+  ZC_EXPECT(block.statements[1].assignmentValue().value.useValue().operand.place().local() ==
+            function.locals[0].id);
+  // y copies local x.
+  ZC_EXPECT(block.statements[3].assignmentValue().value.useValue().operand.place().local() ==
+            function.locals[1].id);
+  // z assigns a constant.
+  ZC_EXPECT(block.statements[5].assignmentValue().value.kind() == mir::MirRvalueKind::Use);
+  ZC_EXPECT(block.statements[5].assignmentValue().value.useValue().operand.kind() ==
+            mir::MirOperandKind::Constant);
+  // Return reads the last local (z).
+  ZC_EXPECT(block.terminator.kind() == mir::MirTerminatorKind::Return);
+  ZC_REQUIRE(block.terminator.returnValue().value != zc::none);
+  ZC_IF_SOME(value, block.terminator.returnValue().value) {
+    ZC_EXPECT(value.place().local() == function.locals[3].id);
+  }
+  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
+  ZC_EXPECT(session.getOwnershipCheckedMirModules().size() == 1);
+}
+
 ZC_TEST("Ownership resources preserve a moved sequential aggregate local") {
   OwnershipPipelineFixture fixture(
       "import core::marker::{Copy};\n"

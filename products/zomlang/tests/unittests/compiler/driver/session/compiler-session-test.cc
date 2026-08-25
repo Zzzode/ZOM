@@ -1275,6 +1275,44 @@ ZC_TEST("CompilerSessionTest.AcceptsCopyAfterLocalTransfer") {
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
+ZC_TEST("CompilerSessionTest.AcceptsThreeSequentialScalarLocals") {
+  auto session = packageSession(
+      "fun entry(a: i32) -> i32 { let x: i32 = a; let y: i32 = x; let z: i32 = 5; return z; }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
+}
+
+ZC_TEST("CompilerSessionTest.AcceptsFourSequentialLocalsReturningParameter") {
+  auto session = packageSession(
+      "fun entry(a: i32, b: i32) -> i32 { let w: i32 = a; let x: i32 = w; let y: i32 = b; "
+      "let z: i32 = 7; return a; }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
+}
+
+ZC_TEST("CompilerSessionTest.RejectsBinaryInitializerInSequentialLocalBody") {
+  // A binary-operation local initializer is an explicitly separate slice and is
+  // not admitted here; the body falls to the function-body-unavailable rail.
+  auto session = packageSession(
+      "fun entry(a: i32, b: i32) -> i32 { let x: i32 = a + b; let y: i32 = x; return y; }\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
+}
+
 ZC_TEST(
     "CompilerSessionTest.RejectsUninitializedAggregateFieldUseWithoutPublishingOwnershipInputs") {
   auto session = packageSession(
