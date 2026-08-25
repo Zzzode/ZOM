@@ -3297,10 +3297,84 @@ bool validSequentialLocalReturnFunction(
         return false;
       }
     }
+    // A primitive-binary initializer lowers to an Arithmetic or Comparison
+    // rvalue whose operands are a constant, a copy of a parameter local, or a
+    // copy of an earlier user local.
+    auto binary = primitiveBinaryFor(hirModule, initializerNode);
+    ZC_IF_SOME(value, binary) {
+      const auto comparisonOperator = mirComparisonOperatorFor(value.operation);
+      const auto arithmeticOperator = mirArithmeticOperatorFor(value.operation);
+      const bool isArithmeticBinary =
+          comparisonOperator == zc::none && arithmeticOperator != zc::none;
+      if ((comparisonOperator == zc::none && arithmeticOperator == zc::none) ||
+          value.type != local.type || value.category != hir::HirValueCategory::Value ||
+          (isArithmeticBinary && value.type != value.operandType) ||
+          !sameSpan(assign.sourceSpan(), value.sourceSpan)) {
+        return false;
+      }
+      // Validates one binary operand against its HIR node: a constant matches a
+      // scalar literal, a copy place matches a parameter or earlier local.
+      auto operandMatches = [&](const MirOperand& operand, hir::HirNodeId operandNode) -> bool {
+        auto operandLiteral = expressionFor(hirModule, operandNode);
+        ZC_IF_SOME(literalValue, operandLiteral) {
+          return operand.kind() == MirOperandKind::Constant &&
+                 operand.constantValue().type == value.operandType &&
+                 literalValue.type == value.operandType &&
+                 sameConstant(operand.constantValue().value, literalValue.value, module, identities,
+                              semanticTypes);
+        }
+        auto operandParameter = parameterReferenceFor(hirModule, operandNode);
+        ZC_IF_SOME(parameter, operandParameter) {
+          size_t parameterIndex = 0;
+          bool found = false;
+          for (size_t p = 0; p < declaration.parameters.size(); ++p) {
+            if (declaration.parameters[p].key == parameter.parameter) {
+              parameterIndex = p;
+              found = true;
+              break;
+            }
+          }
+          return found && parameter.type == value.operandType &&
+                 matchesPlaceUse(operand, proofs, copy, value.operandType) &&
+                 operand.place().local() == localId(static_cast<uint32_t>(parameterIndex) + 1) &&
+                 operand.place().rootType() == value.operandType &&
+                 operand.place().resultType() == value.operandType &&
+                 operand.place().projections().size() == 0;
+        }
+        auto operandLocal = localReferenceFor(hirModule, operandNode);
+        ZC_IF_SOME(reference, operandLocal) {
+          return reference.type == value.operandType && reference.local.ordinal() != 0 &&
+                 reference.local.ordinal() <= static_cast<uint32_t>(i) &&
+                 matchesPlaceUse(operand, proofs, copy, value.operandType) &&
+                 operand.place().local() == userLocalId(reference.local.ordinal() - 1) &&
+                 operand.place().rootType() == value.operandType &&
+                 operand.place().resultType() == value.operandType &&
+                 operand.place().projections().size() == 0;
+        }
+        return false;
+      };
+      if (isArithmeticBinary) {
+        if (assignment.value.kind() != MirRvalueKind::Arithmetic) return false;
+        const auto& rvalue = assignment.value.arithmeticValue();
+        if (rvalue.op != ZC_ASSERT_NONNULL(arithmeticOperator) || rvalue.resultType != value.type ||
+            !operandMatches(rvalue.left, value.left) ||
+            !operandMatches(rvalue.right, value.right)) {
+          return false;
+        }
+      } else {
+        if (assignment.value.kind() != MirRvalueKind::Comparison) return false;
+        const auto& rvalue = assignment.value.comparisonValue();
+        if (rvalue.op != ZC_ASSERT_NONNULL(comparisonOperator) || rvalue.resultType != value.type ||
+            !operandMatches(rvalue.left, value.left) ||
+            !operandMatches(rvalue.right, value.right)) {
+          return false;
+        }
+      }
+    }
     // Exactly one initializer kind must be present.
     const int present = (literal != zc::none ? 1 : 0) + (aggregate != zc::none ? 1 : 0) +
                         (localReference != zc::none ? 1 : 0) +
-                        (parameterReference != zc::none ? 1 : 0);
+                        (parameterReference != zc::none ? 1 : 0) + (binary != zc::none ? 1 : 0);
     if (present != 1) return false;
   }
   // Unsafe boundary pair.
@@ -4103,12 +4177,15 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
   // The module value-node checksum grants each HIR function exactly one value
   // node (expression, call, aggregate, parameter reference, ...). A sequential
   // N-local body instead materializes one value node per literal, aggregate, or
-  // parameter-reference initializer plus one for a parameter return; local- and
-  // return-of-local references are not value nodes in this equation. This term
-  // carries the per-function excess so the balance holds for any N. It is zero
-  // for the former two-local literal or aggregate source (one value node), so
-  // existing bodies keep their exact balance.
-  size_t sequentialValueNodeExcess = 0;
+  // parameter-reference initializer, per literal/parameter binary operand, plus
+  // one for a parameter return; and one primitive-binary operation node per
+  // binary initializer (counted on the equation's left via
+  // primitiveBinaryOperations). Local- and return-of-local references are not
+  // value nodes here. This signed term carries the per-function excess
+  // (valueNodes - binaryBindings - 1) so the balance holds for any N; it is zero
+  // for the former two-local literal or aggregate source and can be negative when
+  // binary operands are earlier locals.
+  int64_t sequentialValueNodeExcess = 0;
   for (const auto& sequentialFunction : hirModule.functions()) {
     auto sequentialBlock = blockFor(hirModule, sequentialFunction.body);
     ZC_IF_SOME(block, sequentialBlock) {
@@ -4122,35 +4199,52 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       }
       auto sequentialReturn = returnFor(hirModule, block.statements[block.statements.size() - 1]);
       if (!allLeadingLocals || sequentialReturn == zc::none) continue;
-      size_t contribution = 0;
+      int64_t valueNodes = 0;
+      int64_t binaryBindings = 0;
       for (size_t i = 0; i + 1 < block.statements.size(); ++i) {
         auto localBinding = localFor(hirModule, block.statements[i]);
         ZC_IF_SOME(local, localBinding) {
           ZC_IF_SOME(initializer, local.initializer) {
-            if (expressionFor(hirModule, initializer) != zc::none ||
-                aggregateFor(hirModule, initializer) != zc::none ||
-                parameterReferenceFor(hirModule, initializer) != zc::none) {
-              ++contribution;
+            auto binary = primitiveBinaryFor(hirModule, initializer);
+            ZC_IF_SOME(value, binary) {
+              // The binary op node is on the equation's left; its literal and
+              // parameter operands are value nodes on the right. Local operands
+              // are localReferences and count on neither side.
+              ++binaryBindings;
+              for (const auto operand : {value.left, value.right}) {
+                if (expressionFor(hirModule, operand) != zc::none ||
+                    parameterReferenceFor(hirModule, operand) != zc::none) {
+                  ++valueNodes;
+                }
+              }
+            }
+            if (binary == zc::none && (expressionFor(hirModule, initializer) != zc::none ||
+                                       aggregateFor(hirModule, initializer) != zc::none ||
+                                       parameterReferenceFor(hirModule, initializer) != zc::none)) {
+              ++valueNodes;
             }
           }
         }
       }
       ZC_IF_SOME(returnStatement, sequentialReturn) {
-        if (parameterReferenceFor(hirModule, returnStatement.value) != zc::none) ++contribution;
+        if (parameterReferenceFor(hirModule, returnStatement.value) != zc::none) ++valueNodes;
       }
-      if (contribution >= 1) sequentialValueNodeExcess += contribution - 1;
+      sequentialValueNodeExcess += valueNodes - binaryBindings - 1;
     }
   }
   if (!evidence.isResolved() ||
       evidence.evidence().revision().digest() != hirModule.borrowEvidenceRevision().digest() ||
       hirModule.borrowEvidenceLease().key().revision.digest() !=
           hirModule.borrowEvidenceRevision().digest() ||
-      hirModule.declarations().size() + hirModule.functions().size() +
-              hirModule.conditionals().size() * 2 + hirModule.primitiveBinaryOperations().size() +
-              hirModule.loops().size() + sequentialValueNodeExcess !=
-          hirModule.expressions().size() + hirModule.calls().size() +
-              hirModule.aggregates().size() + uninitializedLocalReturnCount + parameterReturnCount +
-              parameterReborrowCount - localAliasReborrowCount - hirModule.localWrites().size() ||
+      static_cast<int64_t>(hirModule.declarations().size() + hirModule.functions().size() +
+                           hirModule.conditionals().size() * 2 +
+                           hirModule.primitiveBinaryOperations().size() +
+                           hirModule.loops().size()) +
+              sequentialValueNodeExcess !=
+          static_cast<int64_t>(hirModule.expressions().size() + hirModule.calls().size() +
+                               hirModule.aggregates().size() + uninitializedLocalReturnCount +
+                               parameterReturnCount + parameterReborrowCount -
+                               localAliasReborrowCount - hirModule.localWrites().size()) ||
       hirModule.functions().size() != hirModule.blocks().size() ||
       hirModule.functions().size() != hirModule.returns().size()) {
     return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
@@ -4614,6 +4708,81 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                     built = false;
                   } else {
                     rvalue = MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(operand)));
+                    assignSpan = value.sourceSpan.clone();
+                  }
+                }
+              }
+              // A primitive-binary initializer lowers to an Arithmetic or
+              // Comparison rvalue assigned into the local. Each operand is a
+              // constant (literal), a copy of a parameter local, or a copy of an
+              // earlier user local.
+              auto binary = primitiveBinaryFor(hirModule, initializerNode);
+              ZC_IF_SOME(value, binary) {
+                const auto comparisonOperator = mirComparisonOperatorFor(value.operation);
+                const auto arithmeticOperator = mirArithmeticOperatorFor(value.operation);
+                const bool isArithmeticBinary =
+                    comparisonOperator == zc::none && arithmeticOperator != zc::none;
+                // Builds one binary operand: a scalar-literal constant, a copy of
+                // a parameter local, or a copy of an earlier user local.
+                auto binaryOperand = [&](hir::HirNodeId operandNode) -> zc::Maybe<MirOperand> {
+                  auto operandLiteral = expressionFor(hirModule, operandNode);
+                  ZC_IF_SOME(literal, operandLiteral) {
+                    if (literal.type != value.operandType) return zc::none;
+                    return MirOperand::constant(value.operandType, literal.value.clone());
+                  }
+                  auto operandParameter = parameterReferenceFor(hirModule, operandNode);
+                  ZC_IF_SOME(parameter, operandParameter) {
+                    if (parameter.type != value.operandType) return zc::none;
+                    size_t parameterIndex = 0;
+                    bool found = false;
+                    for (size_t p = 0; p < declaration.parameters.size(); ++p) {
+                      if (declaration.parameters[p].key == parameter.parameter) {
+                        parameterIndex = p;
+                        found = true;
+                        break;
+                      }
+                    }
+                    if (!found) return zc::none;
+                    zc::Vector<MirProjection> projections;
+                    return placeUse(
+                        proofs, copy,
+                        MirPlace(localId(static_cast<uint32_t>(parameterIndex) + 1),
+                                 value.operandType, zc::mv(projections), value.operandType));
+                  }
+                  auto operandLocal = localReferenceFor(hirModule, operandNode);
+                  ZC_IF_SOME(reference, operandLocal) {
+                    if (reference.type != value.operandType || reference.local.ordinal() == 0 ||
+                        reference.local.ordinal() > static_cast<uint32_t>(i)) {
+                      return zc::none;
+                    }
+                    zc::Vector<MirProjection> projections;
+                    return placeUse(
+                        proofs, copy,
+                        MirPlace(userLocalId(reference.local.ordinal() - 1), value.operandType,
+                                 zc::mv(projections), value.operandType));
+                  }
+                  return zc::none;
+                };
+                if ((comparisonOperator == zc::none && arithmeticOperator == zc::none) ||
+                    value.type != local.type ||
+                    (isArithmeticBinary && value.type != value.operandType) ||
+                    value.category != hir::HirValueCategory::Value) {
+                  built = false;
+                } else {
+                  auto leftOperand = binaryOperand(value.left);
+                  auto rightOperand = binaryOperand(value.right);
+                  if (leftOperand == zc::none || rightOperand == zc::none) {
+                    built = false;
+                  } else {
+                    rvalue = isArithmeticBinary
+                                 ? MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmeticOperator),
+                                                         zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                                                         zc::mv(ZC_ASSERT_NONNULL(rightOperand)),
+                                                         value.type)
+                                 : MirRvalue::comparison(ZC_ASSERT_NONNULL(comparisonOperator),
+                                                         zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                                                         zc::mv(ZC_ASSERT_NONNULL(rightOperand)),
+                                                         value.type);
                     assignSpan = value.sourceSpan.clone();
                   }
                 }

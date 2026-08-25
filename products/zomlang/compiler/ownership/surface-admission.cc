@@ -478,11 +478,17 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
         const ast::NodeId initializer(
             tree.node(declaratorNode).payload.words[ast::kVariableDeclaratorInitWord]);
         if (!tree.contains(initializer)) return false;
-        // A scalar literal, an aggregate, or an identifier reference. No binary,
-        // call, borrow, or other initializer kind is admitted in this shape.
+        // A scalar literal, an aggregate, an identifier reference, or a primitive
+        // binary operation (relational/arithmetic/bitwise) whose operands are each
+        // an identifier or scalar literal with at least one identifier. The binary
+        // form is admitted operator-agnostically; the checker decides which
+        // operators are supported (a logical `&&` / `||` has no primitive
+        // operation and stays rejected there). No call, borrow, or other
+        // initializer kind is admitted in this shape.
         if (!isScalarLiteral(tree.node(initializer).kind) &&
             tree.node(initializer).kind != ast::SyntaxKind::IdentExpr &&
-            !isAdmittedAggregateInitializer(tree, initializer)) {
+            !isAdmittedAggregateInitializer(tree, initializer) &&
+            !isAdmittedPrimitiveBinary(tree, initializer)) {
           return false;
         }
       }

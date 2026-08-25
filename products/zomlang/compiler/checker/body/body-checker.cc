@@ -290,13 +290,38 @@ zc::Maybe<identity::SemanticTypeId> ownerLocalReferenceType(
   if (binding == zc::none) return zc::none;
   ZC_IF_SOME(value, binding) {
     const auto initializer = ownerLocalInitializer(input.boundModule, value);
+    const auto& tree = input.boundModule.tree();
     ZC_IF_SOME(initializerNode, initializer) {
       for (const auto& entry : nodeTypes) {
         if (entry.key == initializerNode) return entry.value;
       }
+      // The initializer's node type is not yet produced. A primitive-binary
+      // initializer is typed one stage after a bare identifier reference, so a
+      // reference to such a local resolves from the declarator's closed
+      // annotation instead; the binary production separately verifies its result
+      // type matches this annotation, so the two agree. A non-binary initializer
+      // is always typed before its uses in schema preorder, so this fallback is
+      // reached only for the binary case.
+      if (tree.contains(initializerNode) &&
+          tree.node(initializerNode).kind == ast::SyntaxKind::BinaryExpr) {
+        for (const auto& local : input.boundModule.definitions().ownerLocalBindings()) {
+          if (local.binding != value || !local.site.value().is<binder::PatternBindingSite>()) {
+            continue;
+          }
+          const auto& site = local.site.value().get<binder::PatternBindingSite>();
+          if (!tree.contains(site.introducer) ||
+              tree.node(site.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
+            return zc::none;
+          }
+          const ast::NodeId annotation(
+              tree.node(site.introducer).payload.words[ast::kVariableDeclaratorTyWord]);
+          if (!tree.contains(annotation)) return zc::none;
+          return signature::resolveClosedSourceType(input.boundModule, input.identities,
+                                                    input.semanticTypes, annotation);
+        }
+      }
       return zc::none;
     }
-    const auto& tree = input.boundModule.tree();
     for (const auto& local : input.boundModule.definitions().ownerLocalBindings()) {
       if (local.binding != value || !local.site.value().is<binder::PatternBindingSite>()) {
         continue;
@@ -352,6 +377,33 @@ bool dependsOnDirectCallLocalInitializer(const BodyCheckingInput& input, ast::No
     }
   }
   return false;
+}
+
+// Returns the declared (annotation) type of the owner local whose declarator
+// initializer is `initializer`, or none when the node is not an owner-local
+// initializer or the declarator carries no closed type annotation. Used to
+// enforce that a primitive-binary initializer's result type matches the local's
+// annotation.
+zc::Maybe<identity::SemanticTypeId> ownerLocalInitializerDeclaredType(
+    const BodyCheckingInput& input, ast::NodeId initializer) {
+  const auto& tree = input.boundModule.tree();
+  for (const auto& local : input.boundModule.definitions().ownerLocalBindings()) {
+    if (!local.site.value().is<binder::PatternBindingSite>()) continue;
+    const auto& site = local.site.value().get<binder::PatternBindingSite>();
+    if (!tree.contains(site.introducer) ||
+        tree.node(site.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
+      continue;
+    }
+    const auto& declarator = tree.node(site.introducer);
+    if (ast::NodeId(declarator.payload.words[ast::kVariableDeclaratorInitWord]) != initializer) {
+      continue;
+    }
+    const ast::NodeId annotation(declarator.payload.words[ast::kVariableDeclaratorTyWord]);
+    if (!tree.contains(annotation)) return zc::none;
+    return signature::resolveClosedSourceType(input.boundModule, input.identities,
+                                              input.semanticTypes, annotation);
+  }
+  return zc::none;
 }
 
 bool isMutableOwnerLocal(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
@@ -875,24 +927,36 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
   const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
   if (!tree.contains(left) || !tree.contains(right)) return zc::none;
-  // Each operand is either a parameter reference (an IdentExpr resolving to a
-  // callable parameter) or a scalar literal. At least one must be a parameter;
-  // a literal-vs-literal comparison has no parameter to lower.
-  const bool leftIsParameter = tree.node(left).kind == ast::SyntaxKind::IdentExpr;
-  const bool rightIsParameter = tree.node(right).kind == ast::SyntaxKind::IdentExpr;
+  // Each operand is either a value reference (an IdentExpr resolving to a
+  // callable parameter or an owner local) or a scalar literal. At least one must
+  // be a reference; a literal-vs-literal operation has no place to lower. The
+  // owner-local operand form supports a primitive binary as a local initializer
+  // whose operand is an earlier local (e.g. `let y: T = x * b`).
+  auto referenceType = [&](ast::NodeId operandNode) -> zc::Maybe<identity::SemanticTypeId> {
+    if (!tree.contains(operandNode) || tree.node(operandNode).kind != ast::SyntaxKind::IdentExpr) {
+      return zc::none;
+    }
+    auto parameter = callableParameterReferenceType(input, operandNode);
+    if (parameter != zc::none) return parameter;
+    return ownerLocalReferenceType(input, operandNode, nodeTypes);
+  };
+  const bool leftIsReference =
+      tree.node(left).kind == ast::SyntaxKind::IdentExpr && referenceType(left) != zc::none;
+  const bool rightIsReference =
+      tree.node(right).kind == ast::SyntaxKind::IdentExpr && referenceType(right) != zc::none;
   const bool leftIsLiteral = isScalarLiteral(tree.node(left).kind);
   const bool rightIsLiteral = isScalarLiteral(tree.node(right).kind);
-  if ((!leftIsParameter && !leftIsLiteral) || (!rightIsParameter && !rightIsLiteral) ||
-      (!leftIsParameter && !rightIsParameter)) {
+  if ((!leftIsReference && !leftIsLiteral) || (!rightIsReference && !rightIsLiteral) ||
+      (!leftIsReference && !rightIsReference)) {
     return zc::none;
   }
-  // Derive the shared operand type from a parameter operand; both operands must
+  // Derive the shared operand type from a reference operand; both operands must
   // agree on this primitive scalar type.
   zc::Maybe<identity::SemanticTypeId> operandType;
-  if (leftIsParameter) {
-    operandType = callableParameterReferenceType(input, left);
-  } else if (rightIsParameter) {
-    operandType = callableParameterReferenceType(input, right);
+  if (leftIsReference) {
+    operandType = referenceType(left);
+  } else if (rightIsReference) {
+    operandType = referenceType(right);
   }
   if (operandType == zc::none) return zc::none;
   identity::SemanticTypeId operand;
@@ -901,7 +965,7 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   // Cross-check one operand's node-type fact (and, for a literal operand, its
   // literal fact) against the shared operand type. The literal template mirrors
   // the call-argument literal validation.
-  auto operandMatches = [&](ast::NodeId operandNode, bool isParameter, bool isLiteral) -> bool {
+  auto operandMatches = [&](ast::NodeId operandNode, bool isReference, bool isLiteral) -> bool {
     zc::Maybe<const checked::NodeTypeMap::Entry&> typeFact;
     for (const auto& entry : nodeTypes) {
       if (entry.key == operandNode) typeFact = entry;
@@ -910,11 +974,11 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
     bool typeOk = false;
     ZC_IF_SOME(entry, typeFact) { typeOk = entry.value == operand; }
     if (!typeOk) return false;
-    if (isParameter) {
-      auto parameterType = callableParameterReferenceType(input, operandNode);
-      bool parameterOk = false;
-      ZC_IF_SOME(value, parameterType) { parameterOk = value == operand; }
-      return parameterOk;
+    if (isReference) {
+      auto resolved = referenceType(operandNode);
+      bool referenceOk = false;
+      ZC_IF_SOME(value, resolved) { referenceOk = value == operand; }
+      return referenceOk;
     }
     if (!isLiteral) return false;
     zc::Maybe<const checked::LiteralFactMap::Entry&> literalFact;
@@ -927,8 +991,8 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
     }
     return literalOk;
   };
-  if (!operandMatches(left, leftIsParameter, leftIsLiteral) ||
-      !operandMatches(right, rightIsParameter, rightIsLiteral)) {
+  if (!operandMatches(left, leftIsReference, leftIsLiteral) ||
+      !operandMatches(right, rightIsReference, rightIsLiteral)) {
     return zc::none;
   }
   // A comparison produces bool; an arithmetic or bitwise operation produces the
@@ -942,6 +1006,13 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
         input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
     if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
     resultType = interned.get<type::SemanticTypeInterned>().id;
+  }
+  // When the binary is an owner-local initializer, its result type must match the
+  // local's declared annotation type; a mismatch (e.g. `let x: bool = a + b`)
+  // fails closed here.
+  auto declaredType = ownerLocalInitializerDeclaredType(input, node);
+  ZC_IF_SOME(declared, declaredType) {
+    if (declared != resultType) return zc::none;
   }
   return PrimitiveBinaryOperationShape{left, right, operand, resultType,
                                        ZC_ASSERT_NONNULL(operation)};
@@ -1923,11 +1994,11 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
         case ast::SyntaxKind::BinaryExpr: {
           // Admit the six relational comparisons (result bool, any position) and
           // the twelve arithmetic/bitwise operators (result operand type, only
-          // outside a condition) where each operand is a scalar parameter
-          // reference or a scalar literal and at least one operand is a
-          // parameter; every other binary shape stays unsupported so its existing
-          // rejection stands. A literal-vs-literal operation has no parameter to
-          // lower and is left unsupported.
+          // outside a condition) where each operand is a scalar value reference
+          // (a parameter or an owner local) or a scalar literal and at least one
+          // operand is a reference; every other binary shape stays unsupported so
+          // its existing rejection stands. A literal-vs-literal operation has no
+          // place to lower and is left unsupported.
           const auto operation =
               static_cast<ast::BinaryOperatorKind>(syntax.payload.words[ast::kBinaryExprOpWord]);
           const bool isComparison = scalarComparisonOperation(operation) != zc::none;
@@ -1941,15 +2012,17 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
           const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
           if (tree.contains(left) && tree.contains(right)) {
-            const bool leftIsParameter =
+            const bool leftIsReference =
                 tree.node(left).kind == ast::SyntaxKind::IdentExpr &&
-                resolvedCallableParameter(boundModule.bindings(), left) != zc::none;
-            const bool rightIsParameter =
+                (resolvedCallableParameter(boundModule.bindings(), left) != zc::none ||
+                 resolvedOwnerLocal(boundModule.bindings(), left) != zc::none);
+            const bool rightIsReference =
                 tree.node(right).kind == ast::SyntaxKind::IdentExpr &&
-                resolvedCallableParameter(boundModule.bindings(), right) != zc::none;
-            const bool leftOk = leftIsParameter || isScalarLiteral(tree.node(left).kind);
-            const bool rightOk = rightIsParameter || isScalarLiteral(tree.node(right).kind);
-            if (leftOk && rightOk && (leftIsParameter || rightIsParameter)) {
+                (resolvedCallableParameter(boundModule.bindings(), right) != zc::none ||
+                 resolvedOwnerLocal(boundModule.bindings(), right) != zc::none);
+            const bool leftOk = leftIsReference || isScalarLiteral(tree.node(left).kind);
+            const bool rightOk = rightIsReference || isScalarLiteral(tree.node(right).kind);
+            if (leftOk && rightOk && (leftIsReference || rightIsReference)) {
               production = BodyProductionKind::PrimitiveBinaryOperation;
             }
           }

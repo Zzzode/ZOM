@@ -1298,18 +1298,35 @@ ZC_TEST("CompilerSessionTest.AcceptsFourSequentialLocalsReturningParameter") {
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
-ZC_TEST("CompilerSessionTest.RejectsBinaryInitializerInSequentialLocalBody") {
-  // A binary-operation local initializer is an explicitly separate slice and is
-  // not admitted here; the body falls to the function-body-unavailable rail.
+ZC_TEST("CompilerSessionTest.AcceptsBinaryInitializerInSequentialLocalBody") {
+  // A primitive arithmetic binary operation is now admitted as a local
+  // initializer (slice 2 of G2), including an operand that references an earlier
+  // local (`x * b`). The full body lowers end-to-end.
   auto session = packageSession(
-      "fun entry(a: i32, b: i32) -> i32 { let x: i32 = a + b; let y: i32 = x; return y; }\n"_zc);
+      "fun entry(a: i32, b: i32) -> i32 { let x: i32 = a + b; let y: i32 = x * b; return y; }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
+}
+
+ZC_TEST("CompilerSessionTest.RejectsLogicalInitializerInSequentialLocalBody") {
+  // A logical short-circuit `&&` is not a primitive binary operation. Its
+  // operand structure is admitted at the surface, but the checker leaves the
+  // BinaryExpr production unsupported and fails closed with a missing-required-
+  // fact invariant. This preserves negative coverage after the arithmetic and
+  // bitwise binary initializers became supported.
+  auto session = packageSession(
+      "fun entry(a: bool, b: bool) -> bool { let x: bool = a && b; let y: bool = x; return y; }\n"_zc);
   SessionDiagnostics captured;
   session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(!session->checkSources());
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::CheckerMissingRequiredFact) == 1);
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
 }
 

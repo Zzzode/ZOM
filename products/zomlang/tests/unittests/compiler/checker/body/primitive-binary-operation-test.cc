@@ -783,4 +783,84 @@ ZC_TEST("PrimitiveBinaryOperation.RejectsLogicalShortCircuitBinaryOperation") {
   ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
 }
 
+ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveArithmeticCallFactForBinaryLocalInitializer") {
+  // `let x: i32 = a + b` as a sequential local initializer produces a
+  // PrimitiveCallable{Add} whose result type is the operand type i32.
+  PrimitiveBinaryFixture fixture(
+      "fun f(a: i32, b: i32) -> i32 { let x: i32 = a + b; let y: i32 = x; return y; }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_REQUIRE(facts.calls().entries().size() == 1);
+  const auto& call = soleEqualityCall(facts);
+  const auto& selected = call.invocation.selected.variant();
+  ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+  ZC_EXPECT(selected.get<checked::PrimitiveCallable>().operation == PrimitiveOperation::Add);
+
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  ZC_EXPECT(call.invocation.calleeType == i32);
+  ZC_EXPECT(call.invocation.resultType == i32);
+  ZC_REQUIRE(call.invocation.arguments.size() == 2);
+  ZC_EXPECT(call.invocation.arguments[0].sourceType == i32);
+  ZC_EXPECT(call.invocation.arguments[1].sourceType == i32);
+}
+
+ZC_TEST("PrimitiveBinaryOperation.EmitsBinaryLocalInitializerReferencingEarlierLocal") {
+  // The second initializer `x * b` references the earlier local x; the checker
+  // resolves it and emits a second PrimitiveCallable{Mul}. Two binary local
+  // initializers yield two primitive call facts.
+  PrimitiveBinaryFixture fixture(
+      "fun f(a: i32, b: i32) -> i32 { let x: i32 = a + b; let y: i32 = x * b; return y; }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_REQUIRE(facts.calls().entries().size() == 2);
+  bool sawAdd = false;
+  bool sawMul = false;
+  for (const auto& entry : facts.calls().entries()) {
+    const auto& selected = entry.value.invocation.selected.variant();
+    ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+    const auto operation = selected.get<checked::PrimitiveCallable>().operation;
+    if (operation == PrimitiveOperation::Add) sawAdd = true;
+    if (operation == PrimitiveOperation::Mul) sawMul = true;
+  }
+  ZC_EXPECT(sawAdd);
+  ZC_EXPECT(sawMul);
+}
+
+ZC_TEST("PrimitiveBinaryOperation.EmitsBoolComparisonBinaryLocalInitializer") {
+  // A relational comparison initializer `let f: bool = a < b` produces a
+  // PrimitiveCallable{Lt} whose result type is bool.
+  PrimitiveBinaryFixture fixture(
+      "fun f(a: i32, b: i32) -> bool { let g: bool = a < b; let h: bool = g; return h; }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_REQUIRE(facts.calls().entries().size() == 1);
+  const auto& call = soleEqualityCall(facts);
+  const auto& selected = call.invocation.selected.variant();
+  ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+  ZC_EXPECT(selected.get<checked::PrimitiveCallable>().operation == PrimitiveOperation::Lt);
+
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  const auto boolType = fixture.primitive(type::semantic::PrimitiveKind::Bool);
+  ZC_EXPECT(call.invocation.calleeType == i32);
+  ZC_EXPECT(call.invocation.resultType == boolType);
+}
+
+ZC_TEST("PrimitiveBinaryOperation.RejectsTypeMismatchedBinaryLocalInitializer") {
+  // `let x: bool = a + b` declares a bool local but the arithmetic result is i32;
+  // the declared type must match the result type, so the body fails closed.
+  PrimitiveBinaryFixture fixture(
+      "fun f(a: i32, b: i32) -> i32 { let x: bool = a + b; let y: i32 = b; return y; }\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
+}
+
+ZC_TEST("PrimitiveBinaryOperation.RejectsLogicalBinaryLocalInitializer") {
+  // A logical `&&` local initializer is not a primitive binary operation and
+  // stays rejected in this slice.
+  PrimitiveBinaryFixture fixture(
+      "fun f(a: bool, b: bool) -> bool { let x: bool = a && b; let y: bool = x; return y; }\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
+}
+
 }  // namespace zomlang::compiler::checker::body
