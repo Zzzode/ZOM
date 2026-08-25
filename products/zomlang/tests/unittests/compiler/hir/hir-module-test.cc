@@ -956,12 +956,12 @@ ZC_TEST("HIR pipeline lowers an equality-comparison conditional condition") {
   ZC_REQUIRE(module.conditionals().size() == 1);
   // The `a == b` condition materializes one equality comparison plus its two
   // operand parameter references; both arms are scalar literals.
-  ZC_REQUIRE(module.equalityComparisons().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
   ZC_REQUIRE(module.parameterReferences().size() == 2);
   ZC_REQUIRE(module.expressions().size() == 2);
   const auto& function = module.functions()[0];
   const auto& conditional = module.conditionals()[0];
-  const auto& equality = module.equalityComparisons()[0];
+  const auto& equality = module.primitiveBinaryOperations()[0];
   const auto& left = module.parameterReferences()[0];
   const auto& right = module.parameterReferences()[1];
   ZC_EXPECT(conditional.condition == equality.node);
@@ -1015,9 +1015,9 @@ ZC_TEST("HIR pipeline lowers a less-than relational conditional condition") {
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.conditionals().size() == 1);
-  ZC_REQUIRE(module.equalityComparisons().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
   const auto& function = module.functions()[0];
-  const auto& equality = module.equalityComparisons()[0];
+  const auto& equality = module.primitiveBinaryOperations()[0];
   // The HIR comparison node carries the relational operator selected by the
   // checked PrimitiveCallable.
   ZC_EXPECT(equality.operation == checker::PrimitiveOperation::Lt);
@@ -1188,7 +1188,7 @@ ZC_TEST("HIR pipeline lowers a parameter-and-literal relational conditional cond
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.conditionals().size() == 1);
-  ZC_REQUIRE(module.equalityComparisons().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
   // The `a < 5` condition materializes the equality comparison, one operand
   // parameter reference (a), and the literal operand `5` into expressions along
   // with the two scalar-literal arms.
@@ -1196,7 +1196,7 @@ ZC_TEST("HIR pipeline lowers a parameter-and-literal relational conditional cond
   ZC_REQUIRE(module.expressions().size() == 3);
   const auto& function = module.functions()[0];
   const auto& conditional = module.conditionals()[0];
-  const auto& equality = module.equalityComparisons()[0];
+  const auto& equality = module.primitiveBinaryOperations()[0];
   const auto& operandRef = module.parameterReferences()[0];
   ZC_EXPECT(conditional.condition == equality.node);
   ZC_EXPECT(equality.operation == checker::PrimitiveOperation::Lt);
@@ -1247,11 +1247,11 @@ ZC_TEST("HIR pipeline lowers a return-position relational comparison") {
   // The comparison result is returned directly: no conditional is produced, only
   // the comparison node plus its two operand parameter references.
   ZC_REQUIRE(module.conditionals().size() == 0);
-  ZC_REQUIRE(module.equalityComparisons().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
   ZC_REQUIRE(module.parameterReferences().size() == 2);
   ZC_REQUIRE(module.expressions().size() == 0);
   const auto& function = module.functions()[0];
-  const auto& equality = module.equalityComparisons()[0];
+  const auto& equality = module.primitiveBinaryOperations()[0];
   const auto& returnStatement = module.returns()[0];
   const auto& left = module.parameterReferences()[0];
   const auto& right = module.parameterReferences()[1];
@@ -1319,9 +1319,9 @@ ZC_TEST("HIR pipeline lowers all six relational operators in return position") {
   for (const auto& testCase : cases) {
     HirPipelineFixture fixture(testCase.source);
     const auto& module = fixture.hirModule();
-    ZC_REQUIRE(module.equalityComparisons().size() == 1);
+    ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
     ZC_REQUIRE(module.conditionals().size() == 0);
-    ZC_EXPECT(module.equalityComparisons()[0].operation == testCase.operation);
+    ZC_EXPECT(module.primitiveBinaryOperations()[0].operation == testCase.operation);
     const auto& function = module.functions()[0];
     const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
     ZC_REQUIRE(builtMir.size() == 1);
@@ -1336,6 +1336,185 @@ ZC_TEST("HIR pipeline lowers all six relational operators in return position") {
       ZC_EXPECT(compareAssign.value.comparisonValue().op == testCase.mirOperator);
     }
   }
+}
+
+ZC_TEST("HIR pipeline lowers a return-position arithmetic operation") {
+  HirPipelineFixture fixture("fun add(a: i32, b: i32) -> i32 { return a + b; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  // The arithmetic result is returned directly: one primitive-binary node plus
+  // its two operand parameter references; no conditional.
+  ZC_REQUIRE(module.conditionals().size() == 0);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 2);
+  ZC_REQUIRE(module.expressions().size() == 0);
+  const auto& function = module.functions()[0];
+  const auto& arithmetic = module.primitiveBinaryOperations()[0];
+  const auto& returnStatement = module.returns()[0];
+  ZC_EXPECT(returnStatement.value == arithmetic.node);
+  ZC_EXPECT(arithmetic.operation == checker::PrimitiveOperation::Add);
+  // The result type is the operand type, not bool.
+  ZC_EXPECT(arithmetic.operandType == function.parameters[0].type);
+  ZC_EXPECT(arithmetic.type == function.resultType);
+  ZC_EXPECT(arithmetic.type == arithmetic.operandType);
+
+  // The body lowers to a single block: StorageLive(result), Assign(result =
+  // a + b), then Return(placeUse(result)). The assignment carries an Arithmetic
+  // rvalue whose result type is the operand type.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> add;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) add = mirFunction;
+  }
+  ZC_REQUIRE(add != zc::none);
+  ZC_IF_SOME(mirFunction, add) {
+    ZC_REQUIRE(mirFunction.locals.size() == 3);
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    ZC_REQUIRE(mirFunction.blocks[0].statements.size() == 2);
+    ZC_EXPECT(mirFunction.blocks[0].statements[0].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirFunction.blocks[0].statements[1].kind() == mir::MirStatementKind::Assign);
+    const auto& addAssign = mirFunction.blocks[0].statements[1].assignmentValue();
+    ZC_REQUIRE(addAssign.value.kind() == mir::MirRvalueKind::Arithmetic);
+    const auto& arithmeticValue = addAssign.value.arithmeticValue();
+    ZC_EXPECT(arithmeticValue.op == mir::MirArithmeticOperator::Add);
+    ZC_EXPECT(arithmeticValue.left.place().local() == mirFunction.locals[0].id);
+    ZC_EXPECT(arithmeticValue.right.place().local() == mirFunction.locals[1].id);
+    // The result type equals the operand type (i32), never bool.
+    ZC_EXPECT(arithmeticValue.resultType == function.resultType);
+    ZC_EXPECT(addAssign.destination.local() == mirFunction.locals[2].id);
+    ZC_REQUIRE(mirFunction.blocks[0].terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_IF_SOME(returnValue, mirFunction.blocks[0].terminator.returnValue().value) {
+      ZC_EXPECT(returnValue.place().local() == mirFunction.locals[2].id);
+    }
+  }
+}
+
+ZC_TEST("HIR pipeline lowers all twelve arithmetic and bitwise operators in return position") {
+  struct Case final {
+    zc::StringPtr source;
+    checker::PrimitiveOperation operation;
+    mir::MirArithmeticOperator mirOperator;
+  };
+  const Case cases[] = {{"fun f(a: i32, b: i32) -> i32 { return a + b; }"_zc,
+                         checker::PrimitiveOperation::Add, mir::MirArithmeticOperator::Add},
+                        {"fun f(a: i32, b: i32) -> i32 { return a - b; }"_zc,
+                         checker::PrimitiveOperation::Sub, mir::MirArithmeticOperator::Sub},
+                        {"fun f(a: i32, b: i32) -> i32 { return a * b; }"_zc,
+                         checker::PrimitiveOperation::Mul, mir::MirArithmeticOperator::Mul},
+                        {"fun f(a: i32, b: i32) -> i32 { return a / b; }"_zc,
+                         checker::PrimitiveOperation::Div, mir::MirArithmeticOperator::Div},
+                        {"fun f(a: i32, b: i32) -> i32 { return a % b; }"_zc,
+                         checker::PrimitiveOperation::Rem, mir::MirArithmeticOperator::Rem},
+                        {"fun f(a: i32, b: i32) -> i32 { return a ** b; }"_zc,
+                         checker::PrimitiveOperation::Pow, mir::MirArithmeticOperator::Pow},
+                        {"fun f(a: i32, b: i32) -> i32 { return a << b; }"_zc,
+                         checker::PrimitiveOperation::Shl, mir::MirArithmeticOperator::Shl},
+                        {"fun f(a: i32, b: i32) -> i32 { return a >> b; }"_zc,
+                         checker::PrimitiveOperation::Shr, mir::MirArithmeticOperator::Shr},
+                        {"fun f(a: i32, b: i32) -> i32 { return a >>> b; }"_zc,
+                         checker::PrimitiveOperation::UShr, mir::MirArithmeticOperator::UShr},
+                        {"fun f(a: i32, b: i32) -> i32 { return a & b; }"_zc,
+                         checker::PrimitiveOperation::BitAnd, mir::MirArithmeticOperator::BitAnd},
+                        {"fun f(a: i32, b: i32) -> i32 { return a | b; }"_zc,
+                         checker::PrimitiveOperation::BitOr, mir::MirArithmeticOperator::BitOr},
+                        {"fun f(a: i32, b: i32) -> i32 { return a ^ b; }"_zc,
+                         checker::PrimitiveOperation::BitXor, mir::MirArithmeticOperator::BitXor}};
+  for (const auto& testCase : cases) {
+    HirPipelineFixture fixture(testCase.source);
+    const auto& module = fixture.hirModule();
+    ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+    ZC_REQUIRE(module.conditionals().size() == 0);
+    ZC_EXPECT(module.primitiveBinaryOperations()[0].operation == testCase.operation);
+    const auto& function = module.functions()[0];
+    const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+    ZC_REQUIRE(builtMir.size() == 1);
+    zc::Maybe<const mir::MirFunction&> lowered;
+    for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+      if (mirFunction.owner == function.definition) lowered = mirFunction;
+    }
+    ZC_REQUIRE(lowered != zc::none);
+    ZC_IF_SOME(mirFunction, lowered) {
+      const auto& addAssign = mirFunction.blocks[0].statements[1].assignmentValue();
+      ZC_REQUIRE(addAssign.value.kind() == mir::MirRvalueKind::Arithmetic);
+      ZC_EXPECT(addAssign.value.arithmeticValue().op == testCase.mirOperator);
+    }
+  }
+}
+
+ZC_TEST("Built MIR arithmetic rvalue byte oracle is stable and mutation sensitive") {
+  HirPipelineFixture fixture("fun add(a: i32, b: i32) -> i32 { return a + b; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::VerifiedBuiltMir&> verified = builtMir[0].builtMir();
+
+  // Pull the live canonical function record for the `a + b` function; no bytes
+  // are fabricated. The Arithmetic rvalue encodes tag 0x04, operator 0x01 (Add),
+  // then two Copy operands (0x01) and the operand result type.
+  zc::Maybe<zc::Array<uint8_t>> arithmeticRecord;
+  ZC_IF_SOME(mir, verified) {
+    ZC_REQUIRE(mir.functions().size() == mir.canonicalFunctionRecords().size());
+    for (size_t index = 0; index < mir.functions().size(); ++index) {
+      if (mir.functions()[index].owner != function.definition) continue;
+      arithmeticRecord = zc::heapArray(mir.canonicalFunctionRecords()[index].asPtr());
+    }
+  }
+  ZC_REQUIRE(arithmeticRecord != zc::none);
+
+  auto framedDigest = [](zc::ArrayPtr<const uint8_t> record) -> zc::String {
+    uint8_t moduleKey[32];
+    for (auto& value : moduleKey) value = uint8_t{0};
+    ZC_IF_SOME(fingerprint, identity::Sha256Digest::fromBytes(zc::arrayPtr(moduleKey))) {
+      const uint8_t moduleId[] = {0xa1};
+      zc::Vector<zc::Array<uint8_t>> records;
+      records.add(zc::heapArray(record));
+      auto encoded =
+          mir::MirRevisionCodec::encodeBuiltFramed(fingerprint, zc::arrayPtr(moduleId), fingerprint,
+                                                   fingerprint, fingerprint, records.asPtr());
+      ZC_REQUIRE(encoded != zc::none);
+      auto digest = identity::sha256(ZC_REQUIRE_NONNULL(encoded).asPtr());
+      ZC_REQUIRE(digest != zc::none);
+      return zc::encodeHex(ZC_REQUIRE_NONNULL(digest).bytes());
+    }
+    ZC_FAIL_REQUIRE("invalid digest fixture");
+  };
+
+  zc::Array<uint8_t> record = zc::mv(ZC_REQUIRE_NONNULL(arithmeticRecord));
+  zc::Maybe<size_t> arithmeticOffset;
+  for (size_t i = 0; i + 2 < record.size(); ++i) {
+    if (record[i] == 0x04 && record[i + 1] == 0x01 && record[i + 2] == 0x01) {
+      ZC_REQUIRE(arithmeticOffset == zc::none);
+      arithmeticOffset = i;
+    }
+  }
+  ZC_REQUIRE(arithmeticOffset != zc::none);
+  const size_t arithmeticKind = ZC_REQUIRE_NONNULL(arithmeticOffset);
+  const size_t operatorByte = arithmeticKind + 1;
+  const size_t leftOperandKind = arithmeticKind + 2;
+  ZC_REQUIRE(record[arithmeticKind] == 0x04);
+  // The operator byte is the Add tag emitted by the live encoder.
+  ZC_REQUIRE(record[operatorByte] == 0x01);
+  ZC_REQUIRE(record[leftOperandKind] == 0x01);
+
+  const auto baseline = framedDigest(record.asPtr());
+  // Mutating the arithmetic operator byte to any other operator changes the
+  // digest, and re-framing the unmutated record reproduces it exactly.
+  {
+    auto mutated = zc::heapArray(record.asPtr());
+    mutated[operatorByte] = 0x02;
+    ZC_EXPECT(framedDigest(mutated.asPtr()) != baseline);
+  }
+  // Mutating the rvalue kind byte (Arithmetic -> Comparison) changes the digest.
+  {
+    auto mutated = zc::heapArray(record.asPtr());
+    mutated[arithmeticKind] = 0x03;
+    ZC_EXPECT(framedDigest(mutated.asPtr()) != baseline);
+  }
+  ZC_EXPECT(framedDigest(record.asPtr()) == baseline);
 }
 
 }  // namespace

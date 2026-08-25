@@ -726,16 +726,20 @@ zc::Maybe<checked::MarkerEvidence> copyEvidence(const BodyCheckingInput& input,
   ZC_UNREACHABLE
 }
 
-/// \brief Shape of an equality comparison between two same-typed scalar parameters.
+/// \brief Shape of a primitive binary operation between two same-typed scalar
+/// operands.
 ///
-/// Restricted to `Eq` over two `IdentExpr` operands that both resolve to
-/// callable parameters of the same primitive scalar type. Anything else leaves
-/// the BinaryExpr production unsupported so the existing rejection stands.
+/// Each operand is a callable-parameter reference or a scalar literal of the
+/// same primitive scalar type, with at least one parameter. `operation` is one
+/// of the six relational comparisons (result type bool) or one of the twelve
+/// arithmetic/bitwise operators (result type equal to `operandType`). Anything
+/// else leaves the BinaryExpr production unsupported so the existing rejection
+/// stands.
 struct PrimitiveBinaryOperationShape final {
   ast::NodeId leftNode;
   ast::NodeId rightNode;
   identity::SemanticTypeId operandType;
-  identity::SemanticTypeId boolType;
+  identity::SemanticTypeId resultType;
   PrimitiveOperation operation;
 };
 
@@ -762,6 +766,61 @@ zc::Maybe<PrimitiveOperation> scalarComparisonOperation(ast::BinaryOperatorKind 
     }
   }
   return zc::none;
+}
+
+/// \brief Projects a binary operator to its primitive operation when it is one
+/// of the twelve arithmetic or bitwise operators of same-typed scalars.
+///
+/// Reuses `OperatorKind::fromBinary` so the operator mapping lives in exactly
+/// one place. The six relational comparisons (handled by
+/// `scalarComparisonOperation`), strict identity, and the logical short-circuit
+/// operators (`&&` / `||`) return none so their existing handling stands. Unlike
+/// a comparison, the result type of these operators is the operand type, not
+/// bool.
+zc::Maybe<PrimitiveOperation> scalarArithmeticOperation(ast::BinaryOperatorKind syntax) {
+  ZC_IF_SOME(kind, OperatorKind::fromBinary(syntax)) {
+    const auto& variant = kind.variant();
+    if (!variant.is<PrimitiveOperation>()) return zc::none;
+    switch (variant.get<PrimitiveOperation>()) {
+      case PrimitiveOperation::Add:
+      case PrimitiveOperation::Sub:
+      case PrimitiveOperation::Mul:
+      case PrimitiveOperation::Div:
+      case PrimitiveOperation::Rem:
+      case PrimitiveOperation::Pow:
+      case PrimitiveOperation::Shl:
+      case PrimitiveOperation::Shr:
+      case PrimitiveOperation::UShr:
+      case PrimitiveOperation::BitAnd:
+      case PrimitiveOperation::BitOr:
+      case PrimitiveOperation::BitXor:
+        return variant.get<PrimitiveOperation>();
+      default:
+        return zc::none;
+    }
+  }
+  return zc::none;
+}
+
+/// \brief True when the node is the condition of an enclosing `if` or `while`
+/// statement. An arithmetic result is not bool, so it is not lowerable as a
+/// condition and stays unsupported there; a comparison result is bool and is
+/// lowerable in both positions.
+bool isConditionPosition(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+                         ast::NodeId node) {
+  const auto& tree = boundModule.tree();
+  bool isCondition = false;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId, const ast::Node& syntax) {
+    if (syntax.kind == ast::SyntaxKind::IfStmt &&
+        ast::NodeId(syntax.payload.words[ast::kIfStmtCondWord]) == node) {
+      isCondition = true;
+    }
+    if (syntax.kind == ast::SyntaxKind::WhileStmt &&
+        ast::NodeId(syntax.payload.words[ast::kWhileStmtCondWord]) == node) {
+      isCondition = true;
+    }
+  });
+  return isCondition;
 }
 
 /// \brief Returns true only for primitive scalar types eligible for `Eq`.
@@ -800,12 +859,19 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   const auto& tree = input.boundModule.tree();
   if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::BinaryExpr) return zc::none;
   const auto& syntax = tree.node(node);
-  // Restrict to the six relational comparisons of same-typed scalars; strict
-  // identity and every arithmetic, bitwise, or logical operator stay
-  // unsupported so their existing rejection stands.
-  auto operation = scalarComparisonOperation(
-      static_cast<ast::BinaryOperatorKind>(syntax.payload.words[ast::kBinaryExprOpWord]));
+  // A comparison result is bool; an arithmetic or bitwise result is the operand
+  // type. A comparison is lowerable in any position; an arithmetic operation is
+  // lowerable only outside a condition, since a non-bool value cannot drive an
+  // `if` / `while` discriminant. Strict identity and the logical short-circuit
+  // operators stay unsupported so their existing rejection stands.
+  const auto binaryOperator =
+      static_cast<ast::BinaryOperatorKind>(syntax.payload.words[ast::kBinaryExprOpWord]);
+  auto comparison = scalarComparisonOperation(binaryOperator);
+  auto arithmetic = scalarArithmeticOperation(binaryOperator);
+  const bool isArithmetic = comparison == zc::none && arithmetic != zc::none;
+  auto operation = comparison != zc::none ? comparison : arithmetic;
   if (operation == zc::none) return zc::none;
+  if (isArithmetic && isConditionPosition(input.boundModule, node)) return zc::none;
   const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
   const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
   if (!tree.contains(left) || !tree.contains(right)) return zc::none;
@@ -865,14 +931,19 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
       !operandMatches(right, rightIsParameter, rightIsLiteral)) {
     return zc::none;
   }
-  auto canonical = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
-      type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::Bool}));
-  if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
-  auto interned =
-      input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
-  if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
-  return PrimitiveBinaryOperationShape{left, right, operand,
-                                       interned.get<type::SemanticTypeInterned>().id,
+  // A comparison produces bool; an arithmetic or bitwise operation produces the
+  // shared operand type.
+  identity::SemanticTypeId resultType = operand;
+  if (!isArithmetic) {
+    auto canonical = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+        type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::Bool}));
+    if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
+    auto interned =
+        input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+    if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
+    resultType = interned.get<type::SemanticTypeInterned>().id;
+  }
+  return PrimitiveBinaryOperationShape{left, right, operand, resultType,
                                        ZC_ASSERT_NONNULL(operation)};
 }
 
@@ -1850,14 +1921,23 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           production = BodyProductionKind::StructLiteral;
           break;
         case ast::SyntaxKind::BinaryExpr: {
-          // Admit the six relational comparisons where each operand is a scalar
-          // parameter reference or a scalar literal and at least one operand is a
+          // Admit the six relational comparisons (result bool, any position) and
+          // the twelve arithmetic/bitwise operators (result operand type, only
+          // outside a condition) where each operand is a scalar parameter
+          // reference or a scalar literal and at least one operand is a
           // parameter; every other binary shape stays unsupported so its existing
-          // rejection stands. A literal-vs-literal comparison has no parameter to
+          // rejection stands. A literal-vs-literal operation has no parameter to
           // lower and is left unsupported.
           const auto operation =
               static_cast<ast::BinaryOperatorKind>(syntax.payload.words[ast::kBinaryExprOpWord]);
-          if (scalarComparisonOperation(operation) == zc::none) break;
+          const bool isComparison = scalarComparisonOperation(operation) != zc::none;
+          const bool isArithmetic =
+              !isComparison && scalarArithmeticOperation(operation) != zc::none;
+          if (!isComparison && !isArithmetic) break;
+          // An arithmetic result is not bool, so it cannot drive an `if` / `while`
+          // condition; it stays unsupported there and the existing rejection
+          // stands.
+          if (isArithmetic && isConditionPosition(boundModule, node)) break;
           const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
           const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
           if (tree.contains(left) && tree.contains(right)) {
@@ -2336,7 +2416,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
         }
         ZC_IF_SOME(value, shape) {
-          producedType = value.boolType;
+          producedType = value.resultType;
           zc::Maybe<checked::CheckedArgumentFact> noReceiver;
           zc::Maybe<signature::ReceiverMode> noReceiverMode;
           zc::Maybe<checked::ReceiverAdjustment> noReceiverAdjustment;
@@ -2357,8 +2437,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                   checked::CheckedCallEnvelope{
                       checked::SelectedCallable(checked::PrimitiveCallable{value.operation}),
                       value.operandType, zc::mv(noReceiver), zc::mv(noReceiverMode),
-                      zc::mv(noReceiverAdjustment), zc::mv(arguments), value.boolType,
-                      value.boolType, zc::mv(noSubstitutions), zc::mv(noWitnesses),
+                      zc::mv(noReceiverAdjustment), zc::mv(arguments), value.resultType,
+                      value.resultType, zc::mv(noSubstitutions), zc::mv(noWitnesses),
                       zc::mv(noRaises)},
                   site.key.sourceSpan.clone()},
               zc::Array<uint8_t>()});

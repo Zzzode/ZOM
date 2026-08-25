@@ -144,6 +144,10 @@ bool validRvalue(const mir::MirFunction& function, const mir::MirRvalue& rvalue)
     const auto& comparison = rvalue.comparisonValue();
     return validOperand(function, comparison.left) && validOperand(function, comparison.right);
   }
+  if (rvalue.kind() == mir::MirRvalueKind::Arithmetic) {
+    const auto& arithmetic = rvalue.arithmeticValue();
+    return validOperand(function, arithmetic.left) && validOperand(function, arithmetic.right);
+  }
   const auto& aggregate = rvalue.nominalAggregateValue();
   if (!aggregate.definition.isValid() || !aggregate.type.isValid()) return false;
   for (const auto& element : aggregate.elements) {

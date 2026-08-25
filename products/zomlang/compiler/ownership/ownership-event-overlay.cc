@@ -1890,7 +1890,8 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
                 2};
             if (rvalue.kind() == mir::MirRvalueKind::Use ||
                 rvalue.kind() == mir::MirRvalueKind::NominalAggregate ||
-                rvalue.kind() == mir::MirRvalueKind::Comparison) {
+                rvalue.kind() == mir::MirRvalueKind::Comparison ||
+                rvalue.kind() == mir::MirRvalueKind::Arithmetic) {
               if (!appendMarkerUse(markerUses, proofs, input, initialization, copy,
                                    statement.assignmentValue().destination.resultType()) ||
                   !appendMarkerUse(markerUses, proofs, input, initialization, linear,
@@ -2208,7 +2209,8 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
                 2};
             if (rvalue.kind() == mir::MirRvalueKind::Use ||
                 rvalue.kind() == mir::MirRvalueKind::NominalAggregate ||
-                rvalue.kind() == mir::MirRvalueKind::Comparison) {
+                rvalue.kind() == mir::MirRvalueKind::Comparison ||
+                rvalue.kind() == mir::MirRvalueKind::Arithmetic) {
               if (!appendMarkerUse(markerUses, proofs, input, initialization, copy,
                                    statement.assignmentValue().destination.resultType()) ||
                   !appendMarkerUse(markerUses, proofs, input, initialization, linear,

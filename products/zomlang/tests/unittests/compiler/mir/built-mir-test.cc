@@ -168,6 +168,30 @@ ZC_TEST("Built MIR value algebras clone every supported projection statement and
   ZC_EXPECT(clonedAggregate.nominalAggregateValue().elements[1].operand.kind() ==
             MirOperandKind::Constant);
 
+  // The Comparison rvalue produces a bool result; the Arithmetic rvalue produces
+  // the operand type. Both retain their operator and operands through clone.
+  auto comparison = MirRvalue::comparison(
+      MirComparisonOperator::Lt, MirOperand::copy(place(firstLocal, type, field, variant)),
+      MirOperand::copy(place(firstLocal, type, field, variant)), type);
+  ZC_EXPECT(comparison.kind() == MirRvalueKind::Comparison);
+  ZC_EXPECT(comparison.comparisonValue().op == MirComparisonOperator::Lt);
+  ZC_EXPECT(comparison.comparisonValue().resultType == type);
+  auto clonedComparison = comparison.clone();
+  ZC_EXPECT(clonedComparison.kind() == MirRvalueKind::Comparison);
+  ZC_EXPECT(clonedComparison.comparisonValue().op == MirComparisonOperator::Lt);
+
+  auto arithmetic = MirRvalue::arithmetic(
+      MirArithmeticOperator::Add, MirOperand::copy(place(firstLocal, type, field, variant)),
+      MirOperand::copy(place(firstLocal, type, field, variant)), type);
+  ZC_EXPECT(arithmetic.kind() == MirRvalueKind::Arithmetic);
+  ZC_EXPECT(arithmetic.arithmeticValue().op == MirArithmeticOperator::Add);
+  ZC_EXPECT(arithmetic.arithmeticValue().resultType == type);
+  ZC_EXPECT(arithmetic.arithmeticValue().left.kind() == MirOperandKind::Copy);
+  auto clonedArithmetic = arithmetic.clone();
+  ZC_EXPECT(clonedArithmetic.kind() == MirRvalueKind::Arithmetic);
+  ZC_EXPECT(clonedArithmetic.arithmeticValue().op == MirArithmeticOperator::Add);
+  ZC_EXPECT(clonedArithmetic.arithmeticValue().resultType == type);
+
   auto assignment = MirStatement::assign(
       place(firstLocal, type, field, variant),
       MirRvalue::use(MirOperand::copy(place(firstLocal, type, field, variant))),

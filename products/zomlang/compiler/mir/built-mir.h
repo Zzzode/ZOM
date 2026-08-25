@@ -227,7 +227,12 @@ private:
 };
 
 enum class MirBorrowKind : uint8_t { Shared = 0x01, Mutable = 0x02 };
-enum class MirRvalueKind : uint8_t { Use = 0x01, NominalAggregate = 0x02, Comparison = 0x03 };
+enum class MirRvalueKind : uint8_t {
+  Use = 0x01,
+  NominalAggregate = 0x02,
+  Comparison = 0x03,
+  Arithmetic = 0x04
+};
 
 /// \brief Closed comparison operator produced by primitive comparison lowering.
 ///
@@ -243,6 +248,30 @@ enum class MirComparisonOperator : uint8_t {
   Le = 0x04,
   Gt = 0x05,
   Ge = 0x06
+};
+
+/// \brief Closed arithmetic and bitwise operator produced by primitive
+/// non-comparison binary lowering.
+///
+/// Covers the twelve arithmetic and bitwise binary operators of same-typed
+/// primitive scalars. Unlike a comparison, the result is the shared operand type
+/// rather than bool. The operator is modeled as a self-describing byte so each
+/// kind is distinguishable in the canonical stream. Logical `&&`/`||` are
+/// excluded (their short-circuit semantics are not a primitive binary op). These
+/// bytes flow through `encodeRvalue`; changing a tag is a codec change.
+enum class MirArithmeticOperator : uint8_t {
+  Add = 0x01,
+  Sub = 0x02,
+  Mul = 0x03,
+  Div = 0x04,
+  Rem = 0x05,
+  Pow = 0x06,
+  Shl = 0x07,
+  Shr = 0x08,
+  UShr = 0x09,
+  BitAnd = 0x0a,
+  BitOr = 0x0b,
+  BitXor = 0x0c
 };
 
 struct MirUseRvalue final {
@@ -263,6 +292,12 @@ struct MirComparisonRvalue final {
   MirOperand right;
   identity::SemanticTypeId resultType;
 };
+struct MirArithmeticRvalue final {
+  MirArithmeticOperator op;
+  MirOperand left;
+  MirOperand right;
+  identity::SemanticTypeId resultType;
+};
 
 /// \brief Canonical target-independent assignment value for the Built MIR boundary.
 class MirRvalue final {
@@ -278,17 +313,23 @@ public:
   ZC_NODISCARD static MirRvalue comparison(MirComparisonOperator op, MirOperand&& left,
                                            MirOperand&& right,
                                            identity::SemanticTypeId resultType) noexcept;
+  ZC_NODISCARD static MirRvalue arithmetic(MirArithmeticOperator op, MirOperand&& left,
+                                           MirOperand&& right,
+                                           identity::SemanticTypeId resultType) noexcept;
   ZC_NODISCARD MirRvalue clone() const;
   ZC_NODISCARD MirRvalueKind kind() const noexcept;
   ZC_NODISCARD const MirUseRvalue& useValue() const;
   ZC_NODISCARD const MirNominalAggregateRvalue& nominalAggregateValue() const;
   ZC_NODISCARD const MirComparisonRvalue& comparisonValue() const;
+  ZC_NODISCARD const MirArithmeticRvalue& arithmeticValue() const;
 
 private:
   explicit MirRvalue(MirUseRvalue&& value) noexcept;
   explicit MirRvalue(MirNominalAggregateRvalue&& value) noexcept;
   explicit MirRvalue(MirComparisonRvalue&& value) noexcept;
-  zc::OneOf<MirUseRvalue, MirNominalAggregateRvalue, MirComparisonRvalue> value;
+  explicit MirRvalue(MirArithmeticRvalue&& value) noexcept;
+  zc::OneOf<MirUseRvalue, MirNominalAggregateRvalue, MirComparisonRvalue, MirArithmeticRvalue>
+      value;
 };
 
 enum class MirInitializationKind : uint8_t { Initialize = 0x01, Overwrite = 0x02 };

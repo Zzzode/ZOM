@@ -209,14 +209,15 @@ bool isAdmittedErrorPostfix(const ast::Tree& tree, ast::NodeId expression) {
                                     isAdmittedDirectCall(tree, operand));
 }
 
-// Structurally admits a relational comparison whose operands are each an
+// Structurally admits a primitive binary operation whose operands are each an
 // identifier (a parameter reference resolved downstream) or a scalar literal,
-// with at least one identifier operand. Which comparison operators are actually
-// supported is a checker decision, so this admits every relational-shaped
-// BinaryExpr and the checker rejects the unsupported operators, keeping the
-// operator-support contract in a single place. A literal-vs-literal comparison
-// has no parameter to lower and fails closed here.
-bool isAdmittedComparison(const ast::Tree& tree, ast::NodeId value) {
+// with at least one identifier operand. This is operator-agnostic: it admits
+// every relational, arithmetic, and bitwise BinaryExpr of this shape and the
+// checker decides which operators are actually supported and in which position
+// (a comparison is lowerable anywhere, an arithmetic result only outside a
+// condition), keeping the operator-support contract in a single place. A
+// literal-vs-literal operation has no parameter to lower and fails closed here.
+bool isAdmittedPrimitiveBinary(const ast::Tree& tree, ast::NodeId value) {
   if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::BinaryExpr) return false;
   const ast::NodeId left(tree.node(value).payload.words[ast::kBinaryExprLhsWord]);
   const ast::NodeId right(tree.node(value).payload.words[ast::kBinaryExprRhsWord]);
@@ -234,7 +235,7 @@ bool isAdmittedReturnValue(const ast::Tree& tree, ast::NodeId value) {
          tree.node(value).kind == ast::SyntaxKind::IdentExpr || isAdmittedDirectCall(tree, value) ||
          isAdmittedReceiverCall(tree, value) || isAdmittedReferenceReborrow(tree, value) ||
          isAdmittedLocalBorrow(tree, value) || isAdmittedErrorPostfix(tree, value) ||
-         isAdmittedComparison(tree, value) ||
+         isAdmittedPrimitiveBinary(tree, value) ||
          tree.node(value).kind == ast::SyntaxKind::UnsafeBlockExpr;
 }
 

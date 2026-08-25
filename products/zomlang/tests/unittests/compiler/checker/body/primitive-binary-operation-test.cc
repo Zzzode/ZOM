@@ -718,4 +718,69 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveComparisonCallFactForReturnPosit
   ZC_EXPECT(binaryNodeIsBool);
 }
 
+ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveArithmeticCallFactWithOperandResultType") {
+  // `return a + b` for two i32 parameters produces a PrimitiveCallable{Add}
+  // whose result type is the operand type (i32), NOT bool. This is the key
+  // difference from a comparison, whose result is always bool.
+  PrimitiveBinaryFixture fixture("fun add(a: i32, b: i32) -> i32 { return a + b; }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_REQUIRE(facts.calls().entries().size() == 1);
+  const auto& call = soleEqualityCall(facts);
+  const auto& selected = call.invocation.selected.variant();
+  ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+  ZC_EXPECT(selected.get<checked::PrimitiveCallable>().operation == PrimitiveOperation::Add);
+
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  const auto boolType = fixture.primitive(type::semantic::PrimitiveKind::Bool);
+  ZC_EXPECT(call.invocation.calleeType == i32);
+  // The result type is the operand type i32, not bool.
+  ZC_EXPECT(call.invocation.successType == i32);
+  ZC_EXPECT(call.invocation.resultType == i32);
+  ZC_EXPECT(call.invocation.resultType != boolType);
+  ZC_REQUIRE(call.invocation.arguments.size() == 2);
+  ZC_EXPECT(call.invocation.arguments[0].sourceType == i32);
+  ZC_EXPECT(call.invocation.arguments[1].sourceType == i32);
+
+  bool binaryNodeIsOperandType = false;
+  for (const auto& entry : facts.nodeTypes().entries()) {
+    if (entry.key == call.node) binaryNodeIsOperandType = entry.value == i32;
+  }
+  ZC_EXPECT(binaryNodeIsOperandType);
+}
+
+ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveBitwiseCallFactWithOperandResultType") {
+  // A bitwise operator behaves like an arithmetic operator: the result is the
+  // operand type, not bool.
+  PrimitiveBinaryFixture fixture("fun band(a: i32, b: i32) -> i32 { return a & b; }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_REQUIRE(facts.calls().entries().size() == 1);
+  const auto& call = soleEqualityCall(facts);
+  const auto& selected = call.invocation.selected.variant();
+  ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+  ZC_EXPECT(selected.get<checked::PrimitiveCallable>().operation == PrimitiveOperation::BitAnd);
+
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  ZC_EXPECT(call.invocation.resultType == i32);
+}
+
+ZC_TEST("PrimitiveBinaryOperation.RejectsArithmeticConditionAsNonBool") {
+  // An arithmetic result is not bool, so it cannot drive an `if` discriminant;
+  // the arithmetic operator stays unsupported in condition position and the body
+  // is rejected exactly as `if (a + b)` was before arithmetic returns landed.
+  PrimitiveBinaryFixture fixture(
+      "fun add(a: i32, b: i32) -> bool { if (a + b) { return true; } else { return false; } }\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
+}
+
+ZC_TEST("PrimitiveBinaryOperation.RejectsLogicalShortCircuitBinaryOperation") {
+  // Logical `&&` has short-circuit semantics and is not a primitive binary
+  // operation; it stays rejected in this slice.
+  PrimitiveBinaryFixture fixture("fun conj(a: bool, b: bool) -> bool { return a && b; }\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
+}
+
 }  // namespace zomlang::compiler::checker::body

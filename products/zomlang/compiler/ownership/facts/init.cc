@@ -333,7 +333,8 @@ bool hasCompleteInitializationPlans(const mir::MirFunction& function,
       const auto rvalueKind = statement.assignmentValue().value.kind();
       if (rvalueKind != mir::MirRvalueKind::Use &&
           rvalueKind != mir::MirRvalueKind::NominalAggregate &&
-          rvalueKind != mir::MirRvalueKind::Comparison) {
+          rvalueKind != mir::MirRvalueKind::Comparison &&
+          rvalueKind != mir::MirRvalueKind::Arithmetic) {
         continue;
       }
       ++expectedPlans;
@@ -410,6 +411,12 @@ bool applyRvalue(const mir::MirFunction& function, const MovePathFunction& paths
     MirEventKey leftEvent = event;
     return applyOperand(function, paths, comparison.left, zc::mv(leftEvent), states) &&
            applyOperand(function, paths, comparison.right, zc::mv(event), states);
+  }
+  if (rvalue.kind() == mir::MirRvalueKind::Arithmetic) {
+    const auto& arithmetic = rvalue.arithmeticValue();
+    MirEventKey leftEvent = event;
+    return applyOperand(function, paths, arithmetic.left, zc::mv(leftEvent), states) &&
+           applyOperand(function, paths, arithmetic.right, zc::mv(event), states);
   }
   const auto& aggregate = rvalue.nominalAggregateValue();
   if (!aggregate.definition.isValid() || !aggregate.type.isValid()) return false;

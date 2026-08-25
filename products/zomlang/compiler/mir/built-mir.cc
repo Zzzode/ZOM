@@ -240,6 +240,8 @@ MirRvalue::MirRvalue(MirNominalAggregateRvalue&& value) noexcept : value(zc::mv(
 
 MirRvalue::MirRvalue(MirComparisonRvalue&& value) noexcept : value(zc::mv(value)) {}
 
+MirRvalue::MirRvalue(MirArithmeticRvalue&& value) noexcept : value(zc::mv(value)) {}
+
 MirRvalue MirRvalue::use(MirOperand&& operand) noexcept {
   return MirRvalue(MirUseRvalue{zc::mv(operand)});
 }
@@ -254,12 +256,22 @@ MirRvalue MirRvalue::comparison(MirComparisonOperator op, MirOperand&& left, Mir
   return MirRvalue(MirComparisonRvalue{op, zc::mv(left), zc::mv(right), resultType});
 }
 
+MirRvalue MirRvalue::arithmetic(MirArithmeticOperator op, MirOperand&& left, MirOperand&& right,
+                                identity::SemanticTypeId resultType) noexcept {
+  return MirRvalue(MirArithmeticRvalue{op, zc::mv(left), zc::mv(right), resultType});
+}
+
 MirRvalue MirRvalue::clone() const {
   if (value.is<MirUseRvalue>()) return use(value.get<MirUseRvalue>().operand.clone());
   if (value.is<MirComparisonRvalue>()) {
     const auto& comparison = value.get<MirComparisonRvalue>();
     return MirRvalue::comparison(comparison.op, comparison.left.clone(), comparison.right.clone(),
                                  comparison.resultType);
+  }
+  if (value.is<MirArithmeticRvalue>()) {
+    const auto& arithmetic = value.get<MirArithmeticRvalue>();
+    return MirRvalue::arithmetic(arithmetic.op, arithmetic.left.clone(), arithmetic.right.clone(),
+                                 arithmetic.resultType);
   }
   const auto& aggregate = value.get<MirNominalAggregateRvalue>();
   zc::Vector<MirNominalAggregateElement> elements;
@@ -272,6 +284,7 @@ MirRvalue MirRvalue::clone() const {
 MirRvalueKind MirRvalue::kind() const noexcept {
   if (value.is<MirUseRvalue>()) return MirRvalueKind::Use;
   if (value.is<MirComparisonRvalue>()) return MirRvalueKind::Comparison;
+  if (value.is<MirArithmeticRvalue>()) return MirRvalueKind::Arithmetic;
   return MirRvalueKind::NominalAggregate;
 }
 
@@ -283,6 +296,10 @@ const MirNominalAggregateRvalue& MirRvalue::nominalAggregateValue() const {
 
 const MirComparisonRvalue& MirRvalue::comparisonValue() const {
   return value.get<MirComparisonRvalue>();
+}
+
+const MirArithmeticRvalue& MirRvalue::arithmeticValue() const {
+  return value.get<MirArithmeticRvalue>();
 }
 
 MirStatement::MirStatement(MirAssignmentStatement&& value,
@@ -795,6 +812,13 @@ bool encodeRvalue(identity::CanonicalEncoder& encoder, const MirRvalue& value,
            encodeOperand(encoder, comparison.right, module, identities, semanticTypes) &&
            encodeType(encoder, comparison.resultType, semanticTypes);
   }
+  if (value.kind() == MirRvalueKind::Arithmetic) {
+    const auto& arithmetic = value.arithmeticValue();
+    encoder.encodeUint8(static_cast<uint8_t>(arithmetic.op));
+    return encodeOperand(encoder, arithmetic.left, module, identities, semanticTypes) &&
+           encodeOperand(encoder, arithmetic.right, module, identities, semanticTypes) &&
+           encodeType(encoder, arithmetic.resultType, semanticTypes);
+  }
   const auto& aggregate = value.nominalAggregateValue();
   if (!encodeDefinition(encoder, aggregate.definition, identities) ||
       !encodeType(encoder, aggregate.type, semanticTypes)) {
@@ -1145,10 +1169,10 @@ zc::Maybe<const hir::HirConditionalExpression&> conditionalFor(const hir::Verifi
   return result;
 }
 
-zc::Maybe<const hir::HirEqualityComparisonExpression&> equalityComparisonFor(
+zc::Maybe<const hir::HirPrimitiveBinaryExpression&> primitiveBinaryFor(
     const hir::VerifiedHirModule& module, hir::HirNodeId node) {
-  zc::Maybe<const hir::HirEqualityComparisonExpression&> result;
-  for (const auto& equality : module.equalityComparisons()) {
+  zc::Maybe<const hir::HirPrimitiveBinaryExpression&> result;
+  for (const auto& equality : module.primitiveBinaryOperations()) {
     if (equality.node != node) continue;
     if (result != zc::none) return zc::none;
     result = equality;
@@ -1172,6 +1196,41 @@ zc::Maybe<MirComparisonOperator> mirComparisonOperatorFor(checker::PrimitiveOper
       return MirComparisonOperator::Gt;
     case checker::PrimitiveOperation::Ge:
       return MirComparisonOperator::Ge;
+    default:
+      return zc::none;
+  }
+}
+
+// Maps the HIR-carried arithmetic or bitwise operator to its Built MIR
+// arithmetic operator. Only the twelve arithmetic and bitwise binary operators
+// of same-typed scalars are lowerable; the six relational comparisons and the
+// logical short-circuit operators return none so their existing handling stands.
+zc::Maybe<MirArithmeticOperator> mirArithmeticOperatorFor(checker::PrimitiveOperation operation) {
+  switch (operation) {
+    case checker::PrimitiveOperation::Add:
+      return MirArithmeticOperator::Add;
+    case checker::PrimitiveOperation::Sub:
+      return MirArithmeticOperator::Sub;
+    case checker::PrimitiveOperation::Mul:
+      return MirArithmeticOperator::Mul;
+    case checker::PrimitiveOperation::Div:
+      return MirArithmeticOperator::Div;
+    case checker::PrimitiveOperation::Rem:
+      return MirArithmeticOperator::Rem;
+    case checker::PrimitiveOperation::Pow:
+      return MirArithmeticOperator::Pow;
+    case checker::PrimitiveOperation::Shl:
+      return MirArithmeticOperator::Shl;
+    case checker::PrimitiveOperation::Shr:
+      return MirArithmeticOperator::Shr;
+    case checker::PrimitiveOperation::UShr:
+      return MirArithmeticOperator::UShr;
+    case checker::PrimitiveOperation::BitAnd:
+      return MirArithmeticOperator::BitAnd;
+    case checker::PrimitiveOperation::BitOr:
+      return MirArithmeticOperator::BitOr;
+    case checker::PrimitiveOperation::BitXor:
+      return MirArithmeticOperator::BitXor;
     default:
       return zc::none;
   }
@@ -1541,7 +1600,7 @@ bool validEqualityConditionalReturnFunction(
     const MirFunction& function, const hir::VerifiedHirModule& hirModule,
     const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& sourceBlock,
     const hir::HirReturnStatement& sourceReturn, const hir::HirConditionalExpression& conditional,
-    const hir::HirEqualityComparisonExpression& equality, const ConditionalArmView& thenArm,
+    const hir::HirPrimitiveBinaryExpression& equality, const ConditionalArmView& thenArm,
     const ConditionalArmView& elseArm, checker::marker::MarkerProofEngine& proofs,
     identity::DefId copy, identity::ModuleId module,
     const checker::CheckerIdentityAuthority& identities,
@@ -1793,7 +1852,7 @@ bool validComparisonReturnFunction(const MirFunction& function,
                                    const hir::HirFunctionDeclaration& declaration,
                                    const hir::HirBlockStatement& sourceBlock,
                                    const hir::HirReturnStatement& sourceReturn,
-                                   const hir::HirEqualityComparisonExpression& comparison,
+                                   const hir::HirPrimitiveBinaryExpression& comparison,
                                    checker::marker::MarkerProofEngine& proofs, identity::DefId copy,
                                    identity::ModuleId module,
                                    const checker::CheckerIdentityAuthority& identities,
@@ -1884,18 +1943,41 @@ bool validComparisonReturnFunction(const MirFunction& function,
     return false;
   }
   const auto& assignment = entry.statements[1].assignmentValue();
+  // A comparison lowers to a Comparison rvalue whose result is bool; an
+  // arithmetic operator lowers to an Arithmetic rvalue whose result equals the
+  // operand type. Resolve the matching operator family and read the two operands
+  // from whichever rvalue was emitted.
+  const auto expectedComparison = mirComparisonOperatorFor(comparison.operation);
+  const auto expectedArithmetic = mirArithmeticOperatorFor(comparison.operation);
   if (assignment.initialization != MirInitializationKind::Initialize ||
       assignment.destination.local() != resultLocal ||
       assignment.destination.rootType() != declaration.resultType ||
       assignment.destination.resultType() != declaration.resultType ||
-      assignment.destination.projections().size() != 0 ||
-      assignment.value.kind() != MirRvalueKind::Comparison) {
+      assignment.destination.projections().size() != 0) {
     return false;
   }
-  const auto& comparisonValue = assignment.value.comparisonValue();
-  auto expectedOperator = mirComparisonOperatorFor(comparison.operation);
-  if (expectedOperator == zc::none || comparisonValue.op != ZC_ASSERT_NONNULL(expectedOperator) ||
-      comparisonValue.resultType != comparison.type) {
+  zc::Maybe<const MirOperand&> rvalueLeft;
+  zc::Maybe<const MirOperand&> rvalueRight;
+  if (assignment.value.kind() == MirRvalueKind::Comparison) {
+    const auto& comparisonValue = assignment.value.comparisonValue();
+    if (expectedComparison == zc::none ||
+        comparisonValue.op != ZC_ASSERT_NONNULL(expectedComparison) ||
+        comparisonValue.resultType != comparison.type) {
+      return false;
+    }
+    rvalueLeft = comparisonValue.left;
+    rvalueRight = comparisonValue.right;
+  } else if (assignment.value.kind() == MirRvalueKind::Arithmetic) {
+    const auto& arithmeticValue = assignment.value.arithmeticValue();
+    // An arithmetic result is the operand type, never bool.
+    if (expectedArithmetic == zc::none ||
+        arithmeticValue.op != ZC_ASSERT_NONNULL(expectedArithmetic) ||
+        arithmeticValue.resultType != comparison.type || comparison.type != operandType) {
+      return false;
+    }
+    rvalueLeft = arithmeticValue.left;
+    rvalueRight = arithmeticValue.right;
+  } else {
     return false;
   }
   auto operandMatches = [&](const MirOperand& operand,
@@ -1918,8 +2000,9 @@ bool validComparisonReturnFunction(const MirFunction& function,
     }
     return false;
   };
-  if (!operandMatches(comparisonValue.left, leftLiteral, leftRef, leftIndex) ||
-      !operandMatches(comparisonValue.right, rightLiteral, rightRef, rightIndex)) {
+  if (rvalueLeft == zc::none || rvalueRight == zc::none ||
+      !operandMatches(ZC_ASSERT_NONNULL(rvalueLeft), leftLiteral, leftRef, leftIndex) ||
+      !operandMatches(ZC_ASSERT_NONNULL(rvalueRight), rightLiteral, rightRef, rightIndex)) {
     return false;
   }
   ZC_IF_SOME(value, entry.terminator.returnValue().value) {
@@ -3929,7 +4012,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       hirModule.borrowEvidenceLease().key().revision.digest() !=
           hirModule.borrowEvidenceRevision().digest() ||
       hirModule.declarations().size() + hirModule.functions().size() +
-              hirModule.conditionals().size() * 2 + hirModule.equalityComparisons().size() +
+              hirModule.conditionals().size() * 2 + hirModule.primitiveBinaryOperations().size() +
               hirModule.loops().size() !=
           hirModule.expressions().size() + hirModule.calls().size() +
               hirModule.aggregates().size() + uninitializedLocalReturnCount + parameterReturnCount +
@@ -5374,7 +5457,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
             // Equality-comparison condition `a == b`: the SwitchInt discriminant
             // is a bool temporary assigned from a Comparison rvalue in the entry
             // block. The two operands are copies of the compared parameter locals.
-            auto equality = equalityComparisonFor(hirModule, conditionalValue.condition);
+            auto equality = primitiveBinaryFor(hirModule, conditionalValue.condition);
             ZC_IF_SOME(equalityValue, equality) {
               if (thenOk && elseOk) {
                 // Each comparison operand is a scalar-literal expression or a
@@ -5600,14 +5683,15 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
         }
       }
       if (block.statements.size() == 1) {
-        // Comparison-return shape: `return <a CMP b>`. The comparison result is
-        // computed into a bool temporary in the single entry block and returned
-        // directly (no branching). Each operand is a scalar-literal constant or a
-        // copy of the compared parameter local.
+        // Primitive-binary-return shape: `return <a OP b>`. The operation result
+        // is computed into the function-result local in the single entry block
+        // and returned directly (no branching). A comparison result is bool; an
+        // arithmetic/bitwise result is the operand type. Each operand is a
+        // scalar-literal constant or a copy of the operand parameter local.
         auto sourceReturn = returnFor(hirModule, block.statements[0]);
         hir::HirNodeId referenceNode;
         ZC_IF_SOME(returnStatement, sourceReturn) { referenceNode = returnStatement.value; }
-        auto comparison = equalityComparisonFor(hirModule, referenceNode);
+        auto comparison = primitiveBinaryFor(hirModule, referenceNode);
         auto definition = identities.definition(declaration.definition);
         ZC_IF_SOME(returnStatement, sourceReturn) {
           ZC_IF_SOME(comparisonValue, comparison) {
@@ -5653,13 +5737,24 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
             }
             ZC_IF_SOME(value, leftLiteral) { operandsResolved &= value.type == operandType; }
             ZC_IF_SOME(value, rightLiteral) { operandsResolved &= value.type == operandType; }
+            // A comparison produces bool; an arithmetic operator produces the
+            // operand type (so resultType == operandType). Exactly one operator
+            // family maps for the HIR operation.
+            const auto comparisonOperator = mirComparisonOperatorFor(comparisonValue.operation);
+            const auto arithmeticOperator = mirArithmeticOperatorFor(comparisonValue.operation);
+            const bool isArithmetic =
+                comparisonOperator == zc::none && arithmeticOperator != zc::none;
+            const bool operatorOk =
+                comparisonOperator != zc::none ||
+                (arithmeticOperator != zc::none && comparisonValue.type == operandType);
             if (operandsResolved && comparisonValue.type == declaration.resultType &&
                 comparisonValue.operandType == operandType && definition != zc::none &&
-                mirComparisonOperatorFor(comparisonValue.operation) != zc::none) {
-              // The result local holds the bool comparison result.
+                operatorOk) {
+              // The result local holds the operation result: bool for a
+              // comparison, the operand type for an arithmetic operation.
               const auto resultLocal =
                   localId(static_cast<uint32_t>(declaration.parameters.size() + 1));
-              const identity::SemanticTypeId boolType = comparisonValue.type;
+              const identity::SemanticTypeId resultType = comparisonValue.type;
               zc::Vector<MirSourceScope> scopes;
               zc::Maybe<MirSourceScopeId> noParent;
               scopes.add(
@@ -5674,8 +5769,8 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
               locals.add(MirLocalDeclaration{resultLocal, MirLocalKind::FunctionResult,
                                              declaration.resultType, scopeId(1),
                                              returnStatement.sourceSpan.clone()});
-              // Build each comparison operand: a literal operand becomes a
-              // constant; a parameter operand becomes a copy of its local.
+              // Build each operand: a literal operand becomes a constant; a
+              // parameter operand becomes a copy of its local.
               auto comparisonOperand =
                   [&](zc::Maybe<const hir::HirScalarLiteralExpression&> literal,
                       zc::Maybe<const hir::HirParameterReferenceExpression&> parameter,
@@ -5709,13 +5804,21 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
               statements.add(
                   MirStatement::storageLive(resultLocal, returnStatement.sourceSpan.clone()));
               zc::Vector<MirProjection> destinationProjections;
+              // A comparison lowers to a Comparison rvalue (result bool); an
+              // arithmetic operator lowers to an Arithmetic rvalue (result the
+              // operand type).
+              auto rvalue =
+                  isArithmetic
+                      ? MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmeticOperator),
+                                              zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                                              zc::mv(ZC_ASSERT_NONNULL(rightOperand)), resultType)
+                      : MirRvalue::comparison(ZC_ASSERT_NONNULL(comparisonOperator),
+                                              zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                                              zc::mv(ZC_ASSERT_NONNULL(rightOperand)), resultType);
               statements.add(MirStatement::assign(
-                  MirPlace(resultLocal, boolType, zc::mv(destinationProjections), boolType),
-                  MirRvalue::comparison(
-                      ZC_ASSERT_NONNULL(mirComparisonOperatorFor(comparisonValue.operation)),
-                      zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
-                      zc::mv(ZC_ASSERT_NONNULL(rightOperand)), boolType),
-                  MirInitializationKind::Initialize, comparisonValue.sourceSpan.clone()));
+                  MirPlace(resultLocal, resultType, zc::mv(destinationProjections), resultType),
+                  zc::mv(rvalue), MirInitializationKind::Initialize,
+                  comparisonValue.sourceSpan.clone()));
               zc::Vector<MirBasicBlock> blocks;
               blocks.add(
                   MirBasicBlock{blockId(1), scopeId(1), zc::mv(statements),
@@ -7160,7 +7263,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       auto parameterReference = parameterReferenceFor(hirModule, expressionNode);
       auto parameterReborrow = parameterReborrowFor(hirModule, expressionNode);
       auto conditional = conditionalFor(hirModule, expressionNode);
-      auto comparisonReturn = equalityComparisonFor(hirModule, expressionNode);
+      auto comparisonReturn = primitiveBinaryFor(hirModule, expressionNode);
       auto sourceLocal = localFor(hirModule, localNode);
       auto sourceOverwrite = localWriteFor(hirModule, overwriteNode);
       auto localReference = localReferenceFor(hirModule, expressionNode);
@@ -7370,7 +7473,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
             // The condition node resolves to either a bare parameter reference or
             // an equality comparison; dispatch to the matching verifier shape.
             auto conditionRef = parameterReferenceFor(hirModule, sourceConditional.condition);
-            auto equality = equalityComparisonFor(hirModule, sourceConditional.condition);
+            auto equality = primitiveBinaryFor(hirModule, sourceConditional.condition);
             ZC_IF_SOME(condRef, conditionRef) {
               if (thenOk && elseOk) {
                 valid = validConditionalReturnFunction(

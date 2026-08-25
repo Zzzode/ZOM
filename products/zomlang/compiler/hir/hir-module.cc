@@ -339,6 +339,43 @@ bool isRelationalBinaryOperator(ast::BinaryOperatorKind syntax) {
   return false;
 }
 
+// Returns true for the twelve arithmetic and bitwise binary operators of
+// same-typed scalars. Unlike a comparison, the result is the operand type, not
+// bool; the logical short-circuit operators (`&&` / `||`) are excluded.
+bool isScalarArithmeticOperation(checker::PrimitiveOperation operation) {
+  switch (operation) {
+    case checker::PrimitiveOperation::Add:
+    case checker::PrimitiveOperation::Sub:
+    case checker::PrimitiveOperation::Mul:
+    case checker::PrimitiveOperation::Div:
+    case checker::PrimitiveOperation::Rem:
+    case checker::PrimitiveOperation::Pow:
+    case checker::PrimitiveOperation::Shl:
+    case checker::PrimitiveOperation::Shr:
+    case checker::PrimitiveOperation::UShr:
+    case checker::PrimitiveOperation::BitAnd:
+    case checker::PrimitiveOperation::BitOr:
+    case checker::PrimitiveOperation::BitXor:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Returns true when the syntactic binary operator is a relational comparison or
+// an arithmetic/bitwise operator, i.e. a primitive binary operation lowerable in
+// return position. Strict identity and the logical short-circuit operators are
+// excluded.
+bool isPrimitiveBinaryOperator(ast::BinaryOperatorKind syntax) {
+  ZC_IF_SOME(kind, checker::OperatorKind::fromBinary(syntax)) {
+    const auto& variant = kind.variant();
+    if (!variant.is<checker::PrimitiveOperation>()) return false;
+    const auto operation = variant.get<checker::PrimitiveOperation>();
+    return isScalarComparisonOperation(operation) || isScalarArithmeticOperation(operation);
+  }
+  return false;
+}
+
 struct PendingConditionalArm final {
   zc::Maybe<checker::checked::CanonicalConstValue> literal;
   zc::Maybe<HirParameterReferenceExpression> parameter;
@@ -748,13 +785,14 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     value = innerValue;
   }
   if (statements.size == 1) {
-    // A single `return <BinaryExpr comparison>` returns the comparison result
-    // directly. The BinaryExpr is one of the six relational operators over two
+    // A single `return <BinaryExpr>` returns the operation result directly. The
+    // BinaryExpr is one of the six relational comparisons (result bool) or one of
+    // the twelve arithmetic/bitwise operators (result operand type) over two
     // operands, each an IdentExpr parameter reference or a scalar literal, with
     // at least one parameter. Which operators are supported is a checker
-    // decision; the shape only requires the relational structure.
+    // decision; the shape only requires the primitive-binary structure.
     if (tree.contains(value) && tree.node(value).kind == ast::SyntaxKind::BinaryExpr &&
-        isRelationalBinaryOperator(static_cast<ast::BinaryOperatorKind>(
+        isPrimitiveBinaryOperator(static_cast<ast::BinaryOperatorKind>(
             tree.node(value).payload.words[ast::kBinaryExprOpWord]))) {
       const ast::NodeId left(tree.node(value).payload.words[ast::kBinaryExprLhsWord]);
       const ast::NodeId right(tree.node(value).payload.words[ast::kBinaryExprRhsWord]);
@@ -1196,7 +1234,7 @@ struct HirModuleCandidate::Impl final {
        zc::Vector<HirDirectCallExpression>&& calls,
        zc::Vector<HirReceiverCallExpression>&& receiverCalls,
        zc::Vector<HirUnsafeBlockExpression>&& unsafeBlocks,
-       zc::Vector<HirEqualityComparisonExpression>&& equalityComparisons,
+       zc::Vector<HirPrimitiveBinaryExpression>&& primitiveBinaryOperations,
        zc::Vector<HirConditionalExpression>&& conditionals,
        zc::Vector<HirLoopStatement>&& loops) noexcept
       : checkedModule(zc::mv(checkedModule)),
@@ -1218,7 +1256,7 @@ struct HirModuleCandidate::Impl final {
         calls(zc::mv(calls)),
         receiverCalls(zc::mv(receiverCalls)),
         unsafeBlocks(zc::mv(unsafeBlocks)),
-        equalityComparisons(zc::mv(equalityComparisons)),
+        primitiveBinaryOperations(zc::mv(primitiveBinaryOperations)),
         conditionals(zc::mv(conditionals)),
         loops(zc::mv(loops)) {}
 
@@ -1241,7 +1279,7 @@ struct HirModuleCandidate::Impl final {
   zc::Vector<HirDirectCallExpression> calls;
   zc::Vector<HirReceiverCallExpression> receiverCalls;
   zc::Vector<HirUnsafeBlockExpression> unsafeBlocks;
-  zc::Vector<HirEqualityComparisonExpression> equalityComparisons;
+  zc::Vector<HirPrimitiveBinaryExpression> primitiveBinaryOperations;
   zc::Vector<HirConditionalExpression> conditionals;
   zc::Vector<HirLoopStatement> loops;
 };
@@ -1272,7 +1310,7 @@ struct VerifiedHirModule::Impl final {
        zc::Vector<HirDirectCallExpression>&& calls,
        zc::Vector<HirReceiverCallExpression>&& receiverCalls,
        zc::Vector<HirUnsafeBlockExpression>&& unsafeBlocks,
-       zc::Vector<HirEqualityComparisonExpression>&& equalityComparisons,
+       zc::Vector<HirPrimitiveBinaryExpression>&& primitiveBinaryOperations,
        zc::Vector<HirConditionalExpression>&& conditionals,
        zc::Vector<HirLoopStatement>&& loops) noexcept
       : admittedCheckedModule(zc::mv(admittedCheckedModule)),
@@ -1312,7 +1350,7 @@ struct VerifiedHirModule::Impl final {
         calls(zc::mv(calls)),
         receiverCalls(zc::mv(receiverCalls)),
         unsafeBlocks(zc::mv(unsafeBlocks)),
-        equalityComparisons(zc::mv(equalityComparisons)),
+        primitiveBinaryOperations(zc::mv(primitiveBinaryOperations)),
         conditionals(zc::mv(conditionals)),
         loops(zc::mv(loops)) {
     for (const auto& interface : this->admittedCheckedModule.visibleImportedInterfaces()) {
@@ -1357,7 +1395,7 @@ struct VerifiedHirModule::Impl final {
   zc::Vector<HirDirectCallExpression> calls;
   zc::Vector<HirReceiverCallExpression> receiverCalls;
   zc::Vector<HirUnsafeBlockExpression> unsafeBlocks;
-  zc::Vector<HirEqualityComparisonExpression> equalityComparisons;
+  zc::Vector<HirPrimitiveBinaryExpression> primitiveBinaryOperations;
   zc::Vector<HirConditionalExpression> conditionals;
   zc::Vector<HirLoopStatement> loops;
 };
@@ -1525,9 +1563,9 @@ zc::ArrayPtr<const HirConditionalExpression> VerifiedHirModule::conditionals() c
   return impl->conditionals.asPtr();
 }
 
-zc::ArrayPtr<const HirEqualityComparisonExpression> VerifiedHirModule::equalityComparisons()
+zc::ArrayPtr<const HirPrimitiveBinaryExpression> VerifiedHirModule::primitiveBinaryOperations()
     const noexcept {
-  return impl->equalityComparisons.asPtr();
+  return impl->primitiveBinaryOperations.asPtr();
 }
 
 zc::ArrayPtr<const HirLoopStatement> VerifiedHirModule::loops() const noexcept {
@@ -1727,7 +1765,7 @@ zc::Maybe<zc::String> VerifiedHirModule::dump() const {
     append(output, zc::encodeHex(resultType.get<type::SemanticTypeLookup>().key().bytes()));
     append(output, "\n"_zc);
   }
-  for (const auto& equality : impl->equalityComparisons) {
+  for (const auto& equality : impl->primitiveBinaryOperations) {
     auto resultType = impl->semanticTypes.get(equality.type);
     if (!resultType.is<type::SemanticTypeLookup>()) return zc::none;
     append(output, "equality h"_zc);
@@ -2434,13 +2472,21 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         const auto& callFact = facts.calls().entries()[callSlot].value;
         const auto& call = callFact.invocation;
         const auto& selected = call.selected.variant();
-        // The comparison call fact must match the relational-comparison contract
-        // exactly for one of the six supported operators, producing the bool
-        // result type (the function's return type here).
-        if (operandType != rightType || callFact.node != shape.value ||
-            !selected.is<checker::checked::PrimitiveCallable>() ||
-            !isScalarComparisonOperation(
-                selected.get<checker::checked::PrimitiveCallable>().operation) ||
+        // The call fact must match the primitive-binary contract exactly for one
+        // of the supported operators. A comparison produces the bool return type;
+        // an arithmetic/bitwise operator produces the operand type, so for
+        // arithmetic the function return type (resultType) equals operandType.
+        const auto selectedOperation =
+            selected.is<checker::checked::PrimitiveCallable>()
+                ? zc::Maybe<checker::PrimitiveOperation>(
+                      selected.get<checker::checked::PrimitiveCallable>().operation)
+                : zc::Maybe<checker::PrimitiveOperation>(zc::none);
+        bool operationSupported = false;
+        ZC_IF_SOME(op, selectedOperation) {
+          operationSupported = isScalarComparisonOperation(op) ||
+                               (isScalarArithmeticOperation(op) && resultType == operandType);
+        }
+        if (operandType != rightType || callFact.node != shape.value || !operationSupported ||
             call.calleeType != operandType || call.receiver != zc::none ||
             call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
             call.arguments.size() != 2 || call.arguments[0].sourceNode != shape.comparisonLeft ||
@@ -4300,7 +4346,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
   zc::Vector<HirDirectCallExpression> calls;
   zc::Vector<HirReceiverCallExpression> receiverCalls;
   zc::Vector<HirUnsafeBlockExpression> unsafeBlocks;
-  zc::Vector<HirEqualityComparisonExpression> equalityComparisons;
+  zc::Vector<HirPrimitiveBinaryExpression> primitiveBinaryOperations;
   zc::Vector<HirConditionalExpression> conditionals;
   zc::Vector<HirLoopStatement> loops;
   uint32_t next = 1;
@@ -4434,7 +4480,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                        value.returnSpan.clone()});
         materializeOperand(leftId, equality.left);
         materializeOperand(rightId, equality.right);
-        equalityComparisons.add(HirEqualityComparisonExpression{
+        primitiveBinaryOperations.add(HirPrimitiveBinaryExpression{
             equalityId, leftId, rightId, equality.operandType, equality.type,
             HirValueCategory::Value, equality.operation, equality.sourceSpan.clone()});
         materializeArm(thenValueId, conditional.thenArm);
@@ -4536,7 +4582,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
           HirReturnStatement{returnId, value.resultType, comparisonId, value.returnSpan.clone()});
       materializeOperand(leftId, comparison.left);
       materializeOperand(rightId, comparison.right);
-      equalityComparisons.add(HirEqualityComparisonExpression{
+      primitiveBinaryOperations.add(HirPrimitiveBinaryExpression{
           comparisonId, leftId, rightId, comparison.operandType, comparison.type,
           HirValueCategory::Value, comparison.operation, comparison.sourceSpan.clone()});
       continue;
@@ -4720,7 +4766,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       zc::mv(localWrites), zc::mv(localReferences), zc::mv(localFieldProjections),
       zc::mv(parameterReferences), zc::mv(parameterIndexes), zc::mv(parameterReborrows),
       zc::mv(localBorrows), zc::mv(calls), zc::mv(receiverCalls), zc::mv(unsafeBlocks),
-      zc::mv(equalityComparisons), zc::mv(conditionals), zc::mv(loops));
+      zc::mv(primitiveBinaryOperations), zc::mv(conditionals), zc::mv(loops));
   return ir::IrOperationResult<HirModuleCandidate>::verified(HirModuleCandidate(zc::mv(impl)));
 }
 
@@ -4752,7 +4798,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   size_t aggregateElementCount = 0;
   const auto unsafeBlockCount = candidate.impl->unsafeBlocks.size();
   const auto conditionalCount = candidate.impl->conditionals.size();
-  const auto equalityConditionalCount = candidate.impl->equalityComparisons.size();
+  const auto equalityConditionalCount = candidate.impl->primitiveBinaryOperations.size();
   const auto loopCount = candidate.impl->loops.size();
   for (const auto& write : candidate.impl->localWrites) {
     if (write.field != zc::none) ++localFieldWriteCount;
@@ -5707,8 +5753,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);
           }
-          zc::Maybe<const HirEqualityComparisonExpression&> equalityValue;
-          for (const auto& equality : candidate.impl->equalityComparisons) {
+          zc::Maybe<const HirPrimitiveBinaryExpression&> equalityValue;
+          for (const auto& equality : candidate.impl->primitiveBinaryOperations) {
             if (equality.node != hirId(expectedFunction + 4)) continue;
             if (equalityValue != zc::none) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -5908,10 +5954,18 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         const auto& callFact = facts.calls().entries()[callSlot].value;
         const auto& call = callFact.invocation;
         const auto& selected = call.selected.variant();
+        // A comparison return produces a bool result; an arithmetic/bitwise
+        // return produces the operand type (resultType == operandType). Accept
+        // either family for the supported operators.
+        const bool operationSupported =
+            selected.is<checker::checked::PrimitiveCallable>() &&
+            (isScalarComparisonOperation(
+                 selected.get<checker::checked::PrimitiveCallable>().operation) ||
+             (isScalarArithmeticOperation(
+                  selected.get<checker::checked::PrimitiveCallable>().operation) &&
+              resultType == operandType));
         if (resultType != function.resultType || operandType != rightType ||
-            callFact.node != source.value || !selected.is<checker::checked::PrimitiveCallable>() ||
-            !isScalarComparisonOperation(
-                selected.get<checker::checked::PrimitiveCallable>().operation) ||
+            callFact.node != source.value || !operationSupported ||
             call.calleeType != operandType || call.receiver != zc::none ||
             call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
             call.arguments.size() != 2 || call.arguments[0].sourceNode != source.comparisonLeft ||
@@ -5981,8 +6035,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
-        zc::Maybe<const HirEqualityComparisonExpression&> comparisonValue;
-        for (const auto& comparison : candidate.impl->equalityComparisons) {
+        zc::Maybe<const HirPrimitiveBinaryExpression&> comparisonValue;
+        for (const auto& comparison : candidate.impl->primitiveBinaryOperations) {
           if (comparison.node != hirId(expectedFunction + 4)) continue;
           if (comparisonValue != zc::none) {
             return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -8405,7 +8459,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       zc::mv(candidate.impl->parameterIndexes), zc::mv(candidate.impl->parameterReborrows),
       zc::mv(candidate.impl->localBorrows), zc::mv(candidate.impl->calls),
       zc::mv(candidate.impl->receiverCalls), zc::mv(candidate.impl->unsafeBlocks),
-      zc::mv(candidate.impl->equalityComparisons), zc::mv(candidate.impl->conditionals),
+      zc::mv(candidate.impl->primitiveBinaryOperations), zc::mv(candidate.impl->conditionals),
       zc::mv(candidate.impl->loops));
   return ir::IrOperationResult<VerifiedHirModule>::verified(VerifiedHirModule(zc::mv(impl)));
 }

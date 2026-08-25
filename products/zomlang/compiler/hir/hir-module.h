@@ -251,16 +251,19 @@ struct HirUnsafeBlockExpression final {
   identity::SourceSpan sourceSpan;
 };
 
-/// \brief One checked relational comparison of two parameter references retained
-/// as a conditional condition.
+/// \brief One checked primitive binary operation over two scalar operands
+/// retained as a conditional condition or a returned value.
 ///
-/// Both operands are parameter-reference node ids materialized in
-/// `parameterReferences`. The operand type is the shared scalar type carried by
-/// the checked comparison call fact and the result type is bool. `operation` is
-/// one of the six relational comparisons (`Eq`, `Ne`, `Lt`, `Le`, `Gt`, `Ge`)
-/// selected by the checked `PrimitiveCallable`. MIR lowering assigns the
-/// comparison into a bool temporary consumed as the SwitchInt discriminant.
-struct HirEqualityComparisonExpression final {
+/// Both operands are node ids materialized in `parameterReferences` (a parameter
+/// reference) or `expressions` (a scalar literal); at least one is a parameter.
+/// `operandType` is the shared scalar type of the operands. `operation`
+/// distinguishes the two families: a relational comparison (`Eq`, `Ne`, `Lt`,
+/// `Le`, `Gt`, `Ge`) produces a bool result, so `type` is bool; an arithmetic or
+/// bitwise operator (`Add`..`BitXor`) produces the operand type, so `type` equals
+/// `operandType`. A comparison result feeds a SwitchInt discriminant (condition
+/// position) or a bool Return; an arithmetic result feeds a Return only, since a
+/// non-bool value is rejected as a condition.
+struct HirPrimitiveBinaryExpression final {
   HirNodeId node;
   HirNodeId left;
   HirNodeId right;
@@ -275,7 +278,7 @@ struct HirEqualityComparisonExpression final {
 ///
 /// The condition is a bool expression; each branch yields a scalar return value. The condition
 /// node id resolves either to a `HirParameterReferenceExpression` (a bare bool parameter) or to a
-/// `HirEqualityComparisonExpression` (an `a == b` comparison of two same-typed scalar parameters).
+/// `HirPrimitiveBinaryExpression` (an `a == b` comparison of two same-typed scalar parameters).
 /// MIR lowering emits a SwitchInt terminator on the entry block, one block per branch, and a Return
 /// terminator in each branch block.
 struct HirConditionalExpression final {
@@ -411,7 +414,7 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const HirDirectCallExpression> calls() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirReceiverCallExpression> receiverCalls() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirUnsafeBlockExpression> unsafeBlocks() const noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const HirEqualityComparisonExpression> equalityComparisons()
+  ZC_NODISCARD zc::ArrayPtr<const HirPrimitiveBinaryExpression> primitiveBinaryOperations()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirConditionalExpression> conditionals() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirLoopStatement> loops() const noexcept;
