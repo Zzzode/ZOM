@@ -2289,36 +2289,57 @@ bool validParameterReturnFunction(const MirFunction& function,
                                   const hir::HirParameterReferenceExpression& reference,
                                   checker::marker::MarkerProofEngine& proofs,
                                   identity::DefId copy) {
+  // The returned parameter must be one of the declared parameters; its local is
+  // the matching leading parameter local. N == 1, K == 0 is the byte-identical
+  // single-parameter special case.
+  size_t referencedIndex = 0;
+  bool referencedFound = false;
+  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+    if (declaration.parameters[i].key == reference.parameter &&
+        declaration.parameters[i].type == reference.type) {
+      referencedIndex = i;
+      referencedFound = true;
+      break;
+    }
+  }
   if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
       function.resultType != declaration.resultType || function.sourceScopes.size() != 1 ||
-      function.locals.size() != 1 || function.blocks.size() != 1 ||
-      declaration.parameters.size() != 1 || declaration.body != sourceBlock.node ||
-      sourceBlock.statements.size() != 1 || sourceBlock.statements[0] != sourceReturn.node ||
-      sourceReturn.value != reference.node || reference.type != declaration.resultType ||
-      reference.category != hir::HirValueCategory::Place ||
-      declaration.parameters[0].key != reference.parameter ||
-      declaration.parameters[0].type != reference.type) {
+      function.locals.size() != declaration.parameters.size() || function.blocks.size() != 1 ||
+      declaration.parameters.size() == 0 || !referencedFound ||
+      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 1 ||
+      sourceBlock.statements[0] != sourceReturn.node || sourceReturn.value != reference.node ||
+      reference.type != declaration.resultType ||
+      reference.category != hir::HirValueCategory::Place) {
     return false;
   }
   const auto& scope = function.sourceScopes[0];
-  const auto& parameter = function.locals[0];
   const auto& block = function.blocks[0];
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
-      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || parameter.id != localId(1) ||
-      parameter.kind != MirLocalKind::Parameter || parameter.type != reference.type ||
-      parameter.sourceScope != scope.id ||
-      !sameSpan(parameter.sourceSpan, declaration.parameters[0].sourceSpan) ||
-      block.id != blockId(1) || block.sourceScope != scope.id || block.statements.size() != 0 ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan)) {
+    return false;
+  }
+  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+    const auto& parameterLocal = function.locals[i];
+    if (parameterLocal.id != localId(static_cast<uint32_t>(i + 1)) ||
+        parameterLocal.kind != MirLocalKind::Parameter ||
+        parameterLocal.type != declaration.parameters[i].type ||
+        parameterLocal.sourceScope != scope.id ||
+        !sameSpan(parameterLocal.sourceSpan, declaration.parameters[i].sourceSpan)) {
+      return false;
+    }
+  }
+  const auto referencedLocal = localId(static_cast<uint32_t>(referencedIndex + 1));
+  if (block.id != blockId(1) || block.sourceScope != scope.id || block.statements.size() != 0 ||
       block.terminator.kind() != MirTerminatorKind::Return ||
       block.terminator.returnValue().value == zc::none ||
       !sameSpan(block.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
   }
   ZC_IF_SOME(value, block.terminator.returnValue().value) {
-    return matchesPlaceUse(value, proofs, copy, parameter.type) &&
-           value.place().local() == parameter.id && value.place().rootType() == parameter.type &&
-           value.place().resultType() == parameter.type && value.place().projections().size() == 0;
+    return matchesPlaceUse(value, proofs, copy, reference.type) &&
+           value.place().local() == referencedLocal && value.place().rootType() == reference.type &&
+           value.place().resultType() == reference.type && value.place().projections().size() == 0;
   }
   return false;
 }
@@ -6786,30 +6807,46 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
             continue;
           }
           ZC_IF_SOME(parameterReference, reference) {
-            if (declaration.parameters.size() != 1 ||
-                declaration.parameters[0].key != parameterReference.parameter ||
-                declaration.parameters[0].type != parameterReference.type ||
-                parameterReference.type != declaration.resultType ||
+            // A parameter-return function `fun f(p0..pN-1) -> R { return pK; }`
+            // lowers every parameter to a leading parameter local; the returned
+            // parameter is copied/moved as a place-use of its own local. The
+            // single-parameter case (N == 1, K == 0) is the byte-identical
+            // special case this generalization preserves.
+            size_t referencedIndex = 0;
+            bool referencedFound = false;
+            for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+              if (declaration.parameters[i].key == parameterReference.parameter &&
+                  declaration.parameters[i].type == parameterReference.type) {
+                referencedIndex = i;
+                referencedFound = true;
+                break;
+              }
+            }
+            if (!referencedFound || parameterReference.type != declaration.resultType ||
                 parameterReference.category != hir::HirValueCategory::Place ||
                 definition == zc::none) {
               return rejectMir<BuiltMirCandidate>(
                   ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact, module,
                   declaration.definition, identities, static_cast<uint32_t>(pending.size() + 1));
             }
+            const auto referencedLocal = localId(static_cast<uint32_t>(referencedIndex + 1));
             zc::Vector<MirSourceScope> scopes;
             zc::Maybe<MirSourceScopeId> noParent;
             scopes.add(
                 MirSourceScope{scopeId(1), zc::mv(noParent), declaration.sourceSpan.clone()});
             zc::Vector<MirLocalDeclaration> locals;
-            locals.add(MirLocalDeclaration{localId(1), MirLocalKind::Parameter,
-                                           parameterReference.type, scopeId(1),
-                                           declaration.parameters[0].sourceSpan.clone()});
+            for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+              locals.add(MirLocalDeclaration{localId(static_cast<uint32_t>(i + 1)),
+                                             MirLocalKind::Parameter,
+                                             declaration.parameters[i].type, scopeId(1),
+                                             declaration.parameters[i].sourceSpan.clone()});
+            }
             zc::Vector<MirStatement> statements;
             zc::Vector<MirProjection> returnProjections;
             auto returnOperand =
                 placeUse(proofs, copy,
-                         MirPlace(localId(1), parameterReference.type, zc::mv(returnProjections),
-                                  parameterReference.type));
+                         MirPlace(referencedLocal, parameterReference.type,
+                                  zc::mv(returnProjections), parameterReference.type));
             if (returnOperand == zc::none) {
               return rejectMir<BuiltMirCandidate>(
                   ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact, module,

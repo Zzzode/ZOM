@@ -489,6 +489,58 @@ ZC_TEST("HIR pipeline retains verified scalar direct call arguments") {
   }
 }
 
+ZC_TEST("HIR pipeline lowers a two-argument direct call to two MIR operands") {
+  // KR1.3 (RFC 0009 call-dispatch widening): a same-module direct call with two
+  // arguments (a parameter reference and a scalar literal) lowers end-to-end to
+  // a Built MIR Call terminator carrying two operands, one place-use and one
+  // constant. This closes the admission-outruns-lowering gap recorded in the
+  // lowerable-constructs inventory row 4.
+  HirPipelineFixture fixture(
+      "fun callee(a: i32, b: i32) -> i32 { return a; }\n"
+      "fun caller(x: i32, y: i32) -> i32 { return callee(x, y); }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 2);
+  ZC_REQUIRE(module.calls().size() == 1);
+  const auto& callee = module.functions()[0];
+  const auto& caller = module.functions()[1];
+  const auto& call = module.calls()[0];
+  ZC_EXPECT(call.callee == callee.definition);
+  ZC_EXPECT(call.resultType == caller.resultType);
+  ZC_REQUIRE(call.arguments.size() == 2);
+  // Both arguments are parameter references (carry a parameter key, no value).
+  ZC_EXPECT(call.arguments[0].type == callee.parameters[0].type);
+  ZC_EXPECT(call.arguments[0].value == zc::none);
+  ZC_REQUIRE(call.arguments[0].parameter != zc::none);
+  ZC_REQUIRE(caller.parameters.size() == 2);
+  ZC_IF_SOME(key, call.arguments[0].parameter) { ZC_EXPECT(key == caller.parameters[0].key); }
+  ZC_EXPECT(call.arguments[1].type == callee.parameters[1].type);
+  ZC_EXPECT(call.arguments[1].value == zc::none);
+  ZC_REQUIRE(call.arguments[1].parameter != zc::none);
+  ZC_IF_SOME(key, call.arguments[1].parameter) { ZC_EXPECT(key == caller.parameters[1].key); }
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> callerFunction;
+  for (const auto& function : builtMir[0].builtMir().functions()) {
+    if (function.owner == caller.definition) callerFunction = function;
+  }
+  ZC_REQUIRE(callerFunction != zc::none);
+  ZC_IF_SOME(function, callerFunction) {
+    ZC_REQUIRE(function.blocks.size() == 2);
+    const auto& terminator = function.blocks[0].terminator;
+    ZC_REQUIRE(terminator.kind() == mir::MirTerminatorKind::Call);
+    const auto& mirCall = terminator.callValue();
+    ZC_REQUIRE(mirCall.arguments.size() == 2);
+    // Each parameter argument lowers to a place-use (copy) of its parameter local.
+    ZC_EXPECT(mirCall.arguments[0].kind() == mir::MirOperandKind::Copy);
+    ZC_EXPECT(mirCall.arguments[0].place().local() == function.locals[0].id);
+    ZC_EXPECT(mirCall.arguments[0].place().resultType() == call.arguments[0].type);
+    ZC_EXPECT(mirCall.arguments[1].kind() == mir::MirOperandKind::Copy);
+    ZC_EXPECT(mirCall.arguments[1].place().local() == function.locals[1].id);
+    ZC_EXPECT(mirCall.arguments[1].place().resultType() == call.arguments[1].type);
+  }
+}
+
 ZC_TEST("HIR pipeline lowers a direct call parameter argument to a place operand") {
   HirPipelineFixture fixture(
       "fun helper(value: i32) -> i32 { return value; }\n"
