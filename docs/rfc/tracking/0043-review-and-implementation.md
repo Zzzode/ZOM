@@ -49,6 +49,84 @@ and the RFC is prepared for REVIEW.
 Outcome: RFC 0043 remains `DRAFT`. No frontmatter status change and no RFC index
 change were made. No approval, decision, or transition is recorded.
 
+### 2026-08-27 Upstream Determinability Cross-Check (held in DRAFT)
+
+A second pass re-examined whether the three `before REVIEW` Open Questions are
+determinately answerable from the already-`ACCEPTED` upstream RFC 0016
+(`docs/rfc/0016-context-bound-target-registry-verification.md`) and RFC 0021
+(`docs/rfc/0021-target-aware-lir-and-llvm-translation.md`), rather than being
+genuine design choices. The RFC honesty rules forbid inventing an answer merely
+to clear the REVIEW gate, so each question was tested against exact upstream
+sections. All three remain genuine open design decisions:
+
+1. **Toolchain-discovery record for macOS SDK and Linux sysroot** (owners
+   `ir-backend`, `module-system`, `runtime-memory`) is NOT determined by
+   accepted upstream. RFC 0016's only discovery contract is its "LLVM build and
+   CI contract" (RFC 0016 lines 1908-1978), which governs how CMake locates the
+   LLVM package used to *build the ZOM compiler* (the `LLVM_DIR` /
+   `llvm-config` provenance chain and `find_package(LLVM ...)`), not how a
+   compiled ZOM binary discovers a target SDK or sysroot for *linking a user
+   program*. RFC 0016's `VerifiedTargetAuthorityBundle` (RFC 0016 lines
+   556-562) carries only the runtime-capability snapshot, target registry,
+   code-generation capability registry, and runtime ABI contract registry; it
+   defines no SDK, sysroot, CRT, startup-object, linker-driver, or
+   toolchain-closure field (repository grep over RFC 0016 for
+   `sysroot|sdk|linker|crt|startup|driver` returns no such record). RFC 0021
+   explicitly makes this a downstream-RFC responsibility: its Non-Goals defer
+   "product link planning, linker invocation, runtime archive closure,
+   executable manifests, or binary publication. Those contracts require a
+   separate RFC after verified object emission exists." (RFC 0021 lines
+   122-124). The verified toolchain-closure record RFC 0043 needs is therefore
+   a new design this RFC must author itself; upstream neither fixes nor
+   constrains its shape. OPEN.
+
+2. **Which RFC 0010 failure rows cover linker-process failures** (owner
+   `error-system`) is NOT determined by accepted upstream. RFC 0010's
+   `IrFailurePhase` is a closed enum whose sixteen tags
+   (`0x01` through `0x10`, RFC 0010 lines 1101-1106 and 1177) end at
+   `ObjectEmission` and `FeatureBoundaryVerification`; there is no linking,
+   link-plan, or executable-publication phase. Its `BackendOperation` enum
+   (RFC 0010 lines 1132-1134) ends at `EmitObject`, and the `ObjectEmission`
+   row's only capability kind is `OutputCreationFailed` (RFC 0010 line 1265),
+   defined as failure to create the requested object output, not a linker
+   subprocess exit, missing link output, or malformed executable. RFC 0021 does
+   not model a linker either (it stops at verified object emission). Whether a
+   linker-process failure reuses `OutputCreationFailed` under `ObjectEmission`,
+   reuses another existing kind, or requires a new phase/kind is precisely the
+   `error-system` design decision RFC 0043 defers; accepted upstream does not
+   assign it. The RFC's own body asserts it "adds no failure branch or
+   diagnostic code" (RFC 0043 Reference-Level Design, Inputs And Link Plan),
+   but does not yet demonstrate that any existing RFC 0010 row actually covers a
+   linker-process failure, and no accepted upstream row does. OPEN.
+
+3. **Which native architecture lanes exist for mandatory CI execution** (owner
+   `verification`) is NOT determined by accepted upstream. RFC 0016 fixes the
+   compiler *build-host* runner labels `macos-15` and `ubuntu-24.04` and the
+   package sources (Homebrew `llvm@22`, apt.llvm.org LLVM 22), RFC 0016 lines
+   1969-1977, and fixes the code-generation *backend* set to LLVM `X86` and
+   `AArch64` (RFC 0016 line 1459). Neither statement fixes the host CPU
+   architecture of those runners nor commits to a native *execution* lane per
+   architecture. RFC 0043's Operational Readiness and Acceptance Criteria
+   require producing and *executing* a minimal ZOM executable on each supported
+   native architecture and inspecting cross-target artifacts without executing
+   them; that lane matrix (for example whether an `aarch64` native execution
+   runner is available in CI, versus `aarch64` only as a cross-published,
+   inspected-not-run target) is a `verification` availability and policy
+   decision. RFC 0016's build-host and backend contract does not settle it.
+   The current repository CI (`.github/workflows/CI.yml`) still uses
+   `ubuntu-latest` and `macos-latest` with no `aarch64` execution lane, so
+   there is no existing lane matrix to cite as the answer either. OPEN.
+
+Conclusion of this pass: none of the three questions is mechanically resolvable
+from accepted RFC 0016 or RFC 0021. Resolving them by choosing a
+toolchain-closure schema, a linker-failure classification, and a CI execution
+lane matrix is exactly the design work the questions defer, and inventing those
+answers to satisfy the REVIEW precondition would violate the honesty rule.
+RFC 0043 is therefore held in `DRAFT`. `discussion` and `tracking-issue` remain
+`TBD`, no upstream snapshot pins are bound, and no RFC index or frontmatter
+status change is made. `python3 scripts/check-rfc.py` passes clean (46 proposal
+RFCs) for the current tree, with no RFC 0043 finding.
+
 ## Owner Review Matrix
 
 | Owner | State | Review Surface |
@@ -67,7 +145,13 @@ earlier approvals.
 
 Decision: Pending. RFC 0043 is held in `DRAFT`. The three `before REVIEW` Open
 Questions must be resolved and `discussion`/`tracking-issue` bound before a
-`DRAFT -> REVIEW` transition is legal. No implementation is authorized by this
+`DRAFT -> REVIEW` transition is legal. A 2026-08-27 upstream determinability
+cross-check confirmed that none of the three questions is settled by the
+accepted RFC 0016 or RFC 0021 contracts: the target toolchain-closure/SDK/
+sysroot record, the linker-process failure classification, and the native CI
+execution lane matrix are each genuine design decisions this RFC must make and
+route to their owners, not mechanical drift resolvable from upstream. They were
+therefore not invented in this pass. No implementation is authorized by this
 tracker.
 
 ## Implementation Tracker
