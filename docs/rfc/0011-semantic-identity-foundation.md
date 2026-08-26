@@ -1113,7 +1113,7 @@ handles. A raw repository-wide text search is not an acceptance gate.
 
 | Area | Paths | Owner |
 |---|---|---|
-| Agent routing for identity ownership | `AGENTS.md`, `.agents/subagents/README.md`, `.agents/subagents/manifest.yaml` | `task-router` |
+| Agent routing for identity ownership | `AGENTS.md`, `.codex/subagents/README.md`, `.codex/subagents/manifest.yaml` | `task-router` |
 | RFC governance | `docs/rfc/0011-semantic-identity-foundation.md`, `docs/rfc/tracking/0011-review-and-implementation.md`, `docs/rfc/README.md` | `rfc` |
 | Parsed declaration inventory | `products/zomlang/compiler/lexer/**`, `products/zomlang/compiler/parser/**`, `products/zomlang/compiler/ast/**` | `lexer-parser` |
 | Shared identity values, keys, encoders, registries, and invariant facts | `products/zomlang/compiler/identity/**` | `module-system` |

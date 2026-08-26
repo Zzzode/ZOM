@@ -1285,7 +1285,7 @@ both `S3` and `S6` pass their focused gates. RFC 0018 remains
 
 | Area | Paths | Owner |
 |---|---|---|
-| Routing validation | `.agents/subagents/README.md`, `.agents/subagents/manifest.yaml`, `.agents/subagents/task-router.md`, `.agents/subagents/ir-backend.md`, `.agents/subagents/module-system.md`, `.agents/subagents/spec-audit.md`, `.agents/subagents/verification.md`, `AGENTS.md` | `task-router` |
+| Routing validation | `.codex/subagents/README.md`, `.codex/subagents/manifest.yaml`, `.codex/subagents/task-router.md`, `.codex/subagents/ir-backend.md`, `.codex/subagents/module-system.md`, `.codex/subagents/spec-audit.md`, `.codex/subagents/verification.md`, `AGENTS.md` | `task-router` |
 | RFC governance | `docs/rfc/**` | `rfc` |
 | Header syntax preservation | `products/zomlang/compiler/ast/**`, `products/zomlang/compiler/parser/**` | `lexer-parser` |
 | Binder identities, semantic types, and Checker conversion | `products/zomlang/compiler/binder/binding-*`, `products/zomlang/compiler/binder/body-binding.*`, `products/zomlang/compiler/binder/closure-free-variables.*`, `products/zomlang/compiler/binder/definition-inventory.*`, `products/zomlang/compiler/binder/frozen-definition-inventory.*`, `products/zomlang/compiler/binder/import-binding.*`, `products/zomlang/compiler/binder/scope-arena.*`, `products/zomlang/compiler/binder/verified-bound-module-input.*`, `products/zomlang/compiler/binder/internal/binding-skeleton.h`, `products/zomlang/compiler/checker/**`, `products/zomlang/compiler/type/**` | `binder-checker` |

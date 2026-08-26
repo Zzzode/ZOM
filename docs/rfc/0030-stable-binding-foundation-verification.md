@@ -645,7 +645,7 @@ is not rewritten for this transaction.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC authority | `docs/rfc/0025-*` through `docs/rfc/0030-*`; affected trackers for RFCs 0017 through 0020 and 0025 through 0030; `docs/rfc/README.md` | `rfc` |
-| Task routing | `.agents/subagents/manifest.yaml`, `.agents/subagents/task-router.md`, `.agents/subagents/verification.md`, `.agents/subagents/binder-checker.md` | `task-router` |
+| Task routing | `.codex/subagents/manifest.yaml`, `.codex/subagents/task-router.md`, `.codex/subagents/verification.md`, `.codex/subagents/binder-checker.md` | `task-router` |
 | Stable contextual contracts | `products/zomlang/compiler/driver/contextual-binding-key.*`, `products/zomlang/compiler/driver/active-definition-authority-query.*`, `products/zomlang/compiler/driver/active-definition-authority-session.{h,cc}`, `products/zomlang/compiler/driver/session/compiler-session.cc`, `products/zomlang/compiler/driver/named-item-query.*`, `products/zomlang/compiler/driver/owner-body-query.*`, `products/zomlang/compiler/driver/CMakeLists.txt` | `module-system` |
 | Stable Binder foundation | `products/zomlang/compiler/binder/stable-binding-*`, `products/zomlang/compiler/binder/CMakeLists.txt` | `binder-checker` |
 | Diagnostic schema contract | `products/zomlang/compiler/diagnostics/**` | `error-system` |

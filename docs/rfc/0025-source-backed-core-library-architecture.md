@@ -3480,7 +3480,7 @@ implementing the core compiler contract.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/**` | `rfc` |
-| Path ownership and core-library gate routing | `AGENTS.md`, `.agents/subagents/**` | `task-router` |
+| Path ownership and core-library gate routing | `AGENTS.md`, `.codex/subagents/**` | `task-router` |
 | Removal of the unused intrinsic token and parser-facing inventory alignment | `products/zomlang/compiler/lexer/**`, `products/zomlang/compiler/parser/**`, `products/zomlang/compiler/ast/**`, `docs/spec/ZomLexer.g4`, `docs/spec/ZomParser.g4` | `lexer-parser` |
 | Core signatures, role authority, final interface publication, and non-module binder inputs | `products/zomlang/compiler/checker/**` excluding `checker-source-diagnostics.def`, `products/zomlang/compiler/type/**`, `products/zomlang/compiler/binder/**` excluding `binder/module-*` | `binder-checker` |
 | Toolchain identity, source admission, package target and dependency-alias reservation, module graph, module binder paths, queries, borrow-evidence driver files, driver build registration, and session publication | `products/zomlang/compiler/identity/**`, `products/zomlang/compiler/source/**`, `products/zomlang/compiler/query/**`, `products/zomlang/compiler/binder/module-*`, `products/zomlang/compiler/driver/**`, `products/zomcore/Zom.toml` | `module-system` |

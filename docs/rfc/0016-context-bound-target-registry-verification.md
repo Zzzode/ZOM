@@ -2104,7 +2104,7 @@ Repository gates reject:
 | Area | Paths | Owner |
 |---|---|---|
 | RFC proposal, tracker, and index | `docs/rfc/0016-*`, `docs/rfc/tracking/0016-*`, `docs/rfc/README.md` | `rfc` |
-| Ownership routing | `.agents/subagents/manifest.yaml`, `.agents/subagents/README.md`, `.agents/subagents/task-router.md`, `.agents/subagents/ir-backend.md`, `.agents/subagents/spec-audit.md`, `.agents/subagents/verification.md` | `task-router` |
+| Ownership routing | `.codex/subagents/manifest.yaml`, `.codex/subagents/README.md`, `.codex/subagents/task-router.md`, `.codex/subagents/ir-backend.md`, `.codex/subagents/spec-audit.md`, `.codex/subagents/verification.md` | `task-router` |
 | Context authority, session ordering, and registry lifetime | `products/zomlang/compiler/identity/**`, `products/zomlang/compiler/driver/compiler-session.*`, `products/zomlang/compiler/driver/package/**` | `module-system` |
 | Target registry, LLVM validation, panic mapping, and target-profile invariants | `products/zomlang/compiler/ir/**` | `ir-backend` |
 | CLI target construction | `products/zomlang/utils/zomc/**` | `ir-backend` |

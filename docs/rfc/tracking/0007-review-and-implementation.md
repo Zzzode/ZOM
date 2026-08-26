@@ -908,7 +908,7 @@ The `RFC0007 Ownership Rail Enablement Transaction` completed on 2026-07-24:
   and retagged the remaining `CastKind` cases contiguously from `0x01` through
   `0x0d` (commit `c89b1f2f`).
 - task-router granted `verification` ownership of the RFC 0007 architecture and
-  coverage paths in `.agents/subagents/manifest.yaml`.
+  coverage paths in `.codex/subagents/manifest.yaml`.
 - RFC 0007 frontmatter transitioned `ACCEPTED -> IMPLEMENTING` with an
   implementation pointer and a matching Status History row.
 

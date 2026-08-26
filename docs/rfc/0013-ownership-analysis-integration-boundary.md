@@ -812,7 +812,7 @@ flowchart LR
 
 | Area | Paths | Owner |
 |---|---|---|
-| Task routing and cross-RFC escalation | `.agents/subagents/**` | `task-router` |
+| Task routing and cross-RFC escalation | `.codex/subagents/**` | `task-router` |
 | RFC overlay governance and RFC 0007 dependency | `docs/rfc/0005-type-system-architecture.md`, `docs/rfc/0007-borrow-lifetime-ownership-checker.md`, `docs/rfc/0008-compiler-session-cross-module.md`, `docs/rfc/0010-intermediate-representation-pipeline.md`, `docs/rfc/0013-ownership-analysis-integration-boundary.md`, `docs/rfc/tracking/0005-review-and-implementation.md`, `docs/rfc/tracking/0007-review-and-implementation.md`, `docs/rfc/tracking/0008-review-and-implementation.md`, `docs/rfc/tracking/0010-review-and-implementation.md`, `docs/rfc/tracking/0013-review-and-implementation.md`, `docs/rfc/README.md` | `rfc` |
 | Borrow shape, receiver/parameter validation, and signature facts | `products/zomlang/compiler/checker/**`, `products/zomlang/compiler/type/**` | `binder-checker` |
 | Borrow surface, canonical module interface, aliases, and re-exports | `products/zomlang/compiler/driver/**`, `products/zomlang/compiler/symbol/**` | `module-system` |

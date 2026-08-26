@@ -556,7 +556,7 @@ bound-module root.
 | Contextual membership, query runtime, graph capability, session, and module interface | `products/zomlang/compiler/query/**`; `products/zomlang/compiler/identity/**`; `products/zomlang/compiler/driver/**`; `products/zomlang/compiler/binder/module-*` | `module-system` |
 | Diagnostic schemas | `products/zomlang/compiler/diagnostics/**`; `products/zomlang/compiler/checker/checker-source-diagnostics.def` | `error-system` |
 | Current-state architecture audit | `docs/design/compiler-contracts.md`; affected language specification surfaces | `spec-audit` |
-| Tests, gates, coverage, and CI | paths assigned to `verification` in `.agents/subagents/manifest.yaml` | `verification` |
+| Tests, gates, coverage, and CI | paths assigned to `verification` in `.codex/subagents/manifest.yaml` | `verification` |
 
 ## Security And Safety Impact
 

@@ -3449,7 +3449,7 @@ must select the first legal stage above and publish no forbidden value.
 
 | Area | Paths | Owner |
 |---|---|---|
-| Gate routing authority | `.agents/subagents/manifest.yaml` | `task-router` |
+| Gate routing authority | `.codex/subagents/manifest.yaml` | `task-router` |
 | RFC governance and review tracking | `docs/rfc/0007-borrow-lifetime-ownership-checker.md`, `docs/rfc/tracking/0007-review-and-implementation.md`, `docs/rfc/README.md` | `rfc` |
 | Checked marker, capture, receiver, unsafe, logical-drop, cast-resource-route, and ownership input facts | `products/zomlang/compiler/checker/**`, `products/zomlang/compiler/type/**` | `binder-checker` |
 | Borrow-evidence repository capability, lease resolution, and session transaction wiring | `products/zomlang/compiler/driver/**` | `module-system` |
@@ -3464,7 +3464,7 @@ The three proposed verification-owned script paths are
 `scripts/check-ownership-architecture.py`,
 `scripts/run-ownership-coverage.py`, and
 `scripts/check-ownership-coverage.py`. They do not exist and are not currently
-granted to the `verification` owner by `.agents/subagents/manifest.yaml`.
+granted to the `verification` owner by `.codex/subagents/manifest.yaml`.
 Before any implementation starts, `task-router` must grant those exact paths
 to `verification` in the coordinated transition below. This RFC does not
 authorize differently named scripts or a broad `scripts/**` grant.
@@ -3562,7 +3562,7 @@ only when all of these governance records exist:
    the unset `implementation` field with its tracker link, and name the
    participating direct-replacement series
    for ownership-driven cleanup consumption; and
-5. `task-router` updates `.agents/subagents/manifest.yaml` to grant
+5. `task-router` updates `.codex/subagents/manifest.yaml` to grant
    `scripts/check-ownership-architecture.py`,
    `scripts/run-ownership-coverage.py`, and
    `scripts/check-ownership-coverage.py` to `verification` before any gate file

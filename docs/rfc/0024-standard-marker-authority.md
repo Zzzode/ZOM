@@ -910,7 +910,7 @@ implementation transaction.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/**` | `rfc` |
-| Product ownership routing | `.agents/subagents/manifest.yaml`, `.agents/subagents/README.md` | `task-router` |
+| Product ownership routing | `.codex/subagents/manifest.yaml`, `.codex/subagents/README.md` | `task-router` |
 | Standard prelude declarations | `products/zomcore/src/**` | `runtime-memory` |
 | Standard prelude manifest and admission | `products/zomcore/Zom.toml`, `products/zomlang/compiler/driver/**` | `module-system` |
 | Standard prelude build and install layout | `CMakeLists.txt`, `products/zomcore/CMakeLists.txt`, `products/zomlang/utils/zomc/CMakeLists.txt` | `ir-backend` |
@@ -1062,7 +1062,7 @@ queries. No runtime service, network access, or persistent cache is added.
 3. Route `products/zomcore/src/**` to `runtime-memory`,
    `products/zomcore/Zom.toml` to `module-system`, and
    `products/zomcore/CMakeLists.txt` to `ir-backend` in
-   `.agents/subagents/manifest.yaml` and `.agents/subagents/README.md`. In the
+   `.codex/subagents/manifest.yaml` and `.codex/subagents/README.md`. In the
    same routing transaction, exclude
    `products/zomlang/compiler/checker/checker-source-diagnostics.def` from
    `binder-checker` and add that exact path to `error-system`; route the

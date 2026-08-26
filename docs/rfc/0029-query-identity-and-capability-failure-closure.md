@@ -1088,7 +1088,7 @@ smaller non-landing review patches without changing the atomic landing set.
 
 | Area | Paths | Owner |
 |---|---|---|
-| Routing and acceptance synchronization | `.agents/subagents/**`; `docs/rfc/**` | `task-router` |
+| Routing and acceptance synchronization | `.codex/subagents/**`; `docs/rfc/**` | `task-router` |
 | RFC process and synchronized status | `docs/rfc/**` | `rfc` |
 | Query identity, evaluator, descriptors, callers, and session | `products/zomlang/compiler/query/**`; `products/zomlang/compiler/driver/**` | `module-system` |
 | Stable keys, key failures, stable identity admission, and schema | `products/zomlang/compiler/binder/**` | `binder-checker` |

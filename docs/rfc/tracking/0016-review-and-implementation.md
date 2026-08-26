@@ -9,10 +9,18 @@ approvers.
 | Field | Value |
 |---|---|
 | Status | `REVIEW` |
-| Proposal SHA-256 | `e421dc3bdeeead9d9ad7b504539b8a63cfde19380693ea2524aa7cf830a81d1b` |
+| Proposal SHA-256 | `4d2a285807604fcacade8ec372425c0deebc26087a8890f93799d395284fb988` |
 | Review manager | `rfc` |
 | Decision | `TBD` |
 | Implementation | Blocked until `ACCEPTED` |
+
+The prior REVIEW snapshot was
+`e421dc3bdeeead9d9ad7b504539b8a63cfde19380693ea2524aa7cf830a81d1b`. The
+repository-wide `.agents/subagents` -> `.codex/subagents` path correction edited
+this proposal's Repository Impact row, superseding that snapshot (see the
+2026-08-25 snapshot rebinding record below). The six approvals recorded against
+`e421dc3b` do not carry forward unchanged, and the `ir-backend` `zom-v1`
+objection still stands against the new snapshot.
 
 The previous draft baseline was
 `a9d1995e60ac443e303ed01ac3f4bbe76a1e954feee1a9b0c192ba0fe1db314a`.
@@ -129,13 +137,14 @@ were independently confirmed against the proposal bytes:
   digests are derived over the `zom-v1` bytes, so both the name ban and the
   drift must be resolved together, and every affected preimage, length, and
   SHA-256 re-derived from the live encoder.
-- `task-router` (blocking): the Repository Impact ownership-routing row lists
-  `.agents/subagents/**` for the manifest, README, and per-owner files, but
-  `.agents/` does not exist; the live routing files are under `.codex/subagents/**`
-  and are covered by no row. This is a census gap from a repository-wide stale
-  path (17 proposal RFCs and this README's acceptance gates also cite
-  `.agents/subagents/`), not a defect unique to RFC 0016, so its correction is a
-  separate repository-wide doc fix.
+- `task-router` (blocking, now resolved): the Repository Impact
+  ownership-routing row listed a nonexistent `.agents/subagents/**` path for the
+  manifest, README, and per-owner files, while the live routing files are under
+  `.codex/subagents/**`, leaving the real files covered by no row. This was a
+  census gap from a repository-wide stale path (17 proposal RFCs and this
+  README's acceptance gates also cited the old path). It has since been
+  corrected repository-wide (`.agents/subagents` -> `.codex/subagents`),
+  including in this proposal's Repository Impact row.
 
 Non-blocking notes raised by approving owners: the module-system Repository
 Impact row spells `driver/compiler-session.*` while the live path is
@@ -144,10 +153,26 @@ the CI contract pins exact LLVM `22.1.8` while sourcing a rolling Homebrew
 `llvm@22` formula. Neither blocks acceptance.
 
 Because acceptance requires unanimous required-owner approval and two owners
-object, RFC 0016 does not transition to `ACCEPTED`. The `zom-v1` naming and
-codec-drift objection requires an edit to the proposal bytes (a new REVIEW
-snapshot and re-review); the `.agents` path objection is a repository-wide
-correction tracked separately.
+object, RFC 0016 does not transition to `ACCEPTED`. The `task-router` path
+objection has been resolved by the repository-wide `.agents/subagents` ->
+`.codex/subagents` correction (which also produced a new proposal snapshot,
+below). The `ir-backend` `zom-v1` naming and codec-drift objection is not yet
+resolved: it requires re-deriving the affected golden preimages, lengths, and
+digests - including the embedded RFC 0010 `TargetSpecId` values in the profile
+and registry records - from the live encoder, which this record does not
+fabricate. RFC 0016 stays in `REVIEW`.
+
+### 2026-08-25 Snapshot rebinding after path correction
+
+The repository-wide `.agents/subagents` -> `.codex/subagents` correction edited
+this proposal's Repository Impact row, so the REVIEW snapshot moved from
+`e421dc3b...` to SHA-256
+`4d2a285807604fcacade8ec372425c0deebc26087a8890f93799d395284fb988`. This change
+resolves only the `task-router` objection; it does not touch the codec golden
+values, so the `ir-backend` `zom-v1` objection still stands against the new
+snapshot. Every required owner must review the new snapshot before acceptance;
+the six prior approvals were against `e421dc3b` and do not carry forward
+unchanged. Re-review is required.
 
 ## Decision Record
 
@@ -237,7 +262,7 @@ not a proposal defect.
 - `task-router` - focus: single-owner path census and routing consistency.
   Review `Repository Impact` and confirm every listed path family maps to
   exactly one owner with no gap or overlap. Open question to confirm: the
-  ownership-routing paths are written under `.agents/subagents/**` while the
+  ownership-routing paths are written under `.codex/subagents/**` while the
   live tree uses `.codex/subagents/**`; confirm whether this is an intended
   post-acceptance move or a path that must be corrected before acceptance.
 - `rfc` - focus: RFC structure, dependency direction, status governance.

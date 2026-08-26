@@ -216,7 +216,7 @@ The repository rule forbids `zc::Vector<zc::Own<T>>`, while the virtual `Type`
 hierarchy structurally requires this representation for heterogeneous child
 types. The audited type and checker directories contain 58 such sites.
 
-Evidence: `.agents/rules/cpp-zc.md:64`,
+Evidence: `.codex/rules/cpp-zc.md:64`,
 `products/zomlang/compiler/type/function-type.h:39`, and
 `products/zomlang/compiler/type/type-env.cc:119`.
 

@@ -1621,9 +1621,9 @@ documentation and routing transaction covers:
 - RFC 0029 and its tracker for unforgeable database identity, request-result
   separation, canonical capability failures, identity-site provenance, stable
   identity admission, complete contextual keys, and implementation order;
-- `.agents/subagents/manifest.yaml`, `.agents/subagents/README.md`,
-  `.agents/subagents/task-router.md`, and
-  `.agents/subagents/verification.md` for exact ownership of the new
+- `.codex/subagents/manifest.yaml`, `.codex/subagents/README.md`,
+  `.codex/subagents/task-router.md`, and
+  `.codex/subagents/verification.md` for exact ownership of the new
   descriptor generator and architecture gate; and
 - `docs/rfc/README.md`.
 
@@ -1698,7 +1698,7 @@ These scopes are mandatory technical reviews but do not claim file ownership:
 
 | Area | Paths | Owner |
 |---|---|---|
-| Task and verification routing | `.agents/subagents/manifest.yaml`; `.agents/subagents/README.md`; `.agents/subagents/task-router.md`; `.agents/subagents/verification.md` | `task-router` |
+| Task and verification routing | `.codex/subagents/manifest.yaml`; `.codex/subagents/README.md`; `.codex/subagents/task-router.md`; `.codex/subagents/verification.md` | `task-router` |
 | RFC governance and synchronized overlays | `docs/rfc/**` | `rfc` |
 | Query types, database, descriptors, and inventory | `products/zomlang/compiler/query/**` | `module-system` |
 | Identity and driver query descriptors | `products/zomlang/compiler/identity/**`; `products/zomlang/compiler/driver/**` | `module-system` |

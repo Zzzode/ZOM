@@ -194,7 +194,7 @@ tracking-issue: TBD
 
 `review-manager` is the person or subagent responsible for driving review to a
 decision. `required-owners` lists every subagent owner from the Repository
-Impact table and must use ids from `.agents/subagents/manifest.yaml`.
+Impact table and must use ids from `.codex/subagents/manifest.yaml`.
 `approvers` lists the owners who accepted the proposal.
 
 `discussion` and `tracking-issue` may be `TBD` only while the RFC is in
@@ -235,7 +235,7 @@ An RFC may move to `REVIEW` only when these gates are satisfied:
 - `discussion` and `tracking-issue` are no longer `TBD`.
 - `review-manager` is assigned.
 - `required-owners` exactly matches the owners listed in `Repository Impact`.
-- All required owners exist in `.agents/subagents/manifest.yaml`.
+- All required owners exist in `.codex/subagents/manifest.yaml`.
 - The RFC index in this file links the proposal and reflects its current
   status.
 
@@ -324,7 +324,7 @@ After implementation:
 - Normative language behavior belongs under `docs/spec/chapters/`.
 - Compiler architecture that must remain current belongs under `docs/design/`.
 - Tests belong under `products/zomlang/tests/`.
-- Agent and skill behavior belongs under `.agents/`.
+- Agent and skill behavior belongs under `.codex/`.
 - The RFC status moves to `LANDED` and the status history links the landing
   commit or PR when available.
 

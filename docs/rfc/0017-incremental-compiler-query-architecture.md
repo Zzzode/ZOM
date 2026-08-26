@@ -1335,7 +1335,7 @@ not establish runtime implementation.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/0004-binder-architecture.md`, `docs/rfc/0005-type-system-architecture.md`, `docs/rfc/0008-compiler-session-cross-module.md`, `docs/rfc/0011-semantic-identity-foundation.md`, `docs/rfc/0012-package-manifest-and-resolver.md`, `docs/rfc/0015-canonical-checker-codec-closure.md`, `docs/rfc/0017-incremental-compiler-query-architecture.md`, `docs/rfc/tracking/0017-review-and-implementation.md`, `docs/rfc/README.md` | `rfc` |
-| Query subsystem routing | `.agents/subagents/manifest.yaml`, `.agents/subagents/README.md`, `.agents/subagents/task-router.md`, `.agents/subagents/module-system.md`, `.agents/subagents/verification.md`, `AGENTS.md` | `task-router` |
+| Query subsystem routing | `.codex/subagents/manifest.yaml`, `.codex/subagents/README.md`, `.codex/subagents/task-router.md`, `.codex/subagents/module-system.md`, `.codex/subagents/verification.md`, `AGENTS.md` | `task-router` |
 | Query database, session, identity, source, and module graph | `products/zomlang/compiler/query/**`, `products/zomlang/compiler/driver/**`, `products/zomlang/compiler/identity/**`, `products/zomlang/compiler/source/**` | `module-system` |
 | Binder and Checker providers, values, verifiers, and projections | `products/zomlang/compiler/binder/**`, `products/zomlang/compiler/checker/**`, `products/zomlang/compiler/type/**` | `binder-checker` |
 | Diagnostic facts, collection, and rendering adapters | `products/zomlang/compiler/diagnostics/**` | `error-system` |

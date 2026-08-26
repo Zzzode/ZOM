@@ -2975,7 +2975,7 @@ This RFC adds no binary-output mode and makes no native-executability claim.
 
 | Area | Paths | Owner |
 |---|---|---|
-| Routing and cross-owner gate selection | `AGENTS.md`, `.agents/subagents/**` | `task-router` |
+| Routing and cross-owner gate selection | `AGENTS.md`, `.codex/subagents/**` | `task-router` |
 | RFC governance and accepted overlay tracking | `docs/rfc/**` | `rfc` |
 | Semantic type, signature, dispatch, and verified backend-attribute inputs | `products/zomlang/compiler/checker/**`, `products/zomlang/compiler/type/**` | `binder-checker` |
 | Context, package, crate, module, definition, instance, and session identity | `products/zomlang/compiler/identity/**`, `products/zomlang/compiler/driver/**`, `products/zomlang/compiler/query/**` | `module-system` |

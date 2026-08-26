@@ -1427,7 +1427,7 @@ final module assembly uses deterministic canonical ordering.
 
 | Area | Paths | Owner |
 |---|---|---|
-| Agent routing | `AGENTS.md`, `.agents/subagents/README.md`, `.agents/subagents/manifest.yaml`, `.agents/subagents/ir-backend.md` | `task-router` |
+| Agent routing | `AGENTS.md`, `.codex/subagents/README.md`, `.codex/subagents/manifest.yaml`, `.codex/subagents/ir-backend.md` | `task-router` |
 | RFC governance | `docs/rfc/**` | `rfc` |
 | Checked semantic facts | `products/zomlang/compiler/binder/**`, `products/zomlang/compiler/checker/**`, `products/zomlang/compiler/type/**` | `binder-checker` |
 | Module-qualified identities | `products/zomlang/compiler/symbol/**`, `products/zomlang/compiler/driver/**` | `module-system` |
