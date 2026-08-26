@@ -97,19 +97,39 @@ context bundle and the RFC 0006 error-union layout promoted to a live LIR
 service; only the pre-LIR `VerifiedFfiBoundaryFacts` eligibility verifier is
 frontend-reachable ahead of that.
 
+### 2026-08-26 Dependency Gate Cleared And Entry Into Review
+
+Gate 1 of the Governance Readiness Note cleared: RFC 0016 reached `ACCEPTED` on
+2026-08-26 on unanimous approval of its `cfabf1a0` snapshot (final accepted
+SHA-256 `ec27f6d3015ed5f91d903671f225141832ef165eec8fd799845ae8913743baee`).
+Gate 2 (rebind) is done: this tracker's Bound Proposal Snapshots table and the
+RFC 0021 body normative-authority table were resynchronized to the current
+authoritative upstream hashes. All bound rows had drifted from the prior pins
+(0006, 0007, 0008, 0009, 0010, 0011, 0012, 0013, and 0016), so every pin was
+refreshed to the file's current SHA-256. This is a mechanical rebind of the
+snapshot pointers; it does not itself reconcile RFC 0021's design against the
+new upstream bytes - that semantic reconciliation is exactly the required-owner
+review work, which remains `Pending` for all ten owners in the checklist above.
+
+RFC 0021 transitioned `DRAFT -> REVIEW` (gate 3, first step). Frontmatter status
+is `REVIEW`, `approvers` stays empty, `decision` stays `TBD`; no approval is
+recorded and no `REVIEW -> ACCEPTED` transition is performed. The operational
+LLVM `22.1.8` vs `19.1.5` toolchain blocker and the human governance sign-offs
+noted on 2026-08-24 are unchanged and still precede any IMPLEMENTING pointer.
+
 ## Bound Proposal Snapshots
 
 | RFC | File SHA-256 | State |
 |---|---|---|
-| RFC 0006 | `c37e40c9f903901a4f8f738e8d5d8fed842d55473ec9420eda901a46aede1613` | Accepted design in implementation |
-| RFC 0007 | `2766b4ce7ddbb0cc08ea550d0c618228daf7a91e8b951aef03d4c9f1aced6dbb` | Accepted design; production ownership analysis remains gated |
-| RFC 0008 | `581bf790d7048368e13d52b80031c46457a6bdb57f4b0be2318df706bf1e575b` | Accepted design in implementation |
-| RFC 0009 | `4acb7a7308ab271cd573c43761521f885f1bbafcdff0acefba10c027b4230253` | Accepted design in implementation |
-| RFC 0010 | `6deb4954d6a6d2dc8904b366a338c1bdad452d3ab55d1392444d106653a78921` | Accepted design in implementation |
-| RFC 0011 | `4c82c7bed3533d05c9b4682ed9b1ad967e7de741a6df6efd541f75a67ec05679` | Landed identity authority |
-| RFC 0012 | `7f77fe66cb6a84b0279255081073755bb7d0e61ff2de908c251eb6c1182f8cce` | Accepted design in implementation |
-| RFC 0013 | `9dc846eecb0212402cc3f015e52c5aa81782b8f8bd2012c29b896dbabfb6b315` | Accepted overlay in implementation |
-| RFC 0016 | `efe800c6c2aaeda60d6beedde45adaa459536002bf3ccf5704135411e02d808c` | Current REVIEW authority snapshot; must be replaced by accepted hash |
+| RFC 0006 | `248080cd962e2ecb5cf1bf84124e38ce54ec3e1ed2e734b2237d7e43bbf08092` | Accepted design in implementation |
+| RFC 0007 | `026036c363961fcdc0181a9398965a3967679a6515314fde587cdc53aa6dbf74` | Accepted design; production ownership analysis remains gated |
+| RFC 0008 | `d9201a0df96e613f75ad4ff82110858b9f8cc286098349b999307b61e71e0314` | Accepted design in implementation |
+| RFC 0009 | `0d6696de1cfdcaac4c4c56aae94c2267d7868dd180f728f66f00b8053fe86d63` | Accepted design in implementation |
+| RFC 0010 | `d816f30d07291a6260241ddfe8ab5dc5405d5812e3241a974e08368bca077209` | Accepted design in implementation |
+| RFC 0011 | `1ae17ce4233b29f5723259b1622396ac1fa4c9fb29087c661b236ed7c5592081` | Landed identity authority |
+| RFC 0012 | `4661fd71d3c2529e94289f1641c175fc73e92f0255f12f44fbb6f74515dea5e7` | Accepted design in implementation |
+| RFC 0013 | `25493ab792258d2c746381bddc26cd153d9200c6ebf2a8c6b3df50896c974dad` | Accepted overlay in implementation |
+| RFC 0016 | `ec27f6d3015ed5f91d903671f225141832ef165eec8fd799845ae8913743baee` | ACCEPTED 2026-08-26 target-authority snapshot |
 
 ## Owner Review Checklist
 
@@ -128,9 +148,9 @@ frontend-reachable ahead of that.
 
 ## Decision Record
 
-Decision: Pending.
-
-The RFC remains `DRAFT`. No implementation is authorized by this tracker.
+Decision: Pending. The RFC is in `REVIEW` as of 2026-08-26 (see the entry
+below). No implementation is authorized by this tracker until the RFC reaches
+`ACCEPTED` and records an `IMPLEMENTING` pointer.
 
 ## Implementation Tracker
 

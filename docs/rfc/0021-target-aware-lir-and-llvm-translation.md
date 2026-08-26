@@ -2,13 +2,13 @@
 rfc: 21
 title: Target-Aware LIR And LLVM Translation Contract
 type: compiler
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
 approvers: []
 created: 2026-07-23
-updated: 2026-07-24
+updated: 2026-08-26
 area: compiler
 requires: [6, 7, 8, 9, 10, 11, 12, 13, 16]
 supersedes: []
@@ -322,15 +322,13 @@ target-phase issuance and consumption.
 
 | RFC | Proposal SHA-256 | Specialized clauses |
 |---|---|---|
-| RFC 0006 | `c37e40c9f903901a4f8f738e8d5d8fed842d55473ec9420eda901a46aede1613` | Authoritative error-union, panic, unwind, and FFI semantics consumed by LIR |
-| RFC 0010 | `6deb4954d6a6d2dc8904b366a338c1bdad452d3ab55d1392444d106653a78921` | Replaced Target LIR, monomorphization handoff, LIR verifier, LLVM translation, diagnostics, dumps, rollout, and acceptance clauses |
-| RFC 0013 | `9dc846eecb0212402cc3f015e52c5aa81782b8f8bd2012c29b896dbabfb6b315` | Authoritative executable-MIR evidence lineage retained through LIR and backend translation |
+| RFC 0006 | `248080cd962e2ecb5cf1bf84124e38ce54ec3e1ed2e734b2237d7e43bbf08092` | Authoritative error-union, panic, unwind, and FFI semantics consumed by LIR |
+| RFC 0010 | `d816f30d07291a6260241ddfe8ab5dc5405d5812e3241a974e08368bca077209` | Replaced Target LIR, monomorphization handoff, LIR verifier, LLVM translation, diagnostics, dumps, rollout, and acceptance clauses |
+| RFC 0013 | `25493ab792258d2c746381bddc26cd153d9200c6ebf2a8c6b3df50896c974dad` | Authoritative executable-MIR evidence lineage retained through LIR and backend translation |
 
-RFC 0016 is a required review dependency. This draft was authored against RFC
-0016 REVIEW SHA-256
-`efe800c6c2aaeda60d6beedde45adaa459536002bf3ccf5704135411e02d808c`.
-Before this RFC may enter
-`REVIEW`, that binding must be replaced by RFC 0016's accepted proposal hash.
+RFC 0016 is a required review dependency and is now `ACCEPTED`. This draft is
+bound to RFC 0016's accepted proposal SHA-256
+`ec27f6d3015ed5f91d903671f225141832ef165eec8fd799845ae8913743baee`.
 RFC 0016 owns the target-authority bundle, code-generation capability registry,
 target-independent runtime ABI contract registry, and private one-shot final
 code-generation authority. This RFC owns the concrete LIR operation, LIR
@@ -3317,3 +3315,4 @@ dependency gate rather than an unresolved LIR design choice.
 | Date | Status | Notes |
 |---|---|---|
 | 2026-07-23 | DRAFT | Defined the target-aware block-parameter SSA, carrier/layout/ABI separation, conservative provenance, closed legality, deterministic revision, and total LLVM translation contract. |
+| 2026-08-26 | REVIEW | Entered formal review after its stated dependency gate cleared: RFC 0016 reached ACCEPTED, and the bound upstream snapshots (RFC 0006, 0010, 0013, 0016) were resynchronized to their current authoritative hashes. Required-owner review of this snapshot is pending. |
