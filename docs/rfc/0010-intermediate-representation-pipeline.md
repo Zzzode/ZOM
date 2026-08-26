@@ -354,15 +354,15 @@ object-format tags are `Elf = 0x01`, `MachO = 0x02`, `Coff = 0x03`, and `Wasm =
 
 The independent target oracle uses triple `x86_64-zom-none`, LLVM data layout
 `e-p:64:64`, CPU `generic`, one enabled feature `sse2`, runtime ABI profile
-`zom`, unwind panic strategy, and ELF object format. Its complete 108-byte
+`zom`, unwind panic strategy, and ELF object format. Its complete 105-byte
 preimage is:
 
 ```text
-7a6f6d2e7461726765742d7370656300000000000000000f7838365f36342d7a6f6d2d6e6f6e650000000000000009652d703a36343a3634000000000000000767656e6572696300000000000000010000000000000004737365320100000000000000067a6f6d2d76310101
+7a6f6d2e7461726765742d7370656300000000000000000f7838365f36342d7a6f6d2d6e6f6e650000000000000009652d703a36343a3634000000000000000767656e6572696300000000000000010000000000000004737365320100000000000000037a6f6d0101
 ```
 
 Its SHA-256 is
-`d972a7d918fc7d64c002b4245b8e6f5151d3c3c8507ae26e1ca1cbd1a026c90b`.
+`b5171e0d457c8ddac8eec7df5625c5edcec1b4b20d1f42945053ce95300c4c0b`.
 
 Each registry profile contains at most one specification per panic strategy.
 Every contained specification must reproduce its `TargetSpecId`, project to the
@@ -394,7 +394,7 @@ exist.
 Failure in steps 1-5 is `IrInvariantRejected(InvalidFact, TargetSelection,
 Session)` and maps to `ZOM9947`; a non-canonical encoded registry or target
 record is `CanonicalCodecMismatch` and maps to `ZOM9949`. The independent
-positive projection vector uses the 108-byte target oracle: architecture
+positive projection vector uses the 105-byte target oracle: architecture
 `x86_64`, vendor `zom`, OS `none`, environment `unknown`, ABI `zom`, pointer
 width `64`, little endian, and semantic feature set `{sse2}`. Negative vectors
 cover a non-canonical triple, malformed component spelling, a noncanonical or
@@ -1691,7 +1691,7 @@ and reproducible builds.
     and registry revision, recomputes the ID from the token's immutable
     `CanonicalTargetSpec`, and proves semantic projection and panic strategy;
     all target-profile reads use that verified value.
-28. Target selection reproduces the 108-byte `TargetSpecId` oracle, the target
+28. Target selection reproduces the 105-byte `TargetSpecId` oracle, the target
     registry reproduces the 49-byte revision oracle, and the gate registry
     reproduces the 46-byte snapshot oracle. Generated tests reject
     zero or duplicate gate IDs, missing or additional accepted contracts,
@@ -1789,7 +1789,7 @@ and reproducible builds.
   `IrOperationResult` branch; unified identity/IR sorting; exhaustive registered
   mapping; classification precedence; generated field-path rejection; and
   production-build absence of invariant injection.
-- Target and gate-registry unit tests: reproduce the 108-byte target, 49-byte
+- Target and gate-registry unit tests: reproduce the 105-byte target, 49-byte
   target-registry, and 46-byte gate-registry oracles; mutate every framed field,
   host profile, profile name, semantic projection, semantic feature set,
   panic-strategy map, target ID, feature state, enum tag, count, gate ID, owner
