@@ -9,7 +9,7 @@ approvers.
 | Field | Value |
 |---|---|
 | Status | `REVIEW` |
-| Proposal SHA-256 | `4d2a285807604fcacade8ec372425c0deebc26087a8890f93799d395284fb988` |
+| Proposal SHA-256 | `cfabf1a014521cd1897d6637eb2cb1997dbae6048e35860883a448c4bf183c51` |
 | Review manager | `rfc` |
 | Decision | `TBD` |
 | Implementation | Blocked until `ACCEPTED` |
@@ -173,6 +173,49 @@ values, so the `ir-backend` `zom-v1` objection still stands against the new
 snapshot. Every required owner must review the new snapshot before acceptance;
 the six prior approvals were against `e421dc3b` and do not carry forward
 unchanged. Re-review is required.
+
+### 2026-08-26 Codec fixtures regenerated from the live encoder
+
+The `ir-backend` blocking objection is now resolved in substance. The canonical
+codec golden fixtures in `Runtime, target, and registry codecs` embedded the
+banned revision-suffixed internal name `zom-v1` as the runtime ABI profile
+bytes, while the live encoder and the live test use `zom` with no suffix
+(`products/zomlang/compiler/ir/target-registry.cc` `computeTargetSpecId`,
+`encodeProfileRevision`, and the `zom.target-registry` preimage builder;
+`products/zomlang/utils/zomc/zomc.cc` constructing the target spec with
+`runtimeAbiProfile = "zom"`; and
+`products/zomlang/tests/unittests/compiler/ir/target-registry-test.cc` asserting
+the `zom` `TargetSpecId` `b5171e0d...`). Every affected preimage, byte length,
+nested length prefix, and SHA-256 was re-derived with `zom` from a replica of
+the live encoder algorithm, cross-checked against the live-test `b5171e0d`
+target-spec digest and the prior `zom-v1` digests before any regenerated value
+was trusted. The regenerated values are:
+
+| Fixture | Old length | New length | Old SHA-256 | New SHA-256 |
+|---|---|---|---|---|
+| runtime-capabilities preimage | 56 | 53 | `69405a91bd7dead95a783941e6a0da363366b6a4fe5f1c5339d54bb62328146b` | `d28e24b427e44fc9fd1545956a3cc8ec8f70454c92b07a2728b5953a1a93a70e` |
+| minimal target-spec oracle | 108 | 105 | `d972a7d918fc7d64c002b4245b8e6f5151d3c3c8507ae26e1ca1cbd1a026c90b` | `b5171e0d457c8ddac8eec7df5625c5edcec1b4b20d1f42945053ce95300c4c0b` |
+| 87-byte-layout `Unwind` target-spec | 186 | 183 | `29fef3fa59a2166a285c371e02f4c28d0d25aa98e401ca2d0a9c2b3b5a390540` | `6c4ac5a58c4897f024830425a951e9a9b24386b3f1b71f69de512aaa0843fe7c` |
+| 87-byte-layout `Abort` target-spec | 186 | 183 | `5a7710feedc3b1c63870b4c493676466952b0929730f0f97f41124b224bde54b` | `a9a0f57e1b80cfb0a3d734ab4f99f7e4fbfb41ef958e2b9882c3fd6ee5af31c9` |
+| profile revision record | 197 | 194 | `a5d3e5b0806c3bf8b73d3e1bb6d3c76f6575f63da6a980a68ca0441c3e6b87df` | `53f341ba10c347ac125d38c8eaff7b8e0ed75ac0bae88d40b0fd398ef26ac7e0` |
+| `zom.target-registry` preimage | 245 | 242 | `b519c204011b1d9d337d47a747d99c1f22bf47c4f09547e2fecee2c049eecbef` | `460c7b56abf177df2488b63f5e7349a6721084c0c858e49dd2e47841486ee06f` |
+
+The 49-byte outer-registry-framing oracle
+(`f25c636ba9240f1454cb006c39a7fce3443b7f2871de97923e01757e5048e272`) carried no
+`zom-v1` bytes and is unchanged. The profile record's inner length prefix moved
+from `0xc5` (197) to `0xc2` (194) as `zom-v1` (6 bytes) became `zom` (3 bytes).
+The prior stale profile and registry records also embedded target-spec digests
+that never reproduced from any target-spec preimage; the regenerated records
+embed the regenerated standalone `Unwind` and `Abort` oracle IDs, so the profile
+and registry preimages are now internally consistent with the live encoder.
+
+Editing these bytes produces a new review snapshot. The proposal now reproduces
+SHA-256 `cfabf1a014521cd1897d6637eb2cb1997dbae6048e35860883a448c4bf183c51`. The
+prior approvals recorded against earlier snapshots do not carry forward, so
+re-review of this snapshot is required. RFC 0016 remains `REVIEW`; frontmatter
+`approvers` stays empty and `decision` stays `TBD`. Acceptance still requires the
+required owners to review the new snapshot; the `ir-backend` codec defect that
+blocked it is resolved here, but acceptance is recorded, not performed.
 
 ## Decision Record
 
