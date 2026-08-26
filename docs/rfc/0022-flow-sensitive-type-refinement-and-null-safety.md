@@ -2,19 +2,19 @@
 rfc: 22
 title: Flow-Sensitive Type Refinement And Null Safety
 type: language
-status: REVIEW
+status: ACCEPTED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, lexer-parser, binder-checker, module-system, error-system, ir-backend, tooling-lsp, spec-audit, verification]
-approvers: []
+approvers: [rfc, lexer-parser, binder-checker, module-system, error-system, ir-backend, tooling-lsp, spec-audit, verification]
 created: 2026-07-24
-updated: 2026-07-24
+updated: 2026-08-27
 area: language
 requires: [4, 5, 9, 10, 15, 17, 19]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0022-review-and-implementation.md#discussion-record
-decision: TBD
+decision: docs/rfc/tracking/0022-review-and-implementation.md#decision-record
 implementation: TBD
 tracking-issue: docs/rfc/tracking/0022-review-and-implementation.md#implementation-tracker
 ---
@@ -998,9 +998,9 @@ This RFC allocates the following checker diagnostics:
 
 | Diagnostic | Severity | Message | Anchor |
 |---|---|---|---|
-| `ZOM4096 NullableValueRequiresNonNullProof` | Error | `Nullable value must be proven non-null before this operation` | binding use that requires the non-null alternative |
-| `ZOM4097 FlowRefinementUnavailableHere` | Note | `This test cannot refine a binding whose value may change` | nearest dominating test of the same ineligible binding |
-| `ZOM4098 FlowRefinementInvalidatedHere` | Note | `The non-null fact was invalidated here` | nearest dominating assignment or pre-flow-classified kill of the same binding |
+| `ZOM4100 NullableValueRequiresNonNullProof` | Error | `Nullable value must be proven non-null before this operation` | binding use that requires the non-null alternative |
+| `ZOM4101 FlowRefinementUnavailableHere` | Note | `This test cannot refine a binding whose value may change` | nearest dominating test of the same ineligible binding |
+| `ZOM4102 FlowRefinementInvalidatedHere` | Note | `The non-null fact was invalidated here` | nearest dominating assignment or pre-flow-classified kill of the same binding |
 
 RFC 0005's diagnostic algebra is extended directly:
 
@@ -1010,28 +1010,29 @@ CheckerDiagnosticProducer =
   | FlowRefinement
 ```
 
-`FlowRefinement` has tag `0x16`, immediately after RFC 0015
-`SignatureClassification = 0x15`. Existing producer tags do not change.
-`CheckerErrorId` adds `ZOM4096`; `CheckerNoteId` adds `ZOM4097` and `ZOM4098`.
+`FlowRefinement` has tag `0x14`, immediately after the current final
+`CheckerDiagnosticProducer` member `Constant = 0x13`. Existing producer tags do
+not change.
+`CheckerErrorId` adds `ZOM4100`; `CheckerNoteId` adds `ZOM4101` and `ZOM4102`.
 The exact production-schema rows are:
 
 | ID | Stage | Producer | Primary anchor | Arguments | Item ordinal | Recovery |
 |---|---|---|---|---|---:|---|
-| `ZOM4096` | `Body` | `FlowRefinement` | nullable binding-use node | empty | `0` | `CreateRoot { class: InvalidOperation, suppressIfChildRecovery: true }` |
-| `ZOM4097` | associated note | none; primary producer is `FlowRefinement` | unavailable-test node | empty | no independent ordinal | associated only with `ZOM4096` |
-| `ZOM4098` | associated note | none; primary producer is `FlowRefinement` | invalidating assignment or kill node | empty | no independent ordinal | associated only with `ZOM4096` |
+| `ZOM4100` | `Body` | `FlowRefinement` | nullable binding-use node | empty | `0` | `CreateRoot { class: InvalidOperation, suppressIfChildRecovery: true }` |
+| `ZOM4101` | associated note | none; primary producer is `FlowRefinement` | unavailable-test node | empty | no independent ordinal | associated only with `ZOM4100` |
+| `ZOM4102` | associated note | none; primary producer is `FlowRefinement` | invalidating assignment or kill node | empty | no independent ordinal | associated only with `ZOM4100` |
 
-The `ZOM4096` emitter ordinal uses the containing callable's schema preorder as
+The `ZOM4100` emitter ordinal uses the containing callable's schema preorder as
 `ownerSchemaPreorder`, the binding-use preorder as `siteSchemaPreorder`, and
 zero as `itemOrdinal`. Its sort key and recovery behavior are therefore the
 RFC 0005 `CheckerFailureRef` key and recovery algebra without an additional
 flow-specific order. Its primary span is the complete binding-use span.
-`ZOM4097` and `ZOM4098` carry the same binding as
+`ZOM4101` and `ZOM4102` carry the same binding as
 `CheckerNoteRef.causeDefinition`, the complete anchor span shown above, and no
 display arguments. `CheckerNoteRef` carries no independent stage, producer,
 ordinal, or recovery field.
 
-`ZOM4096` is selected only when:
+`ZOM4100` is selected only when:
 
 1. the effective type contains `null`;
 2. removing `null` would make the requested member, call, index, dereference,
@@ -1042,11 +1043,11 @@ If the operation is invalid even after removing `null`, its ordinary specific
 diagnostic wins. Unresolved names and invalid type expressions precede all
 flow diagnostics. Argument and return assignability continue to use the RFC
 0005 type-mismatch diagnostic because the required target type is already
-explicit. `ZOM4096` is a checker-stage source failure and therefore prevents
+explicit. `ZOM4100` is a checker-stage source failure and therefore prevents
 later HIR, MIR, and RFC 0007 ownership publication for that body; the checker
 does not consume later availability diagnostics to choose it.
 
-At most one refinement note accompanies `ZOM4096`. Candidate causes must
+At most one refinement note accompanies `ZOM4100`. Candidate causes must
 dominate the failing use in the independently reconstructed graph. An
 invalidation is preferred over an unavailable test. Within the selected cause
 kind, the cause with the greatest dominator-tree depth wins; equal-depth ties
@@ -1055,7 +1056,7 @@ dominates the use. Notes never allocate a recovery root or appear independently
 in `sourceFailures`.
 
 Valid optional chaining, null coalescing, null comparison, `is`, and pattern
-matching never emit `ZOM4096`.
+matching never emit `ZOM4100`.
 
 ### HIR And MIR Boundary
 
@@ -1277,7 +1278,7 @@ its own RFC.
   after those production consumers exist.
 - `docs/design/tooling/` documents the verified flow-type projection only after
   its production query and IDE consumer exist.
-- Diagnostic documentation includes snapshots for `ZOM4096-ZOM4098`.
+- Diagnostic documentation includes snapshots for `ZOM4100-ZOM4102`.
 - Release notes call out the accepted nullable-use rules and cache
   invalidation.
 
@@ -1332,7 +1333,7 @@ required.
   maps each reachable resolved binding use bijectively to one
   `LocalSyntaxPath`, and is available
   only under its exact query-snapshot lease.
-- `ZOM4096-ZOM4098` have exact registry, precedence, renderer, and snapshot
+- `ZOM4100-ZOM4102` have exact registry, precedence, renderer, and snapshot
   coverage.
 - HIR and MIR reject missing, additional, duplicated, hoisted, or
   revision-mismatched refinement views.
@@ -1362,7 +1363,7 @@ required.
    fixed-point solver.
 6. Integrate effective types with member, call, operator, coercion, argument,
    return, and assignment checking.
-7. Add `ZOM4096-ZOM4098` with exact suppression, anchor, and note ordering.
+7. Add `ZOM4100-ZOM4102` with exact suppression, anchor, and note ordering.
 8. Implement the independent verifier and canonical flow-fact group.
 9. Update stable body queries and cache invalidation.
 10. Add the revision-local verified tooling projection and its source mapping.
@@ -1383,7 +1384,7 @@ required.
   revisions.
 - Lit tests:
   positive and negative source cases for every refinement source and control
-  construct, with FileCheck diagnostics for `ZOM4096-ZOM4098`.
+  construct, with FileCheck diagnostics for `ZOM4100-ZOM4102`.
 - Conformance:
   nullable member/call/coercion cases; null on either comparison side; nested
   `!`, `&&`, and `||`; early `return`; match guards; `when null`; all loop
@@ -1412,7 +1413,7 @@ required.
 
 ## Open Questions
 
-None.
+None
 
 ## Status History
 
@@ -1426,3 +1427,4 @@ None.
 | 2026-07-24 | RETURNED | Tooling review found no LSP-consumable, revision-bound flow-type projection. |
 | 2026-07-24 | DRAFT | Added the verified tooling projection and separated complete compiler facts from recovered IDE analysis. |
 | 2026-07-24 | REVIEW | Re-entered review with explicit tooling ownership and RFC 0023 as the editor-recovery consumer contract. |
+| 2026-08-27 | ACCEPTED | Fixed the ZOM4096-ZOM4098 diagnostic-code collision (re-allocated to ZOM4100-ZOM4102) and corrected the diagnostic producer-tag reference to the live `CheckerDiagnosticProducer` enum (`FlowRefinement = 0x14` after `Constant = 0x13`); all required owners approved the corrected snapshot. |

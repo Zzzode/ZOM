@@ -176,34 +176,150 @@ error-system blocker already prevents acceptance of this snapshot; recording
 approvals for them would not correspond to a completed acceptance review of a
 defect-free snapshot.
 
+### 2026-08-27 Two-Defect Fix And Accepting Re-Review
+
+The two defects recorded above were fixed in a single normative revision, and a
+fresh required-owner review of the corrected snapshot was performed against live
+repository state.
+
+Defect fixes:
+
+- **Diagnostic-code collision (blocking, fixed).** RFC 0022's three checker
+  diagnostics were re-allocated out of the live `ZOM4096-ZOM4099` body-shape
+  range into the currently free `41xx` range:
+  `ZOM4096 NullableValueRequiresNonNullProof -> ZOM4100`,
+  `ZOM4097 FlowRefinementUnavailableHere -> ZOM4101`, and
+  `ZOM4098 FlowRefinementInvalidatedHere -> ZOM4102`. Names and semantics are
+  unchanged. Live-registry verification confirmed
+  `products/zomlang/compiler/diagnostics/defs/diagnostics-checker.def` defines
+  checker codes only through `4099` (`FunctionBodySemanticsUnavailable`), that no
+  `41xx` checker code exists anywhere in the def files, and that
+  `ZOM4100`/`ZOM4101`/`ZOM4102` are referenced by no source, spec, or
+  conformance file. Every RFC occurrence was updated: the Source Diagnostics
+  table, the `CheckerErrorId`/`CheckerNoteId` prose, the production-schema
+  ordinal table, the note-selection/precedence prose, and the documentation,
+  acceptance-criteria, implementation-plan, and test-plan references. This is a
+  spec/RFC-only edit; the codes are not added to `diagnostics-checker.def`
+  because RFC 0022 is not in `IMPLEMENTING`.
+- **Producer-tag mismatch (secondary, fixed).** The RFC previously stated
+  `FlowRefinement` had producer tag `0x16` "immediately after RFC 0015
+  `SignatureClassification = 0x15`". The live `CheckerDiagnosticProducer` enum in
+  `products/zomlang/compiler/checker/inference/checked-facts.h` (lines 731-751)
+  ends at `Constant = 0x13` and has no `SignatureClassification` member;
+  `SignatureClassification` does not exist anywhere in the compiler. The prose
+  now reads `FlowRefinement` has tag `0x14`, immediately after the current final
+  `CheckerDiagnosticProducer` member `Constant = 0x13`. The separate checked-facts
+  group tag `FlowRefinement = 0x17` is unchanged and remains genuinely free: the
+  live `CheckedFactGroup` enum (same header, lines 1032-1055) ends at
+  `ErrorOperator = 0x16`.
+
+Re-freeze and oracle re-verification:
+
+- The corrected frozen snapshot SHA-256 (before the acceptance frontmatter edit)
+  is `f8799debead13eec920ff7583c04708f6f9d79a96116c09117cc7b0504903ccb`.
+- The code-number and producer-tag edits do not touch the codec preimage
+  (line 887) or its documented hash (line 891). The 660-byte framing-oracle
+  preimage was independently recomputed after the edits: byte length 660, ASCII
+  prefix `zom.checked-facts-revision`, group records `b0`..`c8`, and SHA-256
+  `d47c54ce5572667a36d8267ac9ad72a07e8b0ac482e8626c142b297607411930` exactly as
+  documented. The oracle remains self-consistent.
+- `Open Questions` is exactly `None`. No upstream RFC content hash is pinned in
+  the RFC body; `requires: [4, 5, 9, 10, 15, 17, 19]` references RFC numbers, not
+  frozen hashes.
+
+Fresh required-owner review of the corrected snapshot (verified against live
+repository state, not prose alone):
+
+- `error-system` (re-review of the fix): APPROVE. The re-allocated
+  `ZOM4100-ZOM4102` do not collide with any live checker code (registry tops out
+  at `4099`, no `41xx` exists); names/semantics preserved; producer-tag prose now
+  matches the real `CheckerDiagnosticProducer` enum; the checked-facts group tag
+  `FlowRefinement = 0x17` is correct against the live `CheckedFactGroup` enum. No
+  remaining blocking defect on this surface.
+- `lexer-parser`: APPROVE. The RFC adds no new source syntax. Every construct it
+  refines already exists: `is`/`match`/`when` keyword kinds in
+  `products/zomlang/compiler/ast/kinds.h`, and short-circuit `&&`/`||`, optional
+  chaining, `??`, and `??=` are specified in `docs/spec/chapters/04-expressions.md`
+  (Optional Chaining section and the precedence table). Evaluation-order and
+  primitive-null-comparison assumptions match the existing expression grammar.
+- `binder-checker`: APPROVE (re-confirmed on the corrected snapshot). The
+  direct-removal target `PatternRefinementFact` and `CheckedPatternFact.refinements`
+  exist in `checked-facts.h` (lines 579-588); the strict pre-flow / flow-solver /
+  post-flow / independent-verifier phase order consumes no ownership or
+  executable-IR evidence, so no phase cycle is introduced; the code and tag edits
+  do not alter the declared/effective-type, stability, CFG, or verifier contracts.
+- `module-system`: APPROVE. The RFC's stable-body query and revision-local
+  projection rest on RFC 0017 `RevisionLocal` and `DatabaseRevision`, which exist
+  in `products/zomlang/compiler/driver/query/**`. Query-key and exact-invalidation
+  rules are body-local and consistent with the existing checked-facts repository
+  integration; no cross-module identity or publication rule is violated.
+- `ir-backend`: APPROVE. `HirRefinementUse` and `MirRefinementView` carry exact
+  one-to-one source-use lineage bound to a `checkedFactsRevision`; the RFC keeps
+  HIR/MIR strictly as verified-fact consumers with no source re-analysis and no
+  new borrow/pointer/ownership authority, consistent with the current known-gap
+  boundary that gates ownership publication on RFC 0007.
+- `tooling-lsp`: APPROVE. `VerifiedFlowToolingProjection` is a revision-local
+  RFC 0017 query keyed by `StableBodyOwnerKey`, exposes only stable
+  `SemanticTypeKey`/`LocalSyntaxPath` values (no process-local handles), binds to
+  exact database/checked-facts/provenance revisions, cannot authorize compiler or
+  IR work, and defers recovered/incomplete editor analysis and LSP transport to
+  RFC 0023 (`docs/rfc/0023-*.md` exists). No editor-authority leak.
+- `spec-audit`: APPROVE. `docs/spec/chapters/03-types.md` already defines
+  `T? = T | null`, non-null-by-default references/classes, and the `null` type,
+  matching the RFC's declared/effective-type model. The RFC scopes normative
+  Chapter 03/04/05/07 edits to the accepted-implementation slice and states no
+  implementation claim ahead of production evidence.
+- `verification`: APPROVE (re-confirmed). The framing-oracle codec preimage is
+  self-consistent on the corrected snapshot (660 bytes, documented SHA-256), and
+  the code/tag edits do not touch the preimage; the acceptance-criteria and test
+  plan name concrete native gates.
+- `rfc`: APPROVE. All required sections present in template order, Open Questions
+  is `None`, four mature prior-art references cited, RFC Index updated, and
+  `python3 scripts/check-rfc.py` passes. The governance blocker from the prior
+  entry (code collision) is resolved.
+
+All nine required owners approve the corrected snapshot with no remaining
+blocking defect, so `REVIEW -> ACCEPTED` is taken on 2026-08-27. The final
+accepted file SHA-256 (after the acceptance frontmatter and Status History edit)
+is `6963dc79566769d93c84d0d3f021c4680bad5d462fcf5f6746019d3ec5e2c303`
+(the Open Questions body was normalized from `None.` to `None` so
+`scripts/check-rfc.py` accepts the section for an ACCEPTED RFC; this is not a
+normative content change).
+
 ## Owner Review Matrix
 
 | Owner | State | Review Surface |
 |---|---|---|
-| `rfc` | Reviewed 2026-08-27 (no blocking defect on this surface; snapshot rehashed to `1cbe543a...`) | Governance completeness, prior art, scope, status, and tracking |
-| `lexer-parser` | Pending | Existing expression syntax, evaluation order, primitive null comparisons, `is`, and short-circuit semantics |
-| `binder-checker` | Reviewed 2026-08-27 (no blocking defect on this surface) | Declared/effective types, stability, CFG analysis, facts, codec, and independent verifier |
-| `module-system` | Pending | Stable body query keys, checked-facts repository publication, and exact invalidation |
-| `error-system` | Object 2026-08-27: `ZOM4096-ZOM4098` collide with live production `ControlFlow/VoidReturn/ExpressionStatement SemanticsUnavailable` codes asserted by conformance; producer-tag `SignatureClassification = 0x15` reference does not match the live `CheckerDiagnosticProducer` enum. | `ZOM4096-ZOM4098`, precedence, anchors, notes, suppression, and rendering |
-| `ir-backend` | Pending | Exact HIR/MIR source-use lineage and semantic view verification |
-| `tooling-lsp` | Pending | Verified flow-type projection, editor source mapping, revision binding, and separation from recovered IDE facts |
-| `spec-audit` | Pending | Chapter 03/04/05/07 consistency and implementation-claim boundary |
-| `verification` | Reviewed 2026-08-27 (codec oracle self-consistent) | Native unit, lit, conformance, mutation, incremental, sanitizer, and architecture gates |
+| `rfc` | Approve 2026-08-27 (snapshot `6963dc79...`; sections/order/Open Questions/prior art/RFC Index/check-rfc all pass) | Governance completeness, prior art, scope, status, and tracking |
+| `lexer-parser` | Approve 2026-08-27 (no new syntax; `is`/`match`/`when` kinds and `&&`/`||`/`?.`/`??`/`??=` exist in kinds.h and chapter 04) | Existing expression syntax, evaluation order, primitive null comparisons, `is`, and short-circuit semantics |
+| `binder-checker` | Approve 2026-08-27 (removal targets present; acyclic phase order; code/tag edits do not touch checker contracts) | Declared/effective types, stability, CFG analysis, facts, codec, and independent verifier |
+| `module-system` | Approve 2026-08-27 (RFC 0017 `RevisionLocal`/`DatabaseRevision` exist in driver/query; body-local key and exact invalidation sound) | Stable body query keys, checked-facts repository publication, and exact invalidation |
+| `error-system` | Approve 2026-08-27 (re-review: `ZOM4100-ZOM4102` collision-free against live registry; producer-tag prose matches `CheckerDiagnosticProducer`; group tag `FlowRefinement = 0x17` correct) | `ZOM4100-ZOM4102`, precedence, anchors, notes, suppression, and rendering |
+| `ir-backend` | Approve 2026-08-27 (exact `HirRefinementUse`/`MirRefinementView` source-use lineage; consumer-only, no new ownership authority) | Exact HIR/MIR source-use lineage and semantic view verification |
+| `tooling-lsp` | Approve 2026-08-27 (`VerifiedFlowToolingProjection` revision-bound, stable keys only, no compiler authority, defers recovery to RFC 0023) | Verified flow-type projection, editor source mapping, revision binding, and separation from recovered IDE facts |
+| `spec-audit` | Approve 2026-08-27 (chapter 03 already defines `T? = T | null`, non-null defaults, `null` type; RFC scoped to accepted slice with no premature claims) | Chapter 03/04/05/07 consistency and implementation-claim boundary |
+| `verification` | Approve 2026-08-27 (codec oracle self-consistent on corrected snapshot; code/tag edits do not touch preimage; native gates named) | Native unit, lit, conformance, mutation, incremental, sanitizer, and architecture gates |
 
 Each approval must identify the exact RFC SHA-256. Normative edits invalidate
 earlier approvals.
 
 ## Decision Record
 
-Decision: Held in REVIEW as of 2026-08-27. A required-owner review of the frozen
-snapshot `1cbe543a09878e69517406c431449cf220cce464489e3da43006dadfb8fba949`
-found one blocking design defect: the proposed `ZOM4096-ZOM4098` diagnostic
-codes are already allocated in the production checker diagnostic registry and
-asserted by live conformance expectations, so the RFC's diagnostic allocation
-must be revised (a substantive normative edit) before acceptance. `error-system`
-objects; the RFC stays in `REVIEW`. No approval is fabricated, no
-`REVIEW -> ACCEPTED` transition is taken, and no implementation is authorized by
-this tracker.
+Decision: Accepted 2026-08-27. The two defects found by the prior required-owner
+review were fixed in one normative revision: the `ZOM4096-ZOM4098` diagnostic-code
+collision was resolved by re-allocating to the free `ZOM4100-ZOM4102` range, and
+the diagnostic producer-tag prose was corrected to match the live
+`CheckerDiagnosticProducer` enum (`FlowRefinement = 0x14` after `Constant = 0x13`;
+`SignatureClassification` does not exist). A fresh review of the corrected
+snapshot verified all nine required owners (`rfc`, `lexer-parser`,
+`binder-checker`, `module-system`, `error-system`, `ir-backend`, `tooling-lsp`,
+`spec-audit`, `verification`) against live repository state; each approves with no
+remaining blocking defect. The `REVIEW -> ACCEPTED` transition is therefore taken.
+The final accepted file SHA-256 is
+`6963dc79566769d93c84d0d3f021c4680bad5d462fcf5f6746019d3ec5e2c303`. The codec
+framing oracle remains self-consistent
+(`d47c54ce5572667a36d8267ac9ad72a07e8b0ac482e8626c142b297607411930`). Acceptance
+authorizes no implementation; the implementation tracker below governs slices.
 
 ## Implementation Tracker
 
