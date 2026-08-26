@@ -169,3 +169,68 @@ explicit CMake provenance, and the `X86` and `AArch64` component inventory.
 That mismatch is expected before implementation and must be corrected through
 the accepted cross-platform CMake and CI transaction, not by admitting an
 ambient local LLVM installation.
+
+## Required-Owner Review Guide (2026-08-25)
+
+This guide facilitates the pending required-owner review of the exact REVIEW
+snapshot `e421dc3bdeeead9d9ad7b504539b8a63cfde19380693ea2524aa7cf830a81d1b`.
+It records no approval, decision, status transition, or implementation
+authorization; RFC frontmatter remains authoritative. Each owner still records
+their own approve or object result against that snapshot in the Required-Owner
+Review table. Section references are headings in
+`docs/rfc/0016-context-bound-target-registry-verification.md`.
+
+Cross-cutting evidence already on record for every owner: the 2026-07-24
+Technical Closure Audit found no blocking technical gap (acyclic dependency
+direction, no `ZOMxxxx` conflicts, `check-rfc.py` passing); the 2026-08-12
+Readiness Audit reproduced the current snapshot hash and confirmed the LLVM
+`19.1.5` vs required `22.1.8` mismatch is an expected pre-implementation state,
+not a proposal defect.
+
+- `task-router` - focus: single-owner path census and routing consistency.
+  Review `Repository Impact` and confirm every listed path family maps to
+  exactly one owner with no gap or overlap. Open question to confirm: the
+  ownership-routing paths are written under `.agents/subagents/**` while the
+  live tree uses `.codex/subagents/**`; confirm whether this is an intended
+  post-acceptance move or a path that must be corrected before acceptance.
+- `rfc` - focus: RFC structure, dependency direction, status governance.
+  Review the frontmatter, `Summary`, and `Non-Goals`; confirm the additive
+  overlay over RFCs 0006/0008/0010/0011/0012 imports only downstream-safe
+  contracts and that `requires: [6, 8, 10, 11, 12]` is complete. Evidence: the
+  Technical Closure Audit confirmed acyclic direction (0016 feeds 0021, never
+  the reverse).
+- `module-system` - focus: package wrapper ownership, phase authority, cleanup.
+  Review `Session ordering`, `Preparatory and final context separation`, and
+  `Registry construction failures`; confirm the one-authority-host rule and the
+  move-only, at-most-once final code-generation issuance leave no context-free
+  target-token path.
+- `error-system` - focus: closed failure mapping and diagnostic ownership.
+  Review `Registry construction failures` and `Target-spec admission`; confirm
+  every failure maps to a closed registered diagnostic and that, per the
+  Technical Closure Audit, no new `ZOMxxxx` codes are introduced or conflicting.
+- `ir-backend` - focus: LLVM admission, code-generation capability registry,
+  downstream handoff. Review `Target-spec admission` (`Triple`, `LLVM data
+  layout`, `Object format`, `LLVM backend admission`), `Runtime, target, and
+  registry codecs`, and `LLVM build and CI contract`; confirm the LLVM `22.1.8`
+  API baseline, exact-byte data-layout identity, and that this RFC stops at the
+  authority handoff without defining LIR or translation (owned by RFC 0021).
+- `runtime-memory` - focus: runtime capability and ABI contract registries.
+  Review `Panic-strategy mapping` and the runtime-capability/ABI-contract
+  registry clauses in `Reference-Level Design`; confirm brand-and-revision
+  binding and that the host runtime's ambient behavior is never accepted as
+  target-runtime capability evidence (a stated Non-Goal).
+- `spec-audit` - focus: architecture documentation and cross-RFC consistency.
+  Review `Prior Art`, `Alternatives Considered`, and `Repository Impact`
+  (`docs/design/**`); confirm the overlay claims match the current spec/design
+  surface and cite mature prior art (LLVM data-layout, triples, Rust target
+  specs).
+- `verification` - focus: native tests, architecture gates, LLVM CI matrix.
+  Review `LLVM build and CI contract`, `Architecture enforcement`, and
+  `Determinism and ordering`; confirm the acceptance evidence in the
+  Implementation Tracker (LLVM provenance, X86/AArch64 inventory, positive and
+  negative configure tests, determinism and diff gates) is sufficient and
+  testable. Note: these slices are correctly `Blocked by acceptance` and must
+  not change state before the decision.
+
+This guide does not alter the snapshot; the RFC proposal bytes are unchanged and
+still reproduce `e421dc3bdeeead9d9ad7b504539b8a63cfde19380693ea2524aa7cf830a81d1b`.
