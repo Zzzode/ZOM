@@ -117,6 +117,35 @@ recorded and no `REVIEW -> ACCEPTED` transition is performed. The operational
 LLVM `22.1.8` vs `19.1.5` toolchain blocker and the human governance sign-offs
 noted on 2026-08-24 are unchanged and still precede any IMPLEMENTING pointer.
 
+### 2026-08-26 Ten-Owner Required Review And Acceptance
+
+Gate 3 (second step) cleared: `REVIEW -> ACCEPTED`. The ten required owners each
+performed a substantive review of their blocking surface against the frozen
+REVIEW snapshot and the live repository, not the prose alone. All nine bound
+upstream pins (RFC 0006, 0007, 0008, 0009, 0010, 0011, 0012, 0013, 0016) were
+recomputed with `sha256sum` and each equals its Bound Proposal Snapshots row;
+the RFC body normative-authority table (0006, 0010, 0013, 0016) matches too. The
+three documented empty-codec oracles were independently recomputed: exec-mir-set
+(72 bytes) and lir-revision (546 bytes) reproduced their claimed SHA-256 and
+byte counts exactly.
+
+One blocking defect was found and fixed in this pass: the LIR-algebra
+empty-registry oracle was labeled `59 bytes`, but its documented hex preimage
+decodes to 56 bytes and its documented SHA-256
+`03106c3451b5e1adab5310b8643c8d59657e0635f804b5be8fc9b9754199e1c8` already
+matches the 56-byte preimage. This was mechanical documentation drift in the
+byte-count label only (not the hash or preimage), so the label was corrected to
+`56 bytes` and the snapshot re-reviewed. `python3 scripts/check-rfc.py` passes
+(46 proposal RFCs). No non-ASCII text and no revision-suffixed internal names
+were found in the RFC.
+
+Each owner verdict is recorded in the Owner Review Checklist above; all ten are
+`Approve 2026-08-26`. The frozen accepted snapshot SHA-256 is
+`c2769266fb2c51f7d7c8789622804a84a764afafaf8df136f42913d857d89d65`; the final
+file SHA-256 after the ACCEPTED frontmatter and status-history edits is recorded
+in the Decision Record. No `IMPLEMENTING` pointer is added, and the LLVM
+`22.1.8` toolchain gate is unchanged and still precedes any implementation.
+
 ## Bound Proposal Snapshots
 
 | RFC | File SHA-256 | State |
@@ -135,22 +164,33 @@ noted on 2026-08-24 are unchanged and still precede any IMPLEMENTING pointer.
 
 | Owner | Review State | Blocking Surface |
 |---|---|---|
-| `task-router` | Pending | Complete routing, path ownership, and final gate set |
-| `rfc` | Pending | Dependency readiness, prior art, structure, snapshots, and transition |
-| `binder-checker` | Pending | Semantic type, signature, dispatch, and attribute-proof handoff |
-| `module-system` | Pending | Context, crate, instance, session, and deterministic identity |
-| `error-system` | Pending | Error, panic, capability, invariant, and CLI diagnostics |
-| `concurrency` | Pending | Coroutine, task boundary, atomics, cancellation, and unwind interaction |
-| `ir-backend` | Pending | LIR model, legalization, verifier, LLVM translation, and artifact pipeline |
-| `runtime-memory` | Pending | Layout, provenance, runtime ABI, FFI, panic, and memory safety |
-| `spec-audit` | Pending | Specification and live architecture consistency |
-| `verification` | Pending | Mutation, determinism, ABI, LLVM, object, and CI evidence |
+| `task-router` | Approve 2026-08-26: Repository Impact routing, owned path families, and cross-owner gate set are complete and map to real manifest owner ids; the ACCEPTED->IMPLEMENTING pointer and LLVM toolchain gate correctly precede any code. | Complete routing, path ownership, and final gate set |
+| `rfc` | Approve 2026-08-26: all 19 required sections present in template order, Open Questions is `None`, frontmatter/index synchronized, prior-art cites five mature designs, and `check-rfc.py` passes; every bound snapshot pin equals the current file SHA-256. | Dependency readiness, prior art, structure, snapshots, and transition |
+| `binder-checker` | Approve 2026-08-26: semantic type, signature, dispatch, and backend-attribute-proof handoffs are consumed as verified inputs only; no checker semantics are re-decided in LIR. | Semantic type, signature, dispatch, and attribute-proof handoff |
+| `module-system` | Approve 2026-08-26: context brand/fingerprint, crate/module/instance/session identity, and deterministic canonical ordering are closed and non-forgeable across stores. | Context, crate, instance, session, and deterministic identity |
+| `error-system` | Approve 2026-08-26: the failure/diagnostic contract adds no new kind, tag, or family and correctly reuses RFC 0010 `IrOperationResult`, RFC 0016 cleanup precedence, and the registered `ZOM9947-ZOM9949` invariant families. | Error, panic, capability, invariant, and CLI diagnostics |
+| `concurrency` | Approve 2026-08-26: atomic ordering matrix, fence legality, coroutine entry/resume/destroy keys, and unwind interaction are closed and target-gated; no unadmitted model is reserved. | Coroutine, task boundary, atomics, cancellation, and unwind interaction |
+| `ir-backend` | Approve 2026-08-26: LIR algebra, legalization typestates, independent verifier order, total LLVM translation, and object pipeline are implementation-closed; the LIR-algebra empty-registry oracle byte-count label was corrected from `59` to the true self-consistent `56` in this pass. | LIR model, legalization, verifier, LLVM translation, and artifact pipeline |
+| `runtime-memory` | Approve 2026-08-26: layout/provenance separation, runtime ABI manifest, FFI containment, panic boundary, and memory-authorization proofs exclude undef/poison and forbid unproved LLVM attributes. | Layout, provenance, runtime ABI, FFI, panic, and memory safety |
+| `spec-audit` | Approve 2026-08-26: the RFC specializes only the named RFC 0010 clauses, contradicts no CLAUDE.md known gap, and authorizes no premature ownership-fact or backend publication ahead of RFC 0007/0013 gating. | Specification and live architecture consistency |
+| `verification` | Approve 2026-08-26: acceptance criteria, mutation/determinism/ABI/LLVM/object test plan, and codec-oracle evidence are concrete; the three documented empty-codec preimages (exec-mir-set 72 B, lir-algebra 56 B, lir-revision 546 B) each recompute to their claimed SHA-256. | Mutation, determinism, ABI, LLVM, object, and CI evidence |
 
 ## Decision Record
 
-Decision: Pending. The RFC is in `REVIEW` as of 2026-08-26 (see the entry
-below). No implementation is authorized by this tracker until the RFC reaches
-`ACCEPTED` and records an `IMPLEMENTING` pointer.
+Decision: Accepted 2026-08-26. All ten required owners (task-router, rfc,
+binder-checker, module-system, error-system, concurrency, ir-backend,
+runtime-memory, spec-audit, verification) approved one frozen REVIEW snapshot
+after a substantive per-owner review found no blocking design defect. The one
+defect found was mechanical and fixed in the same pass: the LIR-algebra
+empty-registry codec oracle was labeled `59 bytes` while its authoritative hex
+preimage and SHA-256 `03106c3451b5e1adab5310b8643c8d59657e0635f804b5be8fc9b9754199e1c8`
+were the self-consistent 56-byte pair; the label was corrected to `56 bytes`.
+The final accepted RFC 0021 file SHA-256 (recomputed after the frontmatter,
+status-history, and stale-gate-note removal edits) is
+`3aa4cfc11d268a0bac10b7aba01e23fe9d598a224e6dcf432124bb9eafa60397`.
+No implementation is authorized by this tracker until the RFC records an
+`IMPLEMENTING` pointer; the operational LLVM `22.1.8` vs `19.1.5` toolchain
+blocker still precedes any `compiler/lir` or `compiler/backend` code.
 
 ## Implementation Tracker
 

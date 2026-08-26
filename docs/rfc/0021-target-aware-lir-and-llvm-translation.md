@@ -2,11 +2,11 @@
 rfc: 21
 title: Target-Aware LIR And LLVM Translation Contract
 type: compiler
-status: REVIEW
+status: ACCEPTED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
-approvers: []
+approvers: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
 created: 2026-07-23
 updated: 2026-08-26
 area: compiler
@@ -14,7 +14,7 @@ requires: [6, 7, 8, 9, 10, 11, 12, 13, 16]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0021-review-and-implementation.md#discussion-record
-decision: TBD
+decision: docs/rfc/tracking/0021-review-and-implementation.md#decision-record
 implementation: TBD
 tracking-issue: docs/rfc/tracking/0021-review-and-implementation.md#implementation-tracker
 ---
@@ -759,7 +759,7 @@ EncodeFramedSequence(canonicalRecipes)
 EncodeFramedSequence(canonicalGeneratedRecipes)
 ```
 
-The empty-registry codec oracle is 59 bytes:
+The empty-registry codec oracle is 56 bytes:
 
 ```text
 7a6f6d2e6c69722d616c67656272610000000000000000107a6f6d2e6d69722d7265766973696f6e00000000000000000000000000000000
@@ -3306,13 +3306,10 @@ overflow or host exhaustion. Exceeding a fixed admitted limit is the existing
 
 None
 
-This draft cannot enter `REVIEW` until RFC 0016 has an accepted snapshot and
-the bound type names and LLVM baseline above are synchronized. That is a
-dependency gate rather than an unresolved LIR design choice.
-
 ## Status History
 
 | Date | Status | Notes |
 |---|---|---|
 | 2026-07-23 | DRAFT | Defined the target-aware block-parameter SSA, carrier/layout/ABI separation, conservative provenance, closed legality, deterministic revision, and total LLVM translation contract. |
 | 2026-08-26 | REVIEW | Entered formal review after its stated dependency gate cleared: RFC 0016 reached ACCEPTED, and the bound upstream snapshots (RFC 0006, 0010, 0013, 0016) were resynchronized to their current authoritative hashes. Required-owner review of this snapshot is pending. |
+| 2026-08-26 | ACCEPTED | All ten required owners approved snapshot SHA-256 `c2769266fb2c51f7d7c8789622804a84a764afafaf8df136f42913d857d89d65` after the stale `59 bytes`->`56 bytes` LIR-algebra empty-registry oracle label was corrected (the authoritative hex preimage and SHA-256 were already the self-consistent 56-byte pair). No implementation is authorized; the LLVM 22.1.8 toolchain gate and the ACCEPTED->IMPLEMENTING pointer still precede any compiler/lir or compiler/backend code. See the tracker decision record. |
