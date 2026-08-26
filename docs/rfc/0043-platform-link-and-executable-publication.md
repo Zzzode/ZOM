@@ -2,21 +2,21 @@
 rfc: 43
 title: Platform Link And Executable Publication
 type: compiler
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, ir-backend, module-system, runtime-memory, error-system, verification]
 approvers: []
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-27
 area: compiler
 requires: [6, 10, 12, 16, 21]
 supersedes: []
 superseded-by: []
-discussion: TBD
-decision: TBD
+discussion: docs/rfc/tracking/0043-review-and-implementation.md#discussion-record
+decision: docs/rfc/tracking/0043-review-and-implementation.md#decision-record
 implementation: TBD
-tracking-issue: TBD
+tracking-issue: docs/rfc/tracking/0043-review-and-implementation.md#implementation-tracker
 ---
 
 # RFC 0043: Platform Link And Executable Publication
@@ -102,6 +102,23 @@ ZOM uses a target-selected driver interface so the same verified plan can map
 to the required platform linker flavor without treating ELF arguments as
 Mach-O arguments.
 
+[The Clang driver's `--sysroot` and macOS `-isysroot`](https://clang.llvm.org/docs/CommandGuide/clang.html)
+locate a target root and SDK for headers, startup objects, and default
+libraries instead of trusting host defaults. ZOM adopts an explicit sysroot and
+SDK root, but records it in a verified closure and forbids the ambient
+`SDKROOT`/search-path discovery Clang also permits.
+
+[Rust's target sysroot and `cc`-crate linker discovery](https://rustc-dev-guide.rust-lang.org/backend/libs-and-metadata.html)
+resolve the sysroot, startup objects, and a linker program per target. ZOM
+copies the per-target binding of sysroot plus linker but pins those inputs to a
+digest-verified closure rather than probing the environment for a compiler.
+
+[Zig's bundled cross libc and sysroot model](https://ziglang.org/learn/overview/#zig-is-also-a-c-compiler)
+ships a hermetic, reproducible set of libc, CRT, and headers per target so a
+cross build never reads the host toolchain. ZOM keeps the hermetic, reproducible
+goal and records every input digest, but does not vendor the platform SDK; it
+binds an explicitly supplied, verified toolchain root.
+
 The common pitfalls are accidental use of host libraries for a cross target,
 non-reproducible output from inherited search paths, and executing a foreign
 binary as if it were native. The closed target/runtime closure, sanitized
@@ -173,12 +190,63 @@ planExecutable(
 ```
 
 Rejection consumes the request and publishes neither a plan nor a partial
-executable. Input target, ABI, digest, or capability disagreement selects the
-existing `InputRevisionMismatch` or `InvalidFact` result from RFC 0010's
-`ObjectEmission` phase. A missing or additional closure record selects
+executable. Link-plan construction runs in the new `LinkPlanConstruction` phase
+defined under "Linker And Publication Failure Algebra" below. Input target,
+ABI, digest, or capability disagreement selects `InputRevisionMismatch` or
+`InvalidFact`. A missing or additional closure record selects
 `MissingRequiredFact` or `AdditionalFact`. A malformed order, encoding, or
-digest selects `CanonicalCodecMismatch`. The proposal adds no failure branch
-or diagnostic code.
+digest selects `CanonicalCodecMismatch`. A non-normalized or out-of-root output
+path selects `OutputCreationFailed`. These are the RFC 0010 failure kinds
+already defined for the object pipeline; this RFC reuses those kinds and binds
+them to the new post-object phases it owns.
+
+### Toolchain Discovery Record
+
+The verified runtime closure and link plan bind their filesystem inputs through
+one immutable `ToolchainClosure` record per selected target. The record is a
+data contract only; this RFC defines its shape and provenance discipline, and
+does not require object emission to exist to freeze that shape. It carries
+exactly the following fields:
+
+1. `targetSpecificationIdentity`: the RFC 0016 target specification identity the
+   closure is bound to. A closure is valid for one target only.
+2. `sysroot`: one normalized absolute target root directory. On Linux this is
+   the sysroot; on macOS it is the SDK root supplied as the equivalent of
+   Clang's `-isysroot`. The record never carries more than one root.
+3. `linker`: one `LinkerDriver` alternative (`ElfDriver` or `MachODriver`), the
+   normalized absolute path of the driver program, and that program's recorded
+   executable digest and byte count.
+4. `crtObjects`: the ordered, deduplicated set of startup and finalization
+   objects the platform requires (for example the ELF `crt1`/`crti`/`crtn`
+   family or the Mach-O equivalent), each as a normalized absolute path plus its
+   recorded digest and byte count.
+5. `defaultLibraries`: the ordered, deduplicated set of default system libraries
+   the target link mode requires (for example the platform C runtime library),
+   each recorded by canonical link name and, when linked from a fixed path
+   inside `sysroot`, its digest and byte count.
+6. `environment`: the small ordered set of target-owned environment variable
+   name/value pairs that the driver invocation is permitted to see, and nothing
+   else.
+
+Every path field must be normalized, absolute, and contained inside `sysroot`
+except the `linker` program, whose parent is recorded and pinned. The record is
+sorted by its complete canonical keys, contains no duplicate path, role, or
+symbol, and is folded into `LinkPlanId` through the same domain-separated,
+length-framed encoding as the object and runtime records.
+
+The closure is *supplied*, not *ambient*. It is provided explicitly through the
+package compilation configuration (an explicit target-toolchain configuration
+key), mirroring RFC 0016's `LLVM_DIR` discipline: RFC 0016 rejects an unset root
+and forbids any `PATH`, `CMAKE_PREFIX_PATH`, environment-hint, package-registry,
+or sibling-install fallback for the build-host LLVM package (RFC 0016 "LLVM
+build and CI contract"). RFC 0043 applies the identical fail-closed rule to the
+*target* toolchain: an unset or non-existent `sysroot`, an absent or
+digest-mismatched `linker`, a missing required CRT object, or any attempt to
+resolve an input through `PATH`, `SDKROOT`, `LIBRARY_PATH`, `LD_LIBRARY_PATH`,
+`DYLD_LIBRARY_PATH`, or a linker search variable rejects closure construction
+before any tool runs. There is no host-default probe and no ambient search;
+discovery of the concrete root is a configuration responsibility outside the
+verified compiler, exactly as CMake supplies `LLVM_DIR` today.
 
 ### Linker Driver Invocation
 
@@ -252,6 +320,49 @@ Arguments are passed as an argument vector. The program inherits only the
 explicit runtime environment authorized by the package execution request. The
 run command reports the child exit status without reclassifying it as compiler
 success or failure.
+
+### Linker And Publication Failure Algebra
+
+RFC 0010's `IrFailurePhase` is a closed enum whose tags run `0x01` through
+`0x10` and end at `ObjectEmission` and `FeatureBoundaryVerification`; its
+`BackendOperation` enum ends at `EmitObject`, and its only object-stage
+capability kind is `OutputCreationFailed`, defined as failure to create the
+requested object output (RFC 0010 "IrFailurePhase"/"BackendOperation" and the
+`ObjectEmission` failure row). None of those rows models a linker subprocess,
+so no accepted upstream row covers a linker-process failure today.
+
+RFC 0043 owns extending the failure algebra. Extending an accepted internal
+contract by a new RFC is the sanctioned pattern: RFC 0010 states that new
+stages register their own phases and rows rather than overloading unrelated
+ones, and reserves `FeatureBoundaryVerification` as the *only* source-rejecting
+seam so every other stage keeps using `IrOperationResult`. RFC 0043 stays inside
+`IrOperationResult` and adds three closed phases at the next free tags,
+`LinkPlanConstruction`, `LinkerInvocation`, and `ExecutablePublication`,
+extending the tag range to `0x13`. It adds no new `IrFailureKind` and no new
+diagnostic family; it reuses the existing kinds bound to new phases, and adds
+one `BackendOperation` alternative `InvokeLinker` (tag `0x0b`) so a linker
+subprocess failure carries a `Backend` site like every other backend operation.
+
+The rows RFC 0043 adds are:
+
+| Phase | Result and kinds | Owner / site | Detail |
+|---|---|---|---|
+| `LinkPlanConstruction` | `CapabilityRejected`: `OutputCreationFailed`; `IrInvariantRejected`: `InputRevisionMismatch`, `MissingRequiredFact`, `AdditionalFact`, `InvalidFact`, `InvalidAbi`, `CanonicalCodecMismatch` | `Session` / `{None, Backend}` | `None` |
+| `LinkerInvocation` | `CapabilityRejected`: `OutputCreationFailed`; `IrInvariantRejected`: `InputRevisionMismatch`, `InvalidFact`, `CanonicalCodecMismatch` | `Session` / `{None, Backend}` | `None` |
+| `ExecutablePublication` | `CapabilityRejected`: `OutputCreationFailed`; `IrInvariantRejected`: `MissingRequiredFact`, `InvalidFact`, `InvalidAbi`, `CanonicalCodecMismatch` | `Session` / `{None, Backend}` | `None` |
+
+The three named linker-process failures map as: a linker subprocess that exits
+nonzero, or that cannot be spawned from the verified closure, is
+`OutputCreationFailed` under `LinkerInvocation` with a `Backend { operation:
+InvokeLinker }` site (the requested link output could not be produced); a
+missing or empty link output after a zero exit is `OutputCreationFailed` under
+`LinkerInvocation`; and a malformed executable that fails format, machine,
+entry-symbol, or runtime-symbol inspection is `InvalidFact` (or `InvalidAbi`
+for an ABI-shape mismatch) under `ExecutablePublication`. The failing branch
+consumes its input and removes every temporary file, matching the object
+pipeline's fail-closed discipline. RFC 0043 registers the corresponding
+`ZOM99xx` invariant diagnostics for these phases through the existing driver
+mapping without creating a new diagnostic family.
 
 ## Repository Impact
 
@@ -336,6 +447,36 @@ without attempting execution. The compiler records structured linker stderr
 only in the diagnostic payload, with output size limits and redaction of
 unapproved host paths.
 
+### CI Architecture Lane Matrix
+
+RFC 0016 fixes the compiler build-host runner labels `macos-15` and
+`ubuntu-24.04` and the code-generation backend set to LLVM `X86` and `AArch64`
+(RFC 0016 "LLVM backend admission" and "LLVM build and CI contract"), but
+commits to no native execution lane. RFC 0043 decides that matrix concretely
+and minimally, grounded in what those fixed runners can natively execute and
+the `X86`/`AArch64` target set:
+
+| Lane | Runner | Native target | Mode |
+|---|---|---|---|
+| Linux x86_64 | `ubuntu-24.04` (x86_64) | `x86_64` ELF | Publish and **execute** |
+| macOS arm64 | `macos-15` (Apple silicon, arm64) | `aarch64` Mach-O | Publish and **execute** |
+| Linux aarch64 | `ubuntu-24.04` x86_64 host | `aarch64` ELF | Cross-publish and **inspect only** |
+| macOS x86_64 | `macos-15` arm64 host | `x86_64` Mach-O | Cross-publish and **inspect only** |
+
+The two execution lanes cover one native architecture on each supported
+operating system: `x86_64` execution on the x86_64 `ubuntu-24.04` runner and
+`aarch64` execution on the Apple-silicon `macos-15` runner. Together they run a
+produced native executable on both `X86` and `AArch64` at least once, so the
+full backend architecture set is exercised by execution without provisioning a
+Linux `aarch64` execution runner that RFC 0016 does not fix. The remaining two
+combinations are cross-published and inspected by the format-specific verifier,
+never run, and `zomc run` must reject them before process creation. Adding a
+native Linux `aarch64` execution runner later is a single additive lane change
+and requires no fallback or emulation path.
+
+RFC 0043 owns updating `.github/workflows/**` to add these lanes when it
+implements; it does not require RFC 0016's build contract to change.
+
 ## Acceptance Criteria
 
 - RFC 0016 is accepted and RFC 0021 reaches an accepted object-emission
@@ -388,16 +529,11 @@ unapproved host paths.
 
 ## Open Questions
 
-- Which exact toolchain-discovery record can bind macOS SDK and Linux sysroot
-  inputs without inheriting host search paths? Assigned to `ir-backend`,
-  `module-system`, and `runtime-memory` before REVIEW.
-- Which existing RFC 0010 failure detail rows cover linker process failures
-  without adding a diagnostic family? Assigned to `error-system` before REVIEW.
-- Which native architecture lanes are available for mandatory CI execution?
-  Assigned to `verification` before REVIEW.
+None
 
 ## Status History
 
 | Date | Status | Notes |
 |---|---|---|
 | 2026-08-15 | DRAFT | Initial post-object link and executable-publication contract created from RFC 0021's explicit non-goal boundary. |
+| 2026-08-27 | REVIEW | Authored the toolchain-discovery record, the linker and publication failure algebra extending RFC 0010, and the CI architecture lane matrix; cleared all three Open Questions and bound discussion/tracking links. |

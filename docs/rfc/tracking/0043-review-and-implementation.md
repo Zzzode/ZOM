@@ -127,38 +127,125 @@ RFC 0043 is therefore held in `DRAFT`. `discussion` and `tracking-issue` remain
 status change is made. `python3 scripts/check-rfc.py` passes clean (46 proposal
 RFCs) for the current tree, with no RFC 0043 finding.
 
+### 2026-08-27 Three Deferred Decisions Authored And DRAFT -> REVIEW
+
+The two prior passes correctly refused to *invent* answers merely to clear the
+gate. This pass performs the legitimate alternative: the RFC authors decide the
+three questions itself, grounded in mature prior art and the accepted upstream
+contracts, and moves `DRAFT -> REVIEW`. Making a defensible design decision and
+writing it into a DRAFT RFC is authoring, not fabrication. No owner approval, no
+review verdict, and no `ACCEPTED` transition is recorded here; `approvers`
+remains empty and `decision` remains a review-tracking pointer.
+
+1. **Toolchain-discovery record** (owners `ir-backend`, `module-system`,
+   `runtime-memory`). RFC 0043 now defines an immutable per-target
+   `ToolchainClosure` record (Reference-Level Design, "Toolchain Discovery
+   Record") carrying `targetSpecificationIdentity`, one `sysroot` (the Linux
+   sysroot or the macOS SDK root), one digest-pinned `linker`, ordered
+   digest-pinned `crtObjects`, ordered `defaultLibraries`, and a small
+   target-owned `environment`. Prior art: the Clang driver's `--sysroot` /
+   macOS `-isysroot` target-root selection
+   (<https://clang.llvm.org/docs/CommandGuide/clang.html>), Rust's per-target
+   sysroot plus `cc`-crate linker discipline
+   (<https://rustc-dev-guide.rust-lang.org/backend/libs-and-metadata.html>), and
+   Zig's hermetic bundled cross libc/sysroot model
+   (<https://ziglang.org/learn/overview/#zig-is-also-a-c-compiler>). Provenance
+   discipline mirrors RFC 0016's fail-closed `LLVM_DIR` chain ("LLVM build and
+   CI contract"): the closure is supplied by explicit configuration, no
+   `PATH`/`SDKROOT`/`LIBRARY_PATH`/`LD_LIBRARY_PATH`/`DYLD_LIBRARY_PATH`/search
+   fallback is allowed, and an unset root or digest mismatch rejects before any
+   tool runs. It is a data contract only and does not require object emission to
+   exist.
+
+2. **RFC 0010 failure rows for linker-process failures** (owner
+   `error-system`). RFC 0010's `IrFailurePhase` is closed at tags `0x01`-`0x10`
+   ending at `ObjectEmission`, its `BackendOperation` ends at `EmitObject`, and
+   its only object-stage capability kind `OutputCreationFailed` covers object
+   output creation, not a linker subprocess (RFC 0010 "IrFailurePhase",
+   "BackendOperation", and the `ObjectEmission` row). RFC 0043 therefore *owns*
+   extending the algebra, which is RFC 0010's sanctioned pattern (new stages
+   register their own phases; `FeatureBoundaryVerification` is the only
+   source-rejecting seam and every other stage keeps `IrOperationResult`).
+   RFC 0043 adds three closed phases `LinkPlanConstruction`, `LinkerInvocation`,
+   and `ExecutablePublication` (extending the tag range to `0x13`) plus one
+   `BackendOperation` alternative `InvokeLinker` (tag `0x0b`), reusing existing
+   `IrFailureKind`s with no new diagnostic family: linker subprocess
+   exit/spawn failure and missing link output map to `OutputCreationFailed`
+   under `LinkerInvocation` with a `Backend { operation: InvokeLinker }` site,
+   and a malformed executable maps to `InvalidFact`/`InvalidAbi` under
+   `ExecutablePublication` (Reference-Level Design, "Linker And Publication
+   Failure Algebra"). Prior art: RFC 0010's own phase/row extension discipline
+   and the Clang driver's separation of the object stage from the link stage.
+
+3. **Native CI architecture lanes** (owner `verification`). RFC 0016 fixes the
+   build-host runners `macos-15` and `ubuntu-24.04` and the `X86`+`AArch64`
+   backend set but no execution lane. RFC 0043 decides a concrete, minimal
+   matrix (Operational Readiness, "CI Architecture Lane Matrix"): execute
+   natively on Linux `x86_64` (`ubuntu-24.04`) and macOS `aarch64` (Apple-silicon
+   `macos-15`) - together exercising both backend architectures by execution -
+   and cross-publish-and-inspect (never run) Linux `aarch64` and macOS
+   `x86_64`, with `zomc run` rejecting the two inspected targets before process
+   creation. Prior art: RFC 0016's fixed runner and backend contract, and the
+   Clang/LLVM cross-compilation practice of inspecting a cross artifact rather
+   than executing a foreign binary.
+
+Transition: RFC 0043 frontmatter moves `DRAFT -> REVIEW`, `updated` becomes
+2026-08-27, a `DRAFT -> REVIEW` Status History row is added, `discussion` binds
+to this record and `tracking-issue` binds to the implementation tracker below,
+`decision` binds to the Decision Record as a review-tracking pointer, and the
+RFC index row is set to `REVIEW`. `approvers` stays `[]`. The frozen REVIEW
+proposal snapshot and the accepted upstream pins are recorded under "Bound
+Proposal Snapshots" below and each equals the current `sha256sum` of its file.
+
+## Bound Proposal Snapshots
+
+| Proposal SHA-256 |
+|---|
+| `3a7ae03a8a109be7fea9b347d030c6bb9a1d248ba1305d1e3f7c8f78ef05c855` |
+
+Accepted upstream pins (each equals the current `sha256sum` of its file and the
+values bound by RFC 0021's snapshot table):
+
+| RFC | File SHA-256 | State |
+|---|---|---|
+| RFC 0006 | `248080cd962e2ecb5cf1bf84124e38ce54ec3e1ed2e734b2237d7e43bbf08092` | Accepted design in implementation |
+| RFC 0010 | `d816f30d07291a6260241ddfe8ab5dc5405d5812e3241a974e08368bca077209` | Accepted design in implementation |
+| RFC 0012 | `4661fd71d3c2529e94289f1641c175fc73e92f0255f12f44fbb6f74515dea5e7` | Accepted design in implementation |
+| RFC 0016 | `ec27f6d3015ed5f91d903671f225141832ef165eec8fd799845ae8913743baee` | ACCEPTED target-authority snapshot |
+| RFC 0021 | `3aa4cfc11d268a0bac10b7aba01e23fe9d598a224e6dcf432124bb9eafa60397` | ACCEPTED LIR/LLVM object-emission boundary |
+
 ## Owner Review Matrix
 
 | Owner | State | Review Surface |
 |---|---|---|
-| `rfc` | Pending | Governance completeness, prior art, scope, Open Questions handling, and transition readiness |
-| `ir-backend` | Pending | Object-to-executable pipeline, link plan, driver invocation, executable verifier, and toolchain-discovery record |
-| `module-system` | Pending | Package session, target capability, artifact requests, and sysroot/SDK input binding |
-| `runtime-memory` | Pending | Runtime closure, platform ABI records, and startup-object containment |
-| `error-system` | Pending | Reuse of RFC 0010 failure detail rows for linker process failures without a new diagnostic family |
-| `verification` | Pending | Native and cross-target lanes, mandatory CI execution architecture, and evidence gates |
+| `rfc` | Review pending | Governance completeness, prior art, scope, Open Questions handling, and transition readiness |
+| `ir-backend` | Review pending | Object-to-executable pipeline, link plan, driver invocation, executable verifier, and toolchain-discovery record |
+| `module-system` | Review pending | Package session, target capability, artifact requests, and sysroot/SDK input binding |
+| `runtime-memory` | Review pending | Runtime closure, platform ABI records, and startup-object containment |
+| `error-system` | Review pending | RFC 0010 failure-algebra extension (`LinkPlanConstruction`, `LinkerInvocation`, `ExecutablePublication` phases and the `InvokeLinker` backend operation) with no new diagnostic family |
+| `verification` | Review pending | Native and cross-target lanes, the CI architecture lane matrix, and evidence gates |
 
 Each approval must identify the exact RFC SHA-256. Normative edits invalidate
-earlier approvals.
+earlier approvals. No approval is recorded yet; every owner state above is
+`Review pending` on the frozen REVIEW snapshot
+`3a7ae03a8a109be7fea9b347d030c6bb9a1d248ba1305d1e3f7c8f78ef05c855`.
 
 ## Decision Record
 
-Decision: Pending. RFC 0043 is held in `DRAFT`. The three `before REVIEW` Open
-Questions must be resolved and `discussion`/`tracking-issue` bound before a
-`DRAFT -> REVIEW` transition is legal. A 2026-08-27 upstream determinability
-cross-check confirmed that none of the three questions is settled by the
-accepted RFC 0016 or RFC 0021 contracts: the target toolchain-closure/SDK/
-sysroot record, the linker-process failure classification, and the native CI
-execution lane matrix are each genuine design decisions this RFC must make and
-route to their owners, not mechanical drift resolvable from upstream. They were
-therefore not invented in this pass. No implementation is authorized by this
-tracker.
+Decision: Review pending. On 2026-08-27 the RFC authors resolved the three
+`before REVIEW` Open Questions by design decision grounded in prior art and the
+accepted upstream contracts (see the discussion entry above), bound
+`discussion`/`tracking-issue`/`decision`, froze the REVIEW snapshot, and moved
+RFC 0043 `DRAFT -> REVIEW`. This is an authoring transition only: no owner
+review has been conducted, `approvers` is empty, and no `REVIEW -> ACCEPTED`
+decision is recorded. Owners now have a review-ready document. No implementation
+is authorized by this tracker.
 
 ## Implementation Tracker
 
 | Slice | State | Required evidence |
 |---|---|---|
-| Accepted RFC 0016 target authority and RFC 0021 verified object artifact binding | Blocked by DRAFT status | Accepted upstream hashes and object-emission contract with an implementation pointer |
+| Accepted RFC 0016 target authority and RFC 0021 verified object artifact binding | Blocked pending acceptance | Accepted upstream hashes and object-emission contract with an implementation pointer |
 | Verified runtime closure discovery and verifier | Pending acceptance | Closed Linux ELF and macOS Mach-O toolchain closure and mutation tests |
 | Canonical link-plan construction and verification | Pending acceptance | Independent verifier, deterministic `LinkPlanId`, and mutation matrix |
 | Target-selected driver invocation and cleanup | Pending acceptance | Sanitized environment, argument-vector construction, temporary-output removal |
@@ -167,7 +254,9 @@ tracker.
 
 ## Verification Evidence
 
-- `python3 scripts/check-rfc.py`: passed for 46 proposal RFCs on 2026-08-27.
+- `python3 scripts/check-rfc.py`: passed for 46 proposal RFCs on 2026-08-27,
+  including after the `DRAFT -> REVIEW` transition and the frozen REVIEW
+  snapshot binding.
 - Repository inspection confirmed RFC 0043's stated dependency boundary: no
   `VerifiedObjectArtifact` production path exists yet, and RFC 0021 is
   `ACCEPTED` without an `IMPLEMENTING` pointer.
