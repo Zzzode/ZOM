@@ -87,8 +87,8 @@ through the loop-exit block and the empty-module baseline rather than a
 standalone "one function returns one literal" MIR assertion; the HIR-level
 literal-return path is asserted directly. No row is "lowered but untested":
 receiver calls (row 22) and borrows (rows 19-21), which the plan prose grouped
-under still-open KR1.3, in fact already reach Built MIR for the single admitted
-shape and are asserted at the MIR level in the ownership/session suites.
+under call-dispatch widening, in fact already reach Built MIR for the single
+admitted shape and are asserted at the MIR level in the ownership/session suites.
 
 ## Baseline vs current (measurable delta)
 
@@ -134,17 +134,18 @@ which is why row 14 and row 15 are counted separately.
 Each of these is structurally near an admitted construct but fails closed today,
 with the reason:
 
-- **Non-empty `while` body (mutating locals).** `isAdmittedLoopStatement`
-  (`surface-admission.cc:387-391`) requires the loop body block to be
-  **empty**; any statement makes it fail closed. `HirLoopStatement`
-  (`hir-module.h:299`) carries no body statements. Deferred to G6b/KR1.2, which
-  needs an `HirLoopStatement` redesign.
-- **Multi-argument direct calls / general method calls.** `hasAdmittedArguments`
-  admits a list of scalar/ident args structurally, but only the single admitted
-  receiver shape (`cell.read(1)`, one arg) and single-arg direct calls are
-  exercised end-to-end; broader multi-argument and generic-call dispatch is
-  KR1.3 (RFC 0009 widening) and not yet driven to MIR. This is the one place the
-  admission surface is *wider* than the proven lowering.
+- **Non-empty `while` body (mutating locals).** As of G6b/KR1.2 (`d49fc586`) a
+  `while` whose body is a sequence of admitted mutable-local writes lowers to a
+  reducible four-block CFG (`HirLoopStatement` gained a `body` node-id list). No
+  longer a gap. Still fail-closed: a loop body containing a call, a nested loop,
+  a `return`, or any non-write statement, and a non-parameter (e.g. literal)
+  loop condition.
+- **General method calls / generic-call dispatch.** `hasAdmittedArguments`
+  admits a list of scalar/ident args structurally. As of KR1.3 (`7564b86a`) a
+  same-module direct call with N arguments lowers end-to-end (a multi-parameter
+  callee lowers too), so the earlier single-argument ceiling is closed. Still not
+  driven to MIR: general receiver-method dispatch beyond the one admitted
+  `cell.read(1)` shape, and generic-call dispatch. Tracked under RFC 0009.
 - **Two-level or dual-nested binary operands.** `isAdmittedPrimitiveBinary`
   (`:257-263`) rejects both-operands-nested and two-level nesting; only one
   operand, one level nests (row 10).
@@ -169,10 +170,12 @@ with the reason:
 
 ## Known gaps
 
-- The single-argument ceiling on calls means the admission surface currently
-  admits shapes (multi-arg lists) that no verified lowering proves; KR1.3 must
-  either widen the lowering or tighten admission. This note records the gap; the
-  fix belongs in the RFC 0009 workstream, not here.
+- The single-argument ceiling on direct calls is closed as of KR1.3
+  (`7564b86a`): a same-module direct call with N arguments lowers end-to-end, and
+  a multi-parameter callee lowers too, so admission and proven lowering agree for
+  direct calls. Remaining call gap: general receiver-method dispatch beyond the
+  one admitted `cell.read(1)` shape and generic-call dispatch, tracked in the
+  RFC 0009 workstream, not here.
 - No ownership proof, executable MIR, LIR, LLVM, or native artifact consumes any
   construct above (`docs/design/ir/README.md` Status Matrix). "End-to-end" stops
   at `VerifiedBuiltMir`.
