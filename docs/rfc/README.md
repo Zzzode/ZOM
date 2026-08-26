@@ -272,6 +272,23 @@ implementation PR, branch, tracking issue, or local implementation plan.
 RFC review is technical. Reviewers should focus on whether the design is
 coherent, implementable, testable, and aligned with project principles.
 
+### Owner Authority Model
+
+Required owners are in-project review roles defined by the subagent manifest,
+not external human approvers. This repository does not gate RFC status
+transitions on an outside human sign-off. An owner approval is recorded when the
+technical review for that owner's focus has actually been performed and its
+conclusion (approve, or object with the blocking reason) is written to the RFC's
+review tracker. The repository authority holder, or an agent acting under an
+explicit authorization from that holder, may perform and record those reviews
+and the resulting `REVIEW -> ACCEPTED` decision.
+
+This does not weaken the honesty rule: a recorded approval must correspond to a
+review that was genuinely conducted. Do not record an approval, decision, or
+status transition that names a review or conclusion that did not happen. The ban
+on fabricated governance transitions is a ban on false records, not on the
+project performing its own reviews.
+
 Reviewers must block on:
 
 - Missing prior art for a well-known design space.

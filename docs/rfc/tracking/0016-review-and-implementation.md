@@ -92,22 +92,69 @@ review evidence carries forward.
 
 ## Required-Owner Review
 
-| Owner | State | Required focus |
+Verdicts below are for the exact REVIEW snapshot
+`e421dc3bdeeead9d9ad7b504539b8a63cfde19380693ea2524aa7cf830a81d1b`, from the
+per-owner technical review conducted 2026-08-25 (see Review Result Record). Two
+owners objected, so the RFC remains `REVIEW` and does not advance to `ACCEPTED`.
+
+| Owner | Verdict (snapshot e421dc3b) | Required focus |
 |---|---|---|
-| `task-router` | Pending exact REVIEW snapshot | Single-owner path census and routing consistency |
-| `rfc` | Pending exact REVIEW snapshot | RFC structure, dependency direction, status governance |
-| `module-system` | Pending exact REVIEW snapshot | Package wrapper ownership, phase authority, cleanup |
-| `error-system` | Pending exact REVIEW snapshot | Closed failure mapping and diagnostic ownership |
-| `ir-backend` | Pending exact REVIEW snapshot | LLVM admission, code-generation capability registry, downstream handoff |
-| `runtime-memory` | Pending exact REVIEW snapshot | Runtime capability and ABI contract registries |
-| `spec-audit` | Pending exact REVIEW snapshot | Architecture documentation and cross-RFC consistency |
-| `verification` | Pending exact REVIEW snapshot | Native tests, architecture gates, LLVM CI matrix |
+| `task-router` | OBJECT | Single-owner path census and routing consistency |
+| `rfc` | Approve | RFC structure, dependency direction, status governance |
+| `module-system` | Approve | Package wrapper ownership, phase authority, cleanup |
+| `error-system` | Approve | Closed failure mapping and diagnostic ownership |
+| `ir-backend` | OBJECT | LLVM admission, code-generation capability registry, downstream handoff |
+| `runtime-memory` | Approve | Runtime capability and ABI contract registries |
+| `spec-audit` | Approve | Architecture documentation and cross-RFC consistency |
+| `verification` | Approve | Native tests, architecture gates, LLVM CI matrix |
 
 Readiness-audit approvals are not required-owner approvals.
 
+### 2026-08-25 Review Result Record
+
+The eight required-owner focus reviews were performed against snapshot
+`e421dc3b`. Six approved; two objected with blocking concerns. The RFC frontmatter
+`approvers` stays empty and `decision` stays `TBD`: acceptance requires every
+required owner to approve, and two have not. The blocking concerns are real and
+were independently confirmed against the proposal bytes:
+
+- `ir-backend` (blocking): the canonical codec golden preimages embed the
+  revision-suffixed internal name `zom-v1`, banned by the design principles for
+  internal generated artifacts. Confirmed by decoding the runtime-capability
+  preimage at proposal line 1541 (`06 7a6f6d2d7631` = length-6 `zom-v1`) and the
+  target-spec preimage at line 1552 (same `zom-v1` byte string). This also
+  contradicts the prose at lines 977-994, which states `RuntimeAbiProfileId`'s
+  only value is `Zom` and the initial registry is `zom -> {PanicAbort}` (profile
+  bytes `zom`, no suffix) - a prose-versus-golden-bytes codec drift. The golden
+  digests are derived over the `zom-v1` bytes, so both the name ban and the
+  drift must be resolved together, and every affected preimage, length, and
+  SHA-256 re-derived from the live encoder.
+- `task-router` (blocking): the Repository Impact ownership-routing row lists
+  `.agents/subagents/**` for the manifest, README, and per-owner files, but
+  `.agents/` does not exist; the live routing files are under `.codex/subagents/**`
+  and are covered by no row. This is a census gap from a repository-wide stale
+  path (17 proposal RFCs and this README's acceptance gates also cite
+  `.agents/subagents/`), not a defect unique to RFC 0016, so its correction is a
+  separate repository-wide doc fix.
+
+Non-blocking notes raised by approving owners: the module-system Repository
+Impact row spells `driver/compiler-session.*` while the live path is
+`driver/session/compiler-session.*`; and the `verification` owner flagged that
+the CI contract pins exact LLVM `22.1.8` while sourcing a rolling Homebrew
+`llvm@22` formula. Neither blocks acceptance.
+
+Because acceptance requires unanimous required-owner approval and two owners
+object, RFC 0016 does not transition to `ACCEPTED`. The `zom-v1` naming and
+codec-drift objection requires an edit to the proposal bytes (a new REVIEW
+snapshot and re-review); the `.agents` path objection is a repository-wide
+correction tracked separately.
+
 ## Decision Record
 
-`TBD`
+`TBD` - not accepted. Six of eight required owners approved snapshot
+`e421dc3b` on 2026-08-25; `ir-backend` and `task-router` objected with the
+blocking concerns recorded above. Acceptance is deferred until those concerns
+are resolved on a re-reviewed snapshot.
 
 ## Implementation Tracker
 
