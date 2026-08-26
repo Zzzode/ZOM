@@ -3168,13 +3168,44 @@ bool validSequentialLocalReturnFunction(
   }
   auto sourceReturn = returnFor(hirModule, sourceBlock.statements[bindingCount]);
   if (sourceReturn == zc::none) return false;
-  // Function-level shape.
+  // A nested operand (`a + b * c`) lowers to a synthesized Temporary local plus
+  // an extra StorageLive + Assign emitted before the outer binding's assignment.
+  // Precompute, per binding, the nested-operand HIR node (or none) so the
+  // verifier derives the same local count and statement layout the emitter uses.
+  auto nestedTempFor = [&](const hir::HirLocalBinding& binding) -> zc::Maybe<hir::HirNodeId> {
+    hir::HirNodeId initializer;
+    ZC_IF_SOME(value, binding.initializer) { initializer = value; }
+    auto outer = primitiveBinaryFor(hirModule, initializer);
+    ZC_IF_SOME(value, outer) {
+      if (primitiveBinaryFor(hirModule, value.left) != zc::none) return value.left;
+      if (primitiveBinaryFor(hirModule, value.right) != zc::none) return value.right;
+    }
+    return zc::none;
+  };
+  zc::Vector<zc::Maybe<hir::HirNodeId>> bindingNested;
+  zc::Vector<zc::Maybe<uint32_t>> bindingTempOrdinal;
+  uint32_t nestedCount = 0;
+  for (size_t i = 0; i < bindingCount; ++i) {
+    auto nested = nestedTempFor(*bindings[i]);
+    if (nested != zc::none) {
+      bindingTempOrdinal.add(parameterCount + static_cast<uint32_t>(bindingCount) + nestedCount +
+                             1);
+      ++nestedCount;
+    } else {
+      zc::Maybe<uint32_t> noTemp;
+      bindingTempOrdinal.add(zc::mv(noTemp));
+    }
+    bindingNested.add(zc::mv(nested));
+  }
+  auto userTempId = [&](uint32_t ordinal) { return localId(ordinal); };
+  // Function-level shape. Temporaries follow the N user locals, one per nested
+  // operand.
   if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
       function.resultType != declaration.resultType ||
       function.sourceScopes.size() != (hasUnsafeBlock ? 2u : 1u) ||
-      function.locals.size() != parameterCount + bindingCount || function.blocks.size() != 1 ||
-      declaration.body != sourceBlock.node) {
+      function.locals.size() != parameterCount + bindingCount + nestedCount ||
+      function.blocks.size() != 1 || declaration.body != sourceBlock.node) {
     return false;
   }
   const auto& scope = function.sourceScopes[0];
@@ -3200,13 +3231,137 @@ bool validSequentialLocalReturnFunction(
       return false;
     }
   }
-  const size_t expectedStatements = bindingCount * 2 + (hasUnsafeBlock ? 2u : 0u);
-  if (block.statements.size() != expectedStatements) return false;
-  // Verify each binding's StorageLive + Assign pair.
+  // Each temporary holds a nested operand's inner-binary result; its type is the
+  // owning binding's outer-binary operand type, declared in binding order.
+  {
+    uint32_t verifiedTemps = 0;
+    for (size_t i = 0; i < bindingCount; ++i) {
+      ZC_IF_SOME(nestedNode, bindingNested[i]) {
+        auto nested = primitiveBinaryFor(hirModule, nestedNode);
+        hir::HirNodeId initializerNode;
+        ZC_IF_SOME(value, bindings[i]->initializer) { initializerNode = value; }
+        auto outer = primitiveBinaryFor(hirModule, initializerNode);
+        if (nested == zc::none || outer == zc::none) return false;
+        identity::SemanticTypeId tempType;
+        ZC_IF_SOME(value, outer) { tempType = value.operandType; }
+        uint32_t tempOrdinal = 0;
+        ZC_IF_SOME(value, bindingTempOrdinal[i]) { tempOrdinal = value; }
+        const auto& temp = function.locals[parameterCount + bindingCount + verifiedTemps];
+        if (temp.id != userTempId(tempOrdinal) || temp.kind != MirLocalKind::Temporary ||
+            temp.type != tempType || temp.sourceScope != scope.id ||
+            !sameSpan(temp.sourceSpan, bindings[i]->sourceSpan)) {
+          return false;
+        }
+        ++verifiedTemps;
+      }
+    }
+  }
+  // Each binding contributes StorageLive + Assign for its user local, preceded by
+  // an extra StorageLive(temp) + Assign(temp) pair for a nested operand. The
+  // optional unsafe boundary pair follows the last binding.
+  const size_t expectedStatements = bindingCount * 2 + nestedCount * 2 + (hasUnsafeBlock ? 2u : 0u);
+  if (block.statements.size() != expectedStatements) { return false; }
+  // Verify each binding's statements, tracking the running statement cursor since
+  // a nested operand inserts a temp pair before the binding's own pair.
+  size_t cursor = 0;
   for (size_t i = 0; i < bindingCount; ++i) {
-    const auto& live = block.statements[i * 2];
-    const auto& assign = block.statements[i * 2 + 1];
     const auto& local = *bindings[i];
+    // A nested operand emits StorageLive(temp) + Assign(temp = inner rvalue)
+    // before the binding's own pair.
+    ZC_IF_SOME(nestedNode, bindingNested[i]) {
+      auto nested = primitiveBinaryFor(hirModule, nestedNode);
+      if (nested == zc::none) return false;
+      uint32_t tempOrdinal = 0;
+      ZC_IF_SOME(value, bindingTempOrdinal[i]) { tempOrdinal = value; }
+      const auto& tempLive = block.statements[cursor];
+      const auto& tempAssign = block.statements[cursor + 1];
+      cursor += 2;
+      if (tempLive.kind() != MirStatementKind::StorageLive ||
+          tempLive.storageLocal() != userTempId(tempOrdinal) ||
+          tempAssign.kind() != MirStatementKind::Assign) {
+        return false;
+      }
+      const auto& tempAssignment = tempAssign.assignmentValue();
+      ZC_IF_SOME(nestedValue, nested) {
+        const auto nestedComparison = mirComparisonOperatorFor(nestedValue.operation);
+        const auto nestedArithmetic = mirArithmeticOperatorFor(nestedValue.operation);
+        const bool nestedIsArithmetic =
+            nestedComparison == zc::none && nestedArithmetic != zc::none;
+        if ((nestedComparison == zc::none && nestedArithmetic == zc::none) ||
+            nestedValue.category != hir::HirValueCategory::Value ||
+            tempAssignment.initialization != MirInitializationKind::Initialize ||
+            tempAssignment.destination.local() != userTempId(tempOrdinal) ||
+            tempAssignment.destination.rootType() != nestedValue.type ||
+            tempAssignment.destination.resultType() != nestedValue.type ||
+            tempAssignment.destination.projections().size() != 0 ||
+            !sameSpan(tempAssign.sourceSpan(), nestedValue.sourceSpan)) {
+          return false;
+        }
+        // Validates one nested leaf against its HIR node: a constant matches a
+        // scalar literal, a copy place matches a parameter or earlier user local.
+        auto leafMatches = [&](const MirOperand& operand, hir::HirNodeId operandNode) -> bool {
+          auto operandLiteral = expressionFor(hirModule, operandNode);
+          ZC_IF_SOME(literalValue, operandLiteral) {
+            return operand.kind() == MirOperandKind::Constant &&
+                   operand.constantValue().type == nestedValue.operandType &&
+                   literalValue.type == nestedValue.operandType &&
+                   sameConstant(operand.constantValue().value, literalValue.value, module,
+                                identities, semanticTypes);
+          }
+          auto operandParameter = parameterReferenceFor(hirModule, operandNode);
+          ZC_IF_SOME(parameter, operandParameter) {
+            size_t parameterIndex = 0;
+            bool found = false;
+            for (size_t p = 0; p < declaration.parameters.size(); ++p) {
+              if (declaration.parameters[p].key == parameter.parameter) {
+                parameterIndex = p;
+                found = true;
+                break;
+              }
+            }
+            return found && parameter.type == nestedValue.operandType &&
+                   matchesPlaceUse(operand, proofs, copy, nestedValue.operandType) &&
+                   operand.place().local() == localId(static_cast<uint32_t>(parameterIndex) + 1) &&
+                   operand.place().rootType() == nestedValue.operandType &&
+                   operand.place().resultType() == nestedValue.operandType &&
+                   operand.place().projections().size() == 0;
+          }
+          auto operandLocal = localReferenceFor(hirModule, operandNode);
+          ZC_IF_SOME(reference, operandLocal) {
+            return reference.type == nestedValue.operandType && reference.local.ordinal() != 0 &&
+                   reference.local.ordinal() <= static_cast<uint32_t>(i) &&
+                   matchesPlaceUse(operand, proofs, copy, nestedValue.operandType) &&
+                   operand.place().local() == userLocalId(reference.local.ordinal() - 1) &&
+                   operand.place().rootType() == nestedValue.operandType &&
+                   operand.place().resultType() == nestedValue.operandType &&
+                   operand.place().projections().size() == 0;
+          }
+          return false;
+        };
+        if (nestedIsArithmetic) {
+          if (tempAssignment.value.kind() != MirRvalueKind::Arithmetic) return false;
+          const auto& rvalue = tempAssignment.value.arithmeticValue();
+          if (rvalue.op != ZC_ASSERT_NONNULL(nestedArithmetic) ||
+              rvalue.resultType != nestedValue.type ||
+              !leafMatches(rvalue.left, nestedValue.left) ||
+              !leafMatches(rvalue.right, nestedValue.right)) {
+            return false;
+          }
+        } else {
+          if (tempAssignment.value.kind() != MirRvalueKind::Comparison) return false;
+          const auto& rvalue = tempAssignment.value.comparisonValue();
+          if (rvalue.op != ZC_ASSERT_NONNULL(nestedComparison) ||
+              rvalue.resultType != nestedValue.type ||
+              !leafMatches(rvalue.left, nestedValue.left) ||
+              !leafMatches(rvalue.right, nestedValue.right)) {
+            return false;
+          }
+        }
+      }
+    }
+    const auto& live = block.statements[cursor];
+    const auto& assign = block.statements[cursor + 1];
+    cursor += 2;
     if (live.kind() != MirStatementKind::StorageLive || live.storageLocal() != userLocalId(i) ||
         !sameSpan(live.sourceSpan(), local.sourceSpan) ||
         assign.kind() != MirStatementKind::Assign) {
@@ -3351,6 +3506,20 @@ bool validSequentialLocalReturnFunction(
                  operand.place().resultType() == value.operandType &&
                  operand.place().projections().size() == 0;
         }
+        // A nested operand's outer slot is a copy of the synthesized temp holding
+        // its inner-binary result. The temp assignment itself was verified above.
+        auto operandNested = primitiveBinaryFor(hirModule, operandNode);
+        ZC_IF_SOME(nested, operandNested) {
+          (void)nested;
+          if (bindingTempOrdinal[i] == zc::none) return false;
+          uint32_t tempOrdinal = 0;
+          ZC_IF_SOME(ordinalValue, bindingTempOrdinal[i]) { tempOrdinal = ordinalValue; }
+          return matchesPlaceUse(operand, proofs, copy, value.operandType) &&
+                 operand.place().local() == userTempId(tempOrdinal) &&
+                 operand.place().rootType() == value.operandType &&
+                 operand.place().resultType() == value.operandType &&
+                 operand.place().projections().size() == 0;
+        }
         return false;
       };
       if (isArithmeticBinary) {
@@ -3375,7 +3544,7 @@ bool validSequentialLocalReturnFunction(
     const int present = (literal != zc::none ? 1 : 0) + (aggregate != zc::none ? 1 : 0) +
                         (localReference != zc::none ? 1 : 0) +
                         (parameterReference != zc::none ? 1 : 0) + (binary != zc::none ? 1 : 0);
-    if (present != 1) return false;
+    if (present != 1) { return false; }
   }
   // Unsafe boundary pair.
   if (hasUnsafeBlock) {
@@ -3385,8 +3554,8 @@ bool validSequentialLocalReturnFunction(
           !sameSpan(unsafeScope.sourceSpan, unsafe.sourceSpan)) {
         return false;
       }
-      const auto& enter = block.statements[bindingCount * 2];
-      const auto& exit = block.statements[bindingCount * 2 + 1];
+      const auto& enter = block.statements[cursor];
+      const auto& exit = block.statements[cursor + 1];
       if (enter.kind() != MirStatementKind::UnsafeScopeBoundary ||
           exit.kind() != MirStatementKind::UnsafeScopeBoundary ||
           enter.unsafeScopeBoundaryValue().kind != MirUnsafeScopeBoundaryKind::Enter ||
@@ -4209,9 +4378,22 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
             ZC_IF_SOME(value, binary) {
               // The binary op node is on the equation's left; its literal and
               // parameter operands are value nodes on the right. Local operands
-              // are localReferences and count on neither side.
+              // are localReferences and count on neither side. An operand that is
+              // itself a nested primitive binary contributes its own op node (one
+              // more binaryBinding) and its two leaf operands as value nodes.
               ++binaryBindings;
               for (const auto operand : {value.left, value.right}) {
+                auto nested = primitiveBinaryFor(hirModule, operand);
+                ZC_IF_SOME(nestedValue, nested) {
+                  ++binaryBindings;
+                  for (const auto leaf : {nestedValue.left, nestedValue.right}) {
+                    if (expressionFor(hirModule, leaf) != zc::none ||
+                        parameterReferenceFor(hirModule, leaf) != zc::none) {
+                      ++valueNodes;
+                    }
+                  }
+                  continue;
+                }
                 if (expressionFor(hirModule, operand) != zc::none ||
                     parameterReferenceFor(hirModule, operand) != zc::none) {
                   ++valueNodes;
@@ -4629,6 +4811,45 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                              MirLocalKind::UserLocal, bindings[i]->type, scopeId(1),
                                              bindings[i]->sourceSpan.clone()});
             }
+            // A nested operand (`a + b * c`) lowers to a synthesized Temporary
+            // local holding the inner binary's result; the outer operand is then a
+            // copy of that temp. Declare one temp per nested operand, after the N
+            // user locals, deriving the same layout the verifier uses. `nestedTemp`
+            // returns the HIR nested-binary node for a binding, or none.
+            auto nestedTempFor =
+                [&](const hir::HirLocalBinding& binding) -> zc::Maybe<hir::HirNodeId> {
+              hir::HirNodeId initializer;
+              ZC_IF_SOME(value, binding.initializer) { initializer = value; }
+              auto outer = primitiveBinaryFor(hirModule, initializer);
+              ZC_IF_SOME(value, outer) {
+                if (primitiveBinaryFor(hirModule, value.left) != zc::none) return value.left;
+                if (primitiveBinaryFor(hirModule, value.right) != zc::none) return value.right;
+              }
+              return zc::none;
+            };
+            zc::Vector<zc::Maybe<uint32_t>> bindingTempOrdinal;
+            uint32_t tempCount = 0;
+            for (size_t i = 0; i < bindingCount; ++i) {
+              if (nestedTempFor(*bindings[i]) != zc::none) {
+                const uint32_t tempOrdinal =
+                    parameterCount + static_cast<uint32_t>(bindingCount) + tempCount + 1;
+                bindingTempOrdinal.add(tempOrdinal);
+                // The temp holds the inner binary's result, which feeds the outer
+                // operand slot, so its type is the outer binary's operand type.
+                identity::SemanticTypeId tempType = bindings[i]->type;
+                hir::HirNodeId initializer;
+                ZC_IF_SOME(value, bindings[i]->initializer) { initializer = value; }
+                auto outer = primitiveBinaryFor(hirModule, initializer);
+                ZC_IF_SOME(value, outer) { tempType = value.operandType; }
+                locals.add(MirLocalDeclaration{localId(tempOrdinal), MirLocalKind::Temporary,
+                                               tempType, scopeId(1),
+                                               bindings[i]->sourceSpan.clone()});
+                ++tempCount;
+              } else {
+                zc::Maybe<uint32_t> noTemp;
+                bindingTempOrdinal.add(zc::mv(noTemp));
+              }
+            }
             zc::Vector<MirStatement> statements;
             auto userLocalId = [&](size_t index) {
               return localId(parameterCount + static_cast<uint32_t>(index) + 1);
@@ -4642,7 +4863,9 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
               auto aggregate = aggregateFor(hirModule, initializerNode);
               auto localReference = localReferenceFor(hirModule, initializerNode);
               auto parameterReference = parameterReferenceFor(hirModule, initializerNode);
-              statements.add(MirStatement::storageLive(userLocalId(i), local.sourceSpan.clone()));
+              // The binding's own StorageLive is emitted after any nested-operand
+              // temp statements (appended while building the rvalue below), so a
+              // nested operand's temp pair precedes this binding's pair.
               zc::Maybe<MirRvalue> rvalue;
               identity::SourceSpan assignSpan = local.sourceSpan.clone();
               ZC_IF_SOME(value, literal) {
@@ -4722,17 +4945,20 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                 const auto arithmeticOperator = mirArithmeticOperatorFor(value.operation);
                 const bool isArithmeticBinary =
                     comparisonOperator == zc::none && arithmeticOperator != zc::none;
-                // Builds one binary operand: a scalar-literal constant, a copy of
-                // a parameter local, or a copy of an earlier user local.
-                auto binaryOperand = [&](hir::HirNodeId operandNode) -> zc::Maybe<MirOperand> {
+                // Builds one leaf operand of a binary: a scalar-literal constant, a
+                // copy of a parameter local, or a copy of an earlier user local, of
+                // the given operand type.
+                auto binaryLeaf =
+                    [&](hir::HirNodeId operandNode,
+                        identity::SemanticTypeId operandType) -> zc::Maybe<MirOperand> {
                   auto operandLiteral = expressionFor(hirModule, operandNode);
                   ZC_IF_SOME(literal, operandLiteral) {
-                    if (literal.type != value.operandType) return zc::none;
-                    return MirOperand::constant(value.operandType, literal.value.clone());
+                    if (literal.type != operandType) return zc::none;
+                    return MirOperand::constant(operandType, literal.value.clone());
                   }
                   auto operandParameter = parameterReferenceFor(hirModule, operandNode);
                   ZC_IF_SOME(parameter, operandParameter) {
-                    if (parameter.type != value.operandType) return zc::none;
+                    if (parameter.type != operandType) return zc::none;
                     size_t parameterIndex = 0;
                     bool found = false;
                     for (size_t p = 0; p < declaration.parameters.size(); ++p) {
@@ -4744,24 +4970,75 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                     }
                     if (!found) return zc::none;
                     zc::Vector<MirProjection> projections;
-                    return placeUse(
-                        proofs, copy,
-                        MirPlace(localId(static_cast<uint32_t>(parameterIndex) + 1),
-                                 value.operandType, zc::mv(projections), value.operandType));
+                    return placeUse(proofs, copy,
+                                    MirPlace(localId(static_cast<uint32_t>(parameterIndex) + 1),
+                                             operandType, zc::mv(projections), operandType));
                   }
                   auto operandLocal = localReferenceFor(hirModule, operandNode);
                   ZC_IF_SOME(reference, operandLocal) {
-                    if (reference.type != value.operandType || reference.local.ordinal() == 0 ||
+                    if (reference.type != operandType || reference.local.ordinal() == 0 ||
                         reference.local.ordinal() > static_cast<uint32_t>(i)) {
                       return zc::none;
                     }
                     zc::Vector<MirProjection> projections;
-                    return placeUse(
-                        proofs, copy,
-                        MirPlace(userLocalId(reference.local.ordinal() - 1), value.operandType,
-                                 zc::mv(projections), value.operandType));
+                    return placeUse(proofs, copy,
+                                    MirPlace(userLocalId(reference.local.ordinal() - 1),
+                                             operandType, zc::mv(projections), operandType));
                   }
                   return zc::none;
+                };
+                // The temp ordinal reserved for this binding's nested operand, if
+                // any. A nested operand lowers to StorageLive(temp) + Assign(temp =
+                // inner rvalue) emitted before the outer assignment; the outer
+                // operand slot is then a copy of the temp.
+                zc::Maybe<uint32_t> tempOrdinal = bindingTempOrdinal[i];
+                // Builds one outer operand: a leaf (literal/parameter/local) or, for
+                // a nested operand, a copy of the synthesized temp (whose assignment
+                // this lambda also emits, once).
+                auto binaryOperand = [&](hir::HirNodeId operandNode) -> zc::Maybe<MirOperand> {
+                  auto nested = primitiveBinaryFor(hirModule, operandNode);
+                  ZC_IF_SOME(nestedValue, nested) {
+                    if (tempOrdinal == zc::none) return zc::none;
+                    uint32_t temp = 0;
+                    ZC_IF_SOME(ordinalValue, tempOrdinal) { temp = ordinalValue; }
+                    const auto nestedComparison = mirComparisonOperatorFor(nestedValue.operation);
+                    const auto nestedArithmetic = mirArithmeticOperatorFor(nestedValue.operation);
+                    const bool nestedIsArithmetic =
+                        nestedComparison == zc::none && nestedArithmetic != zc::none;
+                    // The nested result must equal the outer operand type; when the
+                    // inner is a comparison its bool result feeds a bool operand.
+                    if (nestedValue.type != value.operandType ||
+                        nestedValue.category != hir::HirValueCategory::Value ||
+                        (nestedComparison == zc::none && nestedArithmetic == zc::none)) {
+                      return zc::none;
+                    }
+                    auto nestedLeft = binaryLeaf(nestedValue.left, nestedValue.operandType);
+                    auto nestedRight = binaryLeaf(nestedValue.right, nestedValue.operandType);
+                    if (nestedLeft == zc::none || nestedRight == zc::none) return zc::none;
+                    auto nestedRvalue =
+                        nestedIsArithmetic
+                            ? MirRvalue::arithmetic(ZC_ASSERT_NONNULL(nestedArithmetic),
+                                                    zc::mv(ZC_ASSERT_NONNULL(nestedLeft)),
+                                                    zc::mv(ZC_ASSERT_NONNULL(nestedRight)),
+                                                    nestedValue.type)
+                            : MirRvalue::comparison(ZC_ASSERT_NONNULL(nestedComparison),
+                                                    zc::mv(ZC_ASSERT_NONNULL(nestedLeft)),
+                                                    zc::mv(ZC_ASSERT_NONNULL(nestedRight)),
+                                                    nestedValue.type);
+                    statements.add(
+                        MirStatement::storageLive(localId(temp), nestedValue.sourceSpan.clone()));
+                    zc::Vector<MirProjection> tempProjections;
+                    statements.add(MirStatement::assign(
+                        MirPlace(localId(temp), nestedValue.type, zc::mv(tempProjections),
+                                 nestedValue.type),
+                        zc::mv(nestedRvalue), MirInitializationKind::Initialize,
+                        nestedValue.sourceSpan.clone()));
+                    zc::Vector<MirProjection> useProjections;
+                    return placeUse(proofs, copy,
+                                    MirPlace(localId(temp), value.operandType,
+                                             zc::mv(useProjections), value.operandType));
+                  }
+                  return binaryLeaf(operandNode, value.operandType);
                 };
                 if ((comparisonOperator == zc::none && arithmeticOperator == zc::none) ||
                     value.type != local.type ||
@@ -4789,6 +5066,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
               }
               if (rvalue == zc::none) built = false;
               if (!built) break;
+              statements.add(MirStatement::storageLive(userLocalId(i), local.sourceSpan.clone()));
               zc::Vector<MirProjection> destinationProjections;
               statements.add(MirStatement::assign(
                   MirPlace(userLocalId(i), local.type, zc::mv(destinationProjections), local.type),

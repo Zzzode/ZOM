@@ -210,23 +210,45 @@ bool isAdmittedErrorPostfix(const ast::Tree& tree, ast::NodeId expression) {
 }
 
 // Structurally admits a primitive binary operation whose operands are each an
-// identifier (a parameter reference resolved downstream) or a scalar literal,
-// with at least one identifier operand. This is operator-agnostic: it admits
-// every relational, arithmetic, and bitwise BinaryExpr of this shape and the
-// checker decides which operators are actually supported and in which position
-// (a comparison is lowerable anywhere, an arithmetic result only outside a
-// condition), keeping the operator-support contract in a single place. A
-// literal-vs-literal operation has no parameter to lower and fails closed here.
+// identifier (a parameter reference resolved downstream), a scalar literal, or
+// (for at most one operand) a nested one-level primitive binary of the same
+// shape, with at least one identifier or nested operand. This is
+// operator-agnostic: it admits every relational, arithmetic, and bitwise
+// BinaryExpr of this shape and the checker decides which operators are actually
+// supported and in which position, keeping the operator-support contract in a
+// single place. A literal-vs-literal operation has no parameter to lower and
+// fails closed here. Two-level nesting (an operand of a nested operand being a
+// binary) and both operands nested stay unsupported.
 bool isAdmittedPrimitiveBinary(const ast::Tree& tree, ast::NodeId value) {
   if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::BinaryExpr) return false;
   const ast::NodeId left(tree.node(value).payload.words[ast::kBinaryExprLhsWord]);
   const ast::NodeId right(tree.node(value).payload.words[ast::kBinaryExprRhsWord]);
   if (!tree.contains(left) || !tree.contains(right)) return false;
+  // A leaf operand is an identifier or a scalar literal, never a further binary.
+  auto isLeaf = [&](ast::NodeId operand) {
+    return tree.node(operand).kind == ast::SyntaxKind::IdentExpr ||
+           isScalarLiteral(tree.node(operand).kind);
+  };
+  // A nested operand is a one-level binary whose own operands are leaves, with at
+  // least one identifier leaf.
+  auto isNested = [&](ast::NodeId operand) {
+    if (tree.node(operand).kind != ast::SyntaxKind::BinaryExpr) return false;
+    const ast::NodeId innerLeft(tree.node(operand).payload.words[ast::kBinaryExprLhsWord]);
+    const ast::NodeId innerRight(tree.node(operand).payload.words[ast::kBinaryExprRhsWord]);
+    if (!tree.contains(innerLeft) || !tree.contains(innerRight)) return false;
+    const bool innerLeftIdent = tree.node(innerLeft).kind == ast::SyntaxKind::IdentExpr;
+    const bool innerRightIdent = tree.node(innerRight).kind == ast::SyntaxKind::IdentExpr;
+    return isLeaf(innerLeft) && isLeaf(innerRight) && (innerLeftIdent || innerRightIdent);
+  };
+  const bool leftNested = isNested(left);
+  const bool rightNested = isNested(right);
+  // At most one operand may be nested in this slice.
+  if (leftNested && rightNested) return false;
   const bool leftIdent = tree.node(left).kind == ast::SyntaxKind::IdentExpr;
   const bool rightIdent = tree.node(right).kind == ast::SyntaxKind::IdentExpr;
-  const bool leftOk = leftIdent || isScalarLiteral(tree.node(left).kind);
-  const bool rightOk = rightIdent || isScalarLiteral(tree.node(right).kind);
-  return leftOk && rightOk && (leftIdent || rightIdent);
+  const bool leftOk = leftIdent || isScalarLiteral(tree.node(left).kind) || leftNested;
+  const bool rightOk = rightIdent || isScalarLiteral(tree.node(right).kind) || rightNested;
+  return leftOk && rightOk && (leftIdent || rightIdent || leftNested || rightNested);
 }
 
 bool isAdmittedReturnValue(const ast::Tree& tree, ast::NodeId value) {

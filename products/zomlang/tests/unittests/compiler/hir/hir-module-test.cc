@@ -789,6 +789,107 @@ ZC_TEST("HIR pipeline lowers a binary-initializer sequential local body") {
   }
 }
 
+ZC_TEST("HIR pipeline lowers a nested-operand binary sequential local body") {
+  HirPipelineFixture fixture(
+      "fun f(a: i32, b: i32, c: i32) -> i32 { let z: i32 = a + b * c; let w: i32 = z; return w; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 2);
+  // Two primitive binary operations: the outer `a + (b*c)` and the nested `b*c`.
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 2);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& returned = module.returns()[0];
+  // Variable-width fixed-id layout: F+0 function, F+1 block; binding0 z is a
+  // binary with one nested operand => width 6: local=3, init=4, leftOp=5,
+  // rightOp=6, nestedLeafLeft=7, nestedLeafRight=8; binding1 w is width 2:
+  // local=9, init=10; return=11, value=12.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_REQUIRE(block.statements.size() == 3);
+  const auto& zLocal = module.locals()[0];
+  const auto& wLocal = module.locals()[1];
+  ZC_EXPECT(zLocal.node.ordinal() == 3);
+  ZC_EXPECT(wLocal.node.ordinal() == 9);
+  ZC_EXPECT(returned.node.ordinal() == 11);
+  ZC_EXPECT(returned.value.ordinal() == 12);
+  // The outer Add's initializer node is z's init (node 4); its right operand is
+  // the nested Mul node (node 6), whose leaves are nodes 7 and 8.
+  zc::Maybe<const HirPrimitiveBinaryExpression&> add;
+  zc::Maybe<const HirPrimitiveBinaryExpression&> mul;
+  for (const auto& operation : module.primitiveBinaryOperations()) {
+    if (operation.operation == checker::PrimitiveOperation::Add) add = operation;
+    if (operation.operation == checker::PrimitiveOperation::Mul) mul = operation;
+  }
+  ZC_REQUIRE(add != zc::none);
+  ZC_REQUIRE(mul != zc::none);
+  ZC_IF_SOME(addValue, add) {
+    ZC_EXPECT(addValue.node == zLocal.initializer);
+    ZC_EXPECT(addValue.type == addValue.operandType);
+    ZC_EXPECT(addValue.left.ordinal() == 5);
+    ZC_EXPECT(addValue.right.ordinal() == 6);
+  }
+  ZC_IF_SOME(mulValue, mul) {
+    ZC_EXPECT(mulValue.node.ordinal() == 6);
+    ZC_EXPECT(mulValue.type == mulValue.operandType);
+    ZC_EXPECT(mulValue.left.ordinal() == 7);
+    ZC_EXPECT(mulValue.right.ordinal() == 8);
+  }
+
+  // The nested operand lowers to a synthesized Temporary local holding b*c, then
+  // the outer local z = a + temp; a copy of z for w; and return w.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    // Three parameters (locals 1..3), two user locals (z=4, w=5), one temp (6).
+    ZC_REQUIRE(mirFunction.locals.size() == 6);
+    const auto parameterA = mirFunction.locals[0].id;
+    const auto parameterB = mirFunction.locals[1].id;
+    const auto parameterC = mirFunction.locals[2].id;
+    const auto localZ = mirFunction.locals[3].id;
+    const auto localW = mirFunction.locals[4].id;
+    const auto temp = mirFunction.locals[5].id;
+    ZC_EXPECT(mirFunction.locals[5].kind == mir::MirLocalKind::Temporary);
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    const auto& mirBlock = mirFunction.blocks[0];
+    // z binding emits StorageLive(temp), Assign(temp = b*c), StorageLive(z),
+    // Assign(z = a + temp); then w binding StorageLive(w) + Assign(w = z).
+    ZC_REQUIRE(mirBlock.statements.size() == 6);
+    ZC_EXPECT(mirBlock.statements[0].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirBlock.statements[0].storageLocal() == temp);
+    ZC_EXPECT(mirBlock.statements[1].kind() == mir::MirStatementKind::Assign);
+    ZC_EXPECT(mirBlock.statements[2].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirBlock.statements[2].storageLocal() == localZ);
+    ZC_EXPECT(mirBlock.statements[3].kind() == mir::MirStatementKind::Assign);
+    ZC_EXPECT(mirBlock.statements[4].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirBlock.statements[4].storageLocal() == localW);
+    ZC_EXPECT(mirBlock.statements[5].kind() == mir::MirStatementKind::Assign);
+    // temp = b * c: Arithmetic Mul of parameters b and c into the temp.
+    const auto& tempAssign = mirBlock.statements[1].assignmentValue();
+    ZC_REQUIRE(tempAssign.value.kind() == mir::MirRvalueKind::Arithmetic);
+    ZC_EXPECT(tempAssign.value.arithmeticValue().op == mir::MirArithmeticOperator::Mul);
+    ZC_EXPECT(tempAssign.destination.local() == temp);
+    ZC_EXPECT(tempAssign.value.arithmeticValue().left.place().local() == parameterB);
+    ZC_EXPECT(tempAssign.value.arithmeticValue().right.place().local() == parameterC);
+    // z = a + temp: Arithmetic Add of parameter a and the temp into z.
+    const auto& zAssign = mirBlock.statements[3].assignmentValue();
+    ZC_REQUIRE(zAssign.value.kind() == mir::MirRvalueKind::Arithmetic);
+    ZC_EXPECT(zAssign.value.arithmeticValue().op == mir::MirArithmeticOperator::Add);
+    ZC_EXPECT(zAssign.destination.local() == localZ);
+    ZC_EXPECT(zAssign.value.arithmeticValue().left.place().local() == parameterA);
+    ZC_EXPECT(zAssign.value.arithmeticValue().right.place().local() == temp);
+    ZC_REQUIRE(mirBlock.terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_IF_SOME(returnValue, mirBlock.terminator.returnValue().value) {
+      ZC_EXPECT(returnValue.place().local() == localW);
+    }
+  }
+}
+
 ZC_TEST("HIR pipeline lowers a local nominal aggregate field projection") {
   HirPipelineFixture fixture(
       "struct Cell { value: i32, }\n"

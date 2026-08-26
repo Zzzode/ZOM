@@ -863,4 +863,50 @@ ZC_TEST("PrimitiveBinaryOperation.RejectsLogicalBinaryLocalInitializer") {
   ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
 }
 
+ZC_TEST("PrimitiveBinaryOperation.EmitsTwoArithmeticCallFactsForNestedOperand") {
+  // `let z: i32 = a + b * c` nests a `b * c` binary as the right operand of the
+  // outer `+`. Both the outer Add and the inner Mul produce PrimitiveCallable
+  // facts of operand type i32, so the body carries two primitive call facts.
+  PrimitiveBinaryFixture fixture(
+      "fun f(a: i32, b: i32, c: i32) -> i32 { let z: i32 = a + b * c; let w: i32 = z; return w; }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_REQUIRE(facts.calls().entries().size() == 2);
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  bool sawAdd = false;
+  bool sawMul = false;
+  for (const auto& entry : facts.calls().entries()) {
+    const auto& selected = entry.value.invocation.selected.variant();
+    ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+    const auto operation = selected.get<checked::PrimitiveCallable>().operation;
+    if (operation == PrimitiveOperation::Add) sawAdd = true;
+    if (operation == PrimitiveOperation::Mul) sawMul = true;
+    ZC_EXPECT(entry.value.invocation.calleeType == i32);
+    ZC_EXPECT(entry.value.invocation.resultType == i32);
+  }
+  ZC_EXPECT(sawAdd);
+  ZC_EXPECT(sawMul);
+}
+
+ZC_TEST("PrimitiveBinaryOperation.RejectsLogicalOuterWithNestedArithmeticOperand") {
+  // `a && b * c` admits structurally (one nested operand), but the outer `&&`
+  // has no primitive operation, so the checker rejects it in this slice. This
+  // keeps the operator-support decision on the single checker rail.
+  PrimitiveBinaryFixture fixture(
+      "fun f(a: bool, b: bool, c: bool) -> bool { let z: bool = a && b * c; let w: bool = z; "
+      "return w; }\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
+}
+
+ZC_TEST("PrimitiveBinaryOperation.RejectsTypeMismatchedNestedOperandInitializer") {
+  // `let z: bool = a + b * c` declares a bool local but the nested arithmetic
+  // result is i32; the declared type must match the result type, so the body
+  // fails closed.
+  PrimitiveBinaryFixture fixture(
+      "fun f(a: i32, b: i32, c: i32) -> i32 { let z: bool = a + b * c; let w: i32 = c; return w; }\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
+}
+
 }  // namespace zomlang::compiler::checker::body
