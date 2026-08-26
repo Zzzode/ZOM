@@ -3160,6 +3160,162 @@ bool validLocalParameterOverwriteReturnFunction(
   return false;
 }
 
+// Verifies `mut x = <lit>; x = a <op> b; return x;`: an initialized scalar local
+// whose overwrite value is a primitive binary. Parameters are localId(1..N) and
+// the user local is localId(N+1); the overwrite lowers to an Arithmetic (or
+// Comparison) rvalue whose operands are scalar-literal constants or copy
+// place-uses of the parameter locals, exactly like the primitive-binary
+// initializer path.
+bool validLocalBinaryOverwriteReturnFunction(
+    const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
+    const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& sourceLocal,
+    const hir::HirScalarLiteralExpression& initializer,
+    const hir::HirLocalWriteStatement& overwrite,
+    const hir::HirPrimitiveBinaryExpression& overwriteBinary,
+    const hir::HirReturnStatement& sourceReturn, const hir::HirLocalReferenceExpression& reference,
+    const hir::VerifiedHirModule& hirModule, identity::ModuleId module,
+    const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copy) {
+  const uint32_t parameterCount = static_cast<uint32_t>(declaration.parameters.size());
+  const auto comparisonOperator = mirComparisonOperatorFor(overwriteBinary.operation);
+  const auto arithmeticOperator = mirArithmeticOperatorFor(overwriteBinary.operation);
+  const bool isArithmeticBinary = comparisonOperator == zc::none && arithmeticOperator != zc::none;
+  const auto userLocalId = localId(parameterCount + 1);
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.resultType != declaration.resultType || function.sourceScopes.size() != 1 ||
+      function.locals.size() != parameterCount + 1u || function.blocks.size() != 1 ||
+      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 3 ||
+      sourceBlock.statements[0] != sourceLocal.node ||
+      sourceBlock.statements[1] != overwrite.node ||
+      sourceBlock.statements[2] != sourceReturn.node ||
+      sourceLocal.initializer != initializer.node ||
+      overwrite.kind != hir::HirLocalWriteKind::Overwrite || overwrite.field != zc::none ||
+      overwrite.local != sourceLocal.local || overwrite.type != sourceLocal.type ||
+      overwrite.value != overwriteBinary.node || sourceReturn.value != reference.node ||
+      sourceLocal.local != reference.local || sourceLocal.type != declaration.resultType ||
+      initializer.type != sourceLocal.type || overwriteBinary.type != sourceLocal.type ||
+      overwriteBinary.category != hir::HirValueCategory::Value ||
+      (comparisonOperator == zc::none && arithmeticOperator == zc::none) ||
+      (isArithmeticBinary && overwriteBinary.operandType != sourceLocal.type) ||
+      reference.type != sourceLocal.type || reference.category != hir::HirValueCategory::Place) {
+    return false;
+  }
+  const auto& scope = function.sourceScopes[0];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan)) {
+    return false;
+  }
+  for (uint32_t p = 0; p < parameterCount; ++p) {
+    const auto& parameter = function.locals[p];
+    if (parameter.id != localId(p + 1) || parameter.kind != MirLocalKind::Parameter ||
+        parameter.type != declaration.parameters[p].type || parameter.sourceScope != scope.id ||
+        !sameSpan(parameter.sourceSpan, declaration.parameters[p].sourceSpan)) {
+      return false;
+    }
+  }
+  const auto& local = function.locals[parameterCount];
+  const auto& block = function.blocks[0];
+  if (local.id != userLocalId || local.kind != MirLocalKind::UserLocal ||
+      local.type != sourceLocal.type || local.sourceScope != scope.id ||
+      !sameSpan(local.sourceSpan, sourceLocal.sourceSpan) || block.id != blockId(1) ||
+      block.sourceScope != scope.id || block.statements.size() != 3 ||
+      block.statements[0].kind() != MirStatementKind::StorageLive ||
+      block.statements[0].storageLocal() != userLocalId ||
+      !sameSpan(block.statements[0].sourceSpan(), sourceLocal.sourceSpan) ||
+      block.statements[1].kind() != MirStatementKind::Assign ||
+      block.statements[1].assignmentValue().initialization != MirInitializationKind::Initialize ||
+      block.statements[2].kind() != MirStatementKind::Assign ||
+      block.statements[2].assignmentValue().initialization != MirInitializationKind::Overwrite ||
+      block.terminator.kind() != MirTerminatorKind::Return ||
+      block.terminator.returnValue().value == zc::none ||
+      !sameSpan(block.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+    return false;
+  }
+  // The initialize assignment writes the literal into the user local.
+  const auto& initializeAssign = block.statements[1].assignmentValue();
+  if (initializeAssign.destination.local() != userLocalId ||
+      initializeAssign.destination.rootType() != local.type ||
+      initializeAssign.destination.resultType() != local.type ||
+      initializeAssign.destination.projections().size() != 0 ||
+      initializeAssign.value.kind() != MirRvalueKind::Use ||
+      initializeAssign.value.useValue().operand.kind() != MirOperandKind::Constant) {
+    return false;
+  }
+  const auto& initialConstant = initializeAssign.value.useValue().operand.constantValue();
+  if (initialConstant.type != initializer.type ||
+      !sameConstant(initialConstant.value, initializer.value, module, identities, semanticTypes) ||
+      !sameSpan(block.statements[1].sourceSpan(), initializer.sourceSpan)) {
+    return false;
+  }
+  // The overwrite assignment writes an Arithmetic/Comparison rvalue whose
+  // operands match the binary's HIR operand nodes: a scalar literal maps to a
+  // constant, a parameter reference to a copy place-use of its parameter local.
+  const auto& overwriteAssign = block.statements[2].assignmentValue();
+  if (overwriteAssign.destination.local() != userLocalId ||
+      overwriteAssign.destination.rootType() != local.type ||
+      overwriteAssign.destination.resultType() != local.type ||
+      overwriteAssign.destination.projections().size() != 0 ||
+      !sameSpan(block.statements[2].sourceSpan(), overwrite.sourceSpan)) {
+    return false;
+  }
+  auto operandMatches = [&](const MirOperand& operand, hir::HirNodeId operandNode) -> bool {
+    auto operandLiteral = expressionFor(hirModule, operandNode);
+    ZC_IF_SOME(literalValue, operandLiteral) {
+      return operand.kind() == MirOperandKind::Constant &&
+             operand.constantValue().type == overwriteBinary.operandType &&
+             literalValue.type == overwriteBinary.operandType &&
+             sameConstant(operand.constantValue().value, literalValue.value, module, identities,
+                          semanticTypes);
+    }
+    auto operandParameter = parameterReferenceFor(hirModule, operandNode);
+    ZC_IF_SOME(parameter, operandParameter) {
+      size_t parameterIndex = 0;
+      bool found = false;
+      for (size_t p = 0; p < declaration.parameters.size(); ++p) {
+        if (declaration.parameters[p].key == parameter.parameter) {
+          parameterIndex = p;
+          found = true;
+          break;
+        }
+      }
+      return found && parameter.type == overwriteBinary.operandType &&
+             matchesPlaceUse(operand, proofs, copy, overwriteBinary.operandType) &&
+             operand.place().local() == localId(static_cast<uint32_t>(parameterIndex) + 1) &&
+             operand.place().rootType() == overwriteBinary.operandType &&
+             operand.place().resultType() == overwriteBinary.operandType &&
+             operand.place().projections().size() == 0;
+    }
+    return false;
+  };
+  if (isArithmeticBinary) {
+    if (overwriteAssign.value.kind() != MirRvalueKind::Arithmetic) return false;
+    const auto& rvalue = overwriteAssign.value.arithmeticValue();
+    if (rvalue.op != ZC_ASSERT_NONNULL(arithmeticOperator) ||
+        rvalue.resultType != overwriteBinary.type ||
+        !operandMatches(rvalue.left, overwriteBinary.left) ||
+        !operandMatches(rvalue.right, overwriteBinary.right)) {
+      return false;
+    }
+  } else {
+    if (overwriteAssign.value.kind() != MirRvalueKind::Comparison) return false;
+    const auto& rvalue = overwriteAssign.value.comparisonValue();
+    if (rvalue.op != ZC_ASSERT_NONNULL(comparisonOperator) ||
+        rvalue.resultType != overwriteBinary.type ||
+        !operandMatches(rvalue.left, overwriteBinary.left) ||
+        !operandMatches(rvalue.right, overwriteBinary.right)) {
+      return false;
+    }
+  }
+  ZC_IF_SOME(value, block.terminator.returnValue().value) {
+    return matchesPlaceUse(value, proofs, copy, local.type) &&
+           value.place().local() == userLocalId && value.place().rootType() == local.type &&
+           value.place().resultType() == local.type && value.place().projections().size() == 0;
+  }
+  return false;
+}
+
 bool validLocalWriteInitializationReturnFunction(
     const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
     const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& sourceLocal,
@@ -5615,6 +5771,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
         auto initializerAggregate = aggregateFor(hirModule, initializerNode);
         auto overwriteValue = expressionFor(hirModule, overwriteValueNode);
         auto overwriteParameter = parameterReferenceFor(hirModule, overwriteValueNode);
+        auto overwriteBinary = primitiveBinaryFor(hirModule, overwriteValueNode);
         auto reference = localReferenceFor(hirModule, referenceNode);
         auto fieldProjection = localFieldProjectionFor(hirModule, referenceNode);
         auto definition = identities.definition(declaration.definition);
@@ -5885,6 +6042,147 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                     auto returnOperand = placeUse(
                         proofs, copy,
                         MirPlace(localId(2), local.type, zc::mv(returnProjections), local.type));
+                    if (returnOperand == zc::none) {
+                      return rejectMir<BuiltMirCandidate>(
+                          ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact,
+                          module, declaration.definition, identities,
+                          static_cast<uint32_t>(pending.size() + 1));
+                    }
+                    zc::Vector<MirBasicBlock> blocks;
+                    blocks.add(MirBasicBlock{
+                        blockId(1), scopeId(1), zc::mv(statements),
+                        MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                   zc::mv(returnSpan))});
+                    MirFunction function{declaration.definition,
+                                         MirFunctionKind::Function,
+                                         identity::DefinitionKind::Function,
+                                         declaration.resultType,
+                                         declaration.sourceSpan.clone(),
+                                         zc::mv(scopes),
+                                         zc::mv(locals),
+                                         zc::mv(blocks)};
+                    zc::Array<uint8_t> ownerKey;
+                    ZC_IF_SOME(key, definition) { ownerKey = key.key().encode(); }
+                    pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
+                    continue;
+                  }
+                }
+              }
+            }
+          }
+        }
+        // A `mut x = <lit>; x = a <op> b; return x;` body: an initialized scalar
+        // local whose overwrite value is a primitive binary. Parameters are
+        // localId(1..N) and the user local is localId(N+1); the overwrite lowers
+        // to an Arithmetic/Comparison rvalue whose operands are constants or
+        // copy place-uses of the parameter locals, exactly like the
+        // primitive-binary initializer path.
+        ZC_IF_SOME(local, sourceLocal) {
+          ZC_IF_SOME(overwrite, sourceOverwrite) {
+            ZC_IF_SOME(initialValue, initializer) {
+              ZC_IF_SOME(binaryValue, overwriteBinary) {
+                ZC_IF_SOME(localReference, reference) {
+                  const uint32_t parameterCount =
+                      static_cast<uint32_t>(declaration.parameters.size());
+                  const auto comparisonOperator = mirComparisonOperatorFor(binaryValue.operation);
+                  const auto arithmeticOperator = mirArithmeticOperatorFor(binaryValue.operation);
+                  const bool isArithmeticBinary =
+                      comparisonOperator == zc::none && arithmeticOperator != zc::none;
+                  if (local.initializer != zc::none && overwrite.field == zc::none &&
+                      overwrite.kind == hir::HirLocalWriteKind::Overwrite &&
+                      local.local == overwrite.local && local.local == localReference.local &&
+                      local.type == declaration.resultType && overwrite.type == local.type &&
+                      initialValue.type == local.type && binaryValue.type == local.type &&
+                      binaryValue.category == hir::HirValueCategory::Value &&
+                      (comparisonOperator != zc::none ||
+                       (arithmeticOperator != zc::none && binaryValue.operandType == local.type)) &&
+                      localReference.type == local.type &&
+                      localReference.category == hir::HirValueCategory::Place &&
+                      definition != zc::none) {
+                    const auto userLocalId = localId(parameterCount + 1);
+                    // Builds one binary operand: a scalar-literal constant or a
+                    // copy place-use of a parameter local, of the operand type.
+                    auto buildOperand = [&](hir::HirNodeId operandNode) -> zc::Maybe<MirOperand> {
+                      auto operandLiteral = expressionFor(hirModule, operandNode);
+                      ZC_IF_SOME(literalValue, operandLiteral) {
+                        if (literalValue.type != binaryValue.operandType) return zc::none;
+                        return MirOperand::constant(binaryValue.operandType,
+                                                    literalValue.value.clone());
+                      }
+                      auto operandParameter = parameterReferenceFor(hirModule, operandNode);
+                      ZC_IF_SOME(parameter, operandParameter) {
+                        if (parameter.type != binaryValue.operandType) return zc::none;
+                        size_t parameterIndex = 0;
+                        bool found = false;
+                        for (size_t p = 0; p < declaration.parameters.size(); ++p) {
+                          if (declaration.parameters[p].key == parameter.parameter) {
+                            parameterIndex = p;
+                            found = true;
+                            break;
+                          }
+                        }
+                        if (!found) return zc::none;
+                        zc::Vector<MirProjection> projections;
+                        return placeUse(proofs, copy,
+                                        MirPlace(localId(static_cast<uint32_t>(parameterIndex) + 1),
+                                                 binaryValue.operandType, zc::mv(projections),
+                                                 binaryValue.operandType));
+                      }
+                      return zc::none;
+                    };
+                    auto leftOperand = buildOperand(binaryValue.left);
+                    auto rightOperand = buildOperand(binaryValue.right);
+                    if (leftOperand == zc::none || rightOperand == zc::none) {
+                      return rejectMir<BuiltMirCandidate>(
+                          ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact,
+                          module, declaration.definition, identities,
+                          static_cast<uint32_t>(pending.size() + 1));
+                    }
+                    identity::SourceSpan returnSpan = declaration.sourceSpan.clone();
+                    ZC_IF_SOME(statement, sourceReturn) {
+                      returnSpan = statement.sourceSpan.clone();
+                    }
+                    zc::Vector<MirSourceScope> scopes;
+                    zc::Maybe<MirSourceScopeId> noParent;
+                    scopes.add(MirSourceScope{scopeId(1), zc::mv(noParent),
+                                              declaration.sourceSpan.clone()});
+                    zc::Vector<MirLocalDeclaration> locals;
+                    for (uint32_t p = 0; p < parameterCount; ++p) {
+                      locals.add(MirLocalDeclaration{localId(p + 1), MirLocalKind::Parameter,
+                                                     declaration.parameters[p].type, scopeId(1),
+                                                     declaration.parameters[p].sourceSpan.clone()});
+                    }
+                    locals.add(MirLocalDeclaration{userLocalId, MirLocalKind::UserLocal, local.type,
+                                                   scopeId(1), local.sourceSpan.clone()});
+                    zc::Vector<MirStatement> statements;
+                    statements.add(
+                        MirStatement::storageLive(userLocalId, local.sourceSpan.clone()));
+                    zc::Vector<MirProjection> initializeProjections;
+                    statements.add(MirStatement::assign(
+                        MirPlace(userLocalId, local.type, zc::mv(initializeProjections),
+                                 local.type),
+                        MirRvalue::use(
+                            MirOperand::constant(local.type, initialValue.value.clone())),
+                        MirInitializationKind::Initialize, initialValue.sourceSpan.clone()));
+                    auto overwriteRvalue =
+                        isArithmeticBinary
+                            ? MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmeticOperator),
+                                                    zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                                                    zc::mv(ZC_ASSERT_NONNULL(rightOperand)),
+                                                    binaryValue.type)
+                            : MirRvalue::comparison(ZC_ASSERT_NONNULL(comparisonOperator),
+                                                    zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                                                    zc::mv(ZC_ASSERT_NONNULL(rightOperand)),
+                                                    binaryValue.type);
+                    zc::Vector<MirProjection> overwriteProjections;
+                    statements.add(MirStatement::assign(
+                        MirPlace(userLocalId, local.type, zc::mv(overwriteProjections), local.type),
+                        zc::mv(overwriteRvalue), MirInitializationKind::Overwrite,
+                        overwrite.sourceSpan.clone()));
+                    zc::Vector<MirProjection> returnProjections;
+                    auto returnOperand = placeUse(
+                        proofs, copy,
+                        MirPlace(userLocalId, local.type, zc::mv(returnProjections), local.type));
                     if (returnOperand == zc::none) {
                       return rejectMir<BuiltMirCandidate>(
                           ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact,
@@ -8108,6 +8406,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       ZC_IF_SOME(value, sourceOverwrite) { overwriteValueNode = value.value; }
       auto overwriteValue = expressionFor(hirModule, overwriteValueNode);
       auto overwriteParameter = parameterReferenceFor(hirModule, overwriteValueNode);
+      auto overwriteBinary = primitiveBinaryFor(hirModule, overwriteValueNode);
       const bool isLocalFieldReturn = localFieldProjection != zc::none;
       const bool isParameterReturn = parameterReference != zc::none;
       const bool isParameterReborrow = parameterReborrow != zc::none;
@@ -8233,6 +8532,20 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
                         function, sourceDeclaration, block, local, localInitializer, overwrite,
                         overwriteParameterValue, returnStatement, reference, module, identities,
                         semanticTypes, proofs, copy);
+                  }
+                }
+              }
+              // A `mut x = <lit>; x = a <op> b; return x;` body: the overwrite
+              // value is a primitive binary lowered to an Arithmetic/Comparison
+              // rvalue whose operands are constants or place-uses of parameter
+              // locals.
+              ZC_IF_SOME(localInitializer, initializer) {
+                ZC_IF_SOME(overwriteBinaryValue, overwriteBinary) {
+                  ZC_IF_SOME(reference, localReference) {
+                    valid = validLocalBinaryOverwriteReturnFunction(
+                        function, sourceDeclaration, block, local, localInitializer, overwrite,
+                        overwriteBinaryValue, returnStatement, reference, hirModule, module,
+                        identities, semanticTypes, proofs, copy);
                   }
                 }
               }

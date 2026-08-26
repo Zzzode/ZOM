@@ -45,6 +45,8 @@ void insertFailure(zc::Vector<OwnershipSurfaceFailure>& failures,
   }
 }
 
+bool isAdmittedPrimitiveBinary(const ast::Tree& tree, ast::NodeId value);
+
 bool isAdmittedExpressionStatement(const ast::Tree& tree, const ast::Node& statement) {
   const ast::NodeId expression(statement.payload.words[ast::kExpressionStatementExpressionWord]);
   if (!tree.contains(expression)) { return false; }
@@ -74,6 +76,12 @@ bool isAdmittedExpressionStatement(const ast::Tree& tree, const ast::Node& state
     // supported is a checker/HIR decision, kept out of surface admission.
     case ast::SyntaxKind::IdentExpr:
       break;
+    // A primitive binary write value (`x = a + b`) is admitted structurally for a
+    // scalar-local target only; operator and operand support is a checker/HIR
+    // decision. A field write value stays literal-only in this slice.
+    case ast::SyntaxKind::BinaryExpr:
+      return tree.node(target).kind == ast::SyntaxKind::IdentExpr &&
+             isAdmittedPrimitiveBinary(tree, value);
     default:
       return false;
   }
@@ -599,17 +607,20 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
     const ast::NodeId target(tree.node(assignment).payload.words[ast::kAssignmentExprLhsWord]);
     const ast::NodeId value(tree.node(assignment).payload.words[ast::kAssignmentExprRhsWord]);
     if (!tree.contains(target) || !tree.contains(value)) return false;
-    // A scalar-local write value may be a scalar literal or an identifier
-    // reference (a parameter or local, resolved downstream); a field write value
-    // stays literal-only in this slice. Structure only; the checker/HIR decide
-    // which references are supported.
+    // A scalar-local write value may be a scalar literal, an identifier reference
+    // (a parameter or local, resolved downstream), or a primitive binary
+    // operation of the same operand shape; a field write value stays literal-only
+    // in this slice. Structure only; the checker/HIR decide which forms are
+    // supported.
     const bool identValue = tree.node(value).kind == ast::SyntaxKind::IdentExpr;
-    if (!isScalarLiteral(tree.node(value).kind) && !identValue) return false;
+    const bool binaryValue = tree.node(value).kind == ast::SyntaxKind::BinaryExpr &&
+                             isAdmittedPrimitiveBinary(tree, value);
+    if (!isScalarLiteral(tree.node(value).kind) && !identValue && !binaryValue) return false;
     if (tree.node(target).kind == ast::SyntaxKind::IdentExpr) {
       if (!matchesLocalReference(tree, pattern, target)) return false;
       continue;
     }
-    if (identValue) return false;
+    if (identValue || binaryValue) return false;
     if (!returnsField || tree.node(target).kind != ast::SyntaxKind::MemberExpression) {
       return false;
     }

@@ -1023,6 +1023,155 @@ ZC_TEST("HIR pipeline lowers a scalar-literal mutable local write unchanged") {
   }
 }
 
+ZC_TEST("HIR pipeline lowers a binary mutable local write") {
+  HirPipelineFixture fixture(
+      "fun f(a: i32, b: i32) -> i32 { mut x: i32 = 0; x = a + b; return x; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  // The initializer `0` is one scalar literal; the write value `a + b` is a
+  // primitive binary (its two operands are parameter references); the return of
+  // x is one local reference.
+  ZC_REQUIRE(module.expressions().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 2);
+  ZC_REQUIRE(module.localReferences().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& local = module.locals()[0];
+  const auto& write = module.localWrites()[0];
+  const auto& initializer = module.expressions()[0];
+  const auto& writeBinary = module.primitiveBinaryOperations()[0];
+  // Fixed-id layout (F=1): function 1, block 2, local 3, initializer 4, write 5,
+  // write value (the binary node) 6, return 7, return value 8; the binary's two
+  // operands are trailing ids 9 (left) and 10 (right).
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(initializer.node.ordinal() == 4);
+  ZC_EXPECT(write.node.ordinal() == 5);
+  ZC_EXPECT(writeBinary.node.ordinal() == 6);
+  ZC_EXPECT(writeBinary.left.ordinal() == 9);
+  ZC_EXPECT(writeBinary.right.ordinal() == 10);
+  ZC_EXPECT(block.statements.size() == 3);
+  ZC_EXPECT(block.statements[0] == local.node);
+  ZC_EXPECT(block.statements[1] == write.node);
+  ZC_EXPECT(local.initializer == initializer.node);
+  // The write value node id is the primitive binary, not a literal or a bare
+  // parameter reference.
+  ZC_EXPECT(write.value == writeBinary.node);
+  ZC_EXPECT(write.kind == HirLocalWriteKind::Overwrite);
+  ZC_EXPECT(write.local == local.local);
+  ZC_EXPECT(writeBinary.type == local.type);
+  ZC_EXPECT(writeBinary.operandType == local.type);
+  ZC_EXPECT(writeBinary.category == HirValueCategory::Value);
+  ZC_EXPECT(writeBinary.operation == checker::PrimitiveOperation::Add);
+  // Both operands are parameter references at the trailing node ids.
+  bool sawLeft = false;
+  bool sawRight = false;
+  for (const auto& reference : module.parameterReferences()) {
+    if (reference.node == writeBinary.left) sawLeft = reference.type == local.type;
+    if (reference.node == writeBinary.right) sawRight = reference.type == local.type;
+  }
+  ZC_EXPECT(sawLeft);
+  ZC_EXPECT(sawRight);
+
+  // Built MIR: parameters are localId(1) and localId(2), the user local
+  // localId(3); the write lowers to an Arithmetic Add of the two parameter
+  // place-uses into the user local.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.locals.size() == 3);
+    ZC_EXPECT(mirFunction.locals[0].kind == mir::MirLocalKind::Parameter);
+    ZC_EXPECT(mirFunction.locals[1].kind == mir::MirLocalKind::Parameter);
+    ZC_EXPECT(mirFunction.locals[2].kind == mir::MirLocalKind::UserLocal);
+    const auto parameterA = mirFunction.locals[0].id;
+    const auto parameterB = mirFunction.locals[1].id;
+    const auto userLocal = mirFunction.locals[2].id;
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    const auto& mirBlock = mirFunction.blocks[0];
+    // StorageLive(x), Assign(x = 0, Initialize), Assign(x = a + b, Overwrite).
+    ZC_REQUIRE(mirBlock.statements.size() == 3);
+    ZC_EXPECT(mirBlock.statements[0].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirBlock.statements[0].storageLocal() == userLocal);
+    const auto& initAssign = mirBlock.statements[1].assignmentValue();
+    ZC_EXPECT(initAssign.initialization == mir::MirInitializationKind::Initialize);
+    ZC_EXPECT(initAssign.destination.local() == userLocal);
+    ZC_EXPECT(initAssign.value.kind() == mir::MirRvalueKind::Use);
+    ZC_EXPECT(initAssign.value.useValue().operand.kind() == mir::MirOperandKind::Constant);
+    const auto& overwriteAssign = mirBlock.statements[2].assignmentValue();
+    ZC_EXPECT(overwriteAssign.initialization == mir::MirInitializationKind::Overwrite);
+    ZC_EXPECT(overwriteAssign.destination.local() == userLocal);
+    // The overwrite value is an Arithmetic Add of the two parameter place-uses.
+    ZC_REQUIRE(overwriteAssign.value.kind() == mir::MirRvalueKind::Arithmetic);
+    ZC_EXPECT(overwriteAssign.value.arithmeticValue().op == mir::MirArithmeticOperator::Add);
+    ZC_EXPECT(overwriteAssign.value.arithmeticValue().left.place().local() == parameterA);
+    ZC_EXPECT(overwriteAssign.value.arithmeticValue().right.place().local() == parameterB);
+    ZC_REQUIRE(mirBlock.terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_IF_SOME(returnValue, mirBlock.terminator.returnValue().value) {
+      ZC_EXPECT(returnValue.place().local() == userLocal);
+    }
+  }
+}
+
+ZC_TEST("HIR pipeline lowers a binary mutable local write with a literal operand") {
+  // A binary write with one literal operand `x = a + 1`: the left operand is a
+  // parameter reference and the right operand is a scalar literal, so the write
+  // materializes one parameter reference and one extra literal expression.
+  HirPipelineFixture fixture("fun f(a: i32) -> i32 { mut x: i32 = 0; x = a + 1; return x; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  // Two literals: the initializer `0` and the operand `1`; one parameter
+  // reference for the operand `a`.
+  ZC_REQUIRE(module.expressions().size() == 2);
+  ZC_REQUIRE(module.parameterReferences().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& writeBinary = module.primitiveBinaryOperations()[0];
+  ZC_EXPECT(writeBinary.operation == checker::PrimitiveOperation::Add);
+  bool leftIsParameter = false;
+  for (const auto& reference : module.parameterReferences()) {
+    if (reference.node == writeBinary.left) leftIsParameter = true;
+  }
+  bool rightIsLiteral = false;
+  for (const auto& expression : module.expressions()) {
+    if (expression.node == writeBinary.right) rightIsLiteral = true;
+  }
+  ZC_EXPECT(leftIsParameter);
+  ZC_EXPECT(rightIsLiteral);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.locals.size() == 2);
+    const auto parameterA = mirFunction.locals[0].id;
+    const auto& mirBlock = mirFunction.blocks[0];
+    ZC_REQUIRE(mirBlock.statements.size() == 3);
+    const auto& overwriteAssign = mirBlock.statements[2].assignmentValue();
+    ZC_REQUIRE(overwriteAssign.value.kind() == mir::MirRvalueKind::Arithmetic);
+    // Left is a copy place-use of parameter a; right is a scalar-literal constant.
+    ZC_EXPECT(overwriteAssign.value.arithmeticValue().left.place().local() == parameterA);
+    ZC_EXPECT(overwriteAssign.value.arithmeticValue().right.kind() ==
+              mir::MirOperandKind::Constant);
+  }
+}
+
 ZC_TEST("HIR pipeline lowers a local nominal aggregate field projection") {
   HirPipelineFixture fixture(
       "struct Cell { value: i32, }\n"

@@ -950,6 +950,45 @@ ZC_TEST("LocalWrite.EmitsParameterReferenceWriteValueFact") {
   for (const auto& entry : facts.literals().entries()) { ZC_EXPECT(entry.key != writeValueNode); }
 }
 
+ZC_TEST("LocalWrite.EmitsBinaryWriteValueCallFact") {
+  // `x = a + b` where `a` and `b` are i32 parameters: the body checker admits the
+  // write and produces a primitive-binary call fact for the RHS binary node,
+  // keyed on the assignment's value node, of operand and result type i32. The
+  // RHS is not a literal, so no literal fact is produced for the binary node.
+  PrimitiveBinaryFixture fixture(
+      "fun f(a: i32, b: i32) -> i32 { mut x: i32 = 0; x = a + b; return x; }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+
+  // Locate the assignment node `x = a + b` and its RHS binary node in the tree.
+  const auto& tree = fixture.tree();
+  ast::NodeId assignmentNode;
+  ast::NodeId writeValueNode;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    if (syntax.kind != ast::SyntaxKind::AssignmentExpr) return;
+    assignmentNode = node;
+    writeValueNode = ast::NodeId(syntax.payload.words[ast::kAssignmentExprRhsWord]);
+  });
+  ZC_REQUIRE(tree.contains(assignmentNode));
+  ZC_REQUIRE(tree.contains(writeValueNode));
+  ZC_EXPECT(tree.node(writeValueNode).kind == ast::SyntaxKind::BinaryExpr);
+
+  // The RHS binary node carries a primitive Add call fact of operand type i32.
+  bool sawAddWrite = false;
+  for (const auto& entry : facts.calls().entries()) {
+    if (entry.key != writeValueNode) continue;
+    const auto& selected = entry.value.invocation.selected.variant();
+    ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+    sawAddWrite = selected.get<checked::PrimitiveCallable>().operation == PrimitiveOperation::Add;
+    ZC_EXPECT(entry.value.invocation.calleeType == i32);
+    ZC_EXPECT(entry.value.invocation.resultType == i32);
+  }
+  ZC_EXPECT(sawAddWrite);
+
+  // The RHS binary is not a literal: no literal fact is produced for its node.
+  for (const auto& entry : facts.literals().entries()) { ZC_EXPECT(entry.key != writeValueNode); }
+}
+
 ZC_TEST("LocalWrite.RejectsCallValueWriteAtSurfaceAdmission") {
   // A write whose RHS is a call (`x = g()`) is not a scalar literal or an
   // identifier reference, so it is not an admitted mutable-local write shape and

@@ -436,6 +436,10 @@ bool isMutableOwnerLocal(const driver::module_graph_query::CheckerBoundModuleVie
   return false;
 }
 
+bool isScalarLiteral(ast::SyntaxKind kind) noexcept;
+zc::Maybe<PrimitiveOperation> scalarComparisonOperation(ast::BinaryOperatorKind syntax);
+zc::Maybe<PrimitiveOperation> scalarArithmeticOperation(ast::BinaryOperatorKind syntax);
+
 bool isSimpleLocalWrite(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
                         ast::NodeId assignment) {
   const auto& tree = boundModule.tree();
@@ -461,11 +465,32 @@ bool isSimpleLocalWrite(const driver::module_graph_query::CheckerBoundModuleView
       valueKind == ast::SyntaxKind::UnitLiteral ||
       valueKind == ast::SyntaxKind::CharacterLiteralExpr ||
       valueKind == ast::SyntaxKind::NoSubstitutionTemplateLiteralExpr;
-  // A write value is either a scalar literal or an identifier reference (a
-  // parameter or an earlier local, resolved downstream and lowered to a
-  // copy/move place-use). Both keep the write's target-type fact intact.
+  // A write value is a scalar literal, an identifier reference (a parameter or
+  // an earlier local, resolved downstream and lowered to a copy/move place-use),
+  // or a primitive binary operation whose operands each follow the same rule
+  // (each a scalar literal or an identifier reference, with at least one
+  // reference). Every form keeps the write's target-type fact intact. Operator
+  // support is decided at the RHS binary's own production site; this structural
+  // check only admits the write shape.
   const bool reference = valueKind == ast::SyntaxKind::IdentExpr;
-  return (scalar || reference) && isMutableOwnerLocal(boundModule, target);
+  bool binary = false;
+  if (valueKind == ast::SyntaxKind::BinaryExpr) {
+    const auto operation = static_cast<ast::BinaryOperatorKind>(
+        tree.node(value).payload.words[ast::kBinaryExprOpWord]);
+    if (scalarComparisonOperation(operation) != zc::none ||
+        scalarArithmeticOperation(operation) != zc::none) {
+      const ast::NodeId binaryLeft(tree.node(value).payload.words[ast::kBinaryExprLhsWord]);
+      const ast::NodeId binaryRight(tree.node(value).payload.words[ast::kBinaryExprRhsWord]);
+      if (tree.contains(binaryLeft) && tree.contains(binaryRight)) {
+        const bool leftIdent = tree.node(binaryLeft).kind == ast::SyntaxKind::IdentExpr;
+        const bool rightIdent = tree.node(binaryRight).kind == ast::SyntaxKind::IdentExpr;
+        const bool leftOk = leftIdent || isScalarLiteral(tree.node(binaryLeft).kind);
+        const bool rightOk = rightIdent || isScalarLiteral(tree.node(binaryRight).kind);
+        binary = leftOk && rightOk && (leftIdent || rightIdent);
+      }
+    }
+  }
+  return (scalar || reference || binary) && isMutableOwnerLocal(boundModule, target);
 }
 
 bool isSimpleOwnerLocalFieldWrite(
