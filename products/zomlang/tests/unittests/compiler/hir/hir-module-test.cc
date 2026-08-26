@@ -1406,6 +1406,87 @@ ZC_TEST("HIR pipeline lowers an admitted while loop") {
   }
 }
 
+ZC_TEST("HIR pipeline lowers a while loop whose body writes a mutable local") {
+  HirPipelineFixture fixture(
+      "fun f(a: i32, cond: bool) -> i32 { mut x: i32 = 0; while (cond) { x = a; } return x; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.loops().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  // The initializer `0` is one scalar literal; the loop condition `cond` and the
+  // write value `a` are two parameter references; the return of x is one local
+  // reference.
+  ZC_REQUIRE(module.expressions().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 2);
+  ZC_REQUIRE(module.localReferences().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& local = module.locals()[0];
+  const auto& loop = module.loops()[0];
+  const auto& write = module.localWrites()[0];
+  const auto& returnStatement = module.returns()[0];
+  // Fixed-id layout (F=1): function 1, block 2, local 3, initializer 4, write 5,
+  // write value 6, return 7, return value (local ref) 8, condition param-ref 9,
+  // loop 10.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(write.node.ordinal() == 5);
+  ZC_EXPECT(returnStatement.node.ordinal() == 7);
+  ZC_EXPECT(loop.node.ordinal() == 10);
+  // The function body block is `[local, loop, return]`, and the loop carries the
+  // single write as its body.
+  ZC_REQUIRE(block.statements.size() == 3);
+  ZC_EXPECT(block.statements[0] == local.node);
+  ZC_EXPECT(block.statements[1] == loop.node);
+  ZC_EXPECT(block.statements[2] == returnStatement.node);
+  ZC_REQUIRE(loop.body.size() == 1);
+  ZC_EXPECT(loop.body[0] == write.node);
+  ZC_EXPECT(loop.category == HirValueCategory::Place);
+  ZC_EXPECT(write.kind == HirLocalWriteKind::Overwrite);
+  ZC_EXPECT(write.local == local.local);
+
+  // The composite lowers to a reducible four-block Built MIR CFG whose body block
+  // carries the overwrite before the back-edge Goto. The result local is the user
+  // local x (localId params+1 = 3).
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> f;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) f = mirFunction;
+  }
+  ZC_REQUIRE(f != zc::none);
+  ZC_IF_SOME(mirFunction, f) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 4);
+    // bb1 entry: StorageLive(x) ; Assign(x = 0, Initialize) ; Goto(bb2)
+    ZC_REQUIRE(mirFunction.blocks[0].statements.size() == 2);
+    ZC_EXPECT(mirFunction.blocks[0].statements[0].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirFunction.blocks[0].statements[1].kind() == mir::MirStatementKind::Assign);
+    ZC_EXPECT(mirFunction.blocks[0].terminator.kind() == mir::MirTerminatorKind::Goto);
+    ZC_EXPECT(mirFunction.blocks[0].terminator.gotoValue().target == mirFunction.blocks[1].id);
+    // bb2 header: SwitchInt(cond, [true -> bb3], default = bb4)
+    ZC_EXPECT(mirFunction.blocks[1].statements.size() == 0);
+    ZC_REQUIRE(mirFunction.blocks[1].terminator.kind() == mir::MirTerminatorKind::SwitchInt);
+    const auto& switchInt = mirFunction.blocks[1].terminator.switchIntValue();
+    ZC_REQUIRE(switchInt.arms.size() == 1);
+    ZC_EXPECT(switchInt.arms[0].target == mirFunction.blocks[2].id);
+    ZC_EXPECT(switchInt.defaultTarget == mirFunction.blocks[3].id);
+    // bb3 body: Assign(x = a, Overwrite) ; back-edge Goto(bb2)
+    ZC_REQUIRE(mirFunction.blocks[2].statements.size() == 1);
+    ZC_EXPECT(mirFunction.blocks[2].statements[0].kind() == mir::MirStatementKind::Assign);
+    ZC_EXPECT(mirFunction.blocks[2].statements[0].assignmentValue().initialization ==
+              mir::MirInitializationKind::Overwrite);
+    ZC_REQUIRE(mirFunction.blocks[2].terminator.kind() == mir::MirTerminatorKind::Goto);
+    ZC_EXPECT(mirFunction.blocks[2].terminator.gotoValue().target == mirFunction.blocks[1].id);
+    // bb4 exit: Return(placeUse(x))
+    ZC_EXPECT(mirFunction.blocks[3].statements.size() == 0);
+    ZC_EXPECT(mirFunction.blocks[3].terminator.kind() == mir::MirTerminatorKind::Return);
+  }
+}
+
 ZC_TEST("HIR pipeline lowers a two-arm scalar-literal conditional") {
   HirPipelineFixture fixture(
       "fun pick(c: bool) -> i32 { if (c) { return 1; } else { return 2; } }"_zc);

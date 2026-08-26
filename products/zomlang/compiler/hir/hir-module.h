@@ -293,12 +293,16 @@ struct HirConditionalExpression final {
 
 /// \brief One admitted `while` loop retained for reducible multi-block MIR lowering.
 ///
-/// The condition is a bool parameter reference and the loop body is empty. MIR lowering emits a
-/// header block whose SwitchInt terminator branches to the body on a true discriminant and to the
-/// exit otherwise; the body block jumps back to the header, forming a reducible back-edge.
+/// The condition is a bool parameter reference. The `body` lists, in source
+/// order, the node ids of the loop body's mutable-local write statements (empty
+/// for an empty-body loop). MIR lowering emits a header block whose SwitchInt
+/// terminator branches to the body on a true discriminant and to the exit
+/// otherwise; the body block carries the write assignments then jumps back to
+/// the header, forming a reducible back-edge.
 struct HirLoopStatement final {
   HirNodeId node;
   HirNodeId condition;
+  zc::Vector<HirNodeId> body;
   identity::SemanticTypeId type;
   HirValueCategory category;
   identity::SourceSpan sourceSpan;

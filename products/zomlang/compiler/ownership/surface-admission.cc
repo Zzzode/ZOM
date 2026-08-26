@@ -368,12 +368,49 @@ zc::Maybe<ast::NodeId> localDeclarator(const ast::Tree& tree, ast::NodeId statem
   return declarator;
 }
 
+/// \brief Structurally admits one `while`-body write statement.
+///
+/// The statement is an `<ident> = <scalar literal | identifier | admitted
+/// primitive binary>;` assignment. This is exactly the scalar-local write shape
+/// the leading-declaration mut-local path admits; a field write is not admitted
+/// in a loop body. Structure only; the checker/HIR decide which references and
+/// operators are supported and which local the write targets.
+bool isAdmittedLoopBodyWrite(const ast::Tree& tree, ast::NodeId statement) {
+  auto item = statementItem(tree, statement);
+  if (item == zc::none) return false;
+  ast::NodeId writeStmt;
+  ZC_IF_SOME(value, item) { writeStmt = value; }
+  if (tree.node(writeStmt).kind != ast::SyntaxKind::ExpressionStatement) return false;
+  const ast::NodeId assignment(
+      tree.node(writeStmt).payload.words[ast::kExpressionStatementExpressionWord]);
+  if (!tree.contains(assignment) || tree.node(assignment).kind != ast::SyntaxKind::AssignmentExpr ||
+      static_cast<ast::AssignmentOperatorKind>(
+          tree.node(assignment).payload.words[ast::kAssignmentExprOpWord]) !=
+          ast::AssignmentOperatorKind::Assign) {
+    return false;
+  }
+  const ast::NodeId target(tree.node(assignment).payload.words[ast::kAssignmentExprLhsWord]);
+  const ast::NodeId value(tree.node(assignment).payload.words[ast::kAssignmentExprRhsWord]);
+  if (!tree.contains(target) || !tree.contains(value) ||
+      tree.node(target).kind != ast::SyntaxKind::IdentExpr) {
+    return false;
+  }
+  return isScalarLiteral(tree.node(value).kind) ||
+         tree.node(value).kind == ast::SyntaxKind::IdentExpr ||
+         (tree.node(value).kind == ast::SyntaxKind::BinaryExpr &&
+          isAdmittedPrimitiveBinary(tree, value));
+}
+
 /// \brief Shape-matches a `while` loop that has an admitted semantic contract.
 ///
-/// The narrowly admitted loop form is a `while` whose condition is a bare
-/// identifier (resolved to a bool parameter downstream) and whose body is an
-/// empty block. This is a genuine reducible loop that Built MIR can lower to a
-/// four-block CFG with a reducible back-edge.
+/// The admitted loop condition is a bare identifier (resolved to a bool
+/// parameter downstream). The body is either empty or a block whose statements
+/// are all admitted scalar-local write statements (`<ident> = <lit | ident |
+/// binary>;`). Both forms are genuine reducible loops that Built MIR lowers to a
+/// four-block CFG with a reducible back-edge; a non-empty body carries its
+/// writes in the loop's body block before the back-edge Goto. Structure only;
+/// the checker/HIR decide which local each write targets and which operators are
+/// supported.
 bool isAdmittedLoopStatement(const ast::Tree& tree, ast::NodeId whileStmt) {
   if (!tree.contains(whileStmt) || tree.node(whileStmt).kind != ast::SyntaxKind::WhileStmt) {
     return false;
@@ -388,7 +425,11 @@ bool isAdmittedLoopStatement(const ast::Tree& tree, ast::NodeId whileStmt) {
   const auto& block = tree.node(body);
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
-  return tree.contains(statements) && statements.empty();
+  if (!tree.contains(statements)) return false;
+  for (const auto statement : tree.list(statements)) {
+    if (!isAdmittedLoopBodyWrite(tree, statement)) return false;
+  }
+  return true;
 }
 
 bool isAdmittedConditionalBody(const ast::Tree& tree, ast::NodeId ifStmt) {
@@ -486,6 +527,59 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
   const ast::NodeId returnValue(tree.node(returnNode).payload.words[ast::kReturnStmtValueWord]);
   if (!tree.contains(returnValue)) return true;
   if (statements.size == 1) return isAdmittedReturnValue(tree, returnValue);
+
+  if (statements.size == 3) {
+    // A leading mutable-local declaration, an admitted `while` loop whose body
+    // writes that local, and a `return <ident>;` is an admitted function body.
+    // The loop lowers to a reducible four-block CFG whose body block carries the
+    // write assignments before the back-edge Goto. The mut-local declaration and
+    // the local return reuse the sequential/mut-local shape's admission; only the
+    // middle statement being an admitted loop distinguishes this shape.
+    auto middleItem = statementItem(tree, tree.list(statements)[1]);
+    if (middleItem != zc::none) {
+      ast::NodeId middleStmt;
+      ZC_IF_SOME(value, middleItem) { middleStmt = value; }
+      if (tree.node(middleStmt).kind == ast::SyntaxKind::WhileStmt) {
+        auto declarator = localDeclarator(tree, tree.list(statements)[0]);
+        if (declarator == zc::none) return false;
+        ast::NodeId declaratorNode;
+        ZC_IF_SOME(value, declarator) { declaratorNode = value; }
+        auto leadingItem = statementItem(tree, tree.list(statements)[0]);
+        ast::NodeId letNode;
+        ZC_IF_SOME(value, leadingItem) { letNode = value; }
+        if (static_cast<ast::BindingDeclarationKind>(
+                tree.node(letNode).payload.words[ast::kLetStmtKindWord]) !=
+            ast::BindingDeclarationKind::Mut) {
+          return false;
+        }
+        const ast::NodeId pattern(
+            tree.node(declaratorNode).payload.words[ast::kVariableDeclaratorPatternWord]);
+        const ast::NodeId initializer(
+            tree.node(declaratorNode).payload.words[ast::kVariableDeclaratorInitWord]);
+        if (!isAdmittedLocalInitializer(tree, initializer)) return false;
+        if (!isAdmittedLoopStatement(tree, middleStmt)) return false;
+        // Every loop-body write targets the declared local (checked by identifier
+        // name; the target type and mutability are a checker decision).
+        const ast::NodeId body(tree.node(middleStmt).payload.words[ast::kWhileStmtBodyWord]);
+        const auto& bodyBlock = tree.node(body);
+        const ast::NodeList bodyStatements{bodyBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                           bodyBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
+        for (const auto statement : tree.list(bodyStatements)) {
+          auto item = statementItem(tree, statement);
+          if (item == zc::none) return false;
+          ast::NodeId writeStmt;
+          ZC_IF_SOME(value, item) { writeStmt = value; }
+          const ast::NodeId assignment(
+              tree.node(writeStmt).payload.words[ast::kExpressionStatementExpressionWord]);
+          const ast::NodeId target(
+              tree.node(assignment).payload.words[ast::kAssignmentExprLhsWord]);
+          if (!matchesLocalReference(tree, pattern, target)) return false;
+        }
+        return tree.node(returnValue).kind == ast::SyntaxKind::IdentExpr &&
+               matchesLocalReference(tree, pattern, returnValue);
+      }
+    }
+  }
 
   // Sequential local shape: two or more leading `let <ident>: T = <initializer>;`
   // statements followed by a single `return <ident>;`. Each initializer is a
