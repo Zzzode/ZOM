@@ -8,19 +8,20 @@ approvers.
 
 | Field | Value |
 |---|---|
-| Status | `REVIEW` |
-| Proposal SHA-256 | `cfabf1a014521cd1897d6637eb2cb1997dbae6048e35860883a448c4bf183c51` |
+| Status | `ACCEPTED` |
+| Proposal SHA-256 | `ec27f6d3015ed5f91d903671f225141832ef165eec8fd799845ae8913743baee` |
 | Review manager | `rfc` |
-| Decision | `TBD` |
-| Implementation | Blocked until `ACCEPTED` |
+| Decision | `ACCEPTED` (2026-08-26, all eight required owners) |
+| Implementation | Unstarted; slices blocked until an implementation change begins |
 
-The prior REVIEW snapshot was
-`e421dc3bdeeead9d9ad7b504539b8a63cfde19380693ea2524aa7cf830a81d1b`. The
-repository-wide `.agents/subagents` -> `.codex/subagents` path correction edited
-this proposal's Repository Impact row, superseding that snapshot (see the
-2026-08-25 snapshot rebinding record below). The six approvals recorded against
-`e421dc3b` do not carry forward unchanged, and the `ir-backend` `zom-v1`
-objection still stands against the new snapshot.
+The reviewed-and-approved snapshot was
+`cfabf1a014521cd1897d6637eb2cb1997dbae6048e35860883a448c4bf183c51`; the ACCEPTED
+snapshot above is its status-only superset (frontmatter status/approvers/decision
+and the Status History row). The prior REVIEW snapshot was
+`e421dc3bdeeead9d9ad7b504539b8a63cfde19380693ea2524aa7cf830a81d1b`, superseded
+first by the `.agents/subagents` -> `.codex/subagents` correction
+(`4d2a2858...`) and then by the `zom-v1` -> `zom` codec regeneration
+(`cfabf1a0...`).
 
 The previous draft baseline was
 `a9d1995e60ac443e303ed01ac3f4bbe76a1e954feee1a9b0c192ba0fe1db314a`.
@@ -217,12 +218,54 @@ re-review of this snapshot is required. RFC 0016 remains `REVIEW`; frontmatter
 required owners to review the new snapshot; the `ir-backend` codec defect that
 blocked it is resolved here, but acceptance is recorded, not performed.
 
+### 2026-08-26 Re-review of snapshot cfabf1a0 and acceptance
+
+All eight required owners re-reviewed the `cfabf1a0` snapshot against their
+focus areas. Seven approved immediately; `ir-backend` initially objected again
+with a new, real cross-RFC defect: the `zom-v1` purge was not repository-wide -
+RFC 0010's independent target-spec oracle still carried a 108-byte `zom-v1`
+preimage with the stale digest `d972a7d9`, and RFC 0016's cross-reference to
+"the RFC 0010 105-byte value" was therefore false against the authority it
+overlays. That defect was fixed by regenerating the RFC 0010 oracle to the
+105-byte `zom` form (digest `b5171e0d...`, identical to RFC 0016 and the live
+`target-registry-test.cc`); `zom-v1` now survives only in this tracker's history
+and in the banned-versioning gate's own detection fixture. `ir-backend` then
+re-verified independently (re-hashing the RFC 0010 in-file preimage to
+`b5171e0d...` at 105 bytes, confirming the cross-reference, and confirming the
+RFC 0016 body still hashes to `cfabf1a0`) and approved.
+
+| Owner | Verdict (snapshot cfabf1a0) |
+|---|---|
+| `task-router` | Approve |
+| `rfc` | Approve |
+| `module-system` | Approve |
+| `error-system` | Approve |
+| `ir-backend` | Approve |
+| `runtime-memory` | Approve |
+| `spec-audit` | Approve |
+| `verification` | Approve |
+
+With all eight required owners approving, RFC 0016 transitions `REVIEW` ->
+`ACCEPTED`. The acceptance edit (frontmatter `status`/`approvers`/`decision`,
+Status History row) changes the proposal bytes to the final ACCEPTED snapshot
+SHA-256 `ec27f6d3015ed5f91d903671f225141832ef165eec8fd799845ae8913743baee`; the
+reviewed-and-approved content is the `cfabf1a0` snapshot, of which the acceptance
+edit is a status-only superset. `implementation` stays `TBD`: acceptance
+authorizes implementation but no implementation slice has begun.
+
 ## Decision Record
 
-`TBD` - not accepted. Six of eight required owners approved snapshot
-`e421dc3b` on 2026-08-25; `ir-backend` and `task-router` objected with the
-blocking concerns recorded above. Acceptance is deferred until those concerns
-are resolved on a re-reviewed snapshot.
+`ACCEPTED` on 2026-08-26. All eight required owners (`task-router`, `rfc`,
+`module-system`, `error-system`, `ir-backend`, `runtime-memory`, `spec-audit`,
+`verification`) approved the `cfabf1a0` review snapshot after the two prior
+blocking objections were resolved: the `.agents/subagents` -> `.codex/subagents`
+routing correction (task-router) and the repository-wide `zom-v1` -> `zom`
+codec-fixture regeneration across RFC 0016 and RFC 0010 (ir-backend), each
+verified against the live encoder and the live `target-registry-test`. The
+acceptance edit produced the final ACCEPTED snapshot
+`ec27f6d3015ed5f91d903671f225141832ef165eec8fd799845ae8913743baee`.
+Implementation remains unstarted; the Implementation Tracker slices stay blocked
+until an implementation change begins.
 
 ## Implementation Tracker
 

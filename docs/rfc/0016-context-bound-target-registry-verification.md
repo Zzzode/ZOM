@@ -2,19 +2,19 @@
 rfc: 16
 title: Context-Bound Target Registry Verification
 type: compiler
-status: REVIEW
+status: ACCEPTED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [task-router, rfc, module-system, error-system, ir-backend, runtime-memory, spec-audit, verification]
-approvers: []
+approvers: [task-router, rfc, module-system, error-system, ir-backend, runtime-memory, spec-audit, verification]
 created: 2026-07-16
-updated: 2026-07-23
+updated: 2026-08-26
 area: compiler
 requires: [6, 8, 10, 11, 12]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0016-review-and-implementation.md#discussion-record
-decision: TBD
+decision: docs/rfc/tracking/0016-review-and-implementation.md#decision-record
 implementation: TBD
 tracking-issue: docs/rfc/tracking/0016-review-and-implementation.md#implementation-tracker
 ---
@@ -2403,7 +2403,7 @@ authority and backend configuration, not ZOM source syntax or semantics.
 
 ## Open Questions
 
-None.
+None
 
 ## Status History
 
@@ -2415,3 +2415,4 @@ None.
 | 2026-07-17 | DRAFT | Repaired package-session ownership, phase-specific authority, target verification, deterministic codecs, and LLVM discovery. |
 | 2026-07-23 | DRAFT | Added the atomic target-authority bundle, code-generation capability and runtime ABI contract registries, private one-shot final code-generation issuance, acyclic downstream LIR boundary, native verification plan, and removed the unrelated controlled-coverage execution model from this proposal. |
 | 2026-07-23 | REVIEW | Entered formal review after three independent locked audits approved exact DRAFT SHA-256 `0f2cedcad9b06b6190657339d11eb2db61e453e2bf20d0252a3a36fd84166062`. |
+| 2026-08-26 | ACCEPTED | All eight required owners approved snapshot SHA-256 `cfabf1a014521cd1897d6637eb2cb1997dbae6048e35860883a448c4bf183c51` after the `.agents`->`.codex` routing correction and the repository-wide `zom-v1`->`zom` codec-fixture regeneration resolved the two prior blocking objections. See the tracker decision record. |
