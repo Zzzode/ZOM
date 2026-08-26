@@ -3061,6 +3061,105 @@ bool validLocalOverwriteReturnFunction(
   return false;
 }
 
+// Verifies `mut x = <lit>; x = <param>; return x;`: an initialized scalar local
+// whose overwrite value is a parameter reference. The parameter is localId(1)
+// and the user local is localId(2); the overwrite lowers to a copy/move
+// place-use of the parameter local, exactly like the return-of-parameter path.
+bool validLocalParameterOverwriteReturnFunction(
+    const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
+    const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& sourceLocal,
+    const hir::HirScalarLiteralExpression& initializer,
+    const hir::HirLocalWriteStatement& overwrite,
+    const hir::HirParameterReferenceExpression& overwriteParameter,
+    const hir::HirReturnStatement& sourceReturn, const hir::HirLocalReferenceExpression& reference,
+    identity::ModuleId module, const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copy) {
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.resultType != declaration.resultType || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 2 || function.blocks.size() != 1 ||
+      declaration.parameters.size() != 1 ||
+      declaration.parameters[0].key != overwriteParameter.parameter ||
+      declaration.parameters[0].type != sourceLocal.type || declaration.body != sourceBlock.node ||
+      sourceBlock.statements.size() != 3 || sourceBlock.statements[0] != sourceLocal.node ||
+      sourceBlock.statements[1] != overwrite.node ||
+      sourceBlock.statements[2] != sourceReturn.node ||
+      sourceLocal.initializer != initializer.node ||
+      overwrite.kind != hir::HirLocalWriteKind::Overwrite || overwrite.field != zc::none ||
+      overwrite.local != sourceLocal.local || overwrite.type != sourceLocal.type ||
+      overwrite.value != overwriteParameter.node || sourceReturn.value != reference.node ||
+      sourceLocal.local != reference.local || sourceLocal.type != declaration.resultType ||
+      initializer.type != sourceLocal.type || overwriteParameter.type != sourceLocal.type ||
+      overwriteParameter.category != hir::HirValueCategory::Place ||
+      reference.type != sourceLocal.type || reference.category != hir::HirValueCategory::Place) {
+    return false;
+  }
+  const auto& scope = function.sourceScopes[0];
+  const auto& parameterLocal = function.locals[0];
+  const auto& local = function.locals[1];
+  const auto& block = function.blocks[0];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || parameterLocal.id != localId(1) ||
+      parameterLocal.kind != MirLocalKind::Parameter || parameterLocal.type != sourceLocal.type ||
+      parameterLocal.sourceScope != scope.id ||
+      !sameSpan(parameterLocal.sourceSpan, declaration.parameters[0].sourceSpan) ||
+      local.id != localId(2) || local.kind != MirLocalKind::UserLocal ||
+      local.type != sourceLocal.type || local.sourceScope != scope.id ||
+      !sameSpan(local.sourceSpan, sourceLocal.sourceSpan) || block.id != blockId(1) ||
+      block.sourceScope != scope.id || block.statements.size() != 3 ||
+      block.statements[0].kind() != MirStatementKind::StorageLive ||
+      block.statements[0].storageLocal() != local.id ||
+      !sameSpan(block.statements[0].sourceSpan(), sourceLocal.sourceSpan) ||
+      block.statements[1].kind() != MirStatementKind::Assign ||
+      block.statements[1].assignmentValue().initialization != MirInitializationKind::Initialize ||
+      block.statements[2].kind() != MirStatementKind::Assign ||
+      block.statements[2].assignmentValue().initialization != MirInitializationKind::Overwrite ||
+      block.terminator.kind() != MirTerminatorKind::Return ||
+      block.terminator.returnValue().value == zc::none ||
+      !sameSpan(block.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+    return false;
+  }
+  // The initialize assignment writes the literal into the user local.
+  const auto& initializeAssign = block.statements[1].assignmentValue();
+  if (initializeAssign.destination.local() != local.id ||
+      initializeAssign.destination.rootType() != local.type ||
+      initializeAssign.destination.resultType() != local.type ||
+      initializeAssign.destination.projections().size() != 0 ||
+      initializeAssign.value.kind() != MirRvalueKind::Use ||
+      initializeAssign.value.useValue().operand.kind() != MirOperandKind::Constant) {
+    return false;
+  }
+  const auto& initialConstant = initializeAssign.value.useValue().operand.constantValue();
+  if (initialConstant.type != initializer.type ||
+      !sameConstant(initialConstant.value, initializer.value, module, identities, semanticTypes) ||
+      !sameSpan(block.statements[1].sourceSpan(), initializer.sourceSpan)) {
+    return false;
+  }
+  // The overwrite assignment moves/copies the parameter local into the user
+  // local via a place-use of the parameter place (no projections).
+  const auto& overwriteAssign = block.statements[2].assignmentValue();
+  if (overwriteAssign.destination.local() != local.id ||
+      overwriteAssign.destination.rootType() != local.type ||
+      overwriteAssign.destination.resultType() != local.type ||
+      overwriteAssign.destination.projections().size() != 0 ||
+      overwriteAssign.value.kind() != MirRvalueKind::Use ||
+      !matchesPlaceUse(overwriteAssign.value.useValue().operand, proofs, copy, local.type) ||
+      overwriteAssign.value.useValue().operand.place().local() != parameterLocal.id ||
+      overwriteAssign.value.useValue().operand.place().rootType() != parameterLocal.type ||
+      overwriteAssign.value.useValue().operand.place().resultType() != parameterLocal.type ||
+      overwriteAssign.value.useValue().operand.place().projections().size() != 0 ||
+      !sameSpan(block.statements[2].sourceSpan(), overwrite.sourceSpan)) {
+    return false;
+  }
+  ZC_IF_SOME(value, block.terminator.returnValue().value) {
+    return matchesPlaceUse(value, proofs, copy, local.type) && value.place().local() == local.id &&
+           value.place().rootType() == local.type && value.place().resultType() == local.type &&
+           value.place().projections().size() == 0;
+  }
+  return false;
+}
+
 bool validLocalWriteInitializationReturnFunction(
     const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
     const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& sourceLocal,
@@ -5515,6 +5614,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
         auto initializer = expressionFor(hirModule, initializerNode);
         auto initializerAggregate = aggregateFor(hirModule, initializerNode);
         auto overwriteValue = expressionFor(hirModule, overwriteValueNode);
+        auto overwriteParameter = parameterReferenceFor(hirModule, overwriteValueNode);
         auto reference = localReferenceFor(hirModule, referenceNode);
         auto fieldProjection = localFieldProjectionFor(hirModule, referenceNode);
         auto definition = identities.definition(declaration.definition);
@@ -5718,6 +5818,97 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                   ZC_IF_SOME(key, definition) { ownerKey = key.key().encode(); }
                   pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
                   continue;
+                }
+              }
+            }
+          }
+        }
+        // A `mut x = <lit>; x = <param>; return x;` body: an initialized scalar
+        // local whose overwrite value is a parameter reference. The parameter is
+        // declared as localId(1) and the user local as localId(2); the overwrite
+        // lowers to a copy/move place-use of the parameter local, exactly like the
+        // return-of-parameter path.
+        ZC_IF_SOME(local, sourceLocal) {
+          ZC_IF_SOME(overwrite, sourceOverwrite) {
+            ZC_IF_SOME(initialValue, initializer) {
+              ZC_IF_SOME(parameterValue, overwriteParameter) {
+                ZC_IF_SOME(localReference, reference) {
+                  if (local.initializer != zc::none && overwrite.field == zc::none &&
+                      overwrite.kind == hir::HirLocalWriteKind::Overwrite &&
+                      local.local == overwrite.local && local.local == localReference.local &&
+                      local.type == declaration.resultType && overwrite.type == local.type &&
+                      initialValue.type == local.type && parameterValue.type == local.type &&
+                      parameterValue.category == hir::HirValueCategory::Place &&
+                      localReference.type == local.type &&
+                      localReference.category == hir::HirValueCategory::Place &&
+                      declaration.parameters.size() == 1 &&
+                      declaration.parameters[0].key == parameterValue.parameter &&
+                      declaration.parameters[0].type == local.type && definition != zc::none) {
+                    identity::SourceSpan returnSpan = declaration.sourceSpan.clone();
+                    ZC_IF_SOME(statement, sourceReturn) {
+                      returnSpan = statement.sourceSpan.clone();
+                    }
+                    zc::Vector<MirSourceScope> scopes;
+                    zc::Maybe<MirSourceScopeId> noParent;
+                    scopes.add(MirSourceScope{scopeId(1), zc::mv(noParent),
+                                              declaration.sourceSpan.clone()});
+                    zc::Vector<MirLocalDeclaration> locals;
+                    locals.add(MirLocalDeclaration{localId(1), MirLocalKind::Parameter, local.type,
+                                                   scopeId(1),
+                                                   declaration.parameters[0].sourceSpan.clone()});
+                    locals.add(MirLocalDeclaration{localId(2), MirLocalKind::UserLocal, local.type,
+                                                   scopeId(1), local.sourceSpan.clone()});
+                    zc::Vector<MirStatement> statements;
+                    statements.add(MirStatement::storageLive(localId(2), local.sourceSpan.clone()));
+                    zc::Vector<MirProjection> initializeProjections;
+                    statements.add(MirStatement::assign(
+                        MirPlace(localId(2), local.type, zc::mv(initializeProjections), local.type),
+                        MirRvalue::use(
+                            MirOperand::constant(local.type, initialValue.value.clone())),
+                        MirInitializationKind::Initialize, initialValue.sourceSpan.clone()));
+                    zc::Vector<MirProjection> parameterProjections;
+                    auto overwriteOperand = placeUse(
+                        proofs, copy,
+                        MirPlace(localId(1), local.type, zc::mv(parameterProjections), local.type));
+                    if (overwriteOperand == zc::none) {
+                      return rejectMir<BuiltMirCandidate>(
+                          ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact,
+                          module, declaration.definition, identities,
+                          static_cast<uint32_t>(pending.size() + 1));
+                    }
+                    zc::Vector<MirProjection> overwriteProjections;
+                    statements.add(MirStatement::assign(
+                        MirPlace(localId(2), local.type, zc::mv(overwriteProjections), local.type),
+                        MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(overwriteOperand))),
+                        MirInitializationKind::Overwrite, overwrite.sourceSpan.clone()));
+                    zc::Vector<MirProjection> returnProjections;
+                    auto returnOperand = placeUse(
+                        proofs, copy,
+                        MirPlace(localId(2), local.type, zc::mv(returnProjections), local.type));
+                    if (returnOperand == zc::none) {
+                      return rejectMir<BuiltMirCandidate>(
+                          ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact,
+                          module, declaration.definition, identities,
+                          static_cast<uint32_t>(pending.size() + 1));
+                    }
+                    zc::Vector<MirBasicBlock> blocks;
+                    blocks.add(MirBasicBlock{
+                        blockId(1), scopeId(1), zc::mv(statements),
+                        MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                   zc::mv(returnSpan))});
+                    MirFunction function{declaration.definition,
+                                         MirFunctionKind::Function,
+                                         identity::DefinitionKind::Function,
+                                         declaration.resultType,
+                                         declaration.sourceSpan.clone(),
+                                         zc::mv(scopes),
+                                         zc::mv(locals),
+                                         zc::mv(blocks)};
+                    zc::Array<uint8_t> ownerKey;
+                    ZC_IF_SOME(key, definition) { ownerKey = key.key().encode(); }
+                    pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
+                    continue;
+                  }
                 }
               }
             }
@@ -7916,6 +8107,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       hir::HirNodeId overwriteValueNode;
       ZC_IF_SOME(value, sourceOverwrite) { overwriteValueNode = value.value; }
       auto overwriteValue = expressionFor(hirModule, overwriteValueNode);
+      auto overwriteParameter = parameterReferenceFor(hirModule, overwriteValueNode);
       const bool isLocalFieldReturn = localFieldProjection != zc::none;
       const bool isParameterReturn = parameterReference != zc::none;
       const bool isParameterReborrow = parameterReborrow != zc::none;
@@ -8027,6 +8219,19 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
                     valid = validLocalOverwriteReturnFunction(
                         function, sourceDeclaration, block, local, localInitializer, overwrite,
                         overwriteLiteral, returnStatement, reference, module, identities,
+                        semanticTypes, proofs, copy);
+                  }
+                }
+              }
+              // A `mut x = <lit>; x = <param>; return x;` body: the overwrite
+              // value is a parameter reference lowered to a place-use of the
+              // declared parameter local.
+              ZC_IF_SOME(localInitializer, initializer) {
+                ZC_IF_SOME(overwriteParameterValue, overwriteParameter) {
+                  ZC_IF_SOME(reference, localReference) {
+                    valid = validLocalParameterOverwriteReturnFunction(
+                        function, sourceDeclaration, block, local, localInitializer, overwrite,
+                        overwriteParameterValue, returnStatement, reference, module, identities,
                         semanticTypes, proofs, copy);
                   }
                 }

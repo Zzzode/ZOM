@@ -69,6 +69,10 @@ bool isAdmittedExpressionStatement(const ast::Tree& tree, const ast::Node& state
     case ast::SyntaxKind::UnitLiteral:
     case ast::SyntaxKind::CharacterLiteralExpr:
     case ast::SyntaxKind::NoSubstitutionTemplateLiteralExpr:
+    // An identifier write value is a parameter or local reference resolved
+    // downstream; admit it structurally here. Which references are actually
+    // supported is a checker/HIR decision, kept out of surface admission.
+    case ast::SyntaxKind::IdentExpr:
       break;
     default:
       return false;
@@ -594,14 +598,18 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
     }
     const ast::NodeId target(tree.node(assignment).payload.words[ast::kAssignmentExprLhsWord]);
     const ast::NodeId value(tree.node(assignment).payload.words[ast::kAssignmentExprRhsWord]);
-    if (!tree.contains(target) || !tree.contains(value) ||
-        !isScalarLiteral(tree.node(value).kind)) {
-      return false;
-    }
+    if (!tree.contains(target) || !tree.contains(value)) return false;
+    // A scalar-local write value may be a scalar literal or an identifier
+    // reference (a parameter or local, resolved downstream); a field write value
+    // stays literal-only in this slice. Structure only; the checker/HIR decide
+    // which references are supported.
+    const bool identValue = tree.node(value).kind == ast::SyntaxKind::IdentExpr;
+    if (!isScalarLiteral(tree.node(value).kind) && !identValue) return false;
     if (tree.node(target).kind == ast::SyntaxKind::IdentExpr) {
       if (!matchesLocalReference(tree, pattern, target)) return false;
       continue;
     }
+    if (identValue) return false;
     if (!returnsField || tree.node(target).kind != ast::SyntaxKind::MemberExpression) {
       return false;
     }

@@ -6,6 +6,8 @@
 #include "zc/core/filesystem.h"
 #include "zc/core/time.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/ast/generated/node-payload.h"
+#include "zomlang/compiler/ast/generated/node-traverse.h"
 #include "zomlang/compiler/checker/body/body-checker.h"
 #include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/checker/facts/checked-facts-repository.h"
@@ -377,6 +379,8 @@ public:
     ZC_REQUIRE(result.is<type::SemanticTypeInterned>());
     return result.get<type::SemanticTypeInterned>().id;
   }
+
+  const ast::Tree& tree() const { return boundModule().tree(); }
 
 private:
   BodyCheckingInput bodyInput() {
@@ -907,6 +911,79 @@ ZC_TEST("PrimitiveBinaryOperation.RejectsTypeMismatchedNestedOperandInitializer"
       "fun f(a: i32, b: i32, c: i32) -> i32 { let z: bool = a + b * c; let w: i32 = c; return w; }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
+}
+
+ZC_TEST("LocalWrite.EmitsParameterReferenceWriteValueFact") {
+  // `x = a` where `a` is an i32 parameter: the body checker admits the write and
+  // types the write target and the parameter-reference RHS as i32, exactly as
+  // the scalar-literal write does but with an identifier value. The RHS resolves
+  // to the callable parameter, so it lowers downstream to a place-use.
+  PrimitiveBinaryFixture fixture("fun f(a: i32) -> i32 { mut x: i32 = 0; x = a; return x; }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+
+  // Locate the assignment node `x = a` and its RHS identifier `a` in the tree.
+  const auto& tree = fixture.tree();
+  ast::NodeId assignmentNode;
+  ast::NodeId writeValueNode;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    if (syntax.kind != ast::SyntaxKind::AssignmentExpr) return;
+    assignmentNode = node;
+    writeValueNode = ast::NodeId(syntax.payload.words[ast::kAssignmentExprRhsWord]);
+  });
+  ZC_REQUIRE(tree.contains(assignmentNode));
+  ZC_REQUIRE(tree.contains(writeValueNode));
+  ZC_EXPECT(tree.node(writeValueNode).kind == ast::SyntaxKind::IdentExpr);
+
+  // Both the assignment node and the parameter-reference RHS are typed i32.
+  bool assignmentIsI32 = false;
+  bool writeValueIsI32 = false;
+  for (const auto& entry : facts.nodeTypes().entries()) {
+    if (entry.key == assignmentNode) assignmentIsI32 = entry.value == i32;
+    if (entry.key == writeValueNode) writeValueIsI32 = entry.value == i32;
+  }
+  ZC_EXPECT(assignmentIsI32);
+  ZC_EXPECT(writeValueIsI32);
+
+  // The RHS is a plain scalar reference, not a literal: no literal fact is
+  // produced for it.
+  for (const auto& entry : facts.literals().entries()) { ZC_EXPECT(entry.key != writeValueNode); }
+}
+
+ZC_TEST("LocalWrite.RejectsCallValueWriteAtSurfaceAdmission") {
+  // A write whose RHS is a call (`x = g()`) is not a scalar literal or an
+  // identifier reference, so it is not an admitted mutable-local write shape and
+  // the whole function body fails ownership surface admission. Only literal and
+  // identifier write values are admitted in this slice.
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  constexpr zc::StringPtr source =
+      "fun g() -> i32 { return 0; }\n"
+      "fun f() -> i32 { mut x: i32 = 0; x = g(); return x; }\n"_zc;
+  auto registry = targetRegistry();
+  auto input = driver::VerifiedPackageSessionInput::from(
+      compilationRequest(registry), verifiedTargetSelection(registry),
+      verifiedTargetSelection(registry),
+      resolution(session.getPackageResolutionMemoryResource(), source), resolvedSnapshots(source));
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+  driver::core_library_test::installCoreDistribution(session);
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+  auto identityAuthority = session.materializeCheckerIdentityAuthority();
+  ZC_REQUIRE(identityAuthority != zc::none);
+  const auto& identities = ZC_REQUIRE_NONNULL(identityAuthority);
+  auto coreLibrary = driver::core_library_test::materializeCoreLibrary(session, identities);
+  ZC_REQUIRE(coreLibrary != zc::none);
+  const auto& userBound = driver::core_library_test::soleUserBoundModule(identities);
+  auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(userBound.retain());
+  ZC_EXPECT(admission.is<ownership::OwnershipSurfaceSourceRejected>());
 }
 
 }  // namespace zomlang::compiler::checker::body

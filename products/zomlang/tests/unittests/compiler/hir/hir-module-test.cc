@@ -890,6 +890,139 @@ ZC_TEST("HIR pipeline lowers a nested-operand binary sequential local body") {
   }
 }
 
+ZC_TEST("HIR pipeline lowers a parameter-reference mutable local write") {
+  HirPipelineFixture fixture("fun f(a: i32) -> i32 { mut x: i32 = 0; x = a; return x; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  // The initializer `0` is one scalar literal; the write value `a` is a
+  // parameter reference (not a literal); the return of x is one local reference.
+  ZC_REQUIRE(module.expressions().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 1);
+  ZC_REQUIRE(module.localReferences().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& local = module.locals()[0];
+  const auto& write = module.localWrites()[0];
+  const auto& initializer = module.expressions()[0];
+  const auto& writeParameter = module.parameterReferences()[0];
+  const auto& returnReference = module.localReferences()[0];
+  // Fixed-id layout: F+0 function, F+1 block, F+2 local, F+3 initializer,
+  // F+4 write, F+5 write value, F+6 return, F+7 return value.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(initializer.node.ordinal() == 4);
+  ZC_EXPECT(write.node.ordinal() == 5);
+  ZC_EXPECT(writeParameter.node.ordinal() == 6);
+  ZC_EXPECT(block.statements.size() == 3);
+  ZC_EXPECT(block.statements[0] == local.node);
+  ZC_EXPECT(block.statements[1] == write.node);
+  ZC_EXPECT(local.initializer == initializer.node);
+  // The write value node id is the parameter reference, not a literal.
+  ZC_EXPECT(write.value == writeParameter.node);
+  ZC_EXPECT(write.kind == HirLocalWriteKind::Overwrite);
+  ZC_EXPECT(write.local == local.local);
+  ZC_EXPECT(writeParameter.type == local.type);
+  ZC_EXPECT(writeParameter.category == HirValueCategory::Place);
+  ZC_EXPECT(returnReference.local == local.local);
+
+  // Built MIR: the parameter is localId(1), the user local localId(2); the write
+  // lowers to a place-use of the parameter local into the user local.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.locals.size() == 2);
+    ZC_EXPECT(mirFunction.locals[0].kind == mir::MirLocalKind::Parameter);
+    ZC_EXPECT(mirFunction.locals[1].kind == mir::MirLocalKind::UserLocal);
+    const auto parameter = mirFunction.locals[0].id;
+    const auto userLocal = mirFunction.locals[1].id;
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    const auto& mirBlock = mirFunction.blocks[0];
+    // StorageLive(x), Assign(x = 0, Initialize), Assign(x = param, Overwrite).
+    ZC_REQUIRE(mirBlock.statements.size() == 3);
+    ZC_EXPECT(mirBlock.statements[0].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirBlock.statements[0].storageLocal() == userLocal);
+    const auto& initAssign = mirBlock.statements[1].assignmentValue();
+    ZC_EXPECT(initAssign.initialization == mir::MirInitializationKind::Initialize);
+    ZC_EXPECT(initAssign.destination.local() == userLocal);
+    ZC_EXPECT(initAssign.value.kind() == mir::MirRvalueKind::Use);
+    ZC_EXPECT(initAssign.value.useValue().operand.kind() == mir::MirOperandKind::Constant);
+    const auto& overwriteAssign = mirBlock.statements[2].assignmentValue();
+    ZC_EXPECT(overwriteAssign.initialization == mir::MirInitializationKind::Overwrite);
+    ZC_EXPECT(overwriteAssign.destination.local() == userLocal);
+    ZC_EXPECT(overwriteAssign.value.kind() == mir::MirRvalueKind::Use);
+    // The overwrite value is a place-use of the parameter local (no projections).
+    ZC_EXPECT(overwriteAssign.value.useValue().operand.kind() != mir::MirOperandKind::Constant);
+    ZC_EXPECT(overwriteAssign.value.useValue().operand.place().local() == parameter);
+    ZC_EXPECT(overwriteAssign.value.useValue().operand.place().projections().size() == 0);
+    ZC_REQUIRE(mirBlock.terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_IF_SOME(returnValue, mirBlock.terminator.returnValue().value) {
+      ZC_EXPECT(returnValue.place().local() == userLocal);
+    }
+  }
+}
+
+ZC_TEST("HIR pipeline lowers a scalar-literal mutable local write unchanged") {
+  // Regression guard: an all-scalar-literal mut-local write keeps its exact
+  // node-id layout and MIR shape after the reference-write value discriminator
+  // was introduced. This body has no parameter and both write values are
+  // literals, so no parameter reference is materialized.
+  HirPipelineFixture fixture("fun g() -> i32 { mut x: i32 = 0; x = 1; return x; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  // Two literals: the initializer `0` and the write value `1`. No parameter ref.
+  ZC_REQUIRE(module.expressions().size() == 2);
+  ZC_REQUIRE(module.parameterReferences().size() == 0);
+  ZC_REQUIRE(module.localReferences().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& local = module.locals()[0];
+  const auto& write = module.localWrites()[0];
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(write.node.ordinal() == 5);
+  ZC_EXPECT(write.value.ordinal() == 6);
+  ZC_EXPECT(write.kind == HirLocalWriteKind::Overwrite);
+  // The write value node is a scalar literal expression (unchanged behavior).
+  bool writeValueIsLiteral = false;
+  for (const auto& expression : module.expressions()) {
+    if (expression.node == write.value) writeValueIsLiteral = true;
+  }
+  ZC_EXPECT(writeValueIsLiteral);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    // No parameter: the single user local is localId(1), exactly as before.
+    ZC_REQUIRE(mirFunction.locals.size() == 1);
+    ZC_EXPECT(mirFunction.locals[0].kind == mir::MirLocalKind::UserLocal);
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    const auto& mirBlock = mirFunction.blocks[0];
+    ZC_REQUIRE(mirBlock.statements.size() == 3);
+    const auto& overwriteAssign = mirBlock.statements[2].assignmentValue();
+    ZC_EXPECT(overwriteAssign.initialization == mir::MirInitializationKind::Overwrite);
+    // The literal write value stays a constant operand (unchanged behavior).
+    ZC_EXPECT(overwriteAssign.value.useValue().operand.kind() == mir::MirOperandKind::Constant);
+  }
+}
+
 ZC_TEST("HIR pipeline lowers a local nominal aggregate field projection") {
   HirPipelineFixture fixture(
       "struct Cell { value: i32, }\n"

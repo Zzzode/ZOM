@@ -461,7 +461,11 @@ bool isSimpleLocalWrite(const driver::module_graph_query::CheckerBoundModuleView
       valueKind == ast::SyntaxKind::UnitLiteral ||
       valueKind == ast::SyntaxKind::CharacterLiteralExpr ||
       valueKind == ast::SyntaxKind::NoSubstitutionTemplateLiteralExpr;
-  return scalar && isMutableOwnerLocal(boundModule, target);
+  // A write value is either a scalar literal or an identifier reference (a
+  // parameter or an earlier local, resolved downstream and lowered to a
+  // copy/move place-use). Both keep the write's target-type fact intact.
+  const bool reference = valueKind == ast::SyntaxKind::IdentExpr;
+  return (scalar || reference) && isMutableOwnerLocal(boundModule, target);
 }
 
 bool isSimpleOwnerLocalFieldWrite(

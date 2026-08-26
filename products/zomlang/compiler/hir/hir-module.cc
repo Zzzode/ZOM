@@ -452,6 +452,18 @@ struct PendingConditionalArm final {
   identity::SourceSpan sourceSpan;
 };
 
+// One mutable-local write value. It is either a scalar literal (`literal`
+// populated) or a reference to a function parameter lowered to a place operand
+// (`parameter` populated). Exactly one of the two is populated; the value kind
+// is discriminated by which, mirroring the literal-XOR-parameter shape of a
+// conditional arm. A literal write lowers to a `MirOperand::constant`; a
+// parameter write lowers to a copy/move place-use of the caller's parameter
+// local, exactly like the return-of-parameter path.
+struct PendingLocalWriteValue final {
+  zc::Maybe<checker::checked::CanonicalConstValue> literal;
+  zc::Maybe<HirParameterReferenceExpression> parameter;
+};
+
 // One relational-comparison condition holds its two operands, the shared operand
 // type, the produced bool type, and the selected comparison operator. Each
 // operand is either a scalar literal or a parameter reference (the same
@@ -505,7 +517,7 @@ struct PendingFunctionDeclaration final {
   zc::Maybe<HirLocalBinding> local;
   zc::Maybe<HirNominalAggregateExpression> aggregate;
   zc::Vector<HirLocalWriteStatement> localWrites;
-  zc::Vector<checker::checked::CanonicalConstValue> localWriteLiterals;
+  zc::Vector<PendingLocalWriteValue> localWriteValues;
   zc::Maybe<HirLocalReferenceExpression> localReference;
   zc::Maybe<HirLocalFieldProjectionExpression> localFieldProjection;
   zc::Maybe<HirParameterReferenceExpression> parameterReference;
@@ -1256,11 +1268,14 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       const ast::NodeId target(tree.node(assignment).payload.words[ast::kAssignmentExprLhsWord]);
       const ast::NodeId writeValue(
           tree.node(assignment).payload.words[ast::kAssignmentExprRhsWord]);
-      if (!tree.contains(target) || !tree.contains(writeValue) ||
-          !isScalarLiteral(tree.node(writeValue).kind)) {
-        return zc::none;
-      }
+      if (!tree.contains(target) || !tree.contains(writeValue)) return zc::none;
+      // A scalar-local write value is a scalar literal or an identifier reference
+      // (a parameter, resolved downstream); a field write value stays
+      // literal-only in this slice.
+      const bool identValue = tree.node(writeValue).kind == ast::SyntaxKind::IdentExpr;
+      if (!isScalarLiteral(tree.node(writeValue).kind) && !identValue) return zc::none;
       if (tree.node(target).kind == ast::SyntaxKind::IdentExpr) continue;
+      if (identValue) return zc::none;
       if (!returnsLocalField || tree.node(target).kind != ast::SyntaxKind::MemberExpression) {
         return zc::none;
       }
@@ -2990,7 +3005,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       zc::Maybe<HirLocalBinding> local;
       zc::Maybe<HirNominalAggregateExpression> aggregate;
       zc::Vector<HirLocalWriteStatement> localWrites;
-      zc::Vector<checker::checked::CanonicalConstValue> localWriteLiterals;
+      zc::Vector<PendingLocalWriteValue> localWriteValues;
       zc::Maybe<HirLocalReferenceExpression> localReference;
       zc::Maybe<HirLocalFieldProjectionExpression> localFieldProjection;
       zc::Maybe<HirParameterReferenceExpression> parameterReference;
@@ -3773,9 +3788,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
           auto assignmentTypeIndex = factIndex(facts.nodeTypes(), write);
           auto targetTypeIndex = factIndex(facts.nodeTypes(), target);
           auto valueTypeIndex = factIndex(facts.nodeTypes(), writeValue);
-          auto literalIndex = factIndex(facts.literals(), writeValue);
           auto assignmentSpan = bound.parsedModule().spanFor(tree.node(write).range);
           auto valueSpan = bound.parsedModule().spanFor(tree.node(writeValue).range);
+          // A write value is a scalar literal or an identifier reference (a
+          // parameter, resolved below). Only a literal write consumes a checked
+          // literal fact; a reference write consumes none.
+          const bool referenceValue = tree.node(writeValue).kind == ast::SyntaxKind::IdentExpr;
+          auto literalIndex = referenceValue ? zc::none : factIndex(facts.literals(), writeValue);
           ast::NodeId targetReference = target;
           if (tree.node(target).kind == ast::SyntaxKind::MemberExpression) {
             targetReference =
@@ -3784,7 +3803,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
           auto targetBinding = resolvedOwnerLocal(bound.bindings(), targetReference);
           auto returnBinding = resolvedOwnerLocal(bound.bindings(), shape.localReference);
           if (assignmentTypeIndex == zc::none || targetTypeIndex == zc::none ||
-              valueTypeIndex == zc::none || literalIndex == zc::none ||
+              valueTypeIndex == zc::none || (!referenceValue && literalIndex == zc::none) ||
               assignmentSpan == zc::none || valueSpan == zc::none || targetBinding == zc::none ||
               returnBinding == zc::none || targetBinding != returnBinding) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -3794,15 +3813,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
           size_t assignmentSlot = 0;
           size_t targetSlot = 0;
           size_t valueSlot = 0;
-          size_t literalSlot = 0;
           ZC_IF_SOME(index, assignmentTypeIndex) { assignmentSlot = index; }
           ZC_IF_SOME(index, targetTypeIndex) { targetSlot = index; }
           ZC_IF_SOME(index, valueTypeIndex) { valueSlot = index; }
-          ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
           const auto& assignmentType = facts.nodeTypes().entries()[assignmentSlot].value;
           const auto& targetType = facts.nodeTypes().entries()[targetSlot].value;
           const auto& valueType = facts.nodeTypes().entries()[valueSlot].value;
-          const auto& sourceLiteral = facts.literals().entries()[literalSlot].value;
           identity::SemanticTypeId writeType = targetType;
           zc::Maybe<identity::DefId> field;
           if (tree.node(target).kind == ast::SyntaxKind::MemberExpression) {
@@ -3831,11 +3847,57 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
             field = member.member;
           }
           if (local == zc::none || assignmentType != writeType || targetType != writeType ||
-              valueType != writeType || sourceLiteral.type != writeType ||
-              !sameSpan(sourceLiteral.sourceSpan, ZC_ASSERT_NONNULL(valueSpan))) {
+              valueType != writeType) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::InvalidFact, module, registries,
                                                  ordinal + 2);
+          }
+          // Build the per-write value: a scalar literal consumes its checked
+          // literal fact; a parameter reference resolves the parameter and
+          // matches its type, exactly like the return-of-parameter path.
+          PendingLocalWriteValue writeValueRecord;
+          if (referenceValue) {
+            auto parameter = resolvedCallableParameter(bound.bindings(), writeValue);
+            if (parameter == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            ZC_IF_SOME(handle, parameter) {
+              auto authority = registries.callableParameter(handle);
+              if (authority == zc::none) {
+                return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                     ir::IrFailureKind::MissingRequiredFact, module,
+                                                     registries, ordinal + 2);
+              }
+              ZC_IF_SOME(entry, authority) {
+                bool matches = false;
+                for (const auto& candidate : parameters) {
+                  if (candidate.key == entry.key() && candidate.type == writeType) {
+                    matches = true;
+                  }
+                }
+                if (!matches) {
+                  return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                       ir::IrFailureKind::InvalidFact, module,
+                                                       registries, ordinal + 2);
+                }
+                writeValueRecord.parameter = HirParameterReferenceExpression{
+                    HirNodeId(), entry.key().clone(), writeType, HirValueCategory::Place,
+                    ZC_ASSERT_NONNULL(valueSpan).clone()};
+              }
+            }
+          } else {
+            size_t literalSlot = 0;
+            ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+            const auto& sourceLiteral = facts.literals().entries()[literalSlot].value;
+            if (sourceLiteral.type != writeType ||
+                !sameSpan(sourceLiteral.sourceSpan, ZC_ASSERT_NONNULL(valueSpan))) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            writeValueRecord.literal = sourceLiteral.literal.clone();
           }
           bool firstFieldWrite = false;
           ZC_IF_SOME(currentField, field) {
@@ -3859,7 +3921,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
           localWrites.add(HirLocalWriteStatement{
               HirNodeId(), HirLocalId(), zc::mv(field), writeType, HirNodeId(), kind,
               ZC_ASSERT_NONNULL(assignmentSpan).clone(), ZC_ASSERT_NONNULL(valueSpan).clone()});
-          localWriteLiterals.add(sourceLiteral.literal.clone());
+          localWriteValues.add(zc::mv(writeValueRecord));
         }
       } else if (isScalarLiteral(tree.node(shape.value).kind)) {
         auto literalIndex = factIndex(facts.literals(), shape.value);
@@ -4539,7 +4601,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                                       zc::mv(local),
                                                       zc::mv(aggregate),
                                                       zc::mv(localWrites),
-                                                      zc::mv(localWriteLiterals),
+                                                      zc::mv(localWriteValues),
                                                       zc::mv(localReference),
                                                       zc::mv(localFieldProjection),
                                                       zc::mv(parameterReference),
@@ -4927,7 +4989,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     }
     if (function.localWrites.size() != 0) {
       if (function.local == zc::none ||
-          function.localWrites.size() != function.localWriteLiterals.size()) {
+          function.localWrites.size() != function.localWriteValues.size()) {
         return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                              ir::IrFailureKind::MissingRequiredFact, module,
                                              registries, 1);
@@ -4936,7 +4998,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       for (const auto& write : function.localWrites) {
         if (write.field != zc::none) ++localFieldWriteCount;
       }
-    } else if (function.localWriteLiterals.size() != 0) {
+      // A write whose value is a parameter reference materializes an entry in
+      // parameterReferences and no literal, so it contributes to the same
+      // parameterReferenceCount balance the top-level parameter reference does.
+      // A literal write materializes a literal expression and no parameter
+      // reference. Every write still contributes localWriteCount to the literals
+      // equation; a reference write's -parameterReferenceCount term cancels it.
+      for (const auto& value : function.localWriteValues) {
+        if (value.parameter != zc::none) ++parameterReferenceCount;
+      }
+    } else if (function.localWriteValues.size() != 0) {
       return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                            ir::IrFailureKind::AdditionalFact, module, registries,
                                            1);
@@ -5492,7 +5563,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       expressions.add(HirScalarLiteralExpression{expressionId, expressionType, literal.clone(),
                                                  HirValueCategory::Value, zc::mv(expressionSpan)});
     }
-    if (value.localWrites.size() != value.localWriteLiterals.size() ||
+    if (value.localWrites.size() != value.localWriteValues.size() ||
         writeIds.size() != value.localWrites.size() ||
         writeValueIds.size() != value.localWrites.size()) {
       return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -5501,9 +5572,21 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     }
     for (size_t index = 0; index < value.localWrites.size(); ++index) {
       const auto& write = value.localWrites[index];
-      const auto& literal = value.localWriteLiterals[index];
-      expressions.add(HirScalarLiteralExpression{writeValueIds[index], write.type, literal.clone(),
-                                                 HirValueCategory::Value, write.valueSpan.clone()});
+      const auto& writeValue = value.localWriteValues[index];
+      // A literal write materializes a scalar literal expression at the write's
+      // value node; a parameter write materializes a parameter reference at the
+      // same node id. The node id stride (two per write) is identical for both,
+      // so downstream fixed-id derivations do not shift.
+      ZC_IF_SOME(literal, writeValue.literal) {
+        expressions.add(HirScalarLiteralExpression{writeValueIds[index], write.type,
+                                                   literal.clone(), HirValueCategory::Value,
+                                                   write.valueSpan.clone()});
+      }
+      ZC_IF_SOME(parameter, writeValue.parameter) {
+        parameterReferences.add(HirParameterReferenceExpression{
+            writeValueIds[index], parameter.parameter.clone(), write.type, parameter.category,
+            parameter.sourceSpan.clone()});
+      }
     }
     ZC_IF_SOME(local, value.local) {
       zc::Maybe<HirNodeId> initializer;
@@ -7668,9 +7751,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       directCall = call;
     }
     zc::Maybe<const HirScalarLiteralExpression&> writeLiteral;
+    zc::Maybe<const HirParameterReferenceExpression&> writeParameter;
     if (hasLocalWrite) {
+      const auto expectedValue = hirId(expectedFunction + (localHasInitializer ? 5 : 4));
       for (const auto& expression : candidate.impl->expressions) {
-        if (expression.node != hirId(expectedFunction + (localHasInitializer ? 5 : 4))) continue;
+        if (expression.node != expectedValue) continue;
         if (writeLiteral != zc::none) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::AdditionalFact, module, registries,
@@ -7678,7 +7763,19 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         writeLiteral = expression;
       }
+      for (const auto& reference : candidate.impl->parameterReferences) {
+        if (reference.node != expectedValue) continue;
+        if (writeParameter != zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::AdditionalFact, module, registries,
+                                              index + 1);
+        }
+        writeParameter = reference;
+      }
     }
+    // The first write's value is a scalar literal or a parameter reference,
+    // never both. Downstream branches consume whichever is populated.
+    const bool hasFirstWriteValue = writeLiteral != zc::none || writeParameter != zc::none;
     bool writesMatchBlock = true;
     if (hasLocalWrite) {
       for (size_t writeIndex = 0; writeIndex < functionLocalWriteCount; ++writeIndex) {
@@ -8721,7 +8818,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         (initializesFromParameter &&
          (literalExpression != zc::none || directCall != zc::none ||
           (localReference == zc::none && !returnsLocalAliasReborrow))) ||
-        (hasLocalWrite && (returnsLocal == false || writeLiteral == zc::none ||
+        (hasLocalWrite && (returnsLocal == false || !hasFirstWriteValue ||
                            (localHasInitializer &&
                             ZC_ASSERT_NONNULL(localWrite).kind != HirLocalWriteKind::Overwrite) ||
                            (!localHasInitializer && ZC_ASSERT_NONNULL(localWrite).kind !=
@@ -8816,7 +8913,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       auto assignmentType = factIndex(facts.nodeTypes(), sourceWrite);
       auto targetType = factIndex(facts.nodeTypes(), sourceTarget);
       auto valueType = factIndex(facts.nodeTypes(), sourceWriteValue);
-      auto valueLiteral = factIndex(facts.literals(), sourceWriteValue);
+      // A reference write value has no literal fact; a literal write value does.
+      const bool sourceReferenceValue =
+          tree.contains(sourceWriteValue) &&
+          tree.node(sourceWriteValue).kind == ast::SyntaxKind::IdentExpr;
+      auto valueLiteral =
+          sourceReferenceValue ? zc::none : factIndex(facts.literals(), sourceWriteValue);
       ast::NodeId sourceTargetReference = sourceTarget;
       if (tree.contains(sourceTarget) &&
           tree.node(sourceTarget).kind == ast::SyntaxKind::MemberExpression) {
@@ -8832,8 +8934,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       auto returnBinding = resolvedOwnerLocal(bound.bindings(), sourceReturnReference);
       if (sourceWriteSpan == zc::none || sourceValueSpan == zc::none ||
           assignmentType == zc::none || targetType == zc::none || valueType == zc::none ||
-          valueLiteral == zc::none || targetBinding == zc::none || returnBinding == zc::none ||
-          targetBinding != returnBinding) {
+          (!sourceReferenceValue && valueLiteral == zc::none) || targetBinding == zc::none ||
+          returnBinding == zc::none || targetBinding != returnBinding) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::MissingRequiredFact, module,
                                             registries, index + 1);
@@ -8851,6 +8953,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       const auto expectedValue = hirId(expectedWrite.ordinal() + 1);
       zc::Maybe<const HirLocalWriteStatement&> write;
       zc::Maybe<const HirScalarLiteralExpression&> literal;
+      zc::Maybe<const HirParameterReferenceExpression&> parameter;
       for (const auto& candidateWrite : candidate.impl->localWrites) {
         if (candidateWrite.node != expectedWrite) continue;
         if (write != zc::none) {
@@ -8869,50 +8972,83 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         literal = expression;
       }
-      if (write == zc::none || literal == zc::none || localBinding == zc::none) {
+      for (const auto& reference : candidate.impl->parameterReferences) {
+        if (reference.node != expectedValue) continue;
+        if (parameter != zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::AdditionalFact, module, registries,
+                                              index + 1);
+        }
+        parameter = reference;
+      }
+      // Exactly one materialized value must match the write's kind: a literal
+      // write materializes a scalar literal, a reference write a parameter
+      // reference. The two are mutually exclusive.
+      if (write == zc::none || localBinding == zc::none ||
+          (sourceReferenceValue ? (parameter == zc::none || literal != zc::none)
+                                : (literal == zc::none || parameter != zc::none))) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::MissingRequiredFact, module,
                                             registries, index + 1);
       }
       ZC_IF_SOME(writeValue, write) {
-        ZC_IF_SOME(literalValue, literal) {
-          ZC_IF_SOME(local, localBinding) {
-            const auto& assignmentFact = facts.nodeTypes().entries()[assignmentSlot].value;
-            const auto& targetFact = facts.nodeTypes().entries()[targetSlot].value;
-            const auto& valueFact = facts.nodeTypes().entries()[valueSlot].value;
-            const auto& literalFact = facts.literals().entries()[literalSlot].value;
-            bool firstFieldWrite = writeValue.field != zc::none;
-            if (firstFieldWrite) {
-              for (const auto& previous : candidate.impl->localWrites) {
-                if (previous.node.ordinal() >= expectedWrite.ordinal() ||
-                    previous.field != writeValue.field) {
-                  continue;
-                }
-                firstFieldWrite = false;
-                break;
+        ZC_IF_SOME(local, localBinding) {
+          const auto& assignmentFact = facts.nodeTypes().entries()[assignmentSlot].value;
+          const auto& targetFact = facts.nodeTypes().entries()[targetSlot].value;
+          const auto& valueFact = facts.nodeTypes().entries()[valueSlot].value;
+          bool firstFieldWrite = writeValue.field != zc::none;
+          if (firstFieldWrite) {
+            for (const auto& previous : candidate.impl->localWrites) {
+              if (previous.node.ordinal() >= expectedWrite.ordinal() ||
+                  previous.field != writeValue.field) {
+                continue;
+              }
+              firstFieldWrite = false;
+              break;
+            }
+          }
+          const auto expectedKind =
+              !localHasInitializer &&
+                      (writeValue.field != zc::none ? firstFieldWrite : writeIndex == 0)
+                  ? HirLocalWriteKind::Initialize
+                  : HirLocalWriteKind::Overwrite;
+          if (writeValue.local != local.local ||
+              (writeValue.field == zc::none && writeValue.type != local.type) ||
+              writeValue.value != expectedValue || assignmentFact != writeValue.type ||
+              targetFact != writeValue.type || valueFact != writeValue.type ||
+              writeValue.kind != expectedKind ||
+              !sameSpan(writeValue.sourceSpan, ZC_ASSERT_NONNULL(sourceWriteSpan)) ||
+              !sameSpan(writeValue.valueSpan, ZC_ASSERT_NONNULL(sourceValueSpan))) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          if (sourceReferenceValue) {
+            // A reference write value is a parameter reference: it carries the
+            // write's type, is a place category, and shares the value node id.
+            ZC_IF_SOME(parameterValue, parameter) {
+              if (parameterValue.type != writeValue.type ||
+                  parameterValue.category != HirValueCategory::Place ||
+                  !sameSpan(parameterValue.sourceSpan, ZC_ASSERT_NONNULL(sourceValueSpan))) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::InvalidFact, module,
+                                                    registries, index + 1);
               }
             }
-            const auto expectedKind =
-                !localHasInitializer &&
-                        (writeValue.field != zc::none ? firstFieldWrite : writeIndex == 0)
-                    ? HirLocalWriteKind::Initialize
-                    : HirLocalWriteKind::Overwrite;
-            if (writeValue.local != local.local ||
-                (writeValue.field == zc::none && writeValue.type != local.type) ||
-                writeValue.value != literalValue.node || literalValue.type != writeValue.type ||
-                literalValue.category != HirValueCategory::Value ||
-                assignmentFact != writeValue.type || targetFact != writeValue.type ||
-                valueFact != writeValue.type || literalFact.type != writeValue.type ||
-                writeValue.kind != expectedKind ||
-                !sameConstant(literalValue.value, literalFact.literal, module, registries,
-                              semanticTypes) ||
-                !sameSpan(writeValue.sourceSpan, ZC_ASSERT_NONNULL(sourceWriteSpan)) ||
-                !sameSpan(writeValue.valueSpan, ZC_ASSERT_NONNULL(sourceValueSpan)) ||
-                !sameSpan(literalValue.sourceSpan, ZC_ASSERT_NONNULL(sourceValueSpan)) ||
-                !sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(sourceValueSpan))) {
-              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                  ir::IrFailureKind::InvalidFact, module,
-                                                  registries, index + 1);
+          } else {
+            const auto& literalFact = facts.literals().entries()[literalSlot].value;
+            ZC_IF_SOME(literalValue, literal) {
+              if (literalValue.type != writeValue.type ||
+                  literalValue.category != HirValueCategory::Value ||
+                  literalFact.type != writeValue.type ||
+                  !sameConstant(literalValue.value, literalFact.literal, module, registries,
+                                semanticTypes) ||
+                  !sameSpan(literalValue.sourceSpan, ZC_ASSERT_NONNULL(sourceValueSpan)) ||
+                  !sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(sourceValueSpan))) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::InvalidFact, module,
+                                                    registries, index + 1);
+              }
             }
           }
         }
