@@ -2,21 +2,21 @@
 rfc: 45
 title: Native Debugging And Debug Adapter
 type: compiler
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, ir-backend, module-system, runtime-memory, tooling-lsp, error-system, verification]
 approvers: []
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-28
 area: tooling
 requires: [10, 16, 21, 43]
 supersedes: []
 superseded-by: []
-discussion: TBD
-decision: TBD
+discussion: docs/rfc/tracking/0045-review-and-implementation.md#discussion-record
+decision: docs/rfc/tracking/0045-review-and-implementation.md#decision-record
 implementation: TBD
-tracking-issue: TBD
+tracking-issue: docs/rfc/tracking/0045-review-and-implementation.md#implementation-tracker
 ---
 
 # RFC 0045: Native Debugging And Debug Adapter
@@ -98,6 +98,12 @@ Mach-O and ELF targets. ZOM adopts one verified, toolchain-recorded LLDB
 engine for local execution, rather than inventing a target debugger or
 selecting a debugger from the ambient environment.
 
+[`lldb-dap`](https://lldb.llvm.org/resources/lldbdap.html) is LLDB's own DAP
+executable, and is the surface Rust (`CodeLLDB`/`lldb-dap`) and Swift use to
+reach editor debugging. ZOM adopts the `lldb-dap` executable endpoint rather
+than the LLDB C++ library API, so the engine surface is identical across Linux
+and macOS and needs no debugger linkage into the compiler.
+
 The common hazards are stale source paths, stepping to synthetic instructions,
 untrusted evaluate requests, and target/host confusion. Source digests,
 statement-boundary records, read-only requests, and the RFC 0043 host gate
@@ -176,6 +182,15 @@ renames the executable manifest and debug manifest together; success publishes
 all three files, and failure publishes none. No split-debug or stripping mode
 exists in this contract.
 
+Every DWARF file record encodes its source name as the canonical repository-
+relative POSIX path of the source identity, with `DW_AT_comp_dir` set to the
+normalized absolute build root and a DWARF5 line-table MD5 that equals the
+source inventory digest. The same UTF-8 bytes satisfy ELF and Mach-O DWARF
+consumers, and because the path is canonical rather than host-derived, no
+consumer-side path remapping is required or permitted. This is the Rust/Swift
+approach: embed a stable normalized path plus an integrity hash rather than a
+host-specific absolute path.
+
 ### Local Execution Engine
 
 `zomc debug <artifact>` accepts exactly one verified executable and its matching
@@ -186,7 +201,10 @@ missing metadata, stale digest, malformed DWARF, or unavailable recorded LLDB
 engine is a compiler diagnostic and starts no inferior process.
 
 The toolchain closure records the LLDB executable or library identity and
-digest. The adapter invokes that exact engine with an explicit argument vector,
+digest. The recorded engine is the `lldb-dap` executable endpoint, not the LLDB
+C++ library API: it presents an identical DAP surface on Linux and macOS, is
+distributed with the pinned LLVM toolchain, and needs no LLDB linkage into
+`zomc`. The adapter invokes that exact engine with an explicit argument vector,
 an empty inherited environment plus the verified execution environment, and a
 normalized working directory. It does not search `PATH`, read debugger init
 files, load user scripts, inherit dynamic-library search variables, or execute
@@ -225,6 +243,15 @@ read through its verified target location list, fit its lowered layout, and
 decode through the checked ZOM type record. If any condition fails, the value
 is unavailable; the adapter does not display raw memory, guessed type names,
 or engine-rendered values. Requests never write inferior memory.
+
+The initial visible-variable surface is scalar read-only only: the checked
+primitive scalar types whose lowered layout is a single register- or
+memory-sized value. No composite layout (aggregate, sum, reference, slice, or
+closure) joins the surface in this contract; a composite local is a verified
+non-visible record and is omitted rather than partially rendered. Widening the
+surface to specific checked composite layouts is a follow-up once the scalar
+projection and its decode verifier are proven, and each added layout must carry
+its own decode proof.
 
 ### Stepping And Events
 
@@ -378,17 +405,26 @@ native test lanes.
 
 ## Open Questions
 
-- Which exact normalized source-name encoding satisfies both ELF and Mach-O
-  DWARF consumers without path remapping? Assigned to `ir-backend` and
-  `module-system` before REVIEW.
-- Which LLDB integration surface offers identical recorded-engine behavior on
-  Linux and macOS: the executable protocol endpoint or the library API?
-  Assigned to `tooling-lsp` and `verification` before REVIEW.
-- Which checked composite layouts can safely join the initial scalar
-  read-only-variable surface? Assigned to `runtime-memory` before REVIEW.
+None. The three decisions previously deferred to before-REVIEW are now resolved
+in the Reference-Level Design:
+
+- **Source-name encoding for ELF and Mach-O DWARF.** Canonical repository-
+  relative POSIX path plus a normalized absolute `DW_AT_comp_dir` and a DWARF5
+  line-table MD5 equal to the source inventory digest; identical bytes for both
+  consumers, no path remapping (the Rust/Swift approach). Recorded in "Debug
+  Build Request And Artifact".
+- **LLDB integration surface.** The recorded `lldb-dap` executable endpoint, not
+  the LLDB library API, for an identical DAP surface on both platforms with no
+  debugger linkage into `zomc`. Recorded in "Local Execution Engine" and Prior
+  Art.
+- **Composite layouts on the initial variable surface.** None; the initial
+  surface is scalar read-only only, and composite layouts join later as
+  individually decode-proven follow-ups. Recorded in "DAP Surface And
+  Projection".
 
 ## Status History
 
 | Date | Status | Notes |
 |---|---|---|
 | 2026-08-15 | DRAFT | Initial native debug artifact and local DAP contract created for the stable-toolchain objective. |
+| 2026-08-28 | REVIEW | Resolved all three before-REVIEW Open Questions from prior art (canonical DWARF source-name encoding; lldb-dap executable endpoint over the LLDB library API; scalar-only initial variable surface); set discussion and tracking links. Backend dependencies (RFC 0043 link/publication) remain the acceptance gate. |
