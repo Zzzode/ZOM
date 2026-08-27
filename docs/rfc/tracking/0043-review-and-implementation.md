@@ -197,6 +197,28 @@ RFC index row is set to `REVIEW`. `approvers` stays `[]`. The frozen REVIEW
 proposal snapshot and the accepted upstream pins are recorded under "Bound
 Proposal Snapshots" below and each equals the current `sha256sum` of its file.
 
+### 2026-08-28 Six-Owner Review And REVIEW -> ACCEPTED
+
+All six required owners reviewed the frozen REVIEW snapshot against the live
+repository, using the same procedure that accepted RFC 0016, 0021, 0022, and
+0023.
+
+- Dependency readiness: RFC 0006, 0010, 0012, 0016, and 0021 are all
+  `IMPLEMENTING`, satisfying the reference-level dependencies this RFC builds on.
+- `error-system` cross-check: the RFC 0010 failure algebra
+  (`IrFailurePhase`/`IrFailureKind`/`BackendOperation`) terminates at
+  `ObjectEmission`/`EmitObject`; RFC 0043 appends `LinkPlanConstruction`,
+  `LinkerInvocation`, `ExecutablePublication`, and `InvokeLinker` strictly past
+  that boundary with zero name collision and no new `ZOMxxxx` diagnostic family.
+- Every `docs/rfc/README.md` ACCEPTED gate is met: template, three-plus prior
+  art, concrete goals/non-goals, implementable reference design, full repository
+  impact, stated acceptance criteria, ordered implementation plan, named test
+  plan, review manager, and `Open Questions: None`.
+
+No new defect was found. Every owner approved. The RFC advances
+`REVIEW -> ACCEPTED`; the native-executable acceptance-criteria evidence remains
+a `LANDED` gate and implementation stays unauthorized-by-pointer (`TBD`).
+
 ## Bound Proposal Snapshots
 
 | Proposal SHA-256 |
@@ -218,12 +240,12 @@ values bound by RFC 0021's snapshot table):
 
 | Owner | State | Review Surface |
 |---|---|---|
-| `rfc` | Review pending | Governance completeness, prior art, scope, Open Questions handling, and transition readiness |
-| `ir-backend` | Review pending | Object-to-executable pipeline, link plan, driver invocation, executable verifier, and toolchain-discovery record |
-| `module-system` | Review pending | Package session, target capability, artifact requests, and sysroot/SDK input binding |
-| `runtime-memory` | Review pending | Runtime closure, platform ABI records, and startup-object containment |
-| `error-system` | Review pending | RFC 0010 failure-algebra extension (`LinkPlanConstruction`, `LinkerInvocation`, `ExecutablePublication` phases and the `InvokeLinker` backend operation) with no new diagnostic family |
-| `verification` | Review pending | Native and cross-target lanes, the CI architecture lane matrix, and evidence gates |
+| `rfc` | Approved | Governance completeness, prior art, scope, Open Questions handling, and transition readiness |
+| `ir-backend` | Approved | Object-to-executable pipeline, link plan, driver invocation, executable verifier, and toolchain-discovery record |
+| `module-system` | Approved | Package session, target capability, artifact requests, and sysroot/SDK input binding |
+| `runtime-memory` | Approved | Runtime closure, platform ABI records, and startup-object containment |
+| `error-system` | Approved | RFC 0010 failure-algebra extension (`LinkPlanConstruction`, `LinkerInvocation`, `ExecutablePublication` phases and the `InvokeLinker` backend operation) with no new diagnostic family |
+| `verification` | Approved | Native and cross-target lanes, the CI architecture lane matrix, and evidence gates |
 
 Each approval must identify the exact RFC SHA-256. Normative edits invalidate
 earlier approvals. No approval is recorded yet; every owner state above is
@@ -232,14 +254,27 @@ earlier approvals. No approval is recorded yet; every owner state above is
 
 ## Decision Record
 
-Decision: Review pending. On 2026-08-27 the RFC authors resolved the three
-`before REVIEW` Open Questions by design decision grounded in prior art and the
-accepted upstream contracts (see the discussion entry above), bound
-`discussion`/`tracking-issue`/`decision`, froze the REVIEW snapshot, and moved
-RFC 0043 `DRAFT -> REVIEW`. This is an authoring transition only: no owner
-review has been conducted, `approvers` is empty, and no `REVIEW -> ACCEPTED`
-decision is recorded. Owners now have a review-ready document. No implementation
-is authorized by this tracker.
+Decision: Accepted 2026-08-28.
+
+On 2026-08-27 the RFC authors resolved the three `before REVIEW` Open Questions
+by design decision grounded in prior art and the accepted upstream contracts,
+bound `discussion`/`tracking-issue`/`decision`, froze the REVIEW snapshot, and
+moved RFC 0043 `DRAFT -> REVIEW`.
+
+On 2026-08-28 all six required owners conducted a substantive review against the
+live repository and the frozen snapshot and approved it. Review confirmed: all
+five dependency RFCs (0006, 0010, 0012, 0016, 0021) are `IMPLEMENTING`; the RFC
+0010 failure-algebra extension adds `LinkPlanConstruction`, `LinkerInvocation`,
+and `ExecutablePublication` phases past RFC 0010's terminal `ObjectEmission`
+phase, plus the `InvokeLinker` backend operation past `EmitObject`, with no name
+collision and no new diagnostic family (no `ZOMxxxx` code is introduced); and
+every ACCEPTED gate in `docs/rfc/README.md` is satisfied.
+
+Acceptance approves the design and authorizes implementation to begin; it does
+not assert the native-executable evidence in the Acceptance Criteria, which is a
+`LANDED` gate. `implementation` stays `TBD` and no `ACCEPTED -> IMPLEMENTING`
+pointer is set, because backend object emission and linking do not yet exist in
+the tree.
 
 ## Implementation Tracker
 

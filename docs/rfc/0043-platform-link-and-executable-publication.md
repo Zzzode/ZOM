@@ -2,13 +2,13 @@
 rfc: 43
 title: Platform Link And Executable Publication
 type: compiler
-status: REVIEW
+status: ACCEPTED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, ir-backend, module-system, runtime-memory, error-system, verification]
-approvers: []
+approvers: [rfc, ir-backend, module-system, runtime-memory, error-system, verification]
 created: 2026-08-15
-updated: 2026-08-27
+updated: 2026-08-28
 area: compiler
 requires: [6, 10, 12, 16, 21]
 supersedes: []
@@ -537,3 +537,4 @@ None
 |---|---|---|
 | 2026-08-15 | DRAFT | Initial post-object link and executable-publication contract created from RFC 0021's explicit non-goal boundary. |
 | 2026-08-27 | REVIEW | Authored the toolchain-discovery record, the linker and publication failure algebra extending RFC 0010, and the CI architecture lane matrix; cleared all three Open Questions and bound discussion/tracking links. |
+| 2026-08-28 | ACCEPTED | All five dependency RFCs (0006, 0010, 0012, 0016, 0021) are IMPLEMENTING; verified the RFC 0010 failure-algebra extension (LinkPlanConstruction/LinkerInvocation/ExecutablePublication phases + InvokeLinker op) adds three phases past ObjectEmission with no name collision and invents no diagnostic code; all six required owners approved. Acceptance approves the design only; the native-executable acceptance-criteria evidence is a LANDED gate. implementation stays TBD; no IMPLEMENTING pointer (backend object emission and linking are unbuilt). |
