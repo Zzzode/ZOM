@@ -271,7 +271,7 @@ until an implementation change begins.
 
 | Slice | State | Required evidence |
 |---|---|---|
-| LLVM build and CI contract | Blocked by acceptance | Exact LLVM 22.1.8 provenance, components, X86/AArch64 inventory, positive and negative configure tests |
+| LLVM build and CI contract | Landed 2026-08-27 (`db8fe17e`) | LLVM 22.1.8 provisioned from source (glibc-2.36-native); `cmake/utils/llvm.cmake` behind `ZOM_ENABLE_LLVM_BACKEND` (default OFF) runs the fail-closed discovery gate with all seven `ZOM-CMAKE-LLVM-*` identifiers; positive fixture records exact 22.1.8 provenance + 11 components + X86/AArch64; 13 negative configure fixtures each assert their exact identifier before any target generates. Verified: sanitizer frontend unaffected (OFF), positive admits provisioned 22.1.8 (ON), 14/14 fixtures pass. |
 | Runtime capability and ABI contract registries | Blocked by acceptance | Generated closed records, deterministic revisions, independent encoders, no ambient query |
 | Target and code-generation capability registries | Blocked by prior slice | LLVM-backed admission, exact target associations, bundle publication |
 | Package-session authority bundle | Blocked by prior slice | Exact RFC 0012 handoffs, move-only ownership, cleanup precedence |
