@@ -19,6 +19,7 @@
 // exposes no LLVM type. std:: is used here because these are the LLVM ABI types
 // (std::string, std::unique_ptr, llvm::raw_string_ostream); they never escape
 // into a ZOM header.
+#include <llvm/ADT/SmallVector.h>       // IWYU pragma: keep
 #include <llvm/IR/BasicBlock.h>         // IWYU pragma: keep
 #include <llvm/IR/Constants.h>          // IWYU pragma: keep
 #include <llvm/IR/DataLayout.h>         // IWYU pragma: keep
@@ -27,6 +28,7 @@
 #include <llvm/IR/GlobalValue.h>        // IWYU pragma: keep
 #include <llvm/IR/Instructions.h>       // IWYU pragma: keep
 #include <llvm/IR/LLVMContext.h>        // IWYU pragma: keep
+#include <llvm/IR/LegacyPassManager.h>  // IWYU pragma: keep
 #include <llvm/IR/Module.h>             // IWYU pragma: keep
 #include <llvm/IR/Type.h>               // IWYU pragma: keep
 #include <llvm/IR/Verifier.h>           // IWYU pragma: keep
@@ -153,12 +155,38 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
         zc::str("llvm::verifyModule reported a broken module: ", verifyBuffer.c_str()));
   }
 
-  // 11. Publish only on success: materialize the verified IR to text.
+  // 11. Materialize the verified IR to text for inspection and testing.
   std::string irBuffer;
   ::llvm::raw_string_ostream irStream(irBuffer);
   llvmModule->print(irStream, /*AAW=*/nullptr);
   irStream.flush();
-  return LlvmTranslationResult::success(zc::heapString(irBuffer.c_str()));
+
+  // 12. RFC 0021 ObjectEmission phase: lower the verified module to a native
+  //     object file for the same host TargetMachine. A legacy PassManager is the
+  //     supported entry point for addPassesToEmitFile; it writes the object bytes
+  //     into an owned seekable buffer (raw_pwrite_stream). Object emission runs
+  //     only after verifyModule succeeds, so no broken module reaches codegen.
+  ::llvm::SmallVector<char, 0> objectBytes;
+  ::llvm::raw_svector_ostream objectStream(objectBytes);
+  {
+    ::llvm::legacy::PassManager passManager;
+    if (targetMachine->addPassesToEmitFile(passManager, objectStream, /*DwoOut=*/nullptr,
+                                           ::llvm::CodeGenFileType::ObjectFile)) {
+      return LlvmTranslationResult::failure(
+          zc::heapString("host TargetMachine cannot emit an object file for this module"));
+    }
+    passManager.run(*llvmModule);
+  }
+  if (objectBytes.empty()) {
+    return LlvmTranslationResult::failure(zc::heapString("object emission produced no bytes"));
+  }
+
+  // 13. Publish only on success: the verified IR text and the native object bytes.
+  auto objectCode = zc::heapArray<uint8_t>(objectBytes.size());
+  for (size_t index = 0; index < objectBytes.size(); ++index) {
+    objectCode[index] = static_cast<uint8_t>(objectBytes[index]);
+  }
+  return LlvmTranslationResult::success(zc::heapString(irBuffer.c_str()), zc::mv(objectCode));
 }
 
 }  // namespace zomlang::compiler::backend::llvm

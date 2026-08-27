@@ -131,6 +131,18 @@ ZC_TEST("Scalar module initializer lowers MIR -> LIR -> verified LLVM ret i32 42
   const auto ir = result.textualIr();
   ZC_EXPECT(ir.contains("ret i32 42"_zc));
   ZC_EXPECT(ir.contains("zom.module_init"_zc));
+
+  // RFC 0021 ObjectEmission: the verified module lowers to a non-empty native
+  // object file. On this Linux host the bytes begin with the ELF magic
+  // (0x7f 'E' 'L' 'F'); the emission path is the same host TargetMachine that
+  // produced the data layout, so the object matches the verified IR.
+  const auto object = result.objectCode();
+  ZC_EXPECT(object.size() > 0);
+  ZC_REQUIRE(object.size() >= 4);
+  ZC_EXPECT(object[0] == 0x7f);
+  ZC_EXPECT(object[1] == static_cast<uint8_t>('E'));
+  ZC_EXPECT(object[2] == static_cast<uint8_t>('L'));
+  ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
 }
 
 ZC_TEST("MIR -> LIR lowering fails closed on a non-integer scalar initializer") {

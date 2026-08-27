@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "zc/core/array.h"
 #include "zc/core/string.h"
 #include "compiler/lir/lir-module.h"
 
@@ -27,36 +28,46 @@ namespace zomlang::compiler::backend::llvm {
 /// \brief Outcome of translating one LIR module to a verified LLVM module.
 ///
 /// A translation succeeds only when `llvm::verifyModule` reports no broken
-/// module. On success the textual IR is retained for inspection and testing; on
+/// module. On success it retains the textual IR for inspection and testing and
+/// the emitted native object-file bytes (RFC 0021 ObjectEmission phase); on
 /// failure it carries the diagnostic text produced by the translator or the
-/// verifier. No LLVM module is published on failure.
+/// verifier. No LLVM module, IR, or object is published on failure.
 class LlvmTranslationResult final {
 public:
   LlvmTranslationResult(LlvmTranslationResult&&) noexcept = default;
   LlvmTranslationResult& operator=(LlvmTranslationResult&&) noexcept = default;
   ZC_DISALLOW_COPY(LlvmTranslationResult);
 
-  /// \brief Builds a success result carrying the verified textual IR.
-  ZC_NODISCARD static LlvmTranslationResult success(zc::String&& textualIr) noexcept {
-    return LlvmTranslationResult(true, zc::mv(textualIr), zc::heapString(""));
+  /// \brief Builds a success result carrying the verified IR and object bytes.
+  ZC_NODISCARD static LlvmTranslationResult success(zc::String&& textualIr,
+                                                    zc::Array<uint8_t>&& objectCode) noexcept {
+    return LlvmTranslationResult(true, zc::mv(textualIr), zc::mv(objectCode), zc::heapString(""));
   }
   /// \brief Builds a failure result carrying the diagnostic text.
   ZC_NODISCARD static LlvmTranslationResult failure(zc::String&& diagnostic) noexcept {
-    return LlvmTranslationResult(false, zc::heapString(""), zc::mv(diagnostic));
+    return LlvmTranslationResult(false, zc::heapString(""), zc::heapArray<uint8_t>(0),
+                                 zc::mv(diagnostic));
   }
 
   ZC_NODISCARD bool verified() const noexcept { return verifiedValue; }
   ZC_NODISCARD zc::StringPtr textualIr() const noexcept { return textualIrValue; }
+  /// \brief The emitted native object-file bytes; empty on failure.
+  ZC_NODISCARD zc::ArrayPtr<const uint8_t> objectCode() const noexcept {
+    return objectCodeValue.asPtr();
+  }
   ZC_NODISCARD zc::StringPtr diagnostic() const noexcept { return diagnosticValue; }
 
 private:
-  LlvmTranslationResult(bool verified, zc::String&& textualIr, zc::String&& diagnostic) noexcept
+  LlvmTranslationResult(bool verified, zc::String&& textualIr, zc::Array<uint8_t>&& objectCode,
+                        zc::String&& diagnostic) noexcept
       : verifiedValue(verified),
         textualIrValue(zc::mv(textualIr)),
+        objectCodeValue(zc::mv(objectCode)),
         diagnosticValue(zc::mv(diagnostic)) {}
 
   bool verifiedValue = false;
   zc::String textualIrValue;
+  zc::Array<uint8_t> objectCodeValue;
   zc::String diagnosticValue;
 };
 
