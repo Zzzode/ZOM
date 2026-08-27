@@ -2,21 +2,21 @@
 rfc: 44
 title: Source Formatter Architecture
 type: compiler
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, lexer-parser, module-system, tooling-lsp, verification]
 approvers: []
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-28
 area: tooling
 requires: [2, 3, 17, 23]
 supersedes: []
 superseded-by: []
-discussion: TBD
-decision: TBD
+discussion: docs/rfc/tracking/0044-review-and-implementation.md#discussion-record
+decision: docs/rfc/tracking/0044-review-and-implementation.md#decision-record
 implementation: TBD
-tracking-issue: TBD
+tracking-issue: docs/rfc/tracking/0044-review-and-implementation.md#implementation-tracker
 ---
 
 # RFC 0044: Source Formatter Architecture
@@ -70,6 +70,14 @@ editor integration, but rejects style-file lookup and ambient configuration.
 notes the maintenance cost of growing style options. ZOM uses one fixed style
 until a future accepted RFC proves that a configurable choice is necessary.
 
+[Prettier](https://prettier.io/docs/en/technical-details.html) and the
+Wadler/Lindig pretty-printing algebra it derives from ("A prettier printer",
+Wadler 2003; "Strictly Pretty", Lindig 2000) demonstrate that a small document
+combinator set plus one width-driven layout pass yields uniform, idempotent
+line-breaking across a whole language. ZOM adopts that engine directly rather
+than growing per-node heuristics (rustfmt) or a global penalty search
+(clang-format), because a single fixed style needs no tuning surface.
+
 The common hazards are losing comments during AST reprint, overlapping edits,
 and formatter output that changes under different host configuration. Lossless
 input, canonical edits, and no configuration discovery avoid them.
@@ -121,13 +129,58 @@ where the resulting bytes parse to the same lossless token sequence. A comment
 is attached to its preceding or following token by source order; an attachment
 ambiguity rejects the request rather than relocating a comment.
 
+The pinned target line width is **100 columns**, measured in Unicode scalar
+values. The width is a fixed constant of the style, not a configurable option;
+changing it is a future accepted-RFC decision, never a user or project setting.
+
+### Layout Engine
+
+The formatter separates *what to lay out* from *how to break lines* through a
+Wadler/Lindig document algebra, the same core proven by Prettier, Elm, and the
+Haskell `prettyprinter` library. A syntax-directed printer walks the recoverable
+token/trivia stream and emits an intermediate `Doc` value built from a fixed
+constructor set; one generic layout pass then renders that `Doc` against the
+pinned width. No syntax node computes its own line breaks.
+
+The `Doc` constructor set is closed and minimal:
+
+- `text(bytes)` - literal token or trivia bytes, never re-lexed.
+- `concat(docs)` - ordered composition.
+- `line` / `softline` / `hardline` - a break that renders as one space, nothing,
+  or a mandatory newline respectively when its enclosing group breaks; `line`
+  and `softline` render flat (space / nothing) when the group fits.
+- `group(doc)` - the unit of break decision: rendered flat if it fits the
+  remaining width, otherwise broken.
+- `indent(doc)` - increase the current indentation by one four-column step for
+  contained breaks.
+- `ifBreak(broken, flat)` - select bytes by the enclosing group's decision (for
+  example, a trailing comma only when a list breaks).
+- `fill(docs)` - fit as many items per line as the width allows, breaking only
+  where necessary.
+
+The layout pass is the standard width-driven `fits` decision: a `group` renders
+flat when its flat width plus the current column does not exceed the pinned
+width and contains no `hardline`, otherwise every direct `line`/`softline` in
+that group breaks and its `indent` applies. This is a total function over a
+finite `Doc`; it performs no search or backtracking, so layout cost is linear in
+document size. This is deliberately simpler than clang-format's global penalty
+search and more uniform than rustfmt's per-node heuristics, and it is sufficient
+for one fixed style.
+
+A comment or other trivia is emitted as `text` at its attachment point; because
+comments always carry a `hardline` when they are line comments, a group
+containing a line comment can never render flat, which preserves comment
+placement without a special case.
+
 ### Ranges, Recovery, And Errors
 
 Whole-document formatting considers every boundary. Range formatting expands
 the requested range to the smallest enclosing syntactic list, statement, or
 declaration whose exterior layout can be determined without changing text
-outside the expanded range. If no such enclosing node exists, it returns
-`Rejected` with the existing source diagnostic rail and no edits.
+outside the expanded range. An enclosing node is eligible only when both of its
+boundary tokens are non-recovery tokens and their trivia attachment is
+unambiguous in the RFC 0023 recoverable CST. If no such enclosing node exists,
+it returns `Rejected` with the existing source diagnostic rail and no edits.
 
 Recovery nodes are formatable only when their token boundaries and trivia
 attachment are unambiguous. Unterminated strings, comments, or delimiters,
@@ -138,10 +191,13 @@ document as canonical.
 ### Integration And Writes
 
 The formatter core is a pure value operation. CLI output writes through a
-temporary sibling file and atomic rename after re-reading and digest-checking
-the source snapshot; a changed input rejects without modifying the file.
-`--check` never writes. The IDE facade returns byte edits bound to the exact
-document version; the LSP adapter alone converts them to UTF-16 positions.
+temporary sibling file in the destination directory, followed by `fsync` and an
+atomic same-directory `rename(2)` over the target, after re-reading and
+digest-checking the source snapshot; a changed input rejects without modifying
+the file. Same-directory `rename` is atomic on Linux (ext4/xfs) and macOS
+(APFS/HFS+), giving identical replacement guarantees on both. `--check` never
+writes. The IDE facade returns byte edits bound to the exact document version;
+the LSP adapter alone converts them to UTF-16 positions.
 
 No mode searches parent directories, environment variables, or home
 directories for configuration. There is no in-source disable directive. The
@@ -236,13 +292,24 @@ after the CLI implementation and native tests land.
 
 ## Open Questions
 
-- Which recovered-token ownership proof from RFC 0023 is sufficient for safe
-  range expansion? Assigned to `lexer-parser` and `tooling-lsp` before REVIEW.
-- Which source-service atomic write API provides identical Linux and macOS
-  replacement guarantees? Assigned to `module-system` before REVIEW.
+None. The two decisions previously deferred to before-REVIEW are now resolved
+in the Reference-Level Design:
+
+- **Safe range-expansion ownership.** Range expansion accepts an enclosing node
+  only when both of its boundary tokens are non-recovery tokens with unambiguous
+  trivia attachment in the RFC 0023 recoverable CST; any recovery token or
+  ambiguous trivia on the boundary rejects. This mirrors rust-analyzer's
+  node-level formatting, which only reformats syntax nodes whose token
+  boundaries are complete. Recorded in "Ranges, Recovery, And Errors".
+- **Cross-platform atomic write.** The source service writes a temporary sibling
+  file in the destination directory, `fsync`s it, and `rename(2)`s it over the
+  target after re-validating the original digest. Same-directory `rename` is
+  atomic on both Linux (ext4/xfs) and macOS (APFS/HFS+), and is the exact pattern
+  gofmt, rustfmt, and Black use. Recorded in "Integration And Writes".
 
 ## Status History
 
 | Date | Status | Notes |
 |---|---|---|
 | 2026-08-15 | DRAFT | Initial fixed-style lossless formatter contract created for the stable-toolchain objective. |
+| 2026-08-28 | REVIEW | Added the Wadler/Lindig Doc-IR layout engine and the pinned 100-column width; resolved both before-REVIEW Open Questions (range-expansion boundary-token ownership; cross-platform atomic rename) from prior art; set discussion and tracking links. |
