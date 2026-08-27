@@ -203,7 +203,7 @@ blocker still precedes any `compiler/lir` or `compiler/backend` code.
 | Memory, provenance, globals, and symbols | Pending foundation | Initialization, alignment, relocations, linkage, attribute-proof negatives |
 | Atomics, runtime, FFI, panic, and exception lowering | Pending target/runtime profiles | Capability matrix, model-specific unwind, containment, ABI conformance |
 | Independent LIR verifier | Pending complete LIR algebra | Full invariant and mutation coverage, successor suppression |
-| LLVM translation and verification | Pending verified LIR | Exhaustive total mapping, deterministic module, LLVM verifier |
+| LLVM translation and verification | Minimal vertical slice landed 2026-08-27 (`4f078d78`); full mapping pending | Exhaustive total mapping, deterministic module, LLVM verifier - DELIVERED SO FAR: one scalar module-initializer lowers MIR -> minimal LIR -> LLVM IR through the compiler/backend/llvm Pimpl shim and passes llvm::verifyModule (`ret i32 42`), behind ZOM_ENABLE_LLVM_BACKEND. The exhaustive operation mapping, block-parameter PHI construction, attribute adapter, and unwind translation remain. |
 | Verified object emission | Pending verified LLVM modules | Sections, symbols, relocations, ABI, personality, and deterministic object inspection |
 | Production CLI and documentation cutover | Pending all prior slices | Layer outputs, architecture gates, sanitizer, default CTest, format, RFC checks |
 
