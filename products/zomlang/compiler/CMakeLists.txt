@@ -17,6 +17,12 @@ add_subdirectory(mir)
 add_subdirectory(lir)
 add_subdirectory(ownership)
 
+# RFC 0021 LLVM backend translation shim. Built and linked ONLY when the
+# fail-closed LLVM discovery gate is enabled; the frontend build is unaffected.
+if(ZOM_ENABLE_LLVM_BACKEND)
+  add_subdirectory(backend)
+endif()
+
 add_library(
   frontend STATIC
   $<TARGET_OBJECTS:ast>
