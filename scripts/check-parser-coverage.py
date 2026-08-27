@@ -12,7 +12,7 @@ except ModuleNotFoundError:
 
 ROOT = Path(__file__).resolve().parents[1]
 GRAMMAR = ROOT / "docs" / "spec" / "chapters" / "17-grammar-reference.md"
-PARSER_DIR = ROOT / "products" / "zomlang" / "compiler" / "parser"
+PARSER_DIR = ROOT / "zomlang" / "compiler" / "parser"
 PARSER_IMPL = PARSER_DIR / "parser-impl.h"
 TOKEN_CURSOR = PARSER_DIR / "token-cursor.h"
 PARSER_SOURCES = sorted(PARSER_DIR.rglob("*.cc"))
@@ -25,10 +25,10 @@ DOMAIN_PARSER_SOURCES = [
     PARSER_DIR / "syntax" / "type-parser.cc",
 ]
 CURSOR_BOUNDARY_SOURCES = set(PARSER_SOURCES)
-COVERAGE = ROOT / "products" / "zomlang" / "compiler" / "parser" / "parser-coverage.yml"
-SCHEMA = ROOT / "products" / "zomlang" / "compiler" / "ast" / "schema.yml"
-NODE_FACTORY = ROOT / "products" / "zomlang" / "compiler" / "ast" / "generated" / "node-factory.h"
-DIAGNOSTIC_ENGINE = ROOT / "products" / "zomlang" / "compiler" / "diagnostics" / "core" / "diagnostic-engine.cc"
+COVERAGE = ROOT / "zomlang" / "compiler" / "parser" / "parser-coverage.yml"
+SCHEMA = ROOT / "zomlang" / "compiler" / "ast" / "schema.yml"
+NODE_FACTORY = ROOT / "zomlang" / "compiler" / "ast" / "generated" / "node-factory.h"
+DIAGNOSTIC_ENGINE = ROOT / "zomlang" / "compiler" / "diagnostics" / "core" / "diagnostic-engine.cc"
 DESIGN_DIR = ROOT / "docs" / "design"
 DESIGN_DOC_MARKERS = {
     DESIGN_DIR / "architecture.md": [

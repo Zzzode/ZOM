@@ -5,7 +5,8 @@ README for authority and the sourcing caveat).
 
 This note surveys how top-tier language toolchains build their surrounding
 products - package manager, build tool, language server, formatter, debugger -
-and recommends product boundaries for ZOM under `products/`. The recommendation
+and recommends product boundaries for ZOM at the repository top level. The
+recommendation
 is derived from industry best practice alone. Existing directories, RFCs, and
 code are treated as refactorable or deletable inputs, never as constraints.
 

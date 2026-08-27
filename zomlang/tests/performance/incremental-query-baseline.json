@@ -1,0 +1,341 @@
+{
+  "baselines": {
+    "0d0c251f9bcb2189ac8f2a3502e6eb50a95b475144257c82323c052c26eddd53": {
+  "aggregate": {
+    "elapsed_median_nanoseconds": 207312000,
+    "peak_rss_median_bytes": 8880128
+  },
+  "metadata": {
+    "build": {
+      "cmake_cache": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "/usr/bin/c++",
+        "CMAKE_CXX_FLAGS": "",
+        "CMAKE_CXX_FLAGS-ADVANCED": "1",
+        "CMAKE_CXX_FLAGS_DEBUG": "-g",
+        "CMAKE_CXX_FLAGS_DEBUG-ADVANCED": "1",
+        "CMAKE_CXX_FLAGS_MINSIZEREL": "-Os -DNDEBUG",
+        "CMAKE_CXX_FLAGS_MINSIZEREL-ADVANCED": "1",
+        "CMAKE_CXX_FLAGS_RELEASE": "-O3 -DNDEBUG",
+        "CMAKE_CXX_FLAGS_RELEASE-ADVANCED": "1",
+        "CMAKE_CXX_FLAGS_RELWITHDEBINFO": "-O2 -g -DNDEBUG",
+        "CMAKE_CXX_FLAGS_RELWITHDEBINFO-ADVANCED": "1",
+        "ZOM_ENABLE_ADDRESS_SANITIZER": "OFF",
+        "ZOM_ENABLE_BENCHMARKS": "OFF",
+        "ZOM_ENABLE_COVERAGE": "OFF",
+        "ZOM_ENABLE_FUZZING": "OFF",
+        "ZOM_ENABLE_PRIVILEGED_LINUX_SANDBOX_TESTS": "OFF",
+        "ZOM_ENABLE_UNDEFINED_SANITIZER": "OFF",
+        "ZOM_ENABLE_UNITTESTS": "ON",
+        "ZOM_ENABLE_WALL": "ON",
+        "ZOM_ENABLE_WERROR": "ON"
+      },
+      "preset": "release"
+    },
+    "compiler": {
+      "path": "/usr/bin/c++",
+      "sha256": "179301dcb41ea78accc3fa0048a7e6f6710d891945a751a34addd622020c1818",
+      "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)"
+    },
+    "corpus": {
+      "combined_sha256": "6c5b785dd885a67951c88c74063682bb67c441bb49281578d7b8a44fe526ba26",
+      "manifest_sha256": "89a664bec2f5f1020e252edb88cf9e5a19812c67ee4ed53b64db7a3d6bf1f87f",
+      "source_sha256": {
+        "zomlang/tests/unittests/compiler/driver/incremental-binding-query-adapter-test.cc": "11c75cc94164aaec34a7e8e467d45a825d1673d3cfe3840033fb7387465ba0d7",
+        "zomlang/tests/unittests/compiler/driver/incremental-module-resolution-query-test.cc": "b325ac2f246c9a22997098d30ea913ece36bc1fe6abf495a06a263512fc11a9d"
+      }
+    },
+    "machine": {
+      "architecture": "arm64",
+      "cpu_model": "Apple M1 Max",
+      "logical_cores": 10,
+      "operating_system": "Darwin",
+      "operating_system_release": "25.5.0",
+      "physical_memory_bytes": 68719476736
+    },
+    "repository_revision": "e9ccb17fab8ba8ec471afa9512e8b13e6f30fcc5",
+    "worker_count": 8
+  },
+  "results": {
+    "binder-incremental-projections": {
+      "cold_invocations_per_sample": 16,
+      "elapsed_mad_nanoseconds": 2670000,
+      "elapsed_mad_ratio": 0.014770967028103562,
+      "elapsed_median_nanoseconds": 180760000,
+      "elapsed_samples_nanoseconds": [
+        179509000,
+        179578000,
+        183362000,
+        180760000,
+        186080000,
+        175735000,
+        181804000,
+        182370000,
+        176702000,
+        179185000,
+        179540000,
+        181524000,
+        179740000,
+        188566000,
+        189726000,
+        175040000,
+        177981000,
+        183430000,
+        185876000,
+        176352000,
+        183932000
+      ],
+      "peak_rss_median_bytes": 5931008,
+      "peak_rss_samples_bytes": [
+        5931008,
+        5931008,
+        5914624,
+        5931008,
+        5963776,
+        5914624,
+        5947392,
+        5947392,
+        5931008,
+        5931008,
+        5931008,
+        5931008,
+        5914624,
+        5931008,
+        5947392,
+        5947392,
+        5931008,
+        5963776,
+        5947392,
+        5898240,
+        5931008
+      ]
+    },
+    "module-resolution-projection-shielding": {
+      "cold_invocations_per_sample": 16,
+      "elapsed_mad_nanoseconds": 268000,
+      "elapsed_mad_ratio": 0.010093401626996084,
+      "elapsed_median_nanoseconds": 26552000,
+      "elapsed_samples_nanoseconds": [
+        26312000,
+        26534000,
+        25523000,
+        26749000,
+        28498000,
+        28179000,
+        26942000,
+        28487000,
+        25646000,
+        26692000,
+        26552000,
+        26032000,
+        26601000,
+        26539000,
+        26173000,
+        26820000,
+        26325000,
+        28075000,
+        26084000,
+        26306000,
+        26653000
+      ],
+      "peak_rss_median_bytes": 2949120,
+      "peak_rss_samples_bytes": [
+        2949120,
+        2949120,
+        2932736,
+        2949120,
+        2932736,
+        2949120,
+        2949120,
+        2949120,
+        2965504,
+        2949120,
+        2932736,
+        2949120,
+        2965504,
+        2949120,
+        2965504,
+        2949120,
+        2932736,
+        2949120,
+        2932736,
+        2965504,
+        2949120
+      ]
+    }
+  }
+    },
+    "67aae06e0d5a4d2a333bb14c0be44429751dce49dcdbf4c5f55ab943d3f567ca": {
+      "aggregate": {
+        "elapsed_median_nanoseconds": 489199168,
+        "peak_rss_median_bytes": 12947456
+      },
+      "metadata": {
+        "build": {
+          "cmake_cache": {
+            "CMAKE_BUILD_TYPE": "Release",
+            "CMAKE_CXX_COMPILER": "/home/linuxbrew/.linuxbrew/bin/clang++",
+            "CMAKE_CXX_FLAGS": "",
+            "CMAKE_CXX_FLAGS-ADVANCED": "1",
+            "CMAKE_CXX_FLAGS_DEBUG": "-g",
+            "CMAKE_CXX_FLAGS_DEBUG-ADVANCED": "1",
+            "CMAKE_CXX_FLAGS_MINSIZEREL": "-Os -DNDEBUG",
+            "CMAKE_CXX_FLAGS_MINSIZEREL-ADVANCED": "1",
+            "CMAKE_CXX_FLAGS_RELEASE": "-O3 -DNDEBUG",
+            "CMAKE_CXX_FLAGS_RELEASE-ADVANCED": "1",
+            "CMAKE_CXX_FLAGS_RELWITHDEBINFO": "-O2 -g -DNDEBUG",
+            "CMAKE_CXX_FLAGS_RELWITHDEBINFO-ADVANCED": "1",
+            "ZOM_ENABLE_ADDRESS_SANITIZER": "OFF",
+            "ZOM_ENABLE_BENCHMARKS": "OFF",
+            "ZOM_ENABLE_COVERAGE": "OFF",
+            "ZOM_ENABLE_FUZZING": "OFF",
+            "ZOM_ENABLE_PRIVILEGED_LINUX_SANDBOX_TESTS": "OFF",
+            "ZOM_ENABLE_UNDEFINED_SANITIZER": "OFF",
+            "ZOM_ENABLE_UNITTESTS": "ON",
+            "ZOM_ENABLE_WALL": "ON",
+            "ZOM_ENABLE_WERROR": "ON"
+          },
+          "preset": "release"
+        },
+        "compiler": {
+          "path": "/home/linuxbrew/.linuxbrew/Cellar/llvm/19.1.5/bin/clang-19",
+          "sha256": "2822a538887292f8e5a6af190d7560eb7b49293acabf2c605460bff22f24bbc0",
+          "version": "Homebrew clang version 19.1.5"
+        },
+        "corpus": {
+          "combined_sha256": "f5bc77f216f014f41c263a83cf026774bf16064f6203006d688a3b7ae424d24e",
+          "manifest_sha256": "89a664bec2f5f1020e252edb88cf9e5a19812c67ee4ed53b64db7a3d6bf1f87f",
+          "source_sha256": {
+            "zomlang/tests/unittests/compiler/driver/incremental-binding-query-adapter-test.cc": "206c27fd96d20d5745a5eca7ea52a3236985b920574204097caac4b7734ddacb",
+            "zomlang/tests/unittests/compiler/driver/incremental-module-resolution-query-test.cc": "e717e03474724a5fdae7e7387e33242165255ea87ba4067092cc0e352ea588af"
+          }
+        },
+        "machine": {
+          "architecture": "x86_64",
+          "cpu_model": "Intel(R) Xeon(R) Platinum 8336C CPU @ 2.30GHz",
+          "logical_cores": 56,
+          "operating_system": "Linux",
+          "operating_system_release": "5.15.152.bsk.4-amd64",
+          "physical_memory_bytes": 117940875264
+        },
+        "repository_revision": "969c7d81c0c87cb7c31b0b240aaa8e41d2fde80f",
+        "worker_count": 8
+      },
+      "results": {
+        "binder-incremental-projections": {
+          "cold_invocations_per_sample": 16,
+          "elapsed_mad_nanoseconds": 10681979,
+          "elapsed_mad_ratio": 0.023631894986713923,
+          "elapsed_median_nanoseconds": 452015338,
+          "elapsed_samples_nanoseconds": [
+            453682662,
+            434130001,
+            440418134,
+            439081837,
+            480778900,
+            476249188,
+            447023419,
+            453744600,
+            496843351,
+            484961001,
+            465113306,
+            455826703,
+            446274314,
+            444468789,
+            492928431,
+            450653866,
+            453767947,
+            441803954,
+            441333359,
+            452015338,
+            438434706
+          ],
+          "peak_rss_median_bytes": 8740864,
+          "peak_rss_samples_bytes": [
+            8732672,
+            8744960,
+            8749056,
+            8716288,
+            8687616,
+            8777728,
+            8773632,
+            8699904,
+            8785920,
+            8720384,
+            8781824,
+            8720384,
+            8675328,
+            8753152,
+            8785920,
+            8749056,
+            8781824,
+            8704000,
+            8740864,
+            8728576,
+            8683520
+          ]
+        },
+        "module-resolution-projection-shielding": {
+          "cold_invocations_per_sample": 16,
+          "elapsed_mad_nanoseconds": 436585,
+          "elapsed_mad_ratio": 0.011741259574390267,
+          "elapsed_median_nanoseconds": 37183830,
+          "elapsed_samples_nanoseconds": [
+            37596502,
+            37432396,
+            38346819,
+            38858949,
+            39952744,
+            36965776,
+            38743453,
+            37215002,
+            37117729,
+            37219476,
+            36454957,
+            37064390,
+            37113404,
+            35443598,
+            36184049,
+            36112127,
+            37225458,
+            38106703,
+            36729504,
+            36747245,
+            37183830
+          ],
+          "peak_rss_median_bytes": 4206592,
+          "peak_rss_samples_bytes": [
+            4194304,
+            4206592,
+            4165632,
+            4161536,
+            4194304,
+            4218880,
+            4198400,
+            4165632,
+            4214784,
+            4202496,
+            4235264,
+            4218880,
+            4222976,
+            4182016,
+            4247552,
+            4194304,
+            4231168,
+            4186112,
+            4227072,
+            4243456,
+            4210688
+          ]
+        }
+      }
+    }
+  },
+  "protocol": {
+    "maximum_elapsed_mad_ratio": 0.03,
+    "maximum_elapsed_ratio": 1.05,
+    "maximum_peak_rss_ratio": 1.15,
+    "measured_runs": 21,
+    "warmup_runs": 5
+  }
+}

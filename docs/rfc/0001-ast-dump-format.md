@@ -15,7 +15,7 @@ supersedes: []
 superseded-by: []
 discussion: docs/rfc/0001-ast-dump-format.md#status-history
 decision: docs/rfc/0001-ast-dump-format.md#status-history
-implementation: products/zomlang/compiler/ast/dump.cc
+implementation: zomlang/compiler/ast/dump.cc
 tracking-issue: docs/rfc/0001-ast-dump-format.md#acceptance-criteria
 ---
 
@@ -47,7 +47,7 @@ for a reviewer to inspect parser behavior from a small source sample.
 ## Goals
 
 - Make `--dump-ast` produce a readable tree by default.
-- Decode nodes through `products/zomlang/compiler/ast/schema.yml` metadata.
+- Decode nodes through `zomlang/compiler/ast/schema.yml` metadata.
 - Print syntax kind names instead of numeric kind values.
 - Print schema field names instead of payload word indexes.
 - Expand `NodeList` fields as ordered child lists.
@@ -55,7 +55,7 @@ for a reviewer to inspect parser behavior from a small source sample.
 - Provide a JSON format for tools without exposing payload layout.
 - Keep a raw format for compiler layout debugging.
 - Use the same schema metadata for text and JSON output.
-- Make AST conformance snapshots reviewable in `products/zomlang/tests`.
+- Make AST conformance snapshots reviewable in `zomlang/tests`.
 
 ## Non-Goals
 
@@ -199,7 +199,7 @@ non-zero exit code.
 ### Schema Reflection
 
 AST dumpers must decode nodes through generated reflection metadata derived
-from `products/zomlang/compiler/ast/schema.yml`.
+from `zomlang/compiler/ast/schema.yml`.
 
 `generated/node-schema.h` must expose enough metadata for generic dumping:
 
@@ -333,10 +333,10 @@ return non-zero when the tree fails structural validation.
 
 | Area | Paths | Owner |
 |---|---|---|
-| AST schema and generated metadata | `products/zomlang/compiler/ast/**`, `scripts/codegen/gen_ast.py` | `lexer-parser` |
-| CLI dump command | `products/zomlang/utils/zomc/**`, `products/zomlang/compiler/basic/**` | `lexer-parser` |
-| Conformance snapshots | `products/zomlang/tests/conformance/**` | `verification` |
-| Lit regeneration | `products/zomlang/tests/tools/regen-lit.py` | `verification` |
+| AST schema and generated metadata | `zomlang/compiler/ast/**`, `scripts/codegen/gen_ast.py` | `lexer-parser` |
+| CLI dump command | `zomlang/utils/zomc/**`, `zomlang/compiler/basic/**` | `lexer-parser` |
+| Conformance snapshots | `zomlang/tests/conformance/**` | `verification` |
+| Lit regeneration | `zomlang/tests/tools/regen-lit.py` | `verification` |
 | AST design docs | `docs/design/ast-data-structure.md` | `spec-audit` |
 | RFC process | `docs/rfc/**` | `rfc` |
 
@@ -420,7 +420,7 @@ The implementation must update `docs/design/ast-data-structure.md` to point
 contributors at the schema-driven dump contract and explain when to use `tree`,
 `json`, or `raw`.
 
-The conformance test documentation and `products/zomlang/tests/tools/regen-lit.py`
+The conformance test documentation and `zomlang/tests/tools/regen-lit.py`
 usage notes must describe that `tree` is the review and snapshot format.
 
 No end-user language tutorial is required because this RFC changes compiler
@@ -432,7 +432,7 @@ No long-running service, runtime daemon, release process, or observability
 system is affected.
 
 The operational maintenance burden is limited to keeping generated AST schema
-metadata in sync with `products/zomlang/compiler/ast/schema.yml` and requiring
+metadata in sync with `zomlang/compiler/ast/schema.yml` and requiring
 `python3 scripts/codegen/gen_ast.py --write` when schema fields change.
 
 ## Acceptance Criteria
@@ -461,7 +461,7 @@ metadata in sync with `products/zomlang/compiler/ast/schema.yml` and requiring
 4. Wire `zomc compile --dump-ast` to default to `tree`.
 5. Add an explicit AST format option for `tree`, `json`, and `raw`.
 6. Remove XML AST dumping from the CLI surface.
-7. Update `products/zomlang/tests/tools/regen-lit.py` to regenerate tree-format
+7. Update `zomlang/tests/tools/regen-lit.py` to regenerate tree-format
    expectations.
 8. Regenerate affected conformance AST expectations.
 9. Update AST design documentation to reference this RFC.

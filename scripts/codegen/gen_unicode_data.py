@@ -10,7 +10,7 @@ from urllib.request import urlopen
 
 DEFAULT_UCD_VERSION = "15.1.0"
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = ROOT / "products" / "zomlang" / "compiler" / "lexer"
+DEFAULT_OUTPUT_DIR = ROOT / "zomlang" / "compiler" / "lexer"
 
 
 def ucd_url(version: str) -> str:

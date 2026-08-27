@@ -86,7 +86,7 @@ python scripts/check-format.py
 Format issues → apply `.clang-format` directly:
 
 ```bash
-find products/zomlang libraries/zc -name "*.cc" -o -name "*.h" \
+find zomlang libraries/zc -name "*.cc" -o -name "*.h" \
   | xargs clang-format -style=file -i
 ```
 

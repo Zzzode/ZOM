@@ -13,17 +13,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PRODUCTION_SCHEMA = (
-    ROOT / "products/zomlang/compiler/query/query-descriptor-schema.def"
+    ROOT / "zomlang/compiler/query/query-descriptor-schema.def"
 )
 TEST_SCHEMA = (
     ROOT
-    / "products/zomlang/tests/unittests/compiler/query/query-test-descriptor-schema.def"
+    / "zomlang/tests/unittests/compiler/query/query-test-descriptor-schema.def"
 )
 PRODUCTION_RELATIVE_OUTPUT = Path(
-    "products/zomlang/compiler/query/query-descriptor-inventory.generated.h"
+    "zomlang/compiler/query/query-descriptor-inventory.generated.h"
 )
 TEST_RELATIVE_OUTPUT = Path(
-    "products/zomlang/tests/unittests/compiler/query/"
+    "zomlang/tests/unittests/compiler/query/"
     "query-test-descriptor-inventory.generated.h"
 )
 
@@ -46,9 +46,9 @@ COMPLETE_CONTEXT_TYPE = (
 )
 COMPLETE_CONTEXT_NAME = "CompleteCompilationContextAuthorityInput"
 COMPLETE_CONTEXT_DOMAIN = "zom.input.complete-compilation-context-authority"
-COMPLETE_CONTEXT_OWNER = "products/zomlang/compiler/driver/query/module-graph/module-graph-query-input"
+COMPLETE_CONTEXT_OWNER = "zomlang/compiler/driver/query/module-graph/module-graph-query-input"
 TRANSACTION_WITNESS_OWNER = (
-    "products/zomlang/compiler/driver/query/module-graph/module-graph-query-input"
+    "zomlang/compiler/driver/query/module-graph/module-graph-query-input"
 )
 TRANSACTION_WITNESS_ROWS = (
     (
@@ -77,7 +77,7 @@ TEST_COMPLETE_CONTEXT_TYPE = "zomlang::compiler::query::test::TestCompleteContex
 TEST_COMPLETE_CONTEXT_NAME = "TestCompleteContextInput"
 TEST_COMPLETE_CONTEXT_DOMAIN = "test.input.complete-context"
 TEST_COMPLETE_CONTEXT_OWNER = (
-    "products/zomlang/tests/unittests/compiler/query/query-test-specs"
+    "zomlang/tests/unittests/compiler/query/query-test-specs"
 )
 
 
@@ -271,7 +271,7 @@ def validate_rows(
         if not DOMAIN_PATTERN.fullmatch(row.domain):
             raise SchemaError(f"{path}: invalid literal domain {row.domain!r}")
         if not OWNER_PATTERN.fullmatch(row.owner) or not row.owner.startswith(
-            "products/zomlang/"
+            "zomlang/"
         ):
             raise SchemaError(f"{path}: invalid owner path family {row.owner!r}")
         if row.descriptor_type in descriptor_types:

@@ -1846,14 +1846,14 @@ tracked by RFC 0025's `R25` tasks and is not completed by this synchronization.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/0004-binder-architecture.md`, `docs/rfc/tracking/0004-review-and-implementation.md`, `docs/rfc/README.md` | `rfc` |
-| Binder and binding metadata | `products/zomlang/compiler/binder/**`, `products/zomlang/compiler/ast/tree.*` | `binder-checker` |
-| Checker and checked-module handoff | `products/zomlang/compiler/checker/**`, `products/zomlang/compiler/checked/**` | `binder-checker` |
-| Scope and definition storage | `products/zomlang/compiler/symbol/**` | `module-system` |
-| Session assembly and module resolution boundary | `products/zomlang/compiler/driver/**` | `module-system` |
-| Module and visibility diagnostics | `products/zomlang/compiler/diagnostics/**` | `error-system` |
-| Verified binding consumers and downstream rebinding boundary | `products/zomlang/compiler/hir/**`, `products/zomlang/compiler/mir/**`, `products/zomlang/compiler/lir/**`, `products/zomlang/compiler/backend/**`, `products/zomlang/compiler/irgen/**` | `ir-backend` |
+| Binder and binding metadata | `zomlang/compiler/binder/**`, `zomlang/compiler/ast/tree.*` | `binder-checker` |
+| Checker and checked-module handoff | `zomlang/compiler/checker/**`, `zomlang/compiler/checked/**` | `binder-checker` |
+| Scope and definition storage | `zomlang/compiler/symbol/**` | `module-system` |
+| Session assembly and module resolution boundary | `zomlang/compiler/driver/**` | `module-system` |
+| Module and visibility diagnostics | `zomlang/compiler/diagnostics/**` | `error-system` |
+| Verified binding consumers and downstream rebinding boundary | `zomlang/compiler/hir/**`, `zomlang/compiler/mir/**`, `zomlang/compiler/lir/**`, `zomlang/compiler/backend/**`, `zomlang/compiler/irgen/**` | `ir-backend` |
 | Module, declaration, and design alignment | `docs/spec/**`, `docs/design/**` | `spec-audit` |
-| Unit and conformance evidence | `products/zomlang/tests/**` | `verification` |
+| Unit and conformance evidence | `zomlang/tests/**` | `verification` |
 | Binder architecture and coverage gates | `scripts/check-binder-architecture.py`, `scripts/check-coverage-thresholds.py`, `docs/reports/coverage-baseline.json` | `verification` |
 
 ## Security And Safety Impact
@@ -2227,7 +2227,7 @@ temporary immutable verified inputs.
 - Coverage commands: `cmake --preset coverage`,
   `cmake --build --preset coverage`, `ctest --preset coverageTests`,
   `cmake --build --preset coverage --target coverage`, then
-  `python3 scripts/check-coverage-thresholds.py --baseline docs/reports/coverage-baseline.json --report build-coverage/coverage/coverage.lcov --paths products/zomlang/compiler/binder products/zomlang/compiler/symbol products/zomlang/compiler/identity products/zomlang/compiler/diagnostics`.
+  `python3 scripts/check-coverage-thresholds.py --baseline docs/reports/coverage-baseline.json --report build-coverage/coverage/coverage.lcov --paths zomlang/compiler/binder zomlang/compiler/symbol zomlang/compiler/identity zomlang/compiler/diagnostics`.
 - RFC: `python3 scripts/check-rfc.py`.
 - Format: `python3 scripts/check-format.py` and `git diff --check`.
 - Full suite: `ctest --preset default --output-on-failure`.

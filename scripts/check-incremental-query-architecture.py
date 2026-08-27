@@ -11,9 +11,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-QUERY_ROOT = Path("products/zomlang/compiler/query")
-COMPILER_ROOT = Path("products/zomlang/compiler")
-PRODUCT_ROOT = Path("products/zomlang")
+QUERY_ROOT = Path("zomlang/compiler/query")
+COMPILER_ROOT = Path("zomlang/compiler")
+PRODUCT_ROOT = Path("zomlang")
 COMPILER_CMAKE = COMPILER_ROOT / "CMakeLists.txt"
 QUERY_CMAKE = QUERY_ROOT / "CMakeLists.txt"
 QUERY_DATABASE_HEADER = QUERY_ROOT / "query-database.h"
@@ -40,22 +40,22 @@ IDENTITY_SOURCE_QUERY_INPUT = COMPILER_ROOT / "identity/source-query-input.cc"
 PARSER_PARSE_SOURCE_QUERY = COMPILER_ROOT / "parser/query/parse-source-query.cc"
 PARSER_PARSE_SOURCE_QUERY_VERIFIER = COMPILER_ROOT / "parser/query/parse-source-query-verifier.cc"
 DRIVER_TOPOLOGY_ADAPTER_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/query/binding/incremental-binding-query-adapter-test.cc"
+    "zomlang/tests/unittests/compiler/driver/query/binding/incremental-binding-query-adapter-test.cc"
 )
 DRIVER_SESSION_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/session/compiler-session-package-test.cc"
+    "zomlang/tests/unittests/compiler/driver/session/compiler-session-package-test.cc"
 )
 DRIVER_MODULE_RESOLUTION_QUERY_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/query/module-graph/incremental-module-resolution-query-test.cc"
+    "zomlang/tests/unittests/compiler/driver/query/module-graph/incremental-module-resolution-query-test.cc"
 )
 DRIVER_MODULE_GRAPH_QUERY_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/query/module-graph/module-graph-query-input-test.cc"
+    "zomlang/tests/unittests/compiler/driver/query/module-graph/module-graph-query-input-test.cc"
 )
 QUERY_DATABASE_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/query/query-database-test.cc"
+    "zomlang/tests/unittests/compiler/query/query-database-test.cc"
 )
 QUERY_CAPABILITY_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/query/query-capability-test.cc"
+    "zomlang/tests/unittests/compiler/query/query-capability-test.cc"
 )
 ACTIVE_IDENTITY_MATERIALIZATION = (
     COMPILER_ROOT / "driver/active-identity-materialization.h"
@@ -67,17 +67,17 @@ CORE_LIBRARY_QUERY_PROVIDER_SOURCE = (
     COMPILER_ROOT / "driver/core/query.cc"
 )
 DRIVER_AUTHORITY_SESSION_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/query/binding/active-definition-authority-session-test.cc"
+    "zomlang/tests/unittests/compiler/driver/query/binding/active-definition-authority-session-test.cc"
 )
 BINDER_MODULE_BODY_SYNTAX_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/binder/surface/module-body-syntax-test.cc"
+    "zomlang/tests/unittests/compiler/binder/surface/module-body-syntax-test.cc"
 )
 PERFORMANCE_RUNNER = Path("scripts/run-incremental-query-benchmarks.py")
 PERFORMANCE_CORPUS = Path(
-    "products/zomlang/tests/performance/incremental-query-corpus.json"
+    "zomlang/tests/performance/incremental-query-corpus.json"
 )
 PERFORMANCE_BASELINE = Path(
-    "products/zomlang/tests/performance/incremental-query-baseline.json"
+    "zomlang/tests/performance/incremental-query-baseline.json"
 )
 MANIFEST = Path(".codex/subagents/manifest.yaml")
 ROUTING = Path(".codex/subagents/README.md")
@@ -184,7 +184,7 @@ def check_routing(files: dict[Path, str], errors: list[str]) -> None:
     require_marker(
         files,
         MANIFEST,
-        '"products/zomlang/compiler/query/**"',
+        '"zomlang/compiler/query/**"',
         "module-system query ownership",
         errors,
     )
@@ -219,7 +219,7 @@ def check_routing(files: dict[Path, str], errors: list[str]) -> None:
     require_marker(
         files,
         MODULE_OWNER,
-        "products/zomlang/compiler/query/**",
+        "zomlang/compiler/query/**",
         "module-system query path",
         errors,
     )
@@ -441,7 +441,7 @@ def check_provider_registration(files: dict[Path, str], errors: list[str]) -> No
     for path, text in sorted(files.items()):
         if "registerQueryProvider(" not in text:
             continue
-        allowed = path.parent == Path("products/zomlang/compiler/driver") or "query-adapter" in path.name
+        allowed = path.parent == Path("zomlang/compiler/driver") or "query-adapter" in path.name
         if not allowed:
             errors.append(f"{path}: query provider registration must live in driver or an owner adapter")
 
@@ -1138,7 +1138,7 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
         "topologyByRequester",
     )
     for path, text in files.items():
-        if not str(path).startswith("products/zomlang/"):
+        if not str(path).startswith("zomlang/"):
             continue
         for token in forbidden:
             if re.search(rf"\b{re.escape(token)}\b", text):
@@ -1171,7 +1171,7 @@ def self_test() -> list[str]:
 
     mutation = dict(base)
     mutation[MANIFEST] = mutation[MANIFEST].replace(
-        '      - "products/zomlang/compiler/query/**"\n', "", 1
+        '      - "zomlang/compiler/query/**"\n', "", 1
     )
     expect_failure(mutation, "module-system query ownership", failures)
 

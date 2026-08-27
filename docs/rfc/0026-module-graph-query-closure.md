@@ -466,8 +466,8 @@ capability is published.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/0026-module-graph-query-closure.md`; `docs/rfc/tracking/0026-review-and-implementation.md` | `rfc` |
-| Query, identity, structural input, graph providers, materializer, session, and module interface | `products/zomlang/compiler/identity/**`; `products/zomlang/compiler/query/**`; `products/zomlang/compiler/source/**`; `products/zomlang/compiler/driver/**`; `products/zomlang/compiler/binder/module-*` | `module-system` |
-| Stable Binder consumers and bound-module aggregation | `products/zomlang/compiler/binder/**` excluding `binder/module-*`; `products/zomlang/compiler/checker/**` excluding the diagnostic definition file | `binder-checker` |
+| Query, identity, structural input, graph providers, materializer, session, and module interface | `zomlang/compiler/identity/**`; `zomlang/compiler/query/**`; `zomlang/compiler/source/**`; `zomlang/compiler/driver/**`; `zomlang/compiler/binder/module-*` | `module-system` |
+| Stable Binder consumers and bound-module aggregation | `zomlang/compiler/binder/**` excluding `binder/module-*`; `zomlang/compiler/checker/**` excluding the diagnostic definition file | `binder-checker` |
 | Tests, gates, coverage, and benchmarks | paths assigned to `verification` in `.codex/subagents/manifest.yaml` | `verification` |
 
 ## Security And Safety Impact

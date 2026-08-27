@@ -96,15 +96,15 @@ transaction. The canonical replacement and final audit are published through
 
 `R36-16` may stage only these paths from the exact approved predecessors:
 
-- `products/zomlang/compiler/identity/canonical/canonical-encoder.h`
-- `products/zomlang/compiler/identity/canonical/canonical-encoder.cc`
-- `products/zomlang/tests/unittests/compiler/identity/canonical-encoder-test.cc`
-- `products/zomlang/compiler/diagnostics/fact/diagnostic-fact.h`
-- `products/zomlang/compiler/diagnostics/fact/diagnostic-fact.cc`
-- `products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-codec-test.cc`
-- `products/zomlang/compiler/parser/query/parse-source-query.cc`
-- `products/zomlang/compiler/parser/query/canonical-parsed-source.cc`
-- `products/zomlang/tests/unittests/compiler/parser/diagnostic-fact-caller-test.cc`
+- `zomlang/compiler/identity/canonical/canonical-encoder.h`
+- `zomlang/compiler/identity/canonical/canonical-encoder.cc`
+- `zomlang/tests/unittests/compiler/identity/canonical-encoder-test.cc`
+- `zomlang/compiler/diagnostics/fact/diagnostic-fact.h`
+- `zomlang/compiler/diagnostics/fact/diagnostic-fact.cc`
+- `zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-codec-test.cc`
+- `zomlang/compiler/parser/query/parse-source-query.cc`
+- `zomlang/compiler/parser/query/canonical-parsed-source.cc`
+- `zomlang/tests/unittests/compiler/parser/diagnostic-fact-caller-test.cc`
 
 The source baseline is the accepted RFC 0036 governance commit that directly
 precedes candidate assembly. `R36-15` records that full SHA, initializes an

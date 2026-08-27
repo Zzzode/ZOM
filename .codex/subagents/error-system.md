@@ -33,8 +33,8 @@ Do **not** route here when:
 ## Owns
 
 ```
-products/zomlang/compiler/diagnostics/**
-products/zomlang/compiler/checker/checker-source-diagnostics.def
+zomlang/compiler/diagnostics/**
+zomlang/compiler/checker/checker-source-diagnostics.def
 docs/spec/chapters/11-error-handling.md
 ```
 

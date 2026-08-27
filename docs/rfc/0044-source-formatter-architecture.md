@@ -152,10 +152,10 @@ single formatter implementation is used by CLI, tests, and the IDE facade.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/**` | rfc |
-| Lossless syntax and trivia | `products/zomlang/compiler/lexer/**`, `products/zomlang/compiler/parser/**`, `products/zomlang/compiler/ast/**` | lexer-parser |
-| Source snapshots and atomic writes | `products/zomlang/compiler/source/**`, `products/zomlang/compiler/driver/**` | module-system |
-| Formatter CLI and editor facade | `products/zomlang/tools/formatter/**`, `products/zomlang/tools/ide/**`, `products/zomlang/tools/lsp/**`, `products/zomlang/utils/zomc/**` | tooling-lsp |
-| Fixtures and gates | `products/zomlang/tests/**`, `scripts/**`, `.github/workflows/**` | verification |
+| Lossless syntax and trivia | `zomlang/compiler/lexer/**`, `zomlang/compiler/parser/**`, `zomlang/compiler/ast/**` | lexer-parser |
+| Source snapshots and atomic writes | `zomlang/compiler/source/**`, `zomlang/compiler/driver/**` | module-system |
+| Formatter CLI and editor facade | `zomlang/tools/formatter/**`, `zomlang/tools/ide/**`, `zomlang/tools/lsp/**`, `zomlang/utils/zomc/**` | tooling-lsp |
+| Fixtures and gates | `zomlang/tests/**`, `scripts/**`, `.github/workflows/**` | verification |
 
 ## Security And Safety Impact
 

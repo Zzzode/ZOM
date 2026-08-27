@@ -115,8 +115,8 @@ applicable to marker coherence and policy lineage.
 ## Guide-Level Explanation
 
 The compiler distribution supplies one source-backed standard prelude bundle.
-Its canonical repository source is `products/zomcore/Zom.toml` plus
-`products/zomcore/src/prelude.zom`; the build installs that tree at
+Its canonical repository source is `core/Zom.toml` plus
+`core/src/prelude.zom`; the build installs that tree at
 `share/zom/core`. The prelude contains ordinary declarations for `Copy` and
 `Linear`. Every compiled module except the prelude itself receives one implicit
 `Prelude` dependency edge.
@@ -191,8 +191,8 @@ never used as independent expectations by a verifier.
 
 The canonical paths are:
 
-- manifest: `products/zomcore/Zom.toml`;
-- library root: `products/zomcore/src/prelude.zom`;
+- manifest: `core/Zom.toml`;
+- library root: `core/src/prelude.zom`;
 - installed distribution root: `share/zom/core`; and
 - canonical module path: `core`.
 
@@ -241,11 +241,11 @@ share/zom/core/src/prelude.zom
 ```
 
 The top-level `CMakeLists.txt` loads `GNUInstallDirs`.
-`products/zomlang/utils/zomc/CMakeLists.txt` sets only the `zomc` target's
+`zomlang/utils/zomc/CMakeLists.txt` sets only the `zomc` target's
 `RUNTIME_OUTPUT_DIRECTORY` to
 `${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR}` and installs that target to
 `${CMAKE_INSTALL_BINDIR}`.
-`products/zomcore/CMakeLists.txt` copies the bundle under
+`core/CMakeLists.txt` copies the bundle under
 `${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_DATADIR}/zom/core` and installs it under
 `${CMAKE_INSTALL_DATADIR}/zom/core`; `zomc` is installed under
 `${CMAKE_INSTALL_BINDIR}`. The CLI canonicalizes its own executable path,
@@ -911,15 +911,15 @@ implementation transaction.
 |---|---|---|
 | RFC governance | `docs/rfc/**` | `rfc` |
 | Product ownership routing | `.codex/subagents/manifest.yaml`, `.codex/subagents/README.md` | `task-router` |
-| Standard prelude declarations | `products/zomcore/src/**` | `runtime-memory` |
-| Standard prelude manifest and admission | `products/zomcore/Zom.toml`, `products/zomlang/compiler/driver/**` | `module-system` |
-| Standard prelude build and install layout | `CMakeLists.txt`, `products/zomcore/CMakeLists.txt`, `products/zomlang/utils/zomc/CMakeLists.txt` | `ir-backend` |
-| Marker authority and checker inputs | `products/zomlang/compiler/checker/signature-facts.*`, `marker-proof.*`, `body-checker.*` | `binder-checker` |
-| Copy/drop source diagnostic contract | `products/zomlang/compiler/checker/checker-source-diagnostics.def`, diagnostic documentation and snapshots | `error-system` |
-| Prelude graph, session, identity, package input | `products/zomlang/compiler/driver/**`, `products/zomlang/compiler/identity/**`, `products/zomlang/compiler/binder/module-*` | `module-system` |
-| Event overlay | `products/zomlang/compiler/ownership/**` | `runtime-memory` |
+| Standard prelude declarations | `core/src/**` | `runtime-memory` |
+| Standard prelude manifest and admission | `core/Zom.toml`, `zomlang/compiler/driver/**` | `module-system` |
+| Standard prelude build and install layout | `CMakeLists.txt`, `core/CMakeLists.txt`, `zomlang/utils/zomc/CMakeLists.txt` | `ir-backend` |
+| Marker authority and checker inputs | `zomlang/compiler/checker/signature-facts.*`, `marker-proof.*`, `body-checker.*` | `binder-checker` |
+| Copy/drop source diagnostic contract | `zomlang/compiler/checker/checker-source-diagnostics.def`, diagnostic documentation and snapshots | `error-system` |
+| Prelude graph, session, identity, package input | `zomlang/compiler/driver/**`, `zomlang/compiler/identity/**`, `zomlang/compiler/binder/module-*` | `module-system` |
+| Event overlay | `zomlang/compiler/ownership/**` | `runtime-memory` |
 | Specification and architecture | `docs/spec/**`, `docs/design/**` | `spec-audit` |
-| Native tests and gates | `products/zomlang/tests/**`, `scripts/check-*-architecture.py` | `verification` |
+| Native tests and gates | `zomlang/tests/**`, `scripts/check-*-architecture.py` | `verification` |
 
 ## Security And Safety Impact
 
@@ -1051,20 +1051,20 @@ queries. No runtime service, network access, or persistent cache is added.
 ## Implementation Plan
 
 1. Add
-   `products/zomlang/tests/unittests/compiler/checker/standard-marker-authority-test.cc`
+   `zomlang/tests/unittests/compiler/checker/standard-marker-authority-test.cc`
    with configuration, codec, authority, mutation, and both independent
    revision oracles.
-2. Add `products/zomcore/Zom.toml` and
-   `products/zomcore/src/prelude.zom`; make
-   `products/zomcore/CMakeLists.txt` install the source-backed bundle under
+2. Add `core/Zom.toml` and
+   `core/src/prelude.zom`; make
+   `core/CMakeLists.txt` install the source-backed bundle under
    `share/zom/core`; load `GNUInstallDirs` in the top-level `CMakeLists.txt`;
    and make the `zomc` target materialize the identical build-tree layout.
-3. Route `products/zomcore/src/**` to `runtime-memory`,
-   `products/zomcore/Zom.toml` to `module-system`, and
-   `products/zomcore/CMakeLists.txt` to `ir-backend` in
+3. Route `core/src/**` to `runtime-memory`,
+   `core/Zom.toml` to `module-system`, and
+   `core/CMakeLists.txt` to `ir-backend` in
    `.codex/subagents/manifest.yaml` and `.codex/subagents/README.md`. In the
    same routing transaction, exclude
-   `products/zomlang/compiler/checker/checker-source-diagnostics.def` from
+   `zomlang/compiler/checker/checker-source-diagnostics.def` from
    `binder-checker` and add that exact path to `error-system`; route the
    top-level `CMakeLists.txt` change to `ir-backend`.
 4. Replace the RFC 0015 policy, evidence, codec, and proof structures and their
@@ -1076,15 +1076,15 @@ queries. No runtime service, network access, or persistent cache is added.
 7. Implement and independently verify standard-marker authority.
 8. Add signature authority, direct-deinitializer exclusion, and `ZOM4099`,
    then replace body and proof inputs and all callers. Add the paired
-   `products/zomlang/tests/conformance/corpus/09-interfaces/copy_impl_deinitializer_conflict_neg_34.zom`
+   `zomlang/tests/conformance/corpus/09-interfaces/copy_impl_deinitializer_conflict_neg_34.zom`
    and
-   `products/zomlang/tests/conformance/expectations/diagnostics/09-interfaces/copy_impl_deinitializer_conflict_neg_34.check`
+   `zomlang/tests/conformance/expectations/diagnostics/09-interfaces/copy_impl_deinitializer_conflict_neg_34.check`
    diagnostics lit files.
 9. Replace ownership overlay input with checked/HIR/MIR/body capabilities.
 10. Implement independent Copy/Linear queries, marker uses, and logical drops.
 11. Create `scripts/check-rfc0007-architecture.py`, register its positive and
     negative self-tests in
-    `products/zomlang/tests/conformance/CMakeLists.txt`, and make each required
+    `zomlang/tests/conformance/CMakeLists.txt`, and make each required
     invariant independently mutable by the self-test.
 12. Align RFC 0004, RFC 0005, RFC 0007, RFC 0015, Chapters 3 and 14 with this
     accepted policy and authority path,
@@ -1095,27 +1095,27 @@ queries. No runtime service, network access, or persistent cache is added.
 ## Test Plan
 
 The new unit suite is
-`products/zomlang/tests/unittests/compiler/checker/standard-marker-authority-test.cc`.
+`zomlang/tests/unittests/compiler/checker/standard-marker-authority-test.cc`.
 Distribution layout and admission tests are
-`products/zomlang/tests/unittests/compiler/driver/standard-prelude-distribution-test.cc`
+`zomlang/tests/unittests/compiler/driver/standard-prelude-distribution-test.cc`
 and
-`products/zomlang/tests/cmake/verify-standard-prelude-install.cmake`.
+`zomlang/tests/cmake/verify-standard-prelude-install.cmake`.
 The focused existing suites are:
 
-- `products/zomlang/tests/unittests/compiler/checker/marker-proof-test.cc`;
-- `products/zomlang/tests/unittests/compiler/ownership/ownership-event-overlay-test.cc`;
-- `products/zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc`;
+- `zomlang/tests/unittests/compiler/checker/marker-proof-test.cc`;
+- `zomlang/tests/unittests/compiler/ownership/ownership-event-overlay-test.cc`;
+- `zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc`;
   and
-- `products/zomlang/tests/unittests/compiler/driver/incremental-module-resolution-query-test.cc`.
+- `zomlang/tests/unittests/compiler/driver/incremental-module-resolution-query-test.cc`.
 
 `compiler-session-package-test.cc` adds public-session cases for scalar,
 structural, shared-reference, mutable-reference, raw-pointer, explicit
 `Linear`, direct-deinitializer, positive and negative explicit standard
 `Copy`, and local `Copy`/`Linear` lookalike behavior. Diagnostic snapshots
 use the paired
-`products/zomlang/tests/conformance/corpus/09-interfaces/copy_impl_deinitializer_conflict_neg_34.zom`
+`zomlang/tests/conformance/corpus/09-interfaces/copy_impl_deinitializer_conflict_neg_34.zom`
 and
-`products/zomlang/tests/conformance/expectations/diagnostics/09-interfaces/copy_impl_deinitializer_conflict_neg_34.check`
+`zomlang/tests/conformance/expectations/diagnostics/09-interfaces/copy_impl_deinitializer_conflict_neg_34.check`
 files through the registered diagnostics runner and real
 `zomc compile --syntax-only` workflow. The `.check` file asserts the exact
 `ZOM4099` headline and rejects `ZOM4054` and `ZOM4017` for the same occurrence;

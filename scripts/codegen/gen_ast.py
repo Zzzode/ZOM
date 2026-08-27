@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate ZOM AST schema support files.
 
-The schema input is products/zomlang/compiler/ast/schema.yml by default. The
+The schema input is zomlang/compiler/ast/schema.yml by default. The
 generated files are intentionally small integration headers for the main
 zomlang::compiler::ast namespace; the C++ implementation owns storage and tree
 mutation behavior.
@@ -21,9 +21,9 @@ import yaml
 
 
 REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
-DEFAULT_SCHEMA = os.path.join(REPO_ROOT, "products", "zomlang", "compiler", "ast", "schema.yml")
+DEFAULT_SCHEMA = os.path.join(REPO_ROOT, "zomlang", "compiler", "ast", "schema.yml")
 DEFAULT_OUTPUT_DIR = os.path.join(
-    REPO_ROOT, "products", "zomlang", "compiler", "ast", "generated"
+    REPO_ROOT, "zomlang", "compiler", "ast", "generated"
 )
 NAMESPACE_OPEN = "namespace zomlang {\nnamespace compiler {\nnamespace ast {"
 NAMESPACE_CLOSE = "}  // namespace ast\n}  // namespace compiler\n}  // namespace zomlang"

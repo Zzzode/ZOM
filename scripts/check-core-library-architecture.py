@@ -8,41 +8,41 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CORE = Path("products/zomcore")
-TESTS = Path("products/zomlang/tests")
-CORE_QUERY = Path("products/zomlang/compiler/driver/core/query.cc")
-CORE_QUERY_HEADER = Path("products/zomlang/compiler/driver/core/query.h")
-CORE_VERIFIER = Path("products/zomlang/compiler/driver/core/verifier.cc")
-CORE_SIGNATURE = Path("products/zomlang/compiler/driver/core/signature.cc")
-CORE_AUTHORITY = Path("products/zomlang/compiler/driver/core/marker-authority.cc")
-CORE_LIBRARY = Path("products/zomlang/compiler/driver/core/library.cc")
-CORE_LIBRARY_HEADER = Path("products/zomlang/compiler/driver/core/library.h")
-INTERFACE_SOURCE = Path("products/zomlang/compiler/driver/interface/interface-source.h")
-IMPORT_PROJECTOR = Path("products/zomlang/compiler/driver/interface/imported-signature-view-projector.h")
-BORROW_EVIDENCE = Path("products/zomlang/compiler/driver/interface/borrow-evidence.h")
-CHECKED_MODULE = Path("products/zomlang/compiler/hir/checked-module.h")
+CORE = Path("core")
+TESTS = Path("zomlang/tests")
+CORE_QUERY = Path("zomlang/compiler/driver/core/query.cc")
+CORE_QUERY_HEADER = Path("zomlang/compiler/driver/core/query.h")
+CORE_VERIFIER = Path("zomlang/compiler/driver/core/verifier.cc")
+CORE_SIGNATURE = Path("zomlang/compiler/driver/core/signature.cc")
+CORE_AUTHORITY = Path("zomlang/compiler/driver/core/marker-authority.cc")
+CORE_LIBRARY = Path("zomlang/compiler/driver/core/library.cc")
+CORE_LIBRARY_HEADER = Path("zomlang/compiler/driver/core/library.h")
+INTERFACE_SOURCE = Path("zomlang/compiler/driver/interface/interface-source.h")
+IMPORT_PROJECTOR = Path("zomlang/compiler/driver/interface/imported-signature-view-projector.h")
+BORROW_EVIDENCE = Path("zomlang/compiler/driver/interface/borrow-evidence.h")
+CHECKED_MODULE = Path("zomlang/compiler/hir/checked-module.h")
 CORE_INVENTORY_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/core/core-library-inventory-test.cc"
+    "zomlang/tests/unittests/compiler/driver/core/core-library-inventory-test.cc"
 )
 CORE_FINAL_INTERFACE_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/session/compiler-session-test.cc"
+    "zomlang/tests/unittests/compiler/driver/session/compiler-session-test.cc"
 )
 CORE_REEXPORT_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/session/compiler-session-package-test.cc"
+    "zomlang/tests/unittests/compiler/driver/session/compiler-session-package-test.cc"
 )
 CORE_INSTALLED_CONSUMER = Path(
-    "products/zomlang/tests/integration/core-library/installed-consumer/src/main.zom"
+    "zomlang/tests/integration/core-library/installed-consumer/src/main.zom"
 )
-COMPILER = Path("products/zomlang/compiler")
+COMPILER = Path("zomlang/compiler")
 BOOTSTRAP_PRIVATE_FILES = frozenset(
     {
-        Path("products/zomlang/compiler/driver/core/query.h"),
-        Path("products/zomlang/compiler/driver/core/query.cc"),
-        Path("products/zomlang/compiler/driver/core/verifier.h"),
-        Path("products/zomlang/compiler/driver/core/verifier.cc"),
-        Path("products/zomlang/compiler/driver/core/signature.h"),
-        Path("products/zomlang/compiler/driver/core/signature.cc"),
-        Path("products/zomlang/compiler/query/query-descriptor-schema.def"),
+        Path("zomlang/compiler/driver/core/query.h"),
+        Path("zomlang/compiler/driver/core/query.cc"),
+        Path("zomlang/compiler/driver/core/verifier.h"),
+        Path("zomlang/compiler/driver/core/verifier.cc"),
+        Path("zomlang/compiler/driver/core/signature.h"),
+        Path("zomlang/compiler/driver/core/signature.cc"),
+        Path("zomlang/compiler/query/query-descriptor-schema.def"),
     }
 )
 BOOTSTRAP_IDENTIFIERS = (
@@ -168,7 +168,7 @@ def check(values: dict[Path, str]) -> list[str]:
     for marker in ("core-source-install-layout", "core-library-install-consumer"):
         if marker not in test_cmake:
             errors.append(f"{TESTS / 'CMakeLists.txt'}: missing installation gate: {marker}")
-    session = (ROOT / "products/zomlang/compiler/driver/session/compiler-session.cc").read_text(
+    session = (ROOT / "zomlang/compiler/driver/session/compiler-session.cc").read_text(
         encoding="utf-8"
     )
     if "installVerifiedCoreDistribution" not in session:

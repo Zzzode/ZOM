@@ -312,10 +312,10 @@ RFC 0042 published the direct canonical replacement as
 | Area | Paths | Owner |
 |---|---|---|
 | RFC authority | RFCs 0029, 0030, 0036, their trackers, and the RFC index | `rfc` |
-| Canonical output | `products/zomlang/compiler/identity/canonical-encoder.{h,cc}` | `module-system` |
-| Diagnostic codec | `products/zomlang/compiler/diagnostics/diagnostic-fact.{h,cc}` | `error-system` |
-| Parser callers | `products/zomlang/compiler/parser/query/parse-source-query.cc`, `canonical-parsed-source.cc` | `lexer-parser` |
-| Stable Binder consumer | `products/zomlang/compiler/binder/stable-binding-codec.{h,cc}` | `binder-checker` |
+| Canonical output | `zomlang/compiler/identity/canonical-encoder.{h,cc}` | `module-system` |
+| Diagnostic codec | `zomlang/compiler/diagnostics/diagnostic-fact.{h,cc}` | `error-system` |
+| Parser callers | `zomlang/compiler/parser/query/parse-source-query.cc`, `canonical-parsed-source.cc` | `lexer-parser` |
+| Stable Binder consumer | `zomlang/compiler/binder/stable-binding-codec.{h,cc}` | `binder-checker` |
 | Native evidence | `canonical-encoder-test.cc`, new diagnostics `diagnostic-fact-codec-test.cc`, new parser `diagnostic-fact-caller-test.cc`, and stable-binding tests | `verification` |
 
 ## Security And Safety Impact

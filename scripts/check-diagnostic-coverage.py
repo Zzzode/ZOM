@@ -10,13 +10,13 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DIAGNOSTIC_ROOT = ROOT / "products/zomlang/compiler/diagnostics"
+DIAGNOSTIC_ROOT = ROOT / "zomlang/compiler/diagnostics"
 PRODUCTION_ROOTS = (
-    ROOT / "products/zomlang/compiler",
-    ROOT / "products/zomlang/utils",
+    ROOT / "zomlang/compiler",
+    ROOT / "zomlang/utils",
 )
-TEST_ROOT = ROOT / "products/zomlang/tests"
-RESERVATIONS = ROOT / "products/zomlang/tests/coverage/diagnostic-reservations.json"
+TEST_ROOT = ROOT / "zomlang/tests"
+RESERVATIONS = ROOT / "zomlang/tests/coverage/diagnostic-reservations.json"
 DEFINITION_PATTERN = re.compile(r"DIAG\(\s*(\d+)\s*,\s*([A-Za-z][A-Za-z0-9_]*)")
 REFERENCE_PATTERN = re.compile(
     r"(?:DiagID|[A-Za-z][A-Za-z0-9_]*SourceDiagnostic|CheckerErrorId|"

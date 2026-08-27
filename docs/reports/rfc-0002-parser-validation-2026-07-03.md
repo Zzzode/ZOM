@@ -21,7 +21,7 @@ The parser-focused gates passed locally:
 - `cmake --build --preset sanitizer -j`
 - `python3 scripts/codegen/gen_ast.py --check`
 - `python3 scripts/check-rfc.py`
-- `python3 products/zomlang/tests/conformance/tools/check-ast-coverage.py`
+- `python3 zomlang/tests/conformance/tools/check-ast-coverage.py`
 - `python3 scripts/check-parser-coverage.py`
 - `python3 scripts/check-format.py`
 - `git diff --check`

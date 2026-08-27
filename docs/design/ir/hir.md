@@ -9,9 +9,9 @@ Updated: 2026-07-24
 | Authority | Non-normative compiler implementation guide |
 | Coverage | Partial production HIR |
 | Governing decisions | [RFC 0010](../../rfc/0010-intermediate-representation-pipeline.md), [RFC 0013](../../rfc/0013-ownership-analysis-integration-boundary.md) |
-| Production implementation | [`compiler/hir`](../../../products/zomlang/compiler/hir/) |
-| Session integration | [`compiler-session.cc`](../../../products/zomlang/compiler/driver/session/compiler-session.cc) |
-| Native verification | [`hir-module-test.cc`](../../../products/zomlang/tests/unittests/compiler/hir/hir-module-test.cc), [`compiler-session-package-test.cc`](../../../products/zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc) |
+| Production implementation | [`compiler/hir`](../../../zomlang/compiler/hir/) |
+| Session integration | [`compiler-session.cc`](../../../zomlang/compiler/driver/session/compiler-session.cc) |
+| Native verification | [`hir-module-test.cc`](../../../zomlang/tests/unittests/compiler/hir/hir-module-test.cc), [`compiler-session-package-test.cc`](../../../zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc) |
 
 Semantic HIR is a live, immutable, session-published capability. Its current
 producer covers only module scalar declarations and a narrow scalar-return

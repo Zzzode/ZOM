@@ -307,7 +307,7 @@ compile-policy inventory, zero local-patch digest, every admitted extracted
 path, byte size, per-file SHA-256, and a framed extracted-content SHA-256.
 
 The admitted trees live only under
-`products/zomlang/compiler/driver/package/vendor/**`:
+`zomlang/compiler/driver/package/vendor/**`:
 
 - `toml++` v3.4.0 exposes its header-only include tree;
 - `Neargye/semver` v0.3.1 exposes its header-only include tree;
@@ -318,7 +318,7 @@ The admitted trees live only under
 - Zstandard 1.5.7 exposes only public headers plus common and decompression
   sources.
 
-`products/zomlang/tests/tools/check-vendored-dependencies.py` regenerates or
+`zomlang/tests/tools/check-vendored-dependencies.py` regenerates or
 verifies the canonical `vendor-manifest.json`. It rejects a missing license,
 missing dependency root, non-regular entry, missing file, added file, changed
 bytes, changed metadata, or non-canonical manifest rendering. The checker is a

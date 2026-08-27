@@ -873,6 +873,6 @@ variants. Each enum discriminant preserves its complete expression node.
 Named-field enum variants and positional struct declarations are outside the
 current grammar. The AST layout is defined in
 [ast-data-structure.md](ast-data-structure.md); the implementation schema lives
-at `products/zomlang/compiler/ast/schema.yml`.
+at `zomlang/compiler/ast/schema.yml`.
 
 <!-- File stats: 12 ## headings, 43 ### headings, 6 ebnf blocks, 19 zom blocks, 3 cpp blocks, 3 mermaid blocks -->

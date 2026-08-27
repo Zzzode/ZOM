@@ -1940,12 +1940,12 @@ set, or module interface.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC overlay, review, and accepted-base tracking | `docs/rfc/**` | `rfc` |
-| Singular ordinary impl and bodyless marker grammar, AST shape, and parser diagnostics | `docs/spec/ZomParser.g4`, `products/zomlang/compiler/lexer/**`, `products/zomlang/compiler/parser/**`, `products/zomlang/compiler/ast/**` | `lexer-parser` |
-| Impl binding facts, pattern algebra, impl heads, overlap, signature revisions, and diagnostic fact verification | `products/zomlang/compiler/binder/**`, `products/zomlang/compiler/checker/**`, `products/zomlang/compiler/type/**` | `binder-checker` |
-| Module-interface canonical publication and consumption | `products/zomlang/compiler/driver/**` | `module-system` |
-| Closed operator arguments and invariant diagnostics | `products/zomlang/compiler/diagnostics/**` | `error-system` |
+| Singular ordinary impl and bodyless marker grammar, AST shape, and parser diagnostics | `docs/spec/ZomParser.g4`, `zomlang/compiler/lexer/**`, `zomlang/compiler/parser/**`, `zomlang/compiler/ast/**` | `lexer-parser` |
+| Impl binding facts, pattern algebra, impl heads, overlap, signature revisions, and diagnostic fact verification | `zomlang/compiler/binder/**`, `zomlang/compiler/checker/**`, `zomlang/compiler/type/**` | `binder-checker` |
+| Module-interface canonical publication and consumption | `zomlang/compiler/driver/**` | `module-system` |
+| Closed operator arguments and invariant diagnostics | `zomlang/compiler/diagnostics/**` | `error-system` |
 | Cross-RFC and specification consistency evidence | `docs/design/**`, `docs/spec/**`, `docs/reports/**` | `spec-audit` |
-| Codec, negative, determinism, architecture, and repository gates | `products/zomlang/tests/**`, `scripts/**` | `verification` |
+| Codec, negative, determinism, architecture, and repository gates | `zomlang/tests/**`, `scripts/**` | `verification` |
 
 No runtime, HIR, MIR, LIR, or backend contract changes.
 

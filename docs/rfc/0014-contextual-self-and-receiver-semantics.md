@@ -749,15 +749,15 @@ the dedicated HIR lifecycle-place transport required above.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/**` | `rfc` |
-| Parser and AST | `products/zomlang/compiler/parser/**`, `products/zomlang/compiler/ast/**` | `lexer-parser` |
-| Binding facts | `products/zomlang/compiler/binder/**` | `binder-checker` |
-| Semantic identity and module publication | `products/zomlang/compiler/identity/**`, `products/zomlang/compiler/symbol/**`, `products/zomlang/compiler/driver/**` | `module-system` |
-| Signature and ownership checking | `products/zomlang/compiler/checker/**`, `products/zomlang/compiler/type/**` | `binder-checker` |
-| Diagnostics | `products/zomlang/compiler/diagnostics/**` | `error-system` |
+| Parser and AST | `zomlang/compiler/parser/**`, `zomlang/compiler/ast/**` | `lexer-parser` |
+| Binding facts | `zomlang/compiler/binder/**` | `binder-checker` |
+| Semantic identity and module publication | `zomlang/compiler/identity/**`, `zomlang/compiler/symbol/**`, `zomlang/compiler/driver/**` | `module-system` |
+| Signature and ownership checking | `zomlang/compiler/checker/**`, `zomlang/compiler/type/**` | `binder-checker` |
+| Diagnostics | `zomlang/compiler/diagnostics/**` | `error-system` |
 | Lifecycle safety specification | `docs/spec/chapters/14-memory-management.md` | `runtime-memory` |
-| Dispatch and lowering | `products/zomlang/compiler/irgen/**`, `products/zomlang/compiler/hir/**`, `products/zomlang/compiler/mir/**` | `ir-backend` |
+| Dispatch and lowering | `zomlang/compiler/irgen/**`, `zomlang/compiler/hir/**`, `zomlang/compiler/mir/**` | `ir-backend` |
 | Normative specification and grammar | `docs/spec/**` | `spec-audit` |
-| Gates and tests | `products/zomlang/tests/**` | `verification` |
+| Gates and tests | `zomlang/tests/**` | `verification` |
 
 ## Security And Safety Impact
 

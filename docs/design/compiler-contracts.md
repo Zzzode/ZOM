@@ -196,7 +196,7 @@ iteration.
 ### P2A-01 Schema ownership
 
 Every AST node kind and payload field is declared in
-`products/zomlang/compiler/ast/schema.yml`. Generated accessors and schema
+`zomlang/compiler/ast/schema.yml`. Generated accessors and schema
 verification define the payload layout.
 
 ### P2A-02 Tree locality

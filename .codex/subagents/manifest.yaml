@@ -41,9 +41,9 @@ subagents:
   - id: lexer-parser
     name: Lexer & Parser
     owns:
-      - "products/zomlang/compiler/lexer/**"
-      - "products/zomlang/compiler/parser/**"
-      - "products/zomlang/compiler/ast/**"
+      - "zomlang/compiler/lexer/**"
+      - "zomlang/compiler/parser/**"
+      - "zomlang/compiler/ast/**"
       - "docs/spec/chapters/02-lexical-structure.md"
       - "docs/spec/chapters/04-expressions.md"
       - "docs/spec/chapters/17-grammar-reference.md"
@@ -56,11 +56,11 @@ subagents:
   - id: binder-checker
     name: Binder & Type Checker
     owns:
-      - "products/zomlang/compiler/binder/**"
-      - "!products/zomlang/compiler/binder/module-*"
-      - "products/zomlang/compiler/checker/**"
-      - "!products/zomlang/compiler/checker/checker-source-diagnostics.def"
-      - "products/zomlang/compiler/type/**"
+      - "zomlang/compiler/binder/**"
+      - "!zomlang/compiler/binder/module-*"
+      - "zomlang/compiler/checker/**"
+      - "!zomlang/compiler/checker/checker-source-diagnostics.def"
+      - "zomlang/compiler/type/**"
       - "docs/spec/chapters/03-types.md"
       - "docs/spec/chapters/06-declarations.md"
       - "docs/spec/chapters/08-classes-and-structures.md"
@@ -75,12 +75,12 @@ subagents:
   - id: module-system
     name: Module System & Visibility
     owns:
-      - "products/zomlang/compiler/identity/**"
-      - "products/zomlang/compiler/query/**"
-      - "products/zomlang/compiler/source/**"
-      - "products/zomlang/compiler/binder/module-*"
-      - "products/zomlang/compiler/driver/**"
-      - "products/zomcore/Zom.toml"
+      - "zomlang/compiler/identity/**"
+      - "zomlang/compiler/query/**"
+      - "zomlang/compiler/source/**"
+      - "zomlang/compiler/binder/module-*"
+      - "zomlang/compiler/driver/**"
+      - "core/Zom.toml"
       - "docs/spec/chapters/13-modules-and-imports.md"
       - "docs/spec/chapters/23-visibility-ladder.md"
     triggers: [ "identity", "brand", "source provenance", "SourceFileId", "ModuleId", "DefId", "module", "import", "export", "visibility", "package", "session", "CompilerSession", "cross-module", "query", "incremental", "red-green", "memo", "demand-driven" ]
@@ -90,8 +90,8 @@ subagents:
   - id: error-system
     name: Error System & Diagnostics
     owns:
-      - "products/zomlang/compiler/diagnostics/**"
-      - "products/zomlang/compiler/checker/checker-source-diagnostics.def"
+      - "zomlang/compiler/diagnostics/**"
+      - "zomlang/compiler/checker/checker-source-diagnostics.def"
       - "docs/spec/chapters/11-error-handling.md"
     triggers: [ "error", "diagnostic", "raises", "try", "exception", "panic", "cast", "as!", "ZOM", "?!", "!!", "propagat" ]
     required-skills: [ build-ci, lit-testing, spec-alignment ]
@@ -100,11 +100,11 @@ subagents:
   - id: concurrency
     name: Concurrency & Async Runtime
     owns:
-      - "products/zomlang/runtime/**/task*"
-      - "products/zomlang/runtime/**/async*"
-      - "products/zomlang/runtime/**/actor*"
-      - "products/zomlang/runtime/**/channel*"
-      - "products/zomlang/runtime/**/scheduler*"
+      - "zomlang/runtime/**/task*"
+      - "zomlang/runtime/**/async*"
+      - "zomlang/runtime/**/actor*"
+      - "zomlang/runtime/**/channel*"
+      - "zomlang/runtime/**/scheduler*"
       - "docs/concurrency/**"
       - "docs/spec/specification.md"
       - "docs/spec/chapters/15-concurrency.md"
@@ -115,20 +115,20 @@ subagents:
   - id: ir-backend
     name: Intermediate Representations & Native Backend
     owns:
-      - "products/zomlang/compiler/hir/**"
-      - "products/zomlang/compiler/ir/**"
-      - "products/zomlang/compiler/mir/**"
-      - "products/zomlang/compiler/lir/**"
-      - "products/zomlang/compiler/backend/**"
-      - "products/zomlang/compiler/basic/compiler-opts.h"
+      - "zomlang/compiler/hir/**"
+      - "zomlang/compiler/ir/**"
+      - "zomlang/compiler/mir/**"
+      - "zomlang/compiler/lir/**"
+      - "zomlang/compiler/backend/**"
+      - "zomlang/compiler/basic/compiler-opts.h"
       - "CMakeLists.txt"
       - "CMakePresets.json"
-      - "products/zomlang/compiler/CMakeLists.txt"
-      - "products/zomlang/compiler/basic/CMakeLists.txt"
-      - "products/zomlang/compiler/trace/CMakeLists.txt"
-      - "products/zomlang/utils/CMakeLists.txt"
-      - "products/zomlang/utils/zomc/**"
-      - "products/zomcore/CMakeLists.txt"
+      - "zomlang/compiler/CMakeLists.txt"
+      - "zomlang/compiler/basic/CMakeLists.txt"
+      - "zomlang/compiler/trace/CMakeLists.txt"
+      - "zomlang/utils/CMakeLists.txt"
+      - "zomlang/utils/zomc/**"
+      - "core/CMakeLists.txt"
     triggers: [ "IR", "HIR", "MIR", "LIR", "SSA", "CFG", "lowering", "codegen", "backend", "LLVM", "ABI", "object file", "forced cast", "as!" ]
     required-skills: [ build-ci, zc-library, lit-testing ]
     escalation-to: [ binder-checker, module-system, error-system, concurrency, runtime-memory, verification, spec-audit ]
@@ -149,15 +149,15 @@ subagents:
     name: Runtime & Memory (zc core + FFI + ownership)
     owns:
       - "libraries/zc/**"
-      - "products/zomlang/compiler/ownership/**"
-      - "products/zomlang/runtime/**"
-      - "!products/zomlang/runtime/**/task*"
-      - "!products/zomlang/runtime/**/async*"
-      - "!products/zomlang/runtime/**/actor*"
-      - "!products/zomlang/runtime/**/channel*"
-      - "!products/zomlang/runtime/**/scheduler*"
-      - "products/zomcore/README.md"
-      - "products/zomcore/src/**"
+      - "zomlang/compiler/ownership/**"
+      - "zomlang/runtime/**"
+      - "!zomlang/runtime/**/task*"
+      - "!zomlang/runtime/**/async*"
+      - "!zomlang/runtime/**/actor*"
+      - "!zomlang/runtime/**/channel*"
+      - "!zomlang/runtime/**/scheduler*"
+      - "core/README.md"
+      - "core/src/**"
       - "docs/spec/chapters/14-memory-management.md"
     triggers: [ "zc::", "Own<", "ArrayPtr", "Vector", "String", "Maybe", "memory", "heap", "stack", "drop", "free", "FFI", "Pimpl", "ownership", "panic", "forced cast", "as!" ]
     required-skills: [ zc-library, build-ci ]
@@ -166,8 +166,8 @@ subagents:
   - id: tooling-lsp
     name: IDE Semantics & Language Server
     owns:
-      - "products/zomlang/tools/ide/**"
-      - "products/zomlang/tools/lsp/**"
+      - "zomlang/tools/ide/**"
+      - "zomlang/tools/lsp/**"
       - "editors/**"
       - "docs/design/tooling/**"
     triggers: [ "LSP", "language server", "IDE", "hover", "completion", "signature help", "go to definition", "references", "rename", "semantic tokens", "inlay hints", "code action", "document version", "stale response" ]
@@ -177,11 +177,11 @@ subagents:
   - id: verification
     name: Formal-ish Verification & Test Coverage
     owns:
-      - "products/zomlang/tests/**"
-      - "products/zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt"
-      - "products/zomlang/tests/compile-fail/query-runtime/**"
-      - "products/zomlang/tests/unittests/compiler/query/query-test-specs.h"
-      - "products/zomlang/tests/unittests/compiler/query/query-concurrency-test.cc"
+      - "zomlang/tests/**"
+      - "zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt"
+      - "zomlang/tests/compile-fail/query-runtime/**"
+      - "zomlang/tests/unittests/compiler/query/query-test-specs.h"
+      - "zomlang/tests/unittests/compiler/query/query-concurrency-test.cc"
       - "examples/**"
       - ".github/workflows/**"
       - "README.md"
@@ -214,15 +214,15 @@ subagents:
       - "scripts/check-core-library-architecture.py"
       - "scripts/check-core-library-spec-alignment.py"
       - "scripts/codegen/gen_core_library_inventory.py"
-      - "products/zomlang/tests/coverage/diagnostic-reservations.json"
+      - "zomlang/tests/coverage/diagnostic-reservations.json"
       - "scripts/run-rfc0016-coverage.py"
       - "scripts/check-rfc0016-coverage.py"
       - "scripts/check-ownership-architecture.py"
       - "scripts/run-ownership-coverage.py"
       - "scripts/check-ownership-coverage.py"
-      - "products/zomlang/tests/coverage/ownership-exemptions.json"
-      - "products/zomlang/tests/performance/incremental-query-corpus.json"
-      - "products/zomlang/tests/performance/incremental-query-baseline.json"
+      - "zomlang/tests/coverage/ownership-exemptions.json"
+      - "zomlang/tests/performance/incremental-query-corpus.json"
+      - "zomlang/tests/performance/incremental-query-baseline.json"
       - "cmake/utils/common.cmake"
       - "cmake/utils/coverage.cmake"
       - "cmake/utils/unittests.cmake"

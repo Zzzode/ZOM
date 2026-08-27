@@ -475,8 +475,8 @@ only the package-request records and projection verifier that T1 consumes.
 `CompleteCompilationContextAuthorityInputVerifier` are I1A artifacts in:
 
 ```text
-products/zomlang/compiler/driver/query/module-graph/module-graph-query-input.h
-products/zomlang/compiler/driver/query/module-graph/module-graph-query-input.cc
+zomlang/compiler/driver/query/module-graph/module-graph-query-input.h
+zomlang/compiler/driver/query/module-graph/module-graph-query-input.cc
 ```
 
 The RFC 0027 I1A exact-file row names the prepare-only value, codec,
@@ -578,7 +578,7 @@ FieldLimit(
 
 The producer and verifier names refer to the already landed Q3 projection
 boundary. `R30-13` adds the named comprehensive mutation test to
-`products/zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`
+`zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`
 and adds that existing test file to the exact `R29-12AB` landing allowlist.
 The test mutates every declared class for every applicable leaf or aggregate
 codec, including domain, truncation, trailing bytes, and hostile counts.
@@ -664,7 +664,7 @@ The accepted transaction synchronizes:
 The synchronized RFC 0030 `R30-13` and exact `R29-12AB` landing set add:
 
 ```text
-products/zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc
+zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc
 ```
 
 Only the comprehensive schema mutation test changes in that file. Completed
@@ -679,11 +679,11 @@ implementation-series base do not change.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC contract and synchronization | `docs/rfc/0019-*.md`; `docs/rfc/0027-*.md`; `docs/rfc/0028-*.md`; `docs/rfc/0029-*.md`; `docs/rfc/0030-*.md`; `docs/rfc/0031-*.md`; matching trackers; `docs/rfc/README.md` | `rfc` |
-| Canonical stable schema | `products/zomlang/compiler/binder/stable-binding-schema.def` | `binder-checker` |
-| Input and capability ownership | `products/zomlang/compiler/driver/**`; `products/zomlang/compiler/query/**` | `module-system` |
-| Capability result and lease lifetime | `products/zomlang/compiler/query/query-types.{h,cc}` | `runtime-memory` |
-| Diagnostic outer sums and mappings | `products/zomlang/compiler/diagnostics/**`; `products/zomlang/compiler/checker/checker-source-diagnostics.def` | `error-system` |
-| Schema gate, mutation self-test, and native test ownership | `scripts/check-stable-binding-schema.py`; `products/zomlang/tests/**` | `verification` |
+| Canonical stable schema | `zomlang/compiler/binder/stable-binding-schema.def` | `binder-checker` |
+| Input and capability ownership | `zomlang/compiler/driver/**`; `zomlang/compiler/query/**` | `module-system` |
+| Capability result and lease lifetime | `zomlang/compiler/query/query-types.{h,cc}` | `runtime-memory` |
+| Diagnostic outer sums and mappings | `zomlang/compiler/diagnostics/**`; `zomlang/compiler/checker/checker-source-diagnostics.def` | `error-system` |
+| Schema gate, mutation self-test, and native test ownership | `scripts/check-stable-binding-schema.py`; `zomlang/tests/**` | `verification` |
 
 ## Security And Safety Impact
 
@@ -767,7 +767,7 @@ foundation transaction lands. No runtime or release operation changes.
 - The RFC index and tracker are synchronized.
 - `python3 scripts/check-rfc.py` passes.
 - `python3 scripts/check-english-only.py --check --base-file
-  products/zomlang/tests/coverage/implementation-series-base.txt` passes.
+  zomlang/tests/coverage/implementation-series-base.txt` passes.
 - `python3 scripts/check-no-internal-versioning.py --check` passes.
 - `python3 scripts/check-format.py` passes.
 - `git diff --check` passes.
@@ -793,7 +793,7 @@ foundation transaction lands. No runtime or release operation changes.
 - Format:
   - `python3 scripts/check-rfc.py`
   - `python3 scripts/check-english-only.py --check --base-file
-    products/zomlang/tests/coverage/implementation-series-base.txt`
+    zomlang/tests/coverage/implementation-series-base.txt`
   - `python3 scripts/check-no-internal-versioning.py --check`
   - `python3 scripts/check-format.py`
   - `git diff --check`

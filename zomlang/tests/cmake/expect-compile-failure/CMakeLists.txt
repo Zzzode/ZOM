@@ -1,0 +1,45 @@
+cmake_minimum_required(VERSION 3.25.0)
+
+project(zom-query-runtime-negative-compile CXX)
+
+foreach(required IN ITEMS
+    ZOM_NEGATIVE_SOURCE
+    ZOM_FORBIDDEN_SYMBOL
+    ZOM_SOURCE_ROOT
+    ZOM_BINARY_ROOT
+    ZOM_DESCRIPTOR_HEADER)
+  if(NOT DEFINED ${required} OR "${${required}}" STREQUAL "")
+    message(FATAL_ERROR "Missing required fixture argument ${required}")
+  endif()
+endforeach()
+
+file(READ "${ZOM_NEGATIVE_SOURCE}" ZOM_NEGATIVE_CONTENT)
+set(ZOM_NEGATIVE_INCLUDE_DIRECTORIES
+  "${ZOM_SOURCE_ROOT}/libraries;${ZOM_SOURCE_ROOT};${ZOM_BINARY_ROOT}")
+
+try_compile(
+  ZOM_NEGATIVE_COMPILED
+  SOURCE_FROM_CONTENT negative.cc "${ZOM_NEGATIVE_CONTENT}"
+  CMAKE_FLAGS
+    "-DCMAKE_CXX_STANDARD=23"
+    "-DCMAKE_CXX_STANDARD_REQUIRED=ON"
+    "-DCMAKE_CXX_EXTENSIONS=OFF"
+    "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY"
+    "-DINCLUDE_DIRECTORIES:STRING=${ZOM_NEGATIVE_INCLUDE_DIRECTORIES}"
+  COMPILE_DEFINITIONS
+    -include
+    "${ZOM_DESCRIPTOR_HEADER}"
+  OUTPUT_VARIABLE ZOM_NEGATIVE_OUTPUT)
+
+if(ZOM_NEGATIVE_COMPILED)
+  message(FATAL_ERROR
+    "Forbidden query-runtime operation compiled: ${ZOM_NEGATIVE_SOURCE}")
+endif()
+
+string(FIND "${ZOM_NEGATIVE_OUTPUT}" "${ZOM_FORBIDDEN_SYMBOL}"
+       ZOM_FORBIDDEN_SYMBOL_OFFSET)
+if(ZOM_FORBIDDEN_SYMBOL_OFFSET EQUAL -1)
+  message(FATAL_ERROR
+    "Compiler output did not identify forbidden symbol '${ZOM_FORBIDDEN_SYMBOL}'\n"
+    "${ZOM_NEGATIVE_OUTPUT}")
+endif()

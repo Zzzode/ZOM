@@ -210,7 +210,7 @@ The immutable implementation-series base remains unchanged.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC authority | RFCs 0018, 0030, 0034, and 0035; affected trackers and RFC index | `rfc` |
-| Identity decoder | `products/zomlang/compiler/identity/canonical-header-name.{h,cc}`, `canonical-header-type.h`, `canonical-header-type-decode.cc`, `canonical-overload-header.{h,cc}`, `canonical-impl-header.{h,cc}`, `definition-key.{h,cc}`, identity CMake | `module-system` |
+| Identity decoder | `zomlang/compiler/identity/canonical-header-name.{h,cc}`, `canonical-header-type.h`, `canonical-header-type-decode.cc`, `canonical-overload-header.{h,cc}`, `canonical-impl-header.{h,cc}`, `definition-key.{h,cc}`, identity CMake | `module-system` |
 | Binder consumer | `stable-binding-codec.{h,cc}` | `binder-checker` |
 | Native evidence | identity header and definition-key tests plus stable binding fact tests | `verification` |
 

@@ -15,24 +15,24 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-FIXTURES = ROOT / "products/zomlang/tests/fixtures"
+FIXTURES = ROOT / "zomlang/tests/fixtures"
 ORACLE_ROOT = FIXTURES / "package-oracles"
 LOCK_PATH = FIXTURES / "Zom.lock.golden"
 PUBGRUB_PATH = FIXTURES / "pubgrub-scenarios.json"
 CATALOG_PATH = ORACLE_ROOT / "package-generated-oracles.json"
-VENDOR_CHECKER = ROOT / "products/zomlang/tests/tools/check-vendored-dependencies.py"
-PUBGRUB_CHECKER = ROOT / "products/zomlang/tests/tools/check-pubgrub-scenarios.py"
+VENDOR_CHECKER = ROOT / "zomlang/tests/tools/check-vendored-dependencies.py"
+PUBGRUB_CHECKER = ROOT / "zomlang/tests/tools/check-pubgrub-scenarios.py"
 RUNTIME_PRODUCERS = {
     "package-resolver-test": ROOT
-    / "products/zomlang/tests/unittests/compiler/driver/package-resolver-test.cc",
+    / "zomlang/tests/unittests/compiler/driver/package-resolver-test.cc",
     "target-registry-test": ROOT
-    / "products/zomlang/tests/unittests/compiler/ir/target-registry-test.cc",
+    / "zomlang/tests/unittests/compiler/ir/target-registry-test.cc",
     "build-script-execution-key-test": ROOT
-    / "products/zomlang/tests/unittests/compiler/driver/build-script-execution-key-test.cc",
+    / "zomlang/tests/unittests/compiler/driver/build-script-execution-key-test.cc",
     "source-record-test": ROOT
-    / "products/zomlang/tests/unittests/compiler/driver/source-record-test.cc",
+    / "zomlang/tests/unittests/compiler/driver/source-record-test.cc",
     "source-tree-test": ROOT
-    / "products/zomlang/tests/unittests/compiler/driver/source-tree-test.cc",
+    / "zomlang/tests/unittests/compiler/driver/source-tree-test.cc",
 }
 
 
@@ -505,9 +505,9 @@ def catalog(outputs: dict[Path, bytes]) -> bytes:
         "managed": managed,
         "delegated": [
             {
-                "path": "products/zomlang/compiler/driver/package/vendor/vendor-manifest.json",
-                "producer": "products/zomlang/tests/tools/check-vendored-dependencies.py --write",
-                "checker": "products/zomlang/tests/tools/check-vendored-dependencies.py --check",
+                "path": "zomlang/compiler/driver/package/vendor/vendor-manifest.json",
+                "producer": "zomlang/tests/tools/check-vendored-dependencies.py --write",
+                "checker": "zomlang/tests/tools/check-vendored-dependencies.py --check",
             },
             {
                 "path": "build/generated/package-resolver-performance-edges.bin",

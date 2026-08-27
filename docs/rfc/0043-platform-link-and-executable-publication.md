@@ -369,11 +369,11 @@ mapping without creating a new diagnostic family.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/**` | rfc |
-| Object-to-executable pipeline and CLI | `products/zomlang/compiler/lir/**`, `products/zomlang/compiler/backend/**`, `products/zomlang/compiler/ir/**`, `products/zomlang/utils/zomc/**`, `products/zomlang/compiler/CMakeLists.txt` | ir-backend |
-| Package session, target capability, and artifact requests | `products/zomlang/compiler/driver/**`, `products/zomlang/compiler/identity/**` | module-system |
-| Runtime closure and platform ABI records | `products/zomlang/runtime/**`, `products/zomcore/**`, `products/zomlang/compiler/ownership/**` | runtime-memory |
-| Failure materialization | `products/zomlang/compiler/diagnostics/**` | error-system |
-| Tests, architecture gates, and CI | `products/zomlang/tests/**`, `scripts/**`, `.github/workflows/**` | verification |
+| Object-to-executable pipeline and CLI | `zomlang/compiler/lir/**`, `zomlang/compiler/backend/**`, `zomlang/compiler/ir/**`, `zomlang/utils/zomc/**`, `zomlang/compiler/CMakeLists.txt` | ir-backend |
+| Package session, target capability, and artifact requests | `zomlang/compiler/driver/**`, `zomlang/compiler/identity/**` | module-system |
+| Runtime closure and platform ABI records | `zomlang/runtime/**`, `core/**`, `zomlang/compiler/ownership/**` | runtime-memory |
+| Failure materialization | `zomlang/compiler/diagnostics/**` | error-system |
+| Tests, architecture gates, and CI | `zomlang/tests/**`, `scripts/**`, `.github/workflows/**` | verification |
 
 ## Security And Safety Impact
 

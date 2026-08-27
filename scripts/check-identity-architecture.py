@@ -14,164 +14,164 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCHEMA = Path("products/zomlang/compiler/ast/schema.yml")
-MANIFEST = Path("products/zomlang/compiler/identity/definition-producers.json")
-DEFINITION_KEY = Path("products/zomlang/compiler/identity/key/definition-key.h")
-DEFINITION_KEY_IMPLEMENTATION = Path("products/zomlang/compiler/identity/key/definition-key.cc")
-HANDLE = Path("products/zomlang/compiler/identity/handle.h")
-FROZEN_REGISTRY = Path("products/zomlang/compiler/identity/frozen-registry.h")
+SCHEMA = Path("zomlang/compiler/ast/schema.yml")
+MANIFEST = Path("zomlang/compiler/identity/definition-producers.json")
+DEFINITION_KEY = Path("zomlang/compiler/identity/key/definition-key.h")
+DEFINITION_KEY_IMPLEMENTATION = Path("zomlang/compiler/identity/key/definition-key.cc")
+HANDLE = Path("zomlang/compiler/identity/handle.h")
+FROZEN_REGISTRY = Path("zomlang/compiler/identity/frozen-registry.h")
 SEMANTIC_IDENTITY_REGISTRY = Path(
-    "products/zomlang/compiler/identity/semantic-identity-registry-set.h"
+    "zomlang/compiler/identity/semantic-identity-registry-set.h"
 )
 CANONICAL_IDENTITY_INTERNER = Path(
-    "products/zomlang/compiler/identity/canonical/identity-interner-set.h"
+    "zomlang/compiler/identity/canonical/identity-interner-set.h"
 )
 CANONICAL_IDENTITY_INTERNER_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/identity/canonical/identity-interner-set.cc"
+    "zomlang/compiler/identity/canonical/identity-interner-set.cc"
 )
-IDENTITY_INVARIANT = Path("products/zomlang/compiler/identity/identity-invariant.h")
-IDENTITY_DUMP_IMPLEMENTATION = Path("products/zomlang/compiler/identity/identity-dump.cc")
+IDENTITY_INVARIANT = Path("zomlang/compiler/identity/identity-invariant.h")
+IDENTITY_DUMP_IMPLEMENTATION = Path("zomlang/compiler/identity/identity-dump.cc")
 SEMANTIC_CONTEXT_FINGERPRINT = Path(
-    "products/zomlang/compiler/identity/semantic/context-fingerprint.h"
+    "zomlang/compiler/identity/semantic/context-fingerprint.h"
 )
-BUILD_SCRIPT_KEY = Path("products/zomlang/compiler/identity/key/build-script-key.h")
-BUILD_SCRIPT_KEY_IMPLEMENTATION = Path("products/zomlang/compiler/identity/key/build-script-key.cc")
-CRATE_KEY = Path("products/zomlang/compiler/identity/key/crate-key.h")
-COMPILATION_UNIT_KEY = Path("products/zomlang/compiler/identity/key/compilation-unit-key.h")
+BUILD_SCRIPT_KEY = Path("zomlang/compiler/identity/key/build-script-key.h")
+BUILD_SCRIPT_KEY_IMPLEMENTATION = Path("zomlang/compiler/identity/key/build-script-key.cc")
+CRATE_KEY = Path("zomlang/compiler/identity/key/crate-key.h")
+COMPILATION_UNIT_KEY = Path("zomlang/compiler/identity/key/compilation-unit-key.h")
 COMPILATION_UNIT_KEY_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/identity/key/compilation-unit-key.cc"
+    "zomlang/compiler/identity/key/compilation-unit-key.cc"
 )
-SOURCE_KEY = Path("products/zomlang/compiler/identity/key/source-key.h")
-SOURCE_KEY_IMPLEMENTATION = Path("products/zomlang/compiler/identity/key/source-key.cc")
-MODULE_RESOLUTION_KEY = Path("products/zomlang/compiler/identity/key/module-resolution-key.h")
+SOURCE_KEY = Path("zomlang/compiler/identity/key/source-key.h")
+SOURCE_KEY_IMPLEMENTATION = Path("zomlang/compiler/identity/key/source-key.cc")
+MODULE_RESOLUTION_KEY = Path("zomlang/compiler/identity/key/module-resolution-key.h")
 MODULE_RESOLUTION_KEY_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/identity/key/module-resolution-key.cc"
+    "zomlang/compiler/identity/key/module-resolution-key.cc"
 )
 SEMANTIC_IMPORT_BINDING_KEY = Path(
-    "products/zomlang/compiler/identity/key/import-binding-key.h"
+    "zomlang/compiler/identity/key/import-binding-key.h"
 )
 SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/identity/key/import-binding-key.cc"
+    "zomlang/compiler/identity/key/import-binding-key.cc"
 )
-IDENTITY_CMAKE = Path("products/zomlang/compiler/identity/CMakeLists.txt")
-INVENTORY = Path("products/zomlang/compiler/binder/metadata/definition-inventory.cc")
-INVENTORY_HEADER = Path("products/zomlang/compiler/binder/metadata/definition-inventory.h")
-BINDING_INPUT = Path("products/zomlang/compiler/binder/binding-input.h")
-MODULE_RESOLUTION = Path("products/zomlang/compiler/binder/graph/module-resolution.h")
+IDENTITY_CMAKE = Path("zomlang/compiler/identity/CMakeLists.txt")
+INVENTORY = Path("zomlang/compiler/binder/metadata/definition-inventory.cc")
+INVENTORY_HEADER = Path("zomlang/compiler/binder/metadata/definition-inventory.h")
+BINDING_INPUT = Path("zomlang/compiler/binder/binding-input.h")
+MODULE_RESOLUTION = Path("zomlang/compiler/binder/graph/module-resolution.h")
 MODULE_RESOLUTION_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/binder/graph/module-resolution.cc"
+    "zomlang/compiler/binder/graph/module-resolution.cc"
 )
-COMPILER_SESSION = Path("products/zomlang/compiler/driver/session/compiler-session.cc")
-CRATE_GRAPH = Path("products/zomlang/compiler/driver/graph/crate-graph.h")
-CRATE_GRAPH_IMPLEMENTATION = Path("products/zomlang/compiler/driver/graph/crate-graph.cc")
+COMPILER_SESSION = Path("zomlang/compiler/driver/session/compiler-session.cc")
+CRATE_GRAPH = Path("zomlang/compiler/driver/graph/crate-graph.h")
+CRATE_GRAPH_IMPLEMENTATION = Path("zomlang/compiler/driver/graph/crate-graph.cc")
 PACKAGE_COMPILATION_REQUEST = Path(
-    "products/zomlang/compiler/driver/package/package-compilation-request.h"
+    "zomlang/compiler/driver/package/package-compilation-request.h"
 )
 PACKAGE_COMPILATION_REQUEST_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/driver/package/package-compilation-request.cc"
+    "zomlang/compiler/driver/package/package-compilation-request.cc"
 )
-SEMANTIC_TYPE_STORE = Path("products/zomlang/compiler/type/semantic-type-store.h")
-SEMANTIC_TYPE_KEY = Path("products/zomlang/compiler/type/semantic-type-key.h")
-SCALAR_LITERAL_FACTS = Path("products/zomlang/compiler/checker/facts/scalar-literal-facts.h")
+SEMANTIC_TYPE_STORE = Path("zomlang/compiler/type/semantic-type-store.h")
+SEMANTIC_TYPE_KEY = Path("zomlang/compiler/type/semantic-type-key.h")
+SCALAR_LITERAL_FACTS = Path("zomlang/compiler/checker/facts/scalar-literal-facts.h")
 SCALAR_LITERAL_FACTS_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/checker/facts/scalar-literal-facts.cc"
+    "zomlang/compiler/checker/facts/scalar-literal-facts.cc"
 )
 CHECKER_DIAGNOSTIC_ADAPTER = Path(
-    "products/zomlang/compiler/checker/diagnostics/checker-diagnostic-adapter.h"
+    "zomlang/compiler/checker/diagnostics/checker-diagnostic-adapter.h"
 )
 CHECKER_DIAGNOSTIC_ADAPTER_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/checker/diagnostics/checker-diagnostic-adapter.cc"
+    "zomlang/compiler/checker/diagnostics/checker-diagnostic-adapter.cc"
 )
-BORROW_INTERFACE = Path("products/zomlang/compiler/checker/borrow/borrow-interface.h")
+BORROW_INTERFACE = Path("zomlang/compiler/checker/borrow/borrow-interface.h")
 BORROW_INTERFACE_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/checker/borrow/borrow-interface.cc"
+    "zomlang/compiler/checker/borrow/borrow-interface.cc"
 )
 HEADER_SYNTAX_SCHEMA = Path(
-    "products/zomlang/compiler/identity/canonical/canonical-header-syntax-schema.yml"
+    "zomlang/compiler/identity/canonical/canonical-header-syntax-schema.yml"
 )
 HEADER_SYNTAX_DEFINITION = Path(
-    "products/zomlang/compiler/identity/canonical/canonical-header-syntax-schema.def"
+    "zomlang/compiler/identity/canonical/canonical-header-syntax-schema.def"
 )
 HEADER_SYNTAX_GENERATOR = Path("scripts/generate-canonical-header-syntax-schema.py")
-CONFORMANCE_CMAKE = Path("products/zomlang/tests/conformance/CMakeLists.txt")
-CANONICAL_HEADER_TYPE = Path("products/zomlang/compiler/identity/canonical/header-type.h")
+CONFORMANCE_CMAKE = Path("zomlang/tests/conformance/CMakeLists.txt")
+CANONICAL_HEADER_TYPE = Path("zomlang/compiler/identity/canonical/header-type.h")
 CANONICAL_HEADER_TYPE_CORE = Path(
-    "products/zomlang/compiler/identity/canonical/header-type-core.cc"
+    "zomlang/compiler/identity/canonical/header-type-core.cc"
 )
 CANONICAL_HEADER_TYPE_COMPOUND = Path(
-    "products/zomlang/compiler/identity/canonical/header-type-compound.cc"
+    "zomlang/compiler/identity/canonical/header-type-compound.cc"
 )
 CANONICAL_HEADER_TYPE_RECORDS = Path(
-    "products/zomlang/compiler/identity/canonical/header-type-records.cc"
+    "zomlang/compiler/identity/canonical/header-type-records.cc"
 )
 CANONICAL_HEADER_TYPE_ENCODE = Path(
-    "products/zomlang/compiler/identity/canonical/header-type-encode.cc"
+    "zomlang/compiler/identity/canonical/header-type-encode.cc"
 )
 CANONICAL_HEADER_TYPE_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/identity/canonical/header-type-test.cc"
+    "zomlang/tests/unittests/compiler/identity/canonical/header-type-test.cc"
 )
 CANONICAL_HEADER_TYPE_PRODUCER = Path(
-    "products/zomlang/compiler/binder/canonical/canonical-header-type-producer.h"
+    "zomlang/compiler/binder/canonical/canonical-header-type-producer.h"
 )
 CANONICAL_HEADER_TYPE_PRODUCER_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/binder/canonical/canonical-header-type-producer.cc"
+    "zomlang/compiler/binder/canonical/canonical-header-type-producer.cc"
 )
 CANONICAL_HEADER_TYPE_PRODUCER_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/binder/canonical/canonical-header-type-producer-test.cc"
+    "zomlang/tests/unittests/compiler/binder/canonical/canonical-header-type-producer-test.cc"
 )
 CANONICAL_DEFINITION_HEADER_PRODUCER = Path(
-    "products/zomlang/compiler/binder/canonical/canonical-definition-header-producer.h"
+    "zomlang/compiler/binder/canonical/canonical-definition-header-producer.h"
 )
 CANONICAL_DEFINITION_HEADER_PRODUCER_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/binder/canonical/canonical-definition-header-producer.cc"
+    "zomlang/compiler/binder/canonical/canonical-definition-header-producer.cc"
 )
 CANONICAL_DEFINITION_HEADER_PRODUCER_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/binder/canonical/canonical-definition-header-producer-test.cc"
+    "zomlang/tests/unittests/compiler/binder/canonical/canonical-definition-header-producer-test.cc"
 )
 CANONICAL_IMPL_HEADER_PRODUCER = Path(
-    "products/zomlang/compiler/binder/canonical/canonical-impl-header-producer.h"
+    "zomlang/compiler/binder/canonical/canonical-impl-header-producer.h"
 )
 CANONICAL_IMPL_HEADER_PRODUCER_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/binder/canonical/canonical-impl-header-producer.cc"
+    "zomlang/compiler/binder/canonical/canonical-impl-header-producer.cc"
 )
 CANONICAL_IMPL_HEADER_PRODUCER_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/binder/canonical/canonical-impl-header-producer-test.cc"
+    "zomlang/tests/unittests/compiler/binder/canonical/canonical-impl-header-producer-test.cc"
 )
-BINDER_CMAKE = Path("products/zomlang/compiler/binder/CMakeLists.txt")
-BINDER_TEST_CMAKE = Path("products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt")
-BINDING_VERIFIER = Path("products/zomlang/compiler/binder/stable/header/verifier.cc")
+BINDER_CMAKE = Path("zomlang/compiler/binder/CMakeLists.txt")
+BINDER_TEST_CMAKE = Path("zomlang/tests/unittests/compiler/binder/CMakeLists.txt")
+BINDING_VERIFIER = Path("zomlang/compiler/binder/stable/header/verifier.cc")
 CANONICAL_OVERLOAD_HEADER = Path(
-    "products/zomlang/compiler/identity/canonical/overload-header.h"
+    "zomlang/compiler/identity/canonical/overload-header.h"
 )
 CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/identity/canonical/overload-header.cc"
+    "zomlang/compiler/identity/canonical/overload-header.cc"
 )
 CANONICAL_OVERLOAD_HEADER_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/identity/canonical/overload-header-test.cc"
+    "zomlang/tests/unittests/compiler/identity/canonical/overload-header-test.cc"
 )
-OVERLOAD_HEADER_DIGEST = Path("products/zomlang/compiler/identity/crypto/overload-header-digest.h")
+OVERLOAD_HEADER_DIGEST = Path("zomlang/compiler/identity/crypto/overload-header-digest.h")
 OVERLOAD_HEADER_DIGEST_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/identity/crypto/overload-header-digest.cc"
+    "zomlang/compiler/identity/crypto/overload-header-digest.cc"
 )
 OVERLOAD_HEADER_DIGEST_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/identity/crypto/overload-header-digest-test.cc"
+    "zomlang/tests/unittests/compiler/identity/crypto/overload-header-digest-test.cc"
 )
-CANONICAL_IMPL_HEADER = Path("products/zomlang/compiler/identity/canonical/impl-header.h")
+CANONICAL_IMPL_HEADER = Path("zomlang/compiler/identity/canonical/impl-header.h")
 CANONICAL_IMPL_HEADER_IMPLEMENTATION = Path(
-    "products/zomlang/compiler/identity/canonical/impl-header.cc"
+    "zomlang/compiler/identity/canonical/impl-header.cc"
 )
 CANONICAL_IMPL_HEADER_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/identity/canonical/impl-header-test.cc"
+    "zomlang/tests/unittests/compiler/identity/canonical/impl-header-test.cc"
 )
 MODULE_RESOLUTION_KEY_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/identity/key/module-resolution-key-test.cc"
+    "zomlang/tests/unittests/compiler/identity/key/module-resolution-key-test.cc"
 )
 SEMANTIC_IMPORT_BINDING_KEY_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/identity/key/import-binding-key-test.cc"
+    "zomlang/tests/unittests/compiler/identity/key/import-binding-key-test.cc"
 )
-IDENTITY_TEST_CMAKE = Path("products/zomlang/tests/unittests/compiler/identity/CMakeLists.txt")
-PARSER_ROOT = Path("products/zomlang/compiler/parser")
-COMPILER_ROOT = ROOT / "products" / "zomlang" / "compiler"
+IDENTITY_TEST_CMAKE = Path("zomlang/tests/unittests/compiler/identity/CMakeLists.txt")
+PARSER_ROOT = Path("zomlang/compiler/parser")
+COMPILER_ROOT = ROOT / "zomlang" / "compiler"
 
 SCHEMA_CONTEXTUAL_PRODUCERS = {
     "ModuleDeclaration",
@@ -202,7 +202,7 @@ def relative(path: Path) -> str:
     return str(path.relative_to(ROOT))
 
 
-IDENTITY_ROOT = Path("products/zomlang/compiler/identity")
+IDENTITY_ROOT = Path("zomlang/compiler/identity")
 
 
 def identity_source(path: Path) -> str:

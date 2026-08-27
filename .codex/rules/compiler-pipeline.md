@@ -1,6 +1,6 @@
 ---
 paths:
-  - "products/zomlang/compiler/**"
+  - "zomlang/compiler/**"
 ---
 
 # Compiler Pipeline Rules

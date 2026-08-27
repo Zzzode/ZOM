@@ -306,7 +306,7 @@ cmake --build --preset sanitizer
 ctest --preset default -L package --output-on-failure
 python3 scripts/check-identity-architecture.py
 python3 scripts/check-compiler-session-architecture.py --check
-python3 products/zomlang/tests/tools/check-vendored-dependencies.py
+python3 zomlang/tests/tools/check-vendored-dependencies.py
 ```
 
 The complete repository matrix remains required before landing a package change:

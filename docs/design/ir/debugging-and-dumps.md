@@ -8,9 +8,9 @@ Updated: 2026-07-24
 |---|---|
 | Authority | Non-normative contributor workflow |
 | Coverage | Current HIR inspection, Built MIR record access, tests, and architecture gate |
-| HIR implementation | [`hir-module.cc`](../../../products/zomlang/compiler/hir/hir-module.cc) |
-| Built MIR implementation | [`built-mir.cc`](../../../products/zomlang/compiler/mir/built-mir.cc) |
-| CLI implementation | [`zomc.cc`](../../../products/zomlang/utils/zomc/zomc.cc) |
+| HIR implementation | [`hir-module.cc`](../../../zomlang/compiler/hir/hir-module.cc) |
+| Built MIR implementation | [`built-mir.cc`](../../../zomlang/compiler/mir/built-mir.cc) |
+| CLI implementation | [`zomc.cc`](../../../zomlang/utils/zomc/zomc.cc) |
 
 The compiler currently has a deterministic HIR diagnostic dump. It does not
 have a MIR text dump, IR pass-dump framework, or CLI HIR/MIR/LIR emission mode.
@@ -88,9 +88,9 @@ The most relevant native tests are:
 
 | Test source | What it establishes |
 |---|---|
-| [`hir-module-test.cc`](../../../products/zomlang/tests/unittests/compiler/hir/hir-module-test.cc) | HIR lineage, scalar records, constants, deterministic identity, and dump behavior |
-| [`built-mir-test.cc`](../../../products/zomlang/tests/unittests/compiler/mir/built-mir-test.cc) | Built MIR empty and non-empty codec oracles |
-| [`compiler-session-package-test.cc`](../../../products/zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc) | End-to-end scalar shapes, selected corruption rejection, and no partial publication |
+| [`hir-module-test.cc`](../../../zomlang/tests/unittests/compiler/hir/hir-module-test.cc) | HIR lineage, scalar records, constants, deterministic identity, and dump behavior |
+| [`built-mir-test.cc`](../../../zomlang/tests/unittests/compiler/mir/built-mir-test.cc) | Built MIR empty and non-empty codec oracles |
+| [`compiler-session-package-test.cc`](../../../zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc) | End-to-end scalar shapes, selected corruption rejection, and no partial publication |
 
 Use the native debugger for the host platform against the sanitizer or debug
 compiler executable when an invariant failure needs control-flow inspection:
@@ -98,11 +98,11 @@ compiler executable when an invariant failure needs control-flow inspection:
 ```bash
 # macOS and other LLDB hosts
 lldb build-sanitizer/bin/zomc
-(lldb) command script import products/zomlang/tools/lldb/zomlang_lldb.py
+(lldb) command script import zomlang/tools/lldb/zomlang_lldb.py
 
 # Linux and other GDB hosts
 gdb build-sanitizer/bin/zomc
-(gdb) source products/zomlang/tools/gdb/zomlang_gdb.py
+(gdb) source zomlang/tools/gdb/zomlang_gdb.py
 ```
 
 Installed toolchains place the same helpers under

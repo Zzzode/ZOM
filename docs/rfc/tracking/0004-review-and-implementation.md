@@ -778,10 +778,10 @@ The in-review dependency-free slices were re-verified against the complete
 repository gate matrix at HEAD `0e5a6d3f`. Two real build failures were
 repaired before the matrix could run:
 
-- `products/zomlang/compiler/binder/graph/module-resolution.cc` was missing the
+- `zomlang/compiler/binder/graph/module-resolution.cc` was missing the
   `zomlang/compiler/identity/canonical/canonical-decoder.h` include, leaving
   `identity::CanonicalDecoder` incomplete at the `decodeCanonical` call site.
-- `products/zomlang/compiler/query/query-database.h` was missing
+- `zomlang/compiler/query/query-database.h` was missing
   `zc/core/debug.h`, leaving `ZC_REQUIRE_NONNULL` undeclared in
   `TypedQueryResult::value` and the derived-kind provider/verify lambdas.
 - `scripts/check-compiler-session-architecture.py` was out of sync with the

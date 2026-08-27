@@ -130,7 +130,7 @@ are detected, and the Binder architecture gate proves all wiring.
 
 ### Canonical Inventory Authority
 
-`products/zomlang/compiler/binder/stable-binding-schema.def` is a hand-authored
+`zomlang/compiler/binder/stable-binding-schema.def` is a hand-authored
 canonical X-macro inventory. It is not generated output. Its consumers may
 generate C++ tables or test cases during preprocessing, but no second schema
 source exists.
@@ -421,49 +421,49 @@ only after a successful input commit.
 RFC 0029 `R29-12AB` owns exactly these files:
 
 ```text
-products/zomlang/compiler/binder/stable-binding-schema.def
-products/zomlang/compiler/binder/stable/stable-binding-facts.h
-products/zomlang/compiler/binder/stable/stable-binding-facts.cc
-products/zomlang/compiler/binder/stable/stable-binding-codec.h
-products/zomlang/compiler/binder/stable/stable-binding-codec.cc
-products/zomlang/compiler/binder/metadata/binding-metadata.h
-products/zomlang/compiler/binder/metadata/binding-metadata.cc
-products/zomlang/compiler/binder/CMakeLists.txt
-products/zomlang/compiler/identity/canonical/header-name.h
-products/zomlang/compiler/identity/canonical/header-name.cc
-products/zomlang/compiler/identity/canonical/header-type.h
-products/zomlang/compiler/identity/canonical/header-type-decode.cc
-products/zomlang/compiler/identity/canonical/overload-header.h
-products/zomlang/compiler/identity/canonical/overload-header.cc
-products/zomlang/compiler/identity/canonical/impl-header.h
-products/zomlang/compiler/identity/canonical/impl-header.cc
-products/zomlang/compiler/identity/key/definition-key.h
-products/zomlang/compiler/identity/key/definition-key.cc
-products/zomlang/compiler/identity/CMakeLists.txt
-products/zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
-products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt
-products/zomlang/tests/unittests/compiler/identity/canonical/header-name-test.cc
-products/zomlang/tests/unittests/compiler/identity/canonical/header-type-test.cc
-products/zomlang/tests/unittests/compiler/identity/canonical/impl-header-test.cc
-products/zomlang/tests/unittests/compiler/identity/key/definition-key-test.cc
+zomlang/compiler/binder/stable-binding-schema.def
+zomlang/compiler/binder/stable/stable-binding-facts.h
+zomlang/compiler/binder/stable/stable-binding-facts.cc
+zomlang/compiler/binder/stable/stable-binding-codec.h
+zomlang/compiler/binder/stable/stable-binding-codec.cc
+zomlang/compiler/binder/metadata/binding-metadata.h
+zomlang/compiler/binder/metadata/binding-metadata.cc
+zomlang/compiler/binder/CMakeLists.txt
+zomlang/compiler/identity/canonical/header-name.h
+zomlang/compiler/identity/canonical/header-name.cc
+zomlang/compiler/identity/canonical/header-type.h
+zomlang/compiler/identity/canonical/header-type-decode.cc
+zomlang/compiler/identity/canonical/overload-header.h
+zomlang/compiler/identity/canonical/overload-header.cc
+zomlang/compiler/identity/canonical/impl-header.h
+zomlang/compiler/identity/canonical/impl-header.cc
+zomlang/compiler/identity/key/definition-key.h
+zomlang/compiler/identity/key/definition-key.cc
+zomlang/compiler/identity/CMakeLists.txt
+zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
+zomlang/tests/unittests/compiler/binder/CMakeLists.txt
+zomlang/tests/unittests/compiler/identity/canonical/header-name-test.cc
+zomlang/tests/unittests/compiler/identity/canonical/header-type-test.cc
+zomlang/tests/unittests/compiler/identity/canonical/impl-header-test.cc
+zomlang/tests/unittests/compiler/identity/key/definition-key-test.cc
 scripts/check-stable-binding-schema.py
 scripts/check-binder-architecture.py
 scripts/check-compiler-session-architecture.py
-products/zomlang/compiler/driver/query/binding/active-definition-authority-query.h
-products/zomlang/compiler/driver/query/binding/active-definition-authority-query.cc
-products/zomlang/compiler/driver/query/binding/active-definition-authority-session.h
-products/zomlang/compiler/driver/query/binding/active-definition-authority-session.cc
-products/zomlang/compiler/driver/session/compiler-session.cc
-products/zomlang/compiler/driver/query/binding/contextual-binding-key.h
-products/zomlang/compiler/driver/query/binding/contextual-binding-key.cc
-products/zomlang/compiler/driver/CMakeLists.txt
-products/zomlang/compiler/driver/query/binding/named-item-query.cc
-products/zomlang/compiler/driver/query/binding/owner-body-query.h
-products/zomlang/compiler/driver/query/binding/owner-body-query.cc
-products/zomlang/tests/unittests/compiler/driver/active-definition-authority-query-test.cc
-products/zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc
-products/zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc
-products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt
+zomlang/compiler/driver/query/binding/active-definition-authority-query.h
+zomlang/compiler/driver/query/binding/active-definition-authority-query.cc
+zomlang/compiler/driver/query/binding/active-definition-authority-session.h
+zomlang/compiler/driver/query/binding/active-definition-authority-session.cc
+zomlang/compiler/driver/session/compiler-session.cc
+zomlang/compiler/driver/query/binding/contextual-binding-key.h
+zomlang/compiler/driver/query/binding/contextual-binding-key.cc
+zomlang/compiler/driver/CMakeLists.txt
+zomlang/compiler/driver/query/binding/named-item-query.cc
+zomlang/compiler/driver/query/binding/owner-body-query.h
+zomlang/compiler/driver/query/binding/owner-body-query.cc
+zomlang/tests/unittests/compiler/driver/active-definition-authority-query-test.cc
+zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc
+zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc
+zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt
 scripts/check-landing-scope.py
 ```
 
@@ -537,7 +537,7 @@ not disposable validation and does not reimplement Binder production logic.
 ### R30-13 Completion Contract
 
 `R30-13` adds the comprehensive Q3 schema mutation test to
-`products/zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`.
+`zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`.
 The test exercises the production codecs for
 `CanonicalCompilationRootRecord`, `CanonicalTargetSelectionRecord`,
 `CanonicalLanguageOptionsRecord`, and
@@ -561,7 +561,7 @@ remain inert until their named tasks.
 
 ### Landing-Scope Gate
 
-`products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt`
+`zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt`
 contains the newline-sorted exact `R29-12AB` landing set, including itself.
 `scripts/check-landing-scope.py` is a reusable Git-state gate with:
 
@@ -597,12 +597,12 @@ is registered in CTest as `stable-binding-landing-scope-negative`.
 The canonical Binder diagnostic-fact transaction owns exactly:
 
 ```text
-products/zomlang/compiler/diagnostics/defs/diagnostics-binder.def
-products/zomlang/compiler/diagnostics/fact/diagnostic-fact.h
-products/zomlang/compiler/diagnostics/fact/diagnostic-fact.cc
-products/zomlang/compiler/checker/checker-source-diagnostics.def
-products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc
-products/zomlang/tests/unittests/compiler/diagnostics/CMakeLists.txt
+zomlang/compiler/diagnostics/defs/diagnostics-binder.def
+zomlang/compiler/diagnostics/fact/diagnostic-fact.h
+zomlang/compiler/diagnostics/fact/diagnostic-fact.cc
+zomlang/compiler/checker/checker-source-diagnostics.def
+zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc
+zomlang/tests/unittests/compiler/diagnostics/CMakeLists.txt
 ```
 
 `diagnostic-fact-test` constructs the complete canonical
@@ -646,10 +646,10 @@ is not rewritten for this transaction.
 |---|---|---|
 | RFC authority | `docs/rfc/0025-*` through `docs/rfc/0030-*`; affected trackers for RFCs 0017 through 0020 and 0025 through 0030; `docs/rfc/README.md` | `rfc` |
 | Task routing | `.codex/subagents/manifest.yaml`, `.codex/subagents/task-router.md`, `.codex/subagents/verification.md`, `.codex/subagents/binder-checker.md` | `task-router` |
-| Stable contextual contracts | `products/zomlang/compiler/driver/contextual-binding-key.*`, `products/zomlang/compiler/driver/active-definition-authority-query.*`, `products/zomlang/compiler/driver/active-definition-authority-session.{h,cc}`, `products/zomlang/compiler/driver/session/compiler-session.cc`, `products/zomlang/compiler/driver/named-item-query.*`, `products/zomlang/compiler/driver/owner-body-query.*`, `products/zomlang/compiler/driver/CMakeLists.txt` | `module-system` |
-| Stable Binder foundation | `products/zomlang/compiler/binder/stable-binding-*`, `products/zomlang/compiler/binder/CMakeLists.txt` | `binder-checker` |
-| Diagnostic schema contract | `products/zomlang/compiler/diagnostics/**` | `error-system` |
-| Native tests and gates | `products/zomlang/tests/unittests/compiler/binder/**`, `products/zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`, `products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc`, `products/zomlang/tests/unittests/compiler/diagnostics/CMakeLists.txt`, `products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt`, `scripts/check-stable-binding-schema.py`, `scripts/check-binder-architecture.py`, `scripts/check-compiler-session-architecture.py`, `scripts/check-landing-scope.py` | `verification` |
+| Stable contextual contracts | `zomlang/compiler/driver/contextual-binding-key.*`, `zomlang/compiler/driver/active-definition-authority-query.*`, `zomlang/compiler/driver/active-definition-authority-session.{h,cc}`, `zomlang/compiler/driver/session/compiler-session.cc`, `zomlang/compiler/driver/named-item-query.*`, `zomlang/compiler/driver/owner-body-query.*`, `zomlang/compiler/driver/CMakeLists.txt` | `module-system` |
+| Stable Binder foundation | `zomlang/compiler/binder/stable-binding-*`, `zomlang/compiler/binder/CMakeLists.txt` | `binder-checker` |
+| Diagnostic schema contract | `zomlang/compiler/diagnostics/**` | `error-system` |
+| Native tests and gates | `zomlang/tests/unittests/compiler/binder/**`, `zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`, `zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc`, `zomlang/tests/unittests/compiler/diagnostics/CMakeLists.txt`, `zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt`, `scripts/check-stable-binding-schema.py`, `scripts/check-binder-architecture.py`, `scripts/check-compiler-session-architecture.py`, `scripts/check-landing-scope.py` | `verification` |
 
 ## Security And Safety Impact
 
@@ -827,13 +827,13 @@ runtime observability, or release operation is added.
   `PATH=/opt/homebrew/bin:$PATH ctest --preset default -R '^diagnostic-fact-test$' --output-on-failure --no-tests=error`.
 - Landing scope:
   `python3 scripts/check-landing-scope.py --self-test`;
-  `python3 scripts/check-landing-scope.py --check-worktree --start-ref <accepted-transaction-commit> --allowlist products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt --base-file products/zomlang/tests/coverage/implementation-series-base.txt`;
+  `python3 scripts/check-landing-scope.py --check-worktree --start-ref <accepted-transaction-commit> --allowlist zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt --base-file zomlang/tests/coverage/implementation-series-base.txt`;
   explicitly stage only the allowlist;
-  `python3 scripts/check-landing-scope.py --check-index --start-ref <accepted-transaction-commit> --allowlist products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt --base-file products/zomlang/tests/coverage/implementation-series-base.txt`.
+  `python3 scripts/check-landing-scope.py --check-index --start-ref <accepted-transaction-commit> --allowlist zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt --base-file zomlang/tests/coverage/implementation-series-base.txt`.
 - Repository gates:
   `python3 scripts/check-rfc.py`;
   `python3 scripts/check-format.py`;
-  `python3 scripts/check-english-only.py --check --base-file products/zomlang/tests/coverage/implementation-series-base.txt`;
+  `python3 scripts/check-english-only.py --check --base-file zomlang/tests/coverage/implementation-series-base.txt`;
   `python3 scripts/check-no-internal-versioning.py --check`;
   `git diff --check`.
 - Staging evidence is the successful `--check-index` result.

@@ -7,11 +7,11 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-COMPILER_ROOT = ROOT / "products" / "zomlang" / "compiler"
+COMPILER_ROOT = ROOT / "zomlang" / "compiler"
 DOCS_ROOT = ROOT / "docs"
-IR_ROOT = Path("products/zomlang/compiler/ir")
-IRGEN_ROOT = Path("products/zomlang/compiler/irgen")
-MIR_ROOT = Path("products/zomlang/compiler/mir")
+IR_ROOT = Path("zomlang/compiler/ir")
+IRGEN_ROOT = Path("zomlang/compiler/irgen")
+MIR_ROOT = Path("zomlang/compiler/mir")
 TARGET_HEADER = IR_ROOT / "target-registry.h"
 TARGET_SOURCE = IR_ROOT / "target-registry.cc"
 FAILURE_HEADER = IR_ROOT / "ir-failure.h"
@@ -24,12 +24,12 @@ IR_CMAKE = IR_ROOT / "CMakeLists.txt"
 MIR_HEADER = MIR_ROOT / "built-mir.h"
 MIR_SOURCE = MIR_ROOT / "built-mir.cc"
 MIR_CMAKE = MIR_ROOT / "CMakeLists.txt"
-COMPILER_CMAKE = Path("products/zomlang/compiler/CMakeLists.txt")
-SESSION_HEADER = Path("products/zomlang/compiler/driver/session/compiler-session.h")
-SESSION_SOURCE = Path("products/zomlang/compiler/driver/session/compiler-session.cc")
-CLI_SOURCE = Path("products/zomlang/utils/zomc/zomc.cc")
-COMPILER_OPTIONS = Path("products/zomlang/compiler/basic/compiler-opts.h")
-DIAGNOSTIC_DEFS = Path("products/zomlang/compiler/diagnostics/defs/diagnostics-lowering.def")
+COMPILER_CMAKE = Path("zomlang/compiler/CMakeLists.txt")
+SESSION_HEADER = Path("zomlang/compiler/driver/session/compiler-session.h")
+SESSION_SOURCE = Path("zomlang/compiler/driver/session/compiler-session.cc")
+CLI_SOURCE = Path("zomlang/utils/zomc/zomc.cc")
+COMPILER_OPTIONS = Path("zomlang/compiler/basic/compiler-opts.h")
+DIAGNOSTIC_DEFS = Path("zomlang/compiler/diagnostics/defs/diagnostics-lowering.def")
 
 REQUIRED_TARGET_MARKERS = (
     "namespace zomlang::compiler::ir",
@@ -529,7 +529,7 @@ def run_self_test() -> int:
         "irgen include restored",
         lambda files: append_source(
             files,
-            Path("products/zomlang/compiler/driver/injected.cc"),
+            Path("zomlang/compiler/driver/injected.cc"),
             '#include "zomlang/compiler/irgen/ir.h"\n',
         ),
         "compiler/irgen dependency is forbidden",

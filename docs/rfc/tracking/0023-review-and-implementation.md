@@ -143,7 +143,7 @@ tooling projection dependency is rechecked.
 Independent repository inspection confirmed the proposal's live dependencies:
 
 - `CanonicalQueryKey` exists in
-  `products/zomlang/compiler/query/query-database.cc` and `query-types.h`,
+  `zomlang/compiler/query/query-database.cc` and `query-types.h`,
   providing the RFC 0017 dependency-record foundation the proposal builds
   its transitive input-frontier collection on.
 - RFC 0017's atomic transactions, immutable snapshots, cancellation,

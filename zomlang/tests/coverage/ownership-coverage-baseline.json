@@ -1,0 +1,54 @@
+{
+  "schema": "zom.rfc0027.ownership-coverage-baseline",
+  "aggregate": {
+    "coveredLines": 183772,
+    "lineCount": 233358,
+    "linePercent": 78.75
+  },
+  "perFileBaselines": {
+    "zomlang/compiler/driver/package/source-record.cc": {
+      "coveredLines": 68,
+      "lineCount": 124,
+      "linePercent": 54.84
+    },
+    "zomlang/compiler/identity/identity-diagnostic-adapter.cc": {
+      "coveredLines": 45,
+      "lineCount": 77,
+      "linePercent": 58.44
+    },
+    "zomlang/compiler/identity/source-snapshot.cc": {
+      "coveredLines": 24,
+      "lineCount": 46,
+      "linePercent": 52.17
+    },
+    "zomlang/compiler/ir/ir-failure.cc": {
+      "coveredLines": 463,
+      "lineCount": 783,
+      "linePercent": 59.13
+    },
+    "zomlang/compiler/ownership/drop-elaborated-mir.cc": {
+      "coveredLines": 135,
+      "lineCount": 193,
+      "linePercent": 69.95
+    },
+    "zomlang/compiler/ownership/ownership-checked-mir.cc": {
+      "coveredLines": 50,
+      "lineCount": 153,
+      "linePercent": 32.68
+    },
+    "zomlang/compiler/ownership/ownership-event-overlay.cc": {
+      "coveredLines": 1544,
+      "lineCount": 2295,
+      "linePercent": 67.28
+    },
+    "zomlang/compiler/source/core-source-admission.cc": {
+      "coveredLines": 169,
+      "lineCount": 284,
+      "linePercent": 59.51
+    }
+  },
+  "llvmCovExportSha256": "64ad37aae3821bd07188485d246aa8b089c4c1e8ef0855beb0b517f54db4946a",
+  "headRevision": "900a50d1212546afd4e09cc1bd2f2677259fb01c",
+  "baseRevision": "109947943519ec2d380a3e8d71813b40bc68bde5",
+  "recordedAt": "2026-08-20"
+}

@@ -1014,7 +1014,7 @@ user-addressable multi-version snapshots remain forbidden.
 
 ### Editor Semantic Facade
 
-`products/zomlang/tools/ide` exposes immutable value objects:
+`zomlang/tools/ide` exposes immutable value objects:
 
 ```text
 IdeFilePosition { source: SourceFileKey, utf8Offset: uint32 }
@@ -1143,7 +1143,7 @@ only.
 
 ### LSP Adapter
 
-`products/zomlang/tools/lsp` is the only component that knows JSON-RPC, LSP
+`zomlang/tools/lsp` is the only component that knows JSON-RPC, LSP
 types, URIs, UTF-16 positions, client capability negotiation, or transport
 framing. It targets LSP 3.18.
 
@@ -1249,13 +1249,13 @@ sanitization policy.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC proposal and tracking | `docs/rfc/0023-*.md`, `docs/rfc/tracking/0023-*.md`, `docs/rfc/README.md` | `rfc` |
-| Recoverable parser events, CST, source mapping, and verified AST bridge | `products/zomlang/compiler/lexer/**`, `products/zomlang/compiler/parser/**`, `products/zomlang/compiler/ast/**` | `lexer-parser` |
-| Partial binding, type states, and recovered flow inputs | `products/zomlang/compiler/binder/**`, `products/zomlang/compiler/checker/**`, `products/zomlang/compiler/type/**` | `binder-checker` |
-| Editor inputs, snapshot leases, IDE query descriptors, and invalidation | `products/zomlang/compiler/source/**`, `products/zomlang/compiler/query/**`, `products/zomlang/compiler/driver/**` | `module-system` |
-| IDE and protocol diagnostic projection | `products/zomlang/compiler/diagnostics/**` | `error-system` |
-| IDE facade, LSP adapter, and editor integration | `products/zomlang/tools/ide/**`, `products/zomlang/tools/lsp/**`, `editors/**` | `tooling-lsp` |
+| Recoverable parser events, CST, source mapping, and verified AST bridge | `zomlang/compiler/lexer/**`, `zomlang/compiler/parser/**`, `zomlang/compiler/ast/**` | `lexer-parser` |
+| Partial binding, type states, and recovered flow inputs | `zomlang/compiler/binder/**`, `zomlang/compiler/checker/**`, `zomlang/compiler/type/**` | `binder-checker` |
+| Editor inputs, snapshot leases, IDE query descriptors, and invalidation | `zomlang/compiler/source/**`, `zomlang/compiler/query/**`, `zomlang/compiler/driver/**` | `module-system` |
+| IDE and protocol diagnostic projection | `zomlang/compiler/diagnostics/**` | `error-system` |
+| IDE facade, LSP adapter, and editor integration | `zomlang/tools/ide/**`, `zomlang/tools/lsp/**`, `editors/**` | `tooling-lsp` |
 | Tooling architecture and compiler-claim alignment | `docs/design/tooling/**`, `docs/design/architecture.md`, `docs/design/compiler-contracts.md` | `spec-audit` |
-| IDE fixtures, LSP integration, differential, cancellation, and performance tests | `products/zomlang/tests/**`, `scripts/check-incremental-query-architecture.py` | `verification` |
+| IDE fixtures, LSP integration, differential, cancellation, and performance tests | `zomlang/tests/**`, `scripts/check-incremental-query-architecture.py` | `verification` |
 
 ## Security And Safety Impact
 

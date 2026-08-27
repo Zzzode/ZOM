@@ -1336,14 +1336,14 @@ not establish runtime implementation.
 |---|---|---|
 | RFC governance | `docs/rfc/0004-binder-architecture.md`, `docs/rfc/0005-type-system-architecture.md`, `docs/rfc/0008-compiler-session-cross-module.md`, `docs/rfc/0011-semantic-identity-foundation.md`, `docs/rfc/0012-package-manifest-and-resolver.md`, `docs/rfc/0015-canonical-checker-codec-closure.md`, `docs/rfc/0017-incremental-compiler-query-architecture.md`, `docs/rfc/tracking/0017-review-and-implementation.md`, `docs/rfc/README.md` | `rfc` |
 | Query subsystem routing | `.codex/subagents/manifest.yaml`, `.codex/subagents/README.md`, `.codex/subagents/task-router.md`, `.codex/subagents/module-system.md`, `.codex/subagents/verification.md`, `AGENTS.md` | `task-router` |
-| Query database, session, identity, source, and module graph | `products/zomlang/compiler/query/**`, `products/zomlang/compiler/driver/**`, `products/zomlang/compiler/identity/**`, `products/zomlang/compiler/source/**` | `module-system` |
-| Binder and Checker providers, values, verifiers, and projections | `products/zomlang/compiler/binder/**`, `products/zomlang/compiler/checker/**`, `products/zomlang/compiler/type/**` | `binder-checker` |
-| Diagnostic facts, collection, and rendering adapters | `products/zomlang/compiler/diagnostics/**` | `error-system` |
-| Compiler target and CMake wiring | `products/zomlang/compiler/CMakeLists.txt`, `products/zomlang/compiler/query/CMakeLists.txt` | `ir-backend` |
+| Query database, session, identity, source, and module graph | `zomlang/compiler/query/**`, `zomlang/compiler/driver/**`, `zomlang/compiler/identity/**`, `zomlang/compiler/source/**` | `module-system` |
+| Binder and Checker providers, values, verifiers, and projections | `zomlang/compiler/binder/**`, `zomlang/compiler/checker/**`, `zomlang/compiler/type/**` | `binder-checker` |
+| Diagnostic facts, collection, and rendering adapters | `zomlang/compiler/diagnostics/**` | `error-system` |
+| Compiler target and CMake wiring | `zomlang/compiler/CMakeLists.txt`, `zomlang/compiler/query/CMakeLists.txt` | `ir-backend` |
 | Current architecture documentation | `docs/design/**` | `spec-audit` |
-| Unit, lit, differential, fuzz, performance, CI, generation, and architecture gates | `products/zomlang/tests/**`, `.github/workflows/**`, `scripts/generate-query-descriptor-schema.py`, `scripts/check-query-descriptor-architecture.py`, `scripts/check-incremental-query-architecture.py` | `verification` |
+| Unit, lit, differential, fuzz, performance, CI, generation, and architecture gates | `zomlang/tests/**`, `.github/workflows/**`, `scripts/generate-query-descriptor-schema.py`, `scripts/check-query-descriptor-architecture.py`, `scripts/check-incremental-query-architecture.py` | `verification` |
 
-Routing assigns `products/zomlang/compiler/query/**` and query or incremental
+Routing assigns `zomlang/compiler/query/**` and query or incremental
 architecture changes to `module-system`. It assigns the incremental-query gate,
 self-test, test corpus, and performance baseline to `verification`. The
 manifest, routing matrix, both owner specifications, repository summary, and
@@ -1555,10 +1555,10 @@ identity architecture. Binder-checker owns semantic providers and independent
 verifiers. Error-system owns diagnostic-value and rendering separation.
 
 The reproducible performance contract uses
-`products/zomlang/tests/performance/incremental-query-corpus.json` as the closed
+`zomlang/tests/performance/incremental-query-corpus.json` as the closed
 corpus manifest, `scripts/run-incremental-query-benchmarks.py` as the only
 runner, and
-`products/zomlang/tests/performance/incremental-query-baseline.json` as the
+`zomlang/tests/performance/incremental-query-baseline.json` as the
 reviewed pre-query baseline catalog. Each catalog entry records repository
 revision, release preset and flags, compiler build identity, OS and
 architecture, CPU model and logical-core count, physical memory, worker count,
@@ -1653,7 +1653,7 @@ and does not depend on wall-clock noise.
 1. Obtain every required owner's approval for one exact RFC snapshot, record
    the decision, and move the accepted snapshot to `IMPLEMENTING` before any
    production query implementation lands.
-2. Update routing ownership for `products/zomlang/compiler/query/**` and add the
+2. Update routing ownership for `zomlang/compiler/query/**` and add the
    incremental-query architecture gate specification.
 3. Complete the accepted RFC 0018 stable identity closure before revision-domain
    separation: replace definition and implementation digest records, occurrence
@@ -1694,7 +1694,7 @@ and does not depend on wall-clock noise.
   - `cmake --preset sanitizer`
   - `cmake --build --preset sanitizer`
 - Unit tests:
-  - add `products/zomlang/tests/unittests/compiler/query/**` for input
+  - add `zomlang/tests/unittests/compiler/query/**` for input
     transactions, key separation, memo states, actual reads, ordered
     validation, backdating, durability, eviction, cycles, cancellation,
     single-flight, and deterministic parallel groups;
@@ -1749,7 +1749,7 @@ and does not depend on wall-clock noise.
   - branch-dependent query read switches from one dependency to another.
 - Lit and conformance:
   - add multi-file fixtures under
-    `products/zomlang/tests/conformance/corpus/language/modules/` that compare
+    `zomlang/tests/conformance/corpus/language/modules/` that compare
     clean and incremental facts and diagnostic codes;
   - require deterministic output across one, two, and maximum configured
     worker counts.

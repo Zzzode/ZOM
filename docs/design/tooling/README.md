@@ -1,7 +1,7 @@
 # ZOM Toolchain Product Design Notes
 
 This directory holds non-normative product-design notes for the ZOM toolchain
-ecosystem under `products/`: the front-end command (`zomc`), the language
+ecosystem: the front-end command (`zomc`), the language
 server, the formatter, and the debugger. These notes derive product boundaries
 from mature industry practice; they do not define contracts.
 
@@ -28,22 +28,24 @@ repository.
 
 ## What exists on disk (verified 2026-08-27)
 
-| `products/` dir | State |
+| Top-level dir | State |
 |---|---|
 | `zomlang/` | The compiler, runtime, tools, and the single front-end CLI `zomc`. Real and substantial. |
-| `zomcore/` | Core library, source-backed. Real `src/`. RFC 0025 (IMPLEMENTING). |
+| `core/` | The `.zom` core library, source-backed. Real `src/`. RFC 0025 (IMPLEMENTING). |
 
-`zomc` is one binary (`products/zomlang/utils/zomc/zomc.cc`) built on
+`zomc` is one binary (`zomlang/utils/zomc/zomc.cc`) built on
 `zc::MainBuilder` with `compile` and `run` subcommands already registered. The
 best-practice recommendation grows this one binary into ZOM's `cargo`/`go`
 rather than adding sibling binaries.
 
-The empty `products/zomcrate/` and `products/zomforge/` placeholder directories
-were **removed** on 2026-08-27: best practice (Cargo/Go/SwiftPM) is a single
-front-end command, so separate package-manager and build-tool binaries are not
-part of the design. "Crate" remains only as the ecosystem noun for a ZOM package.
+The empty `zomcrate/` and `zomforge/` placeholder directories were **removed**
+on 2026-08-27, and the redundant `products/` shell was dropped so `zomlang/` and
+`core/` sit at the repository root (the LLVM/Swift role-as-top-level layout).
+Best practice (Cargo/Go/SwiftPM) is a single front-end command, so separate
+package-manager and build-tool binaries are not part of the design. "Crate"
+remains only as the ecosystem noun for a ZOM package.
 
-The compiler driver at `products/zomlang/compiler/driver/package/` already
+The compiler driver at `zomlang/compiler/driver/package/` already
 implements manifest parsing, deterministic resolution, the canonical lockfile,
 digest-verified source snapshots, a sandboxed build-script runtime, and the
 canonical package-compilation request. The package and build engines are

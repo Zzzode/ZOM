@@ -37,11 +37,11 @@ Do **not** route here when:
 ## Owns
 
 ```
-products/zomlang/runtime/**/task*
-products/zomlang/runtime/**/async*
-products/zomlang/runtime/**/actor*
-products/zomlang/runtime/**/channel*
-products/zomlang/runtime/**/scheduler*
+zomlang/runtime/**/task*
+zomlang/runtime/**/async*
+zomlang/runtime/**/actor*
+zomlang/runtime/**/channel*
+zomlang/runtime/**/scheduler*
 docs/concurrency/**
 docs/spec/specification.md
 docs/spec/chapters/15-concurrency.md

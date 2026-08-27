@@ -11,8 +11,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BINDER = Path("products/zomlang/compiler/binder")
-TESTS = Path("products/zomlang/tests/unittests/compiler/binder")
+BINDER = Path("zomlang/compiler/binder")
+TESTS = Path("zomlang/tests/unittests/compiler/binder")
 
 
 def binder_source(path: Path) -> str:
@@ -44,9 +44,9 @@ TEST_CMAKE = TESTS / "CMakeLists.txt"
 TEST_SOURCE = TESTS / "binding-input-test.cc"
 BODY_BINDING_SOURCE = BINDER / "body-binding.cc"
 CLOSURE_FREE_VARIABLES_SOURCE = BINDER / "closure-free-variables.cc"
-DRIVER_SESSION_SOURCE = Path("products/zomlang/compiler/driver/session/compiler-session.cc")
+DRIVER_SESSION_SOURCE = Path("zomlang/compiler/driver/session/compiler-session.cc")
 DRIVER_SESSION_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc"
+    "zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc"
 )
 FACT_SCHEMA = BINDER / "binding-fact-schema.def"
 FACT_SCHEMA_GATE = Path("scripts/check-binder-fact-schema.py")
@@ -59,7 +59,7 @@ STABLE_TEST_SOURCE = TESTS / "stable-binding-facts-test.cc"
 STABLE_SCHEMA_GATE = Path("scripts/check-stable-binding-schema.py")
 LANDING_SCOPE_GATE = Path("scripts/check-landing-scope.py")
 STABLE_LANDING_ALLOWLIST = Path(
-    "products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt"
+    "zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt"
 )
 MODULE_BODY_HEADER = BINDER / "surface/module-body-syntax.h"
 MODULE_BODY_VALUE_SOURCE = BINDER / "surface/module-body-syntax.cc"
@@ -69,13 +69,13 @@ MODULE_BODY_TEST_SOURCE = TESTS / "module-body-syntax-test.cc"
 NAMED_INVENTORY_HEADER = BINDER / "identity/named-identity-inventory.h"
 NAMED_INVENTORY_SOURCE = BINDER / "identity/named-identity-inventory.cc"
 NAMED_INVENTORY_QUERY_SOURCE = Path(
-    "products/zomlang/compiler/driver/query/binding/named-identity-inventory-query.cc"
+    "zomlang/compiler/driver/query/binding/named-identity-inventory-query.cc"
 )
 NAMED_INVENTORY_QUERY_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/named-identity-inventory-query-test.cc"
+    "zomlang/tests/unittests/compiler/driver/named-identity-inventory-query-test.cc"
 )
 INCREMENTAL_BINDING_QUERY_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/incremental-binding-query-adapter-test.cc"
+    "zomlang/tests/unittests/compiler/driver/incremental-binding-query-adapter-test.cc"
 )
 
 PRODUCTION_COMPONENTS = (
@@ -140,13 +140,13 @@ REMOVED_BINDER_FILES = tuple(
         "utilities.h",
     )
 )
-REMOVED_SYMBOL_ROOT = Path("products/zomlang/compiler/symbol")
+REMOVED_SYMBOL_ROOT = Path("zomlang/compiler/symbol")
 SCHEMA_INCLUDE = '#include "zomlang/compiler/binder/binding-fact-schema.def"'
 
 
 def source_files() -> dict[Path, str]:
     files: dict[Path, str] = {}
-    for relative_root in (Path("products/zomlang/compiler"), Path("products/zomlang/tests")):
+    for relative_root in (Path("zomlang/compiler"), Path("zomlang/tests")):
         for directory, child_directories, names in os.walk(ROOT / relative_root):
             child_directories[:] = [
                 name
@@ -697,7 +697,7 @@ def check_stable_binding_wiring(files: dict[Path, str], errors: list[str]) -> No
     production = {
         path: text
         for path, text in files.items()
-        if Path("products/zomlang/compiler") in path.parents and path != STABLE_SCHEMA
+        if Path("zomlang/compiler") in path.parents and path != STABLE_SCHEMA
     }
     combined = "\n".join(production.values())
     normalized_combined = normalized_cpp(combined)

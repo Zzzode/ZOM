@@ -39,11 +39,11 @@ Do **not** route here when:
 ## Owns
 
 ```
-products/zomlang/tests/**
-products/zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt
-products/zomlang/tests/compile-fail/query-runtime/**
-products/zomlang/tests/unittests/compiler/query/query-test-specs.h
-products/zomlang/tests/unittests/compiler/query/query-concurrency-test.cc
+zomlang/tests/**
+zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt
+zomlang/tests/compile-fail/query-runtime/**
+zomlang/tests/unittests/compiler/query/query-test-specs.h
+zomlang/tests/unittests/compiler/query/query-concurrency-test.cc
 examples/**
 .github/workflows/**
 README.md
@@ -76,8 +76,8 @@ scripts/check-lit-exec-root.py
 scripts/check-core-library-architecture.py
 scripts/check-core-library-spec-alignment.py
 scripts/codegen/gen_core_library_inventory.py
-products/zomlang/tests/coverage/diagnostic-reservations.json
-products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt
+zomlang/tests/coverage/diagnostic-reservations.json
+zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt
 scripts/run-rfc0016-coverage.py
 scripts/check-rfc0016-coverage.py
 scripts/check-ownership-architecture.py
@@ -85,11 +85,11 @@ scripts/run-ownership-coverage.py
 scripts/check-ownership-coverage.py
 scripts/check-diff-hygiene.py
 scripts/check-ownership-determinism.py
-products/zomlang/tests/coverage/ownership-exemptions.json
-products/zomlang/tests/coverage/ownership-coverage-baseline.json
-products/zomlang/tests/coverage/ownership-determinism-baseline.json
-products/zomlang/tests/performance/incremental-query-corpus.json
-products/zomlang/tests/performance/incremental-query-baseline.json
+zomlang/tests/coverage/ownership-exemptions.json
+zomlang/tests/coverage/ownership-coverage-baseline.json
+zomlang/tests/coverage/ownership-determinism-baseline.json
+zomlang/tests/performance/incremental-query-corpus.json
+zomlang/tests/performance/incremental-query-baseline.json
 cmake/utils/common.cmake
 cmake/utils/coverage.cmake
 cmake/utils/unittests.cmake
@@ -146,7 +146,7 @@ cmake/utils/unittests.cmake
 - [ ] `python3 scripts/check-diagnostic-coverage.py --check` and
       `python3 scripts/check-diagnostic-coverage.py --self-test` pass.
 - [ ] `python3 scripts/check-english-only.py --check --base-file
-      products/zomlang/tests/coverage/implementation-series-base.txt` and
+      zomlang/tests/coverage/implementation-series-base.txt` and
       `python3 scripts/check-english-only.py --self-test` pass.
 - [ ] `python3 scripts/check-diff-hygiene.py --check` and
       `python3 scripts/check-diff-hygiene.py --self-test` pass.

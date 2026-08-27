@@ -30,7 +30,7 @@ function(add_ztest_unit_test TEST_NAME TEST_SOURCE)
   # Set include directories
   target_include_directories(${TEST_NAME} PRIVATE
     ${ZOM_ROOT}/libraries
-    ${ZOM_ROOT}/products
+    ${ZOM_ROOT}
   )
 
   # Compiler options

@@ -13,25 +13,25 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-SCHEMA = ROOT / "products/zomlang/compiler/binder/stable-binding-schema.def"
-FACTS_HEADER = ROOT / "products/zomlang/compiler/binder/stable/stable-binding-facts.h"
-FACTS_SOURCE = ROOT / "products/zomlang/compiler/binder/stable/stable-binding-facts.cc"
-CODEC_HEADER = ROOT / "products/zomlang/compiler/binder/stable/stable-binding-codec.h"
-CODEC_SOURCE = ROOT / "products/zomlang/compiler/binder/stable/stable-binding-codec.cc"
-BINDER_CMAKE = ROOT / "products/zomlang/compiler/binder/CMakeLists.txt"
-CONTEXTUAL_HEADER = ROOT / "products/zomlang/compiler/driver/query/binding/contextual-binding-key.h"
-CONTEXTUAL_SOURCE = ROOT / "products/zomlang/compiler/driver/query/binding/contextual-binding-key.cc"
-METADATA_HEADER = ROOT / "products/zomlang/compiler/binder/metadata/binding-metadata.h"
+SCHEMA = ROOT / "zomlang/compiler/binder/stable-binding-schema.def"
+FACTS_HEADER = ROOT / "zomlang/compiler/binder/stable/stable-binding-facts.h"
+FACTS_SOURCE = ROOT / "zomlang/compiler/binder/stable/stable-binding-facts.cc"
+CODEC_HEADER = ROOT / "zomlang/compiler/binder/stable/stable-binding-codec.h"
+CODEC_SOURCE = ROOT / "zomlang/compiler/binder/stable/stable-binding-codec.cc"
+BINDER_CMAKE = ROOT / "zomlang/compiler/binder/CMakeLists.txt"
+CONTEXTUAL_HEADER = ROOT / "zomlang/compiler/driver/query/binding/contextual-binding-key.h"
+CONTEXTUAL_SOURCE = ROOT / "zomlang/compiler/driver/query/binding/contextual-binding-key.cc"
+METADATA_HEADER = ROOT / "zomlang/compiler/binder/metadata/binding-metadata.h"
 NATIVE_TEST = (
     ROOT
-    / "products/zomlang/tests/unittests/compiler/binder/stable/stable-binding-facts-test.cc"
+    / "zomlang/tests/unittests/compiler/binder/stable/stable-binding-facts-test.cc"
 )
 TEST_CMAKE = (
-    ROOT / "products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt"
+    ROOT / "zomlang/tests/unittests/compiler/binder/CMakeLists.txt"
 )
 CONTEXTUAL_TEST = (
     ROOT
-    / "products/zomlang/tests/unittests/compiler/driver/"
+    / "zomlang/tests/unittests/compiler/driver/"
     "query/binding/active-definition-authority-query-test.cc"
 )
 

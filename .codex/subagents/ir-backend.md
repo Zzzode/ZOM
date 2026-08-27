@@ -33,20 +33,20 @@ Do not route here when:
 ## Owns
 
 ```text
-products/zomlang/compiler/hir/**
-products/zomlang/compiler/ir/**
-products/zomlang/compiler/mir/**
-products/zomlang/compiler/lir/**
-products/zomlang/compiler/backend/**
-products/zomlang/compiler/basic/compiler-opts.h
+zomlang/compiler/hir/**
+zomlang/compiler/ir/**
+zomlang/compiler/mir/**
+zomlang/compiler/lir/**
+zomlang/compiler/backend/**
+zomlang/compiler/basic/compiler-opts.h
 CMakeLists.txt
 CMakePresets.json
-products/zomlang/compiler/CMakeLists.txt
-products/zomlang/compiler/basic/CMakeLists.txt
-products/zomlang/compiler/trace/CMakeLists.txt
-products/zomlang/utils/CMakeLists.txt
-products/zomlang/utils/zomc/**
-products/zomcore/CMakeLists.txt
+zomlang/compiler/CMakeLists.txt
+zomlang/compiler/basic/CMakeLists.txt
+zomlang/compiler/trace/CMakeLists.txt
+zomlang/utils/CMakeLists.txt
+zomlang/utils/zomc/**
+core/CMakeLists.txt
 ```
 
 `compiler/hir`, `compiler/mir`, and `compiler/ir` are the only production IR

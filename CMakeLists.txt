@@ -16,7 +16,7 @@ set(CMAKE_INCLUDE_DIRECTORIES_PROJECT_BEFORE ON)
 
 set(ZOM_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(ZOM_CMAKE_DIR ${ZOM_ROOT}/cmake)
-set(INCLUDE_DIRS ${ZOM_ROOT}/products ${ZOM_ROOT}/libraries)
+set(INCLUDE_DIRS ${ZOM_ROOT} ${ZOM_ROOT}/libraries)
 
 include(${ZOM_CMAKE_DIR}/utils/options.cmake)
 include(${ZOM_CMAKE_DIR}/utils/common.cmake)
@@ -33,7 +33,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
 endif()
 
 add_subdirectory(libraries)
-add_subdirectory(products)
+add_subdirectory(core)
+add_subdirectory(zomlang)
 add_subdirectory(examples)
 
 if(ZOM_ENABLE_COVERAGE)

@@ -73,7 +73,7 @@ re-export clause.
 ## 13.9 Diagnostic Ownership
 
 The authoritative diagnostic registry is the included
-`products/zomlang/compiler/diagnostics/diagnostics-*.def` files. The registered
+`zomlang/compiler/diagnostics/diagnostics-*.def` files. The registered
 binder diagnostics relevant to the current import/export implementation are:
 
 | Code | Name | Meaning |

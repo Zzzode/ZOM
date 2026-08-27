@@ -21,25 +21,25 @@ MIR.
 
 ## Role in the pipeline
 
-- **Admitting filter:** `products/zomlang/compiler/ownership/surface-admission.cc`
+- **Admitting filter:** `zomlang/compiler/ownership/surface-admission.cc`
   (`OwnershipSurfaceAdmissionBuilder::admit`). Each `isAdmitted*` predicate is a
   construct boundary; a shape that no predicate admits fails closed with an
   `OwnershipSurfaceFailure` before any HIR is built.
 - **Live HIR builder / verifier / capability:** `hir::HirBuilder::build` ->
   `hir::HirVerifier::verify` -> `hir::VerifiedHirModule`
-  (`products/zomlang/compiler/hir/hir-module.{h,cc}`).
+  (`zomlang/compiler/hir/hir-module.{h,cc}`).
 - **Live MIR builder / verifier / capability:** `mir::BuiltMirBuilder::build` ->
   `mir::BuiltMirVerifier::verify` -> `mir::VerifiedBuiltMir`
-  (`products/zomlang/compiler/mir/built-mir.{h,cc}`).
+  (`zomlang/compiler/mir/built-mir.{h,cc}`).
 - **Session publisher / consumer access path:**
   `driver::CompilerSession::checkSources()` publishes atomically;
   `getVerifiedHirModules()` and `getOwnershipCheckedMirModules()[i].builtMir()`
   are the read paths (`compiler-session.h:216,222`).
 - **Project-native tests:** the end-to-end tests live in
-  `products/zomlang/tests/unittests/compiler/hir/hir-module-test.cc` (drives
+  `zomlang/tests/unittests/compiler/hir/hir-module-test.cc` (drives
   source through the real `CompilerSession` and asserts on
   `builtMir[0].builtMir().functions()`), plus
-  `products/zomlang/tests/unittests/compiler/driver/session/compiler-session-test.cc`
+  `zomlang/tests/unittests/compiler/driver/session/compiler-session-test.cc`
   and `.../ownership/ownership-event-overlay-test.cc` for field-write and
   receiver-call MIR shapes.
 

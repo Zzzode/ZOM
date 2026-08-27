@@ -6,20 +6,20 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-LEXER_DIR = ROOT / "products" / "zomlang" / "compiler" / "lexer"
-PARSER_DIR = ROOT / "products" / "zomlang" / "compiler" / "parser"
-LEXER_TEST_DIR = ROOT / "products" / "zomlang" / "tests" / "unittests" / "compiler" / "lexer"
-CONFORMANCE_CORPUS = ROOT / "products" / "zomlang" / "tests" / "conformance" / "corpus"
+LEXER_DIR = ROOT / "zomlang" / "compiler" / "lexer"
+PARSER_DIR = ROOT / "zomlang" / "compiler" / "parser"
+LEXER_TEST_DIR = ROOT / "zomlang" / "tests" / "unittests" / "compiler" / "lexer"
+CONFORMANCE_CORPUS = ROOT / "zomlang" / "tests" / "conformance" / "corpus"
 CONFORMANCE_GRAMMAR = (
-    ROOT / "products" / "zomlang" / "tests" / "conformance" / "expectations" / "grammar"
+    ROOT / "zomlang" / "tests" / "conformance" / "expectations" / "grammar"
 )
 CONFORMANCE_AST = (
-    ROOT / "products" / "zomlang" / "tests" / "conformance" / "expectations" / "ast"
+    ROOT / "zomlang" / "tests" / "conformance" / "expectations" / "ast"
 )
 DESIGN_DIR = ROOT / "docs" / "design"
 LEXICAL_SPEC = ROOT / "docs" / "spec" / "chapters" / "02-lexical-structure.md"
 ZOM_LEXER_G4 = ROOT / "docs" / "spec" / "ZomLexer.g4"
-KINDS_H = ROOT / "products" / "zomlang" / "compiler" / "ast" / "kinds.h"
+KINDS_H = ROOT / "zomlang" / "compiler" / "ast" / "kinds.h"
 TOKEN_CC = LEXER_DIR / "token.cc"
 UTILS_CC = LEXER_DIR / "utils.cc"
 LEXER_INVENTORY_TEST = LEXER_TEST_DIR / "lexer-inventory-test.cc"

@@ -15,7 +15,7 @@ from types import ModuleType
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BASE_FILE = Path(
-    "products/zomlang/tests/coverage/implementation-series-base.txt"
+    "zomlang/tests/coverage/implementation-series-base.txt"
 )
 CONFLICT_MARKER = re.compile(r"^(<<<<<<<|=======|>>>>>>>|\|\|\|\|\|\|\|)")
 

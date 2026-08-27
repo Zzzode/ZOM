@@ -9,8 +9,8 @@ Updated: 2026-07-24
 | Authority | Non-normative compiler implementation guide |
 | Coverage | Partial production Built MIR |
 | Governing decisions | [RFC 0010](../../rfc/0010-intermediate-representation-pipeline.md), [RFC 0013](../../rfc/0013-ownership-analysis-integration-boundary.md) |
-| Production implementation | [`built-mir.h`](../../../products/zomlang/compiler/mir/built-mir.h), [`built-mir.cc`](../../../products/zomlang/compiler/mir/built-mir.cc) |
-| Native verification | [`built-mir-test.cc`](../../../products/zomlang/tests/unittests/compiler/mir/built-mir-test.cc), [`compiler-session-package-test.cc`](../../../products/zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc) |
+| Production implementation | [`built-mir.h`](../../../zomlang/compiler/mir/built-mir.h), [`built-mir.cc`](../../../zomlang/compiler/mir/built-mir.cc) |
+| Native verification | [`built-mir-test.cc`](../../../zomlang/tests/unittests/compiler/mir/built-mir-test.cc), [`compiler-session-package-test.cc`](../../../zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc) |
 
 Built MIR is a live, revision-bound, independently verified artifact. Its
 current producer and verifier support only scalar module initialization and

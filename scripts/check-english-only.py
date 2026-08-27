@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BASE_FILE = Path(
-    "products/zomlang/tests/coverage/implementation-series-base.txt"
+    "zomlang/tests/coverage/implementation-series-base.txt"
 )
 BASE_RECORD = re.compile(rb"[0-9a-f]{40}\n")
 

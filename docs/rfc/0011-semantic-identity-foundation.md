@@ -1115,15 +1115,15 @@ handles. A raw repository-wide text search is not an acceptance gate.
 |---|---|---|
 | Agent routing for identity ownership | `AGENTS.md`, `.codex/subagents/README.md`, `.codex/subagents/manifest.yaml` | `task-router` |
 | RFC governance | `docs/rfc/0011-semantic-identity-foundation.md`, `docs/rfc/tracking/0011-review-and-implementation.md`, `docs/rfc/README.md` | `rfc` |
-| Parsed declaration inventory | `products/zomlang/compiler/lexer/**`, `products/zomlang/compiler/parser/**`, `products/zomlang/compiler/ast/**` | `lexer-parser` |
-| Shared identity values, keys, encoders, registries, and invariant facts | `products/zomlang/compiler/identity/**` | `module-system` |
-| Context, package, crate, module, and source identity | `products/zomlang/compiler/driver/**`, `products/zomlang/compiler/symbol/**`, `products/zomlang/compiler/source/**` | `module-system` |
-| Definition, impl, and semantic type handle consumers | `products/zomlang/compiler/binder/**`, `products/zomlang/compiler/checker/**`, `products/zomlang/compiler/type/**` | `binder-checker` |
-| Identity invariant diagnostics | `products/zomlang/compiler/diagnostics/**` | `error-system` |
-| HIR, MIR, LIR, and backend identity consumers | `products/zomlang/compiler/hir/**`, `products/zomlang/compiler/mir/**`, `products/zomlang/compiler/lir/**`, `products/zomlang/compiler/backend/**` | `ir-backend` |
-| Compiler build wiring for the identity library | `products/zomlang/compiler/CMakeLists.txt` | `ir-backend` |
+| Parsed declaration inventory | `zomlang/compiler/lexer/**`, `zomlang/compiler/parser/**`, `zomlang/compiler/ast/**` | `lexer-parser` |
+| Shared identity values, keys, encoders, registries, and invariant facts | `zomlang/compiler/identity/**` | `module-system` |
+| Context, package, crate, module, and source identity | `zomlang/compiler/driver/**`, `zomlang/compiler/symbol/**`, `zomlang/compiler/source/**` | `module-system` |
+| Definition, impl, and semantic type handle consumers | `zomlang/compiler/binder/**`, `zomlang/compiler/checker/**`, `zomlang/compiler/type/**` | `binder-checker` |
+| Identity invariant diagnostics | `zomlang/compiler/diagnostics/**` | `error-system` |
+| HIR, MIR, LIR, and backend identity consumers | `zomlang/compiler/hir/**`, `zomlang/compiler/mir/**`, `zomlang/compiler/lir/**`, `zomlang/compiler/backend/**` | `ir-backend` |
+| Compiler build wiring for the identity library | `zomlang/compiler/CMakeLists.txt` | `ir-backend` |
 | Package, crate, module, and architecture alignment | `docs/spec/**`, `docs/design/**` | `spec-audit` |
-| Identity, determinism, and cross-context tests | `products/zomlang/tests/**` | `verification` |
+| Identity, determinism, and cross-context tests | `zomlang/tests/**` | `verification` |
 | Identity architecture gate | `scripts/check-identity-architecture.py` | `verification` |
 
 ## Security And Safety Impact
@@ -1315,7 +1315,7 @@ is accepted.
 ## Implementation Plan
 
 1. Complete all required-owner review and align dependent RFC contracts.
-2. Add `products/zomlang/compiler/identity/**` and route it to the module-system
+2. Add `zomlang/compiler/identity/**` and route it to the module-system
    owner as the only home of brands, keys, canonical encoding, registries, and
    invariant facts.
 3. Add `SemanticContextFactory`, `RegistryBrandIssuer`, context and store handle

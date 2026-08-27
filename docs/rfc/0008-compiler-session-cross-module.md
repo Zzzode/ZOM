@@ -951,13 +951,13 @@ flowchart TD
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/0008-compiler-session-cross-module.md`, `docs/rfc/tracking/0008-review-and-implementation.md`, `docs/rfc/README.md` | `rfc` |
-| Driver/session implementation | `products/zomlang/compiler/driver/**` | `module-system` |
-| Binder and symbol integration | `products/zomlang/compiler/binder/**`, `products/zomlang/compiler/symbol/**` | `module-system` |
-| Checker and TypeEnv integration | `products/zomlang/compiler/checker/**`, `products/zomlang/compiler/type/**` | `binder-checker` |
-| Diagnostics | `products/zomlang/compiler/diagnostics/**` | `error-system` |
-| Checked-module and IR identity consumers | `products/zomlang/compiler/hir/**`, `products/zomlang/compiler/mir/**`, `products/zomlang/compiler/lir/**` | `ir-backend` |
+| Driver/session implementation | `zomlang/compiler/driver/**` | `module-system` |
+| Binder and symbol integration | `zomlang/compiler/binder/**`, `zomlang/compiler/symbol/**` | `module-system` |
+| Checker and TypeEnv integration | `zomlang/compiler/checker/**`, `zomlang/compiler/type/**` | `binder-checker` |
+| Diagnostics | `zomlang/compiler/diagnostics/**` | `error-system` |
+| Checked-module and IR identity consumers | `zomlang/compiler/hir/**`, `zomlang/compiler/mir/**`, `zomlang/compiler/lir/**` | `ir-backend` |
 | Spec alignment | `docs/spec/**`, `docs/design/**` | `spec-audit` |
-| Tests and verification | `products/zomlang/tests/**` | `verification` |
+| Tests and verification | `zomlang/tests/**` | `verification` |
 
 ## Security And Safety Impact
 

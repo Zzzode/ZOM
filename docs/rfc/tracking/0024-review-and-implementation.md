@@ -157,16 +157,16 @@ replacement task in this table.
   proof-input, and overlay lineage requirements.
 - Rust language items and Swift known protocols were reviewed as primary prior
   art for compiler-known roles backed by real library declarations.
-- `products/zomcore/Zom.toml` is exactly 108 bytes with SHA-256
+- `core/Zom.toml` is exactly 108 bytes with SHA-256
   `3ec3417bca606a7cfbb588b7e177202ade5dcdec48cdff13ba6aea474000ab74`;
-  `products/zomcore/src/prelude.zom` is exactly 52 bytes with SHA-256
+  `core/src/prelude.zom` is exactly 52 bytes with SHA-256
   `a05fc153f772f0075ed4c8dd9d8affeecb3f01ea674786047e31778f439833a3`.
 - `cmake --preset sanitizer` and
   `cmake --build --preset sanitizer --target zomc` verify configuration and
   target materialization.
 - `ctest --preset default -R '^standard-prelude-install-layout$' --output-on-failure`
   verifies the exact installed file set and bytes.
-- `build-sanitizer/bin/zomc compile --manifest-path products/zomcore/Zom.toml --package zomcore --lib --syntax-only`
+- `build-sanitizer/bin/zomc compile --manifest-path core/Zom.toml --package zomcore --lib --syntax-only`
   verifies parsing and binding of the source-backed package through the package
   CLI.
 - The sanitizer build and complete `ctest --preset default --output-on-failure`

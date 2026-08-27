@@ -131,9 +131,9 @@ requires exact full-record re-encoding.
 `R40-11` edits exactly:
 
 ```text
-products/zomlang/compiler/binder/metadata/binding-metadata.h
-products/zomlang/compiler/binder/metadata/binding-metadata.cc
-products/zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
+zomlang/compiler/binder/metadata/binding-metadata.h
+zomlang/compiler/binder/metadata/binding-metadata.cc
+zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
 ```
 
 It counts additions plus deletions from exact predecessor hashes and permits

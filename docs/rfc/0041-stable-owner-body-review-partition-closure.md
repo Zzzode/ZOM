@@ -178,17 +178,17 @@ source, schema, or codec.
 Every fact task edits exactly:
 
 ```text
-products/zomlang/compiler/binder/stable/stable-binding-facts.h
-products/zomlang/compiler/binder/stable/stable-binding-facts.cc
-products/zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
+zomlang/compiler/binder/stable/stable-binding-facts.h
+zomlang/compiler/binder/stable/stable-binding-facts.cc
+zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
 ```
 
 Every codec task edits exactly:
 
 ```text
-products/zomlang/compiler/binder/stable/stable-binding-codec.h
-products/zomlang/compiler/binder/stable/stable-binding-codec.cc
-products/zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
+zomlang/compiler/binder/stable/stable-binding-codec.h
+zomlang/compiler/binder/stable/stable-binding-codec.cc
+zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
 ```
 
 Each review records the exact approved predecessor tuple, candidate tuple, and

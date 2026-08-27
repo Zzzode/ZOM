@@ -1,6 +1,6 @@
 ---
 paths:
-  - "products/zomlang/tests/**"
+  - "zomlang/tests/**"
   - "examples/**"
   - "**/*test*.cc"
   - "**/*test*.zom"
@@ -53,8 +53,8 @@ For any non-trivial function `Xxx` in the compiler:
 
 Lit tests are the **source of truth** for spec ↔ implementation alignment.
 Each AST conformance case has a pure source under
-`products/zomlang/tests/conformance/corpus/` and a matching lit/FileCheck
-expectation under `products/zomlang/tests/conformance/expectations/ast/`.
+`zomlang/tests/conformance/corpus/` and a matching lit/FileCheck
+expectation under `zomlang/tests/conformance/expectations/ast/`.
 
 ### Required Preamble
 
@@ -86,8 +86,8 @@ Optional modifiers:
 Run:
 
 ```bash
-python3 products/zomlang/tests/tools/regen-lit.py \
-  products/zomlang/tests/conformance/corpus/path/to/test.zom
+python3 zomlang/tests/tools/regen-lit.py \
+  zomlang/tests/conformance/corpus/path/to/test.zom
 ```
 
 This rewrites FileCheck lines to match the *current* actual output. After

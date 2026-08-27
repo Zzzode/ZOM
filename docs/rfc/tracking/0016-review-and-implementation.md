@@ -181,11 +181,11 @@ The `ir-backend` blocking objection is now resolved in substance. The canonical
 codec golden fixtures in `Runtime, target, and registry codecs` embedded the
 banned revision-suffixed internal name `zom-v1` as the runtime ABI profile
 bytes, while the live encoder and the live test use `zom` with no suffix
-(`products/zomlang/compiler/ir/target-registry.cc` `computeTargetSpecId`,
+(`zomlang/compiler/ir/target-registry.cc` `computeTargetSpecId`,
 `encodeProfileRevision`, and the `zom.target-registry` preimage builder;
-`products/zomlang/utils/zomc/zomc.cc` constructing the target spec with
+`zomlang/utils/zomc/zomc.cc` constructing the target spec with
 `runtimeAbiProfile = "zom"`; and
-`products/zomlang/tests/unittests/compiler/ir/target-registry-test.cc` asserting
+`zomlang/tests/unittests/compiler/ir/target-registry-test.cc` asserting
 the `zom` `TargetSpecId` `b5171e0d...`). Every affected preimage, byte length,
 nested length prefix, and SHA-256 was re-derived with `zom` from a replica of
 the live encoder algorithm, cross-checked against the live-test `b5171e0d`
@@ -287,7 +287,7 @@ the named evidence is attached.
 Independent repository inspection confirmed the proposal's live dependencies:
 
 - `CanonicalQueryKey` and the RFC 0017 snapshot/cancellation/provenance
-  foundations exist in `products/zomlang/compiler/query/query-database.cc`
+  foundations exist in `zomlang/compiler/query/query-database.cc`
   and `query-types.h`.
 - The `VerifiedTargetAuthorityBundle`, `VerifiedFinalCodegenAuthority`,
   code-generation capability registry, and target-independent runtime ABI

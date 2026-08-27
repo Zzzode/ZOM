@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SOURCE_ROOT = ROOT / "products/zomcore/src"
+DEFAULT_SOURCE_ROOT = ROOT / "core/src"
 REQUIRED_FILES = (
     Path("core.zom"),
     Path("core/marker.zom"),

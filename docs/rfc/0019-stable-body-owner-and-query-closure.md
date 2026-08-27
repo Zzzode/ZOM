@@ -552,9 +552,9 @@ bound-module root.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/0019-stable-body-owner-and-query-closure.md`; `docs/rfc/tracking/0019-review-and-implementation.md` | `rfc` |
-| Stable Binder values, providers, verifiers, materializers, and Checker handoff | `products/zomlang/compiler/binder/**` excluding `binder/module-*`; `products/zomlang/compiler/checker/**` excluding the diagnostic definition file; `products/zomlang/compiler/type/**` | `binder-checker` |
-| Contextual membership, query runtime, graph capability, session, and module interface | `products/zomlang/compiler/query/**`; `products/zomlang/compiler/identity/**`; `products/zomlang/compiler/driver/**`; `products/zomlang/compiler/binder/module-*` | `module-system` |
-| Diagnostic schemas | `products/zomlang/compiler/diagnostics/**`; `products/zomlang/compiler/checker/checker-source-diagnostics.def` | `error-system` |
+| Stable Binder values, providers, verifiers, materializers, and Checker handoff | `zomlang/compiler/binder/**` excluding `binder/module-*`; `zomlang/compiler/checker/**` excluding the diagnostic definition file; `zomlang/compiler/type/**` | `binder-checker` |
+| Contextual membership, query runtime, graph capability, session, and module interface | `zomlang/compiler/query/**`; `zomlang/compiler/identity/**`; `zomlang/compiler/driver/**`; `zomlang/compiler/binder/module-*` | `module-system` |
+| Diagnostic schemas | `zomlang/compiler/diagnostics/**`; `zomlang/compiler/checker/checker-source-diagnostics.def` | `error-system` |
 | Current-state architecture audit | `docs/design/compiler-contracts.md`; affected language specification surfaces | `spec-audit` |
 | Tests, gates, coverage, and CI | paths assigned to `verification` in `.codex/subagents/manifest.yaml` | `verification` |
 

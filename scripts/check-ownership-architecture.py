@@ -8,63 +8,63 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OVERLAY = Path("products/zomlang/compiler/ownership/ownership-event-overlay.cc")
-DROP_ELABORATED = Path("products/zomlang/compiler/ownership/drop-elaborated-mir.cc")
-DROP_ELABORATED_HEADER = Path("products/zomlang/compiler/ownership/drop-elaborated-mir.h")
+OVERLAY = Path("zomlang/compiler/ownership/ownership-event-overlay.cc")
+DROP_ELABORATED = Path("zomlang/compiler/ownership/drop-elaborated-mir.cc")
+DROP_ELABORATED_HEADER = Path("zomlang/compiler/ownership/drop-elaborated-mir.h")
 DROP_ELABORATED_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/ownership/ownership-drop-elaboration-test.cc"
+    "zomlang/tests/unittests/compiler/ownership/ownership-drop-elaboration-test.cc"
 )
-ADMISSION_HEADER = Path("products/zomlang/compiler/ownership/surface-admission.h")
-ADMISSION_SOURCE = Path("products/zomlang/compiler/ownership/surface-admission.cc")
-MOVE_PATHS = Path("products/zomlang/compiler/ownership/facts/paths.cc")
-MOVE_PATHS_HEADER = Path("products/zomlang/compiler/ownership/facts/paths.h")
-FLOW = Path("products/zomlang/compiler/ownership/facts/flow.cc")
-FLOW_HEADER = Path("products/zomlang/compiler/ownership/facts/flow.h")
-INITIALIZATION = Path("products/zomlang/compiler/ownership/facts/init.cc")
-INITIALIZATION_HEADER = Path("products/zomlang/compiler/ownership/facts/init.h")
-LOANS = Path("products/zomlang/compiler/ownership/facts/loans.cc")
-LOANS_HEADER = Path("products/zomlang/compiler/ownership/facts/loans.h")
-POINTS_HEADER = Path("products/zomlang/compiler/ownership/facts/points.h")
-REFERENCES = Path("products/zomlang/compiler/ownership/facts/refs.cc")
-REFERENCES_HEADER = Path("products/zomlang/compiler/ownership/facts/refs.h")
-REGIONS = Path("products/zomlang/compiler/ownership/facts/regions.cc")
-REGIONS_HEADER = Path("products/zomlang/compiler/ownership/facts/regions.h")
-STATES = Path("products/zomlang/compiler/ownership/facts/states.cc")
-STATES_HEADER = Path("products/zomlang/compiler/ownership/facts/states.h")
-RESOURCES = Path("products/zomlang/compiler/ownership/facts/resources.cc")
-RESOURCES_HEADER = Path("products/zomlang/compiler/ownership/facts/resources.h")
-INPUTS = Path("products/zomlang/compiler/ownership/facts/inputs.cc")
-INPUTS_HEADER = Path("products/zomlang/compiler/ownership/facts/inputs.h")
-FACTS_REVISION = Path("products/zomlang/compiler/ownership/facts/ownership-facts-revision.cc")
+ADMISSION_HEADER = Path("zomlang/compiler/ownership/surface-admission.h")
+ADMISSION_SOURCE = Path("zomlang/compiler/ownership/surface-admission.cc")
+MOVE_PATHS = Path("zomlang/compiler/ownership/facts/paths.cc")
+MOVE_PATHS_HEADER = Path("zomlang/compiler/ownership/facts/paths.h")
+FLOW = Path("zomlang/compiler/ownership/facts/flow.cc")
+FLOW_HEADER = Path("zomlang/compiler/ownership/facts/flow.h")
+INITIALIZATION = Path("zomlang/compiler/ownership/facts/init.cc")
+INITIALIZATION_HEADER = Path("zomlang/compiler/ownership/facts/init.h")
+LOANS = Path("zomlang/compiler/ownership/facts/loans.cc")
+LOANS_HEADER = Path("zomlang/compiler/ownership/facts/loans.h")
+POINTS_HEADER = Path("zomlang/compiler/ownership/facts/points.h")
+REFERENCES = Path("zomlang/compiler/ownership/facts/refs.cc")
+REFERENCES_HEADER = Path("zomlang/compiler/ownership/facts/refs.h")
+REGIONS = Path("zomlang/compiler/ownership/facts/regions.cc")
+REGIONS_HEADER = Path("zomlang/compiler/ownership/facts/regions.h")
+STATES = Path("zomlang/compiler/ownership/facts/states.cc")
+STATES_HEADER = Path("zomlang/compiler/ownership/facts/states.h")
+RESOURCES = Path("zomlang/compiler/ownership/facts/resources.cc")
+RESOURCES_HEADER = Path("zomlang/compiler/ownership/facts/resources.h")
+INPUTS = Path("zomlang/compiler/ownership/facts/inputs.cc")
+INPUTS_HEADER = Path("zomlang/compiler/ownership/facts/inputs.h")
+FACTS_REVISION = Path("zomlang/compiler/ownership/facts/ownership-facts-revision.cc")
 FACTS_REVISION_HEADER = Path(
-    "products/zomlang/compiler/ownership/facts/ownership-facts-revision.h"
+    "zomlang/compiler/ownership/facts/ownership-facts-revision.h"
 )
-FACTS_CODEC = Path("products/zomlang/compiler/ownership/facts/ownership-facts-codec.cc")
-FACTS_CODEC_HEADER = Path("products/zomlang/compiler/ownership/facts/ownership-facts-codec.h")
-OWNERSHIP_CHECKED_MIR = Path("products/zomlang/compiler/ownership/ownership-checked-mir.cc")
+FACTS_CODEC = Path("zomlang/compiler/ownership/facts/ownership-facts-codec.cc")
+FACTS_CODEC_HEADER = Path("zomlang/compiler/ownership/facts/ownership-facts-codec.h")
+OWNERSHIP_CHECKED_MIR = Path("zomlang/compiler/ownership/ownership-checked-mir.cc")
 OWNERSHIP_CHECKED_MIR_HEADER = Path(
-    "products/zomlang/compiler/ownership/ownership-checked-mir.h"
+    "zomlang/compiler/ownership/ownership-checked-mir.h"
 )
-BORROW_EVIDENCE_HEADER = Path("products/zomlang/compiler/driver/interface/borrow-evidence.h")
-BORROW_EVIDENCE_SOURCE = Path("products/zomlang/compiler/driver/interface/borrow-evidence.cc")
-HIR = Path("products/zomlang/compiler/hir/hir-module.cc")
-HIR_HEADER = Path("products/zomlang/compiler/hir/hir-module.h")
-CHECKED_MODULE = Path("products/zomlang/compiler/hir/checked-module.cc")
-CHECKED_MODULE_HEADER = Path("products/zomlang/compiler/hir/checked-module.h")
-MIR = Path("products/zomlang/compiler/mir/built-mir.cc")
-MIR_HEADER = Path("products/zomlang/compiler/mir/built-mir.h")
-BUILT_MIR_TEST = Path("products/zomlang/tests/unittests/compiler/mir/built-mir-test.cc")
-OWNERSHIP_CMAKE = Path("products/zomlang/compiler/ownership/CMakeLists.txt")
-SESSION = Path("products/zomlang/compiler/driver/session/compiler-session.cc")
-TEST = Path("products/zomlang/tests/unittests/compiler/ownership/ownership-event-overlay-test.cc")
-HIR_TEST = Path("products/zomlang/tests/unittests/compiler/hir/hir-module-test.cc")
+BORROW_EVIDENCE_HEADER = Path("zomlang/compiler/driver/interface/borrow-evidence.h")
+BORROW_EVIDENCE_SOURCE = Path("zomlang/compiler/driver/interface/borrow-evidence.cc")
+HIR = Path("zomlang/compiler/hir/hir-module.cc")
+HIR_HEADER = Path("zomlang/compiler/hir/hir-module.h")
+CHECKED_MODULE = Path("zomlang/compiler/hir/checked-module.cc")
+CHECKED_MODULE_HEADER = Path("zomlang/compiler/hir/checked-module.h")
+MIR = Path("zomlang/compiler/mir/built-mir.cc")
+MIR_HEADER = Path("zomlang/compiler/mir/built-mir.h")
+BUILT_MIR_TEST = Path("zomlang/tests/unittests/compiler/mir/built-mir-test.cc")
+OWNERSHIP_CMAKE = Path("zomlang/compiler/ownership/CMakeLists.txt")
+SESSION = Path("zomlang/compiler/driver/session/compiler-session.cc")
+TEST = Path("zomlang/tests/unittests/compiler/ownership/ownership-event-overlay-test.cc")
+HIR_TEST = Path("zomlang/tests/unittests/compiler/hir/hir-module-test.cc")
 SESSION_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/session/compiler-session-package-test.cc"
+    "zomlang/tests/unittests/compiler/driver/session/compiler-session-package-test.cc"
 )
 COMPILER_SESSION_TEST = Path(
-    "products/zomlang/tests/unittests/compiler/driver/session/compiler-session-test.cc"
+    "zomlang/tests/unittests/compiler/driver/session/compiler-session-test.cc"
 )
-TEST_CMAKE = Path("products/zomlang/tests/conformance/CMakeLists.txt")
+TEST_CMAKE = Path("zomlang/tests/conformance/CMakeLists.txt")
 REQUIRED = (
     OVERLAY,
     DROP_ELABORATED,
