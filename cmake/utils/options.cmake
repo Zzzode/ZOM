@@ -14,6 +14,10 @@ option(BUILD_CLI "Build ZOM CLI" ON)
 option(ZOM_ENABLE_UNITTESTS "Enable ZOM unittests" ON)
 option(ZOM_ENABLE_COVERAGE "Enable coverage reporting" OFF)
 option(
+  ZOM_ENABLE_LLVM_BACKEND
+  "Enable the RFC 0016 fail-closed LLVM discovery gate (requires an explicit LLVM_DIR; frontend-only builds leave this OFF)"
+  OFF)
+option(
   ZOM_ENABLE_PRIVILEGED_LINUX_SANDBOX_TESTS
   "Build and register privileged Linux production sandbox integration tests"
   OFF)

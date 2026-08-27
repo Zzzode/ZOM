@@ -28,6 +28,10 @@ if(ZOM_ENABLE_COVERAGE)
   include(${ZOM_CMAKE_DIR}/utils/coverage.cmake)
 endif()
 
+if(ZOM_ENABLE_LLVM_BACKEND)
+  include(${ZOM_CMAKE_DIR}/utils/llvm.cmake)
+endif()
+
 add_subdirectory(libraries)
 add_subdirectory(products)
 add_subdirectory(examples)

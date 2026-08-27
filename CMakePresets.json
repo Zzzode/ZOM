@@ -52,6 +52,16 @@
         "ZOM_ENABLE_ADDRESS_SANITIZER": "OFF",
         "ZOM_ENABLE_UNDEFINED_SANITIZER": "OFF"
       }
+    },
+    {
+      "name": "llvm",
+      "inherits": "base",
+      "displayName": "LLVM backend (RFC 0016 discovery gate)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ZOM_ENABLE_LLVM_BACKEND": "ON",
+        "LLVM_DIR": "$env{LLVM_DIR}"
+      }
     }
   ],
   "buildPresets": [

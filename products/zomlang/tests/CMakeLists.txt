@@ -174,6 +174,31 @@ set_tests_properties(
   core-library-install-consumer
   PROPERTIES LABELS "integration;core;install" RUN_SERIAL TRUE TIMEOUT 120)
 
+# RFC 0016 -- LLVM discovery-gate configure fixtures. Drives the real gate
+# module (cmake/utils/llvm.cmake) through an isolated harness for the positive
+# and every configure-negative case, asserting the stable repository-owned
+# failure identifiers. The negative cases synthesize self-contained fake LLVM
+# installs and need only cmake + python; the positive/ambient cases require the
+# provisioned LLVM, forwarded only when ZOM_ENABLE_LLVM_BACKEND is ON.
+if(ZOM_ENABLE_LLVM_BACKEND AND DEFINED LLVM_DIR AND NOT "${LLVM_DIR}" STREQUAL "")
+  set(ZOM_LLVM_GATE_REAL_DIR_ARG "--real-llvm-dir" "${LLVM_DIR}")
+else()
+  set(ZOM_LLVM_GATE_REAL_DIR_ARG "")
+endif()
+add_test(
+  NAME llvm-discovery-gate
+  COMMAND
+    "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-llvm-discovery-gate.py"
+    "--harness-dir"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/llvm-discovery-gate"
+    "--gate-module"
+    "${CMAKE_SOURCE_DIR}/cmake/utils/llvm.cmake"
+    ${ZOM_LLVM_GATE_REAL_DIR_ARG})
+set_tests_properties(
+  llvm-discovery-gate
+  PROPERTIES LABELS "integration;llvm;rfc0016" RUN_SERIAL TRUE TIMEOUT 300)
+
 # Benchmarks - Frontend micro-benchmarks
 add_subdirectory(benchmarks)
 
