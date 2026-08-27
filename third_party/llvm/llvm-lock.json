@@ -1,0 +1,21 @@
+{
+  "source": "https://github.com/llvm/llvm-project",
+  "tag": "llvmorg-22.1.8",
+  "commit": "ca7933e47d3a3451d81e72ac174dcb5aa28b59d1",
+  "annotated_tag_object": "e013073558445169e8732e25fa86e9913bfdd24e",
+  "version": "22.1.8",
+  "targets": ["X86", "AArch64"],
+  "components": [
+    "Core",
+    "Support",
+    "Target",
+    "TargetParser",
+    "MC",
+    "CodeGen",
+    "AsmParser",
+    "AsmPrinter",
+    "BitWriter",
+    "X86",
+    "AArch64"
+  ]
+}

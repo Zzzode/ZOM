@@ -12,6 +12,11 @@ env:
   ANTLR_VERSION: 4.13.2
   ANTLR_SHA256: eae2dfa119a64327444672aff63e9ec35a20180dc5b8090b7a6ab85125df4d76
   ANTLRJAR: /tmp/antlr-4.13.2-complete.jar
+  # Locked LLVM backend dependency (strategy B, self-managed source lock). The
+  # source of truth is third_party/llvm/llvm-lock.json; these pins mirror it and
+  # are cross-checked by scripts/check-llvm-lock.py against cmake/utils/llvm.cmake.
+  LLVM_VERSION: 22.1.8
+  LLVM_COMMIT: ca7933e47d3a3451d81e72ac174dcb5aa28b59d1
 
 jobs:
   check-internal-versioning:
@@ -234,3 +239,73 @@ jobs:
           name: codecov-umbrella
           fail_ci_if_error: true
           verbose: true
+
+  # RFC 0016 / O2-KR2.5 -- LLVM backend gate. This is the ONLY job that enables
+  # ZOM_ENABLE_LLVM_BACKEND; every frontend job above leaves it OFF and links no
+  # LLVM, so the frontend contract stays fast and LLVM-free.
+  #
+  # Runner is fixed to ubuntu-24.04 per the RFC 0016 contract. That image ships
+  # glibc 2.39, which clears the glibc floor of a commit-locked prebuilt LLVM
+  # (the host-of-record dev build was glibc 2.36; a glibc-2.38 prebuilt would not
+  # run there, which is why the lock owns the source). CI provisions the SAME
+  # commit-locked LLVM as dev: it restores a cached prebuilt keyed on LLVM_COMMIT
+  # and falls back to scripts/provision-llvm.py (from-source) on a cache miss.
+  check-backend-llvm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang git
+          pip3 install lit psutil PyYAML
+
+      - name: Verify LLVM lock matches the CMake gate
+        run: python3 scripts/check-llvm-lock.py
+
+      # Cache the provisioned LLVM prefix keyed on the locked commit + runner OS,
+      # so the commit-locked toolchain is reused rather than rebuilt every run.
+      - name: Cache locked LLVM prefix
+        id: cache-llvm
+        uses: actions/cache@v4
+        with:
+          path: ~/toolchains/llvm22
+          key: llvm-${{ runner.os }}-${{ env.LLVM_COMMIT }}
+
+      # On a cache miss, build the locked tag from source. The helper is
+      # idempotent: on a cache hit it detects the valid install and skips.
+      - name: Provision locked LLVM (from source on cache miss)
+        run: python3 scripts/provision-llvm.py --prefix "$HOME/toolchains/llvm22"
+
+      - name: Configure with LLVM backend enabled
+        run: |
+          cmake --preset llvm \
+            -DLLVM_DIR="$HOME/toolchains/llvm22/lib/cmake/llvm"
+
+      - name: Run RFC 0016 discovery-gate fixtures
+        run: |
+          python3 products/zomlang/tests/tools/check-llvm-discovery-gate.py \
+            --harness-dir products/zomlang/tests/cmake/llvm-discovery-gate \
+            --gate-module cmake/utils/llvm.cmake \
+            --real-llvm-dir "$HOME/toolchains/llvm22/lib/cmake/llvm"
+
+      - name: Build backend translation test
+        run: cmake --build build-llvm --target llvm-translation-test
+
+      - name: Run backend translation test
+        run: ctest --test-dir build-llvm --output-on-failure -R llvm-translation-test
+
+  # TODO(O2-KR2.5): add the macos-15 backend lane (RFC 0016 desirable target).
+  # Deferred here because a from-source LLVM build on macOS CI is heavy and this
+  # change cannot validate a macOS runner in-session. The Linux ubuntu-24.04
+  # lane above is the honest partial; the macOS lane must reuse the same
+  # commit-locked source (scripts/provision-llvm.py) rather than a rolling
+  # Homebrew install, per the strategy-B source-of-truth contract.
