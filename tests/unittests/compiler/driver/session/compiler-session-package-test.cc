@@ -261,6 +261,21 @@ package::DigestVerifiedSourceSnapshot moduleSnapshot() {
   return zc::mv(result.get<package::DigestVerifiedSourceSnapshot>());
 }
 
+package::DigestVerifiedSourceSnapshot twoModuleScalarSnapshot() {
+  auto sourceDirectory = zc::newInMemoryDirectory(zc::nullClock());
+  sourceDirectory
+      ->openFile(zc::Path({"src"_zc, "main.zom"_zc}),
+                 zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
+      ->writeAll("import app::child;\nfun answer() -> i32 { return 42; }"_zc);
+  sourceDirectory->openFile(zc::Path({"src"_zc, "child.zom"_zc}), zc::WriteMode::CREATE)
+      ->writeAll("module child;\nfun childAnswer() -> i32 { return 7; }"_zc);
+  MemoryFreshDirectoryFactory factory;
+  package::SourceDirectoryMaterializer materializer;
+  auto result = materializer.materialize(*sourceDirectory, factory);
+  ZC_REQUIRE(result.is<package::DigestVerifiedSourceSnapshot>());
+  return zc::mv(result.get<package::DigestVerifiedSourceSnapshot>());
+}
+
 package::DigestVerifiedSourceSnapshot definitionImportSnapshot() {
   auto sourceDirectory = zc::newInMemoryDirectory(zc::nullClock());
   sourceDirectory
@@ -656,6 +671,13 @@ zc::Vector<package::ResolvedPackageSourceSnapshot> moduleSnapshots() {
   zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
   snapshots.add(
       package::ResolvedPackageSourceSnapshot::from(packageBase("app"_zc), moduleSnapshot()));
+  return snapshots;
+}
+
+zc::Vector<package::ResolvedPackageSourceSnapshot> twoModuleScalarSnapshots() {
+  zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
+  snapshots.add(package::ResolvedPackageSourceSnapshot::from(packageBase("app"_zc),
+                                                             twoModuleScalarSnapshot()));
   return snapshots;
 }
 
@@ -2578,6 +2600,65 @@ ZC_TEST("CompilerSession lowers a sequential local copy through HIR and Built MI
     ZC_REQUIRE(rejected.invariantFailures().facts().size() == 1);
     ZC_EXPECT(rejected.invariantFailures().facts()[0].kind() == ir::IrFailureKind::InvalidFact);
   }
+  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
+}
+
+ZC_TEST("CompilerSession lowers a two-module package through HIR and Built MIR") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+      twoModuleScalarSnapshots());
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+  installCore(session);
+
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  ZC_REQUIRE(session.checkSources());
+  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+
+  // Two ordinary app modules (main + child) each carry one scalar-return
+  // function, so the session lowers two HIR modules and two Built MIR modules.
+  ZC_REQUIRE(session.getVerifiedHirModules().size() == 2);
+  ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 2);
+
+  // Each Built MIR module holds exactly one scalar-return function whose block
+  // ends in a Return of a Constant of the function's success type. Match each
+  // MIR function to its HIR function by owner so the assertion is independent of
+  // module ordering.
+  size_t scalarReturnFunctions = 0;
+  const auto hirModules = session.getVerifiedHirModules();
+  const auto mirModules = session.getOwnershipCheckedMirModules();
+  for (size_t index = 0; index < mirModules.size(); ++index) {
+    const auto& hirModule = hirModules[index];
+    ZC_REQUIRE(hirModule.functions().size() == 1);
+    const auto& builtMir = mirModules[index].builtMir();
+    ZC_REQUIRE(builtMir.functions().size() == 1);
+    const auto& function = builtMir.functions()[0];
+    ZC_EXPECT(function.owner == hirModule.functions()[0].definition);
+    ZC_EXPECT(function.kind == mir::MirFunctionKind::Function);
+    ZC_EXPECT(function.resultType == hirModule.functions()[0].resultType);
+    ZC_EXPECT(function.locals.size() == 0);
+    ZC_REQUIRE(function.blocks.size() == 1);
+    ZC_EXPECT(function.blocks[0].statements.size() == 0);
+    ZC_EXPECT(function.blocks[0].terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_REQUIRE(function.blocks[0].terminator.returnValue().value != zc::none);
+    ZC_IF_SOME(value, function.blocks[0].terminator.returnValue().value) {
+      ZC_EXPECT(value.kind() == mir::MirOperandKind::Constant);
+      ZC_EXPECT(value.constantValue().type == function.resultType);
+    }
+    ++scalarReturnFunctions;
+  }
+  ZC_EXPECT(scalarReturnFunctions == 2);
   ZC_EXPECT(session.getIrFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
