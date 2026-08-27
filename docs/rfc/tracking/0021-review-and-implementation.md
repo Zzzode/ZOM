@@ -197,7 +197,7 @@ blocker still precedes any `compiler/lir` or `compiler/backend` code.
 | Slice | State | Required evidence |
 |---|---|---|
 | RFC 0016 accepted dependency binding | Blocked by RFC 0016 review | Exact accepted hash, target-authority bundle, one-shot code-generation authority, LLVM baseline, and owner approval |
-| LIR identity, carrier, layout, ABI, and revision foundation | Pending acceptance | Closed stores, independent oracle, exact mutation matrix |
+| LIR identity, carrier, layout, ABI, and revision foundation | Authorized 2026-08-27; not yet started | Closed stores, independent oracle, exact mutation matrix |
 | Monomorphization and generated-function materialization | Pending acceptance | Complete instance graph, canonical generated roles, deterministic order |
 | Block-parameter SSA and scalar lowering | Pending executable MIR | CFG, dominance, edge arity, calls, returns, deterministic dumps |
 | Memory, provenance, globals, and symbols | Pending foundation | Initialization, alignment, relocations, linkage, attribute-proof negatives |
