@@ -225,3 +225,140 @@ blocker still precedes any `compiler/lir` or `compiler/backend` code.
 - Reviews of earlier draft hashes were invalidated by normative edits and do
   not approve the current candidate. Fresh exact-hash review is required after
   RFC 0016 freezes.
+
+## LLVM 22.1.8 Integration Design (2026-08-27)
+
+This section is the implementation design for how ZOM discovers, links,
+isolates, drives, and upgrades LLVM 22.1.8. It conforms to the accepted
+contracts of RFC 0016 (discovery, CMake, CI, target-registry admission),
+RFC 0021 (LIR to LLVM translation), and RFC 0043 (link and executable
+publication, `REVIEW`); it does not restate or amend them. It is grounded in a
+2026-08-27 best-practices survey of rustc, Swift, Zig, and Clang and records
+where ZOM's accepted choices already match industry practice.
+
+### Design ground truth (verified on disk 2026-08-27)
+
+- No production code includes or links LLVM today: a repository grep for
+  `#include "llvm/..."`, `find_package(LLVM`, `llvm_map_components`, or an LLVM
+  `target_link_libraries` across `products/`, `libraries/`, and `cmake/`
+  (excluding coverage tooling) returns nothing. `compiler/backend` and
+  `compiler/lir` do not exist. The whole integration is therefore **additive**
+  and changes no existing runtime behavior.
+- `compiler/ir/target-registry.{h,cc}` carries the triple, data layout, CPU, and
+  features as validated ASCII strings and never calls an LLVM API; the `ir`
+  library links no LLVM. The RFC 0016 admission probe order (typed
+  `llvm::TargetRegistry` lookup, `MCSubtargetInfo`, `TargetMachine`,
+  `isCompatibleDataLayout`) is a spec contract with no live implementation, so
+  wiring real probes is net-new, not a rewrite.
+- The environment provides Homebrew LLVM `19.1.5`; the repository pins exactly
+  `22.1.8` (a real upstream tag,
+  `e013073558445169e8732e25fa86e9913bfdd24e`). Nothing below can build or run
+  until `22.1.8` is provisioned. This is the standing external gate (Q4 plan
+  KR2.1b); no ambient `19.1.5` is admitted and no gate is faked to look
+  productive.
+
+### Hard dependency order (the spine)
+
+Each step gates the next; none may be skipped or faked:
+
+1. **Provision LLVM `22.1.8`** in the dev and CI environments (external action).
+2. **Wire the RFC 0016 CMake discovery gate** (`find_package(LLVM REQUIRED
+   CONFIG PATHS "${ZOM_REQUESTED_LLVM_DIR}" NO_DEFAULT_PATH)`, exact-`22.1.8`
+   pin, `llvm-config` provenance chain, the seven `ZOM-CMAKE-LLVM-*` fail-closed
+   identifiers, and the eleven components with X86+AArch64). Because the gate is
+   unconditional and its positive fixture records a real
+   `llvm-config --version == 22.1.8`, step 2 cannot land before step 1 without
+   breaking the frontend-only build; the two are coupled.
+3. **RFC 0021 `ACCEPTED -> IMPLEMENTING`** with the implementation pointer set,
+   then the first authorized code slice: the LIR identity / carrier / layout /
+   ABI / revision codec foundation (pure data, no live MIR consumer, exact byte
+   oracles). No `compiler/lir` or `compiler/backend` code is authorized before
+   this transition.
+4. **LIR construction and the independent LIR verifier**, then the total
+   LIR to LLVM translation followed by mandatory `verifyModule`.
+5. **Object emission** via `TargetMachine::addPassesToEmitFile`
+   (`VerifiedObjectArtifact`).
+6. **RFC 0043 link and executable publication** consumes the object artifact and
+   the `ToolchainClosure`; ZOM never reimplements linking.
+
+### Best-practice-conformant decisions
+
+- **Discovery and pinning.** `find_package(LLVM CONFIG)` with an exact
+  `LLVM_PACKAGE_VERSION == 22.1.8` assertion and `NO_DEFAULT_PATH` is the
+  standard out-of-tree embedding for a project that wants exactly one LLVM
+  version; ZOM's rejection of an unset or ambient `LLVM_DIR` is stricter than
+  the norm and is kept as-is (RFC 0016). ZOM uses the system-package route
+  (Homebrew `llvm@22`, apt.llvm.org `llvm-22-dev`), not a vendored submodule;
+  this is lighter and standard when the project controls its CI image, and it
+  matches the accepted RFC 0016 CI contract.
+- **Component linking.** The fixed eleven components
+  (`Core Support Target TargetParser MC CodeGen AsmParser AsmPrinter BitWriter
+  X86 AArch64`) are exactly the minimal set for a two-architecture,
+  object-emitting backend; link them with `llvm_map_components_to_libnames` and
+  require both X86 and AArch64 in the installed target inventory (RFC 0016).
+- **API-isolation wall (top structural recommendation).** Confine every
+  `#include "llvm/..."` to a single backend shim under
+  `compiler/backend/llvm/**`, behind Pimpl, so no LLVM type appears in any ZOM
+  header and an LLVM version bump touches one wall. This mirrors Swift's
+  `lib/IRGen`, rustc's `llvm-wrapper`, and Zig's `zig_llvm.cpp`. RFC 0016 already
+  scopes LLVM linkage to `compiler/backend/**`; this design makes the
+  "no LLVM header outside the shim" rule explicit. Because ZOM is C++20 the wall
+  is architectural (an isolating library + Pimpl), not the C-ABI shim that Rust
+  and Zig need only because they cannot consume C++ directly.
+- **IR construction and verification.** Build LLVM IR with the standard builder
+  inside the shim; translate LIR block parameters to LLVM PHI nodes at the wall
+  (LIR itself has no PHI op); use opaque pointers with the accessed type named on
+  each load/store/GEP; run `verifyModule` after a total translation and publish
+  only on success. This is textbook MLIR/Cranelift/Swift/LLVM practice and
+  matches RFC 0021 exactly. ZOM additionally proves optimizer facts
+  (`inbounds`, `noalias`, `nsw`, and similar) with pre-translation verifier
+  records and excludes `undef`/`poison` from LIR, which is stronger than the
+  reference compilers that emit such attributes on frontend trust; this is a
+  deliberate improvement, not a divergence to fix.
+- **Object emission and linking.** Emit a `.o` with
+  `TargetMachine::addPassesToEmitFile(CodeGenFileType::ObjectFile)` inside the
+  shim, then hand off to a discovered system linker driver; do not reimplement
+  linking. Toolchain roots (sysroot or SDK, linker, CRT objects, default libs)
+  come from RFC 0043's supplied-not-ambient `ToolchainClosure`, mirroring the
+  RFC 0016 `LLVM_DIR` discipline. This split matches rustc and Clang.
+- **Version-upgrade workflow.** On any LLVM bump, change the exact-version pin in
+  one place, fix all API breakage only inside `compiler/backend/llvm/**`, bump
+  the CI image, and run the full suite, in one reviewed change with no dual code
+  paths (aligns with design principle 3 and RFC 0016's reviewed-dependency-update
+  clause). The `19.1.5 -> 22.1.8` move crosses several majors; budget shim churn,
+  but opaque pointers are already the only pointer form since LLVM 17, so no
+  typed-pointer migration is needed at 22.1.8.
+
+### Deliberate divergence from industry practice
+
+ZOM exposes **no generic multi-backend abstraction** (unlike rustc's
+`CodegenBackend` trait with Cranelift and GCC alternates, or Zig's swappable
+self-hosted backends). RFC 0021 rejects an LLVM-shaped backend interface because
+ZOM has exactly one backend and a second abstraction would be a second source of
+ABI and operation truth. The recorded trade-off, per Zig's experience, is that a
+future fast-debug backend or an optional-LLVM posture would require introducing
+that abstraction later; this is accepted, not deferred work for this quarter.
+
+### Prerequisite drift to resolve at implementation time
+
+- CI (`.github/workflows/CI.yml`) currently uses `ubuntu-latest` and
+  `macos-latest` with no LLVM dev package installed and no architecture matrix;
+  the accepted RFC 0016/0043 CI contract fixes `ubuntu-24.04` and `macos-15`
+  with pinned `22.1.8` and a four-lane native-vs-cross matrix. The runner-label
+  and package cutover is part of step 2 and owned by RFC 0043 for the
+  `.github/workflows/**` changes.
+- `CMakePresets.json` does not yet forward `LLVM_DIR`; RFC 0016 requires presets
+  to forward only the supplied `LLVM_DIR`. This forwarding is part of step 2.
+
+### Sourcing note
+
+The industry-practice inputs (rustc `llvm-wrapper` and `download-ci-llvm`, Swift
+`lib/IRGen`, Zig `zig_llvm.cpp` and optional-LLVM posture, the Clang
+`find_package(LLVM CONFIG)` plus `llvm_map_components_to_libnames` embedding
+pattern, opaque pointers since LLVM 17, and `verifyModule` discipline) are
+well-established facts corroborated across both the repository-contract review
+and the best-practices survey; the survey's live web fetches were restricted, so
+those points rest on canonical project documentation and source layout rather
+than freshly fetched text. None of them is asserted as a new ZOM contract; each
+either matches an already-accepted RFC choice or is an implementation-time
+recommendation recorded here for the IMPLEMENTING phase.
