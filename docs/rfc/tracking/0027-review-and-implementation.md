@@ -65,7 +65,7 @@ to the synchronized RFC, tracker, and routing tree.
 
 ### 2026-07-27 Implementation Series Base
 
-`zomlang/tests/coverage/implementation-series-base.txt` records clean
+`tests/coverage/implementation-series-base.txt` records clean
 committed tree
 `109947943519ec2d380a3e8d71813b40bc68bde5` as the immutable implementation
 series base. The exact forty-lowercase-hex-plus-newline record names an
@@ -257,7 +257,7 @@ landing authority.
 ### 2026-07-30 Atomic Build-Wiring Correction
 
 I2 and M1 each create one production translation unit, but the accepted T1
-exact file set omitted `zomlang/compiler/driver/CMakeLists.txt`.
+exact file set omitted `compiler/driver/CMakeLists.txt`.
 Following the plan literally would leave both reviewed sources outside the
 driver library while still allowing T1 to claim a buildable atomic closure.
 

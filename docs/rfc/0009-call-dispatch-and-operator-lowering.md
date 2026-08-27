@@ -485,12 +485,12 @@ failure variant, code, location, sort key, and absence of verified facts.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/**` | `rfc` |
-| Semantic selections and verified dispatch construction | `zomlang/compiler/checker/**`, `zomlang/compiler/type/**` | `binder-checker` |
-| Module-qualified lookup | `zomlang/compiler/symbol/**`, `zomlang/compiler/driver/**` | `module-system` |
-| Dispatch invariant registry | `zomlang/compiler/diagnostics/**` | `error-system` |
-| Checked-module and HIR dispatch consumer | `zomlang/compiler/hir/**` | `ir-backend` |
+| Semantic selections and verified dispatch construction | `compiler/checker/**`, `compiler/type/**` | `binder-checker` |
+| Module-qualified lookup | `compiler/symbol/**`, `compiler/driver/**` | `module-system` |
+| Dispatch invariant registry | `compiler/diagnostics/**` | `error-system` |
+| Checked-module and HIR dispatch consumer | `compiler/hir/**` | `ir-backend` |
 | Type, expression, and interface specs | `docs/spec/chapters/03-types.md`, `docs/spec/chapters/04-expressions.md`, `docs/spec/chapters/09-interfaces.md` | `spec-audit` |
-| Conformance and unit tests | `zomlang/tests/**` | `verification` |
+| Conformance and unit tests | `tests/**` | `verification` |
 
 ## Security And Safety Impact
 

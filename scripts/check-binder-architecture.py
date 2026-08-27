@@ -11,8 +11,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BINDER = Path("zomlang/compiler/binder")
-TESTS = Path("zomlang/tests/unittests/compiler/binder")
+BINDER = Path("compiler/binder")
+TESTS = Path("tests/unittests/compiler/binder")
 
 
 def binder_source(path: Path) -> str:
@@ -44,9 +44,9 @@ TEST_CMAKE = TESTS / "CMakeLists.txt"
 TEST_SOURCE = TESTS / "binding-input-test.cc"
 BODY_BINDING_SOURCE = BINDER / "body-binding.cc"
 CLOSURE_FREE_VARIABLES_SOURCE = BINDER / "closure-free-variables.cc"
-DRIVER_SESSION_SOURCE = Path("zomlang/compiler/driver/session/compiler-session.cc")
+DRIVER_SESSION_SOURCE = Path("compiler/driver/session/compiler-session.cc")
 DRIVER_SESSION_TEST = Path(
-    "zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc"
+    "tests/unittests/compiler/driver/compiler-session-package-test.cc"
 )
 FACT_SCHEMA = BINDER / "binding-fact-schema.def"
 FACT_SCHEMA_GATE = Path("scripts/check-binder-fact-schema.py")
@@ -59,7 +59,7 @@ STABLE_TEST_SOURCE = TESTS / "stable-binding-facts-test.cc"
 STABLE_SCHEMA_GATE = Path("scripts/check-stable-binding-schema.py")
 LANDING_SCOPE_GATE = Path("scripts/check-landing-scope.py")
 STABLE_LANDING_ALLOWLIST = Path(
-    "zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt"
+    "tests/coverage/rfc-0030-stable-binding-landing-files.txt"
 )
 MODULE_BODY_HEADER = BINDER / "surface/module-body-syntax.h"
 MODULE_BODY_VALUE_SOURCE = BINDER / "surface/module-body-syntax.cc"
@@ -69,13 +69,13 @@ MODULE_BODY_TEST_SOURCE = TESTS / "module-body-syntax-test.cc"
 NAMED_INVENTORY_HEADER = BINDER / "identity/named-identity-inventory.h"
 NAMED_INVENTORY_SOURCE = BINDER / "identity/named-identity-inventory.cc"
 NAMED_INVENTORY_QUERY_SOURCE = Path(
-    "zomlang/compiler/driver/query/binding/named-identity-inventory-query.cc"
+    "compiler/driver/query/binding/named-identity-inventory-query.cc"
 )
 NAMED_INVENTORY_QUERY_TEST = Path(
-    "zomlang/tests/unittests/compiler/driver/named-identity-inventory-query-test.cc"
+    "tests/unittests/compiler/driver/named-identity-inventory-query-test.cc"
 )
 INCREMENTAL_BINDING_QUERY_TEST = Path(
-    "zomlang/tests/unittests/compiler/driver/incremental-binding-query-adapter-test.cc"
+    "tests/unittests/compiler/driver/incremental-binding-query-adapter-test.cc"
 )
 
 PRODUCTION_COMPONENTS = (
@@ -140,13 +140,13 @@ REMOVED_BINDER_FILES = tuple(
         "utilities.h",
     )
 )
-REMOVED_SYMBOL_ROOT = Path("zomlang/compiler/symbol")
-SCHEMA_INCLUDE = '#include "zomlang/compiler/binder/binding-fact-schema.def"'
+REMOVED_SYMBOL_ROOT = Path("compiler/symbol")
+SCHEMA_INCLUDE = '#include "compiler/binder/binding-fact-schema.def"'
 
 
 def source_files() -> dict[Path, str]:
     files: dict[Path, str] = {}
-    for relative_root in (Path("zomlang/compiler"), Path("zomlang/tests")):
+    for relative_root in (Path("compiler"), Path("tests")):
         for directory, child_directories, names in os.walk(ROOT / relative_root):
             child_directories[:] = [
                 name
@@ -246,8 +246,8 @@ def check_required_files(files: dict[Path, str], errors: list[str]) -> None:
 
 def check_removed_rail(files: dict[Path, str], errors: list[str]) -> None:
     forbidden = (
-        '#include "zomlang/compiler/binder/binder.h"',
-        '#include "zomlang/compiler/symbol/',
+        '#include "compiler/binder/binder.h"',
+        '#include "compiler/symbol/',
         "symbol::SymbolTable",
         "DefinitionIdentityMap",
         "DeclCollector",
@@ -340,8 +340,8 @@ def check_verifier_independence(files: dict[Path, str], errors: list[str]) -> No
     for marker in (
         "DefinitionHeaderProducer::",
         "ImplementationHeaderProducer::",
-        '#include "zomlang/compiler/binder/stable/definition/header-producer.h"',
-        '#include "zomlang/compiler/binder/stable/implementation/header-producer.h"',
+        '#include "compiler/binder/stable/definition/header-producer.h"',
+        '#include "compiler/binder/stable/implementation/header-producer.h"',
     ):
         if marker in stable_header:
             errors.append(
@@ -697,7 +697,7 @@ def check_stable_binding_wiring(files: dict[Path, str], errors: list[str]) -> No
     production = {
         path: text
         for path, text in files.items()
-        if Path("zomlang/compiler") in path.parents and path != STABLE_SCHEMA
+        if Path("compiler") in path.parents and path != STABLE_SCHEMA
     }
     combined = "\n".join(production.values())
     normalized_combined = normalized_cpp(combined)
@@ -765,9 +765,9 @@ def check_layering(files: dict[Path, str], errors: list[str]) -> None:
         if BINDER not in path.parents or TESTS in path.parents:
             continue
         for forbidden in (
-            '"zomlang/compiler/checker/',
-            '"zomlang/compiler/ir/',
-            '"zomlang/compiler/symbol/',
+            '"compiler/checker/',
+            '"compiler/ir/',
+            '"compiler/symbol/',
         ):
             if forbidden in text:
                 errors.append(f"{path}: Binder layer depends on downstream layer {forbidden}")
@@ -1084,7 +1084,7 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "producer include in verifier",
             VERIFIER_SOURCE,
             '#include "zc/core/debug.h"',
-            '#include "zomlang/compiler/binder/internal/scope-arena.h"',
+            '#include "compiler/binder/internal/scope-arena.h"',
         ),
         (
             "producer call in verifier",
@@ -1168,7 +1168,7 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "capture validator reuses producer",
             CAPTURE_VALIDATOR_SOURCE,
             '#include "zc/core/debug.h"',
-            '#include "zomlang/compiler/binder/internal/closure-free-variables.h"',
+            '#include "compiler/binder/internal/closure-free-variables.h"',
         ),
         (
             "capture validator CMake omission",
@@ -1180,7 +1180,7 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "context validator reuses producer",
             CONTEXT_VALIDATOR_SOURCE,
             '#include "zc/core/debug.h"',
-            '#include "zomlang/compiler/binder/internal/body-binding.h"',
+            '#include "compiler/binder/internal/body-binding.h"',
         ),
         (
             "context validator CMake omission",
@@ -1192,7 +1192,7 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "control validator reuses producer",
             CONTROL_VALIDATOR_SOURCE,
             '#include "zc/core/debug.h"',
-            '#include "zomlang/compiler/binder/internal/label-facts.h"',
+            '#include "compiler/binder/internal/label-facts.h"',
         ),
         (
             "control validator CMake omission",
@@ -1252,7 +1252,7 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "schema disconnected from codec",
             CODEC_SOURCE,
             SCHEMA_INCLUDE,
-            '#include "zomlang/compiler/binder/missing-schema.def"',
+            '#include "compiler/binder/missing-schema.def"',
         ),
         (
             "stable facts source CMake omission",

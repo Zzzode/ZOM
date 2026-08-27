@@ -1,0 +1,297 @@
+// Copyright (c) 2024-2025 Zode.Z. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
+
+#pragma once
+
+namespace zomlang {
+namespace compiler {
+namespace ast {
+
+/// \brief Unified syntax element kind enumeration for both tokens and AST nodes
+/// This replaces the separate SyntaxKind and SyntaxKind enums to eliminate duplication
+/// and provide a consistent representation across lexer and parser phases.
+enum class SyntaxKind {
+  Unknown,
+
+  // ================================================================================
+  // LEXICAL TOKENS
+  // ================================================================================
+
+  // Literals
+  Identifier,
+  StringLiteral,
+  IntegerLiteral,
+  BigIntLiteralToken,
+  FloatLiteral,
+  CharacterLiteral,
+  NoSubstitutionTemplateLiteral,  // `...`
+  TemplateHead,                   // `...${
+  TemplateMiddle,                 // }...${
+  TemplateTail,                   // }...`
+
+  // ================================================================================
+  // KEYWORDS
+  // ================================================================================
+
+  // Control flow keywords
+  AbstractKeyword,     // abstract
+  AccessorKeyword,     // accessor
+  AnyKeyword,          // any
+  AsKeyword,           // as
+  AssertsKeyword,      // asserts
+  AssertKeyword,       // assert
+  AsyncKeyword,        // async
+  AwaitKeyword,        // await
+  BigIntKeyword,       // bigint
+  BreakKeyword,        // break
+  CaseKeyword,         // case
+  CatchKeyword,        // catch
+  ClassKeyword,        // class
+  ContinueKeyword,     // continue
+  ConstKeyword,        // const
+  ConstructorKeyword,  // constructor
+  DeclareKeyword,      // declare
+  DefaultKeyword,      // default
+  DeleteKeyword,       // delete
+  DoKeyword,           // do
+  ElseKeyword,         // else
+  ExportKeyword,       // export
+  FinallyKeyword,      // finally
+  ForKeyword,          // for
+  FromKeyword,         // from
+  FunKeyword,          // fun
+  GetKeyword,          // get
+  GlobalKeyword,       // global
+  IfKeyword,           // if
+  ImmediateKeyword,    // immediate
+  ImportKeyword,       // import
+  InKeyword,           // in
+  InferKeyword,        // infer
+  InstanceOfKeyword,   // instanceof
+  InterfaceKeyword,    // interface
+  IsKeyword,           // is
+  KeyOfKeyword,        // keyof
+  LetKeyword,          // let
+  MatchKeyword,        // match
+  ModuleKeyword,       // module
+  MutKeyword,          // mut
+  MutatingKeyword,     // mutating
+  NamespaceKeyword,    // namespace
+  NeverKeyword,        // never
+  NewKeyword,          // new
+  ObjectKeyword,       // object
+  OfKeyword,           // of
+  OutKeyword,          // out
+  OverrideKeyword,     // override
+  PackageKeyword,      // package
+  PrivateKeyword,      // private
+  ProtectedKeyword,    // protected
+  PublicKeyword,       // public
+  ReadonlyKeyword,     // readonly
+  RequireKeyword,      // require
+  ReturnKeyword,       // return
+  SatisfiesKeyword,    // satisfies
+  SetKeyword,          // set
+  SpawnKeyword,        // spawn
+  StaticKeyword,       // static
+  SuperKeyword,        // super
+  SuspendKeyword,      // suspend
+  SymbolKeyword,       // symbol
+  ThisKeyword,         // this
+  ThrowKeyword,        // throw
+  TryKeyword,          // try
+  TypeOfKeyword,       // typeof
+  UndefinedKeyword,    // undefined
+  UniqueKeyword,       // unique
+  UsingKeyword,        // using
+  WhenKeyword,         // when
+  WhileKeyword,        // while
+  WithKeyword,         // with
+  YieldKeyword,        // yield
+
+  // Type keywords
+  BoolKeyword,       // bool
+  I8Keyword,         // i8
+  I16Keyword,        // i16
+  I32Keyword,        // i32
+  I64Keyword,        // i64
+  U8Keyword,         // u8
+  U16Keyword,        // u16
+  U32Keyword,        // u32
+  U64Keyword,        // u64
+  F32Keyword,        // f32
+  F64Keyword,        // f64
+  StrKeyword,        // str
+  CharKeyword,       // char
+  UnitKeyword,       // unit
+  StructKeyword,     // struct
+  EnumKeyword,       // enum
+  ErrorKeyword,      // error
+  AliasKeyword,      // alias
+  InitKeyword,       // init
+  DeinitKeyword,     // deinit
+  RaisesKeyword,     // raises
+  TypeKeyword,       // type
+  VarKeyword,        // var
+  ActorKeyword,      // actor
+  ChannelKeyword,    // channel
+  GeneratorKeyword,  // generator
+
+  // Boolean and null literals
+  TrueKeyword,   // true
+  FalseKeyword,  // false
+  NullKeyword,   // null
+
+  // ================================================================================
+  // OPERATORS
+  // ================================================================================
+
+  // Basic operators
+  Arrow,       // ->
+  Colon,       // :
+  ColonColon,  // ::
+  Period,      // .
+  DotDotDot,   // ...
+
+  // Comparison operators
+  LessThan,                 // <
+  GreaterThan,              // >
+  LessThanEquals,           // <=
+  GreaterThanEquals,        // >=
+  EqualsEquals,             // ==
+  ExclamationEquals,        // !=
+  EqualsEqualsEquals,       // ===
+  ExclamationEqualsEquals,  // !==
+  EqualsGreaterThan,        // =>
+
+  // Arithmetic operators
+  Plus,              // +
+  Minus,             // -
+  AsteriskAsterisk,  // **
+  Asterisk,          // *
+  Slash,             // /
+  Percent,           // %
+  PlusPlus,          // ++
+  MinusMinus,        // --
+
+  // Shift operators
+  LessThanLessThan,                   // <<
+  GreaterThanGreaterThan,             // >>
+  GreaterThanGreaterThanGreaterThan,  // >>>
+
+  // Bitwise operators
+  Ampersand,    // &
+  Bar,          // |
+  Caret,        // ^
+  Exclamation,  // !
+  Tilde,        // ~
+
+  // Logical operators
+  AmpersandAmpersand,  // &&
+  BarBar,              // ||
+
+  // Conditional operators
+  Question,          // ?
+  ErrorDefault,      // ?:
+  QuestionQuestion,  // ??
+  QuestionDot,       // ?.
+
+  // Assignment operators
+  Equals,                                   // =
+  PlusEquals,                               // +=
+  MinusEquals,                              // -=
+  AsteriskEquals,                           // *=
+  AsteriskAsteriskEquals,                   // **=
+  SlashEquals,                              // /=
+  PercentEquals,                            // %=
+  LessThanLessThanEquals,                   // <<=
+  GreaterThanGreaterThanEquals,             // >>=
+  GreaterThanGreaterThanGreaterThanEquals,  // >>>=
+  AmpersandEquals,                          // &=
+  BarEquals,                                // |=
+  CaretEquals,                              // ^=
+  BarBarEquals,                             // ||=
+  AmpersandAmpersandEquals,                 // &&=
+  QuestionQuestionEquals,                   // ??=
+
+  // Error handling operators
+  ErrorPropagate,  // ?!
+  ErrorUnwrap,     // !!
+
+  // Special operators
+  At,          // @
+  Hash,        // #
+  Underscore,  // _
+
+  // ================================================================================
+  // PUNCTUATION
+  // ================================================================================
+
+  LeftParen,     // (
+  RightParen,    // )
+  LeftBrace,     // {
+  RightBrace,    // }
+  Semicolon,     // ;
+  Comma,         // ,
+  LeftBracket,   // [
+  RightBracket,  // ]
+
+  // ================================================================================
+  // SPECIAL TOKENS
+  // ================================================================================
+
+  Comment,
+  EndOfFile,
+  SingleLineComment,
+  MultiLineComment,
+  NewLine,
+  Whitespace,
+  // Detect and preserve #! on top of the file
+  Shebang,
+  // Detect and provide better error recovery when we encounter a git merge marker.  This
+  // allows us to edit files with git-conflict markers in them in a much more pleasant manner.
+  ConflictMarker,
+
+// ================================================================================
+// AST NODES
+// ================================================================================
+
+#define ZOM_AST_NODE(Name, Value) Name = Value,
+#include "compiler/ast/generated/node-kind.inc"
+#undef ZOM_AST_NODE
+
+  Count,
+
+  // ================================================================================
+  // RANGE DEFINITIONS
+  // ================================================================================
+
+  // Token ranges
+  FirstKeyword = AbstractKeyword,
+  LastKeyword = NullKeyword,
+  FirstReservedWord = AbstractKeyword,
+  LastReservedWord = NullKeyword,
+  FirstBinaryOperator = LessThan,
+  LastBinaryOperator = QuestionDot,
+  FirstPunctuation = LeftParen,
+  LastPunctuation = RightBracket,
+
+  // AST node ranges
+  FirstStatement = SuspendStatement,
+  LastStatement = ContinueStatement,
+};
+
+}  // namespace ast
+}  // namespace compiler
+}  // namespace zomlang

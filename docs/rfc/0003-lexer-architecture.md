@@ -15,7 +15,7 @@ supersedes: []
 superseded-by: []
 discussion: docs/rfc/0003-lexer-architecture.md#status-history
 decision: docs/rfc/0003-lexer-architecture.md#status-history
-implementation: zomlang/compiler/lexer/lexer.cc
+implementation: compiler/lexer/lexer.cc
 tracking-issue: docs/rfc/0003-lexer-architecture.md#acceptance-criteria
 ---
 
@@ -169,11 +169,11 @@ The lexical source of truth is split by responsibility:
   contract for productions that consume tokens.
 - `docs/spec/ZomLexer.g4` is an executable lexer oracle derived from the
   lexical chapter. It is not an independent authority.
-- `zomlang/compiler/ast/kinds.h` defines the token enum consumed by
+- `compiler/ast/kinds.h` defines the token enum consumed by
   C++ code.
-- `zomlang/compiler/lexer/token.cc` defines static token spelling and
+- `compiler/lexer/token.cc` defines static token spelling and
   token labels.
-- `zomlang/compiler/lexer/lexer.cc` is the compiler lexer.
+- `compiler/lexer/lexer.cc` is the compiler lexer.
 - Conformance metadata records expected accept/reject behavior for lexical and
   parser fixtures.
 
@@ -453,10 +453,10 @@ stream invariants, not semantic correctness.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/0003-lexer-architecture.md`, `docs/rfc/README.md` | `rfc` |
-| Lexer and parser token contract | `zomlang/compiler/lexer/**`, `zomlang/compiler/parser/**`, `zomlang/compiler/ast/kinds.h`, `docs/spec/ZomLexer.g4`, `docs/spec/chapters/02-lexical-structure.md`, `docs/spec/chapters/17-grammar-reference.md` | `lexer-parser` |
-| Diagnostics | `zomlang/compiler/diagnostics/**`, `docs/spec/chapters/11-error-handling.md` | `error-system` |
+| Lexer and parser token contract | `compiler/lexer/**`, `compiler/parser/**`, `compiler/ast/kinds.h`, `docs/spec/ZomLexer.g4`, `docs/spec/chapters/02-lexical-structure.md`, `docs/spec/chapters/17-grammar-reference.md` | `lexer-parser` |
+| Diagnostics | `compiler/diagnostics/**`, `docs/spec/chapters/11-error-handling.md` | `error-system` |
 | Spec alignment | `docs/spec/**`, `docs/reports/*spec-alignment*` | `spec-audit` |
-| Tests and verification | `zomlang/tests/**`, `examples/**`, `docs/reports/*coverage*` | `verification` |
+| Tests and verification | `tests/**`, `examples/**`, `docs/reports/*coverage*` | `verification` |
 
 ## Security And Safety Impact
 

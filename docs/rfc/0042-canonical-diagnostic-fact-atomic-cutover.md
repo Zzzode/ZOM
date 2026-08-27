@@ -422,11 +422,11 @@ executable producers in one transaction.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC authority | RFCs 0017, 0025, 0027, 0029, 0030, 0031, 0036, and 0042; their trackers; RFC index | `rfc` |
-| Canonical facts, drafts, codecs, and materialization | `zomlang/compiler/diagnostics/**` | `error-system` |
-| Parse publication and independent reconstruction | `zomlang/compiler/parser/**` | `lexer-parser` |
-| Source identity, query values, session materialization, and current callers | `zomlang/compiler/identity/**`; `zomlang/compiler/query/**`; `zomlang/compiler/driver/**` | `module-system` |
-| Current Binder result codec consumers and removal of unimplemented diagnostic schema inventory | `zomlang/compiler/binder/**` | `binder-checker` |
-| Native, fuzz, benchmark, coverage, architecture, CMake, and exact-scope gates | `zomlang/tests/**`; `scripts/check-stable-binding-schema.py`; `scripts/check-binder-architecture.py`; `scripts/check-incremental-query-architecture.py`; `scripts/check-compiler-session-architecture.py` | `verification` |
+| Canonical facts, drafts, codecs, and materialization | `compiler/diagnostics/**` | `error-system` |
+| Parse publication and independent reconstruction | `compiler/parser/**` | `lexer-parser` |
+| Source identity, query values, session materialization, and current callers | `compiler/identity/**`; `compiler/query/**`; `compiler/driver/**` | `module-system` |
+| Current Binder result codec consumers and removal of unimplemented diagnostic schema inventory | `compiler/binder/**` | `binder-checker` |
+| Native, fuzz, benchmark, coverage, architecture, CMake, and exact-scope gates | `tests/**`; `scripts/check-stable-binding-schema.py`; `scripts/check-binder-architecture.py`; `scripts/check-incremental-query-architecture.py`; `scripts/check-compiler-session-architecture.py` | `verification` |
 
 ## Security And Safety Impact
 
@@ -558,56 +558,56 @@ persistent-data operation.
 The transaction owns exactly:
 
 ```text
-zomlang/compiler/binder/graph/parsed-module.cc
-zomlang/compiler/binder/stable/stable-binding-codec.h
-zomlang/compiler/binder/stable-binding-schema.def
-zomlang/compiler/diagnostics/CMakeLists.txt
-zomlang/compiler/diagnostics/core/diagnostic-engine.cc
-zomlang/compiler/diagnostics/diagnostic-fact-buffer.cc
-zomlang/compiler/diagnostics/diagnostic-fact-buffer.h
-zomlang/compiler/diagnostics/fact/diagnostic-fact.cc
-zomlang/compiler/diagnostics/fact/diagnostic-fact.h
-zomlang/compiler/diagnostics/fact/diagnostic-materializer.cc
-zomlang/compiler/diagnostics/fact/diagnostic-materializer.h
-zomlang/compiler/diagnostics/core/diagnostic.cc
-zomlang/compiler/diagnostics/core/diagnostic.h
-zomlang/compiler/diagnostics/consumer/in-flight-diagnostic.cc
-zomlang/compiler/diagnostics/consumer/in-flight-diagnostic.h
-zomlang/compiler/diagnostics/fact/source-diagnostic-draft-buffer.cc
-zomlang/compiler/diagnostics/fact/source-diagnostic-draft-buffer.h
-zomlang/compiler/driver/session/compiler-session.cc
-zomlang/compiler/parser/query/canonical-parsed-source.cc
-zomlang/compiler/parser/query/canonical-parsed-source.h
-zomlang/compiler/parser/query/parse-source-query-verifier.cc
-zomlang/compiler/parser/query/parse-source-query.cc
-zomlang/compiler/parser/query/parse-source-query.h
-zomlang/compiler/parser/parser-context.cc
-zomlang/compiler/parser/parser-context.h
-zomlang/compiler/parser/parser-impl.h
-zomlang/compiler/parser/parser.cc
-zomlang/compiler/parser/parser.h
-zomlang/tests/benchmarks/compiler/parser-benchmark.cc
-zomlang/tests/coverage/rfc-0042-canonical-diagnostic-landing-files.txt
-zomlang/tests/fuzzing/parser-fuzzer.cc
-zomlang/tests/unittests/compiler/ast/schema-verifier-test.cc
-zomlang/tests/unittests/compiler/binder/binding-input-test.cc
-zomlang/tests/unittests/compiler/binder/frozen-definition-inventory-test.cc
-zomlang/tests/unittests/compiler/binder/module-body-syntax-test.cc
-zomlang/tests/unittests/compiler/binder/module-dependency-requests-test.cc
-zomlang/tests/unittests/compiler/binder/parsed-module-query-test-fixture.h
-zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
-zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-codec-test.cc
-zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc
-zomlang/tests/unittests/compiler/diagnostics/diagnostic-materializer-test.cc
-zomlang/tests/unittests/compiler/diagnostics/in-flight-diagnostic-test.cc
-zomlang/tests/unittests/compiler/diagnostics/source-diagnostic-draft-buffer-test.cc
-zomlang/tests/unittests/compiler/driver/compiler-session-test.cc
-zomlang/tests/unittests/compiler/driver/module-discovery-test.cc
-zomlang/tests/unittests/compiler/driver/module-graph-query-input-test.cc
-zomlang/tests/unittests/compiler/parser/diagnostic-fact-caller-test.cc
-zomlang/tests/unittests/compiler/parser/parser-context-test.cc
-zomlang/tests/unittests/compiler/parser/parser-test.cc
-zomlang/tests/unittests/compiler/parser/recovery-test.cc
+compiler/binder/graph/parsed-module.cc
+compiler/binder/stable/stable-binding-codec.h
+compiler/binder/stable-binding-schema.def
+compiler/diagnostics/CMakeLists.txt
+compiler/diagnostics/core/diagnostic-engine.cc
+compiler/diagnostics/diagnostic-fact-buffer.cc
+compiler/diagnostics/diagnostic-fact-buffer.h
+compiler/diagnostics/fact/diagnostic-fact.cc
+compiler/diagnostics/fact/diagnostic-fact.h
+compiler/diagnostics/fact/diagnostic-materializer.cc
+compiler/diagnostics/fact/diagnostic-materializer.h
+compiler/diagnostics/core/diagnostic.cc
+compiler/diagnostics/core/diagnostic.h
+compiler/diagnostics/consumer/in-flight-diagnostic.cc
+compiler/diagnostics/consumer/in-flight-diagnostic.h
+compiler/diagnostics/fact/source-diagnostic-draft-buffer.cc
+compiler/diagnostics/fact/source-diagnostic-draft-buffer.h
+compiler/driver/session/compiler-session.cc
+compiler/parser/query/canonical-parsed-source.cc
+compiler/parser/query/canonical-parsed-source.h
+compiler/parser/query/parse-source-query-verifier.cc
+compiler/parser/query/parse-source-query.cc
+compiler/parser/query/parse-source-query.h
+compiler/parser/parser-context.cc
+compiler/parser/parser-context.h
+compiler/parser/parser-impl.h
+compiler/parser/parser.cc
+compiler/parser/parser.h
+tests/benchmarks/compiler/parser-benchmark.cc
+tests/coverage/rfc-0042-canonical-diagnostic-landing-files.txt
+tests/fuzzing/parser-fuzzer.cc
+tests/unittests/compiler/ast/schema-verifier-test.cc
+tests/unittests/compiler/binder/binding-input-test.cc
+tests/unittests/compiler/binder/frozen-definition-inventory-test.cc
+tests/unittests/compiler/binder/module-body-syntax-test.cc
+tests/unittests/compiler/binder/module-dependency-requests-test.cc
+tests/unittests/compiler/binder/parsed-module-query-test-fixture.h
+tests/unittests/compiler/binder/stable-binding-facts-test.cc
+tests/unittests/compiler/diagnostics/diagnostic-fact-codec-test.cc
+tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc
+tests/unittests/compiler/diagnostics/diagnostic-materializer-test.cc
+tests/unittests/compiler/diagnostics/in-flight-diagnostic-test.cc
+tests/unittests/compiler/diagnostics/source-diagnostic-draft-buffer-test.cc
+tests/unittests/compiler/driver/compiler-session-test.cc
+tests/unittests/compiler/driver/module-discovery-test.cc
+tests/unittests/compiler/driver/module-graph-query-input-test.cc
+tests/unittests/compiler/parser/diagnostic-fact-caller-test.cc
+tests/unittests/compiler/parser/parser-context-test.cc
+tests/unittests/compiler/parser/parser-test.cc
+tests/unittests/compiler/parser/recovery-test.cc
 scripts/check-stable-binding-schema.py
 ```
 

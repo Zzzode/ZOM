@@ -271,11 +271,11 @@ failure edge.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/**` | `rfc` |
-| Forced-operator panic kinds and diagnostics | `zomlang/compiler/diagnostics/**` | `error-system` |
-| Operator failure-edge lowering to the panic call | `zomlang/compiler/mir/**`, `zomlang/compiler/ir/**`, `zomlang/compiler/backend/**` | `ir-backend` |
-| Runtime abort renderer and termination primitive | `zomlang/runtime/**` | `runtime-memory` |
+| Forced-operator panic kinds and diagnostics | `compiler/diagnostics/**` | `error-system` |
+| Operator failure-edge lowering to the panic call | `compiler/mir/**`, `compiler/ir/**`, `compiler/backend/**` | `ir-backend` |
+| Runtime abort renderer and termination primitive | `runtime/**` | `runtime-memory` |
 | Spec alignment for panic behavior | `docs/spec/chapters/11-error-handling.md` | `spec-audit` |
-| Conformance, ABI, and CI evidence | `zomlang/tests/**`, `scripts/**` | `verification` |
+| Conformance, ABI, and CI evidence | `tests/**`, `scripts/**` | `verification` |
 
 ## Security And Safety Impact
 

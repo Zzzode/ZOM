@@ -502,11 +502,11 @@ contracts.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/**` | `rfc` |
-| Stable record decoding | `zomlang/compiler/identity/**` | `module-system` |
-| Query input and session staging | `zomlang/compiler/query/**`, `zomlang/compiler/driver/**` | `module-system` |
-| Inventory membership and named-item integration | `zomlang/compiler/binder/**` | `binder-checker` |
+| Stable record decoding | `compiler/identity/**` | `module-system` |
+| Query input and session staging | `compiler/query/**`, `compiler/driver/**` | `module-system` |
+| Inventory membership and named-item integration | `compiler/binder/**` | `binder-checker` |
 | Current architecture documentation | `docs/design/architecture.md`, `docs/design/compiler-contracts.md` | `spec-audit` |
-| Native tests, descriptor generation, performance corpus, runners, and architecture gates | `zomlang/tests/**`, `scripts/generate-query-descriptor-schema.py`, `scripts/check-query-descriptor-architecture.py`, `scripts/check-incremental-query-architecture.py`, `scripts/check-binder-architecture.py`, `scripts/check-identity-architecture.py`, `scripts/check-compiler-session-architecture.py`, `scripts/run-incremental-query-benchmarks.py` | `verification` |
+| Native tests, descriptor generation, performance corpus, runners, and architecture gates | `tests/**`, `scripts/generate-query-descriptor-schema.py`, `scripts/check-query-descriptor-architecture.py`, `scripts/check-incremental-query-architecture.py`, `scripts/check-binder-architecture.py`, `scripts/check-identity-architecture.py`, `scripts/check-compiler-session-architecture.py`, `scripts/run-incremental-query-benchmarks.py` | `verification` |
 
 ## Security And Safety Impact
 
@@ -579,8 +579,8 @@ coherent implementation.
 The input is in-memory and session-local. This RFC must create the currently
 missing RFC 0017 performance runner, corpus manifest, and reviewed baseline at
 `scripts/run-incremental-query-benchmarks.py`,
-`zomlang/tests/performance/incremental-query-corpus.json`, and
-`zomlang/tests/performance/incremental-query-baseline.json`. The
+`tests/performance/incremental-query-corpus.json`, and
+`tests/performance/incremental-query-baseline.json`. The
 corpus includes definition-heavy clean compilation, equal body-only edits,
 definition add/remove/rename, and unrelated-module edits. The runner rejects a
 machine, build, worker-count, or corpus mismatch and enforces RFC 0017's warmup,
@@ -699,8 +699,8 @@ action is required.
   `python3 scripts/run-incremental-query-benchmarks.py --repository
   /tmp/zom-rfc0020-baseline --build-dir
   /tmp/zom-rfc0020-baseline/build-release --corpus
-  zomlang/tests/performance/incremental-query-corpus.json --baseline
-  zomlang/tests/performance/incremental-query-baseline.json
+  tests/performance/incremental-query-corpus.json --baseline
+  tests/performance/incremental-query-baseline.json
   --worker-count 8 --record-baseline`. The verification owner reviews and
   freezes the recorded revision, machine, flags, worker, compiler identity, and
   corpus digest metadata before product files change.
@@ -708,8 +708,8 @@ action is required.
   `cmake --build --preset release`, then
   `python3 scripts/run-incremental-query-benchmarks.py --repository .
   --build-dir build-release
-  --corpus zomlang/tests/performance/incremental-query-corpus.json
-  --baseline zomlang/tests/performance/incremental-query-baseline.json
+  --corpus tests/performance/incremental-query-corpus.json
+  --baseline tests/performance/incremental-query-baseline.json
   --worker-count 8 --compare`. The runner rejects a machine, compiler flags,
   worker count, or corpus mismatch.
 - RFC: `python3 scripts/check-rfc.py`.

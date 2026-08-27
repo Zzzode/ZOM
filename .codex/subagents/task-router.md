@@ -47,9 +47,9 @@ owner declared by `manifest.yaml`.
       `scripts/check-query-descriptor-architecture.py`, query gates,
       adversaries, corpora, benchmarks, real-object request-decoder mismatch
       tests, per-database race gates, and
-      `zomlang/tests/compile-fail/query-runtime/**` route to
+      `tests/compile-fail/query-runtime/**` route to
       `verification`.
-- [ ] Ownership analysis and `zomlang/compiler/ownership/**` route to
+- [ ] Ownership analysis and `compiler/ownership/**` route to
       `runtime-memory`; checked semantic inputs and Built MIR dependencies keep
       their owning subsystem reviews.
 - [ ] `scripts/check-english-only.py` and `scripts/check-spec-alignment.py`

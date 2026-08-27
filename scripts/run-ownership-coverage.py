@@ -16,7 +16,7 @@ PROFILES = OUTPUT / "profiles"
 EXPORT = OUTPUT / "llvm-cov-export.json"
 REPORT = OUTPUT / "report.json"
 MARKDOWN = OUTPUT / "report.md"
-TEST = BUILD / "zomlang/tests/unittests/compiler/ownership/ownership-event-overlay-test"
+TEST = BUILD / "tests/unittests/compiler/ownership/ownership-event-overlay-test"
 
 
 def run(command: list[str]) -> None:

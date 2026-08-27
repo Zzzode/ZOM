@@ -1,6 +1,6 @@
 ---
 paths:
-  - "zomlang/compiler/**"
+  - "compiler/**"
 ---
 
 # Compiler Pipeline Rules

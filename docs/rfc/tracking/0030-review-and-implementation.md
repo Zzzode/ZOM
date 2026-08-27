@@ -118,7 +118,7 @@ preserves `R30-15` as the only source commit and push.
 ### 2026-07-28 R30-14 Exact Landing Reconciliation
 
 Preflight compared the accepted exact landing set with the pending source tree
-and found that `zomlang/compiler/driver/query/binding/named-item-query.h` has no
+and found that `compiler/driver/query/binding/named-item-query.h` has no
 pending change. Commit `652790085feae33aa23eefc8ee16d7ad2d8c7bdf`
 already publishes its complete contextual-key and capability descriptor
 contract. `R30-14` therefore treats that commit as a satisfied prerequisite

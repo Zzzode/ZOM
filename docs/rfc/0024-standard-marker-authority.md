@@ -241,7 +241,7 @@ share/zom/core/src/prelude.zom
 ```
 
 The top-level `CMakeLists.txt` loads `GNUInstallDirs`.
-`zomlang/utils/zomc/CMakeLists.txt` sets only the `zomc` target's
+`utils/zomc/CMakeLists.txt` sets only the `zomc` target's
 `RUNTIME_OUTPUT_DIRECTORY` to
 `${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR}` and installs that target to
 `${CMAKE_INSTALL_BINDIR}`.
@@ -912,14 +912,14 @@ implementation transaction.
 | RFC governance | `docs/rfc/**` | `rfc` |
 | Product ownership routing | `.codex/subagents/manifest.yaml`, `.codex/subagents/README.md` | `task-router` |
 | Standard prelude declarations | `core/src/**` | `runtime-memory` |
-| Standard prelude manifest and admission | `core/Zom.toml`, `zomlang/compiler/driver/**` | `module-system` |
-| Standard prelude build and install layout | `CMakeLists.txt`, `core/CMakeLists.txt`, `zomlang/utils/zomc/CMakeLists.txt` | `ir-backend` |
-| Marker authority and checker inputs | `zomlang/compiler/checker/signature-facts.*`, `marker-proof.*`, `body-checker.*` | `binder-checker` |
-| Copy/drop source diagnostic contract | `zomlang/compiler/checker/checker-source-diagnostics.def`, diagnostic documentation and snapshots | `error-system` |
-| Prelude graph, session, identity, package input | `zomlang/compiler/driver/**`, `zomlang/compiler/identity/**`, `zomlang/compiler/binder/module-*` | `module-system` |
-| Event overlay | `zomlang/compiler/ownership/**` | `runtime-memory` |
+| Standard prelude manifest and admission | `core/Zom.toml`, `compiler/driver/**` | `module-system` |
+| Standard prelude build and install layout | `CMakeLists.txt`, `core/CMakeLists.txt`, `utils/zomc/CMakeLists.txt` | `ir-backend` |
+| Marker authority and checker inputs | `compiler/checker/signature-facts.*`, `marker-proof.*`, `body-checker.*` | `binder-checker` |
+| Copy/drop source diagnostic contract | `compiler/checker/checker-source-diagnostics.def`, diagnostic documentation and snapshots | `error-system` |
+| Prelude graph, session, identity, package input | `compiler/driver/**`, `compiler/identity/**`, `compiler/binder/module-*` | `module-system` |
+| Event overlay | `compiler/ownership/**` | `runtime-memory` |
 | Specification and architecture | `docs/spec/**`, `docs/design/**` | `spec-audit` |
-| Native tests and gates | `zomlang/tests/**`, `scripts/check-*-architecture.py` | `verification` |
+| Native tests and gates | `tests/**`, `scripts/check-*-architecture.py` | `verification` |
 
 ## Security And Safety Impact
 
@@ -1051,7 +1051,7 @@ queries. No runtime service, network access, or persistent cache is added.
 ## Implementation Plan
 
 1. Add
-   `zomlang/tests/unittests/compiler/checker/standard-marker-authority-test.cc`
+   `tests/unittests/compiler/checker/standard-marker-authority-test.cc`
    with configuration, codec, authority, mutation, and both independent
    revision oracles.
 2. Add `core/Zom.toml` and
@@ -1064,7 +1064,7 @@ queries. No runtime service, network access, or persistent cache is added.
    `core/CMakeLists.txt` to `ir-backend` in
    `.codex/subagents/manifest.yaml` and `.codex/subagents/README.md`. In the
    same routing transaction, exclude
-   `zomlang/compiler/checker/checker-source-diagnostics.def` from
+   `compiler/checker/checker-source-diagnostics.def` from
    `binder-checker` and add that exact path to `error-system`; route the
    top-level `CMakeLists.txt` change to `ir-backend`.
 4. Replace the RFC 0015 policy, evidence, codec, and proof structures and their
@@ -1076,15 +1076,15 @@ queries. No runtime service, network access, or persistent cache is added.
 7. Implement and independently verify standard-marker authority.
 8. Add signature authority, direct-deinitializer exclusion, and `ZOM4099`,
    then replace body and proof inputs and all callers. Add the paired
-   `zomlang/tests/conformance/corpus/09-interfaces/copy_impl_deinitializer_conflict_neg_34.zom`
+   `tests/conformance/corpus/09-interfaces/copy_impl_deinitializer_conflict_neg_34.zom`
    and
-   `zomlang/tests/conformance/expectations/diagnostics/09-interfaces/copy_impl_deinitializer_conflict_neg_34.check`
+   `tests/conformance/expectations/diagnostics/09-interfaces/copy_impl_deinitializer_conflict_neg_34.check`
    diagnostics lit files.
 9. Replace ownership overlay input with checked/HIR/MIR/body capabilities.
 10. Implement independent Copy/Linear queries, marker uses, and logical drops.
 11. Create `scripts/check-rfc0007-architecture.py`, register its positive and
     negative self-tests in
-    `zomlang/tests/conformance/CMakeLists.txt`, and make each required
+    `tests/conformance/CMakeLists.txt`, and make each required
     invariant independently mutable by the self-test.
 12. Align RFC 0004, RFC 0005, RFC 0007, RFC 0015, Chapters 3 and 14 with this
     accepted policy and authority path,
@@ -1095,27 +1095,27 @@ queries. No runtime service, network access, or persistent cache is added.
 ## Test Plan
 
 The new unit suite is
-`zomlang/tests/unittests/compiler/checker/standard-marker-authority-test.cc`.
+`tests/unittests/compiler/checker/standard-marker-authority-test.cc`.
 Distribution layout and admission tests are
-`zomlang/tests/unittests/compiler/driver/standard-prelude-distribution-test.cc`
+`tests/unittests/compiler/driver/standard-prelude-distribution-test.cc`
 and
-`zomlang/tests/cmake/verify-standard-prelude-install.cmake`.
+`tests/cmake/verify-standard-prelude-install.cmake`.
 The focused existing suites are:
 
-- `zomlang/tests/unittests/compiler/checker/marker-proof-test.cc`;
-- `zomlang/tests/unittests/compiler/ownership/ownership-event-overlay-test.cc`;
-- `zomlang/tests/unittests/compiler/driver/compiler-session-package-test.cc`;
+- `tests/unittests/compiler/checker/marker-proof-test.cc`;
+- `tests/unittests/compiler/ownership/ownership-event-overlay-test.cc`;
+- `tests/unittests/compiler/driver/compiler-session-package-test.cc`;
   and
-- `zomlang/tests/unittests/compiler/driver/incremental-module-resolution-query-test.cc`.
+- `tests/unittests/compiler/driver/incremental-module-resolution-query-test.cc`.
 
 `compiler-session-package-test.cc` adds public-session cases for scalar,
 structural, shared-reference, mutable-reference, raw-pointer, explicit
 `Linear`, direct-deinitializer, positive and negative explicit standard
 `Copy`, and local `Copy`/`Linear` lookalike behavior. Diagnostic snapshots
 use the paired
-`zomlang/tests/conformance/corpus/09-interfaces/copy_impl_deinitializer_conflict_neg_34.zom`
+`tests/conformance/corpus/09-interfaces/copy_impl_deinitializer_conflict_neg_34.zom`
 and
-`zomlang/tests/conformance/expectations/diagnostics/09-interfaces/copy_impl_deinitializer_conflict_neg_34.check`
+`tests/conformance/expectations/diagnostics/09-interfaces/copy_impl_deinitializer_conflict_neg_34.check`
 files through the registered diagnostics runner and real
 `zomc compile --syntax-only` workflow. The `.check` file asserts the exact
 `ZOM4099` headline and rejects `ZOM4054` and `ZOM4017` for the same occurrence;

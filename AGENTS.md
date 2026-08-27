@@ -65,20 +65,20 @@ ZOM is a modern systems programming language.
 | Path | Purpose |
 |---|---|
 | `libraries/zc/` | Core ownership, container, string, sum-type, exception, and macro library |
-| `zomlang/compiler/lexer/` | Lazy tokenization |
-| `zomlang/compiler/parser/` | Recursive-descent parsing |
-| `zomlang/compiler/ast/` | Immutable schema-backed AST |
-| `zomlang/compiler/binder/` | Module dependency requests, scope construction, name resolution, and verified bound-module publication |
-| `zomlang/compiler/checker/` | Signature, inference, dispatch, coherence, borrow-surface, and checked-fact validation |
-| `zomlang/compiler/type/` | Canonical immutable semantic type data and the session-owned semantic type store |
-| `zomlang/compiler/diagnostics/` | Diagnostic codes, records, and rendering |
-| `zomlang/compiler/driver/` | Cross-module `CompilerSession`, module discovery, interface publication, and package orchestration |
-| `zomlang/compiler/identity/` | Branded canonical package, crate, module, definition, source, and revision identities |
-| `zomlang/compiler/hir/` | Checked-module assembly and semantic HIR |
-| `zomlang/compiler/mir/` | Evidence-bound Built MIR |
-| `zomlang/compiler/ir/` | Shared IR identity, failure algebra, diagnostics, and target registry |
-| `zomlang/runtime/` | Language runtime and panic/concurrency primitives |
-| `zomlang/tests/` | ztest unit tests and LLVM lit conformance runners |
+| `compiler/lexer/` | Lazy tokenization |
+| `compiler/parser/` | Recursive-descent parsing |
+| `compiler/ast/` | Immutable schema-backed AST |
+| `compiler/binder/` | Module dependency requests, scope construction, name resolution, and verified bound-module publication |
+| `compiler/checker/` | Signature, inference, dispatch, coherence, borrow-surface, and checked-fact validation |
+| `compiler/type/` | Canonical immutable semantic type data and the session-owned semantic type store |
+| `compiler/diagnostics/` | Diagnostic codes, records, and rendering |
+| `compiler/driver/` | Cross-module `CompilerSession`, module discovery, interface publication, and package orchestration |
+| `compiler/identity/` | Branded canonical package, crate, module, definition, source, and revision identities |
+| `compiler/hir/` | Checked-module assembly and semantic HIR |
+| `compiler/mir/` | Evidence-bound Built MIR |
+| `compiler/ir/` | Shared IR identity, failure algebra, diagnostics, and target registry |
+| `runtime/` | Language runtime and panic/concurrency primitives |
+| `tests/` | ztest unit tests and LLVM lit conformance runners |
 | `docs/spec/` | Normative language specification and grammar artifacts |
 | `docs/rfc/` | Reviewable compiler and language design decisions |
 | `docs/reports/` | Audits and evidence reports |
@@ -126,7 +126,7 @@ ctest --preset default -L unittest
 ctest --preset default --output-on-failure
 
 # Regenerate FileCheck expectations for a lit test (after parser/spec change)
-python3 zomlang/tests/tools/regen-lit.py zomlang/tests/conformance/corpus/path/to/test.zom
+python3 tests/tools/regen-lit.py tests/conformance/corpus/path/to/test.zom
 ```
 
 #### Quality Gates
@@ -139,7 +139,7 @@ python3 scripts/check-format.py
 make coverage
 
 # Debug the compiler executable with LLDB (macOS)
-lldb ./zomlang/compiler/zomlangc -- path/to/source.zom
+lldb ./compiler/zomlangc -- path/to/source.zom
 ```
 
 #### Preset Matrix
@@ -248,7 +248,7 @@ the trigger matrix in `.codex/subagents/README.md`.
 | `error-system` | Result/Option, ?! / !! / ?: , raises clauses, panic boundaries | Diagnostic codes, error chapters, error operators in parser/lexer |
 | `concurrency` | async/await, Future, nursery, cancel, Sendable, memory model, primitives | runtime concurrency, spec 15-concurrency, channel/mutex, `Send/Sync`/`Sendable` |
 | `ir-backend` | HIR, MIR, LIR, lowering, target ABI, LLVM, native artifacts | compiler IR/backend and CLI, top-level/compiler/basic/trace CMake, CMake presets |
-| `tooling-lsp` | IDE semantic facade, LSP transport, document versions, cancellation, stale-response suppression | `zomlang/tools/ide/**`, `zomlang/tools/lsp/**`, `editors/**`, `docs/design/tooling/**` |
+| `tooling-lsp` | IDE semantic facade, LSP transport, document versions, cancellation, stale-response suppression | `tools/ide/**`, `tools/lsp/**`, `editors/**`, `docs/design/tooling/**` |
 | `spec-audit` | Spec ↔ implementation 1:1 alignment | `docs/spec/**`, `docs/design/**`, and compiler/spec drift |
 | `runtime-memory` | Ownership, zc types, RAII, memory model, unsafe boundaries | libraries/zc/**, compiler/ownership/**, runtime/**, FFI |
 | `verification` | Build + sanitizer + tests + format, evidence-gating | tests, CI workflows, README build contract, RFC 0016 coverage, incremental-query gates and benchmarks, English/spec alignment, and identity/IR architecture gates; runs last |
@@ -320,9 +320,9 @@ the trigger matrix in `.codex/subagents/README.md`.
 
 > These rules apply to every edit of `docs/spec/ZomLexer.g4` and
 > `docs/spec/ZomParser.g4`, and to any generated-parser wrapper in
-> `zomlang/compiler/parser/` that injects ANTLR actions.
+> `compiler/parser/` that injects ANTLR actions.
 > Cross-reference: `docs/spec/chapters/19-conditional-compilation.md §19.13`
-> (worked example) and `zomlang/tests/conformance/runners/grammar/README.md
+> (worked example) and `tests/conformance/runners/grammar/README.md
 > § Semantic Predicate Matrix` (suite-wide matrix).
 
 ### ZOM-G4-PATTERN-001: Tail-Parser-Action Safety Pattern

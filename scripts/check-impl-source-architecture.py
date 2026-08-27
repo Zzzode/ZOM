@@ -8,26 +8,26 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCHEMA = Path("zomlang/compiler/ast/schema.yml")
-PAYLOAD = Path("zomlang/compiler/ast/generated/node-payload.h")
-FACTORY = Path("zomlang/compiler/ast/generated/node-factory.h")
-DECLARATION_PARSER = Path("zomlang/compiler/parser/syntax/declaration-parser.cc")
-STATEMENT_PARSER = Path("zomlang/compiler/parser/syntax/statement-parser.cc")
+SCHEMA = Path("compiler/ast/schema.yml")
+PAYLOAD = Path("compiler/ast/generated/node-payload.h")
+FACTORY = Path("compiler/ast/generated/node-factory.h")
+DECLARATION_PARSER = Path("compiler/parser/syntax/declaration-parser.cc")
+STATEMENT_PARSER = Path("compiler/parser/syntax/statement-parser.cc")
 ANTLR_PARSER = Path("docs/spec/ZomParser.g4")
 DECLARATIONS_SPEC = Path("docs/spec/chapters/06-declarations.md")
 INTERFACES_SPEC = Path("docs/spec/chapters/09-interfaces.md")
 ATTRIBUTES_SPEC = Path("docs/spec/chapters/16-attributes-and-annotations.md")
 GRAMMAR_REFERENCE = Path("docs/spec/chapters/17-grammar-reference.md")
-SIGNATURE_FACTS = Path("zomlang/compiler/checker/facts/signature-facts.cc")
-PARSE_DIAGNOSTICS = Path("zomlang/compiler/diagnostics/defs/diagnostics-parse.def")
-PARSER_TEST = Path("zomlang/tests/unittests/compiler/parser/parser-test.cc")
+SIGNATURE_FACTS = Path("compiler/checker/facts/signature-facts.cc")
+PARSE_DIAGNOSTICS = Path("compiler/diagnostics/defs/diagnostics-parse.def")
+PARSER_TEST = Path("tests/unittests/compiler/parser/parser-test.cc")
 DRIVER_TEST = Path(
-    "zomlang/tests/unittests/compiler/driver/session/compiler-session-package-test.cc"
+    "tests/unittests/compiler/driver/session/compiler-session-package-test.cc"
 )
-CONFORMANCE_ROOT = Path("zomlang/tests/conformance/corpus")
-AST_ROOT = Path("zomlang/tests/conformance/expectations/ast")
-GRAMMAR_ROOT = Path("zomlang/tests/conformance/expectations/grammar")
-DIAGNOSTICS_ROOT = Path("zomlang/tests/conformance/expectations/diagnostics")
+CONFORMANCE_ROOT = Path("tests/conformance/corpus")
+AST_ROOT = Path("tests/conformance/expectations/ast")
+GRAMMAR_ROOT = Path("tests/conformance/expectations/grammar")
+DIAGNOSTICS_ROOT = Path("tests/conformance/expectations/diagnostics")
 MULTI_INTERFACE_NEGATIVE = CONFORMANCE_ROOT / Path(
     "09-interfaces/impl_multiple_interfaces_neg_23.zom"
 )
@@ -62,7 +62,7 @@ def production_sources() -> dict[Path, str]:
         PARSER_TEST: read(PARSER_TEST),
         DRIVER_TEST: read(DRIVER_TEST),
     }
-    compiler = ROOT / "zomlang/compiler"
+    compiler = ROOT / "compiler"
     for directory, names, basenames in os.walk(compiler):
         names[:] = [name for name in names if name != "vendor"]
         for basename in basenames:

@@ -72,7 +72,7 @@ Verification for this slice:
 - `python3 scripts/check-parser-coverage.py` passed: 230 syntactic and 35
   lexical productions.
 - `python3 scripts/check-lexer-architecture.py` passed.
-- `python3 zomlang/tests/conformance/tools/check-ast-coverage.py`
+- `python3 tests/conformance/tools/check-ast-coverage.py`
   passed: 857 corpus inputs, 861 AST expectations, 790 grammar verdicts, 68
   explicit AST-only checks, and 4 explicit extras.
 - The ANTLR grammar runner passed both generic dyn cases and all 40
@@ -546,68 +546,68 @@ arms, mirroring the existing unit coverage in
   raw-pointer traversal.
 - `ctest --test-dir build-sanitizer -R 'borrow-model-test' --output-on-failure`
   passed.
-- `lit zomlang/tests/conformance/expectations/diagnostics/04-expressions/raw_pointer_deref_null_coalesce_requires_unsafe_neg_48.check -v`
+- `lit tests/conformance/expectations/diagnostics/04-expressions/raw_pointer_deref_null_coalesce_requires_unsafe_neg_48.check -v`
   passed: 1/1.
 - `cmake --preset sanitizer` passed and registered the new conformance test.
 - `ctest --test-dir build-sanitizer -R 'raw_pointer_deref_(null_coalesce_requires_unsafe_neg_48|conditional_requires_unsafe_neg_46|binary_requires_unsafe_neg_45|return_requires_unsafe_neg_44|call_arg_requires_unsafe_neg_43|assignment_requires_unsafe_neg_42|expression_requires_unsafe_neg_41|index_requires_unsafe_neg_47|requires_unsafe_neg_39|unsafe_pos_40)' --output-on-failure`
   passed: 10/10.
 - `ctest --test-dir build-sanitizer -R 'body-checker-test|borrow-model-test' --output-on-failure`
   passed: 2/2 after adding `IsExpression` operand checking.
-- `lit zomlang/tests/conformance/expectations/diagnostics/04-expressions/raw_pointer_deref_is_requires_unsafe_neg_49.check -v`
+- `lit tests/conformance/expectations/diagnostics/04-expressions/raw_pointer_deref_is_requires_unsafe_neg_49.check -v`
   passed: 1/1.
 - `ctest --test-dir build-sanitizer -R 'raw_pointer_deref_(is_requires_unsafe_neg_49|null_coalesce_requires_unsafe_neg_48|conditional_requires_unsafe_neg_46|binary_requires_unsafe_neg_45|return_requires_unsafe_neg_44|call_arg_requires_unsafe_neg_43|assignment_requires_unsafe_neg_42|expression_requires_unsafe_neg_41|index_requires_unsafe_neg_47|requires_unsafe_neg_39|unsafe_pos_40)' --output-on-failure`
   passed: 11/11.
-- `lit zomlang/tests/conformance/expectations/diagnostics/04-expressions/raw_pointer_deref_array_literal_requires_unsafe_neg_50.check -v`
+- `lit tests/conformance/expectations/diagnostics/04-expressions/raw_pointer_deref_array_literal_requires_unsafe_neg_50.check -v`
   passed: 1/1.
 - `ctest --test-dir build-sanitizer -R 'raw_pointer_deref_(array_literal_requires_unsafe_neg_50|is_requires_unsafe_neg_49|null_coalesce_requires_unsafe_neg_48|conditional_requires_unsafe_neg_46|binary_requires_unsafe_neg_45|return_requires_unsafe_neg_44|call_arg_requires_unsafe_neg_43|assignment_requires_unsafe_neg_42|expression_requires_unsafe_neg_41|index_requires_unsafe_neg_47|requires_unsafe_neg_39|unsafe_pos_40)' --output-on-failure`
   passed: 12/12.
-- `lit zomlang/tests/conformance/expectations/diagnostics/04-expressions/raw_pointer_deref_tuple_literal_requires_unsafe_neg_51.check -v`
+- `lit tests/conformance/expectations/diagnostics/04-expressions/raw_pointer_deref_tuple_literal_requires_unsafe_neg_51.check -v`
   passed: 1/1.
 - `ctest --test-dir build-sanitizer -R 'raw_pointer_deref_(tuple_literal_requires_unsafe_neg_51|array_literal_requires_unsafe_neg_50|is_requires_unsafe_neg_49|null_coalesce_requires_unsafe_neg_48|conditional_requires_unsafe_neg_46|binary_requires_unsafe_neg_45|return_requires_unsafe_neg_44|call_arg_requires_unsafe_neg_43|assignment_requires_unsafe_neg_42|expression_requires_unsafe_neg_41|index_requires_unsafe_neg_47|requires_unsafe_neg_39|unsafe_pos_40)' --output-on-failure`
   passed: 13/13.
-- `lit zomlang/tests/conformance/expectations/diagnostics/04-expressions/raw_pointer_deref_cast_requires_unsafe_neg_52.check -v`
+- `lit tests/conformance/expectations/diagnostics/04-expressions/raw_pointer_deref_cast_requires_unsafe_neg_52.check -v`
   passed: 1/1.
 - `ctest --test-dir build-sanitizer -R 'raw_pointer_deref_(cast_requires_unsafe_neg_52|tuple_literal_requires_unsafe_neg_51|array_literal_requires_unsafe_neg_50|is_requires_unsafe_neg_49|null_coalesce_requires_unsafe_neg_48|conditional_requires_unsafe_neg_46|binary_requires_unsafe_neg_45|return_requires_unsafe_neg_44|call_arg_requires_unsafe_neg_43|assignment_requires_unsafe_neg_42|expression_requires_unsafe_neg_41|index_requires_unsafe_neg_47|requires_unsafe_neg_39|unsafe_pos_40)' --output-on-failure`
   passed: 14/14.
-- `lit zomlang/tests/conformance/expectations/diagnostics/04-expressions/raw_pointer_deref_object_literal_requires_unsafe_neg_53.check -v`
+- `lit tests/conformance/expectations/diagnostics/04-expressions/raw_pointer_deref_object_literal_requires_unsafe_neg_53.check -v`
   passed: 1/1.
 - `ctest --test-dir build-sanitizer -R 'raw_pointer_deref_(object_literal_requires_unsafe_neg_53|cast_requires_unsafe_neg_52|tuple_literal_requires_unsafe_neg_51|array_literal_requires_unsafe_neg_50|is_requires_unsafe_neg_49|null_coalesce_requires_unsafe_neg_48|conditional_requires_unsafe_neg_46|binary_requires_unsafe_neg_45|return_requires_unsafe_neg_44|call_arg_requires_unsafe_neg_43|assignment_requires_unsafe_neg_42|expression_requires_unsafe_neg_41|index_requires_unsafe_neg_47|requires_unsafe_neg_39|unsafe_pos_40)' --output-on-failure`
   passed: 15/15.
-- `lit zomlang/tests/conformance/expectations/diagnostics/04-expressions/raw_pointer_deref_struct_literal_requires_unsafe_neg_54.check -v`
+- `lit tests/conformance/expectations/diagnostics/04-expressions/raw_pointer_deref_struct_literal_requires_unsafe_neg_54.check -v`
   passed: 1/1.
 - `ctest --test-dir build-sanitizer -R 'raw_pointer_deref_(struct_literal_requires_unsafe_neg_54|object_literal_requires_unsafe_neg_53|cast_requires_unsafe_neg_52|tuple_literal_requires_unsafe_neg_51|array_literal_requires_unsafe_neg_50|is_requires_unsafe_neg_49|null_coalesce_requires_unsafe_neg_48|conditional_requires_unsafe_neg_46|binary_requires_unsafe_neg_45|return_requires_unsafe_neg_44|call_arg_requires_unsafe_neg_43|assignment_requires_unsafe_neg_42|expression_requires_unsafe_neg_41|index_requires_unsafe_neg_47|requires_unsafe_neg_39|unsafe_pos_40)' --output-on-failure`
   passed: 16/16.
-- `lit zomlang/tests/conformance/expectations/diagnostics/04-expressions/raw_pointer_deref_member_requires_unsafe_neg_55.check -v`
+- `lit tests/conformance/expectations/diagnostics/04-expressions/raw_pointer_deref_member_requires_unsafe_neg_55.check -v`
   passed: 1/1.
 - `ctest --test-dir build-sanitizer -R 'raw_pointer_deref_(member_requires_unsafe_neg_55|struct_literal_requires_unsafe_neg_54|object_literal_requires_unsafe_neg_53|cast_requires_unsafe_neg_52|tuple_literal_requires_unsafe_neg_51|array_literal_requires_unsafe_neg_50|is_requires_unsafe_neg_49|null_coalesce_requires_unsafe_neg_48|conditional_requires_unsafe_neg_46|binary_requires_unsafe_neg_45|return_requires_unsafe_neg_44|call_arg_requires_unsafe_neg_43|assignment_requires_unsafe_neg_42|expression_requires_unsafe_neg_41|index_requires_unsafe_neg_47|requires_unsafe_neg_39|unsafe_pos_40)' --output-on-failure`
   passed: 17/17.
-- `lit zomlang/tests/conformance/expectations/diagnostics/05-statements/return_object_member_local_reference_escape_neg_39.check -v`
+- `lit tests/conformance/expectations/diagnostics/05-statements/return_object_member_local_reference_escape_neg_39.check -v`
   passed: 1/1.
 - `ctest --test-dir build-sanitizer -R 'return_(object_member_local_reference_escape_neg_39|local_reference_escape_neg_14|local_field_reference_escape_neg_26|nested_local_field_reference_escape_neg_27|local_reference_binding_escape_neg_28|local_reference_alias_escape_neg_29|local_index_reference_escape_neg_30|stored_local_reference_escape_neg_31|stored_alias_reference_escape_neg_32|reborrow_local_reference_escape_neg_33|nested_block_local_reference_escape_neg_34|if_branch_local_reference_escape_neg_35|else_branch_local_reference_escape_neg_38|while_body_local_reference_escape_neg_36|match_arm_local_reference_escape_neg_37)' --output-on-failure`
   passed: 15/15.
-- `lit zomlang/tests/conformance/expectations/diagnostics/05-statements/return_struct_member_local_reference_escape_neg_40.check -v`
+- `lit tests/conformance/expectations/diagnostics/05-statements/return_struct_member_local_reference_escape_neg_40.check -v`
   passed: 1/1.
-- `lit zomlang/tests/conformance/expectations/diagnostics/05-statements/return_struct_literal_local_reference_escape_neg_41.check -v`
+- `lit tests/conformance/expectations/diagnostics/05-statements/return_struct_literal_local_reference_escape_neg_41.check -v`
   passed: 1/1.
-- `lit zomlang/tests/conformance/expectations/diagnostics/05-statements/return_object_literal_local_reference_escape_neg_42.check -v`
+- `lit tests/conformance/expectations/diagnostics/05-statements/return_object_literal_local_reference_escape_neg_42.check -v`
   passed: 1/1.
-- `lit zomlang/tests/conformance/expectations/diagnostics/05-statements/return_array_literal_local_reference_escape_neg_43.check -v`
+- `lit tests/conformance/expectations/diagnostics/05-statements/return_array_literal_local_reference_escape_neg_43.check -v`
   passed: 1/1.
-- `lit zomlang/tests/conformance/expectations/diagnostics/05-statements/return_conditional_local_reference_escape_neg_44.check -v`
+- `lit tests/conformance/expectations/diagnostics/05-statements/return_conditional_local_reference_escape_neg_44.check -v`
   passed: 1/1.
-- `lit zomlang/tests/conformance/expectations/diagnostics/05-statements/return_cast_local_reference_escape_neg_45.check -v`
+- `lit tests/conformance/expectations/diagnostics/05-statements/return_cast_local_reference_escape_neg_45.check -v`
   passed: 1/1.
-- `lit zomlang/tests/conformance/expectations/diagnostics/05-statements/return_null_coalesce_local_reference_escape_neg_46.check -v`
+- `lit tests/conformance/expectations/diagnostics/05-statements/return_null_coalesce_local_reference_escape_neg_46.check -v`
   passed: 1/1.
-- `lit zomlang/tests/conformance/expectations/diagnostics/05-statements/return_error_default_local_reference_escape_neg_49.check -v`
+- `lit tests/conformance/expectations/diagnostics/05-statements/return_error_default_local_reference_escape_neg_49.check -v`
   passed: 1/1.
-- `lit zomlang/tests/conformance/expectations/diagnostics/05-statements/return_index_local_reference_escape_neg_47.check -v`
+- `lit tests/conformance/expectations/diagnostics/05-statements/return_index_local_reference_escape_neg_47.check -v`
   passed: 1/1.
-- `lit zomlang/tests/conformance/expectations/diagnostics/05-statements/return_call_local_reference_escape_neg_48.check -v`
+- `lit tests/conformance/expectations/diagnostics/05-statements/return_call_local_reference_escape_neg_48.check -v`
   passed: 1/1.
-- `lit zomlang/tests/conformance/expectations/diagnostics/05-statements/return_new_local_reference_escape_neg_50.check -v`
+- `lit tests/conformance/expectations/diagnostics/05-statements/return_new_local_reference_escape_neg_50.check -v`
   passed: 1/1.
-- `lit zomlang/tests/conformance/expectations/diagnostics/05-statements/return_import_call_local_reference_escape_neg_51.check -v`
+- `lit tests/conformance/expectations/diagnostics/05-statements/return_import_call_local_reference_escape_neg_51.check -v`
   passed: 1/1.
 - `cmake --preset sanitizer` passed and registered
   `return_conditional_local_reference_escape_neg_44` and
@@ -622,7 +622,7 @@ arms, mirroring the existing unit coverage in
   passed: 27/27.
 - `ctest --test-dir build-sanitizer -R 'lit-09-interfaces-iface_where_reject_neg_05|diagnostics-09-interfaces-iface_where_reject_neg_05' --output-on-failure`
   passed: 2/2.
-- `lit zomlang/tests/conformance/expectations/diagnostics/05-statements/match_open_i32_non_exhaustive_neg_11.check -v`
+- `lit tests/conformance/expectations/diagnostics/05-statements/match_open_i32_non_exhaustive_neg_11.check -v`
   passed: 1/1.
 - `ctest --test-dir build-sanitizer -R 'match_(open_i32_non_exhaustive_neg_11|non_exhaustive_bool_neg_01|non_exhaustive_enum_neg_05|guard_non_bool_neg_08|guarded_wildcard_non_exhaustive_neg_09|wildcard_unreachable_warn_10|duplicate_arm_warn_04|exhaustive_bool_pos_02|exhaustive_enum_pos_06)' --output-on-failure`
   passed: 17/17.

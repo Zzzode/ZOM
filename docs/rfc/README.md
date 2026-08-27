@@ -69,9 +69,9 @@ not reused.
 
 | RFC | Title | Status | Area | Type | Review Manager | Tracking | Implementation |
 |---|---|---|---|---|---|---|---|
-| [RFC 0001](0001-ast-dump-format.md) | AST Dump Format | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0001-ast-dump-format.md#acceptance-criteria) | [AST Dumper](../../zomlang/compiler/ast/dump.cc) |
-| [RFC 0002](0002-parser-architecture.md) | Parser Architecture | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0002-parser-architecture.md#acceptance-criteria) | [Parser](../../zomlang/compiler/parser/parser.cc) |
-| [RFC 0003](0003-lexer-architecture.md) | Lexer Architecture | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0003-lexer-architecture.md#acceptance-criteria) | [Lexer](../../zomlang/compiler/lexer/lexer.cc) |
+| [RFC 0001](0001-ast-dump-format.md) | AST Dump Format | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0001-ast-dump-format.md#acceptance-criteria) | [AST Dumper](../../compiler/ast/dump.cc) |
+| [RFC 0002](0002-parser-architecture.md) | Parser Architecture | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0002-parser-architecture.md#acceptance-criteria) | [Parser](../../compiler/parser/parser.cc) |
+| [RFC 0003](0003-lexer-architecture.md) | Lexer Architecture | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0003-lexer-architecture.md#acceptance-criteria) | [Lexer](../../compiler/lexer/lexer.cc) |
 | [RFC 0004](0004-binder-architecture.md) | Binder Architecture | IMPLEMENTING | compiler | compiler | rfc | [Review Tracker](tracking/0004-review-and-implementation.md) | [Implementation Tracker](tracking/0004-review-and-implementation.md#implementation-tracker) |
 | [RFC 0005](0005-type-system-architecture.md) | Type System Architecture | IMPLEMENTING | compiler | compiler | rfc | [Review Tracker](tracking/0005-review-and-implementation.md) | [Implementation Tracker](tracking/0005-review-and-implementation.md#implementation-tracker) |
 | [RFC 0006](0006-error-lowering-runtime-abi.md) | Error Lowering And Runtime ABI | IMPLEMENTING | compiler | compiler | rfc | [Review Tracker](tracking/0006-review-and-implementation.md) | [Implementation Tracker](tracking/0006-review-and-implementation.md#implementation-tracker) |
@@ -323,7 +323,7 @@ After implementation:
 
 - Normative language behavior belongs under `docs/spec/chapters/`.
 - Compiler architecture that must remain current belongs under `docs/design/`.
-- Tests belong under `zomlang/tests/`.
+- Tests belong under `tests/`.
 - Agent and skill behavior belongs under `.codex/`.
 - The RFC status moves to `LANDED` and the status history links the landing
   commit or PR when available.

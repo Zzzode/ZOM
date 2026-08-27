@@ -30,11 +30,11 @@ Do **not** route here when:
 ## Owns
 
 ```
-zomlang/compiler/binder/**
-!zomlang/compiler/binder/graph/module-* !zomlang/compiler/binder/surface/module-*
-zomlang/compiler/checker/**
-!zomlang/compiler/checker/checker-source-diagnostics.def
-zomlang/compiler/type/**
+compiler/binder/**
+!compiler/binder/graph/module-* !compiler/binder/surface/module-*
+compiler/checker/**
+!compiler/checker/checker-source-diagnostics.def
+compiler/type/**
 docs/spec/chapters/03-types.md
 docs/spec/chapters/06-declarations.md
 docs/spec/chapters/08-classes-and-structures.md

@@ -14,9 +14,9 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CORPUS = ROOT / "zomlang/tests/conformance/corpus"
-PACKAGE_RUNNER = ROOT / "zomlang/tests/tools/run-zomc-package.py"
-BASELINE = ROOT / "zomlang/tests/coverage/ownership-determinism-baseline.json"
+CORPUS = ROOT / "tests/conformance/corpus"
+PACKAGE_RUNNER = ROOT / "tests/tools/run-zomc-package.py"
+BASELINE = ROOT / "tests/coverage/ownership-determinism-baseline.json"
 BASELINE_SCHEMA = "zom.rfc0007.ownership-determinism-baseline"
 DEFAULT_REPEATS = 3
 FULL_OID = re.compile(r"[0-9a-f]{40}")
@@ -134,7 +134,7 @@ def write_baseline(current: dict[str, dict[str, object]], repeats: int) -> None:
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, check=True, capture_output=True, text=True
     ).stdout.strip()
-    base = (ROOT / "zomlang/tests/coverage/implementation-series-base.txt")
+    base = (ROOT / "tests/coverage/implementation-series-base.txt")
     base_revision = base.read_text(encoding="ascii").strip()
     payload = {
         "schema": BASELINE_SCHEMA,

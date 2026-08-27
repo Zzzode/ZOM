@@ -15,7 +15,7 @@ The admitted source tree contains exactly these modules:
 The inventory generator and source-admission verifier authenticate the paths,
 contents, role declarations, and distribution digest. A source change must
 update the generated inventory through the normal CMake target and preserve the
-closed distribution contract in `zomlang/compiler/source/`.
+closed distribution contract in `compiler/source/`.
 
 ## Contribution Boundary
 

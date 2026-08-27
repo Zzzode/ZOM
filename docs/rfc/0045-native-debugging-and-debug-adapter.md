@@ -245,12 +245,12 @@ a compiler-success result.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/**` | rfc |
-| Debug records, LIR, LLVM translation, and object verification | `zomlang/compiler/lir/**`, `zomlang/compiler/backend/**`, `zomlang/compiler/ir/**` | ir-backend |
-| Executable/debug artifact publication and source inventory | `zomlang/compiler/driver/**`, `zomlang/compiler/identity/**`, `zomlang/compiler/source/**`, `zomlang/utils/zomc/**` | module-system |
-| Runtime value layouts and execution environment | `zomlang/runtime/**`, `core/**`, `zomlang/compiler/ownership/**` | runtime-memory |
-| DAP server and editor integration | `zomlang/tools/debug/**`, `zomlang/tools/ide/**`, `zomlang/tools/lsp/**`, `editors/**` | tooling-lsp |
-| Failure materialization | `zomlang/compiler/diagnostics/**` | error-system |
-| Tests, architecture gates, CI, and native lanes | `zomlang/tests/**`, `scripts/**`, `.github/workflows/**` | verification |
+| Debug records, LIR, LLVM translation, and object verification | `compiler/lir/**`, `compiler/backend/**`, `compiler/ir/**` | ir-backend |
+| Executable/debug artifact publication and source inventory | `compiler/driver/**`, `compiler/identity/**`, `compiler/source/**`, `utils/zomc/**` | module-system |
+| Runtime value layouts and execution environment | `runtime/**`, `core/**`, `compiler/ownership/**` | runtime-memory |
+| DAP server and editor integration | `tools/debug/**`, `tools/ide/**`, `tools/lsp/**`, `editors/**` | tooling-lsp |
+| Failure materialization | `compiler/diagnostics/**` | error-system |
+| Tests, architecture gates, CI, and native lanes | `tests/**`, `scripts/**`, `.github/workflows/**` | verification |
 
 ## Security And Safety Impact
 

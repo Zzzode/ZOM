@@ -82,7 +82,7 @@ Implementation authority remains with the pending tasks below.
 
 Preparation of the atomic runtime landing found four required production
 callers that the accepted exact-file tables omitted. The query transaction
-replacement requires `zomlang/compiler/binder/binding-input.cc` to
+replacement requires `compiler/binder/binding-input.cc` to
 consume the unversioned publication result directly. Stable identity admission
 requires the existing `ModuleBodySyntax` producer and independent verifier to
 consume the admitted authority at their Binder-owned boundary.

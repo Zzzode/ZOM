@@ -3451,14 +3451,14 @@ must select the first legal stage above and publish no forbidden value.
 |---|---|---|
 | Gate routing authority | `.codex/subagents/manifest.yaml` | `task-router` |
 | RFC governance and review tracking | `docs/rfc/0007-borrow-lifetime-ownership-checker.md`, `docs/rfc/tracking/0007-review-and-implementation.md`, `docs/rfc/README.md` | `rfc` |
-| Checked marker, capture, receiver, unsafe, logical-drop, cast-resource-route, and ownership input facts | `zomlang/compiler/checker/**`, `zomlang/compiler/type/**` | `binder-checker` |
-| Borrow-evidence repository capability, lease resolution, and session transaction wiring | `zomlang/compiler/driver/**` | `module-system` |
-| Required source registry entries and invariant diagnostics | `zomlang/compiler/diagnostics/**` | `error-system` |
+| Checked marker, capture, receiver, unsafe, logical-drop, cast-resource-route, and ownership input facts | `compiler/checker/**`, `compiler/type/**` | `binder-checker` |
+| Borrow-evidence repository capability, lease resolution, and session transaction wiring | `compiler/driver/**` | `module-system` |
+| Required source registry entries and invariant diagnostics | `compiler/diagnostics/**` | `error-system` |
 | Frontend-only concurrency exclusion and fail-closed handoff | `docs/spec/chapters/15-concurrency.md` | `concurrency` |
-| Built MIR, ownership analysis, facts, verifier, typestate, and dump | `zomlang/compiler/mir/**`, `zomlang/compiler/hir/**` | `ir-backend` |
-| Source ownership, references, drop, raw provenance, and runtime safety | `docs/spec/chapters/14-memory-management.md`, `libraries/zc/**`, `zomlang/runtime/**` excluding `zomlang/runtime/**/task*`, `zomlang/runtime/**/async*`, `zomlang/runtime/**/actor*`, `zomlang/runtime/**/channel*`, and `zomlang/runtime/**/scheduler*` | `runtime-memory` |
+| Built MIR, ownership analysis, facts, verifier, typestate, and dump | `compiler/mir/**`, `compiler/hir/**` | `ir-backend` |
+| Source ownership, references, drop, raw provenance, and runtime safety | `docs/spec/chapters/14-memory-management.md`, `libraries/zc/**`, `runtime/**` excluding `runtime/**/task*`, `runtime/**/async*`, `runtime/**/actor*`, `runtime/**/channel*`, and `runtime/**/scheduler*` | `runtime-memory` |
 | Normative type, memory, concurrency, and architecture alignment | `docs/spec/**`, `docs/design/**` | `spec-audit` |
-| Unit, lit, conformance, differential, corpus, architecture, codec, and coverage gates | `zomlang/tests/**`, `scripts/check-ownership-architecture.py`, `scripts/run-ownership-coverage.py`, `scripts/check-ownership-coverage.py`, `.github/workflows/**` | `verification` |
+| Unit, lit, conformance, differential, corpus, architecture, codec, and coverage gates | `tests/**`, `scripts/check-ownership-architecture.py`, `scripts/run-ownership-coverage.py`, `scripts/check-ownership-coverage.py`, `.github/workflows/**` | `verification` |
 
 The three proposed verification-owned script paths are
 `scripts/check-ownership-architecture.py`,
@@ -3626,12 +3626,12 @@ Coverage is fail-hard. `scripts/run-ownership-coverage.py` performs one
 coverage-instrumented configure, build, and external CTest run, then emits raw
 profiles plus `llvm-cov export` JSON. `scripts/check-ownership-coverage.py`
 derives the source census from every non-test `.cc` below
-`zomlang/compiler/mir/ownership/**` plus every changed non-test `.cc`
-under `zomlang/compiler/{checker,type,hir,mir,driver,diagnostics}/**`
+`compiler/mir/ownership/**` plus every changed non-test `.cc`
+under `compiler/{checker,type,hir,mir,driver,diagnostics}/**`
 between the implementation series merge base and head. Each inventoried file
 must have at least 70 percent line coverage, and aggregate inventoried line
 coverage may not decrease from the merge-base run. A file can be exempt only
-when a checked-in `zomlang/tests/coverage/ownership-exemptions.json`
+when a checked-in `tests/coverage/ownership-exemptions.json`
 row names the exact path, uncovered line ranges, technical reason, approving
 `verification` owner, and expiry commit; expired, broad-glob, missing, or
 unapproved rows fail. Generated files and third-party files are outside the

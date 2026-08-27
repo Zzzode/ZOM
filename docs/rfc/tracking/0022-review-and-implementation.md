@@ -117,7 +117,7 @@ Source Diagnostics section allocates `ZOM4096 NullableValueRequiresNonNullProof`
 `ZOM4097 FlowRefinementUnavailableHere`, and `ZOM4098 FlowRefinementInvalidatedHere`,
 and the 2026-07-24 Technical Closure Audit below asserts "`ZOM4096-ZOM4098` are
 free". That is no longer true. The live checker diagnostic registry
-`zomlang/compiler/diagnostics/defs/diagnostics-checker.def` now defines:
+`compiler/diagnostics/defs/diagnostics-checker.def` now defines:
 
 - `DIAG(4096, ControlFlowSemanticsUnavailable, kError, "Control-flow syntax has no admitted semantic contract", 0)`
 - `DIAG(4097, VoidReturnSemanticsUnavailable, kError, "Void return syntax has no admitted semantic contract", 0)`
@@ -125,7 +125,7 @@ free". That is no longer true. The live checker diagnostic registry
 - `DIAG(4099, FunctionBodySemanticsUnavailable, kError, "Function body syntax has no admitted semantic contract", 0)`
 
 and live conformance expectations assert them, e.g.
-`zomlang/tests/conformance/expectations/diagnostics/05-statements/control_flow_semantics_unavailable_neg_01.check`
+`tests/conformance/expectations/diagnostics/05-statements/control_flow_semantics_unavailable_neg_01.check`
 (`ZOM4096`), `.../return_pos_01.check` (`ZOM4097`),
 `.../use_after_move_neg_11.check` (`ZOM4098`), and
 `.../function_body_semantics_unavailable_neg_01.check` (`ZOM4099`). These body-
@@ -144,7 +144,7 @@ truncated hash to fix in-pass.
 allocation does not match the live enum.** The RFC states "`FlowRefinement` has
 tag `0x16`, immediately after RFC 0015 `SignatureClassification = 0x15`". The
 live `CheckerDiagnosticProducer` enum in
-`zomlang/compiler/checker/inference/checked-facts.h` ends at
+`compiler/checker/inference/checked-facts.h` ends at
 `Constant = 0x13` and contains no `SignatureClassification` member; the
 `0x15`/`0x16` tags occupied in that header belong to the separate
 `CheckedFactGroup` enum (`ErrorUnionShape = 0x15`, `ErrorOperator = 0x16`). The
@@ -157,7 +157,7 @@ Surfaces that were reviewed and found sound on the current snapshot (recorded
 for completeness; they do not lift the block):
 
 - `binder-checker`: `PatternRefinementFact` and `CheckedPatternFact.refinements`
-  exist in `zomlang/compiler/checker/inference/checked-facts.h` and are
+  exist in `compiler/checker/inference/checked-facts.h` and are
   referenced from `body-checker.cc`, so the direct-removal target is real; the
   new checked-facts group tag `FlowRefinement = 0x17` is free; and the strict
   pre-flow / flow-solver / post-flow / independent-verifier phase order consumes
@@ -191,7 +191,7 @@ Defect fixes:
   `ZOM4097 FlowRefinementUnavailableHere -> ZOM4101`, and
   `ZOM4098 FlowRefinementInvalidatedHere -> ZOM4102`. Names and semantics are
   unchanged. Live-registry verification confirmed
-  `zomlang/compiler/diagnostics/defs/diagnostics-checker.def` defines
+  `compiler/diagnostics/defs/diagnostics-checker.def` defines
   checker codes only through `4099` (`FunctionBodySemanticsUnavailable`), that no
   `41xx` checker code exists anywhere in the def files, and that
   `ZOM4100`/`ZOM4101`/`ZOM4102` are referenced by no source, spec, or
@@ -204,7 +204,7 @@ Defect fixes:
 - **Producer-tag mismatch (secondary, fixed).** The RFC previously stated
   `FlowRefinement` had producer tag `0x16` "immediately after RFC 0015
   `SignatureClassification = 0x15`". The live `CheckerDiagnosticProducer` enum in
-  `zomlang/compiler/checker/inference/checked-facts.h` (lines 731-751)
+  `compiler/checker/inference/checked-facts.h` (lines 731-751)
   ends at `Constant = 0x13` and has no `SignatureClassification` member;
   `SignatureClassification` does not exist anywhere in the compiler. The prose
   now reads `FlowRefinement` has tag `0x14`, immediately after the current final
@@ -238,7 +238,7 @@ repository state, not prose alone):
   remaining blocking defect on this surface.
 - `lexer-parser`: APPROVE. The RFC adds no new source syntax. Every construct it
   refines already exists: `is`/`match`/`when` keyword kinds in
-  `zomlang/compiler/ast/kinds.h`, and short-circuit `&&`/`||`, optional
+  `compiler/ast/kinds.h`, and short-circuit `&&`/`||`, optional
   chaining, `??`, and `??=` are specified in `docs/spec/chapters/04-expressions.md`
   (Optional Chaining section and the precedence table). Evaluation-order and
   primitive-null-comparison assumptions match the existing expression grammar.
@@ -250,7 +250,7 @@ repository state, not prose alone):
   do not alter the declared/effective-type, stability, CFG, or verifier contracts.
 - `module-system`: APPROVE. The RFC's stable-body query and revision-local
   projection rest on RFC 0017 `RevisionLocal` and `DatabaseRevision`, which exist
-  in `zomlang/compiler/driver/query/**`. Query-key and exact-invalidation
+  in `compiler/driver/query/**`. Query-key and exact-invalidation
   rules are body-local and consistent with the existing checked-facts repository
   integration; no cross-module identity or publication rule is violated.
 - `ir-backend`: APPROVE. `HirRefinementUse` and `MirRefinementView` carry exact
@@ -359,7 +359,7 @@ Independent repository inspection confirmed the proposal's live dependencies
 and non-conflicts:
 
 - `PatternRefinementFact` exists in
-  `zomlang/compiler/checker/inference/checked-facts.h` and `.cc`, and is
+  `compiler/checker/inference/checked-facts.h` and `.cc`, and is
   referenced from `body-checker.cc`. The RFC's direct removal target is
   present and addressable.
 - The proposed `ZOM4096-ZOM4098` range does not collide with existing

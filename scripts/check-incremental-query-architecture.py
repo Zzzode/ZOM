@@ -11,9 +11,12 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-QUERY_ROOT = Path("zomlang/compiler/query")
-COMPILER_ROOT = Path("zomlang/compiler")
-PRODUCT_ROOT = Path("zomlang")
+QUERY_ROOT = Path("compiler/query")
+COMPILER_ROOT = Path("compiler")
+# Product subsystems that live at the repo top level (compiler is walked
+# separately above). Kept as a tuple so the product-tree walk and the
+# obsolete-topology filter share one definition.
+PRODUCT_SUBSYSTEMS = ("compiler", "runtime", "tools", "tests", "utils")
 COMPILER_CMAKE = COMPILER_ROOT / "CMakeLists.txt"
 QUERY_CMAKE = QUERY_ROOT / "CMakeLists.txt"
 QUERY_DATABASE_HEADER = QUERY_ROOT / "query-database.h"
@@ -40,22 +43,22 @@ IDENTITY_SOURCE_QUERY_INPUT = COMPILER_ROOT / "identity/source-query-input.cc"
 PARSER_PARSE_SOURCE_QUERY = COMPILER_ROOT / "parser/query/parse-source-query.cc"
 PARSER_PARSE_SOURCE_QUERY_VERIFIER = COMPILER_ROOT / "parser/query/parse-source-query-verifier.cc"
 DRIVER_TOPOLOGY_ADAPTER_TEST = Path(
-    "zomlang/tests/unittests/compiler/driver/query/binding/incremental-binding-query-adapter-test.cc"
+    "tests/unittests/compiler/driver/query/binding/incremental-binding-query-adapter-test.cc"
 )
 DRIVER_SESSION_TEST = Path(
-    "zomlang/tests/unittests/compiler/driver/session/compiler-session-package-test.cc"
+    "tests/unittests/compiler/driver/session/compiler-session-package-test.cc"
 )
 DRIVER_MODULE_RESOLUTION_QUERY_TEST = Path(
-    "zomlang/tests/unittests/compiler/driver/query/module-graph/incremental-module-resolution-query-test.cc"
+    "tests/unittests/compiler/driver/query/module-graph/incremental-module-resolution-query-test.cc"
 )
 DRIVER_MODULE_GRAPH_QUERY_TEST = Path(
-    "zomlang/tests/unittests/compiler/driver/query/module-graph/module-graph-query-input-test.cc"
+    "tests/unittests/compiler/driver/query/module-graph/module-graph-query-input-test.cc"
 )
 QUERY_DATABASE_TEST = Path(
-    "zomlang/tests/unittests/compiler/query/query-database-test.cc"
+    "tests/unittests/compiler/query/query-database-test.cc"
 )
 QUERY_CAPABILITY_TEST = Path(
-    "zomlang/tests/unittests/compiler/query/query-capability-test.cc"
+    "tests/unittests/compiler/query/query-capability-test.cc"
 )
 ACTIVE_IDENTITY_MATERIALIZATION = (
     COMPILER_ROOT / "driver/active-identity-materialization.h"
@@ -67,17 +70,17 @@ CORE_LIBRARY_QUERY_PROVIDER_SOURCE = (
     COMPILER_ROOT / "driver/core/query.cc"
 )
 DRIVER_AUTHORITY_SESSION_TEST = Path(
-    "zomlang/tests/unittests/compiler/driver/query/binding/active-definition-authority-session-test.cc"
+    "tests/unittests/compiler/driver/query/binding/active-definition-authority-session-test.cc"
 )
 BINDER_MODULE_BODY_SYNTAX_TEST = Path(
-    "zomlang/tests/unittests/compiler/binder/surface/module-body-syntax-test.cc"
+    "tests/unittests/compiler/binder/surface/module-body-syntax-test.cc"
 )
 PERFORMANCE_RUNNER = Path("scripts/run-incremental-query-benchmarks.py")
 PERFORMANCE_CORPUS = Path(
-    "zomlang/tests/performance/incremental-query-corpus.json"
+    "tests/performance/incremental-query-corpus.json"
 )
 PERFORMANCE_BASELINE = Path(
-    "zomlang/tests/performance/incremental-query-baseline.json"
+    "tests/performance/incremental-query-baseline.json"
 )
 MANIFEST = Path(".codex/subagents/manifest.yaml")
 ROUTING = Path(".codex/subagents/README.md")
@@ -98,19 +101,19 @@ MATERIALIZATION_CAPABILITY_TOKENS = (
 )
 
 QUERY_FORBIDDEN_INCLUDES = (
-    "zomlang/compiler/ast/",
-    "zomlang/compiler/binder/",
-    "zomlang/compiler/checker/",
-    "zomlang/compiler/diagnostics/",
-    "zomlang/compiler/driver/",
-    "zomlang/compiler/hir/",
-    "zomlang/compiler/identity/",
-    "zomlang/compiler/ir/",
-    "zomlang/compiler/lexer/",
-    "zomlang/compiler/mir/",
-    "zomlang/compiler/parser/",
-    "zomlang/compiler/source/",
-    "zomlang/compiler/type/",
+    "compiler/ast/",
+    "compiler/binder/",
+    "compiler/checker/",
+    "compiler/diagnostics/",
+    "compiler/driver/",
+    "compiler/hir/",
+    "compiler/identity/",
+    "compiler/ir/",
+    "compiler/lexer/",
+    "compiler/mir/",
+    "compiler/parser/",
+    "compiler/source/",
+    "compiler/type/",
 )
 
 QUERY_FORBIDDEN_LINK_TARGETS = (
@@ -148,15 +151,16 @@ def source_files() -> dict[Path, str]:
             if path.suffix not in {".cc", ".h"} and name != "CMakeLists.txt":
                 continue
             files[relative(path)] = path.read_text(encoding="utf-8")
-    for directory, child_directories, names in os.walk(ROOT / PRODUCT_ROOT):
-        child_directories[:] = [name for name in child_directories if name != "vendor"]
-        for name in names:
-            path = Path(directory) / name
-            if path.suffix not in {".cc", ".h"} or path.is_relative_to(ROOT / COMPILER_ROOT):
-                continue
-            text = path.read_text(encoding="utf-8")
-            if any(token in text for token in MATERIALIZATION_CAPABILITY_TOKENS):
-                files[relative(path)] = text
+    for subsystem in PRODUCT_SUBSYSTEMS:
+        for directory, child_directories, names in os.walk(ROOT / subsystem):
+            child_directories[:] = [name for name in child_directories if name != "vendor"]
+            for name in names:
+                path = Path(directory) / name
+                if path.suffix not in {".cc", ".h"} or path.is_relative_to(ROOT / COMPILER_ROOT):
+                    continue
+                text = path.read_text(encoding="utf-8")
+                if any(token in text for token in MATERIALIZATION_CAPABILITY_TOKENS):
+                    files[relative(path)] = text
     for path in (
         DRIVER_TOPOLOGY_ADAPTER_TEST,
         DRIVER_SESSION_TEST,
@@ -184,7 +188,7 @@ def check_routing(files: dict[Path, str], errors: list[str]) -> None:
     require_marker(
         files,
         MANIFEST,
-        '"zomlang/compiler/query/**"',
+        '"compiler/query/**"',
         "module-system query ownership",
         errors,
     )
@@ -219,7 +223,7 @@ def check_routing(files: dict[Path, str], errors: list[str]) -> None:
     require_marker(
         files,
         MODULE_OWNER,
-        "zomlang/compiler/query/**",
+        "compiler/query/**",
         "module-system query path",
         errors,
     )
@@ -441,7 +445,7 @@ def check_provider_registration(files: dict[Path, str], errors: list[str]) -> No
     for path, text in sorted(files.items()):
         if "registerQueryProvider(" not in text:
             continue
-        allowed = path.parent == Path("zomlang/compiler/driver") or "query-adapter" in path.name
+        allowed = path.parent == Path("compiler/driver") or "query-adapter" in path.name
         if not allowed:
             errors.append(f"{path}: query provider registration must live in driver or an owner adapter")
 
@@ -1138,7 +1142,7 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
         "topologyByRequester",
     )
     for path, text in files.items():
-        if not str(path).startswith("zomlang/"):
+        if not str(path).startswith(tuple(f"{s}/" for s in PRODUCT_SUBSYSTEMS)):
             continue
         for token in forbidden:
             if re.search(rf"\b{re.escape(token)}\b", text):
@@ -1171,18 +1175,18 @@ def self_test() -> list[str]:
 
     mutation = dict(base)
     mutation[MANIFEST] = mutation[MANIFEST].replace(
-        '      - "zomlang/compiler/query/**"\n', "", 1
+        '      - "compiler/query/**"\n', "", 1
     )
     expect_failure(mutation, "module-system query ownership", failures)
 
     mutation = dict(base)
     mutation[QUERY_ROOT / "forbidden-test.cc"] = (
-        '#include "zomlang/compiler/driver/session/compiler-session.h"\n'
+        '#include "compiler/driver/session/compiler-session.h"\n'
     )
     expect_failure(mutation, "forbidden semantic path", failures)
 
     mutation = dict(base)
-    mutation[PRODUCT_ROOT / "utils/escaped-semantic-context.cc"] = (
+    mutation[Path("utils/escaped-semantic-context.cc")] = (
         "void escape(Context& context) { context.semanticContextResources(); }\n"
     )
     expect_failure(mutation, "semantic context capability resources escape", failures)

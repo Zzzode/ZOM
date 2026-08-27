@@ -786,7 +786,7 @@ bridge or install a verifier.
 ### Request Decoder Test Access And Compile-Fail Gates
 
 `query::test::QueryRuntimeTestAccess` is defined only in
-`zomlang/tests/unittests/compiler/query/query-test-specs.h`. Production
+`tests/unittests/compiler/query/query-test-specs.h`. Production
 headers contain only its forward declaration and narrowly scoped friend
 relationships.
 
@@ -819,12 +819,12 @@ revision, and descriptor.
 Compile-fail coverage uses reusable project-native CMake infrastructure:
 
 ```text
-zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt
-zomlang/tests/compile-fail/query-runtime/*.cc
+tests/cmake/expect-compile-failure/CMakeLists.txt
+tests/compile-fail/query-runtime/*.cc
 ```
 
 Each query test case is one source file containing exactly one forbidden
-operation. `zomlang/tests/CMakeLists.txt` registers one CTest named
+operation. `tests/CMakeLists.txt` registers one CTest named
 `query-runtime-negative-compile-<case>` that configures the reusable fixture in
 an isolated build directory. The fixture calls
 `try_compile(SOURCE_FROM_CONTENT ...)`, fails if compilation succeeds, and
@@ -856,14 +856,14 @@ observer that exposes the memo base.
 
 The `R29-13C` review partition is exactly:
 
-- `zomlang/tests/unittests/compiler/query/query-test-specs.h`;
-- `zomlang/tests/unittests/compiler/query/query-database-test.cc`;
-- `zomlang/tests/unittests/compiler/query/query-capability-test.cc`;
-- `zomlang/tests/unittests/compiler/query/query-concurrency-test.cc`;
-- `zomlang/tests/unittests/compiler/query/CMakeLists.txt`;
-- `zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt`;
+- `tests/unittests/compiler/query/query-test-specs.h`;
+- `tests/unittests/compiler/query/query-database-test.cc`;
+- `tests/unittests/compiler/query/query-capability-test.cc`;
+- `tests/unittests/compiler/query/query-concurrency-test.cc`;
+- `tests/unittests/compiler/query/CMakeLists.txt`;
+- `tests/cmake/expect-compile-failure/CMakeLists.txt`;
 - the following files under
-  `zomlang/tests/compile-fail/query-runtime/`:
+  `tests/compile-fail/query-runtime/`:
   `identity-token-construction.cc`, `request-result-copy.cc`,
   `request-result-clone.cc`, `memo-base-observer.cc`, `memo-base-cast.cc`,
   `capability-published-construction.cc`, `request-decoder-bridge.cc`,
@@ -871,7 +871,7 @@ The `R29-13C` review partition is exactly:
   `database-gate-constructor.cc`, `database-callback-constructor.cc`,
   `database-verifier-constructor.cc`, `memo-kind-mutation.cc`,
   `memo-database-mutation.cc`, and `memo-revision-mutation.cc`;
-- `zomlang/tests/CMakeLists.txt`; and
+- `tests/CMakeLists.txt`; and
 - `scripts/check-query-descriptor-architecture.py`.
 
 It is a non-landing review partition and joins `R29-14`. The architecture gate
@@ -1016,7 +1016,7 @@ The complete package-request schema adds
 `CanonicalPackageRecordBytes` at `UINT32_MAX`, `TargetProfileBytes` at `255`,
 all accepted zero-based field ordinals, and the root-sequence limit. Only the
 comprehensive schema mutation test in
-`zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`
+`tests/unittests/compiler/driver/package-compilation-request-test.cc`
 changes; completed Q3 production remains untouched.
 
 `S1`, `S2`, and `S3` remain separate bounded review partitions with their
@@ -1028,13 +1028,13 @@ repository together. No partition may land alone.
 
 The exact `R29-12AB` files are the newline-sorted set specified by RFC 0030
 under `R29-12AB Exact Landing Set` and recorded verbatim in
-`zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt`.
+`tests/coverage/rfc-0030-stable-binding-landing-files.txt`.
 The accepted set includes `stable-binding-schema.def`,
 `stable-binding-facts.{h,cc}`, `stable-binding-codec.{h,cc}`, Binder and driver
 build files, the focused Binder test and CTest file, both stable-binding gates,
 the complete driver contextual-key declaration and caller cutover, both
 authority tests,
-`zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`,
+`tests/unittests/compiler/driver/package-compilation-request-test.cc`,
 the allowlist manifest, and `scripts/check-landing-scope.py`. Only the
 comprehensive schema mutation test changes in the package-request test file.
 
@@ -1067,15 +1067,15 @@ The additional `R29-13B` review partition has these exact files:
 
 | Concern | Exact files |
 |---|---|
-| Site inventory and admission payloads | `zomlang/compiler/binder/identity/identity-pre-admission.h`; `zomlang/compiler/binder/identity/identity-pre-admission.cc` |
-| Stable-admission Binder boundary | `zomlang/compiler/binder/surface/module-body-syntax.h`; `zomlang/compiler/binder/surface/module-body-syntax-producer.cc`; `zomlang/compiler/binder/surface/module-body-syntax-verifier.cc` |
-| Independent site and admission production | `zomlang/compiler/binder/stable/candidate/producer.h`; `zomlang/compiler/binder/stable/candidate/producer.cc` |
-| Independent site and admission verification | `zomlang/compiler/binder/stable/candidate/verifier.h`; `zomlang/compiler/binder/stable/candidate/verifier.cc` |
-| Canonical Module and Binder diagnostic facts | `zomlang/compiler/binder/stable/stable-binding-diagnostic-fact.h`; `zomlang/compiler/binder/stable/stable-binding-diagnostic-fact.cc`; `zomlang/compiler/diagnostics/fact/diagnostic-fact.h`; `zomlang/compiler/diagnostics/fact/diagnostic-fact.cc` |
-| Diagnostic codes, schema rows, and static mappings | `zomlang/compiler/diagnostics/defs/diagnostics-binder.def`; `zomlang/compiler/binder/stable-binding-schema.def`; `scripts/check-stable-binding-schema.py`; `scripts/check-binder-architecture.py`; `scripts/check-diagnostic-coverage.py` |
-| Descriptors, failure contracts, and caller cutover | `zomlang/compiler/driver/query/binding/named-identity-inventory-query.h`; `zomlang/compiler/driver/query/binding/named-identity-inventory-query.cc`; `zomlang/compiler/driver/query/binding/named-item-query.h`; `zomlang/compiler/driver/query/binding/named-item-query.cc`; `zomlang/compiler/driver/query/binding/owner-body-query.h`; `zomlang/compiler/driver/query/binding/owner-body-query.cc` |
-| Build wiring | `zomlang/compiler/binder/CMakeLists.txt`; `zomlang/compiler/driver/CMakeLists.txt`; `zomlang/tests/unittests/compiler/binder/CMakeLists.txt`; `zomlang/tests/unittests/compiler/driver/CMakeLists.txt` |
-| Focused tests | `zomlang/tests/unittests/compiler/binder/identity-pre-admission-test.cc`; `zomlang/tests/unittests/compiler/binder/stable-binding-diagnostic-fact-test.cc`; `zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc`; `zomlang/tests/unittests/compiler/driver/named-identity-inventory-query-test.cc`; `zomlang/tests/unittests/compiler/driver/named-item-query-test.cc`; `zomlang/tests/unittests/compiler/driver/owner-body-query-test.cc` |
+| Site inventory and admission payloads | `compiler/binder/identity/identity-pre-admission.h`; `compiler/binder/identity/identity-pre-admission.cc` |
+| Stable-admission Binder boundary | `compiler/binder/surface/module-body-syntax.h`; `compiler/binder/surface/module-body-syntax-producer.cc`; `compiler/binder/surface/module-body-syntax-verifier.cc` |
+| Independent site and admission production | `compiler/binder/stable/candidate/producer.h`; `compiler/binder/stable/candidate/producer.cc` |
+| Independent site and admission verification | `compiler/binder/stable/candidate/verifier.h`; `compiler/binder/stable/candidate/verifier.cc` |
+| Canonical Module and Binder diagnostic facts | `compiler/binder/stable/stable-binding-diagnostic-fact.h`; `compiler/binder/stable/stable-binding-diagnostic-fact.cc`; `compiler/diagnostics/fact/diagnostic-fact.h`; `compiler/diagnostics/fact/diagnostic-fact.cc` |
+| Diagnostic codes, schema rows, and static mappings | `compiler/diagnostics/defs/diagnostics-binder.def`; `compiler/binder/stable-binding-schema.def`; `scripts/check-stable-binding-schema.py`; `scripts/check-binder-architecture.py`; `scripts/check-diagnostic-coverage.py` |
+| Descriptors, failure contracts, and caller cutover | `compiler/driver/query/binding/named-identity-inventory-query.h`; `compiler/driver/query/binding/named-identity-inventory-query.cc`; `compiler/driver/query/binding/named-item-query.h`; `compiler/driver/query/binding/named-item-query.cc`; `compiler/driver/query/binding/owner-body-query.h`; `compiler/driver/query/binding/owner-body-query.cc` |
+| Build wiring | `compiler/binder/CMakeLists.txt`; `compiler/driver/CMakeLists.txt`; `tests/unittests/compiler/binder/CMakeLists.txt`; `tests/unittests/compiler/driver/CMakeLists.txt` |
+| Focused tests | `tests/unittests/compiler/binder/identity-pre-admission-test.cc`; `tests/unittests/compiler/binder/stable-binding-diagnostic-fact-test.cc`; `tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc`; `tests/unittests/compiler/driver/named-identity-inventory-query-test.cc`; `tests/unittests/compiler/driver/named-item-query-test.cc`; `tests/unittests/compiler/driver/owner-body-query-test.cc` |
 
 These files are bounded review ownership, not an independent landing point.
 They join the existing RFC 0028 `R28-13D.5` and `R28-13G.2` partitions in the
@@ -1090,12 +1090,12 @@ smaller non-landing review patches without changing the atomic landing set.
 |---|---|---|
 | Routing and acceptance synchronization | `.codex/subagents/**`; `docs/rfc/**` | `task-router` |
 | RFC process and synchronized status | `docs/rfc/**` | `rfc` |
-| Query identity, evaluator, descriptors, callers, and session | `zomlang/compiler/query/**`; `zomlang/compiler/driver/**` | `module-system` |
-| Stable keys, key failures, stable identity admission, and schema | `zomlang/compiler/binder/**` | `binder-checker` |
-| Token lifetime, retained arenas, locking, and teardown | `libraries/zc/**`; `zomlang/compiler/query/**` | `runtime-memory` |
-| Canonical source rejection and diagnostic ownership | `zomlang/compiler/diagnostics/**`; `zomlang/compiler/binder/**` | `error-system` |
+| Query identity, evaluator, descriptors, callers, and session | `compiler/query/**`; `compiler/driver/**` | `module-system` |
+| Stable keys, key failures, stable identity admission, and schema | `compiler/binder/**` | `binder-checker` |
+| Token lifetime, retained arenas, locking, and teardown | `libraries/zc/**`; `compiler/query/**` | `runtime-memory` |
+| Canonical source rejection and diagnostic ownership | `compiler/diagnostics/**`; `compiler/binder/**` | `error-system` |
 | Current-contract audits and synchronized design claims | `docs/design/**`; `docs/rfc/**` | `spec-audit` |
-| Native tests, generators, CMake, and architecture gates | `zomlang/tests/**`; `scripts/**`; `CMakeLists.txt`; `zomlang/**/CMakeLists.txt` | `verification` |
+| Native tests, generators, CMake, and architecture gates | `tests/**`; `scripts/**`; `CMakeLists.txt`; `compiler/**/CMakeLists.txt` | `verification` |
 
 ## Security And Safety Impact
 
@@ -1364,7 +1364,7 @@ descriptor, provider, verifier, and decoding paths as unit tests.
   - `python3 scripts/check-compiler-session-architecture.py --self-test`
   - `python3 scripts/check-rfc.py`
   - `python3 scripts/check-format.py`
-  - `python3 scripts/check-english-only.py --check --base-file zomlang/tests/coverage/implementation-series-base.txt`
+  - `python3 scripts/check-english-only.py --check --base-file tests/coverage/implementation-series-base.txt`
   - `python3 scripts/check-no-internal-versioning.py --check`
   - `git diff --check`
 - Coverage and performance:

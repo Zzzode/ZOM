@@ -2975,14 +2975,14 @@ This RFC adds no binary-output mode and makes no native-executability claim.
 |---|---|---|
 | Routing and cross-owner gate selection | `AGENTS.md`, `.codex/subagents/**` | `task-router` |
 | RFC governance and accepted overlay tracking | `docs/rfc/**` | `rfc` |
-| Semantic type, signature, dispatch, and verified backend-attribute inputs | `zomlang/compiler/checker/**`, `zomlang/compiler/type/**` | `binder-checker` |
-| Context, package, crate, module, definition, instance, and session identity | `zomlang/compiler/identity/**`, `zomlang/compiler/driver/**`, `zomlang/compiler/query/**` | `module-system` |
-| Error, panic, lowering, and invariant diagnostics | `zomlang/compiler/diagnostics/**`, `docs/spec/chapters/11-error-handling.md` | `error-system` |
-| Coroutine frame, task boundary, atomic, and cancellation lowering contracts | Future `zomlang/runtime/{task,async,scheduler,atomic}*` files and `docs/spec/chapters/15-concurrency.md` | `concurrency` |
-| LIR, monomorphization, target legalization, LLVM translation, CLI, and build wiring | `zomlang/compiler/ir/**`, `zomlang/compiler/hir/**`, `zomlang/compiler/mir/**`, `zomlang/compiler/lir/**`, `zomlang/compiler/backend/**`, `zomlang/compiler/basic/compiler-opts.h`, `zomlang/compiler/CMakeLists.txt`, `zomlang/utils/zomc/**`, `CMakeLists.txt`, `CMakePresets.json` | `ir-backend` |
-| Layout safety, runtime ABI manifest, panic runtime, FFI, allocation, and memory model | `zomlang/runtime/panic.*`, future `zomlang/runtime/{abi,ffi,alloc,memory}*` files, `libraries/zc/**`, `docs/spec/chapters/14-memory-management.md` | `runtime-memory` |
+| Semantic type, signature, dispatch, and verified backend-attribute inputs | `compiler/checker/**`, `compiler/type/**` | `binder-checker` |
+| Context, package, crate, module, definition, instance, and session identity | `compiler/identity/**`, `compiler/driver/**`, `compiler/query/**` | `module-system` |
+| Error, panic, lowering, and invariant diagnostics | `compiler/diagnostics/**`, `docs/spec/chapters/11-error-handling.md` | `error-system` |
+| Coroutine frame, task boundary, atomic, and cancellation lowering contracts | Future `runtime/{task,async,scheduler,atomic}*` files and `docs/spec/chapters/15-concurrency.md` | `concurrency` |
+| LIR, monomorphization, target legalization, LLVM translation, CLI, and build wiring | `compiler/ir/**`, `compiler/hir/**`, `compiler/mir/**`, `compiler/lir/**`, `compiler/backend/**`, `compiler/basic/compiler-opts.h`, `compiler/CMakeLists.txt`, `utils/zomc/**`, `CMakeLists.txt`, `CMakePresets.json` | `ir-backend` |
+| Layout safety, runtime ABI manifest, panic runtime, FFI, allocation, and memory model | `runtime/panic.*`, future `runtime/{abi,ffi,alloc,memory}*` files, `libraries/zc/**`, `docs/spec/chapters/14-memory-management.md` | `runtime-memory` |
 | Live architecture and normative specification alignment | `docs/design/**`, `docs/spec/**` | `spec-audit` |
-| Unit, lit, conformance, mutation, architecture, LLVM, and object tests | `zomlang/tests/**`, `examples/**`, `.github/workflows/**`, `scripts/check-ir-architecture.py` | `verification` |
+| Unit, lit, conformance, mutation, architecture, LLVM, and object tests | `tests/**`, `examples/**`, `.github/workflows/**`, `scripts/check-ir-architecture.py` | `verification` |
 
 ## Security And Safety Impact
 
@@ -3158,7 +3158,7 @@ overflow or host exhaustion. Exceeding a fixed admitted limit is the existing
    required owner approves one exact RFC 0021 review snapshot.
 2. `scripts/check-rfc.py` passes and the RFC index, tracking record, required
    owners, and status history are synchronized.
-3. `zomlang/compiler/lir` defines the closed identities, carrier
+3. `compiler/lir` defines the closed identities, carrier
    types, layouts, ABIs, globals, functions, blocks, instructions,
    terminators, atomics, exception forms, provenance facts, candidate, verified
    wrapper, builder, verifier, dump, and revision codec in this RFC.

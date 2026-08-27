@@ -6,14 +6,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER_CONFIGS = {
-    Path("zomlang/tests/conformance/runners/ast/lit.cfg.py"): "ast",
-    Path("zomlang/tests/conformance/runners/diagnostics/lit.cfg.py"):
+    Path("tests/conformance/runners/ast/lit.cfg.py"): "ast",
+    Path("tests/conformance/runners/diagnostics/lit.cfg.py"):
         "diagnostics",
 }
-CMAKE_ROOT = Path("zomlang/tests/conformance/CMakeLists.txt")
+CMAKE_ROOT = Path("tests/conformance/CMakeLists.txt")
 CMAKE_RUNNERS = (
-    Path("zomlang/tests/conformance/runners/ast/CMakeLists.txt"),
-    Path("zomlang/tests/conformance/runners/diagnostics/CMakeLists.txt"),
+    Path("tests/conformance/runners/ast/CMakeLists.txt"),
+    Path("tests/conformance/runners/diagnostics/CMakeLists.txt"),
 )
 
 

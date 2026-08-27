@@ -284,7 +284,7 @@ Concurrent registration is serialized by that lock. The first complete
 registration publishes the slot; each loser observes the published slot and
 returns step four or five.
 
-`zomlang/compiler/query/query-descriptor-schema.def` is the closed
+`compiler/query/query-descriptor-schema.def` is the closed
 production inventory. Each row contains one explicit contiguous `uint32`
 ordinal, descriptor type, literal name, literal domain, metadata kind, and
 owning path family. Ordinals begin at zero, increase by one in file order, and
@@ -1472,59 +1472,59 @@ registration paths.
 
 The query-runtime files are:
 
-- `zomlang/compiler/query/query-types.{h,cc}`;
-- `zomlang/compiler/query/query-database.{h,cc}`;
-- `zomlang/compiler/query/query-descriptor-schema.def`;
-- `zomlang/compiler/query/CMakeLists.txt`; and
+- `compiler/query/query-types.{h,cc}`;
+- `compiler/query/query-database.{h,cc}`;
+- `compiler/query/query-descriptor-schema.def`;
+- `compiler/query/CMakeLists.txt`; and
 - the generated build-tree
-  `zomlang/compiler/query/query-descriptor-inventory.generated.h`.
+  `compiler/query/query-descriptor-inventory.generated.h`.
 
 The production descriptor and verifier families are:
 
-- `zomlang/compiler/binder/identity-pre-admission.{h,cc}`;
-- `zomlang/compiler/binder/surface/module-body-syntax.h`;
-- `zomlang/compiler/binder/surface/module-body-syntax-producer.cc`;
-- `zomlang/compiler/binder/surface/module-body-syntax-verifier.cc`;
-- `zomlang/compiler/binder/stable/candidate/producer.{h,cc}`;
-- `zomlang/compiler/binder/stable/candidate/verifier.{h,cc}`;
-- `zomlang/compiler/identity/source-query-input.{h,cc}`;
-- `zomlang/compiler/parser/parse-source-query.{h,cc}`;
-- `zomlang/compiler/parser/query/parse-source-query-verifier.cc`;
-- `zomlang/compiler/driver/active-definition-authority-query.{h,cc}`;
-- `zomlang/compiler/driver/core-library-query-provider.{h,cc}`;
-- `zomlang/compiler/driver/core-library-query-verifier.{h,cc}`;
-- `zomlang/compiler/driver/incremental-binding-query-adapter.{h,cc}`;
-- `zomlang/compiler/driver/incremental-module-resolution-query.{h,cc}`;
-- `zomlang/compiler/driver/incremental-package-graph-query-input.{h,cc}`;
-- `zomlang/compiler/driver/module-graph-query-input.{h,cc}`;
-- `zomlang/compiler/driver/module-graph-query.{h,cc}`;
-- `zomlang/compiler/driver/named-identity-inventory-query.{h,cc}`;
-- `zomlang/compiler/driver/named-item-query.{h,cc}`; and
-- `zomlang/compiler/driver/owner-body-query.{h,cc}`.
+- `compiler/binder/identity-pre-admission.{h,cc}`;
+- `compiler/binder/surface/module-body-syntax.h`;
+- `compiler/binder/surface/module-body-syntax-producer.cc`;
+- `compiler/binder/surface/module-body-syntax-verifier.cc`;
+- `compiler/binder/stable/candidate/producer.{h,cc}`;
+- `compiler/binder/stable/candidate/verifier.{h,cc}`;
+- `compiler/identity/source-query-input.{h,cc}`;
+- `compiler/parser/parse-source-query.{h,cc}`;
+- `compiler/parser/query/parse-source-query-verifier.cc`;
+- `compiler/driver/active-definition-authority-query.{h,cc}`;
+- `compiler/driver/core-library-query-provider.{h,cc}`;
+- `compiler/driver/core-library-query-verifier.{h,cc}`;
+- `compiler/driver/incremental-binding-query-adapter.{h,cc}`;
+- `compiler/driver/incremental-module-resolution-query.{h,cc}`;
+- `compiler/driver/incremental-package-graph-query-input.{h,cc}`;
+- `compiler/driver/module-graph-query-input.{h,cc}`;
+- `compiler/driver/module-graph-query.{h,cc}`;
+- `compiler/driver/named-identity-inventory-query.{h,cc}`;
+- `compiler/driver/named-item-query.{h,cc}`; and
+- `compiler/driver/owner-body-query.{h,cc}`.
 
 Input-transaction consumers are:
 
-- `zomlang/compiler/binder/binding-input.cc`;
-- `zomlang/compiler/driver/query/binding/active-definition-authority-session.cc`;
-- `zomlang/compiler/driver/session/compiler-session.cc`;
-- `zomlang/compiler/driver/core-library-query-provider.cc`;
-- `zomlang/compiler/driver/query/module-graph/incremental-module-resolution-query.cc`;
-- `zomlang/compiler/driver/query/module-graph/module-graph-query-input.cc`; and
-- `zomlang/tests/unittests/compiler/binder/binding-input-test.cc`.
+- `compiler/binder/binding-input.cc`;
+- `compiler/driver/query/binding/active-definition-authority-session.cc`;
+- `compiler/driver/session/compiler-session.cc`;
+- `compiler/driver/core-library-query-provider.cc`;
+- `compiler/driver/query/module-graph/incremental-module-resolution-query.cc`;
+- `compiler/driver/query/module-graph/module-graph-query-input.cc`; and
+- `tests/unittests/compiler/binder/binding-input-test.cc`.
 
 The native query test inventory and exact cutover tests are:
 
-- `zomlang/tests/unittests/compiler/query/query-test-specs.h`;
-- `zomlang/tests/unittests/compiler/query/query-test-descriptor-schema.def`;
-- `zomlang/tests/unittests/compiler/query/query-database-test.cc`;
-- `zomlang/tests/unittests/compiler/query/query-capability-test.cc`;
-- `zomlang/tests/unittests/compiler/query/query-concurrency-test.cc`;
-- `zomlang/tests/unittests/compiler/query/query-eviction-test.cc`;
-- `zomlang/tests/unittests/compiler/query/query-observability-test.cc`;
-- `zomlang/tests/unittests/compiler/query/query-red-green-test.cc`;
-- `zomlang/tests/unittests/compiler/query/CMakeLists.txt`; and
+- `tests/unittests/compiler/query/query-test-specs.h`;
+- `tests/unittests/compiler/query/query-test-descriptor-schema.def`;
+- `tests/unittests/compiler/query/query-database-test.cc`;
+- `tests/unittests/compiler/query/query-capability-test.cc`;
+- `tests/unittests/compiler/query/query-concurrency-test.cc`;
+- `tests/unittests/compiler/query/query-eviction-test.cc`;
+- `tests/unittests/compiler/query/query-observability-test.cc`;
+- `tests/unittests/compiler/query/query-red-green-test.cc`;
+- `tests/unittests/compiler/query/CMakeLists.txt`; and
 - the generated build-tree
-  `zomlang/tests/unittests/compiler/query/query-test-descriptor-inventory.generated.h`.
+  `tests/unittests/compiler/query/query-test-descriptor-inventory.generated.h`.
 
 All query-test descriptor types, including capability-only fixtures currently
 declared inside individual `.cc` files, move into
@@ -1547,19 +1547,19 @@ injection seam, or fallback to the production descriptor.
 
 The exact driver tests are:
 
-- `zomlang/tests/unittests/compiler/binder/identity-pre-admission-test.cc`;
-- `zomlang/tests/unittests/compiler/driver/active-definition-authority-query-test.cc`;
-- `zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc`;
-- `zomlang/tests/unittests/compiler/driver/core-library-query-provider-test.cc`;
-- `zomlang/tests/unittests/compiler/driver/incremental-binding-query-adapter-test.cc`;
-- `zomlang/tests/unittests/compiler/driver/incremental-module-resolution-query-test.cc`;
-- `zomlang/tests/unittests/compiler/driver/module-graph-query-input-test.cc`;
-- `zomlang/tests/unittests/compiler/driver/named-identity-inventory-query-test.cc`;
-- `zomlang/tests/unittests/compiler/driver/named-item-query-test.cc`;
-- `zomlang/tests/unittests/compiler/driver/owner-body-query-test.cc`;
-- `zomlang/tests/unittests/compiler/driver/compiler-session-test.cc`;
-- `zomlang/tests/unittests/compiler/driver/CMakeLists.txt`; and
-- `zomlang/tests/unittests/compiler/binder/CMakeLists.txt`.
+- `tests/unittests/compiler/binder/identity-pre-admission-test.cc`;
+- `tests/unittests/compiler/driver/active-definition-authority-query-test.cc`;
+- `tests/unittests/compiler/driver/active-definition-authority-session-test.cc`;
+- `tests/unittests/compiler/driver/core-library-query-provider-test.cc`;
+- `tests/unittests/compiler/driver/incremental-binding-query-adapter-test.cc`;
+- `tests/unittests/compiler/driver/incremental-module-resolution-query-test.cc`;
+- `tests/unittests/compiler/driver/module-graph-query-input-test.cc`;
+- `tests/unittests/compiler/driver/named-identity-inventory-query-test.cc`;
+- `tests/unittests/compiler/driver/named-item-query-test.cc`;
+- `tests/unittests/compiler/driver/owner-body-query-test.cc`;
+- `tests/unittests/compiler/driver/compiler-session-test.cc`;
+- `tests/unittests/compiler/driver/CMakeLists.txt`; and
+- `tests/unittests/compiler/binder/CMakeLists.txt`.
 
 `scripts/generate-query-descriptor-schema.py` reads the two checked-in schema
 inventories and emits the two named build-tree headers. `--check` regenerates
@@ -1571,18 +1571,18 @@ outside its bound inventory, an old registration or contract API, a
 runtime-computed domain, and a descriptor slot without an exact schema row.
 Its `--self-test` supplies adversarial fixtures for every rejection.
 
-`zomlang/tests/unittests/compiler/query/CMakeLists.txt` registers
+`tests/unittests/compiler/query/CMakeLists.txt` registers
 `query-descriptor-schema` and `query-descriptor-schema-negative`.
-`zomlang/tests/CMakeLists.txt` keeps both in the native CTest graph
+`tests/CMakeLists.txt` keeps both in the native CTest graph
 with labels `unittest;query;architecture`. The production query library and
 query unit-test targets receive exactly their generated inventory header
 through their respective CMake files. Query unit tests bind the one extended
 test inventory; all driver and Binder tests bind the production inventory.
 
 Negative access-control coverage uses
-`zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt` and one
+`tests/cmake/expect-compile-failure/CMakeLists.txt` and one
 source per forbidden operation under
-`zomlang/tests/compile-fail/query-runtime/`. Each
+`tests/compile-fail/query-runtime/`. Each
 `query-runtime-negative-compile-<case>` CTest invokes
 `try_compile(SOURCE_FROM_CONTENT ...)` with the configured compiler, source and
 build include roots, repository C++23 mode, and
@@ -1664,13 +1664,13 @@ The indivisible source cutover must then have zero matches from:
 
 ```bash
 rg -n 'QueryKindContract|sealInputRoot|activeMaterializationReady' \
-  zomlang/compiler zomlang/tests
+  compiler tests
 rg -n 'register(Input|Derived|RevisionLocalCapability)Kind' \
-  zomlang/compiler zomlang/tests
+  compiler tests
 rg -n 'static .*domain\(\)|static .*contract\(\)' \
-  zomlang/compiler zomlang/tests
+  compiler tests
 rg -n 'CapabilityQueryContext&|ActiveMembership<' \
-  zomlang/compiler zomlang/tests
+  compiler tests
 ```
 
 The capability architecture gate additionally rejects an untyped
@@ -1700,12 +1700,12 @@ These scopes are mandatory technical reviews but do not claim file ownership:
 |---|---|---|
 | Task and verification routing | `.codex/subagents/manifest.yaml`; `.codex/subagents/README.md`; `.codex/subagents/task-router.md`; `.codex/subagents/verification.md` | `task-router` |
 | RFC governance and synchronized overlays | `docs/rfc/**` | `rfc` |
-| Query types, database, descriptors, and inventory | `zomlang/compiler/query/**` | `module-system` |
-| Identity and driver query descriptors | `zomlang/compiler/identity/**`; `zomlang/compiler/driver/**` | `module-system` |
-| Parser capability descriptors | `zomlang/compiler/parser/**` | `lexer-parser` |
-| Stable schema and Binder consumers | `zomlang/compiler/binder/**` | `binder-checker` |
+| Query types, database, descriptors, and inventory | `compiler/query/**` | `module-system` |
+| Identity and driver query descriptors | `compiler/identity/**`; `compiler/driver/**` | `module-system` |
+| Parser capability descriptors | `compiler/parser/**` | `lexer-parser` |
+| Stable schema and Binder consumers | `compiler/binder/**` | `binder-checker` |
 | Current-state design audit | `docs/design/**`; synchronized RFC claims | `spec-audit` |
-| Unit tests and exact descriptor gates | `zomlang/tests/**`; `scripts/generate-query-descriptor-schema.py`; `scripts/check-query-descriptor-architecture.py` | `verification` |
+| Unit tests and exact descriptor gates | `tests/**`; `scripts/generate-query-descriptor-schema.py`; `scripts/check-query-descriptor-architecture.py` | `verification` |
 
 ## Security And Safety Impact
 
@@ -1913,21 +1913,21 @@ The review partitions have these exact file sets:
 
 | Partition | Exact files |
 |---|---|
-| `R28-13A` | `zomlang/compiler/query/query-types.h`; `zomlang/compiler/query/query-types.cc` |
-| `R28-13B` | `zomlang/compiler/query/query-database.h`; `zomlang/compiler/query/query-database.cc` |
-| `R28-13C` | `zomlang/compiler/query/query-descriptor-schema.def`; `zomlang/compiler/query/CMakeLists.txt` |
+| `R28-13A` | `compiler/query/query-types.h`; `compiler/query/query-types.cc` |
+| `R28-13B` | `compiler/query/query-database.h`; `compiler/query/query-database.cc` |
+| `R28-13C` | `compiler/query/query-descriptor-schema.def`; `compiler/query/CMakeLists.txt` |
 | `R28-13C1` | `scripts/generate-query-descriptor-schema.py`; `scripts/check-query-descriptor-architecture.py` |
-| `R28-13D.1` | `zomlang/compiler/identity/source-query-input.{h,cc}`; `zomlang/compiler/driver/active-definition-authority-query.{h,cc}`; `zomlang/compiler/driver/query/binding/active-definition-authority-session.cc` |
-| `R28-13D.2` | `zomlang/compiler/driver/core-library-query-provider.{h,cc}`; `zomlang/compiler/driver/core-library-query-verifier.{h,cc}` |
-| `R28-13D.3` | `zomlang/compiler/driver/incremental-binding-query-adapter.{h,cc}`; `zomlang/compiler/driver/incremental-module-resolution-query.{h,cc}`; `zomlang/compiler/driver/incremental-package-graph-query-input.{h,cc}` |
-| `R28-13D.4` | `zomlang/compiler/driver/module-graph-query-input.{h,cc}`; `zomlang/compiler/driver/module-graph-query.{h,cc}`; `zomlang/compiler/driver/session/compiler-session.cc` |
-| `R28-13D.5` | `zomlang/compiler/driver/named-identity-inventory-query.{h,cc}`; `zomlang/compiler/driver/named-item-query.{h,cc}`; `zomlang/compiler/driver/owner-body-query.{h,cc}` |
-| `R28-13E` | `zomlang/compiler/parser/parse-source-query.{h,cc}`; `zomlang/compiler/parser/query/parse-source-query-verifier.cc` |
-| `R28-13F` | `zomlang/compiler/binder/binding-input.cc`; `zomlang/tests/unittests/compiler/binder/binding-input-test.cc` |
-| `R28-13G.1` | `zomlang/tests/unittests/compiler/query/query-test-specs.h`; `zomlang/tests/unittests/compiler/query/query-test-descriptor-schema.def`; all six query test `.cc` files and query `CMakeLists.txt` listed in the atomic migration inventory |
-| `R28-13G.2` | all driver and Binder test files plus their `CMakeLists.txt` files listed in the atomic migration inventory; `zomlang/tests/CMakeLists.txt` |
-| `R29-13B` | `zomlang/compiler/binder/identity-pre-admission.{h,cc}`; `zomlang/compiler/binder/surface/module-body-syntax.h`; `zomlang/compiler/binder/surface/module-body-syntax-producer.cc`; `zomlang/compiler/binder/surface/module-body-syntax-verifier.cc`; `zomlang/compiler/binder/stable/candidate/producer.{h,cc}`; `zomlang/compiler/binder/stable/candidate/verifier.{h,cc}`; `zomlang/compiler/driver/named-identity-inventory-query.{h,cc}`; `zomlang/compiler/driver/named-item-query.{h,cc}`; `zomlang/compiler/driver/owner-body-query.{h,cc}`; Binder and driver build wiring; the focused Binder and driver tests named in the atomic migration inventory |
-| `R29-13C` | query `query-test-specs.h`, database, capability, concurrency, and CMake files; `zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt`; the exact query-runtime compile-fail cases; `zomlang/tests/CMakeLists.txt`; `scripts/check-query-descriptor-architecture.py`; generic runtime-sum and reusable staged dual-alias gate coverage |
+| `R28-13D.1` | `compiler/identity/source-query-input.{h,cc}`; `compiler/driver/active-definition-authority-query.{h,cc}`; `compiler/driver/query/binding/active-definition-authority-session.cc` |
+| `R28-13D.2` | `compiler/driver/core-library-query-provider.{h,cc}`; `compiler/driver/core-library-query-verifier.{h,cc}` |
+| `R28-13D.3` | `compiler/driver/incremental-binding-query-adapter.{h,cc}`; `compiler/driver/incremental-module-resolution-query.{h,cc}`; `compiler/driver/incremental-package-graph-query-input.{h,cc}` |
+| `R28-13D.4` | `compiler/driver/module-graph-query-input.{h,cc}`; `compiler/driver/module-graph-query.{h,cc}`; `compiler/driver/session/compiler-session.cc` |
+| `R28-13D.5` | `compiler/driver/named-identity-inventory-query.{h,cc}`; `compiler/driver/named-item-query.{h,cc}`; `compiler/driver/owner-body-query.{h,cc}` |
+| `R28-13E` | `compiler/parser/parse-source-query.{h,cc}`; `compiler/parser/query/parse-source-query-verifier.cc` |
+| `R28-13F` | `compiler/binder/binding-input.cc`; `tests/unittests/compiler/binder/binding-input-test.cc` |
+| `R28-13G.1` | `tests/unittests/compiler/query/query-test-specs.h`; `tests/unittests/compiler/query/query-test-descriptor-schema.def`; all six query test `.cc` files and query `CMakeLists.txt` listed in the atomic migration inventory |
+| `R28-13G.2` | all driver and Binder test files plus their `CMakeLists.txt` files listed in the atomic migration inventory; `tests/CMakeLists.txt` |
+| `R29-13B` | `compiler/binder/identity-pre-admission.{h,cc}`; `compiler/binder/surface/module-body-syntax.h`; `compiler/binder/surface/module-body-syntax-producer.cc`; `compiler/binder/surface/module-body-syntax-verifier.cc`; `compiler/binder/stable/candidate/producer.{h,cc}`; `compiler/binder/stable/candidate/verifier.{h,cc}`; `compiler/driver/named-identity-inventory-query.{h,cc}`; `compiler/driver/named-item-query.{h,cc}`; `compiler/driver/owner-body-query.{h,cc}`; Binder and driver build wiring; the focused Binder and driver tests named in the atomic migration inventory |
+| `R29-13C` | query `query-test-specs.h`, database, capability, concurrency, and CMake files; `tests/cmake/expect-compile-failure/CMakeLists.txt`; the exact query-runtime compile-fail cases; `tests/CMakeLists.txt`; `scripts/check-query-descriptor-architecture.py`; generic runtime-sum and reusable staged dual-alias gate coverage |
 
 Each numbered subpartition is separately reviewed and may be split into
 smaller non-landing patches before it exceeds approximately 400 changed source
@@ -1937,16 +1937,16 @@ lines. RFC 0029 `R29-14` is exactly the union of `R28-13A`, `R28-13B`, `R28-13C`
 build-tree outputs only through CMake generation and contains no RFC
 documentation.
 `R28-16A` owns
-`zomlang/compiler/driver/module-dependency-provenance-query.{h,cc}`,
-`zomlang/compiler/query/query-descriptor-schema.def`, and
-`zomlang/compiler/driver/query/module-graph/module-graph-query-input.cc`, where
+`compiler/driver/module-dependency-provenance-query.{h,cc}`,
+`compiler/query/query-descriptor-schema.def`, and
+`compiler/driver/query/module-graph/module-graph-query-input.cc`, where
 `registerModuleGraphQueries` installs the descriptor for the existing
 `CompilerSession` registration path, plus
-`zomlang/compiler/driver/CMakeLists.txt`. `R28-16B` owns
-`zomlang/tests/unittests/compiler/driver/module-dependency-provenance-query-test.cc`,
-`zomlang/tests/unittests/compiler/driver/module-graph-query-input-test.cc`,
-`zomlang/tests/unittests/compiler/query/query-test-descriptor-schema.def`,
-`zomlang/tests/unittests/compiler/driver/CMakeLists.txt`, and the
+`compiler/driver/CMakeLists.txt`. `R28-16B` owns
+`tests/unittests/compiler/driver/module-dependency-provenance-query-test.cc`,
+`tests/unittests/compiler/driver/module-graph-query-input-test.cc`,
+`tests/unittests/compiler/query/query-test-descriptor-schema.def`,
+`tests/unittests/compiler/driver/CMakeLists.txt`, and the
 bounded updates to `scripts/check-query-descriptor-architecture.py` required
 to recognize and adversarially test both owned-row alias checks.
 `R28-16` lands exactly their union. The schema change and descriptor land
@@ -2048,7 +2048,7 @@ that the test inventory still contains the complete updated production prefix.
   - `python3 scripts/check-compiler-session-architecture.py --self-test`
   - `python3 scripts/check-parser-coverage.py`
   - `python3 scripts/check-english-only.py --self-test`
-  - `python3 scripts/check-english-only.py --check --base-file zomlang/tests/coverage/implementation-series-base.txt`
+  - `python3 scripts/check-english-only.py --check --base-file tests/coverage/implementation-series-base.txt`
   - `python3 scripts/check-no-internal-versioning.py --self-test`
   - `python3 scripts/check-no-internal-versioning.py --check`
   - `python3 scripts/check-rfc.py`
@@ -2069,7 +2069,7 @@ that the test inventory still contains the complete updated production prefix.
 - Performance:
   - `PATH=/opt/homebrew/bin:$PATH cmake --preset release`
   - `PATH=/opt/homebrew/bin:$PATH cmake --build --preset release --clean-first`
-  - `python3 scripts/run-incremental-query-benchmarks.py --repository . --build-dir build-release --corpus zomlang/tests/performance/incremental-query-corpus.json --baseline zomlang/tests/performance/incremental-query-baseline.json --worker-count 8 --compare`
+  - `python3 scripts/run-incremental-query-benchmarks.py --repository . --build-dir build-release --corpus tests/performance/incremental-query-corpus.json --baseline tests/performance/incremental-query-baseline.json --worker-count 8 --compare`
   - worker-count deterministic witnesses and descriptor identities.
 
 ## Open Questions

@@ -58,9 +58,9 @@ with a parameter type owned by a local instantiated function, leaving a
 dangling address after the call checker returns. The non-owning `bind()`
 overload had the same lifetime contract.
 
-Evidence: `zomlang/compiler/type/type-env.cc:404`,
-`zomlang/compiler/checker/body/body-checker.cc:1940`, and
-`zomlang/compiler/checker/body/body-checker.cc:1982` in the audited
+Evidence: `compiler/type/type-env.cc:404`,
+`compiler/checker/body/body-checker.cc:1940`, and
+`compiler/checker/body/body-checker.cc:1982` in the audited
 revision. The repair clones borrowed concrete types into environment-owned
 storage. Sanitizer regressions destroy the source value before resolving both a
 direct binding and a unification binding.
@@ -77,7 +77,7 @@ The resolver cached an impl under only `typeName::interfaceName`. Consequently,
 `impl Eq for Box<Good>` could be returned for `Box<Plain>` after exact lookup
 missed. Marker override keys had the same generic-argument collapse.
 
-Evidence: `zomlang/compiler/checker/trait-resolver.cc:199`, the former
+Evidence: `compiler/checker/trait-resolver.cc:199`, the former
 cache writes near `trait-resolver.cc:603`, and the former fallback near
 `trait-resolver.cc:730`. The lossy cache was deleted, marker keys now include
 the complete current type rendering, and a regression proves one concrete
@@ -97,9 +97,9 @@ object, and bottom types, while the independent body resolver did not.
 annotation existed, so an invalid initializer could escape assignability
 checking.
 
-Evidence: `zomlang/compiler/checker/decl-signature.cc:969`,
-`zomlang/compiler/checker/body/body-checker.cc:857`, and
-`zomlang/compiler/checker/body/body-checker.cc:3258`. Body checking now
+Evidence: `compiler/checker/decl-signature.cc:969`,
+`compiler/checker/body/body-checker.cc:857`, and
+`compiler/checker/body/body-checker.cc:3258`. Body checking now
 resolves the accepted complex type forms. Unit coverage proves that a boolean
 initializer is rejected for a tuple annotation.
 
@@ -116,10 +116,10 @@ insertion-ordered interner, and each current IR module owns another interner.
 The same numeric ID therefore has no store or semantic-context provenance and
 cannot cross a verified boundary.
 
-Evidence: `zomlang/compiler/type/type-interner.h:28`,
-`zomlang/compiler/type/type-env.cc:110`,
-`zomlang/compiler/driver/session/compiler-session.cc:167`, and
-`zomlang/compiler/irgen/ir.cc:53`.
+Evidence: `compiler/type/type-interner.h:28`,
+`compiler/type/type-env.cc:110`,
+`compiler/driver/session/compiler-session.cc:167`, and
+`compiler/irgen/ir.cc:53`.
 
 Refutation considered: the current CLI limits IR emission to one source and
 usually re-interns types into the IR module. That limits current exposure but
@@ -134,10 +134,10 @@ impl/coherence keys depend on display names or rendered types. A resolved
 `TypeSymbol` exists but is ignored by nominal equality and canonical interning.
 Same-name definitions in distinct modules or packages can therefore collapse.
 
-Evidence: `zomlang/compiler/type/named-type.cc:75`,
-`zomlang/compiler/type/type-interner.cc:166`,
-`zomlang/compiler/type/type-env.cc:1014`, and
-`zomlang/compiler/checker/trait-resolver.cc:1501`.
+Evidence: `compiler/type/named-type.cc:75`,
+`compiler/type/type-interner.cc:166`,
+`compiler/type/type-env.cc:1014`, and
+`compiler/checker/trait-resolver.cc:1501`.
 
 Refutation considered: attaching a `TypeSymbol` to `NamedType` does not help
 because the equality and key functions do not consume it.
@@ -152,9 +152,9 @@ facts, and only dispatch has a freeze flag. Binding a stored type variable can
 change the result of `find(getType(node))` without updating the separately
 stored node `TypeId`.
 
-Evidence: `zomlang/compiler/type/type-env.cc:110`,
-`zomlang/compiler/type/type-env.cc:172`, and
-`zomlang/compiler/type/type-env.cc:220`.
+Evidence: `compiler/type/type-env.cc:110`,
+`compiler/type/type-env.cc:172`, and
+`compiler/type/type-env.cc:220`.
 
 Refutation considered: `setType()` updates both tables at the instant of the
 write. Later union-find refinement does not invoke `setType()`, so this is not
@@ -186,9 +186,9 @@ The driver constructs one `TypeEnv` and checker per source tree.
 `TraitResolver::checkCoherence()` clears local state and visits only that tree,
 so overlapping impls split across source modules are not compared.
 
-Evidence: `zomlang/compiler/driver/session/compiler-session.cc:167`,
-`zomlang/compiler/checker/checker.cc:77`, and
-`zomlang/compiler/checker/trait-resolver.cc:1474`.
+Evidence: `compiler/driver/session/compiler-session.cc:167`,
+`compiler/checker/checker.cc:77`, and
+`compiler/checker/trait-resolver.cc:1474`.
 
 Refutation considered: the driver shares a symbol table, but no symbol-table
 surface aggregates canonical impl heads or performs overlap checking.
@@ -201,8 +201,8 @@ The binder stores the low 32 bits of a `Scope*` as scope identity, and body
 checking reconstructs a `uint32_t -> Scope*` table. Two addresses can collide;
 the value is process-dependent and carries no `ScopeManager` provenance.
 
-Evidence: `zomlang/compiler/binder/decl-collector.cc:160` and
-`zomlang/compiler/checker/body/body-checker.cc:92`.
+Evidence: `compiler/binder/decl-collector.cc:160` and
+`compiler/checker/body/body-checker.cc:92`.
 
 Refutation considered: heap-owned scopes keep their addresses stable during one
 run. Stability does not prevent low-bit collisions or make the identity
@@ -217,8 +217,8 @@ hierarchy structurally requires this representation for heterogeneous child
 types. The audited type and checker directories contain 58 such sites.
 
 Evidence: `.codex/rules/cpp-zc.md:64`,
-`zomlang/compiler/type/function-type.h:39`, and
-`zomlang/compiler/type/type-env.cc:119`.
+`compiler/type/function-type.h:39`, and
+`compiler/type/type-env.cc:119`.
 
 Refutation considered: mechanically storing `Type` values would slice the
 virtual hierarchy. This disproves a local container substitution, not the

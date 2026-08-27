@@ -238,14 +238,14 @@ publication also publishes no value, capability, or dependencies.
 
 | Responsibility | Production entry points |
 |---|---|
-| Core data model and result algebra | `zomlang/compiler/query/query-types.h`, `query-types.cc` |
-| Evaluation, snapshots, transactions, sealing, and telemetry | `zomlang/compiler/query/query-database.h`, `query-database.cc` |
-| Production inventory | `zomlang/compiler/query/query-descriptor-schema.def` |
+| Core data model and result algebra | `compiler/query/query-types.h`, `query-types.cc` |
+| Evaluation, snapshots, transactions, sealing, and telemetry | `compiler/query/query-database.h`, `query-database.cc` |
+| Production inventory | `compiler/query/query-descriptor-schema.def` |
 | Inventory generation | `scripts/generate-query-descriptor-schema.py` |
-| Production database construction and registration | `zomlang/compiler/driver/session/compiler-session.cc` |
-| Production parse capability | `zomlang/compiler/parser/query/parse-source-query.h`, `parse-source-query.cc` |
-| Binder identity and provenance descriptors | `zomlang/compiler/driver/query/binding/named-identity-inventory-query.h`, `named-identity-inventory-query.cc`, `named-item-query.h`, `named-item-query.cc`, `owner-body-query.h`, `owner-body-query.cc` |
-| Complete-context authority input | `zomlang/compiler/driver/query/module-graph/module-graph-query-input.h`, `module-graph-query-input.cc` |
+| Production database construction and registration | `compiler/driver/session/compiler-session.cc` |
+| Production parse capability | `compiler/parser/query/parse-source-query.h`, `parse-source-query.cc` |
+| Binder identity and provenance descriptors | `compiler/driver/query/binding/named-identity-inventory-query.h`, `named-identity-inventory-query.cc`, `named-item-query.h`, `named-item-query.cc`, `owner-body-query.h`, `owner-body-query.cc` |
+| Complete-context authority input | `compiler/driver/query/module-graph/module-graph-query-input.h`, `module-graph-query-input.cc` |
 
 ## Failure, Safety, And Resource Boundaries
 

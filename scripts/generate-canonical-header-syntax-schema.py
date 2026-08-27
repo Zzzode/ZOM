@@ -18,10 +18,10 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SCHEMA = (
-    ROOT / "zomlang/compiler/identity/canonical/canonical-header-syntax-schema.yml"
+    ROOT / "compiler/identity/canonical/canonical-header-syntax-schema.yml"
 )
 DEFAULT_OUTPUT = (
-    ROOT / "zomlang/compiler/identity/canonical/canonical-header-syntax-schema.def"
+    ROOT / "compiler/identity/canonical/canonical-header-syntax-schema.def"
 )
 
 EXPECTED_ENUMS = [

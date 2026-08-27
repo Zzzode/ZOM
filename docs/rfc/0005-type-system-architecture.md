@@ -2680,15 +2680,15 @@ remains `IMPLEMENTING`; product implementation remains tracked by RFC 0025's
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/0005-type-system-architecture.md`, `docs/rfc/tracking/0005-review-and-implementation.md`, `docs/rfc/README.md` | `rfc` |
-| Tuple and cast grammar alignment | `zomlang/compiler/parser/**`, `docs/spec/chapters/17-grammar-reference.md` | `lexer-parser` |
-| Checker, inference, types, traits, coercions, and facts | `zomlang/compiler/checker/**`, `zomlang/compiler/type/**` | `binder-checker` |
-| Diagnostics | `zomlang/compiler/diagnostics/**` | `error-system` |
-| Session-owned semantic store and module interface integration | `zomlang/compiler/driver/**`, `zomlang/compiler/symbol/**` | `module-system` |
-| Checked-module and HIR consumers | `zomlang/compiler/hir/**`, `zomlang/compiler/mir/**`, `zomlang/compiler/lir/**` | `ir-backend` |
-| Raw-pointer reinterpret, const-correctness, unsafe acknowledgement, and memory-safety contract | `docs/spec/chapters/14-memory-management.md`, `zomlang/runtime/**` | `runtime-memory` |
+| Tuple and cast grammar alignment | `compiler/parser/**`, `docs/spec/chapters/17-grammar-reference.md` | `lexer-parser` |
+| Checker, inference, types, traits, coercions, and facts | `compiler/checker/**`, `compiler/type/**` | `binder-checker` |
+| Diagnostics | `compiler/diagnostics/**` | `error-system` |
+| Session-owned semantic store and module interface integration | `compiler/driver/**`, `compiler/symbol/**` | `module-system` |
+| Checked-module and HIR consumers | `compiler/hir/**`, `compiler/mir/**`, `compiler/lir/**` | `ir-backend` |
+| Raw-pointer reinterpret, const-correctness, unsafe acknowledgement, and memory-safety contract | `docs/spec/chapters/14-memory-management.md`, `runtime/**` | `runtime-memory` |
 | Error-role preservation across task and suspension boundaries | `docs/spec/chapters/15-concurrency.md`, `docs/concurrency/**` | `concurrency` |
 | Type, expression, interface, error, and architecture alignment | `docs/spec/**`, `docs/design/**` | `spec-audit` |
-| Unit and conformance evidence | `zomlang/tests/**` | `verification` |
+| Unit and conformance evidence | `tests/**` | `verification` |
 
 ## Security And Safety Impact
 

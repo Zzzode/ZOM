@@ -9,4 +9,4 @@
 - [compiler-contracts.md](design/compiler-contracts.md) — zc coding convention and compile-time contracts
 - [algebraic-data-types.md](design/algebraic-data-types.md) — ADT / Struct / Enum design
 - [ast-data-structure.md](design/ast-data-structure.md) — AST data structure
-- [schema.yml](../zomlang/compiler/ast/schema.yml) — AST node schema
+- [schema.yml](../compiler/ast/schema.yml) — AST node schema

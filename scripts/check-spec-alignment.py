@@ -14,9 +14,9 @@ LEXICAL = Path("docs/spec/chapters/02-lexical-structure.md")
 GRAMMAR = Path("docs/spec/chapters/17-grammar-reference.md")
 EXPRESSIONS = Path("docs/spec/chapters/04-expressions.md")
 LEXER = Path("docs/spec/ZomLexer.g4")
-KINDS = Path("zomlang/compiler/ast/kinds.h")
-PARSER_HELPERS = Path("zomlang/compiler/parser/parser-helpers.cc")
-EXPRESSION_PARSER = Path("zomlang/compiler/parser/syntax/expression-parser.cc")
+KINDS = Path("compiler/ast/kinds.h")
+PARSER_HELPERS = Path("compiler/parser/parser-helpers.cc")
+EXPRESSION_PARSER = Path("compiler/parser/syntax/expression-parser.cc")
 REQUIRED = (LEXICAL, GRAMMAR, EXPRESSIONS, LEXER, KINDS, PARSER_HELPERS, EXPRESSION_PARSER)
 
 

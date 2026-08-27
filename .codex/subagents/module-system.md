@@ -34,17 +34,17 @@ Do **not** route here when:
 ## Owns
 
 ```
-zomlang/compiler/binder/module-*
-zomlang/compiler/driver/**
-zomlang/compiler/identity/**
-zomlang/compiler/query/**
-zomlang/compiler/source/**
+compiler/binder/module-*
+compiler/driver/**
+compiler/identity/**
+compiler/query/**
+compiler/source/**
 core/Zom.toml
 docs/spec/chapters/13-modules-and-imports.md
 docs/spec/chapters/23-visibility-ladder.md
 ```
 
-`zomlang/compiler/driver/interface/borrow-evidence.{h,cc}` remains under this
+`compiler/driver/interface/borrow-evidence.{h,cc}` remains under this
 subagent's primary file ownership. Any change to its ownership, lifetime, or
 memory contract requires a mandatory `runtime-memory` review.
 

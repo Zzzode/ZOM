@@ -10,7 +10,7 @@ from urllib.request import urlopen
 
 DEFAULT_UCD_VERSION = "15.1.0"
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = ROOT / "zomlang" / "compiler" / "lexer"
+DEFAULT_OUTPUT_DIR = ROOT / "compiler" / "lexer"
 
 
 def ucd_url(version: str) -> str:
@@ -188,7 +188,7 @@ def render_cc(version: str, start_ranges: list[tuple[int, int]],
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/lexer/unicode-data.h"
+#include "compiler/lexer/unicode-data.h"
 
 namespace zomlang {{
 namespace compiler {{

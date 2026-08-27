@@ -15,7 +15,7 @@ supersedes: []
 superseded-by: []
 discussion: docs/rfc/0002-parser-architecture.md#status-history
 decision: docs/rfc/0002-parser-architecture.md#status-history
-implementation: zomlang/compiler/parser/parser.cc
+implementation: compiler/parser/parser.cc
 tracking-issue: docs/rfc/0002-parser-architecture.md#acceptance-criteria
 ---
 
@@ -248,7 +248,7 @@ checked artifacts relative to that chapter.
 The implementation must add a machine-checkable parser coverage map at:
 
 ```text
-zomlang/compiler/parser/parser-coverage.yml
+compiler/parser/parser-coverage.yml
 ```
 
 The coverage map is the bridge between prose EBNF and C++ parser functions.
@@ -276,7 +276,7 @@ flowchart TD
 
 ### Parser Modules
 
-The implementation should split `zomlang/compiler/parser/` by
+The implementation should split `compiler/parser/` by
 syntax domain:
 
 | Module | Responsibility |
@@ -452,7 +452,7 @@ returns `zc::none` from the current required production.
 raw payload word writes through every grammar function after this RFC is
 implemented. The parser owns an `AstFactory` layer with one construction helper
 per published syntax node that the parser can create. The typed helper surface
-is generated from `zomlang/compiler/ast/schema.yml`; parser-specific
+is generated from `compiler/ast/schema.yml`; parser-specific
 factory code may validate children and source ranges, but it must not invent a
 second payload schema by hand.
 
@@ -556,7 +556,7 @@ productions:
       - BinaryExpr
       - AssignmentExpr
     tests:
-      - zomlang/tests/conformance/corpus/04-expressions
+      - tests/conformance/corpus/04-expressions
   ArgumentList:
     parser: parseArguments
     status: inlined
@@ -564,7 +564,7 @@ productions:
     ast:
       - CallExpression
     tests:
-      - zomlang/tests/conformance/corpus/04-expressions
+      - tests/conformance/corpus/04-expressions
 ```
 
 Allowed `status` values are:
@@ -1009,12 +1009,12 @@ slice updates.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/0002-parser-architecture.md`, `docs/rfc/README.md` | `rfc` |
-| Lexer and parser | `zomlang/compiler/lexer/**`, `zomlang/compiler/parser/**`, `zomlang/compiler/parser/parser-coverage.yml`, `zomlang/compiler/ast/kinds.h`, `docs/spec/ZomLexer.g4`, `docs/spec/ZomParser.g4`, `docs/spec/chapters/02-lexical-structure.md`, `docs/spec/chapters/04-expressions.md`, `docs/spec/chapters/17-grammar-reference.md` | `lexer-parser` |
-| Diagnostics | `zomlang/compiler/diagnostics/**`, `docs/spec/chapters/11-error-handling.md` | `error-system` |
-| Binder and checker contracts | `zomlang/compiler/binder/**`, `zomlang/compiler/checker/**`, `docs/spec/chapters/03-types.md`, `docs/spec/chapters/06-declarations.md`, `docs/spec/chapters/08-classes-and-structures.md`, `docs/spec/chapters/09-interfaces.md`, `docs/spec/chapters/10-enumerations.md`, `docs/spec/chapters/12-generics.md` | `binder-checker` |
-| Driver and module boundary | `zomlang/compiler/driver/**`, `zomlang/compiler/symbol/**`, `docs/spec/chapters/13-modules-and-imports.md`, `docs/spec/chapters/23-visibility-ladder.md` | `module-system` |
+| Lexer and parser | `compiler/lexer/**`, `compiler/parser/**`, `compiler/parser/parser-coverage.yml`, `compiler/ast/kinds.h`, `docs/spec/ZomLexer.g4`, `docs/spec/ZomParser.g4`, `docs/spec/chapters/02-lexical-structure.md`, `docs/spec/chapters/04-expressions.md`, `docs/spec/chapters/17-grammar-reference.md` | `lexer-parser` |
+| Diagnostics | `compiler/diagnostics/**`, `docs/spec/chapters/11-error-handling.md` | `error-system` |
+| Binder and checker contracts | `compiler/binder/**`, `compiler/checker/**`, `docs/spec/chapters/03-types.md`, `docs/spec/chapters/06-declarations.md`, `docs/spec/chapters/08-classes-and-structures.md`, `docs/spec/chapters/09-interfaces.md`, `docs/spec/chapters/10-enumerations.md`, `docs/spec/chapters/12-generics.md` | `binder-checker` |
+| Driver and module boundary | `compiler/driver/**`, `compiler/symbol/**`, `docs/spec/chapters/13-modules-and-imports.md`, `docs/spec/chapters/23-visibility-ladder.md` | `module-system` |
 | Spec alignment | `docs/spec/**`, `docs/reports/*spec-alignment*` | `spec-audit` |
-| Tests and verification | `zomlang/tests/**`, `examples/**`, `docs/reports/*coverage*` | `verification` |
+| Tests and verification | `tests/**`, `examples/**`, `docs/reports/*coverage*` | `verification` |
 
 ## Security And Safety Impact
 
@@ -1141,7 +1141,7 @@ The implementation must update:
 - `docs/spec/chapters/04-expressions.md` for precedence and associativity
   alignment.
 - `docs/spec/chapters/02-lexical-structure.md` for token and keyword alignment.
-- `zomlang/tests/conformance/README.md` for parser, grammar, and AST
+- `tests/conformance/README.md` for parser, grammar, and AST
   verdict workflow.
 - `docs/design/` with a parser architecture document after the implementation
   is accepted and underway.
@@ -1208,7 +1208,7 @@ bounded syntactic lookahead.
 - Every parser-created AST node kind has a typed `AstFactory` construction
   helper that validates required children before construction.
 - No public AST dump contains a required AST field printed as `null`.
-- `zomlang/compiler/parser/parser-coverage.yml` exists and every
+- `compiler/parser/parser-coverage.yml` exists and every
   syntactic production is mapped with a checked status.
 - Every syntactic EBNF production is implemented or explicitly mapped to an
   inlined parser function.
@@ -1228,7 +1228,7 @@ bounded syntactic lookahead.
   `ZomParser.g4` remains enabled as an oracle.
 - The implementation status ledger records every parser slice with evidence and
   remaining failures by category.
-- `python3 zomlang/tests/conformance/tools/check-ast-coverage.py`
+- `python3 tests/conformance/tools/check-ast-coverage.py`
   reports zero verdict mismatches.
 - Recovery tests prove bounded diagnostics, EOF termination, diagnostic
   deduplication, and progress invariants.

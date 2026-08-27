@@ -1,0 +1,107 @@
+// Copyright (c) 2024-2025 Zode.Z. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
+
+#pragma once
+
+#include "zc/core/string.h"
+#include "compiler/diagnostics/core/diagnostic-ids.h"
+
+namespace zomlang {
+namespace compiler {
+namespace diagnostics {
+
+struct DiagnosticInfo {
+  DiagID id;
+  DiagSeverity severity;
+  zc::StringPtr message;
+  size_t argCount;
+};
+
+template <DiagID Id>
+struct DiagnosticTraits;
+
+#define DIAG(Code, Name, Severity, Message, Args)                    \
+  template <>                                                        \
+  struct DiagnosticTraits<DiagID::Name> {                            \
+    static constexpr DiagSeverity severity = DiagSeverity::Severity; \
+    static constexpr zc::StringPtr message = Message##_zcc;          \
+    static constexpr size_t argCount = Args;                         \
+  };
+#include "compiler/diagnostics/defs/diagnostics-binder.def"
+#include "compiler/diagnostics/defs/diagnostics-checker.def"
+#include "compiler/diagnostics/defs/diagnostics-common.def"
+#include "compiler/diagnostics/defs/diagnostics-identity.def"
+#include "compiler/diagnostics/defs/diagnostics-lowering.def"
+#include "compiler/diagnostics/defs/diagnostics-module.def"
+#include "compiler/diagnostics/defs/diagnostics-package.def"
+#include "compiler/diagnostics/defs/diagnostics-parse.def"
+#undef DIAG
+
+namespace detail {
+
+template <DiagID Id>
+constexpr DiagnosticInfo getDiagnosticInfoImpl() {
+  return DiagnosticInfo{
+      Id,
+      DiagnosticTraits<Id>::severity,
+      DiagnosticTraits<Id>::message,
+      DiagnosticTraits<Id>::argCount,
+  };
+}
+
+}  // namespace detail
+
+constexpr DiagnosticInfo getDiagnosticInfo(const DiagID id) {
+  switch (id) {
+#define DIAG(Code, Name, ...) \
+  case DiagID::Name:          \
+    return detail::getDiagnosticInfoImpl<DiagID::Name>();
+#include "compiler/diagnostics/defs/diagnostics-binder.def"
+#include "compiler/diagnostics/defs/diagnostics-checker.def"
+#include "compiler/diagnostics/defs/diagnostics-common.def"
+#include "compiler/diagnostics/defs/diagnostics-identity.def"
+#include "compiler/diagnostics/defs/diagnostics-lowering.def"
+#include "compiler/diagnostics/defs/diagnostics-module.def"
+#include "compiler/diagnostics/defs/diagnostics-package.def"
+#include "compiler/diagnostics/defs/diagnostics-parse.def"
+
+#undef DIAG
+    default:
+      // Handle unknown DiagID
+      return DiagnosticInfo{id, DiagSeverity::kError, "Unknown diagnostic"_zcc, 0};
+  }
+}
+
+constexpr bool isKnownDiagnostic(const DiagID id) {
+  switch (id) {
+#define DIAG(Code, Name, ...) \
+  case DiagID::Name:          \
+    return true;
+#include "compiler/diagnostics/defs/diagnostics-binder.def"
+#include "compiler/diagnostics/defs/diagnostics-checker.def"
+#include "compiler/diagnostics/defs/diagnostics-common.def"
+#include "compiler/diagnostics/defs/diagnostics-identity.def"
+#include "compiler/diagnostics/defs/diagnostics-lowering.def"
+#include "compiler/diagnostics/defs/diagnostics-module.def"
+#include "compiler/diagnostics/defs/diagnostics-package.def"
+#include "compiler/diagnostics/defs/diagnostics-parse.def"
+#undef DIAG
+    default:
+      return false;
+  }
+}
+
+}  // namespace diagnostics
+}  // namespace compiler
+}  // namespace zomlang

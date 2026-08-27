@@ -96,15 +96,15 @@ transaction. The canonical replacement and final audit are published through
 
 `R36-16` may stage only these paths from the exact approved predecessors:
 
-- `zomlang/compiler/identity/canonical/canonical-encoder.h`
-- `zomlang/compiler/identity/canonical/canonical-encoder.cc`
-- `zomlang/tests/unittests/compiler/identity/canonical-encoder-test.cc`
-- `zomlang/compiler/diagnostics/fact/diagnostic-fact.h`
-- `zomlang/compiler/diagnostics/fact/diagnostic-fact.cc`
-- `zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-codec-test.cc`
-- `zomlang/compiler/parser/query/parse-source-query.cc`
-- `zomlang/compiler/parser/query/canonical-parsed-source.cc`
-- `zomlang/tests/unittests/compiler/parser/diagnostic-fact-caller-test.cc`
+- `compiler/identity/canonical/canonical-encoder.h`
+- `compiler/identity/canonical/canonical-encoder.cc`
+- `tests/unittests/compiler/identity/canonical-encoder-test.cc`
+- `compiler/diagnostics/fact/diagnostic-fact.h`
+- `compiler/diagnostics/fact/diagnostic-fact.cc`
+- `tests/unittests/compiler/diagnostics/diagnostic-fact-codec-test.cc`
+- `compiler/parser/query/parse-source-query.cc`
+- `compiler/parser/query/canonical-parsed-source.cc`
+- `tests/unittests/compiler/parser/diagnostic-fact-caller-test.cc`
 
 The source baseline is the accepted RFC 0036 governance commit that directly
 precedes candidate assembly. `R36-15` records that full SHA, initializes an

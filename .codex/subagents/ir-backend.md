@@ -33,19 +33,19 @@ Do not route here when:
 ## Owns
 
 ```text
-zomlang/compiler/hir/**
-zomlang/compiler/ir/**
-zomlang/compiler/mir/**
-zomlang/compiler/lir/**
-zomlang/compiler/backend/**
-zomlang/compiler/basic/compiler-opts.h
+compiler/hir/**
+compiler/ir/**
+compiler/mir/**
+compiler/lir/**
+compiler/backend/**
+compiler/basic/compiler-opts.h
 CMakeLists.txt
 CMakePresets.json
-zomlang/compiler/CMakeLists.txt
-zomlang/compiler/basic/CMakeLists.txt
-zomlang/compiler/trace/CMakeLists.txt
-zomlang/utils/CMakeLists.txt
-zomlang/utils/zomc/**
+compiler/CMakeLists.txt
+compiler/basic/CMakeLists.txt
+compiler/trace/CMakeLists.txt
+utils/CMakeLists.txt
+utils/zomc/**
 core/CMakeLists.txt
 ```
 

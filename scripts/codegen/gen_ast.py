@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate ZOM AST schema support files.
 
-The schema input is zomlang/compiler/ast/schema.yml by default. The
+The schema input is compiler/ast/schema.yml by default. The
 generated files are intentionally small integration headers for the main
 zomlang::compiler::ast namespace; the C++ implementation owns storage and tree
 mutation behavior.
@@ -21,9 +21,9 @@ import yaml
 
 
 REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
-DEFAULT_SCHEMA = os.path.join(REPO_ROOT, "zomlang", "compiler", "ast", "schema.yml")
+DEFAULT_SCHEMA = os.path.join(REPO_ROOT, "compiler", "ast", "schema.yml")
 DEFAULT_OUTPUT_DIR = os.path.join(
-    REPO_ROOT, "zomlang", "compiler", "ast", "generated"
+    REPO_ROOT, "compiler", "ast", "generated"
 )
 NAMESPACE_OPEN = "namespace zomlang {\nnamespace compiler {\nnamespace ast {"
 NAMESPACE_CLOSE = "}  // namespace ast\n}  // namespace compiler\n}  // namespace zomlang"
@@ -426,7 +426,7 @@ def generate_node_payload_h(schema: dict[str, Any]) -> str:
         generated_notice(),
         '#include <cstdint>',
         "",
-        '#include "zomlang/compiler/ast/tree.h"',
+        '#include "compiler/ast/tree.h"',
         "",
         NAMESPACE_OPEN,
         "",
@@ -460,7 +460,7 @@ def generate_node_accessors_h(schema: dict[str, Any]) -> str:
     lines = [
         HEADER,
         generated_notice(),
-        '#include "zomlang/compiler/ast/generated/node-payload.h"',
+        '#include "compiler/ast/generated/node-payload.h"',
         "",
         NAMESPACE_OPEN,
         "",
@@ -613,7 +613,7 @@ def generate_node_factory_h(schema: dict[str, Any]) -> str:
         '#include <cstdint>',
         "",
         '#include "zc/core/common.h"',
-        '#include "zomlang/compiler/ast/generated/node-payload.h"',
+        '#include "compiler/ast/generated/node-payload.h"',
         "",
         NAMESPACE_OPEN,
         "",
@@ -655,7 +655,7 @@ def generate_node_schema_h(schema: dict[str, Any]) -> str:
         generated_notice(),
         '#include <cstdint>',
         "",
-        '#include "zomlang/compiler/ast/kinds.h"',
+        '#include "compiler/ast/kinds.h"',
         "",
         NAMESPACE_OPEN,
         "",
@@ -783,8 +783,8 @@ def generate_node_schema_h(schema: dict[str, Any]) -> str:
 def generate_node_traverse_h(schema: dict[str, Any]) -> str:
     lines = [
         HEADER,
-        '#include "zomlang/compiler/ast/generated/node-payload.h"',
-        '#include "zomlang/compiler/ast/tree.h"',
+        '#include "compiler/ast/generated/node-payload.h"',
+        '#include "compiler/ast/tree.h"',
         "",
         NAMESPACE_OPEN,
         "",

@@ -179,8 +179,8 @@ R30-12N-D -> R39-11 -> R30-12O-D -> R30-12N-E
 RFC 0030's exact `R29-12AB` landing set adds:
 
 ```text
-zomlang/compiler/binder/metadata/binding-metadata.h
-zomlang/compiler/binder/metadata/binding-metadata.cc
+compiler/binder/metadata/binding-metadata.h
+compiler/binder/metadata/binding-metadata.cc
 ```
 
 `stable-binding-facts-test.cc` is already in that set. RFC 0030 `R30-13`
@@ -192,9 +192,9 @@ only source commit and push.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC authority | RFCs 0030, 0037, and 0039, their trackers, and the RFC index | `rfc` |
-| Revision identity | `zomlang/compiler/binder/binding-metadata.{h,cc}` | `binder-checker` |
-| Stable codec consumer | `zomlang/compiler/binder/stable-binding-codec.{h,cc}` | `binder-checker` |
-| Native evidence | `zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc` | `verification` |
+| Revision identity | `compiler/binder/binding-metadata.{h,cc}` | `binder-checker` |
+| Stable codec consumer | `compiler/binder/stable-binding-codec.{h,cc}` | `binder-checker` |
+| Native evidence | `tests/unittests/compiler/binder/stable-binding-facts-test.cc` | `verification` |
 | Atomic landing gate | RFC 0030 allowlist and Binder architecture checks | `verification` |
 
 ## Security And Safety Impact
@@ -290,7 +290,7 @@ RFC 0030 landing-scope gates remain mandatory after `R30-13` registration.
   `python3 scripts/check-stable-binding-schema.py --self-test`.
 - Format: `python3 scripts/check-format.py`.
 - Repository language: `python3 scripts/check-english-only.py --check
-  --base-file zomlang/tests/coverage/implementation-series-base.txt`.
+  --base-file tests/coverage/implementation-series-base.txt`.
 - Internal naming: `python3 scripts/check-no-internal-versioning.py --check`.
 - Diff hygiene: `git diff --check`.
 - Final source evidence: RFC 0030 Test Plan.

@@ -7,7 +7,7 @@ description: Run the five-way consistency check between lexical chapter, ZomLexe
 
 The automated enforcer of `.codex/rules/spec-alignment.md`. Invoke it
 *before* merging any change that touches `docs/spec/**` or
-`zomlang/compiler/{lexer,parser,ast,binder,checker}/**`.
+`compiler/{lexer,parser,ast,binder,checker}/**`.
 
 ---
 

@@ -15,8 +15,8 @@ diff carefully — mechanical regeneration is not automatic approval.
 
 Every AST conformance test has two files:
 
-- Source: `zomlang/tests/conformance/corpus/<chapter>/<path>.zom`
-- Expectation: `zomlang/tests/conformance/expectations/ast/<chapter>/<path>.check`
+- Source: `tests/conformance/corpus/<chapter>/<path>.zom`
+- Expectation: `tests/conformance/expectations/ast/<chapter>/<path>.check`
 
 ```text
 // REQUIRES: default
@@ -56,7 +56,7 @@ pub fn main() {
 ## Where to Put New Tests
 
 ```
-zomlang/tests/conformance/
+tests/conformance/
 ├── corpus/<chapter>/                 // pure ZOM source
 └── expectations/ast/<chapter>/        // lit RUN + FileCheck oracle
 ```
@@ -72,8 +72,8 @@ free of RUN/CHECK directives.
 **After any change to parser, binder, AST dump, or diagnostics:**
 
 ```bash
-python3 zomlang/tests/tools/regen-lit.py \
-  zomlang/tests/conformance/corpus/<chapter>/<path>/<test>.zom
+python3 tests/tools/regen-lit.py \
+  tests/conformance/corpus/<chapter>/<path>/<test>.zom
 ```
 
 **Then — this is the human step:**
@@ -89,8 +89,8 @@ To regenerate the whole suite (rare — only after a broad refactor like
 `SyntaxKind` renumbering):
 
 ```bash
-python3 zomlang/tests/tools/regen-lit.py \
-  zomlang/tests/conformance/corpus/
+python3 tests/tools/regen-lit.py \
+  tests/conformance/corpus/
 ```
 
 Confirm the diff is exactly what you expected before committing.
@@ -128,7 +128,7 @@ Key rules:
 ctest --preset default -R lit-<chapter>-<path>-<test> --verbose
 
 # Or directly:
-zomc compile --dump-ast zomlang/tests/conformance/corpus/<chapter>/<path>/xxx.zom
+zomc compile --dump-ast tests/conformance/corpus/<chapter>/<path>/xxx.zom
 ```
 
 Most lit failures fall into one of these buckets — diagnose in order:

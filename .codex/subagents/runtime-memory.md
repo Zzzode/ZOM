@@ -38,13 +38,13 @@ Do **not** route here when:
 
 ```
 libraries/zc/**
-zomlang/compiler/ownership/**
-zomlang/runtime/**
-!zomlang/runtime/**/task*
-!zomlang/runtime/**/async*
-!zomlang/runtime/**/actor*
-!zomlang/runtime/**/channel*
-!zomlang/runtime/**/scheduler*
+compiler/ownership/**
+runtime/**
+!runtime/**/task*
+!runtime/**/async*
+!runtime/**/actor*
+!runtime/**/channel*
+!runtime/**/scheduler*
 core/README.md
 core/src/**
 docs/spec/chapters/14-memory-management.md
@@ -54,7 +54,7 @@ docs/spec/chapters/14-memory-management.md
 subagent owns everything else in `runtime/` and is the sole primary owner of
 the compiler ownership-analysis subtree and the language ownership and memory
 contract in Chapter 14.
-`zomlang/compiler/driver/interface/borrow-evidence.{h,cc}` is owned by
+`compiler/driver/interface/borrow-evidence.{h,cc}` is owned by
 `module-system`; changes to its ownership or lifetime contract require this
 subagent's review but do not transfer file ownership.)
 

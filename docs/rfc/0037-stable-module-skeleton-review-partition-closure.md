@@ -158,17 +158,17 @@ RFC 0030 tasks `R30-12N`, `R30-12O`, `R30-12P`, and `R30-12Q` are replaced by:
 Every fact task edits exactly:
 
 ```text
-zomlang/compiler/binder/stable/stable-binding-facts.h
-zomlang/compiler/binder/stable/stable-binding-facts.cc
-zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
+compiler/binder/stable/stable-binding-facts.h
+compiler/binder/stable/stable-binding-facts.cc
+tests/unittests/compiler/binder/stable-binding-facts-test.cc
 ```
 
 Every codec task edits exactly:
 
 ```text
-zomlang/compiler/binder/stable/stable-binding-codec.h
-zomlang/compiler/binder/stable/stable-binding-codec.cc
-zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
+compiler/binder/stable/stable-binding-codec.h
+compiler/binder/stable/stable-binding-codec.cc
+tests/unittests/compiler/binder/stable-binding-facts-test.cc
 ```
 
 Each review records the exact approved predecessor SHA-256 tuple, exact
@@ -179,7 +179,7 @@ total must not exceed 400. No later task may use an unapproved predecessor.
 exactly one file:
 
 ```text
-zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
+tests/unittests/compiler/binder/stable-binding-facts-test.cc
 ```
 
 `R30-12N-F2A` records the approved `R30-12N-F1` test hash as its predecessor.
@@ -373,7 +373,7 @@ architecture, allowlist, and landing-scope gates remain mandatory.
   `python3 scripts/check-stable-binding-schema.py --self-test`.
 - Format: `python3 scripts/check-format.py`.
 - Repository language: `python3 scripts/check-english-only.py --check
-  --base-file zomlang/tests/coverage/implementation-series-base.txt`.
+  --base-file tests/coverage/implementation-series-base.txt`.
 - Internal naming: `python3 scripts/check-no-internal-versioning.py --check`.
 - Diff hygiene: `git diff --check`.
 - Native evidence after source wiring: RFC 0030 Test Plan.

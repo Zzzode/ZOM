@@ -119,9 +119,9 @@ RFC 0030 `R30-12H` is replaced by these tasks:
 Each task edits exactly:
 
 ```text
-zomlang/compiler/binder/stable/stable-binding-facts.h
-zomlang/compiler/binder/stable/stable-binding-facts.cc
-zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
+compiler/binder/stable/stable-binding-facts.h
+compiler/binder/stable/stable-binding-facts.cc
+tests/unittests/compiler/binder/stable-binding-facts-test.cc
 ```
 
 For each task, changed source lines are additions plus deletions across all
@@ -168,8 +168,8 @@ authorized `R29-12AB` commit and push.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC authority | `docs/rfc/0030-stable-binding-foundation-verification.md`, `docs/rfc/0033-stable-header-review-partition-closure.md`, `docs/rfc/tracking/0030-review-and-implementation.md`, `docs/rfc/tracking/0033-review-and-implementation.md`, `docs/rfc/README.md` | `rfc` |
-| Stable header facts | `zomlang/compiler/binder/stable-binding-facts.{h,cc}` | `binder-checker` |
-| Native stable header tests | `zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc` | `verification` |
+| Stable header facts | `compiler/binder/stable-binding-facts.{h,cc}` | `binder-checker` |
+| Native stable header tests | `tests/unittests/compiler/binder/stable-binding-facts-test.cc` | `verification` |
 
 ## Security And Safety Impact
 
@@ -261,7 +261,7 @@ versioning, architecture, build, and native-test gates remain required.
   `python3 scripts/check-stable-binding-schema.py --self-test`.
 - Format: `python3 scripts/check-format.py`.
 - Repository language: `python3 scripts/check-english-only.py --check
-  --base-file zomlang/tests/coverage/implementation-series-base.txt`.
+  --base-file tests/coverage/implementation-series-base.txt`.
 - Internal naming: `python3 scripts/check-no-internal-versioning.py --check`.
 - Diff hygiene: `git diff --check`.
 - Native evidence after source wiring: RFC 0030 Test Plan.

@@ -12,7 +12,7 @@ from urllib.request import urlopen
 
 DEFAULT_UCD_VERSION = "15.1.0"
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = ROOT / "zomlang" / "compiler" / "identity"
+DEFAULT_OUTPUT_DIR = ROOT / "compiler" / "identity"
 
 
 def ucd_url(version: str, filename: str) -> str:
@@ -256,7 +256,7 @@ def render_cc(
 // Contains tables derived from Unicode Character Database {version}.
 // See third_party/unicode/LICENSE.txt and third_party/unicode/README.md.
 
-#include "zomlang/compiler/identity/text/unicode-normalization-data.h"
+#include "compiler/identity/text/unicode-normalization-data.h"
 
 namespace zomlang::compiler::identity {{
 

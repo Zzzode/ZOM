@@ -209,9 +209,9 @@ ZOM owns exactly three IR layers:
 
 | Layer | Canonical C++ namespace | Canonical path | Target dependent | Primary consumers |
 |---|---|---|---|---|
-| Semantic HIR | `zomlang::compiler::hir` | `zomlang/compiler/hir/**` | No | IDE queries, MIR construction, semantic audits |
-| Control-flow MIR | `zomlang::compiler::mir` | `zomlang/compiler/mir/**` | No | Borrow checker, drop elaboration, ZOM optimizations |
-| Target LIR | `zomlang::compiler::lir` | `zomlang/compiler/lir/**` | Yes | LLVM translation, object emission, ABI tests |
+| Semantic HIR | `zomlang::compiler::hir` | `compiler/hir/**` | No | IDE queries, MIR construction, semantic audits |
+| Control-flow MIR | `zomlang::compiler::mir` | `compiler/mir/**` | No | Borrow checker, drop elaboration, ZOM optimizations |
+| Target LIR | `zomlang::compiler::lir` | `compiler/lir/**` | Yes | LLVM translation, object emission, ABI tests |
 
 The parsed AST, RFC 0004 verified binding input, RFC 0005 verified checked
 facts, RFC 0009 verified dispatch facts, and RFC 0008 module interfaces are
@@ -444,7 +444,7 @@ embedded immutable profile; no API attempts to invert a digest or accepts a
 second unverified target record.
 
 The gate registry is generated from
-`zomlang/compiler/ir/feature-boundary-gates.def`. A gate ID is a
+`compiler/ir/feature-boundary-gates.def`. A gate ID is a
 non-zero fixed-width `uint32`, encodes big-endian, and is unique in one
 snapshot. Entries sort by numeric gate ID. The registry revision is SHA-256
 over `ASCII("zom.feature-boundary-registry")`, NUL, a big-endian `uint64`
@@ -1078,7 +1078,7 @@ published.
 IR builders, verifiers, passes, and target lowering return typed failure facts,
 not display strings. Every user-correctable error or unsupported target/CLI
 capability has a registered `ZOMxxxx` entry in
-`zomlang/compiler/diagnostics/diagnostics-*.def`, a primary
+`compiler/diagnostics/diagnostics-*.def`, a primary
 `SourceSpan` when source caused it, and conformance coverage that checks the
 diagnostic code.
 
@@ -1391,13 +1391,13 @@ a later artifact RFC defines directory output.
 The implementation uses one directory per layer:
 
 ```text
-zomlang/compiler/hir/
-zomlang/compiler/mir/
-zomlang/compiler/lir/
-zomlang/compiler/backend/llvm/
+compiler/hir/
+compiler/mir/
+compiler/lir/
+compiler/backend/llvm/
 ```
 
-The current `zomlang/compiler/irgen/` directory is directly replaced.
+The current `compiler/irgen/` directory is directly replaced.
 No alias, forwarding header, compatibility namespace, or duplicate CMake target
 remains after replacement.
 
@@ -1429,14 +1429,14 @@ final module assembly uses deterministic canonical ordering.
 |---|---|---|
 | Agent routing | `AGENTS.md`, `.codex/subagents/README.md`, `.codex/subagents/manifest.yaml`, `.codex/subagents/ir-backend.md` | `task-router` |
 | RFC governance | `docs/rfc/**` | `rfc` |
-| Checked semantic facts | `zomlang/compiler/binder/**`, `zomlang/compiler/checker/**`, `zomlang/compiler/type/**` | `binder-checker` |
-| Module-qualified identities | `zomlang/compiler/symbol/**`, `zomlang/compiler/driver/**` | `module-system` |
-| Error and panic semantics | `zomlang/compiler/diagnostics/**`, `docs/spec/chapters/11-error-handling.md` | `error-system` |
-| Async lowering contract | `zomlang/runtime/**/task*`, `zomlang/runtime/**/async*`, `docs/spec/chapters/15-concurrency.md` | `concurrency` |
-| HIR, MIR, LIR, backend, CLI, and build wiring | `zomlang/compiler/hir/**`, `zomlang/compiler/ir/**`, `zomlang/compiler/mir/**`, `zomlang/compiler/lir/**`, `zomlang/compiler/irgen/**`, `zomlang/compiler/backend/**`, `zomlang/compiler/basic/compiler-opts.h`, `zomlang/compiler/CMakeLists.txt`, `zomlang/utils/zomc/**` | `ir-backend` |
-| Runtime ABI and memory ownership | `zomlang/runtime/**`, `libraries/zc/**`, `docs/spec/chapters/14-memory-management.md` | `runtime-memory` |
+| Checked semantic facts | `compiler/binder/**`, `compiler/checker/**`, `compiler/type/**` | `binder-checker` |
+| Module-qualified identities | `compiler/symbol/**`, `compiler/driver/**` | `module-system` |
+| Error and panic semantics | `compiler/diagnostics/**`, `docs/spec/chapters/11-error-handling.md` | `error-system` |
+| Async lowering contract | `runtime/**/task*`, `runtime/**/async*`, `docs/spec/chapters/15-concurrency.md` | `concurrency` |
+| HIR, MIR, LIR, backend, CLI, and build wiring | `compiler/hir/**`, `compiler/ir/**`, `compiler/mir/**`, `compiler/lir/**`, `compiler/irgen/**`, `compiler/backend/**`, `compiler/basic/compiler-opts.h`, `compiler/CMakeLists.txt`, `utils/zomc/**` | `ir-backend` |
+| Runtime ABI and memory ownership | `runtime/**`, `libraries/zc/**`, `docs/spec/chapters/14-memory-management.md` | `runtime-memory` |
 | Specification alignment | `docs/spec/**`, `docs/design/**` | `spec-audit` |
-| Verifiers and conformance | `zomlang/tests/**`, `examples/**` | `verification` |
+| Verifiers and conformance | `tests/**`, `examples/**` | `verification` |
 
 ## Security And Safety Impact
 

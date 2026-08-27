@@ -128,16 +128,16 @@ replaced by:
 The facts files are:
 
 ```text
-zomlang/compiler/binder/stable/stable-binding-facts.h
-zomlang/compiler/binder/stable/stable-binding-facts.cc
-zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
+compiler/binder/stable/stable-binding-facts.h
+compiler/binder/stable/stable-binding-facts.cc
+tests/unittests/compiler/binder/stable-binding-facts-test.cc
 ```
 
 The codec files replace the first two paths with:
 
 ```text
-zomlang/compiler/binder/stable/stable-binding-codec.h
-zomlang/compiler/binder/stable/stable-binding-codec.cc
+compiler/binder/stable/stable-binding-codec.h
+compiler/binder/stable/stable-binding-codec.cc
 ```
 
 Every task counts additions plus deletions across all three exact files
@@ -292,7 +292,7 @@ native-test gates remain mandatory.
   `python3 scripts/check-stable-binding-schema.py --self-test`.
 - Format: `python3 scripts/check-format.py`.
 - Repository language: `python3 scripts/check-english-only.py --check
-  --base-file zomlang/tests/coverage/implementation-series-base.txt`.
+  --base-file tests/coverage/implementation-series-base.txt`.
 - Internal naming: `python3 scripts/check-no-internal-versioning.py --check`.
 - Diff hygiene: `git diff --check`.
 - Native evidence after source wiring: RFC 0030 Test Plan.

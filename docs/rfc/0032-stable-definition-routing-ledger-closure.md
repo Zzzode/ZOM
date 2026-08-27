@@ -250,18 +250,18 @@ No current-graph search participates in the erase.
 RFC 0030 `R30-12D` owns exactly these authority files:
 
 ```text
-zomlang/compiler/driver/query/binding/active-definition-authority-query.h
-zomlang/compiler/driver/query/binding/active-definition-authority-query.cc
-zomlang/compiler/driver/query/binding/active-definition-authority-session.h
-zomlang/compiler/driver/query/binding/active-definition-authority-session.cc
-zomlang/tests/unittests/compiler/driver/active-definition-authority-query-test.cc
-zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc
+compiler/driver/query/binding/active-definition-authority-query.h
+compiler/driver/query/binding/active-definition-authority-query.cc
+compiler/driver/query/binding/active-definition-authority-session.h
+compiler/driver/query/binding/active-definition-authority-session.cc
+tests/unittests/compiler/driver/active-definition-authority-query-test.cc
+tests/unittests/compiler/driver/active-definition-authority-session-test.cc
 ```
 
 The RFC 0030 exact `R29-12AB` landing set adds:
 
 ```text
-zomlang/compiler/driver/query/binding/active-definition-authority-session.h
+compiler/driver/query/binding/active-definition-authority-session.h
 ```
 
 The newline-sorted landing allowlist must contain the same path. No other
@@ -289,9 +289,9 @@ the exact landing allowlist.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC authority | `docs/rfc/0030-stable-binding-foundation-verification.md`, `docs/rfc/0032-stable-definition-routing-ledger-closure.md`, `docs/rfc/tracking/0030-review-and-implementation.md`, `docs/rfc/tracking/0032-review-and-implementation.md`, `docs/rfc/README.md` | `rfc` |
-| Authority session and contextual routing | `zomlang/compiler/driver/active-definition-authority-session.{h,cc}`, `zomlang/compiler/driver/active-definition-authority-query.{h,cc}`, `zomlang/compiler/driver/contextual-binding-key.{h,cc}` | `module-system` |
-| Stable routing key | `zomlang/compiler/binder/stable-binding-facts.{h,cc}` | `binder-checker` |
-| Native tests and gates | `zomlang/tests/unittests/compiler/driver/active-definition-authority-query-test.cc`, `zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc`, `zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt`, `scripts/check-binder-architecture.py` | `verification` |
+| Authority session and contextual routing | `compiler/driver/active-definition-authority-session.{h,cc}`, `compiler/driver/active-definition-authority-query.{h,cc}`, `compiler/driver/contextual-binding-key.{h,cc}` | `module-system` |
+| Stable routing key | `compiler/binder/stable-binding-facts.{h,cc}` | `binder-checker` |
+| Native tests and gates | `tests/unittests/compiler/driver/active-definition-authority-query-test.cc`, `tests/unittests/compiler/driver/active-definition-authority-session-test.cc`, `tests/coverage/rfc-0030-stable-binding-landing-files.txt`, `scripts/check-binder-architecture.py` | `verification` |
 
 ## Security And Safety Impact
 

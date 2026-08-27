@@ -2065,12 +2065,12 @@ numeric codes are forbidden.
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/**` | `rfc` |
-| Manifest, package graph, resolver, lock, materializer, and session inputs | `zomlang/compiler/driver/**` | `module-system` |
-| Typed package diagnostics | `zomlang/compiler/diagnostics/**` | `error-system` |
-| CLI, backend target profiles, and compiler-level build wiring | `zomlang/utils/zomc/**`, `zomlang/compiler/basic/compiler-opts.h`, `zomlang/compiler/CMakeLists.txt` | `ir-backend` |
-| Build-script executor and platform sandbox adapters | `zomlang/compiler/driver/package/build-script-*.{h,cc}`, `zomlang/compiler/driver/package/linux-*.{h,cc}` | `runtime-memory` |
+| Manifest, package graph, resolver, lock, materializer, and session inputs | `compiler/driver/**` | `module-system` |
+| Typed package diagnostics | `compiler/diagnostics/**` | `error-system` |
+| CLI, backend target profiles, and compiler-level build wiring | `utils/zomc/**`, `compiler/basic/compiler-opts.h`, `compiler/CMakeLists.txt` | `ir-backend` |
+| Build-script executor and platform sandbox adapters | `compiler/driver/package/build-script-*.{h,cc}`, `compiler/driver/package/linux-*.{h,cc}` | `runtime-memory` |
 | Normative package-tooling documentation after implementation | `docs/package-system.md` | `spec-audit` |
-| Manifest, resolver, lock, materialization, and determinism tests | `zomlang/tests/**` | `verification` |
+| Manifest, resolver, lock, materialization, and determinism tests | `tests/**` | `verification` |
 
 ## Security And Safety Impact
 
@@ -2183,14 +2183,14 @@ The dependency boundary is closed and has no system-library fallback:
 | [`Zstandard`](https://github.com/facebook/zstd/releases/tag/v1.5.7) | `v1.5.7` | Vendored static library; single-frame streaming decoder with the RFC window bound |
 
 All source and license files live under
-`zomlang/compiler/driver/package/vendor/<dependency>/**`. The driver
+`compiler/driver/package/vendor/<dependency>/**`. The driver
 CMake directory is the highest common scope of the C vendor targets, calls
 `enable_language(C)` there, and builds portable C11 static libraries with
 assembly disabled. C++ package targets retain the root C++23 mode. The driver
 does not call `find_package`, use a host copy, or enable libarchive's automatic
 compression discovery; libarchive receives already bounded decompressed bytes
 from the direct Zstandard wrapper. The driver target links only the admitted
-source inventories above. `zomlang/tests/tools/check-vendored-dependencies.py` owns a
+source inventories above. `tests/tools/check-vendored-dependencies.py` owns a
 checked manifest with the exact upstream archive URL, tag and commit, SPDX
 license identifier, archive SHA-256, extracted-content SHA-256, enabled-source
 inventory, compile options, and local patch digest. The manifest must be

@@ -1,7 +1,7 @@
 ---
 paths:
   - "docs/spec/**"
-  - "zomlang/compiler/**"
+  - "compiler/**"
 ---
 
 # Spec ↔ Implementation Alignment Rules

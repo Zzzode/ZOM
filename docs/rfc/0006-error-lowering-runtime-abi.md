@@ -680,13 +680,13 @@ flowchart TD
 |---|---|---|
 | RFC governance | `docs/rfc/0006-error-lowering-runtime-abi.md`, `docs/rfc/tracking/0006-review-and-implementation.md`, `docs/rfc/README.md` | `rfc` |
 | Error handling spec | `docs/spec/chapters/11-error-handling.md` | `error-system` |
-| Type checker contract | `zomlang/compiler/checker/**`, `zomlang/compiler/type/**` | `binder-checker` |
-| Error semantic boundary | `zomlang/compiler/diagnostics/**`, `docs/spec/chapters/11-error-handling.md` | `error-system` |
-| Cross-module error ABI metadata | `zomlang/compiler/driver/**`, `zomlang/compiler/symbol/**` | `module-system` |
-| Typed IR, target layout, CLI, and backend boundary | `zomlang/compiler/irgen/**`, `zomlang/compiler/hir/**`, `zomlang/compiler/mir/**`, `zomlang/compiler/lir/**`, `zomlang/compiler/backend/**`, `zomlang/utils/zomc/**` | `ir-backend` |
-| Runtime panic ABI | `zomlang/runtime/**`, `libraries/zc/**` | `runtime-memory` |
+| Type checker contract | `compiler/checker/**`, `compiler/type/**` | `binder-checker` |
+| Error semantic boundary | `compiler/diagnostics/**`, `docs/spec/chapters/11-error-handling.md` | `error-system` |
+| Cross-module error ABI metadata | `compiler/driver/**`, `compiler/symbol/**` | `module-system` |
+| Typed IR, target layout, CLI, and backend boundary | `compiler/irgen/**`, `compiler/hir/**`, `compiler/mir/**`, `compiler/lir/**`, `compiler/backend/**`, `utils/zomc/**` | `ir-backend` |
+| Runtime panic ABI | `runtime/**`, `libraries/zc/**` | `runtime-memory` |
 | Spec alignment | `docs/spec/**`, `docs/design/**` | `spec-audit` |
-| Tests and verification | `zomlang/tests/**` | `verification` |
+| Tests and verification | `tests/**` | `verification` |
 
 ## Security And Safety Impact
 
@@ -757,7 +757,7 @@ module metadata.
 ### Current Implementation Readiness
 
 The repository now has a target-aware typed IR foundation under
-`zomlang/compiler/irgen/`. `TargetDataLayout` owns the selected ZOM
+`compiler/irgen/`. `TargetDataLayout` owns the selected ZOM
 ILP32 or LP64 pointer and scalar layout queries. `computeErrorUnionLayout()`
 flattens nested unions, reserves tag zero for success, sorts unique error
 alternatives by canonical key, and rejects unknown payload layouts before IR
@@ -906,7 +906,7 @@ evidence.
 
 | AC | Status | Evidence | Remaining Work |
 |---|---|---|---|
-| 1 | Partial | `zomlang/compiler/irgen/target-data-layout.*` and `error-union-layout.*` compute descriptors from explicit ZOM ILP32/LP64 profiles; the IR module owns one target profile and canonical interner, and unknown layouts fail before IR emission. Unit tests cover scalar, pointer-like, tuple, structural-object, zero-sized, and unknown payloads. | Replace the prototype with RFC 0010 `TargetSpecId`, module-qualified semantic keys, and the independent target-artifact ABI manifest. |
+| 1 | Partial | `compiler/irgen/target-data-layout.*` and `error-union-layout.*` compute descriptors from explicit ZOM ILP32/LP64 profiles; the IR module owns one target profile and canonical interner, and unknown layouts fail before IR emission. Unit tests cover scalar, pointer-like, tuple, structural-object, zero-sized, and unknown payloads. | Replace the prototype with RFC 0010 `TargetSpecId`, module-qualified semantic keys, and the independent target-artifact ABI manifest. |
 | 2 | Complete for local canonical keys | Tag zero is success. Error candidates are recursively flattened, deduplicated, sorted by canonical key, and tagged from one. Unit tests permute source/nesting order and interner insertion history. | Cross-module nominal identity remains part of AC 1 and RFC 0008. |
 | 3 | Partial | A checked same-source zero-argument free-function call with one residual lowers to `call.raising`, an error-union tag branch, success/residual payload moves, destination union reconstruction, and a shared typed return block. The unit and IR tests prove source `str` tag one remaps to destination `bool | str` tag two. | Add per-tag switching for multiple residuals, general expressions and arguments, and the real cleanup graph with drop actions. |
 | 5 | Not Met | The `?!` success and residual branches converge on one typed return block, providing the control-flow attachment point for future cleanup. | Explicit returns do not yet share that block, and functions with locals are rejected because drop facts and destructor targets are unavailable. |
@@ -956,7 +956,7 @@ evidence.
   `--emit=llvm-ir`. MIR expectations own logical `?!`, `!!`, cleanup, and panic
   metadata; LIR expectations own tags, payload layout, runtime targets, and ABI;
   LLVM IR expectations own translated control flow and calls. The replacement
-  deletes `zomlang/tests/conformance/runners/ir/` and the `zom.ir`
+  deletes `tests/conformance/runners/ir/` and the `zom.ir`
   expectations.
 - Conformance: diagnostics and AST tests continue to cover checker legality for
   `ZOM4025` and `ZOM4026`; the IR runner proves that unsupported unwind fails

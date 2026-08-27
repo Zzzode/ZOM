@@ -461,9 +461,9 @@ to cross-check parser normalization, but neither reconstructs semantic syntax
 through a second fact inventory.
 
 The machine-readable wire inventory lives in
-`zomlang/compiler/identity/canonical-header-syntax-schema.yml` and is
+`compiler/identity/canonical-header-syntax-schema.yml` and is
 generated into
-`zomlang/compiler/identity/canonical/canonical-header-syntax-schema.def` by
+`compiler/identity/canonical/canonical-header-syntax-schema.def` by
 `scripts/generate-canonical-header-syntax-schema.py`. The source schema lists
 exactly the tags and fields above; it contains no AST ids. The identity
 architecture gate regenerates to a temporary file and requires byte equality,
@@ -1287,13 +1287,13 @@ both `S3` and `S6` pass their focused gates. RFC 0018 remains
 |---|---|---|
 | Routing validation | `.codex/subagents/README.md`, `.codex/subagents/manifest.yaml`, `.codex/subagents/task-router.md`, `.codex/subagents/ir-backend.md`, `.codex/subagents/module-system.md`, `.codex/subagents/spec-audit.md`, `.codex/subagents/verification.md`, `AGENTS.md` | `task-router` |
 | RFC governance | `docs/rfc/**` | `rfc` |
-| Header syntax preservation | `zomlang/compiler/ast/**`, `zomlang/compiler/parser/**` | `lexer-parser` |
-| Binder identities, semantic types, and Checker conversion | `zomlang/compiler/binder/binding-*`, `zomlang/compiler/binder/body-binding.*`, `zomlang/compiler/binder/closure-free-variables.*`, `zomlang/compiler/binder/definition-inventory.*`, `zomlang/compiler/binder/frozen-definition-inventory.*`, `zomlang/compiler/binder/import-binding.*`, `zomlang/compiler/binder/scope-arena.*`, `zomlang/compiler/binder/verified-bound-module-input.*`, `zomlang/compiler/binder/internal/binding-skeleton.h`, `zomlang/compiler/checker/**`, `zomlang/compiler/type/**` | `binder-checker` |
-| Stable identity and module/session queries | `zomlang/compiler/identity/**`, `zomlang/compiler/query/**`, `zomlang/compiler/binder/module-*`, `zomlang/compiler/driver/**` | `module-system` |
-| Diagnostic provenance | `zomlang/compiler/diagnostics/**` | `error-system` |
-| Compiler build graph | `zomlang/compiler/CMakeLists.txt` | `ir-backend` |
+| Header syntax preservation | `compiler/ast/**`, `compiler/parser/**` | `lexer-parser` |
+| Binder identities, semantic types, and Checker conversion | `compiler/binder/binding-*`, `compiler/binder/body-binding.*`, `compiler/binder/closure-free-variables.*`, `compiler/binder/definition-inventory.*`, `compiler/binder/frozen-definition-inventory.*`, `compiler/binder/import-binding.*`, `compiler/binder/scope-arena.*`, `compiler/binder/verified-bound-module-input.*`, `compiler/binder/internal/binding-skeleton.h`, `compiler/checker/**`, `compiler/type/**` | `binder-checker` |
+| Stable identity and module/session queries | `compiler/identity/**`, `compiler/query/**`, `compiler/binder/module-*`, `compiler/driver/**` | `module-system` |
+| Diagnostic provenance | `compiler/diagnostics/**` | `error-system` |
+| Compiler build graph | `compiler/CMakeLists.txt` | `ir-backend` |
 | Design and spec alignment | `docs/design/**`, `docs/spec/chapters/03-types.md`, `docs/spec/chapters/06-declarations.md`, `docs/spec/chapters/09-interfaces.md`, `docs/spec/chapters/12-generics.md`, `docs/spec/chapters/17-grammar-reference.md`, `docs/spec/chapters/22-orphan-rule-and-coherence.md` | `spec-audit` |
-| Tests, schema generators, and architecture gates | `zomlang/tests/**`, `scripts/generate-canonical-header-syntax-schema.py`, `scripts/generate-query-descriptor-schema.py`, `scripts/check-query-descriptor-architecture.py`, `scripts/check-identity-architecture.py`, `scripts/check-incremental-query-architecture.py` | `verification` |
+| Tests, schema generators, and architecture gates | `tests/**`, `scripts/generate-canonical-header-syntax-schema.py`, `scripts/generate-query-descriptor-schema.py`, `scripts/check-query-descriptor-architecture.py`, `scripts/check-identity-architecture.py`, `scripts/check-incremental-query-architecture.py` | `verification` |
 
 ## Security And Safety Impact
 

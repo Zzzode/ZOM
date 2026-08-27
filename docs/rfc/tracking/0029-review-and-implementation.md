@@ -163,7 +163,7 @@ base, or implementation status.
 
 Implementation review found that the exact landing union omitted four
 production callers required by the accepted direct replacement.
-`zomlang/compiler/binder/binding-input.cc` must consume the
+`compiler/binder/binding-input.cc` must consume the
 unversioned query publication result. `module-body-syntax.h`,
 `module-body-syntax-producer.cc`, and `module-body-syntax-verifier.cc` must
 accept stable identity admission at the Binder-owned producer and independent

@@ -951,13 +951,13 @@ flowchart TD
 | Area | Paths | Owner |
 |---|---|---|
 | RFC governance | `docs/rfc/0008-compiler-session-cross-module.md`, `docs/rfc/tracking/0008-review-and-implementation.md`, `docs/rfc/README.md` | `rfc` |
-| Driver/session implementation | `zomlang/compiler/driver/**` | `module-system` |
-| Binder and symbol integration | `zomlang/compiler/binder/**`, `zomlang/compiler/symbol/**` | `module-system` |
-| Checker and TypeEnv integration | `zomlang/compiler/checker/**`, `zomlang/compiler/type/**` | `binder-checker` |
-| Diagnostics | `zomlang/compiler/diagnostics/**` | `error-system` |
-| Checked-module and IR identity consumers | `zomlang/compiler/hir/**`, `zomlang/compiler/mir/**`, `zomlang/compiler/lir/**` | `ir-backend` |
+| Driver/session implementation | `compiler/driver/**` | `module-system` |
+| Binder and symbol integration | `compiler/binder/**`, `compiler/symbol/**` | `module-system` |
+| Checker and TypeEnv integration | `compiler/checker/**`, `compiler/type/**` | `binder-checker` |
+| Diagnostics | `compiler/diagnostics/**` | `error-system` |
+| Checked-module and IR identity consumers | `compiler/hir/**`, `compiler/mir/**`, `compiler/lir/**` | `ir-backend` |
 | Spec alignment | `docs/spec/**`, `docs/design/**` | `spec-audit` |
-| Tests and verification | `zomlang/tests/**` | `verification` |
+| Tests and verification | `tests/**` | `verification` |
 
 ## Security And Safety Impact
 

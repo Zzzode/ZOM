@@ -287,7 +287,7 @@ The implementation recognizes these non-overlapping layers:
 | Language primitives | Language specification and compiler | No library declarations | None |
 | Core library | `core/src/**` ZOM source | Yes | Language primitives only |
 | Intrinsic lowering | Compiler IR/backend | No | Verified core identity and target facts |
-| Runtime ABI | `zomlang/runtime/**` | No | Target and platform services |
+| Runtime ABI | `runtime/**` | No | Target and platform services |
 | Allocation library | Future ZOM source | Yes | Core plus an allocator capability |
 | Hosted standard library | Future ZOM source | Yes | Core, allocation, and explicit platform capabilities |
 
@@ -1686,7 +1686,7 @@ re-export the core module tree.
 The leading qualified-module segment `core` is reserved for the verified
 toolchain unit. A user crate target, dependency alias, or root module cannot
 claim it. Rejection uses the ordinary module diagnostic registered in
-`zomlang/compiler/diagnostics/defs/diagnostics-module.def`:
+`compiler/diagnostics/defs/diagnostics-module.def`:
 
 | Code | Name | Severity | Message | Arguments |
 |---|---|---|---|---|
@@ -2173,7 +2173,7 @@ Its target, alias, and source producers use their existing package or module
 diagnostic facts. It is not part of the core-specific failure algebra below.
 
 The core-specific registry file is
-`zomlang/compiler/diagnostics/diagnostics-core.def` and contains:
+`compiler/diagnostics/diagnostics-core.def` and contains:
 
 | Code | Name | Severity | Message |
 |---|---|---|---|
@@ -3481,16 +3481,16 @@ implementing the core compiler contract.
 |---|---|---|
 | RFC governance | `docs/rfc/**` | `rfc` |
 | Path ownership and core-library gate routing | `AGENTS.md`, `.codex/subagents/**` | `task-router` |
-| Removal of the unused intrinsic token and parser-facing inventory alignment | `zomlang/compiler/lexer/**`, `zomlang/compiler/parser/**`, `zomlang/compiler/ast/**`, `docs/spec/ZomLexer.g4`, `docs/spec/ZomParser.g4` | `lexer-parser` |
-| Core signatures, role authority, final interface publication, and non-module binder inputs | `zomlang/compiler/checker/**` excluding `checker-source-diagnostics.def`, `zomlang/compiler/type/**`, `zomlang/compiler/binder/**` excluding `binder/module-*` | `binder-checker` |
-| Toolchain identity, source admission, package target and dependency-alias reservation, module graph, module binder paths, queries, borrow-evidence driver files, driver build registration, and session publication | `zomlang/compiler/identity/**`, `zomlang/compiler/source/**`, `zomlang/compiler/query/**`, `zomlang/compiler/binder/module-*`, `zomlang/compiler/driver/**`, `core/Zom.toml` | `module-system` |
-| `ZOM3027`, core diagnostics, diagnostic fact and provenance codecs, core failure projection, and invariant diagnostics | `zomlang/compiler/diagnostics/**`, `zomlang/compiler/checker/checker-source-diagnostics.def` | `error-system` |
+| Removal of the unused intrinsic token and parser-facing inventory alignment | `compiler/lexer/**`, `compiler/parser/**`, `compiler/ast/**`, `docs/spec/ZomLexer.g4`, `docs/spec/ZomParser.g4` | `lexer-parser` |
+| Core signatures, role authority, final interface publication, and non-module binder inputs | `compiler/checker/**` excluding `checker-source-diagnostics.def`, `compiler/type/**`, `compiler/binder/**` excluding `binder/module-*` | `binder-checker` |
+| Toolchain identity, source admission, package target and dependency-alias reservation, module graph, module binder paths, queries, borrow-evidence driver files, driver build registration, and session publication | `compiler/identity/**`, `compiler/source/**`, `compiler/query/**`, `compiler/binder/module-*`, `compiler/driver/**`, `core/Zom.toml` | `module-system` |
+| `ZOM3027`, core diagnostics, diagnostic fact and provenance codecs, core failure projection, and invariant diagnostics | `compiler/diagnostics/**`, `compiler/checker/checker-source-diagnostics.def` | `error-system` |
 | Removal of unsupported standard-library, runtime, and marker claims from concurrency documentation and the specification index | `docs/concurrency/**`, `docs/spec/specification.md`, `docs/spec/chapters/15-concurrency.md` | `concurrency` |
-| Checked-module imported-interface handoff, declaration-only HIR/MIR exclusion, build, install, generated-inventory inclusion, and CLI layout | `zomlang/compiler/hir/**`, `zomlang/compiler/mir/**`, `zomlang/compiler/basic/compiler-opts.h`, `CMakeLists.txt`, `zomlang/compiler/CMakeLists.txt`, `core/CMakeLists.txt`, `zomlang/utils/CMakeLists.txt`, `zomlang/utils/zomc/**` | `ir-backend` |
-| Borrow-evidence ownership-contract review, ZOM core source, contributor guidance, and memory-model alignment | `core/src/**`, `core/README.md`, `docs/spec/chapters/14-memory-management.md`; mandatory contract review for module-system-owned `zomlang/compiler/driver/borrow-evidence.{h,cc}` | `runtime-memory` |
-| Core definition navigation and semantic source locations | `zomlang/tools/ide/**`, `zomlang/tools/lsp/**`, `editors/**`, `docs/design/tooling/**` | `tooling-lsp` |
+| Checked-module imported-interface handoff, declaration-only HIR/MIR exclusion, build, install, generated-inventory inclusion, and CLI layout | `compiler/hir/**`, `compiler/mir/**`, `compiler/basic/compiler-opts.h`, `CMakeLists.txt`, `compiler/CMakeLists.txt`, `core/CMakeLists.txt`, `utils/CMakeLists.txt`, `utils/zomc/**` | `ir-backend` |
+| Borrow-evidence ownership-contract review, ZOM core source, contributor guidance, and memory-model alignment | `core/src/**`, `core/README.md`, `docs/spec/chapters/14-memory-management.md`; mandatory contract review for module-system-owned `compiler/driver/borrow-evidence.{h,cc}` | `runtime-memory` |
+| Core definition navigation and semantic source locations | `tools/ide/**`, `tools/lsp/**`, `editors/**`, `docs/design/tooling/**` | `tooling-lsp` |
 | Language specification, documentation index, and architecture documentation outside tooling | `docs/overview.md`, `docs/spec/**`, `docs/design/**` excluding `docs/design/tooling/**` | `spec-audit` |
-| Inventory generator, native tests, installation fixtures, fixed core-library, specification-alignment, English-only, RFC 0007 ownership architecture and coverage gates, and CI | `scripts/codegen/gen_core_library_inventory.py`, `zomlang/tests/**`, `scripts/check-core-library-architecture.py`, `scripts/check-core-library-spec-alignment.py`, `scripts/check-english-only.py`, `scripts/check-ownership-architecture.py`, `scripts/run-ownership-coverage.py`, `scripts/check-ownership-coverage.py`, `zomlang/tests/coverage/ownership-exemptions.json`, `.github/workflows/**`, `README.md` | `verification` |
+| Inventory generator, native tests, installation fixtures, fixed core-library, specification-alignment, English-only, RFC 0007 ownership architecture and coverage gates, and CI | `scripts/codegen/gen_core_library_inventory.py`, `tests/**`, `scripts/check-core-library-architecture.py`, `scripts/check-core-library-spec-alignment.py`, `scripts/check-english-only.py`, `scripts/check-ownership-architecture.py`, `scripts/run-ownership-coverage.py`, `scripts/check-ownership-coverage.py`, `tests/coverage/ownership-exemptions.json`, `.github/workflows/**`, `README.md` | `verification` |
 
 ## Security And Safety Impact
 
@@ -3902,9 +3902,9 @@ updated only with the production slice they describe:
   name `core`, and absence of crate-graph, module-graph, prelude, or core
   publication after rejection.
 - Tooling tests are registered at
-  `zomlang/tests/unittests/tools/ide/core-library-source-navigation-test.cc`
+  `tests/unittests/tools/ide/core-library-source-navigation-test.cc`
   and
-  `zomlang/tests/unittests/tools/lsp/core-library-source-navigation-test.cc`.
+  `tests/unittests/tools/lsp/core-library-source-navigation-test.cc`.
   They are conditional on RFC 0023 being `ACCEPTED` and its named production
   foundation slices being complete; neither tooling product nor these tests
   may be created by an RFC 0025 implementation before that gate.
@@ -3931,12 +3931,12 @@ updated only with the production slice they describe:
   first run `cmake --preset release` and
   `cmake --build --preset release --clean-first`. When any reviewed corpus or
   baseline input changes, run
-  `python3 scripts/run-incremental-query-benchmarks.py --repository . --build-dir build-release --corpus zomlang/tests/performance/incremental-query-corpus.json --baseline zomlang/tests/performance/incremental-query-baseline.json --worker-count <machine-matched-count> --record-baseline`
+  `python3 scripts/run-incremental-query-benchmarks.py --repository . --build-dir build-release --corpus tests/performance/incremental-query-corpus.json --baseline tests/performance/incremental-query-baseline.json --worker-count <machine-matched-count> --record-baseline`
   from a clean repository, inspect the deterministic baseline diff, record the
   written cause and `verification` approval, and commit that baseline before
   comparison. Reconfigure and clean-build the committed Release revision, then
   run
-  `python3 scripts/run-incremental-query-benchmarks.py --repository . --build-dir build-release --corpus zomlang/tests/performance/incremental-query-corpus.json --baseline zomlang/tests/performance/incremental-query-baseline.json --worker-count <machine-matched-count> --compare`.
+  `python3 scripts/run-incremental-query-benchmarks.py --repository . --build-dir build-release --corpus tests/performance/incremental-query-corpus.json --baseline tests/performance/incremental-query-baseline.json --worker-count <machine-matched-count> --compare`.
   The reviewed corpus includes clean core compilation, unchanged-core reuse,
   core export change, marker-policy change, and semantic-role change. The
   runner enforces the RFC 0017 protocol of five warm-ups and twenty-one
@@ -3947,7 +3947,7 @@ updated only with the production slice they describe:
 - CLI action selection:
   `ctest --preset default -R '^package-invocation-cli$' --output-on-failure`
   extends
-  `zomlang/tests/tools/check-package-invocation.py` and invokes the
+  `tests/tools/check-package-invocation.py` and invokes the
   real `zomc compile` entry point. Native cases cover repeated `--check`,
   every pair of distinct action selectors, `--check` with `-o`, `--emit`,
   `--dump-ast`, or `--dump-dispatch`, and the prohibited `--emit=check`
@@ -3957,7 +3957,7 @@ updated only with the production slice they describe:
 - Installation:
   `ctest --preset default -R '^core-library-install-consumer$' --output-on-failure`.
   The registered test
-  `zomlang/tests/cmake/verify-core-library-install-consumer.cmake` removes and
+  `tests/cmake/verify-core-library-install-consumer.cmake` removes and
   recreates only
   `${CMAKE_BINARY_DIR}/test-prefixes/core-library-install-consumer`, installs
   the current build there, verifies the exact installed core file set and
@@ -3965,12 +3965,12 @@ updated only with the production slice they describe:
 
   ```text
   <prefix>/bin/zomc compile --check \
-    --manifest-path <repository>/zomlang/tests/integration/core-library/installed-consumer/Zom.toml \
+    --manifest-path <repository>/tests/integration/core-library/installed-consumer/Zom.toml \
     --bin installed-consumer
   ```
 
   The fixed fixture source is
-  `zomlang/tests/integration/core-library/installed-consumer/src/main.zom`.
+  `tests/integration/core-library/installed-consumer/src/main.zom`.
   The runner verifies that the selected executable resolves inside the
   temporary prefix, the manifest and target are the fixed fixture above, the
   production path publishes the ordinary consumer's checked module, verified
@@ -4069,7 +4069,7 @@ updated only with the production slice they describe:
   RFC 0025 implementation-series merge base and head. Each file must reach 70
   percent line coverage, aggregate inventoried coverage must not regress, and
   an exemption is legal only when
-  `zomlang/tests/coverage/ownership-exemptions.json` names the exact
+  `tests/coverage/ownership-exemptions.json` names the exact
   path, uncovered ranges, technical reason, approving `verification` owner, and
   expiry commit. Missing profiles, an empty or incomplete census, malformed
   LLVM output, below-threshold coverage, baseline regression, or an invalid

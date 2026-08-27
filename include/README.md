@@ -13,10 +13,11 @@ ZOM deliberately splits headers into two tiers:
   project namespace so an external `#include "zomlang/..."` resolves
   unambiguously against this include root (the LLVM/Swift `include/<project>/`
   convention).
-- **Internal headers — co-located with their `.cc` under `zomlang/`.** Every
+- **Internal headers — co-located with their `.cc` in the subsystem trees**
+  (`compiler/`, `runtime/`, `tools/`, `tests/`, `utils/` at the repo root). Every
   header used only inside the compiler lives next to its implementation
-  (`zomlang/compiler/lexer/lexer.h` beside `lexer.cc`). Internal code
-  `#include "zomlang/compiler/..."` resolves against the repository root, which
+  (`compiler/lexer/lexer.h` beside `lexer.cc`). Internal code
+  `#include "compiler/..."` resolves against the repository root, which
   is also an include root. Internal headers are **not** mirrored here.
 
 This mixed layout is intentional: exported API is centralized and versioned,

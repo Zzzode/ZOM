@@ -814,14 +814,14 @@ flowchart LR
 |---|---|---|
 | Task routing and cross-RFC escalation | `.codex/subagents/**` | `task-router` |
 | RFC overlay governance and RFC 0007 dependency | `docs/rfc/0005-type-system-architecture.md`, `docs/rfc/0007-borrow-lifetime-ownership-checker.md`, `docs/rfc/0008-compiler-session-cross-module.md`, `docs/rfc/0010-intermediate-representation-pipeline.md`, `docs/rfc/0013-ownership-analysis-integration-boundary.md`, `docs/rfc/tracking/0005-review-and-implementation.md`, `docs/rfc/tracking/0007-review-and-implementation.md`, `docs/rfc/tracking/0008-review-and-implementation.md`, `docs/rfc/tracking/0010-review-and-implementation.md`, `docs/rfc/tracking/0013-review-and-implementation.md`, `docs/rfc/README.md` | `rfc` |
-| Borrow shape, receiver/parameter validation, and signature facts | `zomlang/compiler/checker/**`, `zomlang/compiler/type/**` | `binder-checker` |
-| Borrow surface, canonical module interface, aliases, and re-exports | `zomlang/compiler/driver/**`, `zomlang/compiler/symbol/**` | `module-system` |
-| `ZOM4082-ZOM4085`, interface invariants, and result mapping | `zomlang/compiler/diagnostics/**` | `error-system` |
+| Borrow shape, receiver/parameter validation, and signature facts | `compiler/checker/**`, `compiler/type/**` | `binder-checker` |
+| Borrow surface, canonical module interface, aliases, and re-exports | `compiler/driver/**`, `compiler/symbol/**` | `module-system` |
+| `ZOM4082-ZOM4085`, interface invariants, and result mapping | `compiler/diagnostics/**` | `error-system` |
 | Suspension non-implication audit | `docs/spec/chapters/15-concurrency.md`, `docs/concurrency/**` | `concurrency` |
-| MIR proof result seam, evidence lease, and typestate | `zomlang/compiler/mir/**`, `zomlang/compiler/hir/**` | `ir-backend` |
-| Reference, storage, extern, and ABI safety boundary | `docs/spec/chapters/14-memory-management.md`, `zomlang/runtime/**` | `runtime-memory` |
+| MIR proof result seam, evidence lease, and typestate | `compiler/mir/**`, `compiler/hir/**` | `ir-backend` |
+| Reference, storage, extern, and ABI safety boundary | `docs/spec/chapters/14-memory-management.md`, `runtime/**` | `runtime-memory` |
 | Type, module, memory, and compiler-contract alignment | `docs/spec/**`, `docs/design/**` | `spec-audit` |
-| Codec, diagnostics, architecture, and conformance gates | `zomlang/tests/**`, `scripts/**` | `verification` |
+| Codec, diagnostics, architecture, and conformance gates | `tests/**`, `scripts/**` | `verification` |
 
 ## Security And Safety Impact
 

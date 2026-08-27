@@ -13,36 +13,36 @@ from importlib.machinery import SourceFileLoader
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCHEMA_PATH = ROOT / "zomlang/compiler/query/query-descriptor-schema.def"
-COMPILER_ROOT = ROOT / "zomlang/compiler"
-QUERY_TYPES = ROOT / "zomlang/compiler/query/query-types.h"
-QUERY_DATABASE_HEADER = ROOT / "zomlang/compiler/query/query-database.h"
-QUERY_DATABASE_IMPLEMENTATION = ROOT / "zomlang/compiler/query/query-database.cc"
+SCHEMA_PATH = ROOT / "compiler/query/query-descriptor-schema.def"
+COMPILER_ROOT = ROOT / "compiler"
+QUERY_TYPES = ROOT / "compiler/query/query-types.h"
+QUERY_DATABASE_HEADER = ROOT / "compiler/query/query-database.h"
+QUERY_DATABASE_IMPLEMENTATION = ROOT / "compiler/query/query-database.cc"
 QUERY_TEST_SPECS = (
     ROOT
-    / "zomlang/tests/unittests/compiler/query/query-test-specs.h"
+    / "tests/unittests/compiler/query/query-test-specs.h"
 )
 QUERY_DATABASE_TEST = (
     ROOT
-    / "zomlang/tests/unittests/compiler/query/query-database-test.cc"
+    / "tests/unittests/compiler/query/query-database-test.cc"
 )
 QUERY_CAPABILITY_TEST = (
     ROOT
-    / "zomlang/tests/unittests/compiler/query/query-capability-test.cc"
+    / "tests/unittests/compiler/query/query-capability-test.cc"
 )
 PROVENANCE_QUERY_IMPLEMENTATION = (
     ROOT
-    / "zomlang/compiler/driver/query/module-graph/module-dependency-provenance-query.cc"
+    / "compiler/driver/query/module-graph/module-dependency-provenance-query.cc"
 )
 STABLE_BINDING_SCHEMA = (
-    ROOT / "zomlang/compiler/binder/stable-binding-schema.def"
+    ROOT / "compiler/binder/stable-binding-schema.def"
 )
-TEST_CMAKE = ROOT / "zomlang/tests/CMakeLists.txt"
+TEST_CMAKE = ROOT / "tests/CMakeLists.txt"
 NEGATIVE_FIXTURE = (
-    ROOT / "zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt"
+    ROOT / "tests/cmake/expect-compile-failure/CMakeLists.txt"
 )
 NEGATIVE_DIRECTORY = (
-    ROOT / "zomlang/tests/compile-fail/query-runtime"
+    ROOT / "tests/compile-fail/query-runtime"
 )
 NEGATIVE_CASES = {
     "identity-token-construction": "QueryDatabaseIdentityToken",
@@ -690,7 +690,7 @@ def check_provenance_owned_aliases(
                 f"{relative(PROVENANCE_QUERY_IMPLEMENTATION)}: provenance inactive selector drift"
             )
 
-    schema_path = "zomlang/compiler/binder/stable-binding-schema.def"
+    schema_path = "compiler/binder/stable-binding-schema.def"
     relevant_macros = (
         "ZOM_R28_16A_SELECT_R28_16A",
         *inactive_selectors,
@@ -815,23 +815,23 @@ def mutate_once(files: dict[Path, str], path: Path, marker: str) -> dict[Path, s
 
 
 def run_self_test() -> None:
-    fixture_path = ROOT / "zomlang/compiler/example/query-fixture.h"
+    fixture_path = ROOT / "compiler/example/query-fixture.h"
     rows = GENERATOR.parse_schema_text(
         "\n".join(
             [
                 'ZOM_INPUT(0, zomlang::compiler::example::FixtureInput, '
                 '"FixtureInput", "zom.query.fixture-input", Low, '
-                '"zomlang/compiler/example/query-fixture")',
+                '"compiler/example/query-fixture")',
                 'ZOM_COMPLETE_CONTEXT_INPUT(1, '
                 'zomlang::compiler::driver::module_graph_query::'
                 'CompleteCompilationContextAuthorityInput, '
                 '"CompleteCompilationContextAuthorityInput", '
                 '"zom.input.complete-compilation-context-authority", Frozen, '
-                '"zomlang/compiler/driver/module-graph-query-input")',
+                '"compiler/driver/module-graph-query-input")',
                 'ZOM_CAPABILITY(2, zomlang::compiler::example::FixtureCapability, '
                 '"FixtureCapability", "zom.query.fixture-capability", Retained, '
                 'FinalSealedSnapshot, SourceOrKey, '
-                '"zomlang/compiler/example/query-fixture")',
+                '"compiler/example/query-fixture")',
             ]
         ),
         Path("fixture.def"),
@@ -1035,7 +1035,7 @@ def run_self_test() -> None:
         "mutations, test) \\\n"
         "  ZOM_R28_16A_SELECT(descriptorTask, name, capabilityType);\n"
     )
-    schema_include = '#include "zomlang/compiler/binder/stable-binding-schema.def"\n'
+    schema_include = '#include "compiler/binder/stable-binding-schema.def"\n'
     cleanup_directives = (
         "#undef ZOM_STABLE_BINDING_CAPABILITY_QUERY\n"
         "#undef ZOM_R28_16A_SELECT_EXPAND\n"
@@ -1362,8 +1362,8 @@ def run_self_test() -> None:
         (
             "schema include comment decoy",
             provenance_implementation.replace(
-                '#include "zomlang/compiler/binder/stable-binding-schema.def"',
-                '/* #include "zomlang/compiler/binder/stable-binding-schema.def" */',
+                '#include "compiler/binder/stable-binding-schema.def"',
+                '/* #include "compiler/binder/stable-binding-schema.def" */',
                 1,
             ),
             provenance_schema,
@@ -1566,11 +1566,11 @@ def run_self_test() -> None:
         raise RuntimeError("query runtime boundary self-test baseline failed")
     escaped_access = dict(boundary_baseline)
     escaped_access[
-        ROOT / "zomlang/compiler/example/escaped.cc"
+        ROOT / "compiler/example/escaped.cc"
     ] = "QueryRuntimeTestAccess"
     escaped_gate = dict(boundary_baseline)
     escaped_gate[
-        ROOT / "zomlang/compiler/example/escaped.cc"
+        ROOT / "compiler/example/escaped.cc"
     ] = "FinalSealPhaseTwoGate"
     production_definition = dict(boundary_baseline)
     production_definition[

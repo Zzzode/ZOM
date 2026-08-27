@@ -34,7 +34,10 @@ endif()
 
 add_subdirectory(libraries)
 add_subdirectory(core)
-add_subdirectory(zomlang)
+add_subdirectory(compiler)
+add_subdirectory(runtime)
+add_subdirectory(utils)
+add_subdirectory(tests)
 add_subdirectory(examples)
 
 if(ZOM_ENABLE_COVERAGE)

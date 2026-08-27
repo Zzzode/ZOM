@@ -32,8 +32,8 @@ Do **not** route here when:
 ## Owns
 
 ```text
-zomlang/tools/ide/**
-zomlang/tools/lsp/**
+tools/ide/**
+tools/lsp/**
 editors/**
 docs/design/tooling/**
 ```

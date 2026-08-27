@@ -2105,17 +2105,17 @@ Repository gates reject:
 |---|---|---|
 | RFC proposal, tracker, and index | `docs/rfc/0016-*`, `docs/rfc/tracking/0016-*`, `docs/rfc/README.md` | `rfc` |
 | Ownership routing | `.codex/subagents/manifest.yaml`, `.codex/subagents/README.md`, `.codex/subagents/task-router.md`, `.codex/subagents/ir-backend.md`, `.codex/subagents/spec-audit.md`, `.codex/subagents/verification.md` | `task-router` |
-| Context authority, session ordering, and registry lifetime | `zomlang/compiler/identity/**`, `zomlang/compiler/driver/compiler-session.*`, `zomlang/compiler/driver/package/**` | `module-system` |
-| Target registry, LLVM validation, panic mapping, and target-profile invariants | `zomlang/compiler/ir/**` | `ir-backend` |
-| CLI target construction | `zomlang/utils/zomc/**` | `ir-backend` |
-| Runtime capability and ABI contract registries | `zomlang/runtime/panic-capabilities.def`, `zomlang/runtime/runtime-abi-contracts.def`, `zomlang/runtime/panic.h`, `zomlang/runtime/panic.cc`, `zomlang/runtime/CMakeLists.txt` | `runtime-memory` |
-| Failure adapters and registry rows | `zomlang/compiler/diagnostics/**` | `error-system` |
-| LLVM discovery, component mapping, and compiler linking | `CMakeLists.txt`, `CMakePresets.json`, `zomlang/compiler/CMakeLists.txt`, `zomlang/compiler/ir/CMakeLists.txt`, `zomlang/compiler/backend/**` | `ir-backend` |
-| CI dependency installation and configure-contract gates | `.github/workflows/**`, `zomlang/tests/**`, `scripts/check-ir-architecture.py` | `verification` |
+| Context authority, session ordering, and registry lifetime | `compiler/identity/**`, `compiler/driver/compiler-session.*`, `compiler/driver/package/**` | `module-system` |
+| Target registry, LLVM validation, panic mapping, and target-profile invariants | `compiler/ir/**` | `ir-backend` |
+| CLI target construction | `utils/zomc/**` | `ir-backend` |
+| Runtime capability and ABI contract registries | `runtime/panic-capabilities.def`, `runtime/runtime-abi-contracts.def`, `runtime/panic.h`, `runtime/panic.cc`, `runtime/CMakeLists.txt` | `runtime-memory` |
+| Failure adapters and registry rows | `compiler/diagnostics/**` | `error-system` |
+| LLVM discovery, component mapping, and compiler linking | `CMakeLists.txt`, `CMakePresets.json`, `compiler/CMakeLists.txt`, `compiler/ir/CMakeLists.txt`, `compiler/backend/**` | `ir-backend` |
+| CI dependency installation and configure-contract gates | `.github/workflows/**`, `tests/**`, `scripts/check-ir-architecture.py` | `verification` |
 | Executable developer build contract | `README.md` | `verification` |
 | Repository command and routing governance | `AGENTS.md` | `task-router` |
 | Architecture documentation | `docs/design/**` | `spec-audit` |
-| Unit, architecture, and determinism tests | `zomlang/tests/**` | `verification` |
+| Unit, architecture, and determinism tests | `tests/**` | `verification` |
 
 ## Security And Safety Impact
 

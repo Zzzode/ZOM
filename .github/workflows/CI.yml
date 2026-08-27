@@ -292,8 +292,8 @@ jobs:
 
       - name: Run RFC 0016 discovery-gate fixtures
         run: |
-          python3 zomlang/tests/tools/check-llvm-discovery-gate.py \
-            --harness-dir zomlang/tests/cmake/llvm-discovery-gate \
+          python3 tests/tools/check-llvm-discovery-gate.py \
+            --harness-dir tests/cmake/llvm-discovery-gate \
             --gate-module cmake/utils/llvm.cmake \
             --real-llvm-dir "$HOME/toolchains/llvm22/lib/cmake/llvm"
 

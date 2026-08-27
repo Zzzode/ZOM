@@ -7,11 +7,11 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-COMPILER_ROOT = ROOT / "zomlang" / "compiler"
+COMPILER_ROOT = ROOT / "compiler"
 DOCS_ROOT = ROOT / "docs"
-IR_ROOT = Path("zomlang/compiler/ir")
-IRGEN_ROOT = Path("zomlang/compiler/irgen")
-MIR_ROOT = Path("zomlang/compiler/mir")
+IR_ROOT = Path("compiler/ir")
+IRGEN_ROOT = Path("compiler/irgen")
+MIR_ROOT = Path("compiler/mir")
 TARGET_HEADER = IR_ROOT / "target-registry.h"
 TARGET_SOURCE = IR_ROOT / "target-registry.cc"
 FAILURE_HEADER = IR_ROOT / "ir-failure.h"
@@ -24,12 +24,12 @@ IR_CMAKE = IR_ROOT / "CMakeLists.txt"
 MIR_HEADER = MIR_ROOT / "built-mir.h"
 MIR_SOURCE = MIR_ROOT / "built-mir.cc"
 MIR_CMAKE = MIR_ROOT / "CMakeLists.txt"
-COMPILER_CMAKE = Path("zomlang/compiler/CMakeLists.txt")
-SESSION_HEADER = Path("zomlang/compiler/driver/session/compiler-session.h")
-SESSION_SOURCE = Path("zomlang/compiler/driver/session/compiler-session.cc")
-CLI_SOURCE = Path("zomlang/utils/zomc/zomc.cc")
-COMPILER_OPTIONS = Path("zomlang/compiler/basic/compiler-opts.h")
-DIAGNOSTIC_DEFS = Path("zomlang/compiler/diagnostics/defs/diagnostics-lowering.def")
+COMPILER_CMAKE = Path("compiler/CMakeLists.txt")
+SESSION_HEADER = Path("compiler/driver/session/compiler-session.h")
+SESSION_SOURCE = Path("compiler/driver/session/compiler-session.cc")
+CLI_SOURCE = Path("utils/zomc/zomc.cc")
+COMPILER_OPTIONS = Path("compiler/basic/compiler-opts.h")
+DIAGNOSTIC_DEFS = Path("compiler/diagnostics/defs/diagnostics-lowering.def")
 
 REQUIRED_TARGET_MARKERS = (
     "namespace zomlang::compiler::ir",
@@ -65,10 +65,10 @@ FORBIDDEN_FAILURE_API_PATTERNS = (
     r"\bstd::(?:basic_)?string(?:_view)?\b",
     r"\bconst\s+char\s*\*",
     r"\bdiagnostics::DiagID\b",
-    r"zomlang/compiler/diagnostics/",
-    r"zomlang/compiler/ast/",
-    r"zomlang/compiler/binder/",
-    r"zomlang/compiler/parser/",
+    r"compiler/diagnostics/",
+    r"compiler/ast/",
+    r"compiler/binder/",
+    r"compiler/parser/",
     r"\bNodeId\b",
 )
 
@@ -134,10 +134,10 @@ FORBIDDEN_VERSIONED_MIR_TEXT = re.compile(
 )
 
 FORBIDDEN_TARGET_DEPENDENCIES = (
-    "zomlang/compiler/ast/",
-    "zomlang/compiler/binder/",
-    "zomlang/compiler/checker/",
-    "zomlang/compiler/parser/",
+    "compiler/ast/",
+    "compiler/binder/",
+    "compiler/checker/",
+    "compiler/parser/",
     "NodeId",
     "BindingMetadata",
 )
@@ -160,8 +160,8 @@ REQUIRED_SESSION_MIR_MARKERS = (
 )
 
 FORBIDDEN_BUILT_MIR_DEPENDENCIES = (
-    "zomlang/compiler/irgen/",
-    "zomlang/compiler/ir/target-registry.h",
+    "compiler/irgen/",
+    "compiler/ir/target-registry.h",
     "TargetDataLayout",
     "CanonicalTargetSpec",
     "VerifiedTargetSelection",
@@ -205,7 +205,7 @@ def check_removed_prototype(files: dict[Path, str], errors: list[str]) -> None:
         if path.suffix not in {".h", ".cc"}:
             continue
         text = files[path]
-        if "zomlang/compiler/irgen/" in text or re.search(r"\birgen::", text):
+        if "compiler/irgen/" in text or re.search(r"\birgen::", text):
             errors.append(f"{path}: compiler/irgen dependency is forbidden")
 
 
@@ -223,7 +223,7 @@ def check_target_registry(files: dict[Path, str], errors: list[str]) -> None:
     for marker in REQUIRED_TARGET_MARKERS:
         if marker not in header:
             errors.append(f"{TARGET_HEADER}: missing canonical target marker {marker}")
-    if '#include "zomlang/compiler/ir/target-registry.h"' not in source:
+    if '#include "compiler/ir/target-registry.h"' not in source:
         errors.append(f"{TARGET_SOURCE}: target registry must include its canonical owner header")
     for marker in FORBIDDEN_TARGET_DEPENDENCIES:
         if marker in header or marker in source:
@@ -239,7 +239,7 @@ def check_built_mir(files: dict[Path, str], errors: list[str]) -> None:
             errors.append(f"{MIR_HEADER}: missing direct Built MIR marker {marker}")
     if 'constexpr char domain[] = "zom.mir-revision"' not in source:
         errors.append(f"{MIR_SOURCE}: missing canonical MIR revision domain")
-    if '#include "zomlang/compiler/mir/built-mir.h"' not in source:
+    if '#include "compiler/mir/built-mir.h"' not in source:
         errors.append(f"{MIR_SOURCE}: implementation must include its canonical owner header")
     if "built-mir.cc" not in cmake:
         errors.append(f"{MIR_CMAKE}: missing direct Built MIR implementation")
@@ -267,9 +267,9 @@ def check_failure_contract(files: dict[Path, str], errors: list[str]) -> None:
     for marker in REQUIRED_IDENTITY_MARKERS:
         if marker not in identity:
             errors.append(f"{IDENTITY_HEADER}: missing canonical IR identity marker {marker}")
-    if '#include "zomlang/compiler/ir/ir-failure.h"' not in source:
+    if '#include "compiler/ir/ir-failure.h"' not in source:
         errors.append(f"{FAILURE_SOURCE}: failure implementation must include its owner header")
-    if '#include "zomlang/compiler/ir/ir-identity.h"' not in files.get(IDENTITY_SOURCE, ""):
+    if '#include "compiler/ir/ir-identity.h"' not in files.get(IDENTITY_SOURCE, ""):
         errors.append(f"{IDENTITY_SOURCE}: identity implementation must include its owner header")
     for path, text in ((FAILURE_HEADER, header), (FAILURE_SOURCE, source)):
         for pattern in FORBIDDEN_FAILURE_API_PATTERNS:
@@ -293,7 +293,7 @@ def check_diagnostic_adapter(files: dict[Path, str], errors: list[str]) -> None:
     for marker in REQUIRED_DIAGNOSTIC_ADAPTER_MARKERS:
         if marker not in header and marker not in source:
             errors.append(f"{DIAGNOSTIC_ADAPTER_HEADER}: missing exhaustive adapter marker {marker}")
-    if '#include "zomlang/compiler/ir/ir-diagnostic-adapter.h"' not in source:
+    if '#include "compiler/ir/ir-diagnostic-adapter.h"' not in source:
         errors.append(
             f"{DIAGNOSTIC_ADAPTER_SOURCE}: implementation must include its canonical owner header"
         )
@@ -482,7 +482,7 @@ def run_self_test() -> int:
         baseline,
         "Built MIR target dependency injected",
         lambda files: append_source(
-            files, MIR_SOURCE, '\n#include "zomlang/compiler/ir/target-registry.h"\n'
+            files, MIR_SOURCE, '\n#include "compiler/ir/target-registry.h"\n'
         ),
         "Built MIR depends on forbidden target/prototype marker",
     )
@@ -529,8 +529,8 @@ def run_self_test() -> int:
         "irgen include restored",
         lambda files: append_source(
             files,
-            Path("zomlang/compiler/driver/injected.cc"),
-            '#include "zomlang/compiler/irgen/ir.h"\n',
+            Path("compiler/driver/injected.cc"),
+            '#include "compiler/irgen/ir.h"\n',
         ),
         "compiler/irgen dependency is forbidden",
     )
@@ -550,7 +550,7 @@ def run_self_test() -> int:
         lambda files: append_source(
             files,
             TARGET_SOURCE,
-            '\n#include "zomlang/compiler/checker/facts/signature-facts.h"\n',
+            '\n#include "compiler/checker/facts/signature-facts.h"\n',
         ),
         "target registry depends on forbidden semantic marker",
     )

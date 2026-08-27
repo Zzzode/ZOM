@@ -14,43 +14,43 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-CLI_SOURCE = Path("zomlang/utils/zomc/zomc.cc")
+CLI_SOURCE = Path("utils/zomc/zomc.cc")
 REQUEST_HEADER = Path(
-    "zomlang/compiler/driver/package/package-compilation-request.h"
+    "compiler/driver/package/package-compilation-request.h"
 )
 REQUEST_SOURCE = Path(
-    "zomlang/compiler/driver/package/package-compilation-request.cc"
+    "compiler/driver/package/package-compilation-request.cc"
 )
-DRIVER_CMAKE = Path("zomlang/compiler/driver/CMakeLists.txt")
-PACKAGE_CMAKE = Path("zomlang/compiler/driver/package/CMakeLists.txt")
-VENDOR_CMAKE = Path("zomlang/compiler/driver/package/vendor/CMakeLists.txt")
+DRIVER_CMAKE = Path("compiler/driver/CMakeLists.txt")
+PACKAGE_CMAKE = Path("compiler/driver/package/CMakeLists.txt")
+VENDOR_CMAKE = Path("compiler/driver/package/vendor/CMakeLists.txt")
 OPTIONS_CMAKE = Path("cmake/utils/options.cmake")
 SANDBOX_TEST_CMAKE = Path(
-    "zomlang/tests/unittests/compiler/driver/CMakeLists.txt"
+    "tests/unittests/compiler/driver/CMakeLists.txt"
 )
 CI_WORKFLOW = Path(".github/workflows/CI.yml")
 SANDBOX_RUNNER = Path("scripts/run-linux-sandbox-integration.sh")
-TESTS_CMAKE = Path("zomlang/tests/CMakeLists.txt")
-PERFORMANCE_CMAKE = Path("zomlang/tests/performance/CMakeLists.txt")
+TESTS_CMAKE = Path("tests/CMakeLists.txt")
+PERFORMANCE_CMAKE = Path("tests/performance/CMakeLists.txt")
 PERFORMANCE_RUNNER = Path("scripts/run_package_resolver_performance.py")
 PERFORMANCE_SOURCE = Path(
-    "zomlang/tests/performance/package-resolver-performance.cc"
+    "tests/performance/package-resolver-performance.cc"
 )
 RESOLVER_HEADER = Path(
-    "zomlang/compiler/driver/package/package-resolver.h"
+    "compiler/driver/package/package-resolver.h"
 )
 RESOLVER_SOURCE = Path(
-    "zomlang/compiler/driver/package/package-resolver.cc"
+    "compiler/driver/package/package-resolver.cc"
 )
 FEATURE_RESOLVER_SOURCE = Path(
-    "zomlang/compiler/driver/package/feature-resolver.cc"
+    "compiler/driver/package/feature-resolver.cc"
 )
-LOCKFILE_SOURCE = Path("zomlang/compiler/driver/package/lockfile.cc")
+LOCKFILE_SOURCE = Path("compiler/driver/package/lockfile.cc")
 PACKAGE_ORACLE_GENERATOR = Path("scripts/codegen/gen_package_oracles.py")
-CONFORMANCE_CMAKE = Path("zomlang/tests/conformance/CMakeLists.txt")
+CONFORMANCE_CMAKE = Path("tests/conformance/CMakeLists.txt")
 CMAKE_PRESETS = Path("CMakePresets.json")
-SESSION_HEADER = Path("zomlang/compiler/driver/session/compiler-session.h")
-SESSION_SOURCE = Path("zomlang/compiler/driver/session/compiler-session.cc")
+SESSION_HEADER = Path("compiler/driver/session/compiler-session.h")
+SESSION_SOURCE = Path("compiler/driver/session/compiler-session.cc")
 
 REQUIRED_FILES = (
     CLI_SOURCE,
@@ -97,25 +97,29 @@ def production_sources() -> dict[Path, str]:
     for path in REQUIRED_FILES:
         files[path] = (ROOT / path).read_text(encoding="utf-8")
 
-    product_root = ROOT / "zomlang"
+    product_roots = [
+        ROOT / name
+        for name in ("compiler", "runtime", "tools", "tests", "utils")
+    ]
     vendor_root = (
-        ROOT / "zomlang" / "compiler" / "driver" / "package" / "vendor"
+        ROOT / "compiler" / "driver" / "package" / "vendor"
     )
     excluded_directory_names = {".antlr_build", "Output", "Testing", "__pycache__"}
-    for directory, child_directories, filenames in os.walk(product_root):
-        directory_path = Path(directory)
-        child_directories[:] = [
-            child
-            for child in child_directories
-            if child not in excluded_directory_names
-            and directory_path / child != vendor_root
-        ]
-        for filename in filenames:
-            path = directory_path / filename
-            if path.suffix not in {".h", ".cc"}:
-                continue
-            relative = path.relative_to(ROOT)
-            files.setdefault(relative, path.read_text(encoding="utf-8"))
+    for product_root in product_roots:
+        for directory, child_directories, filenames in os.walk(product_root):
+            directory_path = Path(directory)
+            child_directories[:] = [
+                child
+                for child in child_directories
+                if child not in excluded_directory_names
+                and directory_path / child != vendor_root
+            ]
+            for filename in filenames:
+                path = directory_path / filename
+                if path.suffix not in {".h", ".cc"}:
+                    continue
+                relative = path.relative_to(ROOT)
+                files.setdefault(relative, path.read_text(encoding="utf-8"))
     return files
 
 

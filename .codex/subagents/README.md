@@ -93,7 +93,7 @@ mandatory reviewer. `module-system` owns files under `compiler/driver`,
 including `borrow-evidence.{h,cc}`; `runtime-memory` reviews their ownership and
 lifetime contracts without taking file ownership.
 `runtime-memory` is the primary owner of
-`zomlang/compiler/ownership/**`. Specialized semantic and
+`compiler/ownership/**`. Specialized semantic and
 grammar owners retain their listed specification paths, while `spec-audit`
 remains the cross-cutting drift owner for all of `docs/spec/**`.
 `tooling-lsp` is the primary owner of `docs/design/tooling/**`; `spec-audit`
@@ -101,8 +101,8 @@ reviews that subtree only for cross-cutting drift.
 `verification` is the primary owner of
 `scripts/generate-query-descriptor-schema.py` and
 `scripts/check-query-descriptor-architecture.py`. It also owns the reusable
-`zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt` fixture,
-all `zomlang/tests/compile-fail/query-runtime/**` cases, and the
+`tests/cmake/expect-compile-failure/CMakeLists.txt` fixture,
+all `tests/compile-fail/query-runtime/**` cases, and the
 query-runtime private test-access and race-test files named in the manifest.
 
 ---

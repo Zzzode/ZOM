@@ -11,9 +11,9 @@ import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE = ROOT / "zomlang/tests/coverage/implementation-series-base.txt"
-EXEMPTIONS = ROOT / "zomlang/tests/coverage/ownership-exemptions.json"
-BASELINE = ROOT / "zomlang/tests/coverage/ownership-coverage-baseline.json"
+BASE = ROOT / "tests/coverage/implementation-series-base.txt"
+EXEMPTIONS = ROOT / "tests/coverage/ownership-exemptions.json"
+BASELINE = ROOT / "tests/coverage/ownership-coverage-baseline.json"
 REPORT = ROOT / "build-coverage/coverage/ownership/report.json"
 MINIMUM_LINE_PERCENT = 70.0
 BASELINE_SCHEMA = "zom.rfc0027.ownership-coverage-baseline"
@@ -39,7 +39,7 @@ def changed_sources(revision: str) -> set[str]:
             "--diff-filter=AM",
             revision,
             "--",
-            "zomlang/compiler",
+            "compiler",
         ],
         cwd=ROOT,
         check=True,
@@ -157,8 +157,8 @@ def evaluate(
 
 
 def self_test() -> int:
-    tracked_path = "zomlang/compiler/ownership/ownership-event-overlay.cc"
-    clean_path = "zomlang/compiler/ownership/ownership-finalizer.cc"
+    tracked_path = "compiler/ownership/ownership-event-overlay.cc"
+    clean_path = "compiler/ownership/ownership-finalizer.cc"
     changed = {tracked_path, clean_path}
     report = {
         "schema": "zom.rfc0027.ownership-coverage-report",
@@ -201,7 +201,7 @@ def self_test() -> int:
     if evaluate(report, changed, {}, baseline):
         print("ownership coverage self-test rejected a non-regressed tracked file")
         return 1
-    untracked = "zomlang/compiler/ownership/ownership-verifier.cc"
+    untracked = "compiler/ownership/ownership-verifier.cc"
     changed.add(untracked)
     report["files"][str(ROOT / untracked)] = {"coveredLines": 50, "lineCount": 100}
     if not evaluate(report, changed, {}, baseline):
@@ -275,7 +275,7 @@ def load_baseline_from_value(value: dict[str, object]) -> dict[str, object]:
     if not isinstance(per_file, dict):
         raise ValueError("ownership coverage baseline per-file entries must be an object")
     for path, entry in per_file.items():
-        if not isinstance(path, str) or not path.startswith("zomlang/compiler/"):
+        if not isinstance(path, str) or not path.startswith("compiler/"):
             raise ValueError(f"ownership coverage baseline path is invalid: {path!r}")
         if not isinstance(entry, dict):
             raise ValueError(f"ownership coverage baseline entry is invalid: {path}")

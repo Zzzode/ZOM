@@ -1140,12 +1140,12 @@ facts, revisions, HIR, and MIR regardless of thread scheduling.
 | RFC proposal and tracking | `docs/rfc/0022-*.md`, `docs/rfc/tracking/0022-*.md`, `docs/rfc/README.md` | `rfc` |
 | Expression semantics | `docs/spec/chapters/04-expressions.md` | `lexer-parser` |
 | Type, statement, and pattern semantics | `docs/spec/chapters/03-types.md`, `docs/spec/chapters/05-statements.md`, `docs/spec/chapters/07-patterns.md` | `spec-audit` |
-| Binding stability and checker facts | `zomlang/compiler/binder/**`, `zomlang/compiler/checker/**`, `zomlang/compiler/type/**` | `binder-checker` |
-| Stable body query and checked-facts repository integration | `zomlang/compiler/query/**`, `zomlang/compiler/driver/**` | `module-system` |
-| Diagnostic registry and rendering | `zomlang/compiler/diagnostics/**` | `error-system` |
-| Verified refinement consumption | `zomlang/compiler/hir/**`, `zomlang/compiler/mir/**` | `ir-backend` |
-| Editor-facing verified type projection | `zomlang/tools/ide/**`, `docs/design/tooling/**` | `tooling-lsp` |
-| Unit, lit, conformance, mutation, and incremental tests | `zomlang/tests/**`, `scripts/check-*-architecture.py` | `verification` |
+| Binding stability and checker facts | `compiler/binder/**`, `compiler/checker/**`, `compiler/type/**` | `binder-checker` |
+| Stable body query and checked-facts repository integration | `compiler/query/**`, `compiler/driver/**` | `module-system` |
+| Diagnostic registry and rendering | `compiler/diagnostics/**` | `error-system` |
+| Verified refinement consumption | `compiler/hir/**`, `compiler/mir/**` | `ir-backend` |
+| Editor-facing verified type projection | `tools/ide/**`, `docs/design/tooling/**` | `tooling-lsp` |
+| Unit, lit, conformance, mutation, and incremental tests | `tests/**`, `scripts/check-*-architecture.py` | `verification` |
 
 ## Security And Safety Impact
 

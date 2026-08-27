@@ -119,7 +119,7 @@ abort behavior, or FFI containment.
 ## 11.4 Diagnostics
 
 The authoritative definitions live in
-`zomlang/compiler/diagnostics/defs/diagnostics-checker.def`.
+`compiler/diagnostics/defs/diagnostics-checker.def`.
 
 | Code | Name | Condition |
 |---|---|---|

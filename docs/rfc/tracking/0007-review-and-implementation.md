@@ -583,7 +583,7 @@ implementation evidence or authorize production ownership publication.
 ## Current Repository Baseline
 
 The current compiler has no `BorrowCheckerPhase` or AST ownership analysis.
-`zomlang/compiler/mir/built-mir.h` and `.cc` contain the first Built
+`compiler/mir/built-mir.h` and `.cc` contain the first Built
 MIR value vocabulary for locals, projections, places, operands,
 `MirStatement::BorrowCreation`, blocks, and return, unreachable, and call terminators.
 The current direct-call lowering admits only same-module identifier callees with

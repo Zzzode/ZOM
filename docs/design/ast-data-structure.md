@@ -3,13 +3,13 @@ title: ZOM AST Data Structure Design
 status: ACCEPTED
 author: ZOM Compiler Team
 date: 2026-06-28
-schema: zomlang/compiler/ast/schema.yml
+schema: compiler/ast/schema.yml
 ---
 
 # ZOM AST Data Structure Design
 
 This document defines the canonical AST representation for the ZOM compiler.
-The implementation lives in `zomlang/compiler/ast/`, is exposed by the
+The implementation lives in `compiler/ast/`, is exposed by the
 CMake target named `ast`, and uses the namespace
 `zomlang::compiler::ast`.
 
@@ -163,9 +163,9 @@ slot.
 
 ## Schema And Generation
 
-`zomlang/compiler/ast/schema.yml` is the implementation-side source of
+`compiler/ast/schema.yml` is the implementation-side source of
 truth for syntax node payloads. `scripts/codegen/gen_ast.py` emits generated
-headers into `zomlang/compiler/ast/generated/`.
+headers into `compiler/ast/generated/`.
 
 | File | Purpose |
 |---|---|
@@ -202,7 +202,7 @@ words.
 `raw` is compiler-debug-only output for compact storage layout inspection. It is
 not a conformance snapshot format.
 
-`zomlang/tests/tools/regen-lit.py` regenerates AST expectations from
+`tests/tools/regen-lit.py` regenerates AST expectations from
 the default `tree` output. Run it after parser, binder, AST schema, AST dump, or
 diagnostic changes that affect conformance snapshots.
 

@@ -13,7 +13,7 @@ from urllib.request import urlopen
 
 DEFAULT_UCD_VERSION = "15.1.0"
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = ROOT / "zomlang" / "tests" / "unittests" / "compiler" / "identity"
+DEFAULT_OUTPUT_DIR = ROOT / "tests" / "unittests" / "compiler" / "identity"
 
 
 def source_url(version: str) -> str:

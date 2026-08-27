@@ -13,25 +13,25 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-SCHEMA = ROOT / "zomlang/compiler/binder/stable-binding-schema.def"
-FACTS_HEADER = ROOT / "zomlang/compiler/binder/stable/stable-binding-facts.h"
-FACTS_SOURCE = ROOT / "zomlang/compiler/binder/stable/stable-binding-facts.cc"
-CODEC_HEADER = ROOT / "zomlang/compiler/binder/stable/stable-binding-codec.h"
-CODEC_SOURCE = ROOT / "zomlang/compiler/binder/stable/stable-binding-codec.cc"
-BINDER_CMAKE = ROOT / "zomlang/compiler/binder/CMakeLists.txt"
-CONTEXTUAL_HEADER = ROOT / "zomlang/compiler/driver/query/binding/contextual-binding-key.h"
-CONTEXTUAL_SOURCE = ROOT / "zomlang/compiler/driver/query/binding/contextual-binding-key.cc"
-METADATA_HEADER = ROOT / "zomlang/compiler/binder/metadata/binding-metadata.h"
+SCHEMA = ROOT / "compiler/binder/stable-binding-schema.def"
+FACTS_HEADER = ROOT / "compiler/binder/stable/stable-binding-facts.h"
+FACTS_SOURCE = ROOT / "compiler/binder/stable/stable-binding-facts.cc"
+CODEC_HEADER = ROOT / "compiler/binder/stable/stable-binding-codec.h"
+CODEC_SOURCE = ROOT / "compiler/binder/stable/stable-binding-codec.cc"
+BINDER_CMAKE = ROOT / "compiler/binder/CMakeLists.txt"
+CONTEXTUAL_HEADER = ROOT / "compiler/driver/query/binding/contextual-binding-key.h"
+CONTEXTUAL_SOURCE = ROOT / "compiler/driver/query/binding/contextual-binding-key.cc"
+METADATA_HEADER = ROOT / "compiler/binder/metadata/binding-metadata.h"
 NATIVE_TEST = (
     ROOT
-    / "zomlang/tests/unittests/compiler/binder/stable/stable-binding-facts-test.cc"
+    / "tests/unittests/compiler/binder/stable/stable-binding-facts-test.cc"
 )
 TEST_CMAKE = (
-    ROOT / "zomlang/tests/unittests/compiler/binder/CMakeLists.txt"
+    ROOT / "tests/unittests/compiler/binder/CMakeLists.txt"
 )
 CONTEXTUAL_TEST = (
     ROOT
-    / "zomlang/tests/unittests/compiler/driver/"
+    / "tests/unittests/compiler/driver/"
     "query/binding/active-definition-authority-query-test.cc"
 )
 
@@ -1650,14 +1650,14 @@ def validate_repository_wiring(text: str, inputs: dict[str, str]) -> list[str]:
 
     facts_source = inputs["facts-source"]
     if (
-        '#include "zomlang/compiler/binder/stable-binding-schema.def"'
+        '#include "compiler/binder/stable-binding-schema.def"'
         not in facts_source
         or "#define ZOM_STABLE_BINDING_RECORD" not in facts_source
     ):
         errors.append("stable-binding-facts.cc must directly consume the stable schema")
 
     for name in ("facts-header", "facts-source", "codec-header", "codec-source"):
-        if re.search(r'#include\s+"zomlang/compiler/driver/', inputs[name]):
+        if re.search(r'#include\s+"compiler/driver/', inputs[name]):
             errors.append(f"{name} must not include driver headers")
 
     binder_cmake = inputs["binder-cmake"]
@@ -1931,7 +1931,7 @@ def self_test(text: str) -> list[str]:
         with_input(
             "facts-source",
             inputs["facts-source"].replace(
-                '#include "zomlang/compiler/binder/stable-binding-schema.def"', "", 1
+                '#include "compiler/binder/stable-binding-schema.def"', "", 1
             ),
         ),
     ))

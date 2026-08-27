@@ -30,9 +30,9 @@ Do **not** route here when:
 ## Owns
 
 ```
-zomlang/compiler/lexer/**
-zomlang/compiler/parser/**
-zomlang/compiler/ast/**
+compiler/lexer/**
+compiler/parser/**
+compiler/ast/**
 docs/spec/chapters/02-lexical-structure.md
 docs/spec/chapters/04-expressions.md
 docs/spec/chapters/17-grammar-reference.md

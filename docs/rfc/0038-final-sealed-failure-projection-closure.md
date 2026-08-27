@@ -96,9 +96,9 @@ Each final-sealed descriptor declares the subset of `FinalFailureRoot` alternati
 
 | Area | Paths | Owner |
 |---|---|---|
-| Query runtime admission and final witness | `zomlang/compiler/query/**`; `zomlang/compiler/driver/module-graph-query-input.*` | module-system |
-| Final-sealed descriptor providers and verifiers | `zomlang/compiler/driver/named-item-query.*`; `zomlang/compiler/driver/owner-body-query.*`; `zomlang/compiler/driver/incremental-binding-query-adapter.*` | module-system |
-| Native mutation and coverage gates | `zomlang/tests/unittests/compiler/driver/**`; `zomlang/tests/unittests/compiler/query/**`; `scripts/run-ownership-coverage.py`; `scripts/check-ownership-coverage.py` | verification |
+| Query runtime admission and final witness | `compiler/query/**`; `compiler/driver/module-graph-query-input.*` | module-system |
+| Final-sealed descriptor providers and verifiers | `compiler/driver/named-item-query.*`; `compiler/driver/owner-body-query.*`; `compiler/driver/incremental-binding-query-adapter.*` | module-system |
+| Native mutation and coverage gates | `tests/unittests/compiler/driver/**`; `tests/unittests/compiler/query/**`; `scripts/run-ownership-coverage.py`; `scripts/check-ownership-coverage.py` | verification |
 
 ## Security And Safety Impact
 
