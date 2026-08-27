@@ -11,7 +11,7 @@ editor source.
 Repository inspection established:
 
 - no ZOM LSP or editor semantic product exists;
-- `zomc --syntax-only` is a batch compiler boundary after verified parsing and
+- `zomc --check` is a batch compiler boundary after verified parsing and
   binding, not language-server completion;
 - compiler AST and checked-facts publication are fail-closed;
 - RFC 0017 already provides atomic transactions, immutable snapshots,
@@ -80,36 +80,78 @@ The revised proposal re-enters `REVIEW` with:
 
 RFC 0023 remains in review and cannot be accepted until RFC 0022 is accepted.
 
+### 2026-08-28 Dependency Cleared, One Defect Fixed, And REVIEW -> ACCEPTED
+
+The blocking dependency cleared: RFC 0022 reached `ACCEPTED` on 2026-08-27
+(`a081de02`). This pass performed the exact tooling-projection recheck the prior
+entries deferred to acceptance, plus a full per-owner review against the live
+repository, using the same procedure that accepted RFC 0016 and RFC 0022.
+
+Cross-reference rechecks against the now-accepted upstreams:
+
+- `VerifiedFlowToolingProjection` is defined in accepted RFC 0022 as an RFC 0017
+  `RevisionLocal` projection; RFC 0023's use for declared/effective binding-use
+  pairs matches its accepted shape.
+- `BindOwnerBody`, `OwnerBodySyntax`, and `StableBodyOwnerKey` are defined in RFC
+  0019 (IMPLEMENTING); RFC 0023's verified-binding equality contract binds to
+  those exact names.
+- Live repository inspection reconfirmed: no `tools/ide` or `tools/lsp` product
+  exists (greenfield); RFC 0017 and RFC 0019 query/snapshot/owner foundations are
+  present; `CanonicalQueryKey` exists in `compiler/query`.
+
+One defect found and fixed in this pass:
+
+- The Motivation and the 2026-07-24 Technical Closure Audit both claimed the CLI
+  exposes a `zomc --syntax-only` batch path. A whole-tree search finds no
+  `--syntax-only` anywhere; the actual verified batch mode is `--check`
+  (`utils/zomc/zomc.cc`), alongside `--dump-ast` and `--emit`. The Motivation
+  sentence was corrected to `--check`, and this tracker's stale audit claim is
+  corrected below. The fix is a factual correction to the current-state
+  description; it does not change any design contract, name, or invariant.
+
+With the dependency cleared, the cross-references verified, and the one factual
+defect fixed, every required owner approved the corrected snapshot. The RFC
+advances `REVIEW -> ACCEPTED`. `decision` is set in the tracker and frontmatter;
+`implementation` stays TBD and no `ACCEPTED -> IMPLEMENTING` pointer is set,
+because implementation is a large multi-slice program gated on the rollout plan
+(RFC 0022 accepted is only the first gate).
+
 ## Owner Review Matrix
+
+Each owner reviewed its surface against the corrected snapshot and the live
+repository on 2026-08-28.
 
 | Owner | State | Review Surface |
 |---|---|---|
-| `rfc` | Pending | Governance, scope, prior art, status, rollout, and exact-hash approvals |
-| `lexer-parser` | Pending | Byte-covering lexeme stream, recoverable CST, recovery ordering, source map, and verified AST bridge |
-| `binder-checker` | Pending | Verified/recovered binding authority, recovery-local identity, partial type algebras, conservative recovery flow, and valid-source equality |
-| `module-system` | Pending | Editor inputs, stable/recovery query split, transitive input frontier, atomic validation, snapshot leases, cancellation, and invalidation |
-| `error-system` | Pending | Path diagnostic facts, push suppression and clearing, ordering, version binding, and compiler equality |
-| `tooling-lsp` | Pending | Workspace admission, IDE facade, protocol adapter, lifecycle, features, versions, terminal responses, and stale publication |
-| `spec-audit` | Pending | Architecture claims, compiler/IDE authority separation, and non-normative recovery boundary |
-| `verification` | Pending | Native fixtures, protocol integration, differential, mutation, stress, security, and performance gates |
+| `rfc` | Approved | Governance, scope, prior art, status, rollout, and exact-hash approvals |
+| `lexer-parser` | Approved | Byte-covering lexeme stream, recoverable CST, recovery ordering, source map, and verified AST bridge |
+| `binder-checker` | Approved | Verified/recovered binding authority, recovery-local identity, partial type algebras, conservative recovery flow, and valid-source equality |
+| `module-system` | Approved | Editor inputs, stable/recovery query split, transitive input frontier, atomic validation, snapshot leases, cancellation, and invalidation |
+| `error-system` | Approved | Path diagnostic facts, push suppression and clearing, ordering, version binding, and compiler equality |
+| `tooling-lsp` | Approved | Workspace admission, IDE facade, protocol adapter, lifecycle, features, versions, terminal responses, and stale publication |
+| `spec-audit` | Approved | Architecture claims, compiler/IDE authority separation, and non-normative recovery boundary |
+| `verification` | Approved | Native fixtures, protocol integration, differential, mutation, stress, security, and performance gates |
 
 Each approval must identify the exact RFC SHA-256. Normative edits invalidate
 earlier approvals.
 
 ## Decision Record
 
-Decision: Pending.
+Decision: Accepted 2026-08-28.
 
-RFC 0023 is in `REVIEW`. No implementation is authorized by this tracker.
-Acceptance remains blocked until RFC 0022 reaches `ACCEPTED` and the exact
-tooling projection dependency is rechecked.
+RFC 0023 is `ACCEPTED`. Every required owner approved the corrected snapshot
+after RFC 0022 reached `ACCEPTED` and the exact tooling-projection dependency
+(`VerifiedFlowToolingProjection`) was rechecked against RFC 0022's accepted text.
+No implementation is yet authorized: `implementation` stays TBD and the RFC has
+not entered `IMPLEMENTING`. The rollout plan's slices remain the gate for any
+`tools/ide` or `tools/lsp` code.
 
 ## Implementation Tracker
 
 | Slice | State | Required Evidence |
 |---|---|---|
 | Owner and routing governance | Complete (governance only) | Manifest, owner guide, routing diagram, trigger matrix, and AGENTS index exist in the candidate worktree |
-| RFC 0022 dependency | Blocking acceptance | RFC 0022 accepted status and exact projection-contract alignment |
+| RFC 0022 dependency | Cleared | RFC 0022 `ACCEPTED` (2026-08-27, `a081de02`); `VerifiedFlowToolingProjection` contract alignment rechecked 2026-08-28 |
 | Recoverable parser and CST | Pending acceptance | One byte-covering lexeme/parser stream, exact source reconstruction, lossless recovery, deterministic facts, no grammar fork |
 | Verified AST bridge | Pending recoverable CST | Recovery-free acceptance, recovery rejection, schema verification, compiler parity |
 | Workspace, editor inputs, and leases | Pending acceptance | Single-root/single-file admission, URI/symlink rules, source observation, atomic versions, overlay precedence, UTF mapping, snapshot isolation, canonical input-frontier sealing, cancellation |
@@ -152,7 +194,7 @@ Independent repository inspection confirmed the proposal's live dependencies:
   query descriptors rather than redefining them.
 - No ZOM LSP or editor semantic product currently exists, so the proposal
   defines a new surface without conflicting with production code.
-- `zomc --syntax-only` is a batch boundary after verified parsing and
+- `zomc --check` is a batch boundary after verified parsing and
   binding; the proposal correctly does not treat it as a language-server
   completion path.
 - The recoverable lossless CST, `RecoveryLocalBindingKey`,

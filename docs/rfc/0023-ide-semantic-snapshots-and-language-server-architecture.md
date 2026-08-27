@@ -2,19 +2,19 @@
 rfc: 23
 title: IDE Semantic Snapshots And Language Server Architecture
 type: compiler
-status: REVIEW
+status: ACCEPTED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, lexer-parser, binder-checker, module-system, error-system, tooling-lsp, spec-audit, verification]
-approvers: []
+approvers: [rfc, lexer-parser, binder-checker, module-system, error-system, tooling-lsp, spec-audit, verification]
 created: 2026-07-24
-updated: 2026-07-24
+updated: 2026-08-28
 area: tooling
 requires: [2, 4, 5, 8, 15, 17, 18, 19, 22]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0023-review-and-implementation.md#discussion-record
-decision: TBD
+decision: docs/rfc/tracking/0023-review-and-implementation.md#decision-record
 implementation: TBD
 tracking-issue: docs/rfc/tracking/0023-review-and-implementation.md#implementation-tracker
 ---
@@ -46,8 +46,8 @@ non-null proof. Those requests commonly occur while the user is typing
 incomplete source.
 
 The repository currently has no ZOM language-server product. The live CLI has
-a `--syntax-only` path after verified parsing and binding, which is a batch
-compiler mode rather than completion. AST reflection metadata mentions LSP
+a `--check` path that runs verified parsing, binding, and checking, which is a
+batch compiler mode rather than completion. AST reflection metadata mentions LSP
 hover, but there is no editor semantic facade or consumer. The compiler also
 publishes `VerifiedCheckedFacts` only after a complete successful body check.
 Using that publication as the only IDE source would make hover and completion
@@ -1571,7 +1571,7 @@ explicit baseline review; it cannot silently relax a threshold.
 
 ## Open Questions
 
-None.
+None
 
 ## Status History
 
@@ -1582,3 +1582,4 @@ None.
 | 2026-07-24 | RETURNED | Technical review found unresolved request termination, binding authority, recovery identity, incremental-query, lossless-CST, input-frontier, workspace, diagnostics, and version contracts. |
 | 2026-07-24 | DRAFT | Replaced the incomplete contracts with byte-covering syntax, mixed-reuse body queries, canonical input-frontier validation, exact workspace admission, and push-only protocol behavior. |
 | 2026-07-24 | REVIEW | Re-entered review with all RFC 0023 blockers closed and acceptance explicitly gated on RFC 0022. |
+| 2026-08-28 | ACCEPTED | RFC 0022 dependency cleared (accepted 2026-08-27); rechecked the VerifiedFlowToolingProjection and RFC 0019 binding cross-references; fixed one factual defect (the stale `--syntax-only` CLI claim, corrected to `--check`); all eight required owners approved. Implementation stays TBD; no IMPLEMENTING pointer. |
