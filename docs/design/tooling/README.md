@@ -1,10 +1,9 @@
 # ZOM Toolchain Product Design Notes
 
 This directory holds non-normative product-design notes for the ZOM toolchain
-ecosystem that lives under `products/` (the package manager `zomcrate`, the
-build tool `zomforge`, the language server, the formatter, and the debugger).
-These notes survey mature industry practice and recommend product boundaries;
-they do not define contracts.
+ecosystem under `products/`: the front-end command (`zomc`), the language
+server, the formatter, and the debugger. These notes derive product boundaries
+from mature industry practice; they do not define contracts.
 
 ## Authority
 
@@ -17,25 +16,38 @@ These notes are non-normative. When sources disagree, use this order:
 4. These notes synthesize those sources, survey industry practice, and expose
    open product decisions.
 
+Existing directories, RFCs, and code are **inputs, not constraints**. This
+repository follows radical refactoring and delete-useless-things-immediately
+(see `/AGENTS.md` and `.codex/rules/design-principles.md`): a placeholder
+product directory or a prior routing decision does not bind the design. The
+recommended shape is derived from best practice, and directories that best
+practice does not call for are removed rather than filled.
+
 An `ACCEPTED` or `IMPLEMENTING` RFC is not evidence that a product exists in the
-repository. A `products/` directory that contains only a stub `CMakeLists.txt`
-or `README.md` is a placeholder, not a shipped product.
+repository.
 
 ## What exists on disk (verified 2026-08-27)
 
-| `products/` dir | State | Owning RFC (if any) |
-|---|---|---|
-| `zomlang/` | The compiler, runtime, tools, and CLI (`zomc`). Real and substantial. | many |
-| `zomcore/` | Core library, source-backed. Real `src/`. | RFC 0025 (IMPLEMENTING) |
-| `zomcrate/` | Package manager. Placeholder: a one-line README and a `CMakeLists.txt`. | RFC 0012 covers the compiler-internal manifest/resolver, NOT this user-facing product |
-| `zomforge/` | Build tool. Placeholder: an empty `CMakeLists.txt`, no README, no RFC. | none |
+| `products/` dir | State |
+|---|---|
+| `zomlang/` | The compiler, runtime, tools, and the single front-end CLI `zomc`. Real and substantial. |
+| `zomcore/` | Core library, source-backed. Real `src/`. RFC 0025 (IMPLEMENTING). |
+
+`zomc` is one binary (`products/zomlang/utils/zomc/zomc.cc`) built on
+`zc::MainBuilder` with `compile` and `run` subcommands already registered. The
+best-practice recommendation grows this one binary into ZOM's `cargo`/`go`
+rather than adding sibling binaries.
+
+The empty `products/zomcrate/` and `products/zomforge/` placeholder directories
+were **removed** on 2026-08-27: best practice (Cargo/Go/SwiftPM) is a single
+front-end command, so separate package-manager and build-tool binaries are not
+part of the design. "Crate" remains only as the ecosystem noun for a ZOM package.
 
 The compiler driver at `products/zomlang/compiler/driver/package/` already
 implements manifest parsing, deterministic resolution, the canonical lockfile,
 digest-verified source snapshots, a sandboxed build-script runtime, and the
-canonical package-compilation request. This is a decisive fact for the product
-boundaries below: much of what other ecosystems call the "package layer"
-already lives in the compiler, so the tools should be thin layers over it.
+canonical package-compilation request. The package and build engines are
+libraries the compiler links; `zomc` subcommands are the user-facing surface.
 
 ## Sourcing caveat
 
@@ -50,4 +62,4 @@ claims were verified directly against files on disk.
 
 | Document | Purpose |
 |---|---|
-| [Toolchain Product Ecosystem](product-ecosystem.md) | Industry survey + recommended product boundaries for zomcrate, zomforge, the language server, the formatter, and the debugger; and the open decisions that must precede code |
+| [Toolchain Product Ecosystem](product-ecosystem.md) | Industry survey + best-practice product boundaries: one unified `zomc` command (compile/run/build/test/add/fmt), the language server, the formatter, and the debugger |
