@@ -14,6 +14,7 @@ add_subdirectory(type)
 add_subdirectory(ir)
 add_subdirectory(hir)
 add_subdirectory(mir)
+add_subdirectory(lir)
 add_subdirectory(ownership)
 
 add_library(
@@ -29,6 +30,7 @@ add_library(
   $<TARGET_OBJECTS:ir>
   $<TARGET_OBJECTS:lexer>
   $<TARGET_OBJECTS:mir>
+  $<TARGET_OBJECTS:lir>
   $<TARGET_OBJECTS:ownership>
   $<TARGET_OBJECTS:parser>
   $<TARGET_OBJECTS:source>
@@ -56,6 +58,7 @@ set_target_include_directories(
   ir
   lexer
   mir
+  lir
   ownership
   parser
   query
