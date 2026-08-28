@@ -144,5 +144,45 @@ ZC_TEST("Whitespace normalizer preserves the token sequence") {
   ZC_EXPECT(tokenSequencePreserved(*lexed.stream, *relexed.stream));
 }
 
+// A comma with no following space gains exactly one space (same line).
+ZC_TEST("Whitespace normalizer inserts one space after a comma") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto lexed = lexedStream(*sourceManager, "f(a,b)\n"_zc);
+  auto result = normalizeTriviaWhitespace(*lexed.stream);
+  ZC_REQUIRE(result.outcome() == FormatOutcome::Edits);
+  ZC_EXPECT(result.apply("f(a,b)\n"_zc) == "f(a, b)\n"_zc);
+}
+
+// Multiple spaces after a comma collapse to exactly one.
+ZC_TEST("Whitespace normalizer collapses spaces after a comma") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto lexed = lexedStream(*sourceManager, "f(a,   b)\n"_zc);
+  auto result = normalizeTriviaWhitespace(*lexed.stream);
+  ZC_REQUIRE(result.outcome() == FormatOutcome::Edits);
+  ZC_EXPECT(result.apply("f(a,   b)\n"_zc) == "f(a, b)\n"_zc);
+}
+
+// A comma at end of line (followed by a newline) is a multiline-list case and is
+// left to structural reflow; the comma rule does not join the lines.
+ZC_TEST("Whitespace normalizer leaves a comma before a newline alone") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto lexed = lexedStream(*sourceManager, "f(a,\n  b)\n"_zc);
+  auto result = normalizeTriviaWhitespace(*lexed.stream);
+  // No trailing whitespace and a final newline already present, and the comma is
+  // followed by a line break, so nothing applies.
+  ZC_EXPECT(result.outcome() == FormatOutcome::Unchanged);
+}
+
+// The comma rule preserves the token sequence.
+ZC_TEST("Comma normalization preserves the token sequence") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto lexed = lexedStream(*sourceManager, "f(a,b,c)\n"_zc);
+  auto result = normalizeTriviaWhitespace(*lexed.stream);
+  auto normalized = result.apply("f(a,b,c)\n"_zc);
+  ZC_EXPECT(normalized == "f(a, b, c)\n"_zc);
+  auto relexed = lexedStream(*sourceManager, normalized);
+  ZC_EXPECT(tokenSequencePreserved(*lexed.stream, *relexed.stream));
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::format

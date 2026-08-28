@@ -14,6 +14,7 @@
 
 #include "compiler/format/lexeme-printer.h"
 
+#include "compiler/ast/kinds.h"
 #include "compiler/format/doc-renderer.h"
 #include "compiler/format/doc.h"
 #include "zc/core/vector.h"
@@ -46,26 +47,39 @@ zc::String formatLexemeStream(const cst::VerifiedLexemeStream& stream) {
 
 bool tokenSequencePreserved(const cst::VerifiedLexemeStream& original,
                             const cst::VerifiedLexemeStream& reformatted) {
+  // RFC 0044 preserves the significant token sequence -- token kinds, order, and
+  // spellings -- while permitting whitespace/trivia normalization. So the
+  // comparison walks only the Token lexemes of each stream and ignores trivia
+  // (whitespace and comment lexemes may legitimately differ after normalization).
   const auto left = original.lexemes();
   const auto right = reformatted.lexemes();
-  if (left.size() != right.size()) { return false; }
-  for (size_t index = 0; index < left.size(); ++index) {
-    if (left[index].tag() != right[index].tag()) { return false; }
-    // A Token compares by kind, a Trivia by trivia kind; both compare spelling.
-    if (left[index].tag() == cst::CstLexemeTag::Token &&
-        left[index].tokenKind() != right[index].tokenKind()) {
-      return false;
+  size_t leftIndex = 0;
+  size_t rightIndex = 0;
+  while (leftIndex < left.size() && rightIndex < right.size()) {
+    if (left[leftIndex].tag() != cst::CstLexemeTag::Token) {
+      ++leftIndex;
+      continue;
     }
-    if (left[index].tag() == cst::CstLexemeTag::Trivia &&
-        left[index].triviaKind() != right[index].triviaKind()) {
-      return false;
+    if (right[rightIndex].tag() != cst::CstLexemeTag::Token) {
+      ++rightIndex;
+      continue;
     }
-    const auto leftBytes = left[index].spelling();
-    const auto rightBytes = right[index].spelling();
+    if (left[leftIndex].tokenKind() != right[rightIndex].tokenKind()) { return false; }
+    const auto leftBytes = left[leftIndex].spelling();
+    const auto rightBytes = right[rightIndex].spelling();
     if (leftBytes.size() != rightBytes.size()) { return false; }
     for (size_t byte = 0; byte < leftBytes.size(); ++byte) {
       if (leftBytes[byte] != rightBytes[byte]) { return false; }
     }
+    ++leftIndex;
+    ++rightIndex;
+  }
+  // Any remaining lexemes on either side must all be trivia (no extra tokens).
+  for (; leftIndex < left.size(); ++leftIndex) {
+    if (left[leftIndex].tag() == cst::CstLexemeTag::Token) { return false; }
+  }
+  for (; rightIndex < right.size(); ++rightIndex) {
+    if (right[rightIndex].tag() == cst::CstLexemeTag::Token) { return false; }
   }
   return true;
 }
@@ -77,6 +91,16 @@ namespace {
 // immediately before a line break.
 bool isHorizontalSpace(uint8_t byte) {
   return byte == ' ' || byte == '\t' || byte == '\v' || byte == '\f';
+}
+
+// True when a whitespace lexeme spelling contains a line break; a comma followed
+// by such whitespace is a multiline-list case governed by structural reflow, not
+// the same-line "one space after comma" rule.
+bool containsLineBreak(zc::ArrayPtr<const uint8_t> spelling) {
+  for (const auto byte : spelling) {
+    if (byte == '\r' || byte == '\n') { return true; }
+  }
+  return false;
 }
 
 }  // namespace
@@ -142,6 +166,40 @@ FormatResult normalizeTriviaWhitespace(const cst::VerifiedLexemeStream& stream) 
       !(lexemes[lexemes.size() - 1].tag() == cst::CstLexemeTag::Trivia &&
         lexemes[lexemes.size() - 1].triviaKind() == cst::TriviaKind::Whitespace)) {
     auto edit = SourceReplacement::make(sourceByteCount, sourceByteCount, "\n"_zc);
+    ZC_IF_SOME(value, edit) { replacements.add(zc::mv(value)); }
+  }
+
+  // RFC 0044 fixed style: exactly one space after a comma on the same line. When
+  // a Comma token is followed by a same-line separator, normalize the spacing to
+  // one space: a following Whitespace lexeme with no line break collapses to a
+  // single space, and a comma directly followed by another token (no gap) gets a
+  // space inserted at the boundary. A comma followed by a newline is a
+  // multiline-list case governed by structural reflow, and the final whitespace
+  // lexeme is owned by the final-newline rule above, so both are skipped here to
+  // keep edits disjoint.
+  for (size_t index = 0; index + 1 < lexemes.size(); ++index) {
+    const auto& token = lexemes[index];
+    if (token.tag() != cst::CstLexemeTag::Token ||
+        token.tokenKind() != static_cast<uint32_t>(ast::SyntaxKind::Comma)) {
+      continue;
+    }
+    const auto& next = lexemes[index + 1];
+    if (next.tag() == cst::CstLexemeTag::Token) {
+      // No gap after the comma: insert exactly one space at the boundary.
+      auto edit = SourceReplacement::make(token.range().end, token.range().end, " "_zc);
+      ZC_IF_SOME(value, edit) { replacements.add(zc::mv(value)); }
+      continue;
+    }
+    if (next.tag() != cst::CstLexemeTag::Trivia ||
+        next.triviaKind() != cst::TriviaKind::Whitespace) {
+      continue;  // a comment directly follows; comment spacing is out of scope
+    }
+    if (index + 1 == lexemes.size() - 1) { continue; }  // final lexeme: rule 2 owns it
+    const auto spelling = next.spelling();
+    if (containsLineBreak(spelling)) { continue; }
+    // Already exactly one space: nothing to do.
+    if (spelling.size() == 1 && spelling[0] == ' ') { continue; }
+    auto edit = SourceReplacement::make(next.range().start, next.range().end, " "_zc);
     ZC_IF_SOME(value, edit) { replacements.add(zc::mv(value)); }
   }
 

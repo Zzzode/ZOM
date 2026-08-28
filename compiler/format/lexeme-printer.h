@@ -46,9 +46,11 @@ ZC_NODISCARD zc::String formatLexemeStream(const cst::VerifiedLexemeStream& stre
 ///
 /// RFC 0044 "Verification": independent token/trivia verification proves
 /// formatting preserves the complete lossless token sequence. This compares the
-/// original stream's lexemes with the lexemes re-derived from the formatted
-/// output, requiring identical tags, kinds, and spellings in order. A formatter
-/// that inserted, deleted, reordered, or re-lexed a token fails this check.
+/// significant `Token` lexemes of the two streams -- kinds, order, and spellings
+/// -- and ignores trivia, since whitespace normalization legitimately changes
+/// trivia while every token must be preserved. A formatter that inserted,
+/// deleted, reordered, or re-spelled a token, or introduced or dropped a token,
+/// fails this check.
 ///
 /// \param original The lexeme stream the formatter consumed.
 /// \param reformatted The lexeme stream re-derived from the formatted output.
