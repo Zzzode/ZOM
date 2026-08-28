@@ -8,6 +8,7 @@ set(IR_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/ir-identity.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/link-plan-codec.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/target-registry.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/toolchain-discovery.cc
 )
 
 add_library(ir STATIC ${IR_SRC})

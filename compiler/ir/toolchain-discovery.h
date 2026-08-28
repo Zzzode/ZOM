@@ -1,0 +1,161 @@
+// Copyright (c) 2026 Zode.Z. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and limitations under
+// the License.
+
+#pragma once
+
+#include <cstdint>
+
+#include "compiler/ir/link-plan-codec.h"
+#include "compiler/ir/target-registry.h"
+#include "zc/core/array.h"
+#include "zc/core/common.h"
+#include "zc/core/filesystem.h"
+#include "zc/core/string.h"
+#include "zc/core/vector.h"
+
+namespace zomlang::compiler::ir {
+
+/// \brief One explicitly-supplied file the discovery step must resolve and digest.
+///
+/// RFC 0043 forbids ambient toolchain discovery: every input is named up front
+/// with a role, a workspace-relative path to read, and the normalized absolute
+/// path recorded into the produced closure. No PATH search, no environment
+/// probing, no implicit default sysroot.
+struct ToolchainSearchInput final {
+  /// The role this file plays in the produced closure. Only `CrtObject` and
+  /// `DefaultLibrary` are accepted here; the linker driver is named separately.
+  LinkInputRole role;
+
+  /// The file's path relative to the search root passed to `discover`, used to
+  /// read and digest its bytes.
+  zc::String relativePath;
+
+  /// The normalized absolute path recorded into the closure input record (the
+  /// path a linker driver argument will reference). Must live inside the sysroot.
+  zc::String recordedPath;
+};
+
+/// \brief The complete, explicit description of a toolchain to resolve.
+///
+/// This is supplied by the caller (a target authority), never inferred from the
+/// host environment. `discover` reads only what this names.
+struct ToolchainSearchSpec final {
+  /// Canonical target specification identity bytes (non-empty).
+  zc::Array<uint8_t> targetSpecificationIdentity;
+
+  /// The normalized absolute sysroot recorded into the produced closure.
+  zc::String sysroot;
+
+  /// The single driver family for the target object format.
+  LinkerDriverKind linkerKind;
+
+  /// The linker driver program's path relative to the search root.
+  zc::String linkerRelativePath;
+
+  /// The linker driver program's normalized absolute path recorded into the
+  /// closure (the path the later spawn step will exec).
+  zc::String linkerAbsolutePath;
+
+  /// Ordered startup/finalization objects and default libraries to resolve.
+  zc::Array<ToolchainSearchInput> inputs;
+};
+
+/// \brief The closed reason a toolchain discovery attempt failed.
+///
+/// Discovery is fail-closed: any missing or malformed input rejects the whole
+/// attempt and produces no closure. Each reason names one concrete cause.
+enum class ToolchainDiscoveryFailure : uint8_t {
+  /// The spec named an empty target identity, sysroot, or linker path.
+  MalformedSpec = 0x01,
+
+  /// The linker driver program named by the spec was not found under the root.
+  LinkerNotFound = 0x02,
+
+  /// A CRT object or default library named by the spec was not found.
+  InputNotFound = 0x03,
+
+  /// A resolved file was empty (zero bytes); an input must have content to be
+  /// digested and linked.
+  EmptyInput = 0x04,
+
+  /// A search input carried a role other than `CrtObject` or `DefaultLibrary`.
+  InvalidInputRole = 0x05,
+
+  /// The digest of a resolved file could not be computed.
+  DigestFailed = 0x06,
+
+  /// The validated fields did not satisfy `ToolchainClosureRecord::make` (for
+  /// example a non-absolute recorded path). This is the final closed check.
+  ClosureRejected = 0x07,
+};
+
+/// \brief The result of a discovery attempt: a validated closure or a reason.
+class ToolchainDiscoveryResult final {
+public:
+  static ToolchainDiscoveryResult forClosure(ToolchainClosureRecord&& closure);
+  static ToolchainDiscoveryResult forFailure(ToolchainDiscoveryFailure reason);
+
+  ToolchainDiscoveryResult(ToolchainDiscoveryResult&&) noexcept = default;
+  ToolchainDiscoveryResult& operator=(ToolchainDiscoveryResult&&) noexcept = default;
+  ZC_DISALLOW_COPY(ToolchainDiscoveryResult);
+  ~ToolchainDiscoveryResult() noexcept = default;
+
+  /// \brief True when a validated closure was produced.
+  ZC_NODISCARD bool ok() const noexcept { return closureValue != zc::none; }
+
+  /// \brief The produced closure. Requires ok().
+  ZC_NODISCARD const ToolchainClosureRecord& closure() const;
+
+  /// \brief The failure reason. Requires !ok().
+  ZC_NODISCARD ToolchainDiscoveryFailure failure() const noexcept { return failureValue; }
+
+private:
+  explicit ToolchainDiscoveryResult(ToolchainClosureRecord&& closure) noexcept
+      : closureValue(zc::mv(closure)), failureValue(ToolchainDiscoveryFailure::MalformedSpec) {}
+  explicit ToolchainDiscoveryResult(ToolchainDiscoveryFailure reason) noexcept
+      : failureValue(reason) {}
+
+  zc::Maybe<ToolchainClosureRecord> closureValue;
+  ToolchainDiscoveryFailure failureValue;
+};
+
+/// \brief Resolves an explicitly-specified toolchain into a verified closure.
+///
+/// RFC 0043 "Toolchain Discovery": reads exactly the files named by `spec`,
+/// relative to `searchRoot`, computes each file's SHA-256 digest and byte count,
+/// and assembles a validated `ToolchainClosureRecord`. It never searches PATH,
+/// reads the environment, or falls back to an ambient default; a host that does
+/// not supply the named files fails closed with the first violated reason.
+///
+/// \param searchRoot The directory the spec's relative paths resolve against.
+/// \param spec The complete, explicit toolchain description.
+/// \return A validated closure, or the first violated discovery reason.
+ZC_NODISCARD ToolchainDiscoveryResult discoverToolchain(const zc::ReadableDirectory& searchRoot,
+                                                        const ToolchainSearchSpec& spec);
+
+/// \brief Independently re-checks that a discovered closure fits the host.
+///
+/// This is a second, independent gate over `discoverToolchain`: it verifies the
+/// closure's linker driver kind matches the object format the host executes
+/// (ELF driver for an ELF host), rejecting a closure that resolved cleanly but
+/// targets a different format than the running host. It reads no filesystem and
+/// spawns no process.
+///
+/// \param closure The discovered closure to check.
+/// \param hostObjectFormat The object format the running host executes.
+/// \return true when the closure's driver family matches the host format.
+ZC_NODISCARD bool verifyClosureMatchesHostFormat(const ToolchainClosureRecord& closure,
+                                                 ObjectFormat hostObjectFormat);
+
+}  // namespace zomlang::compiler::ir
