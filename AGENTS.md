@@ -170,8 +170,9 @@ flowchart TD
     BE --> CM
     CM --> H[Verified semantic HIR]
     H --> M[Verified Built MIR]
-    M -. not implemented .-> R[Target LIR]
-    R -. not implemented .-> LLVM[LLVM IR and native artifacts]
+    M -. minimal slice .-> R[Target LIR]
+    R -. minimal slice .-> LLVM[LLVM IR + native object]
+    LLVM -. not implemented .-> LINK[Linked executable]
     L --> D[DiagnosticEngine]
     P --> D
     B --> D
@@ -179,7 +180,7 @@ flowchart TD
     M --> D
 ```
 
-**CRITICAL KNOWN GAPS (as of 2026-08-25)** that are tracked by audit findings
+**CRITICAL KNOWN GAPS (as of 2026-08-28)** that are tracked by audit findings
 and must be handled with principle #4 (delete or implement, no drift):
 
 1. **RFC 0007 is implementing, not complete.** The enablement transaction
@@ -205,11 +206,20 @@ and must be handled with principle #4 (delete or implement, no drift):
    DirectInput proof-to-borrow-input match) remain deferred pending admitted
    store/closure escapes and a `validate` signature extension, and production
    ownership-result publication remains gated on RFC 0007.
-3. **RFC 0010 has no target LIR or backend implementation.** Semantic HIR and
-   evidence-bound Built MIR are present, while target legalization, ABI
-   lowering, LLVM IR, object emission, and linking are absent.
-4. **There is no native backend.** `compiler/backend` and LLVM/object emission
-   are absent; binary emission is not implemented.
+3. **RFC 0010 / 0021 backend is a minimal verified slice, not general.**
+   Semantic HIR, evidence-bound Built MIR, target-aware LIR (`compiler/lir/`),
+   and an LLVM translator (`compiler/backend/llvm/`, behind
+   `ZOM_ENABLE_LLVM_BACKEND`) all exist: a scalar module-initializer lowers
+   MIR -> LIR -> verified LLVM IR (mandatory `verifyModule`) -> a native ELF
+   object (RFC 0021 ObjectEmission via `addPassesToEmitFile`). Still absent:
+   general MIR -> LIR legalization beyond the single-block integer-return shape,
+   full ABI lowering, and the driver/CLI cutover (the translator is reachable
+   only from `llvm-translation-test`, not from `zomc compile`).
+4. **No linking, no runnable binary.** The backend emits an object file but does
+   not link it: RFC 0043 (link + executable publication) is ACCEPTED but not
+   IMPLEMENTING, there is no `InvokeLinker` production path, and `zomc run`
+   hard-rejects (`rejectRun`). ZOM cannot yet produce or execute a native
+   executable end to end.
 5. **RFC 0006 is partial.** Source contracts and target selection are present,
    but real drop cleanup, general calls, multi-residual lowering,
    target/runtime capability integration, native emission, and FFI conformance
