@@ -2,7 +2,7 @@
 rfc: 23
 title: IDE Semantic Snapshots And Language Server Architecture
 type: compiler
-status: ACCEPTED
+status: IMPLEMENTING
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, lexer-parser, binder-checker, module-system, error-system, tooling-lsp, spec-audit, verification]
@@ -15,7 +15,7 @@ supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0023-review-and-implementation.md#discussion-record
 decision: docs/rfc/tracking/0023-review-and-implementation.md#decision-record
-implementation: TBD
+implementation: docs/rfc/tracking/0023-review-and-implementation.md#implementation-tracker
 tracking-issue: docs/rfc/tracking/0023-review-and-implementation.md#implementation-tracker
 ---
 
@@ -1583,3 +1583,4 @@ None
 | 2026-07-24 | DRAFT | Replaced the incomplete contracts with byte-covering syntax, mixed-reuse body queries, canonical input-frontier validation, exact workspace admission, and push-only protocol behavior. |
 | 2026-07-24 | REVIEW | Re-entered review with all RFC 0023 blockers closed and acceptance explicitly gated on RFC 0022. |
 | 2026-08-28 | ACCEPTED | RFC 0022 dependency cleared (accepted 2026-08-27); rechecked the VerifiedFlowToolingProjection and RFC 0019 binding cross-references; fixed one factual defect (the stale `--syntax-only` CLI claim, corrected to `--check`); all eight required owners approved. Implementation stays TBD; no IMPLEMENTING pointer. |
+| 2026-08-28 | IMPLEMENTING | First authorized slice landed as evidence: the recoverable-parsing lexeme partition data model, canonical codec, and independent `LexemePartitionVerifier` (`compiler/cst/lexeme-codec.{h,cc}`) enforcing the L484-551 `CstLexeme` algebra and the exact adjacent-partition, spelling-width, non-empty, and content-digest-reconstruction invariants, with a frozen 188-byte oracle and fail-closed matrix (10/10). No live lexer/parser change, no `ast::Tree` replacement, no IDE facade. |

@@ -11,6 +11,7 @@ add_subdirectory(ast)
 add_subdirectory(trace)
 add_subdirectory(binder)
 add_subdirectory(type)
+add_subdirectory(cst)
 add_subdirectory(format)
 add_subdirectory(ir)
 add_subdirectory(hir)
@@ -30,6 +31,7 @@ add_library(
   $<TARGET_OBJECTS:binder>
   $<TARGET_OBJECTS:basic>
   $<TARGET_OBJECTS:checker>
+  $<TARGET_OBJECTS:cst>
   $<TARGET_OBJECTS:diagnostics>
   $<TARGET_OBJECTS:driver>
   $<TARGET_OBJECTS:format>
@@ -59,6 +61,7 @@ set_target_include_directories(
   basic
   binder
   checker
+  cst
   diagnostics
   driver
   format
