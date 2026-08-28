@@ -78,13 +78,18 @@ zc::Maybe<LinkerInvocation> expandLinkPlanToInvocation(const VerifiedLinkPlan& p
   zc::Maybe<zc::String> workingDirectory = parentDirectory(plan.outputPath());
   if (workingDirectory == zc::none) { return zc::none; }
 
-  // Build the canonical argument vector in RFC 0043 expansion order:
+  // Build the canonical argument vector in RFC 0043 expansion order. The
+  // toolchain closure's CRT startup objects precede the user objects, and its
+  // default libraries follow every object so left-to-right symbol resolution
+  // sees the objects first:
   //   argv[0] = driver program
   //   -o <output>
   //   -e <entry symbol>
   //   <target-owned argument records, in order>
+  //   <closure CRT objects, in canonical order>
   //   <object input paths, in canonical order>
   //   <runtime input paths, in canonical order>
+  //   <closure default libraries, in canonical order>
   zc::Vector<zc::String> argv;
   argv.add(zc::str(closure.linkerPath()));
   argv.add(zc::str(kOutputFlag));
@@ -94,8 +99,12 @@ zc::Maybe<LinkerInvocation> expandLinkPlanToInvocation(const VerifiedLinkPlan& p
   for (const LinkerArgumentRecord& record : plan.argumentRecords()) {
     argv.add(zc::str(record.argument()));
   }
+  for (const LinkInputRecord& record : closure.crtObjects()) { argv.add(zc::str(record.path())); }
   for (const LinkInputRecord& record : plan.objectRecords()) { argv.add(zc::str(record.path())); }
   for (const LinkInputRecord& record : plan.runtimeRecords()) { argv.add(zc::str(record.path())); }
+  for (const LinkInputRecord& record : closure.defaultLibraries()) {
+    argv.add(zc::str(record.path()));
+  }
 
   // The environment is empty plus the closure's recorded variables. The current
   // closure shape carries no environment entries, so this is an empty set; the

@@ -99,17 +99,21 @@ ZC_TEST("Link plan expands to the canonical driver argument vector") {
 
   ZC_EXPECT(value.program() == "/sysroot/bin/cc"_zc);
 
-  // argv order: driver, -o <out>, -e <entry>, target args, objects, runtime.
+  // argv order: driver, -o <out>, -e <entry>, target args, closure CRT objects,
+  // user objects, runtime objects, closure default libraries. The closure's
+  // crt1.o and libc.so are part of the link closure and MUST appear.
   zc::ArrayPtr<const zc::String> argv = value.argv();
-  ZC_ASSERT(argv.size() == 8u);
+  ZC_ASSERT(argv.size() == 10u);
   ZC_EXPECT(argv[0] == "/sysroot/bin/cc"_zc);
   ZC_EXPECT(argv[1] == "-o"_zc);
   ZC_EXPECT(argv[2] == "/out/app"_zc);
   ZC_EXPECT(argv[3] == "-e"_zc);
   ZC_EXPECT(argv[4] == "zom"_zc);
   ZC_EXPECT(argv[5] == "-static"_zc);
-  ZC_EXPECT(argv[6] == "/out/app.o"_zc);
-  ZC_EXPECT(argv[7] == "/sysroot/lib/zomrt.o"_zc);
+  ZC_EXPECT(argv[6] == "/sysroot/lib/crt1.o"_zc);   // closure CRT object
+  ZC_EXPECT(argv[7] == "/out/app.o"_zc);            // user object
+  ZC_EXPECT(argv[8] == "/sysroot/lib/zomrt.o"_zc);  // runtime object
+  ZC_EXPECT(argv[9] == "/sysroot/lib/libc.so"_zc);  // closure default library
 }
 
 ZC_TEST("Link plan invocation runs in the output directory with an empty environment") {
