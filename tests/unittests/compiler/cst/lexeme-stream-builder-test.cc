@@ -101,6 +101,51 @@ ZC_TEST("Lexeme bridge retains a comment as trivia") {
   ZC_EXPECT(reconstructsSource(result.get<VerifiedLexemeStream>(), lexed.bufferBytes));
 }
 
+// True when the stream contains at least one trivia lexeme of `kind`.
+bool hasTrivia(const VerifiedLexemeStream& stream, TriviaKind kind) {
+  for (const auto& lexeme : stream.lexemes()) {
+    if (lexeme.tag() == CstLexemeTag::Trivia && lexeme.triviaKind() == kind) { return true; }
+  }
+  return false;
+}
+
+// A block comment between tokens is retained as a BlockComment trivia lexeme,
+// distinct from the surrounding whitespace.
+ZC_TEST("Lexeme bridge classifies a block comment") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto lexed = lexSource(*sourceManager, "let /* c */ y = 1"_zc);
+  auto result = buildLexemeStreamFromTokens(lexed.bufferBytes, lexed.tokens.asPtr());
+  ZC_REQUIRE(result.is<VerifiedLexemeStream>());
+  const auto& stream = result.get<VerifiedLexemeStream>();
+  ZC_EXPECT(reconstructsSource(stream, lexed.bufferBytes));
+  ZC_EXPECT(hasTrivia(stream, TriviaKind::BlockComment));
+  ZC_EXPECT(hasTrivia(stream, TriviaKind::Whitespace));
+}
+
+// A line comment is retained as a LineComment trivia lexeme, and the newline
+// after it is a separate whitespace lexeme.
+ZC_TEST("Lexeme bridge classifies a line comment") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto lexed = lexSource(*sourceManager, "let x = 1 // tail\nlet y = 2"_zc);
+  auto result = buildLexemeStreamFromTokens(lexed.bufferBytes, lexed.tokens.asPtr());
+  ZC_REQUIRE(result.is<VerifiedLexemeStream>());
+  const auto& stream = result.get<VerifiedLexemeStream>();
+  ZC_EXPECT(reconstructsSource(stream, lexed.bufferBytes));
+  ZC_EXPECT(hasTrivia(stream, TriviaKind::LineComment));
+  // The comment lexeme stops before the newline; the newline is whitespace.
+  bool lineCommentEndsBeforeBreak = false;
+  const auto lexemes = stream.lexemes();
+  for (const auto& lexeme : lexemes) {
+    if (lexeme.tag() == CstLexemeTag::Trivia && lexeme.triviaKind() == TriviaKind::LineComment) {
+      const auto spelling = lexeme.spelling();
+      ZC_REQUIRE(spelling.size() >= 2);
+      lineCommentEndsBeforeBreak =
+          spelling[spelling.size() - 1] != '\n' && spelling[spelling.size() - 1] != '\r';
+    }
+  }
+  ZC_EXPECT(lineCommentEndsBeforeBreak);
+}
+
 // Leading and trailing whitespace is covered by trivia lexemes.
 ZC_TEST("Lexeme bridge covers leading and trailing whitespace") {
   auto sourceManager = zc::heap<source::SourceManager>();

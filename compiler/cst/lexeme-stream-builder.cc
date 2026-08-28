@@ -30,15 +30,71 @@ zc::Maybe<uint64_t> offsetOf(const zc::byte* base, uint64_t size, source::Source
   return static_cast<uint64_t>(pointer - base);
 }
 
-// Emits one whitespace trivia lexeme covering `[start, end)` of `bytes`.
-// Returns false when the span is malformed (the caller then fails closed).
+// True for the bytes the lexer treats as whitespace (lexer.cc: space, tab,
+// vertical tab, form feed, carriage return, line feed).
+bool isWhitespaceByte(uint8_t byte) {
+  return byte == ' ' || byte == '\t' || byte == '\v' || byte == '\f' || byte == '\r' ||
+         byte == '\n';
+}
+
+// Emits one trivia lexeme of `kind` covering `[start, end)` of `bytes`. Returns
+// false when the span is malformed (the caller then fails closed).
+bool addTrivia(zc::Vector<CstLexeme>& lexemes, zc::ArrayPtr<const uint8_t> bytes, TriviaKind kind,
+               uint64_t start, uint64_t end) {
+  if (end <= start || end > bytes.size()) { return false; }
+  auto lexeme = CstLexeme::trivia(kind, ByteRange{start, end}, bytes.slice(start, end));
+  if (lexeme == zc::none) { return false; }
+  ZC_IF_SOME(value, lexeme) { lexemes.add(zc::mv(value)); }
+  return true;
+}
+
+// Splits the inter-token byte gap `[start, end)` into precise trivia lexemes:
+// maximal whitespace runs (Whitespace), `//` line comments to just before the
+// line break (LineComment), and `/* ... */` block comments (BlockComment). This
+// mirrors the lexer's own trivia scanning (lexer.cc: whitespace skip, and the
+// `/` comment branches). Returns false on a malformed span.
 bool addTriviaGap(zc::Vector<CstLexeme>& lexemes, zc::ArrayPtr<const uint8_t> bytes, uint64_t start,
                   uint64_t end) {
   if (end <= start || end > bytes.size()) { return false; }
-  auto lexeme =
-      CstLexeme::trivia(TriviaKind::Whitespace, ByteRange{start, end}, bytes.slice(start, end));
-  if (lexeme == zc::none) { return false; }
-  ZC_IF_SOME(value, lexeme) { lexemes.add(zc::mv(value)); }
+  uint64_t cursor = start;
+  while (cursor < end) {
+    const uint8_t byte = bytes[cursor];
+    if (isWhitespaceByte(byte)) {
+      uint64_t run = cursor + 1;
+      while (run < end && isWhitespaceByte(bytes[run])) { ++run; }
+      if (!addTrivia(lexemes, bytes, TriviaKind::Whitespace, cursor, run)) { return false; }
+      cursor = run;
+      continue;
+    }
+    if (byte == '/' && cursor + 1 < end && bytes[cursor + 1] == '/') {
+      // A line comment runs to just before the next line break (or gap end).
+      uint64_t run = cursor + 2;
+      while (run < end && bytes[run] != '\r' && bytes[run] != '\n') { ++run; }
+      if (!addTrivia(lexemes, bytes, TriviaKind::LineComment, cursor, run)) { return false; }
+      cursor = run;
+      continue;
+    }
+    if (byte == '/' && cursor + 1 < end && bytes[cursor + 1] == '*') {
+      // A block comment runs through the closing `*/` (inclusive).
+      uint64_t run = cursor + 2;
+      bool closed = false;
+      while (run < end) {
+        if (bytes[run] == '*' && run + 1 < end && bytes[run + 1] == '/') {
+          run += 2;
+          closed = true;
+          break;
+        }
+        ++run;
+      }
+      // An unterminated block comment cannot appear in an accepted token gap.
+      if (!closed) { return false; }
+      if (!addTrivia(lexemes, bytes, TriviaKind::BlockComment, cursor, run)) { return false; }
+      cursor = run;
+      continue;
+    }
+    // A gap byte that is neither whitespace nor a comment opener is not trivia.
+    return false;
+  }
   return true;
 }
 

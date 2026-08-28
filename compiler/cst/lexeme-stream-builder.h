@@ -37,11 +37,11 @@ namespace zomlang::compiler::cst {
 /// does not yet build parser events, a `RecoverableSyntaxTree`, or replace
 /// `ast::Tree` construction; those are later RFC 0023 slices.
 ///
-/// Trivia sub-kind note: each inter-token gap is emitted as a single
-/// `TriviaKind::Whitespace` lexeme even when it contains comments, because the
-/// lexer does not retain a comment/whitespace boundary in its token output. The
-/// partition and byte-reconstruction invariants hold regardless; splitting a gap
-/// into precise whitespace and comment lexemes is a later refinement.
+/// Trivia sub-kind: each inter-token gap is split into precise trivia lexemes
+/// mirroring the lexer's own scanning -- maximal whitespace runs
+/// (`TriviaKind::Whitespace`), `//` line comments (`TriviaKind::LineComment`),
+/// and `/* ... */` block comments (`TriviaKind::BlockComment`). The partition
+/// and byte-reconstruction invariants hold across the split.
 ///
 /// \param bufferBytes The entire source buffer, as returned by
 ///        `SourceManager::getEntireTextForBuffer`.
