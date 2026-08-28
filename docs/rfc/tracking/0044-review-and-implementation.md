@@ -92,11 +92,46 @@ diagnostic, engine, and prior-art checks passed. `decision` is set;
 
 ## Implementation Tracker
 
-RFC 0044 is `ACCEPTED` but not `IMPLEMENTING`; the implementation pointer stays
-TBD. The first authorized slice is the pure formatter core plus the independent
-token/trivia verifier (Implementation Plan step 2); its RFC 0023 lossless
-snapshot dependency (step 1) is now ACCEPTED, so the slice is unblocked to begin
-as O6/KR6.2.
+### 2026-08-28 First Authorized Slice And ACCEPTED -> IMPLEMENTING
+
+The first authorized slice (Implementation Plan step 2, the pure formatter core)
+landed as evidence, and RFC 0044 moves `ACCEPTED -> IMPLEMENTING`. This mirrors
+how RFC 0016/0021/0043 entered IMPLEMENTING on a landed first slice rather than
+the full contract. The slice is the pure Wadler/Lindig Doc algebra plus its
+generic width-driven layout renderer; it depends on no lexer, parser, CST, or
+filesystem and builds under the default frontend `sanitizer` preset.
+
+Landed:
+
+- `compiler/format/doc.{h,cc}` - the closed `Doc` constructor set
+  (`text`/`concat`/`line`/`softline`/`hardline`/`group`/`indent`/`ifBreak`/`fill`)
+  as a move-only immutable value tree built only through named factories.
+- `compiler/format/doc-renderer.{h,cc}` - the total, search-free width-driven
+  `fits`/layout pass at the pinned 100-column width (`kTargetWidth`) with the
+  four-column indent step (`kIndentStep`): a `group` renders flat when its flat
+  width plus the current column stays within the width and it carries no
+  `hardline`, otherwise its direct `line`/`softline` break and its `indent`
+  applies.
+- `tests/unittests/compiler/format/doc-renderer-oracle-test.cc` - hand-built
+  documents rendered at width 100, asserting text verbatim, flat-vs-broken group
+  decisions, hardline forcing, nested indentation accumulation, `ifBreak`
+  selection, `fill` packing, and render determinism (8/8 pass).
+
+The slice adds no `ZOMxxxx` diagnostic code. Deferred to later slices (correctly
+Pending): the syntax-directed printer that walks the RFC 0023 recoverable
+lossless CST to emit a `Doc` (blocked on the RFC 0023 lossless-snapshot
+implementation, not yet in the tree), the independent token/trivia verifier,
+canonical edit normalization and range expansion, digest-checked atomic CLI
+writes, and the `zomc fmt` / `zomc fmt --check` command.
+
+| Slice | State | Required evidence |
+|---|---|---|
+| Pure formatter core: `Doc` algebra + width-driven layout renderer | Landed 2026-08-28 | `compiler/format/doc.{h,cc}` + `doc-renderer.{h,cc}` + `doc-renderer-oracle-test` (8/8, frontend sanitizer build). |
+| Syntax-directed printer over the RFC 0023 lossless CST | Blocked | RFC 0023 lossless-snapshot implementation (not yet in the tree). |
+| Independent token/trivia preservation verifier | Pending | Token-sequence equivalence over the printer output. |
+| Canonical edit normalization, range expansion, mutation tests | Pending | Sorted disjoint `SourceReplacement` set; range-expansion boundary rules. |
+| Digest-checked atomic CLI writes and `zomc fmt` | Pending | Temp-sibling + fsync + rename; `--check`; native Linux/macOS tests. |
+| IDE facade + LSP adapter integration | Pending | Byte-edit result bound to the document version. |
 
 ## Verification Evidence
 
