@@ -16,108 +16,64 @@
 
 #include <cstdint>
 
-#include "compiler/ir/linker-invocation.h"
+#include "compiler/ir/ir-failure.h"
+#include "compiler/ir/link-plan-codec.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/filesystem.h"
-#include "zc/core/string.h"
 
 namespace zomlang::compiler::ir {
 
-/// \brief The closed reason a linker invocation failed to produce an executable.
+/// \brief A linked executable produced from a verified link plan.
 ///
-/// RFC 0043 "Linker Driver Invocation": an unrecognized driver result, a nonzero
-/// exit status, or a missing output rejects the operation. Each reason names one
-/// concrete cause; a success carries no reason.
-enum class LinkerInvocationFailure : uint8_t {
-  /// The linker driver program could not be spawned (not found or not
-  /// executable).
-  DriverNotSpawnable = 0x01,
-
-  /// The linker driver was terminated by a signal rather than exiting.
-  DriverSignaled = 0x02,
-
-  /// The linker driver exited with a nonzero status.
-  DriverExitedNonZero = 0x03,
-
-  /// The linker driver exited successfully but produced no output file at the
-  /// planned path.
-  OutputMissing = 0x04,
-};
-
-/// \brief The result of invoking a linker driver for a link plan.
-///
-/// On success it carries the bytes of the produced executable read back from the
-/// output path. On failure it carries the closed reason plus, when the driver
-/// ran, the captured exit code and stderr for diagnosis.
-class LinkerInvocationResult final {
+/// Carries the bytes of the executable the linker driver wrote at the plan's
+/// output path, read back after a successful, verified invocation. It is only
+/// constructed by `linkExecutable` on the success path.
+class VerifiedLinkedExecutable final {
 public:
-  static LinkerInvocationResult forExecutable(zc::Array<uint8_t>&& executableBytes);
-  static LinkerInvocationResult forFailure(LinkerInvocationFailure reason, int exitCode,
-                                           zc::Array<uint8_t>&& capturedStderr);
+  VerifiedLinkedExecutable(VerifiedLinkedExecutable&&) noexcept = default;
+  VerifiedLinkedExecutable& operator=(VerifiedLinkedExecutable&&) noexcept = default;
+  ZC_DISALLOW_COPY(VerifiedLinkedExecutable);
+  ~VerifiedLinkedExecutable() noexcept = default;
 
-  LinkerInvocationResult(LinkerInvocationResult&&) noexcept = default;
-  LinkerInvocationResult& operator=(LinkerInvocationResult&&) noexcept = default;
-  ZC_DISALLOW_COPY(LinkerInvocationResult);
-  ~LinkerInvocationResult() noexcept = default;
+  explicit VerifiedLinkedExecutable(zc::Array<uint8_t>&& bytes) noexcept
+      : bytesValue(zc::mv(bytes)) {}
 
-  /// \brief True when the linker produced the planned executable.
-  ZC_NODISCARD bool ok() const noexcept { return okValue; }
-
-  /// \brief The produced executable bytes. Requires ok().
-  ZC_NODISCARD zc::ArrayPtr<const uint8_t> executableBytes() const noexcept {
-    return executableBytesValue.asPtr();
-  }
-
-  /// \brief The failure reason. Requires !ok().
-  ZC_NODISCARD LinkerInvocationFailure failure() const noexcept { return failureValue; }
-
-  /// \brief The driver exit code, valid on a DriverExitedNonZero failure.
-  ZC_NODISCARD int exitCode() const noexcept { return exitCodeValue; }
-
-  /// \brief The captured driver stderr, valid on a failure where the driver ran.
-  ZC_NODISCARD zc::ArrayPtr<const uint8_t> capturedStderr() const noexcept {
-    return capturedStderrValue.asPtr();
-  }
+  /// \brief The produced executable bytes.
+  ZC_NODISCARD zc::ArrayPtr<const uint8_t> bytes() const noexcept { return bytesValue.asPtr(); }
 
 private:
-  LinkerInvocationResult(bool ok, zc::Array<uint8_t>&& executableBytes,
-                         LinkerInvocationFailure failure, int exitCode,
-                         zc::Array<uint8_t>&& capturedStderr) noexcept
-      : okValue(ok),
-        executableBytesValue(zc::mv(executableBytes)),
-        failureValue(failure),
-        exitCodeValue(exitCode),
-        capturedStderrValue(zc::mv(capturedStderr)) {}
-
-  bool okValue;
-  zc::Array<uint8_t> executableBytesValue;
-  LinkerInvocationFailure failureValue;
-  int exitCodeValue;
-  zc::Array<uint8_t> capturedStderrValue;
+  zc::Array<uint8_t> bytesValue;
 };
 
-/// \brief Invokes a linker driver for a plan and reads back the produced output.
+/// \brief Invokes the linker driver for a verified plan and reads back the output.
 ///
-/// RFC 0043 "Linker Driver Invocation": spawns the invocation's driver program
-/// with its exact argument vector through the shell-free child-process
-/// primitive - no shell, no glob expansion, no inherited search variables - then
-/// classifies the result. A spawn failure, a signal, a nonzero exit, or a
-/// missing output rejects the operation. On success it reads the produced
-/// executable at `outputRelativePath` under `outputDir` and returns its bytes.
+/// RFC 0043 "Linker Driver Invocation": the InvokeLinker step. Its entire input
+/// is the `VerifiedLinkPlan` plus the filesystem root the plan's absolute paths
+/// resolve against - there is no forkable independent argv, working directory, or
+/// output path. It:
 ///
-/// This is the InvokeLinker step that binds the argv expansion (LinkerInvocation)
-/// to the process primitive; it does not itself verify the executable format or
-/// publish a manifest (those are separate slices). The environment is exactly
-/// the invocation's explicit environment; the parent environment is never
-/// inherited.
+///   1. re-verifies the driver program on disk still matches the closure's
+///      recorded digest and byte count (rejecting a file replaced after
+///      discovery) before spawning;
+///   2. rejects a pre-existing file at the plan's output path (no stale output
+///      is ever accepted as a link result);
+///   3. expands the plan to the canonical argv and spawns the driver through the
+///      shell-free child-process primitive with an explicit environment;
+///   4. on a spawn failure, a signal, a nonzero exit, or a missing/unchanged
+///      output, removes any partial output it created and rejects; and
+///   5. on success, reads back the produced executable and returns it.
 ///
-/// \param invocation The canonical driver invocation to run.
-/// \param outputDir The directory the produced executable is read from.
-/// \param outputRelativePath The executable's path relative to `outputDir`.
-/// \return The produced executable bytes, or the first violated failure reason.
-ZC_NODISCARD LinkerInvocationResult invokeLinker(const LinkerInvocation& invocation,
-                                                 const zc::ReadableDirectory& outputDir,
-                                                 zc::StringPtr outputRelativePath);
+/// Every rejection is an RFC 0010 `IrOperationResult` failure under
+/// `IrFailurePhase::LinkerInvocation`; the driver-digest mismatch maps to
+/// `InputRevisionMismatch` (the verified input changed), and every other linker
+/// failure maps to `InvalidFact` (the linker produced no valid result).
+///
+/// \param plan The verified link plan; the sole source of argv, driver, and output.
+/// \param filesystemRoot The directory the plan's normalized absolute paths
+///        resolve against (the disk root in production).
+/// \return The verified linked executable, or a LinkerInvocation-phase rejection.
+ZC_NODISCARD IrOperationResult<VerifiedLinkedExecutable> linkExecutable(
+    const VerifiedLinkPlan& plan, const zc::Directory& filesystemRoot);
 
 }  // namespace zomlang::compiler::ir
