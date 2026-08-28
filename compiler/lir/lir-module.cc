@@ -68,4 +68,9 @@ LirTerminator LirTerminator::returnLocal(uint32_t localOrdinal) noexcept {
   return LirTerminator(LirTerminatorKind::ReturnLocal, localOrdinal, LirBlockId(), LirBlockId());
 }
 
+LirTerminator LirTerminator::callFunction(uint32_t calleeIndex, uint32_t destinationOrdinal,
+                                          LirBlockId normalTarget) noexcept {
+  return LirTerminator(calleeIndex, destinationOrdinal, normalTarget);
+}
+
 }  // namespace zomlang::compiler::lir

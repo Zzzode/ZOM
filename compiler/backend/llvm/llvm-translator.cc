@@ -79,30 +79,36 @@ LlvmTranslator& LlvmTranslator::operator=(LlvmTranslator&&) noexcept = default;
 
 LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
   const auto functions = module.functions();
-  if (functions.size() != 1) {
+  if (functions.size() < 1 || functions.size() > 2) {
     return LlvmTranslationResult::failure(
-        zc::heapString("LIR module must contain exactly one function in this slice"));
+        zc::heapString("LIR module must contain one or two functions in this slice"));
   }
-  const auto& function = functions[0];
-  if (function.returnCarrier().kind() != lir::LirValueTypeKind::Integer) {
-    return LlvmTranslationResult::failure(
-        zc::heapString("LIR function return carrier must be an integer"));
+  for (const auto& candidate : functions) {
+    if (candidate.returnCarrier().kind() != lir::LirValueTypeKind::Integer) {
+      return LlvmTranslationResult::failure(
+          zc::heapString("LIR function return carrier must be an integer"));
+    }
   }
-  const auto blocks = function.blocks();
-  // Two shapes are supported: the single-block integer-constant return (the
-  // scalar-initializer slice) and a generic multi-block control-flow function
-  // with integer parameters and integer locals (the conditional diamond, the
-  // reducible while-loop, and the comparison-driven conditional), whose entry
-  // begins the CFG with a Goto or a conditional branch.
-  const bool singleBlockReturn =
-      blocks.size() == 1 && blocks[0].terminator().kind() == lir::LirTerminatorKind::ReturnInteger;
-  const bool multiBlockCfg = blocks.size() >= 2 && function.parameters().size() >= 1 &&
-                             function.locals().size() >= 1 &&
-                             (blocks[0].terminator().kind() == lir::LirTerminatorKind::CondBranch ||
-                              blocks[0].terminator().kind() == lir::LirTerminatorKind::Goto);
-  if (!singleBlockReturn && !multiBlockCfg) {
-    return LlvmTranslationResult::failure(
-        zc::heapString("LIR function is outside the supported translation shapes"));
+  // Each function is one of: the single-block integer-constant return
+  // (scalar-initializer / callee shape) or a generic multi-block control-flow
+  // function (conditional diamond, reducible while-loop, comparison-driven
+  // conditional, or the two-block Call+Return caller) whose entry begins with a
+  // Goto, a conditional branch, or a call.
+  auto isSupportedShape = [](const lir::LirFunction& candidate) -> bool {
+    const auto candidateBlocks = candidate.blocks();
+    if (candidateBlocks.size() == 1) {
+      return candidateBlocks[0].terminator().kind() == lir::LirTerminatorKind::ReturnInteger;
+    }
+    if (candidateBlocks.size() < 2) { return false; }
+    const auto entryKind = candidateBlocks[0].terminator().kind();
+    return entryKind == lir::LirTerminatorKind::CondBranch ||
+           entryKind == lir::LirTerminatorKind::Goto || entryKind == lir::LirTerminatorKind::Call;
+  };
+  for (const auto& candidate : functions) {
+    if (!isSupportedShape(candidate)) {
+      return LlvmTranslationResult::failure(
+          zc::heapString("LIR function is outside the supported translation shapes"));
+    }
   }
 
   // RFC 0021 deterministic translation order.
@@ -133,49 +139,56 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
   llvmModule->setTargetTriple(parsedTriple);
   llvmModule->setDataLayout(targetMachine->createDataLayout());
 
-  // 3. Create value types in canonical order (the single integer return carrier).
-  const uint32_t bitCount = bitCountFor(function.returnCarrier().integerWidth());
-  ::llvm::IntegerType* returnType = ::llvm::Type::getIntNTy(*context, bitCount);
+  // 3. Declare every function first so a call can reference a defined callee by
+  //    its module-local index. Each function's symbol is its LIR symbol name (a
+  //    module-local name, the same documented boundary as the reserved
+  //    module-initializer symbol); no external/synthetic symbol is invented.
+  auto integerType = [&](lir::IntegerBitWidth width) -> ::llvm::IntegerType* {
+    return ::llvm::Type::getIntNTy(*context, bitCountFor(width));
+  };
+  zc::Vector<::llvm::Function*> llvmFunctions;
+  for (const auto& candidate : functions) {
+    ::llvm::IntegerType* candidateReturn = integerType(candidate.returnCarrier().integerWidth());
+    zc::Vector<::llvm::Type*> paramTypes;
+    for (const auto& parameter : candidate.parameters()) {
+      paramTypes.add(integerType(parameter.carrier().integerWidth()));
+    }
+    ::llvm::ArrayRef<::llvm::Type*> paramTypeRef(paramTypes.begin(), paramTypes.size());
+    ::llvm::FunctionType* functionType =
+        ::llvm::FunctionType::get(candidateReturn, paramTypeRef, /*isVarArg=*/false);
+    llvmFunctions.add(::llvm::Function::Create(functionType, ::llvm::GlobalValue::ExternalLinkage,
+                                               candidate.symbolName().cStr(), llvmModule.get()));
+  }
 
-  if (singleBlockReturn) {
-    // 4. Declare the parameterless function in canonical symbol order.
-    ::llvm::FunctionType* functionType = ::llvm::FunctionType::get(returnType, /*isVarArg=*/false);
-    ::llvm::Function* llvmFunction =
-        ::llvm::Function::Create(functionType, ::llvm::GlobalValue::ExternalLinkage,
-                                 function.symbolName().cStr(), llvmModule.get());
+  // 4. Emit each function body.
+  for (size_t functionIndex = 0; functionIndex < functions.size(); ++functionIndex) {
+    const auto& function = functions[functionIndex];
+    ::llvm::Function* llvmFunction = llvmFunctions[functionIndex];
+    const auto blocks = function.blocks();
+    ::llvm::IntegerType* returnType = integerType(function.returnCarrier().integerWidth());
 
-    // 5. Create the single entry block and return the integer constant.
-    ::llvm::BasicBlock* entryBlock = ::llvm::BasicBlock::Create(*context, "entry", llvmFunction);
-    const auto& returnConstant = blocks[0].terminator().returnIntegerValue();
-    ::llvm::Constant* value =
-        ::llvm::ConstantInt::get(returnType, returnConstant.bits(), /*IsSigned=*/false);
-    ::llvm::ReturnInst::Create(*context, value, entryBlock);
-  } else {
+    if (blocks.size() == 1 &&
+        blocks[0].terminator().kind() == lir::LirTerminatorKind::ReturnInteger) {
+      // Single entry block returning the integer constant.
+      ::llvm::BasicBlock* entryBlock = ::llvm::BasicBlock::Create(*context, "entry", llvmFunction);
+      const auto& returnConstant = blocks[0].terminator().returnIntegerValue();
+      ::llvm::Constant* value =
+          ::llvm::ConstantInt::get(returnType, returnConstant.bits(), /*IsSigned=*/false);
+      ::llvm::ReturnInst::Create(*context, value, entryBlock);
+      continue;
+    }
+
     // Generic multi-block control-flow function. Every parameter and body local
     // is materialized as an alloca in the entry block (the classic
     // locals-to-memory lowering, needing no SSA/phi reasoning); parameters store
     // their incoming argument, Assign/Compare statements store into a local, a
-    // CondBranch loads its boolean condition local, and a ReturnLocal loads the
-    // result. This lowers any reducible CFG built from Goto / CondBranch /
-    // ReturnLocal over Assign / Compare statements: the conditional diamond, the
-    // reducible while-loop, and the comparison-driven conditional all share it,
-    // keeping the RFC 0021 faithful block-by-block translation.
+    // CondBranch loads its boolean condition local, a Call stores its callee's
+    // integer result, and a ReturnLocal loads the result. This lowers any
+    // reducible CFG built from Goto / CondBranch / Call / ReturnLocal over
+    // Assign / Compare statements, keeping the RFC 0021 faithful block-by-block
+    // translation.
     const auto parameters = function.parameters();
     const auto locals = function.locals();
-
-    // Declare the function with one integer parameter per LIR parameter, in
-    // declaration order.
-    zc::Vector<::llvm::Type*> paramTypes;
-    for (const auto& parameter : parameters) {
-      paramTypes.add(
-          ::llvm::Type::getIntNTy(*context, bitCountFor(parameter.carrier().integerWidth())));
-    }
-    ::llvm::ArrayRef<::llvm::Type*> paramTypeRef(paramTypes.begin(), paramTypes.size());
-    ::llvm::FunctionType* functionType =
-        ::llvm::FunctionType::get(returnType, paramTypeRef, /*isVarArg=*/false);
-    ::llvm::Function* llvmFunction =
-        ::llvm::Function::Create(functionType, ::llvm::GlobalValue::ExternalLinkage,
-                                 function.symbolName().cStr(), llvmModule.get());
 
     // Pass 1: create one LLVM block per LIR block (one-based dense ordinals).
     zc::Vector<::llvm::BasicBlock*> llvmBlocks;
@@ -192,13 +205,11 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
     auto slotType = [&](uint32_t ordinal) -> ::llvm::IntegerType* {
       for (const auto& parameter : parameters) {
         if (parameter.ordinal() == ordinal) {
-          return ::llvm::Type::getIntNTy(*context, bitCountFor(parameter.carrier().integerWidth()));
+          return integerType(parameter.carrier().integerWidth());
         }
       }
       for (const auto& local : locals) {
-        if (local.ordinal() == ordinal) {
-          return ::llvm::Type::getIntNTy(*context, bitCountFor(local.carrier().integerWidth()));
-        }
+        if (local.ordinal() == ordinal) { return integerType(local.carrier().integerWidth()); }
       }
       return returnType;
     };
@@ -223,8 +234,7 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
     auto loadOperand = [&](const lir::LirOperand& operand,
                            ::llvm::BasicBlock* target) -> ::llvm::Value* {
       if (operand.isConstant()) {
-        auto* type = ::llvm::Type::getIntNTy(
-            *context, bitCountFor(operand.constantValue().carrier().integerWidth()));
+        auto* type = integerType(operand.constantValue().carrier().integerWidth());
         return ::llvm::ConstantInt::get(type, operand.constantValue().bits(), /*IsSigned=*/false);
       }
       auto* slot = slotFor(operand.localOrdinal());
@@ -280,6 +290,18 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
                                                  "cond", target);
           ::llvm::BranchInst::Create(blockFor(terminator.condTrueTarget()),
                                      blockFor(terminator.condFalseTarget()), condition, target);
+          break;
+        }
+        case lir::LirTerminatorKind::Call: {
+          // Zero-argument call to a module-local defined function; store the
+          // integer result into the destination slot, then branch to the normal
+          // target.
+          ::llvm::Function* callee = llvmFunctions[terminator.calleeIndex()];
+          auto* callResult =
+              ::llvm::CallInst::Create(callee->getFunctionType(), callee, "call", target);
+          auto* destination = slotFor(terminator.callDestinationOrdinal());
+          new ::llvm::StoreInst(callResult, destination, /*isVolatile=*/false, target);
+          ::llvm::BranchInst::Create(blockFor(terminator.callNormalTarget()), target);
           break;
         }
         case lir::LirTerminatorKind::ReturnLocal: {

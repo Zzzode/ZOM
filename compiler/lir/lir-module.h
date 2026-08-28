@@ -67,6 +67,7 @@ enum class LirTerminatorKind : uint8_t {
   Goto = 0x02,
   CondBranch = 0x03,
   ReturnLocal = 0x04,
+  Call = 0x05,
 };
 
 /// \brief Closed relational comparison operator for a LIR compare statement.
@@ -169,6 +170,11 @@ public:
                                                LirBlockId falseTarget) noexcept;
   /// \brief Builds a terminator that returns the value held by a local slot.
   ZC_NODISCARD static LirTerminator returnLocal(uint32_t localOrdinal) noexcept;
+  /// \brief Builds a call terminator: call a module-local function (by zero-based
+  /// index), store its integer result into `destinationOrdinal`, then branch to
+  /// `normalTarget`. This slice supports only a zero-argument call.
+  ZC_NODISCARD static LirTerminator callFunction(uint32_t calleeIndex, uint32_t destinationOrdinal,
+                                                 LirBlockId normalTarget) noexcept;
 
   ZC_NODISCARD LirTerminatorKind kind() const noexcept { return kindValue; }
   ZC_NODISCARD const LirIntegerConstant& returnIntegerValue() const noexcept {
@@ -179,6 +185,9 @@ public:
   ZC_NODISCARD LirBlockId condTrueTarget() const noexcept { return trueTargetValue; }
   ZC_NODISCARD LirBlockId condFalseTarget() const noexcept { return falseTargetValue; }
   ZC_NODISCARD uint32_t returnLocalOrdinal() const noexcept { return localOrdinalValue; }
+  ZC_NODISCARD uint32_t calleeIndex() const noexcept { return calleeIndexValue; }
+  ZC_NODISCARD uint32_t callDestinationOrdinal() const noexcept { return localOrdinalValue; }
+  ZC_NODISCARD LirBlockId callNormalTarget() const noexcept { return trueTargetValue; }
 
 private:
   explicit LirTerminator(LirIntegerConstant value) noexcept
@@ -190,6 +199,12 @@ private:
         localOrdinalValue(localOrdinal),
         trueTargetValue(trueTarget),
         falseTargetValue(falseTarget) {}
+  LirTerminator(uint32_t calleeIndex, uint32_t destinationOrdinal, LirBlockId normalTarget) noexcept
+      : kindValue(LirTerminatorKind::Call),
+        integerValue(fallbackConstant()),
+        localOrdinalValue(destinationOrdinal),
+        trueTargetValue(normalTarget),
+        calleeIndexValue(calleeIndex) {}
 
   ZC_NODISCARD static LirIntegerConstant fallbackConstant() noexcept;
 
@@ -198,6 +213,7 @@ private:
   uint32_t localOrdinalValue = 0;
   LirBlockId trueTargetValue;
   LirBlockId falseTargetValue;
+  uint32_t calleeIndexValue = 0;
 };
 
 /// \brief One immutable LIR basic block: an identity, statements, a terminator.

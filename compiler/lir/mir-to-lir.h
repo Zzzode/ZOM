@@ -104,6 +104,28 @@ public:
   /// \return The lowered LIR module, or none when the function is outside the slice.
   ZC_NODISCARD static zc::Maybe<LirModule> lowerEqualityConditionalReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
+  /// \brief Lowers one same-module zero-argument direct call to a two-function
+  /// LIR module (caller plus its defined callee).
+  ///
+  /// Admits the verified Built MIR shape that
+  /// `mir::validLocalCallReturnFunction` accepts for the caller (a `Function`
+  /// with one integer result local and a two-block `Call` + `Return` body whose
+  /// call takes zero arguments) together with a scalar constant-return callee
+  /// (`mir::validScalarReturnFunction` shape: no locals, one block returning an
+  /// integer constant). Both functions are *defined* in the emitted module, so
+  /// the caller's call targets a real module-local function (a module-local
+  /// index-derived symbol, the same documented boundary as the reserved
+  /// module-initializer symbol); no external/synthetic callee symbol is invented.
+  /// Every shape outside this slice returns `none`.
+  ///
+  /// \param caller Verified caller MIR function (the two-block Call+Return shape).
+  /// \param callee Verified callee MIR function (the scalar constant-return shape).
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered two-function LIR module, or none when outside the slice.
+  ZC_NODISCARD static zc::Maybe<LirModule> lowerCallModule(
+      const mir::MirFunction& caller, const mir::MirFunction& callee,
+      const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::lir
