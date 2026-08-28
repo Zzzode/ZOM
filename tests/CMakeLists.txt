@@ -92,6 +92,17 @@ add_test(
     "$<TARGET_FILE:zomc>")
 set_tests_properties(package-invocation-cli
                      PROPERTIES LABELS "unittest;package;cli" TIMEOUT 120)
+
+# RFC 0044 O6/KR6.2: `zomc fmt` / `zomc fmt --check` end-to-end contract over the
+# real binary. Frontend-only; no LLVM backend required.
+add_test(
+  NAME format-cli
+  COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-fmt-cli.py"
+    --zomc
+    "$<TARGET_FILE:zomc>")
+set_tests_properties(format-cli PROPERTIES LABELS "unittest;format;cli" TIMEOUT 60)
 # RFC 0021 O5/KR5.1: with the LLVM backend built, binary emission is available
 # (`zomc compile --emit=binary` writes an object), so the native-execution
 # check drops its ZOM6007 rejection assertion via --binary-available; the `run`

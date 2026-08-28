@@ -19,6 +19,27 @@
 #include <stdlib.h>
 #endif
 
+#include "compiler/ast/dump.h"
+#include "compiler/ast/tree.h"
+#include "compiler/basic/compiler-opts.h"
+#include "compiler/basic/io-utils.h"
+#include "compiler/basic/string-pool.h"
+#include "compiler/basic/zomlang-opts.h"
+#include "compiler/cst/lexeme-stream-builder.h"
+#include "compiler/diagnostics/core/diagnostic-engine.h"
+#include "compiler/driver/package/lockfile.h"
+#include "compiler/driver/package/package-compilation-request.h"
+#include "compiler/driver/package/package-diagnostic.h"
+#include "compiler/driver/package/source-record.h"
+#include "compiler/driver/session/compiler-session.h"
+#include "compiler/format/lexeme-printer.h"
+#include "compiler/identity/canonical/canonical-encoder.h"
+#include "compiler/identity/crypto/sha256.h"
+#include "compiler/ir/target-registry.h"
+#include "compiler/lexer/lexer.h"
+#include "compiler/source/core-distribution.h"
+#include "compiler/source/core-source-admission.h"
+#include "compiler/source/manager.h"
 #include "zc/core/common.h"
 #include "zc/core/exception.h"
 #include "zc/core/filesystem.h"
@@ -27,23 +48,6 @@
 #include "zc/core/string.h"
 #include "zc/core/time.h"
 #include "zc/core/vector.h"
-#include "compiler/ast/dump.h"
-#include "compiler/ast/tree.h"
-#include "compiler/basic/compiler-opts.h"
-#include "compiler/basic/io-utils.h"
-#include "compiler/basic/zomlang-opts.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
-#include "compiler/driver/session/compiler-session.h"
-#include "compiler/driver/package/lockfile.h"
-#include "compiler/driver/package/package-compilation-request.h"
-#include "compiler/driver/package/package-diagnostic.h"
-#include "compiler/driver/package/source-record.h"
-#include "compiler/identity/canonical/canonical-encoder.h"
-#include "compiler/identity/crypto/sha256.h"
-#include "compiler/ir/target-registry.h"
-#include "compiler/source/core-distribution.h"
-#include "compiler/source/core-source-admission.h"
-#include "compiler/source/manager.h"
 
 #if ZOM_ENABLE_LLVM_BACKEND
 // RFC 0021 O5/KR5.1: the object-emission path is compiled only when the LLVM
@@ -196,6 +200,8 @@ public:
                        "Compiles source code in one or more target.")
         .addSubCommand("run", ZC_BIND_METHOD(*this, getRunMain),
                        "Run a zomlang program with project configuration.")
+        .addSubCommand("fmt", ZC_BIND_METHOD(*this, getFmtMain),
+                       "Format Zomlang sources in place, or check for drift with --check.")
         .build();
   }
 
@@ -213,6 +219,134 @@ public:
 
   zc::MainBuilder::Validity rejectRun() {
     return "The run command requires native code generation.";
+  }
+
+  // =====================================================================================
+  // "fmt" command
+  //
+  // RFC 0044 O6/KR6.2: the deterministic source formatter. `fmt` normalizes each
+  // source in place; `fmt --check` reports formatting drift without writing. The
+  // formatter consumes the RFC 0023 verified lexeme stream and applies only the
+  // whitespace normalizations RFC 0044 permits (trailing-whitespace strip, one
+  // final newline, one space after a comma) -- each proven to re-lex to the
+  // identical token sequence. Structural indentation and line reflow are later
+  // RFC 0044 refinements layered on this base.
+
+  ZC_NODISCARD zc::MainFunc getFmtMain() {
+    zc::MainBuilder builder(context, VERSION_STRING,
+                            "Formats Zomlang sources with the fixed project style.");
+    return builder
+        .addOption(
+            {"check"}, ZC_BIND_METHOD(*this, enableFmtCheck),
+            "Report formatting drift without writing; exit non-zero if any file would change.")
+        .expectOneOrMoreArgs("<source>", ZC_BIND_METHOD(*this, addFmtSource))
+        .callAfterParsing(ZC_BIND_METHOD(*this, runFmt))
+        .build();
+  }
+
+  zc::MainBuilder::Validity enableFmtCheck() {
+    fmtCheckOnly = true;
+    return true;
+  }
+
+  zc::MainBuilder::Validity addFmtSource(zc::StringPtr value) {
+    fmtSources.add(zc::str(value));
+    return true;
+  }
+
+  zc::MainBuilder::Validity runFmt() {
+    uint64_t driftedFiles = 0;
+    for (const zc::String& sourcePath : fmtSources) {
+      auto formatted = formatSourceFile(sourcePath);
+      ZC_IF_SOME(canonical, formatted) {
+        if (canonical.changed) {
+          ++driftedFiles;
+          if (fmtCheckOnly) {
+            context.warning(zc::str(sourcePath, ": formatting drift"));
+          } else if (!writeSourceFile(sourcePath, canonical.text)) {
+            return zc::str("Failed to write formatted output to ", sourcePath, ".");
+          }
+        }
+      } else {
+        return zc::str("Failed to format ", sourcePath, ".");
+      }
+    }
+    if (fmtCheckOnly && driftedFiles > 0) {
+      return zc::str(driftedFiles, " file(s) are not formatted; run `zomc fmt` to fix.");
+    }
+    return true;
+  }
+
+  // The canonical bytes for one formatted source plus whether they differ from
+  // the input.
+  struct FormattedSource final {
+    zc::String text;
+    bool changed;
+  };
+
+  // Reads, lexes, and normalizes one source file. Returns none only when the file
+  // cannot be read or its bytes do not partition into a verified lexeme stream.
+  ZC_NODISCARD zc::Maybe<FormattedSource> formatSourceFile(zc::StringPtr sourcePath) {
+    zc::Maybe<zc::String> sourceBytes = readSourceFile(sourcePath);
+    ZC_IF_SOME(source, sourceBytes) {
+      source::SourceManager sourceManager;
+      basic::StringPool stringPool;
+      diagnostics::DiagnosticEngine diagnosticEngine(sourceManager);
+      basic::LangOptions options;
+      auto bufferId = sourceManager.addMemBufferCopy(source.asBytes(), sourcePath);
+      lexer::Lexer lexer(sourceManager, diagnosticEngine, options, stringPool, bufferId);
+      zc::Vector<lexer::Token> tokens;
+      lexer::Token token;
+      do {
+        lexer.lex(token);
+        tokens.add(token);
+      } while (token.getKind() != ast::SyntaxKind::EndOfFile);
+
+      auto bufferBytes = sourceManager.getEntireTextForBuffer(bufferId);
+      auto built = cst::buildLexemeStreamFromTokens(bufferBytes, tokens.asPtr());
+      if (!built.is<cst::VerifiedLexemeStream>()) { return zc::none; }
+      const cst::VerifiedLexemeStream& stream = built.get<cst::VerifiedLexemeStream>();
+
+      auto result = format::normalizeTriviaWhitespace(stream);
+      zc::String canonical = result.apply(source);
+      const bool changed = canonical != source;
+      return FormattedSource{zc::mv(canonical), changed};
+    }
+    return zc::none;
+  }
+
+  // Reads a source file into a String, resolving absolute and relative paths the
+  // same way the object writer does. Returns none if the file cannot be opened.
+  ZC_NODISCARD zc::Maybe<zc::String> readSourceFile(zc::StringPtr sourcePath) {
+    zc::Maybe<zc::String> contents;
+    auto exception = zc::runCatchingExceptions([&]() {
+      auto filesystem = zc::newDiskFilesystem();
+      const bool isAbsolute = sourcePath.size() > 0 && sourcePath[0] == '/';
+      const zc::Directory& baseDir = isAbsolute ? filesystem->getRoot() : filesystem->getCurrent();
+      const zc::StringPtr pathText = isAbsolute ? sourcePath.slice(1) : sourcePath;
+      auto file = baseDir.openFile(zc::Path::parse(pathText));
+      contents = file->readAllText();
+    });
+    if (exception != zc::none) { return zc::none; }
+    return contents;
+  }
+
+  // Replaces a source file with the formatted bytes, resolving paths like the
+  // object writer. Returns false if the write fails.
+  ZC_NODISCARD bool writeSourceFile(zc::StringPtr sourcePath, zc::StringPtr text) {
+    bool ok = false;
+    auto exception = zc::runCatchingExceptions([&]() {
+      auto filesystem = zc::newDiskFilesystem();
+      const bool isAbsolute = sourcePath.size() > 0 && sourcePath[0] == '/';
+      const zc::Directory& baseDir = isAbsolute ? filesystem->getRoot() : filesystem->getCurrent();
+      const zc::StringPtr pathText = isAbsolute ? sourcePath.slice(1) : sourcePath;
+      auto file = baseDir.openFile(zc::Path::parse(pathText),
+                                   zc::WriteMode::MODIFY | zc::WriteMode::CREATE);
+      file->writeAll(text);
+      ok = true;
+    });
+    if (exception != zc::none) { return false; }
+    return ok;
   }
 
   void addCompileOptions(zc::MainBuilder& builder) {
@@ -1299,6 +1433,8 @@ private:
   package::RawPackageCompilationRequest packageRequest;
   zc::Vector<zc::String> manifestPaths;
   zc::Maybe<source::core::VerifiedCoreDistribution> coreDistribution;
+  bool fmtCheckOnly = false;
+  zc::Vector<zc::String> fmtSources;
 };
 
 }  // namespace utils
