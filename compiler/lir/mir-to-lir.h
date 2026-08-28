@@ -14,8 +14,8 @@
 
 #pragma once
 
-#include "zc/core/memory.h"
 #include "compiler/lir/lir-module.h"
+#include "zc/core/memory.h"
 
 namespace zomlang::compiler::mir {
 struct MirFunction;
@@ -47,6 +47,24 @@ public:
   /// \param semanticTypes Session-owned type store that owns `function.resultType`.
   /// \return The lowered LIR module, or none when the function is outside the slice.
   ZC_NODISCARD static zc::Maybe<LirModule> lowerScalarInitializer(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
+  /// \brief Lowers one four-block boolean-conditional return function to LIR.
+  ///
+  /// Admits exactly the verified Built MIR shape that
+  /// `mir::validConditionalReturnFunction` accepts: a `Function` with one boolean
+  /// parameter and an integer result, a four-block diamond
+  /// (`entry: StorageLive(result); SwitchInt(bool param) -> then/else`;
+  /// `then/else: Assign(result = arm); Goto(join)`; `join: Return(result)`)
+  /// whose arms assign either an integer constant or a place-use of a parameter
+  /// local. It lowers the `SwitchInt` to a `CondBranch` on the boolean parameter,
+  /// the arm assigns to LIR `Assign` statements, and the place-use return to
+  /// `ReturnLocal`. Every shape outside this slice returns `none`.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<LirModule> lowerConditionalReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 };
 

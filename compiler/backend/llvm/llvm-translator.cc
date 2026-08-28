@@ -89,14 +89,16 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
         zc::heapString("LIR function return carrier must be an integer"));
   }
   const auto blocks = function.blocks();
-  if (blocks.size() != 1) {
+  // Two shapes are supported: the single-block integer-constant return (the
+  // scalar-initializer slice) and the four-block boolean-conditional diamond.
+  const bool singleBlockReturn =
+      blocks.size() == 1 && blocks[0].terminator().kind() == lir::LirTerminatorKind::ReturnInteger;
+  const bool conditionalDiamond =
+      blocks.size() == 4 && blocks[0].terminator().kind() == lir::LirTerminatorKind::CondBranch &&
+      function.parameters().size() == 1 && function.locals().size() == 1;
+  if (!singleBlockReturn && !conditionalDiamond) {
     return LlvmTranslationResult::failure(
-        zc::heapString("LIR function must contain exactly one block in this slice"));
-  }
-  const auto& entry = blocks[0];
-  if (entry.terminator().kind() != lir::LirTerminatorKind::ReturnInteger) {
-    return LlvmTranslationResult::failure(
-        zc::heapString("LIR entry block terminator must be an integer return"));
+        zc::heapString("LIR function is outside the supported translation shapes"));
   }
 
   // RFC 0021 deterministic translation order.
@@ -127,24 +129,70 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
   llvmModule->setTargetTriple(parsedTriple);
   llvmModule->setDataLayout(targetMachine->createDataLayout());
 
-  // 3. Create value types in canonical order (the single integer carrier).
+  // 3. Create value types in canonical order (the single integer return carrier).
   const uint32_t bitCount = bitCountFor(function.returnCarrier().integerWidth());
   ::llvm::IntegerType* returnType = ::llvm::Type::getIntNTy(*context, bitCount);
 
-  // 4. Declare the function in canonical symbol order.
-  ::llvm::FunctionType* functionType = ::llvm::FunctionType::get(returnType, /*isVarArg=*/false);
-  ::llvm::Function* llvmFunction =
-      ::llvm::Function::Create(functionType, ::llvm::GlobalValue::ExternalLinkage,
-                               function.symbolName().cStr(), llvmModule.get());
+  if (singleBlockReturn) {
+    // 4. Declare the parameterless function in canonical symbol order.
+    ::llvm::FunctionType* functionType = ::llvm::FunctionType::get(returnType, /*isVarArg=*/false);
+    ::llvm::Function* llvmFunction =
+        ::llvm::Function::Create(functionType, ::llvm::GlobalValue::ExternalLinkage,
+                                 function.symbolName().cStr(), llvmModule.get());
 
-  // 5. Create the single entry block.
-  ::llvm::BasicBlock* entryBlock = ::llvm::BasicBlock::Create(*context, "entry", llvmFunction);
+    // 5. Create the single entry block and return the integer constant.
+    ::llvm::BasicBlock* entryBlock = ::llvm::BasicBlock::Create(*context, "entry", llvmFunction);
+    const auto& returnConstant = blocks[0].terminator().returnIntegerValue();
+    ::llvm::Constant* value =
+        ::llvm::ConstantInt::get(returnType, returnConstant.bits(), /*IsSigned=*/false);
+    ::llvm::ReturnInst::Create(*context, value, entryBlock);
+  } else {
+    // Four-block boolean-conditional diamond. The one parameter is the i1
+    // discriminant; the one local is the integer result, materialized by an
+    // alloca in the entry block, stored in each arm, and loaded at the join.
+    const uint32_t paramBits = bitCountFor(function.parameters()[0].carrier().integerWidth());
+    ::llvm::IntegerType* paramType = ::llvm::Type::getIntNTy(*context, paramBits);
+    ::llvm::IntegerType* resultType = ::llvm::Type::getIntNTy(
+        *context, bitCountFor(function.locals()[0].carrier().integerWidth()));
 
-  // 7. Translate the terminator: return the integer constant. No undef/poison.
-  const auto& returnConstant = entry.terminator().returnIntegerValue();
-  ::llvm::Constant* value =
-      ::llvm::ConstantInt::get(returnType, returnConstant.bits(), /*IsSigned=*/false);
-  ::llvm::ReturnInst::Create(*context, value, entryBlock);
+    ::llvm::FunctionType* functionType =
+        ::llvm::FunctionType::get(returnType, {paramType}, /*isVarArg=*/false);
+    ::llvm::Function* llvmFunction =
+        ::llvm::Function::Create(functionType, ::llvm::GlobalValue::ExternalLinkage,
+                                 function.symbolName().cStr(), llvmModule.get());
+    ::llvm::Argument* condArgument = llvmFunction->getArg(0);
+
+    // Create the four blocks in deterministic order (entry, then, else, join).
+    ::llvm::BasicBlock* entryBlock = ::llvm::BasicBlock::Create(*context, "entry", llvmFunction);
+    ::llvm::BasicBlock* thenBlock = ::llvm::BasicBlock::Create(*context, "then", llvmFunction);
+    ::llvm::BasicBlock* elseBlock = ::llvm::BasicBlock::Create(*context, "else", llvmFunction);
+    ::llvm::BasicBlock* joinBlock = ::llvm::BasicBlock::Create(*context, "join", llvmFunction);
+
+    // Entry: alloca the result slot, then conditional branch on the i1 parameter.
+    // A CondBranch's condition is the sole parameter (an i1); LLVM `br i1` selects
+    // the true/false successor. StorageLive maps to the alloca.
+    auto* resultSlot = new ::llvm::AllocaInst(resultType, /*AddrSpace=*/0, "result", entryBlock);
+    ::llvm::BranchInst::Create(thenBlock, elseBlock, condArgument, entryBlock);
+
+    // A helper that emits an arm's assign statements as stores into the slot and
+    // then an unconditional branch to the join. This slice's arms assign integer
+    // constants only.
+    auto emitArm = [&](const lir::LirBasicBlock& source, ::llvm::BasicBlock* target) {
+      for (const auto& statement : source.statements()) {
+        const auto& operand = statement.value();
+        ::llvm::Value* stored = ::llvm::ConstantInt::get(resultType, operand.constantValue().bits(),
+                                                         /*IsSigned=*/false);
+        new ::llvm::StoreInst(stored, resultSlot, /*isVolatile=*/false, target);
+      }
+      ::llvm::BranchInst::Create(joinBlock, target);
+    };
+    emitArm(blocks[1], thenBlock);
+    emitArm(blocks[2], elseBlock);
+
+    // Join: load the result slot and return it.
+    auto* loaded = new ::llvm::LoadInst(resultType, resultSlot, "value", joinBlock);
+    ::llvm::ReturnInst::Create(*context, loaded, joinBlock);
+  }
 
   // 10. Run mandatory LLVM module verification.
   std::string verifyBuffer;

@@ -22,8 +22,35 @@ zc::Maybe<LirIntegerConstant> LirIntegerConstant::from(LirValueType carrier,
   return LirIntegerConstant(carrier, bits);
 }
 
+LirOperand LirOperand::constant(LirIntegerConstant value) noexcept { return LirOperand(value); }
+
+LirStatement LirStatement::assign(uint32_t destinationOrdinal, LirOperand value) noexcept {
+  return LirStatement(destinationOrdinal, value);
+}
+
+// A never-read placeholder constant for terminators that carry no integer
+// constant. The i1 carrier always exists, so `from` cannot fail here.
+LirIntegerConstant LirTerminator::fallbackConstant() noexcept {
+  auto carrier = LirValueType::integer(IntegerBitWidth::Bit1);
+  auto value = LirIntegerConstant::from(ZC_ASSERT_NONNULL(carrier), 0);
+  return ZC_ASSERT_NONNULL(value);
+}
+
 LirTerminator LirTerminator::returnInteger(LirIntegerConstant value) noexcept {
-  return LirTerminator(LirTerminatorKind::ReturnInteger, value);
+  return LirTerminator(value);
+}
+
+LirTerminator LirTerminator::gotoBlock(LirBlockId target) noexcept {
+  return LirTerminator(LirTerminatorKind::Goto, 0, target, target);
+}
+
+LirTerminator LirTerminator::condBranch(uint32_t conditionOrdinal, LirBlockId trueTarget,
+                                        LirBlockId falseTarget) noexcept {
+  return LirTerminator(LirTerminatorKind::CondBranch, conditionOrdinal, trueTarget, falseTarget);
+}
+
+LirTerminator LirTerminator::returnLocal(uint32_t localOrdinal) noexcept {
+  return LirTerminator(LirTerminatorKind::ReturnLocal, localOrdinal, LirBlockId(), LirBlockId());
 }
 
 }  // namespace zomlang::compiler::lir
