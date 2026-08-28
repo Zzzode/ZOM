@@ -36,6 +36,16 @@ public:
   ZC_DISALLOW_COPY(LinkerInvocation);
   ~LinkerInvocation() noexcept = default;
 
+  /// \brief Builds an invocation directly from its parts.
+  ///
+  /// The `argv[0]` element must equal the program name the child sees. This is
+  /// the low-level constructor the plan expansion and callers that already hold
+  /// a resolved program/argv use.
+  ZC_NODISCARD static LinkerInvocation forProgram(zc::StringPtr program,
+                                                  zc::Array<zc::String>&& argv,
+                                                  zc::StringPtr workingDirectory,
+                                                  zc::Array<zc::String>&& environment);
+
   /// \brief The absolute path of the linker driver program to execute.
   ZC_NODISCARD zc::StringPtr program() const noexcept { return programValue; }
 

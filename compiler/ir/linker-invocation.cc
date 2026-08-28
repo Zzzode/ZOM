@@ -18,6 +18,13 @@
 
 namespace zomlang::compiler::ir {
 
+LinkerInvocation LinkerInvocation::forProgram(zc::StringPtr program, zc::Array<zc::String>&& argv,
+                                              zc::StringPtr workingDirectory,
+                                              zc::Array<zc::String>&& environment) {
+  return LinkerInvocation(zc::str(program), zc::mv(argv), zc::str(workingDirectory),
+                          zc::mv(environment));
+}
+
 namespace {
 
 // The entry-symbol flag both supported compiler drivers accept as two argv
