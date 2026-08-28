@@ -209,28 +209,26 @@ zc::Maybe<LirModule> MirToLirLowering::lowerConditionalReturn(
   // Admit only the verified four-block boolean-conditional return shape. This
   // re-checks the structure that mir::validConditionalReturnFunction validated
   // so lowering is total over its declared input and fail-closed on anything
-  // else. This slice handles exactly one boolean parameter and one result local.
+  // else. The function has N parameters (a boolean discriminant plus optional
+  // integer value parameters an arm may return) and one result local.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
-      function.locals.size() != 2 || function.blocks.size() != 4) {
+      function.locals.size() < 2 || function.blocks.size() != 4) {
     return zc::none;
   }
 
-  const auto& parameter = function.locals[0];
-  const auto& result = function.locals[1];
-  if (parameter.kind != mir::MirLocalKind::Parameter ||
-      result.kind != mir::MirLocalKind::FunctionResult || result.type != function.resultType) {
+  const size_t parameterCount = function.locals.size() - 1;
+  const auto& result = function.locals[parameterCount];
+  if (result.kind != mir::MirLocalKind::FunctionResult || result.type != function.resultType) {
     return zc::none;
   }
+  for (size_t i = 0; i < parameterCount; ++i) {
+    if (function.locals[i].kind != mir::MirLocalKind::Parameter) { return zc::none; }
+  }
 
-  // The parameter is the boolean discriminant; the result carries the integer
-  // return. Resolve both carriers, failing closed outside the supported set.
-  auto parameterCarrier = boolCarrierFor(parameter.type, semanticTypes);
-  if (parameterCarrier == zc::none) { return zc::none; }
   auto resultCarrier = integerCarrierFor(function.resultType, semanticTypes);
   if (resultCarrier == zc::none) { return zc::none; }
   const auto resultCarrierValue = ZC_REQUIRE_NONNULL(resultCarrier);
 
-  const uint32_t parameterOrdinal = parameter.id.ordinal();
   const uint32_t resultOrdinal = result.id.ordinal();
 
   const auto& entry = function.blocks[0];
@@ -238,7 +236,7 @@ zc::Maybe<LirModule> MirToLirLowering::lowerConditionalReturn(
   const auto& elseBlock = function.blocks[2];
   const auto& joinBlock = function.blocks[3];
 
-  // Entry: StorageLive(result); SwitchInt(bool param) -> then (true), else (false).
+  // Entry: StorageLive(result); SwitchInt(bool cond param) -> then/else.
   if (entry.statements.size() != 1 ||
       entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != result.id ||
@@ -247,10 +245,19 @@ zc::Maybe<LirModule> MirToLirLowering::lowerConditionalReturn(
   }
   const auto& switchInt = entry.terminator.switchIntValue();
   if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
-      switchInt.discriminant.place().local() != parameter.id ||
       switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 2) {
     return zc::none;
   }
+  // The discriminant is one of the boolean parameters; find it and check carrier.
+  const uint32_t conditionOrdinal = switchInt.discriminant.place().local().ordinal();
+  bool conditionIsParameter = false;
+  for (size_t i = 0; i < parameterCount; ++i) {
+    if (function.locals[i].id == switchInt.discriminant.place().local()) {
+      conditionIsParameter = true;
+      if (boolCarrierFor(function.locals[i].type, semanticTypes) == zc::none) { return zc::none; }
+    }
+  }
+  if (!conditionIsParameter) { return zc::none; }
   // The true arm targets the then block; the false arm and default target the
   // else block, matching the verified diamond.
   const auto trueTargetOrdinal = switchInt.arms[0].target.ordinal();
@@ -260,7 +267,8 @@ zc::Maybe<LirModule> MirToLirLowering::lowerConditionalReturn(
     return zc::none;
   }
 
-  // Each arm assigns the result local then jumps to the join.
+  // Each arm assigns the result local (a constant or a parameter place-use) then
+  // jumps to the join.
   auto lowerArm = [&](const mir::MirBasicBlock& branch, zc::Vector<LirStatement>& out) -> bool {
     if (branch.statements.size() != 1 ||
         branch.statements[0].kind() != mir::MirStatementKind::Assign ||
@@ -275,23 +283,21 @@ zc::Maybe<LirModule> MirToLirLowering::lowerConditionalReturn(
       return false;
     }
     const auto& operand = assignment.value.useValue().operand;
-    if (operand.kind() == mir::MirOperandKind::Constant) {
-      const auto& constant = operand.constantValue();
-      if (constant.type != function.resultType) { return false; }
-      const auto integer = constant.value.integerValue();
-      if (integer == zc::none) { return false; }
-      auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), resultCarrierValue.integerWidth());
-      if (bits == zc::none) { return false; }
-      auto lirConstant = LirIntegerConstant::from(resultCarrierValue, ZC_REQUIRE_NONNULL(bits));
-      if (lirConstant == zc::none) { return false; }
-      out.add(LirStatement::assign(resultOrdinal,
-                                   LirOperand::constant(ZC_REQUIRE_NONNULL(lirConstant))));
-      return true;
+    if (operand.kind() == mir::MirOperandKind::Constant &&
+        operand.constantValue().type != function.resultType) {
+      return false;
     }
-    // A parameter place-use arm would reference the sole boolean parameter as an
-    // integer result, a width mismatch this single-parameter slice cannot lower.
-    // Constant arms only; fail closed on anything else.
-    return false;
+    // A parameter place-use arm must reference an integer parameter of the
+    // result type (a projected place is out of the slice).
+    if (operand.kind() != mir::MirOperandKind::Constant &&
+        (operand.place().projections().size() != 0 ||
+         operand.place().rootType() != function.resultType)) {
+      return false;
+    }
+    auto lowered = lirOperandFor(operand, resultCarrierValue);
+    if (lowered == zc::none) { return false; }
+    out.add(LirStatement::assign(resultOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+    return true;
   };
 
   zc::Vector<LirStatement> thenStatements;
@@ -327,7 +333,7 @@ zc::Maybe<LirModule> MirToLirLowering::lowerConditionalReturn(
   {
     zc::Vector<LirStatement> none;
     blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(none),
-                             LirTerminator::condBranch(parameterOrdinal, ZC_REQUIRE_NONNULL(thenId),
+                             LirTerminator::condBranch(conditionOrdinal, ZC_REQUIRE_NONNULL(thenId),
                                                        ZC_REQUIRE_NONNULL(elseId))));
   }
   blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(thenId), zc::mv(thenStatements),
@@ -340,8 +346,16 @@ zc::Maybe<LirModule> MirToLirLowering::lowerConditionalReturn(
                              LirTerminator::returnLocal(resultOrdinal)));
   }
 
+  // Declare every parameter local: the boolean discriminant as its i1 carrier,
+  // integer value parameters as their integer carriers.
   zc::Vector<LirLocal> parameters;
-  parameters.add(LirLocal(parameterOrdinal, ZC_REQUIRE_NONNULL(parameterCarrier)));
+  for (size_t i = 0; i < parameterCount; ++i) {
+    const auto& parameterLocal = function.locals[i];
+    zc::Maybe<LirValueType> carrier = boolCarrierFor(parameterLocal.type, semanticTypes);
+    if (carrier == zc::none) { carrier = integerCarrierFor(parameterLocal.type, semanticTypes); }
+    if (carrier == zc::none) { return zc::none; }
+    parameters.add(LirLocal(parameterLocal.id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
+  }
   zc::Vector<LirLocal> locals;
   locals.add(LirLocal(resultOrdinal, resultCarrierValue));
 

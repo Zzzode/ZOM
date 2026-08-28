@@ -508,6 +508,109 @@ ZC_TEST("Comparison-driven conditional lowers to a verified multi-block LLVM fun
   ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
 }
 
+// Build the verified four-block conditional whose then-arm returns a parameter:
+//   fun f(cond: bool, v: i32) -> i32 { if cond { return v } else { return elseValue } }
+//   local#1 = cond : bool (Parameter); local#2 = v : i32 (Parameter)
+//   local#3 = result : i32 (FunctionResult)
+//   bb1: StorageLive(#3); SwitchInt(copy #1) [true -> bb2], default bb3
+//   bb2: #3 = copy #2 (parameter place-use); Goto(bb4)
+//   bb3: #3 = const elseValue; Goto(bb4)
+//   bb4: return move #3
+mir::MirFunction buildParameterArmConditional(identity::DefId owner,
+                                              identity::SemanticTypeId boolType,
+                                              identity::SemanticTypeId i32, uint8_t elseValue) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::Parameter, boolType,
+                                      scopeId(1), span()});
+  locals.add(
+      mir::MirLocalDeclaration{localId(2), mir::MirLocalKind::Parameter, i32, scopeId(1), span()});
+  locals.add(mir::MirLocalDeclaration{localId(3), mir::MirLocalKind::FunctionResult, i32,
+                                      scopeId(1), span()});
+
+  zc::Vector<mir::MirStatement> entryStatements;
+  entryStatements.add(mir::MirStatement::storageLive(localId(3), span()));
+  zc::Vector<mir::MirSwitchIntArm> arms;
+  arms.add(mir::MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), blockId(2)});
+  arms.add(mir::MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), blockId(3)});
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{
+      blockId(1), scopeId(1), zc::mv(entryStatements),
+      mir::MirTerminator::switchInt(mir::MirOperand::copy(resultPlace(localId(1), boolType)),
+                                    zc::mv(arms), blockId(3), span())});
+
+  // Then arm returns the integer parameter v (a place-use).
+  zc::Vector<mir::MirStatement> thenStatements;
+  thenStatements.add(mir::MirStatement::assign(
+      resultPlace(localId(3), i32),
+      mir::MirRvalue::use(mir::MirOperand::copy(resultPlace(localId(2), i32))),
+      mir::MirInitializationKind::Initialize, span()));
+  blocks.add(mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(thenStatements),
+                                mir::MirTerminator::gotoTarget(blockId(4), span())});
+
+  // Else arm returns a constant.
+  zc::Vector<mir::MirStatement> elseStatements;
+  elseStatements.add(mir::MirStatement::assign(
+      resultPlace(localId(3), i32),
+      mir::MirRvalue::use(mir::MirOperand::constant(i32, integerConstant(elseValue))),
+      mir::MirInitializationKind::Initialize, span()));
+  blocks.add(mir::MirBasicBlock{blockId(3), scopeId(1), zc::mv(elseStatements),
+                                mir::MirTerminator::gotoTarget(blockId(4), span())});
+
+  zc::Vector<mir::MirStatement> joinStatements;
+  blocks.add(mir::MirBasicBlock{blockId(4), scopeId(1), zc::mv(joinStatements),
+                                mir::MirTerminator::returnValue(
+                                    mir::MirOperand::move(resultPlace(localId(3), i32)), span())});
+
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+// O5/KR5.2 multi-block widening (parameter-valued arm): a conditional whose arm
+// returns an integer parameter lowers MIR -> LIR -> verified LLVM -> native ELF
+// object. This exercises the `localUse` operand loading a parameter argument's
+// alloca slot in an arm store.
+ZC_TEST("Conditional with a parameter-returning arm lowers to a verified function") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto boolType = typeContext.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto owner = tests::testDefinition(0);
+
+  auto function = buildParameterArmConditional(owner, boolType, i32, 8);
+
+  auto lir = lir::MirToLirLowering::lowerConditionalReturn(function, typeContext.semanticTypes());
+  ZC_REQUIRE(lir != zc::none);
+  const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
+  ZC_EXPECT(lirModule.functions().size() == 1);
+  ZC_EXPECT(lirModule.functions()[0].parameters().size() == 2);
+
+  LlvmTranslator translator;
+  auto result = translator.translate(lirModule);
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+
+  const auto ir = result.textualIr();
+  ZC_EXPECT(ir.contains("br i1"_zc));
+  ZC_EXPECT(ir.contains("store i32 8"_zc));
+  ZC_EXPECT(ir.contains("ret i32"_zc));
+
+  const auto object = result.objectCode();
+  ZC_EXPECT(object.size() > 0);
+  ZC_REQUIRE(object.size() >= 4);
+  ZC_EXPECT(object[0] == 0x7f);
+  ZC_EXPECT(object[1] == static_cast<uint8_t>('E'));
+  ZC_EXPECT(object[2] == static_cast<uint8_t>('L'));
+  ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
+}
+
 ZC_TEST("MIR -> LIR lowering fails closed on a non-integer scalar initializer") {
   tests::TestSemanticTypeContext typeContext;
   // Bool is a scalar but not an integer carrier in this slice.
