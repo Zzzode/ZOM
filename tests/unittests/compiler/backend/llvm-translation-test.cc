@@ -145,6 +145,51 @@ ZC_TEST("Scalar module initializer lowers MIR -> LIR -> verified LLVM ret i32 42
   ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
 }
 
+// RFC 0021 O5/KR5.2 first widening slice: the backend already parameterizes on
+// the LIR integer carrier width (I8/I16/I32/I64 and their unsigned peers), but
+// only i32 was covered. Prove a narrow (i16) and a wide (i64) scalar module
+// initializer lower MIR -> LIR -> verified LLVM IR -> a native ELF object, so
+// the proven shape is no longer i32-only.
+ZC_TEST("Scalar module initializers of non-i32 integer widths lower to a verified object") {
+  struct WidthCase {
+    type::semantic::PrimitiveKind kind;
+    uint8_t value;
+    zc::StringPtr expectedReturn;
+  };
+  const WidthCase cases[] = {
+      {type::semantic::PrimitiveKind::I16, 7, "ret i16 7"_zc},
+      {type::semantic::PrimitiveKind::I64, 9, "ret i64 9"_zc},
+  };
+
+  for (const auto& widthCase : cases) {
+    tests::TestSemanticTypeContext typeContext;
+    const auto carrier = typeContext.internPrimitive(widthCase.kind);
+    const auto owner = tests::testDefinition(0);
+
+    auto function = buildScalarInitializer(owner, carrier, widthCase.value);
+
+    auto lir = lir::MirToLirLowering::lowerScalarInitializer(function, typeContext.semanticTypes());
+    ZC_REQUIRE(lir != zc::none);
+    const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
+    ZC_EXPECT(lirModule.functions().size() == 1);
+
+    LlvmTranslator translator;
+    auto result = translator.translate(lirModule);
+    ZC_EXPECT(result.verified());
+    if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+
+    ZC_EXPECT(result.textualIr().contains(widthCase.expectedReturn));
+
+    const auto object = result.objectCode();
+    ZC_EXPECT(object.size() > 0);
+    ZC_REQUIRE(object.size() >= 4);
+    ZC_EXPECT(object[0] == 0x7f);
+    ZC_EXPECT(object[1] == static_cast<uint8_t>('E'));
+    ZC_EXPECT(object[2] == static_cast<uint8_t>('L'));
+    ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
+  }
+}
+
 ZC_TEST("MIR -> LIR lowering fails closed on a non-integer scalar initializer") {
   tests::TestSemanticTypeContext typeContext;
   // Bool is a scalar but not an integer carrier in this slice.
