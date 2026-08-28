@@ -45,6 +45,15 @@
 #include "compiler/source/core-source-admission.h"
 #include "compiler/source/manager.h"
 
+#if ZOM_ENABLE_LLVM_BACKEND
+// RFC 0021 O5/KR5.1: the object-emission path is compiled only when the LLVM
+// backend is built. These headers stay behind the flag so the frontend-only
+// build never references the isolation-wall shim or LIR lowering.
+#include "compiler/backend/llvm/llvm-translator.h"
+#include "compiler/lir/mir-to-lir.h"
+#include "compiler/mir/built-mir.h"
+#endif
+
 #ifndef VERSION
 #define VERSION "(unknown)"
 #endif
@@ -1197,8 +1206,86 @@ private:
   }
 
   zc::MainBuilder::Validity emitBinary() {
+#if ZOM_ENABLE_LLVM_BACKEND
+    return emitNativeObject();
+#else
     return diagnoseEmission<diagnostics::DiagID::BinaryEmissionUnavailable>(emissionLocation());
+#endif
   }
+
+#if ZOM_ENABLE_LLVM_BACKEND
+  // RFC 0021 O5/KR5.1: lower the verified scalar module-initializer MIR to a
+  // native object and write it to the requested output path. This is the single
+  // single-block integer-return shape the backend lowers today; wider shapes
+  // (multi-block, multi-function) are KR5.2. Fail closed with a clear diagnostic
+  // outside that shape rather than emitting a partial object.
+  zc::MainBuilder::Validity emitNativeObject() {
+    const auto mirModules = session->getOwnershipCheckedMirModules();
+    if (mirModules.size() != 1) {
+      return zc::str("Binary emission currently supports exactly one module; got ",
+                     mirModules.size(), ".");
+    }
+    const auto functions = mirModules[0].builtMir().functions();
+    if (functions.size() != 1 || functions[0].kind != mir::MirFunctionKind::ModuleInitializer) {
+      return zc::str(
+          "Binary emission currently supports one scalar module-initializer function only.");
+    }
+
+    auto semanticTypes = session->getSemanticTypeStore();
+    if (semanticTypes == zc::none) { return zc::str("No semantic type store is available."); }
+
+    zc::Maybe<lir::LirModule> lir;
+    ZC_IF_SOME(types, semanticTypes) {
+      lir = lir::MirToLirLowering::lowerScalarInitializer(functions[0], types);
+    }
+    if (lir == zc::none) {
+      return zc::str("MIR -> LIR lowering rejected this function (outside the scalar slice).");
+    }
+
+    backend::llvm::LlvmTranslator translator;
+    zc::Maybe<zc::Array<uint8_t>> objectBytes;
+    ZC_IF_SOME(lirModule, lir) {
+      auto result = translator.translate(lirModule);
+      if (!result.verified()) { return zc::str("LLVM translation failed: ", result.diagnostic()); }
+      const auto object = result.objectCode();
+      auto owned = zc::heapArray<uint8_t>(object.size());
+      for (size_t index = 0; index < object.size(); ++index) { owned[index] = object[index]; }
+      objectBytes = zc::mv(owned);
+    }
+
+    const auto& options = session->getCompilerOptions();
+    if (options.emission.outputPath == zc::none) {
+      return zc::str("Binary emission requires an output path (-o <file>).");
+    }
+    ZC_IF_SOME(bytes, objectBytes) {
+      ZC_IF_SOME(path, options.emission.outputPath) {
+        if (!writeObjectFile(path, bytes.asPtr())) {
+          return zc::str("Failed to write the object file to ", path, ".");
+        }
+      }
+    }
+    return true;
+  }
+
+  // Writes raw object bytes to `outputPath`, honoring the same absolute/relative
+  // base-directory resolution as the text dump writer but without formatting.
+  ZC_NODISCARD bool writeObjectFile(zc::StringPtr outputPath, zc::ArrayPtr<const uint8_t> bytes) {
+    bool ok = false;
+    auto exception = zc::runCatchingExceptions([&]() {
+      auto filesystem = zc::newDiskFilesystem();
+      const bool isAbsolute = outputPath.size() > 0 && outputPath[0] == '/';
+      const zc::Directory& baseDir = isAbsolute ? filesystem->getRoot() : filesystem->getCurrent();
+      const zc::StringPtr pathText = isAbsolute ? outputPath.slice(1) : outputPath;
+      auto file = baseDir.openFile(zc::Path::parse(pathText), zc::WriteMode::CREATE |
+                                                                  zc::WriteMode::MODIFY |
+                                                                  zc::WriteMode::CREATE_PARENT);
+      file->writeAll(bytes);
+      ok = true;
+    });
+    if (exception != zc::none) { return false; }
+    return ok;
+  }
+#endif
 
 private:
   zc::ProcessContext& context;

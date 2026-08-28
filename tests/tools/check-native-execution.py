@@ -44,6 +44,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--zomc", required=True)
     parser.add_argument("--manifest", required=True)
+    # Set when the LLVM backend is built: binary emission is then available
+    # (it requires -o and produces an object), so the ZOM6007 rejection no
+    # longer holds. The `run` rejection still holds because linking is not
+    # implemented. Default (backend off) keeps the original assertions.
+    parser.add_argument("--binary-available", action="store_true")
     arguments = parser.parse_args()
     zomc = str(Path(arguments.zomc).resolve(strict=True))
     manifest = str(Path(arguments.manifest).resolve(strict=True))
@@ -53,23 +58,24 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="zom-native-profile-") as profile_temporary:
             profile_path = Path(profile_temporary) / "native-execution.profraw"
             require_rejection([zomc, "run"], work_directory, profile_path, RUN_ERROR)
-            require_rejection(
-                [
-                    zomc,
-                    "compile",
-                    "--manifest-path",
-                    manifest,
-                    "--package",
-                    "installed_consumer",
-                    "--bin",
-                    "installed_consumer",
-                ],
-                work_directory,
-                profile_path,
-                BINARY_ERROR,
-            )
-            if any(work_directory.iterdir()):
-                raise RuntimeError("unavailable native execution created an artifact")
+            if not arguments.binary_available:
+                require_rejection(
+                    [
+                        zomc,
+                        "compile",
+                        "--manifest-path",
+                        manifest,
+                        "--package",
+                        "installed_consumer",
+                        "--bin",
+                        "installed_consumer",
+                    ],
+                    work_directory,
+                    profile_path,
+                    BINARY_ERROR,
+                )
+                if any(work_directory.iterdir()):
+                    raise RuntimeError("unavailable native execution created an artifact")
 
     print("native execution rejects unavailable operations without artifacts")
     return 0

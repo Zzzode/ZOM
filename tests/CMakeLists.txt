@@ -92,6 +92,16 @@ add_test(
     "$<TARGET_FILE:zomc>")
 set_tests_properties(package-invocation-cli
                      PROPERTIES LABELS "unittest;package;cli" TIMEOUT 120)
+# RFC 0021 O5/KR5.1: with the LLVM backend built, binary emission is available
+# (`zomc compile --emit=binary` writes an object), so the native-execution
+# check drops its ZOM6007 rejection assertion via --binary-available; the `run`
+# rejection still holds because linking is not implemented. Frontend-only builds
+# keep the original assertions.
+if(ZOM_ENABLE_LLVM_BACKEND)
+  set(ZOM_NATIVE_EXECUTION_EXTRA_ARGS --binary-available)
+else()
+  set(ZOM_NATIVE_EXECUTION_EXTRA_ARGS)
+endif()
 add_test(
   NAME native-execution-unavailable-cli
   COMMAND
@@ -100,8 +110,29 @@ add_test(
     --zomc
     "$<TARGET_FILE:zomc>"
     --manifest
-    "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml")
+    "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml"
+    ${ZOM_NATIVE_EXECUTION_EXTRA_ARGS})
 set_tests_properties(native-execution-unavailable-cli PROPERTIES LABELS "unittest;cli" TIMEOUT 30)
+
+# With the backend built, `zomc compile --emit=binary` writes a native ELF
+# object for the scalar module-initializer fixture. Gated on the backend so the
+# frontend-only lane never requires LLVM.
+if(ZOM_ENABLE_LLVM_BACKEND)
+  add_test(
+    NAME object-emission-cli
+    COMMAND
+      ${Python3_EXECUTABLE}
+      "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-object-emission.py"
+      --zomc
+      "$<TARGET_FILE:zomc>"
+      --manifest
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml"
+      --package
+      installed_consumer
+      --bin
+      installed_consumer)
+  set_tests_properties(object-emission-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)
+endif()
 add_test(
   NAME package-workspace-compile
   COMMAND
