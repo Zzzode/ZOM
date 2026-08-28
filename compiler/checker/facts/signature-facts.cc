@@ -1554,44 +1554,66 @@ private:
     return zc::none;
   }
 
-  zc::Maybe<BuiltSourceType> buildSet(ast::NodeList nodes, bool isUnion) {
-    const auto& tree = boundModule.tree();
-    if (!tree.contains(nodes)) return zc::none;
-    struct BuiltElement final {
-      BuiltSourceType value;
-      zc::Array<uint8_t> key;
-    };
-    zc::Vector<BuiltElement> elements(nodes.size);
-    for (const auto node : tree.list(nodes)) {
-      auto built = build(node);
-      if (built == zc::none) return zc::none;
-      ZC_IF_SOME(value, built) {
-        auto lookup = semanticTypes.get(value.type);
-        if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
-        elements.add(BuiltElement{
-            zc::mv(value),
-            zc::heapArray<uint8_t>(lookup.get<type::SemanticTypeLookup>().key().bytes())});
+  // One member of a union or intersection under construction: the built type
+  // together with its index-aligned key-pattern rail and its canonical key
+  // bytes. The two rails travel together so member-level canonicalization never
+  // desyncs the semantic type from its RFC 0015 impl-matching pattern.
+  struct BuiltSetMember final {
+    BuiltSourceType value;
+    zc::Array<uint8_t> key;
+  };
+
+  // Applies RFC 0005 canonical union/intersection member canonicalization to an
+  // already-built member set: absorb the identity element (Never in a union,
+  // Any in an intersection), collapse to the annihilator (Any in a union, Never
+  // in an intersection), sort and deduplicate members by canonical key bytes,
+  // and reduce an empty set to Never/Any and a single member to that member.
+  //
+  // Every surviving member is a whole original BuiltSetMember, so both the
+  // semantic-type and key-pattern rails stay aligned without destructuring the
+  // opaque TypeKeyPattern. Nested same-kind flattening is not performed here; a
+  // surviving nested member is re-rejected by the canonical encoder and fails
+  // closed, exactly as before this canonicalization existed.
+  zc::Maybe<BuiltSourceType> canonicalizeSet(zc::Vector<BuiltSetMember>&& members, bool isUnion) {
+    const auto identityKind = isUnion ? PrimitiveKind::Never : PrimitiveKind::Any;
+    const auto annihilatorKind = isUnion ? PrimitiveKind::Any : PrimitiveKind::Never;
+    zc::Vector<BuiltSetMember> retained(members.size());
+    for (auto& member : members) {
+      auto lookup = semanticTypes.get(member.value.type);
+      if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
+      const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+      if (data.is<type::semantic::PrimitiveTypeData>()) {
+        const auto kind = data.get<type::semantic::PrimitiveTypeData>().kind;
+        // The annihilator swallows the whole set (T | Any is Any, T & Never is
+        // Never); the identity element drops out (T | Never is T, T & Any is T).
+        if (kind == annihilatorKind) return buildPrimitiveType(annihilatorKind);
+        if (kind == identityKind) continue;
       }
+      retained.add(zc::mv(member));
     }
-    for (size_t index = 1; index < elements.size(); ++index) {
-      auto current = zc::mv(elements[index]);
+    for (size_t index = 1; index < retained.size(); ++index) {
+      auto current = zc::mv(retained[index]);
       size_t insertion = index;
-      while (insertion > 0 && lessBytes(current.key.asPtr(), elements[insertion - 1].key.asPtr())) {
-        elements[insertion] = zc::mv(elements[insertion - 1]);
+      while (insertion > 0 && lessBytes(current.key.asPtr(), retained[insertion - 1].key.asPtr())) {
+        retained[insertion] = zc::mv(retained[insertion - 1]);
         --insertion;
       }
-      elements[insertion] = zc::mv(current);
+      retained[insertion] = zc::mv(current);
     }
-    for (size_t index = 1; index < elements.size(); ++index) {
-      if (sameBytes(elements[index - 1].key.asPtr(), elements[index].key.asPtr())) {
-        return zc::none;
+    zc::Vector<BuiltSetMember> unique(retained.size());
+    for (auto& member : retained) {
+      if (unique.size() != 0 && sameBytes(unique.back().key.asPtr(), member.key.asPtr())) {
+        continue;
       }
+      unique.add(zc::mv(member));
     }
-    zc::Vector<identity::SemanticTypeId> types(elements.size());
-    zc::Vector<TypeKeyPattern> patterns(elements.size());
-    for (auto& element : elements) {
-      types.add(element.value.type);
-      patterns.add(zc::mv(element.value.pattern));
+    if (unique.size() == 0) return buildPrimitiveType(identityKind);
+    if (unique.size() == 1) return zc::mv(unique[0].value);
+    zc::Vector<identity::SemanticTypeId> types(unique.size());
+    zc::Vector<TypeKeyPattern> patterns(unique.size());
+    for (auto& member : unique) {
+      types.add(member.value.type);
+      patterns.add(zc::mv(member.value.pattern));
     }
     if (isUnion) {
       return intern(type::semantic::TypeData(type::semantic::UnionTypeData{zc::mv(types)}),
@@ -1599,6 +1621,36 @@ private:
     }
     return intern(type::semantic::TypeData(type::semantic::IntersectionTypeData{zc::mv(types)}),
                   TypeKeyPattern::intersection(zc::mv(patterns)));
+  }
+
+  zc::Maybe<BuiltSourceType> buildPrimitiveType(PrimitiveKind kind) {
+    return intern(type::semantic::TypeData(type::semantic::PrimitiveTypeData{kind}),
+                  TypeKeyPattern::primitive(kind));
+  }
+
+  zc::Maybe<BuiltSetMember> wrapMember(BuiltSourceType&& value) {
+    auto lookup = semanticTypes.get(value.type);
+    if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
+    return BuiltSetMember{zc::mv(value), zc::heapArray<uint8_t>(
+                                             lookup.get<type::SemanticTypeLookup>().key().bytes())};
+  }
+
+  zc::Maybe<BuiltSetMember> buildSetMember(ast::NodeId node) {
+    auto built = build(node);
+    ZC_IF_SOME(value, built) { return wrapMember(zc::mv(value)); }
+    return zc::none;
+  }
+
+  zc::Maybe<BuiltSourceType> buildSet(ast::NodeList nodes, bool isUnion) {
+    const auto& tree = boundModule.tree();
+    if (!tree.contains(nodes)) return zc::none;
+    zc::Vector<BuiltSetMember> members(nodes.size);
+    for (const auto node : tree.list(nodes)) {
+      auto member = buildSetMember(node);
+      if (member == zc::none) return zc::none;
+      ZC_IF_SOME(value, member) { members.add(zc::mv(value)); }
+    }
+    return canonicalizeSet(zc::mv(members), isUnion);
   }
 
   zc::Maybe<BuiltSourceType> buildObject(const ast::Node& syntax) {
@@ -1660,38 +1712,26 @@ private:
   }
 
   zc::Maybe<BuiltSourceType> buildOptional(const ast::Node& syntax) {
+    // `T?` normalizes to the canonical union `T | Null` (RFC 0005). The shared
+    // canonicalization path handles the degenerate cases (`Null?` collapses to
+    // `Null`, `never?` collapses to `Null`, `any?` collapses to `Any`) and the
+    // member ordering, so this builder only assembles the two members.
     auto inner = build(ast::NodeId(syntax.payload.words[ast::kOptionalTypeExprInnerWord]));
-    auto nullType =
-        intern(type::semantic::TypeData(type::semantic::PrimitiveTypeData{PrimitiveKind::Null}),
-               TypeKeyPattern::primitive(PrimitiveKind::Null));
-    if (inner == zc::none || nullType == zc::none) return zc::none;
-    zc::Vector<BuiltSourceType> alternatives(2);
-    ZC_IF_SOME(value, inner) { alternatives.add(zc::mv(value)); }
-    ZC_IF_SOME(value, nullType) { alternatives.add(zc::mv(value)); }
-    zc::Array<uint8_t> firstKey;
-    zc::Array<uint8_t> secondKey;
-    auto firstLookup = semanticTypes.get(alternatives[0].type);
-    auto secondLookup = semanticTypes.get(alternatives[1].type);
-    if (!firstLookup.is<type::SemanticTypeLookup>() ||
-        !secondLookup.is<type::SemanticTypeLookup>()) {
-      return zc::none;
+    if (inner == zc::none) return zc::none;
+    auto nullMember = buildPrimitiveType(PrimitiveKind::Null);
+    if (nullMember == zc::none) return zc::none;
+    zc::Vector<BuiltSetMember> members(2);
+    ZC_IF_SOME(value, inner) {
+      auto wrapped = wrapMember(zc::mv(value));
+      if (wrapped == zc::none) return zc::none;
+      ZC_IF_SOME(member, wrapped) { members.add(zc::mv(member)); }
     }
-    firstKey = zc::heapArray<uint8_t>(firstLookup.get<type::SemanticTypeLookup>().key().bytes());
-    secondKey = zc::heapArray<uint8_t>(secondLookup.get<type::SemanticTypeLookup>().key().bytes());
-    if (sameBytes(firstKey.asPtr(), secondKey.asPtr())) return zc::mv(alternatives[0]);
-    if (lessBytes(secondKey.asPtr(), firstKey.asPtr())) {
-      auto first = zc::mv(alternatives[0]);
-      alternatives[0] = zc::mv(alternatives[1]);
-      alternatives[1] = zc::mv(first);
+    ZC_IF_SOME(value, nullMember) {
+      auto wrapped = wrapMember(zc::mv(value));
+      if (wrapped == zc::none) return zc::none;
+      ZC_IF_SOME(member, wrapped) { members.add(zc::mv(member)); }
     }
-    zc::Vector<identity::SemanticTypeId> types(2);
-    zc::Vector<TypeKeyPattern> patterns(2);
-    for (auto& alternative : alternatives) {
-      types.add(alternative.type);
-      patterns.add(zc::mv(alternative.pattern));
-    }
-    return intern(type::semantic::TypeData(type::semantic::UnionTypeData{zc::mv(types)}),
-                  TypeKeyPattern::unionOf(zc::mv(patterns)));
+    return canonicalizeSet(zc::mv(members), /*isUnion=*/true);
   }
 
   const driver::module_graph_query::CheckerBoundModuleView& boundModule;
