@@ -803,6 +803,39 @@ ZC_TEST("Same-module call with one integer argument lowers to a verified LLVM mo
   ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
 }
 
+ZC_TEST("Zero-argument call lowering rejects a callee whose owner differs from the call target") {
+  // Regression: the caller's call targets a DIFFERENT definition than the callee
+  // function being lowered. Wiring it to LIR function index 1 anyway would call
+  // the wrong function. lowerCallModule must reject the mismatch.
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto callerOwner = tests::testDefinition(0);
+  const auto calleeOwner = tests::testDefinition(1);
+  const auto wrongCallee = tests::testDefinition(2);
+
+  auto callee = buildScalarReturnCallee(calleeOwner, i32, 5);
+  // Caller's call.callee is wrongCallee, not calleeOwner.
+  auto caller = buildLocalCallCaller(callerOwner, wrongCallee, i32);
+
+  auto lir = lir::MirToLirLowering::lowerCallModule(caller, callee, typeContext.semanticTypes());
+  ZC_EXPECT(lir == zc::none);
+}
+
+ZC_TEST("Argument call lowering rejects a callee whose owner differs from the call target") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto callerOwner = tests::testDefinition(0);
+  const auto calleeOwner = tests::testDefinition(1);
+  const auto wrongCallee = tests::testDefinition(2);
+
+  auto callee = buildParameterReturnCallee(calleeOwner, i32);
+  auto caller = buildArgumentCallCaller(callerOwner, wrongCallee, i32, 9);
+
+  auto lir = lir::MirToLirLowering::lowerCallModuleWithArgument(caller, callee,
+                                                                typeContext.semanticTypes());
+  ZC_EXPECT(lir == zc::none);
+}
+
 ZC_TEST("MIR -> LIR lowering fails closed on a non-integer scalar initializer") {
   tests::TestSemanticTypeContext typeContext;
   // Bool is a scalar but not an integer carrier in this slice.

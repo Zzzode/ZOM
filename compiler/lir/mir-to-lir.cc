@@ -731,6 +731,9 @@ zc::Maybe<LirModule> MirToLirLowering::lowerCallModule(
       call.unwindTarget != zc::none) {
     return zc::none;
   }
+  // The call's target definition must be the callee being lowered; otherwise the
+  // caller would be wired to the wrong module-local function index.
+  if (!(call.callee == callee.owner)) { return zc::none; }
   if (continuation.statements.size() != 0 ||
       continuation.terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
@@ -846,6 +849,9 @@ zc::Maybe<LirModule> MirToLirLowering::lowerCallModuleWithArgument(
       call.unwindTarget != zc::none) {
     return zc::none;
   }
+  // The call's target definition must be the callee being lowered; otherwise the
+  // caller would be wired to the wrong module-local function index.
+  if (!(call.callee == callee.owner)) { return zc::none; }
   // The single argument must be an integer constant of the callee parameter type.
   const auto& argument = call.arguments[0];
   if (argument.kind() != mir::MirOperandKind::Constant ||
