@@ -98,6 +98,42 @@ zc::Maybe<LirValueType> boolCarrierFor(identity::SemanticTypeId type,
   return zc::none;
 }
 
+/// \brief Maps a MIR relational operator to its LIR comparison operator.
+LirComparisonOp lirComparisonOpFor(mir::MirComparisonOperator op) noexcept {
+  switch (op) {
+    case mir::MirComparisonOperator::Eq:
+      return LirComparisonOp::Eq;
+    case mir::MirComparisonOperator::Ne:
+      return LirComparisonOp::Ne;
+    case mir::MirComparisonOperator::Lt:
+      return LirComparisonOp::Lt;
+    case mir::MirComparisonOperator::Le:
+      return LirComparisonOp::Le;
+    case mir::MirComparisonOperator::Gt:
+      return LirComparisonOp::Gt;
+    case mir::MirComparisonOperator::Ge:
+      return LirComparisonOp::Ge;
+  }
+  return LirComparisonOp::Eq;
+}
+
+/// \brief Lowers a MIR operand (integer constant or parameter place-use) to a
+/// LIR operand of the given integer carrier.
+/// \return The operand, or none for a non-integer constant or a projected place.
+zc::Maybe<LirOperand> lirOperandFor(const mir::MirOperand& operand, LirValueType carrier) {
+  if (operand.kind() == mir::MirOperandKind::Constant) {
+    const auto integer = operand.constantValue().value.integerValue();
+    if (integer == zc::none) { return zc::none; }
+    auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), carrier.integerWidth());
+    if (bits == zc::none) { return zc::none; }
+    auto constant = LirIntegerConstant::from(carrier, ZC_REQUIRE_NONNULL(bits));
+    if (constant == zc::none) { return zc::none; }
+    return LirOperand::constant(ZC_REQUIRE_NONNULL(constant));
+  }
+  if (operand.place().projections().size() != 0) { return zc::none; }
+  return LirOperand::localUse(operand.place().local().ordinal());
+}
+
 }  // namespace
 
 zc::Maybe<LirModule> MirToLirLowering::lowerScalarInitializer(
@@ -447,6 +483,177 @@ zc::Maybe<LirModule> MirToLirLowering::lowerLoopReturn(
   zc::Vector<LirFunction> functions;
   functions.add(LirFunction(zc::heapString("zom.loop"), resultCarrierValue, zc::mv(parameters),
                             zc::mv(locals), zc::mv(blocks)));
+  return LirModule(zc::mv(functions));
+}
+
+zc::Maybe<LirModule> MirToLirLowering::lowerEqualityConditionalReturn(
+    const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
+  // Admit only the verified comparison-driven conditional shape, re-checking the
+  // structure that mir::validEqualityConditionalReturnFunction validated: N
+  // integer parameters, a result local, and a bool temporary; a four-block
+  // diamond that computes the temp from a Comparison and switches on it.
+  if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
+      function.blocks.size() != 4 || function.locals.size() < 3) {
+    return zc::none;
+  }
+  const size_t parameterCount = function.locals.size() - 2;
+  const auto& resultLocalDecl = function.locals[parameterCount];
+  const auto& tempLocalDecl = function.locals[parameterCount + 1];
+  if (resultLocalDecl.kind != mir::MirLocalKind::FunctionResult ||
+      resultLocalDecl.type != function.resultType ||
+      tempLocalDecl.kind != mir::MirLocalKind::Temporary) {
+    return zc::none;
+  }
+  for (size_t i = 0; i < parameterCount; ++i) {
+    if (function.locals[i].kind != mir::MirLocalKind::Parameter) { return zc::none; }
+  }
+
+  auto resultCarrier = integerCarrierFor(function.resultType, semanticTypes);
+  if (resultCarrier == zc::none) { return zc::none; }
+  const auto resultCarrierValue = ZC_REQUIRE_NONNULL(resultCarrier);
+  auto tempCarrier = boolCarrierFor(tempLocalDecl.type, semanticTypes);
+  if (tempCarrier == zc::none) { return zc::none; }
+  const auto tempCarrierValue = ZC_REQUIRE_NONNULL(tempCarrier);
+
+  const uint32_t resultOrdinal = resultLocalDecl.id.ordinal();
+  const uint32_t tempOrdinal = tempLocalDecl.id.ordinal();
+
+  const auto& entry = function.blocks[0];
+  const auto& thenBlock = function.blocks[1];
+  const auto& elseBlock = function.blocks[2];
+  const auto& joinBlock = function.blocks[3];
+
+  // Entry: StorageLive(result), StorageLive(temp), Assign(temp = Comparison),
+  // SwitchInt(copy temp) [true -> then], default = else.
+  if (entry.statements.size() != 3 ||
+      entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != resultLocalDecl.id ||
+      entry.statements[1].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[1].storageLocal() != tempLocalDecl.id ||
+      entry.statements[2].kind() != mir::MirStatementKind::Assign ||
+      entry.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+    return zc::none;
+  }
+  const auto& tempAssign = entry.statements[2].assignmentValue();
+  if (tempAssign.destination.local() != tempLocalDecl.id ||
+      tempAssign.destination.projections().size() != 0 ||
+      tempAssign.value.kind() != mir::MirRvalueKind::Comparison) {
+    return zc::none;
+  }
+  const auto& comparison = tempAssign.value.comparisonValue();
+  // The comparison operands must resolve to integer carriers. Both operands
+  // share the operand type; use the result-less operand carrier from the
+  // comparison operand types (each operand is a parameter place-use or constant
+  // of the same integer operand type).
+  auto operandCarrierFor = [&](const mir::MirOperand& operand) -> zc::Maybe<LirValueType> {
+    if (operand.kind() == mir::MirOperandKind::Constant) {
+      return integerCarrierFor(operand.constantValue().type, semanticTypes);
+    }
+    return integerCarrierFor(operand.place().rootType(), semanticTypes);
+  };
+  auto leftCarrier = operandCarrierFor(comparison.left);
+  auto rightCarrier = operandCarrierFor(comparison.right);
+  if (leftCarrier == zc::none || rightCarrier == zc::none) { return zc::none; }
+  auto lirLeft = lirOperandFor(comparison.left, ZC_REQUIRE_NONNULL(leftCarrier));
+  auto lirRight = lirOperandFor(comparison.right, ZC_REQUIRE_NONNULL(rightCarrier));
+  if (lirLeft == zc::none || lirRight == zc::none) { return zc::none; }
+
+  const auto& switchInt = entry.terminator.switchIntValue();
+  if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
+      switchInt.discriminant.place().local() != tempLocalDecl.id ||
+      switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 2 ||
+      switchInt.arms[0].target != thenBlock.id || switchInt.arms[1].target != elseBlock.id ||
+      switchInt.defaultTarget != elseBlock.id) {
+    return zc::none;
+  }
+
+  // Each arm assigns the result an integer constant, then jumps to the join.
+  auto lowerArm = [&](const mir::MirBasicBlock& branch, zc::Vector<LirStatement>& out) -> bool {
+    if (branch.statements.size() != 1 ||
+        branch.statements[0].kind() != mir::MirStatementKind::Assign ||
+        branch.terminator.kind() != mir::MirTerminatorKind::Goto ||
+        branch.terminator.gotoValue().target != joinBlock.id) {
+      return false;
+    }
+    const auto& assignment = branch.statements[0].assignmentValue();
+    if (assignment.destination.local() != resultLocalDecl.id ||
+        assignment.destination.projections().size() != 0 ||
+        assignment.value.kind() != mir::MirRvalueKind::Use) {
+      return false;
+    }
+    const auto& operand = assignment.value.useValue().operand;
+    if (operand.kind() != mir::MirOperandKind::Constant ||
+        operand.constantValue().type != function.resultType) {
+      return false;
+    }
+    auto lowered = lirOperandFor(operand, resultCarrierValue);
+    if (lowered == zc::none) { return false; }
+    out.add(LirStatement::assign(resultOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+    return true;
+  };
+  zc::Vector<LirStatement> thenStatements;
+  zc::Vector<LirStatement> elseStatements;
+  if (!lowerArm(thenBlock, thenStatements) || !lowerArm(elseBlock, elseStatements)) {
+    return zc::none;
+  }
+
+  // Join: no statements; Return(place-use result).
+  if (joinBlock.statements.size() != 0 ||
+      joinBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& returnValue = joinBlock.terminator.returnValue().value;
+  if (returnValue == zc::none) { return zc::none; }
+  bool returnsResult = false;
+  ZC_IF_SOME(value, returnValue) {
+    returnsResult = value.kind() != mir::MirOperandKind::Constant &&
+                    value.place().local() == resultLocalDecl.id &&
+                    value.place().projections().size() == 0;
+  }
+  if (!returnsResult) { return zc::none; }
+
+  auto entryId = LirBlockId::fromOrdinal(1);
+  auto thenId = LirBlockId::fromOrdinal(2);
+  auto elseId = LirBlockId::fromOrdinal(3);
+  auto joinId = LirBlockId::fromOrdinal(4);
+  if (entryId == zc::none || thenId == zc::none || elseId == zc::none || joinId == zc::none) {
+    return zc::none;
+  }
+
+  zc::Vector<LirBasicBlock> blocks;
+  {
+    zc::Vector<LirStatement> entryStatements;
+    entryStatements.add(LirStatement::compare(tempOrdinal, lirComparisonOpFor(comparison.op),
+                                              ZC_REQUIRE_NONNULL(lirLeft),
+                                              ZC_REQUIRE_NONNULL(lirRight)));
+    blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
+                             LirTerminator::condBranch(tempOrdinal, ZC_REQUIRE_NONNULL(thenId),
+                                                       ZC_REQUIRE_NONNULL(elseId))));
+  }
+  blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(thenId), zc::mv(thenStatements),
+                           LirTerminator::gotoBlock(ZC_REQUIRE_NONNULL(joinId))));
+  blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(elseId), zc::mv(elseStatements),
+                           LirTerminator::gotoBlock(ZC_REQUIRE_NONNULL(joinId))));
+  {
+    zc::Vector<LirStatement> none;
+    blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(joinId), zc::mv(none),
+                             LirTerminator::returnLocal(resultOrdinal)));
+  }
+
+  // Declare every integer parameter local plus the result and temp body locals.
+  zc::Vector<LirLocal> parameters;
+  for (size_t i = 0; i < parameterCount; ++i) {
+    auto carrier = integerCarrierFor(function.locals[i].type, semanticTypes);
+    if (carrier == zc::none) { return zc::none; }
+    parameters.add(LirLocal(function.locals[i].id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
+  }
+  zc::Vector<LirLocal> locals;
+  locals.add(LirLocal(resultOrdinal, resultCarrierValue));
+  locals.add(LirLocal(tempOrdinal, tempCarrierValue));
+
+  zc::Vector<LirFunction> functions;
+  functions.add(LirFunction(zc::heapString("zom.conditional_cmp"), resultCarrierValue,
+                            zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
   return LirModule(zc::mv(functions));
 }
 

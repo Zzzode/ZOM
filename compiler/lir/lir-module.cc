@@ -23,9 +23,24 @@ zc::Maybe<LirIntegerConstant> LirIntegerConstant::from(LirValueType carrier,
 }
 
 LirOperand LirOperand::constant(LirIntegerConstant value) noexcept { return LirOperand(value); }
+LirOperand LirOperand::localUse(uint32_t localOrdinal) noexcept { return LirOperand(localOrdinal); }
+
+// A never-read placeholder constant for a localUse operand, which carries no
+// integer constant. The i1 carrier always exists, so `from` cannot fail.
+LirIntegerConstant LirOperand::fallbackConstant() noexcept {
+  auto carrier = LirValueType::integer(IntegerBitWidth::Bit1);
+  auto value = LirIntegerConstant::from(ZC_ASSERT_NONNULL(carrier), 0);
+  return ZC_ASSERT_NONNULL(value);
+}
 
 LirStatement LirStatement::assign(uint32_t destinationOrdinal, LirOperand value) noexcept {
-  return LirStatement(destinationOrdinal, value);
+  return LirStatement(LirStatementKind::Assign, destinationOrdinal, LirComparisonOp::Eq, value,
+                      value);
+}
+
+LirStatement LirStatement::compare(uint32_t destinationOrdinal, LirComparisonOp op, LirOperand left,
+                                   LirOperand right) noexcept {
+  return LirStatement(LirStatementKind::Compare, destinationOrdinal, op, left, right);
 }
 
 // A never-read placeholder constant for terminators that carry no integer

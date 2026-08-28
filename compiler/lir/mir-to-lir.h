@@ -85,6 +85,25 @@ public:
   /// \return The lowered LIR module, or none when the function is outside the slice.
   ZC_NODISCARD static zc::Maybe<LirModule> lowerLoopReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
+  /// \brief Lowers one four-block comparison-driven conditional return to LIR.
+  ///
+  /// Admits the verified Built MIR shape that
+  /// `mir::validEqualityConditionalReturnFunction` accepts: a `Function` with N
+  /// integer parameters, an integer result local, and a boolean temporary; a
+  /// four-block diamond whose entry computes `temp = (a CMP b)` with a
+  /// `Comparison` rvalue over parameter/constant operands and switches on the
+  /// temp, whose arms assign integer constants, and whose join returns the
+  /// result. It lowers the comparison to a LIR `Compare` statement, the
+  /// `SwitchInt` on the temp to a `CondBranch` on the temp local, and the
+  /// place-use return to `ReturnLocal`. Non-constant arms and every shape outside
+  /// this slice return `none`.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<LirModule> lowerEqualityConditionalReturn(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::lir

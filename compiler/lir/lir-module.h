@@ -69,38 +69,85 @@ enum class LirTerminatorKind : uint8_t {
   ReturnLocal = 0x04,
 };
 
-/// \brief A LIR operand. This slice needs only an integer constant; a place-use
-/// of a local slot is added when a diamond arm first assigns a parameter.
+/// \brief Closed relational comparison operator for a LIR compare statement.
+///
+/// Mirrors the six MIR relational operators. The result is a one-bit integer.
+enum class LirComparisonOp : uint8_t {
+  Eq = 0x01,
+  Ne = 0x02,
+  Lt = 0x03,
+  Le = 0x04,
+  Gt = 0x05,
+  Ge = 0x06,
+};
+
+/// \brief A LIR operand: an integer constant or a use of a local slot.
+///
+/// A `localUse` names a one-based local ordinal (a parameter or body local); the
+/// renderer loads that local's storage slot. This is the minimal operand model
+/// the conditional and comparison shapes need.
 class LirOperand final {
 public:
   /// \brief An integer-constant operand.
   ZC_NODISCARD static LirOperand constant(LirIntegerConstant value) noexcept;
+  /// \brief A use of the local slot with the given one-based ordinal.
+  ZC_NODISCARD static LirOperand localUse(uint32_t localOrdinal) noexcept;
 
+  ZC_NODISCARD bool isConstant() const noexcept { return isConstantValue; }
   ZC_NODISCARD const LirIntegerConstant& constantValue() const noexcept { return constantSlot; }
+  ZC_NODISCARD uint32_t localOrdinal() const noexcept { return localSlot; }
 
 private:
-  explicit LirOperand(LirIntegerConstant value) noexcept : constantSlot(value) {}
+  explicit LirOperand(LirIntegerConstant value) noexcept
+      : isConstantValue(true), constantSlot(value) {}
+  explicit LirOperand(uint32_t localOrdinal) noexcept
+      : isConstantValue(false), constantSlot(fallbackConstant()), localSlot(localOrdinal) {}
 
+  ZC_NODISCARD static LirIntegerConstant fallbackConstant() noexcept;
+
+  bool isConstantValue;
   LirIntegerConstant constantSlot;
+  uint32_t localSlot = 0;
 };
 
-/// \brief One LIR statement: assign an operand into a local slot.
+/// \brief Closed LIR statement kind.
+enum class LirStatementKind : uint8_t {
+  Assign = 0x01,
+  Compare = 0x02,
+};
+
+/// \brief One LIR statement: store an operand or a comparison into a local slot.
 ///
-/// The diamond initializes its result local in each arm; this is the only
-/// statement kind the slice needs. Locals are addressed by one-based ordinal.
+/// `Assign` stores `value` into `destinationOrdinal`. `Compare` stores the
+/// one-bit result of `op` applied to `left` and `right` into the destination.
+/// Locals are addressed by one-based ordinal.
 class LirStatement final {
 public:
   ZC_NODISCARD static LirStatement assign(uint32_t destinationOrdinal, LirOperand value) noexcept;
+  ZC_NODISCARD static LirStatement compare(uint32_t destinationOrdinal, LirComparisonOp op,
+                                           LirOperand left, LirOperand right) noexcept;
 
+  ZC_NODISCARD LirStatementKind kind() const noexcept { return kindValue; }
   ZC_NODISCARD uint32_t destinationOrdinal() const noexcept { return destinationValue; }
-  ZC_NODISCARD const LirOperand& value() const noexcept { return operandValue; }
+  ZC_NODISCARD const LirOperand& value() const noexcept { return leftValue; }
+  ZC_NODISCARD LirComparisonOp comparisonOp() const noexcept { return opValue; }
+  ZC_NODISCARD const LirOperand& left() const noexcept { return leftValue; }
+  ZC_NODISCARD const LirOperand& right() const noexcept { return rightValue; }
 
 private:
-  LirStatement(uint32_t destinationOrdinal, LirOperand value) noexcept
-      : destinationValue(destinationOrdinal), operandValue(value) {}
+  LirStatement(LirStatementKind kind, uint32_t destinationOrdinal, LirComparisonOp op,
+               LirOperand left, LirOperand right) noexcept
+      : kindValue(kind),
+        destinationValue(destinationOrdinal),
+        opValue(op),
+        leftValue(left),
+        rightValue(right) {}
 
+  LirStatementKind kindValue;
   uint32_t destinationValue;
-  LirOperand operandValue;
+  LirComparisonOp opValue;
+  LirOperand leftValue;
+  LirOperand rightValue;
 };
 
 /// \brief Closed terminator algebra for the supported LIR subset.

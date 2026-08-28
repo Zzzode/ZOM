@@ -392,6 +392,122 @@ ZC_TEST("Reducible while-loop lowers to a verified multi-block LLVM function") {
   ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
 }
 
+// Build the verified four-block comparison-driven conditional return MIR shape:
+//   fun f(a: i32, b: i32) -> i32 { if a == b { return thenValue } else { return elseValue } }
+//   local#1 = a : i32 (Parameter); local#2 = b : i32 (Parameter)
+//   local#3 = result : i32 (FunctionResult); local#4 = temp : bool (Temporary)
+//   bb1 entry: StorageLive(#3); StorageLive(#4); #4 = (copy #1 == copy #2);
+//              SwitchInt(copy #4) [true -> bb2], default bb3
+//   bb2 then:  #3 = const thenValue; Goto(bb4)
+//   bb3 else:  #3 = const elseValue; Goto(bb4)
+//   bb4 join:  return move #3
+mir::MirFunction buildEqualityConditionalReturn(identity::DefId owner,
+                                                identity::SemanticTypeId boolType,
+                                                identity::SemanticTypeId i32, uint8_t thenValue,
+                                                uint8_t elseValue) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(
+      mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::Parameter, i32, scopeId(1), span()});
+  locals.add(
+      mir::MirLocalDeclaration{localId(2), mir::MirLocalKind::Parameter, i32, scopeId(1), span()});
+  locals.add(mir::MirLocalDeclaration{localId(3), mir::MirLocalKind::FunctionResult, i32,
+                                      scopeId(1), span()});
+  locals.add(mir::MirLocalDeclaration{localId(4), mir::MirLocalKind::Temporary, boolType,
+                                      scopeId(1), span()});
+
+  zc::Vector<mir::MirBasicBlock> blocks;
+
+  // Entry: StorageLive(result), StorageLive(temp), temp = (a == b), SwitchInt(temp).
+  auto tempPlace = [&]() {
+    return mir::MirPlace(localId(4), boolType, zc::Vector<mir::MirProjection>(), boolType);
+  };
+  zc::Vector<mir::MirStatement> entryStatements;
+  entryStatements.add(mir::MirStatement::storageLive(localId(3), span()));
+  entryStatements.add(mir::MirStatement::storageLive(localId(4), span()));
+  entryStatements.add(mir::MirStatement::assign(
+      tempPlace(),
+      mir::MirRvalue::comparison(mir::MirComparisonOperator::Eq,
+                                 mir::MirOperand::copy(resultPlace(localId(1), i32)),
+                                 mir::MirOperand::copy(resultPlace(localId(2), i32)), boolType),
+      mir::MirInitializationKind::Initialize, span()));
+  zc::Vector<mir::MirSwitchIntArm> arms;
+  arms.add(mir::MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), blockId(2)});
+  arms.add(mir::MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), blockId(3)});
+  blocks.add(mir::MirBasicBlock{blockId(1), scopeId(1), zc::mv(entryStatements),
+                                mir::MirTerminator::switchInt(mir::MirOperand::copy(tempPlace()),
+                                                              zc::mv(arms), blockId(3), span())});
+
+  auto armBlock = [&](uint32_t id, uint8_t value) {
+    zc::Vector<mir::MirStatement> statements;
+    statements.add(mir::MirStatement::assign(
+        resultPlace(localId(3), i32),
+        mir::MirRvalue::use(mir::MirOperand::constant(i32, integerConstant(value))),
+        mir::MirInitializationKind::Initialize, span()));
+    return mir::MirBasicBlock{blockId(id), scopeId(1), zc::mv(statements),
+                              mir::MirTerminator::gotoTarget(blockId(4), span())};
+  };
+  blocks.add(armBlock(2, thenValue));
+  blocks.add(armBlock(3, elseValue));
+
+  zc::Vector<mir::MirStatement> joinStatements;
+  blocks.add(mir::MirBasicBlock{blockId(4), scopeId(1), zc::mv(joinStatements),
+                                mir::MirTerminator::returnValue(
+                                    mir::MirOperand::move(resultPlace(localId(3), i32)), span())});
+
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+// O5/KR5.2 multi-block widening (comparison-driven condition): an
+// `if a == b { return X } else { return Y }` diamond lowers MIR -> LIR ->
+// verified LLVM IR -> a native ELF object. This exercises the LIR Compare
+// statement (-> LLVM icmp), integer value parameters threaded as LLVM args, and
+// a CondBranch on a computed boolean temporary (not a parameter).
+ZC_TEST("Comparison-driven conditional lowers to a verified multi-block LLVM function") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto boolType = typeContext.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto owner = tests::testDefinition(0);
+
+  auto function = buildEqualityConditionalReturn(owner, boolType, i32, 3, 4);
+
+  auto lir =
+      lir::MirToLirLowering::lowerEqualityConditionalReturn(function, typeContext.semanticTypes());
+  ZC_REQUIRE(lir != zc::none);
+  const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
+  ZC_EXPECT(lirModule.functions().size() == 1);
+  ZC_EXPECT(lirModule.functions()[0].parameters().size() == 2);
+
+  LlvmTranslator translator;
+  auto result = translator.translate(lirModule);
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+
+  const auto ir = result.textualIr();
+  ZC_EXPECT(ir.contains("icmp eq"_zc));
+  ZC_EXPECT(ir.contains("br i1"_zc));
+  ZC_EXPECT(ir.contains("store i32 3"_zc));
+  ZC_EXPECT(ir.contains("store i32 4"_zc));
+  ZC_EXPECT(ir.contains("ret i32"_zc));
+
+  const auto object = result.objectCode();
+  ZC_EXPECT(object.size() > 0);
+  ZC_REQUIRE(object.size() >= 4);
+  ZC_EXPECT(object[0] == 0x7f);
+  ZC_EXPECT(object[1] == static_cast<uint8_t>('E'));
+  ZC_EXPECT(object[2] == static_cast<uint8_t>('L'));
+  ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
+}
+
 ZC_TEST("MIR -> LIR lowering fails closed on a non-integer scalar initializer") {
   tests::TestSemanticTypeContext typeContext;
   // Bool is a scalar but not an integer carrier in this slice.
