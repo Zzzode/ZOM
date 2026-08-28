@@ -133,16 +133,47 @@ TEST(Subprocess, SignalTerminationReportsSignaled) {
   EXPECT_FALSE(result.output().succeeded());
 }
 
-TEST(Subprocess, CaptureLimitTruncatesLargeOutput) {
-  // `yes` streams forever; a tiny cap must truncate and stay bounded rather than
-  // deadlock or grow without limit. The child is killed by SIGPIPE once we stop
-  // reading and the pipe fills, so it terminates via a signal.
-  SubprocessCommand command("/usr/bin/yes");
+TEST(Subprocess, CaptureLimitTruncatesButPreservesExitStatus) {
+  // A child that writes a bounded amount larger than the cap must be truncated to
+  // the cap AND still report its own clean exit: the cap drains-and-discards the
+  // overflow rather than closing the pipe, so it never turns a valid child into a
+  // signalled one. `yes` piped through `head` writes a large but finite stream
+  // and exits 0.
+  SubprocessCommand command("/bin/sh");
+  command.arg("-c").arg("yes ABCDEFGH | head -c 100000");
   command.captureLimit(16);
   SubprocessResult result = command.run();
   ASSERT_TRUE(result.spawned());
   EXPECT_TRUE(result.output().stdoutTruncated);
   EXPECT_EQ(result.output().capturedStdout.size(), 16u);
+  // The capture cap must not have signalled the child; it exited normally.
+  EXPECT_TRUE(result.output().terminationKind == SubprocessTerminationKind::Exited);
+  EXPECT_EQ(result.output().code, 0);
+}
+
+TEST(Subprocess, InheritEnvPolicyAppliesOverride) {
+  // Under Inherit, env() must override a matching variable and add a new one, on
+  // top of the inherited environment. `PATH` is inherited (present); ZOM_NEW is
+  // new. `sh -c 'printf ...'` reads them from the child environment.
+  SubprocessCommand command("/bin/sh");
+  command.arg("-c").arg("printf '%s\\n%s\\n' \"$ZOM_NEW\" \"$ZOM_OVERRIDE\"");
+  command.envPolicy(SubprocessEnvPolicy::Inherit)
+      .env("ZOM_NEW", "added")
+      .env("ZOM_OVERRIDE", "overridden");
+  SubprocessResult result = command.run();
+  ASSERT_TRUE(result.spawned());
+  ASSERT_TRUE(result.output().succeeded());
+  EXPECT_STREQ(capturedText(result.output().capturedStdout).cStr(), "added\noverridden\n");
+}
+
+TEST(Subprocess, InteriorNulInArgumentFailsClosed) {
+  // An argument with an interior NUL would silently truncate at the C-string
+  // boundary; the spawn must fail closed rather than pass a truncated argument.
+  SubprocessCommand command("/bin/echo");
+  command.arg(zc::heapString("a\0b", 3));
+  SubprocessResult result = command.run();
+  ASSERT_FALSE(result.spawned());
+  EXPECT_TRUE(result.spawnFailure() == SubprocessSpawnFailure::SystemError);
 }
 
 }  // namespace

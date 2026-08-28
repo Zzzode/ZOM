@@ -175,7 +175,10 @@ public:
   SubprocessCommand& env(StringPtr name, StringPtr value);
 
   // Cap the number of stdout/stderr bytes captured. Output beyond the cap is
-  // discarded and the corresponding truncated flag is set. Defaults to 1 MiB.
+  // drained and discarded and the corresponding truncated flag is set; the cap
+  // never closes the child's pipe, so it does not change the child's exit status
+  // or signal (bounding an unbounded producer's runtime is a separate concern).
+  // Defaults to 1 MiB.
   SubprocessCommand& captureLimit(size_t bytes);
 
   // Spawn the child, feed it an empty stdin, capture stdout/stderr up to the

@@ -194,10 +194,6 @@ struct CaptureBuffer {
     if (take < count) { truncated = true; }
   }
 
-  // True once the buffer has captured its full cap and further reads would only
-  // be discarded.
-  bool atCapacity() const { return bytes.size() >= limit; }
-
   Array<byte> release() { return bytes.releaseAsArray(); }
 };
 
@@ -224,9 +220,88 @@ Array<char*> buildEnvp(ArrayPtr<const EnvEntry> envEntries, Vector<String>& stor
   return envp;
 }
 
+// True when `name` is the variable name of the "NAME=VALUE" entry `entry`.
+bool entryHasName(const char* entry, StringPtr name) {
+  size_t i = 0;
+  for (; i < name.size(); ++i) {
+    if (entry[i] == '\0' || entry[i] != name[i]) { return false; }
+  }
+  return entry[i] == '=';
+}
+
+// Build a null-terminated envp under the Inherit policy: the parent environment
+// with each explicit `env()` entry overriding a matching name or appended if
+// new. The returned array owns the merged "NAME=VALUE" strings via `storage`.
+Array<char*> buildInheritEnvp(ArrayPtr<const EnvEntry> envEntries, Vector<String>& storage) {
+  // `environ` is the process environment declared by <unistd.h>.
+  // Copy every inherited entry, substituting an override when its name matches.
+  for (char** cursor = environ; cursor != nullptr && *cursor != nullptr; ++cursor) {
+    bool overridden = false;
+    for (const EnvEntry& entry : envEntries) {
+      if (entryHasName(*cursor, entry.name)) {
+        storage.add(str(entry.name, "=", entry.value));
+        overridden = true;
+        break;
+      }
+    }
+    if (!overridden) { storage.add(heapString(*cursor)); }
+  }
+  // Append overrides whose name was not present in the parent environment.
+  for (const EnvEntry& entry : envEntries) {
+    bool present = false;
+    for (char** cursor = environ; cursor != nullptr && *cursor != nullptr; ++cursor) {
+      if (entryHasName(*cursor, entry.name)) {
+        present = true;
+        break;
+      }
+    }
+    if (!present) { storage.add(str(entry.name, "=", entry.value)); }
+  }
+  auto envp = heapArray<char*>(storage.size() + 1);
+  for (size_t i = 0; i < storage.size(); ++i) { envp[i] = storage[i].begin(); }
+  envp[storage.size()] = nullptr;
+  return envp;
+}
+
+// True when `text` contains an interior NUL, which would silently truncate a C
+// string passed to the exec family.
+bool containsInteriorNul(StringPtr text) {
+  for (size_t i = 0; i < text.size(); ++i) {
+    if (text[i] == '\0') { return true; }
+  }
+  return false;
+}
+
 }  // namespace
 
 SubprocessResult SubprocessCommand::run() {
+  // Fail closed on an interior NUL anywhere in the program, argv, cwd, or env:
+  // the exec family takes C strings and would silently truncate at the NUL,
+  // running a different program or passing a different argument than requested.
+  if (containsInteriorNul(impl->program)) {
+    return SubprocessResult::forSpawnFailure(SubprocessSpawnFailure::SystemError, EINVAL);
+  }
+  ZC_IF_SOME(value, impl->argv0Override) {
+    if (containsInteriorNul(value)) {
+      return SubprocessResult::forSpawnFailure(SubprocessSpawnFailure::SystemError, EINVAL);
+    }
+  }
+  for (const String& argument : impl->arguments) {
+    if (containsInteriorNul(argument)) {
+      return SubprocessResult::forSpawnFailure(SubprocessSpawnFailure::SystemError, EINVAL);
+    }
+  }
+  ZC_IF_SOME(value, impl->workingDirectory) {
+    if (containsInteriorNul(value)) {
+      return SubprocessResult::forSpawnFailure(SubprocessSpawnFailure::SystemError, EINVAL);
+    }
+  }
+  for (const EnvEntry& entry : impl->envEntries) {
+    if (containsInteriorNul(entry.name) || containsInteriorNul(entry.value)) {
+      return SubprocessResult::forSpawnFailure(SubprocessSpawnFailure::SystemError, EINVAL);
+    }
+  }
+
   // Three pipes: child stdout, child stderr, and an exec-error channel the child
   // uses to report a failed exec (write-end is close-on-exec, so a successful
   // exec closes it silently and the parent reads EOF).
@@ -240,7 +315,10 @@ SubprocessResult SubprocessCommand::run() {
   // Mark the exec-error write end close-on-exec.
   ZC_SYSCALL(fcntl(execPipe[1], F_SETFD, FD_CLOEXEC));
 
-  // Pre-build argv/envp before fork so no allocation happens in the child.
+  // Pre-build argv/envp before fork so no allocation happens in the child. The
+  // child always execs through execve with an explicit environment: Empty uses
+  // only the allow-list, Inherit merges the parent environment with the
+  // overrides. So env() overrides take effect under both policies.
   StringPtr argv0 = impl->program;
   ZC_IF_SOME(override, impl->argv0Override) { argv0 = override; }
   Vector<String> argvStorage;
@@ -248,7 +326,7 @@ SubprocessResult SubprocessCommand::run() {
   Vector<String> envpStorage;
   Array<char*> envp = impl->envPolicy == SubprocessEnvPolicy::Empty
                           ? buildEnvp(impl->envEntries.asPtr(), envpStorage)
-                          : Array<char*>();
+                          : buildInheritEnvp(impl->envEntries.asPtr(), envpStorage);
 
   const char* programPath = impl->program.cStr();
   const char* workingDir = nullptr;
@@ -282,11 +360,10 @@ SubprocessResult SubprocessCommand::run() {
 
     if (workingDir != nullptr && ::chdir(workingDir) < 0) { reportAndDie(); }
 
-    if (impl->envPolicy == SubprocessEnvPolicy::Empty) {
-      ::execve(programPath, argv.begin(), envp.begin());
-    } else {
-      ::execv(programPath, argv.begin());
-    }
+    // Always exec with the explicit environment built above (Empty allow-list or
+    // Inherit-merged-with-overrides), so env() overrides apply under both
+    // policies.
+    ::execve(programPath, argv.begin(), envp.begin());
     // Only reached if exec failed.
     reportAndDie();
     _exit(127);  // Unreachable, silences noreturn analysis.
@@ -361,15 +438,13 @@ SubprocessResult SubprocessCommand::run() {
       if ((fds[slot].revents & (POLLIN | POLLHUP | POLLERR)) == 0) { return; }
       ssize_t n = ::read(fd, scratch, sizeof(scratch));
       if (n > 0) {
+        // Keep draining past the cap: bytes beyond the cap are discarded and the
+        // truncated flag is set, but we never close the pipe on the child. The
+        // capture cap must not alter the child's termination result (closing our
+        // read end would deliver SIGPIPE and turn a valid child into a
+        // DriverSignaled outcome). Bounding an unbounded producer is a separate
+        // timeout/kill policy, not the capture cap's job.
         buffer.append(scratch, static_cast<size_t>(n));
-        // Once the cap is reached, stop reading this stream and close our read
-        // end. A child that keeps writing then receives SIGPIPE on its next
-        // write, which bounds our work and prevents a deadlock against an
-        // unbounded producer (for example `yes`).
-        if (buffer.atCapacity()) {
-          open = false;
-          fd = nullptr;
-        }
       } else if (n == 0) {
         open = false;
       } else if (errno != EINTR && errno != EAGAIN) {
