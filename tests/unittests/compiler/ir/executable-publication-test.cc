@@ -109,5 +109,37 @@ ZC_TEST("Publication refuses to replace an existing manifest destination") {
   ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
 }
 
+ZC_TEST("Publication rolls back the executable when the manifest commit fails") {
+  // Regression for the non-atomic publication: a failure after the executable is
+  // committed but before the manifest commit must leave NEITHER final path. The
+  // pre-fix code returned WriteFailed but left the executable published.
+  auto dir = zc::newInMemoryDirectory(zc::nullClock());
+  auto executable = elfBytes();
+  auto manifest = manifestBytes();
+  ExecutablePublicationResult result =
+      publishExecutable(*dir, "app"_zc, "app.zom-artifact"_zc, executable.asPtr(), manifest.asPtr(),
+                        ExecutablePublicationInjectedFailure::AfterExecutableCommit);
+  ZC_ASSERT(!result.ok());
+  ZC_EXPECT(result.failure() == ExecutablePublicationFailure::WriteFailed);
+  // All-or-neither: the already-committed executable is rolled back.
+  ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(!dir->exists(zc::Path("app.zom-artifact"_zc)));
+}
+
+ZC_TEST("Publication rolls back both files when the final sync fails") {
+  // A failure after both commits (e.g. the final directory sync) must also leave
+  // NEITHER final path, not a best-effort pair of published files.
+  auto dir = zc::newInMemoryDirectory(zc::nullClock());
+  auto executable = elfBytes();
+  auto manifest = manifestBytes();
+  ExecutablePublicationResult result =
+      publishExecutable(*dir, "app"_zc, "app.zom-artifact"_zc, executable.asPtr(), manifest.asPtr(),
+                        ExecutablePublicationInjectedFailure::AfterBothCommits);
+  ZC_ASSERT(!result.ok());
+  ZC_EXPECT(result.failure() == ExecutablePublicationFailure::WriteFailed);
+  ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(!dir->exists(zc::Path("app.zom-artifact"_zc)));
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::ir

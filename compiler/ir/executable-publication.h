@@ -42,15 +42,33 @@ ZC_NODISCARD bool inspectExecutableFormat(zc::ArrayPtr<const uint8_t> executable
 
 /// \brief The closed reason an executable publication attempt failed.
 ///
-/// Publication is a transaction: any failure removes the temporary outputs and
-/// leaves the final directory untouched. Each reason names one concrete cause.
+/// Publication is a transaction: any failure removes every output it created and
+/// leaves the final directory as it was before the call. Each reason names one
+/// concrete cause.
 enum class ExecutablePublicationFailure : uint8_t {
   /// The executable or manifest destination already exists; existing final paths
   /// are never replaced.
   DestinationExists = 0x01,
 
-  /// A temporary output could not be written, synced, or renamed.
+  /// A temporary output could not be written, synced, or renamed. Any output
+  /// this call had already committed is rolled back before returning.
   WriteFailed = 0x02,
+};
+
+/// \brief A deterministic failure injection point for testing the transaction.
+///
+/// Production callers pass `None`. A test passes a later stage to force that
+/// stage to fail, so the all-or-neither rollback can be verified without a real
+/// I/O fault. The stages follow publication order.
+enum class ExecutablePublicationInjectedFailure : uint8_t {
+  /// No injected failure (production).
+  None = 0x00,
+  /// Fail after the executable is committed but before the manifest is committed.
+  /// Exercises the rollback that must remove the already-committed executable.
+  AfterExecutableCommit = 0x01,
+  /// Fail after both files are committed but before the final directory sync.
+  /// Exercises the rollback that must remove both committed files.
+  AfterBothCommits = 0x02,
 };
 
 /// \brief The result of an executable publication attempt.
@@ -79,23 +97,29 @@ private:
 ///
 /// RFC 0043 "Executable Verification And Publication": the executable and
 /// manifest are written to sibling temporary names, synced, then renamed into
-/// their final destinations; existing final paths are never replaced. A failure
-/// removes all temporary files and leaves the final directory unchanged. Both
-/// destinations are relative paths under `outputDir`.
+/// their final destinations as an all-or-neither transaction; existing final
+/// paths are never replaced. Any failure - including a failure while committing
+/// the second file - removes every output this call created (staged temporaries
+/// and any already-committed final file) and leaves the final directory as it
+/// was before the call. Both destinations are relative paths under `outputDir`.
 ///
-/// This slice refuses if either final path already exists, writes both temp
-/// files via the directory's atomic replace-with-commit, and commits the
-/// executable then the manifest. It does not itself compute digests or build the
-/// manifest bytes; the caller supplies the exact bytes to publish.
+/// This slice refuses if either final path already exists, stages both files as
+/// synced temporaries, then commits the executable and the manifest; if the
+/// second commit or the final directory sync fails, it rolls the first commit
+/// back. It does not itself compute digests or build the manifest bytes; the
+/// caller supplies the exact bytes to publish.
 ///
 /// \param outputDir The final output directory.
 /// \param executablePath The executable's path relative to `outputDir`.
 /// \param manifestPath The manifest's path relative to `outputDir`.
 /// \param executableBytes The exact executable bytes to publish.
 /// \param manifestBytes The exact manifest bytes to publish.
+/// \param injectedFailure A test-only forced failure stage; production passes None.
 /// \return success, or the first violated publication reason.
 ZC_NODISCARD ExecutablePublicationResult publishExecutable(
     const zc::Directory& outputDir, zc::StringPtr executablePath, zc::StringPtr manifestPath,
-    zc::ArrayPtr<const uint8_t> executableBytes, zc::ArrayPtr<const uint8_t> manifestBytes);
+    zc::ArrayPtr<const uint8_t> executableBytes, zc::ArrayPtr<const uint8_t> manifestBytes,
+    ExecutablePublicationInjectedFailure injectedFailure =
+        ExecutablePublicationInjectedFailure::None);
 
 }  // namespace zomlang::compiler::ir

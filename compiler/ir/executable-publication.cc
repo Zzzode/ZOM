@@ -58,11 +58,10 @@ bool inspectExecutableFormat(zc::ArrayPtr<const uint8_t> executableBytes,
   return false;
 }
 
-ExecutablePublicationResult publishExecutable(const zc::Directory& outputDir,
-                                              zc::StringPtr executablePath,
-                                              zc::StringPtr manifestPath,
-                                              zc::ArrayPtr<const uint8_t> executableBytes,
-                                              zc::ArrayPtr<const uint8_t> manifestBytes) {
+ExecutablePublicationResult publishExecutable(
+    const zc::Directory& outputDir, zc::StringPtr executablePath, zc::StringPtr manifestPath,
+    zc::ArrayPtr<const uint8_t> executableBytes, zc::ArrayPtr<const uint8_t> manifestBytes,
+    ExecutablePublicationInjectedFailure injectedFailure) {
   zc::Path executable = zc::Path::parse(executablePath);
   zc::Path manifest = zc::Path::parse(manifestPath);
 
@@ -71,11 +70,12 @@ ExecutablePublicationResult publishExecutable(const zc::Directory& outputDir,
     return ExecutablePublicationResult::failure(ExecutablePublicationFailure::DestinationExists);
   }
 
+  // Stage both outputs as synced temporaries BEFORE committing either, so a
+  // write/sync fault fails with nothing committed. A Replacer that is destroyed
+  // without commit() removes its temporary, so an early return needs no manual
+  // cleanup here.
+  bool executableCommitted = false;
   try {
-    // Write both outputs to sibling temporaries via atomic replace-with-commit,
-    // then sync and commit. CREATE (without MODIFY) refuses to overwrite an
-    // existing final path, preserving the never-replace invariant even against a
-    // file that appears between the exists() check and the commit.
     auto executableReplacer =
         outputDir.replaceFile(executable, zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT);
     executableReplacer->get().writeAll(executableBytes);
@@ -86,17 +86,35 @@ ExecutablePublicationResult publishExecutable(const zc::Directory& outputDir,
     manifestReplacer->get().writeAll(manifestBytes);
     manifestReplacer->get().sync();
 
-    // Commit the executable first, then the manifest, so a manifest never refers
-    // to an executable that is not yet in place.
+    // Both temporaries are in place. Commit the executable first, then the
+    // manifest, so a manifest never refers to an absent executable.
     executableReplacer->commit();
+    executableCommitted = true;
+
+    // A failure after the executable commit must roll it back so the transaction
+    // is all-or-neither, not best-effort.
+    if (injectedFailure == ExecutablePublicationInjectedFailure::AfterExecutableCommit) {
+      throw zc::Exception(zc::Exception::Type::FAILED, __FILE__, __LINE__,
+                          zc::heapString("injected failure after executable commit"));
+    }
+
     manifestReplacer->commit();
+
+    if (injectedFailure == ExecutablePublicationInjectedFailure::AfterBothCommits) {
+      throw zc::Exception(zc::Exception::Type::FAILED, __FILE__, __LINE__,
+                          zc::heapString("injected failure after both commits"));
+    }
+
     outputDir.sync();
     return ExecutablePublicationResult::success();
   } catch (const zc::Exception&) {
-    // A destroyed uncommitted Replacer removes its temporary; a partially
-    // committed executable with a failed manifest is possible only if the second
-    // commit throws, which the CREATE mode plus prior exists() check make a
-    // genuine I/O failure rather than a clobber.
+    // Roll back every final path this call may have committed, restoring the
+    // pre-call directory state. tryRemove ignores an absent path, so removing a
+    // never-committed manifest is a no-op.
+    if (executableCommitted) {
+      outputDir.tryRemove(executable);
+      outputDir.tryRemove(manifest);
+    }
     return ExecutablePublicationResult::failure(ExecutablePublicationFailure::WriteFailed);
   }
 }
