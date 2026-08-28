@@ -2,7 +2,7 @@
 rfc: 43
 title: Platform Link And Executable Publication
 type: compiler
-status: ACCEPTED
+status: IMPLEMENTING
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, ir-backend, module-system, runtime-memory, error-system, verification]
@@ -15,7 +15,7 @@ supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0043-review-and-implementation.md#discussion-record
 decision: docs/rfc/tracking/0043-review-and-implementation.md#decision-record
-implementation: TBD
+implementation: docs/rfc/tracking/0043-review-and-implementation.md#implementation-tracker
 tracking-issue: docs/rfc/tracking/0043-review-and-implementation.md#implementation-tracker
 ---
 
@@ -538,3 +538,4 @@ None
 | 2026-08-15 | DRAFT | Initial post-object link and executable-publication contract created from RFC 0021's explicit non-goal boundary. |
 | 2026-08-27 | REVIEW | Authored the toolchain-discovery record, the linker and publication failure algebra extending RFC 0010, and the CI architecture lane matrix; cleared all three Open Questions and bound discussion/tracking links. |
 | 2026-08-28 | ACCEPTED | All five dependency RFCs (0006, 0010, 0012, 0016, 0021) are IMPLEMENTING; verified the RFC 0010 failure-algebra extension (LinkPlanConstruction/LinkerInvocation/ExecutablePublication phases + InvokeLinker op) adds three phases past ObjectEmission with no name collision and invents no diagnostic code; all six required owners approved. Acceptance approves the design only; the native-executable acceptance-criteria evidence is a LANDED gate. implementation stays TBD; no IMPLEMENTING pointer (backend object emission and linking are unbuilt). |
+| 2026-08-28 | IMPLEMENTING | First authorized slice landed as evidence (Implementation Plan step 3, "without invoking a linker"): the closed failure algebra was extended in code (`IrFailurePhase` LinkPlanConstruction/LinkerInvocation/ExecutablePublication = 0x11/0x12/0x13, `BackendOperation::InvokeLinker` = 0x0b), and `compiler/ir/link-plan-codec.{h,cc}` implements the `ToolchainClosure`/object/runtime/argument records, the domain-separated length-framed `LinkPlanId` codec, and the independent `LinkPlanVerifier` enforcing the six numbered invariants, each rejection mapped to a `LinkPlanConstruction` failure row. A deterministic minimal-plan oracle plus a fail-closed mutation matrix pass under the frontend sanitizer build (no linker, no filesystem, no LLVM linkage). Runtime-closure discovery, driver invocation, executable verification/manifest publication, and the host-gated `zomc run` cutover remain Pending. |

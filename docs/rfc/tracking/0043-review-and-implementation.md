@@ -219,6 +219,59 @@ No new defect was found. Every owner approved. The RFC advances
 `REVIEW -> ACCEPTED`; the native-executable acceptance-criteria evidence remains
 a `LANDED` gate and implementation stays unauthorized-by-pointer (`TBD`).
 
+### 2026-08-28 First Authorized Slice And ACCEPTED -> IMPLEMENTING
+
+With RFC 0043 ACCEPTED and its upstream object-emission dependency now satisfied
+in the tree (RFC 0021 is `IMPLEMENTING` and native object emission landed on the
+production path, `10ef73b2`), the first authorized implementation slice was
+landed as evidence and the RFC moves `ACCEPTED -> IMPLEMENTING`. The slice is
+Implementation Plan step 3 - "canonical link-plan construction, independent
+verification, and mutation tests" - executed strictly "without invoking a
+linker", so it needs no toolchain, no subprocess, and no LLVM linkage and builds
+under the default frontend `sanitizer` preset. This mirrors how RFC 0016 entered
+IMPLEMENTING on its first landed CMake-gate slice rather than on the full
+contract.
+
+Landed in this slice:
+
+1. **Closed failure algebra extended in code.** `compiler/ir/ir-failure.h` now
+   defines `IrFailurePhase::LinkPlanConstruction` (`0x11`),
+   `LinkerInvocation` (`0x12`), and `ExecutablePublication` (`0x13`) past the
+   terminal `FeatureBoundaryVerification` (`0x10`), and
+   `BackendOperation::InvokeLinker` (`0x0b`) past `EmitObject` (`0x0a`), exactly
+   as the "Linker And Publication Failure Algebra" section specifies. The
+   `legalKind`/`legalOwnerSite` validators and the closed-tag/matrix tests in
+   `ir-failure-test` and `ir-diagnostic-adapter-test` were extended to cover the
+   new coordinates; the extension is append-only, so every prior tag encoding is
+   byte-identical.
+2. **Link-plan codec and independent verifier.** `compiler/ir/link-plan-codec.h`
+   and `.cc` implement the immutable `ToolchainClosureRecord`, `LinkInputRecord`
+   (object/CRT/library/runtime roles), `LinkerArgumentRecord`, and
+   `VerifiedLinkPlan` value types - each built only through validating factories
+   with no public aggregate initializer, so a plan cannot be reconstructed from
+   raw paths - plus the domain-separated, length-framed `LinkPlanCodec`
+   (`zom.link-plan` preimage) that computes the SHA-256 `LinkPlanId`, and the
+   independent `LinkPlanVerifier::verify` that proves the six numbered link-plan
+   invariants and maps each rejection to a `LinkPlanConstruction` failure row
+   (`OutputCreationFailed` for a bad output path, `MissingRequiredFact` for a
+   missing entry symbol or empty object set, `InvalidFact` for a mis-roled or
+   out-of-root record, `AdditionalFact` for a duplicate canonical key).
+3. **Deterministic oracle and fail-closed mutation matrix.**
+   `tests/unittests/compiler/ir/link-plan-codec-oracle-test.cc` freezes a minimal
+   plan's 503-byte preimage, its full hex, and its `LinkPlanId`
+   (`287f421b8e9713cdd0c371c5d14e419818a652160a756fcbaf4fc0313452a405`), proves
+   field sensitivity (output path, argument order, and input digest each move the
+   id), and asserts every invariant rejection returns the RFC-mapped
+   `IrFailurePhase`+`IrFailureKind`. All 11 cases pass under the sanitizer build.
+
+This slice invokes no linker, reads no filesystem, and binds no live
+`TargetRegistryCapability` or `VerifiedObjectArtifact`; the session-owned
+`planExecutable`/`linkExecutable` APIs, the runtime-closure discovery, the
+ELF/Mach-O executable verifier, the `.zom-artifact` manifest and atomic
+publication, and the host-gated `zomc run` cutover remain later slices and stay
+Pending. Frontmatter moves `status: IMPLEMENTING` with `implementation` bound to
+the Implementation Tracker; the README index row is set to `IMPLEMENTING`.
+
 ## Bound Proposal Snapshots
 
 | Proposal SHA-256 |
@@ -280,11 +333,11 @@ the tree.
 
 | Slice | State | Required evidence |
 |---|---|---|
-| Accepted RFC 0016 target authority and RFC 0021 verified object artifact binding | Blocked pending acceptance | Accepted upstream hashes and object-emission contract with an implementation pointer |
-| Verified runtime closure discovery and verifier | Pending acceptance | Closed Linux ELF and macOS Mach-O toolchain closure and mutation tests |
-| Canonical link-plan construction and verification | Pending acceptance | Independent verifier, deterministic `LinkPlanId`, and mutation matrix |
-| Target-selected driver invocation and cleanup | Pending acceptance | Sanitized environment, argument-vector construction, temporary-output removal |
-| Executable inspection, manifest, and atomic publication | Pending acceptance | ELF/Mach-O verifier, `.zom-artifact` manifest, atomic two-file publication |
+| Accepted RFC 0016 target authority and RFC 0021 verified object artifact binding | Satisfied | RFC 0016 and RFC 0021 are `IMPLEMENTING`; native object emission landed on the production path (`10ef73b2`), so the object-artifact dependency this RFC builds on exists. |
+| Canonical link-plan construction and verification | Landed 2026-08-28 | `compiler/ir/link-plan-codec.{h,cc}`: the `ToolchainClosure`/input/argument records, the domain-separated length-framed `LinkPlanId` codec, and the independent `LinkPlanVerifier` enforcing the six invariants; `link-plan-codec-oracle-test` freezes a deterministic minimal-plan oracle and a fail-closed mutation matrix (no linker). The failure algebra was extended in code (`LinkPlanConstruction`/`LinkerInvocation`/`ExecutablePublication` phases + `InvokeLinker` op). |
+| Verified runtime closure discovery and verifier | Pending | Closed Linux ELF and macOS Mach-O toolchain closure and mutation tests |
+| Target-selected driver invocation and cleanup | Pending | Sanitized environment, argument-vector construction, temporary-output removal |
+| Executable inspection, manifest, and atomic publication | Pending | ELF/Mach-O verifier, `.zom-artifact` manifest, atomic two-file publication |
 | Host-compatibility-gated `zomc run` cutover | Pending all prior slices | Host-profile match, cross-target rejection, and documentation/CI updates |
 
 ## Verification Evidence

@@ -51,6 +51,12 @@ enum class IrFailurePhase : uint8_t {
   LlvmTranslation = 0x0e,
   ObjectEmission = 0x0f,
   FeatureBoundaryVerification = 0x10,
+  // RFC 0043 "Linker And Publication Failure Algebra": three closed post-object
+  // phases at the next free tags. They add no new IrFailureKind; they reuse the
+  // existing kinds bound to these new phases.
+  LinkPlanConstruction = 0x11,
+  LinkerInvocation = 0x12,
+  ExecutablePublication = 0x13,
 };
 
 enum class IrFailureKind : uint8_t {
@@ -92,6 +98,9 @@ enum class BackendOperation : uint8_t {
   EmitDebugInfo = 0x08,
   VerifyLlvm = 0x09,
   EmitObject = 0x0a,
+  // RFC 0043 "Linker And Publication Failure Algebra": a linker subprocess
+  // failure carries a Backend site like every other backend operation.
+  InvokeLinker = 0x0b,
 };
 
 enum class IrRejectedBranch : uint8_t {

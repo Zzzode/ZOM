@@ -181,6 +181,12 @@ diagnostics::DiagID irDiagnosticId(IrFailureKind kind, IrFailurePhase phase) noe
       return DiagID::BackendInvariant;
     case IrFailurePhase::FeatureBoundaryVerification:
       return DiagID::FeatureBoundaryInvariant;
+    // RFC 0043 link/publication phases reuse the backend invariant family; the
+    // RFC adds no new diagnostic family.
+    case IrFailurePhase::LinkPlanConstruction:
+    case IrFailurePhase::LinkerInvocation:
+    case IrFailurePhase::ExecutablePublication:
+      return DiagID::BackendInvariant;
   }
   ZC_UNREACHABLE
 }

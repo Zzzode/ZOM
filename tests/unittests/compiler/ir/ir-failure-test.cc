@@ -66,6 +66,13 @@ bool expectedKind(IrRejectedBranch branch, IrFailurePhase phase, IrFailureKind k
     if (phase == IrFailurePhase::TargetSelection) {
       return kind == IrFailureKind::UnsupportedTargetCapability;
     }
+    // ObjectEmission and the RFC 0043 link/publication phases accept a single
+    // capability kind: the requested output could not be produced.
+    if (phase == IrFailurePhase::LinkPlanConstruction ||
+        phase == IrFailurePhase::LinkerInvocation ||
+        phase == IrFailurePhase::ExecutablePublication) {
+      return kind == IrFailureKind::OutputCreationFailed;
+    }
     return phase == IrFailurePhase::ObjectEmission && kind == IrFailureKind::OutputCreationFailed;
   }
   if (branch != IrRejectedBranch::IrInvariantRejected) { return false; }
@@ -77,6 +84,16 @@ bool expectedKind(IrRejectedBranch branch, IrFailurePhase phase, IrFailureKind k
     return kind == IrFailureKind::InputRevisionMismatch ||
            kind == IrFailureKind::MissingRequiredFact || kind == IrFailureKind::InvalidFact ||
            kind == IrFailureKind::CanonicalCodecMismatch;
+  }
+  // RFC 0043 LinkerInvocation and ExecutablePublication accept strict subsets of
+  // the common invariant set.
+  if (phase == IrFailurePhase::LinkerInvocation) {
+    return kind == IrFailureKind::InputRevisionMismatch || kind == IrFailureKind::InvalidFact ||
+           kind == IrFailureKind::CanonicalCodecMismatch;
+  }
+  if (phase == IrFailurePhase::ExecutablePublication) {
+    return kind == IrFailureKind::MissingRequiredFact || kind == IrFailureKind::InvalidFact ||
+           kind == IrFailureKind::InvalidAbi || kind == IrFailureKind::CanonicalCodecMismatch;
   }
   if (common) { return true; }
   switch (phase) {
@@ -115,6 +132,14 @@ bool expectedKind(IrRejectedBranch branch, IrFailurePhase phase, IrFailureKind k
              kind == IrFailureKind::InvalidAbi || kind == IrFailureKind::BackendTranslationRejected;
     case IrFailurePhase::ObjectEmission:
       return kind == IrFailureKind::InvalidAbi || kind == IrFailureKind::BackendTranslationRejected;
+    // RFC 0043 link/publication phases. LinkPlanConstruction adds InvalidAbi to
+    // the common set accepted above; the other two are decided by the exact
+    // allow-lists before the common fallthrough, so they reject here.
+    case IrFailurePhase::LinkPlanConstruction:
+      return kind == IrFailureKind::InvalidAbi;
+    case IrFailurePhase::LinkerInvocation:
+    case IrFailurePhase::ExecutablePublication:
+      return false;
   }
   return false;
 }
@@ -176,6 +201,11 @@ bool expectedOwnerSite(IrFailurePhase phase, IrFailureOwnerKind owner,
     case IrFailurePhase::ObjectEmission:
       return (owner == IrFailureOwnerKind::Session || owner == IrFailureOwnerKind::Instance) &&
              (expectedNone(site) || expectedSite(site, IrFailureSiteKind::Backend));
+    case IrFailurePhase::LinkPlanConstruction:
+    case IrFailurePhase::LinkerInvocation:
+    case IrFailurePhase::ExecutablePublication:
+      return owner == IrFailureOwnerKind::Session &&
+             (expectedNone(site) || expectedSite(site, IrFailureSiteKind::Backend));
   }
   return false;
 }
@@ -227,19 +257,25 @@ ZC_TEST("IR failure closed tags match RFC 0010") {
   ZC_EXPECT(static_cast<uint8_t>(IrFailureOwnerKind::Instance) == 0x04);
   ZC_EXPECT(static_cast<uint8_t>(IrFailureSiteKind::Backend) == 0x05);
   ZC_EXPECT(static_cast<uint8_t>(IrFailurePhase::FeatureBoundaryVerification) == 0x10);
+  // RFC 0043 "Linker And Publication Failure Algebra" extends the phase tag range
+  // to 0x13 with three closed post-object phases and adds one BackendOperation.
+  ZC_EXPECT(static_cast<uint8_t>(IrFailurePhase::LinkPlanConstruction) == 0x11);
+  ZC_EXPECT(static_cast<uint8_t>(IrFailurePhase::LinkerInvocation) == 0x12);
+  ZC_EXPECT(static_cast<uint8_t>(IrFailurePhase::ExecutablePublication) == 0x13);
   ZC_EXPECT(static_cast<uint8_t>(IrFailureKind::CanonicalCodecMismatch) == 0x13);
   ZC_EXPECT(static_cast<uint8_t>(IrFailureDetailKind::InstantiationBudget) == 0x03);
-  for (uint8_t tag = 0x01; tag <= 0x0a; ++tag) {
+  ZC_EXPECT(static_cast<uint8_t>(BackendOperation::InvokeLinker) == 0x0b);
+  for (uint8_t tag = 0x01; tag <= 0x0b; ++tag) {
     const auto operation = static_cast<BackendOperation>(tag);
     ZC_EXPECT(operation >= BackendOperation::TranslateType);
-    ZC_EXPECT(operation <= BackendOperation::EmitObject);
+    ZC_EXPECT(operation <= BackendOperation::InvokeLinker);
   }
 }
 
 ZC_TEST("IR failure matrix accepts every legal coordinate and rejects every illegal coordinate") {
   uint32_t legalCount = 0;
   for (uint8_t branchTag = 0x01; branchTag <= 0x02; ++branchTag) {
-    for (uint8_t phaseTag = 0x01; phaseTag <= 0x10; ++phaseTag) {
+    for (uint8_t phaseTag = 0x01; phaseTag <= 0x13; ++phaseTag) {
       for (uint8_t kindTag = 0x01; kindTag <= 0x13; ++kindTag) {
         for (uint8_t ownerTag = 0x01; ownerTag <= 0x04; ++ownerTag) {
           for (uint8_t siteTag = 0x00; siteTag <= 0x05; ++siteTag) {

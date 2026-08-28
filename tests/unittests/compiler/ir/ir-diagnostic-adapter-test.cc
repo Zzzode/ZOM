@@ -115,6 +115,10 @@ diagnostics::DiagID expectedPhaseDiagnostic(IrFailurePhase phase) {
       return DiagID::BackendInvariant;
     case IrFailurePhase::FeatureBoundaryVerification:
       return DiagID::FeatureBoundaryInvariant;
+    case IrFailurePhase::LinkPlanConstruction:
+    case IrFailurePhase::LinkerInvocation:
+    case IrFailurePhase::ExecutablePublication:
+      return DiagID::BackendInvariant;
   }
   ZC_UNREACHABLE
 }

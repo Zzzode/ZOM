@@ -39,6 +39,12 @@ bool legalKind(IrRejectedBranch branch, IrFailurePhase phase, IrFailureKind kind
         return kind == IrFailureKind::UnsupportedTargetCapability;
       case IrFailurePhase::ObjectEmission:
         return kind == IrFailureKind::OutputCreationFailed;
+      // RFC 0043 link/publication phases: the requested link or publication
+      // output could not be produced.
+      case IrFailurePhase::LinkPlanConstruction:
+      case IrFailurePhase::LinkerInvocation:
+      case IrFailurePhase::ExecutablePublication:
+        return kind == IrFailureKind::OutputCreationFailed;
       default:
         return false;
     }
@@ -58,6 +64,26 @@ bool legalKind(IrRejectedBranch branch, IrFailurePhase phase, IrFailureKind kind
   };
   if (phase == IrFailurePhase::TargetSelection) { return isOneOf(kind, targetCommon); }
   if (phase == IrFailurePhase::FeatureBoundaryVerification) { return isOneOf(kind, common); }
+  // RFC 0043 LinkerInvocation and ExecutablePublication accept strict subsets of
+  // the common invariant set, so they are decided by exact allow-lists here,
+  // before the common fallthrough below would over-accept.
+  if (phase == IrFailurePhase::LinkerInvocation) {
+    constexpr IrFailureKind linkerInvocation[] = {
+        IrFailureKind::InputRevisionMismatch,
+        IrFailureKind::InvalidFact,
+        IrFailureKind::CanonicalCodecMismatch,
+    };
+    return isOneOf(kind, linkerInvocation);
+  }
+  if (phase == IrFailurePhase::ExecutablePublication) {
+    constexpr IrFailureKind executablePublication[] = {
+        IrFailureKind::MissingRequiredFact,
+        IrFailureKind::InvalidFact,
+        IrFailureKind::InvalidAbi,
+        IrFailureKind::CanonicalCodecMismatch,
+    };
+    return isOneOf(kind, executablePublication);
+  }
   if (isOneOf(kind, common)) { return true; }
 
   switch (phase) {
@@ -94,6 +120,17 @@ bool legalKind(IrRejectedBranch branch, IrFailurePhase phase, IrFailureKind kind
              kind == IrFailureKind::InvalidAbi || kind == IrFailureKind::BackendTranslationRejected;
     case IrFailurePhase::ObjectEmission:
       return kind == IrFailureKind::InvalidAbi || kind == IrFailureKind::BackendTranslationRejected;
+    // RFC 0043 "Linker And Publication Failure Algebra". LinkPlanConstruction's
+    // invariant set is the common set plus the ABI-shape mismatch kind, so the
+    // common set accepted above already covers it and only InvalidAbi is added
+    // here. LinkerInvocation and ExecutablePublication use strict subsets of the
+    // common set and are decided by the exact allow-lists above, before the
+    // common fallthrough, so they reject everything here.
+    case IrFailurePhase::LinkPlanConstruction:
+      return kind == IrFailureKind::InvalidAbi;
+    case IrFailurePhase::LinkerInvocation:
+    case IrFailurePhase::ExecutablePublication:
+      return false;
     case IrFailurePhase::TargetSelection:
     case IrFailurePhase::FeatureBoundaryVerification:
       return false;
@@ -158,6 +195,13 @@ bool legalOwnerSite(IrFailurePhase phase, IrFailureOwnerKind owner,
               siteIs(site, IrFailureSiteKind::Backend));
     case IrFailurePhase::ObjectEmission:
       return (owner == IrFailureOwnerKind::Session || owner == IrFailureOwnerKind::Instance) &&
+             (siteIsNone(site) || siteIs(site, IrFailureSiteKind::Backend));
+    // RFC 0043 link/publication phases are owned by the session; a linker
+    // subprocess failure carries a Backend site, other failures carry none.
+    case IrFailurePhase::LinkPlanConstruction:
+    case IrFailurePhase::LinkerInvocation:
+    case IrFailurePhase::ExecutablePublication:
+      return owner == IrFailureOwnerKind::Session &&
              (siteIsNone(site) || siteIs(site, IrFailureSiteKind::Backend));
   }
   return false;
@@ -575,7 +619,7 @@ bool IrFailureSite::isStructurallyValid() const noexcept {
       return lirValue().block.isValid();
     case IrFailureSiteKind::Backend:
       return enumInRange(backendValue().operation, BackendOperation::TranslateType,
-                         BackendOperation::EmitObject);
+                         BackendOperation::InvokeLinker);
   }
   return false;
 }
@@ -668,7 +712,7 @@ bool isLegalIrFailureShape(const IrFailureDescriptorShape& shape) noexcept {
   if (!enumInRange(shape.branch, IrRejectedBranch::CapabilityRejected,
                    IrRejectedBranch::IrInvariantRejected) ||
       !enumInRange(shape.phase, IrFailurePhase::CheckedModuleAssembly,
-                   IrFailurePhase::FeatureBoundaryVerification) ||
+                   IrFailurePhase::ExecutablePublication) ||
       !enumInRange(shape.kind, IrFailureKind::InputRevisionMismatch,
                    IrFailureKind::CanonicalCodecMismatch) ||
       !enumInRange(shape.owner, IrFailureOwnerKind::Session, IrFailureOwnerKind::Instance) ||

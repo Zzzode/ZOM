@@ -4,6 +4,7 @@ set(IR_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/ir-diagnostic-adapter.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/ir-failure.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/ir-identity.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/link-plan-codec.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/target-registry.cc
 )
 
