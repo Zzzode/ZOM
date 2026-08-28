@@ -70,4 +70,82 @@ bool tokenSequencePreserved(const cst::VerifiedLexemeStream& original,
   return true;
 }
 
+namespace {
+
+// True for a horizontal whitespace byte (not a line break): space, tab, vertical
+// tab, or form feed. Trailing-whitespace stripping removes runs of these that sit
+// immediately before a line break.
+bool isHorizontalSpace(uint8_t byte) {
+  return byte == ' ' || byte == '\t' || byte == '\v' || byte == '\f';
+}
+
+}  // namespace
+
+FormatResult normalizeTriviaWhitespace(const cst::VerifiedLexemeStream& stream) {
+  const auto lexemes = stream.lexemes();
+  const uint64_t sourceByteCount = stream.sourceByteCount();
+  zc::Vector<SourceReplacement> replacements;
+
+  // (1) Strip horizontal whitespace that immediately precedes a line break,
+  // editing only Whitespace trivia lexeme bytes. A run of spaces/tabs ending at a
+  // '\r' or '\n' (within the same Whitespace lexeme) is deleted.
+  //
+  // (2) Canonicalize the file-final whitespace to exactly one '\n': if the last
+  // lexeme is Whitespace, its trailing run of blank characters after the final
+  // meaningful newline collapses to a single '\n' (or one is added when missing).
+  for (size_t index = 0; index < lexemes.size(); ++index) {
+    const auto& lexeme = lexemes[index];
+    if (lexeme.tag() != cst::CstLexemeTag::Trivia ||
+        lexeme.triviaKind() != cst::TriviaKind::Whitespace) {
+      continue;
+    }
+    const auto spelling = lexeme.spelling();
+    const uint64_t base = lexeme.range().start;
+    const bool isFinalLexeme = index + 1 == lexemes.size();
+
+    // (1) Trailing-space-before-newline runs inside this whitespace lexeme. The
+    // final whitespace lexeme is handled wholesale by the final-newline rule
+    // below, so skip it here to avoid overlapping edits.
+    size_t cursor = 0;
+    while (!isFinalLexeme && cursor < spelling.size()) {
+      if (isHorizontalSpace(spelling[cursor])) {
+        size_t runEnd = cursor + 1;
+        while (runEnd < spelling.size() && isHorizontalSpace(spelling[runEnd])) { ++runEnd; }
+        const bool beforeBreak =
+            runEnd < spelling.size() && (spelling[runEnd] == '\r' || spelling[runEnd] == '\n');
+        // A horizontal run that ends the final whitespace lexeme (end of file with
+        // no trailing newline) is handled by the final-newline rule below.
+        if (beforeBreak) {
+          auto edit = SourceReplacement::make(base + cursor, base + runEnd, ""_zc);
+          ZC_IF_SOME(value, edit) { replacements.add(zc::mv(value)); }
+        }
+        cursor = runEnd;
+        continue;
+      }
+      ++cursor;
+    }
+
+    // (2) File-final newline: the final whitespace lexeme must reduce to exactly
+    // one '\n'. Replace the whole final whitespace run with a single newline.
+    if (isFinalLexeme) {
+      bool alreadyCanonical = spelling.size() == 1 && spelling[0] == '\n';
+      if (!alreadyCanonical) {
+        auto edit = SourceReplacement::make(base, base + spelling.size(), "\n"_zc);
+        ZC_IF_SOME(value, edit) { replacements.add(zc::mv(value)); }
+      }
+    }
+  }
+
+  // The source must end with exactly one newline; when the last lexeme is not
+  // whitespace (no trailing newline at all), insert one at end of file.
+  if (lexemes.size() != 0 &&
+      !(lexemes[lexemes.size() - 1].tag() == cst::CstLexemeTag::Trivia &&
+        lexemes[lexemes.size() - 1].triviaKind() == cst::TriviaKind::Whitespace)) {
+    auto edit = SourceReplacement::make(sourceByteCount, sourceByteCount, "\n"_zc);
+    ZC_IF_SOME(value, edit) { replacements.add(zc::mv(value)); }
+  }
+
+  return FormatResult::normalize(replacements.releaseAsArray());
+}
+
 }  // namespace zomlang::compiler::format

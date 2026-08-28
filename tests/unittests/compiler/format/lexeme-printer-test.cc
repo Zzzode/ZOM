@@ -98,5 +98,51 @@ ZC_TEST("Lexeme printer is idempotent and token preserving") {
   ZC_EXPECT(second == formatted);
 }
 
+// Trailing whitespace before a line break is stripped, editing only whitespace.
+ZC_TEST("Whitespace normalizer strips trailing whitespace") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto lexed = lexedStream(*sourceManager, "let x = 1   \nlet y = 2\n"_zc);
+  auto result = normalizeTriviaWhitespace(*lexed.stream);
+  ZC_REQUIRE(result.outcome() == FormatOutcome::Edits);
+  ZC_EXPECT(result.apply("let x = 1   \nlet y = 2\n"_zc) == "let x = 1\nlet y = 2\n"_zc);
+}
+
+// A source with no final newline gains exactly one.
+ZC_TEST("Whitespace normalizer adds a missing final newline") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto lexed = lexedStream(*sourceManager, "let x = 1"_zc);
+  auto result = normalizeTriviaWhitespace(*lexed.stream);
+  ZC_REQUIRE(result.outcome() == FormatOutcome::Edits);
+  ZC_EXPECT(result.apply("let x = 1"_zc) == "let x = 1\n"_zc);
+}
+
+// Multiple trailing blank lines collapse to a single final newline.
+ZC_TEST("Whitespace normalizer collapses trailing blank lines") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto lexed = lexedStream(*sourceManager, "let x = 1\n\n\n"_zc);
+  auto result = normalizeTriviaWhitespace(*lexed.stream);
+  ZC_REQUIRE(result.outcome() == FormatOutcome::Edits);
+  ZC_EXPECT(result.apply("let x = 1\n\n\n"_zc) == "let x = 1\n"_zc);
+}
+
+// A source already in canonical whitespace form is Unchanged.
+ZC_TEST("Whitespace normalizer leaves canonical source unchanged") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto lexed = lexedStream(*sourceManager, "let x = 1\n"_zc);
+  auto result = normalizeTriviaWhitespace(*lexed.stream);
+  ZC_EXPECT(result.outcome() == FormatOutcome::Unchanged);
+}
+
+// Normalization never touches token or comment bytes: the normalized output
+// re-lexes to the identical token sequence.
+ZC_TEST("Whitespace normalizer preserves the token sequence") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto lexed = lexedStream(*sourceManager, "let x = 1  // c  \n"_zc);
+  auto result = normalizeTriviaWhitespace(*lexed.stream);
+  auto normalized = result.apply("let x = 1  // c  \n"_zc);
+  auto relexed = lexedStream(*sourceManager, normalized);
+  ZC_EXPECT(tokenSequencePreserved(*lexed.stream, *relexed.stream));
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::format

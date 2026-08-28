@@ -15,6 +15,7 @@
 #pragma once
 
 #include "compiler/cst/lexeme-codec.h"
+#include "compiler/format/source-edits.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/string.h"
@@ -54,5 +55,26 @@ ZC_NODISCARD zc::String formatLexemeStream(const cst::VerifiedLexemeStream& stre
 /// \return true when the two streams carry the identical lexeme sequence.
 ZC_NODISCARD bool tokenSequencePreserved(const cst::VerifiedLexemeStream& original,
                                          const cst::VerifiedLexemeStream& reformatted);
+
+/// \brief Computes the canonical whitespace normalization of a lexeme stream as a
+/// source-edit set.
+///
+/// RFC 0044 "Fixed Style" / L127-128: the formatter may normalize whitespace only
+/// at token and trivia boundaries where the result parses to the same lossless
+/// token sequence. This performs the two normalizations that follow purely from
+/// the trivia stream, with no parser structure and no risk of re-lexing
+/// differently:
+///
+///   - strip trailing whitespace before each line break, and
+///   - canonicalize the file-final whitespace to exactly one trailing newline.
+///
+/// It edits only `Whitespace` trivia lexeme bytes; token, line-comment, and
+/// block-comment bytes are never touched, and no token is inserted, deleted, or
+/// reordered. The result is a `FormatResult`: `Edits` (sorted, disjoint,
+/// adjacent-merged `SourceReplacement`s) when a normalization applies, or
+/// `Unchanged` when the source is already canonical. This is the first real,
+/// non-identity reformat; structural indentation and line reflow are driven by
+/// the parser and are later slices.
+ZC_NODISCARD FormatResult normalizeTriviaWhitespace(const cst::VerifiedLexemeStream& stream);
 
 }  // namespace zomlang::compiler::format
