@@ -1,5 +1,6 @@
 set(FORMAT_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/doc.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/lexeme-printer.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/doc-renderer.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/source-edits.cc
 )
