@@ -29,43 +29,45 @@ namespace zomlang::compiler::ir {
 /// \brief One explicitly-supplied file the discovery step must resolve and digest.
 ///
 /// RFC 0043 forbids ambient toolchain discovery: every input is named up front
-/// with a role, a workspace-relative path to read, and the normalized absolute
-/// path recorded into the produced closure. No PATH search, no environment
-/// probing, no implicit default sysroot.
+/// with a role and a single path relative to the trusted sysroot. That one
+/// relative path drives BOTH the read/digest and the recorded absolute path
+/// (derived as sysroot + "/" + relativePath), so the digested bytes and the
+/// path recorded into the closure always name the same object. No PATH search,
+/// no environment probing, no implicit default sysroot, and no caller-supplied
+/// independent recorded path.
 struct ToolchainSearchInput final {
   /// The role this file plays in the produced closure. Only `CrtObject` and
   /// `DefaultLibrary` are accepted here; the linker driver is named separately.
   LinkInputRole role;
 
-  /// The file's path relative to the search root passed to `discover`, used to
-  /// read and digest its bytes.
+  /// The file's path relative to the sysroot. It is read and digested from the
+  /// search root, and the recorded absolute path is derived from it.
   zc::String relativePath;
-
-  /// The normalized absolute path recorded into the closure input record (the
-  /// path a linker driver argument will reference). Must live inside the sysroot.
-  zc::String recordedPath;
 };
 
 /// \brief The complete, explicit description of a toolchain to resolve.
 ///
 /// This is supplied by the caller (a target authority), never inferred from the
-/// host environment. `discover` reads only what this names.
+/// host environment. `discover` reads only what this names, and every recorded
+/// absolute path is derived from `sysroot` plus a relative path, never supplied
+/// independently.
 struct ToolchainSearchSpec final {
   /// Canonical target specification identity bytes (non-empty).
   zc::Array<uint8_t> targetSpecificationIdentity;
 
-  /// The normalized absolute sysroot recorded into the produced closure.
+  /// The normalized absolute sysroot recorded into the produced closure. It is
+  /// also the root that every relative path (linker and inputs) resolves
+  /// against, so the search root passed to `discoverToolchain` must be this
+  /// sysroot directory.
   zc::String sysroot;
 
   /// The single driver family for the target object format.
   LinkerDriverKind linkerKind;
 
-  /// The linker driver program's path relative to the search root.
+  /// The linker driver program's path relative to the sysroot. It is read and
+  /// digested from the search root; the recorded absolute path the spawn step
+  /// executes is derived as sysroot + "/" + this path.
   zc::String linkerRelativePath;
-
-  /// The linker driver program's normalized absolute path recorded into the
-  /// closure (the path the later spawn step will exec).
-  zc::String linkerAbsolutePath;
 
   /// Ordered startup/finalization objects and default libraries to resolve.
   zc::Array<ToolchainSearchInput> inputs;

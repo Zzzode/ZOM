@@ -59,18 +59,35 @@ zc::Maybe<LinkInputRecord> makeInputRecord(zc::StringPtr recordedPath, LinkInput
   return zc::none;
 }
 
+// Derives the normalized absolute recorded path for a file from the sysroot and
+// its sysroot-relative path, so the recorded/executed path always names the same
+// object that was read and digested. The relative path must be non-empty and
+// must not begin with '/'.
+zc::Maybe<zc::String> deriveRecordedPath(zc::StringPtr sysroot, zc::StringPtr relativePath) {
+  if (relativePath.size() == 0 || relativePath[0] == '/') { return zc::none; }
+  return zc::str(sysroot, "/", relativePath);
+}
+
 }  // namespace
 
 ToolchainDiscoveryResult discoverToolchain(const zc::ReadableDirectory& searchRoot,
                                            const ToolchainSearchSpec& spec) {
-  // Fail-closed spec validation: the target identity, sysroot, and both linker
-  // paths must be present before we touch the filesystem.
+  // Fail-closed spec validation: the target identity, sysroot, and linker
+  // relative path must be present before we touch the filesystem.
   if (spec.targetSpecificationIdentity.size() == 0 || spec.sysroot.size() == 0 ||
-      spec.linkerRelativePath.size() == 0 || spec.linkerAbsolutePath.size() == 0) {
+      spec.linkerRelativePath.size() == 0) {
     return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::MalformedSpec);
   }
 
-  // Resolve and digest the linker driver program.
+  // The linker's recorded absolute path is DERIVED from the sysroot and its
+  // relative path, never supplied independently, so the digested bytes and the
+  // executed program are the same object by construction.
+  zc::Maybe<zc::String> linkerRecorded = deriveRecordedPath(spec.sysroot, spec.linkerRelativePath);
+  if (linkerRecorded == zc::none) {
+    return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::MalformedSpec);
+  }
+
+  // Resolve and digest the linker driver program from the same relative path.
   zc::Maybe<zc::Array<zc::byte>> linkerBytes = tryReadFile(searchRoot, spec.linkerRelativePath);
   if (linkerBytes == zc::none) {
     return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::LinkerNotFound);
@@ -85,12 +102,18 @@ ToolchainDiscoveryResult discoverToolchain(const zc::ReadableDirectory& searchRo
   }
 
   // Resolve and digest every CRT object and default library, sorting each into
-  // its role bucket. The spec's declared order is preserved within a role.
+  // its role bucket. The spec's declared order is preserved within a role. Each
+  // recorded path is derived from the same relative path that was read.
   zc::Vector<LinkInputRecord> crtObjects;
   zc::Vector<LinkInputRecord> defaultLibraries;
   for (const ToolchainSearchInput& input : spec.inputs) {
     if (input.role != LinkInputRole::CrtObject && input.role != LinkInputRole::DefaultLibrary) {
       return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::InvalidInputRole);
+    }
+
+    zc::Maybe<zc::String> recordedPath = deriveRecordedPath(spec.sysroot, input.relativePath);
+    if (recordedPath == zc::none) {
+      return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::MalformedSpec);
     }
 
     zc::Maybe<zc::Array<zc::byte>> bytes = tryReadFile(searchRoot, input.relativePath);
@@ -102,7 +125,8 @@ ToolchainDiscoveryResult discoverToolchain(const zc::ReadableDirectory& searchRo
       return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::EmptyInput);
     }
 
-    zc::Maybe<LinkInputRecord> record = makeInputRecord(input.recordedPath, input.role, content);
+    zc::Maybe<LinkInputRecord> record =
+        makeInputRecord(ZC_REQUIRE_NONNULL(recordedPath), input.role, content);
     if (record == zc::none) {
       return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::DigestFailed);
     }
@@ -117,8 +141,8 @@ ToolchainDiscoveryResult discoverToolchain(const zc::ReadableDirectory& searchRo
   // absolute-path, non-empty, and role-consistency invariants once more.
   zc::Maybe<ToolchainClosureRecord> closure = ToolchainClosureRecord::make(
       spec.targetSpecificationIdentity.asPtr(), spec.sysroot, spec.linkerKind,
-      spec.linkerAbsolutePath, ZC_REQUIRE_NONNULL(zc::mv(linkerDigest)), linkerContent.size(),
-      crtObjects.releaseAsArray(), defaultLibraries.releaseAsArray());
+      ZC_REQUIRE_NONNULL(linkerRecorded), ZC_REQUIRE_NONNULL(zc::mv(linkerDigest)),
+      linkerContent.size(), crtObjects.releaseAsArray(), defaultLibraries.releaseAsArray());
   if (closure == zc::none) {
     return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::ClosureRejected);
   }

@@ -41,23 +41,21 @@ zc::Array<uint8_t> targetIdentity() {
   return bytes.releaseAsArray();
 }
 
-// One search input record: a relative path to read plus the absolute path
-// recorded into the closure.
-ToolchainSearchInput input(LinkInputRole role, zc::StringPtr relativePath,
-                           zc::StringPtr recordedPath) {
-  return ToolchainSearchInput{role, zc::str(relativePath), zc::str(recordedPath)};
+// One search input record: a single sysroot-relative path that drives both the
+// read/digest and the derived recorded path.
+ToolchainSearchInput input(LinkInputRole role, zc::StringPtr relativePath) {
+  return ToolchainSearchInput{role, zc::str(relativePath)};
 }
 
 // A well-formed ELF search spec naming a linker driver, one CRT object, and one
-// default library, all as paths relative to the search root.
+// default library, all as paths relative to the sysroot (== the search root).
 ToolchainSearchSpec elfSpec() {
   zc::Vector<ToolchainSearchInput> inputs(2);
-  inputs.add(input(LinkInputRole::CrtObject, "lib/crt1.o"_zc, "/opt/zom/sysroot/lib/crt1.o"_zc));
-  inputs.add(
-      input(LinkInputRole::DefaultLibrary, "lib/libc.a"_zc, "/opt/zom/sysroot/lib/libc.a"_zc));
-  return ToolchainSearchSpec{
-      targetIdentity(),  zc::str("/opt/zom/sysroot"),        LinkerDriverKind::ElfDriver,
-      zc::str("bin/ld"), zc::str("/opt/zom/sysroot/bin/ld"), inputs.releaseAsArray()};
+  inputs.add(input(LinkInputRole::CrtObject, "lib/crt1.o"_zc));
+  inputs.add(input(LinkInputRole::DefaultLibrary, "lib/libc.a"_zc));
+  return ToolchainSearchSpec{targetIdentity(), zc::str("/opt/zom/sysroot"),
+                             LinkerDriverKind::ElfDriver, zc::str("bin/ld"),
+                             inputs.releaseAsArray()};
 }
 
 // Writes `contents` at `relativePath` under `dir`, creating parents.
@@ -154,23 +152,37 @@ ZC_TEST("Toolchain discovery rejects a wrong input role as InvalidInputRole") {
   zc::Vector<ToolchainSearchInput> inputs(1);
   // ObjectArtifact is not a valid closure input role (only CrtObject /
   // DefaultLibrary are); discovery must reject it.
-  inputs.add(
-      input(LinkInputRole::ObjectArtifact, "lib/crt1.o"_zc, "/opt/zom/sysroot/lib/crt1.o"_zc));
+  inputs.add(input(LinkInputRole::ObjectArtifact, "lib/crt1.o"_zc));
   spec.inputs = inputs.releaseAsArray();
   ToolchainDiscoveryResult result = discoverToolchain(*root, spec);
   ZC_ASSERT(!result.ok());
   ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::InvalidInputRole);
 }
 
-ZC_TEST("Toolchain discovery rejects a non-absolute linker path as ClosureRejected") {
+ZC_TEST("Toolchain discovery records the derived sysroot-relative path, not a caller path") {
+  // The recorded/executed paths are derived from sysroot + relativePath, so the
+  // digested file and the recorded path always name the same object. There is no
+  // caller-supplied independent recorded path that could point elsewhere.
+  auto root = completeRoot();
+  ToolchainDiscoveryResult result = discoverToolchain(*root, elfSpec());
+  ZC_ASSERT(result.ok());
+  const ToolchainClosureRecord& closure = result.closure();
+  ZC_EXPECT(closure.linkerPath() == "/opt/zom/sysroot/bin/ld"_zc);
+  ZC_ASSERT(closure.crtObjects().size() == 1u);
+  ZC_EXPECT(closure.crtObjects()[0].path() == "/opt/zom/sysroot/lib/crt1.o"_zc);
+  ZC_ASSERT(closure.defaultLibraries().size() == 1u);
+  ZC_EXPECT(closure.defaultLibraries()[0].path() == "/opt/zom/sysroot/lib/libc.a"_zc);
+}
+
+ZC_TEST("Toolchain discovery rejects an absolute input relative path as MalformedSpec") {
+  // A relative path must not begin with '/'; an absolute one cannot be safely
+  // joined to the sysroot and is rejected before any read.
   auto root = completeRoot();
   ToolchainSearchSpec spec = elfSpec();
-  // A relative recorded linker path passes the presence check but fails the
-  // final ToolchainClosureRecord::make absolute-path invariant.
-  spec.linkerAbsolutePath = zc::str("relative/ld");
+  spec.linkerRelativePath = zc::str("/etc/evil-ld");
   ToolchainDiscoveryResult result = discoverToolchain(*root, spec);
   ZC_ASSERT(!result.ok());
-  ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::ClosureRejected);
+  ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::MalformedSpec);
 }
 
 ZC_TEST("Toolchain closure format check matches ELF host and rejects others") {
