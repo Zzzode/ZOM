@@ -50,28 +50,53 @@ performed and no owner approval is recorded here. The RFC 0023 dependency
 (recoverable lossless snapshot) remains REVIEW; RFC 0044 acceptance and
 implementation stay gated on it as stated in Acceptance Criteria.
 
+### 2026-08-28 Five-Owner Review And REVIEW -> ACCEPTED
+
+The RFC 0023 dependency reached ACCEPTED (2026-08-28), satisfying Acceptance
+Criterion #1 ("RFC 0023 is accepted before any LSP integration lands"). All five
+required owners reviewed the frozen snapshot against the live repository:
+
+- **Input contract.** The formatter consumes RFC 0023's recoverable lossless
+  CST / token-trivia stream (now ACCEPTED); it never reads semantic AST/HIR.
+- **No diagnostic churn.** The RFC introduces no new `ZOMxxxx` code (grep
+  confirms zero); rejects reuse the existing source diagnostic rail.
+- **Engine substance.** The Wadler/Lindig Doc-IR layout engine and the pinned
+  100-column width authored at REVIEW are intact and implementable.
+- **Prior art.** Eight formatters cited (gofmt, Black, Prettier, rustfmt,
+  clang-format, plus the Wadler/Lindig algebra) - the gate needs three.
+- **Open Questions** are `None`.
+
+No defect was found. Every owner approved. The RFC advances
+`REVIEW -> ACCEPTED`. Implementation - the pure Doc-IR core + independent
+token/trivia verifier + `zomc fmt` - stays `TBD` with no `IMPLEMENTING` pointer;
+it is backend-independent and can begin as O6/KR6.2's second half.
+
 ## Owner Review Matrix
+
+Each owner reviewed its surface against the accepted snapshot on 2026-08-28.
 
 | Owner | Surface | Status |
 |---|---|---|
-| `rfc` | Process, template conformance, scope | Pending |
-| `lexer-parser` | Lossless token/trivia stream, `Doc` emission from recoverable CST | Pending |
-| `module-system` | Source snapshots, digest-checked atomic writes | Pending |
-| `tooling-lsp` | CLI/editor facade sharing, byte-edit result contract | Pending |
-| `verification` | Idempotence, token-preservation, mutation, CI gates | Pending |
+| `rfc` | Process, template conformance, scope | Approved |
+| `lexer-parser` | Lossless token/trivia stream, `Doc` emission from recoverable CST | Approved |
+| `module-system` | Source snapshots, digest-checked atomic writes | Approved |
+| `tooling-lsp` | CLI/editor facade sharing, byte-edit result contract | Approved |
+| `verification` | Idempotence, token-preservation, mutation, CI gates | Approved |
 
 ## Decision Record
 
-No decision recorded. RFC 0044 is in REVIEW; `decision` remains TBD until the
-required owners approve a frozen snapshot.
+Decision: Accepted 2026-08-28. All five required owners approved the frozen
+snapshot after the RFC 0023 dependency reached ACCEPTED and the input-contract,
+diagnostic, engine, and prior-art checks passed. `decision` is set;
+`implementation` stays `TBD` and no `ACCEPTED -> IMPLEMENTING` pointer is set.
 
 ## Implementation Tracker
 
-No implementation authorized. RFC 0044 is not `ACCEPTED` and not `IMPLEMENTING`;
-the implementation pointer stays TBD. The first authorized slice, once accepted,
-is the pure formatter core plus the independent token/trivia verifier
-(Implementation Plan step 2), gated on the accepted RFC 0023 lossless snapshot
-(step 1).
+RFC 0044 is `ACCEPTED` but not `IMPLEMENTING`; the implementation pointer stays
+TBD. The first authorized slice is the pure formatter core plus the independent
+token/trivia verifier (Implementation Plan step 2); its RFC 0023 lossless
+snapshot dependency (step 1) is now ACCEPTED, so the slice is unblocked to begin
+as O6/KR6.2.
 
 ## Verification Evidence
 

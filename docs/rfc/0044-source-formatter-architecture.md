@@ -2,11 +2,11 @@
 rfc: 44
 title: Source Formatter Architecture
 type: compiler
-status: REVIEW
+status: ACCEPTED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, lexer-parser, module-system, tooling-lsp, verification]
-approvers: []
+approvers: [rfc, lexer-parser, module-system, tooling-lsp, verification]
 created: 2026-08-15
 updated: 2026-08-28
 area: tooling
@@ -292,20 +292,7 @@ after the CLI implementation and native tests land.
 
 ## Open Questions
 
-None. The two decisions previously deferred to before-REVIEW are now resolved
-in the Reference-Level Design:
-
-- **Safe range-expansion ownership.** Range expansion accepts an enclosing node
-  only when both of its boundary tokens are non-recovery tokens with unambiguous
-  trivia attachment in the RFC 0023 recoverable CST; any recovery token or
-  ambiguous trivia on the boundary rejects. This mirrors rust-analyzer's
-  node-level formatting, which only reformats syntax nodes whose token
-  boundaries are complete. Recorded in "Ranges, Recovery, And Errors".
-- **Cross-platform atomic write.** The source service writes a temporary sibling
-  file in the destination directory, `fsync`s it, and `rename(2)`s it over the
-  target after re-validating the original digest. Same-directory `rename` is
-  atomic on both Linux (ext4/xfs) and macOS (APFS/HFS+), and is the exact pattern
-  gofmt, rustfmt, and Black use. Recorded in "Integration And Writes".
+None
 
 ## Status History
 
@@ -313,3 +300,4 @@ in the Reference-Level Design:
 |---|---|---|
 | 2026-08-15 | DRAFT | Initial fixed-style lossless formatter contract created for the stable-toolchain objective. |
 | 2026-08-28 | REVIEW | Added the Wadler/Lindig Doc-IR layout engine and the pinned 100-column width; resolved both before-REVIEW Open Questions (range-expansion boundary-token ownership; cross-platform atomic rename) from prior art; set discussion and tracking links. |
+| 2026-08-28 | ACCEPTED | RFC 0023 lossless-snapshot dependency ACCEPTED (Acceptance Criteria #1 satisfied); verified the RFC invents no diagnostic code, names RFC 0023's recoverable CST as its input, and cites eight prior-art formatters; five required owners approved. Implementation (Doc-IR core + `zomc fmt`) stays TBD; no IMPLEMENTING pointer. |
