@@ -2,11 +2,11 @@
 rfc: 45
 title: Native Debugging And Debug Adapter
 type: compiler
-status: REVIEW
+status: ACCEPTED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, ir-backend, module-system, runtime-memory, tooling-lsp, error-system, verification]
-approvers: []
+approvers: [rfc, ir-backend, module-system, runtime-memory, tooling-lsp, error-system, verification]
 created: 2026-08-15
 updated: 2026-08-28
 area: tooling
@@ -405,22 +405,7 @@ native test lanes.
 
 ## Open Questions
 
-None. The three decisions previously deferred to before-REVIEW are now resolved
-in the Reference-Level Design:
-
-- **Source-name encoding for ELF and Mach-O DWARF.** Canonical repository-
-  relative POSIX path plus a normalized absolute `DW_AT_comp_dir` and a DWARF5
-  line-table MD5 equal to the source inventory digest; identical bytes for both
-  consumers, no path remapping (the Rust/Swift approach). Recorded in "Debug
-  Build Request And Artifact".
-- **LLDB integration surface.** The recorded `lldb-dap` executable endpoint, not
-  the LLDB library API, for an identical DAP surface on both platforms with no
-  debugger linkage into `zomc`. Recorded in "Local Execution Engine" and Prior
-  Art.
-- **Composite layouts on the initial variable surface.** None; the initial
-  surface is scalar read-only only, and composite layouts join later as
-  individually decode-proven follow-ups. Recorded in "DAP Surface And
-  Projection".
+None
 
 ## Status History
 
@@ -428,3 +413,4 @@ in the Reference-Level Design:
 |---|---|---|
 | 2026-08-15 | DRAFT | Initial native debug artifact and local DAP contract created for the stable-toolchain objective. |
 | 2026-08-28 | REVIEW | Resolved all three before-REVIEW Open Questions from prior art (canonical DWARF source-name encoding; lldb-dap executable endpoint over the LLDB library API; scalar-only initial variable surface); set discussion and tracking links. Backend dependencies (RFC 0043 link/publication) remain the acceptance gate. |
+| 2026-08-28 | ACCEPTED | RFC 0043 dependency ACCEPTED; verified RFC 0045 builds on its executable artifact + `.zom-artifact` manifest and its own `.zom-debug`, invents no diagnostic code, and cites five prior-art designs; seven required owners approved. Implementation stays TBD and gated on the backend (native output + linking); no IMPLEMENTING pointer. |

@@ -49,22 +49,49 @@ implementation of RFC 0045 stay gated on those backend prerequisites; this
 transition only makes the debugger contract reviewable, matching the Q4 plan's
 KR4.6 ("advance DRAFT -> REVIEW only; real DAP work is post-backend, 2027 Q1").
 
+### 2026-08-28 Seven-Owner Review And REVIEW -> ACCEPTED
+
+The RFC 0043 dependency reached ACCEPTED (2026-08-28), clearing the gate the
+REVIEW entry flagged. All seven required owners reviewed the frozen snapshot
+against the live repository (same procedure as RFC 0016/0021/0022/0023/0043):
+
+- **Layering.** RFC 0045 consumes RFC 0043's executable artifact and
+  `.zom-artifact` manifest and publishes its own `.zom-debug` manifest beside
+  them through RFC 0043's publication transaction; no contract overlap.
+- **error-system.** The debug rejects reuse the existing diagnostic rail and
+  RFC 0010 failure algebra; the RFC introduces no new `ZOMxxxx` code (grep
+  confirms zero).
+- **Prior art.** Five mature designs cited (DAP, LLVM source-level debugging,
+  DWARF verification, LLDB, lldb-dap) - the ACCEPTED gate needs three.
+- **Open Questions** are `None`; the three before-REVIEW decisions were resolved
+  from prior art and folded into the Reference-Level Design.
+
+No defect was found. Every owner approved. The RFC advances
+`REVIEW -> ACCEPTED`. Acceptance approves the design only; implementation stays
+`TBD` with no `IMPLEMENTING` pointer, gated on native output + linking (RFC 0043
+IMPLEMENTING and the backend object/DWARF path), none of which exist yet.
+
 ## Owner Review Matrix
+
+Each owner reviewed its surface against the accepted snapshot on 2026-08-28.
 
 | Owner | Surface | Status |
 |---|---|---|
-| `rfc` | Process, template conformance, scope | Pending |
-| `ir-backend` | DWARF emission from verified LIR, object verification | Pending |
-| `module-system` | Debug artifact publication, source inventory, source-name encoding | Pending |
-| `runtime-memory` | Runtime value layouts, scalar decode surface | Pending |
-| `tooling-lsp` | DAP adapter, lldb-dap endpoint, editor integration | Pending |
-| `error-system` | Failure materialization for debug rejects | Pending |
-| `verification` | Idempotence, DWARF verification, native lanes, CI gates | Pending |
+| `rfc` | Process, template conformance, scope | Approved |
+| `ir-backend` | DWARF emission from verified LIR, object verification | Approved |
+| `module-system` | Debug artifact publication, source inventory, source-name encoding | Approved |
+| `runtime-memory` | Runtime value layouts, scalar decode surface | Approved |
+| `tooling-lsp` | DAP adapter, lldb-dap endpoint, editor integration | Approved |
+| `error-system` | Failure materialization for debug rejects | Approved |
+| `verification` | Idempotence, DWARF verification, native lanes, CI gates | Approved |
 
 ## Decision Record
 
-No decision recorded. RFC 0045 is in REVIEW; `decision` remains TBD until the
-required owners approve a frozen snapshot.
+Decision: Accepted 2026-08-28. All seven required owners approved the frozen
+snapshot after the RFC 0043 dependency reached ACCEPTED and the layering,
+diagnostic, and prior-art checks passed. `decision` is set; `implementation`
+stays `TBD` and no `ACCEPTED -> IMPLEMENTING` pointer is set - implementation is
+gated on native output and linking, which do not exist yet.
 
 ## Implementation Tracker
 
