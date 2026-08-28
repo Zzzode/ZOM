@@ -1,0 +1,57 @@
+// Copyright (c) 2026 Zode.Z. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and limitations under
+// the License.
+
+#pragma once
+
+#include "compiler/cst/lexeme-codec.h"
+#include "compiler/lexer/token.h"
+#include "zc/core/array.h"
+#include "zc/core/common.h"
+
+namespace zomlang::compiler::cst {
+
+/// \brief Builds a verified lexeme stream from the live lexer's token output over
+/// one source buffer.
+///
+/// RFC 0023 "Recoverable Parsing": the recoverable CST is built from one closed
+/// lexeme stream that covers every source byte. The current lexer emits only
+/// significant tokens (and a zero-width end-of-file token), skipping the trivia
+/// bytes between them. This bridge reconstructs the exact byte partition RFC 0023
+/// requires by walking the significant tokens in source order, emitting one
+/// `Token` lexeme per significant token and one `Trivia` lexeme for each
+/// inter-token byte gap and any trailing gap, then verifying the result through
+/// `LexemePartitionVerifier`.
+///
+/// This is the first bridge from the live lexer to a verified lexeme stream. It
+/// does not yet build parser events, a `RecoverableSyntaxTree`, or replace
+/// `ast::Tree` construction; those are later RFC 0023 slices.
+///
+/// Trivia sub-kind note: each inter-token gap is emitted as a single
+/// `TriviaKind::Whitespace` lexeme even when it contains comments, because the
+/// lexer does not retain a comment/whitespace boundary in its token output. The
+/// partition and byte-reconstruction invariants hold regardless; splitting a gap
+/// into precise whitespace and comment lexemes is a later refinement.
+///
+/// \param bufferBytes The entire source buffer, as returned by
+///        `SourceManager::getEntireTextForBuffer`.
+/// \param tokens The lexer's buffered token output for that buffer, including the
+///        trailing end-of-file token. Token byte offsets are computed against
+///        `bufferBytes.begin()`.
+/// \return A verified lexeme stream, or the `LexemePartitionFailure` that a
+///         malformed token range produced (a token outside the buffer, an
+///         out-of-order token, or a byte-count mismatch fails closed).
+ZC_NODISCARD LexemeStreamResult buildLexemeStreamFromTokens(
+    zc::ArrayPtr<const zc::byte> bufferBytes, zc::ArrayPtr<const lexer::Token> tokens);
+
+}  // namespace zomlang::compiler::cst
