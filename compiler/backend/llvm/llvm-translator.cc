@@ -97,7 +97,12 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
   auto isSupportedShape = [](const lir::LirFunction& candidate) -> bool {
     const auto candidateBlocks = candidate.blocks();
     if (candidateBlocks.size() == 1) {
-      return candidateBlocks[0].terminator().kind() == lir::LirTerminatorKind::ReturnInteger;
+      // A single-block function either returns an integer constant (scalar
+      // initializer / constant-return callee) or returns a local slot (a
+      // one-parameter callee that returns its parameter).
+      const auto kind = candidateBlocks[0].terminator().kind();
+      return kind == lir::LirTerminatorKind::ReturnInteger ||
+             kind == lir::LirTerminatorKind::ReturnLocal;
     }
     if (candidateBlocks.size() < 2) { return false; }
     const auto entryKind = candidateBlocks[0].terminator().kind();
@@ -293,12 +298,19 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
           break;
         }
         case lir::LirTerminatorKind::Call: {
-          // Zero-argument call to a module-local defined function; store the
-          // integer result into the destination slot, then branch to the normal
-          // target.
+          // Call a module-local defined function, optionally passing one
+          // integer-constant argument; store the integer result into the
+          // destination slot, then branch to the normal target.
           ::llvm::Function* callee = llvmFunctions[terminator.calleeIndex()];
-          auto* callResult =
-              ::llvm::CallInst::Create(callee->getFunctionType(), callee, "call", target);
+          zc::Vector<::llvm::Value*> callArgs;
+          if (terminator.callHasArgument()) {
+            auto* argType = integerType(terminator.callArgument().carrier().integerWidth());
+            callArgs.add(::llvm::ConstantInt::get(argType, terminator.callArgument().bits(),
+                                                  /*IsSigned=*/false));
+          }
+          ::llvm::ArrayRef<::llvm::Value*> callArgsRef(callArgs.begin(), callArgs.size());
+          auto* callResult = ::llvm::CallInst::Create(callee->getFunctionType(), callee,
+                                                      callArgsRef, "call", target);
           auto* destination = slotFor(terminator.callDestinationOrdinal());
           new ::llvm::StoreInst(callResult, destination, /*isVolatile=*/false, target);
           ::llvm::BranchInst::Create(blockFor(terminator.callNormalTarget()), target);

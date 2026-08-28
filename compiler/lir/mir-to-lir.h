@@ -126,6 +126,27 @@ public:
   ZC_NODISCARD static zc::Maybe<LirModule> lowerCallModule(
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
+
+  /// \brief Lowers one same-module direct call passing a single integer-constant
+  /// argument to a one-parameter callee that returns that parameter.
+  ///
+  /// Admits a caller that is the two-block Call+Return shape whose call carries
+  /// exactly one integer-constant argument (destination is the caller's result
+  /// local), together with a callee of the `mir::validParameterReturnFunction`
+  /// single-parameter shape (one Parameter local, one block returning a place-use
+  /// of that parameter). Both functions are defined in the emitted module; the
+  /// caller's `Call` targets the module-local callee and threads the argument.
+  /// Every shape outside this slice returns `none`. This is the first
+  /// argument-carrying call lowering (RFC 0021 KR5.2); wider argument vectors and
+  /// non-constant arguments are later steps.
+  ///
+  /// \param caller Verified caller MIR function (two-block Call+Return, one arg).
+  /// \param callee Verified callee MIR function (single-parameter return shape).
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered two-function LIR module, or none when outside the slice.
+  ZC_NODISCARD static zc::Maybe<LirModule> lowerCallModuleWithArgument(
+      const mir::MirFunction& caller, const mir::MirFunction& callee,
+      const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::lir

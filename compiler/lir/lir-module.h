@@ -172,9 +172,16 @@ public:
   ZC_NODISCARD static LirTerminator returnLocal(uint32_t localOrdinal) noexcept;
   /// \brief Builds a call terminator: call a module-local function (by zero-based
   /// index), store its integer result into `destinationOrdinal`, then branch to
-  /// `normalTarget`. This slice supports only a zero-argument call.
+  /// `normalTarget`. This form passes no arguments.
   ZC_NODISCARD static LirTerminator callFunction(uint32_t calleeIndex, uint32_t destinationOrdinal,
                                                  LirBlockId normalTarget) noexcept;
+  /// \brief Builds a call terminator that passes one integer-constant argument.
+  /// Otherwise identical to `callFunction`. This is the first argument-carrying
+  /// call shape (RFC 0021 KR5.2); wider argument vectors are later steps.
+  ZC_NODISCARD static LirTerminator callFunctionWithArgument(uint32_t calleeIndex,
+                                                             uint32_t destinationOrdinal,
+                                                             LirIntegerConstant argument,
+                                                             LirBlockId normalTarget) noexcept;
 
   ZC_NODISCARD LirTerminatorKind kind() const noexcept { return kindValue; }
   ZC_NODISCARD const LirIntegerConstant& returnIntegerValue() const noexcept {
@@ -188,6 +195,10 @@ public:
   ZC_NODISCARD uint32_t calleeIndex() const noexcept { return calleeIndexValue; }
   ZC_NODISCARD uint32_t callDestinationOrdinal() const noexcept { return localOrdinalValue; }
   ZC_NODISCARD LirBlockId callNormalTarget() const noexcept { return trueTargetValue; }
+  /// \brief True when a Call terminator passes one integer-constant argument.
+  ZC_NODISCARD bool callHasArgument() const noexcept { return callHasArgumentValue; }
+  /// \brief The single integer-constant call argument; valid when callHasArgument().
+  ZC_NODISCARD const LirIntegerConstant& callArgument() const noexcept { return integerValue; }
 
 private:
   explicit LirTerminator(LirIntegerConstant value) noexcept
@@ -205,6 +216,14 @@ private:
         localOrdinalValue(destinationOrdinal),
         trueTargetValue(normalTarget),
         calleeIndexValue(calleeIndex) {}
+  LirTerminator(uint32_t calleeIndex, uint32_t destinationOrdinal, LirIntegerConstant argument,
+                LirBlockId normalTarget) noexcept
+      : kindValue(LirTerminatorKind::Call),
+        integerValue(argument),
+        localOrdinalValue(destinationOrdinal),
+        trueTargetValue(normalTarget),
+        calleeIndexValue(calleeIndex),
+        callHasArgumentValue(true) {}
 
   ZC_NODISCARD static LirIntegerConstant fallbackConstant() noexcept;
 
@@ -214,6 +233,7 @@ private:
   LirBlockId trueTargetValue;
   LirBlockId falseTargetValue;
   uint32_t calleeIndexValue = 0;
+  bool callHasArgumentValue = false;
 };
 
 /// \brief One immutable LIR basic block: an identity, statements, a terminator.

@@ -73,4 +73,11 @@ LirTerminator LirTerminator::callFunction(uint32_t calleeIndex, uint32_t destina
   return LirTerminator(calleeIndex, destinationOrdinal, normalTarget);
 }
 
+LirTerminator LirTerminator::callFunctionWithArgument(uint32_t calleeIndex,
+                                                      uint32_t destinationOrdinal,
+                                                      LirIntegerConstant argument,
+                                                      LirBlockId normalTarget) noexcept {
+  return LirTerminator(calleeIndex, destinationOrdinal, argument, normalTarget);
+}
+
 }  // namespace zomlang::compiler::lir
