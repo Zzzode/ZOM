@@ -90,13 +90,17 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
   }
   const auto blocks = function.blocks();
   // Two shapes are supported: the single-block integer-constant return (the
-  // scalar-initializer slice) and the four-block boolean-conditional diamond.
+  // scalar-initializer slice) and a multi-block control-flow function with one
+  // boolean parameter and one integer result local (the conditional diamond and
+  // the reducible while-loop), whose entry begins the CFG with a Goto or a
+  // conditional branch.
   const bool singleBlockReturn =
       blocks.size() == 1 && blocks[0].terminator().kind() == lir::LirTerminatorKind::ReturnInteger;
-  const bool conditionalDiamond =
-      blocks.size() == 4 && blocks[0].terminator().kind() == lir::LirTerminatorKind::CondBranch &&
-      function.parameters().size() == 1 && function.locals().size() == 1;
-  if (!singleBlockReturn && !conditionalDiamond) {
+  const bool multiBlockCfg = blocks.size() >= 2 && function.parameters().size() == 1 &&
+                             function.locals().size() == 1 &&
+                             (blocks[0].terminator().kind() == lir::LirTerminatorKind::CondBranch ||
+                              blocks[0].terminator().kind() == lir::LirTerminatorKind::Goto);
+  if (!singleBlockReturn && !multiBlockCfg) {
     return LlvmTranslationResult::failure(
         zc::heapString("LIR function is outside the supported translation shapes"));
   }
@@ -147,9 +151,12 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
         ::llvm::ConstantInt::get(returnType, returnConstant.bits(), /*IsSigned=*/false);
     ::llvm::ReturnInst::Create(*context, value, entryBlock);
   } else {
-    // Four-block boolean-conditional diamond. The one parameter is the i1
-    // discriminant; the one local is the integer result, materialized by an
-    // alloca in the entry block, stored in each arm, and loaded at the join.
+    // Generic multi-block control-flow function with one boolean parameter and
+    // one integer result local, materialized by an alloca in the entry block,
+    // stored by each block's Assign statements, and loaded by a ReturnLocal.
+    // This lowers any reducible CFG built from Goto / CondBranch / ReturnLocal
+    // terminators (the four-block conditional diamond and the reducible
+    // while-loop), keeping the RFC 0021 faithful block-by-block translation.
     const uint32_t paramBits = bitCountFor(function.parameters()[0].carrier().integerWidth());
     ::llvm::IntegerType* paramType = ::llvm::Type::getIntNTy(*context, paramBits);
     ::llvm::IntegerType* resultType = ::llvm::Type::getIntNTy(
@@ -162,36 +169,52 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
                                  function.symbolName().cStr(), llvmModule.get());
     ::llvm::Argument* condArgument = llvmFunction->getArg(0);
 
-    // Create the four blocks in deterministic order (entry, then, else, join).
-    ::llvm::BasicBlock* entryBlock = ::llvm::BasicBlock::Create(*context, "entry", llvmFunction);
-    ::llvm::BasicBlock* thenBlock = ::llvm::BasicBlock::Create(*context, "then", llvmFunction);
-    ::llvm::BasicBlock* elseBlock = ::llvm::BasicBlock::Create(*context, "else", llvmFunction);
-    ::llvm::BasicBlock* joinBlock = ::llvm::BasicBlock::Create(*context, "join", llvmFunction);
+    // Pass 1: create one LLVM block per LIR block, indexed by one-based ordinal,
+    // in deterministic declaration order. The alloca for the result slot lives in
+    // the first block.
+    zc::Vector<::llvm::BasicBlock*> llvmBlocks;
+    for (size_t index = 0; index < blocks.size(); ++index) {
+      llvmBlocks.add(::llvm::BasicBlock::Create(*context, "bb", llvmFunction));
+    }
+    auto blockFor = [&](lir::LirBlockId id) -> ::llvm::BasicBlock* {
+      const uint32_t ordinal = id.ordinal();
+      // Block ordinals are one-based and dense (1..blocks.size()).
+      return llvmBlocks[ordinal - 1];
+    };
+    auto* resultSlot = new ::llvm::AllocaInst(resultType, /*AddrSpace=*/0, "result", llvmBlocks[0]);
 
-    // Entry: alloca the result slot, then conditional branch on the i1 parameter.
-    // A CondBranch's condition is the sole parameter (an i1); LLVM `br i1` selects
-    // the true/false successor. StorageLive maps to the alloca.
-    auto* resultSlot = new ::llvm::AllocaInst(resultType, /*AddrSpace=*/0, "result", entryBlock);
-    ::llvm::BranchInst::Create(thenBlock, elseBlock, condArgument, entryBlock);
-
-    // A helper that emits an arm's assign statements as stores into the slot and
-    // then an unconditional branch to the join. This slice's arms assign integer
-    // constants only.
-    auto emitArm = [&](const lir::LirBasicBlock& source, ::llvm::BasicBlock* target) {
+    // Pass 2: emit each block's Assign statements as stores into the slot, then
+    // its terminator.
+    for (size_t index = 0; index < blocks.size(); ++index) {
+      const auto& source = blocks[index];
+      ::llvm::BasicBlock* target = llvmBlocks[index];
       for (const auto& statement : source.statements()) {
-        const auto& operand = statement.value();
-        ::llvm::Value* stored = ::llvm::ConstantInt::get(resultType, operand.constantValue().bits(),
-                                                         /*IsSigned=*/false);
+        ::llvm::Value* stored = ::llvm::ConstantInt::get(
+            resultType, statement.value().constantValue().bits(), /*IsSigned=*/false);
         new ::llvm::StoreInst(stored, resultSlot, /*isVolatile=*/false, target);
       }
-      ::llvm::BranchInst::Create(joinBlock, target);
-    };
-    emitArm(blocks[1], thenBlock);
-    emitArm(blocks[2], elseBlock);
-
-    // Join: load the result slot and return it.
-    auto* loaded = new ::llvm::LoadInst(resultType, resultSlot, "value", joinBlock);
-    ::llvm::ReturnInst::Create(*context, loaded, joinBlock);
+      const auto& terminator = source.terminator();
+      switch (terminator.kind()) {
+        case lir::LirTerminatorKind::Goto:
+          ::llvm::BranchInst::Create(blockFor(terminator.gotoTarget()), target);
+          break;
+        case lir::LirTerminatorKind::CondBranch:
+          ::llvm::BranchInst::Create(blockFor(terminator.condTrueTarget()),
+                                     blockFor(terminator.condFalseTarget()), condArgument, target);
+          break;
+        case lir::LirTerminatorKind::ReturnLocal: {
+          auto* loaded = new ::llvm::LoadInst(resultType, resultSlot, "value", target);
+          ::llvm::ReturnInst::Create(*context, loaded, target);
+          break;
+        }
+        case lir::LirTerminatorKind::ReturnInteger: {
+          ::llvm::Constant* value = ::llvm::ConstantInt::get(
+              resultType, terminator.returnIntegerValue().bits(), /*IsSigned=*/false);
+          ::llvm::ReturnInst::Create(*context, value, target);
+          break;
+        }
+      }
+    }
   }
 
   // 10. Run mandatory LLVM module verification.

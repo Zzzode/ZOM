@@ -315,4 +315,139 @@ zc::Maybe<LirModule> MirToLirLowering::lowerConditionalReturn(
   return LirModule(zc::mv(functions));
 }
 
+zc::Maybe<LirModule> MirToLirLowering::lowerLoopReturn(
+    const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
+  // Admit only the verified reducible four-block while-loop return shape,
+  // re-checking the structure that mir::validLoopReturnFunction validated. This
+  // slice handles exactly one boolean parameter and one result local.
+  if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 2 || function.blocks.size() != 4) {
+    return zc::none;
+  }
+
+  const auto& parameter = function.locals[0];
+  const auto& result = function.locals[1];
+  if (parameter.kind != mir::MirLocalKind::Parameter ||
+      result.kind != mir::MirLocalKind::FunctionResult || result.type != function.resultType) {
+    return zc::none;
+  }
+
+  auto parameterCarrier = boolCarrierFor(parameter.type, semanticTypes);
+  if (parameterCarrier == zc::none) { return zc::none; }
+  auto resultCarrier = integerCarrierFor(function.resultType, semanticTypes);
+  if (resultCarrier == zc::none) { return zc::none; }
+  const auto resultCarrierValue = ZC_REQUIRE_NONNULL(resultCarrier);
+
+  const uint32_t parameterOrdinal = parameter.id.ordinal();
+  const uint32_t resultOrdinal = result.id.ordinal();
+
+  const auto& entry = function.blocks[0];
+  const auto& header = function.blocks[1];
+  const auto& body = function.blocks[2];
+  const auto& exit = function.blocks[3];
+
+  // Entry: StorageLive(result); Goto(header).
+  if (entry.statements.size() != 1 ||
+      entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != result.id ||
+      entry.terminator.kind() != mir::MirTerminatorKind::Goto ||
+      entry.terminator.gotoValue().target != header.id) {
+    return zc::none;
+  }
+
+  // Header: no statements; SwitchInt(bool param) [true -> body], default = exit.
+  if (header.statements.size() != 0 ||
+      header.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+    return zc::none;
+  }
+  const auto& switchInt = header.terminator.switchIntValue();
+  if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
+      switchInt.discriminant.place().local() != parameter.id ||
+      switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 1 ||
+      switchInt.arms[0].target != body.id || switchInt.defaultTarget != exit.id) {
+    return zc::none;
+  }
+
+  // Body: no statements; Goto(header) reducible back-edge.
+  if (body.statements.size() != 0 || body.terminator.kind() != mir::MirTerminatorKind::Goto ||
+      body.terminator.gotoValue().target != header.id) {
+    return zc::none;
+  }
+
+  // Exit: Assign(result = integer literal); Return(place-use result).
+  if (exit.statements.size() != 1 || exit.statements[0].kind() != mir::MirStatementKind::Assign ||
+      exit.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& assignment = exit.statements[0].assignmentValue();
+  if (assignment.destination.local() != result.id ||
+      assignment.destination.projections().size() != 0 ||
+      assignment.value.kind() != mir::MirRvalueKind::Use) {
+    return zc::none;
+  }
+  const auto& operand = assignment.value.useValue().operand;
+  if (operand.kind() != mir::MirOperandKind::Constant ||
+      operand.constantValue().type != function.resultType) {
+    return zc::none;
+  }
+  const auto integer = operand.constantValue().value.integerValue();
+  if (integer == zc::none) { return zc::none; }
+  auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), resultCarrierValue.integerWidth());
+  if (bits == zc::none) { return zc::none; }
+  auto exitConstant = LirIntegerConstant::from(resultCarrierValue, ZC_REQUIRE_NONNULL(bits));
+  if (exitConstant == zc::none) { return zc::none; }
+
+  const auto& returnValue = exit.terminator.returnValue().value;
+  if (returnValue == zc::none) { return zc::none; }
+  bool returnsResult = false;
+  ZC_IF_SOME(value, returnValue) {
+    returnsResult = value.kind() != mir::MirOperandKind::Constant &&
+                    value.place().local() == result.id && value.place().projections().size() == 0;
+  }
+  if (!returnsResult) { return zc::none; }
+
+  auto entryId = LirBlockId::fromOrdinal(1);
+  auto headerId = LirBlockId::fromOrdinal(2);
+  auto bodyId = LirBlockId::fromOrdinal(3);
+  auto exitId = LirBlockId::fromOrdinal(4);
+  if (entryId == zc::none || headerId == zc::none || bodyId == zc::none || exitId == zc::none) {
+    return zc::none;
+  }
+
+  zc::Vector<LirBasicBlock> blocks;
+  {
+    zc::Vector<LirStatement> none;
+    blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(none),
+                             LirTerminator::gotoBlock(ZC_REQUIRE_NONNULL(headerId))));
+  }
+  {
+    zc::Vector<LirStatement> none;
+    blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(headerId), zc::mv(none),
+                             LirTerminator::condBranch(parameterOrdinal, ZC_REQUIRE_NONNULL(bodyId),
+                                                       ZC_REQUIRE_NONNULL(exitId))));
+  }
+  {
+    zc::Vector<LirStatement> none;
+    blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(bodyId), zc::mv(none),
+                             LirTerminator::gotoBlock(ZC_REQUIRE_NONNULL(headerId))));
+  }
+  {
+    zc::Vector<LirStatement> exitStatements;
+    exitStatements.add(LirStatement::assign(
+        resultOrdinal, LirOperand::constant(ZC_REQUIRE_NONNULL(exitConstant))));
+    blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(exitId), zc::mv(exitStatements),
+                             LirTerminator::returnLocal(resultOrdinal)));
+  }
+
+  zc::Vector<LirLocal> parameters;
+  parameters.add(LirLocal(parameterOrdinal, ZC_REQUIRE_NONNULL(parameterCarrier)));
+  zc::Vector<LirLocal> locals;
+  locals.add(LirLocal(resultOrdinal, resultCarrierValue));
+
+  zc::Vector<LirFunction> functions;
+  functions.add(LirFunction(zc::heapString("zom.loop"), resultCarrierValue, zc::mv(parameters),
+                            zc::mv(locals), zc::mv(blocks)));
+  return LirModule(zc::mv(functions));
+}
+
 }  // namespace zomlang::compiler::lir
