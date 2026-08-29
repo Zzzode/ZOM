@@ -200,6 +200,47 @@ ZC_TEST("Toolchain discovery rejects an interior-dotdot and double-slash path") 
   ZC_EXPECT(b.failure() == ToolchainDiscoveryFailure::MalformedSpec);
 }
 
+ZC_TEST("Toolchain discovery rejects a linker path with an interior NUL") {
+  auto fixture = sysrootOf(completeRoot());
+  ToolchainSearchSpec spec = elfSpec();
+  spec.linkerRelativePath = zc::heapString("bin/l\0d", 7);
+  ToolchainDiscoveryResult result = discoverToolchain(fixture.sysroot, spec);
+  ZC_ASSERT(!result.ok());
+  ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::MalformedSpec);
+}
+
+ZC_TEST("Toolchain discovery validates every input path, not just the linker") {
+  // A malformed relative path on a CRT/library INPUT (traversal, NUL, or a
+  // trailing/leading segment) is rejected before any read, exactly like the
+  // linker path.
+  auto traversal = sysrootOf(completeRoot());
+  ToolchainSearchSpec spec = elfSpec();
+  zc::Vector<ToolchainSearchInput> inputs(1);
+  inputs.add(input(LinkInputRole::CrtObject, "../outside/crt1.o"_zc));
+  spec.inputs = inputs.releaseAsArray();
+  ToolchainDiscoveryResult a = discoverToolchain(traversal.sysroot, spec);
+  ZC_ASSERT(!a.ok());
+  ZC_EXPECT(a.failure() == ToolchainDiscoveryFailure::MalformedSpec);
+
+  auto withNul = sysrootOf(completeRoot());
+  ToolchainSearchSpec spec2 = elfSpec();
+  zc::Vector<ToolchainSearchInput> inputs2(1);
+  inputs2.add(ToolchainSearchInput{LinkInputRole::CrtObject, zc::heapString("lib/c\0o", 7)});
+  spec2.inputs = inputs2.releaseAsArray();
+  ToolchainDiscoveryResult b = discoverToolchain(withNul.sysroot, spec2);
+  ZC_ASSERT(!b.ok());
+  ZC_EXPECT(b.failure() == ToolchainDiscoveryFailure::MalformedSpec);
+
+  auto trailing = sysrootOf(completeRoot());
+  ToolchainSearchSpec spec3 = elfSpec();
+  zc::Vector<ToolchainSearchInput> inputs3(1);
+  inputs3.add(input(LinkInputRole::CrtObject, "lib/crt1.o/"_zc));
+  spec3.inputs = inputs3.releaseAsArray();
+  ToolchainDiscoveryResult c = discoverToolchain(trailing.sysroot, spec3);
+  ZC_ASSERT(!c.ok());
+  ZC_EXPECT(c.failure() == ToolchainDiscoveryFailure::MalformedSpec);
+}
+
 ZC_TEST("Toolchain discovery rejects a missing linker as LinkerNotFound") {
   auto dir = zc::newInMemoryDirectory(zc::nullClock());
   writeFile(*dir, "opt/zom/sysroot/lib/crt1.o"_zc, "CRT1-OBJECT"_zc);
