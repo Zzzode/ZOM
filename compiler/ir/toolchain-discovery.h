@@ -26,6 +26,49 @@
 
 namespace zomlang::compiler::ir {
 
+/// \brief A directory capability bound to its canonical absolute identity.
+///
+/// RFC 0043 toolchain discovery must not take a directory capability and a
+/// sysroot path string as two independent inputs: nothing would prove the bytes
+/// read from the capability are the bytes named by the recorded path. A
+/// `VerifiedSysroot` binds the two together - the open directory it reads from
+/// AND the canonical absolute path every recorded input path is derived from -
+/// so "the object read" and "the path recorded" cannot diverge by construction.
+///
+/// It is move-only and owns the open directory capability. The only constructor
+/// is the validating `open` factory.
+class VerifiedSysroot final {
+public:
+  VerifiedSysroot(VerifiedSysroot&&) noexcept = default;
+  VerifiedSysroot& operator=(VerifiedSysroot&&) noexcept = default;
+  ZC_DISALLOW_COPY(VerifiedSysroot);
+  ~VerifiedSysroot() noexcept = default;
+
+  /// \brief Opens the sysroot directory at `canonicalAbsolutePath` under `root`.
+  ///
+  /// \param root The filesystem root the canonical path is resolved under.
+  /// \param canonicalAbsolutePath A normalized absolute path (begins with '/',
+  ///        no '.'/'..'/empty segment); it is both opened and retained as the
+  ///        identity every recorded input path derives from.
+  /// \return The bound capability, or none when the path is not a normalized
+  ///         absolute path or the directory cannot be opened.
+  ZC_NODISCARD static zc::Maybe<VerifiedSysroot> open(const zc::ReadableDirectory& root,
+                                                      zc::StringPtr canonicalAbsolutePath);
+
+  /// \brief The canonical absolute identity every recorded path derives from.
+  ZC_NODISCARD zc::StringPtr identity() const noexcept { return identityValue; }
+
+  /// \brief The bound directory capability discovery reads inputs through.
+  ZC_NODISCARD const zc::ReadableDirectory& directory() const noexcept { return *directoryValue; }
+
+private:
+  VerifiedSysroot(zc::String&& identity, zc::Own<const zc::ReadableDirectory>&& directory) noexcept
+      : identityValue(zc::mv(identity)), directoryValue(zc::mv(directory)) {}
+
+  zc::String identityValue;
+  zc::Own<const zc::ReadableDirectory> directoryValue;
+};
+
 /// \brief One explicitly-supplied file the discovery step must resolve and digest.
 ///
 /// RFC 0043 forbids ambient toolchain discovery: every input is named up front
@@ -48,25 +91,20 @@ struct ToolchainSearchInput final {
 /// \brief The complete, explicit description of a toolchain to resolve.
 ///
 /// This is supplied by the caller (a target authority), never inferred from the
-/// host environment. `discover` reads only what this names, and every recorded
-/// absolute path is derived from `sysroot` plus a relative path, never supplied
+/// host environment. `discover` reads only what this names through the
+/// `VerifiedSysroot` capability, and every recorded absolute path is derived
+/// from that capability's identity plus a relative path, never supplied
 /// independently.
 struct ToolchainSearchSpec final {
   /// Canonical target specification identity bytes (non-empty).
   zc::Array<uint8_t> targetSpecificationIdentity;
 
-  /// The normalized absolute sysroot recorded into the produced closure. It is
-  /// also the root that every relative path (linker and inputs) resolves
-  /// against, so the search root passed to `discoverToolchain` must be this
-  /// sysroot directory.
-  zc::String sysroot;
-
   /// The single driver family for the target object format.
   LinkerDriverKind linkerKind;
 
   /// The linker driver program's path relative to the sysroot. It is read and
-  /// digested from the search root; the recorded absolute path the spawn step
-  /// executes is derived as sysroot + "/" + this path.
+  /// digested through the `VerifiedSysroot` capability; the recorded absolute
+  /// path the spawn step executes is derived as `sysroot.identity() + "/" + this`.
   zc::String linkerRelativePath;
 
   /// Ordered startup/finalization objects and default libraries to resolve.
@@ -134,16 +172,20 @@ private:
 
 /// \brief Resolves an explicitly-specified toolchain into a verified closure.
 ///
-/// RFC 0043 "Toolchain Discovery": reads exactly the files named by `spec`,
-/// relative to `searchRoot`, computes each file's SHA-256 digest and byte count,
-/// and assembles a validated `ToolchainClosureRecord`. It never searches PATH,
-/// reads the environment, or falls back to an ambient default; a host that does
-/// not supply the named files fails closed with the first violated reason.
+/// RFC 0043 "Toolchain Discovery": reads exactly the files named by `spec`
+/// through the `sysroot` capability, computes each file's SHA-256 digest and
+/// byte count, and assembles a validated `ToolchainClosureRecord`. It never
+/// searches PATH, reads the environment, or falls back to an ambient default; a
+/// host that does not supply the named files fails closed with the first
+/// violated reason. Every recorded absolute path is derived from
+/// `sysroot.identity()`, so the bytes read and the path recorded name the same
+/// object by construction.
 ///
-/// \param searchRoot The directory the spec's relative paths resolve against.
+/// \param sysroot The verified sysroot capability: the directory read from AND
+///        the canonical identity recorded paths derive from.
 /// \param spec The complete, explicit toolchain description.
 /// \return A validated closure, or the first violated discovery reason.
-ZC_NODISCARD ToolchainDiscoveryResult discoverToolchain(const zc::ReadableDirectory& searchRoot,
+ZC_NODISCARD ToolchainDiscoveryResult discoverToolchain(const VerifiedSysroot& sysroot,
                                                         const ToolchainSearchSpec& spec);
 
 /// \brief Independently re-checks that a discovered closure fits the host.

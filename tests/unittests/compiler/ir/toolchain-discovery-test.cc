@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// RFC 0043 O5/KR5.3 slice (Tier 1.2): prove host toolchain discovery reads only
-// the files an explicit spec names, digests each one, and assembles a validated
-// ToolchainClosureRecord - failing closed on every missing, empty, or
-// mis-declared input with no ambient PATH/environment fallback. The second gate,
-// verifyClosureMatchesHostFormat, independently rejects a cleanly-resolved
-// closure whose driver family does not match the running host's object format.
+// RFC 0043 O5/KR5.3 slice: prove host toolchain discovery reads only the files
+// an explicit spec names, THROUGH a VerifiedSysroot capability that binds the
+// read directory to its canonical identity, digests each one, and assembles a
+// validated ToolchainClosureRecord - failing closed on every missing, empty, or
+// mis-declared input with no ambient PATH/environment fallback and no divergent
+// read-root vs recorded-path. verifyClosureMatchesHostFormat is the second,
+// independent host-format gate.
 
 #include "compiler/ir/toolchain-discovery.h"
 
@@ -48,15 +49,17 @@ ToolchainSearchInput input(LinkInputRole role, zc::StringPtr relativePath) {
 }
 
 // A well-formed ELF search spec naming a linker driver, one CRT object, and one
-// default library, all as paths relative to the sysroot (== the search root).
+// default library, all as paths relative to the sysroot.
 ToolchainSearchSpec elfSpec() {
   zc::Vector<ToolchainSearchInput> inputs(2);
   inputs.add(input(LinkInputRole::CrtObject, "lib/crt1.o"_zc));
   inputs.add(input(LinkInputRole::DefaultLibrary, "lib/libc.a"_zc));
-  return ToolchainSearchSpec{targetIdentity(), zc::str("/opt/zom/sysroot"),
-                             LinkerDriverKind::ElfDriver, zc::str("bin/ld"),
+  return ToolchainSearchSpec{targetIdentity(), LinkerDriverKind::ElfDriver, zc::str("bin/ld"),
                              inputs.releaseAsArray()};
 }
+
+// The canonical sysroot absolute path every fixture uses.
+constexpr zc::StringPtr kSysrootPath = "/opt/zom/sysroot"_zc;
 
 // Writes `contents` at `relativePath` under `dir`, creating parents.
 void writeFile(zc::Directory& dir, zc::StringPtr relativePath, zc::StringPtr contents) {
@@ -64,18 +67,43 @@ void writeFile(zc::Directory& dir, zc::StringPtr relativePath, zc::StringPtr con
       ->writeAll(contents);
 }
 
-// A search root populated with a complete, non-empty ELF toolchain.
+// A filesystem root whose /opt/zom/sysroot subtree holds a complete ELF toolchain.
 zc::Own<zc::Directory> completeRoot() {
   auto dir = zc::newInMemoryDirectory(zc::nullClock());
-  writeFile(*dir, "bin/ld"_zc, "ELF-LINKER-DRIVER"_zc);
-  writeFile(*dir, "lib/crt1.o"_zc, "CRT1-OBJECT"_zc);
-  writeFile(*dir, "lib/libc.a"_zc, "LIBC-ARCHIVE"_zc);
+  writeFile(*dir, "opt/zom/sysroot/bin/ld"_zc, "ELF-LINKER-DRIVER"_zc);
+  writeFile(*dir, "opt/zom/sysroot/lib/crt1.o"_zc, "CRT1-OBJECT"_zc);
+  writeFile(*dir, "opt/zom/sysroot/lib/libc.a"_zc, "LIBC-ARCHIVE"_zc);
   return dir;
+}
+
+// Opens the VerifiedSysroot at kSysrootPath under `root`, requiring success.
+VerifiedSysroot sysrootOf(const zc::Directory& root) {
+  auto sysroot = VerifiedSysroot::open(root, kSysrootPath);
+  ZC_REQUIRE(sysroot != zc::none);
+  return ZC_REQUIRE_NONNULL(zc::mv(sysroot));
+}
+
+ZC_TEST("VerifiedSysroot binds the read directory to its canonical identity") {
+  auto root = completeRoot();
+  auto sysroot = VerifiedSysroot::open(*root, kSysrootPath);
+  ZC_ASSERT(sysroot != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(sysroot).identity() == kSysrootPath);
+}
+
+ZC_TEST("VerifiedSysroot rejects a non-absolute canonical path") {
+  auto root = completeRoot();
+  ZC_EXPECT(VerifiedSysroot::open(*root, "opt/zom/sysroot"_zc) == zc::none);
+}
+
+ZC_TEST("VerifiedSysroot rejects a missing directory") {
+  auto root = completeRoot();
+  ZC_EXPECT(VerifiedSysroot::open(*root, "/no/such/sysroot"_zc) == zc::none);
 }
 
 ZC_TEST("Toolchain discovery resolves a complete spec into a validated closure") {
   auto root = completeRoot();
-  ToolchainDiscoveryResult result = discoverToolchain(*root, elfSpec());
+  auto sysroot = sysrootOf(*root);
+  ToolchainDiscoveryResult result = discoverToolchain(sysroot, elfSpec());
   ZC_ASSERT(result.ok());
 
   const ToolchainClosureRecord& closure = result.closure();
@@ -89,82 +117,13 @@ ZC_TEST("Toolchain discovery resolves a complete spec into a validated closure")
   ZC_EXPECT(closure.defaultLibraries()[0].role() == LinkInputRole::DefaultLibrary);
 }
 
-ZC_TEST("Toolchain discovery rejects an empty target identity as MalformedSpec") {
+ZC_TEST("Toolchain discovery records the derived sysroot-relative path") {
+  // Every recorded path is derived from the bound sysroot identity plus the same
+  // relative path that was read, so the digested file and the recorded path name
+  // the same object. There is no caller-supplied independent recorded path.
   auto root = completeRoot();
-  ToolchainSearchSpec spec = elfSpec();
-  spec.targetSpecificationIdentity = zc::Array<uint8_t>();
-  ToolchainDiscoveryResult result = discoverToolchain(*root, spec);
-  ZC_ASSERT(!result.ok());
-  ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::MalformedSpec);
-}
-
-ZC_TEST("Toolchain discovery rejects an empty sysroot as MalformedSpec") {
-  auto root = completeRoot();
-  ToolchainSearchSpec spec = elfSpec();
-  spec.sysroot = zc::str("");
-  ToolchainDiscoveryResult result = discoverToolchain(*root, spec);
-  ZC_ASSERT(!result.ok());
-  ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::MalformedSpec);
-}
-
-ZC_TEST("Toolchain discovery rejects a missing linker as LinkerNotFound") {
-  auto dir = zc::newInMemoryDirectory(zc::nullClock());
-  writeFile(*dir, "lib/crt1.o"_zc, "CRT1-OBJECT"_zc);
-  writeFile(*dir, "lib/libc.a"_zc, "LIBC-ARCHIVE"_zc);
-  ToolchainDiscoveryResult result = discoverToolchain(*dir, elfSpec());
-  ZC_ASSERT(!result.ok());
-  ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::LinkerNotFound);
-}
-
-ZC_TEST("Toolchain discovery rejects a missing input as InputNotFound") {
-  auto dir = zc::newInMemoryDirectory(zc::nullClock());
-  writeFile(*dir, "bin/ld"_zc, "ELF-LINKER-DRIVER"_zc);
-  writeFile(*dir, "lib/crt1.o"_zc, "CRT1-OBJECT"_zc);
-  // libc.a is absent.
-  ToolchainDiscoveryResult result = discoverToolchain(*dir, elfSpec());
-  ZC_ASSERT(!result.ok());
-  ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::InputNotFound);
-}
-
-ZC_TEST("Toolchain discovery rejects an empty linker as EmptyInput") {
-  auto dir = zc::newInMemoryDirectory(zc::nullClock());
-  writeFile(*dir, "bin/ld"_zc, ""_zc);
-  writeFile(*dir, "lib/crt1.o"_zc, "CRT1-OBJECT"_zc);
-  writeFile(*dir, "lib/libc.a"_zc, "LIBC-ARCHIVE"_zc);
-  ToolchainDiscoveryResult result = discoverToolchain(*dir, elfSpec());
-  ZC_ASSERT(!result.ok());
-  ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::EmptyInput);
-}
-
-ZC_TEST("Toolchain discovery rejects an empty input file as EmptyInput") {
-  auto dir = zc::newInMemoryDirectory(zc::nullClock());
-  writeFile(*dir, "bin/ld"_zc, "ELF-LINKER-DRIVER"_zc);
-  writeFile(*dir, "lib/crt1.o"_zc, "CRT1-OBJECT"_zc);
-  writeFile(*dir, "lib/libc.a"_zc, ""_zc);
-  ToolchainDiscoveryResult result = discoverToolchain(*dir, elfSpec());
-  ZC_ASSERT(!result.ok());
-  ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::EmptyInput);
-}
-
-ZC_TEST("Toolchain discovery rejects a wrong input role as InvalidInputRole") {
-  auto root = completeRoot();
-  ToolchainSearchSpec spec = elfSpec();
-  zc::Vector<ToolchainSearchInput> inputs(1);
-  // ObjectArtifact is not a valid closure input role (only CrtObject /
-  // DefaultLibrary are); discovery must reject it.
-  inputs.add(input(LinkInputRole::ObjectArtifact, "lib/crt1.o"_zc));
-  spec.inputs = inputs.releaseAsArray();
-  ToolchainDiscoveryResult result = discoverToolchain(*root, spec);
-  ZC_ASSERT(!result.ok());
-  ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::InvalidInputRole);
-}
-
-ZC_TEST("Toolchain discovery records the derived sysroot-relative path, not a caller path") {
-  // The recorded/executed paths are derived from sysroot + relativePath, so the
-  // digested file and the recorded path always name the same object. There is no
-  // caller-supplied independent recorded path that could point elsewhere.
-  auto root = completeRoot();
-  ToolchainDiscoveryResult result = discoverToolchain(*root, elfSpec());
+  auto sysroot = sysrootOf(*root);
+  ToolchainDiscoveryResult result = discoverToolchain(sysroot, elfSpec());
   ZC_ASSERT(result.ok());
   const ToolchainClosureRecord& closure = result.closure();
   ZC_EXPECT(closure.linkerPath() == "/opt/zom/sysroot/bin/ld"_zc);
@@ -174,20 +133,89 @@ ZC_TEST("Toolchain discovery records the derived sysroot-relative path, not a ca
   ZC_EXPECT(closure.defaultLibraries()[0].path() == "/opt/zom/sysroot/lib/libc.a"_zc);
 }
 
+ZC_TEST("Toolchain discovery rejects an empty target identity as MalformedSpec") {
+  auto root = completeRoot();
+  auto sysroot = sysrootOf(*root);
+  ToolchainSearchSpec spec = elfSpec();
+  spec.targetSpecificationIdentity = zc::Array<uint8_t>();
+  ToolchainDiscoveryResult result = discoverToolchain(sysroot, spec);
+  ZC_ASSERT(!result.ok());
+  ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::MalformedSpec);
+}
+
+ZC_TEST("Toolchain discovery rejects a missing linker as LinkerNotFound") {
+  auto dir = zc::newInMemoryDirectory(zc::nullClock());
+  writeFile(*dir, "opt/zom/sysroot/lib/crt1.o"_zc, "CRT1-OBJECT"_zc);
+  writeFile(*dir, "opt/zom/sysroot/lib/libc.a"_zc, "LIBC-ARCHIVE"_zc);
+  auto sysroot = sysrootOf(*dir);
+  ToolchainDiscoveryResult result = discoverToolchain(sysroot, elfSpec());
+  ZC_ASSERT(!result.ok());
+  ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::LinkerNotFound);
+}
+
+ZC_TEST("Toolchain discovery rejects a missing input as InputNotFound") {
+  auto dir = zc::newInMemoryDirectory(zc::nullClock());
+  writeFile(*dir, "opt/zom/sysroot/bin/ld"_zc, "ELF-LINKER-DRIVER"_zc);
+  writeFile(*dir, "opt/zom/sysroot/lib/crt1.o"_zc, "CRT1-OBJECT"_zc);
+  // libc.a is absent.
+  auto sysroot = sysrootOf(*dir);
+  ToolchainDiscoveryResult result = discoverToolchain(sysroot, elfSpec());
+  ZC_ASSERT(!result.ok());
+  ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::InputNotFound);
+}
+
+ZC_TEST("Toolchain discovery rejects an empty linker as EmptyInput") {
+  auto dir = zc::newInMemoryDirectory(zc::nullClock());
+  writeFile(*dir, "opt/zom/sysroot/bin/ld"_zc, ""_zc);
+  writeFile(*dir, "opt/zom/sysroot/lib/crt1.o"_zc, "CRT1-OBJECT"_zc);
+  writeFile(*dir, "opt/zom/sysroot/lib/libc.a"_zc, "LIBC-ARCHIVE"_zc);
+  auto sysroot = sysrootOf(*dir);
+  ToolchainDiscoveryResult result = discoverToolchain(sysroot, elfSpec());
+  ZC_ASSERT(!result.ok());
+  ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::EmptyInput);
+}
+
+ZC_TEST("Toolchain discovery rejects an empty input file as EmptyInput") {
+  auto dir = zc::newInMemoryDirectory(zc::nullClock());
+  writeFile(*dir, "opt/zom/sysroot/bin/ld"_zc, "ELF-LINKER-DRIVER"_zc);
+  writeFile(*dir, "opt/zom/sysroot/lib/crt1.o"_zc, "CRT1-OBJECT"_zc);
+  writeFile(*dir, "opt/zom/sysroot/lib/libc.a"_zc, ""_zc);
+  auto sysroot = sysrootOf(*dir);
+  ToolchainDiscoveryResult result = discoverToolchain(sysroot, elfSpec());
+  ZC_ASSERT(!result.ok());
+  ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::EmptyInput);
+}
+
+ZC_TEST("Toolchain discovery rejects a wrong input role as InvalidInputRole") {
+  auto root = completeRoot();
+  auto sysroot = sysrootOf(*root);
+  ToolchainSearchSpec spec = elfSpec();
+  zc::Vector<ToolchainSearchInput> inputs(1);
+  // ObjectArtifact is not a valid closure input role (only CrtObject /
+  // DefaultLibrary are); discovery must reject it.
+  inputs.add(input(LinkInputRole::ObjectArtifact, "lib/crt1.o"_zc));
+  spec.inputs = inputs.releaseAsArray();
+  ToolchainDiscoveryResult result = discoverToolchain(sysroot, spec);
+  ZC_ASSERT(!result.ok());
+  ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::InvalidInputRole);
+}
+
 ZC_TEST("Toolchain discovery rejects an absolute input relative path as MalformedSpec") {
   // A relative path must not begin with '/'; an absolute one cannot be safely
   // joined to the sysroot and is rejected before any read.
   auto root = completeRoot();
+  auto sysroot = sysrootOf(*root);
   ToolchainSearchSpec spec = elfSpec();
   spec.linkerRelativePath = zc::str("/etc/evil-ld");
-  ToolchainDiscoveryResult result = discoverToolchain(*root, spec);
+  ToolchainDiscoveryResult result = discoverToolchain(sysroot, spec);
   ZC_ASSERT(!result.ok());
   ZC_EXPECT(result.failure() == ToolchainDiscoveryFailure::MalformedSpec);
 }
 
 ZC_TEST("Toolchain closure format check matches ELF host and rejects others") {
   auto root = completeRoot();
-  ToolchainDiscoveryResult result = discoverToolchain(*root, elfSpec());
+  auto sysroot = sysrootOf(*root);
+  ToolchainDiscoveryResult result = discoverToolchain(sysroot, elfSpec());
   ZC_ASSERT(result.ok());
   ZC_EXPECT(verifyClosureMatchesHostFormat(result.closure(), ObjectFormat::Elf));
   // The same ELF closure must be rejected against a non-ELF host format.

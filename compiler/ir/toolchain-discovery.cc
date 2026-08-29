@@ -19,6 +19,41 @@
 
 namespace zomlang::compiler::ir {
 
+namespace {
+
+// A normalized absolute POSIX path: non-empty, begins with '/', and has no
+// empty, "." or ".." segment. Mirrors the link-plan path contract.
+bool isNormalizedAbsolutePath(zc::StringPtr path) {
+  if (path.size() == 0 || path[0] != '/') { return false; }
+  size_t segmentStart = 1;
+  for (size_t index = 1; index <= path.size(); ++index) {
+    const bool atEnd = index == path.size();
+    if (!atEnd && path[index] != '/') { continue; }
+    const size_t length = index - segmentStart;
+    if (length == 0) { return false; }
+    if (length == 1 && path[segmentStart] == '.') { return false; }
+    if (length == 2 && path[segmentStart] == '.' && path[segmentStart + 1] == '.') { return false; }
+    segmentStart = index + 1;
+  }
+  return true;
+}
+
+}  // namespace
+
+// =======================================================================================
+// VerifiedSysroot
+
+zc::Maybe<VerifiedSysroot> VerifiedSysroot::open(const zc::ReadableDirectory& root,
+                                                 zc::StringPtr canonicalAbsolutePath) {
+  if (!isNormalizedAbsolutePath(canonicalAbsolutePath)) { return zc::none; }
+  // Open the sysroot directory relative to the filesystem root (drop the leading
+  // '/'), binding the capability to the canonical identity.
+  ZC_IF_SOME(directory, root.tryOpenSubdir(zc::Path::parse(canonicalAbsolutePath.slice(1)))) {
+    return VerifiedSysroot(zc::heapString(canonicalAbsolutePath), zc::mv(directory));
+  }
+  return zc::none;
+}
+
 // =======================================================================================
 // ToolchainDiscoveryResult
 
@@ -70,19 +105,21 @@ zc::Maybe<zc::String> deriveRecordedPath(zc::StringPtr sysroot, zc::StringPtr re
 
 }  // namespace
 
-ToolchainDiscoveryResult discoverToolchain(const zc::ReadableDirectory& searchRoot,
+ToolchainDiscoveryResult discoverToolchain(const VerifiedSysroot& sysroot,
                                            const ToolchainSearchSpec& spec) {
-  // Fail-closed spec validation: the target identity, sysroot, and linker
-  // relative path must be present before we touch the filesystem.
-  if (spec.targetSpecificationIdentity.size() == 0 || spec.sysroot.size() == 0 ||
-      spec.linkerRelativePath.size() == 0) {
+  // Fail-closed spec validation: the target identity and linker relative path
+  // must be present before we touch the filesystem. The sysroot identity is
+  // guaranteed normalized-absolute by the VerifiedSysroot capability.
+  if (spec.targetSpecificationIdentity.size() == 0 || spec.linkerRelativePath.size() == 0) {
     return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::MalformedSpec);
   }
+  const zc::ReadableDirectory& searchRoot = sysroot.directory();
 
-  // The linker's recorded absolute path is DERIVED from the sysroot and its
-  // relative path, never supplied independently, so the digested bytes and the
-  // executed program are the same object by construction.
-  zc::Maybe<zc::String> linkerRecorded = deriveRecordedPath(spec.sysroot, spec.linkerRelativePath);
+  // The linker's recorded absolute path is DERIVED from the bound sysroot
+  // identity and its relative path, never supplied independently, so the digested
+  // bytes and the executed program are the same object by construction.
+  zc::Maybe<zc::String> linkerRecorded =
+      deriveRecordedPath(sysroot.identity(), spec.linkerRelativePath);
   if (linkerRecorded == zc::none) {
     return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::MalformedSpec);
   }
@@ -111,7 +148,7 @@ ToolchainDiscoveryResult discoverToolchain(const zc::ReadableDirectory& searchRo
       return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::InvalidInputRole);
     }
 
-    zc::Maybe<zc::String> recordedPath = deriveRecordedPath(spec.sysroot, input.relativePath);
+    zc::Maybe<zc::String> recordedPath = deriveRecordedPath(sysroot.identity(), input.relativePath);
     if (recordedPath == zc::none) {
       return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::MalformedSpec);
     }
@@ -140,7 +177,7 @@ ToolchainDiscoveryResult discoverToolchain(const zc::ReadableDirectory& searchRo
   // Final closed check: assemble the validated closure. `make` enforces the
   // absolute-path, non-empty, and role-consistency invariants once more.
   zc::Maybe<ToolchainClosureRecord> closure = ToolchainClosureRecord::make(
-      spec.targetSpecificationIdentity.asPtr(), spec.sysroot, spec.linkerKind,
+      spec.targetSpecificationIdentity.asPtr(), sysroot.identity(), spec.linkerKind,
       ZC_REQUIRE_NONNULL(linkerRecorded), ZC_REQUIRE_NONNULL(zc::mv(linkerDigest)),
       linkerContent.size(), crtObjects.releaseAsArray(), defaultLibraries.releaseAsArray());
   if (closure == zc::none) {
