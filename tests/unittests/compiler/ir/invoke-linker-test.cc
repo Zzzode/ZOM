@@ -18,9 +18,10 @@
 // then execs the driver by the snapshot descriptor with a rewritten argv naming
 // snapshot paths. This defeats the input side of the link TOCTOU: an inode
 // swapped after verification but before exec is never linked. The driver is a
-// real compiled ELF (ZOM_FAKE_LINKER_FIXTURE); a `#!` script cannot be exec'd by
-// descriptor. On non-Linux hosts the descriptor-exec path does not exist and the
-// integration cases are skipped, but the in-memory fail-closed case still runs.
+// real compiled ELF (ZOM_FAKE_LINKER_SUCCESS/PARTIAL/NO_OUTPUT, one variant per
+// compile-time behavior); a `#!` script cannot be exec'd by descriptor. On
+// non-Linux hosts the descriptor-exec path does not exist and the integration
+// cases are skipped, but the in-memory fail-closed case still runs.
 
 #include "compiler/ir/invoke-linker.h"
 
@@ -82,19 +83,19 @@ zc::Array<LinkInputRecord> oneInput(LinkInputRecord&& record) {
   return builder.finish();
 }
 
-#if defined(ZOM_FAKE_LINKER_FIXTURE)
+#if defined(ZOM_FAKE_LINKER_SUCCESS)
 
-// Reads the compiled fake-linker ELF fixture bytes from the host.
-zc::Array<zc::byte> fixtureBytes() {
+// Reads a compiled fake-linker ELF fixture variant's bytes from the host.
+zc::Array<zc::byte> fixtureBytes(zc::StringPtr absolutePath) {
   auto fs = zc::newDiskFilesystem();
-  zc::StringPtr path = ZOM_FAKE_LINKER_FIXTURE ""_zc;
-  ZC_REQUIRE(path.size() > 1 && path[0] == '/');
-  return fs->getRoot().openFile(zc::Path::parse(path.slice(1)))->readAllBytes();
+  ZC_REQUIRE(absolutePath.size() > 1 && absolutePath[0] == '/');
+  return fs->getRoot().openFile(zc::Path::parse(absolutePath.slice(1)))->readAllBytes();
 }
 
 // The materialized inputs plus the verified plan naming them, all rooted at
-// `base`. `mode` selects the fake linker's behavior (success / partial /
-// clean-no-output) via a plan argument token.
+// `base`. Which fake-linker ELF variant is copied to `<base>/ld` (success /
+// partial / no-output) is chosen by the caller's `driverFixturePath`, because
+// the plan carries no argument surface to carry a runtime mode token.
 struct Scenario {
   zc::Array<zc::byte> driverBytes;
   zc::Array<zc::byte> crtBytes;
@@ -103,9 +104,10 @@ struct Scenario {
 };
 
 // Materializes driver + inputs under `dir` and builds the verified plan for them.
-VerifiedLinkPlan buildScenario(const zc::Directory& dir, zc::StringPtr base, zc::StringPtr mode,
-                               Scenario& out) {
-  out.driverBytes = writeFile(dir, "ld"_zc, fixtureBytes().asPtr(), /*executable=*/true);
+VerifiedLinkPlan buildScenario(const zc::Directory& dir, zc::StringPtr base,
+                               zc::StringPtr driverFixturePath, Scenario& out) {
+  out.driverBytes = writeFile(dir, "ld"_zc, fixtureBytes(driverFixturePath).asPtr(),
+                              /*executable=*/true);
   out.crtBytes = writeFile(dir, "crt1.o"_zc, bytesOf("CRT-OBJECT-BYTES"_zc).asPtr(), false);
   out.objectBytes = writeFile(dir, "app.o"_zc, bytesOf("USER-OBJECT-BYTES"_zc).asPtr(), false);
   out.libBytes = writeFile(dir, "libc.a"_zc, bytesOf("LIBC-ARCHIVE-BYTES"_zc).asPtr(), false);
@@ -123,19 +125,11 @@ VerifiedLinkPlan buildScenario(const zc::Directory& dir, zc::StringPtr base, zc:
       oneInput(recordFor(libPath, LinkInputRole::DefaultLibrary, out.libBytes.asPtr())));
   ZC_REQUIRE(closure != zc::none);
 
-  // The mode token is carried as a plan argument so the Empty env policy (which
-  // clears the environment) cannot hide it.
-  auto modeArg = LinkerArgumentRecord::make(zc::str("--fake-linker-mode:", mode));
-  ZC_REQUIRE(modeArg != zc::none);
-  auto argBuilder = zc::heapArrayBuilder<LinkerArgumentRecord>(1);
-  argBuilder.add(ZC_REQUIRE_NONNULL(zc::mv(modeArg)));
-
   ExecutableLinkRequest request{
       ZC_REQUIRE_NONNULL(zc::mv(closure)),
       zc::heapArray<uint8_t>({0x7a, 0x6f, 0x6d}),  // "zom"
       oneInput(recordFor(objectPath, LinkInputRole::ObjectArtifact, out.objectBytes.asPtr())),
       zc::Array<LinkInputRecord>(),
-      argBuilder.finish(),
       zc::str(base),
       zc::str(base, "/app")};
   auto result = LinkPlanVerifier::verify(zc::mv(request));
@@ -148,7 +142,7 @@ ZC_TEST("linkExecutable snapshots inputs, execs the driver by fd, and reads back
   zc::String base = tempDirPath();
   auto dir = openDir(*fs, base);
   Scenario scenario;
-  auto plan = buildScenario(*dir, base, "success"_zc, scenario);
+  auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
 
   auto result = linkExecutable(plan, fs->getRoot());
   ZC_ASSERT(result.isVerified());
@@ -189,7 +183,7 @@ ZC_TEST("linkExecutable rejects an input whose inode is swapped after verificati
   zc::String base = tempDirPath();
   auto dir = openDir(*fs, base);
   Scenario scenario;
-  auto plan = buildScenario(*dir, base, "success"_zc, scenario);
+  auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
 
   dir->remove(zc::Path("app.o"_zc));
   writeFile(*dir, "app.o"_zc, bytesOf("SWAPPED-OBJECT-BYTES-DIFFERENT"_zc).asPtr(), false);
@@ -213,7 +207,7 @@ ZC_TEST("linkExecutable rejects a driver whose inode is swapped after verificati
   zc::String base = tempDirPath();
   auto dir = openDir(*fs, base);
   Scenario scenario;
-  auto plan = buildScenario(*dir, base, "success"_zc, scenario);
+  auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
 
   // Same length swap on the driver so the digest check (not a length check) is
   // what rejects it.
@@ -236,7 +230,7 @@ ZC_TEST("linkExecutable rejects a pre-existing stale output before snapshotting"
   zc::String base = tempDirPath();
   auto dir = openDir(*fs, base);
   Scenario scenario;
-  auto plan = buildScenario(*dir, base, "success"_zc, scenario);
+  auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
   dir->openFile(zc::Path("app"_zc), zc::WriteMode::CREATE)->writeAll("stale"_zc);
 
   auto result = linkExecutable(plan, fs->getRoot());
@@ -252,7 +246,7 @@ ZC_TEST("linkExecutable cleans partial output when the driver exits nonzero") {
   zc::String base = tempDirPath();
   auto dir = openDir(*fs, base);
   Scenario scenario;
-  auto plan = buildScenario(*dir, base, "partial"_zc, scenario);
+  auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_PARTIAL ""_zc, scenario);
 
   auto result = linkExecutable(plan, fs->getRoot());
   ZC_EXPECT(!result.isVerified());
@@ -275,7 +269,7 @@ ZC_TEST("linkExecutable reports a missing output on a clean exit") {
   zc::String base = tempDirPath();
   auto dir = openDir(*fs, base);
   Scenario scenario;
-  auto plan = buildScenario(*dir, base, "clean-no-output"_zc, scenario);
+  auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_NO_OUTPUT ""_zc, scenario);
 
   auto result = linkExecutable(plan, fs->getRoot());
   ZC_EXPECT(!result.isVerified());
@@ -285,7 +279,7 @@ ZC_TEST("linkExecutable reports a missing output on a clean exit") {
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
 
-#endif  // defined(ZOM_FAKE_LINKER_FIXTURE)
+#endif  // defined(ZOM_FAKE_LINKER_SUCCESS)
 
 ZC_TEST("linkExecutable fails closed on a filesystem exposing no real descriptors") {
   // An in-memory filesystem's File::getFd() returns none, so the driver snapshot
@@ -312,7 +306,6 @@ ZC_TEST("linkExecutable fails closed on a filesystem exposing no real descriptor
       zc::heapArray<uint8_t>({0x7a, 0x6f, 0x6d}),
       oneInput(recordFor("/mem/app.o"_zc, LinkInputRole::ObjectArtifact, objectBytes.asPtr())),
       zc::Array<LinkInputRecord>(),
-      zc::Array<LinkerArgumentRecord>(),
       zc::str("/mem"),
       zc::str("/mem/app")};
   auto planResult = LinkPlanVerifier::verify(zc::mv(request));

@@ -22,26 +22,37 @@
  * no freestanding tricks because it runs as an ordinary child, not inside a
  * sandbox.
  *
+ * The behavior is selected at COMPILE TIME via -DZOM_FAKE_LINKER_MODE=<n>, so the
+ * production link plan carries no mode token and there is no free-text argument
+ * surface at all. The test builds three ELF variants (success / partial / no
+ * output) from this one source and picks the fixture path per case.
+ *
  * It does three things the test relies on:
  *   1. Verifies the invocation shape it received: argv must be
- *        argv[0] <driver> -o <out> -e <entry> [--fake-linker-mode:<mode>]
- *        <inputs...>
+ *        argv[0] <driver> -o <out> -e <entry> <inputs...>
  *      and the environment must be empty (the Empty env policy). A structural
  *      violation exits with a distinct code so the test proves argv/env, not
  *      merely "a file was written".
- *   2. Records, for every input path argument, "path=<p> size=<n>" into a
- *      sibling "<out>.args" file, plus each of -o/-e. The test reads this back
+ *   2. Records, for every input path argument, "input path=<p> size=<n>" into a
+ *      sibling "<out>.args" file, plus the -o/-e values. The test reads this back
  *      to prove the argv was rewritten to snapshot paths (paths differ from the
  *      originals) and that those snapshots held the expected bytes at exec time.
- *   3. Emulates the requested outcome: write an ELF-magic output and exit 0,
- *      write a partial output then exit 3, or exit 0 writing no output.
- *
- * The mode is carried as a plan argument token (not an environment variable,
- * because the Empty policy clears the environment).
+ *   3. Emulates the compile-time-selected outcome: write an ELF-magic output and
+ *      exit 0, write a partial output then exit 3, or exit 0 writing no output.
  */
 
 #include <stdio.h>
 #include <string.h>
+
+/* Compile-time behavior selector. 0 = success, 1 = partial-then-exit-3,
+ * 2 = clean exit with no output. */
+#ifndef ZOM_FAKE_LINKER_MODE
+#error "ZOM_FAKE_LINKER_MODE must be defined (0=success, 1=partial, 2=no-output)"
+#endif
+
+#define ZOM_FAKE_LINKER_MODE_SUCCESS 0
+#define ZOM_FAKE_LINKER_MODE_PARTIAL 1
+#define ZOM_FAKE_LINKER_MODE_NO_OUTPUT 2
 
 /* The process environment, empty under the Empty subprocess env policy. */
 extern char** environ;
@@ -58,7 +69,9 @@ enum {
   kExitArgsOpenFailed = 45,
 };
 
-/* Writes the four-byte ELF magic to `path`. Returns 0 on success. */
+/* Writes the four-byte ELF magic to `path`. Returns 0 on success. Only the
+ * success variant links this. */
+#if ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_SUCCESS
 static int writeElfMagic(const char* path) {
   FILE* out = fopen(path, "wb");
   if (out == NULL) { return -1; }
@@ -67,8 +80,11 @@ static int writeElfMagic(const char* path) {
   fclose(out);
   return wrote == sizeof(kElfMagic) ? 0 : -1;
 }
+#endif
 
-/* Writes partial, non-ELF bytes to `path`. Returns 0 on success. */
+/* Writes partial, non-ELF bytes to `path`. Returns 0 on success. Only the
+ * partial variant links this. */
+#if ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_PARTIAL
 static int writePartial(const char* path) {
   FILE* out = fopen(path, "wb");
   if (out == NULL) { return -1; }
@@ -77,10 +93,11 @@ static int writePartial(const char* path) {
   fclose(out);
   return wrote == sizeof(kPartial) - 1 ? 0 : -1;
 }
+#endif
 
-/* Appends "kind=<kind> path=<p> size=<n>\n" to the args-dump file, opening the
- * input to record the byte count the driver actually observed at exec time. A
- * size of -1 means the path could not be opened. */
+/* Appends "kind path=<p> size=<n>\n" to the args-dump file, opening the input to
+ * record the byte count the driver actually observed at exec time. A size of -1
+ * means the path could not be opened. */
 static void recordArg(FILE* dump, const char* kind, const char* path) {
   long size = -1;
   FILE* in = fopen(path, "rb");
@@ -103,15 +120,6 @@ int main(int argc, char** argv) {
   const char* outputPath = argv[2];
   const char* entrySymbol = argv[4];
 
-  /* Scan the remaining arguments for the mode token and collect input paths. */
-  const char* mode = "success";
-  static const char kModePrefix[] = "--fake-linker-mode:";
-  for (int i = 5; i < argc; ++i) {
-    if (strncmp(argv[i], kModePrefix, sizeof(kModePrefix) - 1) == 0) {
-      mode = argv[i] + (sizeof(kModePrefix) - 1);
-    }
-  }
-
   /* Record the full invocation the driver saw, for the test to verify the argv
    * was rewritten to snapshot paths. Written as a sibling of the output. */
   char argsPath[4096];
@@ -121,22 +129,17 @@ int main(int argc, char** argv) {
   if (dump == NULL) { return kExitArgsOpenFailed; }
   fprintf(dump, "output path=%s size=-1\n", outputPath);
   fprintf(dump, "entry symbol=%s size=-1\n", entrySymbol);
-  for (int i = 5; i < argc; ++i) {
-    if (strncmp(argv[i], kModePrefix, sizeof(kModePrefix) - 1) == 0) {
-      fprintf(dump, "mode value=%s size=-1\n", argv[i] + (sizeof(kModePrefix) - 1));
-      continue;
-    }
-    recordArg(dump, "input", argv[i]);
-  }
+  for (int i = 5; i < argc; ++i) { recordArg(dump, "input", argv[i]); }
   fclose(dump);
 
-  if (strcmp(mode, "partial") == 0) {
-    if (writePartial(outputPath) != 0) { return kExitOutputOpenFailed; }
-    return kExitPartial;
-  }
-  if (strcmp(mode, "clean-no-output") == 0) { return kExitOk; }
-
+#if ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_PARTIAL
+  if (writePartial(outputPath) != 0) { return kExitOutputOpenFailed; }
+  return kExitPartial;
+#elif ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_NO_OUTPUT
+  return kExitOk;
+#else
   /* Default success: write an ELF-magic output. */
   if (writeElfMagic(outputPath) != 0) { return kExitOutputOpenFailed; }
   return kExitOk;
+#endif
 }

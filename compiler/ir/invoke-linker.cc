@@ -356,16 +356,15 @@ IrOperationResult<PreparedLinkInputs> PreparedLinkInputs::prepare(
 
   // Build the rewritten argument vector once, now that every input verified.
   // Every input token names its snapshot path; the output is the real output
-  // path the driver produces (it is not an input and is not snapshotted).
+  // path the driver produces (it is not an input and is not snapshotted). The
+  // plan carries no generic argument surface, so the vector is derived entirely
+  // from the closed structural fields.
   zc::Vector<zc::String> argv;
   argv.add(zc::str(driverPlan[0].snapshotPath));
   argv.add(zc::str("-o"));
   argv.add(zc::str(outputPath));
   argv.add(zc::str("-e"));
   argv.add(ZC_REQUIRE_NONNULL(zc::mv(entryArgument)));
-  for (const LinkerArgumentRecord& record : plan.argumentRecords()) {
-    argv.add(zc::str(record.argument()));
-  }
   for (const SnapshotPlan& item : orderedInputs) { argv.add(zc::str(item.snapshotPath)); }
 
   auto impl = zc::heap<Impl>();

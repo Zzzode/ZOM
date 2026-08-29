@@ -5,28 +5,33 @@ add_ztest_unit_tests_from_directory(
 
 # RFC 0043 D3b: the invoke-linker test execs the linker driver by a snapshot file
 # descriptor (execveat AT_EMPTY_PATH), which cannot run a `#!` script, so the fake
-# driver must be a real compiled ELF. Build it as a native helper and pass its
-# path to the test. Gated on Linux, where the exec-by-descriptor path exists.
+# driver must be a real compiled ELF. The plan carries no argument surface, so the
+# driver's behavior is selected at compile time (-DZOM_FAKE_LINKER_MODE): build
+# three ELF variants (success / partial / no-output) and pass each path to the
+# test. Gated on Linux, where the exec-by-descriptor path exists.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   enable_language(C)
-  add_executable(
-    zom-fake-linker-fixture
-    ${ZOM_ROOT}/tests/fixtures/fake-linker-fixture.c)
-  set_target_properties(
-    zom-fake-linker-fixture
-    PROPERTIES C_STANDARD 11
-               C_STANDARD_REQUIRED ON
-               C_EXTENSIONS OFF)
-  zom_disable_coverage_for_target(zom-fake-linker-fixture)
-  # The fixture is exec'd as an ordinary child; keep sanitizers off it so its
-  # process image is a plain ELF the descriptor-exec path can run cleanly.
-  target_compile_options(zom-fake-linker-fixture PRIVATE -fno-sanitize=all)
-  target_link_options(zom-fake-linker-fixture PRIVATE -fno-sanitize=all)
-  if(TARGET invoke-linker-test)
-    add_dependencies(invoke-linker-test zom-fake-linker-fixture)
-    target_compile_definitions(
-      invoke-linker-test
-      PRIVATE
-        ZOM_FAKE_LINKER_FIXTURE="$<TARGET_FILE:zom-fake-linker-fixture>")
-  endif()
+
+  function(zom_add_fake_linker_variant TARGET MODE DEFINE_NAME)
+    add_executable(${TARGET} ${ZOM_ROOT}/tests/fixtures/fake-linker-fixture.c)
+    set_target_properties(
+      ${TARGET}
+      PROPERTIES C_STANDARD 11
+                 C_STANDARD_REQUIRED ON
+                 C_EXTENSIONS OFF)
+    zom_disable_coverage_for_target(${TARGET})
+    # The fixture is exec'd as an ordinary child; keep sanitizers off it so its
+    # process image is a plain ELF the descriptor-exec path can run cleanly.
+    target_compile_options(${TARGET} PRIVATE -fno-sanitize=all -DZOM_FAKE_LINKER_MODE=${MODE})
+    target_link_options(${TARGET} PRIVATE -fno-sanitize=all)
+    if(TARGET invoke-linker-test)
+      add_dependencies(invoke-linker-test ${TARGET})
+      target_compile_definitions(
+        invoke-linker-test PRIVATE ${DEFINE_NAME}="$<TARGET_FILE:${TARGET}>")
+    endif()
+  endfunction()
+
+  zom_add_fake_linker_variant(zom-fake-linker-success 0 ZOM_FAKE_LINKER_SUCCESS)
+  zom_add_fake_linker_variant(zom-fake-linker-partial 1 ZOM_FAKE_LINKER_PARTIAL)
+  zom_add_fake_linker_variant(zom-fake-linker-no-output 2 ZOM_FAKE_LINKER_NO_OUTPUT)
 endif()

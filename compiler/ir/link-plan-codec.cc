@@ -56,16 +56,9 @@ void appendInputRecord(zc::Vector<uint8_t>& output, const LinkInputRecord& recor
   appendUint64(output, record.byteCount());
 }
 
-void appendInputSequence(zc::Vector<uint8_t>& output,
-                         zc::ArrayPtr<const LinkInputRecord> records) {
+void appendInputSequence(zc::Vector<uint8_t>& output, zc::ArrayPtr<const LinkInputRecord> records) {
   appendUint64(output, records.size());
   for (const auto& record : records) { appendInputRecord(output, record); }
-}
-
-void appendArgumentSequence(zc::Vector<uint8_t>& output,
-                            zc::ArrayPtr<const LinkerArgumentRecord> records) {
-  appendUint64(output, records.size());
-  for (const auto& record : records) { appendFramed(output, record.argument()); }
 }
 
 identity::Sha256Digest requireDigest(zc::ArrayPtr<const uint8_t> bytes) {
@@ -146,9 +139,9 @@ private:
 // factory validates the shape and admits the fact.
 IrOperationResult<VerifiedLinkPlan> rejectLinkPlan(IrFailureKind kind, uint32_t ordinal) {
   UnusedIdentityResolver resolver;
-  auto fallback = IrFailureFallbackContext::from(
-      IrFailurePhase::LinkPlanConstruction,
-      IrFailureOwner::session(linkPlanSessionContext().clone()));
+  auto fallback =
+      IrFailureFallbackContext::from(IrFailurePhase::LinkPlanConstruction,
+                                     IrFailureOwner::session(linkPlanSessionContext().clone()));
   ZC_IREQUIRE(fallback != zc::none, "Link plan construction failure fallback must be legal");
   const bool capability = kind == IrFailureKind::OutputCreationFailed;
   const auto branch =
@@ -235,15 +228,6 @@ int LinkInputRecord::compareCanonical(const LinkInputRecord& other) const noexce
 }
 
 // ---------------------------------------------------------------------------
-// LinkerArgumentRecord
-// ---------------------------------------------------------------------------
-
-zc::Maybe<LinkerArgumentRecord> LinkerArgumentRecord::make(zc::StringPtr argument) {
-  if (argument.size() == 0) { return zc::none; }
-  return LinkerArgumentRecord(zc::str(argument));
-}
-
-// ---------------------------------------------------------------------------
 // ToolchainClosureRecord
 // ---------------------------------------------------------------------------
 
@@ -286,7 +270,6 @@ zc::Array<uint8_t> LinkPlanCodec::encode(const VerifiedLinkPlan& plan) {
   appendFramed(preimage, plan.entrySymbol());
   appendInputSequence(preimage, plan.objectRecords());
   appendInputSequence(preimage, plan.runtimeRecords());
-  appendArgumentSequence(preimage, plan.argumentRecords());
   appendFramed(preimage, plan.outputPath());
   return preimage.releaseAsArray();
 }
@@ -340,19 +323,9 @@ IrOperationResult<VerifiedLinkPlan> LinkPlanVerifier::verify(ExecutableLinkReque
     return rejectLinkPlan(kind, 7);
   }
 
-  // Invariant (2): every argument must be a non-empty normalized token. (An empty
-  // argument cannot be constructed through LinkerArgumentRecord::make, so this is
-  // a defense-in-depth check on a moved-in sequence.)
-  for (const auto& record : request.argumentRecords) {
-    if (record.argument().size() == 0) {
-      return rejectLinkPlan(IrFailureKind::CanonicalCodecMismatch, 8);
-    }
-  }
-
   auto plan = VerifiedLinkPlan(zc::mv(request.closure), zc::mv(request.entrySymbol),
                                zc::mv(request.objectRecords), zc::mv(request.runtimeRecords),
-                               zc::mv(request.argumentRecords), zc::mv(request.outputPath),
-                               LinkPlanId());
+                               zc::mv(request.outputPath), LinkPlanId());
   plan.idValue = LinkPlanCodec::computeId(plan);
   return IrOperationResult<VerifiedLinkPlan>::verified(zc::mv(plan));
 }

@@ -16,12 +16,12 @@
 
 #include <cstdint>
 
+#include "compiler/identity/crypto/sha256.h"
+#include "compiler/ir/ir-failure.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "compiler/identity/crypto/sha256.h"
-#include "compiler/ir/ir-failure.h"
 
 namespace zomlang::compiler::ir {
 
@@ -83,31 +83,6 @@ private:
   LinkInputRole roleValue;
   identity::Sha256Digest digestValue;
   uint64_t byteCountValue;
-};
-
-/// \brief One normalized linker argument in the plan's ordered argument vector.
-///
-/// RFC 0043 expands the driver alternative to an ordered argument vector without
-/// shell, glob, or response-file interpretation. Each argument is retained
-/// verbatim as normalized bytes; ordering is significant and folded into
-/// `LinkPlanId`.
-class LinkerArgumentRecord final {
-public:
-  LinkerArgumentRecord(LinkerArgumentRecord&&) noexcept = default;
-  LinkerArgumentRecord& operator=(LinkerArgumentRecord&&) noexcept = default;
-  ZC_DISALLOW_COPY(LinkerArgumentRecord);
-  ~LinkerArgumentRecord() noexcept = default;
-
-  /// \brief Builds a validated argument record.
-  /// \return none for an empty argument.
-  ZC_NODISCARD static zc::Maybe<LinkerArgumentRecord> make(zc::StringPtr argument);
-
-  ZC_NODISCARD zc::StringPtr argument() const noexcept { return argumentValue; }
-
-private:
-  explicit LinkerArgumentRecord(zc::String&& argument) noexcept : argumentValue(zc::mv(argument)) {}
-
-  zc::String argumentValue;
 };
 
 /// \brief The immutable per-target toolchain closure record.
@@ -240,9 +215,6 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const LinkInputRecord> runtimeRecords() const noexcept {
     return runtimeRecordValues.asPtr();
   }
-  ZC_NODISCARD zc::ArrayPtr<const LinkerArgumentRecord> argumentRecords() const noexcept {
-    return argumentRecordValues.asPtr();
-  }
   ZC_NODISCARD zc::StringPtr outputPath() const noexcept { return outputPathValue; }
   ZC_NODISCARD const LinkPlanId& id() const noexcept { return idValue; }
 
@@ -251,14 +223,12 @@ private:
 
   VerifiedLinkPlan(ToolchainClosureRecord&& closure, zc::Array<uint8_t>&& entrySymbol,
                    zc::Array<LinkInputRecord>&& objectRecords,
-                   zc::Array<LinkInputRecord>&& runtimeRecords,
-                   zc::Array<LinkerArgumentRecord>&& argumentRecords, zc::String&& outputPath,
+                   zc::Array<LinkInputRecord>&& runtimeRecords, zc::String&& outputPath,
                    const LinkPlanId& id) noexcept
       : closureValue(zc::mv(closure)),
         entrySymbolValue(zc::mv(entrySymbol)),
         objectRecordValues(zc::mv(objectRecords)),
         runtimeRecordValues(zc::mv(runtimeRecords)),
-        argumentRecordValues(zc::mv(argumentRecords)),
         outputPathValue(zc::mv(outputPath)),
         idValue(id) {}
 
@@ -266,7 +236,6 @@ private:
   zc::Array<uint8_t> entrySymbolValue;
   zc::Array<LinkInputRecord> objectRecordValues;
   zc::Array<LinkInputRecord> runtimeRecordValues;
-  zc::Array<LinkerArgumentRecord> argumentRecordValues;
   zc::String outputPathValue;
   LinkPlanId idValue;
 };
@@ -283,7 +252,6 @@ struct ExecutableLinkRequest final {
   zc::Array<uint8_t> entrySymbol;
   zc::Array<LinkInputRecord> objectRecords;
   zc::Array<LinkInputRecord> runtimeRecords;
-  zc::Array<LinkerArgumentRecord> argumentRecords;
   zc::String outputRoot;
   zc::String outputPath;
 };
@@ -300,7 +268,6 @@ struct ExecutableLinkRequest final {
 ///   Frame(entrySymbol)
 ///   EncodeInputSequence(objectRecords)
 ///   EncodeInputSequence(runtimeRecords)
-///   EncodeArgumentSequence(argumentRecords)
 ///   Frame(outputPath)
 /// `Frame` is a big-endian uint64 byte length followed by the exact bytes; a
 /// `LinkInputRecord` frame is `Frame(path) uint8(role) Frame(digest)
