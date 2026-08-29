@@ -38,8 +38,10 @@
 
 #include "compiler/ir/invoke-linker.h"
 //
-#include <sys/stat.h>
 #include <unistd.h>
+#if defined(ZOM_FAKE_LINKER_SUCCESS)
+#include <sys/stat.h>  // fstat/chmod, used only by the Linux fixture-driven cases
+#endif
 
 #include "compiler/identity/crypto/sha256.h"
 #include "compiler/ir/invoke-linker-internal.h"
@@ -438,7 +440,13 @@ size_t countSnapshotTrees(const zc::Directory& dir) {
 
 // The exact (dev, ino) of the subdirectory `name` under `parent`, read through
 // its real descriptor. Mirrors the production owner-identity capture, so a test
-// can prove a tree's identity is unchanged (not merely its byte content).
+// can prove a tree's identity is unchanged (not merely its byte content). Only
+// used by the Linux fixture-driven cases below, and defined there so a non-Linux
+// build (where the fixture block is disabled) neither pulls in <sys/stat.h> nor
+// leaves an unused fstat helper.
+
+#if defined(ZOM_FAKE_LINKER_SUCCESS)
+
 struct DirIdentity {
   uint64_t dev;
   uint64_t ino;
@@ -451,8 +459,6 @@ DirIdentity subdirIdentity(const zc::Directory& parent, zc::StringPtr name) {
   ZC_REQUIRE(::fstat(fd, &st) == 0);
   return DirIdentity{static_cast<uint64_t>(st.st_dev), static_cast<uint64_t>(st.st_ino)};
 }
-
-#if defined(ZOM_FAKE_LINKER_SUCCESS)
 
 // Reads a compiled fake-linker ELF fixture variant's bytes from the host.
 zc::Array<zc::byte> fixtureBytes(zc::StringPtr absolutePath) {

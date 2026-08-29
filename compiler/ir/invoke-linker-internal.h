@@ -95,7 +95,7 @@ public:
 ///   1. Every input the plan names - the driver, the closure CRT objects and
 ///      default libraries, and the plan's object and runtime records - is read
 ///      from the source filesystem, verified against the plan's recorded digest
-///      and byte count, and copied into a fresh, process-private snapshot
+///      and byte count, and copied into a fresh, transaction-private snapshot
 ///      directory whose per-file names are derived from the input's canonical
 ///      role and index (never a source basename, which could collide across
 ///      distinct source paths).

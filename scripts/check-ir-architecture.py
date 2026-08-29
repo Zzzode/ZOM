@@ -21,6 +21,13 @@ DIAGNOSTIC_ADAPTER_SOURCE = IR_ROOT / "ir-diagnostic-adapter.cc"
 IDENTITY_HEADER = IR_ROOT / "ir-identity.h"
 IDENTITY_SOURCE = IR_ROOT / "ir-identity.cc"
 IR_CMAKE = IR_ROOT / "CMakeLists.txt"
+# RFC 0043 D3b: the snapshot capability, its token seam, and its test peer are a
+# test-only internal surface. Only the implementation file may include it from
+# the compiler tree; every other production translation unit is forbidden (the
+# invoke-linker-test lives under tests/, outside this scan, so it is exempt).
+INVOKE_LINKER_INTERNAL_HEADER = IR_ROOT / "invoke-linker-internal.h"
+INVOKE_LINKER_INTERNAL_INCLUDE = 'compiler/ir/invoke-linker-internal.h'
+INVOKE_LINKER_INTERNAL_ALLOWED = (IR_ROOT / "invoke-linker.cc",)
 MIR_HEADER = MIR_ROOT / "built-mir.h"
 MIR_SOURCE = MIR_ROOT / "built-mir.cc"
 MIR_CMAKE = MIR_ROOT / "CMakeLists.txt"
@@ -196,6 +203,24 @@ def load_files() -> dict[Path, str]:
     ):
         files[path] = (ROOT / path).read_text(encoding="utf-8")
     return files
+
+
+def check_invoke_linker_internal_boundary(files: dict[Path, str], errors: list[str]) -> None:
+    """The D3b snapshot internal header may be included only by its implementation
+    file within the compiler tree. Any other compiler translation unit that
+    includes it re-exposes the snapshot capability and token seam that the public
+    surface deliberately hides, so it is rejected."""
+    for path in sorted(files):
+        if path.suffix not in {".h", ".cc"}:
+            continue
+        if path in INVOKE_LINKER_INTERNAL_ALLOWED or path == INVOKE_LINKER_INTERNAL_HEADER:
+            continue
+        if INVOKE_LINKER_INTERNAL_INCLUDE in files[path]:
+            errors.append(
+                f"{path}: including {INVOKE_LINKER_INTERNAL_INCLUDE} is forbidden; the D3b "
+                "snapshot capability is a test-only internal surface (only "
+                "compiler/ir/invoke-linker.cc may include it)"
+            )
 
 
 def check_removed_prototype(files: dict[Path, str], errors: list[str]) -> None:
@@ -392,6 +417,7 @@ def check_diagnostics(files: dict[Path, str], errors: list[str]) -> None:
 def analyze(files: dict[Path, str]) -> list[str]:
     errors: list[str] = []
     check_removed_prototype(files, errors)
+    check_invoke_linker_internal_boundary(files, errors)
     check_canonical_mir_domain(files, errors)
     check_target_registry(files, errors)
     check_built_mir(files, errors)
@@ -605,13 +631,23 @@ def run_self_test() -> int:
         ),
         "missing exact RFC 0010 diagnostic",
     )
+    failures += expect_rejection(
+        baseline,
+        "invoke-linker internal header leaked into another IR translation unit",
+        lambda files: files.__setitem__(
+            IR_ROOT / "target-registry.cc",
+            f'#include "{INVOKE_LINKER_INTERNAL_INCLUDE}"\n'
+            + files[IR_ROOT / "target-registry.cc"],
+        ),
+        "is a test-only internal surface",
+    )
 
     if failures:
         print("IR architecture self-test failed:", file=sys.stderr)
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
         return 1
-    print("IR architecture negative fixtures passed (22/22).")
+    print("IR architecture negative fixtures passed (23/23).")
     return 0
 
 

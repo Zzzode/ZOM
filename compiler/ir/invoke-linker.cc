@@ -610,7 +610,7 @@ CleanupAwareOutcome<PreparedLinkInputs> PreparedLinkInputs::prepareWithTokenSour
       return;
     }
 
-    // Create a fresh, process-private snapshot directory under an unpredictable,
+    // Create a fresh, transaction-private snapshot directory under an unpredictable,
     // exclusively-created name. Never pre-delete a path: on a name collision,
     // generate a fresh token and retry, and never unlink an existing tree that
     // another transaction may own.
