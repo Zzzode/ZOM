@@ -517,12 +517,16 @@ VerifiedLinkPlan buildScenario(const zc::Directory& dir, zc::StringPtr base,
       oneInput(recordFor(libPath, LinkInputRole::DefaultLibrary, out.libBytes.asPtr())));
   ZC_REQUIRE(closure != zc::none);
 
+  // Feed the object and runtime records in REVERSE canonical order (app1 before
+  // app0, rt1 before rt0). A passing canonical-order assertion on the verified
+  // plan then proves the verifier sorted them, not that the test preserved input
+  // order.
   auto twoObjects = zc::heapArrayBuilder<LinkInputRecord>(2);
-  twoObjects.add(recordFor(object0Path, LinkInputRole::ObjectArtifact, out.object0Bytes.asPtr()));
   twoObjects.add(recordFor(object1Path, LinkInputRole::ObjectArtifact, out.object1Bytes.asPtr()));
+  twoObjects.add(recordFor(object0Path, LinkInputRole::ObjectArtifact, out.object0Bytes.asPtr()));
   auto twoRuntimes = zc::heapArrayBuilder<LinkInputRecord>(2);
-  twoRuntimes.add(recordFor(runtime0Path, LinkInputRole::RuntimeObject, out.runtime0Bytes.asPtr()));
   twoRuntimes.add(recordFor(runtime1Path, LinkInputRole::RuntimeObject, out.runtime1Bytes.asPtr()));
+  twoRuntimes.add(recordFor(runtime0Path, LinkInputRole::RuntimeObject, out.runtime0Bytes.asPtr()));
 
   ExecutableLinkRequest request{ZC_REQUIRE_NONNULL(zc::mv(closure)),
                                 zc::heapArray<uint8_t>({0x7a, 0x6f, 0x6d}),  // "zom"
@@ -533,20 +537,6 @@ VerifiedLinkPlan buildScenario(const zc::Directory& dir, zc::StringPtr base,
   auto result = LinkPlanVerifier::verify(zc::mv(request));
   ZC_REQUIRE(result.isVerified());
   return zc::mv(result).takeVerified();
-}
-
-// The canonical snapshot leaf names, in the exact argv order the production
-// code emits them (driver excluded - it is argv[0] via a separate path). This
-// mirrors the enumeration order in PreparedLinkInputs::prepareWithTokenSource.
-zc::Array<zc::String> canonicalInputSnapshotNames() {
-  auto names = zc::heapArrayBuilder<zc::String>(6);
-  names.add(zc::str("crt-0"));
-  names.add(zc::str("obj-0"));
-  names.add(zc::str("obj-1"));
-  names.add(zc::str("rt-0"));
-  names.add(zc::str("rt-1"));
-  names.add(zc::str("lib-0"));
-  return names.finish();
 }
 
 // Asserts a single failure fact is the complete RFC 0010 / RFC 0043 row for a
@@ -625,15 +615,13 @@ ZC_TEST("linkExecutable snapshots inputs, execs the driver by fd, and reads back
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
 
-// Parses the fixture's "<out>.args" dump, returning the input path tokens in the
-// exact order the driver saw them (one per "input path=<p> size=<n>" line).
-zc::Array<zc::String> recordedInputPaths(zc::StringPtr argsText) {
-  zc::Vector<zc::String> paths;
-  const char* data = argsText.begin();
-  size_t n = argsText.size();
+// Returns the substring of every line in `text` that begins with `prefix`, in
+// order, with the prefix stripped. Used to parse the fixture's "<out>.args" dump.
+zc::Array<zc::String> linesWithPrefix(zc::StringPtr text, zc::StringPtr prefix) {
+  zc::Vector<zc::String> out;
+  const char* data = text.begin();
+  size_t n = text.size();
   size_t pos = 0;
-  const zc::StringPtr linePrefix = "input path="_zc;
-  const zc::StringPtr sizeTag = " size="_zc;
   auto matchesAt = [&](size_t at, zc::StringPtr needle) -> bool {
     if (at + needle.size() > n) { return false; }
     for (size_t i = 0; i < needle.size(); ++i) {
@@ -644,63 +632,128 @@ zc::Array<zc::String> recordedInputPaths(zc::StringPtr argsText) {
   while (pos < n) {
     size_t lineEnd = pos;
     while (lineEnd < n && data[lineEnd] != '\n') { ++lineEnd; }
-    if (matchesAt(pos, linePrefix)) {
-      size_t pathStart = pos + linePrefix.size();
-      // The path runs from pathStart up to the " size=" tag on this line.
-      size_t sizeAt = pathStart;
-      bool found = false;
-      while (sizeAt + sizeTag.size() <= lineEnd) {
-        if (matchesAt(sizeAt, sizeTag)) {
-          found = true;
-          break;
-        }
-        ++sizeAt;
-      }
-      ZC_REQUIRE(found);
-      paths.add(zc::heapString(data + pathStart, sizeAt - pathStart));
+    if (matchesAt(pos, prefix)) {
+      size_t start = pos + prefix.size();
+      out.add(zc::heapString(data + start, lineEnd - start));
     }
     pos = lineEnd + 1;
   }
-  return paths.releaseAsArray();
+  return out.releaseAsArray();
+}
+
+// The full raw argv the fixture recorded, one per "arg[<i>]=<token>" line, in
+// index order. The fixture writes them in ascending index order, so the returned
+// order is argv order.
+zc::Array<zc::String> recordedArgv(zc::StringPtr argsText) {
+  return linesWithPrefix(argsText, "arg["_zc);  // yields "<i>]=<token>"
+}
+
+// The single integer value of the fixture's "argc=<n>" line.
+size_t recordedArgc(zc::StringPtr argsText) {
+  zc::Array<zc::String> lines = linesWithPrefix(argsText, "argc="_zc);
+  ZC_REQUIRE(lines.size() == 1);
+  size_t value = 0;
+  for (char c : lines[0]) {
+    ZC_REQUIRE(c >= '0' && c <= '9');
+    value = value * 10 + static_cast<size_t>(c - '0');
+  }
+  return value;
+}
+
+// The recorded token for a raw argv index, extracted from its "arg[<i>]=<token>"
+// line. `recordedArgv` returns lines shaped "<i>]=<token>"; this strips the
+// "<i>]=" head and returns the token for the requested index.
+zc::String argvToken(zc::ArrayPtr<const zc::String> argvLines, size_t index) {
+  for (const zc::String& line : argvLines) {
+    // line is "<i>]=<token>"; parse the leading integer up to ']'.
+    size_t bracket = 0;
+    zc::StringPtr view = line;
+    size_t parsed = 0;
+    bool ok = true;
+    while (bracket < view.size() && view[bracket] != ']') {
+      char c = view[bracket];
+      if (c < '0' || c > '9') {
+        ok = false;
+        break;
+      }
+      parsed = parsed * 10 + static_cast<size_t>(c - '0');
+      ++bracket;
+    }
+    if (!ok || bracket + 1 >= view.size() || view[bracket] != ']' || view[bracket + 1] != '=') {
+      continue;
+    }
+    if (parsed == index) {
+      return zc::heapString(view.begin() + bracket + 2, view.size() - bracket - 2);
+    }
+  }
+  ZC_FAIL_REQUIRE("no recorded argv token for index", index);
 }
 
 ZC_TEST("linkExecutable rewrites argv to the exact canonical snapshot order for every role") {
-  // The driver records each input path token in the order it received them. The
-  // production code must emit them in RFC 0043 canonical order - crt, then
-  // objects (in plan order), then runtimes (in plan order), then default
-  // libraries - each pointing at a snapshot leaf named "<role>-<index>" inside
-  // the transaction tree. This locks both the cross-role order and the
-  // within-role index order, by full-token equality (not substring/regex).
+  // Two authorities are locked separately:
+  //   1. The verified plan canonicalizes its input records: even when the request
+  //      is fed in reverse order, plan.objectRecords()/runtimeRecords() come out
+  //      sorted by canonical key (role, then path). This proves the ordering is
+  //      the verifier's, not the test's input order.
+  //   2. linkExecutable expands that plan into the exact 11-token argv
+  //        <tree>/driver -o <base>/app -e zom <tree>/crt-0 obj-0 obj-1 rt-0 rt-1 lib-0
+  //      which the driver records token by index; the test rebuilds the full
+  //      vector and compares every token (argc == 11, full equality).
   auto fs = zc::newDiskFilesystem();
   zc::String base = tempDirPath();
   auto dir = openDir(*fs, base);
   Scenario scenario;
+  // buildScenario feeds the object/runtime records to the request in REVERSE
+  // canonical order, so a passing canonical-order assertion below proves the
+  // verifier sorted them.
   auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+
+  // Authority 1: the verified plan's records are in canonical order (by path
+  // within a role), regardless of the reversed request order.
+  ZC_ASSERT(plan.objectRecords().size() == 2u);
+  ZC_EXPECT(zc::StringPtr(plan.objectRecords()[0].path()).endsWith("/app0.o"_zc));
+  ZC_EXPECT(zc::StringPtr(plan.objectRecords()[1].path()).endsWith("/app1.o"_zc));
+  ZC_ASSERT(plan.runtimeRecords().size() == 2u);
+  ZC_EXPECT(zc::StringPtr(plan.runtimeRecords()[0].path()).endsWith("/rt0.o"_zc));
+  ZC_EXPECT(zc::StringPtr(plan.runtimeRecords()[1].path()).endsWith("/rt1.o"_zc));
 
   auto result = linkAndExpectComplete(plan, *fs);
   ZC_ASSERT(result.isVerified());
 
   auto argsText = dir->openFile(zc::Path("app.args"_zc))->readAllText();
-  zc::Array<zc::String> observed = recordedInputPaths(argsText);
-  zc::Array<zc::String> canonicalNames = canonicalInputSnapshotNames();
-  ZC_ASSERT(observed.size() == canonicalNames.size());
+  // Authority 2: the recorded argv is exactly 11 tokens.
+  ZC_ASSERT(recordedArgc(argsText) == 11u);
+  zc::Array<zc::String> argvLines = recordedArgv(argsText);
+  ZC_ASSERT(argvLines.size() == 11u);
 
-  // Derive the transaction tree prefix from the first observed token: everything
-  // up to and including the last '/'. Every token must share it and then match
-  // the canonical leaf name at its position, in order.
-  zc::StringPtr first = observed[0];
+  // Derive the transaction tree prefix from argv[0] (the driver snapshot path):
+  // everything up to and including the last '/'.
+  zc::String driverToken = argvToken(argvLines, 0);
   size_t lastSlash = 0;
-  for (size_t i = 0; i < first.size(); ++i) {
-    if (first[i] == '/') { lastSlash = i; }
+  for (size_t i = 0; i < driverToken.size(); ++i) {
+    if (driverToken[i] == '/') { lastSlash = i; }
   }
-  zc::String treePrefix = zc::heapString(first.begin(), lastSlash + 1);
-  // The prefix must name a ".zomlink-" transaction tree under the output parent.
+  zc::String treePrefix = zc::heapString(driverToken.begin(), lastSlash + 1);
   ZC_EXPECT(zc::StringPtr(treePrefix).find(".zomlink-"_zc) != zc::none);
   ZC_EXPECT(zc::StringPtr(treePrefix).startsWith(zc::str(base, "/")));
 
-  for (size_t i = 0; i < observed.size(); ++i) {
-    zc::String expected = zc::str(treePrefix, canonicalNames[i]);
-    ZC_EXPECT(observed[i] == expected);
+  // Build the full expected 11-token vector and compare index by index.
+  auto expected = zc::heapArrayBuilder<zc::String>(11);
+  expected.add(zc::str(treePrefix, "driver"));  // argv[0]: driver snapshot
+  expected.add(zc::str("-o"));                  // argv[1]
+  expected.add(zc::str(base, "/app"));          // argv[2]: exact output path
+  expected.add(zc::str("-e"));                  // argv[3]
+  expected.add(zc::str("zom"));                 // argv[4]: entry symbol
+  expected.add(zc::str(treePrefix, "crt-0"));   // argv[5]
+  expected.add(zc::str(treePrefix, "obj-0"));   // argv[6]
+  expected.add(zc::str(treePrefix, "obj-1"));   // argv[7]
+  expected.add(zc::str(treePrefix, "rt-0"));    // argv[8]
+  expected.add(zc::str(treePrefix, "rt-1"));    // argv[9]
+  expected.add(zc::str(treePrefix, "lib-0"));   // argv[10]
+  zc::Array<zc::String> expectedArgv = expected.finish();
+
+  for (size_t i = 0; i < expectedArgv.size(); ++i) {
+    ZC_EXPECT(argvToken(argvLines, i) == expectedArgv[i]);
   }
 
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
@@ -758,7 +811,8 @@ ZC_TEST("linkExecutable rejects a same-length byte change in every input role be
   // default library - repoint the source at a DIFFERENT inode with the SAME byte
   // count but different bytes after the plan is built. Each case proves:
   //   * role attribution: on disk, ONLY that role's source differs from its plan
-  //     bytes; the other four still match, so the gate that fires is that role's;
+  //     bytes; the other SIX inputs still match, so the gate that fires is that
+  //     role's;
   //   * it is a digest gate, not a size gate (same byte count);
   //   * it fires before the driver is spawned (no ".started"/".args"/output);
   //   * the private snapshot tree is cleaned (Complete, not RecoveryRequired);
@@ -780,15 +834,21 @@ ZC_TEST("linkExecutable rejects a same-length byte change in every input role be
     Scenario scenario;
     auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
 
-    // The plan-recorded pristine bytes for each role file, so on-disk isolation
-    // can be checked against what the plan digested.
+    // The plan-recorded pristine bytes for each of the SEVEN input files, so
+    // on-disk isolation can be checked against what the plan digested for every
+    // input (not just the five mutation representatives).
     auto recordedBytesFor = [&](zc::StringPtr name) -> zc::ArrayPtr<const zc::byte> {
       if (name == "ld"_zc) { return scenario.driverBytes.asPtr(); }
       if (name == "crt1.o"_zc) { return scenario.crtBytes.asPtr(); }
       if (name == "app0.o"_zc) { return scenario.object0Bytes.asPtr(); }
+      if (name == "app1.o"_zc) { return scenario.object1Bytes.asPtr(); }
       if (name == "rt0.o"_zc) { return scenario.runtime0Bytes.asPtr(); }
+      if (name == "rt1.o"_zc) { return scenario.runtime1Bytes.asPtr(); }
       if (name == "libc.a"_zc) { return scenario.libBytes.asPtr(); }
       ZC_UNREACHABLE;
+    };
+    const zc::StringPtr allInputFiles[] = {
+        "ld"_zc, "crt1.o"_zc, "app0.o"_zc, "app1.o"_zc, "rt0.o"_zc, "rt1.o"_zc, "libc.a"_zc,
     };
     auto bytesEqual = [](zc::ArrayPtr<const zc::byte> a, zc::ArrayPtr<const zc::byte> b) {
       if (a.size() != b.size()) { return false; }
@@ -807,15 +867,15 @@ ZC_TEST("linkExecutable rejects a same-length byte change in every input role be
     dir->remove(zc::Path(zc::heapString(mutatedRole.fileName)));
     writeFile(*dir, mutatedRole.fileName, mutated.asPtr(), mutatedRole.executable);
 
-    // Role attribution: on disk, ONLY the mutated role differs from the bytes the
-    // plan recorded (same length), so this role's snapshot gate is the sole
-    // possible trigger; every other role still matches its recorded bytes.
-    for (const RoleFile& role : roleFiles) {
-      auto onDisk = dir->openFile(zc::Path(zc::heapString(role.fileName)))->readAllBytes();
-      bool matchesRecorded = bytesEqual(onDisk.asPtr(), recordedBytesFor(role.fileName));
-      if (role.fileName == mutatedRole.fileName) {
-        ZC_EXPECT(onDisk.size() == recordedBytesFor(role.fileName).size());  // same length
-        ZC_EXPECT(!matchesRecorded);                                         // but different bytes
+    // Role attribution over ALL seven inputs: on disk, ONLY the mutated role
+    // differs from the bytes the plan recorded (same length), so this role's
+    // snapshot gate is the sole possible trigger; the other six still match.
+    for (zc::StringPtr fileName : allInputFiles) {
+      auto onDisk = dir->openFile(zc::Path(zc::heapString(fileName)))->readAllBytes();
+      bool matchesRecorded = bytesEqual(onDisk.asPtr(), recordedBytesFor(fileName));
+      if (fileName == mutatedRole.fileName) {
+        ZC_EXPECT(onDisk.size() == recordedBytesFor(fileName).size());  // same length
+        ZC_EXPECT(!matchesRecorded);                                    // but different bytes
       } else {
         ZC_EXPECT(matchesRecorded);  // untouched
       }
