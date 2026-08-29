@@ -152,8 +152,109 @@ atomic".
   Required test: after the executable rename, a competitor replaces/occupies the
   path; cleanup must not delete the competitor's object.
 
-The RFC 0043 goal line "Publish an executable and its manifest atomically, or
-publish neither" is reworded to: **manifest-committed recoverable publication —
+#### D1 operation shape, recovery obligations, and journal lifecycle
+
+This subsection pins the D1 contract into an implementable shape so the code
+slice has a fixed target. It is approved design, not landed code.
+
+**Operation shape.** D1 is one consuming operation that takes the D4
+`LinkedOutputCandidate` by move (so the still-live transaction root and its
+output handle are the sole authority for the bytes being published) plus the
+built manifest, and returns an explicit three-way outcome:
+
+```
+publishLinkedOutput(
+  candidate: Moved<LinkedOutputCandidate>,
+  manifest:  Moved<ExecutableArtifactManifest>,
+) -> PublicationOutcome
+
+PublicationOutcome =
+    Published(PublishedExecutableArtifact)          // manifest committed + verified
+  | RecoveryRequired(PublicationRecoveryObligation) // ambiguous/failed, must not be dropped
+  | Rejected(PublicationRejection)                  // failed, cleanup succeeded, nothing published
+```
+
+Taking the candidate by move means D1 consumes the transaction root: on every
+branch it is responsible for discarding the still-live root (via the candidate's
+`discardAndCleanup`) once the final pair is committed or the attempt is
+abandoned. The candidate is moved in exactly once and cannot be published twice.
+
+**The two recovery obligations are distinct typed values; never conflated.**
+
+- `SnapshotCleanupObligation` (D3b/D4, already landed) concerns the
+  transaction-private `.zomlink-<token>/` root: "this transaction-owned tree could
+  not be removed." It carries the transaction id, canonical parent, exact
+  directory identity, plan id, and the cleanup failure kind/stage. It never names
+  a public final path.
+- `PublicationRecoveryObligation` (D1, new) concerns the public final pair
+  (`app`, `app.zom-artifact`): "a final-path publication reached an ambiguous or
+  un-rolled-back state." It carries the owner token, both final paths, the
+  committed-point `StableFileIdentity` recorded in the journal, the journal
+  location, and a `PublicationRecoveryKind` (see the crash matrix). It never
+  deletes by public path without a journal + exact-identity match.
+
+A single `publishLinkedOutput` call can owe at most one of each: it may finish
+with a `PublicationRecoveryObligation` (the final-path step was ambiguous) AND,
+independently, fail to remove the snapshot root (a `SnapshotCleanupObligation`).
+`PublicationRecoveryObligation` therefore carries an optional nested
+`SnapshotCleanupObligation`, so a caller receives both un-droppable obligations
+in one value and a recovery step adjudicates each against its own proof (journal
++ final-path identity for the publication pair; transaction-id + directory
+identity for the snapshot root). D5's `LinkRecoveryRequired` wraps exactly these:
+`SnapshotRecoveryRequired { primary, obligation }` for a pre-publication failure
+whose only debt is the snapshot root, and the publication obligation for the
+post-manifest-rename ambiguous window.
+
+**Canonical ordered commit algorithm.** D1 performs exactly these steps, in this
+order; each fsync is mandatory and a failure at step *n* is classified by the
+crash matrix as if a crash occurred just after step *n-1*:
+
+1. Re-check RejectExisting for BOTH final paths with a no-follow `tryLstat`
+   (INV-1/INV-6); either already present rejects before anything is written.
+2. Commit-point re-check: re-derive the output `digest`, `size`, exact
+   `StableFileIdentity` (`dev`/`ino`), regular-file shape, and `st_nlink == 1`
+   from the candidate's SAME held handle (INV-8); a mismatch fails closed.
+3. Stage the manifest into a transaction-owned temporary in the final directory
+   and fsync it. (The executable is already staged as the candidate's
+   `<root>/output-candidate`; it is committed by rename from the transaction
+   root, which shares the final directory's filesystem, so the rename is atomic.)
+4. Write and fsync the **journal** entry (owner token, both final paths, the
+   step-2 commit-point `StableFileIdentity`) BEFORE any final-path rename.
+5. Rename the executable (`<root>/output-candidate` → `app`); fsync the final
+   directory. **`app` is now visible but is not yet a published artifact** (no
+   manifest).
+6. Rename the manifest temporary → `app.zom-artifact` (**the commit point**);
+   fsync the final directory.
+7. Discard the journal entry (the transaction is complete), then discard the
+   snapshot root via the candidate. A failure here is not ambiguous — the pair is
+   committed — but a journal/root that could not be discarded is still reported as
+   a (non-ambiguous) recovery obligation so it is never silently leaked.
+
+**Journal lifecycle.** The journal entry exists only for the window between step
+4 and step 7. Its sole purpose is to authorise deleting an orphan `app` during
+recovery: recovery removes `app` only when a journal entry proves this
+transaction created it AND `app` still resolves to the journal's recorded exact
+identity. After a clean commit the entry is discarded (step 7); a leftover entry
+found later means a crash between steps 4 and 7 and drives the recovery matrix.
+
+**INV-4 crash-recovery matrix (pointwise, by the last completed step).** The
+recogniser decides committed-vs-orphan solely by "does a complete, verifying
+manifest exist" (INV-1), never by an in-memory return value:
+
+| Crash after step | On-disk state | Recogniser verdict | Recovery action |
+|---|---|---|---|
+| 1-3 | no final pair; maybe a manifest temp + snapshot root (both token-owned) | not published | remove token-owned temporaries + snapshot root; no final path touched |
+| 4 | journal exists; no final pair | not published | journal names no committed identity yet (or names the staged id but `app` absent) → discard journal; remove token-owned temporaries |
+| 5 | `app` exists (orphan), no manifest; journal present | not published (orphan) | delete `app` only if journal proves ownership AND `app` matches the journal identity; else retain + report |
+| 6 (pre-dir-fsync) | both files exist; final-dir durability unknown | **ambiguous** | `RecoveryRequired(PublicationRecoveryObligation)`; MUST NOT blind-delete; next open applies INV-1 |
+| 7 | both files exist + durable (committed) | published | discard journal + snapshot root; if that fails, report a non-ambiguous cleanup obligation |
+
+The step-6 row is the single genuinely ambiguous outcome (INV-5): the pair may or
+may not be durable, so D1 returns `RecoveryRequired(PublicationRecoveryObligation)`
+rather than an ordinary rejection, and never deletes the possibly-committed pair.
+Every other row is decidable from disk alone.
+
+
 logical visibility is atomic (nothing is a published artifact until the manifest
 commits and verifies), while the physical file set may contain a crash orphan
 that is never recognised as an artifact.**
@@ -358,7 +459,7 @@ which operation consumes it.)
   LinkRecoveryRequired =
       SnapshotRecoveryRequired { primary: LinkAndPublishRejection,
                                  obligation: SnapshotCleanupObligation }
-    | PublicationRecoveryToken
+    | PublicationRecoveryObligation
   ```
 
   - the `SnapshotRecoveryRequired` branch pairs the preserved primary rejection
@@ -366,10 +467,11 @@ which operation consumes it.)
     could not discard the transaction root. `SnapshotCleanupObligation`
     deliberately does not copy the primary, so the primary is carried explicitly
     here rather than folded into the obligation;
-  - the `PublicationRecoveryToken` branch is the INV-5 ambiguous state after the
-    manifest rename (owner token, target paths, recovery entry point); the pair
-    may or may not be committed and MUST NOT be blind-deleted, and it needs no
-    primary;
+  - the `PublicationRecoveryObligation` branch is the INV-5 ambiguous state after
+    the manifest rename (owner token, both final paths, the journalled commit-point
+    identity, and an optional nested `SnapshotCleanupObligation`; see "D1 operation
+    shape, recovery obligations, and journal lifecycle"). The pair may or may not
+    be committed and MUST NOT be blind-deleted, and it needs no primary;
 - `Rejected(LinkAndPublishRejection)` — an ordinary failure whose cleanup
   *succeeded*, carrying the RFC 0043 row for its phase (`LinkerInvocation` or
   `ExecutablePublication`).
@@ -378,7 +480,7 @@ which operation consumes it.)
 `discardAndCleanup` reports `Clean` is `Rejected(primary)`; an ordinary failure
 whose discard reports `Obligated` is `RecoveryRequired(SnapshotRecoveryRequired{
 primary, obligation})`; and the INV-5 pending outcome is
-`RecoveryRequired(PublicationRecoveryToken)`, never destroying the possibly-
+`RecoveryRequired(PublicationRecoveryObligation)`, never destroying the possibly-
 committed pair. Steps:
 
 1. move in the `VerifiedLinkPlan`;
@@ -398,7 +500,7 @@ consumes the candidate via `discardAndCleanup()`: a `Clean` disposition returns
 `Rejected(primary)`, and an `Obligated` disposition returns
 `RecoveryRequired(SnapshotRecoveryRequired{primary, obligation})` with the primary
 preserved. Only a clean commit returns `Published`; only the INV-5 window returns
-`RecoveryRequired(PublicationRecoveryToken)`. If RFC 0010's `IrOperationResult`
+`RecoveryRequired(PublicationRecoveryObligation)`. If RFC 0010's `IrOperationResult`
 cannot host a three-way outcome, `LinkAndPublishOutcome` wraps it as shown rather
 than overloading a rejection, and RFC 0043 records the outcome type.
 
@@ -422,11 +524,18 @@ than overloading a rejection, and RFC 0043 records the outcome type.
    `execveat`s the driver handle (D3b), writes the transaction-root output
    candidate, and returns the candidate (D4).
 4. **[pending]** Publication transaction with manifest-last commit + owner-token
-   rollback (D1), replacing the best-effort `tryRemove` path. At the commit point
-   D1 MUST re-derive the output's `digest`, `size`, `dev`/`ino`, and `st_nlink == 1`
-   from the candidate's SAME held handle immediately before the journal write and
-   rename; the D4-captured `outputDigest`/identity is an inspection snapshot, not
-   the final commit-point proof (see INV-8).
+   rollback (D1), replacing the best-effort `tryRemove` path. The full D1 contract
+   is ratified (see "D1 operation shape, recovery obligations, and journal
+   lifecycle" and INV-1..INV-8): `publishLinkedOutput(Moved<LinkedOutputCandidate>,
+   Moved<ExecutableArtifactManifest>) -> PublicationOutcome`
+   (`Published` / `RecoveryRequired(PublicationRecoveryObligation)` / `Rejected`),
+   the seven-step ordered commit (RejectExisting → commit-point re-check → stage +
+   fsync manifest → journal + fsync → executable rename + dir fsync → manifest
+   rename (commit point) + dir fsync → discard journal + snapshot root), and the
+   pointwise crash matrix. At the commit point D1 MUST re-derive the output
+   `digest`/`size`/`dev`/`ino`/`st_nlink == 1` from the candidate's SAME held
+   handle immediately before the journal write and rename; the D4-captured snapshot
+   is not the final proof. Implementation is Pending.
 5. **[pending]** The consuming `linkAndPublish` operation wiring 1-4 with the
    executable inspector and manifest (D5).
 
