@@ -113,6 +113,25 @@ atomic".
   safe retain-vs-remove rule for an orphan (an orphan with no manifest is
   removable only by a transaction that can prove ownership or by an explicit
   repair; it is never consumed in the meantime).
+- **INV-8 Persistent owner proof after rename.** Once a token-named temporary is
+  renamed to the public final `app`, the token is no longer in the filename, so
+  "no manifest" alone does NOT authorise deleting that `app` (it could be a
+  user's or a competitor's file). The transaction retains a persistent ownership
+  proof, chosen as follows:
+    - Primary: a **transaction journal** entry written and fsynced BEFORE the
+      executable rename, recording the owner token, the final path, and the
+      staged object's stable file identity (device + inode). Recovery deletes an
+      orphan `app` only when the journal proves this transaction created it AND
+      the final path still resolves to that same stable file identity.
+    - The staged object's stable file identity is captured while the transaction
+      holds the object open, and re-checked (via `fstatat`/equivalent) before any
+      delete, so a competitor that replaced the path between rename and cleanup
+      is never deleted.
+    - A platform or filesystem that cannot provide a stable file identity fails
+      closed: the orphan is retained, never blind-deleted, and reported for
+      explicit repair.
+  Required test: after the executable rename, a competitor replaces/occupies the
+  path; cleanup must not delete the competitor's object.
 
 The RFC 0043 goal line "Publish an executable and its manifest atomically, or
 publish neither" is reworded to: **manifest-committed recoverable publication —
@@ -157,6 +176,21 @@ against the plan, and consumed through that same handle.
 - Every non-driver input is opened once and re-hashed against its
   `LinkInputRecord` digest before the spawn; a mismatch is
   `InputRevisionMismatch` under `LinkerInvocation`.
+- **How the verified bytes reach the linker (implementation prerequisite).**
+  Re-hashing an open handle is not enough: if the final argv still passes the
+  original pathname, the TOCTOU is intact because the linker re-opens by name.
+  Before implementing D3, one of these is fixed and recorded here:
+    - inherit each input FD into the child and pass `/proc/self/fd/N` (or the
+      platform equivalent) as the argv path, so the linker reads the exact
+      verified object; or
+    - copy the verified bytes into the transaction's own immutable input
+      directory (D4-owned) and pass those paths.
+  The driver itself always uses `execveat` on its handle (above), independent of
+  this choice. A platform with no equivalent FD-path or immutable-input
+  mechanism does not silently fail closed while docs claim support: the RFC 0043
+  support matrix is updated so the doc and the implementation agree on which
+  targets are supported. (The initial slice targets Linux; macOS support in the
+  matrix is only claimed once its stable-handle path is implemented.)
 
 ### D4. Fresh temporary output capability
 
@@ -169,10 +203,23 @@ only by the D1 publication transaction after verification.
 ### D5. Consuming link -> inspect -> manifest -> publish operation
 
 **Decision:** a single consuming operation chains the steps; intermediate
-value types do not claim "Verified" before their checks run.
+value types do not claim "Verified" before their checks run. Its result is an
+explicit three-way outcome, not a plain success/failure — because INV-5's
+post-manifest-rename sync ambiguity must not be forced into a `rejection`.
 
-`linkAndPublish(plan, sysroot, freshTemp) ->`
-`IrOperationResult<PublishedExecutableArtifact>`:
+`linkAndPublish(plan, sysroot, freshTemp) -> LinkAndPublishOutcome`, where
+`LinkAndPublishOutcome` is exactly one of:
+
+- `Published(PublishedExecutableArtifact)` — the manifest committed and verified;
+- `RecoveryRequired(PublicationRecoveryToken)` — the INV-5 ambiguous state after
+  the manifest rename, carrying the owner token, target paths, and the recovery
+  entry point; the pair may or may not be committed and MUST NOT be blind-deleted;
+- `Rejected(IrOperationResult rejection)` — any ordinary failure, carrying the
+  RFC 0043 row for its phase (`LinkerInvocation` or `ExecutablePublication`).
+
+`RecoveryRequired` is never conflated with `Rejected`: a pending outcome does not
+destroy the possibly-committed pair, and a rejection always destroys the temp.
+Steps:
 
 1. consume the `VerifiedLinkPlan`;
 2. open + digest-verify every input handle (D3);
@@ -181,14 +228,18 @@ value types do not claim "Verified" before their checks run.
    required runtime symbols (RFC 0043 `ExecutablePublication` checks) — only
    here is the result named "verified";
 5. build the manifest;
-6. publish via the D1 transaction.
+6. publish via the D1 transaction (which may return the `RecoveryRequired`
+   outcome per INV-5).
 
-Any failure destroys the temp and returns the RFC 0043 row for its phase
-(`LinkerInvocation` or `ExecutablePublication`); only success exposes the final
-artifact. The current `VerifiedLinkedExecutable` name is removed — the type
-that carries linker output before inspection is renamed to a non-"Verified"
-name (e.g. `LinkedOutputCandidate`), and only the post-inspection published
-artifact is "Verified".
+An ordinary failure in steps 2-5, or before the executable rename in step 6,
+destroys the temp and returns `Rejected`; only a clean commit returns
+`Published`; only the INV-5 window returns `RecoveryRequired`. The current
+`VerifiedLinkedExecutable` name is removed — the type that carries linker output
+before inspection is renamed to a non-"Verified" name (e.g.
+`LinkedOutputCandidate`), and only the post-inspection published artifact is
+"Verified". If RFC 0010's `IrOperationResult` cannot host a three-way outcome,
+`LinkAndPublishOutcome` wraps it as shown rather than overloading a rejection,
+and RFC 0043 records the outcome type.
 
 ## Implementation order (after this note is approved)
 
