@@ -14,11 +14,6 @@
 
 #include "compiler/ir/invoke-linker.h"
 
-#include <errno.h>
-#include <fcntl.h>
-#include <sys/random.h>
-#include <sys/stat.h>
-
 #include "compiler/identity/crypto/sha256.h"
 #include "compiler/identity/identity-invariant.h"
 #include "compiler/identity/semantic/context-fingerprint.h"
@@ -26,6 +21,21 @@
 #include "zc/core/exception.h"
 #include "zc/core/subprocess.h"
 #include "zc/core/vector.h"
+
+// RFC 0043 D3b is Linux-first: the exact-identity owner proof (fstat/fstatat on
+// a real descriptor), the CSPRNG token (getrandom), and exec-by-descriptor all
+// require Linux syscalls. All Linux-only includes, types, and syscalls live
+// behind this compile boundary; on any other platform the snapshot machinery
+// compiles to a closed rejection and never references a Linux header.
+#if defined(__linux__)
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/random.h>
+#include <sys/stat.h>
+#define ZOM_LINK_SNAPSHOT_SUPPORTED 1
+#else
+#define ZOM_LINK_SNAPSHOT_SUPPORTED 0
+#endif
 
 namespace zomlang::compiler::ir {
 
@@ -119,7 +129,24 @@ IrOperationResult<T> rejectLinkerInvocation(IrFailureKind kind, uint32_t ordinal
   ZC_UNREACHABLE
 }
 
+// Re-maps a PreparedLinkInputs rejection into a VerifiedLinkedExecutable-typed
+// result, preserving the branch (the fact family is identical for both value
+// types). Consumes `preparedResult`, which must be a rejection.
+IrOperationResult<VerifiedLinkedExecutable> remapPreparedRejection(
+    IrOperationResult<PreparedLinkInputs>&& preparedResult) {
+  if (preparedResult.isCapabilityRejected()) {
+    return IrOperationResult<VerifiedLinkedExecutable>::capabilityRejected(
+        zc::mv(preparedResult).takeCapabilityFailures());
+  }
+  return IrOperationResult<VerifiedLinkedExecutable>::irInvariantRejected(
+      zc::mv(preparedResult).takeInvariantFailures());
+}
+
+#if ZOM_LINK_SNAPSHOT_SUPPORTED
+
 // Opens an absolute path under `root`, returning its bytes, or none if absent.
+// A read fault (for example from a fault-injecting wrapper) propagates as an
+// exception, which the caller's catcher turns into a rejection.
 zc::Maybe<zc::Array<zc::byte>> tryReadAbsolute(const zc::ReadableDirectory& root,
                                                zc::StringPtr absolutePath) {
   if (absolutePath.size() < 2 || absolutePath[0] != '/') { return zc::none; }
@@ -193,25 +220,6 @@ struct SnapshotPlan {
   bool executable;
 };
 
-// Captures the exact stable identity of an open directory by fstat on its
-// descriptor. Returns none when the directory exposes no descriptor (an
-// in-memory or otherwise non-Linux-disk root) or fstat fails - the caller then
-// fails closed rather than proceeding without an owner proof. Never throws.
-zc::Maybe<StableDirectoryIdentity> captureDirectoryIdentity(const zc::Directory& dir) noexcept {
-  zc::Maybe<StableDirectoryIdentity> result;
-  auto exception = zc::runCatchingExceptions([&]() {
-    ZC_IF_SOME(fd, dir.getFd()) {
-      struct stat st;
-      if (::fstat(fd, &st) == 0) {
-        result = StableDirectoryIdentity(static_cast<uint64_t>(st.st_dev),
-                                         static_cast<uint64_t>(st.st_ino));
-      }
-    }
-  });
-  if (exception != zc::none) { return zc::none; }
-  return result;
-}
-
 // The outcome of an attempt to remove a transaction-private snapshot tree. On a
 // non-Removed result the caller records a cleanup obligation with the mapped
 // kind.
@@ -220,12 +228,30 @@ struct TreeCleanupOutcome {
   CleanupFailureKind failureKind;  // Valid only when !removed.
 };
 
-TreeCleanupOutcome removed() {
+TreeCleanupOutcome treeRemoved() {
   return TreeCleanupOutcome{true, CleanupFailureKind::ContentRemovalFailed};
 }
 TreeCleanupOutcome cleanupFailed(CleanupFailureKind kind) {
   return TreeCleanupOutcome{false, kind};
 }
+
+// The production CSPRNG token source: 16 bytes from getrandom. Fails closed when
+// the source is unavailable or returns short.
+class CsprngTokenSource final : public SnapshotTokenSource {
+public:
+  bool nextToken(uint8_t (&out)[16]) override {
+    size_t filled = 0;
+    while (filled < sizeof(out)) {
+      ssize_t n = ::getrandom(out + filled, sizeof(out) - filled, 0);
+      if (n <= 0) {
+        if (n < 0 && errno == EINTR) { continue; }
+        return false;
+      }
+      filled += static_cast<size_t>(n);
+    }
+    return true;
+  }
+};
 
 // Removes the transaction-private snapshot tree, race-tightened per RFC 0043
 // D3b. It removes the tree's *contents* through the held snapshot directory
@@ -241,13 +267,10 @@ TreeCleanupOutcome cleanupFailed(CleanupFailureKind kind) {
 // an atomic claim/quarantine or a private mount namespace, which is out of
 // scope for this slice. `capturedIdentity` == none means no exact identity was
 // available, so the top-level entry is never removed and the obligation is
-// IdentityUnavailable. Never throws.
-TreeCleanupOutcome removeSnapshotTree(const zc::Directory& parentDir,
-                                      const zc::Directory& snapshotDir, zc::StringPtr leafName,
-                                      const zc::Maybe<StableDirectoryIdentity>& capturedIdentity,
-                                      bool forceContentRemovalFail) noexcept {
-  // A test-only forced content-removal fault exercises the RecoveryRequired path.
-  if (forceContentRemovalFail) { return cleanupFailed(CleanupFailureKind::ContentRemovalFailed); }
+// IdentityUnavailable. Never throws: a fault is attributed to its stage.
+TreeCleanupOutcome removeSnapshotTree(
+    const zc::Directory& parentDir, const zc::Directory& snapshotDir, zc::StringPtr leafName,
+    const zc::Maybe<StableDirectoryIdentity>& capturedIdentity) noexcept {
   // No exact identity: never auto-remove; leave the obligation for explicit
   // recovery.
   if (capturedIdentity == zc::none) {
@@ -256,6 +279,7 @@ TreeCleanupOutcome removeSnapshotTree(const zc::Directory& parentDir,
   const StableDirectoryIdentity& expected = ZC_REQUIRE_NONNULL(capturedIdentity);
 
   TreeCleanupOutcome outcome = cleanupFailed(CleanupFailureKind::ContentRemovalFailed);
+  bool reachedTopLevel = false;
   auto exception = zc::runCatchingExceptions([&]() {
     // Remove the tree's contents through the held snapshot directory capability.
     // The snapshot tree in this slice is a flat set of files (no subdirectories).
@@ -266,20 +290,23 @@ TreeCleanupOutcome removeSnapshotTree(const zc::Directory& parentDir,
       }
     }
 
+    reachedTopLevel = true;
     // Re-check the top-level entry's exact identity through the held parent fd
     // just before removing it, so a swapped object at the same name is refused.
     ZC_IF_SOME(parentFd, parentDir.getFd()) {
       struct stat st;
       auto leaf = zc::heapString(leafName);
       if (::fstatat(parentFd, leaf.cStr(), &st, AT_SYMLINK_NOFOLLOW) != 0) {
-        // The entry is already gone: the contents were removed and the directory
-        // no longer resolves, so the obligation is discharged.
-        outcome = removed();
+        // Only ENOENT means the entry is genuinely gone (contents removed and the
+        // directory no longer resolves), which discharges the obligation. Any
+        // other errno (EACCES, EIO, ENOTDIR, EBADF, ...) means we could not
+        // confirm the entry is gone: since an exact identity was captured, that
+        // is a top-level removal fault, not "removed".
+        outcome = errno == ENOENT ? treeRemoved()
+                                  : cleanupFailed(CleanupFailureKind::TopLevelRemovalFailed);
         return;
       }
-      StableDirectoryIdentity current(static_cast<uint64_t>(st.st_dev),
-                                      static_cast<uint64_t>(st.st_ino));
-      if (current != expected) {
+      if (!expected.matches(static_cast<uint64_t>(st.st_dev), static_cast<uint64_t>(st.st_ino))) {
         outcome = cleanupFailed(CleanupFailureKind::IdentityMismatch);
         return;
       }
@@ -287,33 +314,24 @@ TreeCleanupOutcome removeSnapshotTree(const zc::Directory& parentDir,
         outcome = cleanupFailed(CleanupFailureKind::TopLevelRemovalFailed);
         return;
       }
-      outcome = removed();
+      outcome = treeRemoved();
     } else {
       // The parent exposes no descriptor: cannot make an exact pre-removal
       // check, so fail closed.
       outcome = cleanupFailed(CleanupFailureKind::IdentityUnavailable);
     }
   });
-  if (exception != zc::none) { return cleanupFailed(CleanupFailureKind::ContentRemovalFailed); }
+  if (exception != zc::none) {
+    // A thrown filesystem fault is attributed to the stage it occurred in.
+    return reachedTopLevel ? cleanupFailed(CleanupFailureKind::TopLevelRemovalFailed)
+                           : cleanupFailed(CleanupFailureKind::ContentRemovalFailed);
+  }
   return outcome;
 }
 
-// Fills `out` with 16 bytes from the OS CSPRNG. Returns false (fail closed) when
-// the random source is unavailable or returns short.
-bool fillRandom(uint8_t (&out)[16]) noexcept {
-  size_t filled = 0;
-  while (filled < sizeof(out)) {
-    ssize_t n = ::getrandom(out + filled, sizeof(out) - filled, 0);
-    if (n <= 0) {
-      if (n < 0 && errno == EINTR) { continue; }
-      return false;
-    }
-    filled += static_cast<size_t>(n);
-  }
-  return true;
-}
-
 }  // namespace
+
+#endif  // ZOM_LINK_SNAPSHOT_SUPPORTED
 
 // =======================================================================================
 // SnapshotTransactionId
@@ -340,13 +358,57 @@ zc::String SnapshotTransactionId::toHex() const {
 // SnapshotCleanupObligation
 
 zc::String SnapshotCleanupObligation::treePath() const {
-  return snapshotTreePath(outputParentValue, transactionIdValue);
+  if (outputParentValue == "/"_zc) {
+    return zc::str("/", kSnapshotDirPrefix, transactionIdValue.toHex());
+  }
+  return zc::str(outputParentValue, "/", kSnapshotDirPrefix, transactionIdValue.toHex());
 }
+
+// =======================================================================================
+// PreparedLinkInputs construction helpers (friended into the typed values)
+
+zc::Maybe<SnapshotTransactionId> PreparedLinkInputs::makeTransactionId(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  return SnapshotTransactionId::fromBytes(bytes);
+}
+
+zc::Maybe<StableDirectoryIdentity> PreparedLinkInputs::makeIdentity(uint64_t device,
+                                                                    uint64_t inode) {
+  return StableDirectoryIdentity(device, inode);
+}
+
+SnapshotCleanupObligation PreparedLinkInputs::makeObligation(
+    const SnapshotTransactionId& transactionId, zc::String&& outputParent,
+    zc::Maybe<StableDirectoryIdentity> directoryIdentity, const LinkPlanId& planId,
+    CleanupFailureKind kind, CleanupStage stage) noexcept {
+  return SnapshotCleanupObligation(transactionId, zc::mv(outputParent), zc::mv(directoryIdentity),
+                                   planId, kind, stage);
+}
+
+#if ZOM_LINK_SNAPSHOT_SUPPORTED
+
+zc::Maybe<StableDirectoryIdentity> PreparedLinkInputs::captureDirectoryIdentity(
+    const zc::Directory& dir) noexcept {
+  zc::Maybe<StableDirectoryIdentity> result;
+  auto exception = zc::runCatchingExceptions([&]() {
+    ZC_IF_SOME(fd, dir.getFd()) {
+      struct stat st;
+      if (::fstat(fd, &st) == 0) {
+        result = makeIdentity(static_cast<uint64_t>(st.st_dev), static_cast<uint64_t>(st.st_ino));
+      }
+    }
+  });
+  if (exception != zc::none) { return zc::none; }
+  return result;
+}
+
+#endif  // ZOM_LINK_SNAPSHOT_SUPPORTED
 
 // =======================================================================================
 // PreparedLinkInputs
 
 struct PreparedLinkInputs::Impl {
+#if ZOM_LINK_SNAPSHOT_SUPPORTED
   // The parent directory the transaction tree was created under, held open so
   // top-level removal is fd-relative and identity-checked.
   zc::Own<const zc::Directory> parentDir;
@@ -359,37 +421,38 @@ struct PreparedLinkInputs::Impl {
   SnapshotTransactionId transactionId;
   zc::String outputParent;
   zc::String leafName;
-  // The exact stable directory identity captured right after creation, or none
-  // if it could not be captured (then cleanup never auto-removes).
+  // The exact stable directory identity captured right after creation, or none.
   zc::Maybe<StableDirectoryIdentity> directoryIdentity;
   // The owning plan identity, carried into an obligation record.
   LinkPlanId planId;
-  // The driver snapshot re-opened read-only: its descriptor is the exec target.
-  // Kept alive so the borrowed descriptor stays valid across the spawn. There is
-  // deliberately no writable alias to the same object.
+  // The driver snapshot: the very ReadableFile whose bytes pass-2 re-verified,
+  // retained and exec'd directly - there is no second pathname reopen between
+  // hash and exec. There is deliberately no writable alias.
   zc::Own<const zc::ReadableFile> driverSnapshot;
   zc::String program;
   zc::Array<zc::String> argvValues;
   zc::String workingDirectory;
   zc::Array<zc::String> environmentValues;
 
-  // Removes this transaction's tree. Shared by the explicit finish and the
-  // last-resort destructor. `forceFail` is a test-only forced content-removal
-  // fault. Never throws.
-  TreeCleanupOutcome cleanup(bool forceFail = false) noexcept {
-    return removeSnapshotTree(*parentDir, *snapshotDir, leafName, directoryIdentity, forceFail);
+  // Removes this transaction's tree. Never throws.
+  TreeCleanupOutcome cleanup() noexcept {
+    return removeSnapshotTree(*parentDir, *snapshotDir, leafName, directoryIdentity);
   }
 
   // Builds a cleanup obligation for this transaction at `stage` from a non-
-  // removed cleanup outcome.
-  SnapshotCleanupObligation obligation(const TreeCleanupOutcome& result, CleanupStage stage) {
+  // removed cleanup outcome. Moves the owned parent string so no allocation
+  // happens on the noexcept finish path. Consumes the impl's outputParent.
+  SnapshotCleanupObligation obligation(const TreeCleanupOutcome& result,
+                                       CleanupStage stage) noexcept {
     zc::Maybe<StableDirectoryIdentity> identityCopy;
     ZC_IF_SOME(value, directoryIdentity) {
-      identityCopy = StableDirectoryIdentity(value.device(), value.inode());
+      identityCopy = PreparedLinkInputs::makeIdentity(value.device(), value.inode());
     }
-    return SnapshotCleanupObligation(transactionId, outputParent, zc::mv(identityCopy), planId,
-                                     result.failureKind, stage);
+    return PreparedLinkInputs::makeObligation(transactionId, zc::mv(outputParent),
+                                              zc::mv(identityCopy), planId, result.failureKind,
+                                              stage);
   }
+#endif  // ZOM_LINK_SNAPSHOT_SUPPORTED
 };
 
 PreparedLinkInputs::PreparedLinkInputs(zc::Own<Impl> implParam) noexcept
@@ -406,27 +469,34 @@ PreparedLinkInputs::~PreparedLinkInputs() noexcept {
   // called, so best-effort remove the tree and swallow any fault. It produces no
   // structured record - the explicit finishAndCleanup path is the one that does.
   if (impl.get() == nullptr) { return; }
+#if ZOM_LINK_SNAPSHOT_SUPPORTED
   (void)impl->cleanup();
+#endif
 }
 
 CleanupAwareOutcome<VerifiedLinkedExecutable> PreparedLinkInputs::finishAndCleanup(
-    IrOperationResult<VerifiedLinkedExecutable>&& primary,
-    PrepareInjectedFault injectedFault) && noexcept {
+    IrOperationResult<VerifiedLinkedExecutable>&& primary) && noexcept {
+  using Outcome = CleanupAwareOutcome<VerifiedLinkedExecutable>;
   // Consume the capability: move the impl out so the destructor becomes a no-op
   // and cannot re-remove the tree after this reports an obligation.
   zc::Own<Impl> owned = zc::mv(impl);
-  const bool forceFail = injectedFault == PrepareInjectedFault::TreeRemoval;
-  TreeCleanupOutcome cleanup = owned->cleanup(forceFail);
-  if (cleanup.removed) {
-    return CleanupAwareOutcome<VerifiedLinkedExecutable>::complete(zc::mv(primary));
-  }
+#if ZOM_LINK_SNAPSHOT_SUPPORTED
+  TreeCleanupOutcome cleanup = owned->cleanup();
+  if (cleanup.removed) { return Outcome::complete(zc::mv(primary)); }
+  // obligation() only moves already-owned fields; no allocation, so this
+  // noexcept function cannot terminate on a bad_alloc here.
   SnapshotCleanupObligation obligation = owned->obligation(cleanup, CleanupStage::PostSpawnCleanup);
-  return CleanupAwareOutcome<VerifiedLinkedExecutable>::recoveryRequired(zc::mv(primary),
-                                                                         zc::mv(obligation));
+  return Outcome::recoveryRequired(zc::mv(primary), zc::mv(obligation));
+#else
+  (void)owned;
+  return Outcome::complete(zc::mv(primary));
+#endif
 }
 
 int PreparedLinkInputs::driverDescriptor() const {
+#if ZOM_LINK_SNAPSHOT_SUPPORTED
   ZC_IF_SOME(fd, impl->driverSnapshot->getFd()) { return fd; }
+#endif
   ZC_IREQUIRE(false, "PreparedLinkInputs driver snapshot must expose a descriptor");
   ZC_UNREACHABLE
 }
@@ -442,6 +512,8 @@ zc::ArrayPtr<const zc::String> PreparedLinkInputs::environment() const noexcept 
   return impl->environmentValues.asPtr();
 }
 
+#if ZOM_LINK_SNAPSHOT_SUPPORTED
+
 namespace {
 
 // A rejection produced by the snapshot worker: an RFC failure kind and ordinal.
@@ -452,9 +524,16 @@ struct PrepareRejection {
 
 }  // namespace
 
-CleanupAwareOutcome<PreparedLinkInputs> PreparedLinkInputs::prepare(
+// The shared prepare body, parameterized by the transaction-token source. It is
+// the member entry point (so it can mint transaction ids, capture directory
+// identities, and construct the capability); `prepare` delegates to it with the
+// production CSPRNG source. The filesystem is whatever the caller supplies; a
+// test may pass a fault-injecting wrapper whose File::write / ReadableFile::read
+// / Directory::tryRemove fail, and those faults propagate as ordinary rejections
+// or cleanup obligations.
+CleanupAwareOutcome<PreparedLinkInputs> PreparedLinkInputs::prepareWithTokenSource(
     const VerifiedLinkPlan& plan, const zc::Filesystem& filesystem,
-    PrepareInjectedFault injectedFault) {
+    SnapshotTokenSource& tokenSource) {
   const zc::Directory& filesystemRoot = filesystem.getRoot();
   const ToolchainClosureRecord& closure = plan.toolchainClosure();
 
@@ -524,9 +603,9 @@ CleanupAwareOutcome<PreparedLinkInputs> PreparedLinkInputs::prepare(
   zc::Own<const zc::Directory> parentDir = ZC_REQUIRE_NONNULL(zc::mv(parentMaybe));
 
   // Create a fresh, process-private snapshot directory under an unpredictable,
-  // exclusively-created name. Never pre-delete a path: on an (astronomically
-  // unlikely) name collision, generate a fresh token and retry, and never unlink
-  // an existing tree that another transaction may own.
+  // exclusively-created name. Never pre-delete a path: on a name collision,
+  // generate a fresh token and retry, and never unlink an existing tree that
+  // another transaction may own.
   constexpr int kMaxTokenAttempts = 8;
   SnapshotTransactionId token;
   zc::String leafName;
@@ -534,14 +613,16 @@ CleanupAwareOutcome<PreparedLinkInputs> PreparedLinkInputs::prepare(
   bool created = false;
   for (int attempt = 0; attempt < kMaxTokenAttempts && !created; ++attempt) {
     uint8_t raw[16];
-    if (!fillRandom(raw)) {
-      // The CSPRNG is unavailable: fail closed, no tree was created.
+    if (!tokenSource.nextToken(raw)) {
+      // The token source is unavailable: fail closed, no tree was created.
       return rejectComplete(IrFailureKind::OutputCreationFailed, 4);
     }
-    token = ZC_REQUIRE_NONNULL(SnapshotTransactionId::fromBytes(zc::arrayPtr(raw, 16)));
+    token = ZC_REQUIRE_NONNULL(PreparedLinkInputs::makeTransactionId(zc::arrayPtr(raw, 16)));
     leafName = snapshotDirName(token);
     // Exclusive create (no MODIFY) so an existing directory is never adopted;
     // PRIVATE so it is owner-only. Opened relative to the held parent capability.
+    // On EEXIST tryOpenSubdir returns none and we retry with a fresh token;
+    // the existing tree is never touched.
     zc::Maybe<zc::Own<const zc::Directory>> opened = parentDir->tryOpenSubdir(
         zc::Path(leafName), zc::WriteMode::CREATE | zc::WriteMode::PRIVATE);
     ZC_IF_SOME(dir, opened) {
@@ -552,40 +633,44 @@ CleanupAwareOutcome<PreparedLinkInputs> PreparedLinkInputs::prepare(
   if (!created) { return rejectComplete(IrFailureKind::OutputCreationFailed, 5); }
 
   // Capture the exact stable identity right after creation; it is re-checked
-  // before any removal. If it cannot be captured, the tree is still cleaned up
-  // (best-effort content removal) but the top-level entry is never auto-removed;
-  // any residue becomes an IdentityUnavailable obligation.
-  zc::Maybe<StableDirectoryIdentity> directoryIdentity = captureDirectoryIdentity(*snapshotDir);
+  // before any removal.
+  zc::Maybe<StableDirectoryIdentity> directoryIdentity =
+      PreparedLinkInputs::captureDirectoryIdentity(*snapshotDir);
 
   // A helper that rolls back the freshly created tree and reports the outcome for
   // a prepare-time rejection.
-  const bool forceCleanupFail = injectedFault == PrepareInjectedFault::TreeRemoval;
   auto rejectWithRollback = [&](IrFailureKind kind, uint32_t ordinal) -> Outcome {
     TreeCleanupOutcome cleanup =
-        removeSnapshotTree(*parentDir, *snapshotDir, leafName, directoryIdentity, forceCleanupFail);
+        removeSnapshotTree(*parentDir, *snapshotDir, leafName, directoryIdentity);
     auto primary = rejectLinkerInvocation<PreparedLinkInputs>(kind, ordinal);
     if (cleanup.removed) { return Outcome::complete(zc::mv(primary)); }
     zc::Maybe<StableDirectoryIdentity> identityCopy;
     ZC_IF_SOME(value, directoryIdentity) {
-      identityCopy = StableDirectoryIdentity(value.device(), value.inode());
+      identityCopy = PreparedLinkInputs::makeIdentity(value.device(), value.inode());
     }
-    SnapshotCleanupObligation obligation(token, outputParent, zc::mv(identityCopy), plan.id(),
-                                         cleanup.failureKind, CleanupStage::PrepareRollback);
+    SnapshotCleanupObligation obligation = PreparedLinkInputs::makeObligation(
+        token, zc::heapString(outputParent), zc::mv(identityCopy), plan.id(), cleanup.failureKind,
+        CleanupStage::PrepareRollback);
     return Outcome::recoveryRequired(zc::mv(primary), zc::mv(obligation));
   };
+
+  // Fail closed if no exact identity was captured: never proceed to snapshot,
+  // build a Prepared capability, or spawn without an owner proof. Roll back the
+  // content through the held capability, never auto-remove the top-level entry,
+  // and report an IdentityUnavailable obligation.
+  if (directoryIdentity == zc::none) {
+    return rejectWithRollback(IrFailureKind::OutputCreationFailed, 6);
+  }
 
   // The snapshot work: read + verify each source, write it into the private tree,
   // re-verify each snapshot copy from its own read handle, retain the driver
   // snapshot handle for exec, and build the rewritten argv. Any filesystem fault
-  // is caught and turned into a rejection rather than escaping.
+  // (including one injected by a wrapper's File::write / ReadableFile::read) is
+  // caught and turned into a rejection rather than escaping.
   zc::Maybe<PrepareRejection> rejection;
   zc::Own<PreparedLinkInputs::Impl> preparedImpl;
   auto workException = zc::runCatchingExceptions([&]() {
     auto snapshotOne = [&](const SnapshotPlan& item) -> bool {
-      // Test-only: throw mid-write to exercise the caught-fault rejection path.
-      if (injectedFault == PrepareInjectedFault::WriteMidSnapshot) {
-        ZC_FAIL_ASSERT("injected write-mid-snapshot fault");
-      }
       zc::Maybe<zc::Array<zc::byte>> sourceBytes = tryReadAbsolute(filesystemRoot, item.sourcePath);
       if (sourceBytes == zc::none) { return false; }
       zc::Array<zc::byte> bytes = ZC_REQUIRE_NONNULL(zc::mv(sourceBytes));
@@ -598,55 +683,61 @@ CleanupAwareOutcome<PreparedLinkInputs> PreparedLinkInputs::prepare(
       zc::Maybe<zc::Own<const zc::File>> file =
           snapshotDir->tryOpenFile(zc::Path(item.snapshotName), mode);
       if (file == zc::none) { return false; }
+      // The write itself may fault (a fault-injecting wrapper models a mid-write
+      // failure here); the exception propagates to the outer catcher.
       ZC_REQUIRE_NONNULL(zc::mv(file))->writeAll(bytes.asPtr());
       return true;
     };
     for (const SnapshotPlan& item : driverPlan) {
       if (!snapshotOne(item)) {
-        rejection = PrepareRejection{IrFailureKind::InputRevisionMismatch, 6};
+        rejection = PrepareRejection{IrFailureKind::InputRevisionMismatch, 7};
         return;
       }
     }
     for (const SnapshotPlan& item : orderedInputs) {
       if (!snapshotOne(item)) {
-        rejection = PrepareRejection{IrFailureKind::InputRevisionMismatch, 7};
+        rejection = PrepareRejection{IrFailureKind::InputRevisionMismatch, 8};
         return;
       }
     }
 
     // Re-verify every snapshot copy from its own read handle. The write handles
     // above have been dropped, so these read-only opens hold no writable alias.
-    auto reverifyOne = [&](const SnapshotPlan& item) -> bool {
-      // Test-only: throw during re-verification to exercise the pass-2 fault path.
-      if (injectedFault == PrepareInjectedFault::Pass2Read) {
-        ZC_FAIL_ASSERT("injected pass-2 read fault");
-      }
+    // The driver's re-opened handle is RETAINED and becomes the exec target -
+    // there is no later second pathname reopen of the driver.
+    zc::Own<const zc::ReadableFile> driverSnapshot;
+    bool driverVerified = false;
+    auto reverifyOne = [&](const SnapshotPlan& item, bool isDriver) -> bool {
       zc::Maybe<zc::Own<const zc::ReadableFile>> file =
           snapshotDir->tryOpenFile(zc::Path(item.snapshotName));
       if (file == zc::none) { return false; }
-      zc::Array<zc::byte> bytes = ZC_REQUIRE_NONNULL(zc::mv(file))->readAllBytes();
-      return bytesMatch(bytes.asPtr(), item.digest, item.byteCount);
+      zc::Own<const zc::ReadableFile> handle = ZC_REQUIRE_NONNULL(zc::mv(file));
+      // The read itself may fault (a fault-injecting wrapper models a pass-2 read
+      // failure here); the exception propagates to the outer catcher.
+      zc::Array<zc::byte> bytes = handle->readAllBytes();
+      if (!bytesMatch(bytes.asPtr(), item.digest, item.byteCount)) { return false; }
+      if (isDriver) {
+        driverSnapshot = zc::mv(handle);
+        driverVerified = true;
+      }
+      return true;
     };
     for (const SnapshotPlan& item : driverPlan) {
-      if (!reverifyOne(item)) {
-        rejection = PrepareRejection{IrFailureKind::InputRevisionMismatch, 8};
-        return;
-      }
-    }
-    for (const SnapshotPlan& item : orderedInputs) {
-      if (!reverifyOne(item)) {
+      if (!reverifyOne(item, /*isDriver=*/true)) {
         rejection = PrepareRejection{IrFailureKind::InputRevisionMismatch, 9};
         return;
       }
     }
+    for (const SnapshotPlan& item : orderedInputs) {
+      if (!reverifyOne(item, /*isDriver=*/false)) {
+        rejection = PrepareRejection{IrFailureKind::InputRevisionMismatch, 10};
+        return;
+      }
+    }
 
-    // Open the driver snapshot read-only for execution by descriptor and retain
-    // that exact handle for exec (its hash was proved above through the same
-    // path).
-    zc::Own<const zc::ReadableFile> driverSnapshot =
-        ZC_REQUIRE_NONNULL(snapshotDir->tryOpenFile(zc::Path(driverPlan[0].snapshotName)));
-    if (driverSnapshot->getFd() == zc::none) {
-      rejection = PrepareRejection{IrFailureKind::OutputCreationFailed, 10};
+    // The exec target is exactly the driver handle whose bytes were re-verified.
+    if (!driverVerified || driverSnapshot->getFd() == zc::none) {
+      rejection = PrepareRejection{IrFailureKind::OutputCreationFailed, 11};
       return;
     }
 
@@ -681,7 +772,7 @@ CleanupAwareOutcome<PreparedLinkInputs> PreparedLinkInputs::prepare(
 
   // A filesystem fault during the work is an OutputCreationFailed rejection.
   if (workException != zc::none && rejection == zc::none) {
-    rejection = PrepareRejection{IrFailureKind::OutputCreationFailed, 11};
+    rejection = PrepareRejection{IrFailureKind::OutputCreationFailed, 12};
   }
 
   if (rejection == zc::none && preparedImpl.get() != nullptr) {
@@ -694,12 +785,37 @@ CleanupAwareOutcome<PreparedLinkInputs> PreparedLinkInputs::prepare(
   return rejectWithRollback(reject.kind, reject.ordinal);
 }
 
+CleanupAwareOutcome<PreparedLinkInputs> PreparedLinkInputs::prepare(
+    const VerifiedLinkPlan& plan, const zc::Filesystem& filesystem) {
+  CsprngTokenSource csprng;
+  return prepareWithTokenSource(plan, filesystem, csprng);
+}
+
+#else  // !ZOM_LINK_SNAPSHOT_SUPPORTED
+
+CleanupAwareOutcome<PreparedLinkInputs> PreparedLinkInputs::prepare(const VerifiedLinkPlan&,
+                                                                    const zc::Filesystem&) {
+  // The snapshot machinery requires Linux syscalls; on other platforms it fails
+  // closed with a capability rejection and never touches the filesystem.
+  return CleanupAwareOutcome<PreparedLinkInputs>::complete(
+      rejectLinkerInvocation<PreparedLinkInputs>(IrFailureKind::OutputCreationFailed, 0));
+}
+
+CleanupAwareOutcome<PreparedLinkInputs> PreparedLinkInputs::prepareWithTokenSource(
+    const VerifiedLinkPlan&, const zc::Filesystem&, SnapshotTokenSource&) {
+  return CleanupAwareOutcome<PreparedLinkInputs>::complete(
+      rejectLinkerInvocation<PreparedLinkInputs>(IrFailureKind::OutputCreationFailed, 0));
+}
+
+#endif  // ZOM_LINK_SNAPSHOT_SUPPORTED
+
 // =======================================================================================
 // linkExecutable
 
+#if ZOM_LINK_SNAPSHOT_SUPPORTED
+
 CleanupAwareOutcome<VerifiedLinkedExecutable> linkExecutable(const VerifiedLinkPlan& plan,
-                                                             const zc::Filesystem& filesystem,
-                                                             PrepareInjectedFault injectedFault) {
+                                                             const zc::Filesystem& filesystem) {
   const zc::Directory& filesystemRoot = filesystem.getRoot();
   using Outcome = CleanupAwareOutcome<VerifiedLinkedExecutable>;
 
@@ -718,37 +834,17 @@ CleanupAwareOutcome<VerifiedLinkedExecutable> linkExecutable(const VerifiedLinkP
 
   // Snapshot and re-verify every input into a transaction-private tree.
   CleanupAwareOutcome<PreparedLinkInputs> preparedOutcome =
-      PreparedLinkInputs::prepare(plan, filesystem, injectedFault);
-  const bool prepareRecoveryRequired = preparedOutcome.isRecoveryRequired();
-  // Rebuild the obligation (if any) so it can be forwarded with a
-  // VerifiedLinkedExecutable-typed outcome; the prepare obligation is never
-  // paired with a verified PreparedLinkInputs (prepare only reports
-  // RecoveryRequired on a rejection primary).
-  zc::Maybe<SnapshotCleanupObligation> forwardedObligation;
-  if (prepareRecoveryRequired) {
-    const SnapshotCleanupObligation& o = preparedOutcome.orphan();
-    zc::Maybe<StableDirectoryIdentity> identityCopy;
-    ZC_IF_SOME(value, o.directoryIdentity()) {
-      identityCopy = StableDirectoryIdentity(value.device(), value.inode());
-    }
-    forwardedObligation =
-        SnapshotCleanupObligation(o.transactionId(), o.outputParent(), zc::mv(identityCopy),
-                                  o.planId(), o.cleanupFailureKind(), o.cleanupStage());
+      PreparedLinkInputs::prepare(plan, filesystem);
+  if (preparedOutcome.isRecoveryRequired()) {
+    // Preparation itself could not clean up (it never returns RecoveryRequired
+    // with a verified PreparedLinkInputs, so its primary is always a rejection).
+    RecoveryRequiredOutcome<PreparedLinkInputs> rr = zc::mv(preparedOutcome).takeRecoveryRequired();
+    return Outcome::recoveryRequired(remapPreparedRejection(zc::mv(rr.primary)),
+                                     zc::mv(rr.obligation));
   }
-  IrOperationResult<PreparedLinkInputs> preparedResult = zc::mv(preparedOutcome).takePrimary();
+  IrOperationResult<PreparedLinkInputs> preparedResult = zc::mv(preparedOutcome).takeComplete();
   if (!preparedResult.isVerified()) {
-    // Re-map the prepare rejection into a VerifiedLinkedExecutable-typed result,
-    // preserving the branch (the fact family is identical for both value types).
-    IrOperationResult<VerifiedLinkedExecutable> remapped =
-        preparedResult.isCapabilityRejected()
-            ? IrOperationResult<VerifiedLinkedExecutable>::capabilityRejected(
-                  zc::mv(preparedResult).takeCapabilityFailures())
-            : IrOperationResult<VerifiedLinkedExecutable>::irInvariantRejected(
-                  zc::mv(preparedResult).takeInvariantFailures());
-    ZC_IF_SOME(obligation, forwardedObligation) {
-      return Outcome::recoveryRequired(zc::mv(remapped), zc::mv(obligation));
-    }
-    return Outcome::complete(zc::mv(remapped));
+    return Outcome::complete(remapPreparedRejection(zc::mv(preparedResult)));
   }
   PreparedLinkInputs prepared = zc::mv(preparedResult).takeVerified();
 
@@ -798,7 +894,17 @@ CleanupAwareOutcome<VerifiedLinkedExecutable> linkExecutable(const VerifiedLinkP
 
   // The child has been awaited; now remove the private snapshot tree and pair the
   // cleanup outcome with the primary result.
-  return zc::mv(prepared).finishAndCleanup(zc::mv(primary), injectedFault);
+  return zc::mv(prepared).finishAndCleanup(zc::mv(primary));
 }
+
+#else  // !ZOM_LINK_SNAPSHOT_SUPPORTED
+
+CleanupAwareOutcome<VerifiedLinkedExecutable> linkExecutable(const VerifiedLinkPlan&,
+                                                             const zc::Filesystem&) {
+  return CleanupAwareOutcome<VerifiedLinkedExecutable>::complete(
+      rejectLinkerInvocation<VerifiedLinkedExecutable>(IrFailureKind::OutputCreationFailed, 20));
+}
+
+#endif  // ZOM_LINK_SNAPSHOT_SUPPORTED
 
 }  // namespace zomlang::compiler::ir

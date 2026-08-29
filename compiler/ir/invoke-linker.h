@@ -33,17 +33,16 @@ class VerifiedLinkedExecutable;
 ///
 /// Generated from the OS CSPRNG so a transaction-private snapshot directory name
 /// is unpredictable (no other process can pre-create or guess it) and unique.
-/// It is a typed value, never a free-form string, so an orphan record cannot be
-/// confused with an arbitrary path.
+/// It is a typed value, never a free-form string, so an obligation record cannot
+/// be confused with an arbitrary path. It is constructed only by the snapshot
+/// machinery (`PreparedLinkInputs`), so external code cannot forge one.
 class SnapshotTransactionId final {
 public:
-  /// \brief A zero id. Only a placeholder to be overwritten by `fromBytes`; a
-  ///        real transaction always assigns a CSPRNG value before use.
-  SnapshotTransactionId() = default;
-
-  /// \brief Builds an id from exactly 16 bytes.
-  /// \return none unless `bytes` is exactly 16 bytes long.
-  ZC_NODISCARD static zc::Maybe<SnapshotTransactionId> fromBytes(zc::ArrayPtr<const uint8_t> bytes);
+  SnapshotTransactionId(SnapshotTransactionId&&) noexcept = default;
+  SnapshotTransactionId& operator=(SnapshotTransactionId&&) noexcept = default;
+  SnapshotTransactionId(const SnapshotTransactionId&) noexcept = default;
+  SnapshotTransactionId& operator=(const SnapshotTransactionId&) noexcept = default;
+  ~SnapshotTransactionId() noexcept = default;
 
   /// \brief The 16 identity bytes.
   ZC_NODISCARD zc::ArrayPtr<const uint8_t> bytes() const noexcept { return zc::arrayPtr(value); }
@@ -57,6 +56,12 @@ public:
   bool operator!=(const SnapshotTransactionId& other) const noexcept { return !(*this == other); }
 
 private:
+  SnapshotTransactionId() = default;
+  /// \brief Builds an id from exactly 16 bytes; none unless exactly 16.
+  ZC_NODISCARD static zc::Maybe<SnapshotTransactionId> fromBytes(zc::ArrayPtr<const uint8_t> bytes);
+
+  friend class PreparedLinkInputs;
+
   uint8_t value[16] = {};
 };
 
@@ -71,11 +76,20 @@ private:
 /// recovery must not auto-delete.
 class StableDirectoryIdentity final {
 public:
-  StableDirectoryIdentity(uint64_t device, uint64_t inode) noexcept
-      : deviceValue(device), inodeValue(inode) {}
+  StableDirectoryIdentity(StableDirectoryIdentity&&) noexcept = default;
+  StableDirectoryIdentity& operator=(StableDirectoryIdentity&&) noexcept = default;
+  StableDirectoryIdentity(const StableDirectoryIdentity&) noexcept = default;
+  StableDirectoryIdentity& operator=(const StableDirectoryIdentity&) noexcept = default;
+  ~StableDirectoryIdentity() noexcept = default;
 
   ZC_NODISCARD uint64_t device() const noexcept { return deviceValue; }
   ZC_NODISCARD uint64_t inode() const noexcept { return inodeValue; }
+
+  /// \brief True when this identity is exactly `(device, inode)`. Comparison is
+  ///        safe to expose; only construction is restricted.
+  ZC_NODISCARD bool matches(uint64_t device, uint64_t inode) const noexcept {
+    return deviceValue == device && inodeValue == inode;
+  }
 
   bool operator==(const StableDirectoryIdentity& other) const noexcept {
     return deviceValue == other.deviceValue && inodeValue == other.inodeValue;
@@ -83,6 +97,11 @@ public:
   bool operator!=(const StableDirectoryIdentity& other) const noexcept { return !(*this == other); }
 
 private:
+  StableDirectoryIdentity(uint64_t device, uint64_t inode) noexcept
+      : deviceValue(device), inodeValue(inode) {}
+
+  friend class PreparedLinkInputs;
+
   uint64_t deviceValue;
   uint64_t inodeValue;
 };
@@ -137,16 +156,6 @@ public:
   ZC_DISALLOW_COPY(SnapshotCleanupObligation);
   ~SnapshotCleanupObligation() noexcept = default;
 
-  SnapshotCleanupObligation(const SnapshotTransactionId& transactionId, zc::StringPtr outputParent,
-                            zc::Maybe<StableDirectoryIdentity> directoryIdentity,
-                            const LinkPlanId& planId, CleanupFailureKind kind, CleanupStage stage)
-      : transactionIdValue(transactionId),
-        outputParentValue(zc::heapString(outputParent)),
-        directoryIdentityValue(zc::mv(directoryIdentity)),
-        planIdValue(planId),
-        kindValue(kind),
-        stageValue(stage) {}
-
   ZC_NODISCARD const SnapshotTransactionId& transactionId() const noexcept {
     return transactionIdValue;
   }
@@ -164,6 +173,22 @@ public:
   ZC_NODISCARD CleanupStage cleanupStage() const noexcept { return stageValue; }
 
 private:
+  // Constructed only by the snapshot machinery, and by move only for the owned
+  // `outputParent` string, so the `RecoveryRequired` branch can be produced
+  // without any allocation on the noexcept finish path.
+  SnapshotCleanupObligation(const SnapshotTransactionId& transactionId, zc::String&& outputParent,
+                            zc::Maybe<StableDirectoryIdentity> directoryIdentity,
+                            const LinkPlanId& planId, CleanupFailureKind kind,
+                            CleanupStage stage) noexcept
+      : transactionIdValue(transactionId),
+        outputParentValue(zc::mv(outputParent)),
+        directoryIdentityValue(zc::mv(directoryIdentity)),
+        planIdValue(planId),
+        kindValue(kind),
+        stageValue(stage) {}
+
+  friend class PreparedLinkInputs;
+
   SnapshotTransactionId transactionIdValue;
   zc::String outputParentValue;
   zc::Maybe<StableDirectoryIdentity> directoryIdentityValue;
@@ -172,17 +197,28 @@ private:
   CleanupStage stageValue;
 };
 
+/// \brief The payload of the `RecoveryRequired` branch: the primary IR result
+///        (verified value or failure facts, preserved losslessly) plus the one
+///        cleanup obligation a recovery step must adjudicate.
+template <typename VerifiedValue>
+struct RecoveryRequiredOutcome {
+  IrOperationResult<VerifiedValue> primary;
+  SnapshotCleanupObligation obligation;
+};
+
 /// \brief A closed two-state result that makes an un-cleaned snapshot tree
 ///        impossible to ignore.
 ///
 /// `Complete` means the operation finished and its private snapshot tree was
 /// removed, so there is nothing to recover. `RecoveryRequired` means the
 /// operation finished (with any primary result, verified or rejected) but its
-/// snapshot tree could not be removed, so exactly one `SnapshotCleanupObligation` is
-/// carried for a later recovery step. A caller cannot read the primary result
-/// without also seeing whether recovery is required: a verified primary paired
-/// with a cleanup failure is `RecoveryRequired`, never a clean success. The type
-/// is `[[nodiscard]]`.
+/// snapshot tree could not be removed, so exactly one `SnapshotCleanupObligation`
+/// is carried for a later recovery step. The two branches are extracted by
+/// distinct consuming accessors - `takeComplete()` requires `Complete`,
+/// `takeRecoveryRequired()` returns both the primary and the obligation - so a
+/// caller cannot read a verified primary while silently dropping a cleanup
+/// obligation: a verified primary paired with a cleanup failure is
+/// `RecoveryRequired`, never a clean success. The type is `[[nodiscard]]`.
 template <typename VerifiedValue>
 class ZC_NODISCARD CleanupAwareOutcome final {
 public:
@@ -198,31 +234,37 @@ public:
 
   /// \brief The operation finished but its snapshot tree could not be removed.
   ZC_NODISCARD static CleanupAwareOutcome recoveryRequired(
-      IrOperationResult<VerifiedValue>&& primary, SnapshotCleanupObligation&& orphan) {
-    return CleanupAwareOutcome(zc::mv(primary), zc::mv(orphan));
+      IrOperationResult<VerifiedValue>&& primary, SnapshotCleanupObligation&& obligation) {
+    return CleanupAwareOutcome(zc::mv(primary), zc::mv(obligation));
   }
 
-  ZC_NODISCARD bool isComplete() const noexcept { return orphanValue == zc::none; }
-  ZC_NODISCARD bool isRecoveryRequired() const noexcept { return orphanValue != zc::none; }
+  ZC_NODISCARD bool isComplete() const noexcept { return obligationValue == zc::none; }
+  ZC_NODISCARD bool isRecoveryRequired() const noexcept { return obligationValue != zc::none; }
 
-  /// \brief The primary IR result, valid in both states.
-  ZC_NODISCARD const IrOperationResult<VerifiedValue>& primary() const noexcept {
-    return resultValue;
+  /// \brief The primary IR result of a `Complete` outcome. Requires isComplete();
+  ///        an outcome that requires recovery cannot be consumed as a clean one.
+  ZC_NODISCARD IrOperationResult<VerifiedValue>&& takeComplete() && {
+    ZC_IREQUIRE(obligationValue == zc::none,
+                "takeComplete() on a RecoveryRequired outcome would drop the cleanup obligation");
+    return zc::mv(resultValue);
   }
-  ZC_NODISCARD IrOperationResult<VerifiedValue>&& takePrimary() && { return zc::mv(resultValue); }
 
-  /// \brief The orphaned snapshot. Requires isRecoveryRequired().
-  ZC_NODISCARD const SnapshotCleanupObligation& orphan() const {
-    return ZC_REQUIRE_NONNULL(orphanValue);
+  /// \brief The primary result and the cleanup obligation of a `RecoveryRequired`
+  ///        outcome, taken together so the obligation cannot be dropped.
+  ///        Requires isRecoveryRequired().
+  ZC_NODISCARD RecoveryRequiredOutcome<VerifiedValue> takeRecoveryRequired() && {
+    ZC_IREQUIRE(obligationValue != zc::none, "takeRecoveryRequired() on a Complete outcome");
+    return RecoveryRequiredOutcome<VerifiedValue>{zc::mv(resultValue),
+                                                  ZC_REQUIRE_NONNULL(zc::mv(obligationValue))};
   }
 
 private:
   CleanupAwareOutcome(IrOperationResult<VerifiedValue>&& result,
-                      zc::Maybe<SnapshotCleanupObligation>&& orphan) noexcept
-      : resultValue(zc::mv(result)), orphanValue(zc::mv(orphan)) {}
+                      zc::Maybe<SnapshotCleanupObligation>&& obligation) noexcept
+      : resultValue(zc::mv(result)), obligationValue(zc::mv(obligation)) {}
 
   IrOperationResult<VerifiedValue> resultValue;
-  zc::Maybe<SnapshotCleanupObligation> orphanValue;
+  zc::Maybe<SnapshotCleanupObligation> obligationValue;
 };
 
 /// \brief A transaction-private, re-verified snapshot of every link input plus
@@ -261,20 +303,16 @@ private:
 /// only by `linkExecutable`, so an external caller cannot drop it and silently
 /// lose an orphan.
 
-/// \brief A test-only forced fault used to exercise the fail-closed and
-///        recovery-obligation paths of the snapshot transaction. Production
-///        always passes `None`.
-enum class PrepareInjectedFault : uint8_t {
-  /// No injected fault (production).
-  None = 0x00,
-  /// Throw while writing a snapshot copy (exercises the caught-fault rejection
-  /// with rollback during pass 1).
-  WriteMidSnapshot = 0x01,
-  /// Throw while re-verifying a snapshot copy (exercises pass-2 fault handling).
-  Pass2Read = 0x02,
-  /// Force every snapshot-tree removal to fail (exercises the RecoveryRequired
-  /// obligation on both the prepare-rollback and post-spawn cleanup paths).
-  TreeRemoval = 0x03,
+/// \brief A test-only source of snapshot transaction tokens. Production uses the
+///        OS CSPRNG; a test can supply a scripted sequence (for example a
+///        colliding token followed by a fresh one) to exercise the exclusive-
+///        create retry. Reachable only through `LinkerInvocationTestAccess`.
+class SnapshotTokenSource {
+public:
+  virtual ~SnapshotTokenSource() noexcept = default;
+  /// \brief Fills `out` with 16 token bytes. Returns false to model a CSPRNG
+  ///        failure (fail closed).
+  virtual bool nextToken(uint8_t (&out)[16]) = 0;
 };
 
 class PreparedLinkInputs final {
@@ -290,16 +328,15 @@ public:
   /// On success the outcome's primary is a verified `PreparedLinkInputs` whose
   /// tree is still live (the caller consumes it and later calls
   /// `finishAndCleanup`). On a prepare-time rejection the tree is removed here;
-  /// if that removal fails the outcome is `RecoveryRequired` carrying the orphan.
+  /// if that removal fails the outcome is `RecoveryRequired` carrying the
+  /// obligation.
   ///
   /// \param plan The verified link plan naming every input and the driver.
   /// \param filesystem The filesystem whose root the plan's absolute paths
   ///        resolve against; its root must expose real descriptors, so an
   ///        in-memory filesystem fails closed.
-  /// \param injectedFault A test-only forced fault; production passes None.
   ZC_NODISCARD static CleanupAwareOutcome<PreparedLinkInputs> prepare(
-      const VerifiedLinkPlan& plan, const zc::Filesystem& filesystem,
-      PrepareInjectedFault injectedFault = PrepareInjectedFault::None);
+      const VerifiedLinkPlan& plan, const zc::Filesystem& filesystem);
 
   /// \brief Removes the private snapshot tree and reports the cleanup outcome,
   ///        consuming this capability. After it returns, this object is
@@ -307,10 +344,8 @@ public:
   ///
   /// \param primary The primary link result to pair with the cleanup outcome. A
   ///        verified primary with a failed cleanup still yields RecoveryRequired.
-  /// \param injectedFault A test-only forced fault; production passes None.
   ZC_NODISCARD CleanupAwareOutcome<VerifiedLinkedExecutable> finishAndCleanup(
-      IrOperationResult<VerifiedLinkedExecutable>&& primary,
-      PrepareInjectedFault injectedFault = PrepareInjectedFault::None) && noexcept;
+      IrOperationResult<VerifiedLinkedExecutable>&& primary) && noexcept;
 
   /// \brief The borrowed descriptor of the driver snapshot, valid while this
   ///        object is alive. The exec targets exactly this open object.
@@ -336,6 +371,32 @@ private:
   zc::Own<Impl> impl;
 
   explicit PreparedLinkInputs(zc::Own<Impl> impl) noexcept;
+
+  // Construction helpers for the friended typed values. Kept as members so only
+  // the snapshot machinery can mint a transaction id, capture a directory
+  // identity, or build a cleanup obligation.
+  ZC_NODISCARD static zc::Maybe<SnapshotTransactionId> makeTransactionId(
+      zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static zc::Maybe<StableDirectoryIdentity> makeIdentity(uint64_t device,
+                                                                      uint64_t inode);
+  ZC_NODISCARD static SnapshotCleanupObligation makeObligation(
+      const SnapshotTransactionId& transactionId, zc::String&& outputParent,
+      zc::Maybe<StableDirectoryIdentity> directoryIdentity, const LinkPlanId& planId,
+      CleanupFailureKind kind, CleanupStage stage) noexcept;
+  ZC_NODISCARD static zc::Maybe<StableDirectoryIdentity> captureDirectoryIdentity(
+      const zc::Directory& dir) noexcept;
+
+  // The token-source variant, reachable only through the friend test peer, lets
+  // a test script the transaction token (for example to force an exclusive-create
+  // collision and prove the retry). Production `prepare` uses the OS CSPRNG.
+  // Write/read/remove faults are injected through a fault-injecting `Filesystem`
+  // wrapper the test passes as the ordinary `filesystem` argument, so no
+  // production signature carries a fault parameter.
+  ZC_NODISCARD static CleanupAwareOutcome<PreparedLinkInputs> prepareWithTokenSource(
+      const VerifiedLinkPlan& plan, const zc::Filesystem& filesystem,
+      SnapshotTokenSource& tokenSource);
+
+  friend struct LinkerInvocationTestAccess;
 };
 
 /// \brief A linked executable produced from a verified link plan.
@@ -393,11 +454,23 @@ private:
 /// \param filesystem The filesystem whose root the plan's normalized absolute
 ///        paths resolve against; its root must expose real descriptors, so an
 ///        in-memory filesystem fails closed.
-/// \param injectedFault A test-only forced fault; production passes None.
 /// \return A cleanup-aware outcome wrapping the verified linked executable or a
 ///         LinkerInvocation-phase rejection.
 ZC_NODISCARD CleanupAwareOutcome<VerifiedLinkedExecutable> linkExecutable(
-    const VerifiedLinkPlan& plan, const zc::Filesystem& filesystem,
-    PrepareInjectedFault injectedFault = PrepareInjectedFault::None);
+    const VerifiedLinkPlan& plan, const zc::Filesystem& filesystem);
+
+/// \brief Test-only access to the snapshot machinery's internal seams: a
+///        scriptable transaction-token source (to force an exclusive-create
+///        collision and prove the retry). Write/read/remove faults are injected
+///        by passing a fault-injecting `Filesystem` wrapper as the ordinary
+///        `filesystem` argument, so no production signature carries a fault
+///        parameter.
+struct LinkerInvocationTestAccess {
+  ZC_NODISCARD static CleanupAwareOutcome<PreparedLinkInputs> prepareWithTokenSource(
+      const VerifiedLinkPlan& plan, const zc::Filesystem& filesystem,
+      SnapshotTokenSource& tokenSource) {
+    return PreparedLinkInputs::prepareWithTokenSource(plan, filesystem, tokenSource);
+  }
+};
 
 }  // namespace zomlang::compiler::ir
