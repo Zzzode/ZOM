@@ -43,15 +43,22 @@ bool isNormalizedAbsolutePath(zc::StringPtr path) {
 // =======================================================================================
 // VerifiedSysroot
 
-zc::Maybe<VerifiedSysroot> VerifiedSysroot::open(const zc::ReadableDirectory& root,
+zc::Maybe<VerifiedSysroot> VerifiedSysroot::open(const zc::Filesystem& filesystem,
                                                  zc::StringPtr canonicalAbsolutePath) {
+  // The identity must be a normalized absolute path with at least one segment
+  // (the bare root "/" is rejected).
   if (!isNormalizedAbsolutePath(canonicalAbsolutePath)) { return zc::none; }
-  // Open the sysroot directory relative to the filesystem root (drop the leading
-  // '/'), binding the capability to the canonical identity.
-  ZC_IF_SOME(directory, root.tryOpenSubdir(zc::Path::parse(canonicalAbsolutePath.slice(1)))) {
-    return VerifiedSysroot(zc::heapString(canonicalAbsolutePath), zc::mv(directory));
-  }
-  return zc::none;
+  // Root the capability at the filesystem's TRUE root, never a caller-supplied
+  // subdirectory, so the recorded canonical identity cannot be a lie relative to
+  // an arbitrary directory posing as the root. Every open error (missing, not a
+  // directory, permission, type) maps to none, never a thrown exception.
+  try {
+    ZC_IF_SOME(directory, filesystem.getRoot().tryOpenSubdir(
+                              zc::Path::parse(canonicalAbsolutePath.slice(1)))) {
+      return VerifiedSysroot(zc::heapString(canonicalAbsolutePath), zc::mv(directory));
+    }
+    return zc::none;
+  } catch (const zc::Exception&) { return zc::none; }
 }
 
 // =======================================================================================
@@ -75,7 +82,31 @@ const ToolchainClosureRecord& ToolchainDiscoveryResult::closure() const {
 
 namespace {
 
-// Reads a file's bytes under the search root, or none if it does not exist. A
+// A valid sysroot-relative path: non-empty, not absolute, and with no empty,
+// "." or ".." segment and no interior NUL. This is checked BEFORE any filesystem
+// read, so a traversal or malformed path never reaches zc::Path::parse (which
+// would throw or canonicalize) and the bytes read always match the recorded
+// path.
+bool isValidSysrootRelativePath(zc::StringPtr path) {
+  if (path.size() == 0 || path[0] == '/') { return false; }
+  size_t segmentStart = 0;
+  for (size_t index = 0; index <= path.size(); ++index) {
+    const bool atEnd = index == path.size();
+    if (!atEnd) {
+      if (path[index] == '\0') { return false; }
+      if (path[index] != '/') { continue; }
+    }
+    const size_t length = index - segmentStart;
+    if (length == 0) { return false; }  // empty segment: leading/trailing/'//'
+    if (length == 1 && path[segmentStart] == '.') { return false; }
+    if (length == 2 && path[segmentStart] == '.' && path[segmentStart + 1] == '.') { return false; }
+    segmentStart = index + 1;
+  }
+  return true;
+}
+
+// Reads a file's bytes under the search root, or none if it does not exist. The
+// relative path must already have passed isValidSysrootRelativePath. A
 // present-but-empty file returns an empty array (distinguished from a missing
 // file, which returns none).
 zc::Maybe<zc::Array<zc::byte>> tryReadFile(const zc::ReadableDirectory& root,
@@ -94,12 +125,10 @@ zc::Maybe<LinkInputRecord> makeInputRecord(zc::StringPtr recordedPath, LinkInput
   return zc::none;
 }
 
-// Derives the normalized absolute recorded path for a file from the sysroot and
-// its sysroot-relative path, so the recorded/executed path always names the same
-// object that was read and digested. The relative path must be non-empty and
-// must not begin with '/'.
-zc::Maybe<zc::String> deriveRecordedPath(zc::StringPtr sysroot, zc::StringPtr relativePath) {
-  if (relativePath.size() == 0 || relativePath[0] == '/') { return zc::none; }
+// Derives the normalized absolute recorded path from the sysroot identity and a
+// sysroot-relative path that has ALREADY passed isValidSysrootRelativePath, so
+// the recorded/executed path names the same object that was read and digested.
+zc::String deriveRecordedPath(zc::StringPtr sysroot, zc::StringPtr relativePath) {
   return zc::str(sysroot, "/", relativePath);
 }
 
@@ -115,14 +144,14 @@ ToolchainDiscoveryResult discoverToolchain(const VerifiedSysroot& sysroot,
   }
   const zc::ReadableDirectory& searchRoot = sysroot.directory();
 
-  // The linker's recorded absolute path is DERIVED from the bound sysroot
-  // identity and its relative path, never supplied independently, so the digested
-  // bytes and the executed program are the same object by construction.
-  zc::Maybe<zc::String> linkerRecorded =
-      deriveRecordedPath(sysroot.identity(), spec.linkerRelativePath);
-  if (linkerRecorded == zc::none) {
+  // The linker's relative path must be a valid sysroot-relative path BEFORE any
+  // read, so a traversal/NUL/non-normalized path never reaches the filesystem
+  // and the recorded absolute path (derived from the bound sysroot identity)
+  // names the same object that is read and digested.
+  if (!isValidSysrootRelativePath(spec.linkerRelativePath)) {
     return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::MalformedSpec);
   }
+  zc::String linkerRecorded = deriveRecordedPath(sysroot.identity(), spec.linkerRelativePath);
 
   // Resolve and digest the linker driver program from the same relative path.
   zc::Maybe<zc::Array<zc::byte>> linkerBytes = tryReadFile(searchRoot, spec.linkerRelativePath);
@@ -148,10 +177,10 @@ ToolchainDiscoveryResult discoverToolchain(const VerifiedSysroot& sysroot,
       return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::InvalidInputRole);
     }
 
-    zc::Maybe<zc::String> recordedPath = deriveRecordedPath(sysroot.identity(), input.relativePath);
-    if (recordedPath == zc::none) {
+    if (!isValidSysrootRelativePath(input.relativePath)) {
       return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::MalformedSpec);
     }
+    zc::String recordedPath = deriveRecordedPath(sysroot.identity(), input.relativePath);
 
     zc::Maybe<zc::Array<zc::byte>> bytes = tryReadFile(searchRoot, input.relativePath);
     if (bytes == zc::none) {
@@ -162,8 +191,7 @@ ToolchainDiscoveryResult discoverToolchain(const VerifiedSysroot& sysroot,
       return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::EmptyInput);
     }
 
-    zc::Maybe<LinkInputRecord> record =
-        makeInputRecord(ZC_REQUIRE_NONNULL(recordedPath), input.role, content);
+    zc::Maybe<LinkInputRecord> record = makeInputRecord(recordedPath, input.role, content);
     if (record == zc::none) {
       return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::DigestFailed);
     }
@@ -177,9 +205,9 @@ ToolchainDiscoveryResult discoverToolchain(const VerifiedSysroot& sysroot,
   // Final closed check: assemble the validated closure. `make` enforces the
   // absolute-path, non-empty, and role-consistency invariants once more.
   zc::Maybe<ToolchainClosureRecord> closure = ToolchainClosureRecord::make(
-      spec.targetSpecificationIdentity.asPtr(), sysroot.identity(), spec.linkerKind,
-      ZC_REQUIRE_NONNULL(linkerRecorded), ZC_REQUIRE_NONNULL(zc::mv(linkerDigest)),
-      linkerContent.size(), crtObjects.releaseAsArray(), defaultLibraries.releaseAsArray());
+      spec.targetSpecificationIdentity.asPtr(), sysroot.identity(), spec.linkerKind, linkerRecorded,
+      ZC_REQUIRE_NONNULL(zc::mv(linkerDigest)), linkerContent.size(), crtObjects.releaseAsArray(),
+      defaultLibraries.releaseAsArray());
   if (closure == zc::none) {
     return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::ClosureRejected);
   }

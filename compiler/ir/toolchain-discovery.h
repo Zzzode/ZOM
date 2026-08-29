@@ -44,15 +44,24 @@ public:
   ZC_DISALLOW_COPY(VerifiedSysroot);
   ~VerifiedSysroot() noexcept = default;
 
-  /// \brief Opens the sysroot directory at `canonicalAbsolutePath` under `root`.
+  /// \brief Opens the sysroot directory at `canonicalAbsolutePath` under the
+  ///        filesystem's true root.
   ///
-  /// \param root The filesystem root the canonical path is resolved under.
+  /// The capability is rooted at `filesystem.getRoot()`, never at a caller-
+  /// supplied subdirectory, so the recorded canonical identity cannot be a lie
+  /// relative to an arbitrary directory posing as the root.
+  ///
+  /// \param filesystem The filesystem whose real root the canonical path is
+  ///        resolved under.
   /// \param canonicalAbsolutePath A normalized absolute path (begins with '/',
-  ///        no '.'/'..'/empty segment); it is both opened and retained as the
-  ///        identity every recorded input path derives from.
+  ///        at least one segment, no '.'/'..'/empty segment, no NUL); it is both
+  ///        opened and retained as the identity every recorded input path
+  ///        derives from. The bare root `/` has no segment and is rejected.
   /// \return The bound capability, or none when the path is not a normalized
-  ///         absolute path or the directory cannot be opened.
-  ZC_NODISCARD static zc::Maybe<VerifiedSysroot> open(const zc::ReadableDirectory& root,
+  ///         absolute path, or the target does not exist, is not a directory, or
+  ///         cannot otherwise be opened (every open error maps to none, never a
+  ///         thrown exception).
+  ZC_NODISCARD static zc::Maybe<VerifiedSysroot> open(const zc::Filesystem& filesystem,
                                                       zc::StringPtr canonicalAbsolutePath);
 
   /// \brief The canonical absolute identity every recorded path derives from.
@@ -116,7 +125,9 @@ struct ToolchainSearchSpec final {
 /// Discovery is fail-closed: any missing or malformed input rejects the whole
 /// attempt and produces no closure. Each reason names one concrete cause.
 enum class ToolchainDiscoveryFailure : uint8_t {
-  /// The spec named an empty target identity, sysroot, or linker path.
+  /// The spec named an empty target identity or linker path, or a link input
+  /// carried a non-normalized sysroot-relative path (empty, absolute, or a
+  /// path with an empty/'.'/'..' segment or an interior NUL).
   MalformedSpec = 0x01,
 
   /// The linker driver program named by the spec was not found under the root.
