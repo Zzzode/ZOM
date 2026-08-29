@@ -26,17 +26,23 @@
 // Fault injection is applied through a transparent, delegating `Filesystem`
 // wrapper (below): it forwards every filesystem call to a real disk filesystem
 // but can be armed to make one real `File::write`, `ReadableFile::read`, or
-// `Directory::tryRemove` throw, distinguishing content-stage from top-level-
-// stage removes by the target's depth. There is no fault parameter on any
-// production signature; the wrapper is the ordinary `filesystem` argument. The
-// transaction-token collision retry is exercised through a scriptable
-// `SnapshotTokenSource` reachable only via `LinkerInvocationTestAccess`.
+// `Directory::tryRemove` CALL throw, distinguishing content-stage from top-
+// level-stage removes by capability. The fault fires at the start of the real
+// virtual call (a whole-call fault, not a torn/partial write or a short read);
+// it exercises the production exception seam without simulating partial I/O.
+// There is no fault parameter on any production signature; the wrapper is the
+// ordinary `filesystem` argument. The transaction-token collision retry is
+// exercised through a scriptable `SnapshotTokenSource` reachable only through
+// the internal `LinkerInvocationTestAccess` (compiled into this test target and
+// the implementation file, never a production translation unit).
 
 #include "compiler/ir/invoke-linker.h"
-
+//
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "compiler/identity/crypto/sha256.h"
+#include "compiler/ir/invoke-linker-internal.h"
 #include "compiler/ir/link-plan-codec.h"
 #include "zc/core/debug.h"
 #include "zc/core/filesystem.h"
@@ -98,9 +104,11 @@ private:
 // Fault-injecting filesystem wrapper
 //
 // A shared, mutable fault script. It is armed with exactly one fault kind and a
-// zero-based "skip count": the fault fires on the (skip+1)-th matching call and
-// then disarms, so a test can, for example, fail the write of the 2nd snapshot
-// file.
+// zero-based "skip count": the fault fires on the (skip+1)-th matching CALL and
+// then disarms, so a test can, for example, fail the write-call of the 2nd
+// snapshot file. Every fault is a whole-call fault: it throws at the start of
+// the real virtual call, before any bytes are written or read - it exercises the
+// production exception seam, not a torn write or a short read.
 //
 // Tree membership is tracked by capability, not by inspecting a bare relative
 // path: the root wrapper is "outside" the tree; a subdir opened under a name
@@ -109,25 +117,30 @@ private:
 // snapshot files and removes snapshot contents THROUGH the held snapshot-dir
 // capability with bare leaf paths ("driver"), which carry no ".zomlink-"
 // component of their own. With the flag propagated at open time:
-//   - Write faults hit only writes into the snapshot tree (mid-snapshot write).
-//   - Read faults hit only reads of snapshot files (the pass-2 re-verify reads),
-//     never the phase-1 source reads.
-//   - ContentRemove faults hit only removes issued through an inside directory
-//     (content stage); TopLevelRemove faults hit only the parent removing a
-//     ".zomlink-" entry (top-level stage).
+//   - Write faults hit only write-calls into the snapshot tree.
+//   - Read faults hit only read-calls of snapshot files (the pass-2 re-verify
+//     reads), never the phase-1 source reads.
+//   - ContentRemove faults hit only remove-calls issued through an inside
+//     directory (content stage); TopLevelRemove faults hit only the parent
+//     removing a ".zomlink-" entry (top-level stage).
 
 enum class FaultKind {
   None,
-  Write,           // Fail a File::write into the snapshot tree (mid-snapshot write).
-  Read,            // Fail a ReadableFile::read of a snapshot file (pass-2 re-verify read).
-  ContentRemove,   // Fail a tryRemove issued through an inside (snapshot) directory.
-  TopLevelRemove,  // Fail a parent's tryRemove of a ".zomlink-" top-level directory.
+  Write,           // Fail a File::write-call into the snapshot tree.
+  Read,            // Fail a ReadableFile::read-call of a snapshot file (pass-2 re-verify).
+  ContentRemove,   // Fail a tryRemove-call issued through an inside (snapshot) directory.
+  TopLevelRemove,  // Fail a parent's tryRemove-call of a ".zomlink-" top-level directory.
 };
 
 struct FaultScript {
   FaultKind kind = FaultKind::None;
   size_t skip = 0;     // Number of matching calls to let pass before firing.
   bool fired = false;  // Set once the fault has fired (single-shot).
+  // When true, an inside-tree (snapshot) directory reports no descriptor, so the
+  // production exact-identity capture yields none. This models a filesystem that
+  // cannot supply a stable (dev,ino) for the snapshot directory, exercising the
+  // IdentityUnavailable path without faulting any I/O call.
+  bool suppressInsideTreeFd = false;
 
   // Returns true (and disarms) when a call matching `candidate` should fault.
   bool shouldFire(FaultKind candidate) {
@@ -160,13 +173,15 @@ public:
   FaultFile(zc::Own<const zc::File>&& inner, FaultScript& script, bool insideTree)
       : inner(zc::mv(inner)), script(script), insideTree(insideTree) {}
 
+  // A file always reports its real descriptor: the driver snapshot's fd is the
+  // exec target, and identity suppression applies only to the snapshot directory.
   zc::Maybe<int> getFd() const override { return inner->getFd(); }
   Metadata stat() const override { return inner->stat(); }
   void sync() const override { inner->sync(); }
   void datasync() const override { inner->datasync(); }
   size_t read(uint64_t offset, zc::ArrayPtr<zc::byte> buffer) const override {
     if (insideTree && script.shouldFire(FaultKind::Read)) {
-      ZC_FAIL_REQUIRE("injected pass-2 read fault");
+      ZC_FAIL_REQUIRE("injected pass-2 read-call fault");
     }
     return inner->read(offset, buffer);
   }
@@ -178,7 +193,7 @@ public:
   }
   void write(uint64_t offset, zc::ArrayPtr<const zc::byte> data) const override {
     if (insideTree && script.shouldFire(FaultKind::Write)) {
-      ZC_FAIL_REQUIRE("injected mid-snapshot write fault");
+      ZC_FAIL_REQUIRE("injected snapshot write-call fault");
     }
     inner->write(offset, data);
   }
@@ -211,7 +226,7 @@ public:
   void datasync() const override { inner->datasync(); }
   size_t read(uint64_t offset, zc::ArrayPtr<zc::byte> buffer) const override {
     if (insideTree && script.shouldFire(FaultKind::Read)) {
-      ZC_FAIL_REQUIRE("injected pass-2 read fault");
+      ZC_FAIL_REQUIRE("injected pass-2 read-call fault");
     }
     return inner->read(offset, buffer);
   }
@@ -238,7 +253,12 @@ public:
   FaultDirectory(zc::Own<const zc::Directory>&& inner, FaultScript& script, bool insideTree)
       : inner(zc::mv(inner)), script(script), insideTree(insideTree) {}
 
-  zc::Maybe<int> getFd() const override { return inner->getFd(); }
+  zc::Maybe<int> getFd() const override {
+    // Model a filesystem that cannot supply a stable descriptor for the snapshot
+    // directory, so the production identity capture yields none.
+    if (insideTree && script.suppressInsideTreeFd) { return zc::none; }
+    return inner->getFd();
+  }
   Metadata stat() const override { return inner->stat(); }
   void sync() const override { inner->sync(); }
   void datasync() const override { inner->datasync(); }
@@ -304,11 +324,11 @@ public:
   bool tryRemove(zc::PathPtr path) const override {
     // A remove issued through an inside (snapshot) directory is content-stage.
     if (insideTree && script.shouldFire(FaultKind::ContentRemove)) {
-      ZC_FAIL_REQUIRE("injected content remove fault");
+      ZC_FAIL_REQUIRE("injected content remove-call fault");
     }
     // A parent removing a ".zomlink-" entry is the top-level stage.
     if (!insideTree && isSnapshotTopLevel(path) && script.shouldFire(FaultKind::TopLevelRemove)) {
-      ZC_FAIL_REQUIRE("injected top-level remove fault");
+      ZC_FAIL_REQUIRE("injected top-level remove-call fault");
     }
     return inner->tryRemove(path);
   }
@@ -414,6 +434,22 @@ size_t countSnapshotTrees(const zc::Directory& dir) {
     if (zc::StringPtr(name).startsWith(".zomlink-"_zc)) { ++count; }
   }
   return count;
+}
+
+// The exact (dev, ino) of the subdirectory `name` under `parent`, read through
+// its real descriptor. Mirrors the production owner-identity capture, so a test
+// can prove a tree's identity is unchanged (not merely its byte content).
+struct DirIdentity {
+  uint64_t dev;
+  uint64_t ino;
+  bool operator==(const DirIdentity& other) const { return dev == other.dev && ino == other.ino; }
+};
+DirIdentity subdirIdentity(const zc::Directory& parent, zc::StringPtr name) {
+  auto sub = parent.openSubdir(zc::Path(zc::heapString(name)));
+  int fd = ZC_REQUIRE_NONNULL(sub->getFd());
+  struct stat st;
+  ZC_REQUIRE(::fstat(fd, &st) == 0);
+  return DirIdentity{static_cast<uint64_t>(st.st_dev), static_cast<uint64_t>(st.st_ino)};
 }
 
 #if defined(ZOM_FAKE_LINKER_SUCCESS)
@@ -600,7 +636,7 @@ ZC_TEST("linkExecutable reports a missing output on a clean exit") {
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
 
-ZC_TEST("linkExecutable maps a mid-snapshot write fault to a rejection and cleans up") {
+ZC_TEST("linkExecutable maps a snapshot write-call fault to a rejection and cleans up") {
   auto disk = zc::newDiskFilesystem();
   zc::String base = tempDirPath();
   auto dir = openDir(*disk, base);
@@ -628,7 +664,7 @@ ZC_TEST("linkExecutable maps a mid-snapshot write fault to a rejection and clean
   disk->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
 
-ZC_TEST("linkExecutable maps a pass-2 read fault to a rejection and cleans up") {
+ZC_TEST("linkExecutable maps a pass-2 read-call fault to a rejection and cleans up") {
   auto disk = zc::newDiskFilesystem();
   zc::String base = tempDirPath();
   auto dir = openDir(*disk, base);
@@ -720,6 +756,53 @@ ZC_TEST("linkExecutable reports TopLevelRemovalFailed when the top-level remove 
   disk->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
 
+ZC_TEST("cleanup classifies a non-ENOENT fstatat error on the top-level entry as removal failure") {
+  // The exact-identity re-check calls fstatat on the held parent descriptor. If
+  // that call fails with anything other than ENOENT (here EACCES, forced by
+  // stripping the parent directory's search permission after the tree is built),
+  // cleanup must NOT treat the entry as gone: it classifies as
+  // TopLevelRemovalFailed. Root bypasses directory permission checks, so this
+  // real-permission case is skipped when running as root.
+  if (::geteuid() == 0) { return; }
+
+  auto disk = zc::newDiskFilesystem();
+  zc::String base = tempDirPath();
+  auto dir = openDir(*disk, base);
+  Scenario scenario;
+  auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+
+  // Prepare a real capability (content will be cleaned through the held snapshot
+  // capability, then the top-level fstatat runs against the held parent fd).
+  CleanupAwareOutcome<PreparedLinkInputs> preparedOutcome =
+      PreparedLinkInputs::prepare(plan, *disk);
+  ZC_ASSERT(preparedOutcome.isComplete());
+  IrOperationResult<PreparedLinkInputs> preparedResult = zc::mv(preparedOutcome).takeComplete();
+  ZC_ASSERT(preparedResult.isVerified());
+  PreparedLinkInputs prepared = zc::mv(preparedResult).takeVerified();
+
+  // Strip search/exec permission from the parent so fstatat(parentFd, leaf, ...)
+  // fails with EACCES (not ENOENT). The held snapshot-dir descriptor is already
+  // open, so content removal still succeeds; only the top-level re-check fails.
+  auto parentReal = zc::str("/", base.slice(1));
+  ZC_REQUIRE(::chmod(parentReal.cStr(), 0) == 0);
+
+  auto primary = IrOperationResult<VerifiedLinkedExecutable>::verified(
+      VerifiedLinkedExecutable(zc::heapArray<uint8_t>({0x7f})));
+  CleanupAwareOutcome<VerifiedLinkedExecutable> outcome =
+      zc::mv(prepared).finishAndCleanup(zc::mv(primary));
+
+  // Restore permissions before asserting, so cleanup of the base always works.
+  ZC_REQUIRE(::chmod(parentReal.cStr(), 0700) == 0);
+
+  ZC_ASSERT(outcome.isRecoveryRequired());
+  RecoveryRequiredOutcome<VerifiedLinkedExecutable> rr = zc::mv(outcome).takeRecoveryRequired();
+  ZC_EXPECT(rr.obligation.cleanupStage() == CleanupStage::PostSpawnCleanup);
+  // A non-ENOENT fstatat error is a top-level removal failure, never "removed".
+  ZC_EXPECT(rr.obligation.cleanupFailureKind() == CleanupFailureKind::TopLevelRemovalFailed);
+
+  disk->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
 ZC_TEST("PreparedLinkInputs::prepare reports RecoveryRequired when rollback cleanup fails") {
   auto disk = zc::newDiskFilesystem();
   zc::String base = tempDirPath();
@@ -744,6 +827,46 @@ ZC_TEST("PreparedLinkInputs::prepare reports RecoveryRequired when rollback clea
   ZC_EXPECT(rr.obligation.cleanupStage() == CleanupStage::PrepareRollback);
   ZC_EXPECT(rr.obligation.cleanupFailureKind() == CleanupFailureKind::ContentRemovalFailed);
   ZC_EXPECT(!rr.primary.isVerified());
+
+  disk->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("prepare fails closed with IdentityUnavailable when the tree exposes no stable identity") {
+  // The snapshot directory cannot supply an exact (dev,ino) - modeled by the
+  // wrapper suppressing the inside-tree descriptor. Prepare must fail closed
+  // BEFORE building a capability or spawning: reject with OutputCreationFailed,
+  // clean the tree's CONTENTS through the held capability, but never auto-remove
+  // the top-level entry without an owner proof, and report an IdentityUnavailable
+  // obligation at the PrepareRollback stage.
+  auto disk = zc::newDiskFilesystem();
+  zc::String base = tempDirPath();
+  auto dir = openDir(*disk, base);
+  Scenario scenario;
+  auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+
+  FaultScript script;
+  script.suppressInsideTreeFd = true;
+  FaultFilesystem faultFs(script);
+
+  CleanupAwareOutcome<PreparedLinkInputs> outcome = PreparedLinkInputs::prepare(plan, faultFs);
+  ZC_ASSERT(outcome.isRecoveryRequired());
+  RecoveryRequiredOutcome<PreparedLinkInputs> rr = zc::mv(outcome).takeRecoveryRequired();
+  ZC_EXPECT(!rr.primary.isVerified());
+  ZC_EXPECT(rr.primary.isCapabilityRejected());
+  ZC_EXPECT(rr.obligation.cleanupStage() == CleanupStage::PrepareRollback);
+  ZC_EXPECT(rr.obligation.cleanupFailureKind() == CleanupFailureKind::IdentityUnavailable);
+  // No exact identity was captured, so the obligation carries none.
+  ZC_EXPECT(rr.obligation.directoryIdentity() == zc::none);
+
+  // The empty top-level tree survives (never auto-removed without an owner proof),
+  // but its contents were cleaned through the held capability: the directory the
+  // obligation names exists and is empty.
+  zc::String treeName;
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith(".zomlink-"_zc)) { treeName = zc::heapString(name); }
+  }
+  ZC_ASSERT(treeName.size() > 0);
+  ZC_EXPECT(dir->openSubdir(zc::Path(treeName))->listNames().size() == 0u);
 
   disk->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
@@ -825,6 +948,9 @@ ZC_TEST("prepare retries a fresh token on an exclusive-create collision without 
   ZC_ASSERT(firstTreeName.size() > 0);
   auto firstDriverBefore =
       dir->openSubdir(zc::Path(firstTreeName))->openFile(zc::Path("driver"_zc))->readAllBytes();
+  // The first tree's EXACT identity (dev,ino), so the collision is proven not to
+  // have swapped the directory object, not merely to have preserved its bytes.
+  DirIdentity firstIdentityBefore = subdirIdentity(*dir, firstTreeName);
 
   // Second transaction is offered token 0xA1 first (collision), then 0xB2.
   auto secondScript = zc::heapArrayBuilder<zc::Array<uint8_t>>(2);
@@ -850,6 +976,9 @@ ZC_TEST("prepare retries a fresh token on an exclusive-create collision without 
     if (firstDriverBefore[i] != firstDriverAfter[i]) { unchanged = false; }
   }
   ZC_EXPECT(unchanged);
+  // The first tree's EXACT identity is unchanged: same directory object, never
+  // unlinked-and-recreated by the colliding transaction.
+  ZC_EXPECT(subdirIdentity(*dir, firstTreeName) == firstIdentityBefore);
 
   // Clean both up.
   auto primaryA = IrOperationResult<VerifiedLinkedExecutable>::verified(
@@ -863,7 +992,7 @@ ZC_TEST("prepare retries a fresh token on an exclusive-create collision without 
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
 
-ZC_TEST("two concurrent prepares of the same plan use distinct trees and do not interfere") {
+ZC_TEST("two overlapping (sequential, not threaded) prepares of the same plan use distinct trees") {
   // Two overlapping transactions for the same plan must each get an unpredictable,
   // distinct private tree (no shared deterministic name, no pre-delete of the
   // other), and finishing one must not remove the other's tree.
@@ -907,6 +1036,40 @@ ZC_TEST("two concurrent prepares of the same plan use distinct trees and do not 
   ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
 
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("a prepared capability dropped without finishAndCleanup swallows a cleanup fault") {
+  // If a prepared capability is dropped without finishAndCleanup, its destructor
+  // is a noexcept last-resort leak guard: it best-effort removes the tree and
+  // swallows any fault. With content removal armed to fail, dropping the
+  // capability must NOT throw (the test would abort under the noexcept violation)
+  // and simply leaves the tree behind - no structured obligation is produced on
+  // this fallback path, which is exactly why finishAndCleanup is the real path.
+  auto disk = zc::newDiskFilesystem();
+  zc::String base = tempDirPath();
+  auto dir = openDir(*disk, base);
+  Scenario scenario;
+  auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+
+  FaultScript script;
+  script.kind = FaultKind::ContentRemove;
+  script.skip = 0;
+  FaultFilesystem faultFs(script);
+
+  {
+    CleanupAwareOutcome<PreparedLinkInputs> outcome = PreparedLinkInputs::prepare(plan, faultFs);
+    ZC_ASSERT(outcome.isComplete());
+    IrOperationResult<PreparedLinkInputs> result = zc::mv(outcome).takeComplete();
+    ZC_ASSERT(result.isVerified());
+    PreparedLinkInputs prepared = zc::mv(result).takeVerified();
+    // `prepared` goes out of scope here; its noexcept destructor runs the armed
+    // failing removal and must not propagate.
+  }
+  // The destructor swallowed the fault (no throw reached here) and left the tree.
+  ZC_EXPECT(script.fired);
+  ZC_EXPECT(countSnapshotTrees(*dir) == 1u);
+
+  disk->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
 
 #endif  // defined(ZOM_FAKE_LINKER_SUCCESS)

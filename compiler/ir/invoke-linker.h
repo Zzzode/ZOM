@@ -25,19 +25,30 @@
 
 namespace zomlang::compiler::ir {
 
-/// Forward declaration: `PreparedLinkInputs::finishAndCleanup` pairs a cleanup
-/// outcome with a linked-executable result, which is defined further below.
-class VerifiedLinkedExecutable;
+namespace detail {
+/// \brief The sole factory permitted to construct the restricted snapshot record
+///        types below (the attorney/factory idiom). It is defined only in the
+///        test-only internal header `invoke-linker-internal.h`, so no ordinary
+///        production translation unit can mint a transaction id, a directory
+///        identity, or a cleanup obligation. The public surface names this
+///        neutral factory rather than the snapshot capability itself.
+class LinkSnapshotMinter;
+}  // namespace detail
 
 /// \brief A fixed 128-bit opaque identity for one snapshot transaction.
 ///
 /// Generated from the OS CSPRNG so a transaction-private snapshot directory name
 /// is unpredictable (no other process can pre-create or guess it) and unique.
 /// It is a typed value, never a free-form string, so an obligation record cannot
-/// be confused with an arbitrary path. It is constructed only by the snapshot
-/// machinery (`PreparedLinkInputs`), so external code cannot forge one.
+/// be confused with an arbitrary path. A meaningful id is minted only by the
+/// snapshot machinery (through `detail::LinkSnapshotMinter`), so external code
+/// cannot forge one from chosen bytes.
 class SnapshotTransactionId final {
 public:
+  /// \brief A zero id. Inert on its own: a real, unpredictable id is always
+  ///        produced by the snapshot machinery from the OS CSPRNG. Public so the
+  ///        machinery can hold one by value before assigning the minted id.
+  SnapshotTransactionId() = default;
   SnapshotTransactionId(SnapshotTransactionId&&) noexcept = default;
   SnapshotTransactionId& operator=(SnapshotTransactionId&&) noexcept = default;
   SnapshotTransactionId(const SnapshotTransactionId&) noexcept = default;
@@ -56,11 +67,12 @@ public:
   bool operator!=(const SnapshotTransactionId& other) const noexcept { return !(*this == other); }
 
 private:
-  SnapshotTransactionId() = default;
-  /// \brief Builds an id from exactly 16 bytes; none unless exactly 16.
+  /// \brief Builds an id from exactly 16 bytes; none unless exactly 16. Minted
+  ///        only by the snapshot machinery, so an id cannot be forged from
+  ///        chosen bytes.
   ZC_NODISCARD static zc::Maybe<SnapshotTransactionId> fromBytes(zc::ArrayPtr<const uint8_t> bytes);
 
-  friend class PreparedLinkInputs;
+  friend class detail::LinkSnapshotMinter;
 
   uint8_t value[16] = {};
 };
@@ -100,7 +112,7 @@ private:
   StableDirectoryIdentity(uint64_t device, uint64_t inode) noexcept
       : deviceValue(device), inodeValue(inode) {}
 
-  friend class PreparedLinkInputs;
+  friend class detail::LinkSnapshotMinter;
 
   uint64_t deviceValue;
   uint64_t inodeValue;
@@ -109,9 +121,9 @@ private:
 /// \brief Why a snapshot-tree cleanup could not complete. A closed set; the
 ///        recovery journal switches on it.
 enum class CleanupFailureKind : uint8_t {
-  /// No exact stable identity could be captured (getFd/fstat unavailable), so
-  /// removal was never attempted; recovery must adjudicate explicitly and must
-  /// not auto-delete.
+  /// No exact stable identity could be captured (getFd/fstat unavailable), so the
+  /// top-level removal was never attempted; recovery must adjudicate explicitly
+  /// and must not auto-delete. The tree's contents are still freed first.
   IdentityUnavailable = 0x01,
   /// The tree's exact identity no longer matches on the re-check just before
   /// removal, so removal was refused rather than deleting a swapped object.
@@ -187,7 +199,7 @@ private:
         kindValue(kind),
         stageValue(stage) {}
 
-  friend class PreparedLinkInputs;
+  friend class detail::LinkSnapshotMinter;
 
   SnapshotTransactionId transactionIdValue;
   zc::String outputParentValue;
@@ -267,138 +279,6 @@ private:
   zc::Maybe<SnapshotCleanupObligation> obligationValue;
 };
 
-/// \brief A transaction-private, re-verified snapshot of every link input plus
-///        the rewritten driver invocation that consumes it.
-///
-/// RFC 0043 D3b defeats the input side of the link TOCTOU. `linkExecutable`
-/// re-reads the driver by pathname just before spawning, but the driver then
-/// re-opens each input (and, without this, itself) by pathname at exec time, so
-/// an inode swapped between verification and exec would be linked. This
-/// capability closes that window:
-///
-///   1. Every input the plan names - the driver, the closure CRT objects and
-///      default libraries, and the plan's object and runtime records - is read
-///      from the source filesystem, verified against the plan's recorded digest
-///      and byte count, and copied into a fresh, process-private snapshot
-///      directory whose per-file names are derived from the input's canonical
-///      role and index (never a source basename, which could collide across
-///      distinct source paths).
-///   2. After every input is snapshotted, each snapshot copy is re-opened and
-///      re-verified against the plan from the snapshot handle, proving the bytes
-///      that were written are the bytes the plan proved.
-///   3. Only then is the rewritten argument vector built once, pointing every
-///      input token at its snapshot path, and the driver snapshot re-opened
-///      read-only for execution by descriptor. There is never a half-built
-///      invocation: the factory returns this capability only after all inputs
-///      verify, or a rejection with the private tree already removed.
-///
-/// The driver snapshot's descriptor is borrowed from a `ReadableFile` this
-/// object owns, so the owner must outlive the `SubprocessCommand::run` that
-/// execs it. Cleanup is explicit: `finishAndCleanup()` consumes the capability,
-/// removes the private tree, and reports either `Complete` or (if the tree could
-/// not be removed) `RecoveryRequired` with a structured `SnapshotCleanupObligation`. The
-/// destructor is a `noexcept` last-resort leak guard that only acts when
-/// `finishAndCleanup` was never called, and never produces a structured record.
-/// The type is constructed only by `PreparedLinkInputs::prepare` and consumed
-/// only by `linkExecutable`, so an external caller cannot drop it and silently
-/// lose an orphan.
-
-/// \brief A test-only source of snapshot transaction tokens. Production uses the
-///        OS CSPRNG; a test can supply a scripted sequence (for example a
-///        colliding token followed by a fresh one) to exercise the exclusive-
-///        create retry. Reachable only through `LinkerInvocationTestAccess`.
-class SnapshotTokenSource {
-public:
-  virtual ~SnapshotTokenSource() noexcept = default;
-  /// \brief Fills `out` with 16 token bytes. Returns false to model a CSPRNG
-  ///        failure (fail closed).
-  virtual bool nextToken(uint8_t (&out)[16]) = 0;
-};
-
-class PreparedLinkInputs final {
-public:
-  PreparedLinkInputs(PreparedLinkInputs&&) noexcept;
-  PreparedLinkInputs& operator=(PreparedLinkInputs&&) noexcept;
-  ZC_DISALLOW_COPY(PreparedLinkInputs);
-  ~PreparedLinkInputs() noexcept;
-
-  /// \brief Snapshots and re-verifies every input into a transaction-private
-  ///        tree, returning the prepared capability or a rejection.
-  ///
-  /// On success the outcome's primary is a verified `PreparedLinkInputs` whose
-  /// tree is still live (the caller consumes it and later calls
-  /// `finishAndCleanup`). On a prepare-time rejection the tree is removed here;
-  /// if that removal fails the outcome is `RecoveryRequired` carrying the
-  /// obligation.
-  ///
-  /// \param plan The verified link plan naming every input and the driver.
-  /// \param filesystem The filesystem whose root the plan's absolute paths
-  ///        resolve against; its root must expose real descriptors, so an
-  ///        in-memory filesystem fails closed.
-  ZC_NODISCARD static CleanupAwareOutcome<PreparedLinkInputs> prepare(
-      const VerifiedLinkPlan& plan, const zc::Filesystem& filesystem);
-
-  /// \brief Removes the private snapshot tree and reports the cleanup outcome,
-  ///        consuming this capability. After it returns, this object is
-  ///        moved-from and its destructor does nothing.
-  ///
-  /// \param primary The primary link result to pair with the cleanup outcome. A
-  ///        verified primary with a failed cleanup still yields RecoveryRequired.
-  ZC_NODISCARD CleanupAwareOutcome<VerifiedLinkedExecutable> finishAndCleanup(
-      IrOperationResult<VerifiedLinkedExecutable>&& primary) && noexcept;
-
-  /// \brief The borrowed descriptor of the driver snapshot, valid while this
-  ///        object is alive. The exec targets exactly this open object.
-  ZC_NODISCARD int driverDescriptor() const;
-
-  /// \brief The driver snapshot's absolute path (the default `argv[0]`; not used
-  ///        to resolve the executable, which runs by descriptor).
-  ZC_NODISCARD zc::StringPtr program() const noexcept;
-
-  /// \brief The rewritten argument vector; every input token names a snapshot
-  ///        path. `argv[0]` is the driver snapshot path.
-  ZC_NODISCARD zc::ArrayPtr<const zc::String> argv() const noexcept;
-
-  /// \brief The working directory for the driver (the output file's parent).
-  ZC_NODISCARD zc::StringPtr workingDirectory() const noexcept;
-
-  /// \brief The explicit environment as flattened (name, value) pairs; empty in
-  ///        the current closure shape.
-  ZC_NODISCARD zc::ArrayPtr<const zc::String> environment() const noexcept;
-
-private:
-  struct Impl;
-  zc::Own<Impl> impl;
-
-  explicit PreparedLinkInputs(zc::Own<Impl> impl) noexcept;
-
-  // Construction helpers for the friended typed values. Kept as members so only
-  // the snapshot machinery can mint a transaction id, capture a directory
-  // identity, or build a cleanup obligation.
-  ZC_NODISCARD static zc::Maybe<SnapshotTransactionId> makeTransactionId(
-      zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static zc::Maybe<StableDirectoryIdentity> makeIdentity(uint64_t device,
-                                                                      uint64_t inode);
-  ZC_NODISCARD static SnapshotCleanupObligation makeObligation(
-      const SnapshotTransactionId& transactionId, zc::String&& outputParent,
-      zc::Maybe<StableDirectoryIdentity> directoryIdentity, const LinkPlanId& planId,
-      CleanupFailureKind kind, CleanupStage stage) noexcept;
-  ZC_NODISCARD static zc::Maybe<StableDirectoryIdentity> captureDirectoryIdentity(
-      const zc::Directory& dir) noexcept;
-
-  // The token-source variant, reachable only through the friend test peer, lets
-  // a test script the transaction token (for example to force an exclusive-create
-  // collision and prove the retry). Production `prepare` uses the OS CSPRNG.
-  // Write/read/remove faults are injected through a fault-injecting `Filesystem`
-  // wrapper the test passes as the ordinary `filesystem` argument, so no
-  // production signature carries a fault parameter.
-  ZC_NODISCARD static CleanupAwareOutcome<PreparedLinkInputs> prepareWithTokenSource(
-      const VerifiedLinkPlan& plan, const zc::Filesystem& filesystem,
-      SnapshotTokenSource& tokenSource);
-
-  friend struct LinkerInvocationTestAccess;
-};
-
 /// \brief A linked executable produced from a verified link plan.
 ///
 /// Carries the bytes of the executable the linker driver wrote at the plan's
@@ -430,10 +310,9 @@ private:
 ///
 ///   1. snapshots and re-verifies every plan input (driver, closure CRT objects
 ///      and default libraries, object and runtime records) into a transaction-
-///      private directory via `PreparedLinkInputs::prepare`, defeating the input
-///      TOCTOU: the driver runs by the snapshot descriptor and every input token
-///      names a snapshot path, so no source inode swapped after verification can
-///      be linked;
+///      private directory, defeating the input TOCTOU: the driver runs by the
+///      snapshot descriptor and every input token names a snapshot path, so no
+///      source inode swapped after verification can be linked;
 ///   2. rejects a pre-existing file at the plan's output path (no stale output
 ///      is ever accepted as a link result);
 ///   3. spawns the driver by descriptor through the shell-free child-process
@@ -448,7 +327,10 @@ private:
 /// and every other linker failure maps to `OutputCreationFailed` (capability) or
 /// `InvalidFact`. The private snapshot tree is removed on every path; a removal
 /// that fails is reported as `RecoveryRequired` with a structured
-/// `SnapshotCleanupObligation`, so an un-cleaned tree is never silently left behind.
+/// `SnapshotCleanupObligation`, so an un-cleaned tree is never silently left
+/// behind. No filesystem exception escapes: a fault before the tree is created is
+/// a `Complete` rejection, and a fault after it is created becomes a primary
+/// rejection paired with the tree's cleanup outcome.
 ///
 /// \param plan The verified link plan; the sole source of inputs, driver, and output.
 /// \param filesystem The filesystem whose root the plan's normalized absolute
@@ -458,19 +340,5 @@ private:
 ///         LinkerInvocation-phase rejection.
 ZC_NODISCARD CleanupAwareOutcome<VerifiedLinkedExecutable> linkExecutable(
     const VerifiedLinkPlan& plan, const zc::Filesystem& filesystem);
-
-/// \brief Test-only access to the snapshot machinery's internal seams: a
-///        scriptable transaction-token source (to force an exclusive-create
-///        collision and prove the retry). Write/read/remove faults are injected
-///        by passing a fault-injecting `Filesystem` wrapper as the ordinary
-///        `filesystem` argument, so no production signature carries a fault
-///        parameter.
-struct LinkerInvocationTestAccess {
-  ZC_NODISCARD static CleanupAwareOutcome<PreparedLinkInputs> prepareWithTokenSource(
-      const VerifiedLinkPlan& plan, const zc::Filesystem& filesystem,
-      SnapshotTokenSource& tokenSource) {
-    return PreparedLinkInputs::prepareWithTokenSource(plan, filesystem, tokenSource);
-  }
-};
 
 }  // namespace zomlang::compiler::ir
