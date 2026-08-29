@@ -116,8 +116,10 @@ struct SubprocessCommand::Impl {
   SubprocessEnvPolicy envPolicy = SubprocessEnvPolicy::Inherit;
   Vector<EnvEntry> envEntries;
   size_t captureLimit = kDefaultCaptureLimit;
-  // -1 means "exec program by pathname"; a non-negative descriptor means
-  // "exec this open executable via execveat(AT_EMPTY_PATH)".
+  // When `hasExecutableDescriptor` is true, `executableDescriptor` is the
+  // caller's descriptor to exec via execveat(AT_EMPTY_PATH); a negative value in
+  // that state is an error (it never silently falls back to a pathname exec).
+  bool hasExecutableDescriptor = false;
   int executableDescriptor = -1;
 };
 
@@ -145,6 +147,7 @@ SubprocessCommand& SubprocessCommand::argv0(StringPtr value) {
 }
 
 SubprocessCommand& SubprocessCommand::executableDescriptor(int fd) {
+  impl->hasExecutableDescriptor = true;
   impl->executableDescriptor = fd;
   return *this;
 }
@@ -311,6 +314,28 @@ SubprocessResult SubprocessCommand::run() {
     }
   }
 
+  // When an executable descriptor was supplied, validate and privatize it before
+  // creating any pipes or forking. Duplicate it to a private, close-on-exec
+  // descriptor numbered >= 3: this (a) fails closed with EBADF if the caller's
+  // descriptor is negative or not open, never silently resolving the pathname,
+  // (b) leaves the caller's original descriptor untouched (the child execs the
+  // duplicate, the parent closes it via OwnFd on return), and (c) guarantees the
+  // exec descriptor cannot collide with the child's stdio (0/1/2), which the
+  // child rebinds via dup2 before exec.
+  OwnFd execFd;
+  int execFdNumber = -1;
+  if (impl->hasExecutableDescriptor) {
+    if (impl->executableDescriptor < 0) {
+      return SubprocessResult::forSpawnFailure(SubprocessSpawnFailure::SystemError, EBADF);
+    }
+    int duplicated = ::fcntl(impl->executableDescriptor, F_DUPFD_CLOEXEC, 3);
+    if (duplicated < 0) {
+      return SubprocessResult::forSpawnFailure(SubprocessSpawnFailure::SystemError, errno);
+    }
+    execFd = OwnFd(duplicated);
+    execFdNumber = duplicated;
+  }
+
   // Three pipes: child stdout, child stderr, and an exec-error channel the child
   // uses to report a failed exec (write-end is close-on-exec, so a successful
   // exec closes it silently and the parent reads EOF).
@@ -338,7 +363,7 @@ SubprocessResult SubprocessCommand::run() {
                           : buildInheritEnvp(impl->envEntries.asPtr(), envpStorage);
 
   const char* programPath = impl->program.cStr();
-  const int executableFd = impl->executableDescriptor;
+  const int executableFd = execFdNumber;
   const char* workingDir = nullptr;
   ZC_IF_SOME(directory, impl->workingDirectory) { workingDir = directory.cStr(); }
 
@@ -377,7 +402,7 @@ SubprocessResult SubprocessCommand::run() {
     // caller opened, not whatever the pathname resolves to now. Otherwise resolve
     // the program by pathname.
     if (executableFd >= 0) {
-#if defined(__linux__) && defined(AT_EMPTY_PATH)
+#if defined(__linux__) && defined(AT_EMPTY_PATH) && defined(SYS_execveat)
       ::syscall(SYS_execveat, executableFd, "", argv.begin(), envp.begin(), AT_EMPTY_PATH);
 #else
       // No exec-by-descriptor primitive on this platform: fail closed rather

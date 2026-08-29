@@ -25,7 +25,13 @@
 // helper fixtures, never a shell script, so the exec-by-fd semantics are
 // unambiguous. This closes only the pathname-replacement half of the TOCTOU; the
 // hash-equals-exec (in-place rewrite) guarantee is D3b in the IR/driver layer.
+//
+// The successful exec-by-fd cases require execveat(AT_EMPTY_PATH) (Linux) and are
+// guarded accordingly. The fail-closed cases (negative or invalid descriptor) are
+// portable: on every platform they must fail as a spawn SystemError and never
+// fall back to a pathname exec.
 
+#include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -37,6 +43,8 @@
 
 namespace zc {
 namespace {
+
+#if defined(__linux__)
 
 // Reads a whole host file into an owned byte array.
 Array<byte> readHostFile(StringPtr absolutePath) {
@@ -80,6 +88,10 @@ TEST(SubprocessExecFd, ExecutesTheOpenedObjectNotThePathname) {
   SubprocessCommand command(helperPath);
   command.executableDescriptor(fd);
   SubprocessResult result = command.run();
+
+  // The caller's descriptor must remain owned by the caller and still open after
+  // run(): run() execs an internal duplicate, never the caller's descriptor.
+  EXPECT_TRUE(::fcntl(fd, F_GETFD) >= 0);
   ::close(fd);
 
   ASSERT_TRUE(result.spawned());
@@ -91,14 +103,35 @@ TEST(SubprocessExecFd, ExecutesTheOpenedObjectNotThePathname) {
 }
 
 TEST(SubprocessExecFd, InvalidDescriptorFailsClosed) {
-  // A descriptor that is not a valid open file must fail closed as a spawn
-  // failure, never fall back to a pathname exec.
+  // A positive descriptor that is not a valid open file must fail closed as a
+  // spawn SystemError (the private F_DUPFD_CLOEXEC duplication fails with EBADF),
+  // never falling back to a pathname exec of /bin/true. Obtain a real descriptor
+  // and close it, so the number is guaranteed invalid rather than a magic value
+  // that could, in an extreme environment, happen to be an open fd.
+  int fd = ::open("/dev/null", O_RDONLY | O_CLOEXEC);
+  ASSERT_TRUE(fd >= 0);
+  ::close(fd);
+
   SubprocessCommand command("/bin/true");
-  command.executableDescriptor(987654);  // not an open fd
+  command.executableDescriptor(fd);  // now-closed, definitely invalid
   SubprocessResult result = command.run();
   ASSERT_FALSE(result.spawned());
-  EXPECT_TRUE(result.spawnFailure() == SubprocessSpawnFailure::ProgramNotFound ||
-              result.spawnFailure() == SubprocessSpawnFailure::SystemError);
+  EXPECT_TRUE(result.spawnFailure() == SubprocessSpawnFailure::SystemError);
+  EXPECT_EQ(result.spawnErrno(), EBADF);
+}
+
+#endif  // defined(__linux__)
+
+TEST(SubprocessExecFd, NegativeDescriptorFailsClosed) {
+  // A negative descriptor is never a valid open object. run() must fail closed as
+  // a spawn SystemError and must NOT silently fall back to resolving the program
+  // pathname (which would run /bin/true and report spawned() == true, code 0).
+  SubprocessCommand command("/bin/true");
+  command.executableDescriptor(-1);
+  SubprocessResult result = command.run();
+  ASSERT_FALSE(result.spawned());
+  EXPECT_TRUE(result.spawnFailure() == SubprocessSpawnFailure::SystemError);
+  EXPECT_EQ(result.spawnErrno(), EBADF);
 }
 
 }  // namespace

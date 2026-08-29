@@ -168,11 +168,21 @@ public:
   // resolving `program` by pathname at exec time. `fd` must be a descriptor
   // opened on the executable (for example O_PATH | O_CLOEXEC); the child execs it
   // via execveat(fd, "", ..., AT_EMPTY_PATH), so the bytes executed are exactly
-  // the object the caller opened - not whatever the pathname resolves to at exec
-  // time. `program` still supplies the default argv[0]. The caller retains
-  // ownership of `fd` and must keep it open across run(). On platforms without an
-  // exec-by-descriptor primitive, run() fails closed with a spawn SystemError
-  // rather than falling back to a pathname exec.
+  // the object the descriptor refers to - not whatever the pathname resolves to
+  // at exec time. `program` still supplies the default argv[0]. The caller
+  // retains ownership of `fd` and must keep it open across run(). On platforms
+  // without an exec-by-descriptor primitive, run() fails closed with a spawn
+  // SystemError rather than falling back to a pathname exec.
+  //
+  // This defeats pathname replacement (the pathname is rebound to a different
+  // inode between open and exec), because exec targets the open object, not the
+  // name. It does NOT by itself defeat an in-place rewrite of the SAME inode the
+  // descriptor holds: if the underlying bytes are mutated after the caller opened
+  // `fd`, exec runs the mutated bytes. A caller that needs "the bytes I hashed are
+  // the bytes I run" must open `fd` on an object it controls exclusively (for
+  // example a private snapshot no other writer can reach) and hash through that
+  // same descriptor; this API guarantees only that exec and any read through the
+  // one descriptor observe the same inode.
   SubprocessCommand& executableDescriptor(int fd);
 
   // Run the child with this working directory. Defaults to the parent's.
