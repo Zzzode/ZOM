@@ -1,16 +1,21 @@
-# Link Publication Transaction and Capability Shapes (RFC 0043 refinement, PROPOSED)
+# Link Publication Transaction and Capability Shapes (RFC 0043 refinement, PARTIALLY IMPLEMENTED)
 
-Status: PROPOSED (design closure before implementation)
+Status: PARTIALLY IMPLEMENTED
+  - Landed: D2 (VerifiedSysroot) and the D3 / D3b input-open, exec-by-descriptor,
+    and transaction-root snapshot foundation.
+  - Proposed, pending implementation: D4, D1, D5.
 Owner: ir-backend
 Feeds: RFC 0043 "Platform Link And Executable Publication"
 
-> This note is a **proposed contract**, not current behavior. It closes the five
-> design questions a 2026-08-29 adversarial review raised against the first
-> link-driver implementation before any further implementation lands. Nothing
-> here is implemented yet; the RFC 0043 reference-level design is updated to
-> match once this note is approved. Per `docs/design/ir/README.md` authority
-> order, the approved shapes then live in RFC 0043; this file is the reviewable
-> proposal.
+> This note is part contract, part landed design. The D2 sysroot capability and
+> the D3/D3b input-snapshot + exec-by-descriptor foundation have landed across
+> several reviewed commits; D4 (transaction-owned output candidate), D1
+> (publication transaction), and D5 (consuming operation) remain proposed and are
+> not implemented. It closes the design questions a 2026-08-29 adversarial review
+> raised against the first link-driver implementation before the remaining
+> slices land. Per `docs/design/ir/README.md` authority order, an approved shape
+> lands in RFC 0043 first and only then in code; this file is the reviewable
+> proposal, and the "Implementation order" section marks which steps are done.
 
 ## Problem
 
@@ -130,6 +135,19 @@ atomic".
     - A platform or filesystem that cannot provide a stable file identity fails
       closed: the orphan is retained, never blind-deleted, and reported for
       explicit repair.
+    - **Commit-point re-check (not delegated to D5).** Immediately before the
+      journal write and executable rename, D1 re-derives the output's exact file
+      identity (`StableFileIdentity`: `(dev, ino)`), `digest`, `size`, regular-file
+      shape, and `st_nlink == 1` from the *same read-only handle the*
+      `LinkedOutputCandidate` *holds* — not from a fresh path open, and not by
+      trusting the D4-stage or D5-inspection snapshot. The journal records exactly
+      this commit-point identity, so recovery compares the final path against the
+      value proven at the instant of rename. D5's inspection re-check (format,
+      architecture, symbols, and its own digest/size/identity/link-count read)
+      happens earlier in the chain and does **not** stand in for this commit-point
+      re-check: an inspection that passed does not prove the object is unchanged
+      and singly-linked at the rename instant, so D1 re-proves it from the held
+      handle or fails closed.
   Required test: after the executable rename, a competitor replaces/occupies the
   path; cleanup must not delete the competitor's object.
 
@@ -147,7 +165,7 @@ directory capability to its canonical absolute identity. There is no separate
 capability's own canonical identity, so the bytes read and the path recorded name
 the same object by construction.
 
-Shape (proposed):
+Shape (landed):
 
 - `VerifiedSysroot::open(filesystem, canonicalAbsolutePath) -> Maybe<VerifiedSysroot>`
   opens the directory at the canonical path and retains both the open directory
@@ -176,29 +194,136 @@ against the plan, and consumed through that same handle.
 - Every non-driver input is opened once and re-hashed against its
   `LinkInputRecord` digest before the spawn; a mismatch is
   `InputRevisionMismatch` under `LinkerInvocation`.
-- **How the verified bytes reach the linker (implementation prerequisite).**
+- **How the verified bytes reach the linker (landed choice).**
   Re-hashing an open handle is not enough: if the final argv still passes the
   original pathname, the TOCTOU is intact because the linker re-opens by name.
-  Before implementing D3, one of these is fixed and recorded here:
-    - inherit each input FD into the child and pass `/proc/self/fd/N` (or the
-      platform equivalent) as the argv path, so the linker reads the exact
-      verified object; or
-    - copy the verified bytes into the transaction's own immutable input
-      directory (D4-owned) and pass those paths.
-  The driver itself always uses `execveat` on its handle (above), independent of
-  this choice. A platform with no equivalent FD-path or immutable-input
-  mechanism does not silently fail closed while docs claim support: the RFC 0043
-  support matrix is updated so the doc and the implementation agree on which
-  targets are supported. (The initial slice targets Linux; macOS support in the
-  matrix is only claimed once its stable-handle path is implemented.)
+  D3b resolves this by **copying the verified bytes into the transaction's own
+  immutable input directory** (the `.zomlink-<token>/` snapshot root that D4
+  reuses as the unified transaction root) and passing those snapshot paths as the
+  input argv tokens, so the linker reads the exact bytes the plan proved and no
+  source pathname is re-opened. The **driver** itself is executed directly by its
+  snapshot descriptor with `execveat(fd, "", ..., AT_EMPTY_PATH)` (above), so even
+  the driver is never re-opened by name. The alternative of inheriting each input
+  FD and passing `/proc/self/fd/N` was rejected for the Linux-first slice: the
+  transaction-owned immutable copy is the single mechanism that also gives D4 its
+  output-candidate parent, keeping one transaction root instead of two rails. A
+  platform with no equivalent immutable-input or stable-exec mechanism does not
+  silently fail closed while docs claim support: the RFC 0043 support matrix is
+  updated so the doc and the implementation agree on which targets are supported.
+  (The initial slice targets Linux; macOS support in the matrix is only claimed
+  once its stable-handle path is implemented.)
 
-### D4. Fresh temporary output capability
+### D4. Fresh transaction-owned output candidate
 
-**Decision:** the linker writes only to a transaction-owned fresh temporary
-output, never to the final path. The `-o` argument names the temporary. Failure
-cleanup operates only on the transaction's owner token, never on a public final
-path (so it can never blind-delete a concurrent file). The final path is created
-only by the D1 publication transaction after verification.
+**Decision:** the linker writes only to a fresh output path *inside the
+transaction root*, never to the final path. The snapshot tree built for the input
+handles (D3b) is the unified link-transaction root: the driver, the input
+snapshots, and the output candidate all live under one `.zomlink-<token>/`
+directory and share a single transaction id, exact directory identity, and
+cleanup obligation. The `-o` argument names `<root>/output-candidate`. There is
+no second output-cleanup rail: a spawn failure, a nonzero exit, a missing output,
+or an input-revision mismatch cleans *only the transaction root* and never
+touches a public final path (the previous best-effort `tryRemove` of the final
+path is removed). A pre-existing final path is still rejected up front (INV-1
+no-clobber). This transaction never creates, replaces, or removes the public
+final path before D1; when the path is initially absent (the INV-1 case that
+proceeds), it remains absent until the D1 commit. Because the root sits under the
+final output's parent directory, the eventual commit rename stays within one
+filesystem and is atomic.
+
+**D4-stage output invariant.** Before a candidate is returned, D4 confirms that
+the `output-candidate` *directory entry* is a regular, non-empty file that this
+transaction exclusively owns. An ordinary open follows a symlink and a subsequent
+`fstat` would only see the target, so the symlink rejection is done at the
+directory-entry level: D4 either opens the output with a no-follow open
+(`O_NOFOLLOW` / the `openat2` equivalent), or `fstatat(rootFd, "output-candidate",
+..., AT_SYMLINK_NOFOLLOW)`s the entry and confirms it is a regular file whose
+exact `(dev, ino)` matches the held read-only handle's. Because a regular file
+with matching identity can still be a hardlink to an inode reachable from an
+external path (which could rewrite the same bytes in place), D4 additionally
+requires the handle's `st_nlink == 1` — the transaction is the sole link to the
+inode; otherwise it fails closed. (A future variant may instead copy the linker
+result into an exclusive transaction-owned file and take the copy as the
+candidate, but the Linux-first slice takes the single-link requirement.) D4 then
+computes the output's `digest`, `size`, and exact file identity from that same
+handle. A symlink, a directory, an empty file, a multiply-linked inode, or a
+failure to capture the exact identity each fails closed. The output identity is a
+distinct typed value — `StableFileIdentity`, not the directory-scoped
+`StableDirectoryIdentity` — so a file identity is never confused with a directory
+identity. No ELF/format, architecture, or symbol check happens here — those are
+D5, which re-checks `digest`, `size`, exact identity, and link count from the
+same output object before publishing.
+
+**Ownership on success is a transfer, not a publication.** On a clean link,
+`linkExecutable` does **not** call `finishAndCleanup`; instead it moves the
+transaction-root ownership into a move-only `LinkedOutputCandidate` and returns
+it. The candidate — not an orphan on disk — is the sole legitimate owner of the
+still-live root. `linkExecutable` also **consumes the plan**: it takes the
+`VerifiedLinkPlan` by move so the same plan cannot be replayed into a second
+concurrent link, and so D5's manifest step needs no second external context
+assembly. Its signature becomes:
+
+```
+linkExecutable(Moved<VerifiedLinkPlan>, filesystem)
+    -> CleanupAwareOutcome<LinkedOutputCandidate>
+```
+
+Correspondingly, the `CleanupAwareOutcome::Complete` contract is widened from
+"the snapshot tree was removed" to "there is no unaccounted cleanup obligation:
+either the tree was removed, or its ownership was transferred into the verified
+return capability." `RecoveryRequired` still means a cleanup that was attempted
+and could not complete.
+
+**`LinkedOutputCandidate` (move-only).** It carries:
+
+- the transaction-root capability plus its token and exact directory identity;
+- the moved-in `VerifiedLinkPlan` — its `LinkPlanId`, target/toolchain identity,
+  input digests, and the final output request (the path the D1 transaction will
+  publish to). The candidate is the single authority for the publication context;
+  D5 does not re-assemble it externally.
+- a transaction-owned **read-only handle** to `<root>/output-candidate`, which is
+  the single physical authority for the linker output, plus the output's exact
+  file identity as a typed `StableFileIdentity` — the `(dev, ino)` and link count
+  captured from that handle (if the identity cannot be captured, D4 fails closed).
+  D1's INV-8 journal records this stable file identity so a recovery step can
+  prove the published final file is exactly the object this candidate staged. The
+  candidate may cache the `digest`/`size` computed from the handle as an
+  inspection snapshot, but it does not hold the bytes as a second, drift-able
+  authority; a consumer that needs the bytes reads them through the handle, and
+  D5 re-computes the digest/size, exact identity, and link count from the same
+  output object before publishing.
+- its consume/cleanup state, so it cannot be consumed twice.
+
+The name `VerifiedLinkedExecutable` is removed. `LinkedOutputCandidate` is
+deliberately not called "verified": `IrOperationResult<LinkedOutputCandidate>::
+verified` means only that the link invocation passed the D4-stage invariants (the
+driver ran, exited zero, and produced a regular non-empty output in the
+transaction root). It does **not** assert that the output's format, machine
+architecture, entry symbol, or required runtime symbols were checked — those are
+the D5 `ExecutablePublication` checks, and only the post-inspection published
+artifact is "Verified".
+
+**Explicit consumption; the destructor is only a last resort.** D4 defines an
+explicit consume seam that removes the transaction root and reports only the
+resource-cleanup outcome — the candidate does not need to know the caller's
+primary result type:
+
+```
+discardAndCleanup() && -> CleanupDisposition
+CleanupDisposition = Clean | Obligated(SnapshotCleanupObligation)
+```
+
+The caller combines this disposition with its own primary rejection: a `Clean`
+disposition yields `Rejected(primary)`, and an `Obligated` disposition yields
+`RecoveryRequired` carrying both the primary rejection and the
+`SnapshotCleanupObligation` (see D5's `LinkRecoveryRequired`). Keeping the primary
+out of `discardAndCleanup` avoids threading an arbitrary `IrOperationResult<T>`
+through a `CleanupAwareOutcome<T>` whose `T` would not match. A failed caller, and
+the D3b/D4 tests, use this seam rather than the bare destructor; the destructor
+remains a noexcept best-effort leak guard for a candidate that was neither
+consumed nor transferred. After `discardAndCleanup` (or, from D5 on, the
+verifier/publisher's consumption), the candidate is moved-from: its handle and
+paths can no longer be read and it cannot be consumed again.
 
 ### D5. Consuming link -> inspect -> manifest -> publish operation
 
@@ -207,51 +332,92 @@ value types do not claim "Verified" before their checks run. Its result is an
 explicit three-way outcome, not a plain success/failure — because INV-5's
 post-manifest-rename sync ambiguity must not be forced into a `rejection`.
 
-`linkAndPublish(plan, sysroot, freshTemp) -> LinkAndPublishOutcome`, where
+`linkAndPublish(Moved<VerifiedLinkPlan>, filesystem) -> LinkAndPublishOutcome`.
+The `filesystem` argument provides both the input namespace (the plan's recorded
+paths resolve under it) and the output namespace (the transaction root and the
+final output live on it). The plan is moved in and forwarded to `linkExecutable`,
+which moves it into the candidate. The D2 `VerifiedSysroot` is a toolchain-
+discovery capability consumed *before* this operation — by the time a
+`VerifiedLinkPlan` exists, every input has already been recorded with its path
+and digest and is snapshotted under `filesystem`, so `linkAndPublish` reads no
+sysroot and does not take one; re-passing it here would be an unconsumed second
+authority. (If a later step is found to genuinely need a runtime/sysroot
+capability, it is added back with an explicit statement of what it verifies and
+which operation consumes it.)
+
 `LinkAndPublishOutcome` is exactly one of:
 
 - `Published(PublishedExecutableArtifact)` — the manifest committed and verified;
-- `RecoveryRequired(PublicationRecoveryToken)` — the INV-5 ambiguous state after
-  the manifest rename, carrying the owner token, target paths, and the recovery
-  entry point; the pair may or may not be committed and MUST NOT be blind-deleted;
-- `Rejected(IrOperationResult rejection)` — any ordinary failure, carrying the
-  RFC 0043 row for its phase (`LinkerInvocation` or `ExecutablePublication`).
+- `RecoveryRequired(LinkRecoveryRequired)` — a recovery obligation that must not
+  be silently dropped, where
 
-`RecoveryRequired` is never conflated with `Rejected`: a pending outcome does not
-destroy the possibly-committed pair, and a rejection always destroys the temp.
-Steps:
+  ```
+  LinkRecoveryRequired =
+      SnapshotRecoveryRequired { primary: LinkAndPublishRejection,
+                                 obligation: SnapshotCleanupObligation }
+    | PublicationRecoveryToken
+  ```
 
-1. consume the `VerifiedLinkPlan`;
+  - the `SnapshotRecoveryRequired` branch pairs the preserved primary rejection
+    with the `SnapshotCleanupObligation` when an ordinary failure (steps 2-5)
+    could not discard the transaction root. `SnapshotCleanupObligation`
+    deliberately does not copy the primary, so the primary is carried explicitly
+    here rather than folded into the obligation;
+  - the `PublicationRecoveryToken` branch is the INV-5 ambiguous state after the
+    manifest rename (owner token, target paths, recovery entry point); the pair
+    may or may not be committed and MUST NOT be blind-deleted, and it needs no
+    primary;
+- `Rejected(LinkAndPublishRejection)` — an ordinary failure whose cleanup
+  *succeeded*, carrying the RFC 0043 row for its phase (`LinkerInvocation` or
+  `ExecutablePublication`).
+
+`RecoveryRequired` is never conflated with `Rejected`: an ordinary failure whose
+`discardAndCleanup` reports `Clean` is `Rejected(primary)`; an ordinary failure
+whose discard reports `Obligated` is `RecoveryRequired(SnapshotRecoveryRequired{
+primary, obligation})`; and the INV-5 pending outcome is
+`RecoveryRequired(PublicationRecoveryToken)`, never destroying the possibly-
+committed pair. Steps:
+
+1. move in the `VerifiedLinkPlan`;
 2. open + digest-verify every input handle (D3);
-3. invoke the linker writing to the fresh temp (D4);
-4. inspect the produced temp: format, machine architecture, entry symbol,
-   required runtime symbols (RFC 0043 `ExecutablePublication` checks) — only
-   here is the result named "verified";
+3. invoke the linker writing to `<root>/output-candidate` (D4), taking ownership
+   of the resulting `LinkedOutputCandidate` (which now owns the plan);
+4. inspect the candidate's output through its handle, re-computing digest/size
+   from the same output object: format, machine architecture, entry symbol,
+   required runtime symbols (RFC 0043 `ExecutablePublication` checks) — only here
+   is the result named "verified";
 5. build the manifest;
-6. publish via the D1 transaction (which may return the `RecoveryRequired`
-   outcome per INV-5).
+6. publish via the D1 transaction, which renames `<root>/output-candidate` to the
+   final path (and may return the `RecoveryRequired` outcome per INV-5).
 
 An ordinary failure in steps 2-5, or before the executable rename in step 6,
-destroys the temp and returns `Rejected`; only a clean commit returns
-`Published`; only the INV-5 window returns `RecoveryRequired`. The current
-`VerifiedLinkedExecutable` name is removed — the type that carries linker output
-before inspection is renamed to a non-"Verified" name (e.g.
-`LinkedOutputCandidate`), and only the post-inspection published artifact is
-"Verified". If RFC 0010's `IrOperationResult` cannot host a three-way outcome,
-`LinkAndPublishOutcome` wraps it as shown rather than overloading a rejection,
-and RFC 0043 records the outcome type.
+consumes the candidate via `discardAndCleanup()`: a `Clean` disposition returns
+`Rejected(primary)`, and an `Obligated` disposition returns
+`RecoveryRequired(SnapshotRecoveryRequired{primary, obligation})` with the primary
+preserved. Only a clean commit returns `Published`; only the INV-5 window returns
+`RecoveryRequired(PublicationRecoveryToken)`. If RFC 0010's `IrOperationResult`
+cannot host a three-way outcome, `LinkAndPublishOutcome` wraps it as shown rather
+than overloading a rejection, and RFC 0043 records the outcome type.
 
-## Implementation order (after this note is approved)
+## Implementation order
 
-1. `zc` stable-exec-FD primitive (D3 mechanism) + `VerifiedSysroot` capability (D2).
-2. Fresh temporary output capability (D4).
-3. Rework `linkExecutable` to open+verify all input handles and `execveat` the
-   driver handle (D3), writing to the fresh temp (D4).
-4. Publication transaction with manifest-last commit + owner-token rollback (D1),
-   replacing the best-effort `tryRemove` path.
-5. The consuming `linkAndPublish` operation wiring 1-4 with the executable
-   inspector and manifest (D5).
+1. **[landed]** `zc` stable-exec-FD primitive (D3 mechanism) + `VerifiedSysroot`
+   capability (D2), plus the D3b input-snapshot transaction root.
+2. **[pending]** Fresh transaction-owned output candidate (D4): `-o` into the
+   transaction root, success transfers root ownership into `LinkedOutputCandidate`,
+   failure cleans only the root, and `VerifiedLinkedExecutable` is renamed.
+3. **[partly landed / pending]** `linkExecutable` already opens and re-verifies
+   all input handles and `execveat`s the driver handle (D3b); the remaining D4
+   change is writing to the transaction-root output candidate and returning the
+   candidate.
+4. **[pending]** Publication transaction with manifest-last commit + owner-token
+   rollback (D1), replacing the best-effort `tryRemove` path.
+5. **[pending]** The consuming `linkAndPublish` operation wiring 1-4 with the
+   executable inspector and manifest (D5).
 
-Each lands as its own commit with a regression test that is red before and green
-after, and is reviewed before the next. `zomc run` stays blocked and the RFC
-0043 link-driver spine stays `[~] partial` until the chain is complete.
+Each pending step lands as its own commit with a regression test that is red
+before and green after, and is reviewed before the next. `LinkAndPublishRejection`
+is defined, before D5 code, as a closed rejection type carrying only legal
+`LinkerInvocation` / `ExecutablePublication` failure facts. `zomc run` stays
+blocked and the RFC 0043 link-driver spine stays `[~] partial` until the chain is
+complete.

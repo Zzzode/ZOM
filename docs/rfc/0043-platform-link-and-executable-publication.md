@@ -24,7 +24,8 @@ tracking-issue: docs/rfc/tracking/0043-review-and-implementation.md#implementati
 ## Summary
 
 This RFC defines the post-object contract that turns one verified object artifact
-and its verified runtime closure into one atomically published executable. It
+and its verified runtime closure into one recoverably published executable whose
+manifest commit is its sole visibility marker. It
 adds an immutable link plan, a target-selected linker driver invocation, an
 executable artifact manifest, and a host-compatibility rule for `zomc run`.
 The first supported executable targets are Linux ELF and macOS Mach-O on
@@ -57,7 +58,9 @@ its dependencies and review gates are satisfied.
   runtime closure, toolchain identity, and output policy.
 - Invoke a target-selected linker driver with an explicit argument vector and
   a sanitized environment.
-- Publish an executable and its manifest atomically, or publish neither.
+- Publish an executable and its manifest as a recoverable transaction whose
+  manifest commit is the sole visibility marker, so nothing is a consumable
+  artifact until the manifest commits and verifies.
 - Support Linux ELF and macOS Mach-O executable publication on `x86_64` and
   `aarch64` once their required object and runtime inputs exist.
 - Permit `zomc run` only for a verified executable whose target is compatible
@@ -129,8 +132,9 @@ environment, and host-compatibility gate address these cases.
 Once the prerequisite pipeline exists, `zomc compile app.zom --emit exe`
 creates exactly one executable request. The compiler derives its object and
 runtime inputs from the verified compilation session, constructs a link plan,
-and invokes the selected linker without a shell. On success it atomically
-publishes both `app` and `app.zom-artifact` in the requested output directory.
+and invokes the selected linker without a shell. On success it publishes both
+`app` and `app.zom-artifact` in the requested output directory as a recoverable
+transaction whose manifest commit is the sole visibility marker.
 
 `zomc run app.zom` first performs the same verified publication. It launches
 the result only when the selected target's operating system, architecture,
@@ -145,7 +149,7 @@ flowchart LR
     target["Selected target and toolchain"] --> plan
     plan --> driver["Target linker driver"]
     driver --> verify["Executable verification"]
-    verify --> publish["Atomic executable and manifest publication"]
+    verify --> publish["Recoverable manifest-committed publication"]
     publish --> run["Host-compatible zomc run"]
 ```
 
@@ -269,25 +273,54 @@ The process environment is constructed from an empty environment plus the
 small target-owned set of variables recorded in the toolchain closure. `PATH`,
 `LIBRARY_PATH`, `LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH`, `SDKROOT`, and linker
 search variables from the parent process are not inherited. The working
-directory is the normalized temporary output directory. No input path can be
+directory is the transaction root described below. No input path can be
 resolved relative to the current directory.
 
 The first implementation invokes the platform compiler driver rather than a
 bare linker so that the target's startup objects and platform-required link
 mode remain part of the recorded toolchain closure. The plan records no raw
-user flags. An unrecognized driver result, nonzero exit status, missing output,
-or output digest mismatch rejects the operation and removes all temporary
-files. It does not publish a manifest or executable claim.
+user flags.
+
+The link runs inside a single **unified transaction root**: the transaction-
+private snapshot tree that already holds every re-verified input copy (the
+input-side TOCTOU defense) is also the parent of the linker output. The driver,
+the immutable input snapshots, and the output candidate all live under one
+`.zomlink-<token>/` directory that shares one transaction id, one exact
+directory identity, and one cleanup obligation. The linker's `-o` argument names
+`<root>/output-candidate`; the linker never writes to a public final path and
+never writes to a sibling temporary in the final directory. An unrecognized
+driver result, nonzero exit status, missing output, output digest mismatch, or
+input-revision mismatch cleans **only the transaction root** and never touches a
+public final path (there is no best-effort final-path removal). A pre-existing
+final path is still rejected up front (`RejectExisting`), and this transaction
+never creates, replaces, or removes the public final path — the D1 publication
+transaction is the sole writer of the final path. It does not publish a manifest
+or executable claim.
 
 ### Executable Verification And Publication
 
-The linker result is accepted only when an independent executable verifier
-checks the output format, machine architecture, entry symbol, required runtime
-symbols, and absence of unresolved ZOM runtime references against the verified
-link plan. The first supported checks are ELF and Mach-O only. The verifier
-does not infer safety from a successful linker exit status.
+The linker result is not a public artifact when the driver exits. It is a
+`LinkedOutputCandidate`: a move-only capability that owns the still-live
+transaction root, the moved-in `VerifiedLinkPlan`, and a transaction-owned
+read-only handle to `<root>/output-candidate`. Before returning the candidate,
+the link step confirms the output entry is a regular, non-empty file the
+transaction exclusively owns: the entry is inspected without following a symlink
+(`O_NOFOLLOW` / `fstatat(..., AT_SYMLINK_NOFOLLOW)`), its exact file identity
+(`StableFileIdentity`: device + inode) is captured from the held handle, and the
+handle's `st_nlink` must equal `1` so no external path can rewrite the inode in
+place. A symlink, directory, empty file, multiply-linked inode, or an inability
+to capture the exact identity fails closed. No format, architecture, or symbol
+check happens at this stage; the candidate is deliberately not yet "verified".
 
-`VerifiedExecutableArtifact` owns the normalized final destination, target
+The candidate is accepted only when an independent executable verifier checks
+the output format, machine architecture, entry symbol, required runtime symbols,
+and absence of unresolved ZOM runtime references against the verified link plan,
+reading through the candidate's handle and re-computing the digest, byte count,
+and exact identity from that same output object. The first supported checks are
+ELF and Mach-O only. The verifier does not infer safety from a successful linker
+exit status.
+
+`PublishedExecutableArtifact` owns the normalized final destination, target
 identity, executable digest, byte count, `LinkPlanId`, and the immutable
 `ExecutableArtifactManifest`. The manifest is a canonical, domain-separated
 encoding of that data plus the ordered input artifact digests and toolchain
@@ -295,28 +328,60 @@ identity. It is published beside the executable using the fixed suffix
 `.zom-artifact`; the suffix is a product artifact name, not an internal
 revision identifier.
 
-Publication writes the executable and manifest to sibling temporary names in
-the final directory, fsyncs each file, verifies both outputs, then renames the
-manifest and executable into their final destinations. A failure removes all
-temporary files and any output of the current request. Existing final paths
-are never replaced. The driver reports the final path only after both rename
-operations have completed.
+Publication is a **recoverable transaction with the manifest as its sole commit
+marker**, not a two-file atomic rename. The `output-candidate` staged in the
+transaction root is renamed to the final executable path first; the manifest is
+staged, fsynced, and renamed second, and the manifest rename is the commit
+point. A consumer never accepts an orphan executable: an executable with no
+sibling `.zom-artifact` manifest whose codec verifies and whose recorded digest,
+byte count, and `LinkPlanId` match is not a published artifact. Immediately
+before the executable rename, the transaction writes and fsyncs a journal entry
+recording the owner token, the final path, and the output's exact
+`StableFileIdentity`, digest, size, regular-file shape, and `st_nlink == 1`
+re-derived from the candidate's *same* held handle at the commit instant (the
+earlier inspection does not substitute for this commit-point re-check). Recovery
+deletes an orphan final executable only when the journal proves this transaction
+created it and the final path still resolves to that exact identity; a platform
+that cannot provide a stable file identity fails closed and retains the orphan
+for explicit repair. Existing final paths are never replaced. A failure before
+the commit point cleans only the transaction root; the single genuinely
+ambiguous state — a directory sync failure after the manifest rename — returns a
+distinct recovery-required outcome and never blind-deletes the possibly
+committed pair.
 
-The operation API is:
+The operation surface is two steps. The link step produces the candidate and
+consumes the plan:
 
 ```text
 linkExecutable(
   plan: Moved<VerifiedLinkPlan>,
-  capability: Borrowed<const TargetRegistryCapability>,
-) -> RFC0010::IrOperationResult<VerifiedExecutableArtifact>
+  filesystem: Borrowed<const Filesystem>,
+) -> CleanupAwareOutcome<LinkedOutputCandidate>
 ```
 
-The input plan is consumed on every branch. The result owns no repository
-pointer, mutable session state, or borrowed toolchain handle.
+and the consuming operation chains inspection, manifest construction, and the
+D1 publication transaction, returning an explicit three-way outcome so the
+post-manifest-rename ambiguity is never forced into a plain rejection:
+
+```text
+linkAndPublish(
+  plan: Moved<VerifiedLinkPlan>,
+  filesystem: Borrowed<const Filesystem>,
+) -> LinkAndPublishOutcome
+```
+
+`LinkAndPublishOutcome` is exactly one of `Published(PublishedExecutableArtifact)`,
+`RecoveryRequired(LinkRecoveryRequired)` (a snapshot-cleanup obligation paired
+with the preserved primary rejection, or the ambiguous post-manifest-rename
+token that must not be blind-deleted), or `Rejected` (an ordinary failure whose
+cleanup succeeded). The input plan is consumed on every branch. The result owns
+no repository pointer, mutable session state, or borrowed toolchain handle. The
+D2 `VerifiedSysroot` is a toolchain-discovery capability consumed before a
+`VerifiedLinkPlan` exists, so neither operation re-takes it.
 
 ### Host Execution
 
-`zomc run` accepts only a newly produced `VerifiedExecutableArtifact`. It
+`zomc run` accepts only a newly produced `PublishedExecutableArtifact`. It
 compares the artifact target with a host execution profile constructed from the
 same target registry authority. The operating system, CPU architecture, object
 format, pointer width, and required execution ABI capabilities must all match.
@@ -367,10 +432,11 @@ missing or empty link output after a zero exit is `OutputCreationFailed` under
 `LinkerInvocation`; and a malformed executable that fails format, machine,
 entry-symbol, or runtime-symbol inspection is `InvalidFact` (or `InvalidAbi`
 for an ABI-shape mismatch) under `ExecutablePublication`. The failing branch
-consumes its input and removes every temporary file, matching the object
-pipeline's fail-closed discipline. RFC 0043 registers the corresponding
-`ZOM99xx` invariant diagnostics for these phases through the existing driver
-mapping without creating a new diagnostic family.
+consumes its input and cleans the transaction root (before the commit point) or
+returns the recovery-required outcome (in the one ambiguous post-manifest-rename
+window), matching the object pipeline's fail-closed discipline. RFC 0043
+registers the corresponding `ZOM99xx` invariant diagnostics for these phases
+through the existing driver mapping without creating a new diagnostic family.
 
 ## Repository Impact
 
@@ -400,8 +466,8 @@ documentation; it must not add a permissive fallback path.
 
 - Verified runtime closure requires more toolchain metadata than a direct
   invocation of `cc`, increasing initial implementation work.
-- Atomic two-file publication must handle platform-specific rename and fsync
-  details correctly.
+- Recoverable manifest-committed publication must handle platform-specific
+  rename, fsync, and crash-orphan recovery details correctly.
 - macOS SDK and linker availability differ across hosts, so the toolchain
   closure must be discovered and verified rather than assumed.
 - The first target matrix intentionally excludes Windows and dynamic-linking
@@ -511,9 +577,10 @@ implements; it does not require RFC 0016's build contract to change.
    for the closed Linux ELF and macOS Mach-O matrix.
 3. Implement canonical link-plan construction, independent verification, and
    mutation tests without invoking a linker.
-4. Implement target-selected driver invocation and temporary-output cleanup.
+4. Implement target-selected driver invocation into a unified transaction root
+   with transaction-root-only cleanup.
 5. Implement ELF and Mach-O executable inspection, manifest construction, and
-   atomic publication.
+   recoverable manifest-committed publication.
 6. Replace the current `zomc run` rejection with the host-compatibility-gated
    execution path and update documentation and CI.
 
@@ -549,3 +616,4 @@ None
 | 2026-08-28 | IMPLEMENTING | First authorized slice landed as evidence (Implementation Plan step 3, "without invoking a linker"): the closed failure algebra was extended in code (`IrFailurePhase` LinkPlanConstruction/LinkerInvocation/ExecutablePublication = 0x11/0x12/0x13, `BackendOperation::InvokeLinker` = 0x0b), and `compiler/ir/link-plan-codec.{h,cc}` implements the `ToolchainClosure`/object/runtime/argument records, the domain-separated length-framed `LinkPlanId` codec, and the independent `LinkPlanVerifier` enforcing the six numbered invariants, each rejection mapped to a `LinkPlanConstruction` failure row. A deterministic minimal-plan oracle plus a fail-closed mutation matrix pass under the frontend sanitizer build (no linker, no filesystem, no LLVM linkage). Runtime-closure discovery, driver invocation, executable verification/manifest publication, and the host-gated `zomc run` cutover remain Pending. |
 | 2026-08-29 | IMPLEMENTING | Contract refinement. Adversarial review of the D3b snapshot slice found that the free-form `LinkerArgumentRecord` surface let a verified plan carry raw paths, response-file tokens, and search-path flags, bypassing the input-snapshot discipline and contradicting this RFC's own Non-Goals. Because there is no production producer of the argument surface, the "Inputs And Link Plan" contract was changed to remove the generic argument surface entirely: the plan stores only closed structural authorities and the driver derives its canonical argument vector from them. The codec/verifier/oracle deletion is Slice 2 (Pending as of this row); this row records the approved contract, not yet its landed implementation. A future target-selected link policy (LinkMode, PIE) is added as its own closed structural field folded into `LinkPlanId`, never as a generic argument list. |
 | 2026-08-29 | IMPLEMENTING | Argument-surface removal landed (`320a2a01`, D3b Slice 2). `compiler/ir/link-plan-codec.{h,cc}` no longer defines `LinkerArgumentRecord`, `ExecutableLinkRequest::argumentRecords`, `VerifiedLinkPlan::argumentRecords()`, the argument sequence in the codec preimage, or the argument verifier invariant; `compiler/ir/invoke-linker.cc` derives the driver argv from the closed structural fields only. The `link-plan-codec-oracle-test` oracle was regenerated from the live encoder: the preimage shrank from 503 to 469 bytes (the argument segment removed with no count placeholder) and the `LinkPlanId` became `8e9a5cf7...5d60ca74`. All IR unit tests pass under the sanitizer build; `check-rfc` and `check-format` pass. Runtime-closure discovery, driver invocation, executable verification/manifest publication, and the host-gated `zomc run` cutover remain Pending. |
+| 2026-08-29 | IMPLEMENTING | Publication-and-output contract refinement (approved design, implementation Pending). A 2026-08-29 adversarial review of the first InvokeLinker slice found four unresolved gaps that leaf patches cannot close: non-atomic two-file publication with a best-effort `tryRemove` rollback, discovery binding no identity to the read root, an executed driver not provably the digested driver, and the linker writing the final path directly. The "Linker Driver Invocation" and "Executable Verification And Publication" sections are refined to: a unified transaction root (the D3b snapshot tree also parents the linker output at `<root>/output-candidate`, cleanup touches only the root), a move-only `LinkedOutputCandidate` that owns the still-live root, the moved-in plan, and a no-follow read-only output handle with a captured `StableFileIdentity` and `st_nlink == 1` sole-link proof; a two-step `linkExecutable -> CleanupAwareOutcome<LinkedOutputCandidate>` plus a consuming `linkAndPublish -> LinkAndPublishOutcome` (`Published` / `RecoveryRequired` / `Rejected`); and recoverable manifest-committed publication whose manifest commit is the sole visibility marker, with a pre-rename journal recording the commit-point identity re-derived from the candidate's same handle. `VerifiedExecutableArtifact` is renamed `PublishedExecutableArtifact`. The reviewable shape is `docs/design/ir/link-publication-transaction.md`; this row records the approved contract, not landed code (D4/D1/D5 remain Pending). |
