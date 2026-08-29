@@ -4,14 +4,18 @@ Status: PARTIALLY IMPLEMENTED
   - Landed: D2 (VerifiedSysroot); the D3 / D3b input-open, exec-by-descriptor,
     and transaction-root snapshot foundation; and D4 (transaction-owned output
     candidate).
-  - Proposed, pending implementation: D1, D5.
+  - PROPOSED, pending adversarial review: D1 (publication transaction). A first
+    D1 draft was rejected 2026-08-29 with seven blockers; the section below is the
+    revised proposal and is NOT yet approved.
+  - Proposed, pending implementation: D5.
 Owner: ir-backend
 Feeds: RFC 0043 "Platform Link And Executable Publication"
 
 > This note is part contract, part landed design. The D2 sysroot capability, the
 > D3/D3b input-snapshot + exec-by-descriptor foundation, and D4 (transaction-owned
 > output candidate) have landed across several reviewed commits; D1 (publication
-> transaction) and D5 (consuming operation) remain proposed and are not
+> transaction) is a PROPOSED contract under adversarial review (a first draft was
+> rejected 2026-08-29) and D5 (consuming operation) remains proposed; neither is
 > implemented. It closes the design questions a 2026-08-29 adversarial review
 > raised against the first link-driver implementation before the remaining
 > slices land. Per `docs/design/ir/README.md` authority order, an approved shape
@@ -41,7 +45,14 @@ shared four unresolved contract gaps that leaf patches cannot close:
 
 ## Decisions
 
-### D1. Publication visibility and atomicity: manifest-last commit marker
+### D1. Publication visibility and atomicity: manifest-last commit marker (PROPOSED, pending adversarial review)
+
+> Status: PROPOSED. A first D1 draft was rejected on 2026-08-29 with seven
+> blockers (compound rename+fsync crash states, journal-delete ordering, journal
+> established too late, an outcome type that could not express a snapshot-only
+> debt, missing manifest<->candidate live binding, non-exclusive final renames,
+> and an unspecified journal format). This section is the revised proposal and is
+> not yet approved; no D1 code is authorized until it passes review.
 
 **Decision:** the `.zom-artifact` manifest is the sole commit marker of a
 recoverable publication transaction. The executable and manifest remain siblings
@@ -92,17 +103,23 @@ atomic".
   executable digest and byte count match the on-disk executable AND its
   `LinkPlanId` matches. A bare `app` with no valid manifest is never a published
   artifact.
-- **INV-2 Commit order.** Stage both files and fsync each temporary → rename the
-  executable → fsync the directory → rename the manifest (the commit point) →
-  fsync the directory. The manifest is never visible before the executable.
+- **INV-2 Commit order.** Durably commit journal stage `Started` → stage the
+  manifest temp and fsync it → exclusive `renameat2(RENAME_NOREPLACE)` the
+  executable → fsync the directory → durably commit `ExecCommitted` → exclusive
+  `renameat2(RENAME_NOREPLACE)` the manifest (the commit point) → fsync the
+  directory → durably commit `ManifestCommitted`. The manifest is never visible
+  before the executable, and a rename+dir-fsync is a compound step whose
+  durability is recorded by the following journal-stage commit (see "D1 operation
+  shape" for the full algorithm).
 - **INV-3 Owner token.** Every temporary and every potential orphan carries a
   non-colliding transaction identity. Cleanup removes only objects this
   transaction can prove it owns; it never deletes an object identified only by a
   public final path.
-- **INV-4 Crash-recovery matrix.** The state after a crash is defined pointwise:
-  (a) no file; (b) executable only (orphan); (c) both files, directory-sync
-  status unknown. The recogniser decides committed-vs-orphan solely by "does a
-  complete, verifying manifest exist", never by a prior in-memory return value.
+- **INV-4 Crash-recovery matrix.** The state after a crash is defined by the last
+  durably-committed `JournalStage` plus the actual final entries (the full table
+  is in "D1 operation shape … crash-recovery matrix"). The recogniser decides
+  committed-vs-orphan solely from disk — a complete, verifying manifest means
+  published — never by a prior in-memory return value.
 - **INV-5 Ambiguous post-manifest-rename sync failure.** A failure of the final
   directory sync after the manifest rename is the one genuinely ambiguous
   outcome. The operation must NOT both return an ordinary failure AND blind-delete
@@ -124,11 +141,14 @@ atomic".
   "no manifest" alone does NOT authorise deleting that `app` (it could be a
   user's or a competitor's file). The transaction retains a persistent ownership
   proof, chosen as follows:
-    - Primary: a **transaction journal** entry written and fsynced BEFORE the
-      executable rename, recording the owner token, the final path, and the
-      staged object's stable file identity (device + inode). Recovery deletes an
-      orphan `app` only when the journal proves this transaction created it AND
-      the final path still resolves to that same stable file identity.
+    - Primary: a **transaction journal** durably committed at stage `Started`
+      (written, fsynced, atomically installed by no-replace rename, then journal-dir
+      fsynced) as D1's FIRST durable action — before any final-directory manifest
+      temporary exists and before any final-path rename — recording the owner token,
+      both final paths, and the staged object's stable file identity (device +
+      inode) from the commit-point re-check. Recovery deletes an orphan `app` only
+      when the journal proves this transaction created it AND the final path still
+      resolves to that same stable file identity.
     - The staged object's stable file identity is captured while the transaction
       holds the object open, and re-checked (via `fstatat`/equivalent) before any
       delete, so a competitor that replaced the path between rename and cleanup
@@ -155,12 +175,15 @@ atomic".
 #### D1 operation shape, recovery obligations, and journal lifecycle
 
 This subsection pins the D1 contract into an implementable shape so the code
-slice has a fixed target. It is approved design, not landed code.
+slice has a fixed target. It is a PROPOSED contract under adversarial review, not
+approved and not landed code.
 
 **Operation shape.** D1 is one consuming operation that takes the D4
 `LinkedOutputCandidate` by move (so the still-live transaction root and its
 output handle are the sole authority for the bytes being published) plus the
-built manifest, and returns an explicit three-way outcome:
+built manifest, and returns an explicit three-way outcome whose `RecoveryRequired`
+branch reuses D5's approved `LinkRecoveryRequired` algebra so a snapshot-only debt
+and a publication-pair debt are each expressible:
 
 ```
 publishLinkedOutput(
@@ -169,15 +192,27 @@ publishLinkedOutput(
 ) -> PublicationOutcome
 
 PublicationOutcome =
-    Published(PublishedExecutableArtifact)          // manifest committed + verified
-  | RecoveryRequired(PublicationRecoveryObligation) // ambiguous/failed, must not be dropped
-  | Rejected(PublicationRejection)                  // failed, cleanup succeeded, nothing published
+    Published(PublishedExecutableArtifact)   // manifest committed + durable + verified
+  | RecoveryRequired(LinkRecoveryRequired)   // an un-droppable debt; see below
+  | Rejected(PublicationRejection)           // failed before any final-path effect; cleanup succeeded
+
+LinkRecoveryRequired =
+    SnapshotRecoveryRequired {               // no public final path was ever touched,
+      primary:    PublicationRejection,      //   but the snapshot root could not be discarded
+      obligation: SnapshotCleanupObligation }
+  | PublicationRecoveryObligation {          // a public final entry may exist (orphan or
+      ...public-pair fields...,              //   ambiguous-durability); never blind-deleted
+      snapshot:   Option<SnapshotCleanupObligation> }  // nested: root also un-discarded
 ```
 
 Taking the candidate by move means D1 consumes the transaction root: on every
 branch it is responsible for discarding the still-live root (via the candidate's
 `discardAndCleanup`) once the final pair is committed or the attempt is
 abandoned. The candidate is moved in exactly once and cannot be published twice.
+`Rejected` is used ONLY when no public final path was created or renamed AND the
+snapshot root was discarded cleanly; a rejection before any final-path effect
+whose root discard failed is `RecoveryRequired(SnapshotRecoveryRequired{...})`, not
+a forged publication obligation (blocker 4).
 
 **The two recovery obligations are distinct typed values; never conflated.**
 
@@ -187,77 +222,115 @@ abandoned. The candidate is moved in exactly once and cannot be published twice.
   directory identity, plan id, and the cleanup failure kind/stage. It never names
   a public final path.
 - `PublicationRecoveryObligation` (D1, new) concerns the public final pair
-  (`app`, `app.zom-artifact`): "a final-path publication reached an ambiguous or
-  un-rolled-back state." It carries the owner token, both final paths, the
-  committed-point `StableFileIdentity` recorded in the journal, the journal
-  location, and a `PublicationRecoveryKind` (see the crash matrix). It never
-  deletes by public path without a journal + exact-identity match.
+  (`app`, `app.zom-artifact`): "a final-path publication reached an orphan or
+  ambiguous-durability state." It carries the owner token, both final paths, the
+  journalled commit-point `StableFileIdentity`, the journal location, the last
+  durably-committed `JournalStage`, and an optional nested
+  `SnapshotCleanupObligation`. It never deletes by public path without a journal +
+  exact-identity match.
 
-A single `publishLinkedOutput` call can owe at most one of each: it may finish
-with a `PublicationRecoveryObligation` (the final-path step was ambiguous) AND,
-independently, fail to remove the snapshot root (a `SnapshotCleanupObligation`).
-`PublicationRecoveryObligation` therefore carries an optional nested
-`SnapshotCleanupObligation`, so a caller receives both un-droppable obligations
-in one value and a recovery step adjudicates each against its own proof (journal
-+ final-path identity for the publication pair; transaction-id + directory
-identity for the snapshot root). D5's `LinkRecoveryRequired` wraps exactly these:
-`SnapshotRecoveryRequired { primary, obligation }` for a pre-publication failure
-whose only debt is the snapshot root, and the publication obligation for the
-post-manifest-rename ambiguous window.
+**Manifest ↔ candidate live-binding verification (before any journal or rename).**
+A moved-in manifest is not trusted to match the candidate. Before D1 writes any
+journal or stages any temporary, it independently verifies at least: the
+manifest's final destination equals `candidate.plan().outputPath()`; the
+manifest's recorded executable digest and byte count equal the values re-derived
+in the commit-point re-check from the candidate's SAME held handle; the manifest's
+`LinkPlanId` equals `candidate.plan().id()`; and the manifest's target/toolchain
+identity and ordered input digests equal the plan's. A mismatch rejects under
+`ExecutablePublication` with `InvalidFact` (or `CanonicalCodecMismatch` for a
+malformed manifest encoding) before anything is written — the transaction root is
+discarded and nothing on the final path is touched (blocker 5).
 
-**Canonical ordered commit algorithm.** D1 performs exactly these steps, in this
-order; each fsync is mandatory and a failure at step *n* is classified by the
-crash matrix as if a crash occurred just after step *n-1*:
+**The journal is a durable, staged, append-by-replace anchor.** The journal is
+the transaction's persistent owner proof and is established as D1's FIRST durable
+action, before any final-directory manifest temporary exists (blocker 3). Its
+stage is a closed enum; the transaction advances it only by writing a fresh
+journal temporary and atomically committing it over the previous journal, never by
+mutating a journal in place (blocker 2 + the staged-journal refinement):
 
-1. Re-check RejectExisting for BOTH final paths with a no-follow `tryLstat`
-   (INV-1/INV-6); either already present rejects before anything is written.
-2. Commit-point re-check: re-derive the output `digest`, `size`, exact
-   `StableFileIdentity` (`dev`/`ino`), regular-file shape, and `st_nlink == 1`
-   from the candidate's SAME held handle (INV-8); a mismatch fails closed.
+```
+JournalStage =
+    Started            // owner claimed; RejectExisting + commit-point re-check done;
+                       //   records root identity, candidate output identity, temp path formulas
+  | ExecCommitted      // <root>/output-candidate has been renamed to `app`
+  | ManifestCommitted  // manifest temp has been renamed to `app.zom-artifact` (the commit point)
+```
+
+Each advance is: write a new journal temp (`PRIVATE`, exclusive `O_NOFOLLOW`
+create, owner-token-derived name) → fsync it → atomically replace the current
+journal with it (`renameat2` replace) → fsync the journal directory. Only after
+that directory fsync returns is a stage "durably committed." The journal payload
+uses a domain-separated canonical codec with an explicit version and a checksum,
+and records: the candidate root exact identity, the output `StableFileIdentity`
+(dev/ino + link count) and digest/size from the commit-point re-check, both final
+paths, the manifest-temp path and its identity, the `LinkPlanId`, and the current
+`JournalStage`. A journal that is malformed, truncated, fails its checksum, or
+whose recorded identity does not match the on-disk object NEVER authorises a
+delete — recovery retains the object and reports it for explicit repair (blocker
+7).
+
+**Canonical ordered commit algorithm.** Because a rename and its directory fsync
+are a compound step, the algorithm's durability points are the journal-stage
+commits and the final-directory fsyncs, not a single step counter (blocker 1). D1
+performs:
+
+1. Verify RejectExisting for BOTH final paths with a no-follow `tryLstat`
+   (INV-1/INV-6) and run the commit-point re-check (INV-8): re-derive `digest`,
+   `size`, exact `StableFileIdentity`, regular-file shape, and `st_nlink == 1` from
+   the candidate's SAME held handle; run the manifest live-binding verification.
+   Any failure here rejects before any durable effect.
+2. Durably commit journal stage `Started` (write temp → fsync → replace → dir
+   fsync).
 3. Stage the manifest into a transaction-owned temporary in the final directory
-   and fsync it. (The executable is already staged as the candidate's
-   `<root>/output-candidate`; it is committed by rename from the transaction
-   root, which shares the final directory's filesystem, so the rename is atomic.)
-4. Write and fsync the **journal** entry (owner token, both final paths, the
-   step-2 commit-point `StableFileIdentity`) BEFORE any final-path rename.
-5. Rename the executable (`<root>/output-candidate` → `app`); fsync the final
-   directory. **`app` is now visible but is not yet a published artifact** (no
-   manifest).
-6. Rename the manifest temporary → `app.zom-artifact` (**the commit point**);
-   fsync the final directory.
-7. Discard the journal entry (the transaction is complete), then discard the
-   snapshot root via the candidate. A failure here is not ambiguous — the pair is
-   committed — but a journal/root that could not be discarded is still reported as
-   a (non-ambiguous) recovery obligation so it is never silently leaked.
+   and fsync it.
+4. Rename `<root>/output-candidate` → `app` using an exclusive
+   `renameat2(RENAME_NOREPLACE)` (or platform equivalent; a platform without an
+   exclusive no-replace rename fails closed) so a competitor that created `app`
+   after step 1 is never clobbered; fsync the final directory; then durably commit
+   journal stage `ExecCommitted`.
+5. Rename the manifest temp → `app.zom-artifact` using
+   `renameat2(RENAME_NOREPLACE)` (**the commit point**); fsync the final
+   directory; then durably commit journal stage `ManifestCommitted`.
+6. Cleanup, in this order: discard any residual manifest temp, then discard the
+   snapshot root via the candidate; ONLY after both succeed, delete the journal and
+   fsync the journal directory (blocker 2 — the journal is released last, so a
+   crash during cleanup still leaves the durable owner proof). If any cleanup step
+   fails, the journal is retained and the outcome carries a recovery obligation.
 
-**Journal lifecycle.** The journal entry exists only for the window between step
-4 and step 7. Its sole purpose is to authorise deleting an orphan `app` during
-recovery: recovery removes `app` only when a journal entry proves this
-transaction created it AND `app` still resolves to the journal's recorded exact
-identity. After a clean commit the entry is discarded (step 7); a leftover entry
-found later means a crash between steps 4 and 7 and drives the recovery matrix.
+If the executable no-replace rename (step 4) loses to a competitor, D1 rolls back
+only its own transaction (discard root + journal) and touches neither the
+competitor's `app` nor the final manifest path. If the manifest no-replace rename
+(step 5) loses to a competitor, the transaction's own `app` is rolled back only
+when the journal + exact-identity match proves D1 created it; the competitor's
+manifest is never deleted (blocker 6).
 
-**INV-4 crash-recovery matrix (pointwise, by the last completed step).** The
-recogniser decides committed-vs-orphan solely by "does a complete, verifying
-manifest exist" (INV-1), never by an in-memory return value:
+**INV-4 crash-recovery matrix (by last durably-committed `JournalStage` + actual
+final entries).** The recogniser decides committed-vs-orphan from disk alone —
+the durable journal stage plus what actually exists at the two final paths (INV-1:
+a published artifact requires a complete, verifying manifest) — never from an
+in-memory return value:
 
-| Crash after step | On-disk state | Recogniser verdict | Recovery action |
+| Durable journal stage | Final-path entries | Verdict | Recovery action |
 |---|---|---|---|
-| 1-3 | no final pair; maybe a manifest temp + snapshot root (both token-owned) | not published | remove token-owned temporaries + snapshot root; no final path touched |
-| 4 | journal exists; no final pair | not published | journal names no committed identity yet (or names the staged id but `app` absent) → discard journal; remove token-owned temporaries |
-| 5 | `app` exists (orphan), no manifest; journal present | not published (orphan) | delete `app` only if journal proves ownership AND `app` matches the journal identity; else retain + report |
-| 6 (pre-dir-fsync) | both files exist; final-dir durability unknown | **ambiguous** | `RecoveryRequired(PublicationRecoveryObligation)`; MUST NOT blind-delete; next open applies INV-1 |
-| 7 | both files exist + durable (committed) | published | discard journal + snapshot root; if that fails, report a non-ambiguous cleanup obligation |
+| none | none | nothing happened | remove any token-owned temp + snapshot root; no final path touched |
+| `Started` | neither `app` nor manifest | not published | discard journal; remove token-owned manifest temp + snapshot root |
+| `Started` | `app` present, matches journal identity; no manifest | orphan executable | delete `app` (journal + exact-identity match), then journal + root; a non-matching `app` is a competitor — retain, report |
+| `ExecCommitted` | `app` present + matches; no manifest | orphan executable (exec rename was durable, crash before manifest commit) | same as above: identity-checked delete of `app`, then journal + root |
+| `ExecCommitted` | `app` + manifest both present | **ambiguous** (manifest rename may have landed before the stage commit) | `RecoveryRequired(PublicationRecoveryObligation)`; MUST NOT blind-delete; re-open applies INV-1 to decide |
+| `ManifestCommitted` | `app` + verifying manifest | published | discard residual temp + snapshot root, then delete journal; a cleanup failure reports a non-ambiguous obligation, never touching the committed pair |
+| `ManifestCommitted` | manifest missing/!verifying | competitor or external tampering | fail closed: retain, report for explicit repair; never delete a final entry that does not match the journal |
 
-The step-6 row is the single genuinely ambiguous outcome (INV-5): the pair may or
-may not be durable, so D1 returns `RecoveryRequired(PublicationRecoveryObligation)`
-rather than an ordinary rejection, and never deletes the possibly-committed pair.
-Every other row is decidable from disk alone.
+The two ambiguous rows are exactly the windows where a rename may have landed but
+the following journal-stage/dir fsync did not durably record it (INV-5): D1
+returns `RecoveryRequired(PublicationRecoveryObligation)` and never deletes a
+possibly-committed pair. Every other row is decidable from disk alone.
 
-
+The RFC 0043 goal line "Publish an executable and its manifest atomically, or
+publish neither" is reworded to: **manifest-committed recoverable publication —
 logical visibility is atomic (nothing is a published artifact until the manifest
 commits and verifies), while the physical file set may contain a crash orphan
 that is never recognised as an artifact.**
+
 
 ### D2. VerifiedSysroot capability
 
