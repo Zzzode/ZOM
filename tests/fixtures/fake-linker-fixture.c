@@ -52,9 +52,10 @@
  * reading.
  */
 
-/* symlink() (used only by the D4 no-follow-output invariant variant, mode 3) is
- * POSIX, not ISO C11; request the POSIX surface before any system header. */
-#if ZOM_FAKE_LINKER_MODE == 3
+/* symlink()/mkdir()/link() (used by the D4 output-invariant variants, modes 3,
+ * 5, 6) are POSIX, not ISO C11; request the POSIX surface before any system
+ * header. */
+#if ZOM_FAKE_LINKER_MODE == 3 || ZOM_FAKE_LINKER_MODE == 5 || ZOM_FAKE_LINKER_MODE == 6
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif
@@ -62,21 +63,30 @@
 
 #include <stdio.h>
 #include <string.h>
-#if ZOM_FAKE_LINKER_MODE == 3
+/* Modes 3/5/6 exercise the D4 output structural invariants (symlink / directory /
+ * hardlink) and need POSIX calls (symlink/mkdir/link) that are not ISO C11. */
+#if ZOM_FAKE_LINKER_MODE == 3 || ZOM_FAKE_LINKER_MODE == 5 || ZOM_FAKE_LINKER_MODE == 6
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
 /* Compile-time behavior selector. 0 = success, 1 = partial-then-exit-3,
- * 2 = clean exit with no output, 3 = write a symlink at the output path (to
- * exercise the D4 no-follow output invariant). */
+ * 2 = clean exit with no output, 3 = symlink at the output path, 4 = empty
+ * regular file, 5 = directory at the output path, 6 = hardlinked regular file
+ * (st_nlink > 1). Modes 3-6 exercise the D4 no-follow / regular / non-empty /
+ * single-link output invariants. */
 #ifndef ZOM_FAKE_LINKER_MODE
-#error "ZOM_FAKE_LINKER_MODE must be defined (0=success, 1=partial, 2=no-output, 3=symlink)"
+#error \
+    "ZOM_FAKE_LINKER_MODE must be defined (0=success,1=partial,2=no-output,3=symlink,4=empty,5=dir,6=hardlink)"
 #endif
 
 #define ZOM_FAKE_LINKER_MODE_SUCCESS 0
 #define ZOM_FAKE_LINKER_MODE_PARTIAL 1
 #define ZOM_FAKE_LINKER_MODE_NO_OUTPUT 2
 #define ZOM_FAKE_LINKER_MODE_SYMLINK 3
+#define ZOM_FAKE_LINKER_MODE_EMPTY 4
+#define ZOM_FAKE_LINKER_MODE_DIRECTORY 5
+#define ZOM_FAKE_LINKER_MODE_HARDLINK 6
 
 /* The process environment, empty under the Empty subprocess env policy. */
 extern char** environ;
@@ -107,9 +117,10 @@ static int writeStartedMarker(const char* outputPath) {
   return 0;
 }
 
-/* Writes the four-byte ELF magic to `path`. Returns 0 on success. Only the
- * success variant links this. */
-#if ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_SUCCESS
+/* Writes the four-byte ELF magic to `path`. Returns 0 on success. The success
+ * and hardlink variants link this. */
+#if ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_SUCCESS || \
+    ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_HARDLINK
 static int writeElfMagic(const char* path) {
   FILE* out = fopen(path, "wb");
   if (out == NULL) { return -1; }
@@ -212,6 +223,34 @@ int main(int argc, char** argv) {
     (void)fwrite(kElfMagic, 1, sizeof(kElfMagic), target);
     fclose(target);
     if (symlink(targetPath, outputPath) != 0) { return kExitOutputOpenFailed; }
+    return kExitOk;
+  }
+#elif ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_EMPTY
+  /* Exit zero but create an EMPTY regular file at the output path, so the D4
+   * non-empty invariant must refuse it. (Distinct from mode 2, which writes no
+   * output at all - here the entry exists but has zero bytes.) */
+  {
+    FILE* out = fopen(outputPath, "wb");
+    if (out == NULL) { return kExitOutputOpenFailed; }
+    fclose(out);
+    return kExitOk;
+  }
+#elif ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_DIRECTORY
+  /* Exit zero but create a DIRECTORY at the output path, so the D4 regular-file
+   * invariant must refuse it. */
+  if (mkdir(outputPath, 0700) != 0) { return kExitOutputOpenFailed; }
+  return kExitOk;
+#elif ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_HARDLINK
+  /* Exit zero, write a regular ELF output, then create a second hard link to it
+   * from a sibling path, so the output inode has st_nlink == 2. The D4 sole-link
+   * invariant (st_nlink == 1) must refuse it: a multiply-linked inode could be
+   * rewritten in place through the external link. */
+  {
+    if (writeElfMagic(outputPath) != 0) { return kExitOutputOpenFailed; }
+    char linkPath[4096];
+    int t = snprintf(linkPath, sizeof(linkPath), "%s.hardlink", outputPath);
+    if (t <= 0 || (size_t)t >= sizeof(linkPath)) { return kExitOutputOpenFailed; }
+    if (link(outputPath, linkPath) != 0) { return kExitOutputOpenFailed; }
     return kExitOk;
   }
 #else

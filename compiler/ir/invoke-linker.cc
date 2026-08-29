@@ -832,7 +832,10 @@ CleanupAwareOutcome<PreparedLinkInputs> PreparedLinkInputs::prepareWithTokenSour
     builtImpl->driverSnapshot = zc::mv(driverSnapshot);
     builtImpl->program = zc::mv(driverSnapshotPath);
     builtImpl->argvValues = argv.releaseAsArray();
-    builtImpl->workingDirectory = zc::heapString(outputParent);
+    // RFC 0043 D4: the driver's working directory is the transaction root itself,
+    // so the run is hermetic (no input resolves against an ambient cwd) and the
+    // cwd matches the unified-root model. Every argv path is absolute regardless.
+    builtImpl->workingDirectory = zc::heapString(treePath);
     builtImpl->environmentValues = zc::Array<zc::String>();
     builtImpl->outputCandidatePath = zc::mv(outputCandidatePath);
     preparedImpl = zc::mv(builtImpl);
@@ -888,10 +891,11 @@ struct LinkedOutputCandidate::Impl {
   // The moved-in verified plan: the single authority for the publication context.
   VerifiedLinkPlan plan;
   // The transaction-owned no-follow read-only handle to <root>/output-candidate,
-  // and the exact identity + byte count captured from that same handle.
+  // and the exact identity, byte count, and digest captured from that same handle.
   zc::Own<const zc::ReadableFile> outputHandle;
   StableFileIdentity outputIdentity;
   uint64_t outputSize;
+  identity::Sha256Digest outputDigest;
   zc::String outputCandidatePath;
 #endif  // ZOM_LINK_SNAPSHOT_SUPPORTED
 };
@@ -903,13 +907,22 @@ namespace detail {
 class LinkOutputCandidateFactory {
 public:
 #if ZOM_LINK_SNAPSHOT_SUPPORTED
-  static LinkedOutputCandidate create(SnapshotTreeOwnership&& tree, VerifiedLinkPlan&& plan,
-                                      zc::Own<const zc::ReadableFile>&& outputHandle,
-                                      StableFileIdentity outputIdentity, uint64_t outputSize,
-                                      zc::String&& outputCandidatePath) noexcept {
-    auto impl = zc::heap<LinkedOutputCandidate::Impl>(LinkedOutputCandidate::Impl{
-        zc::mv(tree), zc::mv(plan), zc::mv(outputHandle), zc::mv(outputIdentity), outputSize,
-        zc::mv(outputCandidatePath)});
+  // Allocates the candidate storage with a DEFAULT (empty) transaction tree. This
+  // heap allocation is the sole throwing step of the ownership transfer; the
+  // caller moves the real tree in afterward (noexcept) only once this has
+  // succeeded, so a bad_alloc never strands a live transaction tree.
+  ZC_NODISCARD static zc::Own<LinkedOutputCandidate::Impl> allocate(
+      VerifiedLinkPlan&& plan, zc::Own<const zc::ReadableFile>&& outputHandle,
+      StableFileIdentity outputIdentity, uint64_t outputSize, identity::Sha256Digest outputDigest,
+      zc::String&& outputCandidatePath) {
+    return zc::heap<LinkedOutputCandidate::Impl>(LinkedOutputCandidate::Impl{
+        SnapshotTreeOwnership{}, zc::mv(plan), zc::mv(outputHandle), zc::mv(outputIdentity),
+        outputSize, zc::mv(outputDigest), zc::mv(outputCandidatePath)});
+  }
+
+  // Wraps an already-populated candidate impl. Non-throwing.
+  ZC_NODISCARD static LinkedOutputCandidate wrap(
+      zc::Own<LinkedOutputCandidate::Impl>&& impl) noexcept {
     return LinkedOutputCandidate(zc::mv(impl));
   }
 #endif  // ZOM_LINK_SNAPSHOT_SUPPORTED
@@ -918,20 +931,29 @@ public:
 
 LinkedOutputCandidate PreparedLinkInputs::intoCandidate(
     VerifiedLinkPlan&& plan, zc::Own<const zc::ReadableFile>&& outputHandle,
-    StableFileIdentity outputIdentity, uint64_t outputSize) && noexcept {
-  // Consume the capability: move the tree ownership out so the destructor becomes
-  // a no-op and never removes the tree - the returned candidate owns it now.
-  zc::Own<Impl> owned = zc::mv(impl);
+    StableFileIdentity outputIdentity, uint64_t outputSize,
+    identity::Sha256Digest outputDigest) && {
 #if ZOM_LINK_SNAPSHOT_SUPPORTED
-  return detail::LinkOutputCandidateFactory::create(zc::mv(owned->tree), zc::mv(plan),
-                                                    zc::mv(outputHandle), zc::mv(outputIdentity),
-                                                    outputSize, zc::mv(owned->outputCandidatePath));
+  // Allocate the candidate storage first - the sole throwing step. `*this` still
+  // owns the transaction tree at this point, so if the allocation throws, the
+  // caller's catcher can `discardAndCleanup()` and no tree is stranded. The output
+  // candidate path is copied (not moved) so `impl` stays fully valid until the
+  // allocation succeeds.
+  zc::Own<LinkedOutputCandidate::Impl> candidateImpl = detail::LinkOutputCandidateFactory::allocate(
+      zc::mv(plan), zc::mv(outputHandle), zc::mv(outputIdentity), outputSize, zc::mv(outputDigest),
+      zc::heapString(impl->outputCandidatePath));
+  // Allocation succeeded: from here nothing throws. Move the real tree in and
+  // consume this capability so its destructor becomes a no-op (the candidate owns
+  // the tree now).
+  candidateImpl->tree = zc::mv(impl->tree);
+  impl = nullptr;
+  return detail::LinkOutputCandidateFactory::wrap(zc::mv(candidateImpl));
 #else
-  (void)owned;
   (void)plan;
   (void)outputHandle;
   (void)outputIdentity;
   (void)outputSize;
+  (void)outputDigest;
   ZC_IREQUIRE(false, "intoCandidate requires the snapshot machinery");
   ZC_UNREACHABLE
 #endif
@@ -980,6 +1002,15 @@ uint64_t LinkedOutputCandidate::outputSize() const noexcept {
 #endif
 }
 
+const identity::Sha256Digest& LinkedOutputCandidate::outputDigest() const noexcept {
+#if ZOM_LINK_SNAPSHOT_SUPPORTED
+  return impl->outputDigest;
+#else
+  ZC_IREQUIRE(false, "LinkedOutputCandidate requires the snapshot machinery");
+  ZC_UNREACHABLE
+#endif
+}
+
 zc::Array<uint8_t> LinkedOutputCandidate::readOutput() const {
 #if ZOM_LINK_SNAPSHOT_SUPPORTED
   // Read through the transaction-owned handle - the single physical authority for
@@ -1024,17 +1055,20 @@ CleanupDisposition LinkedOutputCandidate::discardAndCleanup() && noexcept {
 
 #if ZOM_LINK_SNAPSHOT_SUPPORTED
 
-CleanupAwareOutcome<LinkedOutputCandidate> linkExecutable(VerifiedLinkPlan&& plan,
-                                                          const zc::Filesystem& filesystem) {
+CleanupAwareOutcome<LinkedOutputCandidate> linkExecutableWithObserver(
+    VerifiedLinkPlan plan, const zc::Filesystem& filesystem, SpawnAttemptObserver* observer) {
   const zc::Directory& filesystemRoot = filesystem.getRoot();
   using Outcome = CleanupAwareOutcome<LinkedOutputCandidate>;
 
-  // Reject a pre-existing file at the plan's FINAL output path up front (INV-1
-  // no-clobber): a link never overwrites an existing final artifact. This does
-  // not create, write, or remove the final path - the driver writes only into the
-  // transaction root, and the D1 publication step is the sole writer of the final
-  // path. The existence probe can throw (a faulting filesystem); since no tree
-  // exists yet, a throw is a Complete rejection with nothing to clean up.
+  // Reject ANY pre-existing entry at the plan's FINAL output path up front (INV-1
+  // no-clobber): a link never overwrites an existing final artifact. The probe is
+  // a NO-FOLLOW lstat, not a following `exists`, so a broken symlink (or any
+  // symlink) already sitting at the final path is also rejected instead of being
+  // treated as absent. This does not create, write, or remove the final path - the
+  // driver writes only into the transaction root, and the D1 publication step is
+  // the sole writer of the final path. The probe can throw (a faulting
+  // filesystem); since no tree exists yet, a throw is a Complete rejection with
+  // nothing to clean up.
   zc::StringPtr outputPath = plan.outputPath();
   if (outputPath.size() < 2 || outputPath[0] != '/') {
     return Outcome::complete(
@@ -1042,8 +1076,8 @@ CleanupAwareOutcome<LinkedOutputCandidate> linkExecutable(VerifiedLinkPlan&& pla
   }
   zc::Path outputRelative = zc::Path::parse(outputPath.slice(1));
   bool outputExists = false;
-  auto existsException =
-      zc::runCatchingExceptions([&]() { outputExists = filesystemRoot.exists(outputRelative); });
+  auto existsException = zc::runCatchingExceptions(
+      [&]() { outputExists = filesystemRoot.tryLstat(outputRelative) != zc::none; });
   if (existsException != zc::none) {
     return Outcome::complete(
         rejectLinkerInvocation<LinkedOutputCandidate>(IrFailureKind::OutputCreationFailed, 26));
@@ -1070,26 +1104,30 @@ CleanupAwareOutcome<LinkedOutputCandidate> linkExecutable(VerifiedLinkPlan&& pla
   PreparedLinkInputs prepared = zc::mv(preparedResult).takeVerified();
 
   // From here a transaction root is committed and owned by `prepared`. Every
-  // remaining step - the spawn (pipe/fork/poll can raise) and the output capture -
-  // runs inside a closed catcher that produces a rejection instead of unwinding.
-  // On a rejection the tree is discarded through `discardAndCleanup` (which never
-  // touches the final path); on success the tree ownership is transferred into the
-  // returned candidate and NOT removed.
+  // remaining step - the spawn (pipe/fork/poll can raise), the output capture +
+  // digest, and the candidate allocation - runs inside a closed catcher that
+  // produces a rejection instead of unwinding. On a rejection the tree is
+  // discarded through `discardAndCleanup` (which never touches the final path); on
+  // success the tree ownership is transferred into the returned candidate and NOT
+  // removed.
 
   // A successfully captured output candidate, populated only on the clean path.
   struct CapturedOutput {
     zc::Own<const zc::ReadableFile> handle;
     zc::Maybe<StableFileIdentity> identity;
     uint64_t size = 0;
+    zc::Maybe<identity::Sha256Digest> digest;
   };
 
   // Opens `<root>/output-candidate` with a no-follow open relative to the held
-  // snapshot directory, confirms it is a regular, non-empty, singly-linked file
-  // whose exact identity matches the same handle's, and captures identity + size.
-  // The directory-entry no-follow open and the fstat of the returned handle are a
+  // snapshot directory, confirms it is a regular, non-empty, singly-linked file,
+  // captures its exact identity and byte count from that same handle, and reads +
+  // hashes the bytes through the same handle to record the output digest. The
+  // directory-entry no-follow open and the fstat/read of the returned handle are a
   // pair: a symlink at the entry is refused by O_NOFOLLOW, and the handle is the
-  // only object inspected, so a swap between open and stat cannot smuggle a
-  // different inode. Returns none (fail closed) on any structural violation.
+  // only object inspected/read, so a swap between open and stat/read cannot smuggle
+  // a different inode. Returns false (fail closed) on any structural violation or a
+  // size/hash mismatch.
   auto captureOutput = [&](CapturedOutput& out) -> bool {
     const zc::Directory& snapshotDir = prepared.snapshotDirectory();
     ZC_IF_SOME(rootFd, snapshotDir.getFd()) {
@@ -1113,7 +1151,17 @@ CleanupAwareOutcome<LinkedOutputCandidate> linkExecutable(VerifiedLinkPlan&& pla
       // Wrap the same descriptor in a ReadableFile the candidate owns; the exec
       // and this capture never re-open by pathname.
       out.handle = zc::newDiskReadableFile(zc::mv(owned));
-      return true;
+      // Read + hash through the SAME handle so the digest is over exactly the bytes
+      // the candidate holds. Cross-check the read length against the fstat size so a
+      // truncated/racing read fails closed rather than digesting a short buffer.
+      zc::Array<zc::byte> bytes = out.handle->readAllBytes();
+      if (bytes.size() != out.size) { return false; }
+      zc::Maybe<identity::Sha256Digest> computed = identity::sha256(bytes.asPtr());
+      ZC_IF_SOME(value, computed) {
+        out.digest = value;
+        return true;
+      }
+      return false;
     }
     return false;
   };
@@ -1128,7 +1176,8 @@ CleanupAwareOutcome<LinkedOutputCandidate> linkExecutable(VerifiedLinkPlan&& pla
   auto spawnException = zc::runCatchingExceptions([&]() {
     // Spawn the driver by its snapshot descriptor with an explicit empty
     // environment. The rewritten argv points every input token at a snapshot path
-    // and `-o` at `<root>/output-candidate`.
+    // and `-o` at `<root>/output-candidate`; the working directory is the
+    // transaction root itself (hermetic - no input resolves against an ambient cwd).
     zc::SubprocessCommand command(prepared.program());
     command.envPolicy(zc::SubprocessEnvPolicy::Empty);
     command.cwd(prepared.workingDirectory());
@@ -1140,6 +1189,12 @@ CleanupAwareOutcome<LinkedOutputCandidate> linkExecutable(VerifiedLinkPlan&& pla
     for (size_t index = 0; index + 1 < environment.size(); index += 2) {
       command.env(environment[index], environment[index + 1]);
     }
+
+    // Notify the per-call spawn-attempt observer (test-only) at the very last point
+    // before the child is launched: every prepare and D4 pre-spawn gate has passed,
+    // so a rejection reaching here proves a spawn WAS attempted, and a rejection
+    // that returns before here proves it was NOT. Production passes null.
+    if (observer != nullptr) { observer->onSpawnAttempt(); }
 
     zc::SubprocessResult spawnResult = command.run();
     if (!spawnResult.spawned()) {
@@ -1159,16 +1214,28 @@ CleanupAwareOutcome<LinkedOutputCandidate> linkExecutable(VerifiedLinkPlan&& pla
       return;
     }
     // Capture the output candidate through the held snapshot directory: no-follow
-    // open + regular/non-empty/single-link/exact-identity, all from one handle.
-    if (!captureOutput(captured) || captured.identity == zc::none) {
+    // open + regular/non-empty/single-link/exact-identity + digest, all from one
+    // handle.
+    if (!captureOutput(captured) || captured.identity == zc::none || captured.digest == zc::none) {
       rejection =
           rejectLinkerInvocation<LinkedOutputCandidate>(IrFailureKind::OutputCreationFailed, 25);
       return;
     }
+    // Transfer the still-live transaction root into the candidate INSIDE the
+    // catcher: `intoCandidate` allocates the candidate storage first (its only
+    // throwing step) while `prepared` still owns the tree, so a bad_alloc here
+    // unwinds to the rejection path with the tree intact and discardable.
+    StableFileIdentity identity = ZC_REQUIRE_NONNULL(zc::mv(captured.identity));
+    identity::Sha256Digest digest = ZC_REQUIRE_NONNULL(zc::mv(captured.digest));
+    LinkedOutputCandidate candidate = zc::mv(prepared).intoCandidate(
+        zc::mv(plan), zc::mv(captured.handle), zc::mv(identity), captured.size, zc::mv(digest));
+    rejection = IrOperationResult<LinkedOutputCandidate>::verified(zc::mv(candidate));
     linkVerified = true;
   });
-  // A spawn/capture fault that escaped the classification is a capability
-  // rejection; the tree is discarded below (never a final-path touch).
+  // A spawn/capture/allocation fault that escaped the classification is a
+  // capability rejection; the tree (if `prepared` still owns it) is discarded
+  // below. `intoCandidate` never consumes `prepared` unless it fully succeeds, so a
+  // fault leaves `prepared` owning the tree.
   if (spawnException != zc::none) {
     linkVerified = false;
     rejection =
@@ -1176,12 +1243,9 @@ CleanupAwareOutcome<LinkedOutputCandidate> linkExecutable(VerifiedLinkPlan&& pla
   }
 
   if (linkVerified) {
-    // Success: transfer the still-live transaction root into the candidate. The
-    // tree is NOT removed - Complete here means the obligation was transferred.
-    StableFileIdentity identity = ZC_REQUIRE_NONNULL(zc::mv(captured.identity));
-    LinkedOutputCandidate candidate = zc::mv(prepared).intoCandidate(
-        zc::mv(plan), zc::mv(captured.handle), zc::mv(identity), captured.size);
-    return Outcome::complete(IrOperationResult<LinkedOutputCandidate>::verified(zc::mv(candidate)));
+    // Success: the verified candidate now owns the transaction root. Complete here
+    // means the cleanup obligation was transferred, not that the tree was removed.
+    return Outcome::complete(zc::mv(rejection));
   }
 
   // Rejection: discard the transaction root and pair the primary rejection with
@@ -1191,10 +1255,21 @@ CleanupAwareOutcome<LinkedOutputCandidate> linkExecutable(VerifiedLinkPlan&& pla
   return Outcome::recoveryRequired(zc::mv(rejection), zc::mv(disposition).takeObligation());
 }
 
+CleanupAwareOutcome<LinkedOutputCandidate> linkExecutable(VerifiedLinkPlan plan,
+                                                          const zc::Filesystem& filesystem) {
+  return linkExecutableWithObserver(zc::mv(plan), filesystem, /*observer=*/nullptr);
+}
+
 #else  // !ZOM_LINK_SNAPSHOT_SUPPORTED
 
-CleanupAwareOutcome<LinkedOutputCandidate> linkExecutable(VerifiedLinkPlan&&,
-                                                          const zc::Filesystem&) {
+CleanupAwareOutcome<LinkedOutputCandidate> linkExecutableWithObserver(VerifiedLinkPlan,
+                                                                      const zc::Filesystem&,
+                                                                      SpawnAttemptObserver*) {
+  return CleanupAwareOutcome<LinkedOutputCandidate>::complete(
+      rejectLinkerInvocation<LinkedOutputCandidate>(IrFailureKind::OutputCreationFailed, 20));
+}
+
+CleanupAwareOutcome<LinkedOutputCandidate> linkExecutable(VerifiedLinkPlan, const zc::Filesystem&) {
   return CleanupAwareOutcome<LinkedOutputCandidate>::complete(
       rejectLinkerInvocation<LinkedOutputCandidate>(IrFailureKind::OutputCreationFailed, 20));
 }

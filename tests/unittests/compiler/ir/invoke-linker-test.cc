@@ -21,7 +21,8 @@
 // into a move-only `LinkedOutputCandidate` on success. This defeats the input
 // side of the link TOCTOU: an inode swapped after verification but before exec is
 // never linked. The driver is a real compiled ELF (ZOM_FAKE_LINKER_SUCCESS/
-// PARTIAL/NO_OUTPUT/SYMLINK, one variant per compile-time behavior); a `#!`
+// PARTIAL/NO_OUTPUT/SYMLINK/EMPTY/DIRECTORY/HARDLINK, one variant per compile-time
+// behavior, the last four exercising the D4 output structural invariants); a `#!`
 // script cannot be exec'd by descriptor. On non-Linux hosts the descriptor-exec
 // path does not exist and the integration cases are skipped, but the in-memory
 // fail-closed case still runs.
@@ -459,14 +460,52 @@ LinkedOutputCandidate linkExpectingCandidate(VerifiedLinkPlan&& plan, const zc::
   return zc::mv(result).takeVerified();
 }
 
-// Links a plan expecting a Complete outcome carrying a rejection (the transaction
-// root was already discarded inside linkExecutable). Returns the rejection result.
-IrOperationResult<LinkedOutputCandidate> linkExpectingReject(VerifiedLinkPlan&& plan,
-                                                             const zc::Filesystem& fs) {
-  CleanupAwareOutcome<LinkedOutputCandidate> outcome = linkExecutable(zc::mv(plan), fs);
+// Counts spawn attempts. RFC 0043 D4: the fixture's ".started"/".args" markers now
+// live INSIDE the transaction root and are removed with it on a reject, so their
+// absence at the final path no longer proves "never spawned" (they never exist
+// there, and even in-tree markers are cleaned). The per-call internal
+// SpawnAttemptObserver is the drift-proof spawn evidence: it is notified once, at
+// the very last point before the child is launched, so count()==0 proves a
+// rejection fired before any spawn attempt and count()==1 proves a spawn was
+// attempted. It observes only "a spawn was attempted", not that an OS child ran.
+class CountingSpawnObserver final : public SpawnAttemptObserver {
+public:
+  void onSpawnAttempt() noexcept override { ++countValue; }
+  size_t count() const { return countValue; }
+
+private:
+  size_t countValue = 0;
+};
+
+// Links a plan through the internal observed entry point, expecting a Complete
+// rejection AND that NO spawn was attempted (the rejection fired at or before a
+// D4 pre-spawn gate). Returns the rejection result.
+IrOperationResult<LinkedOutputCandidate> linkExpectingRejectNoSpawn(VerifiedLinkPlan&& plan,
+                                                                    const zc::Filesystem& fs) {
+  CountingSpawnObserver observer;
+  CleanupAwareOutcome<LinkedOutputCandidate> outcome =
+      LinkerInvocationTestAccess::linkExecutableObserved(zc::mv(plan), fs, observer);
   ZC_ASSERT(outcome.isComplete());
   IrOperationResult<LinkedOutputCandidate> result = zc::mv(outcome).takeComplete();
   ZC_EXPECT(!result.isVerified());
+  // The core assertion: no spawn was ever attempted.
+  ZC_EXPECT(observer.count() == 0u);
+  return result;
+}
+
+// Links a plan through the internal observed entry point, expecting a Complete
+// rejection AFTER a spawn was attempted (the driver ran and its output failed a
+// D4 post-spawn gate). Returns the rejection result.
+IrOperationResult<LinkedOutputCandidate> linkExpectingRejectAfterSpawn(VerifiedLinkPlan&& plan,
+                                                                       const zc::Filesystem& fs) {
+  CountingSpawnObserver observer;
+  CleanupAwareOutcome<LinkedOutputCandidate> outcome =
+      LinkerInvocationTestAccess::linkExecutableObserved(zc::mv(plan), fs, observer);
+  ZC_ASSERT(outcome.isComplete());
+  IrOperationResult<LinkedOutputCandidate> result = zc::mv(outcome).takeComplete();
+  ZC_EXPECT(!result.isVerified());
+  // A spawn was attempted exactly once before the post-spawn failure.
+  ZC_EXPECT(observer.count() == 1u);
   return result;
 }
 
@@ -634,6 +673,10 @@ ZC_TEST(
   // identity records a sole hard link (st_nlink == 1).
   ZC_EXPECT(candidate.outputSize() == 4u);
   ZC_EXPECT(candidate.outputIdentity().linkCount() == 1u);
+  // The candidate's digest was computed from the same held handle: it equals the
+  // SHA-256 of exactly the bytes readOutput() returns, and of the known ELF magic.
+  ZC_EXPECT(candidate.outputDigest() == digestOf(bytes.asPtr()));
+  ZC_EXPECT(candidate.outputDigest() == digestOf(candidate.readOutput().asPtr()));
   // The output candidate path names <tree>/output-candidate, never the final path.
   ZC_EXPECT(zc::StringPtr(candidate.outputCandidatePath()).endsWith("/output-candidate"_zc));
   ZC_EXPECT(zc::StringPtr(candidate.outputCandidatePath()).find(".zomlink-"_zc) != zc::none);
@@ -828,9 +871,9 @@ ZC_TEST("linkExecutable rejects an input whose inode is swapped after verificati
   dir->remove(zc::Path("app0.o"_zc));
   writeFile(*dir, "app0.o"_zc, bytesOf("SWAPPED-OBJECT-BYTES-DIFFERENT"_zc).asPtr(), false);
 
-  auto result = linkExpectingReject(zc::mv(plan), *fs);
+  auto result = linkExpectingRejectNoSpawn(zc::mv(plan), *fs);
   ZC_EXPECT(result.isIrInvariantRejected());
-  // No output was produced and no snapshot tree was left behind.
+  // No output was produced (never spawned) and no snapshot tree was left behind.
   ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
   ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
 
@@ -852,7 +895,7 @@ ZC_TEST("linkExecutable rejects a driver whose inode is swapped after verificati
   dir->remove(zc::Path("ld"_zc));
   writeFile(*dir, "ld"_zc, swapped.asPtr(), true);
 
-  auto result = linkExpectingReject(zc::mv(plan), *fs);
+  auto result = linkExpectingRejectNoSpawn(zc::mv(plan), *fs);
   ZC_EXPECT(result.isIrInvariantRejected());
   ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
   ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
@@ -935,19 +978,21 @@ ZC_TEST("linkExecutable rejects a same-length byte change in every input role be
       }
     }
 
-    auto result = linkExpectingReject(zc::mv(plan), *fs);
+    // Use the observed entry point: the driver must NOT be spawned on an input-
+    // revision mismatch (it is caught by the snapshot re-verify, a pre-spawn gate).
+    auto result = linkExpectingRejectNoSpawn(zc::mv(plan), *fs);
     // Same-length change caught by the digest: InputRevisionMismatch (an
     // IrInvariantRejected row). Full RFC row via the shared helper.
     expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::IrInvariantRejected,
                               IrFailureKind::InputRevisionMismatch);
 
-    // The driver was never spawned and no final path was ever touched: no
-    // ".started" marker, no ".args", no output at the final path.
-    ZC_EXPECT(!dir->exists(zc::Path("app.started"_zc)));
-    ZC_EXPECT(!dir->exists(zc::Path("app.args"_zc)));
+    // No final path was ever touched. (The spawn-observer count==0 inside
+    // linkExpectingRejectNoSpawn is the drift-proof "never spawned" proof; the
+    // fixture's in-tree markers are cleaned with the transaction root, so they
+    // could not serve that role.)
     ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
     // The transaction root was discarded on the reject path (Complete, asserted
-    // by linkExpectingReject, not RecoveryRequired).
+    // by linkExpectingRejectNoSpawn, not RecoveryRequired).
     ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
 
     fs->getRoot().remove(zc::Path::parse(base.slice(1)));
@@ -962,13 +1007,47 @@ ZC_TEST("linkExecutable rejects a pre-existing stale output before snapshotting"
   auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
   dir->openFile(zc::Path("app"_zc), zc::WriteMode::CREATE)->writeAll("stale"_zc);
 
-  auto result = linkExpectingReject(zc::mv(plan), *fs);
+  auto result = linkExpectingRejectNoSpawn(zc::mv(plan), *fs);
   // A pre-existing FINAL output is InvalidFact, an IrInvariantRejected row (the
-  // plan's output-path fact cannot be honored). Full RFC row via the shared helper.
+  // plan's output-path fact cannot be honored) and is rejected before any spawn.
   expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::IrInvariantRejected,
                             IrFailureKind::InvalidFact);
   // The stale file is left untouched (we reject, we do not clobber it).
   ZC_EXPECT(dir->openFile(zc::Path("app"_zc))->readAllText() == "stale"_zc);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST(
+    "linkExecutable rejects a pre-existing BROKEN symlink at the final path (INV-1 no-follow)") {
+  // A broken symlink already sits at the final output path. A following existence
+  // probe (`exists`) would resolve the dangling target and report "absent", letting
+  // the link proceed and later clobber whatever the symlink names. The INV-1 gate is
+  // a NO-FOLLOW lstat, so it rejects any pre-existing final entry - including a
+  // broken symlink - up front, before any spawn, and leaves the entry untouched.
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = tempDirPath();
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+  // Create a dangling symlink at <base>/app pointing at a non-existent target.
+  ZC_REQUIRE(
+      dir->trySymlink(zc::Path("app"_zc), "does-not-exist-target"_zc, zc::WriteMode::CREATE));
+  // Sanity: a following existence check treats the broken link as absent...
+  ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+  // ...but a no-follow lstat sees the link entry itself.
+  ZC_EXPECT(dir->tryLstat(zc::Path("app"_zc)) != zc::none);
+
+  auto result = linkExpectingRejectNoSpawn(zc::mv(plan), *fs);
+  expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::IrInvariantRejected,
+                            IrFailureKind::InvalidFact);
+  // The broken symlink is left exactly as it was (never followed, never removed).
+  ZC_IF_SOME(target, dir->tryReadlink(zc::Path("app"_zc))) {
+    ZC_EXPECT(target == "does-not-exist-target"_zc);
+  } else {
+    ZC_FAIL_EXPECT("the broken symlink at the final path must survive untouched");
+  }
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
 
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
@@ -980,9 +1059,9 @@ ZC_TEST("linkExecutable cleans the transaction root when the driver exits nonzer
   Scenario scenario;
   auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_PARTIAL ""_zc, scenario);
 
-  auto result = linkExpectingReject(zc::mv(plan), *fs);
-  // A nonzero exit is CapabilityRejected: OutputCreationFailed per RFC 0043.
-  // Full RFC row via the shared helper.
+  auto result = linkExpectingRejectAfterSpawn(zc::mv(plan), *fs);
+  // A nonzero exit is CapabilityRejected: OutputCreationFailed per RFC 0043, after
+  // a spawn was attempted (observer count == 1).
   expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::CapabilityRejected,
                             IrFailureKind::OutputCreationFailed);
   // The final path was never written (the driver wrote a partial output-candidate
@@ -1000,9 +1079,9 @@ ZC_TEST("linkExecutable reports a missing output on a clean exit") {
   Scenario scenario;
   auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_NO_OUTPUT ""_zc, scenario);
 
-  auto result = linkExpectingReject(zc::mv(plan), *fs);
-  // A missing output after a clean exit is CapabilityRejected: OutputCreationFailed.
-  // Full RFC row via the shared helper.
+  auto result = linkExpectingRejectAfterSpawn(zc::mv(plan), *fs);
+  // A missing output after a clean exit is CapabilityRejected: OutputCreationFailed,
+  // after a spawn was attempted (observer count == 1).
   expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::CapabilityRejected,
                             IrFailureKind::OutputCreationFailed);
   ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
@@ -1022,11 +1101,69 @@ ZC_TEST("linkExecutable rejects a symlink output candidate (D4 no-follow invaria
   Scenario scenario;
   auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SYMLINK ""_zc, scenario);
 
-  auto result = linkExpectingReject(zc::mv(plan), *fs);
-  // A non-regular (symlink) output is CapabilityRejected: OutputCreationFailed.
+  auto result = linkExpectingRejectAfterSpawn(zc::mv(plan), *fs);
+  // A non-regular (symlink) output is CapabilityRejected: OutputCreationFailed,
+  // after the driver ran (observer count == 1).
   expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::CapabilityRejected,
                             IrFailureKind::OutputCreationFailed);
   // The final path was never touched and the transaction root is cleaned.
+  ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("linkExecutable rejects an empty output candidate (D4 non-empty invariant)") {
+  // The driver exits zero but leaves an EMPTY regular file at the output candidate
+  // (distinct from the missing-output case: the entry exists but has zero bytes).
+  // D4's non-empty invariant must reject it after the spawn.
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = tempDirPath();
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_EMPTY ""_zc, scenario);
+
+  auto result = linkExpectingRejectAfterSpawn(zc::mv(plan), *fs);
+  expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::CapabilityRejected,
+                            IrFailureKind::OutputCreationFailed);
+  ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("linkExecutable rejects a directory output candidate (D4 regular-file invariant)") {
+  // The driver exits zero but creates a DIRECTORY at the output candidate. D4's
+  // regular-file invariant must reject it after the spawn.
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = tempDirPath();
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_DIRECTORY ""_zc, scenario);
+
+  auto result = linkExpectingRejectAfterSpawn(zc::mv(plan), *fs);
+  expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::CapabilityRejected,
+                            IrFailureKind::OutputCreationFailed);
+  ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("linkExecutable rejects a multiply-linked output candidate (D4 single-link invariant)") {
+  // The driver exits zero, writes a regular ELF output, then creates a second hard
+  // link to the same inode (st_nlink == 2). D4's sole-link invariant must reject it
+  // after the spawn: a multiply-linked inode could be rewritten in place through the
+  // external link, so it is not an exclusively-owned transaction output.
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = tempDirPath();
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_HARDLINK ""_zc, scenario);
+
+  auto result = linkExpectingRejectAfterSpawn(zc::mv(plan), *fs);
+  expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::CapabilityRejected,
+                            IrFailureKind::OutputCreationFailed);
   ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
   ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
 

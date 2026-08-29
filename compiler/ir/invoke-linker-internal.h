@@ -179,19 +179,28 @@ public:
   ///        `LinkedOutputCandidate`, consuming this capability (RFC 0043 D4
   ///        success path). The candidate owns the tree, the moved-in verified
   ///        plan, and the transaction-owned output handle plus its captured exact
-  ///        identity and byte count; this object is moved-from afterward, so its
-  ///        destructor does nothing (the tree is NOT removed - the candidate owns
-  ///        it now).
+  ///        identity, byte count, and digest; this object is moved-from afterward,
+  ///        so its destructor does nothing (the tree is NOT removed - the candidate
+  ///        owns it now).
+  ///
+  /// This is NOT `noexcept`: it allocates the candidate storage first, and that
+  /// heap allocation is the sole throwing step. Because the allocation runs BEFORE
+  /// this capability's tree ownership is consumed, a `bad_alloc` leaves `*this`
+  /// fully intact, so the caller can still `discardAndCleanup()` the transaction
+  /// root - no tree is ever leaked without an obligation. Call it inside the
+  /// caller's closed catcher.
   ///
   /// \param plan The verified link plan, moved into the candidate.
   /// \param outputHandle The no-follow read-only handle to `<root>/output-candidate`.
   /// \param outputIdentity The output's exact `(dev, ino)` + link count captured
   ///        from `outputHandle`.
   /// \param outputSize The output's byte count captured from `outputHandle`.
+  /// \param outputDigest The output's SHA-256 digest computed from the same handle.
   ZC_NODISCARD LinkedOutputCandidate intoCandidate(VerifiedLinkPlan&& plan,
                                                    zc::Own<const zc::ReadableFile>&& outputHandle,
                                                    StableFileIdentity outputIdentity,
-                                                   uint64_t outputSize) && noexcept;
+                                                   uint64_t outputSize,
+                                                   identity::Sha256Digest outputDigest) &&;
 
   /// \brief The borrowed descriptor of the driver snapshot, valid while this
   ///        object is alive. The exec targets exactly this open object.
@@ -228,17 +237,47 @@ private:
   explicit PreparedLinkInputs(zc::Own<Impl> impl) noexcept;
 };
 
+/// \brief A per-call test observer notified exactly once, immediately before the
+///        driver subprocess is spawned (after every prepare and D4 pre-spawn
+///        gate). Production passes none; a test passes an instance to prove a
+///        rejection fired WITHOUT attempting a spawn.
+///
+/// It deliberately proves only "no spawn was attempted" (the notify point is just
+/// before `SubprocessCommand::run`); it does not claim an OS child actually
+/// started. It is a per-call argument (never global/static/thread-local), so
+/// there is no shared spawn state between concurrent links. It lives only in this
+/// internal header, so no production translation unit can pass one.
+class SpawnAttemptObserver {
+public:
+  virtual ~SpawnAttemptObserver() noexcept = default;
+  /// \brief Called once, just before the driver `run()` is invoked.
+  virtual void onSpawnAttempt() noexcept = 0;
+};
+
+/// \brief `linkExecutable` with a per-call spawn-attempt observer, so a test can
+///        prove a rejection fired without attempting a spawn. Production reaches
+///        the linker only through the public `linkExecutable`, which forwards
+///        here with a null observer.
+ZC_NODISCARD CleanupAwareOutcome<LinkedOutputCandidate> linkExecutableWithObserver(
+    VerifiedLinkPlan plan, const zc::Filesystem& filesystem, SpawnAttemptObserver* observer);
+
 /// \brief Test access to the internal snapshot seam. It lives in this internal
 ///        header (compiled only into `invoke-linker.cc` and the test target), so
 ///        there is no callable `LinkerInvocationTestAccess` in a production
-///        build. It simply re-exposes `prepareWithTokenSource` for readability at
-///        call sites; the token source and the fault-injecting filesystem wrapper
-///        are the only test seams, and neither touches a production signature.
+///        build. It re-exposes `prepareWithTokenSource` and the spawn-observer
+///        entry point for readability at call sites; the token source, the fault-
+///        injecting filesystem wrapper, and the spawn observer are the only test
+///        seams, and none touches a production signature.
 struct LinkerInvocationTestAccess {
   ZC_NODISCARD static CleanupAwareOutcome<PreparedLinkInputs> prepareWithTokenSource(
       const VerifiedLinkPlan& plan, const zc::Filesystem& filesystem,
       SnapshotTokenSource& tokenSource) {
     return PreparedLinkInputs::prepareWithTokenSource(plan, filesystem, tokenSource);
+  }
+
+  ZC_NODISCARD static CleanupAwareOutcome<LinkedOutputCandidate> linkExecutableObserved(
+      VerifiedLinkPlan plan, const zc::Filesystem& filesystem, SpawnAttemptObserver& observer) {
+    return linkExecutableWithObserver(zc::mv(plan), filesystem, &observer);
   }
 };
 

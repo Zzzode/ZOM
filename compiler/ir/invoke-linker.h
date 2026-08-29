@@ -274,16 +274,20 @@ struct RecoveryRequiredOutcome {
 /// \brief A closed two-state result that makes an un-cleaned snapshot tree
 ///        impossible to ignore.
 ///
-/// `Complete` means the operation finished and its private snapshot tree was
-/// removed, so there is nothing to recover. `RecoveryRequired` means the
-/// operation finished (with any primary result, verified or rejected) but its
-/// snapshot tree could not be removed, so exactly one `SnapshotCleanupObligation`
-/// is carried for a later recovery step. The two branches are extracted by
-/// distinct consuming accessors - `takeComplete()` requires `Complete`,
-/// `takeRecoveryRequired()` returns both the primary and the obligation - so a
-/// caller cannot read a verified primary while silently dropping a cleanup
-/// obligation: a verified primary paired with a cleanup failure is
-/// `RecoveryRequired`, never a clean success. The type is `[[nodiscard]]`.
+/// `Complete` means the operation finished with no unaccounted cleanup
+/// obligation: either its private snapshot tree was removed, OR (on a successful
+/// link, RFC 0043 D4) the tree's ownership was transferred into the verified
+/// return capability, which is then responsible for the eventual
+/// `discardAndCleanup`. Either way there is nothing an outer caller must
+/// separately recover. `RecoveryRequired` means the operation finished (with any
+/// primary result, verified or rejected) but its snapshot tree could not be
+/// removed, so exactly one `SnapshotCleanupObligation` is carried for a later
+/// recovery step. The two branches are extracted by distinct consuming accessors
+/// - `takeComplete()` requires `Complete`, `takeRecoveryRequired()` returns both
+/// the primary and the obligation - so a caller cannot read a verified primary
+/// while silently dropping a cleanup obligation: a verified primary paired with a
+/// cleanup failure is `RecoveryRequired`, never a clean success. The type is
+/// `[[nodiscard]]`.
 template <typename VerifiedValue>
 class ZC_NODISCARD CleanupAwareOutcome final {
 public:
@@ -292,7 +296,9 @@ public:
   ZC_DISALLOW_COPY(CleanupAwareOutcome);
   ~CleanupAwareOutcome() noexcept = default;
 
-  /// \brief The operation finished and its snapshot tree was removed.
+  /// \brief The operation finished with no unaccounted cleanup obligation: the
+  ///        snapshot tree was removed, or its ownership was transferred into the
+  ///        verified return capability.
   ZC_NODISCARD static CleanupAwareOutcome complete(IrOperationResult<VerifiedValue>&& result) {
     return CleanupAwareOutcome(zc::mv(result), zc::none);
   }
@@ -421,6 +427,13 @@ public:
   /// \brief The output candidate's byte count, computed from the held handle.
   ZC_NODISCARD uint64_t outputSize() const noexcept;
 
+  /// \brief The output candidate's SHA-256 digest, computed from the same held
+  ///        read-only handle at link time (over exactly `outputSize()` bytes). A
+  ///        later D5 step re-reads and re-hashes the same object and checks it
+  ///        against this value before publishing; the candidate is not a second,
+  ///        drift-able byte authority.
+  ZC_NODISCARD const identity::Sha256Digest& outputDigest() const noexcept;
+
   /// \brief The output candidate bytes, read back through the transaction-owned
   ///        read-only handle. A later D5 step re-derives digest/size from the same
   ///        object; this is an inspection read, not a second byte authority.
@@ -481,14 +494,16 @@ private:
 /// returned capability". A cleanup that was attempted and could not complete is
 /// `RecoveryRequired`. No filesystem exception escapes.
 ///
-/// \param plan The verified link plan, consumed by move; the sole source of
-///        inputs, driver, and the final output request.
+/// \param plan The verified link plan, consumed by value so the caller must move
+///        a move-only plan in and cannot reuse it after the call on ANY branch
+///        (success or rejection); the sole source of inputs, driver, and the
+///        final output request.
 /// \param filesystem The filesystem whose root the plan's normalized absolute
 ///        paths resolve against; its root must expose real descriptors, so an
 ///        in-memory filesystem fails closed.
 /// \return A cleanup-aware outcome wrapping the transaction-owned output candidate
 ///         or a LinkerInvocation-phase rejection.
 ZC_NODISCARD CleanupAwareOutcome<LinkedOutputCandidate> linkExecutable(
-    VerifiedLinkPlan&& plan, const zc::Filesystem& filesystem);
+    VerifiedLinkPlan plan, const zc::Filesystem& filesystem);
 
 }  // namespace zomlang::compiler::ir
