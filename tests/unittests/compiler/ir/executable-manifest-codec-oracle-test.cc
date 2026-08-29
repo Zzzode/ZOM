@@ -99,6 +99,25 @@ ZC_TEST("Executable manifest encoding is deterministic and domain-separated") {
   ZC_EXPECT(first[sizeof(domain) - 1] == 0x00);
 }
 
+ZC_TEST("Executable manifest decoder accepts only the canonical complete encoding") {
+  auto verified = ExecutableManifestVerifier::verify(minimalRequest());
+  ZC_REQUIRE(verified.isVerified());
+  VerifiedExecutableManifest manifest = zc::mv(verified).takeVerified();
+  zc::Array<uint8_t> bytes = ExecutableManifestCodec::encode(manifest);
+
+  auto decoded = ExecutableManifestCodec::decode(bytes.asPtr(), "/out"_zc);
+  ZC_REQUIRE(decoded.isVerified());
+  ZC_EXPECT(ExecutableManifestCodec::encode(zc::mv(decoded).takeVerified()).asPtr() ==
+            bytes.asPtr());
+
+  auto truncated = zc::heapArray<uint8_t>(bytes.size() - 1);
+  for (size_t index = 0; index < truncated.size(); ++index) { truncated[index] = bytes[index]; }
+  auto rejected = ExecutableManifestCodec::decode(truncated.asPtr(), "/out"_zc);
+  ZC_REQUIRE(rejected.isIrInvariantRejected());
+  ZC_EXPECT(rejected.invariantFailures().facts()[0].kind() ==
+            IrFailureKind::CanonicalCodecMismatch);
+}
+
 // The ExecutableManifestId is sensitive to every framed field.
 ZC_TEST("Executable manifest id is field sensitive") {
   const auto baseline = verifiedManifest().id();
@@ -180,33 +199,23 @@ ZC_TEST("Executable manifest verifier rejects a missing identity") {
   }
 }
 
-// Unsorted or duplicate input artifact digests are CanonicalCodecMismatch.
-ZC_TEST("Executable manifest verifier rejects non-canonical input digests") {
-  {
-    auto request = minimalRequest();
-    zc::Vector<identity::Sha256Digest> reversed(2);
-    // Force descending order regardless of the seed comparison.
-    auto a = digestOf("input-a"_zc);
-    auto b = digestOf("input-b"_zc);
-    reversed.add(a < b ? b : a);
-    reversed.add(a < b ? a : b);
-    request.inputArtifactDigests = reversed.releaseAsArray();
-    auto result = ExecutableManifestVerifier::verify(zc::mv(request));
-    ZC_REQUIRE(result.isIrInvariantRejected());
-    ZC_EXPECT(result.invariantFailures().facts()[0].kind() ==
-              IrFailureKind::CanonicalCodecMismatch);
-  }
-  {
-    auto request = minimalRequest();
-    zc::Vector<identity::Sha256Digest> duplicate(2);
-    duplicate.add(digestOf("input-a"_zc));
-    duplicate.add(digestOf("input-a"_zc));
-    request.inputArtifactDigests = duplicate.releaseAsArray();
-    auto result = ExecutableManifestVerifier::verify(zc::mv(request));
-    ZC_REQUIRE(result.isIrInvariantRejected());
-    ZC_EXPECT(result.invariantFailures().facts()[0].kind() ==
-              IrFailureKind::CanonicalCodecMismatch);
-  }
+// Input digest order is semantic and duplicate content at distinct positions is legal.
+ZC_TEST("Executable manifest verifier preserves semantic input digest order") {
+  auto request = minimalRequest();
+  zc::Vector<identity::Sha256Digest> ordered(3);
+  auto a = digestOf("input-a"_zc);
+  auto b = digestOf("input-b"_zc);
+  ordered.add(b);
+  ordered.add(a);
+  ordered.add(b);
+  request.inputArtifactDigests = ordered.releaseAsArray();
+  auto result = ExecutableManifestVerifier::verify(zc::mv(request));
+  ZC_REQUIRE(result.isVerified());
+  VerifiedExecutableManifest manifest = zc::mv(result).takeVerified();
+  ZC_REQUIRE(manifest.inputArtifactDigests().size() == 3);
+  ZC_EXPECT(manifest.inputArtifactDigests()[0] == b);
+  ZC_EXPECT(manifest.inputArtifactDigests()[1] == a);
+  ZC_EXPECT(manifest.inputArtifactDigests()[2] == b);
 }
 
 }  // namespace

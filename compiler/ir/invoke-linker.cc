@@ -18,6 +18,7 @@
 #include "compiler/identity/identity-invariant.h"
 #include "compiler/identity/semantic/context-fingerprint.h"
 #include "compiler/ir/invoke-linker-internal.h"
+#include "compiler/ir/link-publication-internal.h"
 #include "zc/core/debug.h"
 #include "zc/core/exception.h"
 #include "zc/core/io.h"
@@ -32,8 +33,11 @@
 #if defined(__linux__)
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/fs.h>
 #include <sys/random.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
+#include <unistd.h>
 #define ZOM_LINK_SNAPSHOT_SUPPORTED 1
 #else
 #define ZOM_LINK_SNAPSHOT_SUPPORTED 0
@@ -977,6 +981,115 @@ LinkedOutputCandidate::~LinkedOutputCandidate() noexcept {
   (void)impl->tree.cleanup();
 #endif
 }
+
+#if ZOM_LINK_SNAPSHOT_SUPPORTED
+
+const SnapshotTransactionId& detail::LinkPublicationTransaction::transactionId(
+    const LinkedOutputCandidate& candidate) noexcept {
+  return candidate.impl->tree.transactionId;
+}
+
+StableFileIdentity detail::LinkPublicationTransaction::fileIdentity(uint64_t device, uint64_t inode,
+                                                                    uint64_t linkCount) noexcept {
+  return detail::LinkSnapshotMinter::fileIdentity(device, inode, linkCount);
+}
+
+zc::Maybe<SnapshotTransactionId> detail::LinkPublicationTransaction::transactionIdFromBytes(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  return detail::LinkSnapshotMinter::transactionId(bytes);
+}
+
+StableDirectoryIdentity detail::LinkPublicationTransaction::directoryIdentity(
+    uint64_t device, uint64_t inode) noexcept {
+  return ZC_REQUIRE_NONNULL(detail::LinkSnapshotMinter::identity(device, inode));
+}
+
+SnapshotCleanupObligation detail::LinkPublicationTransaction::snapshotObligation(
+    const SnapshotTransactionId& transactionId, zc::String&& outputParent,
+    const StableDirectoryIdentity& directoryIdentity, const LinkPlanId& planId,
+    CleanupFailureKind kind) noexcept {
+  zc::Maybe<StableDirectoryIdentity> identity =
+      detail::LinkSnapshotMinter::identity(directoryIdentity.device(), directoryIdentity.inode());
+  return detail::LinkSnapshotMinter::obligation(transactionId, zc::mv(outputParent),
+                                                zc::mv(identity), planId, kind,
+                                                CleanupStage::PublicationRecovery);
+}
+
+zc::StringPtr detail::LinkPublicationTransaction::outputParent(
+    const LinkedOutputCandidate& candidate) noexcept {
+  return candidate.impl->tree.outputParent;
+}
+
+const StableDirectoryIdentity& detail::LinkPublicationTransaction::rootIdentity(
+    const LinkedOutputCandidate& candidate) noexcept {
+  ZC_IREQUIRE(candidate.impl->tree.directoryIdentity != zc::none,
+              "Linked output candidate requires an exact root identity");
+  return ZC_REQUIRE_NONNULL(candidate.impl->tree.directoryIdentity);
+}
+
+const zc::Directory& detail::LinkPublicationTransaction::outputParentDirectory(
+    const LinkedOutputCandidate& candidate) noexcept {
+  return *candidate.impl->tree.parentDir;
+}
+
+zc::Maybe<detail::PublicationFileSnapshot> detail::LinkPublicationTransaction::recheckOutput(
+    const LinkedOutputCandidate& candidate) noexcept {
+  zc::Maybe<detail::PublicationFileSnapshot> result;
+  auto exception = zc::runCatchingExceptions([&]() {
+#if ZOM_LINK_SNAPSHOT_SUPPORTED
+    const zc::ReadableFile& output = *candidate.impl->outputHandle;
+    ZC_IF_SOME(fd, output.getFd()) {
+      struct stat st;
+      if (::fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size <= 0 || st.st_nlink != 1) {
+        return;
+      }
+      zc::Array<zc::byte> bytes = output.readAllBytes();
+      if (bytes.size() != static_cast<uint64_t>(st.st_size)) { return; }
+      ZC_IF_SOME(digest, identity::sha256(bytes.asPtr())) {
+        result = detail::PublicationFileSnapshot{
+            detail::LinkSnapshotMinter::fileIdentity(static_cast<uint64_t>(st.st_dev),
+                                                     static_cast<uint64_t>(st.st_ino),
+                                                     static_cast<uint64_t>(st.st_nlink)),
+            static_cast<uint64_t>(st.st_size), digest};
+      }
+    }
+#else
+    (void)candidate;
+#endif
+  });
+  if (exception != zc::none) { return zc::none; }
+  return result;
+}
+
+detail::PublicationRenameResult detail::LinkPublicationTransaction::renameOutputNoReplace(
+    const LinkedOutputCandidate& candidate, zc::StringPtr finalLeaf) noexcept {
+#if defined(__linux__) && defined(SYS_renameat2) && defined(RENAME_NOREPLACE)
+  zc::Maybe<int> fromFd = candidate.impl->tree.snapshotDir->getFd();
+  zc::Maybe<int> toFd = candidate.impl->tree.parentDir->getFd();
+  if (fromFd == zc::none || toFd == zc::none) {
+    return detail::PublicationRenameResult::Unsupported;
+  }
+  zc::String leaf = zc::heapString(finalLeaf);
+  for (;;) {
+    if (::syscall(SYS_renameat2, ZC_REQUIRE_NONNULL(fromFd), kOutputCandidateName.cStr(),
+                  ZC_REQUIRE_NONNULL(toFd), leaf.cStr(), RENAME_NOREPLACE) == 0) {
+      return detail::PublicationRenameResult::Renamed;
+    }
+    if (errno == EINTR) { continue; }
+    if (errno == EEXIST) { return detail::PublicationRenameResult::DestinationExists; }
+    if (errno == ENOSYS || errno == EINVAL || errno == EOPNOTSUPP) {
+      return detail::PublicationRenameResult::Unsupported;
+    }
+    return detail::PublicationRenameResult::Failed;
+  }
+#else
+  (void)candidate;
+  (void)finalLeaf;
+  return detail::PublicationRenameResult::Unsupported;
+#endif
+}
+
+#endif  // ZOM_LINK_SNAPSHOT_SUPPORTED
 
 const VerifiedLinkPlan& LinkedOutputCandidate::plan() const noexcept {
 #if ZOM_LINK_SNAPSHOT_SUPPORTED

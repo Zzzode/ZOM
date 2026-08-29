@@ -36,6 +36,57 @@ void appendFramed(zc::Vector<uint8_t>& output, zc::StringPtr value) {
   for (const auto byte : value) { output.add(static_cast<uint8_t>(byte)); }
 }
 
+class DecodeCursor final {
+public:
+  explicit DecodeCursor(zc::ArrayPtr<const uint8_t> bytes) : bytes(bytes) {}
+
+  bool consume(zc::StringPtr expected) {
+    if (position + expected.size() > bytes.size()) { return false; }
+    for (char byte : expected) {
+      if (bytes[position++] != static_cast<uint8_t>(byte)) { return false; }
+    }
+    return true;
+  }
+
+  zc::Maybe<uint8_t> byte() {
+    if (position >= bytes.size()) { return zc::none; }
+    return bytes[position++];
+  }
+
+  zc::Maybe<uint64_t> uint64() {
+    if (position + 8 > bytes.size()) { return zc::none; }
+    uint64_t value = 0;
+    for (size_t index = 0; index < 8; ++index) { value = (value << 8) | bytes[position++]; }
+    return value;
+  }
+
+  zc::Maybe<zc::ArrayPtr<const uint8_t>> frame() {
+    ZC_IF_SOME(length, uint64()) {
+      if (length > bytes.size() - position) { return zc::none; }
+      auto result = bytes.slice(position, position + static_cast<size_t>(length));
+      position += static_cast<size_t>(length);
+      return result;
+    }
+    return zc::none;
+  }
+
+  zc::Maybe<zc::String> stringFrame() {
+    ZC_IF_SOME(value, frame()) {
+      for (uint8_t byte : value) {
+        if (byte == 0) { return zc::none; }
+      }
+      return zc::heapString(reinterpret_cast<const char*>(value.begin()), value.size());
+    }
+    return zc::none;
+  }
+
+  bool atEnd() const noexcept { return position == bytes.size(); }
+
+private:
+  zc::ArrayPtr<const uint8_t> bytes;
+  size_t position = 0;
+};
+
 identity::Sha256Digest requireDigest(zc::ArrayPtr<const uint8_t> bytes) {
   auto digest = identity::sha256(bytes);
   ZC_IF_SOME(value, digest) { return value; }
@@ -157,6 +208,73 @@ zc::Array<uint8_t> ExecutableManifestCodec::encode(const VerifiedExecutableManif
   return preimage.releaseAsArray();
 }
 
+IrOperationResult<VerifiedExecutableManifest> ExecutableManifestCodec::decode(
+    zc::ArrayPtr<const uint8_t> bytes, zc::StringPtr outputRoot) {
+  DecodeCursor cursor(bytes);
+  if (!cursor.consume("zom.executable-manifest"_zc)) {
+    return rejectManifest(IrFailureKind::CanonicalCodecMismatch, 6);
+  }
+  zc::Maybe<uint8_t> separator = cursor.byte();
+  zc::Maybe<zc::String> finalDestination = cursor.stringFrame();
+  zc::Maybe<zc::ArrayPtr<const uint8_t>> targetIdentity = cursor.frame();
+  zc::Maybe<zc::ArrayPtr<const uint8_t>> executableDigestBytes = cursor.frame();
+  zc::Maybe<uint64_t> byteCount = cursor.uint64();
+  zc::Maybe<zc::ArrayPtr<const uint8_t>> linkPlanDigestBytes = cursor.frame();
+  zc::Maybe<uint64_t> inputCount = cursor.uint64();
+  if (separator == zc::none || ZC_REQUIRE_NONNULL(separator) != 0 || finalDestination == zc::none ||
+      targetIdentity == zc::none || executableDigestBytes == zc::none || byteCount == zc::none ||
+      linkPlanDigestBytes == zc::none || inputCount == zc::none ||
+      ZC_REQUIRE_NONNULL(inputCount) > bytes.size() / 40) {
+    return rejectManifest(IrFailureKind::CanonicalCodecMismatch, 6);
+  }
+  zc::Maybe<identity::Sha256Digest> executableDigest =
+      identity::Sha256Digest::fromBytes(ZC_REQUIRE_NONNULL(executableDigestBytes));
+  zc::Maybe<identity::Sha256Digest> linkPlanDigest =
+      identity::Sha256Digest::fromBytes(ZC_REQUIRE_NONNULL(linkPlanDigestBytes));
+  if (executableDigest == zc::none || linkPlanDigest == zc::none) {
+    return rejectManifest(IrFailureKind::CanonicalCodecMismatch, 6);
+  }
+  zc::Vector<identity::Sha256Digest> inputDigests;
+  for (uint64_t index = 0; index < ZC_REQUIRE_NONNULL(inputCount); ++index) {
+    zc::Maybe<zc::ArrayPtr<const uint8_t>> digestBytes = cursor.frame();
+    if (digestBytes == zc::none) {
+      return rejectManifest(IrFailureKind::CanonicalCodecMismatch, 6);
+    }
+    zc::Maybe<identity::Sha256Digest> digest =
+        identity::Sha256Digest::fromBytes(ZC_REQUIRE_NONNULL(digestBytes));
+    if (digest == zc::none) { return rejectManifest(IrFailureKind::CanonicalCodecMismatch, 6); }
+    inputDigests.add(ZC_REQUIRE_NONNULL(digest));
+  }
+  zc::Maybe<zc::ArrayPtr<const uint8_t>> toolchainIdentity = cursor.frame();
+  if (toolchainIdentity == zc::none || !cursor.atEnd()) {
+    return rejectManifest(IrFailureKind::CanonicalCodecMismatch, 6);
+  }
+  auto targetCopy = zc::heapArray<uint8_t>(ZC_REQUIRE_NONNULL(targetIdentity).size());
+  for (size_t index = 0; index < targetCopy.size(); ++index) {
+    targetCopy[index] = ZC_REQUIRE_NONNULL(targetIdentity)[index];
+  }
+  auto toolchainCopy = zc::heapArray<uint8_t>(ZC_REQUIRE_NONNULL(toolchainIdentity).size());
+  for (size_t index = 0; index < toolchainCopy.size(); ++index) {
+    toolchainCopy[index] = ZC_REQUIRE_NONNULL(toolchainIdentity)[index];
+  }
+  ExecutableManifestRequest request{ZC_REQUIRE_NONNULL(zc::mv(finalDestination)),
+                                    zc::heapString(outputRoot),
+                                    zc::mv(targetCopy),
+                                    ZC_REQUIRE_NONNULL(executableDigest),
+                                    ZC_REQUIRE_NONNULL(byteCount),
+                                    LinkPlanId::fromDigest(ZC_REQUIRE_NONNULL(linkPlanDigest)),
+                                    inputDigests.releaseAsArray(),
+                                    zc::mv(toolchainCopy)};
+  IrOperationResult<VerifiedExecutableManifest> result =
+      ExecutableManifestVerifier::verify(zc::mv(request));
+  if (!result.isVerified()) { return result; }
+  VerifiedExecutableManifest manifest = zc::mv(result).takeVerified();
+  if (encode(manifest).asPtr() != bytes) {
+    return rejectManifest(IrFailureKind::CanonicalCodecMismatch, 6);
+  }
+  return IrOperationResult<VerifiedExecutableManifest>::verified(zc::mv(manifest));
+}
+
 ExecutableManifestId ExecutableManifestCodec::computeId(
     const VerifiedExecutableManifest& manifest) {
   auto bytes = encode(manifest);
@@ -189,12 +307,10 @@ IrOperationResult<VerifiedExecutableManifest> ExecutableManifestVerifier::verify
     return rejectManifest(IrFailureKind::MissingRequiredFact, 4);
   }
 
-  // Input artifact digests must be strictly ascending (sorted, no duplicates).
-  for (size_t index = 1; index < request.inputArtifactDigests.size(); ++index) {
-    const auto& previous = request.inputArtifactDigests[index - 1];
-    const auto& current = request.inputArtifactDigests[index];
-    if (!(previous < current)) { return rejectManifest(IrFailureKind::CanonicalCodecMismatch, 5); }
-  }
+  // The sequence order is semantically meaningful: D1 live-binds it to the
+  // verified plan's canonical linker-input order (CRT, object, runtime, default
+  // library). It is therefore carried verbatim rather than sorted by digest;
+  // equal digests at distinct canonical input positions are legal.
 
   auto manifest = VerifiedExecutableManifest(
       zc::mv(request.finalDestination), zc::mv(request.targetSpecificationIdentity),

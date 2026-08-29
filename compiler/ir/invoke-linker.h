@@ -38,6 +38,9 @@ class LinkSnapshotMinter;
 ///        file, where the snapshot machinery is complete, so the public header
 ///        names a neutral attorney rather than the transaction internals.
 class LinkOutputCandidateFactory;
+/// \brief The restricted D1 publication attorney. Its surface is internal and
+///        implemented beside the candidate pimpl.
+class LinkPublicationTransaction;
 }  // namespace detail
 
 /// \brief A fixed 128-bit opaque identity for one snapshot transaction.
@@ -194,6 +197,8 @@ enum class CleanupStage : uint8_t {
   PrepareRollback = 0x01,
   /// Removing the tree after the linker process was awaited.
   PostSpawnCleanup = 0x02,
+  /// Recovering a durable D1 publication journal after process restart.
+  PublicationRecovery = 0x03,
 };
 
 /// \brief A structured, driver-consumable record of a snapshot tree whose
@@ -454,6 +459,7 @@ public:
 
 private:
   friend class detail::LinkOutputCandidateFactory;
+  friend class detail::LinkPublicationTransaction;
 
   zc::Own<Impl> impl;
 

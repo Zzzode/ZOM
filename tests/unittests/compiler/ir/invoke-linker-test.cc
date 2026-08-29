@@ -45,9 +45,11 @@
 #include <unistd.h>
 #if defined(ZOM_FAKE_LINKER_SUCCESS)
 #include <sys/stat.h>  // fstat/chmod, used only by the Linux fixture-driven cases
+#include <sys/wait.h>
 #endif
 
 #include "compiler/identity/crypto/sha256.h"
+#include "compiler/ir/executable-publication-internal.h"
 #include "compiler/ir/invoke-linker-internal.h"
 #include "compiler/ir/link-plan-codec.h"
 #include "zc/core/debug.h"
@@ -610,6 +612,113 @@ VerifiedLinkPlan buildScenario(const zc::Directory& dir, zc::StringPtr base,
   return zc::mv(result).takeVerified();
 }
 
+zc::Array<uint8_t> copyBytes(zc::ArrayPtr<const uint8_t> source) {
+  auto result = zc::heapArray<uint8_t>(source.size());
+  for (size_t index = 0; index < source.size(); ++index) { result[index] = source[index]; }
+  return result;
+}
+
+VerifiedExecutableManifest buildManifest(const LinkedOutputCandidate& candidate,
+                                         zc::StringPtr outputRoot) {
+  const VerifiedLinkPlan& plan = candidate.plan();
+  identity::Sha256Digest toolchain = ExecutablePublicationManifestBinding::toolchainIdentity(plan);
+  ExecutableManifestRequest request{
+      zc::heapString(plan.outputPath()),
+      zc::heapString(outputRoot),
+      copyBytes(plan.targetSpecificationIdentity()),
+      candidate.outputDigest(),
+      candidate.outputSize(),
+      plan.id(),
+      ExecutablePublicationManifestBinding::inputArtifactDigests(plan),
+      copyBytes(toolchain.bytes())};
+  IrOperationResult<VerifiedExecutableManifest> result =
+      ExecutableManifestVerifier::verify(zc::mv(request));
+  ZC_REQUIRE(result.isVerified());
+  return zc::mv(result).takeVerified();
+}
+
+class ManifestCompetitorObserver final : public PublicationCheckpointObserver {
+public:
+  explicit ManifestCompetitorObserver(const zc::Directory& outputDir) : outputDir(outputDir) {}
+
+  void reached(PublicationCheckpoint checkpoint) override {
+    if (checkpoint != PublicationCheckpoint::ExecCommittedDurable || created) { return; }
+    outputDir.openFile(zc::Path("app.zom-artifact"_zc), zc::WriteMode::CREATE)
+        ->writeAll("competitor-manifest"_zc);
+    created = true;
+  }
+
+  bool didCreate() const noexcept { return created; }
+
+private:
+  const zc::Directory& outputDir;
+  bool created = false;
+};
+
+class ExecutableReplacementObserver final : public PublicationCheckpointObserver {
+public:
+  explicit ExecutableReplacementObserver(const zc::Directory& outputDir) : outputDir(outputDir) {}
+
+  void reached(PublicationCheckpoint checkpoint) override {
+    if (checkpoint != PublicationCheckpoint::ExecCommittedDurable || replaced) { return; }
+    ZC_REQUIRE(outputDir.tryRemove(zc::Path("app"_zc)));
+    outputDir.openFile(zc::Path("app"_zc), zc::WriteMode::CREATE)->writeAll("competitor-app"_zc);
+    replaced = true;
+  }
+
+  bool didReplace() const noexcept { return replaced; }
+
+private:
+  const zc::Directory& outputDir;
+  bool replaced = false;
+};
+
+class ExitAtPublicationCheckpoint final : public PublicationCheckpointObserver {
+public:
+  explicit ExitAtPublicationCheckpoint(PublicationCheckpoint target) : target(target) {}
+
+  void reached(PublicationCheckpoint checkpoint) override {
+    if (checkpoint == target) { _exit(64 + static_cast<int>(checkpoint)); }
+  }
+
+private:
+  PublicationCheckpoint target;
+};
+
+void crashPublicationAt(PublicationCheckpoint checkpoint, zc::StringPtr suffix,
+                        zc::String& baseOut) {
+  baseOut = zc::str(tempDirPath(), "-", suffix);
+  auto setupFs = zc::newDiskFilesystem();
+  auto setupDir = openDir(*setupFs, baseOut);
+  (void)setupDir;
+
+  pid_t child = ::fork();
+  ZC_REQUIRE(child >= 0);
+  if (child == 0) {
+    auto fs = zc::newDiskFilesystem();
+    auto dir = openDir(*fs, baseOut);
+    Scenario scenario;
+    VerifiedLinkPlan plan = buildScenario(*dir, baseOut, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+    LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), *fs);
+    VerifiedExecutableManifest manifest = buildManifest(candidate, baseOut);
+    ExitAtPublicationCheckpoint observer(checkpoint);
+    (void)PublicationTransactionTestAccess::publishObserved(zc::mv(candidate), zc::mv(manifest),
+                                                            observer);
+    _exit(127);
+  }
+  int status = 0;
+  ZC_REQUIRE(::waitpid(child, &status, 0) == child);
+  ZC_REQUIRE(WIFEXITED(status));
+  ZC_REQUIRE(WEXITSTATUS(status) == 64 + static_cast<int>(checkpoint));
+}
+
+PublicationRecoveryResult crashAndRecoverPublication(PublicationCheckpoint checkpoint,
+                                                     zc::StringPtr suffix, zc::String& baseOut) {
+  crashPublicationAt(checkpoint, suffix, baseOut);
+  auto recoveryFs = zc::newDiskFilesystem();
+  return recoverLinkedOutputPublication(*recoveryFs, zc::str(baseOut, "/app"));
+}
+
 // Asserts a single failure fact is the complete RFC 0010 / RFC 0043 row for a
 // LinkerInvocation rejection: not just the branch, but phase, kind, the
 // Backend { InvokeLinker, instance none } site, a Session owner, and a None
@@ -646,6 +755,208 @@ const IrFailureFact& soleFailureFact(const IrOperationResult<LinkedOutputCandida
   zc::ArrayPtr<const IrFailureFact> facts = result.invariantFailures().facts();
   ZC_REQUIRE(facts.size() == 1);
   return facts[0];
+}
+
+ZC_TEST("publication recovery never infers ownership from a pre-Started token name") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-pre-started-recovery");
+  auto dir = openDir(*fs, base);
+  dir->openSubdir(zc::Path(".zomlink-00112233445566778899aabbccddeeff"_zc),
+                  zc::WriteMode::CREATE | zc::WriteMode::PRIVATE);
+
+  PublicationRecoveryResult result = recoverLinkedOutputPublication(*fs, zc::str(base, "/app"));
+  ZC_EXPECT(result.status() == PublicationRecoveryStatus::ExplicitRepairRequired);
+  ZC_EXPECT(dir->tryLstat(zc::Path(".zomlink-00112233445566778899aabbccddeeff"_zc)) != zc::none);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("publication recovery rejects a checksum-corrupted journal chain without deleting") {
+  zc::String base;
+  crashPublicationAt(PublicationCheckpoint::ExecCommittedDurable, "corrupt-journal-chain"_zc, base);
+  auto fs = zc::newDiskFilesystem();
+  auto dir = openDir(*fs, base);
+  zc::String execJournal;
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith("journal."_zc) &&
+        zc::StringPtr(name).endsWith(".exec-committed"_zc)) {
+      execJournal = zc::heapString(name);
+    }
+  }
+  ZC_REQUIRE(execJournal.size() > 0);
+  auto journalFile = dir->openFile(zc::Path(execJournal), zc::WriteMode::MODIFY);
+  zc::Array<zc::byte> bytes = journalFile->readAllBytes();
+  ZC_REQUIRE(bytes.size() > 0);
+  bytes[bytes.size() - 1] ^= 0x01;
+  journalFile->writeAll(bytes.asPtr());
+  journalFile->sync();
+  dir->sync();
+
+  PublicationRecoveryResult result = recoverLinkedOutputPublication(*fs, zc::str(base, "/app"));
+  ZC_EXPECT(result.status() == PublicationRecoveryStatus::ExplicitRepairRequired);
+  ZC_EXPECT(dir->tryLstat(zc::Path("app"_zc)) != zc::none);
+  ZC_EXPECT(countSnapshotTrees(*dir) == 1u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("publication recovery is a total function across every durable crash window") {
+  const PublicationCheckpoint checkpoints[] = {
+      PublicationCheckpoint::StartedDurable,
+      PublicationCheckpoint::ManifestTemporaryDurable,
+      PublicationCheckpoint::ManifestStagedDurable,
+      PublicationCheckpoint::ExecutableRenamed,
+      PublicationCheckpoint::ExecutableDirectoryDurable,
+      PublicationCheckpoint::ExecCommittedDurable,
+      PublicationCheckpoint::ManifestRenamed,
+      PublicationCheckpoint::ManifestDirectoryDurable,
+      PublicationCheckpoint::ManifestCommittedDurable,
+  };
+  const PublicationRecoveryStatus expected[] = {
+      PublicationRecoveryStatus::Clean,     PublicationRecoveryStatus::ExplicitRepairRequired,
+      PublicationRecoveryStatus::Clean,     PublicationRecoveryStatus::Clean,
+      PublicationRecoveryStatus::Clean,     PublicationRecoveryStatus::Clean,
+      PublicationRecoveryStatus::Published, PublicationRecoveryStatus::Published,
+      PublicationRecoveryStatus::Published,
+  };
+  const zc::StringPtr suffixes[] = {
+      "crash-started"_zc,          "crash-manifest-temp"_zc,   "crash-manifest-staged"_zc,
+      "crash-exec-renamed"_zc,     "crash-exec-synced"_zc,     "crash-exec-committed"_zc,
+      "crash-manifest-renamed"_zc, "crash-manifest-synced"_zc, "crash-manifest-committed"_zc,
+  };
+
+  for (size_t index = 0; index < 9; ++index) {
+    zc::String base;
+    PublicationRecoveryResult result =
+        crashAndRecoverPublication(checkpoints[index], suffixes[index], base);
+    ZC_EXPECT(result.status() == expected[index]);
+
+    auto fs = zc::newDiskFilesystem();
+    auto dir = openDir(*fs, base);
+    const bool published = expected[index] == PublicationRecoveryStatus::Published;
+    ZC_EXPECT(dir->tryLstat(zc::Path("app"_zc)) != zc::none == published);
+    ZC_EXPECT(dir->tryLstat(zc::Path("app.zom-artifact"_zc)) != zc::none == published);
+    if (expected[index] == PublicationRecoveryStatus::ExplicitRepairRequired) {
+      bool foundRetainedTemp = false;
+      for (const zc::String& name : dir->listNames()) {
+        if (zc::StringPtr(name).startsWith(".zom-manifest."_zc)) { foundRetainedTemp = true; }
+      }
+      ZC_EXPECT(foundRetainedTemp);
+    }
+    fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+  }
+}
+
+ZC_TEST("publishLinkedOutput commits the executable first and the manifest as visibility marker") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-publish-success");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+  LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), *fs);
+  VerifiedExecutableManifest manifest = buildManifest(candidate, base);
+  zc::Array<uint8_t> expectedManifest = ExecutableManifestCodec::encode(manifest);
+
+  PublicationOutcome outcome = publishLinkedOutput(zc::mv(candidate), zc::mv(manifest));
+  ZC_ASSERT(outcome.isPublished());
+  PublishedExecutableArtifact artifact = zc::mv(outcome).takePublished();
+  ZC_EXPECT(artifact.finalDestination() == zc::str(base, "/app"));
+  ZC_EXPECT(dir->openFile(zc::Path("app"_zc))->readAllBytes().asPtr() ==
+            zc::heapArray<zc::byte>({0x7f, 0x45, 0x4c, 0x46}).asPtr());
+  ZC_EXPECT(dir->openFile(zc::Path("app.zom-artifact"_zc))->readAllBytes().asPtr() ==
+            expectedManifest.asPtr());
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+  for (const zc::String& name : dir->listNames()) {
+    ZC_EXPECT(!zc::StringPtr(name).startsWith("journal."_zc));
+    ZC_EXPECT(!zc::StringPtr(name).startsWith(".zom-manifest."_zc));
+  }
+
+  PublicationRecoveryResult reopened = recoverLinkedOutputPublication(*fs, zc::str(base, "/app"));
+  ZC_EXPECT(reopened.status() == PublicationRecoveryStatus::Published);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("publishLinkedOutput rejects a manifest not live-bound to the candidate") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-publish-mismatch");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+  LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), *fs);
+  const VerifiedLinkPlan& heldPlan = candidate.plan();
+  identity::Sha256Digest wrongDigest = digestOf(bytesOf("wrong-output"_zc).asPtr());
+  identity::Sha256Digest toolchain =
+      ExecutablePublicationManifestBinding::toolchainIdentity(heldPlan);
+  ExecutableManifestRequest request{
+      zc::heapString(heldPlan.outputPath()),
+      zc::heapString(base),
+      copyBytes(heldPlan.targetSpecificationIdentity()),
+      wrongDigest,
+      candidate.outputSize(),
+      heldPlan.id(),
+      ExecutablePublicationManifestBinding::inputArtifactDigests(heldPlan),
+      copyBytes(toolchain.bytes())};
+  IrOperationResult<VerifiedExecutableManifest> manifestResult =
+      ExecutableManifestVerifier::verify(zc::mv(request));
+  ZC_REQUIRE(manifestResult.isVerified());
+
+  PublicationOutcome outcome =
+      publishLinkedOutput(zc::mv(candidate), zc::mv(manifestResult).takeVerified());
+  ZC_ASSERT(outcome.isRejected());
+  PublicationRejection rejection = zc::mv(outcome).takeRejected();
+  ZC_EXPECT(rejection.isIrInvariantRejected());
+  ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(!dir->exists(zc::Path("app.zom-artifact"_zc)));
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("publishLinkedOutput loses the manifest rename race without clobbering the competitor") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-publish-manifest-race");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+  LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), *fs);
+  VerifiedExecutableManifest manifest = buildManifest(candidate, base);
+  ManifestCompetitorObserver observer(*dir);
+
+  PublicationOutcome outcome = PublicationTransactionTestAccess::publishObserved(
+      zc::mv(candidate), zc::mv(manifest), observer);
+  ZC_ASSERT(observer.didCreate());
+  ZC_ASSERT(outcome.isRejected());
+  ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(dir->openFile(zc::Path("app.zom-artifact"_zc))->readAllText() ==
+            "competitor-manifest"_zc);
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("publishLinkedOutput never deletes an app replacement after the executable rename") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-publish-app-replacement");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+  LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), *fs);
+  VerifiedExecutableManifest manifest = buildManifest(candidate, base);
+  ExecutableReplacementObserver observer(*dir);
+
+  PublicationOutcome outcome = PublicationTransactionTestAccess::publishObserved(
+      zc::mv(candidate), zc::mv(manifest), observer);
+  ZC_ASSERT(observer.didReplace());
+  ZC_ASSERT(outcome.isRecoveryRequired());
+  LinkRecoveryRequired recovery = zc::mv(outcome).takeRecoveryRequired();
+  ZC_ASSERT(recovery.isPublicationRecoveryRequired());
+  PublicationRecoveryRequired publication = zc::mv(recovery).takePublication();
+  ZC_EXPECT(publication.primary != zc::none);
+  ZC_EXPECT(dir->openFile(zc::Path("app"_zc))->readAllText() == "competitor-app"_zc);
+  ZC_EXPECT(!dir->exists(zc::Path("app.zom-artifact"_zc)));
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
 
 ZC_TEST(

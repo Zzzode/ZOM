@@ -62,10 +62,9 @@ private:
 /// public aggregate initializer, so only `ExecutableManifestVerifier::verify`
 /// constructs one.
 ///
-/// This slice models and verifies the manifest as pure data. It does not link an
-/// executable, read or write the filesystem, or bind a live target-registry
-/// capability; the `linkExecutable` session API, the ELF/Mach-O executable
-/// verifier, and atomic two-file publication are later RFC 0043 slices.
+/// This type models and verifies the manifest as pure data. D1 consumes it in
+/// the manifest-last publication transaction; the ELF/Mach-O executable
+/// inspector and live target-registry binding remain D5 work.
 class VerifiedExecutableManifest final {
 public:
   VerifiedExecutableManifest(VerifiedExecutableManifest&&) noexcept = default;
@@ -150,6 +149,11 @@ class ExecutableManifestCodec final {
 public:
   /// \brief Encodes a verified manifest to its canonical preimage bytes.
   ZC_NODISCARD static zc::Array<uint8_t> encode(const VerifiedExecutableManifest& manifest);
+  /// \brief Decodes and independently verifies one canonical manifest.
+  /// \param bytes Exact on-disk manifest bytes.
+  /// \param outputRoot Normalized absolute root the final destination must be inside.
+  ZC_NODISCARD static IrOperationResult<VerifiedExecutableManifest> decode(
+      zc::ArrayPtr<const uint8_t> bytes, zc::StringPtr outputRoot);
   /// \brief Computes the manifest's `ExecutableManifestId` (SHA-256 of the preimage).
   ZC_NODISCARD static ExecutableManifestId computeId(const VerifiedExecutableManifest& manifest);
 };
@@ -159,7 +163,9 @@ public:
 /// RFC 0043 "Executable Verification And Publication": a manifest is admitted
 /// only after its fields are proven well formed - a normalized final destination
 /// inside the output root, a non-zero executable byte count, non-empty target and
-/// toolchain identities, and ordered, duplicate-free input artifact digests.
+/// toolchain identities. Input artifact digests retain their caller-supplied
+/// semantic order; the D1 publication transaction independently proves that
+/// sequence equals the verified plan's canonical linker-input order.
 /// Rejection consumes the request and publishes no partial manifest. Each
 /// rejection maps to an RFC 0043 failure row under `ExecutablePublication`.
 class ExecutableManifestVerifier final {
