@@ -61,10 +61,13 @@ private:
   }
 };
 
-// Builds a single session-owned LinkerInvocation rejection with `kind`. `kind`
-// must be legal for the LinkerInvocation phase (InputRevisionMismatch,
-// InvalidFact, or CanonicalCodecMismatch); the shared failure factory validates
-// the shape and admits the fact.
+// Builds a single session-owned LinkerInvocation rejection with `kind`, carrying
+// a `Backend { operation: InvokeLinker }` site as RFC 0043 requires for every
+// linker-process failure. Per the RFC failure table, `OutputCreationFailed` is a
+// CapabilityRejected row (a spawn failure, nonzero exit, or missing/empty
+// output - the requested link output could not be produced) and the invariant
+// kinds (InputRevisionMismatch / InvalidFact / CanonicalCodecMismatch) are
+// IrInvariantRejected rows.
 IrOperationResult<VerifiedLinkedExecutable> rejectLinkerInvocation(IrFailureKind kind,
                                                                    uint32_t ordinal) {
   UnusedIdentityResolver resolver;
@@ -72,17 +75,30 @@ IrOperationResult<VerifiedLinkedExecutable> rejectLinkerInvocation(IrFailureKind
       IrFailurePhase::LinkerInvocation,
       IrFailureOwner::session(linkerInvocationSessionContext().clone()));
   ZC_IREQUIRE(fallback != zc::none, "Linker invocation failure fallback must be legal");
-  zc::Maybe<IrFailureSite> noSite;
+  const bool capability = kind == IrFailureKind::OutputCreationFailed;
+  const auto branch =
+      capability ? IrRejectedBranch::CapabilityRejected : IrRejectedBranch::IrInvariantRejected;
   zc::Maybe<identity::SourceSpan> noSpan;
   zc::Vector<uint32_t> noPath;
+  // Every linker-process failure carries a Backend { InvokeLinker } site.
+  zc::Maybe<IrFailureSite> site = IrFailureSite::backend(zc::none, BackendOperation::InvokeLinker);
   auto descriptor = IrFailureDescriptor::decoded(
-      IrRejectedBranch::IrInvariantRejected, IrFailurePhase::LinkerInvocation, kind,
-      IrFailureOwner::session(linkerInvocationSessionContext().clone()), zc::mv(noSite),
+      branch, IrFailurePhase::LinkerInvocation, kind,
+      IrFailureOwner::session(linkerInvocationSessionContext().clone()), zc::mv(site),
       IrFailureDetail::none(), zc::mv(noSpan), zc::mv(noPath), ordinal);
   ZC_IF_SOME(context, fallback) {
     auto admitted = IrFailureFactory::admit(zc::mv(descriptor), context, resolver);
     ZC_IREQUIRE(admitted.is<AcceptedIrFailureDescriptor>(),
                 "Session-owned linker invocation rejection must admit without expansion");
+    if (capability) {
+      zc::Vector<IrFailureFact> facts;
+      facts.add(zc::mv(admitted).get<AcceptedIrFailureDescriptor>().fact);
+      auto sorted = SortedCapabilityFailureFacts::from(zc::mv(facts));
+      ZC_IF_SOME(values, sorted) {
+        return IrOperationResult<VerifiedLinkedExecutable>::capabilityRejected(zc::mv(values));
+      }
+      ZC_UNREACHABLE
+    }
     zc::Vector<IrFailureFact> facts;
     facts.add(zc::mv(admitted).get<AcceptedIrFailureDescriptor>().fact);
     auto sorted = SortedIrInvariantFailureFacts::from(zc::mv(facts));
@@ -114,7 +130,9 @@ IrOperationResult<VerifiedLinkedExecutable> linkExecutable(const VerifiedLinkPla
   // rejected as an input-revision mismatch before any process is spawned.
   zc::Maybe<zc::Array<zc::byte>> driverBytes =
       tryReadAbsolute(filesystemRoot, closure.linkerPath());
-  if (driverBytes == zc::none) { return rejectLinkerInvocation(IrFailureKind::InvalidFact, 0); }
+  if (driverBytes == zc::none) {
+    return rejectLinkerInvocation(IrFailureKind::OutputCreationFailed, 0);
+  }
   {
     zc::Array<zc::byte> content = ZC_REQUIRE_NONNULL(zc::mv(driverBytes));
     if (content.size() != closure.linkerByteCount()) {
@@ -163,17 +181,19 @@ IrOperationResult<VerifiedLinkedExecutable> linkExecutable(const VerifiedLinkPla
     return rejectLinkerInvocation(kind, ordinal);
   };
 
-  if (!spawnResult.spawned()) { return rejectWithCleanup(IrFailureKind::InvalidFact, 7); }
+  if (!spawnResult.spawned()) { return rejectWithCleanup(IrFailureKind::OutputCreationFailed, 7); }
   const zc::SubprocessOutput& output = spawnResult.output();
   if (output.terminationKind == zc::SubprocessTerminationKind::Signaled) {
-    return rejectWithCleanup(IrFailureKind::InvalidFact, 8);
+    return rejectWithCleanup(IrFailureKind::OutputCreationFailed, 8);
   }
-  if (output.code != 0) { return rejectWithCleanup(IrFailureKind::InvalidFact, 9); }
+  if (output.code != 0) { return rejectWithCleanup(IrFailureKind::OutputCreationFailed, 9); }
 
   // Step 5: the driver exited cleanly; the planned output must now exist. Read it
   // back as the verified linked executable.
   zc::Maybe<zc::Array<zc::byte>> producedBytes = tryReadAbsolute(filesystemRoot, outputPath);
-  if (producedBytes == zc::none) { return rejectWithCleanup(IrFailureKind::InvalidFact, 10); }
+  if (producedBytes == zc::none) {
+    return rejectWithCleanup(IrFailureKind::OutputCreationFailed, 10);
+  }
   zc::Array<zc::byte> produced = ZC_REQUIRE_NONNULL(zc::mv(producedBytes));
   auto owned = zc::heapArray<uint8_t>(produced.size());
   for (size_t index = 0; index < produced.size(); ++index) { owned[index] = produced[index]; }

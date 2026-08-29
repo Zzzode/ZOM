@@ -171,6 +171,8 @@ ZC_TEST("linkExecutable cleans partial output when the driver exits nonzero") {
 
   auto result = linkExecutable(plan, fs->getRoot());
   ZC_EXPECT(!result.isVerified());
+  // A nonzero exit is CapabilityRejected: OutputCreationFailed per RFC 0043.
+  ZC_EXPECT(result.isCapabilityRejected());
   // The partial output the failing driver wrote is removed.
   ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
 
@@ -187,6 +189,8 @@ ZC_TEST("linkExecutable reports a missing output on a clean exit") {
 
   auto result = linkExecutable(plan, fs->getRoot());
   ZC_EXPECT(!result.isVerified());
+  // A missing output after a clean exit is CapabilityRejected: OutputCreationFailed.
+  ZC_EXPECT(result.isCapabilityRejected());
 
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
