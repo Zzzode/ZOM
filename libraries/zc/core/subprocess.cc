@@ -31,6 +31,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <string.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #endif
@@ -115,6 +116,9 @@ struct SubprocessCommand::Impl {
   SubprocessEnvPolicy envPolicy = SubprocessEnvPolicy::Inherit;
   Vector<EnvEntry> envEntries;
   size_t captureLimit = kDefaultCaptureLimit;
+  // -1 means "exec program by pathname"; a non-negative descriptor means
+  // "exec this open executable via execveat(AT_EMPTY_PATH)".
+  int executableDescriptor = -1;
 };
 
 SubprocessCommand::SubprocessCommand(StringPtr program) : impl(zc::heap<Impl>()) {
@@ -137,6 +141,11 @@ SubprocessCommand& SubprocessCommand::args(ArrayPtr<const StringPtr> values) {
 
 SubprocessCommand& SubprocessCommand::argv0(StringPtr value) {
   impl->argv0Override = heapString(value);
+  return *this;
+}
+
+SubprocessCommand& SubprocessCommand::executableDescriptor(int fd) {
+  impl->executableDescriptor = fd;
   return *this;
 }
 
@@ -329,6 +338,7 @@ SubprocessResult SubprocessCommand::run() {
                           : buildInheritEnvp(impl->envEntries.asPtr(), envpStorage);
 
   const char* programPath = impl->program.cStr();
+  const int executableFd = impl->executableDescriptor;
   const char* workingDir = nullptr;
   ZC_IF_SOME(directory, impl->workingDirectory) { workingDir = directory.cStr(); }
 
@@ -360,10 +370,23 @@ SubprocessResult SubprocessCommand::run() {
 
     if (workingDir != nullptr && ::chdir(workingDir) < 0) { reportAndDie(); }
 
-    // Always exec with the explicit environment built above (Empty allow-list or
+    // Exec with the explicit environment built above (Empty allow-list or
     // Inherit-merged-with-overrides), so env() overrides apply under both
-    // policies.
-    ::execve(programPath, argv.begin(), envp.begin());
+    // policies. When an executable descriptor was supplied, exec exactly that
+    // open object via execveat(AT_EMPTY_PATH) so the bytes run are the ones the
+    // caller opened, not whatever the pathname resolves to now. Otherwise resolve
+    // the program by pathname.
+    if (executableFd >= 0) {
+#if defined(__linux__) && defined(AT_EMPTY_PATH)
+      ::syscall(SYS_execveat, executableFd, "", argv.begin(), envp.begin(), AT_EMPTY_PATH);
+#else
+      // No exec-by-descriptor primitive on this platform: fail closed rather
+      // than falling back to a pathname exec that would defeat the purpose.
+      errno = ENOSYS;
+#endif
+    } else {
+      ::execve(programPath, argv.begin(), envp.begin());
+    }
     // Only reached if exec failed.
     reportAndDie();
     _exit(127);  // Unreachable, silences noreturn analysis.
