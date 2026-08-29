@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, ir-backend, module-system, runtime-memory, error-system, verification]
 approvers: [rfc, ir-backend, module-system, runtime-memory, error-system, verification]
 created: 2026-08-15
-updated: 2026-08-28
+updated: 2026-08-29
 area: compiler
 requires: [6, 10, 12, 16, 21]
 supersedes: []
@@ -174,11 +174,19 @@ The request constructs `LinkPlan` only after an independent verifier proves:
    uses `RejectExisting` publication semantics.
 
 The verified plan stores the target specification identity, toolchain identity,
-entry identity, ordered object records, ordered runtime records, normalized
-linker argument records, output request, and a `LinkPlanId`. `LinkPlanId` is
-SHA-256 over a domain-separated, length-framed encoding of those complete
-records. It excludes host paths that are not part of an input artifact and
-includes every target-visible argument in its canonical order.
+entry identity, ordered object records, ordered runtime records, output request,
+and a `LinkPlanId`. `LinkPlanId` is SHA-256 over a domain-separated,
+length-framed encoding of those complete records. It includes the normalized
+output request and every recorded artifact path, while excluding ambient or
+otherwise unrecorded host paths. The plan stores only closed structural
+authorities; the target driver derives its canonical argument vector from those
+fields. No raw or generic argument surface exists: there is no argument record
+type, no argument sequence in the plan, and no argument bytes in the canonical
+`LinkPlanId` preimage. A future target-selected link policy (for example a
+static-versus-dynamic `LinkMode`, or a PIE policy) is introduced by an
+authorized slice as its own closed structural field, validated with the
+toolchain closure and folded into `LinkPlanId`; it is never revived as a generic
+argument list.
 
 The construction API is:
 
@@ -539,3 +547,4 @@ None
 | 2026-08-27 | REVIEW | Authored the toolchain-discovery record, the linker and publication failure algebra extending RFC 0010, and the CI architecture lane matrix; cleared all three Open Questions and bound discussion/tracking links. |
 | 2026-08-28 | ACCEPTED | All five dependency RFCs (0006, 0010, 0012, 0016, 0021) are IMPLEMENTING; verified the RFC 0010 failure-algebra extension (LinkPlanConstruction/LinkerInvocation/ExecutablePublication phases + InvokeLinker op) adds three phases past ObjectEmission with no name collision and invents no diagnostic code; all six required owners approved. Acceptance approves the design only; the native-executable acceptance-criteria evidence is a LANDED gate. implementation stays TBD; no IMPLEMENTING pointer (backend object emission and linking are unbuilt). |
 | 2026-08-28 | IMPLEMENTING | First authorized slice landed as evidence (Implementation Plan step 3, "without invoking a linker"): the closed failure algebra was extended in code (`IrFailurePhase` LinkPlanConstruction/LinkerInvocation/ExecutablePublication = 0x11/0x12/0x13, `BackendOperation::InvokeLinker` = 0x0b), and `compiler/ir/link-plan-codec.{h,cc}` implements the `ToolchainClosure`/object/runtime/argument records, the domain-separated length-framed `LinkPlanId` codec, and the independent `LinkPlanVerifier` enforcing the six numbered invariants, each rejection mapped to a `LinkPlanConstruction` failure row. A deterministic minimal-plan oracle plus a fail-closed mutation matrix pass under the frontend sanitizer build (no linker, no filesystem, no LLVM linkage). Runtime-closure discovery, driver invocation, executable verification/manifest publication, and the host-gated `zomc run` cutover remain Pending. |
+| 2026-08-29 | IMPLEMENTING | Contract refinement. Adversarial review of the D3b snapshot slice found that the free-form `LinkerArgumentRecord` surface let a verified plan carry raw paths, response-file tokens, and search-path flags, bypassing the input-snapshot discipline and contradicting this RFC's own Non-Goals. Because there is no production producer of the argument surface, the "Inputs And Link Plan" contract was changed to remove the generic argument surface entirely: the plan stores only closed structural authorities and the driver derives its canonical argument vector from them. The codec/verifier/oracle deletion is Slice 2 (Pending as of this row); this row records the approved contract, not yet its landed implementation. A future target-selected link policy (LinkMode, PIE) is added as its own closed structural field folded into `LinkPlanId`, never as a generic argument list. |

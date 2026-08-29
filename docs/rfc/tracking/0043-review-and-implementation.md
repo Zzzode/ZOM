@@ -246,10 +246,12 @@ Landed in this slice:
    byte-identical.
 2. **Link-plan codec and independent verifier.** `compiler/ir/link-plan-codec.h`
    and `.cc` implement the immutable `ToolchainClosureRecord`, `LinkInputRecord`
-   (object/CRT/library/runtime roles), `LinkerArgumentRecord`, and
-   `VerifiedLinkPlan` value types - each built only through validating factories
-   with no public aggregate initializer, so a plan cannot be reconstructed from
-   raw paths - plus the domain-separated, length-framed `LinkPlanCodec`
+   (object/CRT/library/runtime roles), `LinkerArgumentRecord` (initial landed
+   shape; removed in the current approved contract - see the 2026-08-29 refinement
+   below), and `VerifiedLinkPlan` value types - each built only through validating
+   factories with no public aggregate initializer, so a plan cannot be
+   reconstructed from raw paths - plus the domain-separated, length-framed
+   `LinkPlanCodec`
    (`zom.link-plan` preimage) that computes the SHA-256 `LinkPlanId`, and the
    independent `LinkPlanVerifier::verify` that proves the six numbered link-plan
    invariants and maps each rejection to a `LinkPlanConstruction` failure row
@@ -334,7 +336,7 @@ the tree.
 | Slice | State | Required evidence |
 |---|---|---|
 | Accepted RFC 0016 target authority and RFC 0021 verified object artifact binding | Satisfied | RFC 0016 and RFC 0021 are `IMPLEMENTING`; native object emission landed on the production path (`10ef73b2`), so the object-artifact dependency this RFC builds on exists. |
-| Canonical link-plan construction and verification | Landed 2026-08-28 | `compiler/ir/link-plan-codec.{h,cc}`: the `ToolchainClosure`/input/argument records, the domain-separated length-framed `LinkPlanId` codec, and the independent `LinkPlanVerifier` enforcing the six invariants; `link-plan-codec-oracle-test` freezes a deterministic minimal-plan oracle and a fail-closed mutation matrix (no linker). The failure algebra was extended in code (`LinkPlanConstruction`/`LinkerInvocation`/`ExecutablePublication` phases + `InvokeLinker` op). |
+| Canonical link-plan construction and verification | Landed 2026-08-28; contract refined 2026-08-29 | Initial landed shape (`compiler/ir/link-plan-codec.{h,cc}`): the `ToolchainClosure`/input/argument records, the domain-separated length-framed `LinkPlanId` codec, and the independent `LinkPlanVerifier` enforcing the six invariants; `link-plan-codec-oracle-test` freezes a deterministic minimal-plan oracle and a fail-closed mutation matrix (no linker). The failure algebra was extended in code (`LinkPlanConstruction`/`LinkerInvocation`/`ExecutablePublication` phases + `InvokeLinker` op). Current approved shape (2026-08-29 refinement, RFC 0043 Status History): the generic argument surface is removed - no `LinkerArgumentRecord`, no argument sequence in the codec preimage, no argument invariant - because it allowed a snapshot bypass and has no production producer; the driver derives its canonical argument vector from the closed structural fields. The codec/verifier/oracle deletion and oracle-constant regeneration land in D3b Slice 2 (in progress). |
 | Verified runtime closure discovery and verifier | Pending | Closed Linux ELF and macOS Mach-O toolchain closure and mutation tests |
 | Target-selected driver invocation and cleanup | Pending | Sanitized environment, argument-vector construction, temporary-output removal |
 | Executable inspection, manifest, and atomic publication | Pending | ELF/Mach-O verifier, `.zom-artifact` manifest, atomic two-file publication |
