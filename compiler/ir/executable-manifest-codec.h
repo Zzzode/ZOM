@@ -53,7 +53,7 @@ private:
 /// \brief An executable artifact manifest whose canonical invariants an
 /// independent verifier proved.
 ///
-/// RFC 0043 "Executable Verification And Publication": `VerifiedExecutableArtifact`
+/// RFC 0043 "Executable Verification And Publication": `PublishedExecutableArtifact`
 /// owns the normalized final destination, target identity, executable digest,
 /// byte count, `LinkPlanId`, and the immutable `ExecutableArtifactManifest`. The
 /// manifest is a canonical, domain-separated encoding of that data plus the
@@ -122,7 +122,7 @@ private:
 ///
 /// RFC 0043 "Executable Verification And Publication": the manifest is produced
 /// from a verified link result, so this slice models exactly the fields the
-/// verifier proves. The live request bound to a `VerifiedExecutableArtifact` and
+/// verifier proves. The live request bound to a `PublishedExecutableArtifact` and
 /// a `TargetRegistryCapability` is a later slice.
 struct ExecutableManifestRequest final {
   zc::String finalDestination;

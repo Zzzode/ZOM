@@ -33,6 +33,11 @@ namespace detail {
 ///        identity, or a cleanup obligation. The public surface names this
 ///        neutral factory rather than the snapshot capability itself.
 class LinkSnapshotMinter;
+/// \brief The sole factory permitted to construct a `LinkedOutputCandidate` from
+///        its (internal) transaction impl. Defined only in the implementation
+///        file, where the snapshot machinery is complete, so the public header
+///        names a neutral attorney rather than the transaction internals.
+class LinkOutputCandidateFactory;
 }  // namespace detail
 
 /// \brief A fixed 128-bit opaque identity for one snapshot transaction.
@@ -116,6 +121,54 @@ private:
 
   uint64_t deviceValue;
   uint64_t inodeValue;
+};
+
+/// \brief An opaque, exact stable identity of a regular file: the full
+///        `(st_dev, st_ino)` tuple plus the hard-link count `st_nlink`, captured
+///        by `fstat` on a held descriptor.
+///
+/// Distinct from `StableDirectoryIdentity` so a file identity is never confused
+/// with a directory identity. The link count is part of the identity because the
+/// D4 output invariant requires `st_nlink == 1` (the transaction is the sole link
+/// to the inode; a multiply-linked inode could be rewritten in place through an
+/// external path). A recovery or publication step (RFC 0043 D1/INV-8) compares
+/// this against a freshly `fstat`-ed tuple before trusting the output, so it is
+/// minted only by the snapshot machinery and can never be forged from chosen
+/// values.
+class StableFileIdentity final {
+public:
+  StableFileIdentity(StableFileIdentity&&) noexcept = default;
+  StableFileIdentity& operator=(StableFileIdentity&&) noexcept = default;
+  StableFileIdentity(const StableFileIdentity&) noexcept = default;
+  StableFileIdentity& operator=(const StableFileIdentity&) noexcept = default;
+  ~StableFileIdentity() noexcept = default;
+
+  ZC_NODISCARD uint64_t device() const noexcept { return deviceValue; }
+  ZC_NODISCARD uint64_t inode() const noexcept { return inodeValue; }
+  ZC_NODISCARD uint64_t linkCount() const noexcept { return linkCountValue; }
+
+  /// \brief True when this identity is exactly `(device, inode)`. The link count
+  ///        is not part of equality: it proves sole-ownership at capture time but
+  ///        a later re-check compares the object identity.
+  ZC_NODISCARD bool matches(uint64_t device, uint64_t inode) const noexcept {
+    return deviceValue == device && inodeValue == inode;
+  }
+
+  bool operator==(const StableFileIdentity& other) const noexcept {
+    return deviceValue == other.deviceValue && inodeValue == other.inodeValue &&
+           linkCountValue == other.linkCountValue;
+  }
+  bool operator!=(const StableFileIdentity& other) const noexcept { return !(*this == other); }
+
+private:
+  StableFileIdentity(uint64_t device, uint64_t inode, uint64_t linkCount) noexcept
+      : deviceValue(device), inodeValue(inode), linkCountValue(linkCount) {}
+
+  friend class detail::LinkSnapshotMinter;
+
+  uint64_t deviceValue;
+  uint64_t inodeValue;
+  uint64_t linkCountValue;
 };
 
 /// \brief Why a snapshot-tree cleanup could not complete. A closed set; the
@@ -279,66 +332,163 @@ private:
   zc::Maybe<SnapshotCleanupObligation> obligationValue;
 };
 
-/// \brief A linked executable produced from a verified link plan.
+/// \brief The resource-cleanup disposition of consuming a link transaction root,
+///        independent of any caller's primary result.
 ///
-/// Carries the bytes of the executable the linker driver wrote at the plan's
-/// output path, read back after a successful, verified invocation. It is only
-/// constructed by `linkExecutable` on the success path.
-class VerifiedLinkedExecutable final {
+/// `discardAndCleanup` on a `LinkedOutputCandidate` returns this: `Clean` when
+/// the transaction root was removed, or `Obligated` carrying the one
+/// `SnapshotCleanupObligation` a recovery step must adjudicate. A caller folds it
+/// into its own primary rejection (a `Clean` disposition yields `Rejected`, an
+/// `Obligated` disposition yields a recovery-required result). Keeping the
+/// primary out of the disposition avoids threading an arbitrary
+/// `IrOperationResult<T>` through the cleanup seam.
+class CleanupDisposition final {
 public:
-  VerifiedLinkedExecutable(VerifiedLinkedExecutable&&) noexcept = default;
-  VerifiedLinkedExecutable& operator=(VerifiedLinkedExecutable&&) noexcept = default;
-  ZC_DISALLOW_COPY(VerifiedLinkedExecutable);
-  ~VerifiedLinkedExecutable() noexcept = default;
+  CleanupDisposition(CleanupDisposition&&) noexcept = default;
+  CleanupDisposition& operator=(CleanupDisposition&&) noexcept = default;
+  ZC_DISALLOW_COPY(CleanupDisposition);
+  ~CleanupDisposition() noexcept = default;
 
-  explicit VerifiedLinkedExecutable(zc::Array<uint8_t>&& bytes) noexcept
-      : bytesValue(zc::mv(bytes)) {}
+  /// \brief The transaction root was removed; there is nothing to recover.
+  ZC_NODISCARD static CleanupDisposition clean() { return CleanupDisposition(zc::none); }
 
-  /// \brief The produced executable bytes.
-  ZC_NODISCARD zc::ArrayPtr<const uint8_t> bytes() const noexcept { return bytesValue.asPtr(); }
+  /// \brief The transaction root could not be removed; one obligation is carried.
+  ZC_NODISCARD static CleanupDisposition obligated(SnapshotCleanupObligation&& obligation) {
+    return CleanupDisposition(zc::mv(obligation));
+  }
+
+  ZC_NODISCARD bool isClean() const noexcept { return obligationValue == zc::none; }
+  ZC_NODISCARD bool isObligated() const noexcept { return obligationValue != zc::none; }
+
+  /// \brief The carried obligation of an `Obligated` disposition, taken by move.
+  ///        Requires isObligated().
+  ZC_NODISCARD SnapshotCleanupObligation takeObligation() && {
+    ZC_IREQUIRE(obligationValue != zc::none, "takeObligation() on a Clean disposition");
+    return ZC_REQUIRE_NONNULL(zc::mv(obligationValue));
+  }
 
 private:
-  zc::Array<uint8_t> bytesValue;
+  explicit CleanupDisposition(zc::Maybe<SnapshotCleanupObligation>&& obligation) noexcept
+      : obligationValue(zc::mv(obligation)) {}
+
+  zc::Maybe<SnapshotCleanupObligation> obligationValue;
 };
 
-/// \brief Invokes the linker driver for a verified plan and reads back the output.
+/// \brief The move-only capability that owns a still-live link transaction root
+///        after a successful linker invocation (RFC 0043 D4).
 ///
-/// RFC 0043 "Linker Driver Invocation": the InvokeLinker step. Its entire input
-/// is the `VerifiedLinkPlan` plus the filesystem root the plan's absolute paths
-/// resolve against - there is no forkable independent argv, working directory, or
-/// output path. It:
+/// `linkExecutable` does not publish on success: it moves the transaction-root
+/// ownership into this candidate and returns it. The candidate is the sole
+/// legitimate owner of the still-live `.zomlink-<token>/` root; it holds
+///
+///   * the moved-in `VerifiedLinkPlan` (its `LinkPlanId`, target/toolchain
+///     identity, input digests, and the final output request the D1 publication
+///     step will publish to). The candidate is the single authority for the
+///     publication context, so no external re-assembly is needed;
+///   * a transaction-owned read-only handle to `<root>/output-candidate`, opened
+///     with a no-follow open so a symlink at that entry is refused, plus the
+///     output's exact `StableFileIdentity` (`(dev, ino)` and link count) captured
+///     from that same handle. A later step reads the bytes through the handle and
+///     re-derives the digest/size/identity from the same object, so the candidate
+///     never becomes a second, drift-able byte authority;
+///   * its consume state, so it cannot be consumed twice.
+///
+/// It is deliberately not called "verified": a candidate means only that the
+/// driver ran, exited zero, and produced a regular, non-empty, singly-linked
+/// output in the transaction root. It does NOT assert the output's format,
+/// architecture, entry symbol, or runtime symbols were checked - those are the
+/// later D5 `ExecutablePublication` checks.
+///
+/// Cleanup is explicit: `discardAndCleanup()` consumes the candidate, removes the
+/// transaction root, and reports a `CleanupDisposition`. The destructor is a
+/// `noexcept` last-resort leak guard that only acts when `discardAndCleanup` was
+/// never called and produces no structured record.
+class LinkedOutputCandidate final {
+public:
+  LinkedOutputCandidate(LinkedOutputCandidate&&) noexcept;
+  LinkedOutputCandidate& operator=(LinkedOutputCandidate&&) noexcept;
+  ZC_DISALLOW_COPY(LinkedOutputCandidate);
+  ~LinkedOutputCandidate() noexcept;
+
+  /// \brief The moved-in verified link plan; the single authority for the
+  ///        publication context.
+  ZC_NODISCARD const VerifiedLinkPlan& plan() const noexcept;
+
+  /// \brief The output candidate's exact stable file identity (dev/ino + link
+  ///        count), captured from the held read-only handle at link time.
+  ZC_NODISCARD const StableFileIdentity& outputIdentity() const noexcept;
+
+  /// \brief The output candidate's byte count, computed from the held handle.
+  ZC_NODISCARD uint64_t outputSize() const noexcept;
+
+  /// \brief The output candidate bytes, read back through the transaction-owned
+  ///        read-only handle. A later D5 step re-derives digest/size from the same
+  ///        object; this is an inspection read, not a second byte authority.
+  ZC_NODISCARD zc::Array<uint8_t> readOutput() const;
+
+  /// \brief The absolute path of the still-live `<root>/output-candidate`.
+  ZC_NODISCARD zc::StringPtr outputCandidatePath() const noexcept;
+
+  /// \brief Removes the transaction root and reports the cleanup disposition,
+  ///        consuming this candidate. After it returns, this object is moved-from
+  ///        and its destructor does nothing. A failed caller (and the D4 tests)
+  ///        use this seam rather than dropping the candidate bare.
+  ZC_NODISCARD CleanupDisposition discardAndCleanup() && noexcept;
+
+  // The pimpl is completed in the implementation file, where the snapshot
+  // machinery is defined; it is an incomplete type here.
+  struct Impl;
+
+private:
+  friend class detail::LinkOutputCandidateFactory;
+
+  zc::Own<Impl> impl;
+
+  explicit LinkedOutputCandidate(zc::Own<Impl> impl) noexcept;
+};
+
+/// \brief Invokes the linker driver for a verified plan into a transaction-owned
+///        output candidate (RFC 0043 D4).
+///
+/// The InvokeLinker step. It consumes the `VerifiedLinkPlan` by move (so the same
+/// plan cannot be replayed into a second concurrent link) plus the filesystem the
+/// plan's absolute paths resolve against - there is no forkable independent argv,
+/// working directory, or output path. It:
 ///
 ///   1. snapshots and re-verifies every plan input (driver, closure CRT objects
-///      and default libraries, object and runtime records) into a transaction-
-///      private directory, defeating the input TOCTOU: the driver runs by the
-///      snapshot descriptor and every input token names a snapshot path, so no
-///      source inode swapped after verification can be linked;
-///   2. rejects a pre-existing file at the plan's output path (no stale output
-///      is ever accepted as a link result);
-///   3. spawns the driver by descriptor through the shell-free child-process
-///      primitive with an explicit empty environment;
-///   4. on a spawn failure, a signal, a nonzero exit, or a missing/unchanged
-///      output, removes any partial output it created and rejects; and
-///   5. on success, reads back the produced executable and returns it.
+///      and default libraries, object and runtime records) into the unified
+///      transaction root, defeating the input TOCTOU: the driver runs by the
+///      snapshot descriptor and every input token names a snapshot path;
+///   2. spawns the driver by descriptor through the shell-free child-process
+///      primitive with an explicit empty environment, writing `-o` to
+///      `<root>/output-candidate` inside the transaction root - never a public
+///      final path;
+///   3. on a spawn failure, a signal, a nonzero exit, or a missing output, cleans
+///      *only the transaction root* and rejects - it never touches a public final
+///      path; and
+///   4. on success, opens the output candidate with a no-follow open, confirms it
+///      is a regular, non-empty, singly-linked (`st_nlink == 1`) file whose exact
+///      identity it captures, and transfers the still-live transaction root into a
+///      `LinkedOutputCandidate`.
 ///
 /// Every rejection is an RFC 0010 `IrOperationResult` failure under
-/// `IrFailurePhase::LinkerInvocation`; an input-revision change (a driver or
-/// input whose bytes no longer match the plan) maps to `InputRevisionMismatch`,
-/// and every other linker failure maps to `OutputCreationFailed` (capability) or
-/// `InvalidFact`. The private snapshot tree is removed on every path; a removal
-/// that fails is reported as `RecoveryRequired` with a structured
-/// `SnapshotCleanupObligation`, so an un-cleaned tree is never silently left
-/// behind. No filesystem exception escapes: a fault before the tree is created is
-/// a `Complete` rejection, and a fault after it is created becomes a primary
-/// rejection paired with the tree's cleanup outcome.
+/// `IrFailurePhase::LinkerInvocation`; an input-revision change maps to
+/// `InputRevisionMismatch`, and every other linker failure maps to
+/// `OutputCreationFailed` (capability) or `InvalidFact`. On success the transaction
+/// root is NOT removed - its ownership is transferred into the returned candidate,
+/// so `CleanupAwareOutcome::Complete` here means "no unaccounted cleanup
+/// obligation: the tree was removed, or its ownership was transferred into the
+/// returned capability". A cleanup that was attempted and could not complete is
+/// `RecoveryRequired`. No filesystem exception escapes.
 ///
-/// \param plan The verified link plan; the sole source of inputs, driver, and output.
+/// \param plan The verified link plan, consumed by move; the sole source of
+///        inputs, driver, and the final output request.
 /// \param filesystem The filesystem whose root the plan's normalized absolute
 ///        paths resolve against; its root must expose real descriptors, so an
 ///        in-memory filesystem fails closed.
-/// \return A cleanup-aware outcome wrapping the verified linked executable or a
-///         LinkerInvocation-phase rejection.
-ZC_NODISCARD CleanupAwareOutcome<VerifiedLinkedExecutable> linkExecutable(
-    const VerifiedLinkPlan& plan, const zc::Filesystem& filesystem);
+/// \return A cleanup-aware outcome wrapping the transaction-owned output candidate
+///         or a LinkerInvocation-phase rejection.
+ZC_NODISCARD CleanupAwareOutcome<LinkedOutputCandidate> linkExecutable(
+    VerifiedLinkPlan&& plan, const zc::Filesystem& filesystem);
 
 }  // namespace zomlang::compiler::ir

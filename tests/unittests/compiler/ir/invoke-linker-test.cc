@@ -16,12 +16,15 @@
 // re-verifies EVERY link input (driver, closure CRT objects and default
 // libraries, object and runtime records) into a transaction-private directory,
 // then execs the driver by the snapshot descriptor with a rewritten argv naming
-// snapshot paths. This defeats the input side of the link TOCTOU: an inode
-// swapped after verification but before exec is never linked. The driver is a
-// real compiled ELF (ZOM_FAKE_LINKER_SUCCESS/PARTIAL/NO_OUTPUT, one variant per
-// compile-time behavior); a `#!` script cannot be exec'd by descriptor. On
-// non-Linux hosts the descriptor-exec path does not exist and the integration
-// cases are skipped, but the in-memory fail-closed case still runs.
+// snapshot paths, and (RFC 0043 D4) writes the linker output into the unified
+// transaction root at `<root>/output-candidate`, transferring the still-live root
+// into a move-only `LinkedOutputCandidate` on success. This defeats the input
+// side of the link TOCTOU: an inode swapped after verification but before exec is
+// never linked. The driver is a real compiled ELF (ZOM_FAKE_LINKER_SUCCESS/
+// PARTIAL/NO_OUTPUT/SYMLINK, one variant per compile-time behavior); a `#!`
+// script cannot be exec'd by descriptor. On non-Linux hosts the descriptor-exec
+// path does not exist and the integration cases are skipped, but the in-memory
+// fail-closed case still runs.
 //
 // Fault injection is applied through a transparent, delegating `Filesystem`
 // wrapper (below): it forwards every filesystem call to a real disk filesystem
@@ -420,15 +423,6 @@ zc::Array<LinkInputRecord> oneInput(LinkInputRecord&& record) {
   return builder.finish();
 }
 
-// Runs a link and asserts the tree was cleaned up (Complete), returning the
-// primary IR result. The common case: no cleanup obligation was produced.
-IrOperationResult<VerifiedLinkedExecutable> linkAndExpectComplete(const VerifiedLinkPlan& plan,
-                                                                  const zc::Filesystem& fs) {
-  CleanupAwareOutcome<VerifiedLinkedExecutable> outcome = linkExecutable(plan, fs);
-  ZC_ASSERT(outcome.isComplete());
-  return zc::mv(outcome).takeComplete();
-}
-
 // Counts the ".zomlink-" transaction directories directly under `dir`.
 size_t countSnapshotTrees(const zc::Directory& dir) {
   size_t count = 0;
@@ -436,6 +430,44 @@ size_t countSnapshotTrees(const zc::Directory& dir) {
     if (zc::StringPtr(name).startsWith(".zomlink-"_zc)) { ++count; }
   }
   return count;
+}
+
+// The sole ".zomlink-" transaction directory name directly under `dir`. Requires
+// exactly one to exist (the live transaction root of a successful link).
+zc::String soleSnapshotTreeName(const zc::Directory& dir) {
+  zc::String found;
+  size_t count = 0;
+  for (const zc::String& name : dir.listNames()) {
+    if (zc::StringPtr(name).startsWith(".zomlink-"_zc)) {
+      found = zc::heapString(name);
+      ++count;
+    }
+  }
+  ZC_REQUIRE(count == 1);
+  return found;
+}
+
+// Links a plan expecting a Complete outcome carrying a verified candidate,
+// returning the still-live candidate (RFC 0043 D4: success transfers the
+// transaction root into the candidate rather than cleaning it, so the caller
+// must observe through the candidate and then `discardAndCleanup()`).
+LinkedOutputCandidate linkExpectingCandidate(VerifiedLinkPlan&& plan, const zc::Filesystem& fs) {
+  CleanupAwareOutcome<LinkedOutputCandidate> outcome = linkExecutable(zc::mv(plan), fs);
+  ZC_ASSERT(outcome.isComplete());
+  IrOperationResult<LinkedOutputCandidate> result = zc::mv(outcome).takeComplete();
+  ZC_ASSERT(result.isVerified());
+  return zc::mv(result).takeVerified();
+}
+
+// Links a plan expecting a Complete outcome carrying a rejection (the transaction
+// root was already discarded inside linkExecutable). Returns the rejection result.
+IrOperationResult<LinkedOutputCandidate> linkExpectingReject(VerifiedLinkPlan&& plan,
+                                                             const zc::Filesystem& fs) {
+  CleanupAwareOutcome<LinkedOutputCandidate> outcome = linkExecutable(zc::mv(plan), fs);
+  ZC_ASSERT(outcome.isComplete());
+  IrOperationResult<LinkedOutputCandidate> result = zc::mv(outcome).takeComplete();
+  ZC_EXPECT(!result.isVerified());
+  return result;
 }
 
 // The exact (dev, ino) of the subdirectory `name` under `parent`, read through
@@ -565,7 +597,7 @@ void expectLinkerInvocationRow(const IrFailureFact& fact, IrRejectedBranch branc
 
 // Extracts the single fact from a rejection, asserting exactly one is present.
 // Works for both the IrInvariantRejected and CapabilityRejected branches.
-const IrFailureFact& soleFailureFact(const IrOperationResult<VerifiedLinkedExecutable>& result) {
+const IrFailureFact& soleFailureFact(const IrOperationResult<LinkedOutputCandidate>& result) {
   if (result.isCapabilityRejected()) {
     zc::ArrayPtr<const IrFailureFact> facts = result.capabilityFailures().facts();
     ZC_REQUIRE(facts.size() == 1);
@@ -577,39 +609,57 @@ const IrFailureFact& soleFailureFact(const IrOperationResult<VerifiedLinkedExecu
   return facts[0];
 }
 
-ZC_TEST("linkExecutable snapshots inputs, execs the driver by fd, and reads back the executable") {
+ZC_TEST(
+    "linkExecutable snapshots inputs, execs the driver by fd, and captures the output candidate") {
   auto fs = zc::newDiskFilesystem();
   zc::String base = tempDirPath();
   auto dir = openDir(*fs, base);
   Scenario scenario;
   auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
 
-  auto result = linkAndExpectComplete(plan, *fs);
-  ZC_ASSERT(result.isVerified());
-  auto executable = zc::mv(result).takeVerified();
-  zc::ArrayPtr<const uint8_t> bytes = executable.bytes();
+  LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), *fs);
+
+  // RFC 0043 D4: on success the transaction root is NOT cleaned - its ownership is
+  // transferred into the candidate, so exactly one ".zomlink-" tree is still live.
+  ZC_ASSERT(countSnapshotTrees(*dir) == 1u);
+  zc::String treeName = soleSnapshotTreeName(*dir);
+  auto tree = dir->openSubdir(zc::Path(zc::heapString(treeName)));
+
+  // The candidate reads back the produced executable bytes through its own held
+  // handle (not a pathname re-open); the fake success driver wrote ELF magic.
+  zc::Array<uint8_t> bytes = candidate.readOutput();
   ZC_ASSERT(bytes.size() == 4u);
   ZC_EXPECT(bytes[0] == 0x7f && bytes[1] == 'E' && bytes[2] == 'L' && bytes[3] == 'F');
+  // The candidate's captured size matches the bytes it holds, and its exact
+  // identity records a sole hard link (st_nlink == 1).
+  ZC_EXPECT(candidate.outputSize() == 4u);
+  ZC_EXPECT(candidate.outputIdentity().linkCount() == 1u);
+  // The output candidate path names <tree>/output-candidate, never the final path.
+  ZC_EXPECT(zc::StringPtr(candidate.outputCandidatePath()).endsWith("/output-candidate"_zc));
+  ZC_EXPECT(zc::StringPtr(candidate.outputCandidatePath()).find(".zomlink-"_zc) != zc::none);
+  // The plan the candidate now owns still names the final output path.
+  ZC_EXPECT(zc::StringPtr(candidate.plan().outputPath()).endsWith("/app"_zc));
 
-  // The fake driver recorded the invocation it saw at "<output>.args". Every
-  // input token must name a snapshot path (inside a private ".zomlink-" dir),
-  // NOT the original source path, and the recorded size must match the input.
-  auto argsText = dir->openFile(zc::Path("app.args"_zc))->readAllText();
+  // The driver wrote its output and the ".args"/".started" markers as siblings of
+  // <tree>/output-candidate INSIDE the transaction root, never at the final path.
+  ZC_EXPECT(tree->exists(zc::Path("output-candidate"_zc)));
+  ZC_EXPECT(tree->exists(zc::Path("output-candidate.started"_zc)));
+  auto argsText = tree->openFile(zc::Path("output-candidate.args"_zc))->readAllText();
+  // Every input token names a snapshot path (inside the private tree), NOT the
+  // original source path, and the recorded size matches the input.
   ZC_EXPECT(argsText.find(".zomlink-"_zc) != zc::none);
-  // No original source path survives into the argv (all rewritten to snapshots).
   ZC_EXPECT(argsText.find(zc::str(base, "/app0.o")) == zc::none);
   ZC_EXPECT(argsText.find(zc::str(base, "/crt1.o")) == zc::none);
   ZC_EXPECT(argsText.find(zc::str(base, "/libc.a")) == zc::none);
-  // The snapshot the driver read for the first user object held its expected bytes.
   ZC_EXPECT(argsText.find(zc::str("size=", scenario.object0Bytes.size())) != zc::none);
 
-  // On the spawn path the driver created its earliest "<out>.started" marker;
-  // its presence here anchors the meaning of its ABSENCE on the no-spawn
-  // mismatch cases below.
-  ZC_EXPECT(dir->exists(zc::Path("app.started"_zc)));
+  // The final path was never written - the driver only wrote into the tree.
+  ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
 
-  // The private snapshot tree was removed once linkExecutable returned (the
-  // PreparedLinkInputs was dropped after the child was awaited).
+  // Observation done: discard the transaction root through the explicit seam
+  // (never a bare directory delete). It reports Clean and removes the tree.
+  CleanupDisposition disposition = zc::mv(candidate).discardAndCleanup();
+  ZC_EXPECT(disposition.isClean());
   ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
 
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
@@ -696,9 +746,10 @@ ZC_TEST("linkExecutable rewrites argv to the exact canonical snapshot order for 
   //      sorted by canonical key (role, then path). This proves the ordering is
   //      the verifier's, not the test's input order.
   //   2. linkExecutable expands that plan into the exact 11-token argv
-  //        <tree>/driver -o <base>/app -e zom <tree>/crt-0 obj-0 obj-1 rt-0 rt-1 lib-0
+  //        <tree>/driver -o <tree>/output-candidate -e zom <tree>/crt-0 obj-0 obj-1 rt-0 rt-1 lib-0
   //      which the driver records token by index; the test rebuilds the full
-  //      vector and compares every token (argc == 11, full equality).
+  //      vector and compares every token (argc == 11, full equality). argv[2] is
+  //      the transaction-root output candidate, never the final path.
   auto fs = zc::newDiskFilesystem();
   zc::String base = tempDirPath();
   auto dir = openDir(*fs, base);
@@ -717,10 +768,11 @@ ZC_TEST("linkExecutable rewrites argv to the exact canonical snapshot order for 
   ZC_EXPECT(zc::StringPtr(plan.runtimeRecords()[0].path()).endsWith("/rt0.o"_zc));
   ZC_EXPECT(zc::StringPtr(plan.runtimeRecords()[1].path()).endsWith("/rt1.o"_zc));
 
-  auto result = linkAndExpectComplete(plan, *fs);
-  ZC_ASSERT(result.isVerified());
+  LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), *fs);
+  zc::String treeName = soleSnapshotTreeName(*dir);
+  auto tree = dir->openSubdir(zc::Path(zc::heapString(treeName)));
 
-  auto argsText = dir->openFile(zc::Path("app.args"_zc))->readAllText();
+  auto argsText = tree->openFile(zc::Path("output-candidate.args"_zc))->readAllText();
   // Authority 2: the recorded argv is exactly 11 tokens.
   ZC_ASSERT(recordedArgc(argsText) == 11u);
   zc::Array<zc::String> argvLines = recordedArgv(argsText);
@@ -739,23 +791,26 @@ ZC_TEST("linkExecutable rewrites argv to the exact canonical snapshot order for 
 
   // Build the full expected 11-token vector and compare index by index.
   auto expected = zc::heapArrayBuilder<zc::String>(11);
-  expected.add(zc::str(treePrefix, "driver"));  // argv[0]: driver snapshot
-  expected.add(zc::str("-o"));                  // argv[1]
-  expected.add(zc::str(base, "/app"));          // argv[2]: exact output path
-  expected.add(zc::str("-e"));                  // argv[3]
-  expected.add(zc::str("zom"));                 // argv[4]: entry symbol
-  expected.add(zc::str(treePrefix, "crt-0"));   // argv[5]
-  expected.add(zc::str(treePrefix, "obj-0"));   // argv[6]
-  expected.add(zc::str(treePrefix, "obj-1"));   // argv[7]
-  expected.add(zc::str(treePrefix, "rt-0"));    // argv[8]
-  expected.add(zc::str(treePrefix, "rt-1"));    // argv[9]
-  expected.add(zc::str(treePrefix, "lib-0"));   // argv[10]
+  expected.add(zc::str(treePrefix, "driver"));            // argv[0]: driver snapshot
+  expected.add(zc::str("-o"));                            // argv[1]
+  expected.add(zc::str(treePrefix, "output-candidate"));  // argv[2]: tree output candidate
+  expected.add(zc::str("-e"));                            // argv[3]
+  expected.add(zc::str("zom"));                           // argv[4]: entry symbol
+  expected.add(zc::str(treePrefix, "crt-0"));             // argv[5]
+  expected.add(zc::str(treePrefix, "obj-0"));             // argv[6]
+  expected.add(zc::str(treePrefix, "obj-1"));             // argv[7]
+  expected.add(zc::str(treePrefix, "rt-0"));              // argv[8]
+  expected.add(zc::str(treePrefix, "rt-1"));              // argv[9]
+  expected.add(zc::str(treePrefix, "lib-0"));             // argv[10]
   zc::Array<zc::String> expectedArgv = expected.finish();
 
   for (size_t i = 0; i < expectedArgv.size(); ++i) {
     ZC_EXPECT(argvToken(argvLines, i) == expectedArgv[i]);
   }
+  // The candidate's recorded output path equals argv[2].
+  ZC_EXPECT(candidate.outputCandidatePath() == expectedArgv[2]);
 
+  ZC_EXPECT(zc::mv(candidate).discardAndCleanup().isClean());
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
 
@@ -773,8 +828,7 @@ ZC_TEST("linkExecutable rejects an input whose inode is swapped after verificati
   dir->remove(zc::Path("app0.o"_zc));
   writeFile(*dir, "app0.o"_zc, bytesOf("SWAPPED-OBJECT-BYTES-DIFFERENT"_zc).asPtr(), false);
 
-  auto result = linkAndExpectComplete(plan, *fs);
-  ZC_EXPECT(!result.isVerified());
+  auto result = linkExpectingReject(zc::mv(plan), *fs);
   ZC_EXPECT(result.isIrInvariantRejected());
   // No output was produced and no snapshot tree was left behind.
   ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
@@ -798,10 +852,10 @@ ZC_TEST("linkExecutable rejects a driver whose inode is swapped after verificati
   dir->remove(zc::Path("ld"_zc));
   writeFile(*dir, "ld"_zc, swapped.asPtr(), true);
 
-  auto result = linkAndExpectComplete(plan, *fs);
-  ZC_EXPECT(!result.isVerified());
+  auto result = linkExpectingReject(zc::mv(plan), *fs);
   ZC_EXPECT(result.isIrInvariantRejected());
   ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
 
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
@@ -881,19 +935,19 @@ ZC_TEST("linkExecutable rejects a same-length byte change in every input role be
       }
     }
 
-    auto result = linkAndExpectComplete(plan, *fs);
-    ZC_EXPECT(!result.isVerified());
+    auto result = linkExpectingReject(zc::mv(plan), *fs);
     // Same-length change caught by the digest: InputRevisionMismatch (an
     // IrInvariantRejected row). Full RFC row via the shared helper.
     expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::IrInvariantRejected,
                               IrFailureKind::InputRevisionMismatch);
 
-    // The driver was never spawned: no ".started" marker, no ".args", no output.
+    // The driver was never spawned and no final path was ever touched: no
+    // ".started" marker, no ".args", no output at the final path.
     ZC_EXPECT(!dir->exists(zc::Path("app.started"_zc)));
     ZC_EXPECT(!dir->exists(zc::Path("app.args"_zc)));
     ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
-    // The private snapshot tree was cleaned (Complete, asserted by
-    // linkAndExpectComplete, not RecoveryRequired).
+    // The transaction root was discarded on the reject path (Complete, asserted
+    // by linkExpectingReject, not RecoveryRequired).
     ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
 
     fs->getRoot().remove(zc::Path::parse(base.slice(1)));
@@ -908,10 +962,9 @@ ZC_TEST("linkExecutable rejects a pre-existing stale output before snapshotting"
   auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
   dir->openFile(zc::Path("app"_zc), zc::WriteMode::CREATE)->writeAll("stale"_zc);
 
-  auto result = linkAndExpectComplete(plan, *fs);
-  ZC_EXPECT(!result.isVerified());
-  // A pre-existing output is InvalidFact, an IrInvariantRejected row (the plan's
-  // output-path fact cannot be honored). Full RFC row via the shared helper.
+  auto result = linkExpectingReject(zc::mv(plan), *fs);
+  // A pre-existing FINAL output is InvalidFact, an IrInvariantRejected row (the
+  // plan's output-path fact cannot be honored). Full RFC row via the shared helper.
   expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::IrInvariantRejected,
                             IrFailureKind::InvalidFact);
   // The stale file is left untouched (we reject, we do not clobber it).
@@ -920,22 +973,21 @@ ZC_TEST("linkExecutable rejects a pre-existing stale output before snapshotting"
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
 
-ZC_TEST("linkExecutable cleans partial output when the driver exits nonzero") {
+ZC_TEST("linkExecutable cleans the transaction root when the driver exits nonzero") {
   auto fs = zc::newDiskFilesystem();
   zc::String base = tempDirPath();
   auto dir = openDir(*fs, base);
   Scenario scenario;
   auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_PARTIAL ""_zc, scenario);
 
-  auto result = linkAndExpectComplete(plan, *fs);
-  ZC_EXPECT(!result.isVerified());
+  auto result = linkExpectingReject(zc::mv(plan), *fs);
   // A nonzero exit is CapabilityRejected: OutputCreationFailed per RFC 0043.
   // Full RFC row via the shared helper.
   expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::CapabilityRejected,
                             IrFailureKind::OutputCreationFailed);
-  // The partial output the failing driver wrote is removed.
+  // The final path was never written (the driver wrote a partial output-candidate
+  // inside the tree, which is discarded), and the transaction root is removed.
   ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
-  // The private snapshot tree is also removed.
   ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
 
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
@@ -948,12 +1000,35 @@ ZC_TEST("linkExecutable reports a missing output on a clean exit") {
   Scenario scenario;
   auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_NO_OUTPUT ""_zc, scenario);
 
-  auto result = linkAndExpectComplete(plan, *fs);
-  ZC_EXPECT(!result.isVerified());
+  auto result = linkExpectingReject(zc::mv(plan), *fs);
   // A missing output after a clean exit is CapabilityRejected: OutputCreationFailed.
   // Full RFC row via the shared helper.
   expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::CapabilityRejected,
                             IrFailureKind::OutputCreationFailed);
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("linkExecutable rejects a symlink output candidate (D4 no-follow invariant)") {
+  // The driver exits zero but writes a SYMLINK at <root>/output-candidate (to a
+  // sibling regular file with ELF magic). D4 opens the output candidate with a
+  // no-follow open, so the symlink entry is refused even though a following open
+  // would have succeeded on the target. The link is rejected as OutputCreationFailed
+  // and the transaction root is cleaned - no candidate is produced.
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = tempDirPath();
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SYMLINK ""_zc, scenario);
+
+  auto result = linkExpectingReject(zc::mv(plan), *fs);
+  // A non-regular (symlink) output is CapabilityRejected: OutputCreationFailed.
+  expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::CapabilityRejected,
+                            IrFailureKind::OutputCreationFailed);
+  // The final path was never touched and the transaction root is cleaned.
+  ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
 
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
@@ -974,9 +1049,9 @@ ZC_TEST("linkExecutable maps a snapshot write-call fault to a rejection and clea
   script.skip = 0;
   FaultFilesystem faultFs(script);
 
-  CleanupAwareOutcome<VerifiedLinkedExecutable> outcome = linkExecutable(plan, faultFs);
+  CleanupAwareOutcome<LinkedOutputCandidate> outcome = linkExecutable(zc::mv(plan), faultFs);
   ZC_ASSERT(outcome.isComplete());
-  IrOperationResult<VerifiedLinkedExecutable> result = zc::mv(outcome).takeComplete();
+  IrOperationResult<LinkedOutputCandidate> result = zc::mv(outcome).takeComplete();
   ZC_EXPECT(!result.isVerified());
   ZC_EXPECT(result.isCapabilityRejected());
   ZC_EXPECT(script.fired);
@@ -1001,9 +1076,9 @@ ZC_TEST("linkExecutable maps a pass-2 read-call fault to a rejection and cleans 
   script.skip = 0;
   FaultFilesystem faultFs(script);
 
-  CleanupAwareOutcome<VerifiedLinkedExecutable> outcome = linkExecutable(plan, faultFs);
+  CleanupAwareOutcome<LinkedOutputCandidate> outcome = linkExecutable(zc::mv(plan), faultFs);
   ZC_ASSERT(outcome.isComplete());
-  IrOperationResult<VerifiedLinkedExecutable> result = zc::mv(outcome).takeComplete();
+  IrOperationResult<LinkedOutputCandidate> result = zc::mv(outcome).takeComplete();
   ZC_EXPECT(!result.isVerified());
   ZC_EXPECT(result.isCapabilityRejected());
   ZC_EXPECT(script.fired);
@@ -1014,46 +1089,49 @@ ZC_TEST("linkExecutable maps a pass-2 read-call fault to a rejection and cleans 
 }
 
 ZC_TEST(
-    "linkExecutable reports RecoveryRequired when post-spawn content cleanup fails, "
-    "preserving a verified primary") {
+    "LinkedOutputCandidate discardAndCleanup reports Obligated when post-spawn content cleanup "
+    "fails, and the candidate's output survives") {
   auto disk = zc::newDiskFilesystem();
   zc::String base = tempDirPath();
   auto dir = openDir(*disk, base);
   Scenario scenario;
   auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
 
-  // The link itself succeeds (verified primary), but the post-spawn content
-  // removal is forced to fail. The outcome must be RecoveryRequired - not a clean
-  // success - and the verified primary must be preserved losslessly, with a
+  // The link itself succeeds and transfers the transaction root into the
+  // candidate. Only when the caller later discards the candidate is the content
+  // removal forced to fail: the disposition must be Obligated (not Clean), with a
   // structured obligation carrying the transaction id, the exact captured
-  // identity, and the plan id.
+  // identity, and the plan id. Before discarding, the candidate's output is fully
+  // readable through its held handle.
   FaultScript script;
   script.kind = FaultKind::ContentRemove;
   script.skip = 0;
   FaultFilesystem faultFs(script);
 
-  CleanupAwareOutcome<VerifiedLinkedExecutable> outcome = linkExecutable(plan, faultFs);
-  ZC_ASSERT(outcome.isRecoveryRequired());
-  RecoveryRequiredOutcome<VerifiedLinkedExecutable> rr = zc::mv(outcome).takeRecoveryRequired();
-  const SnapshotCleanupObligation& obligation = rr.obligation;
+  LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), faultFs);
+  LinkPlanId candidatePlanId = candidate.plan().id();
+  // The verified output is readable through the candidate before any cleanup.
+  zc::Array<uint8_t> bytes = candidate.readOutput();
+  ZC_ASSERT(bytes.size() == 4u);
+  ZC_EXPECT(bytes[0] == 0x7f && bytes[1] == 'E' && bytes[2] == 'L' && bytes[3] == 'F');
+
+  CleanupDisposition disposition = zc::mv(candidate).discardAndCleanup();
+  ZC_ASSERT(disposition.isObligated());
+  SnapshotCleanupObligation obligation = zc::mv(disposition).takeObligation();
   ZC_EXPECT(obligation.cleanupStage() == CleanupStage::PostSpawnCleanup);
   ZC_EXPECT(obligation.cleanupFailureKind() == CleanupFailureKind::ContentRemovalFailed);
-  ZC_EXPECT(obligation.planId() == plan.id());
+  ZC_EXPECT(obligation.planId() == candidatePlanId);
   ZC_EXPECT(obligation.directoryIdentity() != zc::none);
   // The obligation's tree path is derived from its parent and token and names a
   // ".zomlink-" directory.
   ZC_EXPECT(zc::StringPtr(obligation.treePath()).find(".zomlink-"_zc) != zc::none);
-  // The verified primary survives intact.
-  ZC_ASSERT(rr.primary.isVerified());
-  zc::ArrayPtr<const uint8_t> bytes = rr.primary.verifiedValue().bytes();
-  ZC_ASSERT(bytes.size() == 4u);
-  ZC_EXPECT(bytes[0] == 0x7f && bytes[1] == 'E' && bytes[2] == 'L' && bytes[3] == 'F');
 
   // The forced-failure left the tree behind; remove the whole base for hygiene.
   disk->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
 
-ZC_TEST("linkExecutable reports TopLevelRemovalFailed when the top-level remove fails") {
+ZC_TEST(
+    "LinkedOutputCandidate discardAndCleanup reports TopLevelRemovalFailed on a top-level fault") {
   auto disk = zc::newDiskFilesystem();
   zc::String base = tempDirPath();
   auto dir = openDir(*disk, base);
@@ -1068,12 +1146,12 @@ ZC_TEST("linkExecutable reports TopLevelRemovalFailed when the top-level remove 
   script.skip = 0;
   FaultFilesystem faultFs(script);
 
-  CleanupAwareOutcome<VerifiedLinkedExecutable> outcome = linkExecutable(plan, faultFs);
-  ZC_ASSERT(outcome.isRecoveryRequired());
-  RecoveryRequiredOutcome<VerifiedLinkedExecutable> rr = zc::mv(outcome).takeRecoveryRequired();
-  ZC_EXPECT(rr.obligation.cleanupStage() == CleanupStage::PostSpawnCleanup);
-  ZC_EXPECT(rr.obligation.cleanupFailureKind() == CleanupFailureKind::TopLevelRemovalFailed);
-  ZC_ASSERT(rr.primary.isVerified());
+  LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), faultFs);
+  CleanupDisposition disposition = zc::mv(candidate).discardAndCleanup();
+  ZC_ASSERT(disposition.isObligated());
+  SnapshotCleanupObligation obligation = zc::mv(disposition).takeObligation();
+  ZC_EXPECT(obligation.cleanupStage() == CleanupStage::PostSpawnCleanup);
+  ZC_EXPECT(obligation.cleanupFailureKind() == CleanupFailureKind::TopLevelRemovalFailed);
 
   disk->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
@@ -1108,19 +1186,16 @@ ZC_TEST("cleanup classifies a non-ENOENT fstatat error on the top-level entry as
   auto parentReal = zc::str("/", base.slice(1));
   ZC_REQUIRE(::chmod(parentReal.cStr(), 0) == 0);
 
-  auto primary = IrOperationResult<VerifiedLinkedExecutable>::verified(
-      VerifiedLinkedExecutable(zc::heapArray<uint8_t>({0x7f})));
-  CleanupAwareOutcome<VerifiedLinkedExecutable> outcome =
-      zc::mv(prepared).finishAndCleanup(zc::mv(primary));
+  CleanupDisposition disposition = zc::mv(prepared).discardAndCleanup();
 
   // Restore permissions before asserting, so cleanup of the base always works.
   ZC_REQUIRE(::chmod(parentReal.cStr(), 0700) == 0);
 
-  ZC_ASSERT(outcome.isRecoveryRequired());
-  RecoveryRequiredOutcome<VerifiedLinkedExecutable> rr = zc::mv(outcome).takeRecoveryRequired();
-  ZC_EXPECT(rr.obligation.cleanupStage() == CleanupStage::PostSpawnCleanup);
+  ZC_ASSERT(disposition.isObligated());
+  SnapshotCleanupObligation obligation = zc::mv(disposition).takeObligation();
+  ZC_EXPECT(obligation.cleanupStage() == CleanupStage::PostSpawnCleanup);
   // A non-ENOENT fstatat error is a top-level removal failure, never "removed".
-  ZC_EXPECT(rr.obligation.cleanupFailureKind() == CleanupFailureKind::TopLevelRemovalFailed);
+  ZC_EXPECT(obligation.cleanupFailureKind() == CleanupFailureKind::TopLevelRemovalFailed);
 
   disk->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
@@ -1224,14 +1299,11 @@ ZC_TEST("linkExecutable cleanup does not delete a competitor tree that replaced 
       dir->openSubdir(zc::Path(treeName), zc::WriteMode::CREATE | zc::WriteMode::MODIFY);
   competitor->openFile(zc::Path("competitor-owned"_zc), zc::WriteMode::CREATE)->writeAll("x"_zc);
 
-  // finishAndCleanup must refuse to delete the competitor (identity mismatch).
-  auto primary = IrOperationResult<VerifiedLinkedExecutable>::verified(
-      VerifiedLinkedExecutable(zc::heapArray<uint8_t>({0x7f})));
-  CleanupAwareOutcome<VerifiedLinkedExecutable> outcome =
-      zc::mv(prepared).finishAndCleanup(zc::mv(primary));
-  ZC_ASSERT(outcome.isRecoveryRequired());
-  RecoveryRequiredOutcome<VerifiedLinkedExecutable> rr = zc::mv(outcome).takeRecoveryRequired();
-  ZC_EXPECT(rr.obligation.cleanupFailureKind() == CleanupFailureKind::IdentityMismatch);
+  // discardAndCleanup must refuse to delete the competitor (identity mismatch).
+  CleanupDisposition disposition = zc::mv(prepared).discardAndCleanup();
+  ZC_ASSERT(disposition.isObligated());
+  SnapshotCleanupObligation obligation = zc::mv(disposition).takeObligation();
+  ZC_EXPECT(obligation.cleanupFailureKind() == CleanupFailureKind::IdentityMismatch);
   // The competitor's directory and its sentinel file are untouched.
   ZC_EXPECT(dir->openSubdir(zc::Path(treeName))->exists(zc::Path("competitor-owned"_zc)));
 
@@ -1303,12 +1375,8 @@ ZC_TEST("prepare retries a fresh token on an exclusive-create collision without 
   ZC_EXPECT(subdirIdentity(*dir, firstTreeName) == firstIdentityBefore);
 
   // Clean both up.
-  auto primaryA = IrOperationResult<VerifiedLinkedExecutable>::verified(
-      VerifiedLinkedExecutable(zc::heapArray<uint8_t>({0x7f})));
-  ZC_ASSERT(zc::mv(first).finishAndCleanup(zc::mv(primaryA)).isComplete());
-  auto primaryB = IrOperationResult<VerifiedLinkedExecutable>::verified(
-      VerifiedLinkedExecutable(zc::heapArray<uint8_t>({0x7f})));
-  ZC_ASSERT(zc::mv(second).finishAndCleanup(zc::mv(primaryB)).isComplete());
+  ZC_ASSERT(zc::mv(first).discardAndCleanup().isClean());
+  ZC_ASSERT(zc::mv(second).discardAndCleanup().isClean());
   ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
 
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
@@ -1342,31 +1410,25 @@ ZC_TEST("two overlapping (sequential, not threaded) prepares of the same plan us
   ZC_EXPECT(first.program() != second.program());
 
   // Finishing the first removes only its own tree; the second's survives.
-  auto primaryA = IrOperationResult<VerifiedLinkedExecutable>::verified(
-      VerifiedLinkedExecutable(zc::heapArray<uint8_t>({0x7f})));
-  CleanupAwareOutcome<VerifiedLinkedExecutable> firstFinish =
-      zc::mv(first).finishAndCleanup(zc::mv(primaryA));
-  ZC_ASSERT(firstFinish.isComplete());
+  CleanupDisposition firstFinish = zc::mv(first).discardAndCleanup();
+  ZC_ASSERT(firstFinish.isClean());
   ZC_EXPECT(countSnapshotTrees(*dir) == 1u);
 
   // Finishing the second removes the last tree.
-  auto primaryB = IrOperationResult<VerifiedLinkedExecutable>::verified(
-      VerifiedLinkedExecutable(zc::heapArray<uint8_t>({0x7f})));
-  CleanupAwareOutcome<VerifiedLinkedExecutable> secondFinish =
-      zc::mv(second).finishAndCleanup(zc::mv(primaryB));
-  ZC_ASSERT(secondFinish.isComplete());
+  CleanupDisposition secondFinish = zc::mv(second).discardAndCleanup();
+  ZC_ASSERT(secondFinish.isClean());
   ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
 
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
 
-ZC_TEST("a prepared capability dropped without finishAndCleanup swallows a cleanup fault") {
-  // If a prepared capability is dropped without finishAndCleanup, its destructor
+ZC_TEST("a prepared capability dropped without discardAndCleanup swallows a cleanup fault") {
+  // If a prepared capability is dropped without discardAndCleanup, its destructor
   // is a noexcept last-resort leak guard: it best-effort removes the tree and
   // swallows any fault. With content removal armed to fail, dropping the
   // capability must NOT throw (the test would abort under the noexcept violation)
   // and simply leaves the tree behind - no structured obligation is produced on
-  // this fallback path, which is exactly why finishAndCleanup is the real path.
+  // this fallback path, which is exactly why discardAndCleanup is the real path.
   auto disk = zc::newDiskFilesystem();
   zc::String base = tempDirPath();
   auto dir = openDir(*disk, base);
@@ -1431,11 +1493,11 @@ ZC_TEST("linkExecutable fails closed on a filesystem exposing no real descriptor
   auto plan = zc::mv(planResult).takeVerified();
 
   InMemoryFilesystem memFs(zc::mv(memRoot));
-  CleanupAwareOutcome<VerifiedLinkedExecutable> outcome = linkExecutable(plan, memFs);
+  CleanupAwareOutcome<LinkedOutputCandidate> outcome = linkExecutable(zc::mv(plan), memFs);
   // No tree was created (fail-closed before creation), so the outcome is Complete
   // with a capability rejection, not RecoveryRequired.
   ZC_ASSERT(outcome.isComplete());
-  IrOperationResult<VerifiedLinkedExecutable> result = zc::mv(outcome).takeComplete();
+  IrOperationResult<LinkedOutputCandidate> result = zc::mv(outcome).takeComplete();
   ZC_EXPECT(!result.isVerified());
   ZC_EXPECT(result.isCapabilityRejected());
   // No snapshot tree survives the fail-closed path.

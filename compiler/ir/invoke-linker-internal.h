@@ -22,7 +22,7 @@
 // only through `linkExecutable`.
 //
 // Keeping this out of the public surface is a security boundary, not a style
-// choice: if `PreparedLinkInputs::prepare` / `finishAndCleanup` and a public
+// choice: if `PreparedLinkInputs::prepare` / `discardAndCleanup` and a public
 // `LinkerInvocationTestAccess` were reachable from production, a caller could
 // mint a snapshot transaction with a scripted token or drop a prepared
 // capability bare (bypassing the structured cleanup obligation), defeating the
@@ -58,6 +58,10 @@ public:
   }
   ZC_NODISCARD static zc::Maybe<StableDirectoryIdentity> identity(uint64_t device, uint64_t inode) {
     return StableDirectoryIdentity(device, inode);
+  }
+  ZC_NODISCARD static StableFileIdentity fileIdentity(uint64_t device, uint64_t inode,
+                                                      uint64_t linkCount) {
+    return StableFileIdentity(device, inode, linkCount);
   }
   ZC_NODISCARD static SnapshotCleanupObligation obligation(
       const SnapshotTransactionId& transactionId, zc::String&& outputParent,
@@ -110,14 +114,17 @@ public:
 ///
 /// The driver snapshot's descriptor is borrowed from a `ReadableFile` this
 /// object owns, so the owner must outlive the `SubprocessCommand::run` that
-/// execs it. Cleanup is explicit: `finishAndCleanup()` consumes the capability,
-/// removes the private tree, and reports either `Complete` or (if the tree could
-/// not be removed) `RecoveryRequired` with a structured `SnapshotCleanupObligation`.
-/// The destructor is a `noexcept` last-resort leak guard that only acts when
-/// `finishAndCleanup` was never called, and never produces a structured record.
-/// The type is constructed only by `prepare`/`prepareWithTokenSource` and
-/// consumed only by `linkExecutable` (and the test peer), so an external caller
-/// cannot drop it and silently lose an obligation.
+/// execs it. Cleanup is explicit: `discardAndCleanup()` consumes the capability,
+/// removes the private tree, and reports a `CleanupDisposition` (`Clean` or
+/// `Obligated`). On a clean link the capability is instead consumed by
+/// `intoCandidate`, which transfers the still-live transaction root into a
+/// `LinkedOutputCandidate` rather than removing it. The destructor is a
+/// `noexcept` last-resort leak guard that only acts when neither
+/// `discardAndCleanup` nor `intoCandidate` was called, and never produces a
+/// structured record. The type is constructed only by
+/// `prepare`/`prepareWithTokenSource` and consumed only by `linkExecutable` (and
+/// the test peer), so an external caller cannot drop it and silently lose an
+/// obligation.
 class PreparedLinkInputs final {
 public:
   PreparedLinkInputs(PreparedLinkInputs&&) noexcept;
@@ -130,9 +137,10 @@ public:
   ///
   /// On success the outcome's primary is a verified `PreparedLinkInputs` whose
   /// tree is still live (the caller consumes it and later calls
-  /// `finishAndCleanup`). On a prepare-time rejection the tree is removed here;
-  /// if that removal fails the outcome is `RecoveryRequired` carrying the
-  /// obligation. Production uses the OS CSPRNG token source.
+  /// `discardAndCleanup` or `intoCandidate`). On a prepare-time rejection the
+  /// tree is removed here; if that removal fails the outcome is
+  /// `RecoveryRequired` carrying the obligation. Production uses the OS CSPRNG
+  /// token source.
   ///
   /// \param plan The verified link plan naming every input and the driver.
   /// \param filesystem The filesystem whose root the plan's absolute paths
@@ -150,14 +158,40 @@ public:
       const VerifiedLinkPlan& plan, const zc::Filesystem& filesystem,
       SnapshotTokenSource& tokenSource);
 
-  /// \brief Removes the private snapshot tree and reports the cleanup outcome,
-  ///        consuming this capability. After it returns, this object is
-  ///        moved-from and its destructor does nothing.
+  /// \brief Removes the private snapshot tree and reports the cleanup disposition,
+  ///        consuming this capability. After it returns, this object is moved-from
+  ///        and its destructor does nothing. Used on the link-failure path (and by
+  ///        the prepare-level tests) to discard a prepared tree without
+  ///        transferring it. The cleanup runs at the `PostSpawnCleanup` stage.
+  ZC_NODISCARD CleanupDisposition discardAndCleanup() && noexcept;
+
+  /// \brief The snapshot directory capability, so the caller can open the
+  ///        `<root>/output-candidate` the driver wrote (relative to this held
+  ///        directory) with a no-follow open. Valid while this object is alive.
+  ZC_NODISCARD const zc::Directory& snapshotDirectory() const noexcept;
+
+  /// \brief The absolute path of `<root>/output-candidate` the driver's `-o`
+  ///        argument named. Used only to record the candidate's path; the file is
+  ///        opened relative to `snapshotDirectory()`, not resolved from this path.
+  ZC_NODISCARD zc::StringPtr outputCandidatePath() const noexcept;
+
+  /// \brief Transfers the still-live transaction root into a
+  ///        `LinkedOutputCandidate`, consuming this capability (RFC 0043 D4
+  ///        success path). The candidate owns the tree, the moved-in verified
+  ///        plan, and the transaction-owned output handle plus its captured exact
+  ///        identity and byte count; this object is moved-from afterward, so its
+  ///        destructor does nothing (the tree is NOT removed - the candidate owns
+  ///        it now).
   ///
-  /// \param primary The primary link result to pair with the cleanup outcome. A
-  ///        verified primary with a failed cleanup still yields RecoveryRequired.
-  ZC_NODISCARD CleanupAwareOutcome<VerifiedLinkedExecutable> finishAndCleanup(
-      IrOperationResult<VerifiedLinkedExecutable>&& primary) && noexcept;
+  /// \param plan The verified link plan, moved into the candidate.
+  /// \param outputHandle The no-follow read-only handle to `<root>/output-candidate`.
+  /// \param outputIdentity The output's exact `(dev, ino)` + link count captured
+  ///        from `outputHandle`.
+  /// \param outputSize The output's byte count captured from `outputHandle`.
+  ZC_NODISCARD LinkedOutputCandidate intoCandidate(VerifiedLinkPlan&& plan,
+                                                   zc::Own<const zc::ReadableFile>&& outputHandle,
+                                                   StableFileIdentity outputIdentity,
+                                                   uint64_t outputSize) && noexcept;
 
   /// \brief The borrowed descriptor of the driver snapshot, valid while this
   ///        object is alive. The exec targets exactly this open object.

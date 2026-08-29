@@ -52,18 +52,31 @@
  * reading.
  */
 
+/* symlink() (used only by the D4 no-follow-output invariant variant, mode 3) is
+ * POSIX, not ISO C11; request the POSIX surface before any system header. */
+#if ZOM_FAKE_LINKER_MODE == 3
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#endif
+
 #include <stdio.h>
 #include <string.h>
+#if ZOM_FAKE_LINKER_MODE == 3
+#include <unistd.h>
+#endif
 
 /* Compile-time behavior selector. 0 = success, 1 = partial-then-exit-3,
- * 2 = clean exit with no output. */
+ * 2 = clean exit with no output, 3 = write a symlink at the output path (to
+ * exercise the D4 no-follow output invariant). */
 #ifndef ZOM_FAKE_LINKER_MODE
-#error "ZOM_FAKE_LINKER_MODE must be defined (0=success, 1=partial, 2=no-output)"
+#error "ZOM_FAKE_LINKER_MODE must be defined (0=success, 1=partial, 2=no-output, 3=symlink)"
 #endif
 
 #define ZOM_FAKE_LINKER_MODE_SUCCESS 0
 #define ZOM_FAKE_LINKER_MODE_PARTIAL 1
 #define ZOM_FAKE_LINKER_MODE_NO_OUTPUT 2
+#define ZOM_FAKE_LINKER_MODE_SYMLINK 3
 
 /* The process environment, empty under the Empty subprocess env policy. */
 extern char** environ;
@@ -183,6 +196,24 @@ int main(int argc, char** argv) {
   return kExitPartial;
 #elif ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_NO_OUTPUT
   return kExitOk;
+#elif ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_SYMLINK
+  /* Exit zero but make the output path a SYMLINK to a sibling regular file, so
+   * the D4 no-follow output capture must refuse it (a symlink is not a regular
+   * transaction-owned output). The link target is written first so a
+   * symlink-following open would spuriously succeed; the no-follow open must
+   * still reject. */
+  {
+    char targetPath[4096];
+    int t = snprintf(targetPath, sizeof(targetPath), "%s.real", outputPath);
+    if (t <= 0 || (size_t)t >= sizeof(targetPath)) { return kExitOutputOpenFailed; }
+    FILE* target = fopen(targetPath, "wb");
+    if (target == NULL) { return kExitOutputOpenFailed; }
+    static const unsigned char kElfMagic[4] = {0x7f, 'E', 'L', 'F'};
+    (void)fwrite(kElfMagic, 1, sizeof(kElfMagic), target);
+    fclose(target);
+    if (symlink(targetPath, outputPath) != 0) { return kExitOutputOpenFailed; }
+    return kExitOk;
+  }
 #else
   /* Default success: write an ELF-magic output. */
   if (writeElfMagic(outputPath) != 0) { return kExitOutputOpenFailed; }
