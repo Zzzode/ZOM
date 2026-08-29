@@ -471,26 +471,43 @@ zc::Array<zc::byte> fixtureBytes(zc::StringPtr absolutePath) {
 // `base`. Which fake-linker ELF variant is copied to `<base>/ld` (success /
 // partial / no-output) is chosen by the caller's `driverFixturePath`, because
 // the plan carries no argument surface to carry a runtime mode token.
+//
+// The input set covers every role with more than one member where the role
+// admits several (two objects, two runtime objects), so a test can lock both the
+// cross-role order and the within-role canonical index order. Each field also
+// records the snapshot name the production code derives for it (role prefix +
+// canonical index), so a test can rebuild the exact expected argv.
 struct Scenario {
   zc::Array<zc::byte> driverBytes;
   zc::Array<zc::byte> crtBytes;
-  zc::Array<zc::byte> objectBytes;
+  zc::Array<zc::byte> object0Bytes;
+  zc::Array<zc::byte> object1Bytes;
+  zc::Array<zc::byte> runtime0Bytes;
+  zc::Array<zc::byte> runtime1Bytes;
   zc::Array<zc::byte> libBytes;
 };
 
 // Materializes driver + inputs under `dir` and builds the verified plan for them.
+// Roles laid down so the RFC 0043 canonical argv order is non-trivial:
+//   driver, -o out, -e entry, crt-0, obj-0, obj-1, rt-0, rt-1, lib-0.
 VerifiedLinkPlan buildScenario(const zc::Directory& dir, zc::StringPtr base,
                                zc::StringPtr driverFixturePath, Scenario& out) {
   out.driverBytes = writeFile(dir, "ld"_zc, fixtureBytes(driverFixturePath).asPtr(),
                               /*executable=*/true);
   out.crtBytes = writeFile(dir, "crt1.o"_zc, bytesOf("CRT-OBJECT-BYTES"_zc).asPtr(), false);
-  out.objectBytes = writeFile(dir, "app.o"_zc, bytesOf("USER-OBJECT-BYTES"_zc).asPtr(), false);
+  out.object0Bytes = writeFile(dir, "app0.o"_zc, bytesOf("USER-OBJECT-ZERO"_zc).asPtr(), false);
+  out.object1Bytes = writeFile(dir, "app1.o"_zc, bytesOf("USER-OBJECT-ONE-"_zc).asPtr(), false);
+  out.runtime0Bytes = writeFile(dir, "rt0.o"_zc, bytesOf("RUNTIME-OBJ-ZERO"_zc).asPtr(), false);
+  out.runtime1Bytes = writeFile(dir, "rt1.o"_zc, bytesOf("RUNTIME-OBJ-ONE-"_zc).asPtr(), false);
   out.libBytes = writeFile(dir, "libc.a"_zc, bytesOf("LIBC-ARCHIVE-BYTES"_zc).asPtr(), false);
 
   const uint8_t targetIdentity[] = {0x74, 0x67, 0x74};  // "tgt"
   auto driverPath = zc::str(base, "/ld");
   auto crtPath = zc::str(base, "/crt1.o");
-  auto objectPath = zc::str(base, "/app.o");
+  auto object0Path = zc::str(base, "/app0.o");
+  auto object1Path = zc::str(base, "/app1.o");
+  auto runtime0Path = zc::str(base, "/rt0.o");
+  auto runtime1Path = zc::str(base, "/rt1.o");
   auto libPath = zc::str(base, "/libc.a");
 
   auto closure = ToolchainClosureRecord::make(
@@ -500,16 +517,74 @@ VerifiedLinkPlan buildScenario(const zc::Directory& dir, zc::StringPtr base,
       oneInput(recordFor(libPath, LinkInputRole::DefaultLibrary, out.libBytes.asPtr())));
   ZC_REQUIRE(closure != zc::none);
 
-  ExecutableLinkRequest request{
-      ZC_REQUIRE_NONNULL(zc::mv(closure)),
-      zc::heapArray<uint8_t>({0x7a, 0x6f, 0x6d}),  // "zom"
-      oneInput(recordFor(objectPath, LinkInputRole::ObjectArtifact, out.objectBytes.asPtr())),
-      zc::Array<LinkInputRecord>(),
-      zc::str(base),
-      zc::str(base, "/app")};
+  auto twoObjects = zc::heapArrayBuilder<LinkInputRecord>(2);
+  twoObjects.add(recordFor(object0Path, LinkInputRole::ObjectArtifact, out.object0Bytes.asPtr()));
+  twoObjects.add(recordFor(object1Path, LinkInputRole::ObjectArtifact, out.object1Bytes.asPtr()));
+  auto twoRuntimes = zc::heapArrayBuilder<LinkInputRecord>(2);
+  twoRuntimes.add(recordFor(runtime0Path, LinkInputRole::RuntimeObject, out.runtime0Bytes.asPtr()));
+  twoRuntimes.add(recordFor(runtime1Path, LinkInputRole::RuntimeObject, out.runtime1Bytes.asPtr()));
+
+  ExecutableLinkRequest request{ZC_REQUIRE_NONNULL(zc::mv(closure)),
+                                zc::heapArray<uint8_t>({0x7a, 0x6f, 0x6d}),  // "zom"
+                                twoObjects.finish(),
+                                twoRuntimes.finish(),
+                                zc::str(base),
+                                zc::str(base, "/app")};
   auto result = LinkPlanVerifier::verify(zc::mv(request));
   ZC_REQUIRE(result.isVerified());
   return zc::mv(result).takeVerified();
+}
+
+// The canonical snapshot leaf names, in the exact argv order the production
+// code emits them (driver excluded - it is argv[0] via a separate path). This
+// mirrors the enumeration order in PreparedLinkInputs::prepareWithTokenSource.
+zc::Array<zc::String> canonicalInputSnapshotNames() {
+  auto names = zc::heapArrayBuilder<zc::String>(6);
+  names.add(zc::str("crt-0"));
+  names.add(zc::str("obj-0"));
+  names.add(zc::str("obj-1"));
+  names.add(zc::str("rt-0"));
+  names.add(zc::str("rt-1"));
+  names.add(zc::str("lib-0"));
+  return names.finish();
+}
+
+// Asserts a single failure fact is the complete RFC 0010 / RFC 0043 row for a
+// LinkerInvocation rejection: not just the branch, but phase, kind, the
+// Backend { InvokeLinker, instance none } site, a Session owner, and a None
+// detail. `fact` is the one fact carried by the rejection branch.
+void expectLinkerInvocationRow(const IrFailureFact& fact, IrRejectedBranch branch,
+                               IrFailureKind kind) {
+  ZC_EXPECT(fact.branch() == branch);
+  ZC_EXPECT(fact.phase() == IrFailurePhase::LinkerInvocation);
+  ZC_EXPECT(fact.kind() == kind);
+  // Owner is the session (LinkerInvocation is session-owned, no module/def).
+  ZC_EXPECT(fact.owner().kind() == IrFailureOwnerKind::Session);
+  ZC_EXPECT(fact.owner().sessionContext() != zc::none);
+  // Site is Backend { InvokeLinker }, with no instance under the current contract.
+  ZC_IF_SOME(site, fact.site()) {
+    ZC_EXPECT(site.kind() == IrFailureSiteKind::Backend);
+    ZC_EXPECT(site.backendValue().operation == BackendOperation::InvokeLinker);
+    ZC_EXPECT(site.backendValue().instance == zc::none);
+  } else {
+    ZC_FAIL_EXPECT("linker invocation failure must carry a Backend site");
+  }
+  // Detail is None (no instantiation cycle/budget payload for a link failure).
+  ZC_EXPECT(fact.detail().kind() == IrFailureDetailKind::None);
+}
+
+// Extracts the single fact from a rejection, asserting exactly one is present.
+// Works for both the IrInvariantRejected and CapabilityRejected branches.
+const IrFailureFact& soleFailureFact(const IrOperationResult<VerifiedLinkedExecutable>& result) {
+  if (result.isCapabilityRejected()) {
+    zc::ArrayPtr<const IrFailureFact> facts = result.capabilityFailures().facts();
+    ZC_REQUIRE(facts.size() == 1);
+    return facts[0];
+  }
+  ZC_REQUIRE(result.isIrInvariantRejected());
+  zc::ArrayPtr<const IrFailureFact> facts = result.invariantFailures().facts();
+  ZC_REQUIRE(facts.size() == 1);
+  return facts[0];
 }
 
 ZC_TEST("linkExecutable snapshots inputs, execs the driver by fd, and reads back the executable") {
@@ -532,11 +607,16 @@ ZC_TEST("linkExecutable snapshots inputs, execs the driver by fd, and reads back
   auto argsText = dir->openFile(zc::Path("app.args"_zc))->readAllText();
   ZC_EXPECT(argsText.find(".zomlink-"_zc) != zc::none);
   // No original source path survives into the argv (all rewritten to snapshots).
-  ZC_EXPECT(argsText.find(zc::str(base, "/app.o")) == zc::none);
+  ZC_EXPECT(argsText.find(zc::str(base, "/app0.o")) == zc::none);
   ZC_EXPECT(argsText.find(zc::str(base, "/crt1.o")) == zc::none);
   ZC_EXPECT(argsText.find(zc::str(base, "/libc.a")) == zc::none);
-  // The snapshot the driver read for the user object held its expected bytes.
-  ZC_EXPECT(argsText.find(zc::str("size=", scenario.objectBytes.size())) != zc::none);
+  // The snapshot the driver read for the first user object held its expected bytes.
+  ZC_EXPECT(argsText.find(zc::str("size=", scenario.object0Bytes.size())) != zc::none);
+
+  // On the spawn path the driver created its earliest "<out>.started" marker;
+  // its presence here anchors the meaning of its ABSENCE on the no-spawn
+  // mismatch cases below.
+  ZC_EXPECT(dir->exists(zc::Path("app.started"_zc)));
 
   // The private snapshot tree was removed once linkExecutable returned (the
   // PreparedLinkInputs was dropped after the child was awaited).
@@ -545,9 +625,90 @@ ZC_TEST("linkExecutable snapshots inputs, execs the driver by fd, and reads back
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
 
+// Parses the fixture's "<out>.args" dump, returning the input path tokens in the
+// exact order the driver saw them (one per "input path=<p> size=<n>" line).
+zc::Array<zc::String> recordedInputPaths(zc::StringPtr argsText) {
+  zc::Vector<zc::String> paths;
+  const char* data = argsText.begin();
+  size_t n = argsText.size();
+  size_t pos = 0;
+  const zc::StringPtr linePrefix = "input path="_zc;
+  const zc::StringPtr sizeTag = " size="_zc;
+  auto matchesAt = [&](size_t at, zc::StringPtr needle) -> bool {
+    if (at + needle.size() > n) { return false; }
+    for (size_t i = 0; i < needle.size(); ++i) {
+      if (data[at + i] != needle.begin()[i]) { return false; }
+    }
+    return true;
+  };
+  while (pos < n) {
+    size_t lineEnd = pos;
+    while (lineEnd < n && data[lineEnd] != '\n') { ++lineEnd; }
+    if (matchesAt(pos, linePrefix)) {
+      size_t pathStart = pos + linePrefix.size();
+      // The path runs from pathStart up to the " size=" tag on this line.
+      size_t sizeAt = pathStart;
+      bool found = false;
+      while (sizeAt + sizeTag.size() <= lineEnd) {
+        if (matchesAt(sizeAt, sizeTag)) {
+          found = true;
+          break;
+        }
+        ++sizeAt;
+      }
+      ZC_REQUIRE(found);
+      paths.add(zc::heapString(data + pathStart, sizeAt - pathStart));
+    }
+    pos = lineEnd + 1;
+  }
+  return paths.releaseAsArray();
+}
+
+ZC_TEST("linkExecutable rewrites argv to the exact canonical snapshot order for every role") {
+  // The driver records each input path token in the order it received them. The
+  // production code must emit them in RFC 0043 canonical order - crt, then
+  // objects (in plan order), then runtimes (in plan order), then default
+  // libraries - each pointing at a snapshot leaf named "<role>-<index>" inside
+  // the transaction tree. This locks both the cross-role order and the
+  // within-role index order, by full-token equality (not substring/regex).
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = tempDirPath();
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+
+  auto result = linkAndExpectComplete(plan, *fs);
+  ZC_ASSERT(result.isVerified());
+
+  auto argsText = dir->openFile(zc::Path("app.args"_zc))->readAllText();
+  zc::Array<zc::String> observed = recordedInputPaths(argsText);
+  zc::Array<zc::String> canonicalNames = canonicalInputSnapshotNames();
+  ZC_ASSERT(observed.size() == canonicalNames.size());
+
+  // Derive the transaction tree prefix from the first observed token: everything
+  // up to and including the last '/'. Every token must share it and then match
+  // the canonical leaf name at its position, in order.
+  zc::StringPtr first = observed[0];
+  size_t lastSlash = 0;
+  for (size_t i = 0; i < first.size(); ++i) {
+    if (first[i] == '/') { lastSlash = i; }
+  }
+  zc::String treePrefix = zc::heapString(first.begin(), lastSlash + 1);
+  // The prefix must name a ".zomlink-" transaction tree under the output parent.
+  ZC_EXPECT(zc::StringPtr(treePrefix).find(".zomlink-"_zc) != zc::none);
+  ZC_EXPECT(zc::StringPtr(treePrefix).startsWith(zc::str(base, "/")));
+
+  for (size_t i = 0; i < observed.size(); ++i) {
+    zc::String expected = zc::str(treePrefix, canonicalNames[i]);
+    ZC_EXPECT(observed[i] == expected);
+  }
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
 ZC_TEST("linkExecutable rejects an input whose inode is swapped after verification") {
-  // The plan records the digest of the original app.o. After the plan is built,
-  // the app.o pathname is repointed at a DIFFERENT inode with different bytes
+  // The plan records the digest of the original app0.o. After the plan is built,
+  // the app0.o pathname is repointed at a DIFFERENT inode with different bytes
   // (remove + create). The snapshot re-verification must reject it as an
   // input-revision mismatch and never spawn the driver.
   auto fs = zc::newDiskFilesystem();
@@ -556,8 +717,8 @@ ZC_TEST("linkExecutable rejects an input whose inode is swapped after verificati
   Scenario scenario;
   auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
 
-  dir->remove(zc::Path("app.o"_zc));
-  writeFile(*dir, "app.o"_zc, bytesOf("SWAPPED-OBJECT-BYTES-DIFFERENT"_zc).asPtr(), false);
+  dir->remove(zc::Path("app0.o"_zc));
+  writeFile(*dir, "app0.o"_zc, bytesOf("SWAPPED-OBJECT-BYTES-DIFFERENT"_zc).asPtr(), false);
 
   auto result = linkAndExpectComplete(plan, *fs);
   ZC_EXPECT(!result.isVerified());
@@ -592,6 +753,93 @@ ZC_TEST("linkExecutable rejects a driver whose inode is swapped after verificati
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
 
+ZC_TEST("linkExecutable rejects a same-length byte change in every input role before spawning") {
+  // For each snapshot role - driver, crt object, user object, runtime object, and
+  // default library - repoint the source at a DIFFERENT inode with the SAME byte
+  // count but different bytes after the plan is built. Each case proves:
+  //   * role attribution: on disk, ONLY that role's source differs from its plan
+  //     bytes; the other four still match, so the gate that fires is that role's;
+  //   * it is a digest gate, not a size gate (same byte count);
+  //   * it fires before the driver is spawned (no ".started"/".args"/output);
+  //   * the private snapshot tree is cleaned (Complete, not RecoveryRequired);
+  //   * the failure is the complete RFC 0043 InputRevisionMismatch row (one
+  //     shared exact-row helper, so every field is checked identically).
+  struct RoleFile {
+    zc::StringPtr fileName;
+    bool executable;
+  };
+  const RoleFile roleFiles[] = {
+      {"ld"_zc, true},     {"crt1.o"_zc, false}, {"app0.o"_zc, false},
+      {"rt0.o"_zc, false}, {"libc.a"_zc, false},
+  };
+
+  for (const RoleFile& mutatedRole : roleFiles) {
+    auto fs = zc::newDiskFilesystem();
+    zc::String base = tempDirPath();
+    auto dir = openDir(*fs, base);
+    Scenario scenario;
+    auto plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+
+    // The plan-recorded pristine bytes for each role file, so on-disk isolation
+    // can be checked against what the plan digested.
+    auto recordedBytesFor = [&](zc::StringPtr name) -> zc::ArrayPtr<const zc::byte> {
+      if (name == "ld"_zc) { return scenario.driverBytes.asPtr(); }
+      if (name == "crt1.o"_zc) { return scenario.crtBytes.asPtr(); }
+      if (name == "app0.o"_zc) { return scenario.object0Bytes.asPtr(); }
+      if (name == "rt0.o"_zc) { return scenario.runtime0Bytes.asPtr(); }
+      if (name == "libc.a"_zc) { return scenario.libBytes.asPtr(); }
+      ZC_UNREACHABLE;
+    };
+    auto bytesEqual = [](zc::ArrayPtr<const zc::byte> a, zc::ArrayPtr<const zc::byte> b) {
+      if (a.size() != b.size()) { return false; }
+      for (size_t i = 0; i < a.size(); ++i) {
+        if (a[i] != b[i]) { return false; }
+      }
+      return true;
+    };
+
+    // Mutate exactly one role: same length, one byte flipped, fresh inode.
+    auto original = dir->openFile(zc::Path(zc::heapString(mutatedRole.fileName)))->readAllBytes();
+    auto mutated = zc::heapArray<zc::byte>(original.size());
+    for (size_t i = 0; i < original.size(); ++i) { mutated[i] = original[i]; }
+    ZC_REQUIRE(mutated.size() > 0);
+    mutated[0] = mutated[0] == zc::byte{0} ? zc::byte{1} : zc::byte{0};
+    dir->remove(zc::Path(zc::heapString(mutatedRole.fileName)));
+    writeFile(*dir, mutatedRole.fileName, mutated.asPtr(), mutatedRole.executable);
+
+    // Role attribution: on disk, ONLY the mutated role differs from the bytes the
+    // plan recorded (same length), so this role's snapshot gate is the sole
+    // possible trigger; every other role still matches its recorded bytes.
+    for (const RoleFile& role : roleFiles) {
+      auto onDisk = dir->openFile(zc::Path(zc::heapString(role.fileName)))->readAllBytes();
+      bool matchesRecorded = bytesEqual(onDisk.asPtr(), recordedBytesFor(role.fileName));
+      if (role.fileName == mutatedRole.fileName) {
+        ZC_EXPECT(onDisk.size() == recordedBytesFor(role.fileName).size());  // same length
+        ZC_EXPECT(!matchesRecorded);                                         // but different bytes
+      } else {
+        ZC_EXPECT(matchesRecorded);  // untouched
+      }
+    }
+
+    auto result = linkAndExpectComplete(plan, *fs);
+    ZC_EXPECT(!result.isVerified());
+    // Same-length change caught by the digest: InputRevisionMismatch (an
+    // IrInvariantRejected row). Full RFC row via the shared helper.
+    expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::IrInvariantRejected,
+                              IrFailureKind::InputRevisionMismatch);
+
+    // The driver was never spawned: no ".started" marker, no ".args", no output.
+    ZC_EXPECT(!dir->exists(zc::Path("app.started"_zc)));
+    ZC_EXPECT(!dir->exists(zc::Path("app.args"_zc)));
+    ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+    // The private snapshot tree was cleaned (Complete, asserted by
+    // linkAndExpectComplete, not RecoveryRequired).
+    ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+    fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+  }
+}
+
 ZC_TEST("linkExecutable rejects a pre-existing stale output before snapshotting") {
   auto fs = zc::newDiskFilesystem();
   zc::String base = tempDirPath();
@@ -602,6 +850,10 @@ ZC_TEST("linkExecutable rejects a pre-existing stale output before snapshotting"
 
   auto result = linkAndExpectComplete(plan, *fs);
   ZC_EXPECT(!result.isVerified());
+  // A pre-existing output is InvalidFact, an IrInvariantRejected row (the plan's
+  // output-path fact cannot be honored). Full RFC row via the shared helper.
+  expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::IrInvariantRejected,
+                            IrFailureKind::InvalidFact);
   // The stale file is left untouched (we reject, we do not clobber it).
   ZC_EXPECT(dir->openFile(zc::Path("app"_zc))->readAllText() == "stale"_zc);
 
@@ -618,7 +870,9 @@ ZC_TEST("linkExecutable cleans partial output when the driver exits nonzero") {
   auto result = linkAndExpectComplete(plan, *fs);
   ZC_EXPECT(!result.isVerified());
   // A nonzero exit is CapabilityRejected: OutputCreationFailed per RFC 0043.
-  ZC_EXPECT(result.isCapabilityRejected());
+  // Full RFC row via the shared helper.
+  expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::CapabilityRejected,
+                            IrFailureKind::OutputCreationFailed);
   // The partial output the failing driver wrote is removed.
   ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
   // The private snapshot tree is also removed.
@@ -637,7 +891,9 @@ ZC_TEST("linkExecutable reports a missing output on a clean exit") {
   auto result = linkAndExpectComplete(plan, *fs);
   ZC_EXPECT(!result.isVerified());
   // A missing output after a clean exit is CapabilityRejected: OutputCreationFailed.
-  ZC_EXPECT(result.isCapabilityRejected());
+  // Full RFC row via the shared helper.
+  expectLinkerInvocationRow(soleFailureFact(result), IrRejectedBranch::CapabilityRejected,
+                            IrFailureKind::OutputCreationFailed);
 
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
@@ -819,8 +1075,8 @@ ZC_TEST("PreparedLinkInputs::prepare reports RecoveryRequired when rollback clea
   // Swap the object inode so prepare rejects, AND force the rollback content
   // removal to fail: the prepare outcome must be RecoveryRequired at the
   // PrepareRollback stage with the rejection primary preserved.
-  dir->remove(zc::Path("app.o"_zc));
-  writeFile(*dir, "app.o"_zc, bytesOf("SWAPPED-OBJECT-BYTES-DIFFERENT"_zc).asPtr(), false);
+  dir->remove(zc::Path("app0.o"_zc));
+  writeFile(*dir, "app0.o"_zc, bytesOf("SWAPPED-OBJECT-BYTES-DIFFERENT"_zc).asPtr(), false);
 
   FaultScript script;
   script.kind = FaultKind::ContentRemove;

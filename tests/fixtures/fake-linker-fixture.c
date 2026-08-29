@@ -39,6 +39,13 @@
  *      originals) and that those snapshots held the expected bytes at exec time.
  *   3. Emulates the compile-time-selected outcome: write an ELF-magic output and
  *      exit 0, write a partial output then exit 3, or exit 0 writing no output.
+ *
+ * Before any of that, at the very entry it creates a sibling "<out>.started"
+ * marker. The test asserts this marker's ABSENCE to prove the driver was never
+ * spawned on the input-revision-mismatch paths: absence of "<out>.args" alone is
+ * insufficient, since a process that started but failed before writing args would
+ * also leave no ".args". The ".started" marker is the earliest possible spawn
+ * evidence.
  */
 
 #include <stdio.h>
@@ -67,7 +74,21 @@ enum {
   kExitBadEntryFlag = 43,
   kExitOutputOpenFailed = 44,
   kExitArgsOpenFailed = 45,
+  kExitStartedOpenFailed = 46,
 };
+
+/* Creates the empty "<path>.started" spawn-evidence marker. Returns 0 on
+ * success. Written as early as possible so its mere existence proves the driver
+ * process ran, independent of whether it got far enough to write ".args". */
+static int writeStartedMarker(const char* outputPath) {
+  char startedPath[4096];
+  int n = snprintf(startedPath, sizeof(startedPath), "%s.started", outputPath);
+  if (n <= 0 || (size_t)n >= sizeof(startedPath)) { return -1; }
+  FILE* marker = fopen(startedPath, "wb");
+  if (marker == NULL) { return -1; }
+  fclose(marker);
+  return 0;
+}
 
 /* Writes the four-byte ELF magic to `path`. Returns 0 on success. Only the
  * success variant links this. */
@@ -119,6 +140,11 @@ int main(int argc, char** argv) {
 
   const char* outputPath = argv[2];
   const char* entrySymbol = argv[4];
+
+  /* Earliest spawn evidence: create "<out>.started" before recording args or
+   * emulating the outcome. The test asserts this marker's absence to prove the
+   * driver was never spawned on input-revision-mismatch paths. */
+  if (writeStartedMarker(outputPath) != 0) { return kExitStartedOpenFailed; }
 
   /* Record the full invocation the driver saw, for the test to verify the argv
    * was rewritten to snapshot paths. Written as a sibling of the output. */
