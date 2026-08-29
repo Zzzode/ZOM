@@ -135,7 +135,13 @@ atomic".
   (next publish to the same target, `zomc` startup, or explicit repair), and the
   safe retain-vs-remove rule for an orphan (an orphan with no manifest is
   removable only by a transaction that can prove ownership or by an explicit
-  repair; it is never consumed in the meantime).
+  repair; it is never consumed in the meantime). Option B constraint: a leftover
+  `.zomlink-<token>` transaction root with NO durable journal (a crash before the
+  `Started` stage) has no ownership proof beyond its token name, so recovery MUST
+  retain it (explicit-repair-only) and MUST NOT auto-remove it. D1's owner-safe
+  recovery guarantee holds only from `Started` onward; the future `zomc` repair
+  command's acceptance criteria include surfacing these pre-`Started` roots for
+  operator action and never deleting one on token name alone.
 - **INV-8 Persistent owner proof after rename.** Once a token-named temporary is
   renamed to the public final `app`, the token is no longer in the filename, so
   "no manifest" alone does NOT authorise deleting that `app` (it could be a
@@ -245,91 +251,144 @@ discarded and nothing on the final path is touched (blocker 5).
 the transaction's persistent owner proof and is established as D1's FIRST durable
 action, before any final-directory manifest temporary exists (blocker 3). Its
 stage is a closed enum; the transaction advances it only by writing a fresh
-journal temporary and atomically committing it over the previous journal, never by
-mutating a journal in place (blocker 2 + the staged-journal refinement):
+**immutable per-stage record** and atomically installing it under a distinct
+stage-named path with `RENAME_NOREPLACE`, never by mutating or overwriting a
+prior record (blocker 3 — a single-path replace has no identity-conditional
+atomicity, so a competitor swapped between two stage commits would be clobbered):
 
 ```
 JournalStage =
-    Started            // owner claimed; RejectExisting + commit-point re-check done;
-                       //   records root identity, candidate output identity, temp path formulas
-  | ExecCommitted      // <root>/output-candidate has been renamed to `app`
-  | ManifestCommitted  // manifest temp has been renamed to `app.zom-artifact` (the commit point)
+    Started          // owner claimed; RejectExisting + step-1 pre-checks done.
+                     //   records root identity, candidate output identity,
+                     //   the manifest-temp path FORMULA, and the expected manifest digest.
+                     //   No manifest temp exists yet, so no manifest-temp identity is recorded.
+  | ManifestStaged   // manifest temp created + file-fsynced + final-dir-fsynced;
+                     //   records the manifest temp's captured exact identity AND the
+                     //   COMMIT-POINT re-derived output digest/size/StableFileIdentity
+                     //   (re-read from the candidate's same held handle just before this).
+                     //   Exec rename is permitted only after this stage is durable.
+  | ExecCommitted    // <root>/output-candidate has been renamed to `app`.
+  | ManifestCommitted// manifest temp has been renamed to `app.zom-artifact` (the commit point).
 ```
 
-Each advance is: write a new journal temp (`PRIVATE`, exclusive `O_NOFOLLOW`
-create, owner-token-derived name) → fsync it → atomically replace the current
-journal with it (`renameat2` replace) → fsync the journal directory. Only after
-that directory fsync returns is a stage "durably committed." The journal payload
-uses a domain-separated canonical codec with an explicit version and a checksum,
-and records: the candidate root exact identity, the output `StableFileIdentity`
-(dev/ino + link count) and digest/size from the commit-point re-check, both final
-paths, the manifest-temp path and its identity, the `LinkPlanId`, and the current
-`JournalStage`. A journal that is malformed, truncated, fails its checksum, or
-whose recorded identity does not match the on-disk object NEVER authorises a
-delete — recovery retains the object and reports it for explicit repair (blocker
-7).
+Each stage is a separate immutable record file `journal.<token>.<stage>` (an
+owner-token-derived name), created `PRIVATE` + exclusive `O_NOFOLLOW`, then
+`fsync(file)` → `renameat2(RENAME_NOREPLACE)` into place → `fsync(journal-dir)`.
+Only after that directory fsync returns is a stage "durably committed." No stage
+record is ever overwritten. Each record uses a domain-separated canonical codec
+with an explicit version and a checksum, and records the fields listed for its
+stage plus the owner token, both final paths, the `LinkPlanId`, its own
+`JournalStage`, and a **`previousJournalId`** — the canonical digest of the
+immediately-preceding stage record (empty for `Started`) — forming a hash chain.
+Recovery selects the highest stage that is complete, checksum-valid, AND
+whose `previousJournalId` chain links unbroken back to `Started`: it verifies the
+hash chain, not merely that the enum values / filenames are contiguous, so a
+mixed or partial generation of records can never be assembled into a forged
+"highest stage." A record that is malformed, truncated, fails its checksum, breaks
+the chain, or whose recorded identity does not match the on-disk object NEVER
+authorises a delete — recovery retains the object and reports it for explicit
+repair (blocker 7).
 
 **Canonical ordered commit algorithm.** Because a rename and its directory fsync
-are a compound step, the algorithm's durability points are the journal-stage
+are a compound step, the algorithm's durability points are the per-stage journal
 commits and the final-directory fsyncs, not a single step counter (blocker 1). D1
 performs:
 
-1. Verify RejectExisting for BOTH final paths with a no-follow `tryLstat`
-   (INV-1/INV-6) and run the commit-point re-check (INV-8): re-derive `digest`,
-   `size`, exact `StableFileIdentity`, regular-file shape, and `st_nlink == 1` from
-   the candidate's SAME held handle; run the manifest live-binding verification.
-   Any failure here rejects before any durable effect.
-2. Durably commit journal stage `Started` (write temp → fsync → replace → dir
-   fsync).
-3. Stage the manifest into a transaction-owned temporary in the final directory
-   and fsync it.
-4. Rename `<root>/output-candidate` → `app` using an exclusive
-   `renameat2(RENAME_NOREPLACE)` (or platform equivalent; a platform without an
-   exclusive no-replace rename fails closed) so a competitor that created `app`
-   after step 1 is never clobbered; fsync the final directory; then durably commit
-   journal stage `ExecCommitted`.
-5. Rename the manifest temp → `app.zom-artifact` using
-   `renameat2(RENAME_NOREPLACE)` (**the commit point**); fsync the final
-   directory; then durably commit journal stage `ManifestCommitted`.
-6. Cleanup, in this order: discard any residual manifest temp, then discard the
-   snapshot root via the candidate; ONLY after both succeed, delete the journal and
-   fsync the journal directory (blocker 2 — the journal is released last, so a
-   crash during cleanup still leaves the durable owner proof). If any cleanup step
-   fails, the journal is retained and the outcome carries a recovery obligation.
+1. Pre-checks (no durable effect yet): verify RejectExisting for BOTH final paths
+   with a no-follow `tryLstat` (INV-1/INV-6); run an initial commit-point read
+   (digest/size/exact `StableFileIdentity`/regular/`st_nlink == 1` from the
+   candidate's SAME held handle) and the manifest live-binding verification. Any
+   failure rejects before anything durable is written.
+2. Durably commit `Started` (record root identity, candidate output identity, the
+   manifest-temp path formula, and the expected manifest digest).
+3. Stage the manifest into a transaction-owned temporary in the final directory:
+   create it, `fsync` the file, `fsync` the final directory, then open it with a
+   no-follow read-only handle and capture its exact identity and digest from that
+   handle.
+4. Re-derive `digest`, `size`, exact `StableFileIdentity`, regular-file shape, and
+   `st_nlink == 1` from the candidate's SAME held handle AGAIN, and re-verify the
+   manifest live binding against these fresh values (blocker 4 — the step-1 read
+   does not substitute; the object could have changed between step 1 and here).
+   Durably commit `ManifestStaged` recording the manifest temp's exact
+   identity/digest and this commit-point output identity/digest/size.
+5. **Immediately before the executable rename**, after the `ManifestStaged`
+   journal-dir fsync has returned, do a final lightweight full re-check from the
+   candidate's held handle and the manifest temp's held handle: the output
+   identity/digest/size and the manifest temp identity/digest MUST still equal the
+   values recorded in `ManifestStaged`. If anything differs, ABORT (discard root +
+   journal chain; nothing on the final path touched) — D1 never renames bytes that
+   drifted from what the journal committed. Only on an exact match, rename
+   `<root>/output-candidate` → `app` with an exclusive `renameat2(RENAME_NOREPLACE)`
+   (a platform without an exclusive no-replace rename fails closed) so a competitor
+   that created `app` after step 1 is never clobbered; `fsync` the final directory;
+   durably commit `ExecCommitted`.
+6. Re-check the manifest temp's identity/digest through its held handle equals
+   `ManifestStaged` once more, then rename the manifest temp → `app.zom-artifact`
+   using `renameat2(RENAME_NOREPLACE)` (**the commit point**); `fsync` the final
+   directory; durably commit `ManifestCommitted`.
+7. Cleanup, in this order: discard any residual manifest temp, then discard the
+   snapshot root via the candidate; ONLY after both succeed, delete the journal
+   stage records (highest-to-lowest) and `fsync` the journal directory (blocker 2 —
+   the journal chain is released last, so a crash during cleanup still leaves a
+   durable owner proof). If any cleanup step fails, the journal chain is retained
+   and the outcome carries a recovery obligation.
 
-If the executable no-replace rename (step 4) loses to a competitor, D1 rolls back
-only its own transaction (discard root + journal) and touches neither the
+If the executable no-replace rename (step 5) loses to a competitor, D1 rolls back
+only its own transaction (discard root + journal chain) and touches neither the
 competitor's `app` nor the final manifest path. If the manifest no-replace rename
-(step 5) loses to a competitor, the transaction's own `app` is rolled back only
+(step 6) loses to a competitor, the transaction's own `app` is rolled back only
 when the journal + exact-identity match proves D1 created it; the competitor's
 manifest is never deleted (blocker 6).
 
-**INV-4 crash-recovery matrix (by last durably-committed `JournalStage` + actual
-final entries).** The recogniser decides committed-vs-orphan from disk alone —
-the durable journal stage plus what actually exists at the two final paths (INV-1:
-a published artifact requires a complete, verifying manifest) — never from an
-in-memory return value:
+**INV-4 crash-recovery matrix — a TOTAL function of (highest durable stage, actual
+final entries).** The recogniser decides from disk alone — the highest complete,
+checksum-valid, prior-chain-consistent stage plus what actually exists at the two
+final paths (INV-1: a published artifact requires a complete, verifying manifest) —
+never from an in-memory return value. Every combination not matched by a specific
+row below hits the catch-all (blocker 5):
 
-| Durable journal stage | Final-path entries | Verdict | Recovery action |
+| Highest durable stage | Final-path entries | Verdict | Recovery action |
 |---|---|---|---|
-| none | none | nothing happened | remove any token-owned temp + snapshot root; no final path touched |
-| `Started` | neither `app` nor manifest | not published | discard journal; remove token-owned manifest temp + snapshot root |
-| `Started` | `app` present, matches journal identity; no manifest | orphan executable | delete `app` (journal + exact-identity match), then journal + root; a non-matching `app` is a competitor — retain, report |
-| `ExecCommitted` | `app` present + matches; no manifest | orphan executable (exec rename was durable, crash before manifest commit) | same as above: identity-checked delete of `app`, then journal + root |
-| `ExecCommitted` | `app` + manifest both present | **ambiguous** (manifest rename may have landed before the stage commit) | `RecoveryRequired(PublicationRecoveryObligation)`; MUST NOT blind-delete; re-open applies INV-1 to decide |
-| `ManifestCommitted` | `app` + verifying manifest | published | discard residual temp + snapshot root, then delete journal; a cleanup failure reports a non-ambiguous obligation, never touching the committed pair |
-| `ManifestCommitted` | manifest missing/!verifying | competitor or external tampering | fail closed: retain, report for explicit repair; never delete a final entry that does not match the journal |
+| none (no valid chain) | leftover `.zomlink-<token>` root only | unknown ownership (token name is not proof) | **explicit-repair-only: NEVER auto-remove** (Option B — a pre-`Started` crash has no durable owner record; see below) |
+| `Started` | neither `app` nor manifest | not published, owner-proved | discard journal chain; remove token-owned manifest temp (if any) + snapshot root |
+| `Started` | `app` matches recorded candidate identity; no manifest | orphan executable | identity-checked delete of `app`, then journal chain + root; a non-matching `app` is a competitor → retain, report |
+| `ManifestStaged` | neither `app` nor manifest (temp may exist) | not published, owner-proved | discard manifest temp + snapshot root + journal chain |
+| `ManifestStaged` | `app` matches; no manifest | orphan executable (crash between exec rename and its ExecCommitted stage) | identity-checked delete of `app`, then temp + root + chain |
+| `ExecCommitted` | `app` matches; no manifest | orphan executable (definite: crash before manifest rename) | identity-checked delete of `app`, then temp + root + chain |
+| `ExecCommitted` | `app` matches + manifest present | **publishedness-ambiguous** (manifest rename may have landed before ManifestCommitted became durable) | `RecoveryRequired(PublicationRecoveryObligation)`; MUST NOT blind-delete; re-open applies INV-1 |
+| `ManifestCommitted` | `app` + verifying manifest, both match | published | discard residual temp + snapshot root, then delete journal chain; a cleanup failure reports a non-ambiguous obligation, never touching the committed pair |
+| `ManifestCommitted` | manifest missing / does not verify / identity mismatch | competitor or external tampering | fail closed: retain, report for explicit repair |
+| **any other combination** (stage/entry mismatch, identity mismatch, broken or forked journal chain) | — | undecidable | **fail closed: retain ALL, report for explicit repair; NEVER infer a delete** |
 
-The two ambiguous rows are exactly the windows where a rename may have landed but
-the following journal-stage/dir fsync did not durably record it (INV-5): D1
-returns `RecoveryRequired(PublicationRecoveryObligation)` and never deletes a
-possibly-committed pair. Every other row is decidable from disk alone.
+Two rows correspond to the rename recovery windows where a rename may have landed
+but its following stage commit did not become durable. Only ONE of them is
+*publishedness*-ambiguous: `ExecCommitted` + both entries present (the manifest
+rename may or may not be durable). The `app`-only rows are NOT ambiguous — they
+are a definite, unpublished orphan (INV-1: no manifest means not published); they
+are resolved by an identity-checked delete, not a `RecoveryRequired` outcome
+(blocker 5 wording fix).
+
+**Option B — pre-`Started` roots are explicit-repair-only.** A crash at the D1
+entry, during the pre-checks, or during the initial commit-point read leaves the
+D4 `.zomlink-<token>` root on disk with NO durable journal, so recovery has only a
+token name and cannot prove ownership. Per the repository's fail-closed discipline
+D1 therefore does NOT auto-remove such a root: the `none` matrix row retains it and
+routes it to explicit repair (the same recovery entry point as INV-7). D1's
+owner-safe recovery guarantee holds from `Started` onward. The rejected
+alternative (Option A) is to make D4 durably write a root-owner record at
+candidate creation so even a pre-`Started` crash is auto-recoverable; it is
+rejected here because it would reopen the already-landed, already-reviewed D4
+slice for a marginal recoverability gain, and a leftover pre-`Started` tree is a
+bounded, explicitly-repairable artifact under the output directory. If a future
+requirement makes unattended pre-`Started` cleanup necessary, it lands as its own
+D4 slice, not as a silent token-name delete here.
 
 The RFC 0043 goal line "Publish an executable and its manifest atomically, or
 publish neither" is reworded to: **manifest-committed recoverable publication —
 logical visibility is atomic (nothing is a published artifact until the manifest
 commits and verifies), while the physical file set may contain a crash orphan
 that is never recognised as an artifact.**
+
 
 
 ### D2. VerifiedSysroot capability
