@@ -1,17 +1,18 @@
 # Link Publication Transaction and Capability Shapes (RFC 0043 refinement, PARTIALLY IMPLEMENTED)
 
 Status: PARTIALLY IMPLEMENTED
-  - Landed: D2 (VerifiedSysroot) and the D3 / D3b input-open, exec-by-descriptor,
-    and transaction-root snapshot foundation.
-  - Proposed, pending implementation: D4, D1, D5.
+  - Landed: D2 (VerifiedSysroot); the D3 / D3b input-open, exec-by-descriptor,
+    and transaction-root snapshot foundation; and D4 (transaction-owned output
+    candidate).
+  - Proposed, pending implementation: D1, D5.
 Owner: ir-backend
 Feeds: RFC 0043 "Platform Link And Executable Publication"
 
-> This note is part contract, part landed design. The D2 sysroot capability and
-> the D3/D3b input-snapshot + exec-by-descriptor foundation have landed across
-> several reviewed commits; D4 (transaction-owned output candidate), D1
-> (publication transaction), and D5 (consuming operation) remain proposed and are
-> not implemented. It closes the design questions a 2026-08-29 adversarial review
+> This note is part contract, part landed design. The D2 sysroot capability, the
+> D3/D3b input-snapshot + exec-by-descriptor foundation, and D4 (transaction-owned
+> output candidate) have landed across several reviewed commits; D1 (publication
+> transaction) and D5 (consuming operation) remain proposed and are not
+> implemented. It closes the design questions a 2026-08-29 adversarial review
 > raised against the first link-driver implementation before the remaining
 > slices land. Per `docs/design/ir/README.md` authority order, an approved shape
 > lands in RFC 0043 first and only then in code; this file is the reviewable
@@ -259,12 +260,12 @@ same output object before publishing.
 transaction-root ownership into a move-only `LinkedOutputCandidate` and returns
 it. The candidate — not an orphan on disk — is the sole legitimate owner of the
 still-live root. `linkExecutable` also **consumes the plan**: it takes the
-`VerifiedLinkPlan` by move so the same plan cannot be replayed into a second
-concurrent link, and so D5's manifest step needs no second external context
-assembly. Its signature becomes:
+`VerifiedLinkPlan` **by value** so the caller must move a move-only plan in and
+cannot reuse it after the call on any branch (success or rejection), and so D5's
+manifest step needs no second external context assembly. Its signature is:
 
 ```
-linkExecutable(Moved<VerifiedLinkPlan>, filesystem)
+linkExecutable(VerifiedLinkPlan plan /* by value: caller-moved */, filesystem)
     -> CleanupAwareOutcome<LinkedOutputCandidate>
 ```
 
@@ -286,12 +287,14 @@ and could not complete.
   file identity as a typed `StableFileIdentity` — the `(dev, ino)` and link count
   captured from that handle (if the identity cannot be captured, D4 fails closed).
   D1's INV-8 journal records this stable file identity so a recovery step can
-  prove the published final file is exactly the object this candidate staged. The
-  candidate may cache the `digest`/`size` computed from the handle as an
-  inspection snapshot, but it does not hold the bytes as a second, drift-able
-  authority; a consumer that needs the bytes reads them through the handle, and
-  D5 re-computes the digest/size, exact identity, and link count from the same
-  output object before publishing.
+  prove the published final file is exactly the object this candidate staged. D4
+  also computes the output's SHA-256 `digest` and `size` from that same handle
+  (reading through it, cross-checking the read length against the captured size)
+  and stores them on the candidate as an **inspection snapshot** — not a second,
+  drift-able byte authority: a consumer that needs the bytes reads them through
+  the handle, and D1/D5 re-compute the digest/size, exact identity, and link count
+  from the same output object at their own checkpoints rather than trusting this
+  snapshot.
 - its consume/cleanup state, so it cannot be consumed twice.
 
 The name `VerifiedLinkedExecutable` is removed. `LinkedOutputCandidate` is
@@ -403,15 +406,27 @@ than overloading a rejection, and RFC 0043 records the outcome type.
 
 1. **[landed]** `zc` stable-exec-FD primitive (D3 mechanism) + `VerifiedSysroot`
    capability (D2), plus the D3b input-snapshot transaction root.
-2. **[pending]** Fresh transaction-owned output candidate (D4): `-o` into the
-   transaction root, success transfers root ownership into `LinkedOutputCandidate`,
-   failure cleans only the root, and `VerifiedLinkedExecutable` is renamed.
-3. **[partly landed / pending]** `linkExecutable` already opens and re-verifies
-   all input handles and `execveat`s the driver handle (D3b); the remaining D4
-   change is writing to the transaction-root output candidate and returning the
-   candidate.
+2. **[landed]** Fresh transaction-owned output candidate (D4, `3764b2cb` +
+   `8faec9da`): `-o` writes `<root>/output-candidate` in the transaction root
+   (never a public final path); `linkExecutable` takes the plan by value and, on
+   success, transfers root ownership into `LinkedOutputCandidate`; failure cleans
+   only the root through `discardAndCleanup`; `VerifiedLinkedExecutable` was
+   replaced by `LinkedOutputCandidate`. The candidate captures - all from one
+   no-follow (`O_NOFOLLOW`) read-only handle - the output's exact
+   `StableFileIdentity` (`dev`/`ino` + link count), byte count, and SHA-256
+   `outputDigest`, and enforces the D4-stage invariant (regular, non-empty,
+   `st_nlink == 1`); the driver runs with the transaction root as its working
+   directory. These are structural invariants only; format/architecture/symbol
+   checks are D5.
+3. **[landed]** `linkExecutable` opens and re-verifies all input handles and
+   `execveat`s the driver handle (D3b), writes the transaction-root output
+   candidate, and returns the candidate (D4).
 4. **[pending]** Publication transaction with manifest-last commit + owner-token
-   rollback (D1), replacing the best-effort `tryRemove` path.
+   rollback (D1), replacing the best-effort `tryRemove` path. At the commit point
+   D1 MUST re-derive the output's `digest`, `size`, `dev`/`ino`, and `st_nlink == 1`
+   from the candidate's SAME held handle immediately before the journal write and
+   rename; the D4-captured `outputDigest`/identity is an inspection snapshot, not
+   the final commit-point proof (see INV-8).
 5. **[pending]** The consuming `linkAndPublish` operation wiring 1-4 with the
    executable inspector and manifest (D5).
 

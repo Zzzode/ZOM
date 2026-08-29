@@ -286,8 +286,10 @@ TreeCleanupOutcome removeSnapshotTree(
   auto exception = zc::runCatchingExceptions([&]() {
     // Remove the tree's contents through the held snapshot directory capability,
     // unconditionally (before any identity decision), so even an identity-
-    // unavailable transaction frees its snapshot files. The snapshot tree in this
-    // slice is a flat set of files (no subdirectories).
+    // unavailable transaction frees its snapshot files. The tree's entries may
+    // include files, symlinks, or directories (the D4 output-candidate can be any
+    // of these before the structural check rejects it), all removed through the
+    // held capability; `tryRemove` recurses into a subdirectory as needed.
     for (const zc::String& name : snapshotDir.listNames()) {
       if (!snapshotDir.tryRemove(zc::Path(name))) {
         outcome = cleanupFailed(CleanupFailureKind::ContentRemovalFailed);

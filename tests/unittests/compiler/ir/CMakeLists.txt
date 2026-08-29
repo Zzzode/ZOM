@@ -3,12 +3,14 @@ add_ztest_unit_tests_from_directory(
   LIBRARIES frontend
 )
 
-# RFC 0043 D3b: the invoke-linker test execs the linker driver by a snapshot file
-# descriptor (execveat AT_EMPTY_PATH), which cannot run a `#!` script, so the fake
-# driver must be a real compiled ELF. The plan carries no argument surface, so the
-# driver's behavior is selected at compile time (-DZOM_FAKE_LINKER_MODE): build
-# three ELF variants (success / partial / no-output) and pass each path to the
-# test. Gated on Linux, where the exec-by-descriptor path exists.
+# RFC 0043 D3b/D4: the invoke-linker test execs the linker driver by a snapshot
+# file descriptor (execveat AT_EMPTY_PATH), which cannot run a `#!` script, so the
+# fake driver must be a real compiled ELF. The plan carries no argument surface, so
+# the driver's behavior is selected at compile time (-DZOM_FAKE_LINKER_MODE): build
+# seven ELF variants and pass each path to the test. Modes 0-2 cover the link
+# outcome (success / partial / no-output); modes 3-6 exercise the D4 output
+# structural invariants (symlink / empty / directory / hardlink). Gated on Linux,
+# where the exec-by-descriptor path exists.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   enable_language(C)
 
