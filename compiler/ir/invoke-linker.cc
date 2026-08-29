@@ -14,10 +14,11 @@
 
 #include "compiler/ir/invoke-linker.h"
 
+#include <unistd.h>
+
 #include "compiler/identity/crypto/sha256.h"
 #include "compiler/identity/identity-invariant.h"
 #include "compiler/identity/semantic/context-fingerprint.h"
-#include "compiler/ir/linker-invocation.h"
 #include "zc/core/debug.h"
 #include "zc/core/subprocess.h"
 #include "zc/core/vector.h"
@@ -67,9 +68,10 @@ private:
 // CapabilityRejected row (a spawn failure, nonzero exit, or missing/empty
 // output - the requested link output could not be produced) and the invariant
 // kinds (InputRevisionMismatch / InvalidFact / CanonicalCodecMismatch) are
-// IrInvariantRejected rows.
-IrOperationResult<VerifiedLinkedExecutable> rejectLinkerInvocation(IrFailureKind kind,
-                                                                   uint32_t ordinal) {
+// IrInvariantRejected rows. The failure fact is independent of the verified
+// value type, so the rejection is produced for any `IrOperationResult<T>`.
+template <typename T>
+IrOperationResult<T> rejectLinkerInvocation(IrFailureKind kind, uint32_t ordinal) {
   UnusedIdentityResolver resolver;
   auto fallback = IrFailureFallbackContext::from(
       IrFailurePhase::LinkerInvocation,
@@ -95,16 +97,14 @@ IrOperationResult<VerifiedLinkedExecutable> rejectLinkerInvocation(IrFailureKind
       facts.add(zc::mv(admitted).get<AcceptedIrFailureDescriptor>().fact);
       auto sorted = SortedCapabilityFailureFacts::from(zc::mv(facts));
       ZC_IF_SOME(values, sorted) {
-        return IrOperationResult<VerifiedLinkedExecutable>::capabilityRejected(zc::mv(values));
+        return IrOperationResult<T>::capabilityRejected(zc::mv(values));
       }
       ZC_UNREACHABLE
     }
     zc::Vector<IrFailureFact> facts;
     facts.add(zc::mv(admitted).get<AcceptedIrFailureDescriptor>().fact);
     auto sorted = SortedIrInvariantFailureFacts::from(zc::mv(facts));
-    ZC_IF_SOME(values, sorted) {
-      return IrOperationResult<VerifiedLinkedExecutable>::irInvariantRejected(zc::mv(values));
-    }
+    ZC_IF_SOME(values, sorted) { return IrOperationResult<T>::irInvariantRejected(zc::mv(values)); }
   }
   ZC_UNREACHABLE
 }
@@ -119,86 +119,341 @@ zc::Maybe<zc::Array<zc::byte>> tryReadAbsolute(const zc::ReadableDirectory& root
   return zc::none;
 }
 
+// Interprets a byte sequence as one argv token, or none when empty or carrying
+// an interior NUL (which cannot survive a C-string argv token).
+zc::Maybe<zc::String> bytesToArgument(zc::ArrayPtr<const uint8_t> bytes) {
+  if (bytes.size() == 0) { return zc::none; }
+  for (uint8_t b : bytes) {
+    if (b == 0) { return zc::none; }
+  }
+  return zc::heapString(reinterpret_cast<const char*>(bytes.begin()), bytes.size());
+}
+
+// Returns the parent directory of a normalized absolute file path, or none when
+// the path is not a normalized absolute path. "/name" yields "/". The path is
+// treated as an opaque POSIX string, matching the link-plan path contract.
+zc::Maybe<zc::String> parentDirectory(zc::StringPtr path) {
+  if (path.size() == 0 || path[0] != '/') { return zc::none; }
+  size_t lastSlash = 0;
+  bool found = false;
+  for (size_t index = 1; index < path.size(); ++index) {
+    if (path[index] == '/') {
+      lastSlash = index;
+      found = true;
+    }
+  }
+  if (!found) { return zc::str("/"); }
+  return zc::heapString(path.cStr(), lastSlash);
+}
+
+// Joins an absolute directory path with a child name, collapsing the root case
+// so "/" + "x" is "/x" rather than "//x".
+zc::String joinPath(zc::StringPtr directory, zc::StringPtr child) {
+  if (directory == "/"_zc) { return zc::str("/", child); }
+  return zc::str(directory, "/", child);
+}
+
+// Lowercase hex of the first `count` bytes of a digest, for a collision-resistant
+// private-directory name derived from the plan identity.
+zc::String hexPrefix(zc::ArrayPtr<const uint8_t> bytes, size_t count) {
+  static constexpr char kHex[] = "0123456789abcdef";
+  size_t take = zc::min(count, bytes.size());
+  auto chars = zc::heapArray<char>(take * 2);
+  for (size_t index = 0; index < take; ++index) {
+    chars[index * 2] = kHex[(bytes[index] >> 4) & 0x0f];
+    chars[index * 2 + 1] = kHex[bytes[index] & 0x0f];
+  }
+  return zc::heapString(chars.begin(), chars.size());
+}
+
+// One input to snapshot: its source absolute path, the plan's recorded digest
+// and byte count, the snapshot file name, and whether it must be executable.
+struct SnapshotPlan {
+  zc::String sourcePath;
+  identity::Sha256Digest digest;
+  uint64_t byteCount;
+  zc::String snapshotName;
+  zc::String snapshotPath;  // absolute path of the snapshot copy
+  bool executable;
+};
+
+// Verifies `bytes` against a recorded digest and byte count.
+bool bytesMatch(zc::ArrayPtr<const zc::byte> bytes, const identity::Sha256Digest& digest,
+                uint64_t byteCount) {
+  if (bytes.size() != byteCount) { return false; }
+  zc::Maybe<identity::Sha256Digest> computed = identity::sha256(bytes.asBytes());
+  ZC_IF_SOME(value, computed) { return value == digest; }
+  return false;
+}
+
 }  // namespace
+
+// =======================================================================================
+// PreparedLinkInputs
+
+struct PreparedLinkInputs::Impl {
+  // A clone of the filesystem root, kept so the destructor can remove the
+  // private snapshot tree independently of the caller's root handle.
+  zc::Own<const zc::Directory> rootHandle;
+  // The private snapshot directory path relative to the root (for removal).
+  zc::String snapshotRelPath;
+  // The driver snapshot re-opened read-only: its descriptor is the exec target.
+  // Kept alive so the borrowed descriptor stays valid across the spawn. There is
+  // deliberately no writable alias to the same object.
+  zc::Own<const zc::ReadableFile> driverSnapshot;
+  zc::String program;
+  zc::Array<zc::String> argvValues;
+  zc::String workingDirectory;
+  zc::Array<zc::String> environmentValues;
+};
+
+PreparedLinkInputs::PreparedLinkInputs(zc::Own<Impl> implParam) noexcept
+    : impl(zc::mv(implParam)) {}
+
+PreparedLinkInputs::~PreparedLinkInputs() noexcept(false) {
+  // A moved-from object owns no tree.
+  if (impl.get() == nullptr) { return; }
+  // Remove the entire private snapshot tree. On the success path the caller keeps
+  // this object alive across the spawn, so removal happens only after the linker
+  // process has been awaited; on every failure path the tree is removed here too.
+  impl->rootHandle->tryRemove(zc::Path::parse(impl->snapshotRelPath));
+}
+
+int PreparedLinkInputs::driverDescriptor() const {
+  ZC_IF_SOME(fd, impl->driverSnapshot->getFd()) { return fd; }
+  ZC_IREQUIRE(false, "PreparedLinkInputs driver snapshot must expose a descriptor");
+  ZC_UNREACHABLE
+}
+
+zc::StringPtr PreparedLinkInputs::program() const noexcept { return impl->program; }
+zc::ArrayPtr<const zc::String> PreparedLinkInputs::argv() const noexcept {
+  return impl->argvValues.asPtr();
+}
+zc::StringPtr PreparedLinkInputs::workingDirectory() const noexcept {
+  return impl->workingDirectory;
+}
+zc::ArrayPtr<const zc::String> PreparedLinkInputs::environment() const noexcept {
+  return impl->environmentValues.asPtr();
+}
+
+IrOperationResult<PreparedLinkInputs> PreparedLinkInputs::prepare(
+    const VerifiedLinkPlan& plan, const zc::Directory& filesystemRoot) {
+  const ToolchainClosureRecord& closure = plan.toolchainClosure();
+
+  // The entry symbol and output parent are required to build the invocation.
+  zc::Maybe<zc::String> entryArgument = bytesToArgument(plan.entrySymbol());
+  if (entryArgument == zc::none) {
+    return rejectLinkerInvocation<PreparedLinkInputs>(IrFailureKind::InvalidFact, 0);
+  }
+  zc::StringPtr outputPath = plan.outputPath();
+  zc::Maybe<zc::String> outputParent = parentDirectory(outputPath);
+  if (outputParent == zc::none) {
+    return rejectLinkerInvocation<PreparedLinkInputs>(IrFailureKind::InvalidFact, 1);
+  }
+  zc::String parent = ZC_REQUIRE_NONNULL(zc::mv(outputParent));
+
+  // Enumerate every input in RFC 0043 canonical order with a snapshot name
+  // derived from its role and canonical index (never a source basename, which
+  // could collide across distinct source paths). The driver is snapshotted too;
+  // it alone is executable and is the exec target.
+  zc::String snapshotDirName = zc::str(".zomlink-", static_cast<uint64_t>(::getpid()), "-",
+                                       hexPrefix(plan.id().digest().bytes(), 8));
+  zc::String snapshotDirAbs = joinPath(parent, snapshotDirName);
+
+  auto entry = [&](zc::StringPtr sourcePath, const identity::Sha256Digest& digest,
+                   uint64_t byteCount, zc::String&& name, bool executable) {
+    zc::String snapshotPath = joinPath(snapshotDirAbs, name);
+    return SnapshotPlan{zc::str(sourcePath),  digest,    byteCount, zc::mv(name),
+                        zc::mv(snapshotPath), executable};
+  };
+
+  zc::Vector<SnapshotPlan> driverPlan;
+  driverPlan.add(entry(closure.linkerPath(), closure.linkerDigest(), closure.linkerByteCount(),
+                       zc::str("driver"), true));
+
+  // Ordered non-driver inputs: closure CRT objects, user objects, runtime
+  // objects, then closure default libraries.
+  zc::Vector<SnapshotPlan> orderedInputs;
+  {
+    size_t index = 0;
+    for (const LinkInputRecord& record : closure.crtObjects()) {
+      orderedInputs.add(entry(record.path(), record.digest(), record.byteCount(),
+                              zc::str("crt-", index++), false));
+    }
+    index = 0;
+    for (const LinkInputRecord& record : plan.objectRecords()) {
+      orderedInputs.add(entry(record.path(), record.digest(), record.byteCount(),
+                              zc::str("obj-", index++), false));
+    }
+    index = 0;
+    for (const LinkInputRecord& record : plan.runtimeRecords()) {
+      orderedInputs.add(entry(record.path(), record.digest(), record.byteCount(),
+                              zc::str("rt-", index++), false));
+    }
+    index = 0;
+    for (const LinkInputRecord& record : closure.defaultLibraries()) {
+      orderedInputs.add(entry(record.path(), record.digest(), record.byteCount(),
+                              zc::str("lib-", index++), false));
+    }
+  }
+
+  // Create a fresh private snapshot directory. Remove any crash leftover of the
+  // exact same name first so the directory is guaranteed to start empty.
+  zc::String snapshotRelPath = zc::heapString(snapshotDirAbs.slice(1));
+  filesystemRoot.tryRemove(zc::Path::parse(snapshotRelPath));
+  zc::Own<const zc::Directory> snapshotDir = filesystemRoot.openSubdir(
+      zc::Path::parse(snapshotRelPath),
+      zc::WriteMode::CREATE | zc::WriteMode::MODIFY | zc::WriteMode::CREATE_PARENT);
+
+  // A cleanup helper that removes the private tree before returning a rejection.
+  auto fail = [&](IrFailureKind kind, uint32_t ordinal) -> IrOperationResult<PreparedLinkInputs> {
+    filesystemRoot.tryRemove(zc::Path::parse(snapshotRelPath));
+    return rejectLinkerInvocation<PreparedLinkInputs>(kind, ordinal);
+  };
+
+  // Pass 1: read each source, verify it against the plan, and write the snapshot.
+  // A missing, resized, or re-digested source is an input-revision mismatch.
+  auto snapshotOne = [&](const SnapshotPlan& item) -> bool {
+    zc::Maybe<zc::Array<zc::byte>> sourceBytes = tryReadAbsolute(filesystemRoot, item.sourcePath);
+    if (sourceBytes == zc::none) { return false; }
+    zc::Array<zc::byte> bytes = ZC_REQUIRE_NONNULL(zc::mv(sourceBytes));
+    if (!bytesMatch(bytes.asPtr(), item.digest, item.byteCount)) { return false; }
+    zc::WriteMode mode = zc::WriteMode::CREATE | zc::WriteMode::MODIFY;
+    if (item.executable) { mode = mode | zc::WriteMode::EXECUTABLE; }
+    snapshotDir->openFile(zc::Path::parse(item.snapshotName), mode)->writeAll(bytes.asPtr());
+    return true;
+  };
+  for (const SnapshotPlan& item : driverPlan) {
+    if (!snapshotOne(item)) { return fail(IrFailureKind::InputRevisionMismatch, 2); }
+  }
+  for (const SnapshotPlan& item : orderedInputs) {
+    if (!snapshotOne(item)) { return fail(IrFailureKind::InputRevisionMismatch, 3); }
+  }
+
+  // Pass 2: re-verify every snapshot copy from its own handle, proving the bytes
+  // written are the bytes the plan proved. The write handles from pass 1 have
+  // already been dropped, so these read-only opens hold no writable alias.
+  auto reverifyOne = [&](const SnapshotPlan& item) -> bool {
+    zc::Maybe<zc::Own<const zc::ReadableFile>> file =
+        snapshotDir->tryOpenFile(zc::Path::parse(item.snapshotName));
+    if (file == zc::none) { return false; }
+    zc::Array<zc::byte> bytes = ZC_REQUIRE_NONNULL(zc::mv(file))->readAllBytes();
+    return bytesMatch(bytes.asPtr(), item.digest, item.byteCount);
+  };
+  for (const SnapshotPlan& item : driverPlan) {
+    if (!reverifyOne(item)) { return fail(IrFailureKind::InputRevisionMismatch, 4); }
+  }
+  for (const SnapshotPlan& item : orderedInputs) {
+    if (!reverifyOne(item)) { return fail(IrFailureKind::InputRevisionMismatch, 5); }
+  }
+
+  // Open the driver snapshot read-only for execution by descriptor. A root that
+  // exposes no real descriptor (an in-memory filesystem) fails closed here; the
+  // path is never re-resolved for exec.
+  zc::Own<const zc::ReadableFile> driverSnapshot =
+      snapshotDir->openFile(zc::Path::parse(driverPlan[0].snapshotName));
+  if (driverSnapshot->getFd() == zc::none) { return fail(IrFailureKind::OutputCreationFailed, 6); }
+
+  // Build the rewritten argument vector once, now that every input verified.
+  // Every input token names its snapshot path; the output is the real output
+  // path the driver produces (it is not an input and is not snapshotted).
+  zc::Vector<zc::String> argv;
+  argv.add(zc::str(driverPlan[0].snapshotPath));
+  argv.add(zc::str("-o"));
+  argv.add(zc::str(outputPath));
+  argv.add(zc::str("-e"));
+  argv.add(ZC_REQUIRE_NONNULL(zc::mv(entryArgument)));
+  for (const LinkerArgumentRecord& record : plan.argumentRecords()) {
+    argv.add(zc::str(record.argument()));
+  }
+  for (const SnapshotPlan& item : orderedInputs) { argv.add(zc::str(item.snapshotPath)); }
+
+  auto impl = zc::heap<Impl>();
+  impl->rootHandle = filesystemRoot.clone();
+  impl->snapshotRelPath = zc::mv(snapshotRelPath);
+  impl->driverSnapshot = zc::mv(driverSnapshot);
+  impl->program = zc::str(driverPlan[0].snapshotPath);
+  impl->argvValues = argv.releaseAsArray();
+  impl->workingDirectory = zc::mv(parent);
+  impl->environmentValues = zc::Array<zc::String>();
+  return IrOperationResult<PreparedLinkInputs>::verified(PreparedLinkInputs(zc::mv(impl)));
+}
+
+// =======================================================================================
+// linkExecutable
 
 IrOperationResult<VerifiedLinkedExecutable> linkExecutable(const VerifiedLinkPlan& plan,
                                                            const zc::Directory& filesystemRoot) {
-  const ToolchainClosureRecord& closure = plan.toolchainClosure();
-
-  // Step 1: re-verify the driver on disk still matches the closure's recorded
-  // digest and byte count. A file replaced after discovery (a swap window) is
-  // rejected as an input-revision mismatch before any process is spawned.
-  zc::Maybe<zc::Array<zc::byte>> driverBytes =
-      tryReadAbsolute(filesystemRoot, closure.linkerPath());
-  if (driverBytes == zc::none) {
-    return rejectLinkerInvocation(IrFailureKind::OutputCreationFailed, 0);
-  }
-  {
-    zc::Array<zc::byte> content = ZC_REQUIRE_NONNULL(zc::mv(driverBytes));
-    if (content.size() != closure.linkerByteCount()) {
-      return rejectLinkerInvocation(IrFailureKind::InputRevisionMismatch, 1);
-    }
-    zc::Maybe<identity::Sha256Digest> digest = identity::sha256(content.asBytes());
-    if (digest == zc::none) { return rejectLinkerInvocation(IrFailureKind::InvalidFact, 2); }
-    if (ZC_REQUIRE_NONNULL(digest) != closure.linkerDigest()) {
-      return rejectLinkerInvocation(IrFailureKind::InputRevisionMismatch, 3);
-    }
-  }
-
-  // Step 2: reject a pre-existing file at the plan's output path so a stale
-  // artifact can never be mistaken for this link's result.
+  // Reject a pre-existing file at the plan's output path so a stale artifact can
+  // never be mistaken for this link's result, before any snapshot work.
   zc::StringPtr outputPath = plan.outputPath();
   if (outputPath.size() < 2 || outputPath[0] != '/') {
-    return rejectLinkerInvocation(IrFailureKind::InvalidFact, 4);
+    return rejectLinkerInvocation<VerifiedLinkedExecutable>(IrFailureKind::InvalidFact, 10);
   }
   zc::Path outputRelative = zc::Path::parse(outputPath.slice(1));
   if (filesystemRoot.exists(outputRelative)) {
-    return rejectLinkerInvocation(IrFailureKind::InvalidFact, 5);
+    return rejectLinkerInvocation<VerifiedLinkedExecutable>(IrFailureKind::InvalidFact, 11);
   }
 
-  // Step 3: expand the plan to the canonical shell-free invocation and spawn.
-  zc::Maybe<LinkerInvocation> invocation = expandLinkPlanToInvocation(plan);
-  if (invocation == zc::none) { return rejectLinkerInvocation(IrFailureKind::InvalidFact, 6); }
-  const LinkerInvocation& value = ZC_REQUIRE_NONNULL(invocation);
+  // Snapshot and re-verify every input into a transaction-private tree, then hold
+  // the prepared capability alive across the spawn so the driver descriptor stays
+  // valid; its destructor removes the tree after the linker process is awaited.
+  IrOperationResult<PreparedLinkInputs> preparedResult =
+      PreparedLinkInputs::prepare(plan, filesystemRoot);
+  if (preparedResult.isCapabilityRejected()) {
+    return IrOperationResult<VerifiedLinkedExecutable>::capabilityRejected(
+        zc::mv(preparedResult).takeCapabilityFailures());
+  }
+  if (preparedResult.isIrInvariantRejected()) {
+    return IrOperationResult<VerifiedLinkedExecutable>::irInvariantRejected(
+        zc::mv(preparedResult).takeInvariantFailures());
+  }
+  ZC_IREQUIRE(preparedResult.isVerified(), "prepared link inputs must be verified or rejected");
+  PreparedLinkInputs prepared = zc::mv(preparedResult).takeVerified();
 
-  zc::SubprocessCommand command(value.program());
+  // Spawn the driver by its snapshot descriptor with an explicit empty
+  // environment. The rewritten argv points every input token at a snapshot path.
+  zc::SubprocessCommand command(prepared.program());
   command.envPolicy(zc::SubprocessEnvPolicy::Empty);
-  command.cwd(value.workingDirectory());
-  zc::ArrayPtr<const zc::String> argv = value.argv();
+  command.cwd(prepared.workingDirectory());
+  command.executableDescriptor(prepared.driverDescriptor());
+  zc::ArrayPtr<const zc::String> argv = prepared.argv();
   if (argv.size() >= 1) { command.argv0(argv[0]); }
   for (size_t index = 1; index < argv.size(); ++index) { command.arg(argv[index]); }
-  zc::ArrayPtr<const zc::String> environment = value.environment();
+  zc::ArrayPtr<const zc::String> environment = prepared.environment();
   for (size_t index = 0; index + 1 < environment.size(); index += 2) {
     command.env(environment[index], environment[index + 1]);
   }
 
   zc::SubprocessResult spawnResult = command.run();
 
-  // Step 4: classify the outcome; on any failure, remove partial output.
+  // Classify the outcome; on any failure, remove partial output.
   auto rejectWithCleanup = [&](IrFailureKind kind,
                                uint32_t ordinal) -> IrOperationResult<VerifiedLinkedExecutable> {
     filesystemRoot.tryRemove(outputRelative);
-    return rejectLinkerInvocation(kind, ordinal);
+    return rejectLinkerInvocation<VerifiedLinkedExecutable>(kind, ordinal);
   };
 
-  if (!spawnResult.spawned()) { return rejectWithCleanup(IrFailureKind::OutputCreationFailed, 7); }
+  if (!spawnResult.spawned()) { return rejectWithCleanup(IrFailureKind::OutputCreationFailed, 12); }
   const zc::SubprocessOutput& output = spawnResult.output();
   if (output.terminationKind == zc::SubprocessTerminationKind::Signaled) {
-    return rejectWithCleanup(IrFailureKind::OutputCreationFailed, 8);
+    return rejectWithCleanup(IrFailureKind::OutputCreationFailed, 13);
   }
-  if (output.code != 0) { return rejectWithCleanup(IrFailureKind::OutputCreationFailed, 9); }
+  if (output.code != 0) { return rejectWithCleanup(IrFailureKind::OutputCreationFailed, 14); }
 
-  // Step 5: the driver exited cleanly; the planned output must now exist. Read it
-  // back as the verified linked executable.
+  // The driver exited cleanly; the planned output must now exist. Read it back as
+  // the verified linked executable.
   zc::Maybe<zc::Array<zc::byte>> producedBytes = tryReadAbsolute(filesystemRoot, outputPath);
   if (producedBytes == zc::none) {
-    return rejectWithCleanup(IrFailureKind::OutputCreationFailed, 10);
+    return rejectWithCleanup(IrFailureKind::OutputCreationFailed, 15);
   }
   zc::Array<zc::byte> produced = ZC_REQUIRE_NONNULL(zc::mv(producedBytes));
   auto owned = zc::heapArray<uint8_t>(produced.size());
   for (size_t index = 0; index < produced.size(); ++index) { owned[index] = produced[index]; }
   return IrOperationResult<VerifiedLinkedExecutable>::verified(
       VerifiedLinkedExecutable(zc::mv(owned)));
+  // `prepared` is dropped here, removing the private snapshot tree after the
+  // linker process has been fully awaited.
 }
 
 }  // namespace zomlang::compiler::ir
