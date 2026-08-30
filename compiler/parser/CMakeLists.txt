@@ -12,8 +12,6 @@ set(PARSER_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/query/canonical-parsed-source.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/query/parse-source-query.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/query/parse-source-query-verifier.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/query/recoverable-parse-query.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/query/recoverable-parse-query-verifier.cc
 )
 
 add_library(parser STATIC ${PARSER_SRC})

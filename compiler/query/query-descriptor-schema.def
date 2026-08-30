@@ -85,5 +85,4 @@ ZOM_SEMANTIC(77, zomlang::compiler::driver::core_library_query::CorePreludeSurfa
 ZOM_SEMANTIC(78, zomlang::compiler::driver::core_library_query::CoreRoleAuthority, "CoreRoleAuthority", "zom.query.core-role-authority", Semantic, Retained, "compiler/driver/core/query")
 ZOM_CAPABILITY(79, zomlang::compiler::driver::core_library_query::MaterializeCoreAuthority, "MaterializeCoreAuthority", "zom.query.materialize-core-authority", Retained, FinalSealedSnapshot, None, "compiler/driver/core/query")
 ZOM_CAPABILITY(80, zomlang::compiler::driver::core_library_query::FinalizeCoreModuleInterface, "FinalizeCoreModuleInterface", "zom.query.finalize-core-module-interface", Retained, FinalSealedSnapshot, None, "compiler/driver/core/query")
-ZOM_CAPABILITY(81, zomlang::compiler::parser::RecoverableParseQuery, "RecoverableParseQuery", "zom.query.recoverable-parse", Retained, AnySnapshot, None, "compiler/parser/query/recoverable-parse-query")
 // clang-format on
