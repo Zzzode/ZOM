@@ -16,6 +16,7 @@
 
 #include "compiler/identity/identity-invariant.h"
 #include "compiler/identity/semantic/context-fingerprint.h"
+#include "compiler/ir/executable-inspector.h"
 #include "compiler/ir/executable-publication-internal.h"
 #include "compiler/ir/link-publication-internal.h"
 #include "zc/core/debug.h"
@@ -113,6 +114,24 @@ PublicationRejection rejectPublication(IrFailureKind kind, uint32_t ordinal) {
   facts.add(zc::mv(fact));
   return PublicationRejection::irInvariantRejected(
       ZC_REQUIRE_NONNULL(SortedIrInvariantFailureFacts::from(zc::mv(facts))));
+}
+
+template <typename Value>
+PublicationRejection remapPublicationRejection(IrOperationResult<Value>&& result) {
+  ZC_IREQUIRE(!result.isVerified(), "publication rejection remap requires a rejection");
+  if (result.isCapabilityRejected()) {
+    return PublicationRejection::capabilityRejected(zc::mv(result).takeCapabilityFailures());
+  }
+  if (result.isIdentityInvariantRejected()) {
+    return PublicationRejection::identityInvariantRejected(zc::mv(result).takeIdentityFailures());
+  }
+  return PublicationRejection::irInvariantRejected(zc::mv(result).takeInvariantFailures());
+}
+
+zc::Array<uint8_t> copyBytes(zc::ArrayPtr<const uint8_t> source) {
+  auto result = zc::heapArray<uint8_t>(source.size());
+  for (size_t index = 0; index < source.size(); ++index) result[index] = source[index];
+  return result;
 }
 
 zc::Maybe<zc::String> pathParent(zc::StringPtr path) {
@@ -1156,6 +1175,79 @@ PublicationOutcome PublicationTransactionTestAccess::publishObserved(
     LinkedOutputCandidate candidate, VerifiedExecutableManifest manifest,
     PublicationCheckpointObserver& observer) {
   return publishLinkedOutputObserved(zc::mv(candidate), zc::mv(manifest), &observer);
+}
+
+PublicationOutcome linkAndPublish(VerifiedLinkPlan plan, const zc::Filesystem& filesystem) {
+  CleanupAwareOutcome<LinkedOutputCandidate> linked = linkExecutable(zc::mv(plan), filesystem);
+  if (linked.isRecoveryRequired()) {
+    RecoveryRequiredOutcome<LinkedOutputCandidate> recovery = zc::mv(linked).takeRecoveryRequired();
+    PublicationRejection primary = remapPublicationRejection(zc::mv(recovery.primary));
+    return PublicationOutcome::recoveryRequired(
+        LinkRecoveryRequired::snapshot(zc::mv(primary), zc::mv(recovery.obligation)));
+  }
+
+  IrOperationResult<LinkedOutputCandidate> linkedResult = zc::mv(linked).takeComplete();
+  if (!linkedResult.isVerified()) {
+    return PublicationOutcome::rejected(remapPublicationRejection(zc::mv(linkedResult)));
+  }
+  LinkedOutputCandidate candidate = zc::mv(linkedResult).takeVerified();
+
+  auto rejectCandidate = [&](PublicationRejection&& primary) -> PublicationOutcome {
+    CleanupDisposition cleanup = zc::mv(candidate).discardAndCleanup();
+    if (cleanup.isClean()) { return PublicationOutcome::rejected(zc::mv(primary)); }
+    return PublicationOutcome::recoveryRequired(
+        LinkRecoveryRequired::snapshot(zc::mv(primary), zc::mv(cleanup).takeObligation()));
+  };
+
+  zc::Maybe<detail::PublicationFileSnapshot> snapshot =
+      detail::LinkPublicationTransaction::recheckOutput(candidate);
+  zc::Maybe<zc::Array<uint8_t>> outputBytes;
+  auto readException = zc::runCatchingExceptions([&]() { outputBytes = candidate.readOutput(); });
+  if (snapshot == zc::none || outputBytes == zc::none || readException != zc::none) {
+    return rejectCandidate(rejectPublication(IrFailureKind::InvalidFact, 30));
+  }
+  zc::Array<uint8_t> bytes = ZC_REQUIRE_NONNULL(zc::mv(outputBytes));
+  zc::Maybe<identity::Sha256Digest> digest = identity::sha256(bytes.asPtr());
+  if (digest == zc::none || ZC_REQUIRE_NONNULL(snapshot).identity != candidate.outputIdentity() ||
+      ZC_REQUIRE_NONNULL(snapshot).byteCount != candidate.outputSize() ||
+      ZC_REQUIRE_NONNULL(snapshot).digest != candidate.outputDigest() ||
+      bytes.size() != ZC_REQUIRE_NONNULL(snapshot).byteCount ||
+      ZC_REQUIRE_NONNULL(digest) != ZC_REQUIRE_NONNULL(snapshot).digest) {
+    return rejectCandidate(rejectPublication(IrFailureKind::InvalidFact, 31));
+  }
+
+  const VerifiedLinkPlan& candidatePlan = candidate.plan();
+  zc::Maybe<ExecutableInspectionFailure> inspection = ExecutableImageInspector::inspect(
+      bytes.asPtr(), candidatePlan.inspectionProfile(), candidatePlan.entrySymbol());
+  if (inspection != zc::none) {
+    const IrFailureKind kind =
+        ZC_REQUIRE_NONNULL(inspection) == ExecutableInspectionFailure::AbiMismatch
+            ? IrFailureKind::InvalidAbi
+            : IrFailureKind::InvalidFact;
+    return rejectCandidate(rejectPublication(kind, 32));
+  }
+
+  zc::Maybe<zc::String> outputRoot = pathParent(candidatePlan.outputPath());
+  if (outputRoot == zc::none) {
+    return rejectCandidate(rejectPublication(IrFailureKind::InvalidFact, 33));
+  }
+  identity::Sha256Digest toolchain =
+      ExecutablePublicationManifestBinding::toolchainIdentity(candidatePlan);
+  ExecutableManifestRequest manifestRequest{
+      zc::heapString(candidatePlan.outputPath()),
+      ZC_REQUIRE_NONNULL(zc::mv(outputRoot)),
+      copyBytes(candidatePlan.targetSpecificationIdentity()),
+      ZC_REQUIRE_NONNULL(snapshot).digest,
+      ZC_REQUIRE_NONNULL(snapshot).byteCount,
+      candidatePlan.id(),
+      ExecutablePublicationManifestBinding::inputArtifactDigests(candidatePlan),
+      copyBytes(toolchain.bytes())};
+  IrOperationResult<VerifiedExecutableManifest> manifest =
+      ExecutableManifestVerifier::verify(zc::mv(manifestRequest));
+  if (!manifest.isVerified()) {
+    return rejectCandidate(remapPublicationRejection(zc::mv(manifest)));
+  }
+  return publishLinkedOutput(zc::mv(candidate), zc::mv(manifest).takeVerified());
 }
 
 PublicationRecoveryResult recoverLinkedOutputPublication(const zc::Filesystem& filesystem,

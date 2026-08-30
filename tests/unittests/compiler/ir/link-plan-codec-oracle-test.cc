@@ -49,6 +49,15 @@ zc::Array<LinkInputRecord> oneInput(LinkInputRecord&& record) {
   return builder.finish();
 }
 
+ExecutableInspectionProfile inspectionProfile() {
+  auto symbols = zc::heapArrayBuilder<zc::String>(1);
+  symbols.add(zc::str("__zom_runtime"));
+  auto profile = ExecutableInspectionProfile::make(ObjectFormat::Elf, ExecutableMachine::X86_64, 64,
+                                                   symbols.finish(), zc::str("__zom_"));
+  ZC_REQUIRE(profile != zc::none);
+  return ZC_REQUIRE_NONNULL(zc::mv(profile));
+}
+
 ToolchainClosureRecord minimalClosure() {
   const uint8_t targetIdentity[] = {0x74, 0x67, 0x74};  // "tgt"
   auto crtObjects = oneInput(input("/sysroot/lib/crt1.o", LinkInputRole::CrtObject, "crt1", 1024));
@@ -67,6 +76,7 @@ ToolchainClosureRecord minimalClosure() {
 ExecutableLinkRequest minimalRequest() {
   ExecutableLinkRequest request{
       minimalClosure(),
+      inspectionProfile(),
       zc::heapArray<uint8_t>({0x7a, 0x6f, 0x6d}),  // "zom" entry symbol
       oneInput(input("/out/app.o", LinkInputRole::ObjectArtifact, "obj", 512)),
       oneInput(input("/sysroot/lib/zomrt.o", LinkInputRole::RuntimeObject, "rt", 256)),
@@ -93,7 +103,7 @@ ZC_TEST("Link plan codec reproduces the minimal-plan oracle") {
   auto plan = verifiedPlan();
   auto bytes = LinkPlanCodec::encode(plan);
 
-  ZC_EXPECT(bytes.size() == 469);
+  ZC_EXPECT(bytes.size() == 518);
   ZC_EXPECT(hex(bytes.asPtr()) ==
             "7a6f6d2e6c696e6b2d706c616e0000000000000000037467740100000000000000082f737973726f6f74"
             "000000000000000f2f737973726f6f742f62696e2f63630000000000000020355b1bbfc96725cdce8f4a"
@@ -101,7 +111,9 @@ ZC_TEST("Link plan codec reproduces the minimal-plan oracle") {
             "0000132f737973726f6f742f6c69622f637274312e6f02000000000000002032c45a9e8888c079df3868"
             "7b7146a1c55a56fe052f8715f1dc6d18143362ac6c000000000000040000000000000000010000000000"
             "0000142f737973726f6f742f6c69622f6c6962632e736f03000000000000002016c8c6eb85e05438f5d6"
-            "c60ff9869072a3a3b1618aa1481ac7a0cb049f06f51d000000000000080000000000000000037a6f6d00"
+            "c60ff9869072a3a3b1618aa1481ac7a0cb049f06f51d000000000000080001010000004000000000000000"
+            "01000000000000000d5f5f7a6f6d5f72756e74696d6500000000000000065f5f7a6f6d5f00000000000000"
+            "037a6f6d00"
             "00000000000001000000000000000a2f6f75742f6170702e6f010000000000000020772a5fb04f9bad38"
             "681a2f56ddfdbd6a15185753df8dcc029788d02bf3b6825b000000000000020000000000000000010000"
             "0000000000142f737973726f6f742f6c69622f7a6f6d72742e6f040000000000000020cdffd5dd8ca812"
@@ -112,7 +124,7 @@ ZC_TEST("Link plan codec reproduces the minimal-plan oracle") {
   ZC_REQUIRE(expected != zc::none);
   ZC_IF_SOME(value, expected) { ZC_EXPECT(plan.id().digest() == value); }
   ZC_EXPECT(zc::encodeHex(plan.id().digest().bytes()) ==
-            "8e9a5cf709ba56c7d25b4fdd3956623a94472177910b51249fe626815d60ca74"_zc);
+            "54e60703e2ea42b6f0b45f616f41f3b417b298345edf5e8d6a79b5d5817c8dfd"_zc);
 }
 
 // Re-encoding an equal plan yields identical bytes beginning with the domain tag
@@ -142,6 +154,16 @@ ZC_TEST("Link plan id is field sensitive") {
     // A different output path changes the id.
     auto request = minimalRequest();
     request.outputPath = zc::str("/out/app2");
+    auto result = LinkPlanVerifier::verify(zc::mv(request));
+    ZC_REQUIRE(result.isVerified());
+    ZC_EXPECT(result.verifiedValue().id() != baseline);
+  }
+  {
+    auto request = minimalRequest();
+    auto symbols = zc::heapArrayBuilder<zc::String>(1);
+    symbols.add(zc::str("__zom_runtime2"));
+    request.inspectionProfile = ZC_REQUIRE_NONNULL(ExecutableInspectionProfile::make(
+        ObjectFormat::Elf, ExecutableMachine::X86_64, 64, symbols.finish(), zc::str("__zom_")));
     auto result = LinkPlanVerifier::verify(zc::mv(request));
     ZC_REQUIRE(result.isVerified());
     ZC_EXPECT(result.verifiedValue().id() != baseline);
@@ -198,6 +220,68 @@ ZC_TEST("Link plan verifier rejects a missing entry symbol") {
   ZC_REQUIRE(facts.size() == 1);
   ZC_EXPECT(facts[0].phase() == IrFailurePhase::LinkPlanConstruction);
   ZC_EXPECT(facts[0].kind() == IrFailureKind::MissingRequiredFact);
+}
+
+ZC_TEST("Executable inspection profile rejects invalid target and symbol shapes") {
+  zc::Array<zc::String> empty;
+  ZC_EXPECT(ExecutableInspectionProfile::make(ObjectFormat::Coff, ExecutableMachine::X86_64, 64,
+                                              zc::mv(empty), zc::str("__zom_")) == zc::none);
+  zc::Array<zc::String> emptyWidth;
+  ZC_EXPECT(ExecutableInspectionProfile::make(ObjectFormat::Elf, ExecutableMachine::X86_64, 32,
+                                              zc::mv(emptyWidth), zc::str("__zom_")) == zc::none);
+  zc::Array<zc::String> invalidMachine;
+  ZC_EXPECT(
+      ExecutableInspectionProfile::make(ObjectFormat::Elf, static_cast<ExecutableMachine>(0xff), 64,
+                                        zc::mv(invalidMachine), zc::str("__zom_")) == zc::none);
+  auto duplicate = zc::heapArrayBuilder<zc::String>(2);
+  duplicate.add(zc::str("__zom_runtime"));
+  duplicate.add(zc::str("__zom_runtime"));
+  ZC_EXPECT(ExecutableInspectionProfile::make(ObjectFormat::Elf, ExecutableMachine::X86_64, 64,
+                                              duplicate.finish(), zc::str("__zom_")) == zc::none);
+  // The runtime-reference domain is the canonical raw prefix derived from the
+  // object format; an empty or off-canonical domain (which would silently disable
+  // or misdirect the unresolved-runtime check) is rejected.
+  zc::Array<zc::String> emptyDomainSyms;
+  ZC_EXPECT(ExecutableInspectionProfile::make(ObjectFormat::Elf, ExecutableMachine::X86_64, 64,
+                                              zc::mv(emptyDomainSyms), zc::str("")) == zc::none);
+  zc::Array<zc::String> wrongDomainSyms;
+  ZC_EXPECT(ExecutableInspectionProfile::make(ObjectFormat::Elf, ExecutableMachine::X86_64, 64,
+                                              zc::mv(wrongDomainSyms), zc::str("x.")) == zc::none);
+  // ELF requires __zom_; the Mach-O spelling ___zom_ is off-canonical for ELF.
+  zc::Array<zc::String> machODomainOnElf;
+  ZC_EXPECT(ExecutableInspectionProfile::make(ObjectFormat::Elf, ExecutableMachine::X86_64, 64,
+                                              zc::mv(machODomainOnElf),
+                                              zc::str("___zom_")) == zc::none);
+  // Mach-O requires ___zom_; the ELF spelling __zom_ is off-canonical for Mach-O.
+  zc::Array<zc::String> elfDomainOnMachO;
+  ZC_EXPECT(ExecutableInspectionProfile::make(ObjectFormat::MachO, ExecutableMachine::X86_64, 64,
+                                              zc::mv(elfDomainOnMachO),
+                                              zc::str("__zom_")) == zc::none);
+}
+
+ZC_TEST("Link plan verifier rejects a non-ASCII or NUL entry symbol") {
+  auto request = minimalRequest();
+  request.entrySymbol = zc::heapArray<uint8_t>({0x7a, 0x00, 0x6d});
+  auto nulResult = LinkPlanVerifier::verify(zc::mv(request));
+  ZC_REQUIRE(nulResult.isIrInvariantRejected());
+  ZC_EXPECT(nulResult.invariantFailures().facts()[0].kind() == IrFailureKind::MissingRequiredFact);
+
+  request = minimalRequest();
+  request.entrySymbol = zc::heapArray<uint8_t>({0xff});
+  auto asciiResult = LinkPlanVerifier::verify(zc::mv(request));
+  ZC_REQUIRE(asciiResult.isIrInvariantRejected());
+  ZC_EXPECT(asciiResult.invariantFailures().facts()[0].kind() ==
+            IrFailureKind::MissingRequiredFact);
+}
+
+ZC_TEST("Link plan verifier rejects a driver and inspection format mismatch") {
+  auto request = minimalRequest();
+  zc::Array<zc::String> symbols;
+  request.inspectionProfile = ZC_REQUIRE_NONNULL(ExecutableInspectionProfile::make(
+      ObjectFormat::MachO, ExecutableMachine::X86_64, 64, zc::mv(symbols), zc::str("___zom_")));
+  auto result = LinkPlanVerifier::verify(zc::mv(request));
+  ZC_REQUIRE(result.isIrInvariantRejected());
+  ZC_EXPECT(result.invariantFailures().facts()[0].kind() == IrFailureKind::InvalidAbi);
 }
 
 // Invariant (1): at least one object artifact must be linked.

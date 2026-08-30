@@ -18,6 +18,7 @@
 
 #include "compiler/identity/crypto/sha256.h"
 #include "compiler/ir/ir-failure.h"
+#include "compiler/ir/target-registry.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/string.h"
@@ -32,6 +33,57 @@ namespace zomlang::compiler::ir {
 enum class LinkerDriverKind : uint8_t {
   ElfDriver = 0x01,
   MachODriver = 0x02,
+};
+
+enum class ExecutableMachine : uint8_t {
+  X86_64 = 0x01,
+  AArch64 = 0x02,
+};
+
+/// \brief Closed target facts an executable inspector must prove from output
+///        bytes rather than infer from an opaque target identity or the host.
+class ExecutableInspectionProfile final {
+public:
+  ExecutableInspectionProfile(ExecutableInspectionProfile&&) noexcept = default;
+  ExecutableInspectionProfile& operator=(ExecutableInspectionProfile&&) noexcept = default;
+  ZC_DISALLOW_COPY(ExecutableInspectionProfile);
+  ~ExecutableInspectionProfile() noexcept = default;
+
+  ZC_NODISCARD static zc::Maybe<ExecutableInspectionProfile> make(
+      ObjectFormat objectFormat, ExecutableMachine machine, uint32_t pointerWidthBits,
+      zc::Array<zc::String>&& requiredRuntimeSymbols, zc::String&& runtimeReferenceDomain);
+
+  ZC_NODISCARD ObjectFormat objectFormat() const noexcept { return objectFormatValue; }
+  ZC_NODISCARD ExecutableMachine machine() const noexcept { return machineValue; }
+  ZC_NODISCARD uint32_t pointerWidthBits() const noexcept { return pointerWidthValue; }
+  ZC_NODISCARD zc::ArrayPtr<const zc::String> requiredRuntimeSymbols() const noexcept {
+    return requiredRuntimeSymbolValues.asPtr();
+  }
+  /// \return The target-specific raw symbol-table prefix of the ZOM runtime ABI
+  ///         (e.g. `__zom_` on ELF). Any undefined symbol whose raw name begins
+  ///         with this prefix is an unresolved runtime reference and fails
+  ///         inspection; a non-prefixed external import (a C library symbol) is
+  ///         allowed. Never empty.
+  ZC_NODISCARD zc::StringPtr runtimeReferenceDomain() const noexcept {
+    return runtimeReferenceDomainValue;
+  }
+
+private:
+  ExecutableInspectionProfile(ObjectFormat objectFormat, ExecutableMachine machine,
+                              uint32_t pointerWidthBits,
+                              zc::Array<zc::String>&& requiredRuntimeSymbols,
+                              zc::String&& runtimeReferenceDomain) noexcept
+      : objectFormatValue(objectFormat),
+        machineValue(machine),
+        pointerWidthValue(pointerWidthBits),
+        requiredRuntimeSymbolValues(zc::mv(requiredRuntimeSymbols)),
+        runtimeReferenceDomainValue(zc::mv(runtimeReferenceDomain)) {}
+
+  ObjectFormat objectFormatValue;
+  ExecutableMachine machineValue;
+  uint32_t pointerWidthValue;
+  zc::Array<zc::String> requiredRuntimeSymbolValues;
+  zc::String runtimeReferenceDomainValue;
 };
 
 /// \brief The role a link input plays in the plan.
@@ -206,6 +258,9 @@ public:
   ZC_NODISCARD const ToolchainClosureRecord& toolchainClosure() const noexcept {
     return closureValue;
   }
+  ZC_NODISCARD const ExecutableInspectionProfile& inspectionProfile() const noexcept {
+    return inspectionProfileValue;
+  }
   ZC_NODISCARD zc::ArrayPtr<const uint8_t> entrySymbol() const noexcept {
     return entrySymbolValue.asPtr();
   }
@@ -221,11 +276,13 @@ public:
 private:
   friend class LinkPlanVerifier;
 
-  VerifiedLinkPlan(ToolchainClosureRecord&& closure, zc::Array<uint8_t>&& entrySymbol,
-                   zc::Array<LinkInputRecord>&& objectRecords,
+  VerifiedLinkPlan(ToolchainClosureRecord&& closure,
+                   ExecutableInspectionProfile&& inspectionProfile,
+                   zc::Array<uint8_t>&& entrySymbol, zc::Array<LinkInputRecord>&& objectRecords,
                    zc::Array<LinkInputRecord>&& runtimeRecords, zc::String&& outputPath,
                    const LinkPlanId& id) noexcept
       : closureValue(zc::mv(closure)),
+        inspectionProfileValue(zc::mv(inspectionProfile)),
         entrySymbolValue(zc::mv(entrySymbol)),
         objectRecordValues(zc::mv(objectRecords)),
         runtimeRecordValues(zc::mv(runtimeRecords)),
@@ -233,6 +290,7 @@ private:
         idValue(id) {}
 
   ToolchainClosureRecord closureValue;
+  ExecutableInspectionProfile inspectionProfileValue;
   zc::Array<uint8_t> entrySymbolValue;
   zc::Array<LinkInputRecord> objectRecordValues;
   zc::Array<LinkInputRecord> runtimeRecordValues;
@@ -249,6 +307,7 @@ private:
 /// `TargetRegistryCapability` is a later slice.
 struct ExecutableLinkRequest final {
   ToolchainClosureRecord closure;
+  ExecutableInspectionProfile inspectionProfile;
   zc::Array<uint8_t> entrySymbol;
   zc::Array<LinkInputRecord> objectRecords;
   zc::Array<LinkInputRecord> runtimeRecords;
@@ -265,6 +324,9 @@ struct ExecutableLinkRequest final {
 ///     Frame(linkerDigest) uint64(linkerByteCount)
 ///   EncodeInputSequence(closure.crtObjects)
 ///   EncodeInputSequence(closure.defaultLibraries)
+///   uint8(objectFormat) uint8(machine) uint32(pointerWidthBits)
+///   uint64(requiredRuntimeSymbolCount) [Frame(symbol)...]
+///   Frame(runtimeReferenceDomain)
 ///   Frame(entrySymbol)
 ///   EncodeInputSequence(objectRecords)
 ///   EncodeInputSequence(runtimeRecords)

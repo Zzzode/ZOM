@@ -28,6 +28,12 @@ namespace {
 
 void appendUint8(zc::Vector<uint8_t>& output, uint8_t value) { output.add(value); }
 
+void appendUint32(zc::Vector<uint8_t>& output, uint32_t value) {
+  for (int shift = 24; shift >= 0; shift -= 8) {
+    output.add(static_cast<uint8_t>(value >> static_cast<uint32_t>(shift)));
+  }
+}
+
 void appendUint64(zc::Vector<uint8_t>& output, uint64_t value) {
   for (int shift = 56; shift >= 0; shift -= 8) {
     output.add(static_cast<uint8_t>(value >> static_cast<uint32_t>(shift)));
@@ -199,7 +205,74 @@ zc::Maybe<IrFailureKind> normalizeInputSequence(zc::Array<LinkInputRecord>& reco
   return zc::none;
 }
 
+bool validRuntimeSymbol(zc::StringPtr symbol) {
+  if (symbol.size() == 0) { return false; }
+  for (const char byte : symbol) {
+    const auto value = static_cast<uint8_t>(byte);
+    if (value == 0 || value > 0x7f) { return false; }
+  }
+  return true;
+}
+
+bool validSymbolBytes(zc::ArrayPtr<const uint8_t> symbol) {
+  if (symbol.size() == 0) { return false; }
+  for (const uint8_t byte : symbol) {
+    if (byte == 0 || byte > 0x7f) { return false; }
+  }
+  return true;
+}
+
+int compareSymbols(zc::StringPtr left, zc::StringPtr right) {
+  const size_t shared = left.size() < right.size() ? left.size() : right.size();
+  for (size_t index = 0; index < shared; ++index) {
+    const auto leftByte = static_cast<uint8_t>(left[index]);
+    const auto rightByte = static_cast<uint8_t>(right[index]);
+    if (leftByte != rightByte) { return leftByte < rightByte ? -1 : 1; }
+  }
+  if (left.size() == right.size()) { return 0; }
+  return left.size() < right.size() ? -1 : 1;
+}
+
 }  // namespace
+
+// ---------------------------------------------------------------------------
+// ExecutableInspectionProfile
+// ---------------------------------------------------------------------------
+
+zc::Maybe<ExecutableInspectionProfile> ExecutableInspectionProfile::make(
+    ObjectFormat objectFormat, ExecutableMachine machine, uint32_t pointerWidthBits,
+    zc::Array<zc::String>&& requiredRuntimeSymbols, zc::String&& runtimeReferenceDomain) {
+  if ((objectFormat != ObjectFormat::Elf && objectFormat != ObjectFormat::MachO) ||
+      pointerWidthBits != 64) {
+    return zc::none;
+  }
+  switch (machine) {
+    case ExecutableMachine::X86_64:
+    case ExecutableMachine::AArch64:
+      break;
+    default:
+      return zc::none;
+  }
+  for (size_t index = 0; index < requiredRuntimeSymbols.size(); ++index) {
+    if (!validRuntimeSymbol(requiredRuntimeSymbols[index])) { return zc::none; }
+    if (index > 0 &&
+        compareSymbols(requiredRuntimeSymbols[index - 1], requiredRuntimeSymbols[index]) >= 0) {
+      return zc::none;
+    }
+  }
+  // The runtime-reference domain is the target's canonical raw runtime-ABI
+  // symbol prefix, derived strictly from the object format: ELF spells the C
+  // runtime imports `__zom_*`, and Mach-O's nlist adds a leading underscore, so
+  // the same imports are `___zom_*`. The caller records the prefix for identity
+  // folding, but it may not choose an arbitrary one - an off-canonical value
+  // would silently disable or misdirect the unresolved-runtime-symbol check.
+  const zc::StringPtr canonicalDomain =
+      objectFormat == ObjectFormat::Elf ? "__zom_"_zc : "___zom_"_zc;
+  if (runtimeReferenceDomain != canonicalDomain) { return zc::none; }
+  return ExecutableInspectionProfile(objectFormat, machine, pointerWidthBits,
+                                     zc::mv(requiredRuntimeSymbols),
+                                     zc::mv(runtimeReferenceDomain));
+}
 
 // ---------------------------------------------------------------------------
 // LinkInputRecord
@@ -267,6 +340,13 @@ zc::Array<uint8_t> LinkPlanCodec::encode(const VerifiedLinkPlan& plan) {
   appendUint64(preimage, closure.linkerByteCount());
   appendInputSequence(preimage, closure.crtObjects());
   appendInputSequence(preimage, closure.defaultLibraries());
+  const auto& inspection = plan.inspectionProfile();
+  appendUint8(preimage, static_cast<uint8_t>(inspection.objectFormat()));
+  appendUint8(preimage, static_cast<uint8_t>(inspection.machine()));
+  appendUint32(preimage, inspection.pointerWidthBits());
+  appendUint64(preimage, inspection.requiredRuntimeSymbols().size());
+  for (const auto& symbol : inspection.requiredRuntimeSymbols()) { appendFramed(preimage, symbol); }
+  appendFramed(preimage, inspection.runtimeReferenceDomain());
   appendFramed(preimage, plan.entrySymbol());
   appendInputSequence(preimage, plan.objectRecords());
   appendInputSequence(preimage, plan.runtimeRecords());
@@ -294,9 +374,16 @@ IrOperationResult<VerifiedLinkPlan> LinkPlanVerifier::verify(ExecutableLinkReque
   }
 
   // Invariant (3): the plan must name exactly one non-empty entry symbol.
-  if (request.entrySymbol.size() == 0) {
+  if (!validSymbolBytes(request.entrySymbol.asPtr())) {
     return rejectLinkPlan(IrFailureKind::MissingRequiredFact, 2);
   }
+
+  const auto profileFormat = request.inspectionProfile.objectFormat();
+  const bool matchingDriver = (profileFormat == ObjectFormat::Elf &&
+                               request.closure.linkerKind() == LinkerDriverKind::ElfDriver) ||
+                              (profileFormat == ObjectFormat::MachO &&
+                               request.closure.linkerKind() == LinkerDriverKind::MachODriver);
+  if (!matchingDriver) { return rejectLinkPlan(IrFailureKind::InvalidAbi, 8); }
 
   // Invariant (1): at least one object artifact must be linked.
   if (request.objectRecords.size() == 0) {
@@ -323,9 +410,10 @@ IrOperationResult<VerifiedLinkPlan> LinkPlanVerifier::verify(ExecutableLinkReque
     return rejectLinkPlan(kind, 7);
   }
 
-  auto plan = VerifiedLinkPlan(zc::mv(request.closure), zc::mv(request.entrySymbol),
-                               zc::mv(request.objectRecords), zc::mv(request.runtimeRecords),
-                               zc::mv(request.outputPath), LinkPlanId());
+  auto plan =
+      VerifiedLinkPlan(zc::mv(request.closure), zc::mv(request.inspectionProfile),
+                       zc::mv(request.entrySymbol), zc::mv(request.objectRecords),
+                       zc::mv(request.runtimeRecords), zc::mv(request.outputPath), LinkPlanId());
   plan.idValue = LinkPlanCodec::computeId(plan);
   return IrOperationResult<VerifiedLinkPlan>::verified(zc::mv(plan));
 }

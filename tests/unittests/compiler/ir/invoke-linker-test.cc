@@ -49,6 +49,7 @@
 #endif
 
 #include "compiler/identity/crypto/sha256.h"
+#include "compiler/ir/executable-inspector.h"
 #include "compiler/ir/executable-publication-internal.h"
 #include "compiler/ir/invoke-linker-internal.h"
 #include "compiler/ir/link-plan-codec.h"
@@ -563,8 +564,23 @@ struct Scenario {
 // Materializes driver + inputs under `dir` and builds the verified plan for them.
 // Roles laid down so the RFC 0043 canonical argv order is non-trivial:
 //   driver, -o out, -e entry, crt-0, obj-0, obj-1, rt-0, rt-1, lib-0.
+ExecutableInspectionProfile elfInspectionProfile(
+    ExecutableMachine machine = ExecutableMachine::X86_64,
+    zc::StringPtr requiredRuntimeSymbol = zc::StringPtr()) {
+  zc::Vector<zc::String> requiredRuntimeSymbols;
+  if (requiredRuntimeSymbol.size() != 0) {
+    requiredRuntimeSymbols.add(zc::heapString(requiredRuntimeSymbol));
+  }
+  auto profile = ExecutableInspectionProfile::make(
+      ObjectFormat::Elf, machine, 64, requiredRuntimeSymbols.releaseAsArray(), zc::str("__zom_"));
+  ZC_REQUIRE(profile != zc::none);
+  return ZC_REQUIRE_NONNULL(zc::mv(profile));
+}
+
 VerifiedLinkPlan buildScenario(const zc::Directory& dir, zc::StringPtr base,
-                               zc::StringPtr driverFixturePath, Scenario& out) {
+                               zc::StringPtr driverFixturePath, Scenario& out,
+                               ExecutableMachine machine = ExecutableMachine::X86_64,
+                               zc::StringPtr requiredRuntimeSymbol = zc::StringPtr()) {
   out.driverBytes = writeFile(dir, "ld"_zc, fixtureBytes(driverFixturePath).asPtr(),
                               /*executable=*/true);
   out.crtBytes = writeFile(dir, "crt1.o"_zc, bytesOf("CRT-OBJECT-BYTES"_zc).asPtr(), false);
@@ -602,6 +618,7 @@ VerifiedLinkPlan buildScenario(const zc::Directory& dir, zc::StringPtr base,
   twoRuntimes.add(recordFor(runtime0Path, LinkInputRole::RuntimeObject, out.runtime0Bytes.asPtr()));
 
   ExecutableLinkRequest request{ZC_REQUIRE_NONNULL(zc::mv(closure)),
+                                elfInspectionProfile(machine, requiredRuntimeSymbol),
                                 zc::heapArray<uint8_t>({0x7a, 0x6f, 0x6d}),  // "zom"
                                 twoObjects.finish(),
                                 twoRuntimes.finish(),
@@ -861,14 +878,16 @@ ZC_TEST("publishLinkedOutput commits the executable first and the manifest as vi
   ZC_ASSERT(outcome.isPublished());
   PublishedExecutableArtifact artifact = zc::mv(outcome).takePublished();
   ZC_EXPECT(artifact.finalDestination() == zc::str(base, "/app"));
-  // Bind each side to a named local: comparing `readAllBytes().asPtr()` against a
-  // temporary array's `.asPtr()` would leave both views dangling once the full
-  // expression's temporaries are destroyed, so the comparison (and its failure
-  // stringification) would read freed memory.
+  // The success fixture now links a real ELF carrying the `zom` entry symbol (so
+  // D5 executable inspection has a genuine image to inspect), not a 4-byte magic
+  // stub: assert the committed executable is a non-trivial ELF by size and magic.
   const zc::Array<zc::byte> committedExecutable = dir->openFile(zc::Path("app"_zc))->readAllBytes();
-  const zc::Array<zc::byte> expectedExecutablePrefix =
-      zc::heapArray<zc::byte>({0x7f, 0x45, 0x4c, 0x46});
-  ZC_EXPECT(committedExecutable.asPtr() == expectedExecutablePrefix.asPtr());
+  ZC_REQUIRE(committedExecutable.size() > 64);
+  ZC_EXPECT(committedExecutable[0] == 0x7f && committedExecutable[1] == 'E' &&
+            committedExecutable[2] == 'L' && committedExecutable[3] == 'F');
+  // Bind the manifest read to a named local: comparing `readAllBytes().asPtr()`
+  // against another `.asPtr()` would leave both views dangling once the full
+  // expression's temporaries are destroyed.
   const zc::Array<zc::byte> committedManifest =
       dir->openFile(zc::Path("app.zom-artifact"_zc))->readAllBytes();
   ZC_EXPECT(committedManifest.asPtr() == expectedManifest.asPtr());
@@ -985,11 +1004,11 @@ ZC_TEST(
   // The candidate reads back the produced executable bytes through its own held
   // handle (not a pathname re-open); the fake success driver wrote ELF magic.
   zc::Array<uint8_t> bytes = candidate.readOutput();
-  ZC_ASSERT(bytes.size() == 4u);
+  ZC_ASSERT(bytes.size() > 64u);
   ZC_EXPECT(bytes[0] == 0x7f && bytes[1] == 'E' && bytes[2] == 'L' && bytes[3] == 'F');
   // The candidate's captured size matches the bytes it holds, and its exact
   // identity records a sole hard link (st_nlink == 1).
-  ZC_EXPECT(candidate.outputSize() == 4u);
+  ZC_EXPECT(candidate.outputSize() == bytes.size());
   ZC_EXPECT(candidate.outputIdentity().linkCount() == 1u);
   // The candidate's digest was computed from the same held handle: it equals the
   // SHA-256 of exactly the bytes readOutput() returns, and of the known ELF magic.
@@ -1098,6 +1117,91 @@ zc::String argvToken(zc::ArrayPtr<const zc::String> argvLines, size_t index) {
     }
   }
   ZC_FAIL_REQUIRE("no recorded argv token for index", index);
+}
+
+ZC_TEST("linkAndPublish consumes a verified plan through ELF inspection and D1 publication") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-link-and-publish-success");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+
+  PublicationOutcome outcome = linkAndPublish(zc::mv(plan), *fs);
+  ZC_ASSERT(outcome.isPublished());
+  PublishedExecutableArtifact artifact = zc::mv(outcome).takePublished();
+  ZC_EXPECT(artifact.finalDestination() == zc::str(base, "/app"));
+  ZC_EXPECT(dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(dir->exists(zc::Path("app.zom-artifact"_zc)));
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  PublicationRecoveryResult reopened = recoverLinkedOutputPublication(*fs, zc::str(base, "/app"));
+  ZC_EXPECT(reopened.status() == PublicationRecoveryStatus::Published);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("linkAndPublish rejects a structurally linked but malformed executable image") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-link-and-publish-invalid-image");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_INVALID_IMAGE ""_zc, scenario);
+
+  PublicationOutcome outcome = linkAndPublish(zc::mv(plan), *fs);
+  ZC_ASSERT(outcome.isRejected());
+  PublicationRejection rejection = zc::mv(outcome).takeRejected();
+  ZC_REQUIRE(rejection.isIrInvariantRejected());
+  ZC_REQUIRE(rejection.invariantFailures().facts().size() == 1);
+  ZC_EXPECT(rejection.invariantFailures().facts()[0].phase() ==
+            IrFailurePhase::ExecutablePublication);
+  ZC_EXPECT(rejection.invariantFailures().facts()[0].kind() == IrFailureKind::InvalidFact);
+  ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(!dir->exists(zc::Path("app.zom-artifact"_zc)));
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("linkAndPublish rejects an executable whose machine differs from the verified plan") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-link-and-publish-machine-mismatch");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario,
+                                        ExecutableMachine::AArch64);
+
+  PublicationOutcome outcome = linkAndPublish(zc::mv(plan), *fs);
+  ZC_ASSERT(outcome.isRejected());
+  PublicationRejection rejection = zc::mv(outcome).takeRejected();
+  ZC_REQUIRE(rejection.isIrInvariantRejected());
+  ZC_EXPECT(rejection.invariantFailures().facts()[0].phase() ==
+            IrFailurePhase::ExecutablePublication);
+  ZC_EXPECT(rejection.invariantFailures().facts()[0].kind() == IrFailureKind::InvalidAbi);
+  ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("linkAndPublish rejects a missing required runtime symbol") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-link-and-publish-runtime-symbol");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario,
+                                        ExecutableMachine::X86_64, "zom.missing"_zc);
+
+  PublicationOutcome outcome = linkAndPublish(zc::mv(plan), *fs);
+  ZC_ASSERT(outcome.isRejected());
+  PublicationRejection rejection = zc::mv(outcome).takeRejected();
+  ZC_REQUIRE(rejection.isIrInvariantRejected());
+  ZC_EXPECT(rejection.invariantFailures().facts()[0].phase() ==
+            IrFailurePhase::ExecutablePublication);
+  ZC_EXPECT(rejection.invariantFailures().facts()[0].kind() == IrFailureKind::InvalidFact);
+  ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
 
 ZC_TEST("linkExecutable rewrites argv to the exact canonical snapshot order for every role") {
@@ -1567,7 +1671,7 @@ ZC_TEST(
   LinkPlanId candidatePlanId = candidate.plan().id();
   // The verified output is readable through the candidate before any cleanup.
   zc::Array<uint8_t> bytes = candidate.readOutput();
-  ZC_ASSERT(bytes.size() == 4u);
+  ZC_ASSERT(bytes.size() > 64u);
   ZC_EXPECT(bytes[0] == 0x7f && bytes[1] == 'E' && bytes[2] == 'L' && bytes[3] == 'F');
 
   CleanupDisposition disposition = zc::mv(candidate).discardAndCleanup();
@@ -1938,6 +2042,7 @@ ZC_TEST("linkExecutable fails closed on a filesystem exposing no real descriptor
   ZC_REQUIRE(closure != zc::none);
   ExecutableLinkRequest request{
       ZC_REQUIRE_NONNULL(zc::mv(closure)),
+      elfInspectionProfile(),
       zc::heapArray<uint8_t>({0x7a, 0x6f, 0x6d}),
       oneInput(recordFor("/mem/app.o"_zc, LinkInputRole::ObjectArtifact, objectBytes.asPtr())),
       zc::Array<LinkInputRecord>(),

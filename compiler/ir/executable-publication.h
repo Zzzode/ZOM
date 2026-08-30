@@ -233,18 +233,10 @@ private:
   zc::Maybe<PublicationRecoveryObligation> obligationValue;
 };
 
-/// \brief Consumes a D4 candidate and publishes it with a durable manifest-last
-///        journal transaction. Existing final entries are never replaced.
-///
-/// The operation re-derives the candidate's exact identity, byte count, digest,
-/// regular-file shape, and sole-link proof from its same held output handle;
-/// verifies the manifest is live-bound to the moved-in plan; durably commits the
-/// immutable Started -> ManifestStaged -> ExecCommitted -> ManifestCommitted
-/// hash chain; commits the executable and manifest with exclusive no-replace
-/// renames; and releases the journal only after the residual manifest temporary
-/// and transaction root are clean. No filesystem exception escapes.
-ZC_NODISCARD PublicationOutcome publishLinkedOutput(LinkedOutputCandidate candidate,
-                                                    VerifiedExecutableManifest manifest);
+/// \brief Consumes a verified link plan through link, executable inspection,
+///        manifest construction, and the internal D1 publication transaction.
+ZC_NODISCARD PublicationOutcome linkAndPublish(VerifiedLinkPlan plan,
+                                               const zc::Filesystem& filesystem);
 
 /// \brief Explicitly scans and recovers the journal chain for one final target.
 ///

@@ -77,7 +77,7 @@
  * single-link output invariants. */
 #ifndef ZOM_FAKE_LINKER_MODE
 #error \
-    "ZOM_FAKE_LINKER_MODE must be defined (0=success,1=partial,2=no-output,3=symlink,4=empty,5=dir,6=hardlink)"
+    "ZOM_FAKE_LINKER_MODE must be defined (0=success,1=partial,2=no-output,3=symlink,4=empty,5=dir,6=hardlink,7=invalid-image)"
 #endif
 
 #define ZOM_FAKE_LINKER_MODE_SUCCESS 0
@@ -87,6 +87,7 @@
 #define ZOM_FAKE_LINKER_MODE_EMPTY 4
 #define ZOM_FAKE_LINKER_MODE_DIRECTORY 5
 #define ZOM_FAKE_LINKER_MODE_HARDLINK 6
+#define ZOM_FAKE_LINKER_MODE_INVALID_IMAGE 7
 
 /* The process environment, empty under the Empty subprocess env policy. */
 extern char** environ;
@@ -117,10 +118,45 @@ static int writeStartedMarker(const char* outputPath) {
   return 0;
 }
 
-/* Writes the four-byte ELF magic to `path`. Returns 0 on success. The success
- * and hardlink variants link this. */
-#if ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_SUCCESS || \
-    ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_HARDLINK
+/* Keeps the plan's `zom` entry symbol in the success fixture's ELF symbol table. */
+#if ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_SUCCESS
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((used, visibility("default")))
+#endif
+void zom(void) {
+}
+
+/* Copies the running descriptor-executed ELF image to `path`, producing a real
+ * bounded executable image whose machine and symbol tables D5 can inspect. */
+static int copySelf(const char* path) {
+  FILE* in = fopen("/proc/self/exe", "rb");
+  if (in == NULL) { return -1; }
+  FILE* out = fopen(path, "wb");
+  if (out == NULL) {
+    fclose(in);
+    return -1;
+  }
+  unsigned char buffer[16384];
+  int result = 0;
+  for (;;) {
+    size_t count = fread(buffer, 1, sizeof(buffer), in);
+    if (count > 0 && fwrite(buffer, 1, count, out) != count) {
+      result = -1;
+      break;
+    }
+    if (count < sizeof(buffer)) {
+      if (ferror(in)) { result = -1; }
+      break;
+    }
+  }
+  fclose(out);
+  fclose(in);
+  return result;
+}
+#endif
+
+/* Writes the four-byte ELF magic used by the D4 hardlink-only rejection case. */
+#if ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_HARDLINK
 static int writeElfMagic(const char* path) {
   FILE* out = fopen(path, "wb");
   if (out == NULL) { return -1; }
@@ -133,7 +169,8 @@ static int writeElfMagic(const char* path) {
 
 /* Writes partial, non-ELF bytes to `path`. Returns 0 on success. Only the
  * partial variant links this. */
-#if ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_PARTIAL
+#if ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_PARTIAL || \
+    ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_INVALID_IMAGE
 static int writePartial(const char* path) {
   FILE* out = fopen(path, "wb");
   if (out == NULL) { return -1; }
@@ -207,6 +244,9 @@ int main(int argc, char** argv) {
   return kExitPartial;
 #elif ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_NO_OUTPUT
   return kExitOk;
+#elif ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_INVALID_IMAGE
+  if (writePartial(outputPath) != 0) { return kExitOutputOpenFailed; }
+  return kExitOk;
 #elif ZOM_FAKE_LINKER_MODE == ZOM_FAKE_LINKER_MODE_SYMLINK
   /* Exit zero but make the output path a SYMLINK to a sibling regular file, so
    * the D4 no-follow output capture must refuse it (a symlink is not a regular
@@ -254,8 +294,8 @@ int main(int argc, char** argv) {
     return kExitOk;
   }
 #else
-  /* Default success: write an ELF-magic output. */
-  if (writeElfMagic(outputPath) != 0) { return kExitOutputOpenFailed; }
+  /* Default success: copy this real ELF image, including its `zom` symbol. */
+  if (copySelf(outputPath) != 0) { return kExitOutputOpenFailed; }
   return kExitOk;
 #endif
 }

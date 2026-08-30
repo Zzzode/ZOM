@@ -39,9 +39,23 @@ public:
 };
 
 struct PublicationTransactionTestAccess final {
-  ZC_NODISCARD static PublicationOutcome publishObserved(
-      LinkedOutputCandidate candidate, VerifiedExecutableManifest manifest,
-      PublicationCheckpointObserver& observer);
+  ZC_NODISCARD static PublicationOutcome publishObserved(LinkedOutputCandidate candidate,
+                                                         VerifiedExecutableManifest manifest,
+                                                         PublicationCheckpointObserver& observer);
 };
+
+/// \brief Internal D1 transaction consumed only by the D5 publication boundary.
+///
+/// The operation re-derives the candidate's exact identity, byte count, digest,
+/// regular-file shape, and sole-link proof from its same held output handle;
+/// verifies the manifest is live-bound to the moved-in plan; durably commits the
+/// immutable Started -> ManifestStaged -> ExecCommitted -> ManifestCommitted
+/// hash chain; commits the executable and manifest with exclusive no-replace
+/// renames; and releases the journal only after the residual manifest temporary
+/// and transaction root are clean. It is deliberately absent from the public IR
+/// API so no caller can bypass D5 executable inspection and mint a published
+/// artifact directly.
+ZC_NODISCARD PublicationOutcome publishLinkedOutput(LinkedOutputCandidate candidate,
+                                                    VerifiedExecutableManifest manifest);
 
 }  // namespace zomlang::compiler::ir
