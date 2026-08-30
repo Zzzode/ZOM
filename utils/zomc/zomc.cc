@@ -35,6 +35,9 @@
 #include "compiler/format/lexeme-printer.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/crypto/sha256.h"
+#include "compiler/ir/executable-publication.h"
+#include "compiler/ir/host-execution-profile.h"
+#include "compiler/ir/link-plan-codec.h"
 #include "compiler/ir/target-registry.h"
 #include "compiler/lexer/lexer.h"
 #include "compiler/source/core-distribution.h"
@@ -45,7 +48,9 @@
 #include "zc/core/filesystem.h"
 #include "zc/core/io.h"
 #include "zc/core/main.h"
+#include "zc/core/one-of.h"
 #include "zc/core/string.h"
+#include "zc/core/subprocess.h"
 #include "zc/core/time.h"
 #include "zc/core/vector.h"
 
@@ -206,6 +211,7 @@ public:
   }
 
   zc::MainFunc getCompileMain() {
+    action = CompilationAction::Emit;
     zc::MainBuilder builder(context, VERSION_STRING,
                             "Compiles Zomlang sources and generates one or more targets.");
     addCompileOptions(builder);
@@ -213,12 +219,11 @@ public:
   }
 
   ZC_NODISCARD zc::MainFunc getRunMain() {
-    zc::MainBuilder builder(context, VERSION_STRING, "");
-    return builder.callAfterParsing(ZC_BIND_METHOD(*this, rejectRun)).build();
-  }
-
-  zc::MainBuilder::Validity rejectRun() {
-    return "The run command requires native code generation.";
+    action = CompilationAction::Run;
+    zc::MainBuilder builder(context, VERSION_STRING,
+                            "Compile, link, and execute one selected package target.");
+    addCompileOptions(builder);
+    return builder.build();
   }
 
   // =====================================================================================
@@ -1143,6 +1148,13 @@ public:
       return zc::str("Compilation failed due to type checking errors.");
     }
 
+    if (action == CompilationAction::Run) {
+#if ZOM_ENABLE_LLVM_BACKEND
+      return runNativeExecutable();
+#else
+      return "The run command requires native code generation.";
+#endif
+    }
     if (action == CompilationAction::Check) return true;
 
     // 5. Dispatch Dump
@@ -1187,7 +1199,7 @@ public:
   }
 
 private:
-  enum class CompilationAction : uint8_t { Emit, Check };
+  enum class CompilationAction : uint8_t { Emit, Check, Run };
 
   using ASTDumpFormat = basic::CompilerOptions::EmissionOptions::ASTDumpFormat;
 
@@ -1348,57 +1360,185 @@ private:
   }
 
 #if ZOM_ENABLE_LLVM_BACKEND
-  // RFC 0021 O5/KR5.1: lower the verified scalar module-initializer MIR to a
-  // native object and write it to the requested output path. This is the single
-  // single-block integer-return shape the backend lowers today; wider shapes
-  // (multi-block, multi-function) are KR5.2. Fail closed with a clear diagnostic
-  // outside that shape rather than emitting a partial object.
-  zc::MainBuilder::Validity emitNativeObject() {
+  using NativeObjectResult = zc::OneOf<zc::Array<uint8_t>, zc::String>;
+
+  NativeObjectResult buildNativeObject() {
     const auto mirModules = session->getOwnershipCheckedMirModules();
     if (mirModules.size() != 1) {
-      return zc::str("Binary emission currently supports exactly one module; got ",
-                     mirModules.size(), ".");
+      return NativeObjectResult(zc::str(
+          "Binary emission currently supports exactly one module; got ", mirModules.size(), "."));
     }
     const auto functions = mirModules[0].builtMir().functions();
     if (functions.size() != 1 || functions[0].kind != mir::MirFunctionKind::ModuleInitializer) {
-      return zc::str(
-          "Binary emission currently supports one scalar module-initializer function only.");
+      return NativeObjectResult(zc::str(
+          "Binary emission currently supports one scalar module-initializer function only."));
     }
-
     auto semanticTypes = session->getSemanticTypeStore();
-    if (semanticTypes == zc::none) { return zc::str("No semantic type store is available."); }
-
+    if (semanticTypes == zc::none) {
+      return NativeObjectResult(zc::str("No semantic type store is available."));
+    }
     zc::Maybe<lir::LirModule> lir;
     ZC_IF_SOME(types, semanticTypes) {
       lir = lir::MirToLirLowering::lowerScalarInitializer(functions[0], types);
     }
     if (lir == zc::none) {
-      return zc::str("MIR -> LIR lowering rejected this function (outside the scalar slice).");
+      return NativeObjectResult(
+          zc::str("MIR -> LIR lowering rejected this function (outside the scalar slice)."));
     }
-
     backend::llvm::LlvmTranslator translator;
-    zc::Maybe<zc::Array<uint8_t>> objectBytes;
     ZC_IF_SOME(lirModule, lir) {
       auto result = translator.translate(lirModule);
-      if (!result.verified()) { return zc::str("LLVM translation failed: ", result.diagnostic()); }
+      if (!result.verified()) {
+        return NativeObjectResult(zc::str("LLVM translation failed: ", result.diagnostic()));
+      }
       const auto object = result.objectCode();
       auto owned = zc::heapArray<uint8_t>(object.size());
-      for (size_t index = 0; index < object.size(); ++index) { owned[index] = object[index]; }
-      objectBytes = zc::mv(owned);
+      for (size_t index = 0; index < object.size(); ++index) owned[index] = object[index];
+      return NativeObjectResult(zc::mv(owned));
     }
+    ZC_UNREACHABLE;
+  }
 
+  zc::MainBuilder::Validity emitNativeObject() {
+    NativeObjectResult result = buildNativeObject();
+    if (result.is<zc::String>()) return zc::mv(result).get<zc::String>();
     const auto& options = session->getCompilerOptions();
     if (options.emission.outputPath == zc::none) {
       return zc::str("Binary emission requires an output path (-o <file>).");
     }
-    ZC_IF_SOME(bytes, objectBytes) {
-      ZC_IF_SOME(path, options.emission.outputPath) {
-        if (!writeObjectFile(path, bytes.asPtr())) {
-          return zc::str("Failed to write the object file to ", path, ".");
-        }
+    ZC_IF_SOME(path, options.emission.outputPath) {
+      auto bytes = zc::mv(result).get<zc::Array<uint8_t>>();
+      if (!writeObjectFile(path, bytes.asPtr())) {
+        return zc::str("Failed to write the object file to ", path, ".");
       }
     }
     return true;
+  }
+
+  ZC_NODISCARD zc::Maybe<zc::Array<zc::byte>> readAbsoluteBytes(zc::StringPtr path) {
+    if (path.size() < 2 || path[0] != '/') return zc::none;
+    zc::Maybe<zc::Array<zc::byte>> result;
+    auto exception = zc::runCatchingExceptions([&]() {
+      auto filesystem = zc::newDiskFilesystem();
+      result = filesystem->getRoot().openFile(zc::Path::parse(path.slice(1)))->readAllBytes();
+    });
+    if (exception != zc::none) return zc::none;
+    return result;
+  }
+
+  ZC_NODISCARD zc::Maybe<zc::String> absoluteParent(zc::StringPtr path) {
+    if (path.size() < 2 || path[0] != '/') return zc::none;
+    size_t slash = path.size();
+    while (slash > 0 && path[slash - 1] != '/') --slash;
+    if (slash == 0 || slash == path.size()) return zc::none;
+    return slash == 1 ? zc::str("/") : zc::heapString(path.slice(0, slash - 1));
+  }
+
+  zc::MainBuilder::Validity runNativeExecutable() {
+#if defined(__linux__) && defined(__x86_64__) && defined(ZOM_RUNTIME_ENTRY_OBJECT) && \
+    defined(ZOM_HOST_LINKER)
+    NativeObjectResult objectResult = buildNativeObject();
+    if (objectResult.is<zc::String>()) return zc::mv(objectResult).get<zc::String>();
+    zc::Array<uint8_t> moduleObject = zc::mv(objectResult).get<zc::Array<uint8_t>>();
+    auto entryBytesMaybe = readAbsoluteBytes(ZOM_RUNTIME_ENTRY_OBJECT ""_zc);
+    auto linkerBytesMaybe = readAbsoluteBytes(ZOM_HOST_LINKER ""_zc);
+    if (entryBytesMaybe == zc::none || linkerBytesMaybe == zc::none) {
+      return zc::str("Native runtime entry or linker bytes are unavailable.");
+    }
+    zc::Array<zc::byte> entryBytes = ZC_REQUIRE_NONNULL(zc::mv(entryBytesMaybe));
+    zc::Array<zc::byte> linkerBytes = ZC_REQUIRE_NONNULL(zc::mv(linkerBytesMaybe));
+    auto moduleDigest = identity::sha256(moduleObject.asPtr());
+    auto entryDigest = identity::sha256(entryBytes.asPtr());
+    auto linkerDigest = identity::sha256(linkerBytes.asPtr());
+    if (moduleDigest == zc::none || entryDigest == zc::none || linkerDigest == zc::none) {
+      return zc::str("Native artifact digest computation failed.");
+    }
+
+    zc::String runRoot = zc::str("/tmp/zom-run-", getpid());
+    auto filesystem = zc::newDiskFilesystem();
+    zc::Path runRootPath = zc::Path::parse(runRoot.slice(1));
+    (void)filesystem->getRoot().tryRemove(runRootPath);
+    auto runDirectory = filesystem->getRoot().openSubdir(
+        runRootPath, zc::WriteMode::CREATE | zc::WriteMode::MODIFY | zc::WriteMode::CREATE_PARENT |
+                         zc::WriteMode::PRIVATE);
+    runDirectory->openFile(zc::Path("module.o"_zc), zc::WriteMode::CREATE)
+        ->writeAll(moduleObject.asPtr());
+    runDirectory->openFile(zc::Path("entry.o"_zc), zc::WriteMode::CREATE)
+        ->writeAll(entryBytes.asPtr());
+
+    const auto host = hostTargetConfiguration();
+    zc::Vector<ir::CanonicalTargetFeature> backendFeatures;
+    auto specification = ir::CanonicalTargetSpec::from(
+        host.triple, host.dataLayout, "generic"_zc, zc::mv(backendFeatures), "zom"_zc,
+        ir::BackendPanicStrategy::Abort, host.objectFormat);
+    auto linkerParent = absoluteParent(ZOM_HOST_LINKER ""_zc);
+    if (specification == zc::none || linkerParent == zc::none) {
+      return zc::str("Host target or linker identity is unavailable.");
+    }
+    const auto& target = ZC_REQUIRE_NONNULL(specification);
+    auto closure = ir::ToolchainClosureRecord::make(
+        target.targetSpecId().bytes(), ZC_REQUIRE_NONNULL(linkerParent),
+        ir::LinkerDriverKind::ElfDriver, ZOM_HOST_LINKER ""_zc, ZC_REQUIRE_NONNULL(linkerDigest),
+        linkerBytes.size(), zc::Array<ir::LinkInputRecord>(), zc::Array<ir::LinkInputRecord>());
+    if (closure == zc::none) return zc::str("Host linker closure verification failed.");
+
+    auto objectRecords = zc::heapArrayBuilder<ir::LinkInputRecord>(2);
+    objectRecords.add(ZC_REQUIRE_NONNULL(
+        ir::LinkInputRecord::make(zc::str(runRoot, "/entry.o"), ir::LinkInputRole::ObjectArtifact,
+                                  ZC_REQUIRE_NONNULL(entryDigest), entryBytes.size())));
+    objectRecords.add(ZC_REQUIRE_NONNULL(
+        ir::LinkInputRecord::make(zc::str(runRoot, "/module.o"), ir::LinkInputRole::ObjectArtifact,
+                                  ZC_REQUIRE_NONNULL(moduleDigest), moduleObject.size())));
+    zc::Array<zc::String> runtimeSymbols;
+    auto inspection =
+        ir::ExecutableInspectionProfile::make(ir::ObjectFormat::Elf, ir::ExecutableMachine::X86_64,
+                                              64, zc::mv(runtimeSymbols), zc::str("__zom_"));
+    if (inspection == zc::none) return zc::str("Host inspection profile verification failed.");
+    ir::ExecutableLinkRequest request{ZC_REQUIRE_NONNULL(zc::mv(closure)),
+                                      ZC_REQUIRE_NONNULL(zc::mv(inspection)),
+                                      zc::heapArray<uint8_t>({'_', 's', 't', 'a', 'r', 't'}),
+                                      objectRecords.finish(),
+                                      zc::Array<ir::LinkInputRecord>(),
+                                      zc::str(runRoot),
+                                      zc::str(runRoot, "/program")};
+    auto plan = ir::LinkPlanVerifier::verify(zc::mv(request));
+    if (!plan.isVerified()) return zc::str("Native link plan verification failed.");
+
+    ir::PublicationOutcome publication =
+        ir::linkAndPublish(zc::mv(plan).takeVerified(), *filesystem);
+    if (publication.isRecoveryRequired()) {
+      return zc::str("Native publication requires explicit recovery.");
+    }
+    if (publication.isRejected()) return zc::str("Native linking or publication failed.");
+    ir::PublishedExecutableArtifact artifact = zc::mv(publication).takePublished();
+
+    zc::Array<zc::String> noCapabilities;
+    auto artifactProfile = ir::HostExecutionProfile::make(
+        host.operatingSystem, host.architecture, host.objectFormat,
+        static_cast<uint32_t>(sizeof(void*) * 8), zc::mv(noCapabilities));
+    zc::Array<zc::String> hostCapabilities;
+    auto hostProfile = ir::HostExecutionProfile::make(
+        host.operatingSystem, host.architecture, host.objectFormat,
+        static_cast<uint32_t>(sizeof(void*) * 8), zc::mv(hostCapabilities));
+    if (artifactProfile == zc::none || hostProfile == zc::none ||
+        !ir::runCompatibility(ZC_REQUIRE_NONNULL(artifactProfile), ZC_REQUIRE_NONNULL(hostProfile))
+             .isCompatible()) {
+      return zc::str("Published executable is not compatible with this host.");
+    }
+
+    zc::SubprocessCommand command(artifact.finalDestination());
+    command.envPolicy(zc::SubprocessEnvPolicy::Inherit);
+    zc::SubprocessResult executed = command.run();
+    if (!executed.spawned() || !executed.output().succeeded()) {
+      return zc::str("Published executable failed to run successfully.");
+    }
+    if (!filesystem->getRoot().tryRemove(runRootPath)) {
+      return zc::str("Published executable ran, but temporary artifact cleanup failed.");
+    }
+    return true;
+#else
+    return "The run command requires the Linux x86-64 LLVM backend and runtime entry object.";
+#endif
   }
 
   // Writes raw object bytes to `outputPath`, honoring the same absolute/relative
@@ -1416,7 +1556,7 @@ private:
       file->writeAll(bytes);
       ok = true;
     });
-    if (exception != zc::none) { return false; }
+    if (exception != zc::none) return false;
     return ok;
   }
 #endif

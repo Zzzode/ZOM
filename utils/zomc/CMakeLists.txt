@@ -9,6 +9,15 @@ target_compile_definitions(zomc PRIVATE "VERSION=\"${VERSION}\"")
 if(ZOM_ENABLE_LLVM_BACKEND)
   target_link_libraries(zomc PRIVATE backend_llvm)
   target_compile_definitions(zomc PRIVATE ZOM_ENABLE_LLVM_BACKEND=1)
+  if(TARGET zom-runtime-entry)
+    find_program(ZOM_HOST_LINKER NAMES ld REQUIRED)
+    add_dependencies(zomc zom-runtime-entry)
+    target_compile_definitions(
+      zomc
+      PRIVATE
+        ZOM_RUNTIME_ENTRY_OBJECT="$<TARGET_OBJECTS:zom-runtime-entry>"
+        ZOM_HOST_LINKER="${ZOM_HOST_LINKER}")
+  endif()
 endif()
 
 set_target_include_directories("${INCLUDE_DIRS}" zomc)
