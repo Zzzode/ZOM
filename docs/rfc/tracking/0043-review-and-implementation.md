@@ -350,3 +350,29 @@ the tree.
 - Repository inspection confirmed RFC 0043's stated dependency boundary: no
   `VerifiedObjectArtifact` production path exists yet, and RFC 0021 is
   `ACCEPTED` without an `IMPLEMENTING` pointer.
+
+## Locally Reproduced Status Snapshot (2026-08-31)
+
+This snapshot records only evidence reproduced in the current build
+environment. It does not vouch for LLVM-backend execution evidence produced
+elsewhere.
+
+- Landed on `develop` as individually reviewed commits:
+  - `a737dda5` feat(ir): D5 executable inspection and the `linkAndPublish` chain.
+  - `89816cb3` feat(ir): D1 publication-recovery hardening against concurrent
+    claim sweeps.
+  - `b2310198` feat(zomc): the `run` consumer and Linux x86-64 runtime entry
+    wiring.
+  - `c7e842f0` feat(zomc): the `build` subcommand and shared option groups.
+  - Preceded by `7e047a32` test(ir): a latent use-after-free fix in the publish
+    success assertion.
+- Reproduced here with `ZOM_ENABLE_LLVM_BACKEND=OFF` (the default sanitizer
+  preset): the D5, D1, inspector, and link-plan-codec unit tests are green, and
+  `native-execution-cli` asserts the documented fail-closed unavailable state.
+- **KR5.4 real end-to-end `zomc run` execution is deferred.** The execution
+  path requires an LLVM backend build, which pins LLVM 22.1.8; that toolchain
+  is not available in this environment, so the `llvm` preset cannot be
+  configured here. The fail-closed guard verified above is not execution
+  success, and no all-platform completion is claimed.
+- **Open:** Mach-O entry-symbol mangling (`_zom` vs `zom`) is unresolved;
+  execution remains Linux x86-64 only.
