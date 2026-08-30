@@ -203,6 +203,8 @@ public:
     return zc::MainBuilder(context, VERSION_STRING, "Command-line tool for Zomlang Compiler.")
         .addSubCommand("compile", ZC_BIND_METHOD(*this, getCompileMain),
                        "Compiles source code in one or more target.")
+        .addSubCommand("build", ZC_BIND_METHOD(*this, getBuildMain),
+                       "Build a selected package target through verified Built MIR.")
         .addSubCommand("run", ZC_BIND_METHOD(*this, getRunMain),
                        "Run a zomlang program with project configuration.")
         .addSubCommand("fmt", ZC_BIND_METHOD(*this, getFmtMain),
@@ -215,6 +217,14 @@ public:
     zc::MainBuilder builder(context, VERSION_STRING,
                             "Compiles Zomlang sources and generates one or more targets.");
     addCompileOptions(builder);
+    return builder.build();
+  }
+
+  ZC_NODISCARD zc::MainFunc getBuildMain() {
+    action = CompilationAction::FrontendOnly;
+    zc::MainBuilder builder(context, VERSION_STRING,
+                            "Build one selected package target through verified Built MIR.");
+    addBuildOptions(builder);
     return builder.build();
   }
 
@@ -354,7 +364,7 @@ public:
     return ok;
   }
 
-  void addCompileOptions(zc::MainBuilder& builder) {
+  void addPackageSelectionOptions(zc::MainBuilder& builder) {
     builder
         .addOptionWithArg({"manifest-path"}, ZC_BIND_METHOD(*this, setManifestPath),
                           "<path-to-Zom.toml>", "Select the package manifest.")
@@ -379,19 +389,11 @@ public:
         .addOption({"locked"}, ZC_BIND_METHOD(*this, enableLockedMode),
                    "Require the existing canonical lock graph.")
         .addOption({"update-lock"}, ZC_BIND_METHOD(*this, enableUpdateLockMode),
-                   "Resolve and atomically update Zom.lock.")
-        .addOptionWithArg({'o', "output"}, ZC_BIND_METHOD(*this, addOutput), "<dir>",
-                          "Specify the output directory or file path.")
-        .addOptionWithArg({"emit"}, ZC_BIND_METHOD(*this, setEmitType), "<type>",
-                          "Set output type: ast, dispatch, binary (default: binary)")
-        .addOptionWithArg({"ast-format"}, ZC_BIND_METHOD(*this, setASTDumpFormat), "<format>",
-                          "Set AST dump format: tree, json, raw (default: tree)")
-        .addOption({"dump-ast"}, ZC_BIND_METHOD(*this, enableASTDump),
-                   "Dump AST to stdout (shorthand for --emit=ast)")
-        .addOption({"dump-dispatch"}, ZC_BIND_METHOD(*this, enableDispatchDump),
-                   "Dump checked call dispatch records to stdout (shorthand for --emit=dispatch)")
-        .addOption({"check"}, ZC_BIND_METHOD(*this, enableCheck),
-                   "Check sources without emitting an artifact")
+                   "Resolve and atomically update Zom.lock.");
+  }
+
+  void addCompilationPolicyOptions(zc::MainBuilder& builder) {
+    builder
         .addOptionWithArg({'O', "optimize"}, ZC_BIND_METHOD(*this, setOptimizationLevel), "<level>",
                           "Set optimization level: 0, 1, 2, 3 (default: 0)")
         .addOptionWithArg({"panic"}, ZC_BIND_METHOD(*this, setPanicStrategy), "<strategy>",
@@ -404,6 +406,29 @@ public:
                    "Disable regex literal syntax")
         .expectZeroOrMoreArgs("<source>", ZC_BIND_METHOD(*this, rejectPositionalSource))
         .callAfterParsing(ZC_BIND_METHOD(*this, emitOutput));
+  }
+
+  void addCompileOptions(zc::MainBuilder& builder) {
+    addPackageSelectionOptions(builder);
+    builder
+        .addOptionWithArg({'o', "output"}, ZC_BIND_METHOD(*this, addOutput), "<dir>",
+                          "Specify the output directory or file path.")
+        .addOptionWithArg({"emit"}, ZC_BIND_METHOD(*this, setEmitType), "<type>",
+                          "Set output type: ast, dispatch, binary (default: binary)")
+        .addOptionWithArg({"ast-format"}, ZC_BIND_METHOD(*this, setASTDumpFormat), "<format>",
+                          "Set AST dump format: tree, json, raw (default: tree)")
+        .addOption({"dump-ast"}, ZC_BIND_METHOD(*this, enableASTDump),
+                   "Dump AST to stdout (shorthand for --emit=ast)")
+        .addOption({"dump-dispatch"}, ZC_BIND_METHOD(*this, enableDispatchDump),
+                   "Dump checked call dispatch records to stdout (shorthand for --emit=dispatch)")
+        .addOption({"check"}, ZC_BIND_METHOD(*this, enableCheck),
+                   "Check sources without emitting an artifact");
+    addCompilationPolicyOptions(builder);
+  }
+
+  void addBuildOptions(zc::MainBuilder& builder) {
+    addPackageSelectionOptions(builder);
+    addCompilationPolicyOptions(builder);
   }
 
   // =====================================================================================
@@ -481,7 +506,7 @@ public:
   }
 
   zc::MainBuilder::Validity addOutput(zc::StringPtr spec) {
-    if (action == CompilationAction::Check) {
+    if (action == CompilationAction::FrontendOnly) {
       return "Cannot combine --check with an output selector.";
     }
     outputActionRequested = true;
@@ -490,7 +515,7 @@ public:
   }
 
   zc::MainBuilder::Validity setEmitType(zc::StringPtr type) {
-    if (action == CompilationAction::Check) {
+    if (action == CompilationAction::FrontendOnly) {
       return "Cannot combine --check with an output selector.";
     }
     outputActionRequested = true;
@@ -525,7 +550,7 @@ public:
   }
 
   zc::MainBuilder::Validity enableASTDump() {
-    if (action == CompilationAction::Check) {
+    if (action == CompilationAction::FrontendOnly) {
       return "Cannot combine --check with an output selector.";
     }
     outputActionRequested = true;
@@ -534,7 +559,7 @@ public:
   }
 
   zc::MainBuilder::Validity enableDispatchDump() {
-    if (action == CompilationAction::Check) {
+    if (action == CompilationAction::FrontendOnly) {
       return "Cannot combine --check with an output selector.";
     }
     outputActionRequested = true;
@@ -545,7 +570,7 @@ public:
 
   zc::MainBuilder::Validity enableCheck() {
     if (outputActionRequested) { return "Cannot combine --check with an output selector."; }
-    action = CompilationAction::Check;
+    action = CompilationAction::FrontendOnly;
     return true;
   }
 
@@ -1155,7 +1180,7 @@ public:
       return "The run command requires native code generation.";
 #endif
     }
-    if (action == CompilationAction::Check) return true;
+    if (action == CompilationAction::FrontendOnly) return true;
 
     // 5. Dispatch Dump
     if (options.emission.outputType ==
@@ -1199,7 +1224,7 @@ public:
   }
 
 private:
-  enum class CompilationAction : uint8_t { Emit, Check, Run };
+  enum class CompilationAction : uint8_t { Emit, FrontendOnly, Run };
 
   using ASTDumpFormat = basic::CompilerOptions::EmissionOptions::ASTDumpFormat;
 
