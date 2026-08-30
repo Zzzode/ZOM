@@ -44,6 +44,8 @@
 //
 #include <unistd.h>
 #if defined(ZOM_FAKE_LINKER_SUCCESS)
+#include <fcntl.h>
+#include <stdio.h>
 #include <sys/stat.h>  // fstat/chmod, used only by the Linux fixture-driven cases
 #include <sys/wait.h>
 #endif
@@ -772,6 +774,153 @@ const IrFailureFact& soleFailureFact(const IrOperationResult<LinkedOutputCandida
   zc::ArrayPtr<const IrFailureFact> facts = result.invariantFailures().facts();
   ZC_REQUIRE(facts.size() == 1);
   return facts[0];
+}
+
+class FinalManifestCorruptionObserver final : public PublicationCheckpointObserver {
+public:
+  explicit FinalManifestCorruptionObserver(const zc::Directory& outputDir) : outputDir(outputDir) {}
+
+  void reached(PublicationCheckpoint checkpoint) override {
+    if (checkpoint != PublicationCheckpoint::ManifestRenamed || corrupted) { return; }
+    outputDir.openFile(zc::Path("app.zom-artifact"_zc), zc::WriteMode::MODIFY)
+        ->writeAll("corrupt"_zc);
+    corrupted = true;
+  }
+
+  bool didCorrupt() const noexcept { return corrupted; }
+
+private:
+  const zc::Directory& outputDir;
+  bool corrupted = false;
+};
+
+class ManifestStagedJournalCompetitorObserver final : public PublicationCheckpointObserver {
+public:
+  explicit ManifestStagedJournalCompetitorObserver(const zc::Directory& outputDir)
+      : outputDir(outputDir) {}
+
+  void reached(PublicationCheckpoint checkpoint) override {
+    if (checkpoint != PublicationCheckpoint::StartedDurable || created) { return; }
+    zc::String tree = soleSnapshotTreeName(outputDir);
+    zc::StringPtr treeView(tree);
+    ZC_REQUIRE(treeView.startsWith(".zomlink-"_zc));
+    zc::String token = zc::heapString(treeView.slice(9));
+    zc::String leaf = zc::str("journal.", token, ".manifest-staged");
+    outputDir.openFile(zc::Path(leaf), zc::WriteMode::CREATE)
+        ->writeAll("competitor-manifest-staged"_zc);
+    created = true;
+  }
+
+  bool didCreate() const noexcept { return created; }
+
+private:
+  const zc::Directory& outputDir;
+  bool created = false;
+};
+
+class ManifestAndExecutableCompetitorObserver final : public PublicationCheckpointObserver {
+public:
+  explicit ManifestAndExecutableCompetitorObserver(const zc::Directory& outputDir)
+      : outputDir(outputDir) {}
+
+  void reached(PublicationCheckpoint checkpoint) override {
+    if (checkpoint == PublicationCheckpoint::ExecCommittedDurable && !manifestCreated) {
+      outputDir.openFile(zc::Path("app.zom-artifact"_zc), zc::WriteMode::CREATE)
+          ->writeAll("competitor-manifest"_zc);
+      manifestCreated = true;
+    }
+    if (checkpoint == PublicationCheckpoint::ManifestRenameRejected && !executableReplaced) {
+      ZC_REQUIRE(outputDir.tryRemove(zc::Path("app"_zc)));
+      outputDir.openFile(zc::Path("app"_zc), zc::WriteMode::CREATE)->writeAll("competitor-app"_zc);
+      executableReplaced = true;
+    }
+  }
+
+  bool completed() const noexcept { return manifestCreated && executableReplaced; }
+
+private:
+  const zc::Directory& outputDir;
+  bool manifestCreated = false;
+  bool executableReplaced = false;
+};
+
+class PublicationFaultObserver final : public PublicationCheckpointObserver {
+public:
+  explicit PublicationFaultObserver(
+      PublicationFaultPoint first,
+      PublicationFaultPoint second = PublicationFaultPoint::JournalWrite, bool hasSecond = false,
+      size_t firstSkip = 0)
+      : first(first), second(second), hasSecond(hasSecond), firstSkip(firstSkip) {}
+
+  void reached(PublicationCheckpoint) override {}
+
+  bool fail(PublicationFaultPoint point) override {
+    if (point == first && !firstFired) {
+      if (firstSkip > 0) {
+        --firstSkip;
+        return false;
+      }
+      firstFired = true;
+      return true;
+    }
+    if (hasSecond && point == second && !secondFired) {
+      secondFired = true;
+      return true;
+    }
+    return false;
+  }
+
+  bool firedAll() const noexcept { return firstFired && (!hasSecond || secondFired); }
+
+private:
+  PublicationFaultPoint first;
+  PublicationFaultPoint second;
+  bool hasSecond;
+  size_t firstSkip;
+  bool firstFired = false;
+  bool secondFired = false;
+};
+
+class BlockAtPublicationCheckpoint final : public PublicationCheckpointObserver {
+public:
+  BlockAtPublicationCheckpoint(PublicationCheckpoint target, int readyFd, int releaseFd)
+      : target(target), readyFd(readyFd), releaseFd(releaseFd) {}
+
+  void reached(PublicationCheckpoint checkpoint) override {
+    if (checkpoint != target || reachedTarget) { return; }
+    reachedTarget = true;
+    const char marker = 'r';
+    if (::write(readyFd, &marker, 1) != 1) { _exit(120); }
+    char release = 0;
+    if (::read(releaseFd, &release, 1) != 1 || release != 'g') { _exit(121); }
+  }
+
+private:
+  PublicationCheckpoint target;
+  int readyFd;
+  int releaseFd;
+  bool reachedTarget = false;
+};
+
+void crashPublicationInBaseAt(PublicationCheckpoint checkpoint, zc::StringPtr base) {
+  pid_t child = ::fork();
+  ZC_REQUIRE(child >= 0);
+  if (child == 0) {
+    auto fs = zc::newDiskFilesystem();
+    auto dir = openDir(*fs, base);
+    Scenario scenario;
+    VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+    LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), *fs);
+    VerifiedExecutableManifest manifest = buildManifest(candidate, base);
+    ExitAtPublicationCheckpoint observer(checkpoint);
+    (void)PublicationTransactionTestAccess::publishObserved(zc::mv(candidate), zc::mv(manifest),
+                                                            observer);
+    _exit(127);
+  }
+  int status = 0;
+  ZC_REQUIRE(::waitpid(child, &status, 0) == child);
+  ZC_REQUIRE(WIFEXITED(status));
+  ZC_REQUIRE(WEXITSTATUS(status) == 64 + static_cast<int>(checkpoint));
 }
 
 ZC_TEST("publication recovery never infers ownership from a pre-Started token name") {
@@ -2066,6 +2215,875 @@ ZC_TEST("linkExecutable fails closed on a filesystem exposing no real descriptor
     if (zc::StringPtr(name).startsWith(".zomlink-"_zc)) { foundSnapshot = true; }
   }
   ZC_EXPECT(!foundSnapshot);
+}
+
+ZC_TEST("an unrelated pre-Started root cannot hide a complete published pair") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-published-pair-with-unrelated-root");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+  PublicationOutcome outcome = linkAndPublish(zc::mv(plan), *fs);
+  ZC_REQUIRE(outcome.isPublished());
+
+  constexpr zc::StringPtr unrelatedRoot = ".zomlink-ffeeddccbbaa99887766554433221100"_zc;
+  dir->openSubdir(zc::Path(unrelatedRoot), zc::WriteMode::CREATE | zc::WriteMode::PRIVATE);
+
+  PublicationRecoveryResult result = recoverLinkedOutputPublication(*fs, zc::str(base, "/app"));
+  ZC_EXPECT(result.status() == PublicationRecoveryStatus::Published);
+  ZC_EXPECT(dir->tryLstat(zc::Path("app"_zc)) != zc::none);
+  ZC_EXPECT(dir->tryLstat(zc::Path("app.zom-artifact"_zc)) != zc::none);
+  ZC_EXPECT(dir->tryLstat(zc::Path(unrelatedRoot)) != zc::none);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("malformed journal residue cannot hide a complete published pair") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-published-pair-with-malformed-journal");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+  PublicationOutcome outcome = linkAndPublish(zc::mv(plan), *fs);
+  ZC_REQUIRE(outcome.isPublished());
+
+  constexpr zc::StringPtr malformedJournal = "journal.0123456789abcdef0123456789abcdef.started"_zc;
+  dir->openFile(zc::Path(malformedJournal), zc::WriteMode::CREATE)
+      ->writeAll("malformed-unrelated-journal"_zc);
+
+  PublicationRecoveryResult result = recoverLinkedOutputPublication(*fs, zc::str(base, "/app"));
+  ZC_EXPECT(result.status() == PublicationRecoveryStatus::Published);
+  ZC_EXPECT(dir->tryLstat(zc::Path("app"_zc)) != zc::none);
+  ZC_EXPECT(dir->tryLstat(zc::Path("app.zom-artifact"_zc)) != zc::none);
+  ZC_EXPECT(dir->tryLstat(zc::Path(malformedJournal)) != zc::none);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("publication recovery rejects a later journal stage whose Started owner proof is missing") {
+  zc::String base;
+  crashPublicationAt(PublicationCheckpoint::ExecCommittedDurable, "missing-started-chain"_zc, base);
+  auto fs = zc::newDiskFilesystem();
+  auto dir = openDir(*fs, base);
+
+  for (const zc::String& name : dir->listNames()) {
+    zc::StringPtr text(name);
+    if (text.startsWith("journal."_zc) && text.endsWith(".exec-committed"_zc)) { continue; }
+    dir->remove(zc::Path(name));
+  }
+
+  PublicationRecoveryResult result = recoverLinkedOutputPublication(*fs, zc::str(base, "/app"));
+  ZC_EXPECT(result.status() == PublicationRecoveryStatus::ExplicitRepairRequired);
+  bool retainedExecStage = false;
+  for (const zc::String& name : dir->listNames()) {
+    zc::StringPtr text(name);
+    if (text.startsWith("journal."_zc) && text.endsWith(".exec-committed"_zc)) {
+      retainedExecStage = true;
+    }
+  }
+  ZC_EXPECT(retainedExecStage);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("publication recovery never deletes an executable from a ManifestCommitted pair") {
+  zc::String base;
+  crashPublicationAt(PublicationCheckpoint::ManifestCommittedDurable,
+                     "manifest-committed-missing-manifest"_zc, base);
+  auto fs = zc::newDiskFilesystem();
+  auto dir = openDir(*fs, base);
+  ZC_REQUIRE(dir->tryRemove(zc::Path("app.zom-artifact"_zc)));
+
+  PublicationRecoveryResult result = recoverLinkedOutputPublication(*fs, zc::str(base, "/app"));
+  ZC_EXPECT(result.status() == PublicationRecoveryStatus::ExplicitRepairRequired);
+  ZC_EXPECT(dir->tryLstat(zc::Path("app"_zc)) != zc::none);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("concurrent recovery cannot sweep a claimed but unverified competitor executable") {
+  zc::String base;
+  crashPublicationAt(PublicationCheckpoint::ExecutableRenamed,
+                     "concurrent-recovery-claimed-competitor"_zc, base);
+  auto fs = zc::newDiskFilesystem();
+  auto dir = openDir(*fs, base);
+  zc::String rootLeaf = soleSnapshotTreeName(*dir);
+  zc::String quarantineRoot = zc::str(rootLeaf, ".cleanup");
+
+  ZC_REQUIRE(dir->tryRemove(zc::Path("app"_zc)));
+  dir->openFile(zc::Path("app"_zc), zc::WriteMode::CREATE)->writeAll("competitor-app"_zc);
+  dir->sync();
+
+  int readyPipe[2];
+  int releasePipe[2];
+  ZC_REQUIRE(::pipe(readyPipe) == 0);
+  ZC_REQUIRE(::pipe(releasePipe) == 0);
+  pid_t recoveryA = ::fork();
+  ZC_REQUIRE(recoveryA >= 0);
+  if (recoveryA == 0) {
+    (void)::close(readyPipe[0]);
+    (void)::close(releasePipe[1]);
+    auto childFs = zc::newDiskFilesystem();
+    BlockAtPublicationCheckpoint observer(
+        PublicationCheckpoint::ExecutableClaimedBeforeVerification, readyPipe[1], releasePipe[0]);
+    PublicationRecoveryResult result = PublicationTransactionTestAccess::recoverObserved(
+        *childFs, zc::str(base, "/app"), observer);
+    _exit(result.status() == PublicationRecoveryStatus::ExplicitRepairRequired ? 0 : 122);
+  }
+
+  (void)::close(readyPipe[1]);
+  (void)::close(releasePipe[0]);
+  char ready = 0;
+  ZC_REQUIRE(::read(readyPipe[0], &ready, 1) == 1);
+  ZC_REQUIRE(ready == 'r');
+  (void)::close(readyPipe[0]);
+
+  // Recovery A owns the rename but has not proved that the quarantined app is
+  // this transaction's output. Recovery B must therefore retain the closed
+  // quarantine slot and all owner evidence rather than treating ENOENT at the
+  // public name as proof that cleanup already completed.
+  PublicationRecoveryResult recoveryB = recoverLinkedOutputPublication(*fs, zc::str(base, "/app"));
+  ZC_EXPECT(recoveryB.status() == PublicationRecoveryStatus::ExplicitRepairRequired);
+  auto quarantineMaybe = dir->tryOpenSubdir(zc::Path(quarantineRoot), zc::WriteMode::MODIFY);
+  ZC_EXPECT(quarantineMaybe != zc::none);
+  if (quarantineMaybe != zc::none) {
+    auto quarantine = ZC_REQUIRE_NONNULL(zc::mv(quarantineMaybe));
+    auto claimedMaybe = quarantine->tryOpenFile(zc::Path("publication-executable-cleanup"_zc));
+    ZC_EXPECT(claimedMaybe != zc::none);
+    if (claimedMaybe != zc::none) {
+      auto claimed = ZC_REQUIRE_NONNULL(zc::mv(claimedMaybe));
+      ZC_EXPECT(claimed->readAllText() == "competitor-app"_zc);
+    }
+  }
+  bool journalRetainedWhileClaimed = false;
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith("journal."_zc)) { journalRetainedWhileClaimed = true; }
+  }
+  ZC_EXPECT(journalRetainedWhileClaimed);
+
+  const char release = 'g';
+  ZC_REQUIRE(::write(releasePipe[1], &release, 1) == 1);
+  (void)::close(releasePipe[1]);
+  int status = 0;
+  ZC_REQUIRE(::waitpid(recoveryA, &status, 0) == recoveryA);
+  ZC_REQUIRE(WIFEXITED(status));
+  ZC_EXPECT(WEXITSTATUS(status) == 0);
+
+  ZC_EXPECT(dir->tryLstat(zc::Path("app"_zc)) != zc::none);
+  if (dir->tryLstat(zc::Path("app"_zc)) != zc::none) {
+    ZC_EXPECT(dir->openFile(zc::Path("app"_zc))->readAllText() == "competitor-app"_zc);
+  }
+  ZC_EXPECT(dir->tryLstat(zc::Path(quarantineRoot)) != zc::none);
+  bool journalRetainedAfterRestore = false;
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith("journal."_zc)) { journalRetainedAfterRestore = true; }
+  }
+  ZC_EXPECT(journalRetainedAfterRestore);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("source absence cannot authorize sweeping another recovery's unverified claim") {
+  zc::String base;
+  crashPublicationAt(PublicationCheckpoint::ExecutableRenamed,
+                     "concurrent-recovery-source-absence"_zc, base);
+  auto fs = zc::newDiskFilesystem();
+  auto dir = openDir(*fs, base);
+  zc::String rootLeaf = soleSnapshotTreeName(*dir);
+  zc::String quarantineRoot = zc::str(rootLeaf, ".cleanup");
+
+  ZC_REQUIRE(dir->tryRemove(zc::Path("app"_zc)));
+  dir->openFile(zc::Path("app"_zc), zc::WriteMode::CREATE)->writeAll("competitor-app"_zc);
+  dir->sync();
+
+  // Pin recovery B after it has observed the public app and decided that it
+  // must claim it, but before its rename. Recovery A can then win that rename
+  // and pause before owner verification, forcing B through rename-ENOENT while
+  // B's stale claimExecutable decision remains true.
+  int beforeReadyPipe[2];
+  int beforeReleasePipe[2];
+  ZC_REQUIRE(::pipe(beforeReadyPipe) == 0);
+  ZC_REQUIRE(::pipe(beforeReleasePipe) == 0);
+  pid_t recoveryB = ::fork();
+  ZC_REQUIRE(recoveryB >= 0);
+  if (recoveryB == 0) {
+    (void)::close(beforeReadyPipe[0]);
+    (void)::close(beforeReleasePipe[1]);
+    auto childFs = zc::newDiskFilesystem();
+    BlockAtPublicationCheckpoint observer(PublicationCheckpoint::ExecutableClaimAboutToRename,
+                                          beforeReadyPipe[1], beforeReleasePipe[0]);
+    PublicationRecoveryResult result = PublicationTransactionTestAccess::recoverObserved(
+        *childFs, zc::str(base, "/app"), observer);
+    _exit(result.status() == PublicationRecoveryStatus::ExplicitRepairRequired ? 0 : 123);
+  }
+  (void)::close(beforeReadyPipe[1]);
+  (void)::close(beforeReleasePipe[0]);
+  char beforeReady = 0;
+  ZC_REQUIRE(::read(beforeReadyPipe[0], &beforeReady, 1) == 1);
+  ZC_REQUIRE(beforeReady == 'r');
+  (void)::close(beforeReadyPipe[0]);
+
+  int claimedReadyPipe[2];
+  int claimedReleasePipe[2];
+  ZC_REQUIRE(::pipe(claimedReadyPipe) == 0);
+  ZC_REQUIRE(::pipe(claimedReleasePipe) == 0);
+  pid_t recoveryA = ::fork();
+  ZC_REQUIRE(recoveryA >= 0);
+  if (recoveryA == 0) {
+    (void)::close(beforeReleasePipe[1]);
+    (void)::close(claimedReadyPipe[0]);
+    (void)::close(claimedReleasePipe[1]);
+    auto childFs = zc::newDiskFilesystem();
+    BlockAtPublicationCheckpoint observer(
+        PublicationCheckpoint::ExecutableClaimedBeforeVerification, claimedReadyPipe[1],
+        claimedReleasePipe[0]);
+    PublicationRecoveryResult result = PublicationTransactionTestAccess::recoverObserved(
+        *childFs, zc::str(base, "/app"), observer);
+    _exit(result.status() == PublicationRecoveryStatus::ExplicitRepairRequired ? 0 : 124);
+  }
+  (void)::close(claimedReadyPipe[1]);
+  (void)::close(claimedReleasePipe[0]);
+  char claimedReady = 0;
+  ZC_REQUIRE(::read(claimedReadyPipe[0], &claimedReady, 1) == 1);
+  ZC_REQUIRE(claimedReady == 'r');
+  (void)::close(claimedReadyPipe[0]);
+
+  const char release = 'g';
+  ZC_REQUIRE(::write(beforeReleasePipe[1], &release, 1) == 1);
+  (void)::close(beforeReleasePipe[1]);
+  int recoveryBStatus = 0;
+  ZC_REQUIRE(::waitpid(recoveryB, &recoveryBStatus, 0) == recoveryB);
+  ZC_EXPECT(WIFEXITED(recoveryBStatus));
+  if (WIFEXITED(recoveryBStatus)) { ZC_EXPECT(WEXITSTATUS(recoveryBStatus) == 0); }
+
+  // B must not interpret its rename ENOENT as an already-clean entry. A still
+  // owns an in-flight, unverified claim in the closed slot, so B retains the
+  // competitor and the journal/root owner evidence.
+  auto quarantineMaybe = dir->tryOpenSubdir(zc::Path(quarantineRoot), zc::WriteMode::MODIFY);
+  ZC_EXPECT(quarantineMaybe != zc::none);
+  if (quarantineMaybe != zc::none) {
+    auto quarantine = ZC_REQUIRE_NONNULL(zc::mv(quarantineMaybe));
+    ZC_EXPECT(quarantine->openFile(zc::Path("publication-executable-cleanup"_zc))->readAllText() ==
+              "competitor-app"_zc);
+  }
+  bool journalRetainedWhileClaimed = false;
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith("journal."_zc)) { journalRetainedWhileClaimed = true; }
+  }
+  ZC_EXPECT(journalRetainedWhileClaimed);
+
+  ZC_REQUIRE(::write(claimedReleasePipe[1], &release, 1) == 1);
+  (void)::close(claimedReleasePipe[1]);
+  int recoveryAStatus = 0;
+  ZC_REQUIRE(::waitpid(recoveryA, &recoveryAStatus, 0) == recoveryA);
+  ZC_REQUIRE(WIFEXITED(recoveryAStatus));
+  ZC_EXPECT(WEXITSTATUS(recoveryAStatus) == 0);
+
+  ZC_EXPECT(dir->tryLstat(zc::Path("app"_zc)) != zc::none);
+  if (dir->tryLstat(zc::Path("app"_zc)) != zc::none) {
+    ZC_EXPECT(dir->openFile(zc::Path("app"_zc))->readAllText() == "competitor-app"_zc);
+  }
+  ZC_EXPECT(dir->tryLstat(zc::Path(quarantineRoot)) != zc::none);
+  bool journalRetainedAfterRestore = false;
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith("journal."_zc)) { journalRetainedAfterRestore = true; }
+  }
+  ZC_EXPECT(journalRetainedAfterRestore);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("publication root cleanup cannot sweep a recovery's unverified claim") {
+  zc::String base = zc::str(tempDirPath(), "-publication-cleanup-vs-recovery-claim");
+  auto setupFs = zc::newDiskFilesystem();
+  auto setupDir = openDir(*setupFs, base);
+  (void)setupDir;
+
+  // Pause the in-flight publisher after app has been renamed but before the
+  // ExecCommitted record. This leaves a durable ManifestStaged chain that a
+  // protocol-following recovery worker can inspect.
+  int publicationReadyPipe[2];
+  int publicationReleasePipe[2];
+  ZC_REQUIRE(::pipe(publicationReadyPipe) == 0);
+  ZC_REQUIRE(::pipe(publicationReleasePipe) == 0);
+  pid_t publisher = ::fork();
+  ZC_REQUIRE(publisher >= 0);
+  if (publisher == 0) {
+    (void)::close(publicationReadyPipe[0]);
+    (void)::close(publicationReleasePipe[1]);
+    auto childFs = zc::newDiskFilesystem();
+    auto childDir = openDir(*childFs, base);
+    Scenario scenario;
+    VerifiedLinkPlan plan = buildScenario(*childDir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+    LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), *childFs);
+    VerifiedExecutableManifest manifest = buildManifest(candidate, base);
+    BlockAtPublicationCheckpoint observer(PublicationCheckpoint::ExecutableRenamed,
+                                          publicationReadyPipe[1], publicationReleasePipe[0]);
+    PublicationOutcome outcome = PublicationTransactionTestAccess::publishObserved(
+        zc::mv(candidate), zc::mv(manifest), observer);
+    _exit(outcome.isRecoveryRequired() ? 0 : 125);
+  }
+  (void)::close(publicationReadyPipe[1]);
+  (void)::close(publicationReleasePipe[0]);
+  char publicationReady = 0;
+  ZC_REQUIRE(::read(publicationReadyPipe[0], &publicationReady, 1) == 1);
+  ZC_REQUIRE(publicationReady == 'r');
+  (void)::close(publicationReadyPipe[0]);
+
+  auto fs = zc::newDiskFilesystem();
+  auto dir = openDir(*fs, base);
+  zc::String rootLeaf = soleSnapshotTreeName(*dir);
+  zc::String quarantineRoot = zc::str(rootLeaf, ".cleanup");
+  zc::Maybe<int> outputDirFd = dir->getFd();
+  ZC_REQUIRE(outputDirFd != zc::none);
+  int appFd = ::openat(ZC_REQUIRE_NONNULL(outputDirFd), "app", O_WRONLY | O_TRUNC | O_CLOEXEC);
+  ZC_REQUIRE(appFd >= 0);
+  constexpr char competitor[] = "competitor-app";
+  ZC_REQUIRE(::write(appFd, competitor, sizeof(competitor) - 1) ==
+             static_cast<ssize_t>(sizeof(competitor) - 1));
+  ZC_REQUIRE(::fsync(appFd) == 0);
+  ZC_REQUIRE(::close(appFd) == 0);
+  dir->sync();
+
+  // Recovery atomically claims the competitor into the same transaction root
+  // and pauses before proving ownership. The publisher still holds that root's
+  // directory capability, so its later cleanup must not interpret the missing
+  // original root name as authority to remove contents through the capability.
+  int recoveryReadyPipe[2];
+  int recoveryReleasePipe[2];
+  ZC_REQUIRE(::pipe(recoveryReadyPipe) == 0);
+  ZC_REQUIRE(::pipe(recoveryReleasePipe) == 0);
+  pid_t recovery = ::fork();
+  ZC_REQUIRE(recovery >= 0);
+  if (recovery == 0) {
+    (void)::close(publicationReleasePipe[1]);
+    (void)::close(recoveryReadyPipe[0]);
+    (void)::close(recoveryReleasePipe[1]);
+    auto childFs = zc::newDiskFilesystem();
+    BlockAtPublicationCheckpoint observer(
+        PublicationCheckpoint::ExecutableClaimedBeforeVerification, recoveryReadyPipe[1],
+        recoveryReleasePipe[0]);
+    PublicationRecoveryResult result = PublicationTransactionTestAccess::recoverObserved(
+        *childFs, zc::str(base, "/app"), observer);
+    _exit(result.status() == PublicationRecoveryStatus::ExplicitRepairRequired ? 0 : 126);
+  }
+  (void)::close(recoveryReadyPipe[1]);
+  (void)::close(recoveryReleasePipe[0]);
+  char recoveryReady = 0;
+  ZC_REQUIRE(::read(recoveryReadyPipe[0], &recoveryReady, 1) == 1);
+  ZC_REQUIRE(recoveryReady == 'r');
+  (void)::close(recoveryReadyPipe[0]);
+
+  const char release = 'g';
+  ZC_REQUIRE(::write(publicationReleasePipe[1], &release, 1) == 1);
+  (void)::close(publicationReleasePipe[1]);
+  int publisherStatus = 0;
+  ZC_REQUIRE(::waitpid(publisher, &publisherStatus, 0) == publisher);
+  ZC_EXPECT(WIFEXITED(publisherStatus));
+  if (WIFEXITED(publisherStatus)) { ZC_EXPECT(WEXITSTATUS(publisherStatus) == 0); }
+
+  auto quarantineMaybe = dir->tryOpenSubdir(zc::Path(quarantineRoot), zc::WriteMode::MODIFY);
+  ZC_EXPECT(quarantineMaybe != zc::none);
+  if (quarantineMaybe != zc::none) {
+    auto quarantine = ZC_REQUIRE_NONNULL(zc::mv(quarantineMaybe));
+    auto claimedMaybe = quarantine->tryOpenFile(zc::Path("publication-executable-cleanup"_zc));
+    ZC_EXPECT(claimedMaybe != zc::none);
+    if (claimedMaybe != zc::none) {
+      auto claimed = ZC_REQUIRE_NONNULL(zc::mv(claimedMaybe));
+      ZC_EXPECT(claimed->readAllText() == "competitor-app"_zc);
+    }
+  }
+  bool journalRetainedWhileClaimed = false;
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith("journal."_zc)) { journalRetainedWhileClaimed = true; }
+  }
+  ZC_EXPECT(journalRetainedWhileClaimed);
+
+  ZC_REQUIRE(::write(recoveryReleasePipe[1], &release, 1) == 1);
+  (void)::close(recoveryReleasePipe[1]);
+  int recoveryStatus = 0;
+  ZC_REQUIRE(::waitpid(recovery, &recoveryStatus, 0) == recovery);
+  ZC_REQUIRE(WIFEXITED(recoveryStatus));
+  ZC_EXPECT(WEXITSTATUS(recoveryStatus) == 0);
+
+  ZC_EXPECT(dir->tryLstat(zc::Path("app"_zc)) != zc::none);
+  if (dir->tryLstat(zc::Path("app"_zc)) != zc::none) {
+    ZC_EXPECT(dir->openFile(zc::Path("app"_zc))->readAllText() == "competitor-app"_zc);
+  }
+  ZC_EXPECT(dir->tryLstat(zc::Path(quarantineRoot)) != zc::none);
+  bool journalRetainedAfterRestore = false;
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith("journal."_zc)) { journalRetainedAfterRestore = true; }
+  }
+  ZC_EXPECT(journalRetainedAfterRestore);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("a top-level claimed root retains a recovery's late fixed-slot claim") {
+  zc::String base;
+  crashPublicationAt(PublicationCheckpoint::ExecutableRenamed,
+                     "claimed-root-late-recovery-claim"_zc, base);
+  auto fs = zc::newDiskFilesystem();
+  auto dir = openDir(*fs, base);
+  zc::String rootLeaf = soleSnapshotTreeName(*dir);
+  zc::String quarantineRoot = zc::str(rootLeaf, ".cleanup");
+  zc::Maybe<int> outputDirFd = dir->getFd();
+  ZC_REQUIRE(outputDirFd != zc::none);
+
+  // Keep the journal-recorded inode but drift its bytes, then hide the public
+  // name. Recovery A therefore decides there is no executable to claim and can
+  // atomically claim the transaction root before recovery B makes this same
+  // inode visible again.
+  int appFd = ::openat(ZC_REQUIRE_NONNULL(outputDirFd), "app", O_WRONLY | O_TRUNC | O_CLOEXEC);
+  ZC_REQUIRE(appFd >= 0);
+  constexpr char competitor[] = "competitor-app";
+  ZC_REQUIRE(::write(appFd, competitor, sizeof(competitor) - 1) ==
+             static_cast<ssize_t>(sizeof(competitor) - 1));
+  ZC_REQUIRE(::fsync(appFd) == 0);
+  ZC_REQUIRE(::close(appFd) == 0);
+  ZC_REQUIRE(::renameat(ZC_REQUIRE_NONNULL(outputDirFd), "app", ZC_REQUIRE_NONNULL(outputDirFd),
+                        "late-app") == 0);
+  dir->sync();
+
+  int sweepReadyPipe[2];
+  int sweepReleasePipe[2];
+  ZC_REQUIRE(::pipe(sweepReadyPipe) == 0);
+  ZC_REQUIRE(::pipe(sweepReleasePipe) == 0);
+  pid_t recoveryA = ::fork();
+  ZC_REQUIRE(recoveryA >= 0);
+  if (recoveryA == 0) {
+    (void)::close(sweepReadyPipe[0]);
+    (void)::close(sweepReleasePipe[1]);
+    auto childFs = zc::newDiskFilesystem();
+    BlockAtPublicationCheckpoint observer(
+        PublicationCheckpoint::TransactionRootContentsAboutToSweep, sweepReadyPipe[1],
+        sweepReleasePipe[0]);
+    PublicationRecoveryResult result = PublicationTransactionTestAccess::recoverObserved(
+        *childFs, zc::str(base, "/app"), observer);
+    _exit(result.status() == PublicationRecoveryStatus::RecoveryRequired ? 0 : 127);
+  }
+  (void)::close(sweepReadyPipe[1]);
+  (void)::close(sweepReleasePipe[0]);
+  char sweepReady = 0;
+  ZC_REQUIRE(::read(sweepReadyPipe[0], &sweepReady, 1) == 1);
+  ZC_REQUIRE(sweepReady == 'r');
+  (void)::close(sweepReadyPipe[0]);
+
+  // A has successfully renamed the exact root to its top-level cleanup name and
+  // re-verified its identity. Re-expose the drifted, journal-recorded inode only
+  // now, so B's claim lands in the fixed slot after A's pre-sweep decisions.
+  ZC_EXPECT(dir->tryLstat(zc::Path(rootLeaf)) == zc::none);
+  ZC_REQUIRE(dir->tryLstat(zc::Path(quarantineRoot)) != zc::none);
+  ZC_REQUIRE(::renameat(ZC_REQUIRE_NONNULL(outputDirFd), "late-app",
+                        ZC_REQUIRE_NONNULL(outputDirFd), "app") == 0);
+  dir->sync();
+
+  int claimedReadyPipe[2];
+  int claimedReleasePipe[2];
+  ZC_REQUIRE(::pipe(claimedReadyPipe) == 0);
+  ZC_REQUIRE(::pipe(claimedReleasePipe) == 0);
+  pid_t recoveryB = ::fork();
+  ZC_REQUIRE(recoveryB >= 0);
+  if (recoveryB == 0) {
+    (void)::close(sweepReleasePipe[1]);
+    (void)::close(claimedReadyPipe[0]);
+    (void)::close(claimedReleasePipe[1]);
+    auto childFs = zc::newDiskFilesystem();
+    BlockAtPublicationCheckpoint observer(
+        PublicationCheckpoint::ExecutableClaimedBeforeVerification, claimedReadyPipe[1],
+        claimedReleasePipe[0]);
+    PublicationRecoveryResult result = PublicationTransactionTestAccess::recoverObserved(
+        *childFs, zc::str(base, "/app"), observer);
+    _exit(result.status() == PublicationRecoveryStatus::ExplicitRepairRequired ? 0 : 128);
+  }
+  (void)::close(claimedReadyPipe[1]);
+  (void)::close(claimedReleasePipe[0]);
+  char claimedReady = 0;
+  ZC_REQUIRE(::read(claimedReadyPipe[0], &claimedReady, 1) == 1);
+  ZC_REQUIRE(claimedReady == 'r');
+  (void)::close(claimedReadyPipe[0]);
+
+  // B now holds the already top-level-claimed root and has moved the competitor
+  // into the fixed executable slot, but has not verified its digest. A's generic
+  // sweep must skip that slot; its non-recursive rmdir must fail on the retained
+  // entry and return an explicit cleanup debt rather than deleting evidence.
+  const char release = 'g';
+  ZC_REQUIRE(::write(sweepReleasePipe[1], &release, 1) == 1);
+  (void)::close(sweepReleasePipe[1]);
+  int recoveryAStatus = 0;
+  ZC_REQUIRE(::waitpid(recoveryA, &recoveryAStatus, 0) == recoveryA);
+  ZC_REQUIRE(WIFEXITED(recoveryAStatus));
+  ZC_EXPECT(WEXITSTATUS(recoveryAStatus) == 0);
+
+  auto quarantineMaybe = dir->tryOpenSubdir(zc::Path(quarantineRoot), zc::WriteMode::MODIFY);
+  ZC_EXPECT(quarantineMaybe != zc::none);
+  if (quarantineMaybe != zc::none) {
+    auto quarantine = ZC_REQUIRE_NONNULL(zc::mv(quarantineMaybe));
+    auto claimedMaybe = quarantine->tryOpenFile(zc::Path("publication-executable-cleanup"_zc));
+    ZC_EXPECT(claimedMaybe != zc::none);
+    if (claimedMaybe != zc::none) {
+      ZC_EXPECT(ZC_REQUIRE_NONNULL(zc::mv(claimedMaybe))->readAllText() == "competitor-app"_zc);
+    }
+  }
+  bool journalRetainedWhileClaimed = false;
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith("journal."_zc)) { journalRetainedWhileClaimed = true; }
+  }
+  ZC_EXPECT(journalRetainedWhileClaimed);
+
+  ZC_REQUIRE(::write(claimedReleasePipe[1], &release, 1) == 1);
+  (void)::close(claimedReleasePipe[1]);
+  int recoveryBStatus = 0;
+  ZC_REQUIRE(::waitpid(recoveryB, &recoveryBStatus, 0) == recoveryB);
+  ZC_REQUIRE(WIFEXITED(recoveryBStatus));
+  ZC_EXPECT(WEXITSTATUS(recoveryBStatus) == 0);
+
+  ZC_EXPECT(dir->tryLstat(zc::Path("app"_zc)) != zc::none);
+  if (dir->tryLstat(zc::Path("app"_zc)) != zc::none) {
+    ZC_EXPECT(dir->openFile(zc::Path("app"_zc))->readAllText() == "competitor-app"_zc);
+  }
+  ZC_EXPECT(dir->tryLstat(zc::Path(quarantineRoot)) != zc::none);
+  bool journalRetainedAfterRestore = false;
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith("journal."_zc)) { journalRetainedAfterRestore = true; }
+  }
+  ZC_EXPECT(journalRetainedAfterRestore);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("publication recovery retains owner evidence when an orphan app has no transaction root") {
+  zc::String base;
+  crashPublicationAt(PublicationCheckpoint::ExecCommittedDurable, "exec-committed-missing-root"_zc,
+                     base);
+  auto fs = zc::newDiskFilesystem();
+  auto dir = openDir(*fs, base);
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith(".zomlink-"_zc)) { dir->remove(zc::Path(name)); }
+  }
+  dir->sync();
+  ZC_REQUIRE(dir->tryLstat(zc::Path("app"_zc)) != zc::none);
+  ZC_REQUIRE(countSnapshotTrees(*dir) == 0u);
+
+  PublicationRecoveryResult result = recoverLinkedOutputPublication(*fs, zc::str(base, "/app"));
+  ZC_EXPECT(result.status() == PublicationRecoveryStatus::ExplicitRepairRequired);
+  ZC_EXPECT(dir->tryLstat(zc::Path("app"_zc)) != zc::none);
+  bool retainedJournal = false;
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith("journal."_zc)) { retainedJournal = true; }
+  }
+  ZC_EXPECT(retainedJournal);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("Started recovery quarantines its matching app but retains an unproved manifest temp") {
+  zc::String base;
+  crashPublicationAt(PublicationCheckpoint::ExecutableRenamed, "started-with-app"_zc, base);
+  auto fs = zc::newDiskFilesystem();
+  auto dir = openDir(*fs, base);
+  for (const zc::String& name : dir->listNames()) {
+    zc::StringPtr text(name);
+    if (text.startsWith("journal."_zc) && text.endsWith(".manifest-staged"_zc)) {
+      ZC_REQUIRE(dir->tryRemove(zc::Path(name)));
+    }
+  }
+
+  PublicationRecoveryResult result = recoverLinkedOutputPublication(*fs, zc::str(base, "/app"));
+  ZC_EXPECT(result.status() == PublicationRecoveryStatus::ExplicitRepairRequired);
+  ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+  bool retainedManifestTemp = false;
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith(".zom-manifest."_zc)) { retainedManifestTemp = true; }
+  }
+  ZC_EXPECT(retainedManifestTemp);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("ManifestStaged recovery never deletes a replacement manifest temp") {
+  zc::String base;
+  crashPublicationAt(PublicationCheckpoint::ManifestStagedDurable,
+                     "manifest-staged-temp-replacement"_zc, base);
+  auto fs = zc::newDiskFilesystem();
+  auto dir = openDir(*fs, base);
+  zc::String manifestTemp;
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith(".zom-manifest."_zc)) {
+      manifestTemp = zc::heapString(name);
+    }
+  }
+  ZC_REQUIRE(manifestTemp.size() > 0);
+  ZC_REQUIRE(dir->tryRemove(zc::Path(manifestTemp)));
+  dir->openFile(zc::Path(manifestTemp), zc::WriteMode::CREATE)
+      ->writeAll("competitor-manifest-temp"_zc);
+
+  PublicationRecoveryResult result = recoverLinkedOutputPublication(*fs, zc::str(base, "/app"));
+  ZC_EXPECT(result.status() == PublicationRecoveryStatus::ExplicitRepairRequired);
+  ZC_EXPECT(dir->openFile(zc::Path(manifestTemp))->readAllText() == "competitor-manifest-temp"_zc);
+  ZC_EXPECT(countSnapshotTrees(*dir) == 1u);
+  bool retainedJournal = false;
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith("journal."_zc)) { retainedJournal = true; }
+  }
+  ZC_EXPECT(retainedJournal);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("ExecCommitted recovery retains a non-verifying final manifest") {
+  zc::String base;
+  crashPublicationAt(PublicationCheckpoint::ManifestRenamed, "exec-committed-invalid-manifest"_zc,
+                     base);
+  auto fs = zc::newDiskFilesystem();
+  auto dir = openDir(*fs, base);
+  dir->openFile(zc::Path("app.zom-artifact"_zc), zc::WriteMode::MODIFY)
+      ->writeAll("invalid-manifest"_zc);
+
+  PublicationRecoveryResult result = recoverLinkedOutputPublication(*fs, zc::str(base, "/app"));
+  ZC_EXPECT(result.status() == PublicationRecoveryStatus::ExplicitRepairRequired);
+  ZC_EXPECT(dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(dir->openFile(zc::Path("app.zom-artifact"_zc))->readAllText() == "invalid-manifest"_zc);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("publication recovery rejects two valid Started chains for the same final target") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-two-started-chains");
+  auto dir = openDir(*fs, base);
+  (void)dir;
+  crashPublicationInBaseAt(PublicationCheckpoint::StartedDurable, base);
+  crashPublicationInBaseAt(PublicationCheckpoint::StartedDurable, base);
+
+  PublicationRecoveryResult result = recoverLinkedOutputPublication(*fs, zc::str(base, "/app"));
+  ZC_EXPECT(result.status() == PublicationRecoveryStatus::ExplicitRepairRequired);
+  auto reopened = openDir(*fs, base);
+  size_t startedCount = 0;
+  for (const zc::String& name : reopened->listNames()) {
+    zc::StringPtr text(name);
+    if (text.startsWith("journal."_zc) && text.endsWith(".started"_zc)) { ++startedCount; }
+  }
+  ZC_EXPECT(startedCount == 2u);
+  ZC_EXPECT(countSnapshotTrees(*reopened) == 2u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("publishLinkedOutput never mints Published after the final manifest drifts") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-publish-final-manifest-drift");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+  LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), *fs);
+  VerifiedExecutableManifest manifest = buildManifest(candidate, base);
+  FinalManifestCorruptionObserver observer(*dir);
+
+  PublicationOutcome outcome = PublicationTransactionTestAccess::publishObserved(
+      zc::mv(candidate), zc::mv(manifest), observer);
+  ZC_ASSERT(observer.didCorrupt());
+  ZC_ASSERT(outcome.isRecoveryRequired());
+  LinkRecoveryRequired recovery = zc::mv(outcome).takeRecoveryRequired();
+  ZC_ASSERT(recovery.isPublicationRecoveryRequired());
+  PublicationRecoveryRequired publication = zc::mv(recovery).takePublication();
+  ZC_EXPECT(publication.primary != zc::none);
+  ZC_EXPECT(dir->openFile(zc::Path("app.zom-artifact"_zc))->readAllText() == "corrupt"_zc);
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("publishLinkedOutput never deletes a competitor Started journal") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-publish-started-journal-race");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+  LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), *fs);
+  VerifiedExecutableManifest manifest = buildManifest(candidate, base);
+  zc::String tree = soleSnapshotTreeName(*dir);
+  zc::StringPtr treeView(tree);
+  ZC_REQUIRE(treeView.startsWith(".zomlink-"_zc));
+  zc::String startedLeaf = zc::str("journal.", treeView.slice(9), ".started");
+  dir->openFile(zc::Path(startedLeaf), zc::WriteMode::CREATE)->writeAll("competitor-started"_zc);
+
+  PublicationOutcome outcome = publishLinkedOutput(zc::mv(candidate), zc::mv(manifest));
+  ZC_ASSERT(outcome.isRecoveryRequired());
+  LinkRecoveryRequired recovery = zc::mv(outcome).takeRecoveryRequired();
+  ZC_ASSERT(recovery.isPublicationRecoveryRequired());
+  PublicationRecoveryRequired publication = zc::mv(recovery).takePublication();
+  ZC_EXPECT(publication.primary != zc::none);
+  ZC_EXPECT(dir->openFile(zc::Path(startedLeaf))->readAllText() == "competitor-started"_zc);
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("publishLinkedOutput never adopts a competitor ManifestStaged journal") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-publish-manifest-staged-journal-race");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+  LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), *fs);
+  VerifiedExecutableManifest manifest = buildManifest(candidate, base);
+  ManifestStagedJournalCompetitorObserver observer(*dir);
+
+  PublicationOutcome outcome = PublicationTransactionTestAccess::publishObserved(
+      zc::mv(candidate), zc::mv(manifest), observer);
+  ZC_ASSERT(observer.didCreate());
+  ZC_ASSERT(outcome.isRecoveryRequired());
+  LinkRecoveryRequired recovery = zc::mv(outcome).takeRecoveryRequired();
+  ZC_ASSERT(recovery.isPublicationRecoveryRequired());
+  PublicationRecoveryRequired publication = zc::mv(recovery).takePublication();
+  ZC_EXPECT(publication.primary != zc::none);
+  bool competitorSurvived = false;
+  for (const zc::String& name : dir->listNames()) {
+    zc::StringPtr text(name);
+    if (text.startsWith("journal."_zc) && text.endsWith(".manifest-staged"_zc)) {
+      competitorSurvived =
+          dir->openFile(zc::Path(name))->readAllText() == "competitor-manifest-staged"_zc;
+    }
+  }
+  ZC_EXPECT(competitorSurvived);
+  ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("publishLinkedOutput rejects an output directory writable by another Unix principal") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-publish-untrusted-output-directory");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+  LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), *fs);
+  VerifiedExecutableManifest manifest = buildManifest(candidate, base);
+  ZC_REQUIRE(::chmod(base.cStr(), 0777) == 0);
+
+  PublicationOutcome outcome = publishLinkedOutput(zc::mv(candidate), zc::mv(manifest));
+  ZC_ASSERT(outcome.isRejected());
+  PublicationRejection rejection = zc::mv(outcome).takeRejected();
+  ZC_EXPECT(rejection.isCapabilityRejected());
+  ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(!dir->exists(zc::Path("app.zom-artifact"_zc)));
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  ZC_REQUIRE(::chmod(base.cStr(), 0700) == 0);
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("a Started journal directory-sync failure returns recovery with the installed record") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-publish-started-sync-fault");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+  LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), *fs);
+  VerifiedExecutableManifest manifest = buildManifest(candidate, base);
+  PublicationFaultObserver observer(PublicationFaultPoint::JournalDirectorySync);
+
+  PublicationOutcome outcome = PublicationTransactionTestAccess::publishObserved(
+      zc::mv(candidate), zc::mv(manifest), observer);
+  ZC_ASSERT(observer.firedAll());
+  ZC_ASSERT(outcome.isRecoveryRequired());
+  bool retainedStarted = false;
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith("journal."_zc) &&
+        zc::StringPtr(name).endsWith(".started"_zc)) {
+      retainedStarted = true;
+    }
+  }
+  ZC_EXPECT(retainedStarted);
+  ZC_EXPECT(!dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("a failed journal write and temporary cleanup never returns ordinary Rejected") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-publish-journal-temp-cleanup-fault");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+  LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), *fs);
+  VerifiedExecutableManifest manifest = buildManifest(candidate, base);
+  PublicationFaultObserver observer(PublicationFaultPoint::JournalWrite,
+                                    PublicationFaultPoint::JournalTemporaryCleanup, true);
+
+  PublicationOutcome outcome = PublicationTransactionTestAccess::publishObserved(
+      zc::mv(candidate), zc::mv(manifest), observer);
+  ZC_ASSERT(observer.firedAll());
+  ZC_ASSERT(outcome.isRecoveryRequired());
+  LinkRecoveryRequired recovery = zc::mv(outcome).takeRecoveryRequired();
+  ZC_ASSERT(recovery.isPublicationRecoveryRequired());
+  PublicationRecoveryRequired publication = zc::mv(recovery).takePublication();
+  ZC_EXPECT(static_cast<uint8_t>(publication.obligation.lastDurableStage()) == 0u);
+  bool retainedTemporary = false;
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith(".journal."_zc) && zc::StringPtr(name).endsWith(".tmp"_zc)) {
+      retainedTemporary = true;
+    }
+  }
+  ZC_EXPECT(retainedTemporary);
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("a final manifest directory-sync failure preserves the pair and returns outcome pending") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-publish-final-sync-fault");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+  LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), *fs);
+  VerifiedExecutableManifest manifest = buildManifest(candidate, base);
+  PublicationFaultObserver observer(PublicationFaultPoint::FinalManifestDirectorySync);
+
+  PublicationOutcome outcome = PublicationTransactionTestAccess::publishObserved(
+      zc::mv(candidate), zc::mv(manifest), observer);
+  ZC_ASSERT(observer.firedAll());
+  ZC_ASSERT(outcome.isRecoveryRequired());
+  LinkRecoveryRequired recovery = zc::mv(outcome).takeRecoveryRequired();
+  ZC_ASSERT(recovery.isPublicationRecoveryRequired());
+  PublicationRecoveryRequired publication = zc::mv(recovery).takePublication();
+  ZC_EXPECT(publication.primary == zc::none);
+  ZC_EXPECT(dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(dir->exists(zc::Path("app.zom-artifact"_zc)));
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
+}
+
+ZC_TEST("a committed-pair journal cleanup failure returns recovery and retains the journal") {
+  auto fs = zc::newDiskFilesystem();
+  zc::String base = zc::str(tempDirPath(), "-publish-journal-cleanup-fault");
+  auto dir = openDir(*fs, base);
+  Scenario scenario;
+  VerifiedLinkPlan plan = buildScenario(*dir, base, ZOM_FAKE_LINKER_SUCCESS ""_zc, scenario);
+  LinkedOutputCandidate candidate = linkExpectingCandidate(zc::mv(plan), *fs);
+  VerifiedExecutableManifest manifest = buildManifest(candidate, base);
+  PublicationFaultObserver observer(PublicationFaultPoint::JournalChainRemove);
+
+  PublicationOutcome outcome = PublicationTransactionTestAccess::publishObserved(
+      zc::mv(candidate), zc::mv(manifest), observer);
+  ZC_ASSERT(observer.firedAll());
+  ZC_ASSERT(outcome.isRecoveryRequired());
+  bool retainedJournal = false;
+  for (const zc::String& name : dir->listNames()) {
+    if (zc::StringPtr(name).startsWith("journal."_zc)) { retainedJournal = true; }
+  }
+  ZC_EXPECT(retainedJournal);
+  ZC_EXPECT(dir->exists(zc::Path("app"_zc)));
+  ZC_EXPECT(dir->exists(zc::Path("app.zom-artifact"_zc)));
+  ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
+
+  fs->getRoot().remove(zc::Path::parse(base.slice(1)));
 }
 
 }  // namespace

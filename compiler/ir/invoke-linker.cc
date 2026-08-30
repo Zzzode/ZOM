@@ -264,87 +264,125 @@ public:
   }
 };
 
-// Removes the transaction-private snapshot tree, race-tightened per RFC 0043
-// D3b. It always removes the tree's *contents* first, through the held snapshot
-// directory capability (`unlinkat` relative to the retained directory fd), so a
-// competitor that swaps the top-level path cannot redirect content deletion into
-// a different directory, and so an identity-unavailable transaction still frees
-// its snapshot files instead of leaking the whole tree. It then removes the
-// now-empty top-level entry through the held parent capability only after
-// confirming the entry's exact stable identity still matches the value captured
-// at creation.
-//
-// This is a fail-closed staleness check, not an atomic unlink-if-identity: a
-// same-UID active attacker could still replace the entry in the window between
-// the fstatat comparison and the unlinkat. Defending that window would require
-// an atomic claim/quarantine or a private mount namespace, which is out of
-// scope for this slice. `capturedIdentity` == none means no exact identity was
-// available, so the (now-empty) top-level entry is never removed and the
-// obligation is IdentityUnavailable. Never throws: a fault is attributed to its
-// stage.
+// Removes the transaction-private snapshot tree through an atomic claim. The
+// top-level entry is first moved with RENAME_NOREPLACE to a token-derived
+// quarantine name in the held parent directory. Only an entry whose identity
+// matches the directory capability is cleaned; a competitor captured at the
+// source path is restored with another no-replace rename, or retained in
+// quarantine when restoration loses a race. Once the exact directory is
+// claimed, its contents are removed through the held capability and the private
+// quarantine name is removed. This eliminates the former fstatat-then-unlinkat
+// window for protocol-following concurrent publishers.
 TreeCleanupOutcome removeSnapshotTree(
     const zc::Directory& parentDir, const zc::Directory& snapshotDir, zc::StringPtr leafName,
     const zc::Maybe<StableDirectoryIdentity>& capturedIdentity) noexcept {
   TreeCleanupOutcome outcome = cleanupFailed(CleanupFailureKind::ContentRemovalFailed);
-  bool reachedTopLevel = false;
+  bool topLevelRemovalAttempted = false;
   auto exception = zc::runCatchingExceptions([&]() {
-    // Remove the tree's contents through the held snapshot directory capability,
-    // unconditionally (before any identity decision), so even an identity-
-    // unavailable transaction frees its snapshot files. The tree's entries may
-    // include files, symlinks, or directories (the D4 output-candidate can be any
-    // of these before the structural check rejects it), all removed through the
-    // held capability; `tryRemove` recurses into a subdirectory as needed.
-    for (const zc::String& name : snapshotDir.listNames()) {
-      if (!snapshotDir.tryRemove(zc::Path(name))) {
-        outcome = cleanupFailed(CleanupFailureKind::ContentRemovalFailed);
-        return;
+    // Never sweep a fixed publication-recovery claim slot: a concurrent recovery
+    // of the same token may have renamed a competitor into it under this same
+    // root inode and not yet proved ownership. Skipping it retains that in-flight
+    // evidence; the caller then reports a retriable debt because the root is not
+    // empty. This follows the existing unified-root trust boundary (a private
+    // root plus a trusted same-UID principal), not a claim of protection against
+    // a hostile same-UID owner.
+    bool retainedFixedSlot = false;
+    auto removeContents = [&]() -> bool {
+      for (const zc::String& name : snapshotDir.listNames()) {
+        zc::StringPtr text(name);
+        if (text == detail::kExecutableQuarantineSlot || text == detail::kManifestQuarantineSlot) {
+          retainedFixedSlot = true;
+          continue;
+        }
+        if (!snapshotDir.tryRemove(zc::Path(name))) { return false; }
       }
-    }
+      return true;
+    };
 
-    // No exact identity: the contents are freed, but never auto-remove the
-    // top-level entry without an owner proof. Leave the empty directory and
-    // report the obligation for explicit recovery.
     if (capturedIdentity == zc::none) {
-      outcome = cleanupFailed(CleanupFailureKind::IdentityUnavailable);
+      if (removeContents()) { outcome = cleanupFailed(CleanupFailureKind::IdentityUnavailable); }
       return;
     }
-    const StableDirectoryIdentity& expected = ZC_REQUIRE_NONNULL(capturedIdentity);
-
-    reachedTopLevel = true;
-    // Re-check the top-level entry's exact identity through the held parent fd
-    // just before removing it, so a swapped object at the same name is refused.
-    ZC_IF_SOME(parentFd, parentDir.getFd()) {
-      struct stat st;
-      auto leaf = zc::heapString(leafName);
-      if (::fstatat(parentFd, leaf.cStr(), &st, AT_SYMLINK_NOFOLLOW) != 0) {
-        // Only ENOENT means the entry is genuinely gone (contents removed and the
-        // directory no longer resolves), which discharges the obligation. Any
-        // other errno (EACCES, EIO, ENOTDIR, EBADF, ...) means we could not
-        // confirm the entry is gone: since an exact identity was captured, that
-        // is a top-level removal fault, not "removed".
-        outcome = errno == ENOENT ? treeRemoved()
-                                  : cleanupFailed(CleanupFailureKind::TopLevelRemovalFailed);
-        return;
-      }
-      if (!expected.matches(static_cast<uint64_t>(st.st_dev), static_cast<uint64_t>(st.st_ino))) {
-        outcome = cleanupFailed(CleanupFailureKind::IdentityMismatch);
-        return;
-      }
-      if (!parentDir.tryRemove(zc::Path(leaf))) {
-        outcome = cleanupFailed(CleanupFailureKind::TopLevelRemovalFailed);
-        return;
-      }
-      outcome = treeRemoved();
-    } else {
-      // The parent exposes no descriptor: cannot make an exact pre-removal
-      // check, so fail closed.
-      outcome = cleanupFailed(CleanupFailureKind::IdentityUnavailable);
+    zc::Maybe<int> parentFdMaybe = parentDir.getFd();
+    if (parentFdMaybe == zc::none) {
+      if (removeContents()) { outcome = cleanupFailed(CleanupFailureKind::IdentityUnavailable); }
+      return;
     }
+
+    const int parentFd = ZC_REQUIRE_NONNULL(parentFdMaybe);
+    const StableDirectoryIdentity& expected = ZC_REQUIRE_NONNULL(capturedIdentity);
+    zc::String source = zc::heapString(leafName);
+    zc::String quarantine = zc::str(leafName, ".cleanup");
+
+    for (;;) {
+      if (::syscall(SYS_renameat2, parentFd, source.cStr(), parentFd, quarantine.cStr(),
+                    RENAME_NOREPLACE) == 0) {
+        break;
+      }
+      if (errno == EINTR) { continue; }
+      if (errno == ENOENT) {
+        // Another worker (a concurrent recovery of the same token) renamed the
+        // root away. Sweep this inode's contents through the held capability, but
+        // if a fixed claim slot remains the tree is not empty: retain it as a
+        // retriable debt so that recovery can finish rather than reporting the
+        // tree removed.
+        if (!removeContents()) {
+          outcome = cleanupFailed(CleanupFailureKind::ContentRemovalFailed);
+        } else if (retainedFixedSlot) {
+          outcome = cleanupFailed(CleanupFailureKind::TopLevelRemovalFailed);
+        } else {
+          outcome = treeRemoved();
+        }
+        return;
+      }
+      outcome = cleanupFailed(CleanupFailureKind::TopLevelRemovalFailed);
+      return;
+    }
+
+    struct stat claimed;
+    const bool identityMatches =
+        ::fstatat(parentFd, quarantine.cStr(), &claimed, AT_SYMLINK_NOFOLLOW) == 0 &&
+        S_ISDIR(claimed.st_mode) &&
+        expected.matches(static_cast<uint64_t>(claimed.st_dev),
+                         static_cast<uint64_t>(claimed.st_ino));
+    if (!identityMatches) {
+      // The claimed entry is not our exact root. Restore it and retain: this
+      // branch performs no content removal at all, so a competitor's directory is
+      // never emptied on an identity mismatch.
+      for (;;) {
+        if (::syscall(SYS_renameat2, parentFd, quarantine.cStr(), parentFd, source.cStr(),
+                      RENAME_NOREPLACE) == 0) {
+          break;
+        }
+        if (errno == EINTR) { continue; }
+        break;
+      }
+      outcome = cleanupFailed(CleanupFailureKind::IdentityMismatch);
+      return;
+    }
+
+    if (!removeContents()) {
+      outcome = cleanupFailed(CleanupFailureKind::ContentRemovalFailed);
+      return;
+    }
+    topLevelRemovalAttempted = true;
+    // A retained fixed claim slot leaves the root non-empty: report a retriable
+    // debt without attempting removal (a recursive tryRemove would delete the
+    // recovery's in-flight slot). Otherwise remove the now-empty root through the
+    // held capability, which keeps this on the fault-injectable path.
+    if (retainedFixedSlot) {
+      outcome = cleanupFailed(CleanupFailureKind::TopLevelRemovalFailed);
+      return;
+    }
+    if (!parentDir.tryRemove(zc::Path(quarantine))) {
+      outcome = cleanupFailed(CleanupFailureKind::TopLevelRemovalFailed);
+      return;
+    }
+    outcome = treeRemoved();
   });
   if (exception != zc::none) {
-    // A thrown filesystem fault is attributed to the stage it occurred in.
-    return reachedTopLevel ? cleanupFailed(CleanupFailureKind::TopLevelRemovalFailed)
-                           : cleanupFailed(CleanupFailureKind::ContentRemovalFailed);
+    return cleanupFailed(topLevelRemovalAttempted ? CleanupFailureKind::TopLevelRemovalFailed
+                                                  : CleanupFailureKind::ContentRemovalFailed);
   }
   return outcome;
 }
@@ -1086,6 +1124,111 @@ detail::PublicationRenameResult detail::LinkPublicationTransaction::renameOutput
   (void)candidate;
   (void)finalLeaf;
   return detail::PublicationRenameResult::Unsupported;
+#endif
+}
+
+detail::PublicationClaimResult detail::LinkPublicationTransaction::claimParentEntryNoReplace(
+    const LinkedOutputCandidate& candidate, zc::StringPtr parentLeaf, zc::StringPtr quarantineLeaf,
+    const detail::PublicationFileSnapshot& expected) noexcept {
+#if defined(__linux__) && defined(SYS_renameat2) && defined(RENAME_NOREPLACE)
+  zc::Maybe<int> parentFd = candidate.impl->tree.parentDir->getFd();
+  zc::Maybe<int> rootFd = candidate.impl->tree.snapshotDir->getFd();
+  if (parentFd == zc::none || rootFd == zc::none) {
+    return detail::PublicationClaimResult::Unsupported;
+  }
+  zc::String source = zc::heapString(parentLeaf);
+  zc::String quarantine = zc::heapString(quarantineLeaf);
+  for (;;) {
+    if (::syscall(SYS_renameat2, ZC_REQUIRE_NONNULL(parentFd), source.cStr(),
+                  ZC_REQUIRE_NONNULL(rootFd), quarantine.cStr(), RENAME_NOREPLACE) == 0) {
+      break;
+    }
+    if (errno == EINTR) { continue; }
+    if (errno == ENOENT) {
+      // The public source is gone, but a concurrent recovery of the same token
+      // may already have renamed it into this quarantine slot without yet proving
+      // ownership. Source-absent alone does not prove the slot is ours: an empty
+      // slot is genuinely already clean, but a present slot must be verified
+      // against the expected owner proof below (a mismatch is retained, never
+      // swept). A slot that exists but cannot be judged (a non-ENOENT stat error)
+      // is retained as an unowned entry so the caller abandons the root rather
+      // than treating it as clean.
+      struct stat slot;
+      if (::fstatat(ZC_REQUIRE_NONNULL(rootFd), quarantine.cStr(), &slot, AT_SYMLINK_NOFOLLOW) ==
+          0) {
+        break;
+      }
+      if (errno == ENOENT) { return detail::PublicationClaimResult::SourceAbsent; }
+      return detail::PublicationClaimResult::CompetitorRetained;
+    }
+    if (errno == EEXIST) { return detail::PublicationClaimResult::QuarantineExists; }
+    if (errno == ENOSYS || errno == EINVAL || errno == EOPNOTSUPP) {
+      return detail::PublicationClaimResult::Unsupported;
+    }
+    return detail::PublicationClaimResult::Failed;
+  }
+
+  struct stat claimed;
+  const bool identityMatches =
+      ::fstatat(ZC_REQUIRE_NONNULL(rootFd), quarantine.cStr(), &claimed, AT_SYMLINK_NOFOLLOW) ==
+          0 &&
+      S_ISREG(claimed.st_mode) &&
+      expected.identity.matches(static_cast<uint64_t>(claimed.st_dev),
+                                static_cast<uint64_t>(claimed.st_ino)) &&
+      static_cast<uint64_t>(claimed.st_nlink) == expected.identity.linkCount() &&
+      static_cast<uint64_t>(claimed.st_size) == expected.byteCount;
+  bool contentMatches = false;
+  auto readException = zc::runCatchingExceptions([&]() {
+    ZC_IF_SOME(file, candidate.impl->tree.snapshotDir->tryOpenFile(zc::Path(quarantine))) {
+      zc::Array<zc::byte> bytes = file->readAllBytes();
+      ZC_IF_SOME(digest, identity::sha256(bytes.asPtr())) {
+        contentMatches = bytes.size() == expected.byteCount && digest == expected.digest;
+      }
+    }
+  });
+  const bool owned = identityMatches && readException == zc::none && contentMatches;
+  if (owned) {
+    // This call proved the slot holds exactly this transaction's own output, so
+    // this call is the one that removes it: the later generic snapshot sweep in
+    // removeSnapshotTree never touches a fixed claim slot. The unlink result is
+    // authoritative and atomic - trust it rather than a fail-open post-stat:
+    //   - success or ENOENT (already absent) => the slot is gone, ClaimedOwned;
+    //   - any other errno (EIO/EACCES/EBADF/...) => removal is unprovable, so
+    //     fail closed as CompetitorRetained. The caller must then abandon the
+    //     root for recovery rather than treating it as clean and discarding it.
+    if (::unlinkat(ZC_REQUIRE_NONNULL(rootFd), quarantine.cStr(), 0) == 0 || errno == ENOENT) {
+      return detail::PublicationClaimResult::ClaimedOwned;
+    }
+    return detail::PublicationClaimResult::CompetitorRetained;
+  }
+
+  for (;;) {
+    if (::syscall(SYS_renameat2, ZC_REQUIRE_NONNULL(rootFd), quarantine.cStr(),
+                  ZC_REQUIRE_NONNULL(parentFd), source.cStr(), RENAME_NOREPLACE) == 0) {
+      return detail::PublicationClaimResult::CompetitorRestored;
+    }
+    if (errno == EINTR) { continue; }
+    return detail::PublicationClaimResult::CompetitorRetained;
+  }
+#else
+  (void)candidate;
+  (void)parentLeaf;
+  (void)quarantineLeaf;
+  (void)expected;
+  return detail::PublicationClaimResult::Unsupported;
+#endif
+}
+
+SnapshotCleanupObligation detail::LinkPublicationTransaction::abandonRootForRecovery(
+    LinkedOutputCandidate& candidate, CleanupFailureKind kind) noexcept {
+  zc::Own<LinkedOutputCandidate::Impl> owned = zc::mv(candidate.impl);
+#if ZOM_LINK_SNAPSHOT_SUPPORTED
+  owned->outputHandle = nullptr;
+  return owned->tree.obligation(cleanupFailed(kind), CleanupStage::PublicationRecovery);
+#else
+  (void)kind;
+  ZC_IREQUIRE(false, "abandonRootForRecovery requires the snapshot machinery");
+  ZC_UNREACHABLE
 #endif
 }
 

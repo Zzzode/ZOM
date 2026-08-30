@@ -37,7 +37,13 @@ ZC_NODISCARD bool inspectExecutableFormat(zc::ArrayPtr<const uint8_t> executable
                                           ObjectFormat expectedFormat);
 
 /// \brief The durable stages of one manifest-last publication journal chain.
+///
+/// `None` is the stage before any journal record is provably durable: the
+/// initial `Started` record only becomes durable once its file fsync, no-replace
+/// install, and directory fsync all succeed. A fault before that point leaves no
+/// durable stage, so an obligation must report `None` rather than claim `Started`.
 enum class JournalStage : uint8_t {
+  None = 0x00,
   Started = 0x01,
   ManifestStaged = 0x02,
   ExecCommitted = 0x03,

@@ -30,18 +30,54 @@ enum class PublicationCheckpoint : uint8_t {
   ManifestRenamed = 0x07,
   ManifestDirectoryDurable = 0x08,
   ManifestCommittedDurable = 0x09,
+  ManifestRenameRejected = 0x0a,
+  // Recovery-time seam: a public final entry has been renamed into the
+  // transaction root's quarantine slot but its owner proof (snapshot identity +
+  // digest) has not yet been verified. A concurrent recovery must not observe a
+  // claimed-but-unverified competitor as removable.
+  ExecutableClaimedBeforeVerification = 0x0b,
+  // Recovery-time seam fired just before the public entry is renamed into the
+  // quarantine slot. Lets a test pin one worker's claim decision (source still
+  // present, so claimExecutable is true) before a competing worker moves it.
+  ExecutableClaimAboutToRename = 0x0c,
+  // Cleanup-time seam fired after a transaction root has been top-level-claimed
+  // and its identity re-verified, and after this call has removed the fixed
+  // claim slots it itself proved, but before the remaining contents are
+  // enumerated and swept. Lets a test drive a concurrent worker holding a
+  // pre-existing root descriptor into this window to late-claim a fixed slot and
+  // prove the generic sweep never removes it.
+  TransactionRootContentsAboutToSweep = 0x0d,
+};
+
+enum class PublicationFaultPoint : uint8_t {
+  JournalWrite = 0x01,
+  JournalFileSync = 0x02,
+  JournalInstall = 0x03,
+  JournalDirectorySync = 0x04,
+  JournalTemporaryCleanup = 0x05,
+  ManifestWrite = 0x06,
+  ManifestFileSync = 0x07,
+  ManifestDirectorySync = 0x08,
+  ExecutableDirectorySync = 0x09,
+  FinalManifestDirectorySync = 0x0a,
+  JournalChainRemove = 0x0b,
+  JournalChainSync = 0x0c,
 };
 
 class PublicationCheckpointObserver {
 public:
   virtual ~PublicationCheckpointObserver() noexcept = default;
   virtual void reached(PublicationCheckpoint checkpoint) = 0;
+  virtual bool fail(PublicationFaultPoint) { return false; }
 };
 
 struct PublicationTransactionTestAccess final {
   ZC_NODISCARD static PublicationOutcome publishObserved(LinkedOutputCandidate candidate,
                                                          VerifiedExecutableManifest manifest,
                                                          PublicationCheckpointObserver& observer);
+  ZC_NODISCARD static PublicationRecoveryResult recoverObserved(
+      const zc::Filesystem& filesystem, zc::StringPtr finalDestination,
+      PublicationCheckpointObserver& observer);
 };
 
 /// \brief Internal D1 transaction consumed only by the D5 publication boundary.

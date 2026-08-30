@@ -41,6 +41,12 @@ namespace {
 constexpr zc::StringPtr kManifestSuffix = ".zom-artifact"_zc;
 constexpr zc::StringPtr kJournalDomain = "zom.link-publication-journal"_zc;
 constexpr uint8_t kJournalSchema = 0x01;
+// The two fixed recovery claim slot names live in the shared D1 internal header
+// so both this transaction and the lower-layer snapshot cleanup in
+// invoke-linker.cc agree on the exact names that a generic content sweep must
+// never remove.
+constexpr zc::StringPtr kExecutableQuarantine = detail::kExecutableQuarantineSlot;
+constexpr zc::StringPtr kManifestQuarantine = detail::kManifestQuarantineSlot;
 
 bool startsWithMagic(zc::ArrayPtr<const uint8_t> bytes, zc::ArrayPtr<const uint8_t> magic) {
   if (bytes.size() < magic.size()) { return false; }
@@ -224,6 +230,9 @@ bool manifestMatches(const VerifiedExecutableManifest& manifest,
 
 zc::String stageName(JournalStage stage) {
   switch (stage) {
+    case JournalStage::None:
+      // None names no durable journal record, so it never keys a journal file.
+      break;
     case JournalStage::Started:
       return zc::str("started");
     case JournalStage::ManifestStaged:
@@ -327,6 +336,16 @@ bool syncFd(int fd) {
   }
 }
 
+bool shouldFail(PublicationCheckpointObserver* observer, PublicationFaultPoint point) {
+  return observer != nullptr && observer->fail(point);
+}
+
+bool trustedOutputDirectory(int fd) {
+  struct stat st;
+  if (::fstat(fd, &st) != 0 || !S_ISDIR(st.st_mode)) { return false; }
+  return st.st_uid == ::geteuid() && (st.st_mode & (S_IWGRP | S_IWOTH)) == 0;
+}
+
 detail::PublicationRenameResult renameNoReplace(int fromDirFd, zc::StringPtr fromLeaf, int toDirFd,
                                                 zc::StringPtr toLeaf) {
 #if defined(SYS_renameat2) && defined(RENAME_NOREPLACE)
@@ -392,13 +411,8 @@ bool entryAbsent(int dirFd, zc::StringPtr leaf) {
   return errno == ENOENT;
 }
 
-bool unlinkIdentityChecked(int dirFd, zc::StringPtr leaf, const StableFileIdentity& expected) {
-  if (!entryMatches(dirFd, leaf, expected)) { return false; }
-  zc::String name = zc::heapString(leaf);
-  return ::unlinkat(dirFd, name.cStr(), 0) == 0;
-}
-
-zc::Maybe<JournalCommit> commitJournal(int directoryFd, const JournalRecord& record) {
+zc::Maybe<JournalCommit> commitJournal(int directoryFd, const JournalRecord& record,
+                                       PublicationCheckpointObserver* observer) {
   zc::Array<uint8_t> payload = encodeJournalPayload(record);
   identity::Sha256Digest checksum = requireDigest(payload.asPtr());
   zc::Vector<uint8_t> encoded;
@@ -412,26 +426,45 @@ zc::Maybe<JournalCommit> commitJournal(int directoryFd, const JournalRecord& rec
                      0600);
   if (raw < 0) { return zc::none; }
   zc::OwnFd fd(raw);
-  bool written = writeAllFd(fd.get(), bytes.asPtr()) && syncFd(fd.get());
+  bool written = !shouldFail(observer, PublicationFaultPoint::JournalWrite) &&
+                 writeAllFd(fd.get(), bytes.asPtr()) &&
+                 !shouldFail(observer, PublicationFaultPoint::JournalFileSync) && syncFd(fd.get());
   if (!written) {
-    (void)::unlinkat(directoryFd, temp.cStr(), 0);
+    if (!shouldFail(observer, PublicationFaultPoint::JournalTemporaryCleanup)) {
+      (void)::unlinkat(directoryFd, temp.cStr(), 0);
+    }
     return zc::none;
   }
-  detail::PublicationRenameResult renamed = renameNoReplace(directoryFd, temp, directoryFd, final);
+  detail::PublicationRenameResult renamed =
+      shouldFail(observer, PublicationFaultPoint::JournalInstall)
+          ? detail::PublicationRenameResult::Failed
+          : renameNoReplace(directoryFd, temp, directoryFd, final);
   if (renamed != detail::PublicationRenameResult::Renamed) {
-    (void)::unlinkat(directoryFd, temp.cStr(), 0);
+    if (!shouldFail(observer, PublicationFaultPoint::JournalTemporaryCleanup)) {
+      (void)::unlinkat(directoryFd, temp.cStr(), 0);
+    }
     return zc::none;
   }
-  if (!syncFd(directoryFd)) { return zc::none; }
+  if (shouldFail(observer, PublicationFaultPoint::JournalDirectorySync) || !syncFd(directoryFd)) {
+    return zc::none;
+  }
   return JournalCommit{id, zc::mv(final)};
 }
 
-bool removeJournalChain(int directoryFd, zc::ArrayPtr<const zc::String> leaves) {
+bool removeJournalChain(int directoryFd, zc::ArrayPtr<const zc::String> leaves,
+                        PublicationCheckpointObserver* observer = nullptr) {
   for (size_t index = leaves.size(); index > 0; --index) {
     zc::String leaf = zc::heapString(leaves[index - 1]);
+    if (shouldFail(observer, PublicationFaultPoint::JournalChainRemove)) { return false; }
     if (::unlinkat(directoryFd, leaf.cStr(), 0) != 0 && errno != ENOENT) { return false; }
   }
+  if (shouldFail(observer, PublicationFaultPoint::JournalChainSync)) { return false; }
   return syncFd(directoryFd);
+}
+
+bool journalResidueExists(int directoryFd, const SnapshotTransactionId& token, JournalStage stage) {
+  return !entryAbsent(directoryFd, journalLeaf(token, stage)) ||
+         !entryAbsent(directoryFd, journalTempLeaf(token, stage));
 }
 
 zc::Maybe<zc::Array<uint8_t>> readFileAt(int directoryFd, zc::StringPtr leaf) {
@@ -645,14 +678,38 @@ struct RecoveryTreeCleanup final {
   CleanupFailureKind kind;
 };
 
+// Defined below; forward-declared so the recovery cleanup path can notify the
+// optional test observer at its claimed-before-verification seam.
+void notify(PublicationCheckpointObserver* observer, PublicationCheckpoint checkpoint);
+
 RecoveryTreeCleanup cleanupRecordedRoot(const zc::Directory& outputDir, int outputDirFd,
-                                        const JournalRecord& record) {
+                                        const JournalRecord& record, bool claimExecutable,
+                                        zc::StringPtr executableLeaf, bool claimManifestTemp,
+                                        zc::StringPtr manifestTemp,
+                                        const zc::Maybe<StableFileIdentity>& manifestTempIdentity,
+                                        PublicationCheckpointObserver* observer) {
   zc::String rootLeaf = zc::str(".zomlink-", record.token.toHex());
+  zc::String quarantine = zc::str(rootLeaf, ".cleanup");
   RecoveryTreeCleanup result{false, CleanupFailureKind::ContentRemovalFailed};
+  bool topLevelRemovalAttempted = false;
   auto exception = zc::runCatchingExceptions([&]() {
+    bool alreadyClaimed = false;
     zc::Maybe<zc::Own<const zc::Directory>> rootMaybe =
         outputDir.tryOpenSubdir(zc::Path(rootLeaf), zc::WriteMode::MODIFY);
     if (rootMaybe == zc::none) {
+      rootMaybe = outputDir.tryOpenSubdir(zc::Path(quarantine), zc::WriteMode::MODIFY);
+      alreadyClaimed = rootMaybe != zc::none;
+    }
+    if (rootMaybe == zc::none) {
+      // The transaction root is the only owner proof that authorizes quarantining
+      // and removing a claimed public entry. If it is gone while we still hold a
+      // claimed executable or manifest temp, ownership can no longer be proven:
+      // fail closed (retain the entry, report for explicit repair) rather than
+      // reporting clean and letting the caller delete owner-proved evidence.
+      if (claimExecutable || claimManifestTemp) {
+        result.kind = CleanupFailureKind::IdentityMismatch;
+        return;
+      }
       result.clean = true;
       return;
     }
@@ -663,39 +720,176 @@ RecoveryTreeCleanup cleanupRecordedRoot(const zc::Directory& outputDir, int outp
       return;
     }
     struct stat rootStat;
-    if (::fstat(ZC_REQUIRE_NONNULL(rootFd), &rootStat) != 0 ||
+    if (::fstat(ZC_REQUIRE_NONNULL(rootFd), &rootStat) != 0 || !S_ISDIR(rootStat.st_mode) ||
         !record.rootIdentity.matches(static_cast<uint64_t>(rootStat.st_dev),
                                      static_cast<uint64_t>(rootStat.st_ino))) {
       result.kind = CleanupFailureKind::IdentityMismatch;
       return;
     }
+
+    if (!alreadyClaimed) {
+      detail::PublicationRenameResult claim =
+          renameNoReplace(outputDirFd, rootLeaf, outputDirFd, quarantine);
+      if (claim != detail::PublicationRenameResult::Renamed) {
+        result.kind = CleanupFailureKind::TopLevelRemovalFailed;
+        return;
+      }
+      struct stat claimed;
+      if (::fstatat(outputDirFd, quarantine.cStr(), &claimed, AT_SYMLINK_NOFOLLOW) != 0 ||
+          !S_ISDIR(claimed.st_mode) ||
+          !record.rootIdentity.matches(static_cast<uint64_t>(claimed.st_dev),
+                                       static_cast<uint64_t>(claimed.st_ino))) {
+        (void)renameNoReplace(outputDirFd, quarantine, outputDirFd, rootLeaf);
+        result.kind = CleanupFailureKind::IdentityMismatch;
+        return;
+      }
+    }
+
+    auto claimFile = [&](zc::StringPtr sourceLeaf, zc::StringPtr quarantineLeaf,
+                         const StableFileIdentity& expectedIdentity,
+                         const identity::Sha256Digest& expectedDigest,
+                         const zc::Maybe<uint64_t>& expectedSize) -> bool {
+      // Verifies the quarantined slot's owner proof (exact identity, digest, and
+      // optional size) through a no-follow read-only handle.
+      auto verifyQuarantinedSlot = [&]() -> bool {
+        zc::String quarantineName = zc::heapString(quarantineLeaf);
+        int raw = ::openat(ZC_REQUIRE_NONNULL(rootFd), quarantineName.cStr(),
+                           O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+        zc::Maybe<detail::PublicationFileSnapshot> claimed;
+        if (raw >= 0) {
+          zc::OwnFd fd(raw);
+          claimed = snapshotFd(fd.get());
+        }
+        return claimed != zc::none && ZC_REQUIRE_NONNULL(claimed).identity == expectedIdentity &&
+               ZC_REQUIRE_NONNULL(claimed).digest == expectedDigest &&
+               (expectedSize == zc::none ||
+                ZC_REQUIRE_NONNULL(claimed).byteCount == ZC_REQUIRE_NONNULL(expectedSize));
+      };
+
+      // Seam fired before the rename so a test can pin this worker's claim
+      // decision (the source is still present) before a competing worker moves
+      // it. Production passes no observer, so it is a no-op there.
+      notify(observer, PublicationCheckpoint::ExecutableClaimAboutToRename);
+      detail::PublicationRenameResult claim =
+          renameNoReplace(outputDirFd, sourceLeaf, ZC_REQUIRE_NONNULL(rootFd), quarantineLeaf);
+      if (claim == detail::PublicationRenameResult::Failed &&
+          entryAbsent(outputDirFd, sourceLeaf)) {
+        // The public source is gone, but a concurrent recovery of the same token
+        // may have already renamed it into this quarantine slot and not yet
+        // proved ownership. Source-absent alone therefore does not prove the slot
+        // is ours to remove: if the slot is empty the transaction is already
+        // clean, but a present slot must verify against the expected owner proof;
+        // a mismatch (a competitor's file) or an unreadable slot is retained for
+        // explicit repair rather than swept.
+        if (entryAbsent(ZC_REQUIRE_NONNULL(rootFd), quarantineLeaf)) { return true; }
+        return verifyQuarantinedSlot();
+      }
+      if (claim != detail::PublicationRenameResult::Renamed) { return false; }
+
+      // The public entry is now inside the transaction root's quarantine slot but
+      // its owner proof has not been verified yet. This seam lets a test drive a
+      // concurrent recovery into exactly this window; production passes no
+      // observer, so it is a no-op there.
+      notify(observer, PublicationCheckpoint::ExecutableClaimedBeforeVerification);
+
+      if (verifyQuarantinedSlot()) { return true; }
+      (void)renameNoReplace(ZC_REQUIRE_NONNULL(rootFd), quarantineLeaf, outputDirFd, sourceLeaf);
+      return false;
+    };
+
+    if (claimExecutable) {
+      zc::Maybe<uint64_t> expectedSize(record.output.byteCount);
+      if (!claimFile(executableLeaf, kExecutableQuarantine, record.output.identity,
+                     record.output.digest, expectedSize)) {
+        result.kind = CleanupFailureKind::IdentityMismatch;
+        return;
+      }
+    }
+    if (claimManifestTemp) {
+      zc::Maybe<uint64_t> noSize;
+      if (manifestTempIdentity == zc::none ||
+          !claimFile(manifestTemp, kManifestQuarantine, ZC_REQUIRE_NONNULL(manifestTempIdentity),
+                     record.manifestTempDigest, noSize)) {
+        result.kind = CleanupFailureKind::IdentityMismatch;
+        return;
+      }
+    }
+    if ((claimExecutable || claimManifestTemp) && !syncFd(outputDirFd)) {
+      result.kind = CleanupFailureKind::TopLevelRemovalFailed;
+      return;
+    }
+
+    // Before sweeping the transaction root, refuse to delete a claim slot this
+    // call did not itself place. A concurrent recovery of the same token may have
+    // renamed a public entry into the quarantine root and be mid-way through
+    // verifying its owner proof (paused at ExecutableClaimedBeforeVerification).
+    // Observing the public name absent leaves this worker with claimExecutable ==
+    // false, so it must not infer the slot is removable: an unverified in-flight
+    // claim is retained and reported for explicit repair rather than swept.
+    if (!entryAbsent(ZC_REQUIRE_NONNULL(rootFd), kExecutableQuarantine) && !claimExecutable) {
+      result.kind = CleanupFailureKind::IdentityMismatch;
+      return;
+    }
+    if (!entryAbsent(ZC_REQUIRE_NONNULL(rootFd), kManifestQuarantine) && !claimManifestTemp) {
+      result.kind = CleanupFailureKind::IdentityMismatch;
+      return;
+    }
+
+    // Explicitly remove only the fixed claim slots this call itself proved by
+    // exact owner identity + digest (+ size) above, and confirm each is gone.
+    // tryRemove returning false means the slot was already absent (the benign
+    // claimFile "already clean" outcome); a real IO error throws and is caught
+    // below as ContentRemovalFailed. The post-removal re-check reports a slot
+    // that somehow survived rather than sweeping past it and mis-reporting clean.
+    // A slot this call did NOT prove is never removed here.
+    auto removeProvenSlot = [&](zc::StringPtr slot) -> bool {
+      (void)root->tryRemove(zc::Path(slot));
+      return entryAbsent(ZC_REQUIRE_NONNULL(rootFd), slot);
+    };
+    if (claimExecutable && !removeProvenSlot(kExecutableQuarantine)) {
+      result.kind = CleanupFailureKind::ContentRemovalFailed;
+      return;
+    }
+    if (claimManifestTemp && !removeProvenSlot(kManifestQuarantine)) {
+      result.kind = CleanupFailureKind::ContentRemovalFailed;
+      return;
+    }
+
+    // Cleanup-time seam: a test drives a concurrent worker holding a pre-existing
+    // root descriptor into this exact window to late-claim a fixed slot; the
+    // sweep below must never remove it. Production passes no observer, so this is
+    // a no-op there.
+    notify(observer, PublicationCheckpoint::TransactionRootContentsAboutToSweep);
+
+    // Sweep the remaining transaction contents, but never a fixed claim slot: a
+    // slot still present here is a concurrent recovery's in-flight or late claim
+    // whose ownership this call has not proved. It is retained, and the final
+    // non-recursive root removal below then fails on the non-empty directory, so
+    // the transaction is reported as a retriable cleanup debt rather than
+    // deleting a slot that recovery is mid-way through verifying.
     for (const zc::String& name : root->listNames()) {
+      zc::StringPtr text(name);
+      if (text == kExecutableQuarantine || text == kManifestQuarantine) { continue; }
       if (!root->tryRemove(zc::Path(name))) {
         result.kind = CleanupFailureKind::ContentRemovalFailed;
         return;
       }
     }
-    struct stat entryStat;
-    if (::fstatat(outputDirFd, rootLeaf.cStr(), &entryStat, AT_SYMLINK_NOFOLLOW) != 0) {
-      if (errno == ENOENT) {
-        result.clean = true;
-      } else {
-        result.kind = CleanupFailureKind::TopLevelRemovalFailed;
-      }
-      return;
-    }
-    if (!record.rootIdentity.matches(static_cast<uint64_t>(entryStat.st_dev),
-                                     static_cast<uint64_t>(entryStat.st_ino))) {
-      result.kind = CleanupFailureKind::IdentityMismatch;
-      return;
-    }
-    if (!outputDir.tryRemove(zc::Path(rootLeaf))) {
+    topLevelRemovalAttempted = true;
+    // Non-recursive removal: if a retained fixed claim slot (or any late entry)
+    // remains, this fails on the non-empty directory instead of recursively
+    // deleting the retained slot.
+    if (::unlinkat(outputDirFd, quarantine.cStr(), AT_REMOVEDIR) != 0) {
       result.kind = CleanupFailureKind::TopLevelRemovalFailed;
       return;
     }
     result.clean = true;
   });
-  if (exception != zc::none) { result.clean = false; }
+  if (exception != zc::none) {
+    result.clean = false;
+    result.kind = topLevelRemovalAttempted ? CleanupFailureKind::TopLevelRemovalFailed
+                                           : CleanupFailureKind::ContentRemovalFailed;
+  }
   return result;
 }
 
@@ -781,12 +975,16 @@ identity::Sha256Digest ExecutablePublicationManifestBinding::toolchainIdentity(
 
 LinkRecoveryRequired LinkRecoveryRequired::snapshot(PublicationRejection&& primary,
                                                     SnapshotCleanupObligation&& obligation) {
+  ZC_IREQUIRE(!primary.isVerified(), "snapshot recovery primary must be a rejection");
   return LinkRecoveryRequired(zc::OneOf<SnapshotRecoveryRequired, PublicationRecoveryRequired>(
       SnapshotRecoveryRequired{zc::mv(primary), zc::mv(obligation)}));
 }
 
 LinkRecoveryRequired LinkRecoveryRequired::publication(zc::Maybe<PublicationRejection>&& primary,
                                                        PublicationRecoveryObligation&& obligation) {
+  ZC_IF_SOME(value, primary) {
+    ZC_IREQUIRE(!value.isVerified(), "publication recovery primary must be a rejection");
+  }
   return LinkRecoveryRequired(zc::OneOf<SnapshotRecoveryRequired, PublicationRecoveryRequired>(
       PublicationRecoveryRequired{zc::mv(primary), zc::mv(obligation)}));
 }
@@ -902,6 +1100,13 @@ PublicationOutcome publishLinkedOutputObserved(LinkedOutputCandidate candidate,
   }
   zc::OwnFd outputDirFdOwner(duplicatedOutputDirFd);
   int outputDirFd = outputDirFdOwner.get();
+  if (!trustedOutputDirectory(outputDirFd)) {
+    CleanupDisposition disposition = zc::mv(candidate).discardAndCleanup();
+    PublicationRejection primary = rejectPublication(IrFailureKind::OutputCreationFailed, 18);
+    if (disposition.isClean()) { return PublicationOutcome::rejected(zc::mv(primary)); }
+    return PublicationOutcome::recoveryRequired(
+        LinkRecoveryRequired::snapshot(zc::mv(primary), zc::mv(disposition).takeObligation()));
+  }
   zc::String outputParent =
       zc::heapString(detail::LinkPublicationTransaction::outputParent(candidate));
   zc::Maybe<zc::String> executableLeafMaybe = pathLeaf(candidate.plan().outputPath());
@@ -940,6 +1145,20 @@ PublicationOutcome publishLinkedOutputObserved(LinkedOutputCandidate candidate,
     return rejectBeforeJournal(IrFailureKind::InvalidFact, 4);
   }
 
+  auto recoveryAfterJournalInstallFailure =
+      [&](PublicationRejection&& primary, JournalStage lastDurableStage,
+          const StableFileIdentity& outputIdentity) -> PublicationOutcome {
+    CleanupDisposition rootCleanup = zc::mv(candidate).discardAndCleanup();
+    zc::Maybe<SnapshotCleanupObligation> snapshot;
+    if (rootCleanup.isObligated()) { snapshot = zc::mv(rootCleanup).takeObligation(); }
+    PublicationRecoveryObligation obligation = detail::PublicationTransactionMinter::obligation(
+        token, zc::heapString(executablePath), zc::heapString(manifestPath),
+        zc::heapString(outputParent), outputIdentity, lastDurableStage, zc::mv(snapshot));
+    zc::Maybe<PublicationRejection> cause(zc::mv(primary));
+    return PublicationOutcome::recoveryRequired(
+        LinkRecoveryRequired::publication(zc::mv(cause), zc::mv(obligation)));
+  };
+
   zc::Vector<zc::String> journalLeaves;
   JournalRecord record{JournalStage::Started,
                        identity::Sha256Digest(),
@@ -954,8 +1173,19 @@ PublicationOutcome publishLinkedOutputObserved(LinkedOutputCandidate candidate,
                        manifestDigest,
                        zc::none,
                        identity::Sha256Digest()};
-  zc::Maybe<JournalCommit> started = commitJournal(outputDirFd, record);
-  if (started == zc::none) { return rejectBeforeJournal(IrFailureKind::OutputCreationFailed, 5); }
+  zc::Maybe<JournalCommit> started = commitJournal(outputDirFd, record, observer);
+  if (started == zc::none) {
+    if (journalResidueExists(outputDirFd, token, JournalStage::Started)) {
+      // The initial Started record is durable only after its write, no-replace
+      // install, and directory fsync all succeed. A commit fault that leaves
+      // residue means the record's durability is unproven, so the obligation
+      // reports no durable stage (None) rather than falsely asserting Started.
+      return recoveryAfterJournalInstallFailure(
+          rejectPublication(IrFailureKind::OutputCreationFailed, 5), JournalStage::None,
+          ZC_REQUIRE_NONNULL(initial).identity);
+    }
+    return rejectBeforeJournal(IrFailureKind::OutputCreationFailed, 5);
+  }
   journalLeaves.add(zc::heapString(ZC_REQUIRE_NONNULL(started).leaf));
   notify(observer, PublicationCheckpoint::StartedDurable);
 
@@ -972,15 +1202,49 @@ PublicationOutcome publishLinkedOutputObserved(LinkedOutputCandidate candidate,
         zc::heapString(outputParent), commitPoint.identity, durableStage, zc::mv(snapshot));
   };
 
+  auto claimParentEntry = [&](zc::StringPtr leaf, zc::StringPtr quarantine,
+                              const detail::PublicationFileSnapshot& expected,
+                              bool& rootContainsUnownedEntry) -> bool {
+    detail::PublicationClaimResult result =
+        detail::LinkPublicationTransaction::claimParentEntryNoReplace(candidate, leaf, quarantine,
+                                                                      expected);
+    switch (result) {
+      case detail::PublicationClaimResult::ClaimedOwned:
+      case detail::PublicationClaimResult::SourceAbsent:
+        return true;
+      case detail::PublicationClaimResult::CompetitorRetained:
+      case detail::PublicationClaimResult::QuarantineExists:
+        rootContainsUnownedEntry = true;
+        return false;
+      case detail::PublicationClaimResult::CompetitorRestored:
+      case detail::PublicationClaimResult::Unsupported:
+      case detail::PublicationClaimResult::Failed:
+        return false;
+    }
+    ZC_UNREACHABLE
+  };
+
   auto cleanupBeforeExecutable = [&](PublicationRejection&& primary) -> PublicationOutcome {
     bool manifestClean = !manifestTempCreated;
+    bool rootContainsUnownedEntry = false;
     ZC_IF_SOME(identity, manifestIdentity) {
-      manifestClean = unlinkIdentityChecked(outputDirFd, manifestTemp, identity);
+      detail::PublicationFileSnapshot expected{identity, manifestBytes.size(), manifestDigest};
+      manifestClean =
+          claimParentEntry(manifestTemp, kManifestQuarantine, expected, rootContainsUnownedEntry);
+    }
+    if (rootContainsUnownedEntry) {
+      SnapshotCleanupObligation retained =
+          detail::LinkPublicationTransaction::abandonRootForRecovery(
+              candidate, CleanupFailureKind::IdentityMismatch);
+      zc::Maybe<SnapshotCleanupObligation> snapshot(zc::mv(retained));
+      zc::Maybe<PublicationRejection> cause(zc::mv(primary));
+      return PublicationOutcome::recoveryRequired(LinkRecoveryRequired::publication(
+          zc::mv(cause), makePublicationObligation(zc::mv(snapshot))));
     }
     CleanupDisposition rootCleanup = zc::mv(candidate).discardAndCleanup();
     bool journalClean = false;
     if (manifestClean && rootCleanup.isClean()) {
-      journalClean = removeJournalChain(outputDirFd, journalLeaves.asPtr());
+      journalClean = removeJournalChain(outputDirFd, journalLeaves.asPtr(), observer);
     }
     if (manifestClean && rootCleanup.isClean() && journalClean) {
       return PublicationOutcome::rejected(zc::mv(primary));
@@ -999,20 +1263,33 @@ PublicationOutcome publishLinkedOutputObserved(LinkedOutputCandidate candidate,
   auto cleanupAfterExecutable = [&](PublicationRejection&& primary,
                                     bool allowRollback) -> PublicationOutcome {
     bool executableClean = false;
-    if (allowRollback && entryMatches(outputDirFd, executableLeaf, commitPoint.identity)) {
-      executableClean = unlinkIdentityChecked(outputDirFd, executableLeaf, commitPoint.identity);
+    bool rootContainsUnownedEntry = false;
+    if (allowRollback) {
+      executableClean = claimParentEntry(executableLeaf, kExecutableQuarantine, commitPoint,
+                                         rootContainsUnownedEntry);
       if (executableClean) { (void)syncFd(outputDirFd); }
     }
     bool manifestClean = manifestRenamed || !manifestTempCreated;
     ZC_IF_SOME(identity, manifestIdentity) {
       if (!manifestRenamed) {
-        manifestClean = unlinkIdentityChecked(outputDirFd, manifestTemp, identity);
+        detail::PublicationFileSnapshot expected{identity, manifestBytes.size(), manifestDigest};
+        manifestClean =
+            claimParentEntry(manifestTemp, kManifestQuarantine, expected, rootContainsUnownedEntry);
       }
+    }
+    if (rootContainsUnownedEntry) {
+      SnapshotCleanupObligation retained =
+          detail::LinkPublicationTransaction::abandonRootForRecovery(
+              candidate, CleanupFailureKind::IdentityMismatch);
+      zc::Maybe<SnapshotCleanupObligation> snapshot(zc::mv(retained));
+      zc::Maybe<PublicationRejection> cause(zc::mv(primary));
+      return PublicationOutcome::recoveryRequired(LinkRecoveryRequired::publication(
+          zc::mv(cause), makePublicationObligation(zc::mv(snapshot))));
     }
     CleanupDisposition rootCleanup = zc::mv(candidate).discardAndCleanup();
     bool journalClean = false;
     if (executableClean && manifestClean && rootCleanup.isClean()) {
-      journalClean = removeJournalChain(outputDirFd, journalLeaves.asPtr());
+      journalClean = removeJournalChain(outputDirFd, journalLeaves.asPtr(), observer);
     }
     if (executableClean && manifestClean && rootCleanup.isClean() && journalClean) {
       return PublicationOutcome::rejected(zc::mv(primary));
@@ -1024,6 +1301,15 @@ PublicationOutcome publishLinkedOutputObserved(LinkedOutputCandidate candidate,
         zc::mv(cause), makePublicationObligation(zc::mv(snapshot))));
   };
 
+  auto recoveryAfterManifestRename =
+      [&](zc::Maybe<PublicationRejection>&& primary) -> PublicationOutcome {
+    CleanupDisposition rootCleanup = zc::mv(candidate).discardAndCleanup();
+    zc::Maybe<SnapshotCleanupObligation> snapshot;
+    if (rootCleanup.isObligated()) { snapshot = zc::mv(rootCleanup).takeObligation(); }
+    return PublicationOutcome::recoveryRequired(LinkRecoveryRequired::publication(
+        zc::mv(primary), makePublicationObligation(zc::mv(snapshot))));
+  };
+
   int rawManifest = ::openat(outputDirFd, manifestTemp.cStr(),
                              O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
   if (rawManifest < 0) {
@@ -1031,8 +1317,10 @@ PublicationOutcome publishLinkedOutputObserved(LinkedOutputCandidate candidate,
   }
   manifestFd = zc::OwnFd(rawManifest);
   manifestTempCreated = true;
-  if (!writeAllFd(manifestFd.get(), manifestBytes.asPtr()) || !syncFd(manifestFd.get()) ||
-      !syncFd(outputDirFd)) {
+  if (shouldFail(observer, PublicationFaultPoint::ManifestWrite) ||
+      !writeAllFd(manifestFd.get(), manifestBytes.asPtr()) ||
+      shouldFail(observer, PublicationFaultPoint::ManifestFileSync) || !syncFd(manifestFd.get()) ||
+      shouldFail(observer, PublicationFaultPoint::ManifestDirectorySync) || !syncFd(outputDirFd)) {
     ZC_IF_SOME(snapshot, snapshotFd(manifestFd.get())) { manifestIdentity = snapshot.identity; }
     return cleanupBeforeExecutable(rejectPublication(IrFailureKind::OutputCreationFailed, 7));
   }
@@ -1055,10 +1343,13 @@ PublicationOutcome publishLinkedOutputObserved(LinkedOutputCandidate candidate,
   record.output = commitPoint;
   record.manifestTempIdentity = manifestIdentity;
   record.manifestTempDigest = manifestDigest;
-  zc::Maybe<JournalCommit> manifestStaged = commitJournal(outputDirFd, record);
+  zc::Maybe<JournalCommit> manifestStaged = commitJournal(outputDirFd, record, observer);
   if (manifestStaged == zc::none) {
-    zc::String visibleLeaf = journalLeaf(token, JournalStage::ManifestStaged);
-    if (!entryAbsent(outputDirFd, visibleLeaf)) { journalLeaves.add(zc::mv(visibleLeaf)); }
+    if (journalResidueExists(outputDirFd, token, JournalStage::ManifestStaged)) {
+      return recoveryAfterJournalInstallFailure(
+          rejectPublication(IrFailureKind::OutputCreationFailed, 10), durableStage,
+          commitPoint.identity);
+    }
     return cleanupBeforeExecutable(rejectPublication(IrFailureKind::OutputCreationFailed, 10));
   }
   journalLeaves.add(zc::heapString(ZC_REQUIRE_NONNULL(manifestStaged).leaf));
@@ -1078,24 +1369,24 @@ PublicationOutcome publishLinkedOutputObserved(LinkedOutputCandidate candidate,
   detail::PublicationRenameResult execRename =
       detail::LinkPublicationTransaction::renameOutputNoReplace(candidate, executableLeaf);
   if (execRename != detail::PublicationRenameResult::Renamed) {
-    return cleanupBeforeExecutable(
-        rejectPublication(execRename == detail::PublicationRenameResult::DestinationExists
-                              ? IrFailureKind::InvalidFact
-                              : IrFailureKind::OutputCreationFailed,
-                          12));
+    return cleanupBeforeExecutable(rejectPublication(IrFailureKind::OutputCreationFailed, 12));
   }
   notify(observer, PublicationCheckpoint::ExecutableRenamed);
-  if (!syncFd(outputDirFd)) {
+  if (shouldFail(observer, PublicationFaultPoint::ExecutableDirectorySync) ||
+      !syncFd(outputDirFd)) {
     return cleanupAfterExecutable(rejectPublication(IrFailureKind::OutputCreationFailed, 13), true);
   }
   notify(observer, PublicationCheckpoint::ExecutableDirectoryDurable);
 
   record.stage = JournalStage::ExecCommitted;
   record.previousId = ZC_REQUIRE_NONNULL(manifestStaged).id;
-  zc::Maybe<JournalCommit> execCommitted = commitJournal(outputDirFd, record);
+  zc::Maybe<JournalCommit> execCommitted = commitJournal(outputDirFd, record, observer);
   if (execCommitted == zc::none) {
-    zc::String visibleLeaf = journalLeaf(token, JournalStage::ExecCommitted);
-    if (!entryAbsent(outputDirFd, visibleLeaf)) { journalLeaves.add(zc::mv(visibleLeaf)); }
+    if (journalResidueExists(outputDirFd, token, JournalStage::ExecCommitted)) {
+      return recoveryAfterJournalInstallFailure(
+          rejectPublication(IrFailureKind::OutputCreationFailed, 14), durableStage,
+          commitPoint.identity);
+    }
     return cleanupAfterExecutable(rejectPublication(IrFailureKind::OutputCreationFailed, 14), true);
   }
   journalLeaves.add(zc::heapString(ZC_REQUIRE_NONNULL(execCommitted).leaf));
@@ -1116,35 +1407,33 @@ PublicationOutcome publishLinkedOutputObserved(LinkedOutputCandidate candidate,
   detail::PublicationRenameResult manifestRename =
       renameNoReplace(outputDirFd, manifestTemp, outputDirFd, manifestLeaf);
   if (manifestRename != detail::PublicationRenameResult::Renamed) {
-    return cleanupAfterExecutable(
-        rejectPublication(manifestRename == detail::PublicationRenameResult::DestinationExists
-                              ? IrFailureKind::InvalidFact
-                              : IrFailureKind::OutputCreationFailed,
-                          16),
-        true);
+    notify(observer, PublicationCheckpoint::ManifestRenameRejected);
+    return cleanupAfterExecutable(rejectPublication(IrFailureKind::OutputCreationFailed, 16), true);
   }
   manifestRenamed = true;
   notify(observer, PublicationCheckpoint::ManifestRenamed);
-  if (!syncFd(outputDirFd)) {
+  if (shouldFail(observer, PublicationFaultPoint::FinalManifestDirectorySync) ||
+      !syncFd(outputDirFd)) {
     zc::Maybe<PublicationRejection> noPrimary;
-    zc::Maybe<SnapshotCleanupObligation> noSnapshot;
-    return PublicationOutcome::recoveryRequired(LinkRecoveryRequired::publication(
-        zc::mv(noPrimary), makePublicationObligation(zc::mv(noSnapshot))));
+    return recoveryAfterManifestRename(zc::mv(noPrimary));
   }
   notify(observer, PublicationCheckpoint::ManifestDirectoryDurable);
 
   record.stage = JournalStage::ManifestCommitted;
   record.previousId = ZC_REQUIRE_NONNULL(execCommitted).id;
-  zc::Maybe<JournalCommit> manifestCommitted = commitJournal(outputDirFd, record);
+  zc::Maybe<JournalCommit> manifestCommitted = commitJournal(outputDirFd, record, observer);
   if (manifestCommitted == zc::none) {
     zc::Maybe<PublicationRejection> noPrimary;
-    zc::Maybe<SnapshotCleanupObligation> noSnapshot;
-    return PublicationOutcome::recoveryRequired(LinkRecoveryRequired::publication(
-        zc::mv(noPrimary), makePublicationObligation(zc::mv(noSnapshot))));
+    return recoveryAfterManifestRename(zc::mv(noPrimary));
   }
   journalLeaves.add(zc::heapString(ZC_REQUIRE_NONNULL(manifestCommitted).leaf));
   durableStage = JournalStage::ManifestCommitted;
   notify(observer, PublicationCheckpoint::ManifestCommittedDurable);
+
+  if (!verifyingFinalPair(outputDirFd, executableLeaf, manifestLeaf, record)) {
+    zc::Maybe<PublicationRejection> primary(rejectPublication(IrFailureKind::InvalidFact, 17));
+    return recoveryAfterManifestRename(zc::mv(primary));
+  }
 
   CleanupDisposition rootCleanup = zc::mv(candidate).discardAndCleanup();
   if (rootCleanup.isObligated()) {
@@ -1153,7 +1442,7 @@ PublicationOutcome publishLinkedOutputObserved(LinkedOutputCandidate candidate,
     return PublicationOutcome::recoveryRequired(LinkRecoveryRequired::publication(
         zc::mv(noPrimary), makePublicationObligation(zc::mv(snapshot))));
   }
-  if (!removeJournalChain(outputDirFd, journalLeaves.asPtr())) {
+  if (!removeJournalChain(outputDirFd, journalLeaves.asPtr(), observer)) {
     zc::Maybe<PublicationRejection> noPrimary;
     zc::Maybe<SnapshotCleanupObligation> noSnapshot;
     return PublicationOutcome::recoveryRequired(LinkRecoveryRequired::publication(
@@ -1250,11 +1539,13 @@ PublicationOutcome linkAndPublish(VerifiedLinkPlan plan, const zc::Filesystem& f
   return publishLinkedOutput(zc::mv(candidate), zc::mv(manifest).takeVerified());
 }
 
-PublicationRecoveryResult recoverLinkedOutputPublication(const zc::Filesystem& filesystem,
-                                                         zc::StringPtr finalDestination) {
+PublicationRecoveryResult recoverLinkedOutputPublicationObserved(
+    const zc::Filesystem& filesystem, zc::StringPtr finalDestination,
+    PublicationCheckpointObserver* observer) {
 #if !ZOM_LINK_PUBLICATION_SUPPORTED
   (void)filesystem;
   (void)finalDestination;
+  (void)observer;
   return PublicationRecoveryResult::explicitRepairRequired();
 #else
   zc::Maybe<zc::String> parentMaybe = pathParent(finalDestination);
@@ -1282,6 +1573,9 @@ PublicationRecoveryResult recoverLinkedOutputPublication(const zc::Filesystem& f
   if (duplicated < 0) { return PublicationRecoveryResult::explicitRepairRequired(); }
   zc::OwnFd directoryFdOwner(duplicated);
   int directoryFd = directoryFdOwner.get();
+  if (!trustedOutputDirectory(directoryFd)) {
+    return PublicationRecoveryResult::explicitRepairRequired();
+  }
 
   zc::Vector<zc::String> matchingTokens;
   bool malformedStarted = false;
@@ -1310,39 +1604,51 @@ PublicationRecoveryResult recoverLinkedOutputPublication(const zc::Filesystem& f
       }
     }
   });
-  if (listException != zc::none || malformedStarted) {
-    return PublicationRecoveryResult::explicitRepairRequired();
-  }
-  if (matchingTokens.size() == 0) {
-    bool unjournaledRoot = false;
-    for (const zc::String& name : outputDir->listNames()) {
-      if (zc::StringPtr(name).startsWith(".zomlink-"_zc)) { unjournaledRoot = true; }
+  if (listException != zc::none) { return PublicationRecoveryResult::explicitRepairRequired(); }
+  // A complete pair that verifies against a decodable manifest for THIS final
+  // destination is published, and that decision must be independent of any
+  // unrelated residue in the shared output directory: another target's
+  // pre-Started root, orphan journal, or even a malformed `.started`. A malformed
+  // record decodes to no target, so it never joins matchingTokens; when this
+  // target has no matching Started chain, its published pair is authoritative and
+  // the neighbour's residue is neither consulted nor deleted. This check runs
+  // before the malformedStarted fail-fast for exactly that reason.
+  auto verifiedPublishedPair = [&]() -> bool {
+    if (entryAbsent(directoryFd, executableLeaf) || entryAbsent(directoryFd, manifestLeaf)) {
+      return false;
     }
+    zc::Maybe<zc::Array<uint8_t>> manifestBytes = readFileAt(directoryFd, manifestLeaf);
+    if (manifestBytes == zc::none) { return false; }
+    IrOperationResult<VerifiedExecutableManifest> decoded =
+        ExecutableManifestCodec::decode(ZC_REQUIRE_NONNULL(manifestBytes).asPtr(), outputParent);
+    if (!decoded.isVerified()) { return false; }
+    VerifiedExecutableManifest manifest = zc::mv(decoded).takeVerified();
+    zc::String executable = zc::heapString(executableLeaf);
+    int executableRaw = ::openat(directoryFd, executable.cStr(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (executableRaw < 0) { return false; }
+    zc::OwnFd executableFd(executableRaw);
+    zc::Maybe<detail::PublicationFileSnapshot> output = snapshotFd(executableFd.get());
+    return output != zc::none && manifest.finalDestination() == finalDestination &&
+           ZC_REQUIRE_NONNULL(output).digest == manifest.executableDigest() &&
+           ZC_REQUIRE_NONNULL(output).byteCount == manifest.executableByteCount();
+  };
+  if (matchingTokens.size() == 0 && verifiedPublishedPair()) {
+    return PublicationRecoveryResult::published();
+  }
+  if (malformedStarted) { return PublicationRecoveryResult::explicitRepairRequired(); }
+  if (matchingTokens.size() == 0) {
     bool executableExists = !entryAbsent(directoryFd, executableLeaf);
     bool manifestExists = !entryAbsent(directoryFd, manifestLeaf);
-    if (!unjournaledRoot && executableExists && manifestExists) {
-      zc::Maybe<zc::Array<uint8_t>> manifestBytes = readFileAt(directoryFd, manifestLeaf);
-      if (manifestBytes != zc::none) {
-        IrOperationResult<VerifiedExecutableManifest> decoded = ExecutableManifestCodec::decode(
-            ZC_REQUIRE_NONNULL(manifestBytes).asPtr(), outputParent);
-        if (decoded.isVerified()) {
-          VerifiedExecutableManifest manifest = zc::mv(decoded).takeVerified();
-          zc::String executable = zc::heapString(executableLeaf);
-          int executableRaw =
-              ::openat(directoryFd, executable.cStr(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
-          if (executableRaw >= 0) {
-            zc::OwnFd executableFd(executableRaw);
-            zc::Maybe<detail::PublicationFileSnapshot> output = snapshotFd(executableFd.get());
-            if (output != zc::none && manifest.finalDestination() == finalDestination &&
-                ZC_REQUIRE_NONNULL(output).digest == manifest.executableDigest() &&
-                ZC_REQUIRE_NONNULL(output).byteCount == manifest.executableByteCount()) {
-              return PublicationRecoveryResult::published();
-            }
-          }
-        }
+    bool unjournaledRoot = false;
+    bool orphanJournalArtifact = false;
+    for (const zc::String& name : outputDir->listNames()) {
+      zc::StringPtr text(name);
+      if (text.startsWith(".zomlink-"_zc)) { unjournaledRoot = true; }
+      if (text.startsWith("journal."_zc) || text.startsWith(".journal."_zc)) {
+        orphanJournalArtifact = true;
       }
     }
-    if (unjournaledRoot || executableExists || manifestExists) {
+    if (unjournaledRoot || orphanJournalArtifact || executableExists || manifestExists) {
       return PublicationRecoveryResult::explicitRepairRequired();
     }
     return PublicationRecoveryResult::clean();
@@ -1477,29 +1783,36 @@ PublicationRecoveryResult recoverLinkedOutputPublication(const zc::Filesystem& f
   bool executableExists = !entryAbsent(directoryFd, executableLeaf);
   bool manifestExists = !entryAbsent(directoryFd, manifestLeaf);
   bool published = false;
-  if (manifestExists) {
-    if (!executableExists ||
-        (highest->stage != JournalStage::ExecCommitted &&
-         highest->stage != JournalStage::ManifestCommitted) ||
+  bool claimExecutable = false;
+  if (highest->stage == JournalStage::ManifestCommitted) {
+    if (!executableExists || !manifestExists ||
         !verifyingFinalPair(directoryFd, executableLeaf, manifestLeaf, *highest)) {
-      zc::Maybe<SnapshotCleanupObligation> noSnapshot;
-      return recoveryRequired(zc::mv(noSnapshot));
+      return PublicationRecoveryResult::explicitRepairRequired();
+    }
+    published = true;
+  } else if (manifestExists) {
+    if (!executableExists || highest->stage != JournalStage::ExecCommitted ||
+        !verifyingFinalPair(directoryFd, executableLeaf, manifestLeaf, *highest)) {
+      return PublicationRecoveryResult::explicitRepairRequired();
     }
     published = true;
   } else if (executableExists) {
     if (!entryMatches(directoryFd, executableLeaf, highest->output.identity)) {
-      zc::Maybe<SnapshotCleanupObligation> noSnapshot;
-      return recoveryRequired(zc::mv(noSnapshot));
+      return PublicationRecoveryResult::explicitRepairRequired();
     }
-    if (!unlinkIdentityChecked(directoryFd, executableLeaf, highest->output.identity) ||
-        !syncFd(directoryFd)) {
-      zc::Maybe<SnapshotCleanupObligation> noSnapshot;
-      return recoveryRequired(zc::mv(noSnapshot));
-    }
+    claimExecutable = true;
+  } else if (highest->stage == JournalStage::ExecCommitted) {
+    // ExecCommitted durably records the executable rename, so a now-absent `app`
+    // with no final manifest is undecidable external tampering, not a rollback
+    // point. Fail closed per the crash-recovery matrix catch-all: retain the
+    // snapshot root and journal chain, report for explicit repair, and never
+    // infer a delete of owner-proved evidence.
+    return PublicationRecoveryResult::explicitRepairRequired();
   }
 
   bool retainUnprovedTemp = false;
   bool retainUnprovedJournalTemp = false;
+  bool claimManifestTemp = false;
   zc::String journalTempPrefix = zc::str(".journal.", tokenHex, ".");
   for (const zc::String& name : outputDir->listNames()) {
     zc::StringPtr text(name);
@@ -1511,16 +1824,22 @@ PublicationRecoveryResult recoverLinkedOutputPublication(const zc::Filesystem& f
       !entryAbsent(directoryFd, manifestTemp)) {
     retainUnprovedTemp = true;
   } else if (highest->stage != JournalStage::Started && !entryAbsent(directoryFd, manifestTemp)) {
-    if (highest->manifestTempIdentity == zc::none ||
-        !unlinkIdentityChecked(directoryFd, manifestTemp,
-                               ZC_REQUIRE_NONNULL(highest->manifestTempIdentity))) {
-      zc::Maybe<SnapshotCleanupObligation> noSnapshot;
-      return recoveryRequired(zc::mv(noSnapshot));
-    }
+    claimManifestTemp = true;
   }
 
-  RecoveryTreeCleanup rootCleanup = cleanupRecordedRoot(*outputDir, directoryFd, *highest);
+  RecoveryTreeCleanup rootCleanup =
+      cleanupRecordedRoot(*outputDir, directoryFd, *highest, claimExecutable, executableLeaf,
+                          claimManifestTemp, manifestTemp, highest->manifestTempIdentity, observer);
   if (!rootCleanup.clean) {
+    // An identity mismatch or unavailable identity is a non-retriable tamper /
+    // ownership-ambiguity: retrying the same cleanup would loop forever, so
+    // retain all evidence and demand explicit repair. Only a transient IO cleanup
+    // failure (content or top-level removal) is a recoverable debt with an
+    // obligation to retry.
+    if (rootCleanup.kind == CleanupFailureKind::IdentityMismatch ||
+        rootCleanup.kind == CleanupFailureKind::IdentityUnavailable) {
+      return PublicationRecoveryResult::explicitRepairRequired();
+    }
     SnapshotCleanupObligation nested = detail::LinkPublicationTransaction::snapshotObligation(
         highest->token, zc::heapString(outputParent), highest->rootIdentity, highest->planId,
         rootCleanup.kind);
@@ -1536,6 +1855,17 @@ PublicationRecoveryResult recoverLinkedOutputPublication(const zc::Filesystem& f
   }
   return published ? PublicationRecoveryResult::published() : PublicationRecoveryResult::clean();
 #endif
+}
+
+PublicationRecoveryResult recoverLinkedOutputPublication(const zc::Filesystem& filesystem,
+                                                         zc::StringPtr finalDestination) {
+  return recoverLinkedOutputPublicationObserved(filesystem, finalDestination, nullptr);
+}
+
+PublicationRecoveryResult PublicationTransactionTestAccess::recoverObserved(
+    const zc::Filesystem& filesystem, zc::StringPtr finalDestination,
+    PublicationCheckpointObserver& observer) {
+  return recoverLinkedOutputPublicationObserved(filesystem, finalDestination, &observer);
 }
 
 }  // namespace zomlang::compiler::ir

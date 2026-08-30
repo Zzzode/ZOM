@@ -25,8 +25,28 @@
 #include "compiler/ir/invoke-linker.h"
 #include "zc/core/common.h"
 #include "zc/core/filesystem.h"
+#include "zc/core/string.h"
 
 namespace zomlang::compiler::ir::detail {
+
+/// \brief The two fixed publication-recovery claim slot names inside a
+///        transaction root.
+///
+/// A recovery worker renames a public final entry into one of these slots under
+/// the held root capability and removes it only after proving the slot's exact
+/// owner identity, digest, and (for the executable) byte count. Because the slot
+/// name is fixed rather than derived from the transaction contents, any generic
+/// content sweep of a transaction root MUST skip both names: a concurrent
+/// protocol-following recovery may have just claimed a competitor into the slot
+/// and not yet proved ownership, and deleting it would destroy the evidence that
+/// recovery is mid-way through verifying. Only the call that itself proved a
+/// slot's owner removes that slot; a slot left present forces the final
+/// directory removal to fail on a non-empty root, which is reported as a
+/// retriable cleanup debt. This follows the existing unified-root trust
+/// boundary (a private root plus a trusted same-UID principal); it is not a
+/// claim of protection against a hostile same-UID owner.
+inline constexpr zc::StringPtr kExecutableQuarantineSlot = "publication-executable-cleanup"_zc;
+inline constexpr zc::StringPtr kManifestQuarantineSlot = "publication-manifest-cleanup"_zc;
 
 struct PublicationFileSnapshot final {
   StableFileIdentity identity;
@@ -41,6 +61,16 @@ enum class PublicationRenameResult : uint8_t {
   Failed = 0x04,
 };
 
+enum class PublicationClaimResult : uint8_t {
+  ClaimedOwned = 0x01,
+  SourceAbsent = 0x02,
+  CompetitorRestored = 0x03,
+  CompetitorRetained = 0x04,
+  QuarantineExists = 0x05,
+  Unsupported = 0x06,
+  Failed = 0x07,
+};
+
 /// \brief Restricted attorney for the D1 publication transaction.
 ///
 /// Definitions live with `LinkedOutputCandidate::Impl`, so publication can use
@@ -49,19 +79,18 @@ enum class PublicationRenameResult : uint8_t {
 class LinkPublicationTransaction final {
 public:
   ZC_NODISCARD static StableFileIdentity fileIdentity(uint64_t device, uint64_t inode,
-                                                       uint64_t linkCount) noexcept;
+                                                      uint64_t linkCount) noexcept;
   ZC_NODISCARD static zc::Maybe<SnapshotTransactionId> transactionIdFromBytes(
       zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static StableDirectoryIdentity directoryIdentity(uint64_t device,
-                                                                 uint64_t inode) noexcept;
+                                                                uint64_t inode) noexcept;
   ZC_NODISCARD static SnapshotCleanupObligation snapshotObligation(
       const SnapshotTransactionId& transactionId, zc::String&& outputParent,
       const StableDirectoryIdentity& directoryIdentity, const LinkPlanId& planId,
       CleanupFailureKind kind) noexcept;
   ZC_NODISCARD static const SnapshotTransactionId& transactionId(
       const LinkedOutputCandidate& candidate) noexcept;
-  ZC_NODISCARD static zc::StringPtr outputParent(
-      const LinkedOutputCandidate& candidate) noexcept;
+  ZC_NODISCARD static zc::StringPtr outputParent(const LinkedOutputCandidate& candidate) noexcept;
   ZC_NODISCARD static const StableDirectoryIdentity& rootIdentity(
       const LinkedOutputCandidate& candidate) noexcept;
   ZC_NODISCARD static const zc::Directory& outputParentDirectory(
@@ -75,6 +104,17 @@ public:
   ///        `renameat2(RENAME_NOREPLACE)`. No fallback is permitted.
   ZC_NODISCARD static PublicationRenameResult renameOutputNoReplace(
       const LinkedOutputCandidate& candidate, zc::StringPtr finalLeaf) noexcept;
+
+  /// \brief Atomically claims one output-parent entry into the transaction root,
+  ///        verifies the claimed inode, and restores a competitor when possible.
+  ZC_NODISCARD static PublicationClaimResult claimParentEntryNoReplace(
+      const LinkedOutputCandidate& candidate, zc::StringPtr parentLeaf,
+      zc::StringPtr quarantineLeaf, const PublicationFileSnapshot& expected) noexcept;
+
+  /// \brief Consumes the candidate without deleting a root that may contain an
+  ///        unowned quarantined entry, returning its explicit cleanup debt.
+  ZC_NODISCARD static SnapshotCleanupObligation abandonRootForRecovery(
+      LinkedOutputCandidate& candidate, CleanupFailureKind kind) noexcept;
 };
 
 }  // namespace zomlang::compiler::ir::detail
