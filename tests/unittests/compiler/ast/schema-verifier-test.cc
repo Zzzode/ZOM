@@ -14,9 +14,6 @@
 
 #include "compiler/ast/schema-verifier.h"
 
-#include "zc/core/io.h"
-#include "zc/core/vector.h"
-#include "zc/ztest/test.h"
 #include "compiler/ast/dump.h"
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/ast/generated/node-schema.h"
@@ -27,6 +24,9 @@
 #include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "compiler/parser/parser.h"
 #include "compiler/source/manager.h"
+#include "zc/core/io.h"
+#include "zc/core/vector.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang {
 namespace compiler {
@@ -404,6 +404,105 @@ ZC_TEST("SchemaVerifier.ParsedSourceNoNullRequiredField") {
   checkCase("while (true) { break; }");
   checkCase("for (let i = 0; i < 10; i = i + 1) {}");
   checkCase("return 42;");
+}
+
+// ---------------------------------------------------------------------------
+// Interned-handle membership: a schema-declared StringId/IdentId/BigIntId/FloatId
+// field whose payload word points outside this tree's intern table must fail
+// verification rather than be accepted and crash on later interned access.
+// ---------------------------------------------------------------------------
+
+ZC_TEST("SchemaVerifier.OutOfRangeStringIdFails") {
+  TreeBuilder builder;
+  const StringId fileName = builder.internString("test.zom"_zc);
+  const IdentId identName = builder.internIdent("x"_zc);
+
+  NodePayload identPayload;
+  identPayload.words[0] = identName.value;
+  const NodeId identExpr =
+      builder.makeNode(SyntaxKind::IdentExpr, source::SourceRange(), identPayload);
+  NodePayload listItemPayload;
+  listItemPayload.words[0] = identExpr.value;
+  listItemPayload.words[1] = 0;
+  const NodeId listItem =
+      builder.makeNode(SyntaxKind::StatementListItem, source::SourceRange(), listItemPayload);
+  zc::Vector<NodeId> stmts;
+  stmts.add(listItem);
+  const NodeList stmtList = builder.makeList(stmts.asPtr());
+
+  // SourceFile.file_name (word[0]) points past the intern table.
+  NodePayload sourcePayload;
+  sourcePayload.words[0] = 0xffffffffu;
+  sourcePayload.words[1] = 0;
+  sourcePayload.words[2] = stmtList.first;
+  sourcePayload.words[3] = stmtList.size;
+  const NodeId sourceFile =
+      builder.makeNode(SyntaxKind::SourceFile, source::SourceRange(), sourcePayload);
+  builder.setRoot(sourceFile);
+  Tree tree = builder.finish();
+  (void)fileName;
+
+  ZC_EXPECT(!verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) != zc::none);
+}
+
+ZC_TEST("SchemaVerifier.OutOfRangeIdentIdFails") {
+  TreeBuilder builder;
+  const StringId fileName = builder.internString("test.zom"_zc);
+
+  // IdentExpr.name (word[0]) points past the intern table.
+  NodePayload identPayload;
+  identPayload.words[0] = 0xffffffffu;
+  const NodeId identExpr =
+      builder.makeNode(SyntaxKind::IdentExpr, source::SourceRange(), identPayload);
+  NodePayload listItemPayload;
+  listItemPayload.words[0] = identExpr.value;
+  listItemPayload.words[1] = 0;
+  const NodeId listItem =
+      builder.makeNode(SyntaxKind::StatementListItem, source::SourceRange(), listItemPayload);
+  zc::Vector<NodeId> stmts;
+  stmts.add(listItem);
+  const NodeList stmtList = builder.makeList(stmts.asPtr());
+  NodePayload sourcePayload;
+  sourcePayload.words[0] = fileName.value;
+  sourcePayload.words[1] = 0;
+  sourcePayload.words[2] = stmtList.first;
+  sourcePayload.words[3] = stmtList.size;
+  const NodeId sourceFile =
+      builder.makeNode(SyntaxKind::SourceFile, source::SourceRange(), sourcePayload);
+  builder.setRoot(sourceFile);
+  Tree tree = builder.finish();
+
+  ZC_EXPECT(!verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) != zc::none);
+}
+
+ZC_TEST("SchemaVerifier.OutOfRangeBigIntIdFails") {
+  TreeBuilder builder;
+  // IntLiteral { base = 10 (word[0]), value = out-of-range BigIntId (word[1]) }.
+  NodePayload literalPayload;
+  literalPayload.words[0] = 10;
+  literalPayload.words[1] = 0xffffffffu;
+  const NodeId literal =
+      builder.makeNode(SyntaxKind::IntLiteral, source::SourceRange(), literalPayload);
+  Tree tree = wrapExprInSourceFile(builder, literal);
+
+  ZC_EXPECT(!verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) != zc::none);
+}
+
+ZC_TEST("SchemaVerifier.OutOfRangeFloatIdFails") {
+  TreeBuilder builder;
+  // FloatLiteralExpr { width = 64 (word[0]), value = out-of-range FloatId (word[1]) }.
+  NodePayload literalPayload;
+  literalPayload.words[0] = 64;
+  literalPayload.words[1] = 0xffffffffu;
+  const NodeId literal =
+      builder.makeNode(SyntaxKind::FloatLiteralExpr, source::SourceRange(), literalPayload);
+  Tree tree = wrapExprInSourceFile(builder, literal);
+
+  ZC_EXPECT(!verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) != zc::none);
 }
 
 }  // namespace ast

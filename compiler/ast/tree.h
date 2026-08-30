@@ -16,15 +16,15 @@
 
 #include <cstdint>
 
+#include "compiler/ast/generated/node-layout.h"
+#include "compiler/ast/kinds.h"
+#include "compiler/ast/node-id.h"
+#include "compiler/source/location.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "compiler/ast/generated/node-layout.h"
-#include "compiler/ast/kinds.h"
-#include "compiler/ast/node-id.h"
-#include "compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
@@ -136,6 +136,18 @@ public:
 
   /// \brief Return true when identifier list belongs to this tree.
   bool contains(IdentList list) const;
+
+  /// \brief Return true when the interned string id belongs to this tree.
+  bool contains(StringId id) const;
+
+  /// \brief Return true when the interned identifier id belongs to this tree.
+  bool contains(IdentId id) const;
+
+  /// \brief Return true when the interned integer-literal id belongs to this tree.
+  bool contains(BigIntId id) const;
+
+  /// \brief Return true when the interned float-literal id belongs to this tree.
+  bool contains(FloatId id) const;
 
   /// \brief Look up a syntax node by id.
   const Node& node(NodeId id) const;

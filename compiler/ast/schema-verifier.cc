@@ -16,9 +16,9 @@
 
 #include <cstdint>
 
-#include "zc/core/string.h"
 #include "compiler/ast/generated/node-accessors.h"
 #include "compiler/ast/generated/node-schema.h"
+#include "zc/core/string.h"
 
 namespace zomlang {
 namespace compiler {
@@ -143,15 +143,6 @@ zc::Maybe<zc::String> validateIdentListField(const Tree& tree, const Node& node,
 zc::Maybe<zc::String> validateScalarField(const Node& node, const NodeSchemaFieldEntry& field) {
   const uint32_t value = node.payload.words[field.firstWord];
   switch (field.storage) {
-    case NodeSchemaFieldStorage::StringId:
-    case NodeSchemaFieldStorage::IdentId:
-    case NodeSchemaFieldStorage::BigIntId:
-    case NodeSchemaFieldStorage::FloatId:
-      if (!field.optional && value == 0) {
-        return zc::str("Required scalar field ", field.name, " is empty on ",
-                       nodeKindName(node.kind));
-      }
-      return zc::none;
     case NodeSchemaFieldStorage::Bool:
       if (value != 0 && value != 1) {
         return zc::str("Bool field ", field.name, " is outside its domain on ",
@@ -181,6 +172,45 @@ zc::Maybe<zc::String> validateScalarField(const Node& node, const NodeSchemaFiel
   }
 }
 
+zc::Maybe<zc::String> validateInternField(const Tree& tree, const Node& node,
+                                          const NodeSchemaFieldEntry& field) {
+  const uint32_t value = node.payload.words[field.firstWord];
+  // An optional interned handle may be empty (0); a required one may not. A
+  // non-empty handle must resolve to a live entry in this tree's own intern
+  // table, so a forged out-of-range id is rejected here rather than crashing on
+  // later access. This closes the sole AST verifier over interned identities.
+  if (value == 0) {
+    if (!field.optional) {
+      return zc::str("Required scalar field ", field.name, " is empty on ",
+                     nodeKindName(node.kind));
+    }
+    return zc::none;
+  }
+  bool member = false;
+  switch (field.storage) {
+    case NodeSchemaFieldStorage::StringId:
+      member = tree.contains(StringId(value));
+      break;
+    case NodeSchemaFieldStorage::IdentId:
+      member = tree.contains(IdentId(value));
+      break;
+    case NodeSchemaFieldStorage::BigIntId:
+      member = tree.contains(BigIntId(value));
+      break;
+    case NodeSchemaFieldStorage::FloatId:
+      member = tree.contains(FloatId(value));
+      break;
+    default:
+      return zc::str("Non-interned storage routed through intern validation on ",
+                     nodeKindName(node.kind));
+  }
+  if (!member) {
+    return zc::str("Interned field ", field.name, " references an id outside this tree on ",
+                   nodeKindName(node.kind));
+  }
+  return zc::none;
+}
+
 zc::Maybe<zc::String> validateField(const Tree& tree, const Node& node,
                                     const NodeSchemaFieldEntry& field) {
   switch (field.storage) {
@@ -194,6 +224,7 @@ zc::Maybe<zc::String> validateField(const Tree& tree, const Node& node,
     case NodeSchemaFieldStorage::IdentId:
     case NodeSchemaFieldStorage::BigIntId:
     case NodeSchemaFieldStorage::FloatId:
+      return validateInternField(tree, node, field);
     case NodeSchemaFieldStorage::Bool:
     case NodeSchemaFieldStorage::UInt8:
     case NodeSchemaFieldStorage::UInt16:

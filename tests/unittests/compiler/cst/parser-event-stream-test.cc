@@ -165,6 +165,25 @@ ZC_TEST("ParseSyntaxVerifier rejects an event stream that reconstructs an invali
   ZC_EXPECT(result.get<ParseSyntaxFailure>() == ParseSyntaxFailure::InvalidAstSchema);
 }
 
+ZC_TEST("ParseSyntaxVerifier rejects a SourceFile file name interned outside the tree") {
+  // End-to-end: replay a well-formed event stream whose SourceFile carries a
+  // file-name StringId that was never interned into this tree. The schema
+  // verifier must reject the reconstructed AST rather than publish a tree that
+  // crashes on the out-of-range interned access.
+  Fixture fixture;
+  EventFactory factory(fixture.sources, fixture.buffer);
+  zc::Array<ast::NodeId> noStatements;
+  const ast::NodeList statements = factory.makeList(noStatements.asPtr());
+  const auto loc = fixture.sources.getLocForBufferStart(fixture.buffer);
+  const ast::NodeId root = factory.makeSourceFile(
+      source::SourceRange(loc, loc), ast::StringId(0xffffffffu), ast::NodeId(), statements);
+  factory.setRoot(root);
+  auto syntax = cleanSyntax(fixture, factory.finish());
+  auto result = ParseSyntaxVerifier::verify(syntax, fixture.sources, fixture.buffer);
+  ZC_REQUIRE(result.is<ParseSyntaxFailure>());
+  ZC_EXPECT(result.get<ParseSyntaxFailure>() == ParseSyntaxFailure::InvalidAstSchema);
+}
+
 ZC_TEST("ParseSyntaxVerifier rejects recovery before replaying parser events") {
   Fixture fixture;
   auto lexemes = emptyLexemes();

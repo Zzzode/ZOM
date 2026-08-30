@@ -93,6 +93,22 @@ bool Tree::contains(IdentList list) const {
          impl->identListStorage.size();
 }
 
+bool Tree::contains(StringId id) const {
+  return id.value != 0 && static_cast<size_t>(id.value - 1) < impl->strings.size();
+}
+
+bool Tree::contains(IdentId id) const {
+  return id.value != 0 && static_cast<size_t>(id.value - 1) < impl->idents.size();
+}
+
+bool Tree::contains(BigIntId id) const {
+  return id.value != 0 && static_cast<size_t>(id.value - 1) < impl->bigInts.size();
+}
+
+bool Tree::contains(FloatId id) const {
+  return id.value != 0 && static_cast<size_t>(id.value - 1) < impl->floats.size();
+}
+
 const Node& Tree::node(NodeId id) const {
   ZC_IREQUIRE(contains(id), "AST node id is outside this tree");
   return impl->nodes[indexOf(id)];
