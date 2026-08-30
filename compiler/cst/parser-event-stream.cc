@@ -398,6 +398,21 @@ ParseSyntaxResult ParseSyntaxVerifier::verify(const RecoverableSyntaxTree& synta
   if (syntax.lexemes().sourceByteCount() > UINT32_MAX) {
     return ParseSyntaxResult(ParseSyntaxFailure::InvalidNodeEvent);
   }
+  // The lexeme stream binds its identifiers, spellings, and byte ranges to one
+  // exact source content. The AST payloads replayed below come from that stream,
+  // but every SourceRange is rebuilt from the caller's buffer, so a buffer of the
+  // same length but different bytes would attach A's intern/payload data to B's
+  // locations. Bind the caller's buffer to the stream before trusting it: its
+  // byte count and content digest must equal the stream's own.
+  const zc::ArrayPtr<const zc::byte> bufferBytes = sources.getEntireTextForBuffer(buffer);
+  if (bufferBytes.size() != syntax.lexemes().sourceByteCount()) {
+    return ParseSyntaxResult(ParseSyntaxFailure::SourceBufferMismatch);
+  }
+  zc::Maybe<identity::Sha256Digest> bufferDigest = identity::sha256(bufferBytes);
+  if (bufferDigest == zc::none ||
+      ZC_REQUIRE_NONNULL(bufferDigest) != syntax.lexemes().contentDigest()) {
+    return ParseSyntaxResult(ParseSyntaxFailure::SourceBufferMismatch);
+  }
   const ParseEligibility eligibility =
       parseEligibility(syntax.lexemes(), syntax.recovery(), syntax.parserErrorCount());
   if (!eligibility.isEligible()) return ParseSyntaxResult(mapEligibility(eligibility.reason()));

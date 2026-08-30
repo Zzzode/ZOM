@@ -60,6 +60,21 @@ VerifiedLexemeStream emptyLexemes() {
   return zc::mv(result.get<VerifiedLexemeStream>());
 }
 
+// Builds a verified lexeme stream that covers exactly `content` with one trivia
+// lexeme, so the stream's content digest and byte count bind to those bytes.
+VerifiedLexemeStream lexemesForBytes(zc::ArrayPtr<const uint8_t> content) {
+  auto digest = identity::sha256(content);
+  ZC_REQUIRE(digest != zc::none);
+  zc::Vector<CstLexeme> lexemes;
+  auto lexeme = CstLexeme::trivia(TriviaKind::Whitespace, ByteRange{0, content.size()}, content);
+  ZC_REQUIRE(lexeme != zc::none);
+  ZC_IF_SOME(value, lexeme) { lexemes.add(zc::mv(value)); }
+  auto result = LexemePartitionVerifier::verify(
+      LexemeStreamRequest{ZC_ASSERT_NONNULL(digest), content.size(), lexemes.releaseAsArray()});
+  ZC_REQUIRE(result.is<VerifiedLexemeStream>());
+  return zc::mv(result.get<VerifiedLexemeStream>());
+}
+
 VerifiedRecoverySequence recovery(VerifiedLexemeStream& lexemes,
                                   zc::Array<RecoveryElement>&& elements = {}) {
   auto result = RecoverySequenceVerifier::verify(lexemes, zc::mv(elements));
@@ -210,6 +225,42 @@ ZC_TEST("ParseSyntaxVerifier rejects parser errors before AST publication") {
       ParseSyntaxVerifier::verify(ZC_ASSERT_NONNULL(syntax), fixture.sources, fixture.buffer);
   ZC_REQUIRE(result.is<ParseSyntaxFailure>());
   ZC_EXPECT(result.get<ParseSyntaxFailure>() == ParseSyntaxFailure::ParserErrorPresent);
+}
+
+ZC_TEST("ParseSyntaxVerifier rejects a same-length buffer that is not the lexeme stream's source") {
+  // The recoverable syntax is built entirely and self-consistently from source A
+  // (its own SourceManager, buffer, events, and lexemes all bind to A's bytes).
+  // Both sources are four bytes of legal leading whitespace that parse to an
+  // empty SourceFile, so the Trivia lexeme kind, ranges, and event shape are
+  // realistic; A and B differ only in content. Verifying A's syntax against B
+  // must be rejected: the AST payloads come from A while every rebuilt
+  // SourceRange would point into B, and a length-only check would not catch it.
+  const uint8_t contentA[] = {' ', ' ', ' ', ' '};
+  const uint8_t contentB[] = {'\t', ' ', ' ', ' '};
+
+  source::SourceManager sourcesA;
+  const source::BufferId bufferA =
+      sourcesA.addMemBufferCopy(zc::arrayPtr(contentA, 4), "src.zom"_zc);
+  source::SourceManager sourcesB;
+  const source::BufferId bufferB =
+      sourcesB.addMemBufferCopy(zc::arrayPtr(contentB, 4), "src.zom"_zc);
+
+  EventFactory factory(sourcesA, bufferA);
+  zc::Array<ast::NodeId> noStatements;
+  const ast::NodeList statements = factory.makeList(noStatements.asPtr());
+  const auto loc = sourcesA.getLocForBufferStart(bufferA);
+  const ast::NodeId root = factory.makeSourceFile(
+      source::SourceRange(loc, loc), factory.internString("src.zom"_zc), ast::NodeId(), statements);
+  factory.setRoot(root);
+
+  auto lexemes = lexemesForBytes(zc::arrayPtr(contentA, 4));
+  auto sequence = recovery(lexemes);
+  auto syntax = RecoverableSyntaxTree::from(factory.finish(), zc::mv(lexemes), zc::mv(sequence), 0);
+  ZC_REQUIRE(syntax != zc::none);
+
+  auto result = ParseSyntaxVerifier::verify(ZC_ASSERT_NONNULL(syntax), sourcesB, bufferB);
+  ZC_REQUIRE(result.is<ParseSyntaxFailure>());
+  ZC_EXPECT(result.get<ParseSyntaxFailure>() == ParseSyntaxFailure::SourceBufferMismatch);
 }
 
 }  // namespace zomlang::compiler::cst

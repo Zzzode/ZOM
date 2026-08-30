@@ -193,6 +193,7 @@ enum class ParseSyntaxFailure : uint8_t {
   InvalidFloatEvent = 0x0b,
   InvalidRootEvent = 0x0c,
   InvalidAstSchema = 0x0d,
+  SourceBufferMismatch = 0x0e,
 };
 
 using ParseSyntaxResult = zc::OneOf<ast::Tree, ParseSyntaxFailure>;
