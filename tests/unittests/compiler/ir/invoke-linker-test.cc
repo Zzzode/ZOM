@@ -861,10 +861,17 @@ ZC_TEST("publishLinkedOutput commits the executable first and the manifest as vi
   ZC_ASSERT(outcome.isPublished());
   PublishedExecutableArtifact artifact = zc::mv(outcome).takePublished();
   ZC_EXPECT(artifact.finalDestination() == zc::str(base, "/app"));
-  ZC_EXPECT(dir->openFile(zc::Path("app"_zc))->readAllBytes().asPtr() ==
-            zc::heapArray<zc::byte>({0x7f, 0x45, 0x4c, 0x46}).asPtr());
-  ZC_EXPECT(dir->openFile(zc::Path("app.zom-artifact"_zc))->readAllBytes().asPtr() ==
-            expectedManifest.asPtr());
+  // Bind each side to a named local: comparing `readAllBytes().asPtr()` against a
+  // temporary array's `.asPtr()` would leave both views dangling once the full
+  // expression's temporaries are destroyed, so the comparison (and its failure
+  // stringification) would read freed memory.
+  const zc::Array<zc::byte> committedExecutable = dir->openFile(zc::Path("app"_zc))->readAllBytes();
+  const zc::Array<zc::byte> expectedExecutablePrefix =
+      zc::heapArray<zc::byte>({0x7f, 0x45, 0x4c, 0x46});
+  ZC_EXPECT(committedExecutable.asPtr() == expectedExecutablePrefix.asPtr());
+  const zc::Array<zc::byte> committedManifest =
+      dir->openFile(zc::Path("app.zom-artifact"_zc))->readAllBytes();
+  ZC_EXPECT(committedManifest.asPtr() == expectedManifest.asPtr());
   ZC_EXPECT(countSnapshotTrees(*dir) == 0u);
   for (const zc::String& name : dir->listNames()) {
     ZC_EXPECT(!zc::StringPtr(name).startsWith("journal."_zc));
