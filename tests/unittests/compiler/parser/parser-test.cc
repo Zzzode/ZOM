@@ -16,10 +16,6 @@
 
 #include <cstring>
 
-#include "zc/core/common.h"
-#include "zc/core/one-of.h"
-#include "zc/core/string.h"
-#include "zc/ztest/test.h"
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/ast/tree.h"
 #include "compiler/basic/string-pool.h"
@@ -33,6 +29,10 @@
 #include "compiler/parser/query/canonical-parsed-source.h"
 #include "compiler/source/manager.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
+#include "zc/core/common.h"
+#include "zc/core/one-of.h"
+#include "zc/core/string.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang {
 namespace compiler {
@@ -73,6 +73,10 @@ public:
 
   ZC_NODISCARD zc::Maybe<ParsedTokenSnapshot> takeTokenSnapshot() {
     return parser.takeTokenSnapshot();
+  }
+
+  ZC_NODISCARD zc::Maybe<cst::RecoverableSyntaxTree> takeRecoverableSyntax() {
+    return parser.takeRecoverableSyntax();
   }
 
 private:
@@ -5194,6 +5198,10 @@ ZC_TEST("ParserTest.TokenSnapshotIsSingleUseAfterSuccessfulParse") {
   ZC_REQUIRE(parser.parse() != zc::none);
   ZC_EXPECT(parser.takeTokenSnapshot() != zc::none);
   ZC_EXPECT(parser.takeTokenSnapshot() == zc::none);
+  auto recoverable = parser.takeRecoverableSyntax();
+  ZC_REQUIRE(recoverable != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(recoverable).recovery().elements().size() == 0);
+  ZC_EXPECT(parser.takeRecoverableSyntax() == zc::none);
 }
 
 ZC_TEST("ParserTest.FailedParseCannotPublishTokenSnapshot") {
@@ -5205,6 +5213,100 @@ ZC_TEST("ParserTest.FailedParseCannotPublishTokenSnapshot") {
   Parser parser(sources, diagnostics, options, strings, buffer);
   ZC_EXPECT(parser.parse() == zc::none);
   ZC_EXPECT(parser.takeTokenSnapshot() == zc::none);
+}
+
+ZC_TEST("ParserTest.MalformedSourcePublishesSingleUseRecoverableSyntax") {
+  source::SourceManager sources;
+  basic::LangOptions options;
+  basic::StringPool strings;
+  const auto buffer = sources.addMemBufferCopy("let value: i32 = 1"_zcb, "recoverable.zom");
+  diagnostics::SourceDiagnosticDraftBuffer facts(sources, buffer);
+  ::zomlang::compiler::parser::Parser parser(sources, facts, options, strings, buffer);
+
+  ZC_EXPECT(parser.parse() == zc::none);
+  ZC_IREQUIRE(!facts.hasInvariantViolation(), facts.invariantMessage().cStr());
+  auto syntax = parser.takeRecoverableSyntax();
+  ZC_REQUIRE(syntax != zc::none);
+  ZC_EXPECT(parser.takeRecoverableSyntax() == zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(syntax).parserErrorCount() != 0);
+
+  bool foundSemicolon = false;
+  for (const auto& element : ZC_ASSERT_NONNULL(syntax).recovery().elements()) {
+    if (element.tag() != cst::RecoveryElementTag::MissingToken) continue;
+    for (uint32_t expected : element.expectedTokens()) {
+      foundSemicolon =
+          foundSemicolon || expected == static_cast<uint32_t>(ast::SyntaxKind::Semicolon);
+    }
+  }
+  ZC_EXPECT(foundSemicolon);
+  auto verified = cst::ParseSyntaxVerifier::verify(ZC_ASSERT_NONNULL(syntax), sources, buffer);
+  ZC_REQUIRE(verified.is<cst::ParseSyntaxFailure>());
+  ZC_EXPECT(verified.get<cst::ParseSyntaxFailure>() == cst::ParseSyntaxFailure::RecoveryPresent);
+}
+
+ZC_TEST("ParserTest.InvalidSourceBytesRemainInRecoverableLexemeAndSkipRecords") {
+  source::SourceManager sources;
+  basic::LangOptions options;
+  basic::StringPool strings;
+  const auto buffer =
+      sources.addMemBufferCopy(zc::str("let value: i32 = ", "\x01", ";").asBytes(), "invalid.zom");
+  diagnostics::SourceDiagnosticDraftBuffer facts(sources, buffer);
+  ::zomlang::compiler::parser::Parser parser(sources, facts, options, strings, buffer);
+
+  ZC_EXPECT(parser.parse() == zc::none);
+  auto syntax = parser.takeRecoverableSyntax();
+  ZC_REQUIRE(syntax != zc::none);
+  bool foundInvalid = false;
+  for (const auto& lexeme : ZC_ASSERT_NONNULL(syntax).lexemes().lexemes()) {
+    foundInvalid = foundInvalid || lexeme.tag() == cst::CstLexemeTag::Invalid;
+  }
+  bool foundSkipped = false;
+  for (const auto& element : ZC_ASSERT_NONNULL(syntax).recovery().elements()) {
+    foundSkipped = foundSkipped || element.tag() == cst::RecoveryElementTag::SkippedTokens;
+  }
+  ZC_EXPECT(foundInvalid);
+  ZC_EXPECT(foundSkipped);
+
+  auto sourceKey = tests::test_identity_detail::source();
+  auto published = facts.publish(sourceKey, sources.getEntireTextForBuffer(buffer).size());
+  ZC_REQUIRE(published != zc::none);
+  auto bound = cst::RecoverableSyntaxDiagnosticBinder::bind(
+      zc::mv(ZC_ASSERT_NONNULL(syntax)), ZC_ASSERT_NONNULL(published).facts(),
+      ZC_ASSERT_NONNULL(published).provenance());
+  ZC_REQUIRE(bound.is<cst::RecoverableSyntaxTree>());
+
+  zc::Maybe<diagnostics::DiagnosticFactId> expectedFactId;
+  for (const auto& fact : ZC_ASSERT_NONNULL(published).facts()) {
+    if (fact.occurrence().phase() != diagnostics::SourceDiagnosticPhase::Lex) continue;
+    expectedFactId = diagnostics::computeDiagnosticFactId(fact);
+    break;
+  }
+  ZC_REQUIRE(expectedFactId != zc::none);
+  bool foundBoundInvalid = false;
+  for (const auto& lexeme : bound.get<cst::RecoverableSyntaxTree>().lexemes().lexemes()) {
+    if (lexeme.tag() != cst::CstLexemeTag::Invalid) continue;
+    foundBoundInvalid = lexeme.diagnosticDigest() == ZC_ASSERT_NONNULL(expectedFactId).digest();
+  }
+  ZC_EXPECT(foundBoundInvalid);
+}
+
+ZC_TEST("ParserTest.RecoverableEventReplayCoversNormalizedAndMultilineSources") {
+  const zc::String sourcesToParse[] = {
+      zc::str("let a = 123n;\nlet b = 0x123n;\nlet c = 0b101n;\nlet d = 0o123n;\n"),
+      zc::str("let closure = fun (n: i32, s: str) -> str { return \"1234\"; };\n"),
+      zc::str("/* line", "\xe2\x80\xa8", "separator", "\xe2\x80\xa9", "paragraph */\nlet x = 1;\n"),
+  };
+  for (const auto& sourceText : sourcesToParse) {
+    source::SourceManager sources;
+    basic::LangOptions options;
+    basic::StringPool strings;
+    const auto buffer = sources.addMemBufferCopy(sourceText.asBytes(), "event-replay.zom");
+    diagnostics::SourceDiagnosticDraftBuffer parserFacts(sources, buffer);
+    ::zomlang::compiler::parser::Parser parser(sources, parserFacts, options, strings, buffer);
+    auto result = parser.parse();
+    ZC_IREQUIRE(!parserFacts.hasInvariantViolation(), parserFacts.invariantMessage().cStr());
+    ZC_REQUIRE(result != zc::none);
+  }
 }
 
 }  // namespace parser_test

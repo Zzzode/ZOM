@@ -36,7 +36,7 @@ void Parser::Impl::diagnoseExpressionExpected(size_t index) const {
   diagnosticEngine.diagnose<diagnostics::DiagID::ExpressionExpected>(diagnosticLoc(index));
 }
 
-ast::NodeId Parser::Impl::parseRequiredExpression(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseRequiredExpression(ParserSyntaxFactory& builder, size_t start,
                                                   size_t end) const {
   const ast::NodeId expr = parseExpressionRange(builder, start, end);
   if (!expr) { diagnoseExpressionExpected(start); }
@@ -107,8 +107,8 @@ size_t Parser::Impl::consumeCommaDelimitedItem(TokenCursor& cursor, size_t end) 
   return cursor.position();
 }
 
-ast::NodeId Parser::Impl::parseExpressionList(AstFactory& builder, size_t start, size_t end,
-                                              ast::SyntaxKind containerKind) const {
+ast::NodeId Parser::Impl::parseExpressionList(ParserSyntaxFactory& builder, size_t start,
+                                              size_t end, ast::SyntaxKind containerKind) const {
   zc::Vector<ast::NodeId> expressions;
   TokenCursor cursor = tokenCursorAt(start);
   while (cursor.position() < end) {
@@ -133,7 +133,7 @@ ast::NodeId Parser::Impl::parseExpressionList(AstFactory& builder, size_t start,
   return builder.makeTupleLiteral(rangeFor(start, end), list);
 }
 
-ast::NodeId Parser::Impl::parseCommaExpression(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseCommaExpression(ParserSyntaxFactory& builder, size_t start,
                                                size_t end) const {
   zc::Vector<ast::NodeId> expressions;
   TokenCursor cursor = tokenCursorAt(start);
@@ -149,7 +149,7 @@ ast::NodeId Parser::Impl::parseCommaExpression(AstFactory& builder, size_t start
   return builder.makeCommaExpr(rangeFor(start, end), builder.makeList(expressions.asPtr()));
 }
 
-ast::NodeList Parser::Impl::parseExpressionArguments(AstFactory& builder, size_t start,
+ast::NodeList Parser::Impl::parseExpressionArguments(ParserSyntaxFactory& builder, size_t start,
                                                      size_t end) const {
   zc::Vector<ast::NodeId> args;
   TokenCursor cursor = tokenCursorAt(start);
@@ -167,8 +167,9 @@ ast::NodeList Parser::Impl::parseExpressionArguments(AstFactory& builder, size_t
 // RFC 0002: All range scans within this function are boundary detection only.
 // The production is already identified by the 'new' keyword; findTypePathEnd,
 // findMatchingAngleClose, and findMatchingRightParen locate boundaries within it.
-ast::NodeId Parser::Impl::parseNewExpression(AstFactory& builder, size_t start, size_t calleeEnd,
-                                             size_t typeArgsEnd, size_t end) const {
+ast::NodeId Parser::Impl::parseNewExpression(ParserSyntaxFactory& builder, size_t start,
+                                             size_t calleeEnd, size_t typeArgsEnd,
+                                             size_t end) const {
   const ast::NodeId callee = parseExpressionRange(builder, start + 1, calleeEnd);
   if (!callee) { return ast::NodeId(); }
 
@@ -181,7 +182,7 @@ ast::NodeId Parser::Impl::parseNewExpression(AstFactory& builder, size_t start, 
   return builder.makeNewExpression(rangeFor(start, end), callee, typeArgs, args);
 }
 
-ast::NodeId Parser::Impl::parseUnsafeBlockExpression(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseUnsafeBlockExpression(ParserSyntaxFactory& builder, size_t start,
                                                      size_t end) const {
   if (start + 1 >= end || kindAt(start + 1) != ast::SyntaxKind::LeftBrace) {
     diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1), "{"_zc);
@@ -192,7 +193,7 @@ ast::NodeId Parser::Impl::parseUnsafeBlockExpression(AstFactory& builder, size_t
                                      parseBlock(builder, start + 1, end, true));
 }
 
-ast::NodeId Parser::Impl::parseSpawnExpression(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseSpawnExpression(ParserSyntaxFactory& builder, size_t start,
                                                size_t end) const {
   uint8_t modFlags = 0;
   uint8_t priority = 0;
@@ -261,8 +262,8 @@ ast::NodeId Parser::Impl::parseSpawnExpression(AstFactory& builder, size_t start
   return builder.makeSpawnExpression(rangeFor(start, end), modFlags, priority, body);
 }
 
-ast::NodeId Parser::Impl::parseCastExpression(AstFactory& builder, size_t start, size_t asIndex,
-                                              size_t end) const {
+ast::NodeId Parser::Impl::parseCastExpression(ParserSyntaxFactory& builder, size_t start,
+                                              size_t asIndex, size_t end) const {
   size_t typeStart = asIndex + 1;
   uint8_t mode = castModeCode(ast::SyntaxKind::AsKeyword);
   if (typeStart < end && (kindAt(typeStart) == ast::SyntaxKind::Question ||
@@ -283,14 +284,15 @@ ast::NodeId Parser::Impl::parseCastExpression(AstFactory& builder, size_t start,
   return builder.makeCastExpression(rangeFor(start, end), mode, expr, ty);
 }
 
-ast::NodeId Parser::Impl::parseImportCallExpression(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseImportCallExpression(ParserSyntaxFactory& builder, size_t start,
                                                     size_t openParen, size_t end) const {
   ast::NodeList args;
   if (openParen < end) { args = parseExpressionArguments(builder, openParen + 1, end - 1); }
   return builder.makeImportCallExpression(rangeFor(start, end), args);
 }
 
-ast::NodeId Parser::Impl::parseCaptureItem(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parseCaptureItem(ParserSyntaxFactory& builder, size_t start,
+                                           size_t end) const {
   if (start >= end) { return ast::NodeId(); }
 
   size_t nameIndex = start;
@@ -317,7 +319,8 @@ ast::NodeId Parser::Impl::parseCaptureItem(AstFactory& builder, size_t start, si
   return builder.makeCaptureItem(rangeFor(start, end), mode, internIdent(builder, nameIndex));
 }
 
-ast::NodeId Parser::Impl::parseCaptureList(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parseCaptureList(ParserSyntaxFactory& builder, size_t start,
+                                           size_t end) const {
   zc::Vector<ast::NodeId> captures;
   TokenCursor cursor = tokenCursorAt(start);
   while (cursor.position() < end) {
@@ -336,7 +339,7 @@ ast::NodeId Parser::Impl::parseCaptureList(AstFactory& builder, size_t start, si
 // RFC 0002: All consumeBalanced* calls within this function are boundary detection only.
 // The production is already identified by the 'fun' keyword; scans locate '(', ')', '{',
 // '->', 'raises', and 'use' boundaries within the function expression.
-ast::NodeId Parser::Impl::parseFunctionExpression(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseFunctionExpression(ParserSyntaxFactory& builder, size_t start,
                                                   size_t end) const {
   size_t signatureCursor = start + 1;
   ast::NodeId typeParams;
@@ -415,7 +418,7 @@ ast::NodeId Parser::Impl::parseFunctionExpression(AstFactory& builder, size_t st
 // Stage 2: consumeBalancedUntil from closeParen+1 — within the remaining signature
 // (')' … '=>'), scan for '=>' at depth 0. Between ')' and '=>' there may be optional
 // '-> RetType' and 'raises ExType' clauses.
-ast::NodeId Parser::Impl::parseLambdaExpression(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseLambdaExpression(ParserSyntaxFactory& builder, size_t start,
                                                 size_t end) const {
   if (kindAt(start) != ast::SyntaxKind::LeftParen) { return ast::NodeId(); }
 
@@ -479,7 +482,7 @@ ast::NodeId Parser::Impl::parseLambdaExpression(AstFactory& builder, size_t star
                                       exprBody);
 }
 
-ast::NodeList Parser::Impl::parseObjectLiteralProperties(AstFactory& builder, size_t start,
+ast::NodeList Parser::Impl::parseObjectLiteralProperties(ParserSyntaxFactory& builder, size_t start,
                                                          size_t end) const {
   zc::Vector<ast::NodeId> properties;
   TokenCursor cursor = tokenCursorAt(start);
@@ -589,13 +592,13 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(AstFactory& builder, si
   return builder.makeList(properties.asPtr());
 }
 
-ast::NodeId Parser::Impl::parseObjectLiteralExpression(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseObjectLiteralExpression(ParserSyntaxFactory& builder, size_t start,
                                                        size_t end) const {
   return builder.makeObjectLiteralExpr(rangeFor(start, end),
                                        parseObjectLiteralProperties(builder, start + 1, end - 1));
 }
 
-ast::NodeId Parser::Impl::parseStructLiteralExpression(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseStructLiteralExpression(ParserSyntaxFactory& builder, size_t start,
                                                        size_t brace, size_t end) const {
   const ast::NodeId ty = parseTypeRange(builder, start, brace);
   if (!ty) { return ast::NodeId(); }
@@ -604,7 +607,7 @@ ast::NodeId Parser::Impl::parseStructLiteralExpression(AstFactory& builder, size
                                        parseObjectLiteralProperties(builder, brace + 1, end - 1));
 }
 
-ast::NodeId Parser::Impl::parseTemplateLiteralExpression(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseTemplateLiteralExpression(ParserSyntaxFactory& builder, size_t start,
                                                          size_t end) const {
   zc::Vector<ast::NodeId> exprs;
   size_t cursor = start + 1;
@@ -629,7 +632,7 @@ ast::NodeId Parser::Impl::parseTemplateLiteralExpression(AstFactory& builder, si
   return builder.makeTemplateLiteralExpr(rangeFor(start, end), builder.makeList(exprs.asPtr()));
 }
 
-Parser::Impl::ExpressionParseResult Parser::Impl::parseExpression(AstFactory& builder,
+Parser::Impl::ExpressionParseResult Parser::Impl::parseExpression(ParserSyntaxFactory& builder,
                                                                   TokenCursor& cursor,
                                                                   size_t limit) const {
   const size_t start = cursor.position();
@@ -638,16 +641,15 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parseExpression(AstFactory& bu
   return result;
 }
 
-Parser::Impl::ExpressionParseResult Parser::Impl::parseExpressionAt(AstFactory& builder,
+Parser::Impl::ExpressionParseResult Parser::Impl::parseExpressionAt(ParserSyntaxFactory& builder,
                                                                     size_t start,
                                                                     size_t limit) const {
   TokenCursor cursor = tokenCursorAt(start);
   return parseExpression(builder, cursor, limit);
 }
 
-Parser::Impl::ExpressionParseResult Parser::Impl::parseCommaExpressionAt(AstFactory& builder,
-                                                                         size_t start,
-                                                                         size_t limit) const {
+Parser::Impl::ExpressionParseResult Parser::Impl::parseCommaExpressionAt(
+    ParserSyntaxFactory& builder, size_t start, size_t limit) const {
   zc::Vector<ast::NodeId> expressions;
   ExpressionParseResult first = parseAssignmentExpressionAt(builder, start, limit);
   if (!first.node) { return first; }
@@ -670,9 +672,8 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parseCommaExpressionAt(AstFact
           cursor};
 }
 
-Parser::Impl::ExpressionParseResult Parser::Impl::parseAssignmentExpressionAt(AstFactory& builder,
-                                                                              size_t start,
-                                                                              size_t limit) const {
+Parser::Impl::ExpressionParseResult Parser::Impl::parseAssignmentExpressionAt(
+    ParserSyntaxFactory& builder, size_t start, size_t limit) const {
   ExpressionParseResult lhs = parseConditionalExpressionAt(builder, start, limit);
   if (!lhs.node) { return lhs; }
   if (lhs.next >= limit || !isAssignmentOperator(kindAt(lhs.next))) { return lhs; }
@@ -691,9 +692,8 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parseAssignmentExpressionAt(As
           rhs.next};
 }
 
-Parser::Impl::ExpressionParseResult Parser::Impl::parseConditionalExpressionAt(AstFactory& builder,
-                                                                               size_t start,
-                                                                               size_t limit) const {
+Parser::Impl::ExpressionParseResult Parser::Impl::parseConditionalExpressionAt(
+    ParserSyntaxFactory& builder, size_t start, size_t limit) const {
   ExpressionParseResult cond = parseErrorDefaultExpressionAt(builder, start, limit);
   if (!cond.node) { return cond; }
   if (cond.next >= limit || kindAt(cond.next) != ast::SyntaxKind::Question) { return cond; }
@@ -722,7 +722,7 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parseConditionalExpressionAt(A
 }
 
 Parser::Impl::ExpressionParseResult Parser::Impl::parseErrorDefaultExpressionAt(
-    AstFactory& builder, size_t start, size_t limit) const {
+    ParserSyntaxFactory& builder, size_t start, size_t limit) const {
   ExpressionParseResult primary = parseNullCoalesceExpressionAt(builder, start, limit);
   if (!primary.node) { return primary; }
   if (primary.next >= limit || kindAt(primary.next) != ast::SyntaxKind::ErrorDefault) {
@@ -741,7 +741,7 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parseErrorDefaultExpressionAt(
 }
 
 Parser::Impl::ExpressionParseResult Parser::Impl::parseNullCoalesceExpressionAt(
-    AstFactory& builder, size_t start, size_t limit) const {
+    ParserSyntaxFactory& builder, size_t start, size_t limit) const {
   ExpressionParseResult primary = parseBinaryExpressionAt(builder, start, limit, 1);
   if (!primary.node) { return primary; }
   if (primary.next >= limit || kindAt(primary.next) != ast::SyntaxKind::QuestionQuestion) {
@@ -760,7 +760,7 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parseNullCoalesceExpressionAt(
 }
 
 Parser::Impl::ExpressionParseResult Parser::Impl::parseBinaryExpressionAt(
-    AstFactory& builder, size_t start, size_t limit, int32_t minPrecedence) const {
+    ParserSyntaxFactory& builder, size_t start, size_t limit, int32_t minPrecedence) const {
   ExpressionParseResult lhs = parseUnaryExpressionAt(builder, start, limit);
   if (!lhs.node) { return lhs; }
 
@@ -825,9 +825,8 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parseBinaryExpressionAt(
   return lhs;
 }
 
-Parser::Impl::ExpressionParseResult Parser::Impl::parseUnaryExpressionAt(AstFactory& builder,
-                                                                         size_t start,
-                                                                         size_t limit) const {
+Parser::Impl::ExpressionParseResult Parser::Impl::parseUnaryExpressionAt(
+    ParserSyntaxFactory& builder, size_t start, size_t limit) const {
   if (start >= limit) { return ExpressionParseResult(); }
 
   if (kindAt(start) == ast::SyntaxKind::TypeOfKeyword) {
@@ -863,9 +862,8 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parseUnaryExpressionAt(AstFact
 // RFC 0002: All findMatchingRight* and consumeBalanced* calls within this function are
 // boundary detection only. The production (postfix expression) is already identified by the
 // start token; scans locate closing delimiters for committed groups.
-Parser::Impl::ExpressionParseResult Parser::Impl::parsePostfixExpressionAt(AstFactory& builder,
-                                                                           size_t start,
-                                                                           size_t limit) const {
+Parser::Impl::ExpressionParseResult Parser::Impl::parsePostfixExpressionAt(
+    ParserSyntaxFactory& builder, size_t start, size_t limit) const {
   ExpressionParseResult current = parsePrimaryExpressionAt(builder, start, limit);
   if (!current.node) { return current; }
 
@@ -980,9 +978,8 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePostfixExpressionAt(AstFa
 // RFC 0002: All findMatchingRight* calls within this function are boundary detection only.
 // The production (primary expression) is already identified by the start token; scans locate
 // closing delimiters for parenthesized, bracketed, and braced groups.
-Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(AstFactory& builder,
-                                                                           size_t start,
-                                                                           size_t limit) const {
+Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(
+    ParserSyntaxFactory& builder, size_t start, size_t limit) const {
   if (start >= limit) { return ExpressionParseResult(); }
 
   if (isSoftKeyword(start, "unsafe"_zc) && start + 1 < limit &&
@@ -1178,7 +1175,7 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(AstFa
   return ExpressionParseResult();
 }
 
-ast::NodeId Parser::Impl::parseExpressionRange(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseExpressionRange(ParserSyntaxFactory& builder, size_t start,
                                                size_t end) const {
   RecoveryFrameScope recoveryFrame(*this, RecoveryContext::Expression, start);
   while (start < end && kindAt(end - 1) == ast::SyntaxKind::Semicolon) { --end; }
@@ -1198,7 +1195,7 @@ ast::NodeId Parser::Impl::parseExpressionRange(AstFactory& builder, size_t start
   return parsed.node;
 }
 
-ast::NodeId Parser::Impl::parseExpressionStatement(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseExpressionStatement(ParserSyntaxFactory& builder, size_t start,
                                                    size_t end) const {
   if (!requireTrailingSemicolon(start, end)) { return ast::NodeId(); }
 
@@ -1206,7 +1203,7 @@ ast::NodeId Parser::Impl::parseExpressionStatement(AstFactory& builder, size_t s
                                          parseRequiredExpression(builder, start, end));
 }
 
-ast::NodeId Parser::Impl::parseExpressionStatementWithoutSemicolon(AstFactory& builder,
+ast::NodeId Parser::Impl::parseExpressionStatementWithoutSemicolon(ParserSyntaxFactory& builder,
                                                                    size_t start, size_t end) const {
   const ast::NodeId expr = parseRequiredExpression(builder, start, end);
   if (!expr) { return ast::NodeId(); }

@@ -14,6 +14,8 @@
 
 #include "compiler/parser/parser.h"
 
+#include "compiler/cst/lexeme-stream-builder.h"
+#include "compiler/cst/recovery-codec.h"
 #include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "compiler/parser/parser-impl.h"
 
@@ -45,7 +47,7 @@ source::SourceRange Parser::Impl::rangeFor(size_t start, size_t end) const {
   return context.rangeFor(start, end);
 }
 
-ast::IdentId Parser::Impl::internIdent(AstFactory& builder, size_t index) const {
+ast::IdentId Parser::Impl::internIdent(ParserSyntaxFactory& builder, size_t index) const {
   const lexer::Token& token = tokenAt(index);
   if (token.is(ast::SyntaxKind::EndOfFile)) { return ast::IdentId(); }
   zc::StringPtr text = token.getValue();
@@ -53,7 +55,7 @@ ast::IdentId Parser::Impl::internIdent(AstFactory& builder, size_t index) const 
   return builder.internIdent(text);
 }
 
-ast::StringId Parser::Impl::internString(AstFactory& builder, size_t index) const {
+ast::StringId Parser::Impl::internString(ParserSyntaxFactory& builder, size_t index) const {
   const lexer::Token& token = tokenAt(index);
   if (token.is(ast::SyntaxKind::EndOfFile)) { return ast::StringId(); }
   zc::StringPtr text = token.getValue();
@@ -77,7 +79,8 @@ void Parser::Impl::addNodeIfPresent(zc::Vector<ast::NodeId>& nodes, ast::NodeId 
   if (node) { nodes.add(node); }
 }
 
-ast::IdentList Parser::Impl::makeIdentList(AstFactory& builder, size_t start, size_t end) const {
+ast::IdentList Parser::Impl::makeIdentList(ParserSyntaxFactory& builder, size_t start,
+                                           size_t end) const {
   zc::Vector<ast::IdentId> segments;
   for (size_t index = start; index < end; ++index) {
     if (isAttributePathSegment(kindAt(index)) || kindAt(index) == ast::SyntaxKind::ThisKeyword) {
@@ -87,7 +90,7 @@ ast::IdentList Parser::Impl::makeIdentList(AstFactory& builder, size_t start, si
   return builder.makeIdentList(segments.asPtr());
 }
 
-ast::NodeId Parser::Impl::makeStatementListItem(AstFactory& builder, ast::NodeId item,
+ast::NodeId Parser::Impl::makeStatementListItem(ParserSyntaxFactory& builder, ast::NodeId item,
                                                 source::SourceRange range,
                                                 ast::NodeId attrs) const {
   return builder.makeStatementListItem(zc::mv(range), item, attrs);
@@ -101,8 +104,8 @@ source::SourceLoc Parser::Impl::diagnosticLoc(size_t index) const {
   return context.diagnosticLoc(index);
 }
 
-ast::Tree Parser::Impl::buildTree() {
-  AstFactory builder;
+cst::ParserEventStreamRequest Parser::Impl::buildEventStream() {
+  ParserSyntaxFactory builder(sourceMgr, bufferId);
   ast::NodeId moduleNode;
   zc::Vector<ast::NodeId> statements;
   bool firstSourceElement = true;
@@ -156,13 +159,61 @@ zc::Maybe<ast::Tree> Parser::parse() {
   impl->parseAttempted = true;
   impl->parseSucceeded = false;
   impl->tokenSnapshotTaken = false;
+  impl->recoverableSyntaxTaken = false;
+  impl->recoverableSyntax = zc::none;
   trace::FunctionTracer functionTracer(trace::TraceCategory::kParser, __FUNCTION__);
   const size_t initialErrorCount = impl->context.errorCount();
-  ast::Tree tree = impl->buildTree();
+  cst::ParserEventStreamRequest parserEvents = impl->buildEventStream();
   impl->diagnoseTokenPatterns();
-  ZC_IF_SOME(schemaFailure, ast::verifySchemaFailure(tree)) {
-    impl->diagnosticFacts.reportInvariant(zc::mv(schemaFailure));
+
+  auto tokens = impl->context.copyBufferedTokens();
+  auto lexemeResult =
+      cst::buildLexemeStreamFromSource(impl->sourceMgr, impl->bufferId, tokens.asPtr());
+  if (!lexemeResult.is<cst::VerifiedLexemeStream>()) {
+    if (impl->context.errorCount() == initialErrorCount) {
+      impl->diagnosticFacts.reportInvariant(
+          zc::str("parser lexeme-stream construction rejected live lexer output"));
+    }
+    trace::traceEvent(trace::TraceCategory::kParser, "Parse failed");
+    return zc::none;
   }
+
+  auto lexemes = zc::mv(lexemeResult.get<cst::VerifiedLexemeStream>());
+  auto recoveryResult =
+      cst::RecoverySequenceVerifier::verify(lexemes, impl->buildRecoveryElements(lexemes));
+  if (!recoveryResult.is<cst::VerifiedRecoverySequence>()) {
+    impl->diagnosticFacts.reportInvariant(
+        zc::str("parser recovery-sequence construction rejected live recovery records: ",
+                static_cast<uint64_t>(recoveryResult.get<cst::RecoveryFailure>())));
+    trace::traceEvent(trace::TraceCategory::kParser, "Parse failed");
+    return zc::none;
+  }
+
+  const uint64_t errorCount = impl->context.errorCount() - initialErrorCount;
+  auto recoverable = cst::RecoverableSyntaxTree::from(
+      zc::mv(parserEvents), zc::mv(lexemes),
+      zc::mv(recoveryResult.get<cst::VerifiedRecoverySequence>()), errorCount);
+  if (recoverable == zc::none) {
+    impl->diagnosticFacts.reportInvariant(zc::str("recoverable syntax tree construction failed"));
+    trace::traceEvent(trace::TraceCategory::kParser, "Parse failed");
+    return zc::none;
+  }
+
+  impl->recoverableSyntax = zc::mv(recoverable);
+  auto verified = cst::ParseSyntaxVerifier::verify(ZC_ASSERT_NONNULL(impl->recoverableSyntax),
+                                                   impl->sourceMgr, impl->bufferId);
+  if (!verified.is<ast::Tree>()) {
+    const auto failure = verified.get<cst::ParseSyntaxFailure>();
+    if (failure != cst::ParseSyntaxFailure::RecoveryPresent &&
+        failure != cst::ParseSyntaxFailure::InvalidLexemePresent &&
+        failure != cst::ParseSyntaxFailure::ParserErrorPresent) {
+      impl->diagnosticFacts.reportInvariant(
+          zc::str("parse syntax verification failed: ", static_cast<uint64_t>(failure)));
+    }
+    trace::traceEvent(trace::TraceCategory::kParser, "Parse failed");
+    return zc::none;
+  }
+
   if (impl->diagnosticFacts.hasInvariantViolation() ||
       impl->context.errorCount() != initialErrorCount) {
     trace::traceEvent(trace::TraceCategory::kParser, "Parse failed");
@@ -170,7 +221,16 @@ zc::Maybe<ast::Tree> Parser::parse() {
   }
   trace::traceEvent(trace::TraceCategory::kParser, "Parse completed successfully");
   impl->parseSucceeded = true;
-  return zc::mv(tree);
+  return zc::mv(verified.get<ast::Tree>());
+}
+
+zc::Maybe<cst::RecoverableSyntaxTree> Parser::takeRecoverableSyntax() {
+  if (!impl->parseAttempted || impl->recoverableSyntaxTaken ||
+      impl->recoverableSyntax == zc::none) {
+    return zc::none;
+  }
+  impl->recoverableSyntaxTaken = true;
+  return zc::mv(impl->recoverableSyntax);
 }
 
 zc::Maybe<ParsedTokenSnapshot> Parser::takeTokenSnapshot() {

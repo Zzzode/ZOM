@@ -320,7 +320,8 @@ void Parser::Impl::diagnoseTokenPatterns() {
   }
 }
 
-ast::NodeId Parser::Impl::parsePatternRange(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parsePatternRange(ParserSyntaxFactory& builder, size_t start,
+                                            size_t end) const {
   RecoveryFrameScope recoveryFrame(*this, RecoveryContext::Pattern, start);
   if (start >= end) { return ast::NodeId(); }
 

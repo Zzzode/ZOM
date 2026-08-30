@@ -167,10 +167,9 @@ enum class LexemePartitionFailure : uint8_t {
 /// has no public aggregate initializer; only `LexemePartitionVerifier::verify`
 /// constructs one, so a stream cannot be assembled from unverified lexemes.
 ///
-/// This foundation slice models and verifies the lexeme partition as pure data
-/// and computes its deterministic identity. It does not run the live lexer or
-/// parser, build a `RecoverableSyntaxTree`, or replace `ast::Tree` construction;
-/// those are later RFC 0023 slices.
+/// The production parser consumes this verified stream as the byte-covering
+/// lexical component of `RecoverableSyntaxTree` before `ParseSyntaxVerifier`
+/// may construct an `ast::Tree`.
 class VerifiedLexemeStream final {
 public:
   VerifiedLexemeStream(VerifiedLexemeStream&&) noexcept = default;

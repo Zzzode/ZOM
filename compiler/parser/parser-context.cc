@@ -14,8 +14,8 @@
 
 #include "compiler/parser/parser-context.h"
 
-#include "zc/core/debug.h"
 #include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
+#include "zc/core/debug.h"
 
 namespace zomlang {
 namespace compiler {
@@ -81,6 +81,10 @@ size_t ParserContext::errorCount() const { return diagnosticFacts.errorCount(); 
 
 zc::Array<ParsedTokenRange> ParserContext::copyBufferedTokenRanges() const {
   return stream.copyBufferedTokenRanges();
+}
+
+zc::Array<lexer::Token> ParserContext::copyBufferedTokens() const {
+  return stream.copyBufferedTokens();
 }
 
 }  // namespace parser

@@ -5,12 +5,12 @@
 
 #include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 
-#include "zc/core/debug.h"
-#include "zc/core/one-of.h"
 #include "compiler/diagnostics/core/diagnostic-info.h"
 #include "compiler/diagnostics/core/diagnostic.h"
 #include "compiler/identity/key/source-key.h"
 #include "compiler/source/manager.h"
+#include "zc/core/debug.h"
+#include "zc/core/one-of.h"
 
 namespace zomlang::compiler::diagnostics {
 namespace {
@@ -329,6 +329,16 @@ bool SourceDiagnosticDraftBuffer::hasInvariantViolation() const noexcept {
 }
 zc::StringPtr SourceDiagnosticDraftBuffer::invariantMessage() const {
   return impl->invariantMessage;
+}
+zc::Vector<ParserRecoveryDiagnostic> SourceDiagnosticDraftBuffer::copyParserRecoveryDiagnostics()
+    const {
+  zc::Vector<ParserRecoveryDiagnostic> result(impl->parserDrafts.size());
+  for (const auto& draft : impl->parserDrafts) {
+    zc::Vector<zc::String> arguments(draft.arguments.size());
+    for (const auto& argument : draft.arguments) { arguments.add(zc::str(argument)); }
+    result.add(ParserRecoveryDiagnostic{draft.code, draft.primaryByteOffset, zc::mv(arguments)});
+  }
+  return result;
 }
 void SourceDiagnosticDraftBuffer::reportInvariant(zc::String&& message) {
   impl->reportInvariant(zc::mv(message));

@@ -16,11 +16,11 @@
 
 #include <cstddef>
 
-#include "zc/core/common.h"
-#include "zc/core/string.h"
 #include "compiler/lexer/token.h"
 #include "compiler/parser/token-cursor.h"
 #include "compiler/source/manager.h"
+#include "zc/core/common.h"
+#include "zc/core/string.h"
 
 namespace zomlang {
 namespace compiler {
@@ -88,6 +88,9 @@ public:
 
   /// \brief Deep-copy parser token data for the Parser capability boundary.
   ZC_NODISCARD zc::Array<ParsedTokenRange> copyBufferedTokenRanges() const;
+
+  /// \brief Deep-copy the complete buffered lexer output, including EOF.
+  ZC_NODISCARD zc::Array<lexer::Token> copyBufferedTokens() const;
 
 private:
   const source::SourceManager& sourceMgr;

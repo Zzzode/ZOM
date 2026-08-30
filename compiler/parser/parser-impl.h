@@ -20,13 +20,12 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "zc/core/debug.h"
-#include "zc/core/vector.h"
 #include "compiler/ast/generated/node-factory.h"
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/ast/schema-verifier.h"
 #include "compiler/basic/string-pool.h"
 #include "compiler/basic/zomlang-opts.h"
+#include "compiler/cst/parser-event-stream.h"
 #include "compiler/diagnostics/core/diagnostic-ids.h"
 #include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "compiler/lexer/token.h"
@@ -36,6 +35,8 @@
 #include "compiler/parser/token-cursor.h"
 #include "compiler/source/manager.h"
 #include "compiler/trace/trace.h"
+#include "zc/core/debug.h"
+#include "zc/core/vector.h"
 
 namespace zomlang {
 namespace compiler {
@@ -120,8 +121,11 @@ zc::StringPtr tokenLabel(const lexer::Token& token);
 // unqualified (they are already in zomlang::compiler::parser).
 using namespace parser_helpers;
 
-class AstFactory final : public ast::TypedNodeFactory<AstFactory> {
+class ParserSyntaxFactory final : public ast::TypedNodeFactory<ParserSyntaxFactory> {
 public:
+  ParserSyntaxFactory(const source::SourceManager& sources, const source::BufferId& buffer)
+      : builder(sources, buffer) {}
+
   ast::NodeList makeList(zc::ArrayPtr<const ast::NodeId> nodes) { return builder.makeList(nodes); }
 
   ast::IdentList makeIdentList(zc::ArrayPtr<const ast::IdentId> ids) {
@@ -138,7 +142,7 @@ public:
 
   void setRoot(ast::NodeId id) { builder.setRoot(id); }
 
-  ast::Tree finish() { return builder.finish(); }
+  cst::ParserEventStreamRequest finish() { return builder.finish(); }
 
 private:
   template <typename>
@@ -149,10 +153,19 @@ private:
     return builder.makeNode(kind, zc::mv(range), payload);
   }
 
-  ast::TreeBuilder builder;
+  cst::ParserEventBuilder builder;
 };
 
 // --- Parser::Impl declarations ---
+
+enum class RecoveryContext : uint8_t {
+  SourceFile,
+  Declaration,
+  Statement,
+  Expression,
+  Type,
+  Pattern,
+};
 
 struct Parser::Impl {
   Impl(const source::SourceManager& sourceMgr,
@@ -168,15 +181,8 @@ struct Parser::Impl {
   bool parseAttempted = false;
   bool parseSucceeded = false;
   bool tokenSnapshotTaken = false;
-
-  enum class RecoveryContext : uint8_t {
-    SourceFile,
-    Declaration,
-    Statement,
-    Expression,
-    Type,
-    Pattern,
-  };
+  bool recoverableSyntaxTaken = false;
+  zc::Maybe<cst::RecoverableSyntaxTree> recoverableSyntax;
 
   enum class SourceElementContext : uint8_t {
     ModuleItem,
@@ -190,7 +196,18 @@ struct Parser::Impl {
     ast::SyntaxKind syncSet[32] = {};
     uint8_t syncCount = 0;
     bool consumed = false;
+    bool childRecorded = false;
     size_t suppressedUntil = 0;
+    size_t errorCountAtEntry = 0;
+  };
+
+  enum class PendingRecoveryKind : uint8_t { MissingSubtree, SkippedTokens };
+
+  struct PendingRecoveryRecord final {
+    PendingRecoveryKind kind;
+    RecoveryContext context;
+    source::SourceLoc anchor;
+    source::SourceRange range;
   };
 
   class RecoveryFrameScope {
@@ -208,6 +225,7 @@ struct Parser::Impl {
   };
 
   mutable zc::Vector<RecoveryFrame> recoveryFrames;
+  mutable zc::Vector<PendingRecoveryRecord> pendingRecoveryRecords;
 
   enum class CallableParameterContext : uint8_t {
     Member,
@@ -225,6 +243,9 @@ struct Parser::Impl {
   void popRecoveryFrame() const;
 
   void markRecoveryConsumed(size_t position) const;
+
+  ZC_NODISCARD zc::Array<cst::RecoveryElement> buildRecoveryElements(
+      const cst::VerifiedLexemeStream& lexemes) const;
 
   /// Returns true if a diagnostic at the given token index should be
   /// suppressed because it falls within a region that has already been
@@ -244,9 +265,9 @@ struct Parser::Impl {
 
   source::SourceRange rangeFor(size_t start, size_t end) const;
 
-  ast::IdentId internIdent(AstFactory& builder, size_t index) const;
+  ast::IdentId internIdent(ParserSyntaxFactory& builder, size_t index) const;
 
-  ast::StringId internString(AstFactory& builder, size_t index) const;
+  ast::StringId internString(ParserSyntaxFactory& builder, size_t index) const;
 
   bool tokenTextEquals(size_t index, zc::StringPtr expected) const;
 
@@ -291,9 +312,9 @@ struct Parser::Impl {
 
   void addNodeIfPresent(zc::Vector<ast::NodeId>& nodes, ast::NodeId node) const;
 
-  ast::IdentList makeIdentList(AstFactory& builder, size_t start, size_t end) const;
+  ast::IdentList makeIdentList(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId makeModulePath(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId makeModulePath(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
   bool isModulePathSeparatorAt(size_t index, size_t end) const;
 
@@ -305,25 +326,27 @@ struct Parser::Impl {
 
   size_t findModuleSpecifierGroupOpen(size_t pathEnd, size_t end) const;
 
-  ast::NodeId makeImportSpecifier(AstFactory& builder, size_t nameIndex, size_t aliasIndex,
+  ast::NodeId makeImportSpecifier(ParserSyntaxFactory& builder, size_t nameIndex, size_t aliasIndex,
                                   size_t end) const;
 
-  ast::NodeId makeExportSpecifier(AstFactory& builder, size_t nameIndex, size_t aliasIndex,
+  ast::NodeId makeExportSpecifier(ParserSyntaxFactory& builder, size_t nameIndex, size_t aliasIndex,
                                   size_t end) const;
 
   void recoverModuleSpecifier(TokenCursor& cursor, size_t end) const;
 
-  ast::NodeId parseImportSpecifier(AstFactory& builder, TokenCursor& cursor, size_t end) const;
+  ast::NodeId parseImportSpecifier(ParserSyntaxFactory& builder, TokenCursor& cursor,
+                                   size_t end) const;
 
-  ast::NodeId parseExportSpecifier(AstFactory& builder, TokenCursor& cursor, size_t end) const;
+  ast::NodeId parseExportSpecifier(ParserSyntaxFactory& builder, TokenCursor& cursor,
+                                   size_t end) const;
 
-  zc::Vector<ast::NodeId> parseImportSpecifierList(AstFactory& builder, size_t start,
+  zc::Vector<ast::NodeId> parseImportSpecifierList(ParserSyntaxFactory& builder, size_t start,
                                                    size_t end) const;
 
-  zc::Vector<ast::NodeId> parseExportSpecifierList(AstFactory& builder, size_t start,
+  zc::Vector<ast::NodeId> parseExportSpecifierList(ParserSyntaxFactory& builder, size_t start,
                                                    size_t end) const;
 
-  ast::NodeId makeAttributePath(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId makeAttributePath(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
   size_t findAttributePathEnd(size_t start, size_t end) const;
 
@@ -338,11 +361,11 @@ struct Parser::Impl {
 
   bool containsUnmodeledRangeOperator(size_t start, size_t end) const;
 
-  ast::NodeId parseAttribute(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseAttribute(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseOuterAttributeList(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseOuterAttributeList(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId makeStatementListItem(AstFactory& builder, ast::NodeId item,
+  ast::NodeId makeStatementListItem(ParserSyntaxFactory& builder, ast::NodeId item,
                                     source::SourceRange range,
                                     ast::NodeId attrs = ast::NodeId()) const;
 
@@ -362,14 +385,14 @@ struct Parser::Impl {
 
   void diagnoseDeclarationTypeParameterSyntax(size_t afterName, size_t limit) const;
 
-  ast::NodeId parseWherePredicate(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseWherePredicate(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseWhereClause(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseWhereClause(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseTypeParameters(AstFactory& builder, size_t start, size_t limit,
+  ast::NodeId parseTypeParameters(ParserSyntaxFactory& builder, size_t start, size_t limit,
                                   ast::NodeId whereClause = ast::NodeId()) const;
 
-  ast::NodeId parseRequiredExpression(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseRequiredExpression(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
   bool requireTrailingSemicolon(size_t start, size_t end) const;
 
@@ -405,157 +428,179 @@ struct Parser::Impl {
   bool consumeFunctionTypeHead(TokenCursor& cursor, size_t limit, size_t& openParen,
                                size_t& closeParen) const;
 
-  ast::NodeList parseFunctionTypeParameters(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeList parseFunctionTypeParameters(ParserSyntaxFactory& builder, size_t start,
+                                            size_t end) const;
 
-  ast::NodeId parseTupleTypeRange(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseTupleTypeRange(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseObjectTypeRange(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseObjectTypeRange(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  TypeParseResult parseTypeExpression(AstFactory& builder, TokenCursor& cursor, size_t limit) const;
+  TypeParseResult parseTypeExpression(ParserSyntaxFactory& builder, TokenCursor& cursor,
+                                      size_t limit) const;
 
-  TypeParseResult parseTypeExpressionAt(AstFactory& builder, size_t start, size_t limit) const;
-
-  TypeParseResult parseUnionType(AstFactory& builder, TokenCursor& cursor, size_t limit) const;
-
-  TypeParseResult parseIntersectionType(AstFactory& builder, TokenCursor& cursor,
+  TypeParseResult parseTypeExpressionAt(ParserSyntaxFactory& builder, size_t start,
                                         size_t limit) const;
 
-  TypeParseResult parsePostfixType(AstFactory& builder, TokenCursor& cursor, size_t limit) const;
+  TypeParseResult parseUnionType(ParserSyntaxFactory& builder, TokenCursor& cursor,
+                                 size_t limit) const;
 
-  TypeParseResult parseFunctionType(AstFactory& builder, TokenCursor& cursor, size_t limit) const;
+  TypeParseResult parseIntersectionType(ParserSyntaxFactory& builder, TokenCursor& cursor,
+                                        size_t limit) const;
+
+  TypeParseResult parsePostfixType(ParserSyntaxFactory& builder, TokenCursor& cursor,
+                                   size_t limit) const;
+
+  TypeParseResult parseFunctionType(ParserSyntaxFactory& builder, TokenCursor& cursor,
+                                    size_t limit) const;
 
   bool isDynAssocBindingArgList(size_t openAngle, size_t closeAngle) const;
 
-  TypeParseResult parseDynType(AstFactory& builder, TokenCursor& cursor, size_t limit) const;
+  TypeParseResult parseDynType(ParserSyntaxFactory& builder, TokenCursor& cursor,
+                               size_t limit) const;
 
-  TypeParseResult parseAssociatedTypeProjection(AstFactory& builder, TokenCursor& cursor,
+  TypeParseResult parseAssociatedTypeProjection(ParserSyntaxFactory& builder, TokenCursor& cursor,
                                                 size_t limit) const;
 
-  TypeParseResult parseParenthesizedOrTupleType(AstFactory& builder, TokenCursor& cursor,
+  TypeParseResult parseParenthesizedOrTupleType(ParserSyntaxFactory& builder, TokenCursor& cursor,
                                                 size_t limit) const;
 
-  TypeParseResult parseBracketedType(AstFactory& builder, TokenCursor& cursor, size_t limit) const;
+  TypeParseResult parseBracketedType(ParserSyntaxFactory& builder, TokenCursor& cursor,
+                                     size_t limit) const;
 
-  TypeParseResult parseTypeQuery(AstFactory& builder, TokenCursor& cursor, size_t limit) const;
+  TypeParseResult parseTypeQuery(ParserSyntaxFactory& builder, TokenCursor& cursor,
+                                 size_t limit) const;
 
-  ast::NodeList parseTypeArgumentList(AstFactory& builder, TokenCursor& cursor, size_t limit,
-                                      size_t& physicalEnd) const;
+  ast::NodeList parseTypeArgumentList(ParserSyntaxFactory& builder, TokenCursor& cursor,
+                                      size_t limit, size_t& physicalEnd) const;
 
-  TypeParseResult parseNamedType(AstFactory& builder, TokenCursor& cursor, size_t limit) const;
+  TypeParseResult parseNamedType(ParserSyntaxFactory& builder, TokenCursor& cursor,
+                                 size_t limit) const;
 
-  TypeParseResult parseAtomType(AstFactory& builder, TokenCursor& cursor, size_t limit) const;
+  TypeParseResult parseAtomType(ParserSyntaxFactory& builder, TokenCursor& cursor,
+                                size_t limit) const;
 
-  ast::NodeId parseTypeRange(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseTypeRange(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeList parseBoundListMembers(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeList parseBoundListMembers(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseTypeParameterBoundList(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseTypeParameterBoundList(ParserSyntaxFactory& builder, size_t start,
+                                          size_t end) const;
 
-  ast::NodeId parseAssociatedTypeBoundList(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseAssociatedTypeBoundList(ParserSyntaxFactory& builder, size_t start,
+                                           size_t end) const;
 
   size_t consumeCommaDelimitedItem(TokenCursor& cursor, size_t end) const;
 
-  ast::NodeId parseExpressionList(AstFactory& builder, size_t start, size_t end,
+  ast::NodeId parseExpressionList(ParserSyntaxFactory& builder, size_t start, size_t end,
                                   ast::SyntaxKind containerKind) const;
 
-  ast::NodeId parseCommaExpression(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseCommaExpression(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeList parseExpressionArguments(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeList parseExpressionArguments(ParserSyntaxFactory& builder, size_t start,
+                                         size_t end) const;
 
-  ast::NodeList parseTypeArguments(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeList parseTypeArguments(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseNewExpression(AstFactory& builder, size_t start, size_t calleeEnd,
+  ast::NodeId parseNewExpression(ParserSyntaxFactory& builder, size_t start, size_t calleeEnd,
                                  size_t typeArgsEnd, size_t end) const;
 
-  ast::NodeId parseUnsafeBlockExpression(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseUnsafeBlockExpression(ParserSyntaxFactory& builder, size_t start,
+                                         size_t end) const;
 
-  ast::NodeId parseSpawnExpression(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseSpawnExpression(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseCastExpression(AstFactory& builder, size_t start, size_t asIndex,
+  ast::NodeId parseCastExpression(ParserSyntaxFactory& builder, size_t start, size_t asIndex,
                                   size_t end) const;
 
-  ast::NodeId parseImportCallExpression(AstFactory& builder, size_t start, size_t openParen,
-                                        size_t end) const;
+  ast::NodeId parseImportCallExpression(ParserSyntaxFactory& builder, size_t start,
+                                        size_t openParen, size_t end) const;
 
-  ast::NodeId parseCaptureItem(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseCaptureItem(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseCaptureList(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseCaptureList(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseFunctionExpression(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseFunctionExpression(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseLambdaExpression(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseLambdaExpression(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeList parseObjectLiteralProperties(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeList parseObjectLiteralProperties(ParserSyntaxFactory& builder, size_t start,
+                                             size_t end) const;
 
-  ast::NodeId parseObjectLiteralExpression(AstFactory& builder, size_t start, size_t end) const;
-
-  ast::NodeId parseStructLiteralExpression(AstFactory& builder, size_t start, size_t brace,
+  ast::NodeId parseObjectLiteralExpression(ParserSyntaxFactory& builder, size_t start,
                                            size_t end) const;
 
-  ast::NodeId parseTemplateLiteralExpression(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseStructLiteralExpression(ParserSyntaxFactory& builder, size_t start, size_t brace,
+                                           size_t end) const;
+
+  ast::NodeId parseTemplateLiteralExpression(ParserSyntaxFactory& builder, size_t start,
+                                             size_t end) const;
 
   struct ExpressionParseResult {
     ast::NodeId node;
     size_t next = 0;
   };
 
-  ExpressionParseResult parseExpression(AstFactory& builder, TokenCursor& cursor,
+  ExpressionParseResult parseExpression(ParserSyntaxFactory& builder, TokenCursor& cursor,
                                         size_t limit) const;
 
-  ExpressionParseResult parseExpressionAt(AstFactory& builder, size_t start, size_t limit) const;
+  ExpressionParseResult parseExpressionAt(ParserSyntaxFactory& builder, size_t start,
+                                          size_t limit) const;
 
-  ExpressionParseResult parseCommaExpressionAt(AstFactory& builder, size_t start,
+  ExpressionParseResult parseCommaExpressionAt(ParserSyntaxFactory& builder, size_t start,
                                                size_t limit) const;
 
-  ExpressionParseResult parseAssignmentExpressionAt(AstFactory& builder, size_t start,
+  ExpressionParseResult parseAssignmentExpressionAt(ParserSyntaxFactory& builder, size_t start,
                                                     size_t limit) const;
 
-  ExpressionParseResult parseConditionalExpressionAt(AstFactory& builder, size_t start,
+  ExpressionParseResult parseConditionalExpressionAt(ParserSyntaxFactory& builder, size_t start,
                                                      size_t limit) const;
 
-  ExpressionParseResult parseErrorDefaultExpressionAt(AstFactory& builder, size_t start,
+  ExpressionParseResult parseErrorDefaultExpressionAt(ParserSyntaxFactory& builder, size_t start,
                                                       size_t limit) const;
 
-  ExpressionParseResult parseNullCoalesceExpressionAt(AstFactory& builder, size_t start,
+  ExpressionParseResult parseNullCoalesceExpressionAt(ParserSyntaxFactory& builder, size_t start,
                                                       size_t limit) const;
 
-  ExpressionParseResult parseBinaryExpressionAt(AstFactory& builder, size_t start, size_t limit,
-                                                int32_t minPrecedence) const;
+  ExpressionParseResult parseBinaryExpressionAt(ParserSyntaxFactory& builder, size_t start,
+                                                size_t limit, int32_t minPrecedence) const;
 
-  ExpressionParseResult parseUnaryExpressionAt(AstFactory& builder, size_t start,
+  ExpressionParseResult parseUnaryExpressionAt(ParserSyntaxFactory& builder, size_t start,
                                                size_t limit) const;
 
-  ExpressionParseResult parsePostfixExpressionAt(AstFactory& builder, size_t start,
+  ExpressionParseResult parsePostfixExpressionAt(ParserSyntaxFactory& builder, size_t start,
                                                  size_t limit) const;
 
-  ExpressionParseResult parsePrimaryExpressionAt(AstFactory& builder, size_t start,
+  ExpressionParseResult parsePrimaryExpressionAt(ParserSyntaxFactory& builder, size_t start,
                                                  size_t limit) const;
 
-  ast::NodeId parseExpressionRange(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseExpressionRange(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parsePatternRange(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parsePatternRange(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId makeEmptyClassMemberList(AstFactory& builder, source::SourceRange range) const;
+  ast::NodeId makeEmptyClassMemberList(ParserSyntaxFactory& builder,
+                                       source::SourceRange range) const;
 
-  ast::NodeId makeEmptyEnumVariantList(AstFactory& builder, source::SourceRange range) const;
+  ast::NodeId makeEmptyEnumVariantList(ParserSyntaxFactory& builder,
+                                       source::SourceRange range) const;
 
-  ast::NodeId parseClassMemberList(AstFactory& builder, size_t bodyOpen, size_t bodyClose,
+  ast::NodeId parseClassMemberList(ParserSyntaxFactory& builder, size_t bodyOpen, size_t bodyClose,
                                    ast::SyntaxKind parentKind) const;
 
-  ast::NodeId parseEnumVariantList(AstFactory& builder, size_t bodyOpen, size_t bodyClose) const;
+  ast::NodeId parseEnumVariantList(ParserSyntaxFactory& builder, size_t bodyOpen,
+                                   size_t bodyClose) const;
 
   size_t recoverFunctionParameter(TokenCursor& cursor, size_t closeParen) const;
 
-  ast::NodeId parseFunctionParameter(AstFactory& builder, TokenCursor& cursor, size_t closeParen,
-                                     size_t parameterOrdinal,
+  ast::NodeId parseFunctionParameter(ParserSyntaxFactory& builder, TokenCursor& cursor,
+                                     size_t closeParen, size_t parameterOrdinal,
                                      CallableParameterContext context) const;
 
-  ast::NodeList parseFunctionParameterNodeList(AstFactory& builder, size_t openParen,
+  ast::NodeList parseFunctionParameterNodeList(ParserSyntaxFactory& builder, size_t openParen,
                                                size_t closeParen,
                                                CallableParameterContext context) const;
 
-  ast::NodeId parseFunctionParameterList(AstFactory& builder, size_t openParen, size_t closeParen,
-                                         CallableParameterContext context) const;
+  ast::NodeId parseFunctionParameterList(ParserSyntaxFactory& builder, size_t openParen,
+                                         size_t closeParen, CallableParameterContext context) const;
 
   size_t consumeSimpleStatementEnd(size_t start, size_t limit) const;
 
@@ -681,20 +726,20 @@ struct Parser::Impl {
 
   SourceElementBoundary consumeSourceElement(TokenCursor& cursor, size_t limit) const;
 
-  SourceElementParseResult parseSourceElement(AstFactory& builder, TokenCursor& cursor,
+  SourceElementParseResult parseSourceElement(ParserSyntaxFactory& builder, TokenCursor& cursor,
                                               size_t limit,
                                               SourceElementContext elementContext) const;
 
-  ast::NodeId parseBlock(AstFactory& builder, size_t openBrace, size_t limit,
+  ast::NodeId parseBlock(ParserSyntaxFactory& builder, size_t openBrace, size_t limit,
                          bool allowFinalExpression = false) const;
 
-  ast::NodeId parseStatementBody(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseStatementBody(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseModuleDeclaration(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseModuleDeclaration(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseImportDeclaration(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseImportDeclaration(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseExportDeclaration(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseExportDeclaration(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
   struct VariableDeclaratorParseResult {
     ast::NodeId node;
@@ -707,82 +752,88 @@ struct Parser::Impl {
 
   size_t consumeVariableInitializer(TokenCursor& cursor, size_t limit) const;
 
-  VariableDeclaratorParseResult parseVariableDeclarator(AstFactory& builder, TokenCursor& cursor,
-                                                        size_t limit) const;
+  VariableDeclaratorParseResult parseVariableDeclarator(ParserSyntaxFactory& builder,
+                                                        TokenCursor& cursor, size_t limit) const;
 
-  ast::NodeId parseVariableDeclaratorList(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseVariableDeclaratorList(ParserSyntaxFactory& builder, size_t start,
+                                          size_t end) const;
 
-  ast::NodeId parseLetStatement(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseLetStatement(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseReturnStatement(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseReturnStatement(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseSuspendStatement(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseSuspendStatement(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
   size_t findMatchingRightParen(size_t openParen, size_t limit) const;
 
   void conditionRangeAfterKeyword(size_t start, size_t end, size_t& condStart, size_t& condEnd,
                                   size_t& bodyStart) const;
 
-  ast::NodeId parseIfStatement(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseIfStatement(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseWhileStatement(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseWhileStatement(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseDoWhileStatement(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseDoWhileStatement(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseBreakStatement(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseBreakStatement(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseContinueStatement(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseContinueStatement(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseLabeledStatement(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseLabeledStatement(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseForStatement(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseForStatement(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseForInStatement(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseForInStatement(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseMatchStatement(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseMatchStatement(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseExternFunctionDecl(AstFactory& builder, size_t start, size_t end,
+  ast::NodeId parseExternFunctionDecl(ParserSyntaxFactory& builder, size_t start, size_t end,
                                       ast::Abi abi) const;
 
-  ast::NodeId parseExternVarDecl(AstFactory& builder, size_t start, size_t end, ast::Abi abi) const;
+  ast::NodeId parseExternVarDecl(ParserSyntaxFactory& builder, size_t start, size_t end,
+                                 ast::Abi abi) const;
 
-  ast::NodeId parseExternBlockDeclaration(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseExternBlockDeclaration(ParserSyntaxFactory& builder, size_t start,
+                                          size_t end) const;
 
-  ast::NodeId parseFunctionDeclaration(AstFactory& builder, size_t start, size_t end,
+  ast::NodeId parseFunctionDeclaration(ParserSyntaxFactory& builder, size_t start, size_t end,
                                        bool isBlockFunction = false) const;
 
-  ast::NodeId parseNamedTypeDeclaration(AstFactory& builder, size_t start, size_t end,
+  ast::NodeId parseNamedTypeDeclaration(ParserSyntaxFactory& builder, size_t start, size_t end,
                                         ast::SyntaxKind kind) const;
 
-  ast::NodeId parseErrorDeclaration(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseErrorDeclaration(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseAliasDeclaration(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseAliasDeclaration(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseImplInterfaceBound(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseImplInterfaceBound(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId makeImplIfaceList(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId makeImplIfaceList(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseInterfaceHeritage(AstFactory& builder, size_t headerStart,
+  ast::NodeId parseInterfaceHeritage(ParserSyntaxFactory& builder, size_t headerStart,
                                      size_t headerEnd) const;
 
-  ast::NodeId parseStandaloneImplDeclaration(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseStandaloneImplDeclaration(ParserSyntaxFactory& builder, size_t start,
+                                             size_t end) const;
 
-  ast::NodeId parseMarkerImplDeclaration(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseMarkerImplDeclaration(ParserSyntaxFactory& builder, size_t start,
+                                         size_t end) const;
 
-  ast::NodeId parseExpressionStatement(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseExpressionStatement(ParserSyntaxFactory& builder, size_t start,
+                                       size_t end) const;
 
-  ast::NodeId parseExpressionStatementWithoutSemicolon(AstFactory& builder, size_t start,
+  ast::NodeId parseExpressionStatementWithoutSemicolon(ParserSyntaxFactory& builder, size_t start,
                                                        size_t end) const;
 
-  ast::NodeId parseSpawnStatement(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseSpawnStatement(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseSourceElementOfKind(AstFactory& builder, size_t start, size_t end,
+  ast::NodeId parseSourceElementOfKind(ParserSyntaxFactory& builder, size_t start, size_t end,
                                        ast::SyntaxKind kind,
                                        SourceElementContext elementContext) const;
 
   bool canContinueLetInitializerBefore(size_t index) const;
 
-  ast::Tree buildTree();
+  cst::ParserEventStreamRequest buildEventStream();
 };
 
 }  // namespace parser

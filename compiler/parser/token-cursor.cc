@@ -14,10 +14,10 @@
 
 #include "compiler/parser/token-cursor.h"
 
-#include "zc/core/debug.h"
 #include "compiler/diagnostics/consumer/diagnostic-emitter.h"
 #include "compiler/diagnostics/core/diagnostic-ids.h"
 #include "compiler/lexer/lexer.h"
+#include "zc/core/debug.h"
 
 namespace zomlang {
 namespace compiler {
@@ -77,6 +77,12 @@ zc::Array<ParsedTokenRange> TokenStream::copyBufferedTokenRanges() const {
     ranges.add(ParsedTokenRange(token.getKind(), token.getRange(), zc::str(token.getValue())));
   }
   return ranges.releaseAsArray();
+}
+
+zc::Array<lexer::Token> TokenStream::copyBufferedTokens() const {
+  ZC_IREQUIRE(reachedEof && tokens.size() != 0 && tokens.back().is(ast::SyntaxKind::EndOfFile),
+              "complete parser traversal must retain its final EOF token");
+  return zc::heapArray<lexer::Token>(tokens.asPtr());
 }
 
 void TokenStream::ensure(size_t index) const {

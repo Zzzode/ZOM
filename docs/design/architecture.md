@@ -13,8 +13,9 @@ The compiler currently provides:
 
 - verified package, target-selection, source-snapshot, crate-graph, and
   build-script-plan admission, plus a session API for build-script execution;
-- lazy lexing, recursive-descent parsing, immutable ASTs, and retained parser
-  token snapshots;
+- lazy lexing, a byte-covering verified lexeme stream, recursive-descent parser
+  construction events, an immutable recoverable syntax result, independently
+  replayed schema-verified ASTs, and retained parser token snapshots;
 - fixed-point structural module discovery;
 - one session-owned semantic context, frozen identity registries, and one
   canonical semantic type store;
@@ -51,7 +52,8 @@ fact or any source, identity, codec, or IR invariant rejects the entire stage.
 |---|---|---|
 | `compiler/source` | Own source buffers and source locations | `BufferId`, `SourceLoc`, source text views |
 | `compiler/lexer` | Produce tokens on demand | parser-consumed tokens |
-| `compiler/parser` | Parse one retained source snapshot | `ast::Tree` and `ParsedTokenSnapshot` |
+| `compiler/parser` | Parse one retained source snapshot into construction events | parser event stream and `ParsedTokenSnapshot` |
+| `compiler/cst` | Retain the byte-covering lexeme/recovery streams and independently reconstruct compiler syntax | `RecoverableSyntaxTree`, `ParseSyntaxVerifier`, verified `ast::Tree` |
 | `compiler/query` | Own tracked inputs, immutable snapshots, dependency validation, red-green memo reuse, revision-local capabilities, final-seal admission, and deterministic demand telemetry | `QueryDatabase`, `QuerySnapshot`, `QueryCapabilityLease`, dependency groups, and memo metadata; see [Incremental Query Runtime](query-runtime.md) |
 | `compiler/ast` | Own immutable schema-backed syntax | `Tree`, `NodeId`, schema verification, deterministic dumps |
 | `compiler/identity` | Define and freeze canonical semantic identities | context-branded package, crate, source, module, definition, impl, and type handles |
@@ -126,9 +128,18 @@ one frozen definition inventory per module, resolves structural module paths,
 and publishes the complete `VerifiedModuleGraph`.
 
 `Lexer::lex(Token&)` feeds a Lazy TokenStream on demand. `TokenCursor` provides
-bounded lookahead and rewind while retaining parser-visible tokens for the
-verified snapshot. `Parser::parse()` returns `zc::none` after an error-level
-lexical or syntax diagnostic, so no failed parser result can be promoted.
+bounded lookahead and rewind while retaining parser-visible tokens. After the
+single parser traversal, `buildLexemeStreamFromTokens` reconstructs and verifies
+the exact Token/Trivia byte partition. `ParserSyntaxFactory` emits construction
+events through `ParserEventBuilder`; it does not construct `ast::Tree` directly.
+The event stream, verified lexemes, and verified recovery sequence form one
+`RecoverableSyntaxTree`. `ParseSyntaxVerifier` accepts only a clean eligible
+result, independently replays every event into `ast::TreeBuilder`, and runs the
+RFC 0002 schema verifier. `Parser::parse()` returns `zc::none` after an
+error-level lexical or syntax diagnostic, so no failed parser result can be
+promoted on the compiler rail. `Parser::takeRecoverableSyntax()` separately
+exposes the immutable event/lexeme/recovery result once after either a clean or
+failed traversal.
 
 ### Binding
 
@@ -189,7 +200,7 @@ preparation. Packages with directly available roots do not require that API.
 |---|---|---|
 | Package resolution memory, request, graph, snapshots, build plan, and results | `CompilerSession` | installed atomically before parsing; snapshots explicitly finalized |
 | Source bytes | `SourceManager` | immutable source snapshots bind bytes, length, and digest before parser promotion |
-| Parser tokens and AST | `VerifiedParsedModule` | receipt-verified and immutable after source-registry freeze |
+| Parser lexemes, construction events, recovery, and AST | `RecoverableSyntaxTree`, `ParseSyntaxVerifier`, and `VerifiedParsedModule` | byte-partition verified, event-replayed, schema-verified, receipt-verified, and immutable after source-registry freeze |
 | Query inputs and memos | `CompilerSession` and `QueryDatabase` | generated descriptor identity; complete input transactions; immutable snapshots; semantic red-green memos; retained revision-local capability leases; base mutations remove definition-authority readiness before complete replacement |
 | Semantic context and identity registries | `CompilerSession` | one brand and one registry family; handles are context and slot checked |
 | Semantic types | `SemanticTypeStore` | one append-only store; only store-bound `canonicalizeClosed()` may create an internable payload |

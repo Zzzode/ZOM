@@ -14,11 +14,83 @@
 
 // Recovery and boundary utilities.
 
+#include "compiler/cst/recovery-stream-builder.h"
+#include "compiler/diagnostics/core/diagnostic-info.h"
 #include "compiler/parser/parser-impl.h"
 
 namespace zomlang {
 namespace compiler {
 namespace parser {
+namespace {
+
+cst::RecoverySyntaxCategory recoveryCategory(RecoveryContext context) {
+  switch (context) {
+    case RecoveryContext::SourceFile:
+      return cst::RecoverySyntaxCategory::SourceFile;
+    case RecoveryContext::Declaration:
+      return cst::RecoverySyntaxCategory::Declaration;
+    case RecoveryContext::Statement:
+      return cst::RecoverySyntaxCategory::Statement;
+    case RecoveryContext::Expression:
+      return cst::RecoverySyntaxCategory::Expression;
+    case RecoveryContext::Type:
+      return cst::RecoverySyntaxCategory::Type;
+    case RecoveryContext::Pattern:
+      return cst::RecoverySyntaxCategory::Pattern;
+  }
+  ZC_UNREACHABLE;
+}
+
+zc::Maybe<ast::SyntaxKind> expectedTokenKind(zc::StringPtr label) {
+  struct Entry final {
+    zc::StringPtr label;
+    ast::SyntaxKind kind;
+  };
+  const Entry entries[] = {
+      {";"_zc, ast::SyntaxKind::Semicolon},
+      {"{"_zc, ast::SyntaxKind::LeftBrace},
+      {"}"_zc, ast::SyntaxKind::RightBrace},
+      {"("_zc, ast::SyntaxKind::LeftParen},
+      {")"_zc, ast::SyntaxKind::RightParen},
+      {"["_zc, ast::SyntaxKind::LeftBracket},
+      {"]"_zc, ast::SyntaxKind::RightBracket},
+      {"<"_zc, ast::SyntaxKind::LessThan},
+      {">"_zc, ast::SyntaxKind::GreaterThan},
+      {":"_zc, ast::SyntaxKind::Colon},
+      {","_zc, ast::SyntaxKind::Comma},
+      {"="_zc, ast::SyntaxKind::Equals},
+      {"=>"_zc, ast::SyntaxKind::EqualsGreaterThan},
+      {"->"_zc, ast::SyntaxKind::Arrow},
+      {"+"_zc, ast::SyntaxKind::Plus},
+      {"identifier"_zc, ast::SyntaxKind::Identifier},
+  };
+  for (const auto& entry : entries) {
+    if (entry.label == label) return entry.kind;
+  }
+  return zc::none;
+}
+
+void sortAndDeduplicate(zc::Vector<cst::RecoveryElement>& elements) {
+  for (size_t index = 0; index < elements.size(); ++index) {
+    size_t smallest = index;
+    for (size_t candidate = index + 1; candidate < elements.size(); ++candidate) {
+      if (elements[candidate].compareCanonical(elements[smallest]) < 0) smallest = candidate;
+    }
+    if (smallest != index) {
+      auto retained = zc::mv(elements[index]);
+      elements[index] = zc::mv(elements[smallest]);
+      elements[smallest] = zc::mv(retained);
+    }
+  }
+  zc::Vector<cst::RecoveryElement> unique(elements.size());
+  for (size_t index = 0; index < elements.size(); ++index) {
+    if (unique.size() != 0 && elements[index].compareCanonical(unique.back()) == 0) continue;
+    unique.add(zc::mv(elements[index]));
+  }
+  elements = zc::mv(unique);
+}
+
+}  // namespace
 
 Parser::Impl::RecoveryFrameScope::RecoveryFrameScope(const Impl& parser, RecoveryContext context,
                                                      size_t anchor)
@@ -39,6 +111,7 @@ Parser::Impl::RecoveryFrame Parser::Impl::makeRecoveryFrame(RecoveryContext cont
   frame.context = context;
   frame.anchor = anchor;
   frame.suppressedUntil = anchor;
+  frame.errorCountAtEntry = diagnosticFacts.errorCount();
 
   const auto addSync = [](RecoveryFrame& frame, ast::SyntaxKind kind) {
     if (frame.syncCount >= sizeof(frame.syncSet) / sizeof(frame.syncSet[0])) { return; }
@@ -146,10 +219,77 @@ void Parser::Impl::popRecoveryFrame() const {
 void Parser::Impl::markRecoveryConsumed(size_t position) const {
   if (recoveryFrames.size() == 0) { return; }
   RecoveryFrame& frame = recoveryFrames.back();
+  if (diagnosticFacts.errorCount() > frame.errorCountAtEntry && !frame.childRecorded) {
+    if (position > frame.anchor) {
+      pendingRecoveryRecords.add(PendingRecoveryRecord{PendingRecoveryKind::SkippedTokens,
+                                                       frame.context, source::SourceLoc(),
+                                                       rangeFor(frame.anchor, position)});
+    } else {
+      pendingRecoveryRecords.add(PendingRecoveryRecord{PendingRecoveryKind::MissingSubtree,
+                                                       frame.context, diagnosticLoc(frame.anchor),
+                                                       source::SourceRange()});
+    }
+    for (size_t index = 0; index + 1 < recoveryFrames.size(); ++index) {
+      recoveryFrames[index].childRecorded = true;
+    }
+  }
   if (position > frame.anchor) {
     frame.consumed = true;
     frame.suppressedUntil = position;
   }
+}
+
+zc::Array<cst::RecoveryElement> Parser::Impl::buildRecoveryElements(
+    const cst::VerifiedLexemeStream& lexemes) const {
+  zc::Vector<cst::RecoveryElement> elements;
+  for (const auto& pending : pendingRecoveryRecords) {
+    if (pending.kind == PendingRecoveryKind::SkippedTokens) {
+      ZC_IF_SOME(element,
+                 cst::skippedRecoveryForSourceRange(lexemes, sourceMgr, bufferId, pending.range)) {
+        elements.add(zc::mv(element));
+      }
+      continue;
+    }
+    ZC_IF_SOME(anchor, cst::recoveryByteOffset(sourceMgr, bufferId, pending.anchor)) {
+      elements.add(cst::RecoveryElement::missingSubtree(recoveryCategory(pending.context), anchor));
+    }
+  }
+
+  for (auto& diagnostic : diagnosticFacts.copyParserRecoveryDiagnostics()) {
+    if (diagnostics::getDiagnosticInfo(diagnostic.code).severity <
+        diagnostics::DiagSeverity::kError) {
+      continue;
+    }
+    if (diagnostic.code == diagnostics::DiagID::MissingSemicolon) {
+      const uint32_t expected = static_cast<uint32_t>(ast::SyntaxKind::Semicolon);
+      ZC_IF_SOME(element,
+                 cst::RecoveryElement::missingToken({&expected, 1}, diagnostic.primaryByteOffset)) {
+        elements.add(zc::mv(element));
+      }
+      continue;
+    }
+    if (diagnostic.code == diagnostics::DiagID::ExpectedToken && diagnostic.arguments.size() != 0) {
+      ZC_IF_SOME(kind, expectedTokenKind(diagnostic.arguments[0])) {
+        const uint32_t expected = static_cast<uint32_t>(kind);
+        ZC_IF_SOME(element, cst::RecoveryElement::missingToken({&expected, 1},
+                                                               diagnostic.primaryByteOffset)) {
+          elements.add(zc::mv(element));
+        }
+        continue;
+      }
+    }
+
+    cst::RecoverySyntaxCategory category = cst::RecoverySyntaxCategory::SourceFile;
+    if (diagnostic.code == diagnostics::DiagID::ExpressionExpected) {
+      category = cst::RecoverySyntaxCategory::Expression;
+    } else if (diagnostic.code == diagnostics::DiagID::TypeExpected) {
+      category = cst::RecoverySyntaxCategory::Type;
+    }
+    elements.add(cst::RecoveryElement::missingSubtree(category, diagnostic.primaryByteOffset));
+  }
+
+  sortAndDeduplicate(elements);
+  return elements.releaseAsArray();
 }
 
 bool Parser::Impl::shouldSuppressDiagnostic(size_t tokenIndex) const {
@@ -631,7 +771,7 @@ Parser::Impl::SourceElementBoundary Parser::Impl::consumeSourceElement(TokenCurs
 }
 
 Parser::Impl::SourceElementParseResult Parser::Impl::parseSourceElement(
-    AstFactory& builder, TokenCursor& cursor, size_t limit,
+    ParserSyntaxFactory& builder, TokenCursor& cursor, size_t limit,
     SourceElementContext elementContext) const {
   SourceElementParseResult result;
   result.boundary = consumeSourceElement(cursor, limit);
@@ -686,8 +826,8 @@ void Parser::Impl::conditionRangeAfterKeyword(size_t start, size_t end, size_t& 
   bodyStart = brace < end ? brace : end;
 }
 
-ast::NodeId Parser::Impl::parseSourceElementOfKind(AstFactory& builder, size_t start, size_t end,
-                                                   ast::SyntaxKind kind,
+ast::NodeId Parser::Impl::parseSourceElementOfKind(ParserSyntaxFactory& builder, size_t start,
+                                                   size_t end, ast::SyntaxKind kind,
                                                    SourceElementContext elementContext) const {
   if (start >= end) { return ast::NodeId(); }
 

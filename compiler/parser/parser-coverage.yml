@@ -242,7 +242,7 @@ productions:
   SignedInteger: {status: lexical}
   SingleLineComment: {status: lexical}
   CharacterLiteralCharacter: {status: lexical}
-  SourceFile: {status: direct, parser: buildTree, ast: [SourceFile]}
+  SourceFile: {status: direct, parser: buildEventStream, ast: [SourceFile]}
   SliceType: {status: inlined, parser: parseBracketedType, parent: AtomType, ast: [SliceArrayTypeExpr]}
   SpawnBlockStatement: {status: inlined, parser: parseBlock, parent: SpawnExpression}
   SpawnExpression: {status: direct, parser: parseSpawnExpression, ast: [SpawnExpression]}

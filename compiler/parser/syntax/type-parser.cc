@@ -292,7 +292,7 @@ bool Parser::Impl::consumeFunctionTypeHead(TokenCursor& cursor, size_t limit, si
   return true;
 }
 
-ast::NodeList Parser::Impl::parseFunctionTypeParameters(AstFactory& builder, size_t start,
+ast::NodeList Parser::Impl::parseFunctionTypeParameters(ParserSyntaxFactory& builder, size_t start,
                                                         size_t end) const {
   zc::Vector<ast::NodeId> params;
   TokenCursor cursor = tokenCursorAt(start);
@@ -323,7 +323,8 @@ ast::NodeList Parser::Impl::parseFunctionTypeParameters(AstFactory& builder, siz
   return builder.makeList(params.asPtr());
 }
 
-ast::NodeId Parser::Impl::parseTupleTypeRange(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parseTupleTypeRange(ParserSyntaxFactory& builder, size_t start,
+                                              size_t end) const {
   zc::Vector<ast::NodeId> elems;
   bool hasTrailingComma = false;
   const size_t bodyEnd = end > start ? end - 1 : start;
@@ -363,7 +364,7 @@ ast::NodeId Parser::Impl::parseTupleTypeRange(AstFactory& builder, size_t start,
   return builder.makeTupleTypeExpr(rangeFor(start, end), builder.makeList(elems.asPtr()));
 }
 
-ast::NodeId Parser::Impl::parseObjectTypeRange(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseObjectTypeRange(ParserSyntaxFactory& builder, size_t start,
                                                size_t end) const {
   zc::Vector<ast::NodeId> members;
   const size_t bodyEnd = end > start ? end - 1 : start;
@@ -435,13 +436,14 @@ ast::NodeId Parser::Impl::parseObjectTypeRange(AstFactory& builder, size_t start
   return builder.makeObjectTypeExpr(rangeFor(start, end), builder.makeList(members.asPtr()));
 }
 
-Parser::Impl::TypeParseResult Parser::Impl::parseTypeExpression(AstFactory& builder,
+Parser::Impl::TypeParseResult Parser::Impl::parseTypeExpression(ParserSyntaxFactory& builder,
                                                                 TokenCursor& cursor,
                                                                 size_t limit) const {
   return parseUnionType(builder, cursor, limit);
 }
 
-Parser::Impl::TypeParseResult Parser::Impl::parseTypeExpressionAt(AstFactory& builder, size_t start,
+Parser::Impl::TypeParseResult Parser::Impl::parseTypeExpressionAt(ParserSyntaxFactory& builder,
+                                                                  size_t start,
                                                                   size_t limit) const {
   TokenCursor cursor = tokenCursorAt(start);
   TokenCursor::ScopedSplitMode splitMode(cursor);
@@ -456,7 +458,8 @@ Parser::Impl::TypeParseResult Parser::Impl::parseTypeExpressionAt(AstFactory& bu
   return result;
 }
 
-Parser::Impl::TypeParseResult Parser::Impl::parseUnionType(AstFactory& builder, TokenCursor& cursor,
+Parser::Impl::TypeParseResult Parser::Impl::parseUnionType(ParserSyntaxFactory& builder,
+                                                           TokenCursor& cursor,
                                                            size_t limit) const {
   const size_t start = cursor.position();
   zc::Vector<ast::NodeId> alts;
@@ -482,7 +485,7 @@ Parser::Impl::TypeParseResult Parser::Impl::parseUnionType(AstFactory& builder, 
       cursor.position()};
 }
 
-Parser::Impl::TypeParseResult Parser::Impl::parseIntersectionType(AstFactory& builder,
+Parser::Impl::TypeParseResult Parser::Impl::parseIntersectionType(ParserSyntaxFactory& builder,
                                                                   TokenCursor& cursor,
                                                                   size_t limit) const {
   const size_t start = cursor.position();
@@ -509,7 +512,7 @@ Parser::Impl::TypeParseResult Parser::Impl::parseIntersectionType(AstFactory& bu
                          cursor.position()};
 }
 
-Parser::Impl::TypeParseResult Parser::Impl::parsePostfixType(AstFactory& builder,
+Parser::Impl::TypeParseResult Parser::Impl::parsePostfixType(ParserSyntaxFactory& builder,
                                                              TokenCursor& cursor,
                                                              size_t limit) const {
   const size_t start = cursor.position();
@@ -554,7 +557,7 @@ Parser::Impl::TypeParseResult Parser::Impl::parsePostfixType(AstFactory& builder
   return result;
 }
 
-Parser::Impl::TypeParseResult Parser::Impl::parseFunctionType(AstFactory& builder,
+Parser::Impl::TypeParseResult Parser::Impl::parseFunctionType(ParserSyntaxFactory& builder,
                                                               TokenCursor& cursor,
                                                               size_t limit) const {
   const size_t start = cursor.position();
@@ -590,8 +593,8 @@ Parser::Impl::TypeParseResult Parser::Impl::parseFunctionType(AstFactory& builde
       cursor.position()};
 }
 
-Parser::Impl::TypeParseResult Parser::Impl::parseDynType(AstFactory& builder, TokenCursor& cursor,
-                                                         size_t limit) const {
+Parser::Impl::TypeParseResult Parser::Impl::parseDynType(ParserSyntaxFactory& builder,
+                                                         TokenCursor& cursor, size_t limit) const {
   const size_t start = cursor.position();
   if (start >= limit || !isIdentifierText(start, "dyn"_zc)) { return TypeParseResult(); }
   cursor.advance();
@@ -716,9 +719,8 @@ Parser::Impl::TypeParseResult Parser::Impl::parseDynType(AstFactory& builder, To
                          cursor.position()};
 }
 
-Parser::Impl::TypeParseResult Parser::Impl::parseAssociatedTypeProjection(AstFactory& builder,
-                                                                          TokenCursor& cursor,
-                                                                          size_t limit) const {
+Parser::Impl::TypeParseResult Parser::Impl::parseAssociatedTypeProjection(
+    ParserSyntaxFactory& builder, TokenCursor& cursor, size_t limit) const {
   const size_t start = cursor.position();
   if (start >= limit || cursor.peek() != ast::SyntaxKind::LessThan) { return TypeParseResult(); }
 
@@ -767,9 +769,8 @@ Parser::Impl::TypeParseResult Parser::Impl::parseAssociatedTypeProjection(AstFac
       cursor.position()};
 }
 
-Parser::Impl::TypeParseResult Parser::Impl::parseParenthesizedOrTupleType(AstFactory& builder,
-                                                                          TokenCursor& cursor,
-                                                                          size_t limit) const {
+Parser::Impl::TypeParseResult Parser::Impl::parseParenthesizedOrTupleType(
+    ParserSyntaxFactory& builder, TokenCursor& cursor, size_t limit) const {
   const size_t start = cursor.position();
   const size_t closeParen = findMatchingRightParen(start, limit);
   if (closeParen >= limit) {
@@ -841,7 +842,7 @@ Parser::Impl::TypeParseResult Parser::Impl::parseParenthesizedOrTupleType(AstFac
   return inner;
 }
 
-Parser::Impl::TypeParseResult Parser::Impl::parseBracketedType(AstFactory& builder,
+Parser::Impl::TypeParseResult Parser::Impl::parseBracketedType(ParserSyntaxFactory& builder,
                                                                TokenCursor& cursor,
                                                                size_t limit) const {
   const size_t start = cursor.position();
@@ -882,7 +883,8 @@ Parser::Impl::TypeParseResult Parser::Impl::parseBracketedType(AstFactory& build
       cursor.position()};
 }
 
-Parser::Impl::TypeParseResult Parser::Impl::parseTypeQuery(AstFactory& builder, TokenCursor& cursor,
+Parser::Impl::TypeParseResult Parser::Impl::parseTypeQuery(ParserSyntaxFactory& builder,
+                                                           TokenCursor& cursor,
                                                            size_t limit) const {
   const size_t start = cursor.position();
   const size_t pathStart = start + 1;
@@ -898,7 +900,7 @@ Parser::Impl::TypeParseResult Parser::Impl::parseTypeQuery(AstFactory& builder, 
                          cursor.position()};
 }
 
-ast::NodeList Parser::Impl::parseTypeArgumentList(AstFactory& builder, TokenCursor& cursor,
+ast::NodeList Parser::Impl::parseTypeArgumentList(ParserSyntaxFactory& builder, TokenCursor& cursor,
                                                   size_t limit, size_t& physicalEnd) const {
   zc::Vector<ast::NodeId> args;
   const size_t openAngle = cursor.position();
@@ -952,7 +954,8 @@ ast::NodeList Parser::Impl::parseTypeArgumentList(AstFactory& builder, TokenCurs
   return builder.makeList(args.asPtr());
 }
 
-Parser::Impl::TypeParseResult Parser::Impl::parseNamedType(AstFactory& builder, TokenCursor& cursor,
+Parser::Impl::TypeParseResult Parser::Impl::parseNamedType(ParserSyntaxFactory& builder,
+                                                           TokenCursor& cursor,
                                                            size_t limit) const {
   const size_t start = cursor.position();
   const size_t pathEnd = findTypePathEnd(start, limit);
@@ -970,8 +973,8 @@ Parser::Impl::TypeParseResult Parser::Impl::parseNamedType(AstFactory& builder, 
                          cursor.position()};
 }
 
-Parser::Impl::TypeParseResult Parser::Impl::parseAtomType(AstFactory& builder, TokenCursor& cursor,
-                                                          size_t limit) const {
+Parser::Impl::TypeParseResult Parser::Impl::parseAtomType(ParserSyntaxFactory& builder,
+                                                          TokenCursor& cursor, size_t limit) const {
   const size_t start = cursor.position();
   if (start >= limit) { return TypeParseResult(); }
 
@@ -1056,7 +1059,8 @@ Parser::Impl::TypeParseResult Parser::Impl::parseAtomType(AstFactory& builder, T
   return parseNamedType(builder, cursor, limit);
 }
 
-ast::NodeId Parser::Impl::parseTypeRange(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parseTypeRange(ParserSyntaxFactory& builder, size_t start,
+                                         size_t end) const {
   RecoveryFrameScope recoveryFrame(*this, RecoveryContext::Type, start);
   while (start < end && kindAt(end - 1) == ast::SyntaxKind::Semicolon) { --end; }
   if (start >= end) { return ast::NodeId(); }
@@ -1080,7 +1084,7 @@ ast::NodeId Parser::Impl::parseTypeRange(AstFactory& builder, size_t start, size
   return parsed.node;
 }
 
-ast::NodeList Parser::Impl::parseBoundListMembers(AstFactory& builder, size_t start,
+ast::NodeList Parser::Impl::parseBoundListMembers(ParserSyntaxFactory& builder, size_t start,
                                                   size_t end) const {
   zc::Vector<ast::NodeId> bounds;
   size_t cursor = start;
@@ -1112,21 +1116,21 @@ ast::NodeList Parser::Impl::parseBoundListMembers(AstFactory& builder, size_t st
   return builder.makeList(bounds.asPtr());
 }
 
-ast::NodeId Parser::Impl::parseTypeParameterBoundList(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseTypeParameterBoundList(ParserSyntaxFactory& builder, size_t start,
                                                       size_t end) const {
   const ast::NodeList bounds = parseBoundListMembers(builder, start, end);
   if (bounds.empty()) { return ast::NodeId(); }
   return builder.makeTypeParameterBoundList(rangeFor(start, end), bounds);
 }
 
-ast::NodeId Parser::Impl::parseAssociatedTypeBoundList(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseAssociatedTypeBoundList(ParserSyntaxFactory& builder, size_t start,
                                                        size_t end) const {
   const ast::NodeList bounds = parseBoundListMembers(builder, start, end);
   if (bounds.empty()) { return ast::NodeId(); }
   return builder.makeAssociatedTypeBoundList(rangeFor(start, end), bounds);
 }
 
-ast::NodeList Parser::Impl::parseTypeArguments(AstFactory& builder, size_t start,
+ast::NodeList Parser::Impl::parseTypeArguments(ParserSyntaxFactory& builder, size_t start,
                                                size_t end) const {
   zc::Vector<ast::NodeId> args;
   if (start == 0 || start > end || isAtEnd(end) || kindAt(start - 1) != ast::SyntaxKind::LessThan) {
@@ -1208,7 +1212,8 @@ bool Parser::Impl::isInitializerGenericAngle(size_t openAngle, size_t limit) con
   return next == ast::SyntaxKind::LeftParen || next == ast::SyntaxKind::LeftBrace;
 }
 
-ast::NodeId Parser::Impl::parseWherePredicate(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parseWherePredicate(ParserSyntaxFactory& builder, size_t start,
+                                              size_t end) const {
   while (start < end && kindAt(start) == ast::SyntaxKind::Comma) { ++start; }
   while (end > start && kindAt(end - 1) == ast::SyntaxKind::Comma) { --end; }
   if (start >= end) {
@@ -1234,7 +1239,8 @@ ast::NodeId Parser::Impl::parseWherePredicate(AstFactory& builder, size_t start,
   return builder.makeWherePred(rangeFor(start, end), ast::WhereBoundKind::Implements, ty, bound);
 }
 
-ast::NodeId Parser::Impl::parseWhereClause(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parseWhereClause(ParserSyntaxFactory& builder, size_t start,
+                                           size_t end) const {
   if (start >= end || !isIdentifierText(start, "where"_zc)) { return ast::NodeId(); }
 
   zc::Vector<ast::NodeId> preds;
@@ -1260,8 +1266,8 @@ ast::NodeId Parser::Impl::parseWhereClause(AstFactory& builder, size_t start, si
   return builder.makeWhereClause(rangeFor(start, end), builder.makeList(preds.asPtr()));
 }
 
-ast::NodeId Parser::Impl::parseTypeParameters(AstFactory& builder, size_t start, size_t limit,
-                                              ast::NodeId whereClause) const {
+ast::NodeId Parser::Impl::parseTypeParameters(ParserSyntaxFactory& builder, size_t start,
+                                              size_t limit, ast::NodeId whereClause) const {
   if (start >= limit || kindAt(start) != ast::SyntaxKind::LessThan) { return ast::NodeId(); }
 
   // Run existing diagnostics on the type parameter list.

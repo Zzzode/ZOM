@@ -173,5 +173,20 @@ ZC_TEST("Lexeme bridge handles a no-trivia source") {
   ZC_EXPECT(stream.lexemes()[0].tag() == CstLexemeTag::Token);
 }
 
+ZC_TEST("Lexeme bridge retains an invalid source byte") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto source = zc::str("let value = ", "\x01", ";");
+  auto lexed = lexSource(*sourceManager, source);
+  auto result = buildLexemeStreamFromTokens(lexed.bufferBytes, lexed.tokens.asPtr());
+  ZC_REQUIRE(result.is<VerifiedLexemeStream>());
+  const auto& stream = result.get<VerifiedLexemeStream>();
+  ZC_EXPECT(reconstructsSource(stream, lexed.bufferBytes));
+  bool foundInvalid = false;
+  for (const auto& lexeme : stream.lexemes()) {
+    foundInvalid = foundInvalid || lexeme.tag() == CstLexemeTag::Invalid;
+  }
+  ZC_EXPECT(foundInvalid);
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::cst

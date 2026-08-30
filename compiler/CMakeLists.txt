@@ -19,6 +19,11 @@ add_subdirectory(mir)
 add_subdirectory(lir)
 add_subdirectory(ownership)
 
+# RFC 0023: the production parser now emits the recoverable CST event stream,
+# and the CST verifier replays it through the AST schema authority.
+target_link_libraries(cst PUBLIC ast diagnostics identity lexer source)
+target_link_libraries(parser PUBLIC cst)
+
 # RFC 0021 LLVM backend translation shim. Built and linked ONLY when the
 # fail-closed LLVM discovery gate is enabled; the frontend build is unaffected.
 if(ZOM_ENABLE_LLVM_BACKEND)

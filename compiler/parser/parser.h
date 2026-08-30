@@ -14,10 +14,11 @@
 
 #pragma once
 
+#include "compiler/ast/tree.h"
+#include "compiler/cst/parser-event-stream.h"
+#include "compiler/parser/token-snapshot.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
-#include "compiler/ast/tree.h"
-#include "compiler/parser/token-snapshot.h"
 
 namespace zomlang {
 namespace compiler {
@@ -38,7 +39,8 @@ class SourceManager;
 
 namespace parser {
 
-/// \brief Recursive-descent parser facade that emits the schema-backed AST tree.
+/// \brief Recursive-descent parser facade that emits a recoverable event stream
+/// and publishes a schema-backed AST only through `ParseSyntaxVerifier`.
 class Parser {
 public:
   Parser(const source::SourceManager& sm, diagnostics::SourceDiagnosticDraftBuffer& diagnosticFacts,
@@ -48,11 +50,15 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(Parser);
 
-  /// \brief Parse the source file and return the syntax tree.
+  /// \brief Parse the source file and return the independently reconstructed AST.
   zc::Maybe<ast::Tree> parse();
 
   /// \brief Return complete token provenance only after a successful parse.
   ZC_NODISCARD zc::Maybe<ParsedTokenSnapshot> takeTokenSnapshot();
+
+  /// \brief Take the immutable recoverable syntax result after any completed
+  /// parser traversal. The result is single-use and may contain recovery.
+  ZC_NODISCARD zc::Maybe<cst::RecoverableSyntaxTree> takeRecoverableSyntax();
 
 private:
   struct Impl;

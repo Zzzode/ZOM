@@ -8,12 +8,12 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "compiler/diagnostics/consumer/diagnostic-emitter.h"
+#include "compiler/diagnostics/fact/diagnostic-fact.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
-#include "compiler/diagnostics/consumer/diagnostic-emitter.h"
-#include "compiler/diagnostics/fact/diagnostic-fact.h"
 
 namespace zomlang::compiler {
 namespace source {
@@ -22,6 +22,13 @@ class SourceManager;
 }  // namespace source
 
 namespace diagnostics {
+
+/// \brief One parser diagnostic retained for recoverable-syntax production.
+struct ParserRecoveryDiagnostic final {
+  DiagID code;
+  uint64_t primaryByteOffset;
+  zc::Vector<zc::String> arguments;
+};
 
 /// \brief Complete canonical source facts and their revision-local provenance authority.
 class PublishedSourceDiagnostics final {
@@ -66,6 +73,8 @@ public:
   ZC_NODISCARD size_t errorCount() const noexcept;
   ZC_NODISCARD bool hasInvariantViolation() const noexcept;
   ZC_NODISCARD zc::StringPtr invariantMessage() const ZC_LIFETIMEBOUND;
+  /// \brief Deep-copy parser-lane diagnostic summaries for recovery production.
+  ZC_NODISCARD zc::Vector<ParserRecoveryDiagnostic> copyParserRecoveryDiagnostics() const;
   void reportInvariant(zc::String&& message);
 
   /// \brief Publishes deterministic facts and complete provenance for one stable source.

@@ -36,6 +36,16 @@ enum class RecoveryElementTag : uint8_t {
   SkippedTokens = 0x03,
 };
 
+/// \brief The closed parser syntax category used by `MissingSubtree` recovery.
+enum class RecoverySyntaxCategory : uint32_t {
+  SourceFile = 0x01,
+  Declaration = 0x02,
+  Statement = 0x03,
+  Expression = 0x04,
+  Type = 0x05,
+  Pattern = 0x06,
+};
+
 /// \brief One recovery annotation over a verified lexeme stream.
 ///
 /// RFC 0023 "Recoverable Parsing":
@@ -66,6 +76,10 @@ public:
 
   /// \brief Builds a missing-subtree element.
   ZC_NODISCARD static RecoveryElement missingSubtree(uint32_t expectedCategory, uint64_t anchor);
+  ZC_NODISCARD static RecoveryElement missingSubtree(RecoverySyntaxCategory expectedCategory,
+                                                     uint64_t anchor) {
+    return missingSubtree(static_cast<uint32_t>(expectedCategory), anchor);
+  }
 
   /// \brief Builds a skipped-tokens element.
   /// \return none when `lexemeCount` is zero (an empty run is not a skip) or
@@ -170,10 +184,9 @@ enum class RecoveryFailure : uint8_t {
 /// carries a `RecoverySequenceId`. It has no public aggregate initializer; only
 /// `RecoverySequenceVerifier::verify` constructs one.
 ///
-/// This slice models and verifies the recovery sequence as pure data over a
-/// verified lexeme stream. It does not run the live parser, build a
-/// `RecoverableSyntaxTree`, or bind `ParserDiagnosticFact`s; those are later RFC
-/// 0023 slices.
+/// The production parser binds this verified sequence into
+/// `RecoverableSyntaxTree`. Explicit recovery-element production for malformed
+/// syntax remains fail-closed; clean parses bind the verified empty sequence.
 class VerifiedRecoverySequence final {
 public:
   VerifiedRecoverySequence(VerifiedRecoverySequence&&) noexcept = default;

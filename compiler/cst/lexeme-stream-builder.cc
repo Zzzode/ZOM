@@ -15,7 +15,10 @@
 #include "compiler/cst/lexeme-stream-builder.h"
 
 #include "compiler/ast/kinds.h"
+#include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/crypto/sha256.h"
+#include "compiler/source/manager.h"
+#include "zc/core/debug.h"
 #include "zc/core/vector.h"
 
 namespace zomlang::compiler::cst {
@@ -44,6 +47,28 @@ bool addTrivia(zc::Vector<CstLexeme>& lexemes, zc::ArrayPtr<const uint8_t> bytes
   if (end <= start || end > bytes.size()) { return false; }
   auto lexeme = CstLexeme::trivia(kind, ByteRange{start, end}, bytes.slice(start, end));
   if (lexeme == zc::none) { return false; }
+  ZC_IF_SOME(value, lexeme) { lexemes.add(zc::mv(value)); }
+  return true;
+}
+
+identity::Sha256Digest invalidDigest(zc::ArrayPtr<const uint8_t> spelling, uint64_t start,
+                                     uint64_t end) {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString("zom.cst-invalid-lexeme"_zcb);
+  encoder.encodeUint64(start);
+  encoder.encodeUint64(end);
+  encoder.encodeByteString(spelling);
+  auto digest = identity::sha256(encoder.finish().asPtr());
+  return ZC_REQUIRE_NONNULL(zc::mv(digest), "invalid lexeme digest construction must succeed");
+}
+
+bool addInvalid(zc::Vector<CstLexeme>& lexemes, zc::ArrayPtr<const uint8_t> bytes, uint64_t start,
+                uint64_t end) {
+  if (end <= start || end > bytes.size()) return false;
+  const auto spelling = bytes.slice(start, end);
+  auto lexeme =
+      CstLexeme::invalid(ByteRange{start, end}, spelling, invalidDigest(spelling, start, end));
+  if (lexeme == zc::none) return false;
   ZC_IF_SOME(value, lexeme) { lexemes.add(zc::mv(value)); }
   return true;
 }
@@ -86,14 +111,19 @@ bool addTriviaGap(zc::Vector<CstLexeme>& lexemes, zc::ArrayPtr<const uint8_t> by
         }
         ++run;
       }
-      // An unterminated block comment cannot appear in an accepted token gap.
-      if (!closed) { return false; }
+      if (!closed) return addInvalid(lexemes, bytes, cursor, end);
       if (!addTrivia(lexemes, bytes, TriviaKind::BlockComment, cursor, run)) { return false; }
       cursor = run;
       continue;
     }
-    // A gap byte that is neither whitespace nor a comment opener is not trivia.
-    return false;
+    uint64_t run = cursor + 1;
+    while (
+        run < end && !isWhitespaceByte(bytes[run]) &&
+        !(bytes[run] == '/' && run + 1 < end && (bytes[run + 1] == '/' || bytes[run + 1] == '*'))) {
+      ++run;
+    }
+    if (!addInvalid(lexemes, bytes, cursor, run)) return false;
+    cursor = run;
   }
   return true;
 }
@@ -138,9 +168,15 @@ LexemeStreamResult buildLexemeStreamFromTokens(zc::ArrayPtr<const zc::byte> buff
     if (tokenEnd == tokenStart) {
       return LexemeStreamResult(LexemePartitionFailure::SpellingWidthMismatch);
     }
-    auto lexeme =
-        CstLexeme::token(static_cast<uint32_t>(token.getKind()), ByteRange{tokenStart, tokenEnd},
-                         bytes.slice(tokenStart, tokenEnd));
+    zc::Maybe<CstLexeme> lexeme;
+    if (token.getKind() == ast::SyntaxKind::Unknown) {
+      const auto spelling = bytes.slice(tokenStart, tokenEnd);
+      lexeme = CstLexeme::invalid(ByteRange{tokenStart, tokenEnd}, spelling,
+                                  invalidDigest(spelling, tokenStart, tokenEnd));
+    } else {
+      lexeme = CstLexeme::token(static_cast<uint32_t>(token.getKind()),
+                                ByteRange{tokenStart, tokenEnd}, bytes.slice(tokenStart, tokenEnd));
+    }
     if (lexeme == zc::none) {
       return LexemeStreamResult(LexemePartitionFailure::SpellingWidthMismatch);
     }
@@ -156,6 +192,12 @@ LexemeStreamResult buildLexemeStreamFromTokens(zc::ArrayPtr<const zc::byte> buff
   ZC_IF_SOME(value, contentDigest) { digest = value; }
   return LexemePartitionVerifier::verify(
       LexemeStreamRequest{digest, size, lexemes.releaseAsArray()});
+}
+
+LexemeStreamResult buildLexemeStreamFromSource(const source::SourceManager& sources,
+                                               const source::BufferId& buffer,
+                                               zc::ArrayPtr<const lexer::Token> tokens) {
+  return buildLexemeStreamFromTokens(sources.getEntireTextForBuffer(buffer), tokens);
 }
 
 }  // namespace zomlang::compiler::cst

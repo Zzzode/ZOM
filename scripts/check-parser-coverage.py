@@ -13,6 +13,7 @@ except ModuleNotFoundError:
 ROOT = Path(__file__).resolve().parents[1]
 GRAMMAR = ROOT / "docs" / "spec" / "chapters" / "17-grammar-reference.md"
 PARSER_DIR = ROOT / "compiler" / "parser"
+PARSER_HEADER = PARSER_DIR / "parser.h"
 PARSER_IMPL = PARSER_DIR / "parser-impl.h"
 TOKEN_CURSOR = PARSER_DIR / "token-cursor.h"
 PARSER_SOURCES = sorted(PARSER_DIR.rglob("*.cc"))
@@ -35,12 +36,18 @@ DESIGN_DOC_MARKERS = {
         "Lexer::lex(Token&)",
         "Lazy TokenStream",
         "TokenCursor",
+        "ParserEventBuilder",
+        "RecoverableSyntaxTree",
+        "ParseSyntaxVerifier",
         "zc::none",
     ],
     DESIGN_DIR / "compiler-contracts.md": [
         "Lexer::lex(Token&)",
         "lazy retained `TokenStream`",
         "TokenCursor",
+        "ParserEventBuilder",
+        "RecoverableSyntaxTree",
+        "ParseSyntaxVerifier",
         "Parser::parse()` returns `zc::none`",
     ],
 }
@@ -263,12 +270,27 @@ def parser_source_text() -> str:
 
 
 def validate_parser_architecture() -> None:
+    parser_header = PARSER_HEADER.read_text(encoding="utf-8")
     impl_text = PARSER_IMPL.read_text(encoding="utf-8")
     cursor_text = TOKEN_CURSOR.read_text(encoding="utf-8")
     if "with all inline methods" in impl_text:
         fail(f"{rel(PARSER_IMPL)} still describes Parser::Impl methods as inline")
-    if "class AstFactory final" not in impl_text:
-        fail(f"{rel(PARSER_IMPL)} does not define the parser AstFactory boundary")
+    if "class ParserSyntaxFactory final" not in impl_text:
+        fail(
+            f"{rel(PARSER_IMPL)} does not define the parser ParserSyntaxFactory boundary"
+        )
+    for required in [
+        "cst::ParserEventBuilder builder;",
+        "cst::ParserEventStreamRequest finish()",
+        "buildRecoveryElements(",
+    ]:
+        if required not in impl_text:
+            fail(f"{rel(PARSER_IMPL)} is missing recoverable parser event boundary: {required}")
+    if "takeRecoverableSyntax()" not in parser_header:
+        fail(f"{rel(PARSER_HEADER)} does not expose the single-use recoverable parser result")
+    parser_text = parser_source_text()
+    if "RecoverySequenceVerifier::verify(lexemes, zc::Array<cst::RecoveryElement>())" in parser_text:
+        fail(f"{rel(PARSER_DIR / 'parser.cc')} still binds an always-empty recovery sequence")
     if re.search(r"\n\s+ast::NodeId\s+makeNode\s*\(", impl_text):
         fail(f"{rel(PARSER_IMPL)} exposes a generic AstFactory::makeNode escape hatch")
     if re.search(r"\n\s+void\s+write(Node|String|Ident|BigInt|Float|NodeList|IdentList)\s*\(", impl_text):
@@ -309,11 +331,16 @@ def validate_parser_architecture() -> None:
     for path in PARSER_SOURCES:
         text = path.read_text(encoding="utf-8")
         if "ast::TreeBuilder" in text:
-            fail(f"{rel(path)} directly depends on ast::TreeBuilder instead of AstFactory")
+            fail(
+                f"{rel(path)} directly depends on ast::TreeBuilder instead of "
+                "ParserSyntaxFactory"
+            )
         if "ast::NodePayload" in text or "payload.words" in text:
             fail(f"{rel(path)} writes raw AST payload layout instead of typed factory methods")
         if re.search(r"(?<!\.)\bwrite(Node|String|Ident|BigInt|Float|NodeList|IdentList)\s*\(", text):
-            fail(f"{rel(path)} calls a raw AST payload writer outside AstFactory")
+            fail(
+                f"{rel(path)} calls a raw AST payload writer outside ParserSyntaxFactory"
+            )
         if "builder.makeNode(" in text:
             fail(f"{rel(path)} constructs AST nodes through the generic TreeBuilder API")
         if "lexAll" in text:
@@ -377,8 +404,8 @@ def parser_functions() -> set[str]:
     functions = set(re.findall(r"\bParser::Impl::(parse[A-Za-z0-9_]*)\s*\(", text))
     if "Parser::parse(" in text:
         functions.add("parse")
-    if "Parser::Impl::buildTree(" in text:
-        functions.add("buildTree")
+    if "Parser::Impl::buildEventStream(" in text:
+        functions.add("buildEventStream")
     return functions
 
 

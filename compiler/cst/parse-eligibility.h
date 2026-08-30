@@ -77,9 +77,9 @@ private:
 /// verification succeed. The last condition is already discharged by the
 /// existence of `stream` (a `VerifiedLexemeStream` is constructed only after the
 /// partition and content-digest checks pass), so this gate decides the first
-/// three, in RFC order, and reports the first violated condition. The remaining
-/// RFC 0002 schema check runs over the constructed `ast::Tree` and is a later
-/// slice.
+/// three, in RFC order, and reports the first violated condition.
+/// `ParseSyntaxVerifier` then replays the parser event stream and runs the RFC
+/// 0002 schema check before publishing `ast::Tree`.
 ///
 /// The recovery sequence must be the one verified against `stream`; a sequence
 /// bound to a different `LexemeStreamId` is rejected as a stream mismatch before

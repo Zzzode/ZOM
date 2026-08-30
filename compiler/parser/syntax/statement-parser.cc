@@ -363,7 +363,7 @@ Parser::Impl::ForStatementParts Parser::Impl::parseForStatementParts(size_t head
   return parts;
 }
 
-ast::NodeId Parser::Impl::parseBlock(AstFactory& builder, size_t openBrace, size_t limit,
+ast::NodeId Parser::Impl::parseBlock(ParserSyntaxFactory& builder, size_t openBrace, size_t limit,
                                      bool allowFinalExpression) const {
   zc::Vector<ast::NodeId> items;
   if (openBrace >= limit || kindAt(openBrace) != ast::SyntaxKind::LeftBrace) {
@@ -421,7 +421,8 @@ ast::NodeId Parser::Impl::parseBlock(AstFactory& builder, size_t openBrace, size
   return builder.makeBlockStmt(rangeFor(openBrace, bodyEnd + 1), builder.makeList(items.asPtr()));
 }
 
-ast::NodeId Parser::Impl::parseStatementBody(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parseStatementBody(ParserSyntaxFactory& builder, size_t start,
+                                             size_t end) const {
   if (start >= end) { return parseBlock(builder, end, end); }
 
   if (kindAt(start) == ast::SyntaxKind::LeftBrace) {
@@ -437,7 +438,8 @@ ast::NodeId Parser::Impl::parseStatementBody(AstFactory& builder, size_t start, 
                                   SourceElementContext::Statement);
 }
 
-ast::NodeId Parser::Impl::parseLetStatement(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parseLetStatement(ParserSyntaxFactory& builder, size_t start,
+                                            size_t end) const {
   if (!requireTrailingSemicolon(start, end)) { return ast::NodeId(); }
 
   size_t declarationsEnd = end;
@@ -452,7 +454,7 @@ ast::NodeId Parser::Impl::parseLetStatement(AstFactory& builder, size_t start, s
                              declarations);
 }
 
-ast::NodeId Parser::Impl::parseReturnStatement(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseReturnStatement(ParserSyntaxFactory& builder, size_t start,
                                                size_t end) const {
   if (!requireTrailingSemicolon(start, end)) { return ast::NodeId(); }
 
@@ -463,7 +465,7 @@ ast::NodeId Parser::Impl::parseReturnStatement(AstFactory& builder, size_t start
   return builder.makeReturnStmt(rangeFor(start, end), value);
 }
 
-ast::NodeId Parser::Impl::parseSuspendStatement(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseSuspendStatement(ParserSyntaxFactory& builder, size_t start,
                                                 size_t end) const {
   if (!requireTrailingSemicolon(start, end)) { return ast::NodeId(); }
 
@@ -505,7 +507,8 @@ size_t Parser::Impl::findMatchingRightParen(size_t openParen, size_t limit) cons
   return limit;
 }
 
-ast::NodeId Parser::Impl::parseIfStatement(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parseIfStatement(ParserSyntaxFactory& builder, size_t start,
+                                           size_t end) const {
   if (start + 1 >= end || kindAt(start + 1) != ast::SyntaxKind::LeftParen) {
     if (!shouldSuppressDiagnostic(start + 1)) {
       diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1),
@@ -523,7 +526,8 @@ ast::NodeId Parser::Impl::parseIfStatement(AstFactory& builder, size_t start, si
                             parseStatementBody(builder, parts.thenStart, parts.thenEnd), elseStmt);
 }
 
-ast::NodeId Parser::Impl::parseWhileStatement(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parseWhileStatement(ParserSyntaxFactory& builder, size_t start,
+                                              size_t end) const {
   if (start + 1 >= end || kindAt(start + 1) != ast::SyntaxKind::LeftParen) {
     if (!shouldSuppressDiagnostic(start + 1)) {
       diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1),
@@ -539,7 +543,7 @@ ast::NodeId Parser::Impl::parseWhileStatement(AstFactory& builder, size_t start,
                                parseStatementBody(builder, parts.bodyStart, parts.bodyEnd));
 }
 
-ast::NodeId Parser::Impl::parseDoWhileStatement(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseDoWhileStatement(ParserSyntaxFactory& builder, size_t start,
                                                 size_t end) const {
   if (!requireTrailingSemicolon(start, end)) { return ast::NodeId(); }
 
@@ -552,7 +556,8 @@ ast::NodeId Parser::Impl::parseDoWhileStatement(AstFactory& builder, size_t star
       rangeFor(start, end), parseStatementBody(builder, parts.bodyStart, parts.bodyEnd), cond);
 }
 
-ast::NodeId Parser::Impl::parseBreakStatement(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parseBreakStatement(ParserSyntaxFactory& builder, size_t start,
+                                              size_t end) const {
   if (!requireTrailingSemicolon(start, end)) { return ast::NodeId(); }
 
   ast::IdentId label;
@@ -562,7 +567,7 @@ ast::NodeId Parser::Impl::parseBreakStatement(AstFactory& builder, size_t start,
   return builder.makeBreakStmt(rangeFor(start, end), label);
 }
 
-ast::NodeId Parser::Impl::parseContinueStatement(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseContinueStatement(ParserSyntaxFactory& builder, size_t start,
                                                  size_t end) const {
   if (!requireTrailingSemicolon(start, end)) { return ast::NodeId(); }
 
@@ -573,7 +578,7 @@ ast::NodeId Parser::Impl::parseContinueStatement(AstFactory& builder, size_t sta
   return builder.makeContinueStatement(rangeFor(start, end), label);
 }
 
-ast::NodeId Parser::Impl::parseLabeledStatement(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseLabeledStatement(ParserSyntaxFactory& builder, size_t start,
                                                 size_t end) const {
   if (start + 2 >= end) {
     diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
@@ -599,7 +604,8 @@ ast::NodeId Parser::Impl::parseLabeledStatement(AstFactory& builder, size_t star
   return builder.makeLabeledStatement(rangeFor(start, end), internIdent(builder, start), statement);
 }
 
-ast::NodeId Parser::Impl::parseForStatement(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parseForStatement(ParserSyntaxFactory& builder, size_t start,
+                                            size_t end) const {
   if (start + 1 >= end || kindAt(start + 1) != ast::SyntaxKind::LeftParen) {
     if (!shouldSuppressDiagnostic(start + 1)) {
       diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1),
@@ -638,7 +644,8 @@ ast::NodeId Parser::Impl::parseForStatement(AstFactory& builder, size_t start, s
                              parseStatementBody(builder, parts.bodyStart, parts.bodyEnd));
 }
 
-ast::NodeId Parser::Impl::parseForInStatement(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parseForInStatement(ParserSyntaxFactory& builder, size_t start,
+                                              size_t end) const {
   const ForStatementParts parts = parseForStatementParts(start, end);
 
   ast::NodeId binding;
@@ -658,7 +665,8 @@ ast::NodeId Parser::Impl::parseForInStatement(AstFactory& builder, size_t start,
                                     parseStatementBody(builder, parts.bodyStart, parts.bodyEnd));
 }
 
-ast::NodeId Parser::Impl::parseMatchStatement(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parseMatchStatement(ParserSyntaxFactory& builder, size_t start,
+                                              size_t end) const {
   const MatchStatementParts parts = parseMatchStatementParts(start, end);
 
   zc::Vector<ast::NodeId> arms;
@@ -729,7 +737,7 @@ ast::NodeId Parser::Impl::parseMatchStatement(AstFactory& builder, size_t start,
       builder.makeList(arms.asPtr()));
 }
 
-ast::NodeId Parser::Impl::parseExternBlockDeclaration(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseExternBlockDeclaration(ParserSyntaxFactory& builder, size_t start,
                                                       size_t end) const {
   size_t cursor = start;
   if (cursor >= end || !isSoftKeyword(cursor, "extern"_zc)) {
@@ -786,7 +794,8 @@ ast::NodeId Parser::Impl::parseExternBlockDeclaration(AstFactory& builder, size_
   return builder.makeExternBlock(rangeFor(start, end), abi, builder.makeList(items.asPtr()));
 }
 
-ast::NodeId Parser::Impl::makeImplIfaceList(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::makeImplIfaceList(ParserSyntaxFactory& builder, size_t start,
+                                            size_t end) const {
   zc::Vector<ast::NodeId> ifaces;
   size_t cursor = start;
   while (cursor < end) {
@@ -810,7 +819,7 @@ ast::NodeId Parser::Impl::makeImplIfaceList(AstFactory& builder, size_t start, s
   return builder.makeImplIfaceList(rangeFor(start, end), builder.makeList(ifaces.asPtr()));
 }
 
-ast::NodeId Parser::Impl::parseInterfaceHeritage(AstFactory& builder, size_t headerStart,
+ast::NodeId Parser::Impl::parseInterfaceHeritage(ParserSyntaxFactory& builder, size_t headerStart,
                                                  size_t headerEnd) const {
   if (headerStart >= headerEnd) { return ast::NodeId(); }
 
@@ -830,7 +839,8 @@ ast::NodeId Parser::Impl::parseInterfaceHeritage(AstFactory& builder, size_t hea
   return makeImplIfaceList(builder, colon + 1, headerEnd);
 }
 
-ast::NodeId Parser::Impl::parseSpawnStatement(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parseSpawnStatement(ParserSyntaxFactory& builder, size_t start,
+                                              size_t end) const {
   size_t exprEnd = end;
   if (start < exprEnd && kindAt(exprEnd - 1) == ast::SyntaxKind::Semicolon) { --exprEnd; }
 

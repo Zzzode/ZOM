@@ -19,6 +19,11 @@
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 
+namespace zomlang::compiler::source {
+class BufferId;
+class SourceManager;
+}  // namespace zomlang::compiler::source
+
 namespace zomlang::compiler::cst {
 
 /// \brief Builds a verified lexeme stream from the live lexer's token output over
@@ -33,9 +38,8 @@ namespace zomlang::compiler::cst {
 /// inter-token byte gap and any trailing gap, then verifying the result through
 /// `LexemePartitionVerifier`.
 ///
-/// This is the first bridge from the live lexer to a verified lexeme stream. It
-/// does not yet build parser events, a `RecoverableSyntaxTree`, or replace
-/// `ast::Tree` construction; those are later RFC 0023 slices.
+/// The production parser combines this stream with its construction-event
+/// stream and verified recovery sequence into `RecoverableSyntaxTree`.
 ///
 /// Trivia sub-kind: each inter-token gap is split into precise trivia lexemes
 /// mirroring the lexer's own scanning -- maximal whitespace runs
@@ -53,5 +57,11 @@ namespace zomlang::compiler::cst {
 ///         out-of-order token, or a byte-count mismatch fails closed).
 ZC_NODISCARD LexemeStreamResult buildLexemeStreamFromTokens(
     zc::ArrayPtr<const zc::byte> bufferBytes, zc::ArrayPtr<const lexer::Token> tokens);
+
+/// \brief Builds the verified lexeme stream through the CST-owned source-buffer
+/// access boundary.
+ZC_NODISCARD LexemeStreamResult
+buildLexemeStreamFromSource(const source::SourceManager& sources, const source::BufferId& buffer,
+                            zc::ArrayPtr<const lexer::Token> tokens);
 
 }  // namespace zomlang::compiler::cst

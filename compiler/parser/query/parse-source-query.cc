@@ -5,9 +5,9 @@
 
 #include "compiler/parser/query/parse-source-query.h"
 
-#include "zc/core/debug.h"
 #include "compiler/basic/string-pool.h"
 #include "compiler/basic/zomlang-opts.h"
+#include "compiler/cst/parser-event-stream.h"
 #include "compiler/diagnostics/core/diagnostic-info.h"
 #include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
@@ -15,6 +15,7 @@
 #include "compiler/identity/key/source-key.h"
 #include "compiler/parser/parser.h"
 #include "compiler/source/manager.h"
+#include "zc/core/debug.h"
 
 namespace zomlang::compiler::parser {
 namespace {
@@ -246,8 +247,10 @@ zc::Maybe<ParseRejected> reconstructParseRejection(
   const auto langOptions = languageOptions(options);
   Parser sourceParser(sourceManager, diagnosticFacts, langOptions, stringPool, buffer);
   auto tree = sourceParser.parse();
+  auto recoverable = sourceParser.takeRecoverableSyntax();
   const bool hasSyntaxErrors = diagnosticFacts.hasErrors();
-  if (diagnosticFacts.hasInvariantViolation() || (tree != zc::none && !hasSyntaxErrors)) {
+  if (diagnosticFacts.hasInvariantViolation() || recoverable == zc::none ||
+      (tree != zc::none && !hasSyntaxErrors)) {
     return zc::none;
   }
   auto published = diagnosticFacts.publish(ZC_ASSERT_NONNULL(sourceFileKey), source.bytes().size());
@@ -259,6 +262,10 @@ zc::Maybe<ParseRejected> reconstructParseRejection(
   if (rejected == zc::none || ZC_ASSERT_NONNULL(rejected).facts() != expectedFacts) {
     return zc::none;
   }
+  auto bound = cst::RecoverableSyntaxDiagnosticBinder::bind(
+      zc::mv(ZC_ASSERT_NONNULL(recoverable)), ZC_ASSERT_NONNULL(rejected).facts(),
+      ZC_ASSERT_NONNULL(rejected).provenance());
+  if (!bound.is<cst::RecoverableSyntaxTree>()) return zc::none;
   return zc::mv(rejected);
 }
 
@@ -313,18 +320,25 @@ query::CapabilityProviderResult<ParseSourceQuery> ParseSourceQuery::provide(
   const auto langOptions = languageOptions(options);
   Parser sourceParser(sourceManager, diagnosticFacts, langOptions, stringPool, buffer);
   auto tree = sourceParser.parse();
+  auto recoverable = sourceParser.takeRecoverableSyntax();
   if (diagnosticFacts.hasInvariantViolation()) {
     return query::CapabilityProviderResult<ParseSourceQuery>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   const bool hasSyntaxErrors = diagnosticFacts.hasErrors();
   auto published = diagnosticFacts.publish(ZC_ASSERT_NONNULL(sourceFileKey), source.bytes().size());
-  if (published == zc::none) {
+  if (published == zc::none || recoverable == zc::none) {
     return query::CapabilityProviderResult<ParseSourceQuery>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   auto facts = ZC_ASSERT_NONNULL(published).takeFacts();
   auto provenance = ZC_ASSERT_NONNULL(published).takeProvenance();
+  auto boundRecoverable = cst::RecoverableSyntaxDiagnosticBinder::bind(
+      zc::mv(ZC_ASSERT_NONNULL(recoverable)), facts.asPtr(), provenance);
+  if (!boundRecoverable.is<cst::RecoverableSyntaxTree>()) {
+    return query::CapabilityProviderResult<ParseSourceQuery>::runtimeRejected(
+        query::QueryRuntimeFailure::InvariantViolation);
+  }
   if (tree == zc::none || hasSyntaxErrors) {
     auto failure = ParseRejected::fromFacts(key.canonicalSourceBytes(), source.contentDigest(),
                                             source.bytes().size(), parserOptions(options),

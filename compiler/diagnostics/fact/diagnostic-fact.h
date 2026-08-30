@@ -7,12 +7,13 @@
 
 #include <cstdint>
 
+#include "compiler/diagnostics/core/diagnostic-ids.h"
+#include "compiler/identity/crypto/sha256.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "compiler/diagnostics/core/diagnostic-ids.h"
 
 namespace zomlang::compiler::identity {
 class ModuleKey;
@@ -27,6 +28,22 @@ class StableBindingDiagnosticFactCodecAccess;
 namespace zomlang::compiler::diagnostics {
 
 class DiagnosticFactCodecAccess;
+
+/// \brief Domain-separated immutable identity of one complete DiagnosticFact.
+class DiagnosticFactId final {
+public:
+  constexpr DiagnosticFactId() noexcept = default;
+  ZC_NODISCARD static DiagnosticFactId fromDigest(const identity::Sha256Digest& digest) noexcept {
+    return DiagnosticFactId(digest);
+  }
+  ZC_NODISCARD const identity::Sha256Digest& digest() const noexcept { return value; }
+  bool operator==(const DiagnosticFactId& other) const noexcept { return value == other.value; }
+  bool operator!=(const DiagnosticFactId& other) const noexcept { return !(*this == other); }
+
+private:
+  explicit DiagnosticFactId(const identity::Sha256Digest& digest) noexcept : value(digest) {}
+  identity::Sha256Digest value;
+};
 
 enum class SourceDiagnosticPhase : uint8_t { Lex = 0x01, Parse = 0x02 };
 enum class SourceDiagnosticEmitter : uint8_t { Lexer = 0x01, Parser = 0x02 };
@@ -274,5 +291,7 @@ ZC_NODISCARD bool validateDiagnosticProvenance(
     zc::ArrayPtr<const DiagnosticFact> facts,
     const SourceDiagnosticProvenanceMap& provenance) noexcept;
 ZC_NODISCARD bool isSourceSyntaxDiagnostic(DiagID code) noexcept;
+/// \brief Computes the exact canonical identity of one diagnostic fact.
+ZC_NODISCARD zc::Maybe<DiagnosticFactId> computeDiagnosticFactId(const DiagnosticFact& fact);
 
 }  // namespace zomlang::compiler::diagnostics

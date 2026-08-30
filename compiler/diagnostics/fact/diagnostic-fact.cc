@@ -5,12 +5,12 @@
 
 #include "compiler/diagnostics/fact/diagnostic-fact.h"
 
-#include "zc/core/debug.h"
-#include "zc/core/one-of.h"
 #include "compiler/diagnostics/core/diagnostic-info.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/key/source-key.h"
+#include "zc/core/debug.h"
+#include "zc/core/one-of.h"
 
 namespace zomlang::compiler::diagnostics {
 
@@ -1129,6 +1129,21 @@ bool isSourceSyntaxDiagnostic(DiagID code) noexcept {
     default:
       return false;
   }
+}
+
+zc::Maybe<DiagnosticFactId> computeDiagnosticFactId(const DiagnosticFact& fact) {
+  const DiagnosticFactCodecLimits limits{
+      .maximumFacts = 1,
+      .maximumEncodedBytes = 64 * 1024 * 1024,
+      .maximumProvenanceComponentsPerKey = 8,
+      .maximumArgumentBytesPerRecord = 64 * 1024 * 1024,
+      .maximumSecondaryPerFact = 128,
+  };
+  auto encoded = encodeDiagnosticFacts(zc::none, {&fact, 1}, limits);
+  if (encoded == zc::none) return zc::none;
+  auto digest = identity::sha256(ZC_ASSERT_NONNULL(encoded).asPtr());
+  if (digest == zc::none) return zc::none;
+  return DiagnosticFactId::fromDigest(ZC_ASSERT_NONNULL(digest));
 }
 
 zc::Maybe<zc::Array<uint8_t>> encodeDiagnosticFacts(zc::Maybe<zc::MemoryResource&> outputResource,

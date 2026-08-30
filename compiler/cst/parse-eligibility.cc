@@ -42,8 +42,8 @@ ParseEligibility parseEligibility(const VerifiedLexemeStream& stream,
   }
 
   // (4) Byte coverage and digest verification are already discharged by the
-  // existence of the VerifiedLexemeStream. The RFC 0002 schema check over the
-  // constructed ast::Tree is a later slice.
+  // existence of the VerifiedLexemeStream. ParseSyntaxVerifier performs event
+  // replay and the RFC 0002 schema check before AST publication.
   return ParseEligibility::acceptClean();
 }
 

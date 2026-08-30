@@ -125,7 +125,8 @@ size_t Parser::Impl::skipOuterAttributePrefix(size_t start, size_t end) const {
   return cursor;
 }
 
-ast::NodeId Parser::Impl::makeModulePath(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::makeModulePath(ParserSyntaxFactory& builder, size_t start,
+                                         size_t end) const {
   const uint8_t root =
       start < end && kindAt(start) == ast::SyntaxKind::ColonColon ? uint8_t{1} : uint8_t{0};
   return builder.makeModulePath(rangeFor(start, end), makeIdentList(builder, start, end), root);
@@ -171,7 +172,7 @@ size_t Parser::Impl::findModuleSpecifierGroupOpen(size_t pathEnd, size_t end) co
   return end;
 }
 
-ast::NodeId Parser::Impl::makeImportSpecifier(AstFactory& builder, size_t nameIndex,
+ast::NodeId Parser::Impl::makeImportSpecifier(ParserSyntaxFactory& builder, size_t nameIndex,
                                               size_t aliasIndex, size_t end) const {
   ast::IdentId alias;
   if (aliasIndex < end) { alias = internIdent(builder, aliasIndex); }
@@ -179,7 +180,7 @@ ast::NodeId Parser::Impl::makeImportSpecifier(AstFactory& builder, size_t nameIn
                                      alias);
 }
 
-ast::NodeId Parser::Impl::makeExportSpecifier(AstFactory& builder, size_t nameIndex,
+ast::NodeId Parser::Impl::makeExportSpecifier(ParserSyntaxFactory& builder, size_t nameIndex,
                                               size_t aliasIndex, size_t end) const {
   ast::IdentId alias;
   if (aliasIndex < end) { alias = internIdent(builder, aliasIndex); }
@@ -191,7 +192,7 @@ void Parser::Impl::recoverModuleSpecifier(TokenCursor& cursor, size_t end) const
   while (cursor.position() < end && cursor.peek() != ast::SyntaxKind::Comma) { cursor.advance(); }
 }
 
-ast::NodeId Parser::Impl::parseImportSpecifier(AstFactory& builder, TokenCursor& cursor,
+ast::NodeId Parser::Impl::parseImportSpecifier(ParserSyntaxFactory& builder, TokenCursor& cursor,
                                                size_t end) const {
   const size_t start = cursor.position();
   if (start >= end) { return ast::NodeId(); }
@@ -228,7 +229,7 @@ ast::NodeId Parser::Impl::parseImportSpecifier(AstFactory& builder, TokenCursor&
   return makeImportSpecifier(builder, nameIndex, aliasIndex, nodeEnd);
 }
 
-ast::NodeId Parser::Impl::parseExportSpecifier(AstFactory& builder, TokenCursor& cursor,
+ast::NodeId Parser::Impl::parseExportSpecifier(ParserSyntaxFactory& builder, TokenCursor& cursor,
                                                size_t end) const {
   const size_t start = cursor.position();
   if (start >= end) { return ast::NodeId(); }
@@ -265,8 +266,8 @@ ast::NodeId Parser::Impl::parseExportSpecifier(AstFactory& builder, TokenCursor&
   return makeExportSpecifier(builder, nameIndex, aliasIndex, nodeEnd);
 }
 
-zc::Vector<ast::NodeId> Parser::Impl::parseImportSpecifierList(AstFactory& builder, size_t start,
-                                                               size_t end) const {
+zc::Vector<ast::NodeId> Parser::Impl::parseImportSpecifierList(ParserSyntaxFactory& builder,
+                                                               size_t start, size_t end) const {
   zc::Vector<ast::NodeId> specifiers;
   TokenCursor cursor = tokenCursorAt(start);
   while (cursor.position() < end) {
@@ -283,8 +284,8 @@ zc::Vector<ast::NodeId> Parser::Impl::parseImportSpecifierList(AstFactory& build
   return specifiers;
 }
 
-zc::Vector<ast::NodeId> Parser::Impl::parseExportSpecifierList(AstFactory& builder, size_t start,
-                                                               size_t end) const {
+zc::Vector<ast::NodeId> Parser::Impl::parseExportSpecifierList(ParserSyntaxFactory& builder,
+                                                               size_t start, size_t end) const {
   zc::Vector<ast::NodeId> specifiers;
   TokenCursor cursor = tokenCursorAt(start);
   while (cursor.position() < end) {
@@ -301,7 +302,8 @@ zc::Vector<ast::NodeId> Parser::Impl::parseExportSpecifierList(AstFactory& build
   return specifiers;
 }
 
-ast::NodeId Parser::Impl::makeAttributePath(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::makeAttributePath(ParserSyntaxFactory& builder, size_t start,
+                                            size_t end) const {
   zc::Vector<ast::IdentId> segments;
   for (size_t index = start; index < end; ++index) {
     if (isAttributePathSegment(kindAt(index))) { segments.add(internIdent(builder, index)); }
@@ -388,7 +390,8 @@ bool Parser::Impl::isUnavailableConditionalAttributePath(size_t start, size_t en
   return false;
 }
 
-ast::NodeId Parser::Impl::parseAttribute(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parseAttribute(ParserSyntaxFactory& builder, size_t start,
+                                         size_t end) const {
   size_t cursor = start;
   while (cursor < end && kindAt(cursor) == ast::SyntaxKind::Comma) { ++cursor; }
   if (cursor >= end) { return ast::NodeId(); }
@@ -436,7 +439,7 @@ ast::NodeId Parser::Impl::parseAttribute(AstFactory& builder, size_t start, size
                                builder.makeList(args.asPtr()));
 }
 
-ast::NodeId Parser::Impl::parseOuterAttributeList(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseOuterAttributeList(ParserSyntaxFactory& builder, size_t start,
                                                   size_t end) const {
   zc::Vector<ast::NodeId> attrs;
   size_t cursor = start;
@@ -714,21 +717,21 @@ void Parser::Impl::diagnoseNamedTypeBody(size_t bodyOpen, size_t bodyClose,
   }
 }
 
-ast::NodeId Parser::Impl::makeEmptyClassMemberList(AstFactory& builder,
+ast::NodeId Parser::Impl::makeEmptyClassMemberList(ParserSyntaxFactory& builder,
                                                    source::SourceRange range) const {
   zc::Vector<ast::NodeId> members;
   return builder.makeClassMemberList(zc::mv(range), static_cast<uint16_t>(members.size()),
                                      builder.makeList(members.asPtr()));
 }
 
-ast::NodeId Parser::Impl::makeEmptyEnumVariantList(AstFactory& builder,
+ast::NodeId Parser::Impl::makeEmptyEnumVariantList(ParserSyntaxFactory& builder,
                                                    source::SourceRange range) const {
   zc::Vector<ast::NodeId> variants;
   return builder.makeEnumVariantList(zc::mv(range), static_cast<uint16_t>(variants.size()),
                                      builder.makeList(variants.asPtr()));
 }
 
-ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyOpen,
+ast::NodeId Parser::Impl::parseClassMemberList(ParserSyntaxFactory& builder, size_t bodyOpen,
                                                size_t bodyClose, ast::SyntaxKind parentKind) const {
   zc::Vector<ast::NodeId> members;
   bool previousWasGetter = false;
@@ -1085,7 +1088,7 @@ ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyO
                                      builder.makeList(members.asPtr()));
 }
 
-ast::NodeId Parser::Impl::parseEnumVariantList(AstFactory& builder, size_t bodyOpen,
+ast::NodeId Parser::Impl::parseEnumVariantList(ParserSyntaxFactory& builder, size_t bodyOpen,
                                                size_t bodyClose) const {
   zc::Vector<ast::NodeId> variants;
   size_t cursor = bodyOpen + 1;
@@ -1218,7 +1221,7 @@ size_t Parser::Impl::recoverFunctionParameter(TokenCursor& cursor, size_t closeP
   return cursor.position();
 }
 
-ast::NodeId Parser::Impl::parseFunctionParameter(AstFactory& builder, TokenCursor& cursor,
+ast::NodeId Parser::Impl::parseFunctionParameter(ParserSyntaxFactory& builder, TokenCursor& cursor,
                                                  size_t closeParen, size_t parameterOrdinal,
                                                  CallableParameterContext context) const {
   const size_t parameterStart = cursor.position();
@@ -1328,8 +1331,8 @@ ast::NodeId Parser::Impl::parseFunctionParameter(AstFactory& builder, TokenCurso
                                            ty.node, defaultValue, attrs);
 }
 
-ast::NodeList Parser::Impl::parseFunctionParameterNodeList(AstFactory& builder, size_t openParen,
-                                                           size_t closeParen,
+ast::NodeList Parser::Impl::parseFunctionParameterNodeList(ParserSyntaxFactory& builder,
+                                                           size_t openParen, size_t closeParen,
                                                            CallableParameterContext context) const {
   zc::Vector<ast::NodeId> parameters;
   if (openParen < closeParen && !isAtEnd(closeParen)) {
@@ -1361,7 +1364,7 @@ ast::NodeList Parser::Impl::parseFunctionParameterNodeList(AstFactory& builder, 
   return builder.makeList(parameters.asPtr());
 }
 
-ast::NodeId Parser::Impl::parseFunctionParameterList(AstFactory& builder, size_t openParen,
+ast::NodeId Parser::Impl::parseFunctionParameterList(ParserSyntaxFactory& builder, size_t openParen,
                                                      size_t closeParen,
                                                      CallableParameterContext context) const {
   const ast::NodeList parameterList =
@@ -1581,7 +1584,7 @@ size_t Parser::Impl::consumeBracedDeclarationEnd(size_t start, size_t limit) con
   return recoveryFrame.finish(semi < limit ? semi + 1 : limit);
 }
 
-ast::NodeId Parser::Impl::parseModuleDeclaration(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseModuleDeclaration(ParserSyntaxFactory& builder, size_t start,
                                                  size_t end) const {
   const bool exportedAlias = kindAt(start) == ast::SyntaxKind::ExportKeyword;
   const size_t moduleKeyword = exportedAlias ? start + 1 : start;
@@ -1672,7 +1675,7 @@ ast::NodeId Parser::Impl::parseModuleDeclaration(AstFactory& builder, size_t sta
                                        exportedAlias);
 }
 
-ast::NodeId Parser::Impl::parseImportDeclaration(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseImportDeclaration(ParserSyntaxFactory& builder, size_t start,
                                                  size_t end) const {
   const size_t clauseStart = start + 1;
   const size_t clauseEnd =
@@ -1702,7 +1705,7 @@ ast::NodeId Parser::Impl::parseImportDeclaration(AstFactory& builder, size_t sta
                                        builder.makeList(specifiers.asPtr()));
 }
 
-ast::NodeId Parser::Impl::parseExportDeclaration(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseExportDeclaration(ParserSyntaxFactory& builder, size_t start,
                                                  size_t end) const {
   const size_t clauseStart = start + 1;
   const size_t clauseEnd =
@@ -1778,7 +1781,7 @@ size_t Parser::Impl::consumeVariableInitializer(TokenCursor& cursor, size_t limi
 }
 
 Parser::Impl::VariableDeclaratorParseResult Parser::Impl::parseVariableDeclarator(
-    AstFactory& builder, TokenCursor& cursor, size_t limit) const {
+    ParserSyntaxFactory& builder, TokenCursor& cursor, size_t limit) const {
   const size_t start = cursor.position();
   if (start >= limit) {
     diagnosticEngine.diagnose<diagnostics::DiagID::VariableDeclarationExpected>(
@@ -1835,7 +1838,7 @@ Parser::Impl::VariableDeclaratorParseResult Parser::Impl::parseVariableDeclarato
       cursor.position()};
 }
 
-ast::NodeId Parser::Impl::parseVariableDeclaratorList(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseVariableDeclaratorList(ParserSyntaxFactory& builder, size_t start,
                                                       size_t end) const {
   zc::Vector<ast::NodeId> declarators;
   TokenCursor cursor = tokenCursorAt(start);
@@ -1878,8 +1881,8 @@ ast::NodeId Parser::Impl::parseVariableDeclaratorList(AstFactory& builder, size_
                                             builder.makeList(declarators.asPtr()));
 }
 
-ast::NodeId Parser::Impl::parseExternFunctionDecl(AstFactory& builder, size_t start, size_t end,
-                                                  ast::Abi abi) const {
+ast::NodeId Parser::Impl::parseExternFunctionDecl(ParserSyntaxFactory& builder, size_t start,
+                                                  size_t end, ast::Abi abi) const {
   if (end <= start || kindAt(end - 1) != ast::SyntaxKind::Semicolon) {
     diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(end), ";"_zc);
     return ast::NodeId();
@@ -1912,7 +1915,7 @@ ast::NodeId Parser::Impl::parseExternFunctionDecl(AstFactory& builder, size_t st
       retTy, raisesTy);
 }
 
-ast::NodeId Parser::Impl::parseExternVarDecl(AstFactory& builder, size_t start, size_t end,
+ast::NodeId Parser::Impl::parseExternVarDecl(ParserSyntaxFactory& builder, size_t start, size_t end,
                                              ast::Abi abi) const {
   const size_t nameIndex = start + 1;
   TokenCursor colonCursor = tokenCursorAt(nameIndex + 1);
@@ -1933,8 +1936,8 @@ ast::NodeId Parser::Impl::parseExternVarDecl(AstFactory& builder, size_t start, 
                                    parseTypeRange(builder, colon + 1, typeEnd), abi, true);
 }
 
-ast::NodeId Parser::Impl::parseFunctionDeclaration(AstFactory& builder, size_t start, size_t end,
-                                                   bool isBlockFunction) const {
+ast::NodeId Parser::Impl::parseFunctionDeclaration(ParserSyntaxFactory& builder, size_t start,
+                                                   size_t end, bool isBlockFunction) const {
   const FunctionDeclarationParts parts = parseFunctionDeclarationParts(start, end);
 
   // Parse type parameters (also runs diagnostics).
@@ -1995,8 +1998,8 @@ ast::NodeId Parser::Impl::parseFunctionDeclaration(AstFactory& builder, size_t s
                                   body);
 }
 
-ast::NodeId Parser::Impl::parseNamedTypeDeclaration(AstFactory& builder, size_t start, size_t end,
-                                                    ast::SyntaxKind kind) const {
+ast::NodeId Parser::Impl::parseNamedTypeDeclaration(ParserSyntaxFactory& builder, size_t start,
+                                                    size_t end, ast::SyntaxKind kind) const {
   size_t nameIndex = end;
   for (size_t index = start + 1; index < end; ++index) {
     if (kindAt(index) == ast::SyntaxKind::Identifier) {
@@ -2113,7 +2116,7 @@ ast::NodeId Parser::Impl::parseNamedTypeDeclaration(AstFactory& builder, size_t 
   return ast::NodeId();
 }
 
-ast::NodeId Parser::Impl::parseErrorDeclaration(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseErrorDeclaration(ParserSyntaxFactory& builder, size_t start,
                                                 size_t end) const {
   size_t nameIndex = end;
   for (size_t index = start + 1; index < end; ++index) {
@@ -2147,7 +2150,7 @@ ast::NodeId Parser::Impl::parseErrorDeclaration(AstFactory& builder, size_t star
       members ? members : makeEmptyClassMemberList(builder, rangeFor(start, end)));
 }
 
-ast::NodeId Parser::Impl::parseAliasDeclaration(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseAliasDeclaration(ParserSyntaxFactory& builder, size_t start,
                                                 size_t end) const {
   if (kindAt(start) == ast::SyntaxKind::TypeKeyword) {
     diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
@@ -2192,7 +2195,7 @@ ast::NodeId Parser::Impl::parseAliasDeclaration(AstFactory& builder, size_t star
   }
 }
 
-ast::NodeId Parser::Impl::parseImplInterfaceBound(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseImplInterfaceBound(ParserSyntaxFactory& builder, size_t start,
                                                   size_t end) const {
   if (start >= end) {
     diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(start));
@@ -2242,7 +2245,7 @@ ast::NodeId Parser::Impl::parseImplInterfaceBound(AstFactory& builder, size_t st
   return iface;
 }
 
-ast::NodeId Parser::Impl::parseStandaloneImplDeclaration(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseStandaloneImplDeclaration(ParserSyntaxFactory& builder, size_t start,
                                                          size_t end) const {
   bool isUnsafe = false;
   size_t implIndex = start;
@@ -2336,7 +2339,7 @@ ast::NodeId Parser::Impl::parseStandaloneImplDeclaration(AstFactory& builder, si
                                         whereClause, typeParams, members);
 }
 
-ast::NodeId Parser::Impl::parseMarkerImplDeclaration(AstFactory& builder, size_t start,
+ast::NodeId Parser::Impl::parseMarkerImplDeclaration(ParserSyntaxFactory& builder, size_t start,
                                                      size_t end) const {
   bool isUnsafe = false;
   size_t implIndex = start;

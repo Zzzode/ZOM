@@ -168,12 +168,17 @@ Parser code uses `peek()`, `token()`, `advance()`, `mark()`, and `rewind()` on
 
 A token contains `SyntaxKind`, a half-open source range, canonical identifier or
 literal value when required, and `TokenFlags`. Newline trivia is represented by
-`PrecedingLineBreak`; ordinary whitespace and comments are not syntax tokens.
+`PrecedingLineBreak`. Whitespace and comments are not grammar tokens, but the
+live lexer bridge retains them as verified CST trivia lexemes.
 
 ### L2P-05 Error progress
 
 Lexical errors emit source-ranged diagnostics and still make local progress.
-After any error-level lexical or syntax diagnostic, `Parser::parse()` returns `zc::none`.
+The parser still produces its event/lexeme candidate, but the compiler-facing
+`Parser::parse()` returns `zc::none` after any error-level lexical or syntax
+diagnostic because `ParseSyntaxVerifier` admits only the clean rail.
+`Parser::takeRecoverableSyntax()` exposes that immutable candidate once for the
+non-authoritative recovery rail.
 
 ### L2P-06 Template state
 
@@ -199,16 +204,38 @@ Every AST node kind and payload field is declared in
 `compiler/ast/schema.yml`. Generated accessors and schema
 verification define the payload layout.
 
-### P2A-02 Tree locality
+### P2A-02 Recoverable construction boundary
+
+`ParserSyntaxFactory` issues only schema-generated typed construction calls.
+`ParserEventBuilder` records node, list, interning, and root events while the
+live token stream is traversed; parser code contains no `ast::TreeBuilder`.
+The same traversal's buffered tokens are converted to one byte-covering verified
+Token/Trivia lexeme stream and paired with a verified recovery sequence in
+`RecoverableSyntaxTree`. Recovery frames and retained parser diagnostics produce
+canonically ordered MissingToken, MissingSubtree, and SkippedTokens records;
+invalid source bytes remain Invalid lexemes.
+
+### P2A-03 Verified AST replay
+
+`ParseSyntaxVerifier` first applies the RFC 0023 eligibility gate, then replays
+the closed event algebra into `ast::TreeBuilder`. Event-result identities, node
+and identifier list membership, interned-table identities, root uniqueness, and
+the RFC 0002 AST schema are verified before `ast::Tree` publication. A malformed
+event stream, recovery element, Invalid lexeme, parser error, or schema failure
+publishes no AST.
+
+### P2A-04 Tree locality
 
 `NodeId{0}` is empty. Every other `NodeId` is meaningful only in its owning
 `ast::Tree`; `Tree::contains()` is the membership authority. A durable source
 reference carries the source identity and node identity together.
 
-### P2A-03 Immutable parser result
+### P2A-05 Immutable parser result
 
-The parser produces one tree and one retained token snapshot. It does not add
-binder, symbol, type, dispatch, or lowering state to AST nodes.
+The parser produces one immutable recoverable syntax value. The clean compiler
+consumer obtains one independently reconstructed tree and one retained token
+snapshot. Neither syntax value adds binder, symbol, type, dispatch, or lowering
+state to AST nodes.
 
 ### P2B-01 Snapshot admission
 

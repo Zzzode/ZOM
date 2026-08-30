@@ -16,12 +16,12 @@
 
 #include <cstddef>
 
-#include "zc/core/common.h"
-#include "zc/core/string.h"
-#include "zc/core/vector.h"
 #include "compiler/ast/kinds.h"
 #include "compiler/lexer/token.h"
 #include "compiler/parser/token-snapshot.h"
+#include "zc/core/common.h"
+#include "zc/core/string.h"
+#include "zc/core/vector.h"
 
 namespace zomlang {
 namespace compiler {
@@ -80,6 +80,9 @@ public:
 
   /// \brief Deep-copy buffered token data without granting parser-result authority.
   ZC_NODISCARD zc::Array<ParsedTokenRange> copyBufferedTokenRanges() const;
+
+  /// \brief Deep-copy the complete token stream, including its EOF token.
+  ZC_NODISCARD zc::Array<lexer::Token> copyBufferedTokens() const;
 
 private:
   mutable zc::Own<lexer::Lexer> lexer;
