@@ -362,3 +362,28 @@ those points rest on canonical project documentation and source layout rather
 than freshly fetched text. None of them is asserted as a new ZOM contract; each
 either matches an already-accepted RFC choice or is an implementation-time
 recommendation recorded here for the IMPLEMENTING phase.
+
+## LLVM Backend Environment Availability Snapshot
+
+On 2026-08-31 the LLVM 22 backend became configurable on the development host.
+Commit `31c03e2a` enables the `C` language so `LLVMConfig.cmake`'s FindFFI probe
+(`check_c_source_compiles`) runs, and `cmake --preset llvm` with `LLVM_DIR`
+pointed at the installed `llvm@22` (exactly `22.1.8`) passes the LLVM discovery
+gate and completes configuration.
+
+The backend does not yet build to a linked artifact on this host. Compilation
+succeeds, but linking `llvm-translation-test` and `zomc` against the LLVM 22
+static libraries fails: those libraries reference the glibc 2.38+ symbols
+`__isoc23_strtol`, `__isoc23_strtoll`, and `__isoc23_strtoull` (the `llvm@22`
+bottle was built against glibc 2.39), while the host system glibc is 2.36 and
+does not provide them. This is a host toolchain mismatch, not a compiler or
+source defect: the frontend build is unaffected because it links no LLVM
+library.
+
+Exercising the scalar backend end to end (`llvm-translation-test`,
+`native-execution-cli`, `object-emission-cli`, and `zomc run`) therefore requires
+a host whose glibc is at least 2.38 and compatible with the LLVM 22 distribution.
+Mixing a second glibc into the link on this host was rejected to avoid dynamic
+loader and ABI-consistency risk. This snapshot records that the LLVM 22 discovery
+and configuration path is in place while native execution stays blocked on the
+host glibc version; it claims no lowering or execution closure.
