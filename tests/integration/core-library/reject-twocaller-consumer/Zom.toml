@@ -1,0 +1,8 @@
+[package]
+name = "reject_twocaller_consumer"
+version = "1.0.0"
+edition = "2026"
+
+[[bin]]
+name = "reject_twocaller_consumer"
+path = "src/main.zom"

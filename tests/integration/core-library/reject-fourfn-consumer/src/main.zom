@@ -1,0 +1,8 @@
+// Object-emission fail-closed fixture: four functions exceed the object
+// selector's one/two/three-function bound, so `zomc compile --emit=binary` must
+// reject this module before lowering and write no output object. Pins the size
+// gate in the native-object selector.
+fun callee() -> i32 { return 42; }
+fun leaf() -> i32 { return 9; }
+fun leaf2() -> i32 { return 5; }
+fun caller() -> i32 { let x = callee(); return x; }

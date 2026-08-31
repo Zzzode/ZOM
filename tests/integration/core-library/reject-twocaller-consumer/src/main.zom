@@ -1,0 +1,7 @@
+// Object-emission fail-closed fixture: two functions share the two-block
+// direct-call caller shape, so the three-function selector cannot identify a
+// unique caller and must reject this module with no output object. Pins the
+// caller-ambiguity fail-closed branch of the selector.
+fun callee() -> i32 { return 42; }
+fun caller1() -> i32 { let x = callee(); return x; }
+fun caller2() -> i32 { let y = callee(); return y; }

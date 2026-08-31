@@ -1,0 +1,9 @@
+// Object-emission fail-closed fixture: a three-function module whose third
+// function is a multi-block conditional rather than a scalar constant-return
+// leaf. The three-function selector identifies the caller and owner-matched
+// callee, but the lowering's scalar-leaf gate rejects the non-leaf third
+// function, so no output object is written. Pins the non-leaf-third fail-closed
+// branch.
+fun callee() -> i32 { return 42; }
+fun other(b: bool) -> i32 { if (b) { return 1; } else { return 2; } }
+fun caller() -> i32 { let x = callee(); return x; }

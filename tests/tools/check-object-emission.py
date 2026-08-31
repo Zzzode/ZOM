@@ -8,6 +8,13 @@ a distinct MIR -> LIR lowering slice:
 
 - the scalar module-initializer (RFC 0021 KR2.4), and
 - the boolean-conditional diamond `Function` (KR5.2 C1).
+
+Every `--reject-case manifest::package::bin` triple exercises a shape the object
+selector must fail closed on: the emission must exit non-zero and leave no output
+object on disk. These pin the selector's fail-closed branches (a too-large
+function count, an ambiguous caller pair, a non-leaf third function) so a future
+change cannot silently start emitting an object for a shape outside a lowering
+slice.
 """
 
 from __future__ import annotations
@@ -61,11 +68,53 @@ def emit_case(zomc: str, manifest: str, package: str, binary: str) -> None:
             raise RuntimeError(f"emitted object for {package} is not ELF: first bytes {data[:4]!r}")
 
 
+def reject_case(zomc: str, manifest: str, package: str, binary: str) -> None:
+    resolved_manifest = str(Path(manifest).resolve(strict=True))
+    with tempfile.TemporaryDirectory(prefix="zom-object-emission-reject-") as temporary:
+        work_directory = Path(temporary)
+        output = work_directory / "out.o"
+        result = subprocess.run(
+            [
+                zomc,
+                "compile",
+                "--manifest-path",
+                resolved_manifest,
+                "--package",
+                package,
+                "--bin",
+                binary,
+                "--emit",
+                "binary",
+                "-o",
+                str(output),
+            ],
+            cwd=work_directory,
+            env=dict(os.environ),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            raise RuntimeError(
+                f"object emission for {package} unexpectedly succeeded on a fail-closed shape\n"
+                f"{result.stdout}"
+            )
+        if output.exists():
+            raise RuntimeError(
+                f"object emission for {package} failed but left an output artifact on disk"
+            )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--zomc", required=True)
     # Each case is "manifest::package::bin"; every case must emit an ELF object.
     parser.add_argument("--case", action="append", required=True)
+    # Each reject-case is "manifest::package::bin"; every one must fail closed
+    # (non-zero exit, no output object) because its shape is outside every
+    # lowering slice.
+    parser.add_argument("--reject-case", action="append", default=[])
     arguments = parser.parse_args()
     zomc = str(Path(arguments.zomc).resolve(strict=True))
 
@@ -75,6 +124,13 @@ def main() -> int:
             raise RuntimeError(f"malformed --case (want manifest::package::bin): {case}")
         manifest, package, binary = parts
         emit_case(zomc, manifest, package, binary)
+
+    for case in arguments.reject_case:
+        parts = case.split("::")
+        if len(parts) != 3:
+            raise RuntimeError(f"malformed --reject-case (want manifest::package::bin): {case}")
+        manifest, package, binary = parts
+        reject_case(zomc, manifest, package, binary)
 
     print("zomc compile --emit=binary wrote a native ELF object for every case")
     return 0
