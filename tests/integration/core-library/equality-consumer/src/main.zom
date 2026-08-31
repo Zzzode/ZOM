@@ -1,0 +1,7 @@
+// KR5.2 C3 backend-lowering fixture: a single comparison-driven conditional
+// `Function` (no module initializer) whose entry computes a boolean temporary
+// from an integer equality and switches on it. It lowers MIR -> LIR -> a verified
+// LLVM relocatable object. It keeps the `zom.conditional_cmp` parameterized
+// symbol, so it is object-emittable but not runnable through the reserved
+// `zom.module_init` entry -- `zomc run` stays fail-closed on it until a later slice.
+fun entry(a: i32, b: i32) -> i32 { if (a == b) { return 3; } else { return 4; } }
