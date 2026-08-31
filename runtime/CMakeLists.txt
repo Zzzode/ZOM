@@ -1,4 +1,5 @@
 set(RUNTIME_SRC
+  ${CMAKE_CURRENT_SOURCE_DIR}/drop.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/panic.cc)
 
 add_library(runtime STATIC ${RUNTIME_SRC})
