@@ -1,0 +1,8 @@
+// KR5.2 C4 backend-lowering fixture: a two-function module -- a constant-return
+// callee and a caller that binds the call result and returns it -- that lowers
+// MIR -> LIR -> a verified two-function LLVM relocatable object. Both functions
+// keep parameterized `zom.caller` / `zom.callee` symbols, so the module is
+// object-emittable but not runnable through the reserved `zom.module_init` entry
+// -- `zomc run` stays fail-closed on it until a later slice.
+fun callee() -> i32 { return 42; }
+fun caller() -> i32 { let x = callee(); return x; }

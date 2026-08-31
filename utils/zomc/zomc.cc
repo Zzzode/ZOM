@@ -1396,44 +1396,90 @@ private:
           "Binary emission currently supports exactly one module; got ", mirModules.size(), "."));
     }
     const auto functions = mirModules[0].builtMir().functions();
-    if (functions.size() != 1) {
+    if (functions.size() != 1 && functions.size() != 2) {
       return NativeObjectResult(zc::str(
-          "Binary emission currently supports exactly one function; got ", functions.size(), "."));
+          "Binary emission currently supports one or two functions; got ", functions.size(), "."));
     }
     auto semanticTypes = session->getSemanticTypeStore();
     if (semanticTypes == zc::none) {
       return NativeObjectResult(zc::str("No semantic type store is available."));
     }
-    // Select the MIR -> LIR lowering by the single function's shape. A module
-    // initializer lowers through the scalar slice (RFC 0021 KR2.4); a `Function`
-    // is tried against the boolean-conditional diamond slice (KR5.2 C1), then the
+    // Select the MIR -> LIR lowering by module shape. A single module initializer
+    // lowers through the scalar slice (RFC 0021 KR2.4); a single `Function` is
+    // tried against the boolean-conditional diamond slice (KR5.2 C1), then the
     // reducible while-loop slice (KR5.2 C2), then the comparison-driven
-    // conditional slice (KR5.2 C3). The three Function slices have mutually
+    // conditional slice (KR5.2 C3). The three single-function slices have mutually
     // exclusive shapes (the diamond entry is a one-statement SwitchInt, the loop
     // entry is a Goto, the comparison entry is a three-statement SwitchInt on a
-    // computed boolean temporary), so trying them in order selects at most one.
-    // Each keeps its own parameterized symbol (`zom.conditional`, `zom.loop`,
-    // `zom.conditional_cmp`), so they produce a relocatable object only -- none is
-    // the reserved no-argument `zom.module_init` entry the runtime `_start` calls,
-    // and `zomc run` still fails closed on them. Every other shape stays
+    // computed boolean temporary), so trying them in order selects at most one. A
+    // two-`Function` module is tried against the same-module direct-call slice
+    // (KR5.2 C4): the caller (one local, two blocks) and the callee (no locals,
+    // one block) are identified by shape, requiring exactly one of each, and the
+    // deeper `lowerCallModule` gates (including the call targeting the identified
+    // callee) fail-close any residual mismatch. Each slice keeps its own
+    // parameterized symbol (`zom.conditional`, `zom.loop`, `zom.conditional_cmp`,
+    // `zom.caller`/`zom.callee`), so they produce a relocatable object only -- none
+    // is the reserved no-argument `zom.module_init` entry the runtime `_start`
+    // calls, and `zomc run` still fails closed on them. Every other shape stays
     // fail-closed here.
     zc::Maybe<lir::LirModule> lir;
     ZC_IF_SOME(types, semanticTypes) {
-      if (functions[0].kind == mir::MirFunctionKind::ModuleInitializer) {
-        lir = lir::MirToLirLowering::lowerScalarInitializer(functions[0], types);
-      } else if (functions[0].kind == mir::MirFunctionKind::Function) {
-        lir = lir::MirToLirLowering::lowerConditionalReturn(functions[0], types);
-        if (lir == zc::none) { lir = lir::MirToLirLowering::lowerLoopReturn(functions[0], types); }
-        if (lir == zc::none) {
-          lir = lir::MirToLirLowering::lowerEqualityConditionalReturn(functions[0], types);
+      if (functions.size() == 1) {
+        if (functions[0].kind == mir::MirFunctionKind::ModuleInitializer) {
+          lir = lir::MirToLirLowering::lowerScalarInitializer(functions[0], types);
+        } else if (functions[0].kind == mir::MirFunctionKind::Function) {
+          lir = lir::MirToLirLowering::lowerConditionalReturn(functions[0], types);
+          if (lir == zc::none) {
+            lir = lir::MirToLirLowering::lowerLoopReturn(functions[0], types);
+          }
+          if (lir == zc::none) {
+            lir = lir::MirToLirLowering::lowerEqualityConditionalReturn(functions[0], types);
+          }
+        }
+      } else {
+        // Two functions: identify the unique direct-call caller/callee pair by
+        // shape. The caller is a `Function` with one local and two blocks; the
+        // callee is a `Function` with no locals and one block. If both roles are
+        // filled by exactly one distinct function, lower the call module; any
+        // ambiguity (same-shape pair, missing role) leaves `lir` as none.
+        auto isCaller = [](const mir::MirFunction& fn) {
+          return fn.kind == mir::MirFunctionKind::Function && fn.locals.size() == 1 &&
+                 fn.blocks.size() == 2;
+        };
+        auto isCallee = [](const mir::MirFunction& fn) {
+          return fn.kind == mir::MirFunctionKind::Function && fn.locals.size() == 0 &&
+                 fn.blocks.size() == 1;
+        };
+        zc::Maybe<size_t> callerIndex;
+        zc::Maybe<size_t> calleeIndex;
+        for (size_t index = 0; index < functions.size(); ++index) {
+          if (isCaller(functions[index])) {
+            if (callerIndex != zc::none) {
+              callerIndex = zc::none;
+              break;
+            }
+            callerIndex = index;
+          } else if (isCallee(functions[index])) {
+            if (calleeIndex != zc::none) {
+              calleeIndex = zc::none;
+              break;
+            }
+            calleeIndex = index;
+          }
+        }
+        ZC_IF_SOME(caller, callerIndex) {
+          ZC_IF_SOME(callee, calleeIndex) {
+            lir =
+                lir::MirToLirLowering::lowerCallModule(functions[caller], functions[callee], types);
+          }
         }
       }
     }
     if (lir == zc::none) {
       return NativeObjectResult(
-          zc::str("MIR -> LIR lowering rejected this function (outside the scalar-initializer, "
-                  "boolean-conditional, reducible while-loop, and comparison-driven conditional "
-                  "slices)."));
+          zc::str("MIR -> LIR lowering rejected this module (outside the scalar-initializer, "
+                  "boolean-conditional, reducible while-loop, comparison-driven conditional, and "
+                  "same-module direct-call slices)."));
     }
     backend::llvm::LlvmTranslator translator;
     ZC_IF_SOME(lirModule, lir) {
