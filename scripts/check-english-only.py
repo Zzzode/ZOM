@@ -128,25 +128,41 @@ def validate_base(root: Path, base_file: Path) -> tuple[str, Path]:
             f"frozen base is not an ancestor of HEAD: {base}",
         )
 
-    additions = git(
+    history = git(
         root,
         "log",
-        "--diff-filter=A",
+        "--follow",
         "--format=%H",
-        "--reverse",
         "--",
         relative.as_posix(),
     ).stdout.splitlines()
-    if len(additions) != 1:
+    if not history:
         raise BaseValidationError(
             "base-record-history",
-            f"{relative} must have exactly one addition commit",
+            f"{relative} has no Git history",
         )
-    recording_commit = additions[0].decode("ascii")
-    recorded_content = git(
-        root, "show", f"{recording_commit}:{relative.as_posix()}"
-    ).stdout
+    recording_commit = history[-1].decode("ascii")
+    added_paths = git(
+        root,
+        "diff-tree",
+        "--root",
+        "--no-commit-id",
+        "--name-only",
+        "--diff-filter=A",
+        "-r",
+        recording_commit,
+    ).stdout.splitlines()
     current_content = (root / relative).read_bytes()
+    decoded_paths = [raw_path.decode("utf-8") for raw_path in added_paths]
+    matching_paths = [path for path in decoded_paths if Path(path).name == relative.name]
+    if len(matching_paths) != 1:
+        raise BaseValidationError(
+            "base-record-history",
+            f"{relative} must trace through renames to exactly one immutable addition",
+        )
+    recorded_content = git(
+        root, "show", f"{recording_commit}:{matching_paths[0]}"
+    ).stdout
     if recorded_content != current_content:
         raise BaseValidationError(
             "moving-base",
@@ -326,6 +342,20 @@ def run_self_test() -> int:
             return 1
         if observed_base != accepted_base:
             print("self-test read the wrong valid base", file=sys.stderr)
+            return 1
+
+        renamed_base = Path("relocated/implementation-series-base.txt")
+        (root / renamed_base).parent.mkdir(parents=True, exist_ok=True)
+        (root / base_file).rename(root / renamed_base)
+        recording_commit = commit(root, "relocate immutable implementation base")
+        base_file = renamed_base
+        try:
+            renamed_observed, _ = validate_base(root, base_file)
+        except BaseValidationError as error:
+            print(f"self-test rejected a renamed immutable base: {error}", file=sys.stderr)
+            return 1
+        if renamed_observed != accepted_base:
+            print("self-test read the wrong renamed base", file=sys.stderr)
             return 1
 
         original_record = (root / base_file).read_bytes()
