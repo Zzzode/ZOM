@@ -36,6 +36,15 @@ class ExecutableImageInspector final {
 public:
   /// \return none when the image satisfies `profile`, `entrySymbol`, and every
   ///         required runtime-symbol definition; otherwise the first failure.
+  ///
+  /// The inspector owns the target-format projection of the entry point.
+  /// `entrySymbol` must be the raw logical entry name (for example `zom` or
+  /// `_start`); for a Mach-O target the inspector prepends the single leading
+  /// underscore the Mach-O symbol table uses before matching, so callers must
+  /// not pre-mangle it (a pre-mangled `_zom` would project to `__zom` and fail
+  /// to match). Required runtime symbols, by contrast, are recorded in the
+  /// profile in the target's raw symbol-table spelling and are matched as-is.
+  /// Mach-O real execution is not exercised here; only the image contract is.
   ZC_NODISCARD static zc::Maybe<ExecutableInspectionFailure> inspect(
       zc::ArrayPtr<const uint8_t> bytes, const ExecutableInspectionProfile& profile,
       zc::ArrayPtr<const uint8_t> entrySymbol);

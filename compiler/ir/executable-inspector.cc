@@ -296,7 +296,19 @@ zc::Maybe<ExecutableInspectionFailure> inspectMachO(zc::ArrayPtr<const uint8_t> 
     return ExecutableInspectionFailure::AbiMismatch;
   }
 
-  SymbolRequirements requirements(entrySymbol, profile.requiredRuntimeSymbols());
+  // The inspector owns the target-format entry projection: the link plan records
+  // the entry point as its raw logical name (for example `zom` or `_start`), and
+  // Mach-O prepends a single leading underscore to C-level symbols in the symbol
+  // table (`zom` -> `_zom`). Project the raw entry into the Mach-O spelling once,
+  // here, before matching. Required runtime symbols are NOT projected: the plan
+  // already records them in the target's raw table spelling (ELF `__zom_...`,
+  // Mach-O `___zom_...`), so a second prefix would double the underscore.
+  auto projectedEntry = zc::heapArray<uint8_t>(entrySymbol.size() + 1);
+  projectedEntry[0] = static_cast<uint8_t>('_');
+  for (size_t index = 0; index < entrySymbol.size(); ++index) {
+    projectedEntry[index + 1] = entrySymbol[index];
+  }
+  SymbolRequirements requirements(projectedEntry.asPtr(), profile.requiredRuntimeSymbols());
   bool foundSymbolTable = false;
   size_t commandOffset = 32;
   for (uint32_t index = 0; index < ZC_REQUIRE_NONNULL(commandCount); ++index) {

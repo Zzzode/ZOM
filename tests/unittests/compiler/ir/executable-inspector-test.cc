@@ -126,7 +126,11 @@ zc::Array<uint8_t> machOFixture() {
 }
 
 constexpr uint8_t entryBytes[] = {'z', 'o', 'm'};
-constexpr uint8_t machOEntryBytes[] = {'_', 'z', 'o', 'm'};
+// The caller passes the raw logical entry name for every target; the inspector
+// projects it into the Mach-O leading-underscore spelling (`zom` -> `_zom`)
+// before matching the fixture's `_zom` nlist entry.
+constexpr uint8_t machOEntryBytes[] = {'z', 'o', 'm'};
+constexpr uint8_t machOPreMangledEntryBytes[] = {'_', 'z', 'o', 'm'};
 
 }  // namespace
 
@@ -162,8 +166,21 @@ ZC_TEST("Executable inspector accepts a bounded Mach-O64 image with required sym
   auto bytes = machOFixture();
   auto result = ExecutableImageInspector::inspect(
       bytes.asPtr(), profile(ObjectFormat::MachO, ExecutableMachine::X86_64),
-      zc::arrayPtr(machOEntryBytes, 4));
+      zc::arrayPtr(machOEntryBytes, 3));
   ZC_EXPECT(result == zc::none);
+}
+
+ZC_TEST("Executable inspector rejects a pre-mangled Mach-O entry name") {
+  // The inspector owns the Mach-O leading-underscore projection, so callers must
+  // pass the raw logical entry name. A caller that pre-mangles to `_zom` would
+  // have it projected to `__zom`, which no longer matches the fixture's `_zom`
+  // nlist entry: the contract rejects a double-underscore rather than silently
+  // accepting a pre-mangled input.
+  auto bytes = machOFixture();
+  ZC_EXPECT(ExecutableImageInspector::inspect(
+                bytes.asPtr(), profile(ObjectFormat::MachO, ExecutableMachine::X86_64),
+                zc::arrayPtr(machOPreMangledEntryBytes, 4)) ==
+            ExecutableInspectionFailure::MissingRequiredSymbol);
 }
 
 ZC_TEST("Executable inspector rejects Mach-O ABI symbol and command mismatches") {
@@ -171,20 +188,20 @@ ZC_TEST("Executable inspector rejects Mach-O ABI symbol and command mismatches")
   put32(bytes, 4, 0x0100000c);
   ZC_EXPECT(ExecutableImageInspector::inspect(
                 bytes.asPtr(), profile(ObjectFormat::MachO, ExecutableMachine::X86_64),
-                zc::arrayPtr(machOEntryBytes, 4)) == ExecutableInspectionFailure::AbiMismatch);
+                zc::arrayPtr(machOEntryBytes, 3)) == ExecutableInspectionFailure::AbiMismatch);
 
   bytes = machOFixture();
   bytes[88 + 6] = 'x';
   ZC_EXPECT(ExecutableImageInspector::inspect(
                 bytes.asPtr(), profile(ObjectFormat::MachO, ExecutableMachine::X86_64),
-                zc::arrayPtr(machOEntryBytes, 4)) ==
+                zc::arrayPtr(machOEntryBytes, 3)) ==
             ExecutableInspectionFailure::MissingRequiredSymbol);
 
   bytes = machOFixture();
   put32(bytes, 36, 0xffff);
   ZC_EXPECT(ExecutableImageInspector::inspect(
                 bytes.asPtr(), profile(ObjectFormat::MachO, ExecutableMachine::X86_64),
-                zc::arrayPtr(machOEntryBytes, 4)) == ExecutableInspectionFailure::MalformedImage);
+                zc::arrayPtr(machOEntryBytes, 3)) == ExecutableInspectionFailure::MalformedImage);
 }
 
 ZC_TEST("Executable inspector rejects a duplicated required symbol in ELF") {
@@ -274,7 +291,7 @@ ZC_TEST("Executable inspector rejects a duplicated required symbol in Mach-O") {
   }
   ZC_EXPECT(ExecutableImageInspector::inspect(
                 bytes.asPtr(), profile(ObjectFormat::MachO, ExecutableMachine::X86_64),
-                zc::arrayPtr(machOEntryBytes, 4)) ==
+                zc::arrayPtr(machOEntryBytes, 3)) ==
             ExecutableInspectionFailure::DuplicateRequiredSymbol);
 }
 
@@ -359,7 +376,7 @@ ZC_TEST("Executable inspector rejects an out-of-range Mach-O symbol name offset"
   put32(bytes, 56, 4096);
   ZC_EXPECT(ExecutableImageInspector::inspect(
                 bytes.asPtr(), profile(ObjectFormat::MachO, ExecutableMachine::X86_64),
-                zc::arrayPtr(machOEntryBytes, 4)) == ExecutableInspectionFailure::MalformedImage);
+                zc::arrayPtr(machOEntryBytes, 3)) == ExecutableInspectionFailure::MalformedImage);
 }
 
 ZC_TEST("Executable inspector rejects an undefined ELF ZOM runtime reference") {
@@ -422,7 +439,7 @@ ZC_TEST("Executable inspector rejects an undefined Mach-O ZOM runtime reference"
   }
   ZC_EXPECT(ExecutableImageInspector::inspect(
                 bytes.asPtr(), profile(ObjectFormat::MachO, ExecutableMachine::X86_64),
-                zc::arrayPtr(machOEntryBytes, 4)) ==
+                zc::arrayPtr(machOEntryBytes, 3)) ==
             ExecutableInspectionFailure::UnresolvedRuntimeReference);
 }
 
@@ -459,7 +476,7 @@ ZC_TEST("Executable inspector allows an undefined non-domain Mach-O import") {
   }
   ZC_EXPECT(ExecutableImageInspector::inspect(
                 bytes.asPtr(), profile(ObjectFormat::MachO, ExecutableMachine::X86_64),
-                zc::arrayPtr(machOEntryBytes, 4)) == zc::none);
+                zc::arrayPtr(machOEntryBytes, 3)) == zc::none);
 }
 
 ZC_TEST("Executable inspector rejects a bad name offset on an irrelevant ELF symbol") {
@@ -482,7 +499,7 @@ ZC_TEST("Executable inspector rejects a bad name offset on an irrelevant Mach-O 
   bytes[61] = 1;
   ZC_EXPECT(ExecutableImageInspector::inspect(
                 bytes.asPtr(), profile(ObjectFormat::MachO, ExecutableMachine::X86_64),
-                zc::arrayPtr(machOEntryBytes, 4)) == ExecutableInspectionFailure::MalformedImage);
+                zc::arrayPtr(machOEntryBytes, 3)) == ExecutableInspectionFailure::MalformedImage);
 }
 
 }  // namespace zomlang::compiler::ir
