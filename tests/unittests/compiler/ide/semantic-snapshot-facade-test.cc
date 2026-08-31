@@ -221,12 +221,13 @@ ZC_TEST("resolveSemanticSnapshot publishes a clean source with the document vers
   }
 }
 
-ZC_TEST("resolveSemanticSnapshot reports a malformed source as source-rejected without ranges") {
+ZC_TEST("resolveSemanticSnapshot resolves ranges for a malformed source rejection") {
   auto database = facadeTestDatabase();
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
   auto sourceKey = sourceQueryKey("facade-malformed.zom"_zc);
-  auto sourceValue =
-      sourceSnapshotValue("facade-malformed.zom"_zc, zc::heapArray("let value = ;"_zcb));
+  auto bytes = zc::heapArray("let value = ;"_zcb);
+  const uint64_t sourceLength = bytes.size();
+  auto sourceValue = sourceSnapshotValue("facade-malformed.zom"_zc, zc::mv(bytes));
   auto registry = targetRegistry();
   auto options =
       compilationOptionsValue(registry, package::SelectedLanguageOptions{false, true, false});
@@ -241,10 +242,45 @@ ZC_TEST("resolveSemanticSnapshot reports a malformed source as source-rejected w
   ZC_REQUIRE(snapshot.isSourceRejected());
   ZC_EXPECT(snapshot.documentVersion() == DocumentVersion::initial(-7));
   ZC_REQUIRE(snapshot.diagnostics().size() != 0);
+  // The rejection is reconstructed so at least one diagnostic carries a bounded
+  // range inside the source. A parse-error range may be zero-width (a caret at
+  // the error point), so byteStart == byteEnd is valid; any unresolved fact stays
+  // rangeless.
+  size_t rangedCount = 0;
   for (const auto& diagnostic : snapshot.diagnostics()) {
     ZC_EXPECT(diagnostic.severity() >= diagnostics::DiagSeverity::kError);
-    // The rejection channel carries no provenance map, so no range is resolved.
-    ZC_EXPECT(diagnostic.range() == zc::none);
+    ZC_IF_SOME(range, diagnostic.range()) {
+      ZC_EXPECT(range.byteStart <= range.byteEnd);
+      ZC_EXPECT(range.byteEnd <= sourceLength);
+      ++rangedCount;
+    }
+  }
+  ZC_EXPECT(rangedCount != 0);
+}
+
+ZC_TEST("resolveSemanticSnapshot keeps a malformed rejection rangeless when options are absent") {
+  auto database = facadeTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto sourceKey = sourceQueryKey("facade-malformed-norange.zom"_zc);
+  auto sourceValue =
+      sourceSnapshotValue("facade-malformed-norange.zom"_zc, zc::heapArray("let value = ;"_zcb));
+  // Commit only the source input; without the compilation options the parse
+  // still rejects, but reconstruction cannot run, so ranges stay unresolved.
+  auto write = transaction(database);
+  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
+
+  auto key = SemanticSnapshotKey::bind(sourceKey.clone(), DocumentVersion::initial(2));
+  auto snapshot = resolveSemanticSnapshot(database, key);
+
+  // The parse cannot even run without options, so the demand is a runtime
+  // rejection and the arm is Unavailable rather than SourceRejected. Either way
+  // the facade never fabricates a range or throws.
+  ZC_EXPECT(!snapshot.isPublished());
+  if (snapshot.isSourceRejected()) {
+    for (const auto& diagnostic : snapshot.diagnostics()) {
+      ZC_EXPECT(diagnostic.range() == zc::none);
+    }
   }
 }
 

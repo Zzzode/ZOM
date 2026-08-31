@@ -19,6 +19,7 @@
 #include "compiler/ide/snapshot-diagnostic.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/key/source-key.h"
+#include "compiler/identity/source-query-input.h"
 #include "compiler/parser/query/canonical-parsed-source.h"
 #include "compiler/parser/query/parse-source-query.h"
 #include "zc/core/vector.h"
@@ -81,6 +82,78 @@ zc::Array<SnapshotDiagnostic> projectPublishedFacts(
   return projected.releaseAsArray();
 }
 
+// Whether a resolved range is a usable span inside the source. A parse-error
+// diagnostic is legitimately a zero-width point (byteStart == byteEnd marks a
+// caret position at the error), so an empty range is accepted; an inverted or
+// past-the-end range is treated as unresolved, so a malformed provenance record
+// degrades to a rangeless diagnostic rather than surfacing an out-of-bounds range.
+bool rangeIsWithinSource(const diagnostics::DiagnosticSourceRange& range,
+                         uint64_t sourceByteLength) {
+  return range.byteStart <= range.byteEnd && range.byteEnd <= sourceByteLength;
+}
+
+// Projects one reconstructed rejected parse. The ParseRejected facts and their
+// provenance map are built together by reconstructParseRejection, so each fact is
+// resolved against that same map with no cross-list correlation against the
+// demand's diagnostics. A fact whose provenance is absent or out of bounds is
+// projected without a range.
+zc::Array<SnapshotDiagnostic> projectReconstructedRejectedFacts(
+    const parser::ParseRejected& rejected) {
+  const auto facts = rejected.facts();
+  const auto& provenance = rejected.provenance();
+  const uint64_t sourceByteLength = rejected.sourceByteLength();
+  zc::Vector<SnapshotDiagnostic> projected(facts.size());
+  for (const auto& fact : facts) {
+    auto resolved = provenance.find(fact.primary());
+    ZC_IF_SOME(range, resolved) {
+      if (rangeIsWithinSource(range, sourceByteLength)) {
+        projected.add(SnapshotDiagnostic::projectRanged(
+            fact.code(), SnapshotRange{range.byteStart, range.byteEnd, range.isTokenRange},
+            fact.arguments()));
+        continue;
+      }
+    }
+    projected.add(SnapshotDiagnostic::projectRangeless(fact.code(), fact.arguments()));
+  }
+  return projected.releaseAsArray();
+}
+
+// Reads a query input value from the snapshot, or none when it is not a committed
+// present value. Never records a caller dependency.
+template <typename Input>
+zc::Maybe<typename Input::Value> probeInputValue(const query::QuerySnapshot& snapshot,
+                                                 const typename Input::Key& key) {
+  auto result = snapshot.probeInput<Input>(key);
+  if (result.isRuntimeFailure() || result.kind() != query::QueryValueKind::Value) {
+    return zc::none;
+  }
+  return result.value().clone();
+}
+
+// Best-effort projection of a source-rejected parse with resolved ranges. The
+// rejection channel carries no provenance, so this re-derives it by replaying the
+// parse through reconstructParseRejection over the two committed inputs the parse
+// read directly. Any missing input or reconstruction failure yields none, and the
+// caller keeps the rangeless projection; the source-rejected arm is never lost.
+zc::Maybe<zc::Array<SnapshotDiagnostic>> projectRejectedFactsWithRanges(
+    const query::QuerySnapshot& snapshot, const SemanticSnapshotKey& key,
+    zc::ArrayPtr<const diagnostics::DiagnosticFact> expectedFacts) {
+  identity::CanonicalDecoder decoder(key.sourceKey().canonicalSourceBytes());
+  auto sourceFile = identity::SourceFileKey::decodeCanonical(decoder);
+  if (sourceFile == zc::none || !decoder.finished()) { return zc::none; }
+  auto crate = ZC_ASSERT_NONNULL(sourceFile).crate().clone();
+
+  auto source =
+      probeInputValue<identity::source_query::SourceSnapshotInput>(snapshot, key.sourceKey());
+  auto options = probeInputValue<identity::source_query::CompilationOptionsInput>(snapshot, crate);
+  if (source == zc::none || options == zc::none) { return zc::none; }
+
+  auto rejected = parser::reconstructParseRejection(key.sourceKey(), ZC_ASSERT_NONNULL(options),
+                                                    ZC_ASSERT_NONNULL(source), expectedFacts);
+  ZC_IF_SOME(value, rejected) { return projectReconstructedRejectedFacts(value); }
+  return zc::none;
+}
+
 }  // namespace
 
 SemanticSnapshot resolveSemanticSnapshot(const query::QuerySnapshot& snapshot,
@@ -91,8 +164,13 @@ SemanticSnapshot resolveSemanticSnapshot(const query::QuerySnapshot& snapshot,
     return SemanticSnapshot::unavailable(mapRuntimeFailure(demand.runtimeFailure()));
   }
   if (demand.isSourceRejected()) {
-    return SemanticSnapshot::sourceRejected(key.documentVersion(),
-                                            projectRejectedFacts(demand.diagnostics().values()));
+    auto facts = demand.diagnostics().values();
+    // Best effort: recover source ranges by replaying the parse. On any failure,
+    // keep the rangeless projection so the source-rejected arm is never lost.
+    ZC_IF_SOME(ranged, projectRejectedFactsWithRanges(snapshot, key, facts)) {
+      return SemanticSnapshot::sourceRejected(key.documentVersion(), zc::mv(ranged));
+    }
+    return SemanticSnapshot::sourceRejected(key.documentVersion(), projectRejectedFacts(facts));
   }
   if (!demand.isPublished()) {
     // A parse query has no key-rejection arm, so no other outcome is reachable;
