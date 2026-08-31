@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25.0)
 
-project("ZOM" CXX)
+project("ZOM" C CXX)
 
 include(GNUInstallDirs)
 
