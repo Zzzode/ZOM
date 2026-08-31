@@ -1200,5 +1200,200 @@ ZC_TEST("Scalar integer return is unchanged by the aggregate return path") {
   ZC_EXPECT(!result.textualIr().contains("insertvalue"_zc));
 }
 
+// KR1.4 fail-closed coverage: each production multi-block lowering must reject a
+// structurally near-miss MIR function that violates exactly one of its own shape
+// gates. The near-miss is otherwise a complete four-block function, so these
+// prove genuine shape rejection rather than trivial empty-input handling.
+
+// Diamond boundary: the entry block must hold exactly one statement (the result
+// StorageLive). A near-miss with a second entry statement -- still a four-block
+// SwitchInt diamond -- must be rejected (mir-to-lir.cc entry.statements.size()
+// check). One statement is the diamond; three is the comparison shape; two is
+// neither.
+ZC_TEST("Boolean-conditional lowering fails closed on a two-statement entry block") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto boolType = typeContext.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto owner = tests::testDefinition(0);
+
+  zc::Vector<mir::MirSourceScope> scopes;
+  scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::Parameter, boolType,
+                                      scopeId(1), span()});
+  locals.add(mir::MirLocalDeclaration{localId(2), mir::MirLocalKind::FunctionResult, i32,
+                                      scopeId(1), span()});
+
+  zc::Vector<mir::MirStatement> entryStatements;
+  entryStatements.add(mir::MirStatement::storageLive(localId(2), span()));
+  // The single injected violation: a second entry statement (a duplicate
+  // StorageLive) that the one-statement diamond gate must reject.
+  entryStatements.add(mir::MirStatement::storageLive(localId(2), span()));
+  zc::Vector<mir::MirSwitchIntArm> arms;
+  arms.add(mir::MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), blockId(2)});
+  arms.add(mir::MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), blockId(3)});
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{
+      blockId(1), scopeId(1), zc::mv(entryStatements),
+      mir::MirTerminator::switchInt(mir::MirOperand::copy(resultPlace(localId(1), boolType)),
+                                    zc::mv(arms), blockId(3), span())});
+  auto armBlock = [&](uint32_t id, uint8_t value) {
+    zc::Vector<mir::MirStatement> statements;
+    statements.add(mir::MirStatement::assign(
+        resultPlace(localId(2), i32),
+        mir::MirRvalue::use(mir::MirOperand::constant(i32, integerConstant(value))),
+        mir::MirInitializationKind::Initialize, span()));
+    return mir::MirBasicBlock{blockId(id), scopeId(1), zc::mv(statements),
+                              mir::MirTerminator::gotoTarget(blockId(4), span())};
+  };
+  blocks.add(armBlock(2, 7));
+  blocks.add(armBlock(3, 9));
+  zc::Vector<mir::MirStatement> joinStatements;
+  blocks.add(mir::MirBasicBlock{blockId(4), scopeId(1), zc::mv(joinStatements),
+                                mir::MirTerminator::returnValue(
+                                    mir::MirOperand::move(resultPlace(localId(2), i32)), span())});
+  mir::MirFunction function{owner,
+                            mir::MirFunctionKind::Function,
+                            identity::DefinitionKind::Function,
+                            i32,
+                            span(),
+                            zc::mv(scopes),
+                            zc::mv(locals),
+                            zc::mv(blocks)};
+
+  ZC_EXPECT(lir::MirToLirLowering::lowerConditionalReturn(function, typeContext.semanticTypes()) ==
+            zc::none);
+}
+
+// Loop boundary: the body block must be empty (its only role is the reducible
+// back-edge). A near-miss with one body statement -- still a four-block loop with
+// the correct entry/header/body/exit terminators -- must be rejected
+// (mir-to-lir.cc body.statements.size() check).
+ZC_TEST("Reducible while-loop lowering fails closed on a non-empty body block") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto boolType = typeContext.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto owner = tests::testDefinition(0);
+
+  zc::Vector<mir::MirSourceScope> scopes;
+  scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::Parameter, boolType,
+                                      scopeId(1), span()});
+  locals.add(mir::MirLocalDeclaration{localId(2), mir::MirLocalKind::FunctionResult, i32,
+                                      scopeId(1), span()});
+  zc::Vector<mir::MirBasicBlock> blocks;
+
+  zc::Vector<mir::MirStatement> entryStatements;
+  entryStatements.add(mir::MirStatement::storageLive(localId(2), span()));
+  blocks.add(mir::MirBasicBlock{blockId(1), scopeId(1), zc::mv(entryStatements),
+                                mir::MirTerminator::gotoTarget(blockId(2), span())});
+  zc::Vector<mir::MirStatement> headerStatements;
+  zc::Vector<mir::MirSwitchIntArm> arms;
+  arms.add(mir::MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), blockId(3)});
+  blocks.add(mir::MirBasicBlock{
+      blockId(2), scopeId(1), zc::mv(headerStatements),
+      mir::MirTerminator::switchInt(mir::MirOperand::copy(resultPlace(localId(1), boolType)),
+                                    zc::mv(arms), blockId(4), span())});
+  // The single injected violation: a body statement (a StorageLive) in the block
+  // that the loop gate requires to be empty.
+  zc::Vector<mir::MirStatement> bodyStatements;
+  bodyStatements.add(mir::MirStatement::storageLive(localId(2), span()));
+  blocks.add(mir::MirBasicBlock{blockId(3), scopeId(1), zc::mv(bodyStatements),
+                                mir::MirTerminator::gotoTarget(blockId(2), span())});
+  zc::Vector<mir::MirStatement> exitStatements;
+  exitStatements.add(mir::MirStatement::assign(
+      resultPlace(localId(2), i32),
+      mir::MirRvalue::use(mir::MirOperand::constant(i32, integerConstant(5))),
+      mir::MirInitializationKind::Initialize, span()));
+  blocks.add(mir::MirBasicBlock{blockId(4), scopeId(1), zc::mv(exitStatements),
+                                mir::MirTerminator::returnValue(
+                                    mir::MirOperand::move(resultPlace(localId(2), i32)), span())});
+  mir::MirFunction function{owner,
+                            mir::MirFunctionKind::Function,
+                            identity::DefinitionKind::Function,
+                            i32,
+                            span(),
+                            zc::mv(scopes),
+                            zc::mv(locals),
+                            zc::mv(blocks)};
+
+  ZC_EXPECT(lir::MirToLirLowering::lowerLoopReturn(function, typeContext.semanticTypes()) ==
+            zc::none);
+}
+
+// Comparison boundary: the entry's third statement must assign the boolean
+// temporary from a Comparison rvalue. A near-miss that assigns the temporary from
+// a plain Use (a copy) -- still a four-block, three-entry-statement diamond with
+// the temporary local -- must be rejected (mir-to-lir.cc tempAssign.value.kind()
+// check).
+ZC_TEST("Comparison-driven conditional lowering fails closed on a non-comparison temporary") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto boolType = typeContext.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto owner = tests::testDefinition(0);
+
+  zc::Vector<mir::MirSourceScope> scopes;
+  scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(
+      mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::Parameter, i32, scopeId(1), span()});
+  locals.add(
+      mir::MirLocalDeclaration{localId(2), mir::MirLocalKind::Parameter, i32, scopeId(1), span()});
+  locals.add(mir::MirLocalDeclaration{localId(3), mir::MirLocalKind::FunctionResult, i32,
+                                      scopeId(1), span()});
+  locals.add(mir::MirLocalDeclaration{localId(4), mir::MirLocalKind::Temporary, boolType,
+                                      scopeId(1), span()});
+  auto tempPlace = [&]() {
+    return mir::MirPlace(localId(4), boolType, zc::Vector<mir::MirProjection>(), boolType);
+  };
+  zc::Vector<mir::MirStatement> entryStatements;
+  entryStatements.add(mir::MirStatement::storageLive(localId(3), span()));
+  entryStatements.add(mir::MirStatement::storageLive(localId(4), span()));
+  // The single injected violation: the boolean temporary is assigned from a Use
+  // (a boolean constant) instead of the required Comparison rvalue. The local
+  // layout is otherwise identical to the lowerable comparison shape (two i32
+  // parameters, an i32 result, and a bool temporary), so only the rvalue kind
+  // differs.
+  entryStatements.add(mir::MirStatement::assign(
+      tempPlace(),
+      mir::MirRvalue::use(mir::MirOperand::constant(
+          boolType, checker::checked::CanonicalConstValue::boolean(true))),
+      mir::MirInitializationKind::Initialize, span()));
+  zc::Vector<mir::MirSwitchIntArm> arms;
+  arms.add(mir::MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), blockId(2)});
+  arms.add(mir::MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), blockId(3)});
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{blockId(1), scopeId(1), zc::mv(entryStatements),
+                                mir::MirTerminator::switchInt(mir::MirOperand::copy(tempPlace()),
+                                                              zc::mv(arms), blockId(3), span())});
+  auto armBlock = [&](uint32_t id, uint8_t value) {
+    zc::Vector<mir::MirStatement> statements;
+    statements.add(mir::MirStatement::assign(
+        resultPlace(localId(3), i32),
+        mir::MirRvalue::use(mir::MirOperand::constant(i32, integerConstant(value))),
+        mir::MirInitializationKind::Initialize, span()));
+    return mir::MirBasicBlock{blockId(id), scopeId(1), zc::mv(statements),
+                              mir::MirTerminator::gotoTarget(blockId(4), span())};
+  };
+  blocks.add(armBlock(2, 3));
+  blocks.add(armBlock(3, 4));
+  zc::Vector<mir::MirStatement> joinStatements;
+  blocks.add(mir::MirBasicBlock{blockId(4), scopeId(1), zc::mv(joinStatements),
+                                mir::MirTerminator::returnValue(
+                                    mir::MirOperand::move(resultPlace(localId(3), i32)), span())});
+  mir::MirFunction function{owner,
+                            mir::MirFunctionKind::Function,
+                            identity::DefinitionKind::Function,
+                            i32,
+                            span(),
+                            zc::mv(scopes),
+                            zc::mv(locals),
+                            zc::mv(blocks)};
+
+  ZC_EXPECT(lir::MirToLirLowering::lowerEqualityConditionalReturn(
+                function, typeContext.semanticTypes()) == zc::none);
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::backend::llvm
