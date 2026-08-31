@@ -712,3 +712,32 @@ work nor proves the RFC 0025 implementation.
 
 Only the RFC 0025 tracker may advance these tasks. This tracker records the
 accepted contract dependency and no product evidence.
+
+## KR4.4 Build Tool Completion Snapshot
+
+On 2026-08-31 the Q4 OKR item KR4.4 (build tool) reached Complete. The
+capability, its independent verifier, and its integration boundary are all
+committed on `develop`:
+
+- Producer: commit `c7e842f0` adds the `zomc build` subcommand as a first-class
+  frontend-only action (`CompilationAction::FrontendOnly` with a shared
+  `addBuildOptions` group) that drives a selected package target through
+  verified HIR and Built MIR without exposing `--emit`, output selectors, or
+  `--check`.
+- Verifier: `scripts/check-package-architecture.py` requires the `build`
+  subcommand and its shared option group in the CLI source, requires the
+  `package-workspace-build` integration test in the tests CMake, and scopes the
+  positional-source ban to the compile option group so the build command's
+  options are not falsely matched. The gate passes `--check` and `--self-test`
+  (19/19 negative fixtures).
+- Integration boundary: the `package-workspace-build` test
+  (`tests/tools/check-package-compile.py`, wired in `tests/CMakeLists.txt`)
+  drives `zomc build` over a two-module workspace (an `app` library importing
+  `app::child`) across lock update and locked replay, and asserts `build --help`
+  succeeds while hiding the compile-only selectors.
+
+The verifier and integration test committed as `539e2aa7` (parent `52beac22`,
+producer `c7e842f0` an ancestor). The commit changes only Python and CMake, so
+the existing package-request pipeline binary is the faithful subject of its
+ctest; no compiled source changed. This snapshot records committed evidence and
+does not advance any RFC 0012 or RFC 0025 implementation task above.
