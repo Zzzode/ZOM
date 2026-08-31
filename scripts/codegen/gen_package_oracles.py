@@ -24,15 +24,15 @@ VENDOR_CHECKER = ROOT / "tests/tools/check-vendored-dependencies.py"
 PUBGRUB_CHECKER = ROOT / "tests/tools/check-pubgrub-scenarios.py"
 RUNTIME_PRODUCERS = {
     "package-resolver-test": ROOT
-    / "tests/unittests/compiler/driver/package-resolver-test.cc",
+    / "tests/unittests/compiler/driver/package/package-resolver-test.cc",
     "target-registry-test": ROOT
     / "tests/unittests/compiler/ir/target-registry-test.cc",
     "build-script-execution-key-test": ROOT
-    / "tests/unittests/compiler/driver/build-script-execution-key-test.cc",
+    / "tests/unittests/compiler/driver/package/build-script-execution-key-test.cc",
     "source-record-test": ROOT
-    / "tests/unittests/compiler/driver/source-record-test.cc",
+    / "tests/unittests/compiler/driver/package/source-record-test.cc",
     "source-tree-test": ROOT
-    / "tests/unittests/compiler/driver/source-tree-test.cc",
+    / "tests/unittests/compiler/driver/package/source-tree-test.cc",
 }
 
 
