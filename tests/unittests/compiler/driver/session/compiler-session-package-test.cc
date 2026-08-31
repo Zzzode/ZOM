@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zc/core/time.h"
-#include "zc/ztest/test.h"
 #include "compiler/checker/body/body-checker.h"
 #include "compiler/checker/checker-identity-authority.h"
 #include "compiler/diagnostics/consumer/diagnostic-consumer.h"
@@ -29,6 +27,8 @@
 #include "compiler/ownership/surface-admission.h"
 #include "compiler/source/manager.h"
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
+#include "zc/core/time.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::driver {
 namespace {

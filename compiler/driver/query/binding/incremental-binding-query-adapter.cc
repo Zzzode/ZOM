@@ -6,14 +6,14 @@
 #include "compiler/driver/query/binding/incremental-binding-query-adapter.h"
 
 #include "compiler/binder/graph/module-skeleton-query.h"
+#include "compiler/driver/core/query.h"
 #include "compiler/driver/query/binding/active-definition-authority-query.h"
 #include "compiler/driver/query/binding/active-identity-membership-query.h"
-#include "compiler/driver/core/query.h"
-#include "compiler/driver/query/module-graph/incremental-module-resolution-query.h"
 #include "compiler/driver/query/binding/incremental-package-graph-query-input.h"
 #include "compiler/driver/query/binding/named-identity-inventory-query.h"
 #include "compiler/driver/query/binding/named-item-query.h"
 #include "compiler/driver/query/binding/owner-body-query.h"
+#include "compiler/driver/query/module-graph/incremental-module-resolution-query.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/parser/query/parse-source-query.h"
@@ -652,8 +652,7 @@ zc::Array<uint8_t> ActiveSources::encodeKey(const Key& key) {
   return zc::heapArray<uint8_t>(key.canonicalCrateBytes());
 }
 
-zc::Maybe<ActiveSources::Key> ActiveSources::decodeKey(
-    zc::ArrayPtr<const uint8_t> bytes) {
+zc::Maybe<ActiveSources::Key> ActiveSources::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
   return StableCrateQueryKey::decodeBounded(bytes);
 }
 
@@ -661,13 +660,12 @@ zc::Array<uint8_t> ActiveSources::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<ActiveSources::Value> ActiveSources::decodeValue(
-    zc::ArrayPtr<const uint8_t> bytes) {
+zc::Maybe<ActiveSources::Value> ActiveSources::decodeValue(zc::ArrayPtr<const uint8_t> bytes) {
   return CanonicalSourceSet::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<ActiveSources::Value> ActiveSources::provide(
-    query::QueryContext& context, const Key& key) {
+query::TypedQueryResult<ActiveSources::Value> ActiveSources::provide(query::QueryContext& context,
+                                                                     const Key& key) {
   identity::CanonicalDecoder decoder(key.canonicalCrateBytes());
   auto crate = identity::CrateKey::decodeCanonical(decoder);
   if (crate == zc::none || !decoder.finished()) {
@@ -737,7 +735,7 @@ query::TypedQueryResult<ActiveSources::Value> ActiveSources::provide(
 }
 
 bool ActiveSources::verify(query::QueryContext& context, const Key& key,
-                                const query::TypedQueryResult<Value>& result) {
+                           const query::TypedQueryResult<Value>& result) {
   if (result.isRuntimeFailure() || result.kind() != query::QueryValueKind::Value) { return false; }
   identity::CanonicalDecoder decoder(key.canonicalCrateBytes());
   auto crate = identity::CrateKey::decodeCanonical(decoder);
@@ -788,17 +786,14 @@ zc::Maybe<ActiveCrates::Key> ActiveCrates::decodeKey(zc::ArrayPtr<const uint8_t>
   return CompilationRootSetQueryKey::decodeCanonical(bytes);
 }
 
-zc::Array<uint8_t> ActiveCrates::encodeValue(const Value& value) {
-  return value.encodeCanonical();
-}
+zc::Array<uint8_t> ActiveCrates::encodeValue(const Value& value) { return value.encodeCanonical(); }
 
-zc::Maybe<ActiveCrates::Value> ActiveCrates::decodeValue(
-    zc::ArrayPtr<const uint8_t> bytes) {
+zc::Maybe<ActiveCrates::Value> ActiveCrates::decodeValue(zc::ArrayPtr<const uint8_t> bytes) {
   return CanonicalCrateSet::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<ActiveCrates::Value> ActiveCrates::provide(
-    query::QueryContext& context, const Key& key) {
+query::TypedQueryResult<ActiveCrates::Value> ActiveCrates::provide(query::QueryContext& context,
+                                                                   const Key& key) {
   zc::Vector<StablePackageQueryKey> packageRoots;
   zc::Vector<StableCrateQueryKey> crates;
   zc::Vector<StableCrateQueryKey> coreCrates;
@@ -862,7 +857,7 @@ query::TypedQueryResult<ActiveCrates::Value> ActiveCrates::provide(
 }
 
 bool ActiveCrates::verify(query::QueryContext& context, const Key& key,
-                               const query::TypedQueryResult<Value>& result) {
+                          const query::TypedQueryResult<Value>& result) {
   if (result.isRuntimeFailure() || result.kind() != query::QueryValueKind::Value) { return false; }
 
   zc::Vector<StablePackageQueryKey> packageRoots;
