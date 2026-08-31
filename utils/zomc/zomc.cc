@@ -1396,21 +1396,33 @@ private:
           "Binary emission currently supports exactly one module; got ", mirModules.size(), "."));
     }
     const auto functions = mirModules[0].builtMir().functions();
-    if (functions.size() != 1 || functions[0].kind != mir::MirFunctionKind::ModuleInitializer) {
+    if (functions.size() != 1) {
       return NativeObjectResult(zc::str(
-          "Binary emission currently supports one scalar module-initializer function only."));
+          "Binary emission currently supports exactly one function; got ", functions.size(), "."));
     }
     auto semanticTypes = session->getSemanticTypeStore();
     if (semanticTypes == zc::none) {
       return NativeObjectResult(zc::str("No semantic type store is available."));
     }
+    // Select the MIR -> LIR lowering by the single function's shape. A module
+    // initializer lowers through the scalar slice (RFC 0021 KR2.4); a `Function`
+    // is tried against the boolean-conditional diamond slice (KR5.2 C1). The
+    // diamond keeps its own `zom.conditional` symbol and parameterized ABI, so it
+    // produces a relocatable object only -- it is not the reserved no-argument
+    // `zom.module_init` entry the runtime `_start` calls, and `zomc run` still
+    // fails closed on it. Every other shape stays fail-closed here.
     zc::Maybe<lir::LirModule> lir;
     ZC_IF_SOME(types, semanticTypes) {
-      lir = lir::MirToLirLowering::lowerScalarInitializer(functions[0], types);
+      if (functions[0].kind == mir::MirFunctionKind::ModuleInitializer) {
+        lir = lir::MirToLirLowering::lowerScalarInitializer(functions[0], types);
+      } else if (functions[0].kind == mir::MirFunctionKind::Function) {
+        lir = lir::MirToLirLowering::lowerConditionalReturn(functions[0], types);
+      }
     }
     if (lir == zc::none) {
       return NativeObjectResult(
-          zc::str("MIR -> LIR lowering rejected this function (outside the scalar slice)."));
+          zc::str("MIR -> LIR lowering rejected this function (outside the scalar-initializer and "
+                  "boolean-conditional slices)."));
     }
     backend::llvm::LlvmTranslator translator;
     ZC_IF_SOME(lirModule, lir) {

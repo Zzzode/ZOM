@@ -105,16 +105,15 @@ add_test(
 set_tests_properties(format-cli PROPERTIES LABELS "unittest;format;cli" TIMEOUT 60)
 # RFC 0021 O5/KR5.1: with the LLVM backend built, binary emission is available
 # (`zomc compile --emit=binary` writes an object), so the native-execution
-# check drops its ZOM6007 rejection assertion via --binary-available; the `run`
-# rejection still holds because linking is not implemented. Frontend-only builds
-# keep the original assertions.
+# check runs the full compile-link-inspect-publish-execute path via
+# --binary-available. Frontend-only builds keep the fail-closed assertions.
 if(ZOM_ENABLE_LLVM_BACKEND)
   set(ZOM_NATIVE_EXECUTION_EXTRA_ARGS --binary-available)
 else()
   set(ZOM_NATIVE_EXECUTION_EXTRA_ARGS)
 endif()
 add_test(
-  NAME native-execution-unavailable-cli
+  NAME native-execution-cli
   COMMAND
     ${Python3_EXECUTABLE}
     "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-native-execution.py"
@@ -123,11 +122,12 @@ add_test(
     --manifest
     "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml"
     ${ZOM_NATIVE_EXECUTION_EXTRA_ARGS})
-set_tests_properties(native-execution-unavailable-cli PROPERTIES LABELS "unittest;cli" TIMEOUT 30)
+set_tests_properties(native-execution-cli PROPERTIES LABELS "unittest;cli" TIMEOUT 120)
 
 # With the backend built, `zomc compile --emit=binary` writes a native ELF
-# object for the scalar module-initializer fixture. Gated on the backend so the
-# frontend-only lane never requires LLVM.
+# object for the scalar module-initializer fixture and the KR5.2 C1
+# boolean-conditional diamond fixture. Gated on the backend so the frontend-only
+# lane never requires LLVM.
 if(ZOM_ENABLE_LLVM_BACKEND)
   add_test(
     NAME object-emission-cli
@@ -136,12 +136,10 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-object-emission.py"
       --zomc
       "$<TARGET_FILE:zomc>"
-      --manifest
-      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml"
-      --package
-      installed_consumer
-      --bin
-      installed_consumer)
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml::installed_consumer::installed_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer")
   set_tests_properties(object-emission-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)
 endif()
 add_test(

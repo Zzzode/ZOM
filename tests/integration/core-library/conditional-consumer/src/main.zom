@@ -1,0 +1,6 @@
+// KR5.2 C1 backend-lowering fixture: a single boolean-conditional diamond
+// `Function` (no module initializer) that lowers MIR -> LIR -> a verified LLVM
+// relocatable object. It keeps the `zom.conditional` parameterized symbol, so it
+// is object-emittable but not runnable through the reserved `zom.module_init`
+// entry -- `zomc run` stays fail-closed on it until KR5.4.
+fun entry(cond: bool) -> i32 { if (cond) { return 7; } else { return 9; } }
