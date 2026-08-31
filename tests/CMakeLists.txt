@@ -152,6 +152,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/callarg-consumer/Zom.toml::callarg_consumer::callarg_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call2arg-consumer/Zom.toml::call2arg_consumer::call2arg_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/aggregate-consumer/Zom.toml::aggregate_consumer::aggregate_consumer")
   set_tests_properties(object-emission-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)
 endif()

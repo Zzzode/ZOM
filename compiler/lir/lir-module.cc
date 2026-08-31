@@ -80,6 +80,16 @@ LirTerminator LirTerminator::callFunctionWithArgument(uint32_t calleeIndex,
   return LirTerminator(calleeIndex, destinationOrdinal, argument, normalTarget);
 }
 
+zc::Maybe<LirTerminator> LirTerminator::callFunctionWithArguments(
+    uint32_t calleeIndex, uint32_t destinationOrdinal, zc::Vector<LirIntegerConstant>&& arguments,
+    LirBlockId normalTarget) noexcept {
+  // A multi-argument call must carry at least one argument and stay within the
+  // argument cap; an empty or over-cap vector is not a representable call. The
+  // factory enforces the cap itself so no caller can construct an unbounded call.
+  if (arguments.size() == 0 || arguments.size() > kMaxCallArguments) { return zc::none; }
+  return LirTerminator(calleeIndex, destinationOrdinal, zc::mv(arguments), normalTarget);
+}
+
 zc::Maybe<LirTerminator> LirTerminator::returnAggregate(
     zc::Vector<LirIntegerConstant>&& slots) noexcept {
   // A multi-slot direct return must carry at least one slot and stay within the

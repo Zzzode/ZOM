@@ -1447,11 +1447,12 @@ private:
         // block count. The caller is a `Function` with two blocks (entry Call,
         // continuation Return); the callee is a `Function` with one block. If both
         // roles are filled by exactly one distinct function, lower the pair --
-        // first as a zero-argument call (KR5.2 C4), then as a single-argument call
-        // (KR5.2 C5). The two lowerings' internal gates (callee local count, call
-        // argument count, and the call targeting the identified callee) select at
-        // most one; any ambiguity (same-shape pair, missing role) or residual
-        // mismatch leaves `lir` as none.
+        // first as a zero-argument call (KR5.2 C4), then a single-argument call
+        // (KR5.2 C5), then a two-argument call (multi-argument slice). The three
+        // lowerings' internal gates (callee local/parameter count, call argument
+        // count, and the call targeting the identified callee) select at most one;
+        // any ambiguity (same-shape pair, missing role) or residual mismatch leaves
+        // `lir` as none.
         auto isCaller = [](const mir::MirFunction& fn) {
           return fn.kind == mir::MirFunctionKind::Function && fn.blocks.size() == 2;
         };
@@ -1482,6 +1483,10 @@ private:
             if (lir == zc::none) {
               lir = lir::MirToLirLowering::lowerCallModuleWithArgument(functions[caller],
                                                                        functions[callee], types);
+            }
+            if (lir == zc::none) {
+              lir = lir::MirToLirLowering::lowerCallModuleWithArguments(functions[caller],
+                                                                        functions[callee], types);
             }
           }
         }

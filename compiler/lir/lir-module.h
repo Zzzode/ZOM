@@ -78,6 +78,11 @@ enum class LirTerminatorKind : uint8_t {
 /// terminator cannot describe an unbounded struct; a wider bound is a later step.
 inline constexpr uint32_t kMaxAggregateReturnSlots = 64;
 
+/// \brief Upper bound on the argument vector a multi-argument call terminator may
+/// carry. This first multi-argument slice caps the vector at two so the terminator
+/// cannot describe an unbounded argument list; a wider bound is a later step.
+inline constexpr uint32_t kMaxCallArguments = 2;
+
 /// \brief Closed relational comparison operator for a LIR compare statement.
 ///
 /// Mirrors the six MIR relational operators. The result is a one-bit integer.
@@ -190,6 +195,17 @@ public:
                                                              uint32_t destinationOrdinal,
                                                              LirIntegerConstant argument,
                                                              LirBlockId normalTarget) noexcept;
+  /// \brief Builds a call terminator that passes an ordered vector of
+  /// integer-constant arguments. This is the first multi-argument call shape
+  /// (RFC 0021 KR5.2 / RFC 0009 widening); the vector must be non-empty and within
+  /// `kMaxCallArguments`, so the factory itself fails closed on an empty or
+  /// over-cap vector rather than trusting the caller. A single-argument vector is
+  /// representable here but the existing `callFunctionWithArgument` remains the
+  /// canonical one-argument form.
+  /// \return The terminator, or none when the vector is empty or over the cap.
+  ZC_NODISCARD static zc::Maybe<LirTerminator> callFunctionWithArguments(
+      uint32_t calleeIndex, uint32_t destinationOrdinal, zc::Vector<LirIntegerConstant>&& arguments,
+      LirBlockId normalTarget) noexcept;
   /// \brief Builds a terminator that returns an ordered bundle of integer
   /// constants as a multi-slot direct return (RFC 0021 carrier bundle rendered as
   /// a literal struct). The slots are returned in the given order.
@@ -220,6 +236,11 @@ public:
   ZC_NODISCARD bool callHasArgument() const noexcept { return callHasArgumentValue; }
   /// \brief The single integer-constant call argument; valid when callHasArgument().
   ZC_NODISCARD const LirIntegerConstant& callArgument() const noexcept { return integerValue; }
+  /// \brief The ordered multi-argument call vector; empty for the zero-argument and
+  /// canonical one-argument (`callHasArgument()`) call forms.
+  ZC_NODISCARD zc::ArrayPtr<const LirIntegerConstant> callArguments() const noexcept {
+    return callArgumentsValue.asPtr();
+  }
   /// \brief The ordered return slots; valid only for a ReturnAggregate terminator.
   ZC_NODISCARD zc::ArrayPtr<const LirIntegerConstant> returnAggregateSlots() const noexcept {
     return aggregateSlotsValue.asPtr();
@@ -249,6 +270,14 @@ private:
         trueTargetValue(normalTarget),
         calleeIndexValue(calleeIndex),
         callHasArgumentValue(true) {}
+  LirTerminator(uint32_t calleeIndex, uint32_t destinationOrdinal,
+                zc::Vector<LirIntegerConstant>&& arguments, LirBlockId normalTarget) noexcept
+      : kindValue(LirTerminatorKind::Call),
+        integerValue(fallbackConstant()),
+        localOrdinalValue(destinationOrdinal),
+        trueTargetValue(normalTarget),
+        calleeIndexValue(calleeIndex),
+        callArgumentsValue(zc::mv(arguments)) {}
   explicit LirTerminator(zc::Vector<LirIntegerConstant>&& slots) noexcept
       : kindValue(LirTerminatorKind::ReturnAggregate),
         integerValue(fallbackConstant()),
@@ -264,6 +293,7 @@ private:
   uint32_t calleeIndexValue = 0;
   bool callHasArgumentValue = false;
   zc::Vector<LirIntegerConstant> aggregateSlotsValue;
+  zc::Vector<LirIntegerConstant> callArgumentsValue;
 };
 
 /// \brief One immutable LIR basic block: an identity, statements, a terminator.
