@@ -21,6 +21,8 @@
 #include "compiler/backend/llvm/llvm-translator.h"
 #include "compiler/checker/facts/signature-facts.h"
 #include "compiler/identity/source-snapshot.h"
+#include "compiler/lir/lir-module.h"
+#include "compiler/lir/lir-store.h"
 #include "compiler/lir/mir-to-lir.h"
 #include "compiler/mir/built-mir.h"
 #include "compiler/type/semantic-type-data.h"
@@ -960,6 +962,89 @@ ZC_TEST("MIR -> LIR lowering fails closed on a non-integer scalar initializer") 
 
   auto lir = lir::MirToLirLowering::lowerScalarInitializer(function, typeContext.semanticTypes());
   ZC_EXPECT(lir == zc::none);
+}
+
+// Builds a single-block LIR function that returns a multi-slot integer bundle
+// directly (the RFC 0021 carrier-bundle shape). The slots are i32 constants in
+// the given order.
+lir::LirModule buildAggregateReturnModule(zc::ArrayPtr<const uint64_t> slotValues) {
+  auto i32 = lir::LirValueType::integer(lir::IntegerBitWidth::Bit32);
+  ZC_REQUIRE(i32 != zc::none);
+  const auto carrier = ZC_REQUIRE_NONNULL(i32);
+
+  zc::Vector<lir::LirIntegerConstant> slots(slotValues.size());
+  for (const auto value : slotValues) {
+    auto constant = lir::LirIntegerConstant::from(carrier, value);
+    ZC_REQUIRE(constant != zc::none);
+    slots.add(ZC_REQUIRE_NONNULL(constant));
+  }
+  auto terminator = lir::LirTerminator::returnAggregate(zc::mv(slots));
+  ZC_REQUIRE(terminator != zc::none);
+
+  auto blockId = lir::LirBlockId::fromOrdinal(1);
+  ZC_REQUIRE(blockId != zc::none);
+  zc::Vector<lir::LirBasicBlock> blocks;
+  blocks.add(
+      lir::LirBasicBlock(ZC_REQUIRE_NONNULL(blockId), ZC_REQUIRE_NONNULL(zc::mv(terminator))));
+
+  zc::Vector<lir::LirFunction> functions;
+  functions.add(lir::LirFunction(zc::heapString("zom.module_init"), carrier, zc::mv(blocks)));
+  return lir::LirModule(zc::mv(functions));
+}
+
+ZC_TEST("Multi-slot aggregate return lowers to a verified LLVM literal struct") {
+  const uint64_t values[] = {42, 7};
+  auto module = buildAggregateReturnModule(zc::arrayPtr(values));
+
+  LlvmTranslator translator;
+  auto result = translator.translate(module);
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+
+  // Assert the structural shape (a literal two-field i32 struct built by two
+  // insertvalue instructions and returned) rather than one brittle string.
+  const auto ir = result.textualIr();
+  ZC_EXPECT(ir.contains("{ i32, i32 }"_zc));
+  ZC_EXPECT(ir.contains("insertvalue"_zc));
+  ZC_EXPECT(ir.contains("i32 42, 0"_zc));
+  ZC_EXPECT(ir.contains("i32 7, 1"_zc));
+  ZC_EXPECT(ir.contains("ret { i32, i32 }"_zc));
+}
+
+ZC_TEST("Single-slot aggregate return lowers to a verified one-field struct") {
+  const uint64_t values[] = {99};
+  auto module = buildAggregateReturnModule(zc::arrayPtr(values));
+
+  LlvmTranslator translator;
+  auto result = translator.translate(module);
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+  ZC_EXPECT(result.textualIr().contains("{ i32 }"_zc));
+  ZC_EXPECT(result.textualIr().contains("insertvalue"_zc));
+}
+
+ZC_TEST("Scalar integer return is unchanged by the aggregate return path") {
+  // A single-block ReturnInteger function still returns a bare i32, proving the
+  // literal-struct path does not perturb the scalar return.
+  auto i32 = lir::LirValueType::integer(lir::IntegerBitWidth::Bit32);
+  ZC_REQUIRE(i32 != zc::none);
+  const auto carrier = ZC_REQUIRE_NONNULL(i32);
+  auto constant = lir::LirIntegerConstant::from(carrier, 5);
+  ZC_REQUIRE(constant != zc::none);
+  auto blockId = lir::LirBlockId::fromOrdinal(1);
+  ZC_REQUIRE(blockId != zc::none);
+  zc::Vector<lir::LirBasicBlock> blocks;
+  blocks.add(lir::LirBasicBlock(ZC_REQUIRE_NONNULL(blockId),
+                                lir::LirTerminator::returnInteger(ZC_REQUIRE_NONNULL(constant))));
+  zc::Vector<lir::LirFunction> functions;
+  functions.add(lir::LirFunction(zc::heapString("zom.module_init"), carrier, zc::mv(blocks)));
+  lir::LirModule module(zc::mv(functions));
+
+  LlvmTranslator translator;
+  auto result = translator.translate(module);
+  ZC_EXPECT(result.verified());
+  ZC_EXPECT(result.textualIr().contains("ret i32 5"_zc));
+  ZC_EXPECT(!result.textualIr().contains("insertvalue"_zc));
 }
 
 }  // namespace

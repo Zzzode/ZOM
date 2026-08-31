@@ -96,19 +96,24 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
   // Goto, a conditional branch, or a call.
   auto isSupportedShape = [](const lir::LirFunction& candidate) -> bool {
     const auto candidateBlocks = candidate.blocks();
-    // A multi-slot aggregate return is not lowered in this slice; reject any
-    // function that carries one in any block before translation begins, so the
-    // body emitter never encounters an unsupported terminator.
-    for (const auto& block : candidateBlocks) {
-      if (block.terminator().kind() == lir::LirTerminatorKind::ReturnAggregate) { return false; }
+    // A multi-slot aggregate return is lowered only as a single entry block that
+    // returns the bundle directly (mirroring the single-block scalar return). A
+    // ReturnAggregate in any other position is not lowered in this slice, so
+    // reject it before translation begins and the body emitter never reaches it.
+    for (size_t index = 0; index < candidateBlocks.size(); ++index) {
+      if (candidateBlocks[index].terminator().kind() == lir::LirTerminatorKind::ReturnAggregate) {
+        if (index != 0 || candidateBlocks.size() != 1) { return false; }
+      }
     }
     if (candidateBlocks.size() == 1) {
       // A single-block function either returns an integer constant (scalar
-      // initializer / constant-return callee) or returns a local slot (a
-      // one-parameter callee that returns its parameter).
+      // initializer / constant-return callee), returns a local slot (a
+      // one-parameter callee that returns its parameter), or returns a multi-slot
+      // aggregate bundle.
       const auto kind = candidateBlocks[0].terminator().kind();
       return kind == lir::LirTerminatorKind::ReturnInteger ||
-             kind == lir::LirTerminatorKind::ReturnLocal;
+             kind == lir::LirTerminatorKind::ReturnLocal ||
+             kind == lir::LirTerminatorKind::ReturnAggregate;
     }
     if (candidateBlocks.size() < 2) { return false; }
     const auto entryKind = candidateBlocks[0].terminator().kind();
@@ -157,9 +162,33 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
   auto integerType = [&](lir::IntegerBitWidth width) -> ::llvm::IntegerType* {
     return ::llvm::Type::getIntNTy(*context, bitCountFor(width));
   };
+  // The LLVM return type of one LIR function. A single-block ReturnAggregate
+  // returns a literal struct whose element types are the slot carriers in slot
+  // order (RFC 0021 carrier bundle); every other shape returns its scalar integer
+  // carrier. The struct is an LLVM literal aggregate, not an LIR SSA value type.
+  auto aggregateReturnSlots = [](const lir::LirFunction& candidate)
+      -> zc::Maybe<zc::ArrayPtr<const lir::LirIntegerConstant>> {
+    const auto candidateBlocks = candidate.blocks();
+    if (candidateBlocks.size() == 1 &&
+        candidateBlocks[0].terminator().kind() == lir::LirTerminatorKind::ReturnAggregate) {
+      return candidateBlocks[0].terminator().returnAggregateSlots();
+    }
+    return zc::none;
+  };
+  auto functionReturnType = [&](const lir::LirFunction& candidate) -> ::llvm::Type* {
+    ZC_IF_SOME(slots, aggregateReturnSlots(candidate)) {
+      zc::Vector<::llvm::Type*> elementTypes(slots.size());
+      for (const auto& slot : slots) {
+        elementTypes.add(integerType(slot.carrier().integerWidth()));
+      }
+      ::llvm::ArrayRef<::llvm::Type*> elementRef(elementTypes.begin(), elementTypes.size());
+      return ::llvm::StructType::get(*context, elementRef);
+    }
+    return integerType(candidate.returnCarrier().integerWidth());
+  };
   zc::Vector<::llvm::Function*> llvmFunctions;
   for (const auto& candidate : functions) {
-    ::llvm::IntegerType* candidateReturn = integerType(candidate.returnCarrier().integerWidth());
+    ::llvm::Type* candidateReturn = functionReturnType(candidate);
     zc::Vector<::llvm::Type*> paramTypes;
     for (const auto& parameter : candidate.parameters()) {
       paramTypes.add(integerType(parameter.carrier().integerWidth()));
@@ -186,6 +215,31 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
       ::llvm::Constant* value =
           ::llvm::ConstantInt::get(returnType, returnConstant.bits(), /*IsSigned=*/false);
       ::llvm::ReturnInst::Create(*context, value, entryBlock);
+      continue;
+    }
+
+    if (blocks.size() == 1 &&
+        blocks[0].terminator().kind() == lir::LirTerminatorKind::ReturnAggregate) {
+      // Single entry block returning a multi-slot bundle as a literal struct:
+      // build the struct value from zeroinitializer and insertvalue each slot at
+      // its monotone index, then return it. The function's declared return type
+      // is the matching literal StructType.
+      ::llvm::BasicBlock* entryBlock = ::llvm::BasicBlock::Create(*context, "entry", llvmFunction);
+      auto* structType = ::llvm::dyn_cast<::llvm::StructType>(llvmFunction->getReturnType());
+      const auto returnSlots = blocks[0].terminator().returnAggregateSlots();
+      if (structType == nullptr || structType->getNumElements() != returnSlots.size()) {
+        return LlvmTranslationResult::failure(
+            zc::heapString("aggregate return type does not match its slot count"));
+      }
+      ::llvm::Value* aggregate = ::llvm::ConstantAggregateZero::get(structType);
+      for (unsigned slotIndex = 0; slotIndex < returnSlots.size(); ++slotIndex) {
+        auto* slotType = integerType(returnSlots[slotIndex].carrier().integerWidth());
+        ::llvm::Constant* slotValue =
+            ::llvm::ConstantInt::get(slotType, returnSlots[slotIndex].bits(), /*IsSigned=*/false);
+        aggregate =
+            ::llvm::InsertValueInst::Create(aggregate, slotValue, {slotIndex}, "agg", entryBlock);
+      }
+      ::llvm::ReturnInst::Create(*context, aggregate, entryBlock);
       continue;
     }
 
