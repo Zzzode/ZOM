@@ -80,4 +80,12 @@ LirTerminator LirTerminator::callFunctionWithArgument(uint32_t calleeIndex,
   return LirTerminator(calleeIndex, destinationOrdinal, argument, normalTarget);
 }
 
+zc::Maybe<LirTerminator> LirTerminator::returnAggregate(
+    zc::Vector<LirIntegerConstant>&& slots) noexcept {
+  // A multi-slot direct return must carry at least one slot and stay within the
+  // bundle cap; an empty or over-cap bundle is not a representable return.
+  if (slots.size() == 0 || slots.size() > kMaxAggregateReturnSlots) { return zc::none; }
+  return LirTerminator(zc::mv(slots));
+}
+
 }  // namespace zomlang::compiler::lir

@@ -96,6 +96,12 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
   // Goto, a conditional branch, or a call.
   auto isSupportedShape = [](const lir::LirFunction& candidate) -> bool {
     const auto candidateBlocks = candidate.blocks();
+    // A multi-slot aggregate return is not lowered in this slice; reject any
+    // function that carries one in any block before translation begins, so the
+    // body emitter never encounters an unsupported terminator.
+    for (const auto& block : candidateBlocks) {
+      if (block.terminator().kind() == lir::LirTerminatorKind::ReturnAggregate) { return false; }
+    }
     if (candidateBlocks.size() == 1) {
       // A single-block function either returns an integer constant (scalar
       // initializer / constant-return callee) or returns a local slot (a
@@ -328,6 +334,12 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
           ::llvm::ReturnInst::Create(*context, value, target);
           break;
         }
+        case lir::LirTerminatorKind::ReturnAggregate:
+          // A multi-slot aggregate return is not lowered in this slice; the
+          // shape gate above (isSupportedShape) rejects a function carrying it
+          // before translation reaches here, so this arm is unreachable. The
+          // literal-struct lowering is the next RFC 0021 step.
+          ZC_UNREACHABLE;
       }
     }
   }

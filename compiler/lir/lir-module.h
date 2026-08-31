@@ -68,7 +68,15 @@ enum class LirTerminatorKind : uint8_t {
   CondBranch = 0x03,
   ReturnLocal = 0x04,
   Call = 0x05,
+  ReturnAggregate = 0x06,
 };
+
+/// \brief Upper bound on the slot count of a multi-slot aggregate return.
+///
+/// RFC 0021 packs a direct return of more than one value into an ordered carrier
+/// bundle rendered as a literal struct. This first slice caps the bundle so the
+/// terminator cannot describe an unbounded struct; a wider bound is a later step.
+inline constexpr uint32_t kMaxAggregateReturnSlots = 64;
 
 /// \brief Closed relational comparison operator for a LIR compare statement.
 ///
@@ -182,6 +190,19 @@ public:
                                                              uint32_t destinationOrdinal,
                                                              LirIntegerConstant argument,
                                                              LirBlockId normalTarget) noexcept;
+  /// \brief Builds a terminator that returns an ordered bundle of integer
+  /// constants as a multi-slot direct return (RFC 0021 carrier bundle rendered as
+  /// a literal struct). The slots are returned in the given order.
+  /// \param slots The ordered slot constants; must be non-empty and within
+  ///        `kMaxAggregateReturnSlots`.
+  /// \return The terminator, or none when the bundle is empty or over the cap.
+  ZC_NODISCARD static zc::Maybe<LirTerminator> returnAggregate(
+      zc::Vector<LirIntegerConstant>&& slots) noexcept;
+
+  LirTerminator(LirTerminator&&) = default;
+  LirTerminator& operator=(LirTerminator&&) = default;
+  ZC_DISALLOW_COPY(LirTerminator);
+  ~LirTerminator() noexcept = default;
 
   ZC_NODISCARD LirTerminatorKind kind() const noexcept { return kindValue; }
   ZC_NODISCARD const LirIntegerConstant& returnIntegerValue() const noexcept {
@@ -199,6 +220,10 @@ public:
   ZC_NODISCARD bool callHasArgument() const noexcept { return callHasArgumentValue; }
   /// \brief The single integer-constant call argument; valid when callHasArgument().
   ZC_NODISCARD const LirIntegerConstant& callArgument() const noexcept { return integerValue; }
+  /// \brief The ordered return slots; valid only for a ReturnAggregate terminator.
+  ZC_NODISCARD zc::ArrayPtr<const LirIntegerConstant> returnAggregateSlots() const noexcept {
+    return aggregateSlotsValue.asPtr();
+  }
 
 private:
   explicit LirTerminator(LirIntegerConstant value) noexcept
@@ -224,6 +249,10 @@ private:
         trueTargetValue(normalTarget),
         calleeIndexValue(calleeIndex),
         callHasArgumentValue(true) {}
+  explicit LirTerminator(zc::Vector<LirIntegerConstant>&& slots) noexcept
+      : kindValue(LirTerminatorKind::ReturnAggregate),
+        integerValue(fallbackConstant()),
+        aggregateSlotsValue(zc::mv(slots)) {}
 
   ZC_NODISCARD static LirIntegerConstant fallbackConstant() noexcept;
 
@@ -234,16 +263,17 @@ private:
   LirBlockId falseTargetValue;
   uint32_t calleeIndexValue = 0;
   bool callHasArgumentValue = false;
+  zc::Vector<LirIntegerConstant> aggregateSlotsValue;
 };
 
 /// \brief One immutable LIR basic block: an identity, statements, a terminator.
 class LirBasicBlock final {
 public:
-  LirBasicBlock(LirBlockId id, LirTerminator terminator) noexcept
-      : idValue(id), terminatorValue(terminator) {}
+  LirBasicBlock(LirBlockId id, LirTerminator&& terminator) noexcept
+      : idValue(id), terminatorValue(zc::mv(terminator)) {}
   LirBasicBlock(LirBlockId id, zc::Vector<LirStatement>&& statements,
-                LirTerminator terminator) noexcept
-      : idValue(id), statementsValue(zc::mv(statements)), terminatorValue(terminator) {}
+                LirTerminator&& terminator) noexcept
+      : idValue(id), statementsValue(zc::mv(statements)), terminatorValue(zc::mv(terminator)) {}
   ZC_DISALLOW_COPY(LirBasicBlock);
   LirBasicBlock(LirBasicBlock&&) = default;
   LirBasicBlock& operator=(LirBasicBlock&&) = default;
