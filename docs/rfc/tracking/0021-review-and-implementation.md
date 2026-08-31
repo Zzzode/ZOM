@@ -419,3 +419,37 @@ drop materialization or KR6.1 flow-typing blocker: both remain blocked on genera
 aggregate MIR to LIR lowering, which is a code gap unaffected by the LLVM
 distribution. The `31c03e2a` C-language configure fix and this Debian LLVM path
 are what make the verification reproducible on this host.
+
+## Aggregate Field Lowering And Exit-Status Propagation Snapshot
+
+On 2026-08-31 two production increments landed toward struct-aware native
+execution, and the remaining end-to-end step is recorded as blocked with cause.
+
+Commit `2cb0dcc1` adds `MirToLirLowering::lowerAggregateFieldInitializer`. The
+MIR aggregate layer already existed: the `NominalAggregate` rvalue, the `Field`
+projection, their canonical codec, and the
+`validLocalAggregateFieldReturnFunction` verifier were live but had no consumer
+below MIR. The new lowering admits exactly that verified struct-local
+field-return shape, and because every aggregate element is a constant it folds
+the selected field to the existing single-block integer return. No struct is
+materialized in LIR or LLVM, so the translator and object-emission paths are
+reused unchanged, and a struct `P{42, 7}` returning `p.x` lowers to a verified
+LLVM `ret i32 42`.
+
+Commit `a490dc13` propagates the module initializer exit status. The Linux entry
+stub previously forced the process exit code to zero, and `zomc run` treated any
+non-zero child exit as a failure, so no program computed result was observable
+through the exit code. The entry now moves the initializer result into the
+exit-status register, and `zomc run` propagates a normal child exit while still
+reporting a spawn failure or a signal termination as a run error.
+
+The end-to-end proof, in which a struct-field program is built and executed by
+`zomc run` with its process exit code equal to the returned field, is not
+implemented. It requires either a module-initializer form of the aggregate
+lowering, so the struct-field result becomes the module entry, or multi-function
+emission with entry selection, because `buildNativeObject` accepts only a single
+module-initializer function and the entry stub calls `zom.module_init`. It also
+requires the frontend to produce the aggregate-field shape from source and the
+native-execution gate to assert the specific exit code. This snapshot claims no
+struct execution closure; it records the lowering and exit-status foundations
+only.
