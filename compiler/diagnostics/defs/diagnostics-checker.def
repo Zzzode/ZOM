@@ -86,8 +86,6 @@ DIAG(4052, RecursiveTypeAliasCycle, kError, "Recursive type alias cycle", 0)
 DIAG(4054, OrphanImpl, kError, "Cannot implement {0} for {1}: neither declaration is local", 2)
 DIAG(4055, DynDuplicateAssociatedTypeBinding, kError,
      "Duplicate associated type binding {0} in dyn interface {1}", 2)
-// Reserved by RFC 0007 for the ownership rail. Registration is not implementation evidence.
-// Tracking: docs/rfc/tracking/0007-review-and-implementation.md
 DIAG(4056, UseAfterMove, kError, "Use of moved value", 0)
 DIAG(4057, ValueMovedHere, kNote, "Value moved here", 0)
 DIAG(4058, MutableBorrowConflicts, kError, "Mutable borrow conflicts with an active borrow", 0)
