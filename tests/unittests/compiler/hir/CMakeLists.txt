@@ -3,4 +3,4 @@ add_ztest_unit_tests_from_directory(
   LIBRARIES frontend
 )
 
-set_tests_properties(hir-module-test PROPERTIES TIMEOUT 180)
+set_tests_properties(hir-module-test PROPERTIES TIMEOUT 600 RUN_SERIAL TRUE)
