@@ -16,19 +16,19 @@
 
 #include <cstdint>
 
-#include "zc/core/array.h"
-#include "zc/core/common.h"
-#include "zc/core/memory.h"
-#include "zc/core/one-of.h"
-#include "zc/core/vector.h"
 #include "compiler/ast/node-id.h"
-#include "compiler/binder/metadata/binding-metadata.h"
 #include "compiler/binder/graph/parsed-module.h"
+#include "compiler/binder/metadata/binding-metadata.h"
 #include "compiler/diagnostics/core/diagnostic-ids.h"
 #include "compiler/identity/identity-invariant.h"
 #include "compiler/identity/semantic/context-fingerprint.h"
 #include "compiler/type/semantic-type-data.h"
 #include "compiler/type/semantic-type-store.h"
+#include "zc/core/array.h"
+#include "zc/core/common.h"
+#include "zc/core/memory.h"
+#include "zc/core/one-of.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::identity {
 class CanonicalEncoder;
@@ -231,6 +231,15 @@ struct NominalSignature final {
   zc::Maybe<identity::SemanticTypeId> base;
   zc::Vector<InterfaceInstantiation> interfaces;
   zc::Vector<identity::DefId> fields;
+  /// The stored fields in source declaration order. This is a permutation of
+  /// `fields` (same set) with the canonical digest sort undone; it contains only
+  /// stored fields (const and method members are excluded, as in `fields`). It is
+  /// deliberately NOT part of the canonical encoding -- the encoder reads only
+  /// `fields`, and the canonical sequence encoder rejects an unsorted order -- so
+  /// it carries declaration order as non-canonical metadata without changing any
+  /// signature digest. A consumer that needs declaration order reads this; a
+  /// consumer that needs the canonical set reads `fields`.
+  zc::Vector<identity::DefId> declaredFields;
   zc::Vector<identity::DefId> variants;
   zc::Vector<identity::DefId> members;
 };
@@ -1152,8 +1161,8 @@ class MarkerShapeInventoryBuilder final {
 public:
   ZC_NODISCARD static MarkerShapeInventoryBuildResult build(
       identity::SemanticContextBrand semanticContext,
-      const identity::ContextFingerprint& contextFingerprint,
-      identity::ModuleId diagnosticModule, zc::ArrayPtr<const MarkerShapeModuleInput> modules,
+      const identity::ContextFingerprint& contextFingerprint, identity::ModuleId diagnosticModule,
+      zc::ArrayPtr<const MarkerShapeModuleInput> modules,
       const CheckerIdentityAuthority& identities);
 };
 

@@ -5,9 +5,9 @@
 
 #include "compiler/checker/borrow/borrow-interface.h"
 
+#include "tests/unittests/compiler/checker/checker-authority-test-fixture.h"
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
-#include "tests/unittests/compiler/checker/checker-authority-test-fixture.h"
 
 namespace zomlang::compiler::checker::borrow {
 namespace {
@@ -144,7 +144,8 @@ public:
         signature::SemanticSignaturePayload(signature::NominalSignature{
             zc::Vector<signature::GenericParameterSignature>(), zc::mv(noBase),
             zc::Vector<signature::InterfaceInstantiation>(), zc::Vector<identity::DefId>(),
-            zc::Vector<identity::DefId>(), zc::Vector<identity::DefId>()}),
+            zc::Vector<identity::DefId>(), zc::Vector<identity::DefId>(),
+            zc::Vector<identity::DefId>()}),
         sourceSpan()};
   }
 

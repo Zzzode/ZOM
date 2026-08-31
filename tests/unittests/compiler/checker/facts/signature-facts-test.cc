@@ -14,11 +14,12 @@
 
 #include "compiler/checker/facts/signature-facts.h"
 
-#include "zc/core/encoding.h"
-#include "zc/ztest/test.h"
 #include "compiler/identity/crypto/sha256.h"
+#include "compiler/ownership/surface-admission.h"
 #include "tests/unittests/compiler/checker/checker-authority-test-fixture.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
+#include "zc/core/encoding.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::checker::signature {
 namespace {
@@ -311,7 +312,8 @@ const SIGNATURE6: unit = ();
         SemanticSignaturePayload(
             NominalSignature{zc::Vector<GenericParameterSignature>(), zc::mv(noBase),
                              zc::Vector<InterfaceInstantiation>(), zc::Vector<identity::DefId>(),
-                             zc::Vector<identity::DefId>(), zc::Vector<identity::DefId>()}),
+                             zc::Vector<identity::DefId>(), zc::Vector<identity::DefId>(),
+                             zc::Vector<identity::DefId>()}),
         span()});
 
     result.add(interfaceSignature(false));
@@ -483,6 +485,202 @@ const identity::IdentityInvariant& identityFailure(const SignatureFactsVerificat
   ZC_REQUIRE(rejected.failures[0].variant().is<identity::IdentityInvariant>());
   return rejected.failures[0].variant().get<identity::IdentityInvariant>();
 }
+
+// Drives the production SignatureFactsBuilder over a real source module so the
+// non-canonical `declaredFields` metadata can be observed against the canonical
+// digest-sorted `fields`. The struct's stored fields are named so that the
+// canonical digest order does not coincide with source order; the tests refuse
+// to pass unless that reordering actually happens, so they stay falsifiable
+// rather than trivially green.
+class DeclaredFieldOrderFixture final {
+public:
+  explicit DeclaredFieldOrderFixture(zc::StringPtr sourceText) : session(sourceText) {
+    const auto& identities = session.identityAuthority();
+    zc::Vector<ownership::OwnershipAdmittedBoundModule> admitted(identities.modules().size());
+    zc::Vector<MarkerShapeModuleInput> shapeInputs(identities.modules().size());
+    zc::Maybe<size_t> userIndex;
+    for (size_t index = 0; index < identities.modules().size(); ++index) {
+      const auto& candidate = identities.modules()[index];
+      auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(candidate.retain());
+      ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
+      admitted.add(zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>());
+      shapeInputs.add(MarkerShapeModuleInput{admitted.back()});
+      if (candidate.module() == session.module()) { userIndex = index; }
+    }
+    ZC_REQUIRE(userIndex != zc::none);
+
+    auto shapeResult =
+        MarkerShapeInventoryBuilder::build(session.semanticContext(), identities.fingerprint(),
+                                           session.module(), shapeInputs.asPtr(), identities);
+    ZC_REQUIRE(shapeResult.is<VerifiedMarkerShapeInventory>());
+    shapes = zc::heap<VerifiedMarkerShapeInventory>(
+        zc::mv(shapeResult).get<VerifiedMarkerShapeInventory>());
+
+    const auto configuration = MarkerPolicyConfiguration::explicitOnly();
+    zc::Vector<identity::ModuleId> noPreludeModules;
+    auto policyResult = MarkerPolicyRegistryBuilder::build(session.module(), configuration, *shapes,
+                                                           noPreludeModules.asPtr(), identities);
+    ZC_REQUIRE(policyResult.is<VerifiedMarkerPolicyRegistry>());
+    policies = zc::heap<VerifiedMarkerPolicyRegistry>(
+        zc::mv(policyResult).get<VerifiedMarkerPolicyRegistry>());
+
+    ZC_IF_SOME(value, userIndex) {
+      auto factsResult = SignatureFactsBuilder::build(SignatureFactsBuildInput{
+          admitted[value], session.semanticTypes(), *shapes, *policies, identities});
+      ZC_REQUIRE(factsResult.is<VerifiedSignatureFacts>());
+      facts = zc::heap<VerifiedSignatureFacts>(zc::mv(factsResult).get<VerifiedSignatureFacts>());
+    }
+  }
+
+  const VerifiedSignatureFacts& signatureFacts() const {
+    ZC_REQUIRE(facts.get() != nullptr);
+    return *facts;
+  }
+
+  // Resolves the source name of a stored field DefId through the bound-module
+  // definition inventory.
+  zc::StringPtr fieldName(identity::DefId field) const {
+    for (const auto& entry : session.boundModule().definitions().definitions()) {
+      if (entry.definition == field) { return entry.record.name(); }
+    }
+    ZC_FAIL_REQUIRE("missing declared-field-order definition fixture");
+  }
+
+  const NominalSignature& nominal() const {
+    const auto& payload = nominalSignature().payload.variant();
+    ZC_REQUIRE(payload.is<NominalSignature>());
+    return payload.get<NominalSignature>();
+  }
+
+  const SemanticSignature& nominalSignature() const {
+    for (const auto& signature : signatureFacts().signatures()) {
+      if (signature.definitionKind == identity::DefinitionKind::Struct) { return signature; }
+    }
+    ZC_FAIL_REQUIRE("missing declared-field-order struct signature");
+  }
+
+  // The declared-order field-name sequence, used to assert two modules really do
+  // differ in declaration order before comparing their canonical encodings.
+  zc::Vector<zc::String> declaredFieldNames() const {
+    zc::Vector<zc::String> names;
+    for (const auto declared : nominal().declaredFields) {
+      names.add(zc::str(fieldName(declared)));
+    }
+    return names;
+  }
+
+  zc::Maybe<zc::Array<uint8_t>> encodeNominal() const {
+    return SignatureFactsCanonicalCodec::encodeSignature(
+        nominalSignature(), session.module(), session.identityAuthority(), session.semanticTypes());
+  }
+
+  // Re-runs the signature-facts verifier over the produced signatures, optionally
+  // replacing the struct signature's `declaredFields` with a caller-supplied set.
+  // The canonical requirements and census are always built from the unmodified
+  // signatures, so a rejection can only come from the substituted `declaredFields`.
+  // The fixture struct is plain (no generics, base, interfaces, variants, or
+  // members), so the rebuilt nominal payload carries only fields + declaredFields.
+  SignatureFactsVerificationResult verifyWithDeclaredFields(
+      zc::Vector<identity::DefId>&& replacementDeclaredFields, bool replace) const {
+    zc::Vector<SemanticSignature> candidateSignatures;
+    for (const auto& signature : signatureFacts().signatures()) {
+      auto cloned = signature.clone();
+      if (replace && signature.definitionKind == identity::DefinitionKind::Struct) {
+        const auto& payload = cloned.payload.variant();
+        ZC_REQUIRE(payload.is<NominalSignature>());
+        const auto& original = payload.get<NominalSignature>();
+        ZC_REQUIRE(original.genericParameters.size() == 0);
+        ZC_REQUIRE(original.base == zc::none);
+        ZC_REQUIRE(original.interfaces.size() == 0);
+        ZC_REQUIRE(original.variants.size() == 0);
+        ZC_REQUIRE(original.members.size() == 0);
+        zc::Vector<identity::DefId> fields(original.fields.size());
+        fields.addAll(original.fields.asPtr());
+        zc::Maybe<identity::SemanticTypeId> noBase;
+        cloned =
+            SemanticSignature{signature.definition,
+                              signature.definitionKind,
+                              signature.scope.clone(),
+                              zc::Vector<SignatureModifier>(),
+                              zc::Vector<NormalizedAttributeFact>(),
+                              SemanticSignaturePayload(NominalSignature{
+                                  zc::Vector<GenericParameterSignature>(), zc::mv(noBase),
+                                  zc::Vector<InterfaceInstantiation>(), zc::mv(fields),
+                                  zc::mv(replacementDeclaredFields), zc::Vector<identity::DefId>(),
+                                  zc::Vector<identity::DefId>()}),
+                              signature.declarationSpan.clone()};
+      }
+      candidateSignatures.add(zc::mv(cloned));
+    }
+
+    zc::Vector<SignatureDefinitionRequirement> requirements;
+    zc::Vector<SignatureDefinitionCensusEntry> census;
+    for (const auto& signature : signatureFacts().signatures()) {
+      auto record = SignatureFactsCanonicalCodec::encodeSignature(
+          signature, session.module(), session.identityAuthority(), session.semanticTypes());
+      ZC_REQUIRE(record != zc::none);
+      ZC_IF_SOME(bytes, record) {
+        requirements.add(SignatureDefinitionRequirement{signature.definition,
+                                                        signature.definitionKind, zc::mv(bytes)});
+      }
+      census.add(SignatureDefinitionCensusEntry{signature.definition, signature.definitionKind});
+    }
+
+    const auto& bound = session.boundModule();
+    SignatureFactsCandidate candidate{session.semanticContext(),
+                                      session.identityAuthority().fingerprint(),
+                                      session.module(),
+                                      bound.parsedModule().contentDigest(),
+                                      bound.parsedModule().receipt(),
+                                      bound.bindingSurface().revision(),
+                                      policies->revision(),
+                                      zc::mv(candidateSignatures),
+                                      zc::Vector<ImplHead>(),
+                                      zc::Vector<MarkerFact>()};
+    zc::Vector<ImplAuthorityCensusEntry> noImplCensus;
+    zc::Vector<ImplHeadRequirement> noImpls;
+    zc::Vector<MarkerFactRequirement> noMarkers;
+    return SignatureFactsVerifier::verify(
+        zc::mv(candidate),
+        SignatureFactsVerificationInput{
+            session.semanticContext(), session.identityAuthority().fingerprint(), session.module(),
+            bound.parsedModule().source(), bound.parsedModule().contentDigest(),
+            bound.parsedModule().receipt(), bound.bindingSurface().revision(), policies->revision(),
+            census.asPtr(), noImplCensus.asPtr(), requirements.asPtr(), noImpls.asPtr(),
+            noMarkers.asPtr(), session.semanticTypes(), session.identityAuthority()});
+  }
+
+  tests::checker_fixture::CheckerAuthoritySession session;
+
+private:
+  zc::Own<VerifiedMarkerShapeInventory> shapes;
+  zc::Own<VerifiedMarkerPolicyRegistry> policies;
+  zc::Own<VerifiedSignatureFacts> facts;
+};
+
+// Source-order field list chosen so the canonical digest sort reorders it.
+constexpr zc::StringPtr kDeclaredOrderSource = R"zom(class RecoveryOwner {}
+struct DeclaredOrder {
+  zulu: unit;
+  alpha: unit;
+  mike: unit;
+  bravo: unit;
+  quebec: unit;
+  delta: unit;
+}
+)zom"_zc;
+
+// Same field set as kDeclaredOrderSource, declared in a different source order.
+constexpr zc::StringPtr kReorderedDeclaredOrderSource = R"zom(class RecoveryOwner {}
+struct DeclaredOrder {
+  delta: unit;
+  quebec: unit;
+  bravo: unit;
+  mike: unit;
+  alpha: unit;
+  zulu: unit;
+}
+)zom"_zc;
 
 }  // namespace
 
@@ -1252,6 +1450,111 @@ ZC_TEST("SignatureFactsCanonicalCodec.RejectsCyclicFirstOrderUnification") {
       ZC_REQUIRE(overlap != zc::none);
       ZC_IF_SOME(value, overlap) { ZC_EXPECT(!value); }
     }
+  }
+}
+
+ZC_TEST("SignatureFactsBuilder retains declared field order as a permutation of canonical fields") {
+  DeclaredFieldOrderFixture fixture(kDeclaredOrderSource);
+  const auto& nominal = fixture.nominal();
+
+  // Canonical `fields` and non-canonical `declaredFields` describe the same set.
+  ZC_REQUIRE(nominal.fields.size() == 6);
+  ZC_REQUIRE(nominal.declaredFields.size() == nominal.fields.size());
+
+  // `declaredFields` must reproduce the exact source declaration order.
+  const zc::StringPtr expectedOrder[] = {"zulu"_zc,  "alpha"_zc,  "mike"_zc,
+                                         "bravo"_zc, "quebec"_zc, "delta"_zc};
+  for (size_t index = 0; index < nominal.declaredFields.size(); ++index) {
+    ZC_EXPECT(fixture.fieldName(nominal.declaredFields[index]) == expectedOrder[index]);
+  }
+
+  // `declaredFields` is a permutation of `fields`: same set, each present once.
+  for (const auto declared : nominal.declaredFields) {
+    size_t occurrences = 0;
+    for (const auto field : nominal.fields) {
+      if (field == declared) { ++occurrences; }
+    }
+    ZC_EXPECT(occurrences == 1);
+  }
+  for (const auto field : nominal.fields) {
+    size_t occurrences = 0;
+    for (const auto declared : nominal.declaredFields) {
+      if (declared == field) { ++occurrences; }
+    }
+    ZC_EXPECT(occurrences == 1);
+  }
+
+  // Falsifiability guard: the canonical digest sort must actually reorder the
+  // stored fields relative to source order. If `fields` happened to equal
+  // `declaredFields`, this fixture would prove nothing, so it fails loudly.
+  bool reordered = false;
+  for (size_t index = 0; index < nominal.fields.size(); ++index) {
+    if (fixture.fieldName(nominal.fields[index]) !=
+        fixture.fieldName(nominal.declaredFields[index])) {
+      reordered = true;
+      break;
+    }
+  }
+  ZC_EXPECT(reordered);
+}
+
+ZC_TEST("SignatureFactsCanonicalCodec ignores declared field order in the canonical encoding") {
+  DeclaredFieldOrderFixture declared(kDeclaredOrderSource);
+  DeclaredFieldOrderFixture reordered(kReorderedDeclaredOrderSource);
+
+  // Precondition: the two modules genuinely differ in declaration order, so a
+  // matching canonical encoding proves the encoder ignores `declaredFields`
+  // rather than the two orders coinciding by accident.
+  auto declaredNames = declared.declaredFieldNames();
+  auto reorderedNames = reordered.declaredFieldNames();
+  ZC_REQUIRE(declaredNames.size() == reorderedNames.size());
+  bool orderDiffers = false;
+  for (size_t index = 0; index < declaredNames.size(); ++index) {
+    if (declaredNames[index] != reorderedNames[index]) {
+      orderDiffers = true;
+      break;
+    }
+  }
+  ZC_EXPECT(orderDiffers);
+
+  // Same field set + same containing struct => identical canonical bytes despite
+  // the differing declaration order, because the encoder reads only `fields`.
+  auto declaredBytes = declared.encodeNominal();
+  auto reorderedBytes = reordered.encodeNominal();
+  ZC_REQUIRE(declaredBytes != zc::none);
+  ZC_REQUIRE(reorderedBytes != zc::none);
+  ZC_IF_SOME(left, declaredBytes) {
+    ZC_IF_SOME(right, reorderedBytes) { ZC_EXPECT(left.asPtr() == right.asPtr()); }
+  }
+}
+
+ZC_TEST("SignatureFactsVerifier accepts a faithful declared field permutation") {
+  DeclaredFieldOrderFixture fixture(kDeclaredOrderSource);
+  auto accepted = fixture.verifyWithDeclaredFields(zc::Vector<identity::DefId>(), false);
+  ZC_EXPECT(accepted.is<VerifiedSignatureFacts>());
+}
+
+ZC_TEST("SignatureFactsVerifier fail-closes on a declared field set that is not a permutation") {
+  DeclaredFieldOrderFixture fixture(kDeclaredOrderSource);
+  const auto& fields = fixture.nominal().fields;
+  ZC_REQUIRE(fields.size() >= 2);
+
+  // Missing: drop the last field so `declaredFields` is a strict subset of `fields`.
+  {
+    zc::Vector<identity::DefId> missing(fields.size() - 1);
+    for (size_t index = 0; index + 1 < fields.size(); ++index) { missing.add(fields[index]); }
+    auto result = fixture.verifyWithDeclaredFields(zc::mv(missing), true);
+    ZC_EXPECT(checkerFailure(result).kind == CheckerInvariantKind::InvalidFact);
+  }
+
+  // Duplicate: repeat the first field so the set has the right size but a duplicate
+  // and a missing member.
+  {
+    zc::Vector<identity::DefId> duplicated(fields.size());
+    duplicated.add(fields[0]);
+    for (size_t index = 1; index < fields.size(); ++index) { duplicated.add(fields[0]); }
+    auto result = fixture.verifyWithDeclaredFields(zc::mv(duplicated), true);
+    ZC_EXPECT(checkerFailure(result).kind == CheckerInvariantKind::InvalidFact);
   }
 }
 

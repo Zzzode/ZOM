@@ -14,7 +14,6 @@
 
 #include "compiler/checker/facts/signature-facts.h"
 
-#include "zc/core/one-of.h"
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/binder/metadata/definition-inventory.h"
@@ -25,6 +24,7 @@
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/ownership/surface-admission.h"
+#include "zc/core/one-of.h"
 
 namespace zomlang::compiler::checker::signature {
 namespace {
@@ -2573,7 +2573,8 @@ SemanticSignaturePayload SemanticSignaturePayload::clone() const {
     return SemanticSignaturePayload(NominalSignature{
         cloneGenericParameters(source.genericParameters.asPtr()), source.base,
         cloneInterfaces(source.interfaces.asPtr()), clonePlainVector(source.fields.asPtr()),
-        clonePlainVector(source.variants.asPtr()), clonePlainVector(source.members.asPtr())});
+        clonePlainVector(source.declaredFields.asPtr()), clonePlainVector(source.variants.asPtr()),
+        clonePlainVector(source.members.asPtr())});
   }
   if (value.is<InterfaceSignature>()) {
     const auto& source = value.get<InterfaceSignature>();
@@ -5036,6 +5037,35 @@ bool attributesAgreeWithPayload(const SemanticSignature& signature) {
   return true;
 }
 
+// A nominal signature's non-canonical `declaredFields` must be a permutation of
+// its canonical `fields`: the same set, each field present exactly once, with no
+// duplicate. This is checked explicitly because the canonical re-encode path is
+// structurally blind to `declaredFields` (the encoder never reads it).
+bool declaredFieldsAgreeWithFields(const SemanticSignature& signature) {
+  const auto& payload = signature.payload.variant();
+  if (!payload.is<NominalSignature>()) return true;
+  const auto& nominal = payload.get<NominalSignature>();
+  const auto fields = nominal.fields.asPtr();
+  const auto declared = nominal.declaredFields.asPtr();
+  if (fields.size() != declared.size()) return false;
+  // Each declared field must occur in `fields`, and appear exactly once among the
+  // declared fields (no duplicate).
+  for (size_t i = 0; i < declared.size(); ++i) {
+    bool inFields = false;
+    for (const auto field : fields) {
+      if (field == declared[i]) {
+        inFields = true;
+        break;
+      }
+    }
+    if (!inFields) return false;
+    for (size_t j = i + 1; j < declared.size(); ++j) {
+      if (declared[j] == declared[i]) return false;
+    }
+  }
+  return true;
+}
+
 bool containsRequirement(zc::ArrayPtr<const SignatureDefinitionRequirement> requirements,
                          identity::DefId definition, identity::DefinitionKind kind) {
   for (const auto& requirement : requirements) {
@@ -5855,6 +5885,10 @@ SignatureFactsVerificationResult SignatureFactsVerifier::verify(
         return reject(checkerInvariant(CheckerInvariantKind::InvalidFact, candidate.module,
                                        static_cast<uint32_t>(index)));
       }
+      if (!declaredFieldsAgreeWithFields(candidate.signatures[index])) {
+        return reject(checkerInvariant(CheckerInvariantKind::InvalidFact, candidate.module,
+                                       static_cast<uint32_t>(index)));
+      }
       auto result = encoder.encode(candidate.signatures[index], static_cast<uint32_t>(index));
       if (result.is<identity::IdentityInvariant>()) {
         return reject(zc::mv(result.get<identity::IdentityInvariant>()));
@@ -6570,6 +6604,11 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
             }
           }
         }
+        // Capture the stored fields in source declaration order before the
+        // canonical digest sort below reorders `fields`. This is a permutation of
+        // `fields` carried as non-canonical metadata (the encoder never reads it).
+        zc::Vector<identity::DefId> declaredFields =
+            clonePlainVector<identity::DefId>(fields.asPtr());
         if (!sortUniqueDefinitionIds(fields, input.boundModule.definitions()) ||
             !sortUniqueDefinitionIds(variants, input.boundModule.definitions()) ||
             !sortUniqueDefinitionIds(members, input.boundModule.definitions())) {
@@ -6583,7 +6622,7 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
                   zc::Vector<SignatureModifier>(), zc::Vector<NormalizedAttributeFact>(),
                   SemanticSignaturePayload(NominalSignature{
                       zc::mv(genericParameters), zc::mv(base), zc::Vector<InterfaceInstantiation>(),
-                      zc::mv(fields), zc::mv(variants), zc::mv(members)}),
+                      zc::mv(fields), zc::mv(declaredFields), zc::mv(variants), zc::mv(members)}),
                   bound.source.clone()},
               SignatureDefinitionRequirement{definition.definition, definitionKind,
                                              zc::Array<uint8_t>()},
