@@ -76,10 +76,12 @@ public:
   /// return copy local`) whose result is the whole struct (the return place has
   /// zero projections). Each aggregate element must be a constant of an integer
   /// carrier; the elements lower in MIR element order to the slots of a
-  /// `ReturnAggregate` terminator (RFC 0021 carrier bundle). The emitted slot
-  /// order is that MIR element order and does not claim ABI field ordering. Every
-  /// shape outside this slice, and any non-constant or non-integer element,
-  /// returns `none`.
+  /// `ReturnAggregate` terminator (RFC 0021 carrier bundle). That MIR element
+  /// order is the source struct-literal property order, NOT the nominal type's
+  /// declared field order (which the signature facts discard by a digest sort),
+  /// and it makes no claim about the target ABI struct layout. Every shape
+  /// outside this slice, and any non-constant or non-integer element, returns
+  /// `none`.
   ///
   /// The lowered function's return carrier is the first slot's integer carrier as
   /// a transitional placeholder to satisfy the translator entry check; it is not

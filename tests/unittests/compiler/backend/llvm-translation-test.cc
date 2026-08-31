@@ -281,6 +281,33 @@ ZC_TEST("Whole-struct return lowers MIR -> LIR -> verified LLVM literal struct")
   ZC_EXPECT(ir.contains("ret { i32, i32 }"_zc));
 }
 
+ZC_TEST("Whole-struct return slots follow source-literal element order, not a sort") {
+  // The emitted slot order is the source struct-literal property order preserved
+  // through HIR and MIR, NOT the nominal declared field order (which the
+  // signature facts discard by a digest sort) and NOT any value/DefId sort. Build
+  // a literal whose first element's value is greater than the second's; the slots
+  // must appear in that literal order, so slot[0] is the first element (100), not
+  // the numerically smaller one.
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto structType = typeContext.internPrimitive(type::semantic::PrimitiveKind::I64);
+  const auto owner = tests::testDefinition(0);
+  const auto aggregate = tests::testDefinition(1);
+  const auto fieldX = tests::testDefinition(2);
+  const auto fieldY = tests::testDefinition(3);
+
+  auto function =
+      buildAggregateReturnFunction(owner, structType, i32, aggregate, fieldX, fieldY, 100, 3);
+
+  auto lir = lir::MirToLirLowering::lowerAggregateReturn(function, typeContext.semanticTypes());
+  ZC_REQUIRE(lir != zc::none);
+  const auto& terminator = ZC_REQUIRE_NONNULL(lir).functions()[0].blocks()[0].terminator();
+  ZC_REQUIRE(terminator.returnAggregateSlots().size() == 2);
+  // Slot order is the literal element order: the first element (100) stays first.
+  ZC_EXPECT(terminator.returnAggregateSlots()[0].bits() == 100);
+  ZC_EXPECT(terminator.returnAggregateSlots()[1].bits() == 3);
+}
+
 ZC_TEST("Whole-struct return lowering rejects the field-return shape") {
   tests::TestSemanticTypeContext typeContext;
   const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);

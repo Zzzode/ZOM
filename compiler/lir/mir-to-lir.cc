@@ -335,7 +335,11 @@ zc::Maybe<LirModule> MirToLirLowering::lowerAggregateReturn(
   }
 
   // Every element must be a constant of an integer carrier; lower each to a slot
-  // in MIR element order.
+  // in MIR element order. That order is the source struct-literal property order
+  // (the checker records aggregate elements by source index and the HIR and MIR
+  // builders copy it unchanged); it is NOT the nominal type's declared field
+  // order, which is destroyed by the digest sort in the signature facts, and it
+  // makes no claim about the target ABI struct layout.
   if (aggregate.elements.size() == 0) { return zc::none; }
   zc::Vector<LirIntegerConstant> slots(aggregate.elements.size());
   for (const auto& element : aggregate.elements) {
