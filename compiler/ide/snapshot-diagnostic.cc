@@ -29,23 +29,26 @@ zc::Array<zc::String> copyArguments(zc::ArrayPtr<const zc::String> arguments) {
 
 }  // namespace
 
-SnapshotDiagnostic SnapshotDiagnostic::project(diagnostics::DiagID code, uint64_t byteStart,
-                                               uint64_t byteEnd, bool isTokenRange,
-                                               zc::ArrayPtr<const zc::String> arguments) {
-  return SnapshotDiagnostic(code, diagnostics::getDiagnosticInfo(code).severity, byteStart, byteEnd,
-                            isTokenRange, copyArguments(arguments));
+SnapshotDiagnostic SnapshotDiagnostic::projectRanged(diagnostics::DiagID code, SnapshotRange range,
+                                                     zc::ArrayPtr<const zc::String> arguments) {
+  return SnapshotDiagnostic(code, diagnostics::getDiagnosticInfo(code).severity, range,
+                            copyArguments(arguments));
+}
+
+SnapshotDiagnostic SnapshotDiagnostic::projectRangeless(diagnostics::DiagID code,
+                                                        zc::ArrayPtr<const zc::String> arguments) {
+  return SnapshotDiagnostic(code, diagnostics::getDiagnosticInfo(code).severity, zc::none,
+                            copyArguments(arguments));
 }
 
 SnapshotDiagnostic SnapshotDiagnostic::clone() const {
-  return SnapshotDiagnostic(codeValue, severityValue, byteStartValue, byteEndValue,
-                            isTokenRangeValue, copyArguments(argumentValues.asPtr()));
+  return SnapshotDiagnostic(codeValue, severityValue, rangeValue,
+                            copyArguments(argumentValues.asPtr()));
 }
 
 bool SnapshotDiagnostic::operator==(const SnapshotDiagnostic& other) const noexcept {
   if (codeValue != other.codeValue || severityValue != other.severityValue ||
-      byteStartValue != other.byteStartValue || byteEndValue != other.byteEndValue ||
-      isTokenRangeValue != other.isTokenRangeValue ||
-      argumentValues.size() != other.argumentValues.size()) {
+      rangeValue != other.rangeValue || argumentValues.size() != other.argumentValues.size()) {
     return false;
   }
   for (size_t index = 0; index < argumentValues.size(); ++index) {

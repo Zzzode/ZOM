@@ -14,8 +14,9 @@
 
 // RFC 0023 "IDE Semantic Snapshots" Authority Rails: prove SnapshotDiagnostic is
 // an IDE-safe projection that derives severity from the authoritative diagnostic
-// table, retains the resolved byte range, and owns copies of the message
-// arguments. It composes as pure data; it touches no query, session, or fact.
+// table, carries an explicit optional (never sentinel) source range, and owns
+// copies of the message arguments. It composes as pure data; it touches no
+// query, session, or fact.
 
 #include "compiler/ide/snapshot-diagnostic.h"
 
@@ -42,32 +43,48 @@ zc::Array<zc::String> twoArguments(zc::StringPtr first, zc::StringPtr second) {
   return result;
 }
 
-ZC_TEST("SnapshotDiagnostic derives warning severity from the diagnostic code") {
+ZC_TEST("SnapshotDiagnostic derives warning severity and carries a resolved range") {
   auto empty = noArguments();
-  auto projected = SnapshotDiagnostic::project(diagnostics::DiagID::CheckerUnreachableMatchArm, 10,
-                                               24, true, empty.asPtr());
+  auto projected = SnapshotDiagnostic::projectRanged(
+      diagnostics::DiagID::CheckerUnreachableMatchArm, SnapshotRange{10, 24, true}, empty.asPtr());
   ZC_EXPECT(projected.code() == diagnostics::DiagID::CheckerUnreachableMatchArm);
   ZC_EXPECT(projected.severity() == diagnostics::DiagSeverity::kWarning);
-  ZC_EXPECT(projected.byteStart() == 10);
-  ZC_EXPECT(projected.byteEnd() == 24);
-  ZC_EXPECT(projected.isTokenRange());
+  ZC_IF_SOME(range, projected.range()) {
+    ZC_EXPECT(range.byteStart == 10);
+    ZC_EXPECT(range.byteEnd == 24);
+    ZC_EXPECT(range.isTokenRange);
+  } else {
+    ZC_FAIL_EXPECT("expected a resolved range");
+  }
   ZC_EXPECT(projected.arguments().size() == 0);
 }
 
 ZC_TEST("SnapshotDiagnostic derives error severity from the diagnostic code") {
   auto empty = noArguments();
-  auto projected = SnapshotDiagnostic::project(diagnostics::DiagID::InvalidCharacter, 0, 1, false,
-                                               empty.asPtr());
+  auto projected = SnapshotDiagnostic::projectRanged(diagnostics::DiagID::InvalidCharacter,
+                                                     SnapshotRange{0, 1, false}, empty.asPtr());
   ZC_EXPECT(projected.severity() == diagnostics::DiagSeverity::kError);
-  ZC_EXPECT(!projected.isTokenRange());
-  ZC_EXPECT(projected.byteStart() == 0);
-  ZC_EXPECT(projected.byteEnd() == 1);
+  ZC_IF_SOME(range, projected.range()) {
+    ZC_EXPECT(!range.isTokenRange);
+    ZC_EXPECT(range.byteStart == 0);
+    ZC_EXPECT(range.byteEnd == 1);
+  } else {
+    ZC_FAIL_EXPECT("expected a resolved range");
+  }
+}
+
+ZC_TEST("SnapshotDiagnostic without a resolved range reports none, not a zero range") {
+  auto empty = noArguments();
+  auto projected =
+      SnapshotDiagnostic::projectRangeless(diagnostics::DiagID::InvalidCharacter, empty.asPtr());
+  ZC_EXPECT(projected.severity() == diagnostics::DiagSeverity::kError);
+  ZC_EXPECT(projected.range() == zc::none);
 }
 
 ZC_TEST("SnapshotDiagnostic owns copies of the message arguments") {
   auto arguments = twoArguments("first"_zc, "second"_zc);
-  auto projected = SnapshotDiagnostic::project(diagnostics::DiagID::ImportModuleNotFound, 3, 9,
-                                               true, arguments.asPtr());
+  auto projected = SnapshotDiagnostic::projectRanged(diagnostics::DiagID::ImportModuleNotFound,
+                                                     SnapshotRange{3, 9, true}, arguments.asPtr());
   ZC_EXPECT(projected.arguments().size() == 2);
   ZC_EXPECT(projected.arguments()[0] == "first"_zc);
   ZC_EXPECT(projected.arguments()[1] == "second"_zc);
@@ -78,8 +95,9 @@ ZC_TEST("SnapshotDiagnostic owns copies of the message arguments") {
 
 ZC_TEST("SnapshotDiagnostic clone reproduces an equal projection") {
   auto arguments = oneArgument("only"_zc);
-  auto projected = SnapshotDiagnostic::project(diagnostics::DiagID::CheckerUnreachableMatchArm, 5,
-                                               8, false, arguments.asPtr());
+  auto projected =
+      SnapshotDiagnostic::projectRanged(diagnostics::DiagID::CheckerUnreachableMatchArm,
+                                        SnapshotRange{5, 8, false}, arguments.asPtr());
   auto copy = projected.clone();
   ZC_EXPECT(copy == projected);
   ZC_EXPECT(copy.arguments()[0] == "only"_zc);
@@ -87,26 +105,31 @@ ZC_TEST("SnapshotDiagnostic clone reproduces an equal projection") {
 
 ZC_TEST("SnapshotDiagnostic equality distinguishes every projected field") {
   auto empty = noArguments();
-  auto base = SnapshotDiagnostic::project(diagnostics::DiagID::CheckerUnreachableMatchArm, 5, 8,
-                                          true, empty.asPtr());
+  auto base = SnapshotDiagnostic::projectRanged(diagnostics::DiagID::CheckerUnreachableMatchArm,
+                                                SnapshotRange{5, 8, true}, empty.asPtr());
   // Different code.
-  ZC_EXPECT(base != SnapshotDiagnostic::project(diagnostics::DiagID::InvalidCharacter, 5, 8, true,
-                                                empty.asPtr()));
+  ZC_EXPECT(base != SnapshotDiagnostic::projectRanged(diagnostics::DiagID::InvalidCharacter,
+                                                      SnapshotRange{5, 8, true}, empty.asPtr()));
   // Different range.
-  ZC_EXPECT(base != SnapshotDiagnostic::project(diagnostics::DiagID::CheckerUnreachableMatchArm, 6,
-                                                8, true, empty.asPtr()));
-  ZC_EXPECT(base != SnapshotDiagnostic::project(diagnostics::DiagID::CheckerUnreachableMatchArm, 5,
-                                                9, true, empty.asPtr()));
+  ZC_EXPECT(base !=
+            SnapshotDiagnostic::projectRanged(diagnostics::DiagID::CheckerUnreachableMatchArm,
+                                              SnapshotRange{6, 8, true}, empty.asPtr()));
+  // Ranged versus rangeless.
+  ZC_EXPECT(base != SnapshotDiagnostic::projectRangeless(
+                        diagnostics::DiagID::CheckerUnreachableMatchArm, empty.asPtr()));
   // Different token-range flag.
-  ZC_EXPECT(base != SnapshotDiagnostic::project(diagnostics::DiagID::CheckerUnreachableMatchArm, 5,
-                                                8, false, empty.asPtr()));
+  ZC_EXPECT(base !=
+            SnapshotDiagnostic::projectRanged(diagnostics::DiagID::CheckerUnreachableMatchArm,
+                                              SnapshotRange{5, 8, false}, empty.asPtr()));
   // Different arguments.
   auto oneArg = oneArgument("x"_zc);
-  ZC_EXPECT(base != SnapshotDiagnostic::project(diagnostics::DiagID::CheckerUnreachableMatchArm, 5,
-                                                8, true, oneArg.asPtr()));
+  ZC_EXPECT(base !=
+            SnapshotDiagnostic::projectRanged(diagnostics::DiagID::CheckerUnreachableMatchArm,
+                                              SnapshotRange{5, 8, true}, oneArg.asPtr()));
   // Same everything.
-  ZC_EXPECT(base == SnapshotDiagnostic::project(diagnostics::DiagID::CheckerUnreachableMatchArm, 5,
-                                                8, true, empty.asPtr()));
+  ZC_EXPECT(base ==
+            SnapshotDiagnostic::projectRanged(diagnostics::DiagID::CheckerUnreachableMatchArm,
+                                              SnapshotRange{5, 8, true}, empty.asPtr()));
 }
 
 }  // namespace

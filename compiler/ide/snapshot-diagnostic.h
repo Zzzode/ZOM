@@ -24,18 +24,37 @@
 
 namespace zomlang::compiler::ide {
 
+/// \brief A resolved half-open source byte range for an IDE diagnostic.
+///
+/// RFC 0023 "IDE Semantic Snapshots": the editor semantic facade exposes ranges,
+/// not the compiler-internal provenance keys the range was resolved from.
+struct SnapshotRange final {
+  uint64_t byteStart = 0;
+  uint64_t byteEnd = 0;
+  bool isTokenRange = false;
+
+  bool operator==(const SnapshotRange& other) const noexcept = default;
+};
+
 /// \brief One IDE-safe diagnostic projected out of the verified compiler facts.
 ///
 /// RFC 0023 "IDE Semantic Snapshots" Authority Rails: the editor semantic facade
 /// exposes only files, ranges, symbols, display types, edits, and closed
 /// availability states. This is the diagnostic projection: the diagnostic code,
-/// its severity (derived from the code, not stored on the fact), the resolved
-/// half-open source byte range, and the message-substitution arguments as owned
+/// its severity (derived from the code, not stored on the fact), an optional
+/// resolved source byte range, and the message-substitution arguments as owned
 /// copies.
 ///
-/// It deliberately carries none of the compiler-internal identity the underlying
-/// `diagnostics::DiagnosticFact` exposes: no `DiagnosticProvenanceKey`, no
-/// `DiagnosticOccurrenceKey`, no `SourceFileKey`/`ModuleKey`, and no query,
+/// The range is optional and never sentinel-encoded. It is present when the
+/// facade resolved the diagnostic's provenance against a published parse (which
+/// carries the provenance map), and absent when the range could not be resolved
+/// -- currently every diagnostic on the source-rejected path, whose failure
+/// channel carries no provenance map. A consumer must branch on `range()` rather
+/// than read a zero range.
+///
+/// It deliberately carries none of the compiler-internal identity that the
+/// underlying `diagnostics::DiagnosticFact` exposes: no `DiagnosticProvenanceKey`,
+/// no `DiagnosticOccurrenceKey`, no `SourceFileKey`/`ModuleKey`, and no query,
 /// session, source-manager, or buffer handle. The provenance keys are resolved
 /// to a byte range by the facade before projection and then dropped.
 class SnapshotDiagnostic final {
@@ -45,7 +64,7 @@ public:
   ZC_DISALLOW_COPY(SnapshotDiagnostic);
   ~SnapshotDiagnostic() noexcept = default;
 
-  /// \brief Projects one resolved diagnostic.
+  /// \brief Projects one diagnostic with a resolved range.
   ///
   /// The severity is derived from `code` through `diagnostics::getDiagnosticInfo`
   /// so it stays consistent with the single authoritative diagnostic table. The
@@ -53,22 +72,27 @@ public:
   /// borrowed fact.
   ///
   /// \param code The diagnostic code.
-  /// \param byteStart The resolved half-open range start.
-  /// \param byteEnd The resolved half-open range end.
-  /// \param isTokenRange Whether the range spans a whole token.
+  /// \param range The resolved half-open source range.
   /// \param arguments The message-substitution arguments, copied.
-  /// \return The projected diagnostic.
-  ZC_NODISCARD static SnapshotDiagnostic project(diagnostics::DiagID code, uint64_t byteStart,
-                                                 uint64_t byteEnd, bool isTokenRange,
-                                                 zc::ArrayPtr<const zc::String> arguments);
+  /// \return The projected diagnostic carrying `range`.
+  ZC_NODISCARD static SnapshotDiagnostic projectRanged(diagnostics::DiagID code,
+                                                       SnapshotRange range,
+                                                       zc::ArrayPtr<const zc::String> arguments);
+
+  /// \brief Projects one diagnostic whose source range could not be resolved.
+  ///
+  /// \param code The diagnostic code.
+  /// \param arguments The message-substitution arguments, copied.
+  /// \return The projected diagnostic with no range.
+  ZC_NODISCARD static SnapshotDiagnostic projectRangeless(diagnostics::DiagID code,
+                                                          zc::ArrayPtr<const zc::String> arguments);
 
   ZC_NODISCARD SnapshotDiagnostic clone() const;
 
   ZC_NODISCARD diagnostics::DiagID code() const noexcept { return codeValue; }
   ZC_NODISCARD diagnostics::DiagSeverity severity() const noexcept { return severityValue; }
-  ZC_NODISCARD uint64_t byteStart() const noexcept { return byteStartValue; }
-  ZC_NODISCARD uint64_t byteEnd() const noexcept { return byteEndValue; }
-  ZC_NODISCARD bool isTokenRange() const noexcept { return isTokenRangeValue; }
+  /// \brief The resolved range, or none when it could not be resolved.
+  ZC_NODISCARD zc::Maybe<SnapshotRange> range() const noexcept { return rangeValue; }
   ZC_NODISCARD zc::ArrayPtr<const zc::String> arguments() const ZC_LIFETIMEBOUND {
     return argumentValues.asPtr();
   }
@@ -78,20 +102,15 @@ public:
 
 private:
   SnapshotDiagnostic(diagnostics::DiagID code, diagnostics::DiagSeverity severity,
-                     uint64_t byteStart, uint64_t byteEnd, bool isTokenRange,
-                     zc::Array<zc::String>&& arguments) noexcept
+                     zc::Maybe<SnapshotRange> range, zc::Array<zc::String>&& arguments) noexcept
       : codeValue(code),
         severityValue(severity),
-        byteStartValue(byteStart),
-        byteEndValue(byteEnd),
-        isTokenRangeValue(isTokenRange),
+        rangeValue(range),
         argumentValues(zc::mv(arguments)) {}
 
   diagnostics::DiagID codeValue;
   diagnostics::DiagSeverity severityValue;
-  uint64_t byteStartValue;
-  uint64_t byteEndValue;
-  bool isTokenRangeValue;
+  zc::Maybe<SnapshotRange> rangeValue;
   zc::Array<zc::String> argumentValues;
 };
 

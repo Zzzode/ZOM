@@ -1,5 +1,6 @@
 set(IDE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/semantic-snapshot-key.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/semantic-snapshot.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/snapshot-diagnostic.cc
 )
 
