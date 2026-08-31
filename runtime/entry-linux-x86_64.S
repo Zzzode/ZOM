@@ -7,7 +7,7 @@
 .type _start,@function
 _start:
   call zom.module_init
-  xor %edi, %edi
+  mov %eax, %edi
   mov $60, %eax
   syscall
   hlt

@@ -14,6 +14,8 @@
 
 #if defined(__linux__)
 #include <unistd.h>
+
+#include <cstdio>
 #elif defined(__APPLE__)
 #include <mach-o/dyld.h>
 #include <stdlib.h>
@@ -1554,13 +1556,23 @@ private:
     zc::SubprocessCommand command(artifact.finalDestination());
     command.envPolicy(zc::SubprocessEnvPolicy::Inherit);
     zc::SubprocessResult executed = command.run();
-    if (!executed.spawned() || !executed.output().succeeded()) {
-      return zc::str("Published executable failed to run successfully.");
+    // A spawn failure or a signal termination is a run error: the program never
+    // produced an exit status to propagate.
+    if (!executed.spawned()) { return zc::str("Published executable failed to start."); }
+    const zc::SubprocessOutput& output = executed.output();
+    if (output.terminationKind != zc::SubprocessTerminationKind::Exited) {
+      return zc::str("Published executable was terminated by signal ", output.signal, ".");
     }
+    // Clean up the transaction root before exiting so no artifact leaks; a
+    // cleanup failure is a run error and does not propagate the exit code.
     if (!filesystem->getRoot().tryRemove(runRootPath)) {
       return zc::str("Published executable ran, but temporary artifact cleanup failed.");
     }
-    return true;
+    // The program exited normally: propagate its exit status as this process's
+    // own. The Validity framework can only express 0/1, so exit directly after
+    // flushing output. POSIX exit statuses are in [0, 255].
+    ::fflush(nullptr);
+    _exit(output.code & 0xff);
 #else
     return "The run command requires the Linux x86-64 LLVM backend and runtime entry object.";
 #endif
