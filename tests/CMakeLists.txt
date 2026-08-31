@@ -145,13 +145,13 @@ if(ZOM_ENABLE_LLVM_BACKEND)
   set_tests_properties(object-emission-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)
 endif()
 add_test(
-  NAME package-workspace-compile
+  NAME package-workspace-build
   COMMAND
     ${Python3_EXECUTABLE}
     "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-package-compile.py"
     --zomc
     "$<TARGET_FILE:zomc>")
-set_tests_properties(package-workspace-compile
+set_tests_properties(package-workspace-build
                      PROPERTIES LABELS "integration;package;cli" TIMEOUT 60)
 
 add_test(

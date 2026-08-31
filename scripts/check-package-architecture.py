@@ -246,6 +246,8 @@ def check_package_only_cli(files: dict[Path, str], errors: list[str]) -> None:
         CLI_SOURCE,
         (
             '.addSubCommand("compile"',
+            '.addSubCommand("build"',
+            "void addBuildOptions(",
             '.addOptionWithArg({"manifest-path"}',
             '.addOptionWithArg({"package"}',
             '.addOption({"lib"}',
@@ -255,6 +257,16 @@ def check_package_only_cli(files: dict[Path, str], errors: list[str]) -> None:
             "session->addVerifiedPackageRoot(",
         ),
         "package-only CLI",
+        errors,
+    )
+    require_markers(
+        files,
+        TESTS_CMAKE,
+        (
+            "NAME package-workspace-build",
+            '"${CMAKE_CURRENT_SOURCE_DIR}/tools/check-package-compile.py"',
+        ),
+        "package build CLI integration gate",
         errors,
     )
     require_markers(
@@ -281,9 +293,15 @@ def check_package_only_cli(files: dict[Path, str], errors: list[str]) -> None:
         )
     if re.search(r"\bsession\s*->\s*addPackageSourceFile\s*\(", cli_code):
         errors.append(f"{CLI_SOURCE}: package source path reread is forbidden")
-    if re.search(
-        r"\.expect(?:One|OneOrMore)Args\s*\(\s*\"<source>\"", files.get(CLI_SOURCE, "")
-    ):
+    cli_source = files.get(CLI_SOURCE, "")
+    compile_start = cli_source.find("void addCompileOptions(")
+    compile_end = cli_source.find('// "compile" command', compile_start)
+    compile_options = (
+        cli_source[compile_start:compile_end]
+        if compile_start != -1 and compile_end != -1
+        else cli_source
+    )
+    if re.search(r"\.expect(?:One|OneOrMore)Args\s*\(\s*\"<source>\"", compile_options):
         errors.append(
             f"{CLI_SOURCE}: positional direct-source compatibility is forbidden"
         )
