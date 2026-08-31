@@ -1412,12 +1412,13 @@ private:
     // exclusive shapes (the diamond entry is a one-statement SwitchInt, the loop
     // entry is a Goto, the comparison entry is a three-statement SwitchInt on a
     // computed boolean temporary), so trying them in order selects at most one. A
-    // two-`Function` module is tried against the same-module direct-call slice
-    // (KR5.2 C4): the caller (one local, two blocks) and the callee (no locals,
-    // one block) are identified by shape, requiring exactly one of each, and the
-    // deeper `lowerCallModule` gates (including the call targeting the identified
-    // callee) fail-close any residual mismatch. Each slice keeps its own
-    // parameterized symbol (`zom.conditional`, `zom.loop`, `zom.conditional_cmp`,
+    // two-`Function` module is tried against the same-module direct-call slices
+    // (KR5.2 C4/C5): the caller (two blocks) and the callee (one block) are
+    // identified by block count, requiring exactly one of each, and the deeper
+    // `lowerCallModule` / `lowerCallModuleWithArgument` gates (including the call
+    // targeting the identified callee and the argument count) fail-close any
+    // residual mismatch. Each slice keeps its own parameterized symbol
+    // (`zom.conditional`, `zom.loop`, `zom.conditional_cmp`,
     // `zom.caller`/`zom.callee`), so they produce a relocatable object only -- none
     // is the reserved no-argument `zom.module_init` entry the runtime `_start`
     // calls, and `zomc run` still fails closed on them. Every other shape stays
@@ -1438,17 +1439,19 @@ private:
         }
       } else {
         // Two functions: identify the unique direct-call caller/callee pair by
-        // shape. The caller is a `Function` with one local and two blocks; the
-        // callee is a `Function` with no locals and one block. If both roles are
-        // filled by exactly one distinct function, lower the call module; any
-        // ambiguity (same-shape pair, missing role) leaves `lir` as none.
+        // block count. The caller is a `Function` with two blocks (entry Call,
+        // continuation Return); the callee is a `Function` with one block. If both
+        // roles are filled by exactly one distinct function, lower the pair --
+        // first as a zero-argument call (KR5.2 C4), then as a single-argument call
+        // (KR5.2 C5). The two lowerings' internal gates (callee local count, call
+        // argument count, and the call targeting the identified callee) select at
+        // most one; any ambiguity (same-shape pair, missing role) or residual
+        // mismatch leaves `lir` as none.
         auto isCaller = [](const mir::MirFunction& fn) {
-          return fn.kind == mir::MirFunctionKind::Function && fn.locals.size() == 1 &&
-                 fn.blocks.size() == 2;
+          return fn.kind == mir::MirFunctionKind::Function && fn.blocks.size() == 2;
         };
         auto isCallee = [](const mir::MirFunction& fn) {
-          return fn.kind == mir::MirFunctionKind::Function && fn.locals.size() == 0 &&
-                 fn.blocks.size() == 1;
+          return fn.kind == mir::MirFunctionKind::Function && fn.blocks.size() == 1;
         };
         zc::Maybe<size_t> callerIndex;
         zc::Maybe<size_t> calleeIndex;
@@ -1471,6 +1474,10 @@ private:
           ZC_IF_SOME(callee, calleeIndex) {
             lir =
                 lir::MirToLirLowering::lowerCallModule(functions[caller], functions[callee], types);
+            if (lir == zc::none) {
+              lir = lir::MirToLirLowering::lowerCallModuleWithArgument(functions[caller],
+                                                                       functions[callee], types);
+            }
           }
         }
       }

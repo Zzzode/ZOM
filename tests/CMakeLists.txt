@@ -127,9 +127,9 @@ set_tests_properties(native-execution-cli PROPERTIES LABELS "unittest;cli" TIMEO
 # With the backend built, `zomc compile --emit=binary` writes a native ELF
 # object for the scalar module-initializer fixture, the KR5.2 C1
 # boolean-conditional diamond fixture, the KR5.2 C2 reducible while-loop fixture,
-# the KR5.2 C3 comparison-driven conditional fixture, and the KR5.2 C4
-# same-module direct-call fixture. Gated on the backend so the frontend-only lane
-# never requires LLVM.
+# the KR5.2 C3 comparison-driven conditional fixture, the KR5.2 C4 same-module
+# direct-call fixture, and the KR5.2 C5 single-argument direct-call fixture. Gated
+# on the backend so the frontend-only lane never requires LLVM.
 if(ZOM_ENABLE_LLVM_BACKEND)
   add_test(
     NAME object-emission-cli
@@ -147,7 +147,9 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/equality-consumer/Zom.toml::equality_consumer::equality_consumer"
       --case
-      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-consumer/Zom.toml::call_consumer::call_consumer")
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-consumer/Zom.toml::call_consumer::call_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/callarg-consumer/Zom.toml::callarg_consumer::callarg_consumer")
   set_tests_properties(object-emission-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)
 endif()
 add_test(
