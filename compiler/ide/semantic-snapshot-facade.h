@@ -48,4 +48,17 @@ namespace zomlang::compiler::ide {
 ZC_NODISCARD SemanticSnapshot resolveSemanticSnapshot(query::QueryDatabase& database,
                                                       const SemanticSnapshotKey& key);
 
+/// \brief Resolves one IDE semantic snapshot over an explicit committed snapshot.
+///
+/// Identical to the database overload, but demands the capability on the caller's
+/// snapshot so a freshness stamp can be sealed on the exact same snapshot the
+/// parse ran on (the parse capability memo is revision-local and its recorded
+/// dependencies are only observable on that snapshot).
+///
+/// \param snapshot The committed snapshot to demand the parse capability on.
+/// \param key The snapshot key binding the source content to a document version.
+/// \return The sanitized three-arm semantic snapshot.
+ZC_NODISCARD SemanticSnapshot resolveSemanticSnapshot(const query::QuerySnapshot& snapshot,
+                                                      const SemanticSnapshotKey& key);
+
 }  // namespace zomlang::compiler::ide

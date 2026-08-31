@@ -83,9 +83,8 @@ zc::Array<SnapshotDiagnostic> projectPublishedFacts(
 
 }  // namespace
 
-SemanticSnapshot resolveSemanticSnapshot(query::QueryDatabase& database,
+SemanticSnapshot resolveSemanticSnapshot(const query::QuerySnapshot& snapshot,
                                          const SemanticSnapshotKey& key) {
-  auto snapshot = database.snapshot();
   auto demand = snapshot.getCapability<parser::ParseSourceQuery>(key.sourceKey());
 
   if (demand.isRuntimeRejected()) {
@@ -117,6 +116,11 @@ SemanticSnapshot resolveSemanticSnapshot(query::QueryDatabase& database,
   return SemanticSnapshot::published(parsed.canonicalSourceKey(), parsed.sourceBytes().size(),
                                      key.documentVersion(),
                                      projectPublishedFacts(parsed.facts(), resolver));
+}
+
+SemanticSnapshot resolveSemanticSnapshot(query::QueryDatabase& database,
+                                         const SemanticSnapshotKey& key) {
+  return resolveSemanticSnapshot(database.snapshot(), key);
 }
 
 }  // namespace zomlang::compiler::ide
