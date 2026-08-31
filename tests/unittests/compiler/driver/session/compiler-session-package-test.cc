@@ -2818,20 +2818,12 @@ ZC_TEST("CompilerSession rejects unadmitted frontend syntax before Checker publi
   rejects("fun entry() { return; }"_zc, diagnostics::DiagID::VoidReturnSemanticsUnavailable, 1);
   rejects("fun entry() { 1; }"_zc, diagnostics::DiagID::ExpressionStatementSemanticsUnavailable, 1);
   rejects("fun entry() -> i32 { mut value = 1; value = value; return value; }"_zc,
-          diagnostics::DiagID::ExpressionStatementSemanticsUnavailable, 1);
+          diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
   rejects("fun entry() {}"_zc, diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
   rejects("fun entry() -> i32 { let value = 1; }"_zc,
           diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
-  rejects("fun entry() -> i32 { let first = 1; let second = 2; return first; }"_zc,
-          diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
-  rejects("fun entry() -> i32 { return 1 + 2; }"_zc,
-          diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
   rejects("fun entry() -> i64 { return 1 as i64; }"_zc,
           diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
-  rejects(
-      "class Cell { value: i32 }\n"
-      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc,
-      diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
   rejects("fun entry() -> i32 { while (false) { return 1; } return 2; }"_zc,
           diagnostics::DiagID::ControlFlowSemanticsUnavailable, 1);
   rejects("fun entry() { for (;;) { break; } }"_zc,

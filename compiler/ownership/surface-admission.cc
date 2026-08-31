@@ -712,6 +712,11 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
     if (!isScalarLiteral(tree.node(value).kind) && !identValue && !binaryValue) return false;
     if (tree.node(target).kind == ast::SyntaxKind::IdentExpr) {
       if (!matchesLocalReference(tree, pattern, target)) return false;
+      // The current HIR write descriptor admits parameter references, not a
+      // read from the mutable destination local itself. Reject that shape at
+      // the surface boundary instead of allowing it to fail later as an HIR
+      // invariant.
+      if (identValue && matchesLocalReference(tree, pattern, value)) return false;
       continue;
     }
     if (identValue || binaryValue) return false;
