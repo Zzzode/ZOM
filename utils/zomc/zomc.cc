@@ -1408,21 +1408,23 @@ private:
     // lowers through the scalar slice (RFC 0021 KR2.4); a single `Function` is
     // tried against the boolean-conditional diamond slice (KR5.2 C1), then the
     // reducible while-loop slice (KR5.2 C2), then the comparison-driven
-    // conditional slice (KR5.2 C3). The three single-function slices have mutually
-    // exclusive shapes (the diamond entry is a one-statement SwitchInt, the loop
-    // entry is a Goto, the comparison entry is a three-statement SwitchInt on a
-    // computed boolean temporary), so trying them in order selects at most one. A
-    // two-`Function` module is tried against the same-module direct-call slices
-    // (KR5.2 C4/C5): the caller (two blocks) and the callee (one block) are
-    // identified by block count, requiring exactly one of each, and the deeper
-    // `lowerCallModule` / `lowerCallModuleWithArgument` gates (including the call
-    // targeting the identified callee and the argument count) fail-close any
-    // residual mismatch. Each slice keeps its own parameterized symbol
-    // (`zom.conditional`, `zom.loop`, `zom.conditional_cmp`,
-    // `zom.caller`/`zom.callee`), so they produce a relocatable object only -- none
-    // is the reserved no-argument `zom.module_init` entry the runtime `_start`
-    // calls, and `zomc run` still fails closed on them. Every other shape stays
-    // fail-closed here.
+    // conditional slice (KR5.2 C3), then the aggregate field-return slice (gap#2).
+    // The three multi-block single-function slices have mutually exclusive shapes
+    // (the diamond entry is a one-statement SwitchInt, the loop entry is a Goto,
+    // the comparison entry is a three-statement SwitchInt on a computed boolean
+    // temporary) and all require four blocks, while the aggregate field-return has
+    // one block, so trying them in order selects at most one. A two-`Function`
+    // module is tried against the same-module direct-call slices (KR5.2 C4/C5):
+    // the caller (two blocks) and the callee (one block) are identified by block
+    // count, requiring exactly one of each, and the deeper `lowerCallModule` /
+    // `lowerCallModuleWithArgument` gates (including the call targeting the
+    // identified callee and the argument count) fail-close any residual mismatch.
+    // The multi-block and call slices keep their own parameterized symbols
+    // (`zom.conditional`, `zom.loop`, `zom.conditional_cmp`, `zom.caller` /
+    // `zom.callee`), so they produce a relocatable object only. The scalar and
+    // aggregate field-return slices fold to the reserved no-argument `zom.module_init`
+    // entry the runtime `_start` calls. Every other shape stays fail-closed here,
+    // and `zomc run` remains gated on the host-compatibility path regardless.
     zc::Maybe<lir::LirModule> lir;
     ZC_IF_SOME(types, semanticTypes) {
       if (functions.size() == 1) {
@@ -1435,6 +1437,9 @@ private:
           }
           if (lir == zc::none) {
             lir = lir::MirToLirLowering::lowerEqualityConditionalReturn(functions[0], types);
+          }
+          if (lir == zc::none) {
+            lir = lir::MirToLirLowering::lowerAggregateFieldInitializer(functions[0], types);
           }
         }
       } else {
@@ -1485,8 +1490,8 @@ private:
     if (lir == zc::none) {
       return NativeObjectResult(
           zc::str("MIR -> LIR lowering rejected this module (outside the scalar-initializer, "
-                  "boolean-conditional, reducible while-loop, comparison-driven conditional, and "
-                  "same-module direct-call slices)."));
+                  "boolean-conditional, reducible while-loop, comparison-driven conditional, "
+                  "aggregate field-return, and same-module direct-call slices)."));
     }
     backend::llvm::LlvmTranslator translator;
     ZC_IF_SOME(lirModule, lir) {
