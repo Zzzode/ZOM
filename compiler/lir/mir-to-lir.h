@@ -49,6 +49,24 @@ public:
   ZC_NODISCARD static zc::Maybe<LirModule> lowerScalarInitializer(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers one struct-local field-return function to a scalar LIR module.
+  ///
+  /// Admits exactly the verified Built MIR shape that
+  /// `mir::validLocalAggregateFieldReturnFunction` accepts: a `Function` with one
+  /// `UserLocal` of a struct type and a single block
+  /// (`StorageLive(local); local = NominalAggregate{constant fields};
+  /// return copy local.field`) whose result is one field's integer value. Because
+  /// every aggregate element is a constant, the returned field is resolved at
+  /// lowering time and emitted as the existing single-block integer-constant
+  /// return; no struct is materialized in LIR. Every shape outside this slice
+  /// returns `none`.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns `function.resultType`.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<LirModule> lowerAggregateFieldInitializer(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers one four-block boolean-conditional return function to LIR.
   ///
   /// Admits exactly the verified Built MIR shape that

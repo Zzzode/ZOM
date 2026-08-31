@@ -204,6 +204,95 @@ zc::Maybe<LirModule> MirToLirLowering::lowerScalarInitializer(
   return LirModule(zc::mv(functions));
 }
 
+zc::Maybe<LirModule> MirToLirLowering::lowerAggregateFieldInitializer(
+    const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
+  // Admit only the verified struct-local field-return shape. This mirrors the
+  // structural facts that mir::validLocalAggregateFieldReturnFunction already
+  // checked; we re-check them here so lowering is total over its declared input
+  // and fail-closed on anything else.
+  if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 1 || function.blocks.size() != 1) {
+    return zc::none;
+  }
+
+  const auto& local = function.locals[0];
+  const auto& block = function.blocks[0];
+  if (local.kind != mir::MirLocalKind::UserLocal || block.statements.size() != 2 ||
+      block.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      block.statements[1].kind() != mir::MirStatementKind::Assign) {
+    return zc::none;
+  }
+
+  // The assignment must construct the whole struct local from a nominal
+  // aggregate whose every element is a constant.
+  const auto& assignment = block.statements[1].assignmentValue();
+  if (assignment.destination.local() != local.id ||
+      assignment.destination.projections().size() != 0 ||
+      assignment.value.kind() != mir::MirRvalueKind::NominalAggregate) {
+    return zc::none;
+  }
+  const auto& aggregate = assignment.value.nominalAggregateValue();
+
+  // The return must be a copy of exactly one field projection of the struct
+  // local; that field selects which constant element becomes the result.
+  if (block.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }
+  const auto& returnValue = block.terminator.returnValue().value;
+  if (returnValue == zc::none) { return zc::none; }
+  zc::Maybe<identity::DefId> selectedField;
+  ZC_IF_SOME(value, returnValue) {
+    if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != local.id ||
+        value.place().projections().size() != 1) {
+      return zc::none;
+    }
+    const auto& projection = value.place().projections()[0];
+    if (projection.kind() != mir::MirProjectionKind::Field ||
+        projection.resultType() != function.resultType) {
+      return zc::none;
+    }
+    selectedField = projection.fieldValue().field;
+  }
+  if (selectedField == zc::none) { return zc::none; }
+  const auto field = ZC_REQUIRE_NONNULL(selectedField);
+
+  // Resolve the selected element's constant value. The field read is folded at
+  // lowering time, so no struct is materialized in LIR.
+  zc::Maybe<const mir::MirOperand&> selectedOperand;
+  for (const auto& element : aggregate.elements) {
+    if (element.field == field) { selectedOperand = element.operand; }
+  }
+  if (selectedOperand == zc::none) { return zc::none; }
+  const auto& operand = ZC_REQUIRE_NONNULL(selectedOperand);
+  if (operand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
+  const auto& constant = operand.constantValue();
+  if (constant.type != function.resultType) { return zc::none; }
+
+  // Resolve the integer carrier and materialize the folded field value.
+  auto carrier = integerCarrierFor(function.resultType, semanticTypes);
+  if (carrier == zc::none) { return zc::none; }
+  const auto carrierValue = ZC_REQUIRE_NONNULL(carrier);
+
+  const auto integer = constant.value.integerValue();
+  if (integer == zc::none) { return zc::none; }
+  auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), carrierValue.integerWidth());
+  if (bits == zc::none) { return zc::none; }
+
+  auto lirConstant = LirIntegerConstant::from(carrierValue, ZC_REQUIRE_NONNULL(bits));
+  if (lirConstant == zc::none) { return zc::none; }
+
+  // Build the single entry block returning the folded field value.
+  auto entryId = LirBlockId::fromOrdinal(1);
+  if (entryId == zc::none) { return zc::none; }
+  zc::Vector<LirBasicBlock> blocks;
+  blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(entryId),
+                           LirTerminator::returnInteger(ZC_REQUIRE_NONNULL(lirConstant))));
+
+  // Reuse the stable reserved module-initializer entry symbol so the folded
+  // result slots into the existing translate/emit/execute path.
+  zc::Vector<LirFunction> functions;
+  functions.add(LirFunction(zc::heapString("zom.module_init"), carrierValue, zc::mv(blocks)));
+  return LirModule(zc::mv(functions));
+}
+
 zc::Maybe<LirModule> MirToLirLowering::lowerConditionalReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified four-block boolean-conditional return shape. This

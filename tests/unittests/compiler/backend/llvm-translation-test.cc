@@ -145,7 +145,98 @@ ZC_TEST("Scalar module initializer lowers MIR -> LIR -> verified LLVM ret i32 42
   ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
 }
 
-// RFC 0021 O5/KR5.2 first widening slice: the backend already parameterizes on
+// RFC 0021 aggregate first slice: a verified struct-local field-return function
+// (`fn f() -> i32 { let p = P{42, 7}; return p.x; }`) lowers MIR -> LIR by
+// folding the selected constant field to the existing single-block integer
+// return, then translates to verified LLVM `ret i32 42`. No struct is
+// materialized in LIR or LLVM. `structType` stands in for the struct's own
+// semantic type: the field read is folded, so its layout is never inspected.
+mir::MirFunction buildAggregateFieldFunction(identity::DefId owner,
+                                             identity::SemanticTypeId structType,
+                                             identity::SemanticTypeId i32,
+                                             identity::DefId aggregate, identity::DefId fieldX,
+                                             identity::DefId fieldY, uint8_t valueX,
+                                             uint8_t valueY) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::UserLocal, structType,
+                                      scopeId(1), span()});
+
+  zc::Vector<mir::MirNominalAggregateElement> elements;
+  elements.add(mir::MirNominalAggregateElement{
+      fieldX, mir::MirOperand::constant(i32, integerConstant(valueX))});
+  elements.add(mir::MirNominalAggregateElement{
+      fieldY, mir::MirOperand::constant(i32, integerConstant(valueY))});
+
+  zc::Vector<mir::MirStatement> statements;
+  statements.add(mir::MirStatement::storageLive(localId(1), span()));
+  statements.add(mir::MirStatement::assign(
+      resultPlace(localId(1), structType),
+      mir::MirRvalue::nominalAggregate(aggregate, structType, zc::mv(elements)),
+      mir::MirInitializationKind::Initialize, span()));
+
+  // return copy local#1.x : the field projection selects the constant element.
+  zc::Vector<mir::MirProjection> projections;
+  projections.add(mir::MirProjection::field(fieldX, structType, i32));
+  auto fieldPlace = mir::MirPlace(localId(1), structType, zc::mv(projections), i32);
+  auto terminator =
+      mir::MirTerminator::returnValue(mir::MirOperand::copy(zc::mv(fieldPlace)), span());
+
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{blockId(1), scopeId(1), zc::mv(statements), zc::mv(terminator)});
+
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+ZC_TEST("Struct-local field return lowers MIR -> LIR -> verified LLVM ret i32 42") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto structType = typeContext.internPrimitive(type::semantic::PrimitiveKind::I64);
+  const auto owner = tests::testDefinition(0);
+  const auto aggregate = tests::testDefinition(1);
+  const auto fieldX = tests::testDefinition(2);
+  const auto fieldY = tests::testDefinition(3);
+
+  auto function =
+      buildAggregateFieldFunction(owner, structType, i32, aggregate, fieldX, fieldY, 42, 7);
+
+  // MIR -> LIR: the field read is folded to the scalar constant 42.
+  auto lir =
+      lir::MirToLirLowering::lowerAggregateFieldInitializer(function, typeContext.semanticTypes());
+  ZC_REQUIRE(lir != zc::none);
+  const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
+  ZC_EXPECT(lirModule.functions().size() == 1);
+  ZC_EXPECT(lirModule.functions()[0].returnCarrier().integerWidth() == lir::IntegerBitWidth::Bit32);
+
+  // LIR -> LLVM, with mandatory verifyModule.
+  LlvmTranslator translator;
+  auto result = translator.translate(lirModule);
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+  const auto ir = result.textualIr();
+  ZC_EXPECT(ir.contains("ret i32 42"_zc));
+}
+
+ZC_TEST("Aggregate field lowering fails closed outside the verified shape") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto owner = tests::testDefinition(0);
+
+  // A scalar module initializer is not the aggregate-field shape.
+  auto scalar = buildScalarInitializer(owner, i32, 42);
+  ZC_EXPECT(lir::MirToLirLowering::lowerAggregateFieldInitializer(
+                scalar, typeContext.semanticTypes()) == zc::none);
+}
+
 // the LIR integer carrier width (I8/I16/I32/I64 and their unsigned peers), but
 // only i32 was covered. Prove a narrow (i16) and a wide (i64) scalar module
 // initializer lower MIR -> LIR -> verified LLVM IR -> a native ELF object, so
