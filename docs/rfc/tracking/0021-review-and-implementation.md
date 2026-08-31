@@ -387,3 +387,35 @@ Mixing a second glibc into the link on this host was rejected to avoid dynamic
 loader and ABI-consistency risk. This snapshot records that the LLVM 22 discovery
 and configuration path is in place while native execution stays blocked on the
 host glibc version; it claims no lowering or execution closure.
+
+## LLVM Backend Native Execution Verified Via Debian LLVM 22
+
+On 2026-08-31, following the environment snapshot above, the scalar backend was
+verified end to end on this host by switching the LLVM distribution. The
+`llvm@22` bottle referenced glibc 2.38+ symbols (`__isoc23_strtol` and friends)
+absent from the host glibc 2.36, so linking failed. The Debian package
+`llvm-22-dev` (`1:22.1.8-1~deb12u1`, `llvm-config --version` `22.1.8`) is built
+against the host glibc 2.36 and provides no such symbols, so pointing `LLVM_DIR`
+at `/usr/lib/llvm-22/lib/cmake/llvm` avoids the bottle's environment conflict
+without mixing a second glibc into the link.
+
+With that distribution the backend builds and runs end to end:
+
+- The backend build links every target (897 of 897) with no undefined
+  reference.
+- `llvm-translation-test` passes 11 of 11 (MIR to LIR to LLVM IR with mandatory
+  `verifyModule`, including the fail-closed negative cases).
+- `object-emission-cli` passes: `zomc compile --emit=binary` writes a native ELF
+  object.
+- `native-execution-cli` passes with `--binary-available`: `zomc run` returns
+  zero. That path runs `CompilationAction::Run` through `linkAndPublish` (a real
+  link), a host-compatibility check, and a subprocess launch of the linked
+  native binary, and a direct `zomc run` of the installed-consumer package
+  reproduces `rc=0`. This is real native execution, not the fail-closed guard.
+
+This evidence covers only the already-implemented scalar backend (the
+single-module scalar-integer initializer slice). It does not touch the KR5.5 A3
+drop materialization or KR6.1 flow-typing blocker: both remain blocked on general
+aggregate MIR to LIR lowering, which is a code gap unaffected by the LLVM
+distribution. The `31c03e2a` C-language configure fix and this Debian LLVM path
+are what make the verification reproducible on this host.
