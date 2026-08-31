@@ -79,9 +79,9 @@ LlvmTranslator& LlvmTranslator::operator=(LlvmTranslator&&) noexcept = default;
 
 LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
   const auto functions = module.functions();
-  if (functions.size() < 1 || functions.size() > 2) {
+  if (functions.size() < 1 || functions.size() > 3) {
     return LlvmTranslationResult::failure(
-        zc::heapString("LIR module must contain one or two functions in this slice"));
+        zc::heapString("LIR module must contain one, two, or three functions in this slice"));
   }
   for (const auto& candidate : functions) {
     if (candidate.returnCarrier().kind() != lir::LirValueTypeKind::Integer) {

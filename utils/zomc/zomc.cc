@@ -1396,9 +1396,10 @@ private:
           "Binary emission currently supports exactly one module; got ", mirModules.size(), "."));
     }
     const auto functions = mirModules[0].builtMir().functions();
-    if (functions.size() != 1 && functions.size() != 2) {
-      return NativeObjectResult(zc::str(
-          "Binary emission currently supports one or two functions; got ", functions.size(), "."));
+    if (functions.size() != 1 && functions.size() != 2 && functions.size() != 3) {
+      return NativeObjectResult(
+          zc::str("Binary emission currently supports one, two, or three functions; got ",
+                  functions.size(), "."));
     }
     auto semanticTypes = session->getSemanticTypeStore();
     if (semanticTypes == zc::none) {
@@ -1442,7 +1443,7 @@ private:
             lir = lir::MirToLirLowering::lowerAggregateFieldInitializer(functions[0], types);
           }
         }
-      } else {
+      } else if (functions.size() == 2) {
         // Two functions: identify the unique direct-call caller/callee pair by
         // block count. The caller is a `Function` with two blocks (entry Call,
         // continuation Return); the callee is a `Function` with one block. If both
@@ -1490,13 +1491,80 @@ private:
             }
           }
         }
+      } else {
+        // Three functions: a single same-module direct-call caller plus its
+        // callee plus one standalone leaf (S-call). Identify the unique caller by
+        // the two-block Call+Return shape, locate its callee among the other two
+        // functions by owner match (`call.callee == other.owner`), and require the
+        // remaining third function to be the unique scalar leaf. The emitted LIR
+        // module fixes the order [caller, callee, leaf], so the caller's call
+        // index (1) is the callee's emission-order position, independent of the
+        // MIR array order. Any ambiguity -- more than one caller-shaped function,
+        // no or multiple owner-matched callees, or a non-leaf third function --
+        // leaves `lir` as none and the module fails closed.
+        auto isCaller = [](const mir::MirFunction& fn) {
+          return fn.kind == mir::MirFunctionKind::Function && fn.blocks.size() == 2;
+        };
+        zc::Maybe<size_t> callerIndex;
+        bool callerAmbiguous = false;
+        for (size_t index = 0; index < functions.size(); ++index) {
+          if (isCaller(functions[index])) {
+            if (callerIndex != zc::none) {
+              callerAmbiguous = true;
+              break;
+            }
+            callerIndex = index;
+          }
+        }
+        if (!callerAmbiguous) {
+          ZC_IF_SOME(caller, callerIndex) {
+            // The caller's single call terminator names the callee's owner. Locate
+            // the unique other function whose owner matches; the last remaining
+            // function is the leaf candidate.
+            const auto& callerFn = functions[caller];
+            zc::Maybe<size_t> calleeIndex;
+            bool calleeAmbiguous = false;
+            if (callerFn.blocks.size() == 2 &&
+                callerFn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call) {
+              const auto& call = callerFn.blocks[0].terminator.callValue();
+              for (size_t index = 0; index < functions.size(); ++index) {
+                if (index == caller) { continue; }
+                if (functions[index].owner == call.callee) {
+                  if (calleeIndex != zc::none) {
+                    calleeAmbiguous = true;
+                    break;
+                  }
+                  calleeIndex = index;
+                }
+              }
+            }
+            if (!calleeAmbiguous) {
+              ZC_IF_SOME(callee, calleeIndex) {
+                // The leaf is the one remaining function that is neither the caller
+                // nor the owner-matched callee.
+                zc::Maybe<size_t> leafIndex;
+                for (size_t index = 0; index < functions.size(); ++index) {
+                  if (index != caller && index != callee) {
+                    leafIndex = index;
+                    break;
+                  }
+                }
+                ZC_IF_SOME(leaf, leafIndex) {
+                  lir = lir::MirToLirLowering::lowerCallModuleWithLeaf(
+                      functions[caller], functions[callee], functions[leaf], types);
+                }
+              }
+            }
+          }
+        }
       }
     }
     if (lir == zc::none) {
       return NativeObjectResult(
           zc::str("MIR -> LIR lowering rejected this module (outside the scalar-initializer, "
                   "boolean-conditional, reducible while-loop, comparison-driven conditional, "
-                  "aggregate field-return, and same-module direct-call slices)."));
+                  "aggregate field-return, same-module direct-call, and three-function "
+                  "direct-call-with-leaf slices)."));
     }
     backend::llvm::LlvmTranslator translator;
     ZC_IF_SOME(lirModule, lir) {

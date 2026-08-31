@@ -1,0 +1,11 @@
+// Three-function backend-lowering fixture (S-call): a same-module direct-call
+// caller, its constant-return callee, and one standalone leaf that no call
+// references. The module lowers MIR -> LIR -> a verified three-function LLVM
+// relocatable object emitted in the fixed order [caller, callee, leaf]. All three
+// functions keep parameterized `zom.caller` / `zom.callee` / `zom.leaf` symbols,
+// so the module is object-emittable but not runnable through the reserved
+// `zom.module_init` entry -- `zomc run` stays fail-closed on it until a later
+// slice.
+fun callee() -> i32 { return 42; }
+fun leaf() -> i32 { return 9; }
+fun caller() -> i32 { let x = callee(); return x; }

@@ -212,6 +212,30 @@ public:
   ZC_NODISCARD static zc::Maybe<LirModule> lowerCallModuleWithArguments(
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
+
+  /// \brief Lowers a three-function module (a zero-argument direct call plus one
+  /// standalone leaf) to a three-function LIR module.
+  ///
+  /// Admits the caller shape lowered by `lowerCallModule` (two blocks: entry
+  /// zero-argument Call, continuation Return; one result local) targeting the
+  /// identified callee, the scalar constant-return callee, and a third scalar
+  /// constant-return `leaf` that is referenced by no call. Both `callee` and
+  /// `leaf` share the scalar constant-return shape; the caller's `Call` targets
+  /// the callee by owner match, never the leaf. The three functions emit in the
+  /// fixed order `[caller, callee, leaf]`, so the caller's call index is the
+  /// callee's emission-order position (1), independent of the MIR array order.
+  /// This is the first three-function object-emission slice, strictly capped at a
+  /// single caller, its one callee, and one standalone leaf; every other shape
+  /// returns none.
+  ///
+  /// \param caller Verified caller MIR function (two-block zero-argument call).
+  /// \param callee Verified callee MIR function (scalar constant-return shape).
+  /// \param leaf Verified standalone MIR function (scalar constant-return shape).
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered three-function LIR module, or none when outside the slice.
+  ZC_NODISCARD static zc::Maybe<LirModule> lowerCallModuleWithLeaf(
+      const mir::MirFunction& caller, const mir::MirFunction& callee, const mir::MirFunction& leaf,
+      const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::lir
