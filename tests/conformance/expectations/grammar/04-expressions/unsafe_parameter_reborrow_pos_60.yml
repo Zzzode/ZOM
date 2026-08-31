@@ -1,0 +1,5 @@
+section: "§4.6 Unsafe block expression containing a parameter reborrow"
+covers_rule: "unsafeBlockExpr, unaryExpr (exprReference and exprUnary)"
+expected: "ACCEPT"
+notes:
+  - "Syntax admits an unsafe block whose expression reborrows a dereferenced reference parameter; ownership validation is a later compiler phase."
