@@ -1264,3 +1264,34 @@ shape outside the flow subset.
 - `python3 scripts/check-rfc.py` passes with the current `ACCEPTED` index row.
 - Final exact-hash, CJK, placeholder, link, and diff-hygiene evidence is
   refreshed after this tracker update.
+
+## A3 Drop Materialization Blocked-With-Cause Snapshot
+
+On 2026-08-31 the runtime drop-glue ABI landed as commit `78e8aadc`:
+`extern "C" void __zom_drop(void* value) noexcept` in `runtime/drop.h` and
+`runtime/drop.cc`. It is a no-op builtin-drop landing symbol, exercised by
+`tests/unittests/runtime/drop-test.cc` (3 of 3 cases). This provides the
+callable ABI target only; it wires no drop lowering.
+
+The remaining A3 materialization (a produced MIR drop statement, its LIR and
+runtime consumer, and executed cleanup) stays blocked with cause. The blocker
+was established by reading the current code, not asserted:
+
+- A drop obligation is produced only for a type that carries one. The
+  `ownership-event-overlay` emits a builtin logical-drop action only when a
+  value has drop-carrying children or a declared deinitializer, and
+  `directDeinitializerForType` returns none for primitives, tuples, objects, and
+  enums. A trivial scalar module-initializer local therefore has no drop
+  obligation, so a materialized MIR drop for it would have no matching discharge
+  and the executable-MIR verifier would correctly reject it.
+- The smallest drop-obligated value is an aggregate: a struct with a declared
+  deinitializer or a drop-carrying member. But `MIR` to `LIR` lowering handles
+  only scalar integer shapes and does not lower a nominal aggregate at all.
+  There is therefore no drop-obligated program that lowers end to end today, so
+  a materialized drop statement would be a producerless dead path.
+
+Unblocking A3 requires general aggregate `MIR` to `LIR` lowering (RFC 0010 and
+RFC 0021 backend generalization) to exist first. Only then can a drop-obligated
+value be lowered and its drop executed. This snapshot records committed evidence
+for the runtime ABI and the honest downstream blocker; it advances no other
+RFC 0007 task.
