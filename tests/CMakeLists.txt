@@ -155,6 +155,37 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/aggregate-consumer/Zom.toml::aggregate_consumer::aggregate_consumer")
   set_tests_properties(object-emission-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)
 endif()
+
+# RFC 0043 O5/KR5.4: with the LLVM backend built, `zomc run` executes an
+# entry-compatible native program end to end. The aggregate field-return fixture
+# folds to the reserved no-argument i32 zom.module_init entry and exits 42; the
+# boolean-conditional diamond fixture keeps a parameterized symbol and is
+# object-only, so run fails closed on it. Gated on the backend so the frontend-only
+# lane never registers a native-run test.
+if(ZOM_ENABLE_LLVM_BACKEND)
+  add_test(
+    NAME native-run-cli
+    COMMAND
+      ${Python3_EXECUTABLE}
+      "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-native-run.py"
+      --zomc
+      "$<TARGET_FILE:zomc>"
+      --run-manifest
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/aggregate-consumer/Zom.toml"
+      --run-package
+      aggregate_consumer
+      --run-bin
+      aggregate_consumer
+      --run-exit
+      42
+      --reject-manifest
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml"
+      --reject-package
+      conditional_consumer
+      --reject-bin
+      conditional_consumer)
+  set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)
+endif()
 add_test(
   NAME package-workspace-build
   COMMAND
