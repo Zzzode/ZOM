@@ -172,7 +172,7 @@ def check(values: dict[Path, str]) -> list[str]:
 
     drop_elaborated_test = values.get(DROP_ELABORATED_TEST, "")
     for marker in (
-        "Drop elaborator publishes a complete discharge inventory",
+        "Session publishes verified executable mir modules after checkSources",
         "Drop elaborator rejects a foreign lease",
         "Drop elaborator rejects a missing discharge",
     ):
@@ -232,7 +232,8 @@ def check(values: dict[Path, str]) -> list[str]:
     for marker in (
         "FlowBuilder::build(",
         "FlowVerifier::verify(",
-        "MirPoint::edge(block.id, 0, call.normalTarget)",
+        "MirPoint::edge(block.id, edgeOrdinal, target)",
+        "chainEdge(0, call.normalTarget)",
         "hasAllSlotPoints(flow, overlay)",
         "sameFunctions(candidate.functions",
     ):
@@ -540,7 +541,8 @@ def check(values: dict[Path, str]) -> list[str]:
     facts_revision_header = values.get(FACTS_REVISION_HEADER, "")
     for marker in (
         "class OwnershipFactsRevision final",
-        "static OwnershipFactsRevision fromDigest(const identity::Sha256Digest& digest) noexcept;",
+        "static OwnershipFactsRevision fromDigest(",
+        "const identity::Sha256Digest& digest) noexcept;",
         "const identity::Sha256Digest& digest() const noexcept;",
     ):
         if marker not in facts_revision_header:
@@ -708,7 +710,10 @@ def check(values: dict[Path, str]) -> list[str]:
         "diagnostics::DiagID::ConcurrencySemanticsUnavailable",
         "diagnostics::DiagID::ControlFlowSemanticsUnavailable",
         "stagedOwnershipEventOverlays.add(zc::mv(verifiedOwnership).takeVerified());",
-        "stagedOwnershipInputs.add(zc::mv(verifiedOwnershipInputs).takeVerified());",
+        "ownership::OwnershipProofValidation::validate(",
+        "zc::mv(verifiedOwnershipInputs).takeVerified(),",
+        "stagedValidatedOwnershipProofs.add(zc::mv(validatedOwnershipProofs).takeVerified());",
+        "zc::mv(stagedValidatedOwnershipProofs[index]).takeInputs(),",
         "ownership::OwnershipFinalizer::finalizeOwnership(",
         "impl->ownershipCheckedMirModules = zc::mv(stagedOwnershipCheckedMir);",
         "zc::Vector<ownership::OwnershipAdmittedBoundModule> ownershipAdmittedModules;",
@@ -1296,7 +1301,8 @@ def main() -> int:
             "ReferenceDefinitionBuilder::build(",
             "ReferenceDefinitionVerifier::verify(",
             "OwnershipInputVerifier::verify(",
-            "stagedOwnershipInputs.add(zc::mv(verifiedOwnershipInputs).takeVerified());",
+            "ownership::OwnershipProofValidation::validate(",
+            "stagedValidatedOwnershipProofs.add(zc::mv(validatedOwnershipProofs).takeVerified());",
             "impl->ownershipCheckedMirModules = zc::mv(stagedOwnershipCheckedMir);",
         ):
             publication_mutation = dict(values)
@@ -1307,10 +1313,15 @@ def main() -> int:
                 print("ownership publication architecture self-test escaped")
                 return 1
         release_mutation = dict(values)
-        release_mutation[SESSION] = release_mutation.get(SESSION, "").replace(
-            "ownershipCheckedMirModules.clear();\n    hirModules.clear();\n    ownershipAdmittedModules.clear();",
-            "ownershipAdmittedModules.clear();\n    hirModules.clear();\n    ownershipCheckedMirModules.clear();",
-            1,
+        release_source = release_mutation.get(SESSION, "")
+        release_source = release_source.replace(
+            "ownershipCheckedMirModules.clear();", "__OWNERSHIP_CHECKED_RELEASE__", 1
+        )
+        release_source = release_source.replace(
+            "ownershipAdmittedModules.clear();", "ownershipCheckedMirModules.clear();", 1
+        )
+        release_mutation[SESSION] = release_source.replace(
+            "__OWNERSHIP_CHECKED_RELEASE__", "ownershipAdmittedModules.clear();", 1
         )
         if not check(release_mutation):
             print("ownership teardown architecture self-test escaped")
@@ -1341,7 +1352,7 @@ def main() -> int:
         drop_elaborated_test_mutation = dict(values)
         drop_elaborated_test_mutation[DROP_ELABORATED_TEST] = drop_elaborated_test_mutation.get(
             DROP_ELABORATED_TEST, ""
-        ).replace("Drop elaborator publishes a complete discharge inventory", "", 1)
+        ).replace("Session publishes verified executable mir modules after checkSources", "", 1)
         if not check(drop_elaborated_test_mutation):
             print("ownership drop-elaboration test architecture self-test escaped")
             return 1

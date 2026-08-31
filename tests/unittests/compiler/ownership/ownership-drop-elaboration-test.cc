@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "zc/ztest/test.h"
 #include "compiler/driver/interface/borrow-evidence.h"
 #include "compiler/driver/package/source-record.h"
 #include "compiler/driver/session/compiler-session.h"
@@ -28,6 +27,7 @@
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
 #include "tests/unittests/compiler/test-semantic-type-context.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::ownership {
 namespace {
@@ -930,6 +930,30 @@ ZC_TEST("Drop elaborator emits no logical drop when the subject is moved out at 
                                                       initialization.asPtr());
   ZC_REQUIRE(discharges != zc::none);
   ZC_IF_SOME(records, discharges) { ZC_EXPECT(records.size() == 0); }
+}
+
+ZC_TEST("Drop elaborator rejects a missing discharge") {
+  const auto owner = tests::testDefinition(0);
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(handBlock(handBlockId(1), handReturn()));
+  auto function = handFunction(owner, zc::mv(blocks));
+  const auto intro = handEvent(owner, MirPoint::beforeStatement(handBlockId(1), 0));
+
+  facts::OwnershipResourceFunction resourceFunction;
+  resourceFunction.owner = owner;
+  resourceFunction.facts.add(facts::OwnershipResourceFact{
+      handSubject(owner, 1, intro), facts::DropRequirement::Logical, zc::none, 0});
+  // No DropPlan covers the pending resource fact, so completeness must fail.
+
+  zc::Vector<facts::OwnershipResourceFunction> resources;
+  resources.add(zc::mv(resourceFunction));
+  zc::Vector<mir::MirFunction> functions;
+  functions.add(zc::mv(function));
+  zc::Vector<facts::InitializationFunction> initialization;
+
+  auto discharges = DropElaborator::computeDischarges(resources.asPtr(), functions.asPtr(),
+                                                      initialization.asPtr());
+  ZC_EXPECT(discharges == zc::none);
 }
 
 // A Positive Linear obligation left with no consumption on any path has no
