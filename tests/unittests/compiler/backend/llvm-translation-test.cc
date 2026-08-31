@@ -1395,5 +1395,121 @@ ZC_TEST("Comparison-driven conditional lowering fails closed on a non-comparison
                 function, typeContext.semanticTypes()) == zc::none);
 }
 
+// KR5.2 S-call: a three-function LIR module (a same-module direct-call caller, its
+// constant-return callee, and one standalone leaf that no call references)
+// translates to a verified LLVM module. This pins, at the translator unit level,
+// two properties the object-emission CLI (which only checks ELF magic) cannot:
+// the leaf is emitted as its own defined function, and the caller's single call
+// targets the callee, never the leaf. The module is built directly to isolate the
+// translator from the MIR -> LIR selector. The `calleeIndex` is the callee's
+// emission-order position (1), not the MIR array position.
+lir::LirModule buildCallWithLeafModule() {
+  auto i32 = lir::LirValueType::integer(lir::IntegerBitWidth::Bit32);
+  ZC_REQUIRE(i32 != zc::none);
+  const auto carrier = ZC_REQUIRE_NONNULL(i32);
+
+  auto callerEntry = lir::LirBlockId::fromOrdinal(1);
+  auto callerCont = lir::LirBlockId::fromOrdinal(2);
+  auto calleeEntry = lir::LirBlockId::fromOrdinal(1);
+  auto leafEntry = lir::LirBlockId::fromOrdinal(1);
+  ZC_REQUIRE(callerEntry != zc::none && callerCont != zc::none && calleeEntry != zc::none &&
+             leafEntry != zc::none);
+
+  auto calleeConstant = lir::LirIntegerConstant::from(carrier, 42);
+  auto leafConstant = lir::LirIntegerConstant::from(carrier, 9);
+  ZC_REQUIRE(calleeConstant != zc::none && leafConstant != zc::none);
+
+  zc::Vector<lir::LirFunction> functions;
+
+  // Function 0: the caller. Its entry block calls emission-order index 1 (the
+  // callee) storing the result into local ordinal 1, then continues to a return
+  // of that local. The leaf at index 2 is never referenced.
+  {
+    zc::Vector<lir::LirBasicBlock> callerBlocks;
+    zc::Vector<lir::LirStatement> entryStatements;
+    callerBlocks.add(lir::LirBasicBlock(
+        ZC_REQUIRE_NONNULL(callerEntry), zc::mv(entryStatements),
+        lir::LirTerminator::callFunction(/*calleeIndex=*/1, /*destinationOrdinal=*/1,
+                                         ZC_REQUIRE_NONNULL(callerCont))));
+    zc::Vector<lir::LirStatement> contStatements;
+    callerBlocks.add(lir::LirBasicBlock(ZC_REQUIRE_NONNULL(callerCont), zc::mv(contStatements),
+                                        lir::LirTerminator::returnLocal(1)));
+    zc::Vector<lir::LirLocal> parameters;
+    zc::Vector<lir::LirLocal> locals;
+    locals.add(lir::LirLocal(1, carrier));
+    functions.add(lir::LirFunction(zc::heapString("zom.caller"), carrier, zc::mv(parameters),
+                                   zc::mv(locals), zc::mv(callerBlocks)));
+  }
+
+  // Function 1: the callee, a single block returning its integer constant.
+  {
+    zc::Vector<lir::LirBasicBlock> calleeBlocks;
+    calleeBlocks.add(
+        lir::LirBasicBlock(ZC_REQUIRE_NONNULL(calleeEntry),
+                           lir::LirTerminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
+    functions.add(lir::LirFunction(zc::heapString("zom.callee"), carrier, zc::mv(calleeBlocks)));
+  }
+
+  // Function 2: the standalone leaf, a single block returning its integer
+  // constant. It calls nothing and is called by nothing.
+  {
+    zc::Vector<lir::LirBasicBlock> leafBlocks;
+    leafBlocks.add(
+        lir::LirBasicBlock(ZC_REQUIRE_NONNULL(leafEntry),
+                           lir::LirTerminator::returnInteger(ZC_REQUIRE_NONNULL(leafConstant))));
+    functions.add(lir::LirFunction(zc::heapString("zom.leaf"), carrier, zc::mv(leafBlocks)));
+  }
+
+  return lir::LirModule(zc::mv(functions));
+}
+
+// Counts non-overlapping occurrences of `needle` in `haystack`.
+size_t countOccurrences(zc::StringPtr haystack, zc::StringPtr needle) {
+  size_t count = 0;
+  size_t from = 0;
+  const zc::ArrayPtr<const char> hay = haystack.asArray();
+  const zc::ArrayPtr<const char> pin = needle.asArray();
+  if (pin.size() == 0 || hay.size() < pin.size()) { return 0; }
+  for (size_t i = 0; i + pin.size() <= hay.size(); ++i) {
+    if (i < from) { continue; }
+    bool match = true;
+    for (size_t j = 0; j < pin.size(); ++j) {
+      if (hay[i + j] != pin[j]) {
+        match = false;
+        break;
+      }
+    }
+    if (match) {
+      ++count;
+      from = i + pin.size();
+    }
+  }
+  return count;
+}
+
+ZC_TEST("Three-function call-with-leaf module translates with the leaf uncalled") {
+  auto module = buildCallWithLeafModule();
+
+  LlvmTranslator translator;
+  auto result = translator.translate(module);
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+
+  const auto ir = result.textualIr();
+  // All three functions are defined in the module.
+  ZC_EXPECT(ir.contains("zom.caller"_zc));
+  ZC_EXPECT(ir.contains("zom.callee"_zc));
+  ZC_EXPECT(ir.contains("zom.leaf"_zc));
+
+  // Exactly one call is emitted, and it targets the callee, never the leaf.
+  ZC_EXPECT(countOccurrences(ir, "call i32"_zc) == 1);
+  ZC_EXPECT(ir.contains("call i32 @zom.callee("_zc));
+  ZC_EXPECT(!ir.contains("call i32 @zom.leaf("_zc));
+
+  // The callee and the leaf each return their own integer constant.
+  ZC_EXPECT(ir.contains("ret i32 42"_zc));
+  ZC_EXPECT(ir.contains("ret i32 9"_zc));
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::backend::llvm
