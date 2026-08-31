@@ -67,6 +67,31 @@ public:
   ZC_NODISCARD static zc::Maybe<LirModule> lowerAggregateFieldInitializer(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers one whole-struct constant return function to LIR.
+  ///
+  /// Admits exactly the verified Built MIR shape that
+  /// `mir::validLocalAggregateReturnFunction` accepts: a `Function` with one
+  /// `UserLocal` of a struct type and a single block
+  /// (`StorageLive(local); local = NominalAggregate{constant fields};
+  /// return copy local`) whose result is the whole struct (the return place has
+  /// zero projections). Each aggregate element must be a constant of an integer
+  /// carrier; the elements lower in MIR element order to the slots of a
+  /// `ReturnAggregate` terminator (RFC 0021 carrier bundle). The emitted slot
+  /// order is that MIR element order and does not claim ABI field ordering. Every
+  /// shape outside this slice, and any non-constant or non-integer element,
+  /// returns `none`.
+  ///
+  /// The lowered function's return carrier is the first slot's integer carrier as
+  /// a transitional placeholder to satisfy the translator entry check; it is not
+  /// the real return type, which the translator builds as a literal struct from
+  /// the slot carriers themselves.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns the element types.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<LirModule> lowerAggregateReturn(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers one four-block boolean-conditional return function to LIR.
   ///
   /// Admits exactly the verified Built MIR shape that

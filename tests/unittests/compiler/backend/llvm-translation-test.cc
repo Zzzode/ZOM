@@ -199,6 +199,132 @@ mir::MirFunction buildAggregateFieldFunction(identity::DefId owner,
                           zc::mv(blocks)};
 }
 
+// Builds the whole-struct constant-return shape:
+//   fn f() -> P { let p = P{valueX, valueY}; return p; }
+// identical to buildAggregateFieldFunction except the return copies the whole
+// struct local (zero projections) and the function result type is the struct.
+mir::MirFunction buildAggregateReturnFunction(identity::DefId owner,
+                                              identity::SemanticTypeId structType,
+                                              identity::SemanticTypeId i32,
+                                              identity::DefId aggregate, identity::DefId fieldX,
+                                              identity::DefId fieldY, uint8_t valueX,
+                                              uint8_t valueY) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::UserLocal, structType,
+                                      scopeId(1), span()});
+
+  zc::Vector<mir::MirNominalAggregateElement> elements;
+  elements.add(mir::MirNominalAggregateElement{
+      fieldX, mir::MirOperand::constant(i32, integerConstant(valueX))});
+  elements.add(mir::MirNominalAggregateElement{
+      fieldY, mir::MirOperand::constant(i32, integerConstant(valueY))});
+
+  zc::Vector<mir::MirStatement> statements;
+  statements.add(mir::MirStatement::storageLive(localId(1), span()));
+  statements.add(mir::MirStatement::assign(
+      resultPlace(localId(1), structType),
+      mir::MirRvalue::nominalAggregate(aggregate, structType, zc::mv(elements)),
+      mir::MirInitializationKind::Initialize, span()));
+
+  // return copy local#1 : the whole struct, no projections.
+  auto terminator = mir::MirTerminator::returnValue(
+      mir::MirOperand::copy(resultPlace(localId(1), structType)), span());
+
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{blockId(1), scopeId(1), zc::mv(statements), zc::mv(terminator)});
+
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          structType,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+ZC_TEST("Whole-struct return lowers MIR -> LIR -> verified LLVM literal struct") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto structType = typeContext.internPrimitive(type::semantic::PrimitiveKind::I64);
+  const auto owner = tests::testDefinition(0);
+  const auto aggregate = tests::testDefinition(1);
+  const auto fieldX = tests::testDefinition(2);
+  const auto fieldY = tests::testDefinition(3);
+
+  auto function =
+      buildAggregateReturnFunction(owner, structType, i32, aggregate, fieldX, fieldY, 42, 7);
+
+  // MIR -> LIR: the whole struct lowers to a two-slot aggregate return.
+  auto lir = lir::MirToLirLowering::lowerAggregateReturn(function, typeContext.semanticTypes());
+  ZC_REQUIRE(lir != zc::none);
+  const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
+  ZC_REQUIRE(lirModule.functions().size() == 1);
+  ZC_REQUIRE(lirModule.functions()[0].blocks().size() == 1);
+  const auto& terminator = lirModule.functions()[0].blocks()[0].terminator();
+  ZC_EXPECT(terminator.kind() == lir::LirTerminatorKind::ReturnAggregate);
+  ZC_REQUIRE(terminator.returnAggregateSlots().size() == 2);
+  ZC_EXPECT(terminator.returnAggregateSlots()[0].bits() == 42);
+  ZC_EXPECT(terminator.returnAggregateSlots()[1].bits() == 7);
+
+  // LIR -> LLVM: end-to-end verified literal struct.
+  LlvmTranslator translator;
+  auto result = translator.translate(lirModule);
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+  const auto ir = result.textualIr();
+  ZC_EXPECT(ir.contains("{ i32, i32 }"_zc));
+  ZC_EXPECT(ir.contains("insertvalue"_zc));
+  ZC_EXPECT(ir.contains("ret { i32, i32 }"_zc));
+}
+
+ZC_TEST("Whole-struct return lowering rejects the field-return shape") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto structType = typeContext.internPrimitive(type::semantic::PrimitiveKind::I64);
+  const auto owner = tests::testDefinition(0);
+  const auto aggregate = tests::testDefinition(1);
+  const auto fieldX = tests::testDefinition(2);
+  const auto fieldY = tests::testDefinition(3);
+
+  // A field-return function (return place has one Field projection) is not the
+  // whole-struct shape.
+  auto field =
+      buildAggregateFieldFunction(owner, structType, i32, aggregate, fieldX, fieldY, 42, 7);
+  ZC_EXPECT(lir::MirToLirLowering::lowerAggregateReturn(field, typeContext.semanticTypes()) ==
+            zc::none);
+}
+
+ZC_TEST("Aggregate field lowering rejects the whole-struct return shape") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto structType = typeContext.internPrimitive(type::semantic::PrimitiveKind::I64);
+  const auto owner = tests::testDefinition(0);
+  const auto aggregate = tests::testDefinition(1);
+  const auto fieldX = tests::testDefinition(2);
+  const auto fieldY = tests::testDefinition(3);
+
+  // The whole-struct return (return place has zero projections) is not the
+  // field-return shape.
+  auto whole =
+      buildAggregateReturnFunction(owner, structType, i32, aggregate, fieldX, fieldY, 42, 7);
+  ZC_EXPECT(lir::MirToLirLowering::lowerAggregateFieldInitializer(
+                whole, typeContext.semanticTypes()) == zc::none);
+}
+
+ZC_TEST("Whole-struct return lowering rejects a scalar initializer") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto owner = tests::testDefinition(0);
+
+  auto scalar = buildScalarInitializer(owner, i32, 42);
+  ZC_EXPECT(lir::MirToLirLowering::lowerAggregateReturn(scalar, typeContext.semanticTypes()) ==
+            zc::none);
+}
+
 ZC_TEST("Struct-local field return lowers MIR -> LIR -> verified LLVM ret i32 42") {
   tests::TestSemanticTypeContext typeContext;
   const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
