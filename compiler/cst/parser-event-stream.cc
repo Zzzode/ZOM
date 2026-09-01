@@ -58,6 +58,23 @@ bool validIdentId(ast::IdentId id, uint32_t identCount) {
   return id.value != 0 && id.value <= identCount;
 }
 
+void appendUint64(zc::Vector<uint8_t>& output, uint64_t value) {
+  for (int shift = 56; shift >= 0; shift -= 8) {
+    output.add(static_cast<uint8_t>(value >> static_cast<uint32_t>(shift)));
+  }
+}
+
+void appendFramed(zc::Vector<uint8_t>& output, zc::ArrayPtr<const uint8_t> value) {
+  appendUint64(output, value.size());
+  output.addAll(value);
+}
+
+identity::Sha256Digest requireDigest(zc::ArrayPtr<const uint8_t> bytes) {
+  auto digest = identity::sha256(bytes);
+  ZC_IF_SOME(value, digest) { return value; }
+  ZC_UNREACHABLE
+}
+
 }  // namespace
 
 ParserEventStreamId computeParserEventStreamId(zc::ArrayPtr<const ParserSyntaxEvent> events) {
@@ -323,6 +340,26 @@ const VerifiedRecoverySequence& RecoverableSyntaxTree::recovery() const noexcept
   return impl->recovery;
 }
 uint64_t RecoverableSyntaxTree::parserErrorCount() const noexcept { return impl->parserErrorCount; }
+
+// ---------------------------------------------------------------------------
+// RecoverableSyntaxTreeCodec
+// ---------------------------------------------------------------------------
+
+zc::Array<uint8_t> RecoverableSyntaxTreeCodec::encode(const RecoverableSyntaxTree& tree) {
+  zc::Vector<uint8_t> preimage;
+  for (const auto byte : "zom.cst-tree"_zc) { preimage.add(static_cast<uint8_t>(byte)); }
+  preimage.add(0);
+  appendFramed(preimage, tree.lexemes().id().digest().bytes());
+  appendFramed(preimage, tree.recovery().id().digest().bytes());
+  appendFramed(preimage, tree.parserEventStreamId().digest().bytes());
+  appendUint64(preimage, tree.parserErrorCount());
+  return preimage.releaseAsArray();
+}
+
+RecoverableSyntaxTreeId RecoverableSyntaxTreeCodec::computeId(const RecoverableSyntaxTree& tree) {
+  auto bytes = encode(tree);
+  return RecoverableSyntaxTreeId::fromDigest(requireDigest(bytes.asPtr()));
+}
 
 InvalidDiagnosticBindingResult RecoverableSyntaxDiagnosticBinder::bind(
     RecoverableSyntaxTree&& syntax, zc::ArrayPtr<const diagnostics::DiagnosticFact> facts,

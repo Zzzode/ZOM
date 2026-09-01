@@ -157,6 +157,56 @@ private:
   friend class RecoverableSyntaxDiagnosticBinder;
 };
 
+/// \brief The domain-separated immutable identity of one recoverable syntax tree.
+///
+/// Computed by `RecoverableSyntaxTreeCodec` as SHA-256 over the tree's canonical
+/// preimage and compared by digest.
+class RecoverableSyntaxTreeId final {
+public:
+  constexpr RecoverableSyntaxTreeId() noexcept = default;
+
+  ZC_NODISCARD static RecoverableSyntaxTreeId fromDigest(
+      const identity::Sha256Digest& digest) noexcept {
+    return RecoverableSyntaxTreeId(digest);
+  }
+  ZC_NODISCARD const identity::Sha256Digest& digest() const noexcept { return value; }
+
+  bool operator==(const RecoverableSyntaxTreeId& other) const noexcept {
+    return value == other.value;
+  }
+  bool operator!=(const RecoverableSyntaxTreeId& other) const noexcept { return !(*this == other); }
+
+private:
+  explicit RecoverableSyntaxTreeId(const identity::Sha256Digest& digest) noexcept : value(digest) {}
+
+  identity::Sha256Digest value;
+};
+
+/// \brief Canonical codec for the recoverable syntax tree.
+///
+/// The preimage is a domain-separated, length-framed encoding that binds the
+/// tree's three verified components by their existing identities, in a fixed
+/// order, followed by the retained parser error count:
+///   ASCII("zom.cst-tree") 0x00
+///   Frame(lexemeStreamId digest)
+///   Frame(recoverySequenceId digest)
+///   Frame(parserEventStreamId digest)
+///   uint64(parserErrorCount)
+/// `Frame` is a big-endian uint64 byte length followed by the exact bytes.
+///
+/// Binding the `parserEventStreamId` binds the full parser event content: that
+/// id is itself the SHA-256 of the domain-separated event preimage produced by
+/// `computeParserEventStreamId`, so the tree identity changes whenever any event
+/// changes without this codec re-serializing the event algebra. The lexeme and
+/// recovery components are likewise bound by their own verified stream ids.
+class RecoverableSyntaxTreeCodec final {
+public:
+  /// \brief Encodes a recoverable syntax tree to its canonical preimage bytes.
+  ZC_NODISCARD static zc::Array<uint8_t> encode(const RecoverableSyntaxTree& tree);
+  /// \brief Computes the tree's `RecoverableSyntaxTreeId` (SHA-256 of the preimage).
+  ZC_NODISCARD static RecoverableSyntaxTreeId computeId(const RecoverableSyntaxTree& tree);
+};
+
 enum class InvalidDiagnosticBindingFailure : uint8_t {
   MissingDiagnostic = 0x01,
   AmbiguousDiagnostic = 0x02,
