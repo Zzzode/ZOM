@@ -236,9 +236,13 @@ exactly the following fields:
    the target link mode requires (for example the platform C runtime library),
    each recorded by canonical link name and, when linked from a fixed path
    inside `sysroot`, its digest and byte count.
-6. `environment`: the small ordered set of target-owned environment variable
-   name/value pairs that the driver invocation is permitted to see, and nothing
-   else.
+
+The record carries no environment field. The link runs under a strictly empty
+process environment (see "Linker Driver Invocation"), so there is no target-owned
+variable set to record or fold into `LinkPlanId`. A future target-owned
+environment set is out of scope here and would be introduced together with its
+configuration source, toolchain discovery, and `LinkPlanId` codec fold in a
+separate change, never as an unproduced record field.
 
 Every path field must be normalized, absolute, and contained inside `sysroot`
 except the `linker` program, whose parent is recorded and pinned. The record is
@@ -269,12 +273,15 @@ performing glob expansion, interpreting response files, or reading user
 configuration files. The driver program must be in the verified toolchain
 closure and its executable digest must equal the planned record.
 
-The process environment is constructed from an empty environment plus the
-small target-owned set of variables recorded in the toolchain closure. `PATH`,
-`LIBRARY_PATH`, `LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH`, `SDKROOT`, and linker
-search variables from the parent process are not inherited. The working
-directory is the transaction root described below. No input path can be
-resolved relative to the current directory.
+The process environment is strictly empty: the driver is spawned under an
+empty-environment policy that inherits no variable from the parent process.
+`PATH`, `LIBRARY_PATH`, `LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH`, `SDKROOT`, and
+linker search variables are therefore never visible to the driver. The working
+directory is the transaction root described below, so no input path can be
+resolved relative to the current directory. Should a target ever require a
+specific environment variable, that target-owned set would be introduced with
+its own configuration source, toolchain discovery, and `LinkPlanId` codec fold;
+until then the invocation environment is empty by construction.
 
 The first implementation invokes the platform compiler driver rather than a
 bare linker so that the target's startup objects and platform-required link
