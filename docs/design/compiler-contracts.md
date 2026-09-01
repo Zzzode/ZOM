@@ -1,7 +1,7 @@
 <!-- @dsCard group="Design Documents" name="COMPILER_CONTRACTS" -->
 # ZOM Compiler Subsystem Contracts
 
-Updated: 2026-08-06
+Updated: 2026-08-30
 
 ## 1. Authority And Scope
 
@@ -36,8 +36,9 @@ lease. `CompilerSession` publishes `CheckerBoundModuleView` values from the
 final-sealed snapshot; checked modules, HIR, Built MIR, and ownership overlays
 retain that lineage. Every checker, interface, evidence, CheckedModule, HIR,
 and Built MIR result is staged and independently verified before session
-publication. Production ownership proof, executable MIR, target LIR, LLVM,
-object, and binary publication do not exist.
+publication. Ownership/drop/executable-MIR and native backend paths exist for
+admitted shapes; general region, ABI, lowering, and platform coverage remains
+partial.
 
 ## 2. Capability Rules
 

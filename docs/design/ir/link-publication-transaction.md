@@ -98,6 +98,17 @@ These are the invariants the implementation and its tests must establish. They
 exist to keep "recoverable" from silently degrading back into "physical two-file
 atomic".
 
+**Trust boundary.** On Unix, the output directory is accepted only when its
+owner is the effective user and neither group nor other principals can write it.
+All processes under that effective user are one OS trust principal: the journal
+checksum proves canonical record integrity and chain continuity inside that
+boundary, but does not claim to authenticate against a malicious same-UID
+process that already has authority to replace the user's executable and
+manifest. INV-3 and INV-6 cover independent protocol-following publishers and
+external-principal races. Final consumers still reverify the manifest and
+executable because publication never grants immunity from later same-principal
+tampering.
+
 - **INV-1 Sole commit marker.** A consumer accepts the executable only when the
   final `.zom-artifact` exists AND its own codec verifies AND its recorded
   executable digest and byte count match the on-disk executable AND its
@@ -155,10 +166,13 @@ atomic".
       inode) from the commit-point re-check. Recovery deletes an orphan `app` only
       when the journal proves this transaction created it AND the final path still
       resolves to that same stable file identity.
-    - The staged object's stable file identity is captured while the transaction
-      holds the object open, and re-checked (via `fstatat`/equivalent) before any
-      delete, so a competitor that replaced the path between rename and cleanup
-      is never deleted.
+    - Cleanup never performs a path check followed by a separate unlink. It
+      atomically moves the public entry with `RENAME_NOREPLACE` into the
+      transaction root under a closed quarantine name, then checks the claimed
+      inode against the journalled identity. An owned inode is removed only as
+      part of root cleanup. A mismatching competitor is restored with another
+      no-replace rename, or retained in quarantine with an explicit cleanup debt
+      if restoration loses a race.
     - A platform or filesystem that cannot provide a stable file identity fails
       closed: the orphan is retained, never blind-deleted, and reported for
       explicit repair.
@@ -375,22 +389,23 @@ row below hits the catch-all (blocker 5):
 |---|---|---|---|
 | none (no valid chain) | leftover `.zomlink-<token>` root only | unknown ownership (token name is not proof) | **explicit-repair-only: NEVER auto-remove** (Option B — a pre-`Started` crash has no durable owner record; see below) |
 | `Started` | neither `app` nor manifest; a token-named manifest temp may exist | not published, owner-proved for the root | discard the snapshot root + journal chain (both owner-proved by exact identity). A manifest temp is **retained for explicit repair, NOT auto-deleted**: at `Started` the journal holds only its path formula + expected digest, not its exact identity, so the on-disk temp cannot be proven to still be this transaction's (blocker 1 — path/digest never authorises a delete) |
-| `Started` | `app` matches recorded candidate identity; no manifest | orphan executable | identity-checked delete of `app`, then journal chain + root; any token-named manifest temp is retained for explicit repair (no journalled identity); a non-matching `app` is a competitor → retain, report |
-| `ManifestStaged` | neither `app` nor manifest (temp may exist) | not published, owner-proved | the manifest temp now has a journalled exact identity: identity-checked delete of the temp (only when it matches `ManifestStaged`), then snapshot root + journal chain; a non-matching temp is retained for explicit repair |
-| `ManifestStaged` | `app` matches; no manifest | orphan executable (crash between exec rename and its ExecCommitted stage) | identity-checked delete of `app`, then identity-checked temp + root + chain |
-| `ExecCommitted` | `app` matches; no manifest | orphan executable (definite: crash before manifest rename) | identity-checked delete of `app`, then identity-checked temp + root + chain |
-| `ExecCommitted` | `app` matches + manifest present | **publishedness-ambiguous** (manifest rename may have landed before ManifestCommitted became durable) | `RecoveryRequired(PublicationRecoveryRequired{ primary: None, obligation })`; MUST NOT blind-delete; re-open applies INV-1 |
+| `Started` | `app` matches recorded candidate identity; no manifest | orphan executable | atomically quarantine `app` into the owner-matching transaction root, verify the claimed inode, then remove it through root cleanup; any token-named manifest temp is retained for explicit repair because no identity is recorded yet |
+| `ManifestStaged` | neither `app` nor manifest (temp may exist) | not published, owner-proved | atomically quarantine the identity-matching manifest temp into the transaction root, then clean the root and journal chain; a mismatching entry is restored or retained for explicit repair |
+| `ManifestStaged` | `app` matches; no manifest | orphan executable (crash between exec rename and its ExecCommitted stage) | atomically quarantine and verify `app` plus the manifest temp, then clean the root and chain |
+| `ExecCommitted` | `app` matches; no manifest | orphan executable (definite: crash before manifest rename) | atomically quarantine and verify `app` plus the manifest temp, then clean the root and chain |
+| `ExecCommitted` | `app` matches + manifest present | **publishedness-ambiguous for the original publish operation** (manifest rename may have landed before ManifestCommitted became durable) | the original operation returns `RecoveryRequired(PublicationRecoveryRequired{ primary: None, obligation })`; the explicit recovery entry reopens both files, applies INV-1, and returns `Published` only when the pair verifies |
 | `ManifestCommitted` | `app` + verifying manifest, both match | published | discard residual temp + snapshot root, then delete journal chain; a cleanup failure reports a non-ambiguous obligation, never touching the committed pair |
 | `ManifestCommitted` | manifest missing / does not verify / identity mismatch | competitor or external tampering | fail closed: retain, report for explicit repair |
 | **any other combination** (stage/entry mismatch, identity mismatch, broken or forked journal chain) | — | undecidable | **fail closed: retain ALL, report for explicit repair; NEVER infer a delete** |
 
 Two rows correspond to the rename recovery windows where a rename may have landed
 but its following stage commit did not become durable. Only ONE of them is
-*publishedness*-ambiguous: `ExecCommitted` + both entries present (the manifest
-rename may or may not be durable). The `app`-only rows are NOT ambiguous — they
-are a definite, unpublished orphan (INV-1: no manifest means not published); they
-are resolved by an identity-checked delete, not a `RecoveryRequired` outcome
-(blocker 5 wording fix).
+*publishedness*-ambiguous for the in-flight publish call: `ExecCommitted` + both
+entries present. That call returns `RecoveryRequired`; a later explicit recovery
+call resolves the ambiguity from disk and may return `Published` after a full
+INV-1 verification. The `app`-only rows are NOT ambiguous — they are a definite,
+unpublished orphan (INV-1: no manifest means not published); they are resolved by
+an atomic quarantine-and-verify cleanup, not a blind path delete.
 
 **Option B — pre-`Started` roots are explicit-repair-only.** A crash at the D1
 entry, during the pre-checks, or during the initial commit-point read leaves the
@@ -605,6 +620,40 @@ authority. (If a later step is found to genuinely need a runtime/sysroot
 capability, it is added back with an explicit statement of what it verifies and
 which operation consumes it.)
 
+**Inspection authority in the plan.** D5 must not infer an expected machine from
+an opaque target digest or from the host. `VerifiedLinkPlan` therefore owns one
+closed `ExecutableInspectionProfile` and folds it into `LinkPlanId`:
+
+```text
+ExecutableInspectionProfile {
+  objectFormat: Elf | MachO,
+  machine: X86_64 | AArch64,
+  pointerWidthBits: 64,
+  requiredRuntimeSymbols: StrictlySortedUnique<AsciiSymbol>,
+  runtimeReferenceDomain: AsciiSymbol,  // canonical raw prefix: __zom_ (ELF) / ___zom_ (Mach-O)
+}
+```
+
+`ElfDriver` is valid only with `Elf`; `MachODriver` only with `MachO`. The entry
+symbol remains the plan's separate single required symbol. Every symbol name -
+the required runtime symbols, the runtime reference domain, and the entry - is
+the target's raw symbol-table spelling (Mach-O adds a leading underscore, so a C
+`zom` entry is `_zom` and runtime imports are `___zom_*`), the same bytes passed
+to `ld -e`. `runtimeReferenceDomain` is derived strictly from `objectFormat` and
+is never empty or caller-chosen. D5 checks the entry and every runtime symbol as
+defined symbols, and rejects any undefined symbol whose raw name is in the
+runtime reference domain as an unresolved runtime reference. This replaces
+the current insufficient shape where the plan carries only a target identity,
+driver kind, and entry symbol: those fields cannot independently prove the
+output's machine or runtime-symbol closure.
+
+The initial inspector is closed to little-endian ELF64 `ET_EXEC`/`ET_DYN` and
+64-bit Mach-O `MH_EXECUTE`, for x86-64 and AArch64 only. It validates every
+header, load-command, section, symbol-table, and string-table range before use.
+Malformed bounds or symbol records are `InvalidFact`; format, machine, or
+pointer-width mismatches are `InvalidAbi`. A successful linker exit and a magic
+prefix alone are never verification evidence.
+
 `LinkAndPublishOutcome` is exactly one of:
 
 - `Published(PublishedExecutableArtifact)` — the manifest committed and verified;
@@ -687,10 +736,9 @@ RFC 0043 records the outcome type.
 3. **[landed]** `linkExecutable` opens and re-verifies all input handles and
    `execveat`s the driver handle (D3b), writes the transaction-root output
    candidate, and returns the candidate (D4).
-4. **[pending]** Publication transaction with manifest-last commit + owner-token
-   rollback (D1), replacing the best-effort `tryRemove` path. The full D1 contract
-   is PROPOSED and under adversarial review — NOT yet approved (see "D1 operation
-   shape, recovery obligations, and journal lifecycle" and INV-1..INV-8):
+4. **[landed]** Publication transaction with manifest-last commit + owner-safe
+   quarantine (D1). `publishLinkedOutput` implements the full journal-staged
+   transaction and total recovery matrix described by INV-1..INV-8:
    `publishLinkedOutput(Moved<LinkedOutputCandidate>, Moved<ExecutableArtifactManifest>)
    -> PublicationOutcome` (`Published` /
    `RecoveryRequired(LinkRecoveryRequired)` / `Rejected`), the ordered
@@ -703,10 +751,19 @@ RFC 0043 records the outcome type.
    `JournalStage` + actual final entries. Immediately before each final rename D1
    re-derives the output `digest`/`size`/`dev`/`ino`/`st_nlink == 1` from the
    candidate's SAME held handle and re-checks the on-disk entry identity; the
-   D4-captured snapshot is not the final proof. Implementation is Pending and
-   unauthorized until the contract is approved.
-5. **[pending]** The consuming `linkAndPublish` operation wiring 1-4 with the
-   executable inspector and manifest (D5).
+   D4-captured snapshot is not the final proof. The adversarial audit and
+   sanitizer/architecture/recovery gates are closed.
+5. **[landed in worktree]** `ExecutableInspectionProfile` is part of
+   `VerifiedLinkPlan` and `LinkPlanId`; the 518-byte oracle
+   (`54e60703e2ea42b6f0b45f616f41f3b417b298345edf5e8d6a79b5d5817c8dfd`) freezes
+   the current profile-bearing plan, including the runtime reference domain. The
+   bounded ELF64/Mach-O64 inspector verifies format, machine, width, entry, and
+   runtime symbols, rejects unresolved runtime references and malformed symbol
+   names, and bisects format/bitness mismatch (InvalidAbi) from structural
+   corruption (InvalidFact). `linkAndPublish` consumes the plan
+   through D3/D4, inspection, manifest verification, and D1. Linux ELF success,
+   malformed image, machine mismatch, missing runtime symbol, and pure Mach-O
+   fixtures are covered.
 
 Each pending step lands as its own commit with a regression test that is red
 before and green after, and is reviewed before the next. `LinkAndPublishRejection`

@@ -320,6 +320,47 @@ and exact identity from that same output object. The first supported checks are
 ELF and Mach-O only. The verifier does not infer safety from a successful linker
 exit status.
 
+The `VerifiedLinkPlan` carries one closed `ExecutableInspectionProfile`; the
+opaque target-specification digest alone is not inspection authority. The
+profile contains the expected object format, one `ExecutableMachine`
+(`X86_64` or `AArch64`), a 64-bit pointer width for the initial matrix, a
+strictly ordered duplicate-free sequence of required runtime symbol names, and
+the ZOM runtime ABI reference domain. The plan verifier requires `ElfDriver`
+with ELF and `MachODriver` with Mach-O, and folds the complete profile into
+`LinkPlanId`. The entry symbol remains the one separate required plan field and
+is also checked as a defined symbol.
+
+All symbol names in the profile and plan - the required runtime symbols, the
+runtime reference domain, and the entry symbol - are recorded in the target's
+raw symbol-table spelling, not the source-level spelling. The same raw bytes are
+passed to the format-specific linker entry option (`ld -e`) and matched in the
+symbol table, so the driver and inspector never disagree. ELF uses the C name
+unchanged (a C `zom` entry stays `zom`, the runtime imports are `__zom_*`);
+Mach-O's nlist prepends a leading underscore (a C `zom` entry appears as `_zom`,
+the runtime imports as `___zom_*`). The runtime reference domain is that raw
+prefix - `__zom_` on ELF, `___zom_` on Mach-O - derived strictly from the object
+format; it is never empty and never caller-chosen, so the check can be neither
+disabled nor misdirected.
+
+ELF inspection requires a little-endian ELF64 `ET_EXEC` or `ET_DYN` image whose
+`e_machine` matches the profile (`EM_X86_64` or `EM_AARCH64`), whose header and
+section ranges are bounded by the candidate bytes, and whose symbol tables
+contain defined entry and required runtime symbols. Mach-O inspection requires a
+64-bit `MH_EXECUTE` image with matching `cputype`, bounded load commands and
+`LC_SYMTAB`, and defined entry/runtime symbols in the bounded nlist/string-table
+inventory. Every symbol record's name offset is bounded and NUL-terminated
+inside the string table before any binding/type classification, regardless of
+the symbol's role. A defined symbol matches the required set; an undefined
+global/weak (ELF `SHN_UNDEF`) or external `N_UNDF` (Mach-O) symbol whose raw
+name begins with the runtime reference domain is an unresolved runtime reference
+and is rejected, while a non-domain external import (a C library symbol) is
+allowed. An absent, undefined-runtime, duplicate, malformed, or out-of-range
+required symbol fails `ExecutablePublication` with `InvalidFact`; a
+format/machine/pointer shape mismatch uses `InvalidAbi`. A leading magic that
+identifies a different supported object format, or the same format with the
+wrong bitness or endianness, is an `InvalidAbi` shape mismatch; unrecognizable
+or structurally broken bytes remain `InvalidFact`.
+
 `PublishedExecutableArtifact` owns the normalized final destination, target
 identity, executable digest, byte count, `LinkPlanId`, and the immutable
 `ExecutableArtifactManifest`. The manifest is a canonical, domain-separated
@@ -456,6 +497,18 @@ shell injection by using argument vectors, prevents ambient library injection
 by sanitizing the environment, verifies every input digest, rejects output
 replacement, and records the selected toolchain identity. A cross-target
 artifact is never executed solely because it was published successfully.
+
+The output directory is a Unix security boundary for publication journals. On
+Unix, publication and recovery require a directory owned by the effective user
+and reject any directory writable by group or other principals. The journal's
+domain-separated checksum detects truncation, torn data, and accidental record
+mixing; it is not an authentication mechanism against another process running
+as the same effective user. Processes under one effective user are one trust
+principal and can already read, replace, or execute that user's artifacts.
+Concurrency guarantees therefore cover independent publishers following the
+filesystem contract, while a malicious same-principal process is handled as
+external tampering: final consumers reverify the manifest and executable and
+never infer publication from a bare path.
 
 The initial platform matrix is intentionally closed. Unsupported object
 formats and target profiles are rejected before tool invocation. Later support
@@ -620,4 +673,5 @@ None
 | 2026-08-29 | IMPLEMENTING | D4 landed (`3764b2cb` + review-fix `8faec9da`): the transaction-owned output candidate. `linkExecutable` now takes the `VerifiedLinkPlan` by value (every branch consumes the moved plan) and writes the driver's `-o` to `<root>/output-candidate` inside the unified transaction root (the D3b snapshot tree), never a public final path; the driver's working directory is the transaction root. On success it transfers the still-live root into a move-only `LinkedOutputCandidate`; every rejection cleans only the transaction root through `discardAndCleanup` and never touches the final path (the prior best-effort final-path `tryRemove` is deleted). The candidate captures, all from one no-follow (`O_NOFOLLOW`) read-only handle, the output's exact `StableFileIdentity` (`dev`/`ino` + link count), byte count, and SHA-256 `outputDigest` (read+hashed through that handle with a read-length cross-check), and enforces the D4-stage structural invariant: regular file, non-empty, `st_nlink == 1`. INV-1 rejects any pre-existing final-path entry up front with a no-follow `tryLstat` (a following `exists` would miss a broken symlink). `VerifiedLinkedExecutable` was replaced by `LinkedOutputCandidate`; `VerifiedExecutableArtifact` was renamed `PublishedExecutableArtifact`. These are structural invariants only - format/architecture/entry-symbol/runtime-symbol inspection remain D5. Twenty-five `invoke-linker` unit tests (symlink/empty/directory/hardlink/missing output-candidate variants plus a broken-symlink final-path case, each red-before-green) pass under the sanitizer build; full sanitizer build, `check-format`, and the IR architecture gate pass. D1 (manifest-last recoverable publication + INV-8 commit-point re-check) and D5 (consuming `linkAndPublish`) remain Pending; `zomc run` stays blocked and the link-driver spine stays `[~] partial`. D1 MUST re-derive the output `digest`/`size`/`dev`/`ino`/`st_nlink == 1` from the candidate's same handle at its commit point; the D4-captured snapshot is not the final proof. |
 | 2026-08-29 | IMPLEMENTING | D1 publication-transaction contract ratified (docs-first; implementation Pending). The design note's D1 section now pins the full manifest-last recoverable-publication contract into an implementable shape: the operation `publishLinkedOutput(Moved<LinkedOutputCandidate>, Moved<ExecutableArtifactManifest>) -> PublicationOutcome` with the three-way outcome `Published(PublishedExecutableArtifact)` / `RecoveryRequired(PublicationRecoveryObligation)` / `Rejected(PublicationRejection)`; a seven-step ordered commit (RejectExisting no-follow re-check for both final paths -> commit-point re-derivation of digest/size/dev/ino/regular/`st_nlink == 1` from the candidate's SAME held handle -> stage+fsync manifest temp -> journal write+fsync BEFORE any rename -> executable rename + final-dir fsync -> manifest rename (the commit point) + final-dir fsync -> discard journal + snapshot root); a journal lifecycle bounded to steps 4-7 whose sole authority is to permit deleting an orphan `app` under a journal + exact-identity match; a pointwise crash-recovery matrix keyed by the last completed step, with the post-manifest-rename pre-dir-fsync window as the single ambiguous outcome (INV-5) that returns `RecoveryRequired` and never blind-deletes; and a strict separation of the two typed recovery obligations - `SnapshotCleanupObligation` (transaction-private `.zomlink-` root) versus the new `PublicationRecoveryObligation` (public final pair, carrying the owner token, both final paths, the journalled commit-point `StableFileIdentity`, and an optional nested `SnapshotCleanupObligation`). This row records the approved contract only; no D1 code lands here. D5 (consuming `linkAndPublish` + executable inspector) also remains Pending; `zomc run` stays blocked and the link-driver spine stays `[~] partial`. |
 | 2026-08-29 | IMPLEMENTING | Correction to the previous row. That row described the D1 publication-transaction contract as "ratified"/"approved" (`af61f534`); that was a premature, pre-review status - the contract had been committed for review but NOT yet reviewed, and a 2026-08-29 adversarial review then rejected it with seven blockers (rename+fsync compound-step crash states, journal-delete-before-root-cleanup ordering, journal established too late to cover steps 1-3, a three-way outcome that cannot express a snapshot-only cleanup debt, missing manifest<->candidate live-binding verification, non-exclusive final renames, and an unspecified journal format). The previous row's bytes are left immutable as an audit record; its "ratified/approved" wording is corrected here to **D1 contract PROPOSED, pending adversarial review**. No D1 code was or is authorized. The revised contract is being reworked in `docs/design/ir/link-publication-transaction.md`; a later row will record "approved" only after the revision passes review. D4 stays landed; D1/D5 Pending; `zomc run` blocked; spine `[~] partial`. |
+| 2026-08-29 | IMPLEMENTING | D1 trust boundary clarified and enforced: on Unix the output directory must be owned by the effective user and must not be writable by group or other principals. Journal checksums are corruption and chain-integrity evidence inside that principal boundary, not authentication against a malicious same-UID process, which already has authority to mutate the user's artifacts. Publication and recovery fail closed on an untrusted directory; focused tests retain every final entry. |
 | 2026-08-30 | IMPLEMENTING | D1 contract revised again (docs-only, still PROPOSED, pending re-review; no code). A second adversarial pass found five crash-consistency blockers, all addressed: (1) a crash before the first durable journal leaves a `.zomlink-<token>` root with no ownership proof - resolved by Option B (approved): such pre-`Started` roots are explicit-repair-only and NEVER auto-removed; D1's owner-safe recovery holds only from `Started` onward (INV-7 + the matrix `none` row + the future repair command's acceptance). (2) The journal stage set gains `ManifestStaged` between `Started` and `ExecCommitted`, removing the contradiction that `Started` recorded the identity of a not-yet-created manifest temp; `Started` records only the temp path formula + expected digest, and the manifest-temp exact identity plus the commit-point output identity are captured at `ManifestStaged`. (3) The journal is a chain of IMMUTABLE per-stage records `journal.<token>.<stage>` (each `PRIVATE`+`O_NOFOLLOW`+`RENAME_NOREPLACE`+dir-fsync, never overwritten) linked by a `previousJournalId` hash chain; recovery selects the highest complete, checksum-valid, chain-consistent stage and fails closed on a broken/forked chain - replacing the single-path replace, which had no identity-conditional atomicity. (4) The commit-point re-derivation moves to immediately before the executable rename (re-read from the candidate's same held handle, must still equal the `ManifestStaged` record, else abort) so drift during journal fsync never crosses the commit. (5) The crash matrix is a total function of (highest durable stage, actual final entries) with an explicit catch-all (any unlisted/identity-mismatched/broken-chain combination fails closed, retains all, explicit repair); the `app`-only rows are re-labelled definite unpublished orphans (not ambiguous), and only the `ExecCommitted`+both-entries row is publishedness-ambiguous. The previous-row description of a "ratified/approved" D1 contract was already corrected on 2026-08-29; this row records the revised PROPOSED contract, not approval. D4 landed; D1/D5 Pending; `zomc run` blocked; spine `[~] partial`. |
