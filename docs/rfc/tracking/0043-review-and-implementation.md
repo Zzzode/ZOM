@@ -347,6 +347,32 @@ longer cover the current text `c2e366c8...`. No owner has yet re-approved the
 current text; KR5.3 owner sign-off is not complete until six re-approvals
 against `c2e366c8...` are recorded here.
 
+### Re-Approval Evidence (2026-09-01)
+
+A six-owner subagent gate round was run read-only against RFC 0043 at HEAD
+`0286b894` with RFC hash
+`c2e366c8963d5884f35898535e8f585b4c76673d05ff883a649e28463230c430`. Each gate
+reviewed its owner surface and returned a recommendation. These are review
+evidence, not approvals; the Owner Review Matrix above stays `re-approval
+pending` until an accepting authority records a decision.
+
+| Owner surface | Reviewer | HEAD | RFC hash | Result |
+|---|---|---|---|---|
+| `rfc` | subagent gate (read-only) | `0286b894` | `c2e366c8` | RECOMMEND |
+| `ir-backend` | subagent gate (read-only) | `0286b894` | `c2e366c8` | RECOMMEND |
+| `module-system` | subagent gate (read-only) | `0286b894` | `c2e366c8` | RECOMMEND (conditional; the two tracker-only defects it raised were fixed in `cd1c97fb` and `0286b894`) |
+| `runtime-memory` | subagent gate (read-only) | `0286b894` | `c2e366c8` | RECOMMEND |
+| `error-system` | subagent gate (read-only) | `0286b894` | `c2e366c8` | RECOMMEND |
+| `verification` | subagent gate (read-only) | `0286b894` | `c2e366c8` | RECOMMEND |
+
+These recommendations are subagent review evidence and do not by themselves
+constitute owner sign-off. Under the project's standing governance directive,
+the accepting authority for Q4 governance closure is a delegated Codex
+acceptance; no separate independent human owner sign-off is required beyond that
+delegated acceptance, and these gate recommendations must never be recorded as
+independent human approvals. Recording acceptance is a separate step from this
+evidence.
+
 ## Decision Record
 
 Decision: Accepted 2026-08-28.
