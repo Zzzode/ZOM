@@ -318,6 +318,14 @@ zc::Maybe<ToolchainClosureRecord> ToolchainClosureRecord::make(
   for (const auto& record : defaultLibraries) {
     if (record.role() != LinkInputRole::DefaultLibrary) { return zc::none; }
   }
+  // RFC 0043 "Toolchain Discovery Record": every closure path must be normalized,
+  // absolute, and contained inside `sysroot`, and each role sequence must be
+  // canonically sorted and duplicate-free. `make` is the sole construction entry
+  // for this immutable record, so it is the single guard for these invariants;
+  // `normalizeInputSequence` sorts each sequence in place and fails closed on an
+  // out-of-root path or a duplicate canonical key.
+  if (normalizeInputSequence(crtObjects, sysroot) != zc::none) { return zc::none; }
+  if (normalizeInputSequence(defaultLibraries, sysroot) != zc::none) { return zc::none; }
   return ToolchainClosureRecord(zc::heapArray<uint8_t>(targetSpecificationIdentity),
                                 zc::str(sysroot), linkerKind, zc::str(linkerPath), linkerDigest,
                                 linkerByteCount, zc::mv(crtObjects), zc::mv(defaultLibraries));

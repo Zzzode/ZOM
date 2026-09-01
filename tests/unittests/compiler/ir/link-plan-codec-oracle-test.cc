@@ -49,6 +49,26 @@ zc::Array<LinkInputRecord> oneInput(LinkInputRecord&& record) {
   return builder.finish();
 }
 
+// Wraps two link inputs in a two-element array, preserving the given order so a
+// test can feed a non-canonical order and prove the factory sorts it.
+zc::Array<LinkInputRecord> twoInputs(LinkInputRecord&& first, LinkInputRecord&& second) {
+  auto builder = zc::heapArrayBuilder<LinkInputRecord>(2);
+  builder.add(zc::mv(first));
+  builder.add(zc::mv(second));
+  return builder.finish();
+}
+
+// Builds a closure with the fixture sysroot `/sysroot` and the given CRT and
+// default-library sequences, returning the raw Maybe so a test can assert
+// rejection. The linker program is a fixed valid in-root path.
+zc::Maybe<ToolchainClosureRecord> closureWith(zc::Array<LinkInputRecord>&& crtObjects,
+                                              zc::Array<LinkInputRecord>&& defaultLibraries) {
+  const uint8_t targetIdentity[] = {0x74, 0x67, 0x74};  // "tgt"
+  return ToolchainClosureRecord::make(
+      zc::arrayPtr(targetIdentity, 3), "/sysroot"_zc, LinkerDriverKind::ElfDriver,
+      "/sysroot/bin/cc"_zc, digestOf("cc"), 4096, zc::mv(crtObjects), zc::mv(defaultLibraries));
+}
+
 ExecutableInspectionProfile inspectionProfile() {
   auto symbols = zc::heapArrayBuilder<zc::String>(1);
   symbols.add(zc::str("__zom_runtime"));
@@ -337,6 +357,54 @@ ZC_TEST("Link input record rejects invalid construction") {
                                   0) == zc::none);
   ZC_EXPECT(LinkInputRecord::make("/abs/../path"_zc, LinkInputRole::ObjectArtifact, digestOf("x"),
                                   1) == zc::none);
+}
+
+// RFC 0043 "Toolchain Discovery Record": every closure path must be contained
+// inside the sysroot, and the CRT/library sequences must be canonically sorted
+// and duplicate-free. The record's factory is the only construction entry and
+// the record is immutable, so `make` is the single guard for these invariants.
+
+ZC_TEST("Toolchain closure rejects a CRT object outside the sysroot") {
+  auto closure =
+      closureWith(oneInput(input("/elsewhere/crt1.o", LinkInputRole::CrtObject, "crt1", 1024)),
+                  zc::Array<LinkInputRecord>());
+  ZC_EXPECT(closure == zc::none);
+}
+
+ZC_TEST("Toolchain closure rejects a default library outside the sysroot") {
+  auto closure =
+      closureWith(zc::Array<LinkInputRecord>(),
+                  oneInput(input("/opt/libc.so", LinkInputRole::DefaultLibrary, "libc", 2048)));
+  ZC_EXPECT(closure == zc::none);
+}
+
+ZC_TEST("Toolchain closure rejects duplicate CRT objects") {
+  auto closure =
+      closureWith(twoInputs(input("/sysroot/lib/crt1.o", LinkInputRole::CrtObject, "crt1", 1024),
+                            input("/sysroot/lib/crt1.o", LinkInputRole::CrtObject, "crt1", 1024)),
+                  zc::Array<LinkInputRecord>());
+  ZC_EXPECT(closure == zc::none);
+}
+
+ZC_TEST("Toolchain closure canonically sorts CRT objects fed in reverse order") {
+  auto closure =
+      closureWith(twoInputs(input("/sysroot/lib/crtn.o", LinkInputRole::CrtObject, "crtn", 512),
+                            input("/sysroot/lib/crt1.o", LinkInputRole::CrtObject, "crt1", 1024)),
+                  zc::Array<LinkInputRecord>());
+  ZC_REQUIRE(closure != zc::none);
+  ZC_IF_SOME(value, closure) {
+    ZC_REQUIRE(value.crtObjects().size() == 2u);
+    ZC_EXPECT(zc::StringPtr(value.crtObjects()[0].path()) == "/sysroot/lib/crt1.o"_zc);
+    ZC_EXPECT(zc::StringPtr(value.crtObjects()[1].path()) == "/sysroot/lib/crtn.o"_zc);
+  }
+}
+
+ZC_TEST("Toolchain closure accepts empty and in-root CRT and library sequences") {
+  ZC_EXPECT(closureWith(zc::Array<LinkInputRecord>(), zc::Array<LinkInputRecord>()) != zc::none);
+  auto populated = closureWith(
+      oneInput(input("/sysroot/lib/crt1.o", LinkInputRole::CrtObject, "crt1", 1024)),
+      oneInput(input("/sysroot/lib/libc.so", LinkInputRole::DefaultLibrary, "libc", 2048)));
+  ZC_EXPECT(populated != zc::none);
 }
 
 }  // namespace zomlang::compiler::ir
