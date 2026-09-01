@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, ir-backend, module-system, runtime-memory, error-system, verification]
 approvers: [rfc, ir-backend, module-system, runtime-memory, error-system, verification]
 created: 2026-08-15
-updated: 2026-08-30
+updated: 2026-09-01
 area: compiler
 requires: [6, 10, 12, 16, 21]
 supersedes: []
@@ -234,8 +234,9 @@ exactly the following fields:
    recorded digest and byte count.
 5. `defaultLibraries`: the ordered, deduplicated set of default system libraries
    the target link mode requires (for example the platform C runtime library),
-   each recorded by canonical link name and, when linked from a fixed path
-   inside `sysroot`, its digest and byte count.
+   each recorded as a normalized absolute path inside `sysroot` plus its digest
+   and byte count. A bare linker name (such as `-lc`) is not representable; every
+   default library is a digest-pinned in-sysroot path.
 
 The record carries no environment field. The link runs under a strictly empty
 process environment (see "Linker Driver Invocation"), so there is no target-owned
@@ -437,10 +438,12 @@ Otherwise `run` reports the existing target-selection diagnostic and does not
 spawn a process. It never falls back to emulation, Rosetta, QEMU, an ambient
 interpreter, or a different executable.
 
-Arguments are passed as an argument vector. The program inherits only the
-explicit runtime environment authorized by the package execution request. The
-run command reports the child exit status without reclassifying it as compiler
-success or failure.
+The executed program currently inherits the host process environment
+unchanged, and `run` forwards no additional argument vector to it. The run
+command reports the child exit status without reclassifying it as compiler
+success or failure. A sanitized run environment (an explicit, package-authorized
+variable set rather than host inheritance) is a later slice, not current
+behavior.
 
 ### Linker And Publication Failure Algebra
 
@@ -682,3 +685,4 @@ None
 | 2026-08-29 | IMPLEMENTING | Correction to the previous row. That row described the D1 publication-transaction contract as "ratified"/"approved" (`af61f534`); that was a premature, pre-review status - the contract had been committed for review but NOT yet reviewed, and a 2026-08-29 adversarial review then rejected it with seven blockers (rename+fsync compound-step crash states, journal-delete-before-root-cleanup ordering, journal established too late to cover steps 1-3, a three-way outcome that cannot express a snapshot-only cleanup debt, missing manifest<->candidate live-binding verification, non-exclusive final renames, and an unspecified journal format). The previous row's bytes are left immutable as an audit record; its "ratified/approved" wording is corrected here to **D1 contract PROPOSED, pending adversarial review**. No D1 code was or is authorized. The revised contract is being reworked in `docs/design/ir/link-publication-transaction.md`; a later row will record "approved" only after the revision passes review. D4 stays landed; D1/D5 Pending; `zomc run` blocked; spine `[~] partial`. |
 | 2026-08-29 | IMPLEMENTING | D1 trust boundary clarified and enforced: on Unix the output directory must be owned by the effective user and must not be writable by group or other principals. Journal checksums are corruption and chain-integrity evidence inside that principal boundary, not authentication against a malicious same-UID process, which already has authority to mutate the user's artifacts. Publication and recovery fail closed on an untrusted directory; focused tests retain every final entry. |
 | 2026-08-30 | IMPLEMENTING | D1 contract revised again (docs-only, still PROPOSED, pending re-review; no code). A second adversarial pass found five crash-consistency blockers, all addressed: (1) a crash before the first durable journal leaves a `.zomlink-<token>` root with no ownership proof - resolved by Option B (approved): such pre-`Started` roots are explicit-repair-only and NEVER auto-removed; D1's owner-safe recovery holds only from `Started` onward (INV-7 + the matrix `none` row + the future repair command's acceptance). (2) The journal stage set gains `ManifestStaged` between `Started` and `ExecCommitted`, removing the contradiction that `Started` recorded the identity of a not-yet-created manifest temp; `Started` records only the temp path formula + expected digest, and the manifest-temp exact identity plus the commit-point output identity are captured at `ManifestStaged`. (3) The journal is a chain of IMMUTABLE per-stage records `journal.<token>.<stage>` (each `PRIVATE`+`O_NOFOLLOW`+`RENAME_NOREPLACE`+dir-fsync, never overwritten) linked by a `previousJournalId` hash chain; recovery selects the highest complete, checksum-valid, chain-consistent stage and fails closed on a broken/forked chain - replacing the single-path replace, which had no identity-conditional atomicity. (4) The commit-point re-derivation moves to immediately before the executable rename (re-read from the candidate's same held handle, must still equal the `ManifestStaged` record, else abort) so drift during journal fsync never crosses the commit. (5) The crash matrix is a total function of (highest durable stage, actual final entries) with an explicit catch-all (any unlisted/identity-mismatched/broken-chain combination fails closed, retains all, explicit repair); the `app`-only rows are re-labelled definite unpublished orphans (not ambiguous), and only the `ExecCommitted`+both-entries row is publishedness-ambiguous. The previous-row description of a "ratified/approved" D1 contract was already corrected on 2026-08-29; this row records the revised PROPOSED contract, not approval. D4 landed; D1/D5 Pending; `zomc run` blocked; spine `[~] partial`. |
+| 2026-09-01 | IMPLEMENTING | D5, D1, and the host-gated `zomc run` cutover landed on `develop`, superseding this table's prior "D1/D5 Pending; `zomc run` blocked; spine `[~] partial`" tail: D5 executable inspection + consuming `linkAndPublish` (`a737dda5`), D1 manifest-last recoverable publication hardening (`89816cb3`), and the Linux x86-64 `zomc run` consumer + runtime-entry wiring (`b2310198`), plus the `zomc build` subcommand (`c7e842f0`). A subsequent KR5.3 six-owner review identified reservations; the following implementation findings were addressed: the host-compatibility gate now compares the artifact target, not the host (`4a0acddd`); `zomc run` link/publication and recovery-required failures route through the diagnostic engine (`4eef1432`, `ab15c079`); the dead empty-environment linker plumbing was deleted and the link runs under a strictly empty environment (`1450e7e9`) with the RFC text aligned (`8873a957`); toolchain-closure CRT/library paths are now sysroot-contained, canonically sorted, and deduplicated at construction (`9ce36b07`); and the Host Execution / default-library prose was aligned with the code by the preceding RFC-text alignment in this change. Two review outcomes are NOT resolved code fixes: production toolchain discovery is deferred (its configuration source is outside the verified compiler per this RFC), and owner sign-off against the current RFC text is still pending (see the tracker's Owner Review Matrix). AArch64 runtime entry, macOS/Mach-O execution, general ABI/multi-function selection, and cross-target `zomc run` rejection remain later slices. |
