@@ -56,8 +56,9 @@ its dependencies and review gates are satisfied.
   single executable target.
 - Bind every link input to the exact target specification, object digest,
   runtime closure, toolchain identity, and output policy.
-- Invoke a target-selected linker driver with an explicit argument vector and
-  a sanitized environment.
+- Invoke a target-selected linker driver with an explicit argument vector and a
+  sanitized (empty) environment; the linker invocation is hermetic even though
+  executing the produced program is not.
 - Publish an executable and its manifest as a recoverable transaction whose
   manifest commit is the sole visibility marker, so nothing is a consumable
   artifact until the manifest commits and verifies.
@@ -124,8 +125,9 @@ binds an explicitly supplied, verified toolchain root.
 
 The common pitfalls are accidental use of host libraries for a cross target,
 non-reproducible output from inherited search paths, and executing a foreign
-binary as if it were native. The closed target/runtime closure, sanitized
-environment, and host-compatibility gate address these cases.
+binary as if it were native. The closed target/runtime closure, the linker
+invocation's sanitized environment, and the host-compatibility gate address
+these cases.
 
 ## Guide-Level Explanation
 
@@ -284,10 +286,13 @@ specific environment variable, that target-owned set would be introduced with
 its own configuration source, toolchain discovery, and `LinkPlanId` codec fold;
 until then the invocation environment is empty by construction.
 
-The first implementation invokes the platform compiler driver rather than a
-bare linker so that the target's startup objects and platform-required link
-mode remain part of the recorded toolchain closure. The plan records no raw
-user flags.
+The first implementation invokes the platform linker (`ld`) directly with an
+explicit entry symbol (`-e _start`) and no platform CRT objects or default
+libraries in the closure, linking a freestanding runtime entry rather than a
+libc startup. A future slice that links against a platform CRT will record those
+startup objects and the platform-required link mode in the toolchain closure and
+may invoke the platform compiler driver instead. The plan records no raw user
+flags.
 
 The link runs inside a single **unified transaction root**: the transaction-
 private snapshot tree that already holds every re-verified input copy (the
@@ -503,10 +508,11 @@ through the existing driver mapping without creating a new diagnostic family.
 ## Security And Safety Impact
 
 Linking and execution cross a process and filesystem boundary. The plan avoids
-shell injection by using argument vectors, prevents ambient library injection
-by sanitizing the environment, verifies every input digest, rejects output
-replacement, and records the selected toolchain identity. A cross-target
-artifact is never executed solely because it was published successfully.
+shell injection by using argument vectors, prevents ambient library injection at
+link time by sanitizing the linker invocation environment, verifies every input
+digest, rejects output replacement, and records the selected toolchain identity.
+A cross-target artifact is never executed solely because it was published
+successfully.
 
 The output directory is a Unix security boundary for publication journals. On
 Unix, publication and recovery require a directory owned by the effective user
@@ -541,8 +547,10 @@ documentation; it must not add a permissive fallback path.
 Invoking `cc` with host-default arguments is rejected because it silently uses
 host startup objects, libraries, and search paths for a cross target.
 
-Calling a bare linker is rejected for the first implementation because startup
-object and platform driver behavior would be unverified implicit inputs.
+The first implementation instead invokes `ld` directly with an explicit
+`-e _start` entry and an empty CRT and default-library closure, so there are no
+unverified implicit startup inputs. A future slice that needs platform startup
+objects will record them in the toolchain closure before invoking any driver.
 
 Publishing a raw executable path without a manifest is rejected because later
 `run`, debugging, and distribution commands could not independently identify
