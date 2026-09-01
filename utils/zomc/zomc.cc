@@ -1675,6 +1675,15 @@ private:
         ir::ExecutableInspectionProfile::make(ir::ObjectFormat::Elf, ir::ExecutableMachine::X86_64,
                                               64, zc::mv(runtimeSymbols), zc::str("__zom_"));
     if (inspection == zc::none) return zc::str("Host inspection profile verification failed.");
+    // Build the artifact side of the host-compatibility comparison from the
+    // artifact's real target now, before the inspection profile is moved into the
+    // link request: the CPU architecture and operating system are parsed from the
+    // canonical target triple and the machine, object format, and pointer width
+    // come from these inspection facts. It must never be derived from the running
+    // host, or a cross-target artifact would compare host-vs-host and never be
+    // rejected.
+    auto artifactProfile =
+        ir::artifactExecutionProfileFromInspection(target.triple(), ZC_REQUIRE_NONNULL(inspection));
     ir::ExecutableLinkRequest request{ZC_REQUIRE_NONNULL(zc::mv(closure)),
                                       ZC_REQUIRE_NONNULL(zc::mv(inspection)),
                                       zc::heapArray<uint8_t>({'_', 's', 't', 'a', 'r', 't'}),
@@ -1693,14 +1702,10 @@ private:
     if (publication.isRejected()) return zc::str("Native linking or publication failed.");
     ir::PublishedExecutableArtifact artifact = zc::mv(publication).takePublished();
 
-    zc::Array<zc::String> noCapabilities;
-    auto artifactProfile = ir::HostExecutionProfile::make(
-        host.operatingSystem, host.architecture, host.objectFormat,
-        static_cast<uint32_t>(sizeof(void*) * 8), zc::mv(noCapabilities));
-    zc::Array<zc::String> hostCapabilities;
-    auto hostProfile = ir::HostExecutionProfile::make(
-        host.operatingSystem, host.architecture, host.objectFormat,
-        static_cast<uint32_t>(sizeof(void*) * 8), zc::mv(hostCapabilities));
+    // The host side describes the running compiler host. A genuine cross-target
+    // artifact (a differing OS, CPU architecture, object format, or pointer
+    // width) is rejected before any process spawn.
+    auto hostProfile = ir::currentHostExecutionProfile();
     if (artifactProfile == zc::none || hostProfile == zc::none ||
         !ir::runCompatibility(ZC_REQUIRE_NONNULL(artifactProfile), ZC_REQUIRE_NONNULL(hostProfile))
              .isCompatible()) {

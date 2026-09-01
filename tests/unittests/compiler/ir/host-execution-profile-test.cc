@@ -132,5 +132,75 @@ ZC_TEST("Host execution profile factory rejects malformed input") {
                                        twoCapabilities("sysv"_zc, "sysv"_zc)) == zc::none);
 }
 
+// G2 fix: the artifact profile must come from the artifact's own inspection
+// facts and target triple, not the running host, so a genuine cross-target
+// artifact is rejected. On this x86-64 Linux host, an AArch64 artifact (an
+// aarch64 triple with an AArch64 inspection machine) is a real CpuArchitecture
+// mismatch against the current host. Before the fix, both profiles were built
+// from the host, so this comparison was tautologically compatible.
+ExecutableInspectionProfile inspectionOf(ObjectFormat format, ExecutableMachine machine,
+                                         uint32_t pointerWidth) {
+  auto value = ExecutableInspectionProfile::make(format, machine, pointerWidth,
+                                                 zc::Array<zc::String>(), zc::str("__zom_"));
+  ZC_REQUIRE(value != zc::none);
+  return ZC_REQUIRE_NONNULL(zc::mv(value));
+}
+
+ZC_TEST("Artifact profile from an aarch64 triple mismatches an x86-64 host") {
+  auto artifact = artifactExecutionProfileFromInspection(
+      "aarch64-unknown-linux-gnu"_zc,
+      inspectionOf(ObjectFormat::Elf, ExecutableMachine::AArch64, 64));
+  ZC_REQUIRE(artifact != zc::none);
+  auto host = currentHostExecutionProfile();
+  ZC_REQUIRE(host != zc::none);
+  auto result =
+      runCompatibility(ZC_REQUIRE_NONNULL(zc::mv(artifact)), ZC_REQUIRE_NONNULL(zc::mv(host)));
+  ZC_REQUIRE(!result.isCompatible());
+  ZC_EXPECT(result.reason() == HostMismatchReason::CpuArchitecture);
+}
+
+// A same-target artifact (x86-64 triple + x86-64 inspection machine) is
+// compatible with the x86-64 Linux host that produced it.
+ZC_TEST("Artifact profile from an x86-64 triple matches the x86-64 host") {
+  auto artifact = artifactExecutionProfileFromInspection(
+      "x86_64-unknown-linux-gnu"_zc,
+      inspectionOf(ObjectFormat::Elf, ExecutableMachine::X86_64, 64));
+  ZC_REQUIRE(artifact != zc::none);
+  auto host = currentHostExecutionProfile();
+  ZC_REQUIRE(host != zc::none);
+  ZC_EXPECT(runCompatibility(ZC_REQUIRE_NONNULL(zc::mv(artifact)), ZC_REQUIRE_NONNULL(zc::mv(host)))
+                .isCompatible());
+}
+
+// The artifact profile factory fails closed on a malformed triple, an
+// unsupported operating system or architecture, and a triple architecture that
+// disagrees with the inspection machine.
+ZC_TEST("Artifact profile from inspection fails closed on malformed or inconsistent input") {
+  const auto x86 = ObjectFormat::Elf;
+  // Fewer than three fields (arch-vendor-os) is malformed.
+  ZC_EXPECT(artifactExecutionProfileFromInspection(
+                "x86_64-unknown"_zc, inspectionOf(x86, ExecutableMachine::X86_64, 64)) == zc::none);
+  // An empty field is malformed.
+  ZC_EXPECT(artifactExecutionProfileFromInspection(
+                "x86_64--linux-gnu"_zc, inspectionOf(x86, ExecutableMachine::X86_64, 64)) ==
+            zc::none);
+  // An unsupported architecture is rejected.
+  ZC_EXPECT(artifactExecutionProfileFromInspection(
+                "riscv64-unknown-linux-gnu"_zc, inspectionOf(x86, ExecutableMachine::X86_64, 64)) ==
+            zc::none);
+  // An unsupported operating system is rejected.
+  ZC_EXPECT(artifactExecutionProfileFromInspection(
+                "x86_64-unknown-freebsd"_zc, inspectionOf(x86, ExecutableMachine::X86_64, 64)) ==
+            zc::none);
+  // A triple architecture that disagrees with the inspection machine is rejected
+  // (x86_64 triple but the machine says AArch64, and vice versa).
+  ZC_EXPECT(artifactExecutionProfileFromInspection(
+                "x86_64-unknown-linux-gnu"_zc, inspectionOf(x86, ExecutableMachine::AArch64, 64)) ==
+            zc::none);
+  ZC_EXPECT(artifactExecutionProfileFromInspection(
+                "aarch64-unknown-linux-gnu"_zc, inspectionOf(x86, ExecutableMachine::X86_64, 64)) ==
+            zc::none);
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::ir

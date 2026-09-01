@@ -16,6 +16,7 @@
 
 #include <cstdint>
 
+#include "compiler/ir/link-plan-codec.h"
 #include "compiler/ir/target-registry.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
@@ -136,5 +137,42 @@ private:
 /// process, reads no filesystem, and never falls back to emulation.
 ZC_NODISCARD HostCompatibility runCompatibility(const HostExecutionProfile& artifact,
                                                 const HostExecutionProfile& host);
+
+/// \brief Builds the execution profile of a produced artifact from its verified
+///        target facts.
+///
+/// RFC 0043 "Host Execution": the artifact side of the compatibility comparison
+/// must describe the artifact's real target, never the running host. The
+/// operating system and CPU architecture are parsed fail-closed from the
+/// canonical `arch-vendor-os-env` target triple; the object format, machine, and
+/// pointer width come from the artifact's own `ExecutableInspectionProfile`, so
+/// no host-derived value can be substituted. The parsed triple architecture must
+/// be consistent with the inspection machine (`x86_64` with `X86_64`, `aarch64`
+/// with `AArch64`); any inconsistency, a malformed triple, or an unsupported
+/// architecture or operating system returns none rather than guessing.
+///
+/// The artifact requires no additional execution ABI capability in the current
+/// scalar slice, so the capability set is empty by construction.
+///
+/// \param triple The artifact's canonical target triple (`arch-vendor-os-env`).
+/// \param inspection The artifact's verified executable inspection facts, the
+///        sole source of the artifact machine, object format, and pointer width.
+/// \return The artifact execution profile, or none when the triple is malformed,
+///         unsupported, or inconsistent with the inspection machine.
+ZC_NODISCARD zc::Maybe<HostExecutionProfile> artifactExecutionProfileFromInspection(
+    zc::StringPtr triple, const ExecutableInspectionProfile& inspection);
+
+/// \brief Builds the execution profile of the running compiler host.
+///
+/// RFC 0043 "Host Execution": the host side of the comparison must describe the
+/// real machine executing `zomc run`, derived from the compile-time host macros
+/// (`__x86_64__` / `__aarch64__` and `__linux__` / `__APPLE__`) and the host
+/// object format and pointer width. An unsupported host operating system or
+/// architecture returns none (fail-closed), so a host we cannot describe never
+/// silently matches an artifact. The host advertises no execution ABI capability
+/// in the current scalar slice, so the capability set is empty.
+///
+/// \return The host execution profile, or none on an unsupported host.
+ZC_NODISCARD zc::Maybe<HostExecutionProfile> currentHostExecutionProfile();
 
 }  // namespace zomlang::compiler::ir
