@@ -5,10 +5,12 @@
 
 #include "compiler/ir/ir-diagnostic-adapter.h"
 
-#include "zc/ztest/test.h"
 #include "compiler/diagnostics/core/diagnostic-info.h"
+#include "compiler/identity/crypto/sha256.h"
+#include "compiler/ir/link-plan-codec.h"
 #include "compiler/source/manager.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::ir {
 namespace {
@@ -287,6 +289,107 @@ ZC_TEST("IR identity branch delegates to the canonical RFC 0011 diagnostic adapt
     ZC_EXPECT(engine.errorCount() == 1);
     ZC_EXPECT(values.facts().size() == 2);
   }
+}
+
+// RFC 0043 R1 failure materialization: `zomc run` routes a rejected link-plan or
+// publication IrOperationResult into the diagnostic engine so its failure algebra
+// surfaces as ZOMxxxx diagnostics instead of a bare string. This mirrors the
+// zomc-local routing helper (which the binary has no test target for) against a
+// real rejection produced by LinkPlanVerifier::verify, proving the routing arms
+// emit non-empty diagnostics and mark the engine failed, and that a verified
+// result routes nothing.
+namespace {
+
+identity::Sha256Digest linkDigestOf(zc::StringPtr seed) {
+  auto digest = identity::sha256(seed.asBytes());
+  ZC_REQUIRE(digest != zc::none);
+  return ZC_REQUIRE_NONNULL(digest);
+}
+
+LinkInputRecord linkInput(zc::StringPtr path, LinkInputRole role, zc::StringPtr digestSeed,
+                          uint64_t byteCount) {
+  auto record = LinkInputRecord::make(path, role, linkDigestOf(digestSeed), byteCount);
+  ZC_REQUIRE(record != zc::none);
+  return ZC_REQUIRE_NONNULL(zc::mv(record));
+}
+
+zc::Array<LinkInputRecord> oneLinkInput(LinkInputRecord&& record) {
+  auto builder = zc::heapArrayBuilder<LinkInputRecord>(1);
+  builder.add(zc::mv(record));
+  return builder.finish();
+}
+
+ExecutableInspectionProfile linkInspectionProfile() {
+  auto symbols = zc::heapArrayBuilder<zc::String>(1);
+  symbols.add(zc::str("__zom_runtime"));
+  auto profile = ExecutableInspectionProfile::make(ObjectFormat::Elf, ExecutableMachine::X86_64, 64,
+                                                   symbols.finish(), zc::str("__zom_"));
+  ZC_REQUIRE(profile != zc::none);
+  return ZC_REQUIRE_NONNULL(zc::mv(profile));
+}
+
+ToolchainClosureRecord linkMinimalClosure() {
+  const uint8_t targetIdentity[] = {0x74, 0x67, 0x74};  // "tgt"
+  auto crtObjects =
+      oneLinkInput(linkInput("/sysroot/lib/crt1.o", LinkInputRole::CrtObject, "crt1", 1024));
+  auto defaultLibraries =
+      oneLinkInput(linkInput("/sysroot/lib/libc.so", LinkInputRole::DefaultLibrary, "libc", 2048));
+  auto closure = ToolchainClosureRecord::make(
+      zc::arrayPtr(targetIdentity, 3), "/sysroot"_zc, LinkerDriverKind::ElfDriver,
+      "/sysroot/bin/cc"_zc, linkDigestOf("cc"), 4096, zc::mv(crtObjects), zc::mv(defaultLibraries));
+  ZC_REQUIRE(closure != zc::none);
+  return ZC_REQUIRE_NONNULL(zc::mv(closure));
+}
+
+// Mirrors the zomc-local materializeIrRejection routing over an IrOperationResult.
+template <typename VerifiedValue>
+void routeRejection(diagnostics::DiagnosticEngine& engine,
+                    const IrOperationResult<VerifiedValue>& result) {
+  if (result.isCapabilityRejected()) {
+    auto groups = groupIrCapabilityFailures(result.capabilityFailures());
+    emitIrDiagnosticGroups(engine, groups.asPtr());
+  } else if (result.isIrInvariantRejected()) {
+    auto groups = groupIrInvariantFailures(result.invariantFailures());
+    emitIrDiagnosticGroups(engine, groups.asPtr());
+  } else if (result.isIdentityInvariantRejected()) {
+    emitIrIdentityInvariantFailures(engine, result.identityFailures());
+  }
+}
+
+}  // namespace
+
+ZC_TEST("A rejected link plan materializes its failure algebra as diagnostics") {
+  // A structurally valid request except for an empty entry symbol, which
+  // LinkPlanVerifier::verify rejects with MissingRequiredFact (an IrInvariant
+  // rejection carrying a real link-plan failure fact).
+  auto result = LinkPlanVerifier::verify(ExecutableLinkRequest{
+      linkMinimalClosure(), linkInspectionProfile(),
+      zc::Array<uint8_t>(),  // empty entry symbol -> MissingRequiredFact
+      oneLinkInput(linkInput("/out/app.o", LinkInputRole::ObjectArtifact, "obj", 512)),
+      oneLinkInput(linkInput("/sysroot/lib/zomrt.o", LinkInputRole::RuntimeObject, "rt", 256)),
+      zc::str("/out"), zc::str("/out/app")});
+  ZC_REQUIRE(!result.isVerified());
+  ZC_REQUIRE(result.isIrInvariantRejected());
+
+  source::SourceManager sourceManager;
+  diagnostics::DiagnosticEngine engine(sourceManager);
+  routeRejection(engine, result);
+  ZC_EXPECT(engine.errorCount() >= 1);
+}
+
+ZC_TEST("A verified link plan routes no diagnostics") {
+  auto result = LinkPlanVerifier::verify(ExecutableLinkRequest{
+      linkMinimalClosure(), linkInspectionProfile(),
+      zc::heapArray<uint8_t>({0x7a, 0x6f, 0x6d}),  // "zom" entry symbol
+      oneLinkInput(linkInput("/out/app.o", LinkInputRole::ObjectArtifact, "obj", 512)),
+      oneLinkInput(linkInput("/sysroot/lib/zomrt.o", LinkInputRole::RuntimeObject, "rt", 256)),
+      zc::str("/out"), zc::str("/out/app")});
+  ZC_REQUIRE(result.isVerified());
+
+  source::SourceManager sourceManager;
+  diagnostics::DiagnosticEngine engine(sourceManager);
+  routeRejection(engine, result);
+  ZC_EXPECT(engine.errorCount() == 0);
 }
 
 }  // namespace zomlang::compiler::ir

@@ -39,6 +39,7 @@
 #include "compiler/identity/crypto/sha256.h"
 #include "compiler/ir/executable-publication.h"
 #include "compiler/ir/host-execution-profile.h"
+#include "compiler/ir/ir-diagnostic-adapter.h"
 #include "compiler/ir/link-plan-codec.h"
 #include "compiler/ir/target-registry.h"
 #include "compiler/lexer/lexer.h"
@@ -1615,6 +1616,25 @@ private:
     return slash == 1 ? zc::str("/") : zc::heapString(path.slice(0, slash - 1));
   }
 
+  // Routes an RFC 0010 IR operation rejection (a failed link-plan verification or
+  // executable publication) into the session diagnostic engine so its
+  // LinkPlanConstruction / LinkerInvocation / ExecutablePublication failure facts
+  // materialize as their canonical ZOMxxxx diagnostics, instead of being dropped
+  // for a bare error string. A verified result carries no failure and is ignored.
+  template <typename VerifiedValue>
+  void materializeIrRejection(const ir::IrOperationResult<VerifiedValue>& result) {
+    diagnostics::DiagnosticEngine& engine = session->getDiagnosticEngine();
+    if (result.isCapabilityRejected()) {
+      auto groups = ir::groupIrCapabilityFailures(result.capabilityFailures());
+      ir::emitIrDiagnosticGroups(engine, groups.asPtr());
+    } else if (result.isIrInvariantRejected()) {
+      auto groups = ir::groupIrInvariantFailures(result.invariantFailures());
+      ir::emitIrDiagnosticGroups(engine, groups.asPtr());
+    } else if (result.isIdentityInvariantRejected()) {
+      ir::emitIrIdentityInvariantFailures(engine, result.identityFailures());
+    }
+  }
+
   zc::MainBuilder::Validity runNativeExecutable() {
 #if defined(__linux__) && defined(__x86_64__) && defined(ZOM_RUNTIME_ENTRY_OBJECT) && \
     defined(ZOM_HOST_LINKER)
@@ -1692,14 +1712,21 @@ private:
                                       zc::str(runRoot),
                                       zc::str(runRoot, "/program")};
     auto plan = ir::LinkPlanVerifier::verify(zc::mv(request));
-    if (!plan.isVerified()) return zc::str("Native link plan verification failed.");
+    if (!plan.isVerified()) {
+      materializeIrRejection(plan);
+      return zc::str("Native link plan verification failed.");
+    }
 
     ir::PublicationOutcome publication =
         ir::linkAndPublish(zc::mv(plan).takeVerified(), *filesystem);
     if (publication.isRecoveryRequired()) {
       return zc::str("Native publication requires explicit recovery.");
     }
-    if (publication.isRejected()) return zc::str("Native linking or publication failed.");
+    if (publication.isRejected()) {
+      ir::PublicationRejection rejection = zc::mv(publication).takeRejected();
+      materializeIrRejection(rejection);
+      return zc::str("Native linking or publication failed.");
+    }
     ir::PublishedExecutableArtifact artifact = zc::mv(publication).takePublished();
 
     // The host side describes the running compiler host. A genuine cross-target
