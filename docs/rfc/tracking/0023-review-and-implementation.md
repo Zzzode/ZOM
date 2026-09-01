@@ -148,9 +148,11 @@ commits added the recovery sequence, live lexer bridge, precise trivia
 classification, and parse-eligibility gate without changing the accepted RFC
 contract.
 
-No `tools/ide` or `tools/lsp` product exists yet. The next production-boundary
-replacement remains the parser event stream plus `RecoverableSyntaxTree`,
-followed by verified `ast::Tree` construction from recovery-free CST.
+No `tools/ide` or `tools/lsp` product directory exists yet, and the IDE
+semantic-snapshot facade in `compiler/ide/` has no production (non-test) consumer
+yet. The next production-boundary work is the editor input/overlay layer plus a
+canonical codec that lets the recoverable syntax be published as an IDE query
+value.
 
 ## Implementation Tracker
 
@@ -162,10 +164,12 @@ followed by verified `ast::Tree` construction from recovery-free CST.
 | Recovery sequence model and verifier | Landed (`69292ead`) | `compiler/cst/recovery-codec.{h,cc}`; MissingToken/MissingSubtree/SkippedTokens algebra; canonical order; stream binding; frozen 128-byte oracle and 10/10 fail-closed matrix |
 | Live lexer-to-lexeme bridge | Landed (`c6df8569`, `b0200614`) | `buildLexemeStreamFromTokens` consumes the production lexer's tokens, reconstructs the exact source, retains inter-token/trailing trivia, and classifies Whitespace/LineComment/BlockComment; integration coverage 6/6 |
 | Parse eligibility gate | Landed (`7c438f0d`) | `parseEligibility` composes verified lexemes and recovery, rejects recovery, Invalid lexemes, error diagnostics, and cross-stream recovery; 5/5 tests |
-| Clean parser event stream and `RecoverableSyntaxTree` | Candidate in worktree | `ParserSyntaxFactory` emits the closed construction-event algebra through `ParserEventBuilder`; the live lexeme stream and verified empty recovery sequence are retained in one immutable `RecoverableSyntaxTree`; parser sources contain no `ast::TreeBuilder`; mutation coverage rejects every event-result family |
-| Verified AST bridge | Candidate in worktree | `ParseSyntaxVerifier` applies eligibility, independently replays node/list/intern/root events, verifies event identities and RFC 0002 schema, and is the production compiler path used by `Parser::parse()`; 918-test AST conformance parity passes |
-| Explicit recovery production and parser publication | Candidate in worktree | Parser recovery frames produce SkippedTokens or MissingSubtree, parser diagnostic summaries produce MissingToken/MissingSubtree, Unknown and uncovered invalid bytes remain Invalid lexemes, records are canonically sorted/deduplicated and independently verified, and `Parser::takeRecoverableSyntax()` publishes the single-use immutable result after successful or failed traversal |
-| Diagnostic-bound invalid lexemes and IDE query publication | Pending | Replace the current deterministic opaque Invalid digest with the exact retained ParserDiagnosticFact binding, publish recoverable syntax through the IDE query/input lease boundary, and prove stale/cancellation behavior |
+| Clean parser event stream and `RecoverableSyntaxTree` | Landed (`2cc71f36`, `40e82a02`) | `ParserSyntaxFactory` emits the closed construction-event algebra through `ParserEventBuilder`; the live lexeme stream and verified empty recovery sequence are retained in one immutable `RecoverableSyntaxTree`; parser sources contain no `ast::TreeBuilder`; mutation coverage rejects every event-result family |
+| Verified AST bridge | Landed (`5cefa2de`) | `ParseSyntaxVerifier` applies eligibility, independently replays node/list/intern/root events, verifies event identities and RFC 0002 schema, and is the production compiler path used by `Parser::parse()`; 918-test AST conformance parity passes |
+| Explicit recovery production and parser publication | Landed (`7e33bd7c`) | Parser recovery frames produce SkippedTokens or MissingSubtree, parser diagnostic summaries produce MissingToken/MissingSubtree, Unknown and uncovered invalid bytes remain Invalid lexemes, records are canonically sorted/deduplicated and independently verified, and `Parser::takeRecoverableSyntax()` publishes the single-use immutable result after successful or failed traversal |
+| Diagnostic-bound invalid lexemes | Landed (`compiler/cst/parser-event-stream.cc:328-393`) | Each Invalid lexeme is rebound to the exact retained `ParserDiagnosticFact` via `computeDiagnosticFactId`, and both streams are re-verified |
+| Semantic-snapshot facade and document version | Landed, no production consumer (`0c3b2f4e`..`e2f6440f`) | `compiler/ide/`: signed 32-bit `DocumentVersion`, `SemanticSnapshotKey` canonical codec, 3-arm `SemanticSnapshot`, `resolveSemanticSnapshot` over the live `ParseSourceQuery`, and a single-hop freshness check; 7/7 ide tests. Facade has no non-test caller, `DocumentVersion::succeeds` has no production lifecycle owner, and the `Cancelled` arm is not yet production-reachable |
+| IDE query publication of recoverable syntax | Pending | Publish recoverable syntax through the IDE query/input lease boundary and prove stale/cancellation behavior; blocked on a `RecoverableSyntaxTree` canonical codec (it has digest identity only) and the editor-input key family below (the tree is currently verified-then-discarded in `parse-source-query.cc`) |
 | Workspace, editor inputs, and leases | Pending verified AST bridge | Single-root/single-file admission, URI/symlink rules, source observation, atomic versions, overlay precedence, UTF mapping, snapshot isolation, canonical input-frontier sealing, cancellation |
 | IDE query family | Pending workspace/snapshot inputs | Ten descriptors, stable/recovery split, verified body-type projection, closed values, no persistence, cycles, bounded eviction |
 | Partial semantics | Pending IDE query family | Verified/recovered authority, recovery-local keys, RFC 0019 binding equality, binding/type states, conservative flow, local degradation, no fabricated stable identity |
