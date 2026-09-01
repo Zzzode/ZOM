@@ -189,6 +189,18 @@ remains empty and `decision` remains a review-tracking pointer.
    Clang/LLVM cross-compilation practice of inspecting a cross artifact rather
    than executing a foreign binary.
 
+**Correction (2026-09-01):** decision 1 above recorded the `ToolchainClosure`
+record as carrying "a small target-owned `environment`". A 2026-09-01 owner
+review found that field had no production producer, no codec fold, and only dead
+plumbing, and ruled it removed; the link now runs under a strictly empty
+environment (`SubprocessEnvPolicy::Empty`). The record carries five fields and
+no `environment` field. The historical decision text above is retained
+unaltered; this note is the authoritative correction. A future target-owned
+environment set would be introduced with its own configuration source,
+toolchain discovery, and codec fold. See the 2026-09-01 Status History row in
+RFC 0043 and commit `8873a957` (RFC rewrite) / `1450e7e9` (dead-plumbing
+deletion).
+
 Transition: RFC 0043 frontmatter moves `DRAFT -> REVIEW`, `updated` becomes
 2026-08-27, a `DRAFT -> REVIEW` Status History row is added, `discussion` binds
 to this record and `tracking-issue` binds to the implementation tracker below,
@@ -276,12 +288,21 @@ the Implementation Tracker; the README index row is set to `IMPLEMENTING`.
 
 ## Bound Proposal Snapshots
 
-| Proposal SHA-256 |
-|---|
-| `3a7ae03a8a109be7fea9b347d030c6bb9a1d248ba1305d1e3f7c8f78ef05c855` |
+| Proposal SHA-256 | State |
+|---|---|
+| `3a7ae03a8a109be7fea9b347d030c6bb9a1d248ba1305d1e3f7c8f78ef05c855` | Historical REVIEW snapshot approved 2026-08-28; invalidated by later normative edits |
+| `a200e8fffcc438cc3d2e9bd675cc0e8ed42a4f8b39d1cce49e120a1914c8716d` | Current RFC text; six-owner re-approval pending |
 
-Accepted upstream pins (each equals the current `sha256sum` of its file and the
-values bound by RFC 0021's snapshot table):
+The 2026-08-28 owner approvals bound the historical REVIEW snapshot
+`3a7ae03a...`. Normative edits landed since then (the generic-argument-surface
+removal, the D1 publication-transaction contract, the crash-consistency
+revisions, and the 2026-09-01 environment rewrite), so under this tracker's own
+rule those approvals no longer cover the current text. The current RFC text is
+`a200e8ff...`; re-approval against that value is pending and is recorded as such
+in the Owner Review Matrix below.
+
+Accepted upstream pins, frozen at RFC 0043 acceptance (they intentionally record
+the values bound at acceptance and are not re-pinned to each upstream edit):
 
 | RFC | File SHA-256 | State |
 |---|---|---|
@@ -295,17 +316,21 @@ values bound by RFC 0021's snapshot table):
 
 | Owner | State | Review Surface |
 |---|---|---|
-| `rfc` | Approved | Governance completeness, prior art, scope, Open Questions handling, and transition readiness |
-| `ir-backend` | Approved | Object-to-executable pipeline, link plan, driver invocation, executable verifier, and toolchain-discovery record |
-| `module-system` | Approved | Package session, target capability, artifact requests, and sysroot/SDK input binding |
-| `runtime-memory` | Approved | Runtime closure, platform ABI records, and startup-object containment |
-| `error-system` | Approved | RFC 0010 failure-algebra extension (`LinkPlanConstruction`, `LinkerInvocation`, `ExecutablePublication` phases and the `InvokeLinker` backend operation) with no new diagnostic family |
-| `verification` | Approved | Native and cross-target lanes, the CI architecture lane matrix, and evidence gates |
+| `rfc` | Approved 2026-08-28 on `3a7ae03a`; re-approval pending on `a200e8ff` | Governance completeness, prior art, scope, Open Questions handling, and transition readiness |
+| `ir-backend` | Approved 2026-08-28 on `3a7ae03a`; re-approval pending on `a200e8ff` | Object-to-executable pipeline, link plan, driver invocation, executable verifier, and toolchain-discovery record |
+| `module-system` | Approved 2026-08-28 on `3a7ae03a`; re-approval pending on `a200e8ff` | Package session, target capability, artifact requests, and sysroot/SDK input binding |
+| `runtime-memory` | Approved 2026-08-28 on `3a7ae03a`; re-approval pending on `a200e8ff` | Runtime closure, platform ABI records, and startup-object containment |
+| `error-system` | Approved 2026-08-28 on `3a7ae03a`; re-approval pending on `a200e8ff` | RFC 0010 failure-algebra extension (`LinkPlanConstruction`, `LinkerInvocation`, `ExecutablePublication` phases and the `InvokeLinker` backend operation) with no new diagnostic family |
+| `verification` | Approved 2026-08-28 on `3a7ae03a`; re-approval pending on `a200e8ff` | Native and cross-target lanes, the CI architecture lane matrix, and evidence gates |
 
-Each approval must identify the exact RFC SHA-256. Normative edits invalidate
-earlier approvals. No approval is recorded yet; every owner state above is
-`Review pending` on the frozen REVIEW snapshot
-`3a7ae03a8a109be7fea9b347d030c6bb9a1d248ba1305d1e3f7c8f78ef05c855`.
+Each approval must identify the exact RFC SHA-256, and normative edits
+invalidate earlier approvals. All six owners approved the frozen REVIEW snapshot
+`3a7ae03a8a109be7fea9b347d030c6bb9a1d248ba1305d1e3f7c8f78ef05c855` on
+2026-08-28; that approval is a historical fact and is retained above. Normative
+edits have landed since (see Bound Proposal Snapshots), so those approvals no
+longer cover the current text `a200e8ff...`. No owner has yet re-approved the
+current text; KR5.3 owner sign-off is not complete until six re-approvals
+against `a200e8ff...` are recorded here.
 
 ## Decision Record
 
@@ -331,16 +356,24 @@ not assert the native-executable evidence in the Acceptance Criteria, which is a
 pointer is set, because backend object emission and linking do not yet exist in
 the tree.
 
+**Correction (2026-09-01):** the "`implementation` stays `TBD` and no
+`ACCEPTED -> IMPLEMENTING` pointer" statement above was true at 2026-08-28. It no
+longer holds: the RFC frontmatter is `IMPLEMENTING` with `implementation` bound,
+backend object emission landed (`10ef73b2`), and the link/publication/`zomc run`
+slices landed on `develop` (see the Implementation Tracker below and the
+2026-09-01 RFC Status History row). The historical decision text above is
+retained unaltered; this note is the authoritative correction.
+
 ## Implementation Tracker
 
 | Slice | State | Required evidence |
 |---|---|---|
 | Accepted RFC 0016 target authority and RFC 0021 verified object artifact binding | Satisfied | RFC 0016 and RFC 0021 are `IMPLEMENTING`; native object emission landed on the production path (`10ef73b2`), so the object-artifact dependency this RFC builds on exists. |
-| Canonical link-plan construction and verification | Landed; inspection profile refinement in worktree | The generic argument surface remains removed. `ExecutableInspectionProfile` now binds object format, x86-64/AArch64 machine, 64-bit width, sorted required runtime symbols, and the canonical runtime-reference domain into the canonical plan. The live oracle is 518 bytes and `LinkPlanId` `54e60703...817c8dfd`; mutation tests cover profile sensitivity, invalid symbol sets, unresolved-runtime and malformed-symbol rejection, and driver-format mismatch. |
-| Verified runtime closure discovery and verifier | Landed | Closed explicit toolchain discovery, path/digest binding, host-format gate, and mutation tests |
-| Target-selected driver invocation and cleanup | Landed | Sanitized empty environment, canonical argv, input snapshots, exec-by-descriptor, transaction output, and cleanup obligations |
-| Executable inspection, manifest, and recoverable publication | D1 and D5 complete in worktree | ELF64/Mach-O64 bounded inspection plus consuming `linkAndPublish`; positive Linux ELF and negative malformed/machine/runtime-symbol tests |
-| Host-compatibility-gated `zomc run` cutover | Linux x86-64 host slice complete in worktree | Package compile -> LLVM object -> bundled `_start` -> verified host linker -> D5/D1 publication -> `runCompatibility` -> shell-free execution; macOS/AArch64 and general entry semantics remain later slices |
+| Canonical link-plan construction and verification | Landed on `develop` | The generic argument surface remains removed. `ExecutableInspectionProfile` now binds object format, x86-64/AArch64 machine, 64-bit width, sorted required runtime symbols, and the canonical runtime-reference domain into the canonical plan. The live oracle is 518 bytes and `LinkPlanId` `54e60703...817c8dfd`; mutation tests cover profile sensitivity, invalid symbol sets, unresolved-runtime and malformed-symbol rejection, and driver-format mismatch. |
+| Verified runtime closure discovery and verifier | Landed (contract-complete; consumed only by tests, production wiring deferred) | Closed explicit toolchain discovery, path/digest binding, host-format gate, and mutation tests. The discovery entry has no production caller: its configuration source (a `ToolchainSearchSpec`/sysroot supplied outside the verified compiler) is deferred, so `zomc` hand-assembles the closure from the build-pinned host linker. |
+| Target-selected driver invocation and cleanup | Landed on `develop` | Strictly empty environment (`SubprocessEnvPolicy::Empty`), canonical argv, input snapshots, exec-by-descriptor, transaction output, and cleanup obligations |
+| Executable inspection, manifest, and recoverable publication | Landed on `develop` (`a737dda5`, `89816cb3`) | ELF64/Mach-O64 bounded inspection plus consuming `linkAndPublish`; positive Linux ELF and negative malformed/machine/runtime-symbol tests |
+| Host-compatibility-gated `zomc run` cutover | Landed on `develop` (`b2310198`, `c7e842f0`); Linux x86-64 host slice | Package compile -> LLVM object -> bundled `_start` -> verified host linker -> D5/D1 publication -> `runCompatibility` -> shell-free execution; macOS/AArch64 and general entry semantics remain later slices |
 
 ## Verification Evidence
 
@@ -350,6 +383,13 @@ the tree.
 - Repository inspection confirmed RFC 0043's stated dependency boundary: no
   `VerifiedObjectArtifact` production path exists yet, and RFC 0021 is
   `ACCEPTED` without an `IMPLEMENTING` pointer.
+- **Correction (2026-09-01):** the bullet above recorded the 2026-08-27
+  dependency boundary. It is now superseded: native object emission landed
+  (`10ef73b2`) and RFC 0021 is `IMPLEMENTING`, so a verified-object-artifact
+  production path exists. The historical bullet is retained; this note is the
+  authoritative correction. Current KR5.3 verification evidence (build, five
+  IR/link suites, and the four repository gates re-run at HEAD `9ce36b07`) is
+  recorded in the 2026-09-01 RFC Status History row.
 
 ## Locally Reproduced Status Snapshot (2026-08-31)
 
