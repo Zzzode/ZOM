@@ -514,7 +514,6 @@ struct PreparedLinkInputs::Impl {
   zc::String program;
   zc::Array<zc::String> argvValues;
   zc::String workingDirectory;
-  zc::Array<zc::String> environmentValues;
   // The absolute path of the `<root>/output-candidate` the driver's `-o` names.
   // The file is opened relative to `tree.snapshotDir`, not resolved from this
   // string; it is recorded so the candidate can report it.
@@ -593,9 +592,6 @@ zc::ArrayPtr<const zc::String> PreparedLinkInputs::argv() const noexcept {
 }
 zc::StringPtr PreparedLinkInputs::workingDirectory() const noexcept {
   return impl->workingDirectory;
-}
-zc::ArrayPtr<const zc::String> PreparedLinkInputs::environment() const noexcept {
-  return impl->environmentValues.asPtr();
 }
 
 #if ZOM_LINK_SNAPSHOT_SUPPORTED
@@ -880,7 +876,6 @@ CleanupAwareOutcome<PreparedLinkInputs> PreparedLinkInputs::prepareWithTokenSour
     // so the run is hermetic (no input resolves against an ambient cwd) and the
     // cwd matches the unified-root model. Every argv path is absolute regardless.
     builtImpl->workingDirectory = zc::heapString(treePath);
-    builtImpl->environmentValues = zc::Array<zc::String>();
     builtImpl->outputCandidatePath = zc::mv(outputCandidatePath);
     preparedImpl = zc::mv(builtImpl);
   });
@@ -1432,10 +1427,11 @@ CleanupAwareOutcome<LinkedOutputCandidate> linkExecutableWithObserver(
   bool linkVerified = false;
 
   auto spawnException = zc::runCatchingExceptions([&]() {
-    // Spawn the driver by its snapshot descriptor with an explicit empty
-    // environment. The rewritten argv points every input token at a snapshot path
-    // and `-o` at `<root>/output-candidate`; the working directory is the
-    // transaction root itself (hermetic - no input resolves against an ambient cwd).
+    // Spawn the driver by its snapshot descriptor with a strictly empty
+    // environment (`envPolicy(Empty)`): no parent variable is inherited, so the
+    // link is hermetic. The rewritten argv points every input token at a snapshot
+    // path and `-o` at `<root>/output-candidate`; the working directory is the
+    // transaction root itself (no input resolves against an ambient cwd).
     zc::SubprocessCommand command(prepared.program());
     command.envPolicy(zc::SubprocessEnvPolicy::Empty);
     command.cwd(prepared.workingDirectory());
@@ -1443,10 +1439,6 @@ CleanupAwareOutcome<LinkedOutputCandidate> linkExecutableWithObserver(
     zc::ArrayPtr<const zc::String> argv = prepared.argv();
     if (argv.size() >= 1) { command.argv0(argv[0]); }
     for (size_t index = 1; index < argv.size(); ++index) { command.arg(argv[index]); }
-    zc::ArrayPtr<const zc::String> environment = prepared.environment();
-    for (size_t index = 0; index + 1 < environment.size(); index += 2) {
-      command.env(environment[index], environment[index + 1]);
-    }
 
     // Notify the per-call spawn-attempt observer (test-only) at the very last point
     // before the child is launched: every prepare and D4 pre-spawn gate has passed,

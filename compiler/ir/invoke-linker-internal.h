@@ -217,10 +217,6 @@ public:
   /// \brief The working directory for the driver (the output file's parent).
   ZC_NODISCARD zc::StringPtr workingDirectory() const noexcept;
 
-  /// \brief The explicit environment as flattened (name, value) pairs; empty in
-  ///        the current closure shape.
-  ZC_NODISCARD zc::ArrayPtr<const zc::String> environment() const noexcept;
-
   /// \brief Captures a directory's exact stable identity (dev/ino) through its
   ///        descriptor, or none when unavailable. A `PreparedLinkInputs` member
   ///        so only the snapshot machinery mints identities (via the minter).
