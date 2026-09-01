@@ -21,6 +21,12 @@ DIAGNOSTIC_ADAPTER_SOURCE = IR_ROOT / "ir-diagnostic-adapter.cc"
 IDENTITY_HEADER = IR_ROOT / "ir-identity.h"
 IDENTITY_SOURCE = IR_ROOT / "ir-identity.cc"
 IR_CMAKE = IR_ROOT / "CMakeLists.txt"
+LINK_PLAN_HEADER = IR_ROOT / "link-plan-codec.h"
+LINK_PLAN_SOURCE = IR_ROOT / "link-plan-codec.cc"
+EXECUTABLE_INSPECTOR_HEADER = IR_ROOT / "executable-inspector.h"
+EXECUTABLE_INSPECTOR_SOURCE = IR_ROOT / "executable-inspector.cc"
+EXECUTABLE_PUBLICATION_HEADER = IR_ROOT / "executable-publication.h"
+EXECUTABLE_PUBLICATION_SOURCE = IR_ROOT / "executable-publication.cc"
 # RFC 0043 D3b: the snapshot capability, its token seam, and its test peer are a
 # test-only internal surface. Only the implementation file may include it from
 # the compiler tree; every other production translation unit is forbidden (the
@@ -28,6 +34,15 @@ IR_CMAKE = IR_ROOT / "CMakeLists.txt"
 INVOKE_LINKER_INTERNAL_HEADER = IR_ROOT / "invoke-linker-internal.h"
 INVOKE_LINKER_INTERNAL_INCLUDE = 'compiler/ir/invoke-linker-internal.h'
 INVOKE_LINKER_INTERNAL_ALLOWED = (IR_ROOT / "invoke-linker.cc",)
+EXECUTABLE_PUBLICATION_INTERNAL_HEADER = IR_ROOT / "executable-publication-internal.h"
+EXECUTABLE_PUBLICATION_INTERNAL_INCLUDE = 'compiler/ir/executable-publication-internal.h'
+EXECUTABLE_PUBLICATION_INTERNAL_ALLOWED = (IR_ROOT / "executable-publication.cc",)
+LINK_PUBLICATION_INTERNAL_HEADER = IR_ROOT / "link-publication-internal.h"
+LINK_PUBLICATION_INTERNAL_INCLUDE = 'compiler/ir/link-publication-internal.h'
+LINK_PUBLICATION_INTERNAL_ALLOWED = (
+    IR_ROOT / "executable-publication.cc",
+    IR_ROOT / "invoke-linker.cc",
+)
 MIR_HEADER = MIR_ROOT / "built-mir.h"
 MIR_SOURCE = MIR_ROOT / "built-mir.cc"
 MIR_CMAKE = MIR_ROOT / "CMakeLists.txt"
@@ -35,6 +50,10 @@ COMPILER_CMAKE = Path("compiler/CMakeLists.txt")
 SESSION_HEADER = Path("compiler/driver/session/compiler-session.h")
 SESSION_SOURCE = Path("compiler/driver/session/compiler-session.cc")
 CLI_SOURCE = Path("utils/zomc/zomc.cc")
+ZOMC_CMAKE = Path("utils/zomc/CMakeLists.txt")
+RUNTIME_CMAKE = Path("runtime/CMakeLists.txt")
+RUNTIME_ENTRY = Path("runtime/entry-linux-x86_64.S")
+TESTS_CMAKE = Path("tests/CMakeLists.txt")
 COMPILER_OPTIONS = Path("compiler/basic/compiler-opts.h")
 DIAGNOSTIC_DEFS = Path("compiler/diagnostics/defs/diagnostics-lowering.def")
 
@@ -198,6 +217,10 @@ def load_files() -> dict[Path, str]:
         IR_CMAKE,
         MIR_CMAKE,
         CLI_SOURCE,
+        ZOMC_CMAKE,
+        RUNTIME_CMAKE,
+        RUNTIME_ENTRY,
+        TESTS_CMAKE,
         COMPILER_OPTIONS,
         DIAGNOSTIC_DEFS,
     ):
@@ -221,6 +244,105 @@ def check_invoke_linker_internal_boundary(files: dict[Path, str], errors: list[s
                 "snapshot capability is a test-only internal surface (only "
                 "compiler/ir/invoke-linker.cc may include it)"
             )
+
+
+def check_publication_internal_boundaries(files: dict[Path, str], errors: list[str]) -> None:
+    """D1 and its candidate attorney stay confined to their owning IR sources."""
+    boundaries = (
+        (
+            EXECUTABLE_PUBLICATION_INTERNAL_HEADER,
+            EXECUTABLE_PUBLICATION_INTERNAL_INCLUDE,
+            EXECUTABLE_PUBLICATION_INTERNAL_ALLOWED,
+            "D1 publication entry point",
+        ),
+        (
+            LINK_PUBLICATION_INTERNAL_HEADER,
+            LINK_PUBLICATION_INTERNAL_INCLUDE,
+            LINK_PUBLICATION_INTERNAL_ALLOWED,
+            "D1 link-publication attorney",
+        ),
+    )
+    for header, include, allowed, description in boundaries:
+        for path in sorted(files):
+            if path.suffix not in {".h", ".cc"}:
+                continue
+            if path in allowed or path == header:
+                continue
+            if include in files[path]:
+                errors.append(
+                    f"{path}: including {include} is forbidden; the {description} is an "
+                    "internal surface"
+                )
+
+
+def check_executable_publication_contract(files: dict[Path, str], errors: list[str]) -> None:
+    link_header = files.get(LINK_PLAN_HEADER, "")
+    link_source = files.get(LINK_PLAN_SOURCE, "")
+    inspector_header = files.get(EXECUTABLE_INSPECTOR_HEADER, "")
+    inspector_source = files.get(EXECUTABLE_INSPECTOR_SOURCE, "")
+    publication_header = files.get(EXECUTABLE_PUBLICATION_HEADER, "")
+    publication_source = files.get(EXECUTABLE_PUBLICATION_SOURCE, "")
+    for marker in (
+        "enum class ExecutableMachine : uint8_t",
+        "class ExecutableInspectionProfile final",
+        "const ExecutableInspectionProfile& inspectionProfile() const noexcept",
+        "ExecutableInspectionProfile inspectionProfile;",
+    ):
+        if marker not in link_header:
+            errors.append(f"{LINK_PLAN_HEADER}: missing D5 inspection-profile marker {marker}")
+    for marker in (
+        "appendUint8(preimage, static_cast<uint8_t>(inspection.objectFormat()))",
+        "appendUint8(preimage, static_cast<uint8_t>(inspection.machine()))",
+        "appendUint32(preimage, inspection.pointerWidthBits())",
+        "inspection.requiredRuntimeSymbols()",
+    ):
+        if marker not in link_source:
+            errors.append(f"{LINK_PLAN_SOURCE}: missing LinkPlanId inspection binding {marker}")
+    for marker in (
+        "enum class ExecutableInspectionFailure : uint8_t",
+        "class ExecutableImageInspector final",
+    ):
+        if marker not in inspector_header:
+            errors.append(f"{EXECUTABLE_INSPECTOR_HEADER}: missing D5 inspector marker {marker}")
+    for marker in (
+        "zc::Maybe<ExecutableInspectionFailure> inspectElf(",
+        "zc::Maybe<ExecutableInspectionFailure> inspectMachO(",
+        "MissingRequiredSymbol",
+    ):
+        if marker not in inspector_source:
+            errors.append(f"{EXECUTABLE_INSPECTOR_SOURCE}: missing bounded inspector marker {marker}")
+    if "PublicationOutcome linkAndPublish(" not in publication_header:
+        errors.append(f"{EXECUTABLE_PUBLICATION_HEADER}: missing consuming D5 entry point")
+    for marker in ("linkExecutable(zc::mv(plan), filesystem)",
+                   "ExecutableImageInspector::inspect(",
+                   "ExecutableManifestVerifier::verify(",
+                   "publishLinkedOutput(zc::mv(candidate)"):
+        if marker not in publication_source:
+            errors.append(f"{EXECUTABLE_PUBLICATION_SOURCE}: missing D5 consuming chain {marker}")
+    for source_name in ("link-plan-codec.cc", "executable-inspector.cc", "executable-publication.cc"):
+        if source_name not in files.get(IR_CMAKE, ""):
+            errors.append(f"{IR_CMAKE}: missing D5 source {source_name}")
+    cli = files.get(CLI_SOURCE, "")
+    for marker in (
+        "CompilationAction::Run",
+        "runNativeExecutable()",
+        "ir::linkAndPublish(",
+        "ir::runCompatibility(",
+        "zc::SubprocessCommand command(",
+    ):
+        if marker not in cli:
+            errors.append(f"{CLI_SOURCE}: missing native-run cutover marker {marker}")
+    for marker in ("ZOM_RUNTIME_ENTRY_OBJECT", "ZOM_HOST_LINKER", "zom-runtime-entry"):
+        if marker not in files.get(ZOMC_CMAKE, ""):
+            errors.append(f"{ZOMC_CMAKE}: missing native-run build marker {marker}")
+    for marker in ("add_library(zom-runtime-entry OBJECT", "entry-linux-x86_64.S"):
+        if marker not in files.get(RUNTIME_CMAKE, ""):
+            errors.append(f"{RUNTIME_CMAKE}: missing runtime-entry marker {marker}")
+    for marker in (".globl _start", "call zom.module_init", "syscall"):
+        if marker not in files.get(RUNTIME_ENTRY, ""):
+            errors.append(f"{RUNTIME_ENTRY}: missing runtime-entry instruction marker {marker}")
+    if "NAME native-execution-cli" not in files.get(TESTS_CMAKE, ""):
+        errors.append(f"{TESTS_CMAKE}: missing native execution CLI gate")
 
 
 def check_removed_prototype(files: dict[Path, str], errors: list[str]) -> None:
@@ -418,6 +540,8 @@ def analyze(files: dict[Path, str]) -> list[str]:
     errors: list[str] = []
     check_removed_prototype(files, errors)
     check_invoke_linker_internal_boundary(files, errors)
+    check_publication_internal_boundaries(files, errors)
+    check_executable_publication_contract(files, errors)
     check_canonical_mir_domain(files, errors)
     check_target_registry(files, errors)
     check_built_mir(files, errors)
@@ -641,13 +765,73 @@ def run_self_test() -> int:
         ),
         "is a test-only internal surface",
     )
+    failures += expect_rejection(
+        baseline,
+        "D1 publication entry point leaked into another IR translation unit",
+        lambda files: files.__setitem__(
+            IR_ROOT / "target-registry.cc",
+            f'#include "{EXECUTABLE_PUBLICATION_INTERNAL_INCLUDE}"\n'
+            + files[IR_ROOT / "target-registry.cc"],
+        ),
+        "D1 publication entry point is an internal surface",
+    )
+    failures += expect_rejection(
+        baseline,
+        "D1 link-publication attorney leaked into another IR translation unit",
+        lambda files: files.__setitem__(
+            IR_ROOT / "target-registry.cc",
+            f'#include "{LINK_PUBLICATION_INTERNAL_INCLUDE}"\n'
+            + files[IR_ROOT / "target-registry.cc"],
+        ),
+        "D1 link-publication attorney is an internal surface",
+    )
+    failures += expect_rejection(
+        baseline,
+        "D5 inspection profile removed from the link plan",
+        lambda files: remove_once(files, LINK_PLAN_HEADER, "class ExecutableInspectionProfile final"),
+        "missing D5 inspection-profile marker",
+    )
+    failures += expect_rejection(
+        baseline,
+        "D5 ELF inspector removed",
+        lambda files: remove_once(
+            files, EXECUTABLE_INSPECTOR_SOURCE,
+            "zc::Maybe<ExecutableInspectionFailure> inspectElf("
+        ),
+        "missing bounded inspector marker",
+    )
+    failures += expect_rejection(
+        baseline,
+        "D5 consuming entry point unwired",
+        lambda files: remove_once(files, EXECUTABLE_PUBLICATION_SOURCE,
+                                  "linkExecutable(zc::mv(plan), filesystem)"),
+        "missing D5 consuming chain",
+    )
+    failures += expect_rejection(
+        baseline,
+        "native run cutover removed",
+        lambda files: remove_once(files, CLI_SOURCE, "ir::linkAndPublish("),
+        "missing native-run cutover marker",
+    )
+    failures += expect_rejection(
+        baseline,
+        "runtime entry object unwired",
+        lambda files: remove_once(files, RUNTIME_CMAKE, "entry-linux-x86_64.S"),
+        "missing runtime-entry marker",
+    )
+    failures += expect_rejection(
+        baseline,
+        "native execution CLI gate removed",
+        lambda files: remove_once(files, TESTS_CMAKE, "NAME native-execution-cli"),
+        "missing native execution CLI gate",
+    )
 
     if failures:
         print("IR architecture self-test failed:", file=sys.stderr)
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
         return 1
-    print("IR architecture negative fixtures passed (23/23).")
+    print("IR architecture negative fixtures passed (31/31).")
     return 0
 
 
