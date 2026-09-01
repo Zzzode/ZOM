@@ -286,6 +286,17 @@ publication, and the host-gated `zomc run` cutover remain later slices and stay
 Pending. Frontmatter moves `status: IMPLEMENTING` with `implementation` bound to
 the Implementation Tracker; the README index row is set to `IMPLEMENTING`.
 
+**Correction (2026-09-01):** two references in the dated slice above are stale.
+(a) Item 2's "see the 2026-08-29 refinement below" points to a section that does
+not exist in this tracker; the argument-surface removal and later refinements are
+recorded in the RFC 0043 Status History, not here. (b) Item 3's frozen oracle is
+superseded: after the argument-surface removal and the inspection-profile
+binding the live minimal plan is 518 bytes with `LinkPlanId`
+`54e60703...817c8dfd` (see the Implementation Tracker row and
+`tests/unittests/compiler/ir/link-plan-codec-oracle-test.cc`), not the
+503-byte / `287f421b...` values recorded above. The historical slice text is
+retained unaltered; this note is the authoritative correction.
+
 ## Bound Proposal Snapshots
 
 | Proposal SHA-256 | State |
@@ -301,8 +312,12 @@ rule those approvals no longer cover the current text. The current RFC text is
 `a200e8ff...`; re-approval against that value is pending and is recorded as such
 in the Owner Review Matrix below.
 
-Accepted upstream pins, frozen at RFC 0043 acceptance (they intentionally record
-the values bound at acceptance and are not re-pinned to each upstream edit):
+Accepted upstream pins, frozen at the 2026-08-27 REVIEW snapshot (commit
+`55d2b60b`) and not re-pinned to each upstream edit. These values equal each
+file's `sha256sum` at that REVIEW transition; the 2026-08-28 repository-wide
+path refactor (`f89d74b6`) subsequently rewrote all five files, so none of these
+pins equals the current `sha256sum` of its file. The pins are retained as the
+frozen provenance of the REVIEW-time dependency boundary, not as live hashes:
 
 | RFC | File SHA-256 | State |
 |---|---|---|
@@ -388,8 +403,11 @@ retained unaltered; this note is the authoritative correction.
   (`10ef73b2`) and RFC 0021 is `IMPLEMENTING`, so a verified-object-artifact
   production path exists. The historical bullet is retained; this note is the
   authoritative correction. Current KR5.3 verification evidence (build, five
-  IR/link suites, and the four repository gates re-run at HEAD `9ce36b07`) is
-  recorded in the 2026-09-01 RFC Status History row.
+  IR/link suites 112/112, the four repository gates, the three backend CLI tests,
+  and the RFC-hash pin, re-run at HEAD `850d02e3`) is recorded in the 2026-09-01
+  RFC Status History row and corroborated by the six-owner re-approval gate round
+  (all six RECOMMEND; the sign-off itself remains pending, see the Owner Review
+  Matrix).
 
 ## Locally Reproduced Status Snapshot (2026-08-31)
 
@@ -416,3 +434,37 @@ elsewhere.
   success, and no all-platform completion is claimed.
 - **Open:** Mach-O entry-symbol mangling (`_zom` vs `zom`) is unresolved;
   execution remains Linux x86-64 only.
+
+## Deferred Backlog (2026-09-01)
+
+Items surfaced by the KR5.3 owner-review rounds that are deliberately not fixed
+in the landed slices. They are recorded here so they are tracked rather than left
+in commit messages, and none blocks the current re-approval of the RFC text.
+
+- **Module-system slice unstarted.** The RFC's session-owned
+  `planExecutable(request, capability: TargetRegistryCapability)` construction API
+  and invariant (1) (the object target must equal the registry-verified target
+  authority) are not implemented: the live entry is
+  `LinkPlanVerifier::verify(ExecutableLinkRequest&&)` with no capability
+  parameter, and `ToolchainClosureRecord::make` accepts an opaque target-identity
+  byte string that is never cross-checked against a `TargetSpecId`. RFC 0043's
+  module-system Repository Impact area (`compiler/driver/**`, `compiler/identity/**`)
+  contains no RFC 0043 code. The "Canonical link-plan construction and
+  verification" Implementation Tracker row covers the codec/verifier value types
+  only, not this session-owned API.
+- **Snapshot-recovery integration assertion.** `zomc`'s recovery-required routing
+  (`ab15c079`) is covered by the adapter emit tests plus the route logic, but no
+  end-to-end test injects a filesystem crash window to reach the snapshot arm of
+  `LinkRecoveryRequired`; `invoke-linker-test` exercises only the publication arm.
+- **`splitTriple` field-count bound.** `compiler/ir/host-execution-profile.cc`
+  accepts a triple with three or more fields and no upper bound, diverging from
+  the target-registry parser's exact 3-4 field acceptance. Non-blocking today
+  because consumers read only the allow-listed arch and OS fields.
+- **CRT link-order.** The toolchain closure sorts `crtObjects` by canonical byte
+  order, which is not ELF startup link order (`crt1`/`crti`/.../`crtn`).
+  Non-blocking today because the production closure carries empty CRT and
+  default-library sequences; must be resolved before a real CRT enters the
+  production closure.
+- **`recoverLinkedOutputPublication` has no production caller** and the
+  `PublicationRecoveryObligation` payload paths are not surfaced to the operator;
+  both are later driver-completeness slices.
