@@ -172,7 +172,8 @@ flowchart TD
     H --> M[Verified Built MIR]
     M -. minimal slice .-> R[Target LIR]
     R -. minimal slice .-> LLVM[LLVM IR + native object]
-    LLVM -. not implemented .-> LINK[Linked executable]
+    LLVM -. Linux x86-64 slice .-> LINK[Verified linked executable]
+    LINK -. host-compatible slice .-> RUN[Executed by zomc run]
     L --> D[DiagnosticEngine]
     P --> D
     B --> D
@@ -180,7 +181,7 @@ flowchart TD
     M --> D
 ```
 
-**CRITICAL KNOWN GAPS (as of 2026-08-28)** that are tracked by audit findings
+**CRITICAL KNOWN GAPS (as of 2026-08-29)** that are tracked by audit findings
 and must be handled with principle #4 (delete or implement, no drift):
 
 1. **RFC 0007 is implementing, not complete.** The enablement transaction
@@ -211,15 +212,18 @@ and must be handled with principle #4 (delete or implement, no drift):
    and an LLVM translator (`compiler/backend/llvm/`, behind
    `ZOM_ENABLE_LLVM_BACKEND`) all exist: a scalar module-initializer lowers
    MIR -> LIR -> verified LLVM IR (mandatory `verifyModule`) -> a native ELF
-   object (RFC 0021 ObjectEmission via `addPassesToEmitFile`). Still absent:
-   general MIR -> LIR legalization beyond the single-block integer-return shape,
-   full ABI lowering, and the driver/CLI cutover (the translator is reachable
-   only from `llvm-translation-test`, not from `zomc compile`).
-4. **No linking, no runnable binary.** The backend emits an object file but does
-   not link it: RFC 0043 (link + executable publication) is ACCEPTED but not
-   IMPLEMENTING, there is no `InvokeLinker` production path, and `zomc run`
-   hard-rejects (`rejectRun`). ZOM cannot yet produce or execute a native
-   executable end to end.
+   object (RFC 0021 ObjectEmission via `addPassesToEmitFile`). `zomc compile
+   --emit=binary` drives that object path. Still absent: production selection of
+   the already-tested multi-block/multi-function lowering shapes, general MIR ->
+   LIR legalization, and full ABI lowering.
+4. **RFC 0043 linking and execution are a minimal host slice, not general.**
+   D1 recoverable publication, bounded ELF64/Mach-O64 inspection, the consuming
+   `linkAndPublish` chain, and `zomc run` are implemented. The runnable production
+   path is currently Linux x86-64 only, uses the bundled `_start` runtime entry,
+   invokes the verified host `ld`, and accepts the scalar module-initializer
+   backend shape. macOS execution, AArch64 runtime entry objects, cross-target
+   execution rejection through the CLI, general entry-point semantics, and
+   multi-function production driver selection remain open.
 5. **RFC 0006 is partial.** Source contracts and target selection are present,
    but real drop cleanup, general calls, multi-residual lowering,
    target/runtime capability integration, native emission, and FFI conformance

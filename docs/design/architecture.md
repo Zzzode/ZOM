@@ -1,7 +1,7 @@
 <!-- @dsCard group="Design Documents" name="ARCHITECTURE" -->
 # ZOM Compiler Architecture - Current Implementation
 
-Updated: 2026-07-29
+Updated: 2026-08-30
 
 This document describes executable code in the repository. RFC status and
 future contracts are tracked under `docs/rfc`; a contract is listed here only
@@ -33,14 +33,17 @@ The compiler currently provides:
   committed atomically by `CompilerSession`; and
 - deterministic structured diagnostics and architecture gates.
 
-The production path does not yet provide:
+The production path remains partial in these areas:
 
-- production ownership analysis and ownership-proof publication;
-- owner-body binding, materialization, aggregate verification, and complete
-  replacement of definition-only body processing required by RFC 0019;
-- complete language-wide body checking and exhaustiveness beyond the admitted
-  checker fact inventory; or
-- executable MIR, target LIR, LLVM IR, object files, linking, or binaries.
+- ownership facts, drop/coroutine elaboration, and executable-MIR verification
+  exist for admitted shapes, while general region/capture/typestate completion
+  remains gated;
+- body checking and exhaustiveness cover only the admitted checker inventory;
+- the LIR/LLVM/link/run path is a Linux x86-64 scalar host slice rather than a
+  general ABI/backend implementation; and
+- the recoverable parser records live MissingToken/MissingSubtree/SkippedTokens
+  and exposes a single-use parser result, while exact Invalid-diagnostic binding
+  and IDE query/snapshot publication remain open.
 
 `CompilerSession::checkSources()` stages every checker, evidence, CheckedModule,
 HIR, and Built MIR publication before mutating session state. A missing required
@@ -66,8 +69,8 @@ fact or any source, identity, codec, or IR invariant rejects the entire stage.
 | `compiler/mir` | Lower and independently verify evidence-bound Built MIR | `VerifiedBuiltMir` |
 | `compiler/ir` | Own target selections, canonical IR identity, and the shared closed IR failure algebra | `VerifiedTargetSelection`, typed IR failures and diagnostics |
 | `compiler/diagnostics` | Register, sort, and render source and invariant diagnostics | `DiagnosticEngine` output |
-| `utils/zomc` | Admit a workspace and invoke the production session | AST output, syntax-only binding success, or explicit stage failure |
-| `runtime` | Provide runtime support symbols | runtime libraries; no compiler backend consumer yet |
+| `utils/zomc` | Admit a workspace and invoke the production session | `compile`, frontend-only `build`, `fmt`, and the Linux x86-64 scalar `run` candidate |
+| `runtime` | Provide runtime support symbols and the admitted host entry object | runtime libraries and Linux x86-64 `_start` for the scalar run slice |
 
 Stable Binder query identities are canonical package, crate, source, module,
 definition, implementation, and owner keys. Active semantic publications use
@@ -184,10 +187,12 @@ commits all staged repositories and vectors together. Unsupported or incomplete
 source facts fail closed with typed source or invariant diagnostics and publish
 nothing from the stage.
 
-AST emission is available after verified parsing. `--syntax-only` completes
-after verified binding. Dispatch emission consumes only verified dispatch facts
-after a successful check. Binary selection reaches the registered `ZOM6007`
-terminal because target LIR and native emission are not implemented.
+AST emission is available after verified parsing. `compile --check` and
+`zomc build` complete after the frontend reaches verified Built MIR without
+emitting a native artifact. Dispatch emission consumes only verified dispatch
+facts after a successful check. With the LLVM backend enabled, the admitted
+scalar initializer can emit an object, and the Linux x86-64 run candidate links,
+inspects, publishes, and executes that slice.
 
 `CompilerSession::executeBuildScripts()` can verify and install build results,
 but `zomc` does not call it. A package that requires build-script results cannot
