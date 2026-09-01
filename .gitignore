@@ -72,18 +72,12 @@ Testing
 # Lit
 Output
 
-# QWEN
-.qwen
-QWEN.md
-
-# Claude Code
-CLAUDE.md
-.claude
-
-
 # Custom
 .refs
 _thirdparty/
+
+# Runtime scheduler lock (live pid/session state, never committed)
+.codex/scheduled_tasks.lock
 
 # Local build and profiling artifacts
 /a.out
