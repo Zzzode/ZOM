@@ -168,7 +168,7 @@ void expectDiagnosticInfo(diagnostics::DiagID id, diagnostics::DiagSeverity seve
 }  // namespace
 
 ZC_TEST("IR diagnostic mapping is exhaustive across every closed phase and kind") {
-  for (uint8_t phaseTag = 0x01; phaseTag <= 0x10; ++phaseTag) {
+  for (uint8_t phaseTag = 0x01; phaseTag <= 0x13; ++phaseTag) {
     const auto phase = static_cast<IrFailurePhase>(phaseTag);
     for (uint8_t kindTag = 0x01; kindTag <= 0x13; ++kindTag) {
       const auto kind = static_cast<IrFailureKind>(kindTag);
@@ -371,10 +371,17 @@ ZC_TEST("A rejected link plan materializes its failure algebra as diagnostics") 
   ZC_REQUIRE(!result.isVerified());
   ZC_REQUIRE(result.isIrInvariantRejected());
 
+  // The rejection is a LinkPlanConstruction (0x11) fact, which maps to
+  // BackendInvariant; assert the code, not merely that some diagnostic fired.
+  auto groups = groupIrInvariantFailures(result.invariantFailures());
+  ZC_REQUIRE(groups.size() == 1);
+  ZC_EXPECT(groups[0].diagnosticId() == diagnostics::DiagID::BackendInvariant);
+  ZC_EXPECT(groups[0].occurrenceCount() == 1);
+
   source::SourceManager sourceManager;
   diagnostics::DiagnosticEngine engine(sourceManager);
   routeRejection(engine, result);
-  ZC_EXPECT(engine.errorCount() >= 1);
+  ZC_EXPECT(engine.errorCount() == 1);
 }
 
 ZC_TEST("A verified link plan routes no diagnostics") {

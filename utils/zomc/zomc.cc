@@ -1720,6 +1720,19 @@ private:
     ir::PublicationOutcome publication =
         ir::linkAndPublish(zc::mv(plan).takeVerified(), *filesystem);
     if (publication.isRecoveryRequired()) {
+      // A recovery-required outcome still carries the failure algebra that forced
+      // recovery: the snapshot arm always carries a primary rejection, and the
+      // publication arm carries one when a primary cause was recorded. Route it
+      // through the diagnostic engine before returning the neutral recovery
+      // message, so the RFC 0010 facts are not discarded.
+      ir::LinkRecoveryRequired recovery = zc::mv(publication).takeRecoveryRequired();
+      if (recovery.isSnapshotRecoveryRequired()) {
+        ir::SnapshotRecoveryRequired snapshot = zc::mv(recovery).takeSnapshot();
+        materializeIrRejection(snapshot.primary);
+      } else {
+        ir::PublicationRecoveryRequired pub = zc::mv(recovery).takePublication();
+        ZC_IF_SOME(primary, pub.primary) { materializeIrRejection(primary); }
+      }
       return zc::str("Native publication requires explicit recovery.");
     }
     if (publication.isRejected()) {
