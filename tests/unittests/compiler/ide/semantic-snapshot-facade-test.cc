@@ -221,6 +221,33 @@ ZC_TEST("resolveSemanticSnapshot publishes a clean source with the document vers
   }
 }
 
+ZC_TEST("resolveSemanticSnapshot reports unavailable-cancelled for a pre-cancelled token") {
+  auto database = facadeTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto sourceKey = sourceQueryKey("facade-cancelled.zom"_zc);
+  auto sourceValue =
+      sourceSnapshotValue("facade-cancelled.zom"_zc, zc::heapArray("let value = 42;"_zcb));
+  auto registry = targetRegistry();
+  auto options = compilationOptionsValue(registry, package::SelectedLanguageOptions{});
+  auto write = transaction(database);
+  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue).isApplied());
+  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
+
+  auto key = SemanticSnapshotKey::bind(sourceKey.clone(), DocumentVersion::initial(11));
+
+  // The same committed clean source publishes without a token; with an
+  // already-cancelled token the demand is Cancelled and the facade projects it to
+  // Unavailable(Cancelled) rather than a computed snapshot.
+  ZC_EXPECT(resolveSemanticSnapshot(database, key).isPublished());
+
+  query::CancellationSource cancellation;
+  cancellation.cancel();
+  auto cancelled = resolveSemanticSnapshot(database, key, cancellation.token());
+  ZC_REQUIRE(cancelled.isUnavailable());
+  ZC_EXPECT(cancelled.unavailableReason() == SnapshotUnavailableReason::Cancelled);
+}
+
 ZC_TEST("resolveSemanticSnapshot resolves ranges for a malformed source rejection") {
   auto database = facadeTestDatabase();
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));

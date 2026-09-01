@@ -270,6 +270,40 @@ ZC_TEST("Freshness stamp goes stale when the tracked source is edited") {
   ZC_EXPECT(!ZC_REQUIRE_NONNULL(tracked.freshness).isFreshAgainst(database.snapshot()));
 }
 
+ZC_TEST("Tracked resolve reports unavailable-cancelled with no freshness for a cancelled token") {
+  auto database = freshnessTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto registry = targetRegistry();
+  auto sourceKey = sourceQueryKey("freshness-cancelled.zom"_zc);
+  {
+    auto write = transaction(database);
+    ZC_REQUIRE(write
+                   .set<SourceSnapshotInput>(sourceKey,
+                                             sourceSnapshotValue("freshness-cancelled.zom"_zc,
+                                                                 zc::heapArray("let a = 1;"_zcb)))
+                   .isApplied());
+    ZC_REQUIRE(
+        write
+            .set<CompilationOptionsInput>(
+                crateKey(), compilationOptionsValue(registry, package::SelectedLanguageOptions{}))
+            .isApplied());
+    ZC_REQUIRE(write.commit().isCommitted());
+  }
+  auto key = SemanticSnapshotKey::bind(sourceKey.clone(), DocumentVersion::initial(1));
+
+  // Without a token the tracked resolve publishes and seals a freshness stamp.
+  ZC_EXPECT(resolveSemanticSnapshotTracked(database, key).snapshot.isPublished());
+
+  // A pre-cancelled token yields Unavailable(Cancelled) and no freshness stamp,
+  // so a cancelled tracked result is never mistaken for fresh.
+  query::CancellationSource cancellation;
+  cancellation.cancel();
+  auto tracked = resolveSemanticSnapshotTracked(database, key, cancellation.token());
+  ZC_REQUIRE(tracked.snapshot.isUnavailable());
+  ZC_EXPECT(tracked.snapshot.unavailableReason() == SnapshotUnavailableReason::Cancelled);
+  ZC_EXPECT(tracked.freshness == zc::none);
+}
+
 ZC_TEST("Freshness stamp stays fresh when an unrelated source is edited") {
   auto database = freshnessTestDatabase();
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));

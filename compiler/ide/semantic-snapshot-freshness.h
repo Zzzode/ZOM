@@ -127,4 +127,16 @@ struct TrackedSemanticSnapshot final {
 ZC_NODISCARD TrackedSemanticSnapshot resolveSemanticSnapshotTracked(query::QueryDatabase& database,
                                                                     const SemanticSnapshotKey& key);
 
+/// \brief Cancellation-aware overload of `resolveSemanticSnapshotTracked`.
+///
+/// Identical to the token-less overload, but resolves the snapshot with the
+/// caller's `CancellationSource::Token` so a cancellation surfaces as
+/// `Unavailable(Cancelled)` (with no freshness stamp) instead of a stamped
+/// result. The token-less overload keeps its prior behavior.
+///
+/// \param cancellation The caller's cancellation token, threaded to the resolve.
+ZC_NODISCARD TrackedSemanticSnapshot
+resolveSemanticSnapshotTracked(query::QueryDatabase& database, const SemanticSnapshotKey& key,
+                               const query::CancellationSource::Token& cancellation);
+
 }  // namespace zomlang::compiler::ide

@@ -154,12 +154,13 @@ zc::Maybe<zc::Array<SnapshotDiagnostic>> projectRejectedFactsWithRanges(
   return zc::none;
 }
 
-}  // namespace
-
-SemanticSnapshot resolveSemanticSnapshot(const query::QuerySnapshot& snapshot,
-                                         const SemanticSnapshotKey& key) {
-  auto demand = snapshot.getCapability<parser::ParseSourceQuery>(key.sourceKey());
-
+// Projects a resolved parse-capability demand into a sanitized snapshot. The
+// demand is moved in so its published lease stays alive for the projection; both
+// the token-less and token-accepting overloads share this body and differ only
+// in how they obtain the demand.
+SemanticSnapshot projectParseDemand(
+    query::CapabilityDemandResult<parser::ParseSourceQuery>&& demand,
+    const query::QuerySnapshot& snapshot, const SemanticSnapshotKey& key) {
   if (demand.isRuntimeRejected()) {
     return SemanticSnapshot::unavailable(mapRuntimeFailure(demand.runtimeFailure()));
   }
@@ -196,9 +197,31 @@ SemanticSnapshot resolveSemanticSnapshot(const query::QuerySnapshot& snapshot,
                                      projectPublishedFacts(parsed.facts(), resolver));
 }
 
+}  // namespace
+
+SemanticSnapshot resolveSemanticSnapshot(const query::QuerySnapshot& snapshot,
+                                         const SemanticSnapshotKey& key) {
+  return projectParseDemand(snapshot.getCapability<parser::ParseSourceQuery>(key.sourceKey()),
+                            snapshot, key);
+}
+
+SemanticSnapshot resolveSemanticSnapshot(const query::QuerySnapshot& snapshot,
+                                         const SemanticSnapshotKey& key,
+                                         const query::CancellationSource::Token& cancellation) {
+  return projectParseDemand(
+      snapshot.getCapability<parser::ParseSourceQuery>(key.sourceKey(), cancellation), snapshot,
+      key);
+}
+
 SemanticSnapshot resolveSemanticSnapshot(query::QueryDatabase& database,
                                          const SemanticSnapshotKey& key) {
   return resolveSemanticSnapshot(database.snapshot(), key);
+}
+
+SemanticSnapshot resolveSemanticSnapshot(query::QueryDatabase& database,
+                                         const SemanticSnapshotKey& key,
+                                         const query::CancellationSource::Token& cancellation) {
+  return resolveSemanticSnapshot(database.snapshot(), key, cancellation);
 }
 
 }  // namespace zomlang::compiler::ide

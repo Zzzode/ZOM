@@ -101,14 +101,13 @@ bool SemanticSnapshotFreshness::isFreshAgainst(const query::QuerySnapshot& curre
   return sourceStamp == sourceStampValue && optionsStamp == optionsStampValue;
 }
 
-TrackedSemanticSnapshot resolveSemanticSnapshotTracked(query::QueryDatabase& database,
-                                                       const SemanticSnapshotKey& key) {
-  // Resolve and seal on the SAME snapshot: the parse capability memo is
-  // revision-local, so its recorded dependencies (which the seal cross-checks)
-  // are only observable on the snapshot the demand ran on.
-  auto snapshot = database.snapshot();
-  auto resolved = resolveSemanticSnapshot(snapshot, key);
+namespace {
 
+// Seals a freshness stamp on the same snapshot the resolve ran on. Shared by the
+// token-less and token-accepting tracked overloads, which differ only in how they
+// resolve the snapshot.
+TrackedSemanticSnapshot sealTracked(const query::QuerySnapshot& snapshot,
+                                    const SemanticSnapshotKey& key, SemanticSnapshot&& resolved) {
   // Only a published or source-rejected result reflects a parse that read the
   // tracked inputs; an unavailable result has nothing to stamp.
   if (resolved.isUnavailable()) { return TrackedSemanticSnapshot{zc::mv(resolved), zc::none}; }
@@ -121,6 +120,24 @@ TrackedSemanticSnapshot resolveSemanticSnapshotTracked(query::QueryDatabase& dat
         SemanticSnapshot::unavailable(SnapshotUnavailableReason::EvaluationRejected), zc::none};
   }
   return TrackedSemanticSnapshot{zc::mv(resolved), zc::mv(freshness)};
+}
+
+}  // namespace
+
+TrackedSemanticSnapshot resolveSemanticSnapshotTracked(query::QueryDatabase& database,
+                                                       const SemanticSnapshotKey& key) {
+  // Resolve and seal on the SAME snapshot: the parse capability memo is
+  // revision-local, so its recorded dependencies (which the seal cross-checks)
+  // are only observable on the snapshot the demand ran on.
+  auto snapshot = database.snapshot();
+  return sealTracked(snapshot, key, resolveSemanticSnapshot(snapshot, key));
+}
+
+TrackedSemanticSnapshot resolveSemanticSnapshotTracked(
+    query::QueryDatabase& database, const SemanticSnapshotKey& key,
+    const query::CancellationSource::Token& cancellation) {
+  auto snapshot = database.snapshot();
+  return sealTracked(snapshot, key, resolveSemanticSnapshot(snapshot, key, cancellation));
 }
 
 }  // namespace zomlang::compiler::ide

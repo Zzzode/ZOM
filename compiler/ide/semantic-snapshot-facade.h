@@ -61,4 +61,21 @@ ZC_NODISCARD SemanticSnapshot resolveSemanticSnapshot(query::QueryDatabase& data
 ZC_NODISCARD SemanticSnapshot resolveSemanticSnapshot(const query::QuerySnapshot& snapshot,
                                                       const SemanticSnapshotKey& key);
 
+/// \brief Cancellation-aware overloads of the two resolvers.
+///
+/// Identical to the token-less overloads, but demand the parse capability with
+/// the caller's `CancellationSource::Token`, so a cancellation observed during
+/// evaluation surfaces as `Unavailable(Cancelled)` rather than a spuriously
+/// computed snapshot. The token-less overloads keep their prior behavior.
+///
+/// \param cancellation The caller's cancellation token, threaded to the query.
+ZC_NODISCARD SemanticSnapshot
+resolveSemanticSnapshot(const query::QuerySnapshot& snapshot, const SemanticSnapshotKey& key,
+                        const query::CancellationSource::Token& cancellation);
+
+/// \brief Cancellation-aware database overload; see the snapshot overload above.
+ZC_NODISCARD SemanticSnapshot
+resolveSemanticSnapshot(query::QueryDatabase& database, const SemanticSnapshotKey& key,
+                        const query::CancellationSource::Token& cancellation);
+
 }  // namespace zomlang::compiler::ide
