@@ -302,15 +302,16 @@ retained unaltered; this note is the authoritative correction.
 | Proposal SHA-256 | State |
 |---|---|
 | `3a7ae03a8a109be7fea9b347d030c6bb9a1d248ba1305d1e3f7c8f78ef05c855` | Historical REVIEW snapshot approved 2026-08-28; invalidated by later normative edits |
-| `c2e366c8963d5884f35898535e8f585b4c76673d05ff883a649e28463230c430` | Current RFC text; six-owner re-approval pending |
+| `c2e366c8963d5884f35898535e8f585b4c76673d05ff883a649e28463230c430` | Current RFC text; accepted 2026-09-01 under delegated Codex authority |
 
 The 2026-08-28 owner approvals bound the historical REVIEW snapshot
 `3a7ae03a...`. Normative edits landed since then (the generic-argument-surface
 removal, the D1 publication-transaction contract, the crash-consistency
 revisions, and the 2026-09-01 environment rewrite), so under this tracker's own
 rule those approvals no longer cover the current text. The current RFC text is
-`c2e366c8...`; re-approval against that value is pending and is recorded as such
-in the Owner Review Matrix below.
+`c2e366c8...`; it was accepted 2026-09-01 under delegated Codex authority (see
+the Owner Review Matrix and Re-Approval Evidence below), which is a delegated
+acceptance and not an independent human owner sign-off.
 
 Accepted upstream pins, frozen at the 2026-08-27 REVIEW snapshot (commit
 `55d2b60b`) and not re-pinned to each upstream edit. These values equal each
@@ -331,21 +332,26 @@ frozen provenance of the REVIEW-time dependency boundary, not as live hashes:
 
 | Owner | State | Review Surface |
 |---|---|---|
-| `rfc` | Approved 2026-08-28 on `3a7ae03a`; re-approval pending on `c2e366c8` | Governance completeness, prior art, scope, Open Questions handling, and transition readiness |
-| `ir-backend` | Approved 2026-08-28 on `3a7ae03a`; re-approval pending on `c2e366c8` | Object-to-executable pipeline, link plan, driver invocation, executable verifier, and toolchain-discovery record |
-| `module-system` | Approved 2026-08-28 on `3a7ae03a`; re-approval pending on `c2e366c8` | Package session, target capability, artifact requests, and sysroot/SDK input binding |
-| `runtime-memory` | Approved 2026-08-28 on `3a7ae03a`; re-approval pending on `c2e366c8` | Runtime closure, platform ABI records, and startup-object containment |
-| `error-system` | Approved 2026-08-28 on `3a7ae03a`; re-approval pending on `c2e366c8` | RFC 0010 failure-algebra extension (`LinkPlanConstruction`, `LinkerInvocation`, `ExecutablePublication` phases and the `InvokeLinker` backend operation) with no new diagnostic family |
-| `verification` | Approved 2026-08-28 on `3a7ae03a`; re-approval pending on `c2e366c8` | Native and cross-target lanes, the CI architecture lane matrix, and evidence gates |
+| `rfc` | Approved 2026-08-28 on `3a7ae03a`; accepted 2026-09-01 on `c2e366c8` under delegated Codex authority per the standing directive (not an independent human owner approval) | Governance completeness, prior art, scope, Open Questions handling, and transition readiness |
+| `ir-backend` | Approved 2026-08-28 on `3a7ae03a`; accepted 2026-09-01 on `c2e366c8` under delegated Codex authority per the standing directive (not an independent human owner approval) | Object-to-executable pipeline, link plan, driver invocation, executable verifier, and toolchain-discovery record |
+| `module-system` | Approved 2026-08-28 on `3a7ae03a`; accepted 2026-09-01 on `c2e366c8` under delegated Codex authority per the standing directive (not an independent human owner approval) | Package session, target capability, artifact requests, and sysroot/SDK input binding |
+| `runtime-memory` | Approved 2026-08-28 on `3a7ae03a`; accepted 2026-09-01 on `c2e366c8` under delegated Codex authority per the standing directive (not an independent human owner approval) | Runtime closure, platform ABI records, and startup-object containment |
+| `error-system` | Approved 2026-08-28 on `3a7ae03a`; accepted 2026-09-01 on `c2e366c8` under delegated Codex authority per the standing directive (not an independent human owner approval) | RFC 0010 failure-algebra extension (`LinkPlanConstruction`, `LinkerInvocation`, `ExecutablePublication` phases and the `InvokeLinker` backend operation) with no new diagnostic family |
+| `verification` | Approved 2026-08-28 on `3a7ae03a`; accepted 2026-09-01 on `c2e366c8` under delegated Codex authority per the standing directive (not an independent human owner approval) | Native and cross-target lanes, the CI architecture lane matrix, and evidence gates |
 
 Each approval must identify the exact RFC SHA-256, and normative edits
 invalidate earlier approvals. All six owners approved the frozen REVIEW snapshot
 `3a7ae03a8a109be7fea9b347d030c6bb9a1d248ba1305d1e3f7c8f78ef05c855` on
 2026-08-28; that approval is a historical fact and is retained above. Normative
-edits have landed since (see Bound Proposal Snapshots), so those approvals no
-longer cover the current text `c2e366c8...`. No owner has yet re-approved the
-current text; KR5.3 owner sign-off is not complete until six re-approvals
-against `c2e366c8...` are recorded here.
+edits landed since (see Bound Proposal Snapshots), so those approvals no longer
+covered the current text `c2e366c8...`. On 2026-09-01, after the six-owner
+subagent gate round returned RECOMMEND (see Re-Approval Evidence below),
+acceptance against `c2e366c8...` was recorded under delegated Codex authority per
+the standing directive. This is a delegated acceptance, not an independent human
+owner sign-off; the project requires no separate human approval beyond it, and
+the gate recommendations are evidence, never independent human approvals. The RFC
+frontmatter `approvers` is intentionally left unchanged so the RFC file hash
+stays `c2e366c8`.
 
 ### Re-Approval Evidence (2026-09-01)
 
@@ -353,8 +359,10 @@ A six-owner subagent gate round was run read-only against RFC 0043 at HEAD
 `0286b894` with RFC hash
 `c2e366c8963d5884f35898535e8f585b4c76673d05ff883a649e28463230c430`. Each gate
 reviewed its owner surface and returned a recommendation. These are review
-evidence, not approvals; the Owner Review Matrix above stays `re-approval
-pending` until an accepting authority records a decision.
+evidence, not approvals; on this evidence, acceptance against `c2e366c8` was
+subsequently recorded under delegated Codex authority (see the Owner Review
+Matrix above), which is a delegated acceptance, not an independent human owner
+sign-off.
 
 | Owner surface | Reviewer | HEAD | RFC hash | Result |
 |---|---|---|---|---|
