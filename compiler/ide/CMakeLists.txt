@@ -1,4 +1,5 @@
 set(IDE_SRC
+  ${CMAKE_CURRENT_SOURCE_DIR}/editor-document-adapter.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/semantic-snapshot-facade.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/semantic-snapshot-freshness.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/semantic-snapshot-key.cc
