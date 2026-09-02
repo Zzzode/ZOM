@@ -1,0 +1,30 @@
+{
+  "name": "yyjson",
+  "description": "High-performance JSON library used only by the LSP transport layer.",
+  "upstream": "https://github.com/ibireme/yyjson",
+  "version": "0.9.0",
+  "archive_url": "https://github.com/ibireme/yyjson/archive/refs/tags/0.9.0.tar.gz",
+  "archive_sha256": "59902bea55585d870fd7681eabe6091fbfd1a8776d1950f859d2dbbd510c74bd",
+  "spdx": "MIT",
+  "license": "LICENSE",
+  "enabled_sources": [
+    "src/yyjson.c"
+  ],
+  "enabled_headers": [
+    "src/yyjson.h"
+  ],
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "45e384d3d52c73cba3a64d6e6c25d47cd738cd8a55c30629e3201046eda62947"
+    },
+    {
+      "path": "src/yyjson.c",
+      "sha256": "e7b8d3f388eab9f8585fda6c7d85804896b6a939bd6582a503be891435c507da"
+    },
+    {
+      "path": "src/yyjson.h",
+      "sha256": "e46d808d1b6ddbaf13fc756ae7bd9287db08acaa0467819bc85ca6fdad848a5f"
+    }
+  ]
+}
