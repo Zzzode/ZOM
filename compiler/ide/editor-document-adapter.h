@@ -100,6 +100,33 @@ enum class ChangeDocumentResult : uint8_t {
   MalformedUtf8 = 0x04,
   /// The overlay inputs could not be committed.
   CommitRejected = 0x05,
+  /// An incremental edit range is not resolvable to a byte range: a position is
+  /// past the addressed line's content, past the last line, splits a UTF-8 scalar
+  /// or a UTF-16 surrogate pair, or the end precedes the start.
+  InvalidRange = 0x06,
+};
+
+/// \brief One LSP incremental content change: a range over the current document
+/// text replaced with new UTF-8 text.
+///
+/// RFC 0023 "IDE Semantic Snapshots": an LSP `didChange` may carry an ordered
+/// list of these. Each range is interpreted over the document text produced by
+/// applying every preceding edit in the same notification. A position is a
+/// zero-based `line` plus a zero-based `character` measured in UTF-16 code units
+/// within that line's content (LSP's default position encoding). Line content
+/// excludes its terminator; `\r\n`, a bare `\r`, and `\n` each count as one
+/// terminator, so a position can never fall between the `\r` and `\n` of a CRLF.
+struct LspRangeEdit final {
+  /// Zero-based start line.
+  uint32_t startLine;
+  /// Zero-based start UTF-16 code unit within the start line's content.
+  uint32_t startCharacter;
+  /// Zero-based end line.
+  uint32_t endLine;
+  /// Zero-based end UTF-16 code unit within the end line's content.
+  uint32_t endCharacter;
+  /// The replacement text; must be valid UTF-8.
+  zc::ArrayPtr<const uint8_t> newTextUtf8;
 };
 
 /// \brief The closed result of closing one document.
@@ -117,9 +144,11 @@ enum class CloseDocumentResult : uint8_t {
 /// process-local document identity and the open/change/close lifecycle, and
 /// commits the content-addressed overlay and selection inputs the effective-source
 /// query reads. This is the adapter core only: it has no protocol transport (no
-/// JSON-RPC, no sockets), applies whole-document text sync rather than incremental
-/// range edits, and resolves a URI within one injected `CrateKey` rather than a
-/// discovered workspace. Those are later slices.
+/// JSON-RPC, no sockets) and resolves a URI within one injected `CrateKey` rather
+/// than a discovered workspace. It applies both whole-document text sync and
+/// incremental UTF-16 range edits over its own retained document text, without
+/// reaching into the compiler's byte-based `SourceManager`. Transport and
+/// workspace discovery are later slices.
 ///
 /// The crate and compilation options are injected, not synthesized: a
 /// `StableSourceQueryKey` is crate-scoped, so the adapter maps a URI to a source
@@ -158,6 +187,24 @@ public:
   ZC_NODISCARD ChangeDocumentResult changeDocument(EditorDocumentId document,
                                                    DocumentVersion version,
                                                    zc::ArrayPtr<const uint8_t> newUtf8Bytes);
+
+  /// \brief Applies an ordered list of incremental range edits to an open
+  /// document.
+  ///
+  /// Requires `version` to strictly succeed the document's current version. Each
+  /// edit's range is resolved against the text produced by applying every
+  /// preceding edit in `edits` (LSP notification order). A position is resolved by
+  /// counting `\r\n`/`\r`/`\n` line terminators to reach the line, then walking
+  /// that line's content by UTF-16 code units (one for a BMP scalar, two for an
+  /// astral scalar) to reach the character; line content excludes the terminator,
+  /// so `character` at the content length denotes the line end. The whole
+  /// notification is atomic: if any position is unresolvable (`InvalidRange`), any
+  /// `newTextUtf8` is malformed, the final text is malformed UTF-8, or the version
+  /// does not increase, nothing is committed and the document is unchanged. On
+  /// success commits the resulting overlay bytes and selection in one transaction.
+  ZC_NODISCARD ChangeDocumentResult applyIncrementalChange(EditorDocumentId document,
+                                                           DocumentVersion version,
+                                                           zc::ArrayPtr<const LspRangeEdit> edits);
 
   /// \brief Closes an open document.
   ///

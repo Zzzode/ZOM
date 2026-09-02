@@ -21,6 +21,7 @@
 #include "zc/core/encoding.h"
 #include "zc/core/hash.h"
 #include "zc/core/map.h"
+#include "zc/core/one-of.h"
 #include "zc/core/vector.h"
 
 namespace zomlang::compiler::ide {
@@ -34,6 +35,67 @@ namespace sq = identity::source_query;
 bool isValidUtf8(zc::ArrayPtr<const uint8_t> bytes) {
   auto chars = zc::arrayPtr(reinterpret_cast<const char*>(bytes.begin()), bytes.size());
   return !zc::encodeUtf16(chars).hadErrors;
+}
+
+// Resolves an LSP position to a byte offset in `text`, which MUST be valid UTF-8.
+// The position is a zero-based `line` plus a zero-based `character` measured in
+// UTF-16 code units within that line's content (LSP's default position encoding).
+//
+// Line terminators are `\r\n`, a bare `\r`, and `\n`; each counts as exactly one
+// terminator, and `\r\n` is atomic (a position can never fall between its `\r`
+// and `\n`). A line's content excludes its terminator, so `character` equal to
+// the content's UTF-16 length denotes the line end (the byte before the
+// terminator, or end of text on the last line). The empty line after a trailing
+// terminator is addressable.
+//
+// Returns none when the position is unresolvable: `line` past the last line,
+// `character` past the line content's UTF-16 length, or `character` splitting an
+// astral scalar's surrogate pair (an astral scalar spans two UTF-16 units, and a
+// position between them names no byte). Complexity is O(offset) in the resolved
+// byte offset.
+zc::Maybe<size_t> positionToByteOffset(zc::ArrayPtr<const uint8_t> text, uint32_t line,
+                                       uint32_t character) {
+  // Advance to the byte where `line` begins by counting terminators.
+  size_t offset = 0;
+  for (uint32_t currentLine = 0; currentLine < line;) {
+    if (offset >= text.size()) { return zc::none; }  // line past the last line
+    const uint8_t byte = text[offset];
+    if (byte == '\r') {
+      ++offset;
+      if (offset < text.size() && text[offset] == '\n') { ++offset; }  // CRLF is atomic
+      ++currentLine;
+    } else if (byte == '\n') {
+      ++offset;
+      ++currentLine;
+    } else {
+      ++offset;
+    }
+  }
+  // Walk the line's content by UTF-16 code units, stopping at the terminator.
+  for (uint32_t remaining = character; remaining > 0;) {
+    if (offset >= text.size()) { return zc::none; }  // character past line content (end of text)
+    const uint8_t lead = text[offset];
+    if (lead == '\r' || lead == '\n') { return zc::none; }  // character past line content
+    size_t scalarBytes;
+    uint32_t utf16Units;
+    if (lead < 0x80) {
+      scalarBytes = 1;
+      utf16Units = 1;
+    } else if ((lead & 0xE0) == 0xC0) {
+      scalarBytes = 2;
+      utf16Units = 1;
+    } else if ((lead & 0xF0) == 0xE0) {
+      scalarBytes = 3;
+      utf16Units = 1;
+    } else {
+      scalarBytes = 4;  // (lead & 0xF8) == 0xF0: an astral scalar
+      utf16Units = 2;   // encoded as a UTF-16 surrogate pair
+    }
+    if (remaining < utf16Units) { return zc::none; }  // splits a surrogate pair
+    remaining -= utf16Units;
+    offset += scalarBytes;
+  }
+  return offset;
 }
 
 // Maps a `file://` document URI to path segments under the crate. LSP document
@@ -119,6 +181,9 @@ struct EditorDocumentAdapter::Impl final {
     EditorDocumentId id;
     sq::StableSourceQueryKey sourceKey;
     DocumentVersion version;
+    // The current document bytes (valid UTF-8), retained so incremental range
+    // edits resolve positions against the live text.
+    zc::Array<uint8_t> text;
   };
 
   Impl(query::QueryDatabase& database, identity::CrateKey&& crate,
@@ -191,6 +256,33 @@ struct EditorDocumentAdapter::Impl final {
     if (!write.erase<sq::IdeSourceSelectionInput>(sourceKey).isApplied()) { return false; }
     return write.commit().isCommitted();
   }
+
+  // Applies `edits` in notification order to `current`, each edit's range
+  // resolved against the text produced by the preceding edits. Returns the new
+  // text on success, or the closed reason a step failed on (InvalidRange for an
+  // unresolvable or inverted range, MalformedUtf8 for malformed replacement text
+  // or a malformed final result). Commits nothing; the caller owns the commit.
+  ZC_NODISCARD zc::OneOf<zc::Array<uint8_t>, ChangeDocumentResult> applyEdits(
+      zc::ArrayPtr<const uint8_t> current, zc::ArrayPtr<const LspRangeEdit> edits) {
+    zc::Array<uint8_t> candidate = zc::heapArray<uint8_t>(current);
+    for (const auto& edit : edits) {
+      auto start = positionToByteOffset(candidate, edit.startLine, edit.startCharacter);
+      auto end = positionToByteOffset(candidate, edit.endLine, edit.endCharacter);
+      if (start == zc::none || end == zc::none) { return ChangeDocumentResult::InvalidRange; }
+      const size_t startOffset = ZC_ASSERT_NONNULL(start);
+      const size_t endOffset = ZC_ASSERT_NONNULL(end);
+      if (endOffset < startOffset) { return ChangeDocumentResult::InvalidRange; }
+      if (!isValidUtf8(edit.newTextUtf8)) { return ChangeDocumentResult::MalformedUtf8; }
+      zc::Vector<uint8_t> next(candidate.size() - (endOffset - startOffset) +
+                               edit.newTextUtf8.size());
+      next.addAll(candidate.slice(0, startOffset));
+      next.addAll(edit.newTextUtf8);
+      next.addAll(candidate.slice(endOffset, candidate.size()));
+      candidate = next.releaseAsArray();
+    }
+    if (!isValidUtf8(candidate)) { return ChangeDocumentResult::MalformedUtf8; }
+    return zc::mv(candidate);
+  }
 };
 
 EditorDocumentAdapter::EditorDocumentAdapter(query::QueryDatabase& database,
@@ -227,8 +319,9 @@ OpenDocumentResult EditorDocumentAdapter::openDocument(zc::StringPtr uri, Docume
     return OpenDocumentResult::rejected(OpenDocumentResult::Kind::CommitRejected);
   }
   const auto id = EditorDocumentId::fromRaw(impl->nextId++);
-  impl->openBySourceBytes.insert(
-      zc::heapString(keyHex), Impl::OpenState{id, ZC_ASSERT_NONNULL(sourceKey).clone(), version});
+  impl->openBySourceBytes.insert(zc::heapString(keyHex),
+                                 Impl::OpenState{id, ZC_ASSERT_NONNULL(sourceKey).clone(), version,
+                                                 zc::heapArray<uint8_t>(utf8Bytes)});
   impl->openById.insert(id.raw(), zc::heapString(keyHex));
   return OpenDocumentResult::opened(id);
 }
@@ -247,6 +340,29 @@ ChangeDocumentResult EditorDocumentAdapter::changeDocument(
     return ChangeDocumentResult::CommitRejected;
   }
   state.version = version;
+  state.text = zc::heapArray<uint8_t>(newUtf8Bytes);
+  return ChangeDocumentResult::Applied;
+}
+
+ChangeDocumentResult EditorDocumentAdapter::applyIncrementalChange(
+    EditorDocumentId document, DocumentVersion version, zc::ArrayPtr<const LspRangeEdit> edits) {
+  auto keyHexEntry = impl->openById.find(document.raw());
+  if (keyHexEntry == zc::none) { return ChangeDocumentResult::UnknownDocument; }
+  const zc::String& keyHex = ZC_ASSERT_NONNULL(keyHexEntry);
+  auto& state = ZC_ASSERT_NONNULL(impl->openBySourceBytes.find(keyHex));
+  // Enforce the version gate before touching text, so a stale notification never
+  // pays for edit resolution and never mutates state.
+  if (!version.succeeds(state.version)) { return ChangeDocumentResult::NonIncreasingVersion; }
+  auto applied = impl->applyEdits(state.text, edits);
+  if (applied.is<ChangeDocumentResult>()) { return applied.get<ChangeDocumentResult>(); }
+  zc::Array<uint8_t> candidate = zc::mv(applied.get<zc::Array<uint8_t>>());
+  auto snapshot = impl->overlaySnapshot(state.sourceKey, candidate);
+  if (snapshot == zc::none) { return ChangeDocumentResult::CommitRejected; }
+  if (!impl->commitOverlay(state.sourceKey, ZC_ASSERT_NONNULL(snapshot))) {
+    return ChangeDocumentResult::CommitRejected;
+  }
+  state.version = version;
+  state.text = zc::mv(candidate);
   return ChangeDocumentResult::Applied;
 }
 

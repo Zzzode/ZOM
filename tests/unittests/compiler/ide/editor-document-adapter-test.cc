@@ -15,11 +15,14 @@
 // RFC 0023 "IDE Semantic Snapshots" (SEAM B adapter core): prove the in-process
 // editor-document adapter drives the overlay rail end to end. Opening a document
 // makes the semantic facade resolve over the overlay bytes; a whole-document
-// change with a strictly greater version updates them; a non-increasing version,
-// an unknown id, malformed UTF-8, an invalid URI, and a duplicate open all reject
-// without committing; and closing falls back to the workspace source. No protocol
-// transport, no range edits: the adapter is constructed with a stable crate and
-// maps a URI within it deterministically.
+// change with a strictly greater version updates them; and incremental UTF-16
+// range edits splice the retained document text, counting an astral scalar as two
+// code units and treating CRLF/CR/LF as one atomic terminator excluded from line
+// content. A non-increasing version, an unknown id, malformed UTF-8, an invalid
+// URI, a duplicate open, and an out-of-range or inverted edit all reject without
+// committing; closing falls back to the workspace source. No protocol transport:
+// the adapter is constructed with a stable crate and maps a URI within it
+// deterministically.
 
 #include "compiler/ide/editor-document-adapter.h"
 
@@ -178,6 +181,29 @@ EditorDocumentAdapter makeAdapter(query::QueryDatabase& database,
 }
 
 zc::Array<uint8_t> bytes(zc::StringPtr text) { return zc::heapArray<uint8_t>(text.asBytes()); }
+
+// Builds one incremental range edit; the replacement text is a view over `newText`
+// and must outlive the applyIncrementalChange call.
+LspRangeEdit edit(uint32_t startLine, uint32_t startCharacter, uint32_t endLine,
+                  uint32_t endCharacter, zc::ArrayPtr<const uint8_t> newText) {
+  return LspRangeEdit{startLine, startCharacter, endLine, endCharacter, newText};
+}
+
+// Reads the committed overlay bytes for a source key back out of the database so a
+// test can assert the exact edited text, not just its byte length.
+zc::Array<uint8_t> overlayBytes(query::QueryDatabase& database,
+                                const StableSourceQueryKey& sourceKey) {
+  auto snapshot = database.snapshot();
+  auto probed = snapshot.probeInput<EditorDocumentInput>(sourceKey);
+  ZC_REQUIRE(probed.kind() == query::QueryValueKind::Value);
+  return zc::heapArray<uint8_t>(probed.value().bytes());
+}
+
+bool overlayEquals(query::QueryDatabase& database, const StableSourceQueryKey& sourceKey,
+                   zc::StringPtr expected) {
+  auto actual = overlayBytes(database, sourceKey);
+  return actual.asPtr() == expected.asBytes();
+}
 
 ZC_TEST("EditorDocumentAdapter opens a document and the facade resolves over the overlay bytes") {
   auto database = adapterTestDatabase();
@@ -374,6 +400,277 @@ ZC_TEST("EditorDocumentAdapter close falls back to the workspace source") {
                                        bytes("let overlay = 4242;"_zc).asPtr());
   ZC_REQUIRE(reopened.isOpened());
   ZC_EXPECT(reopened.document() != opened.document());
+}
+
+ZC_TEST("EditorDocumentAdapter applies a single-line incremental range edit") {
+  auto database = adapterTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto registry = targetRegistry();
+  auto adapter = makeAdapter(database, registry);
+  auto opened = adapter.openDocument("file:///src/main.zom"_zc, DocumentVersion::initial(1),
+                                     bytes("let a = 1;"_zc).asPtr());
+  ZC_REQUIRE(opened.isOpened());
+  const auto id = opened.document();
+  auto sourceKey = ZC_ASSERT_NONNULL(adapter.sourceKeyForUri("file:///src/main.zom"_zc));
+
+  // Replace the single character "a" (line 0, UTF-16 [4,5)) with "bb".
+  auto replacement = bytes("bb"_zc);
+  const LspRangeEdit edits[] = {edit(0, 4, 0, 5, replacement.asPtr())};
+  ZC_EXPECT(adapter.applyIncrementalChange(id, DocumentVersion::initial(2), zc::arrayPtr(edits)) ==
+            ChangeDocumentResult::Applied);
+  ZC_EXPECT(overlayEquals(database, sourceKey, "let bb = 1;"_zc));
+
+  // The facade resolves over the edited overlay bytes.
+  auto key = SemanticSnapshotKey::bind(sourceKey.clone(), DocumentVersion::initial(2));
+  auto snapshot = resolveSemanticSnapshot(database, key);
+  ZC_REQUIRE(snapshot.isPublished());
+  ZC_EXPECT(snapshot.sourceByteLength() == bytes("let bb = 1;"_zc).size());
+}
+
+ZC_TEST("EditorDocumentAdapter applies an insertion, a deletion, and a multi-line edit") {
+  auto database = adapterTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto registry = targetRegistry();
+  auto adapter = makeAdapter(database, registry);
+  auto sourceKey = ZC_ASSERT_NONNULL(adapter.sourceKeyForUri("file:///src/main.zom"_zc));
+
+  // Insertion: an empty range at line 0, character 0 inserts before everything.
+  {
+    auto opened = adapter.openDocument("file:///src/main.zom"_zc, DocumentVersion::initial(1),
+                                       bytes("body"_zc).asPtr());
+    ZC_REQUIRE(opened.isOpened());
+    auto text = bytes("head "_zc);
+    const LspRangeEdit edits[] = {edit(0, 0, 0, 0, text.asPtr())};
+    ZC_EXPECT(adapter.applyIncrementalChange(opened.document(), DocumentVersion::initial(2),
+                                             zc::arrayPtr(edits)) == ChangeDocumentResult::Applied);
+    ZC_EXPECT(overlayEquals(database, sourceKey, "head body"_zc));
+    ZC_REQUIRE(adapter.closeDocument(opened.document()) == CloseDocumentResult::Closed);
+  }
+  // Deletion: replace "head " with empty text.
+  {
+    auto opened = adapter.openDocument("file:///src/main.zom"_zc, DocumentVersion::initial(1),
+                                       bytes("head body"_zc).asPtr());
+    ZC_REQUIRE(opened.isOpened());
+    zc::Array<uint8_t> empty = zc::heapArray<uint8_t>(0);
+    const LspRangeEdit edits[] = {edit(0, 0, 0, 5, empty.asPtr())};
+    ZC_EXPECT(adapter.applyIncrementalChange(opened.document(), DocumentVersion::initial(2),
+                                             zc::arrayPtr(edits)) == ChangeDocumentResult::Applied);
+    ZC_EXPECT(overlayEquals(database, sourceKey, "body"_zc));
+    ZC_REQUIRE(adapter.closeDocument(opened.document()) == CloseDocumentResult::Closed);
+  }
+  // Multi-line: delete from line 0 char 2 through line 1 char 1 (spans the LF).
+  {
+    auto opened = adapter.openDocument("file:///src/main.zom"_zc, DocumentVersion::initial(1),
+                                       bytes("abc\ndef"_zc).asPtr());
+    ZC_REQUIRE(opened.isOpened());
+    zc::Array<uint8_t> empty = zc::heapArray<uint8_t>(0);
+    const LspRangeEdit edits[] = {edit(0, 2, 1, 1, empty.asPtr())};
+    ZC_EXPECT(adapter.applyIncrementalChange(opened.document(), DocumentVersion::initial(2),
+                                             zc::arrayPtr(edits)) == ChangeDocumentResult::Applied);
+    ZC_EXPECT(overlayEquals(database, sourceKey, "abef"_zc));
+    ZC_REQUIRE(adapter.closeDocument(opened.document()) == CloseDocumentResult::Closed);
+  }
+}
+
+ZC_TEST("EditorDocumentAdapter applies edits in notification order, each over the prior text") {
+  auto database = adapterTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto registry = targetRegistry();
+  auto adapter = makeAdapter(database, registry);
+  auto opened = adapter.openDocument("file:///src/main.zom"_zc, DocumentVersion::initial(1),
+                                     bytes("ac"_zc).asPtr());
+  ZC_REQUIRE(opened.isOpened());
+  const auto id = opened.document();
+  auto sourceKey = ZC_ASSERT_NONNULL(adapter.sourceKeyForUri("file:///src/main.zom"_zc));
+
+  // First insert "b" between a and c ("ac" -> "abc"); the second edit's range is
+  // interpreted over "abc", replacing "c" (now at index 2) with "C".
+  auto b = bytes("b"_zc);
+  auto c = bytes("C"_zc);
+  const LspRangeEdit edits[] = {edit(0, 1, 0, 1, b.asPtr()), edit(0, 2, 0, 3, c.asPtr())};
+  ZC_EXPECT(adapter.applyIncrementalChange(id, DocumentVersion::initial(2), zc::arrayPtr(edits)) ==
+            ChangeDocumentResult::Applied);
+  ZC_EXPECT(overlayEquals(database, sourceKey, "abC"_zc));
+}
+
+ZC_TEST("EditorDocumentAdapter counts an astral scalar as two UTF-16 code units") {
+  auto database = adapterTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto registry = targetRegistry();
+  auto adapter = makeAdapter(database, registry);
+  // A 4-byte astral scalar (U+1F600, "grinning face") spans two UTF-16 units, so
+  // the character after it on the same line is at UTF-16 offset 2.
+  auto opened = adapter.openDocument("file:///src/main.zom"_zc, DocumentVersion::initial(1),
+                                     bytes("\xF0\x9F\x98\x80X"_zc).asPtr());
+  ZC_REQUIRE(opened.isOpened());
+  const auto id = opened.document();
+  auto sourceKey = ZC_ASSERT_NONNULL(adapter.sourceKeyForUri("file:///src/main.zom"_zc));
+
+  // Replace "X" at UTF-16 [2,3) with "Y"; the emoji occupies UTF-16 [0,2).
+  auto y = bytes("Y"_zc);
+  const LspRangeEdit edits[] = {edit(0, 2, 0, 3, y.asPtr())};
+  ZC_EXPECT(adapter.applyIncrementalChange(id, DocumentVersion::initial(2), zc::arrayPtr(edits)) ==
+            ChangeDocumentResult::Applied);
+  ZC_EXPECT(overlayEquals(database, sourceKey, "\xF0\x9F\x98\x80Y"_zc));
+
+  // A position landing between the two surrogate halves (UTF-16 offset 1) is
+  // unresolvable.
+  auto z = bytes("Z"_zc);
+  const LspRangeEdit split[] = {edit(0, 1, 0, 2, z.asPtr())};
+  ZC_EXPECT(adapter.applyIncrementalChange(id, DocumentVersion::initial(3), zc::arrayPtr(split)) ==
+            ChangeDocumentResult::InvalidRange);
+  // Unchanged after the rejected edit.
+  ZC_EXPECT(overlayEquals(database, sourceKey, "\xF0\x9F\x98\x80Y"_zc));
+}
+
+ZC_TEST("EditorDocumentAdapter treats CRLF as one atomic terminator excluded from line content") {
+  auto database = adapterTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto registry = targetRegistry();
+  auto adapter = makeAdapter(database, registry);
+  auto sourceKey = ZC_ASSERT_NONNULL(adapter.sourceKeyForUri("file:///src/main.zom"_zc));
+
+  // CRLF: line 0 content is "ab" (2 UTF-16 units, terminator excluded); line 1
+  // begins at "cd". Insert "Z" at line 1 char 0, which must land after the CRLF.
+  {
+    auto opened = adapter.openDocument("file:///src/main.zom"_zc, DocumentVersion::initial(1),
+                                       bytes("ab\r\ncd"_zc).asPtr());
+    ZC_REQUIRE(opened.isOpened());
+    auto z = bytes("Z"_zc);
+    const LspRangeEdit edits[] = {edit(1, 0, 1, 0, z.asPtr())};
+    ZC_EXPECT(adapter.applyIncrementalChange(opened.document(), DocumentVersion::initial(2),
+                                             zc::arrayPtr(edits)) == ChangeDocumentResult::Applied);
+    ZC_EXPECT(overlayEquals(database, sourceKey, "ab\r\nZcd"_zc));
+    ZC_REQUIRE(adapter.closeDocument(opened.document()) == CloseDocumentResult::Closed);
+  }
+  // Line 0 end: character 2 equals the CRLF line's content length and denotes the
+  // line end (before the CR); an insertion there lands before the CR.
+  {
+    auto opened = adapter.openDocument("file:///src/main.zom"_zc, DocumentVersion::initial(1),
+                                       bytes("ab\r\ncd"_zc).asPtr());
+    ZC_REQUIRE(opened.isOpened());
+    auto q = bytes("!"_zc);
+    const LspRangeEdit edits[] = {edit(0, 2, 0, 2, q.asPtr())};
+    ZC_EXPECT(adapter.applyIncrementalChange(opened.document(), DocumentVersion::initial(2),
+                                             zc::arrayPtr(edits)) == ChangeDocumentResult::Applied);
+    ZC_EXPECT(overlayEquals(database, sourceKey, "ab!\r\ncd"_zc));
+    ZC_REQUIRE(adapter.closeDocument(opened.document()) == CloseDocumentResult::Closed);
+  }
+  // Character 3 on the CRLF line 0 is past the content length (2) and must not be
+  // resolvable to a byte between the CR and the LF.
+  {
+    auto opened = adapter.openDocument("file:///src/main.zom"_zc, DocumentVersion::initial(1),
+                                       bytes("ab\r\ncd"_zc).asPtr());
+    ZC_REQUIRE(opened.isOpened());
+    auto q = bytes("!"_zc);
+    const LspRangeEdit edits[] = {edit(0, 3, 0, 3, q.asPtr())};
+    ZC_EXPECT(adapter.applyIncrementalChange(opened.document(), DocumentVersion::initial(2),
+                                             zc::arrayPtr(edits)) ==
+              ChangeDocumentResult::InvalidRange);
+    ZC_EXPECT(overlayEquals(database, sourceKey, "ab\r\ncd"_zc));
+    ZC_REQUIRE(adapter.closeDocument(opened.document()) == CloseDocumentResult::Closed);
+  }
+}
+
+ZC_TEST(
+    "EditorDocumentAdapter handles a bare CR terminator and an addressable trailing empty line") {
+  auto database = adapterTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto registry = targetRegistry();
+  auto adapter = makeAdapter(database, registry);
+  auto sourceKey = ZC_ASSERT_NONNULL(adapter.sourceKeyForUri("file:///src/main.zom"_zc));
+
+  // Bare CR is one terminator: line 1 begins at "cd".
+  {
+    auto opened = adapter.openDocument("file:///src/main.zom"_zc, DocumentVersion::initial(1),
+                                       bytes("ab\rcd"_zc).asPtr());
+    ZC_REQUIRE(opened.isOpened());
+    auto z = bytes("Z"_zc);
+    const LspRangeEdit edits[] = {edit(1, 0, 1, 0, z.asPtr())};
+    ZC_EXPECT(adapter.applyIncrementalChange(opened.document(), DocumentVersion::initial(2),
+                                             zc::arrayPtr(edits)) == ChangeDocumentResult::Applied);
+    ZC_EXPECT(overlayEquals(database, sourceKey, "ab\rZcd"_zc));
+    ZC_REQUIRE(adapter.closeDocument(opened.document()) == CloseDocumentResult::Closed);
+  }
+  // A trailing terminator leaves an addressable empty last line: "abc\n" has line 1
+  // beginning at byte 4 (end of text); an insertion there appends.
+  {
+    auto opened = adapter.openDocument("file:///src/main.zom"_zc, DocumentVersion::initial(1),
+                                       bytes("abc\n"_zc).asPtr());
+    ZC_REQUIRE(opened.isOpened());
+    auto tail = bytes("z"_zc);
+    const LspRangeEdit edits[] = {edit(1, 0, 1, 0, tail.asPtr())};
+    ZC_EXPECT(adapter.applyIncrementalChange(opened.document(), DocumentVersion::initial(2),
+                                             zc::arrayPtr(edits)) == ChangeDocumentResult::Applied);
+    ZC_EXPECT(overlayEquals(database, sourceKey, "abc\nz"_zc));
+    ZC_REQUIRE(adapter.closeDocument(opened.document()) == CloseDocumentResult::Closed);
+  }
+}
+
+ZC_TEST("EditorDocumentAdapter rejects out-of-range, inverted, and malformed incremental edits") {
+  auto database = adapterTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto registry = targetRegistry();
+  auto adapter = makeAdapter(database, registry);
+  auto opened = adapter.openDocument("file:///src/main.zom"_zc, DocumentVersion::initial(1),
+                                     bytes("ab\ncd"_zc).asPtr());
+  ZC_REQUIRE(opened.isOpened());
+  const auto id = opened.document();
+  auto sourceKey = ZC_ASSERT_NONNULL(adapter.sourceKeyForUri("file:///src/main.zom"_zc));
+  auto text = bytes("x"_zc);
+
+  // A line past the last line.
+  {
+    const LspRangeEdit edits[] = {edit(2, 0, 2, 0, text.asPtr())};
+    ZC_EXPECT(
+        adapter.applyIncrementalChange(id, DocumentVersion::initial(2), zc::arrayPtr(edits)) ==
+        ChangeDocumentResult::InvalidRange);
+  }
+  // A character past the line's content length (line 0 content "ab" is 2 units).
+  {
+    const LspRangeEdit edits[] = {edit(0, 3, 0, 3, text.asPtr())};
+    ZC_EXPECT(
+        adapter.applyIncrementalChange(id, DocumentVersion::initial(2), zc::arrayPtr(edits)) ==
+        ChangeDocumentResult::InvalidRange);
+  }
+  // An inverted range (end precedes start on the same line).
+  {
+    const LspRangeEdit edits[] = {edit(0, 2, 0, 0, text.asPtr())};
+    ZC_EXPECT(
+        adapter.applyIncrementalChange(id, DocumentVersion::initial(2), zc::arrayPtr(edits)) ==
+        ChangeDocumentResult::InvalidRange);
+  }
+  // An inverted range across lines (end line precedes start line).
+  {
+    const LspRangeEdit edits[] = {edit(1, 0, 0, 0, text.asPtr())};
+    ZC_EXPECT(
+        adapter.applyIncrementalChange(id, DocumentVersion::initial(2), zc::arrayPtr(edits)) ==
+        ChangeDocumentResult::InvalidRange);
+  }
+  // Malformed replacement UTF-8 (a lone continuation byte).
+  {
+    auto bad = zc::heapArray<uint8_t>({0x80});
+    const LspRangeEdit edits[] = {edit(0, 0, 0, 0, bad.asPtr())};
+    ZC_EXPECT(
+        adapter.applyIncrementalChange(id, DocumentVersion::initial(2), zc::arrayPtr(edits)) ==
+        ChangeDocumentResult::MalformedUtf8);
+  }
+  // A non-increasing version rejects before any edit resolution.
+  {
+    const LspRangeEdit edits[] = {edit(0, 0, 0, 0, text.asPtr())};
+    ZC_EXPECT(
+        adapter.applyIncrementalChange(id, DocumentVersion::initial(1), zc::arrayPtr(edits)) ==
+        ChangeDocumentResult::NonIncreasingVersion);
+  }
+  // An unknown document id.
+  {
+    const LspRangeEdit edits[] = {edit(0, 0, 0, 0, text.asPtr())};
+    ZC_EXPECT(adapter.applyIncrementalChange(EditorDocumentId::fromRaw(999),
+                                             DocumentVersion::initial(2), zc::arrayPtr(edits)) ==
+              ChangeDocumentResult::UnknownDocument);
+  }
+  // Every rejection above committed nothing: the overlay is still the original.
+  ZC_EXPECT(overlayEquals(database, sourceKey, "ab\ncd"_zc));
 }
 
 }  // namespace
