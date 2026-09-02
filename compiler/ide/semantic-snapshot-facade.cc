@@ -14,15 +14,19 @@
 
 #include "compiler/ide/semantic-snapshot-facade.h"
 
+#include "compiler/ast/generated/node-accessors.h"
+#include "compiler/ast/tree.h"
 #include "compiler/diagnostics/fact/diagnostic-fact.h"
 #include "compiler/diagnostics/fact/diagnostic-materializer.h"
 #include "compiler/ide/snapshot-diagnostic.h"
+#include "compiler/ide/snapshot-outline.h"
 #include "compiler/ide/snapshot-token.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/key/source-key.h"
 #include "compiler/identity/source-query-input.h"
 #include "compiler/parser/query/canonical-parsed-source.h"
 #include "compiler/parser/query/parse-source-query.h"
+#include "compiler/source/manager.h"
 #include "zc/core/vector.h"
 
 namespace zomlang::compiler::ide {
@@ -175,6 +179,51 @@ zc::Array<SnapshotToken> projectTokens(zc::ArrayPtr<const parser::CanonicalParse
   return projected.releaseAsArray();
 }
 
+// Projects the flat top-level declaration outline out of the parsed tree. It
+// walks the source-file root's statement list, unwraps each StatementListItem to
+// its item node, and emits one entry per item whose kind is a recognized
+// top-level symbol declaration (projectOutlineCategory). Only the category and
+// the item's half-open byte range cross the boundary -- no name, no SyntaxKind,
+// no node id. A node whose range does not resolve to a valid in-bounds span on
+// the parse's own source manager is skipped rather than emitted with a degenerate
+// range, so a malformed range degrades the entry instead of the whole outline.
+zc::Array<SnapshotOutlineEntry> projectOutline(const parser::CanonicalParsedSource& parsed) {
+  const ast::Tree& tree = parsed.tree();
+  const source::SourceManager& sources = parsed.sourceManager();
+  const source::BufferId& buffer = parsed.buffer();
+  const uint64_t sourceByteLength = parsed.sourceBytes().size();
+
+  const ast::NodeId rootId = tree.root();
+  if (!tree.contains(rootId)) { return zc::Array<SnapshotOutlineEntry>(); }
+  const ast::Node& rootNode = tree.node(rootId);
+  if (rootNode.kind != ast::SyntaxKind::SourceFile) { return zc::Array<SnapshotOutlineEntry>(); }
+
+  // SourceFile schema: the statements NodeList occupies payload words 2 and 3.
+  const ast::NodeList statements = ast::nodeListFromPayload(rootNode, 2, 3);
+  if (!tree.contains(statements)) { return zc::Array<SnapshotOutlineEntry>(); }
+  const auto items = tree.list(statements);
+
+  zc::Vector<SnapshotOutlineEntry> projected(items.size());
+  for (const ast::NodeId itemId : items) {
+    if (!tree.contains(itemId)) { continue; }
+    const ast::Node& listItem = tree.node(itemId);
+    if (listItem.kind != ast::SyntaxKind::StatementListItem) { continue; }
+    // StatementListItem schema: the wrapped item NodeId is payload word 0.
+    const ast::NodeId declId = ast::nodeIdFromPayload(listItem.payload.words[0]);
+    if (!tree.contains(declId)) { continue; }
+    const ast::Node& decl = tree.node(declId);
+
+    auto category = projectOutlineCategory(decl.kind);
+    if (category == zc::none) { continue; }
+    if (decl.range.isInvalid()) { continue; }
+    const uint64_t byteStart = sources.getLocOffsetInBuffer(decl.range.getStart(), buffer);
+    const uint64_t byteEnd = sources.getLocOffsetInBuffer(decl.range.getEnd(), buffer);
+    if (byteStart > byteEnd || byteEnd > sourceByteLength) { continue; }
+    projected.add(SnapshotOutlineEntry{ZC_ASSERT_NONNULL(category), byteStart, byteEnd});
+  }
+  return projected.releaseAsArray();
+}
+
 // Projects a resolved parse-capability demand into a sanitized snapshot. The
 // demand is moved in so its published lease stays alive for the projection; both
 // the token-less and token-accepting overloads share this body and differ only
@@ -213,10 +262,10 @@ SemanticSnapshot projectParseDemand(
 
   diagnostics::SourceDiagnosticProvenanceResolver resolver(ZC_ASSERT_NONNULL(sourceFile),
                                                            parsed.provenance());
-  return SemanticSnapshot::published(parsed.canonicalSourceKey(), parsed.sourceBytes().size(),
-                                     key.documentVersion(),
-                                     projectTokens(parsed.tokens(), parsed.sourceBytes().size()),
-                                     projectPublishedFacts(parsed.facts(), resolver));
+  return SemanticSnapshot::published(
+      parsed.canonicalSourceKey(), parsed.sourceBytes().size(), key.documentVersion(),
+      projectTokens(parsed.tokens(), parsed.sourceBytes().size()), projectOutline(parsed),
+      projectPublishedFacts(parsed.facts(), resolver));
 }
 
 }  // namespace

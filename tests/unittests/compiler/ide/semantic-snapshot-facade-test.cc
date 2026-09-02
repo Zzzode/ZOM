@@ -27,6 +27,7 @@
 #include "compiler/ide/document-version.h"
 #include "compiler/ide/semantic-snapshot-key.h"
 #include "compiler/ide/semantic-snapshot.h"
+#include "compiler/ide/snapshot-outline.h"
 #include "compiler/ide/snapshot-token.h"
 #include "compiler/identity/source-query-input.h"
 #include "compiler/ir/target-registry.h"
@@ -274,6 +275,69 @@ ZC_TEST("resolveSemanticSnapshot exposes no tokens on the unavailable arm") {
   auto snapshot = resolveSemanticSnapshot(database, key);
   ZC_REQUIRE(snapshot.isUnavailable());
   ZC_EXPECT(snapshot.tokens().size() == 0);
+  ZC_EXPECT(snapshot.outline().size() == 0);
+}
+
+ZC_TEST(
+    "resolveSemanticSnapshot projects the top-level declaration outline by category and range") {
+  auto database = facadeTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto sourceKey = sourceQueryKey("facade-outline.zom"_zc);
+  auto sourceBytes = zc::heapArray(
+      "fun add(a: i32, b: i32) -> i32 { return a + b; }\nclass Point {}\nalias Id = i64;\n"_zcb);
+  const uint64_t sourceLength = sourceBytes.size();
+  auto sourceValue = sourceSnapshotValue("facade-outline.zom"_zc, zc::mv(sourceBytes));
+  auto registry = targetRegistry();
+  auto options = compilationOptionsValue(registry, package::SelectedLanguageOptions{});
+  auto write = transaction(database);
+  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue).isApplied());
+  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
+
+  auto key = SemanticSnapshotKey::bind(sourceKey.clone(), DocumentVersion::initial(4));
+  auto snapshot = resolveSemanticSnapshot(database, key);
+  ZC_REQUIRE(snapshot.isPublished());
+
+  const auto outline = snapshot.outline();
+  // Three top-level declarations in source order: a function, a class, and a type
+  // alias. Non-symbol nodes and nested declarations are not emitted.
+  ZC_REQUIRE(outline.size() == 3);
+  ZC_EXPECT(outline[0].category == SnapshotOutlineCategory::Function);
+  ZC_EXPECT(outline[1].category == SnapshotOutlineCategory::Class);
+  ZC_EXPECT(outline[2].category == SnapshotOutlineCategory::TypeAlias);
+
+  // Entries are in source order with half-open in-bounds ranges spanning real
+  // bytes; no name or kind is exposed, only the category and range.
+  uint64_t previousStart = 0;
+  for (const auto& entry : outline) {
+    ZC_EXPECT(entry.byteStart < entry.byteEnd);
+    ZC_EXPECT(entry.byteEnd <= sourceLength);
+    ZC_EXPECT(entry.byteStart >= previousStart);
+    previousStart = entry.byteStart;
+  }
+  // The first declaration starts at the top of the buffer.
+  ZC_EXPECT(outline[0].byteStart == 0);
+}
+
+ZC_TEST("resolveSemanticSnapshot projects an empty outline for a source with no declarations") {
+  auto database = facadeTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto sourceKey = sourceQueryKey("facade-outline-empty.zom"_zc);
+  // A single top-level expression statement is not a declaration, so the outline
+  // is empty even though the parse publishes.
+  auto sourceValue =
+      sourceSnapshotValue("facade-outline-empty.zom"_zc, zc::heapArray("1 + 2;\n"_zcb));
+  auto registry = targetRegistry();
+  auto options = compilationOptionsValue(registry, package::SelectedLanguageOptions{});
+  auto write = transaction(database);
+  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue).isApplied());
+  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
+
+  auto key = SemanticSnapshotKey::bind(sourceKey.clone(), DocumentVersion::initial(5));
+  auto snapshot = resolveSemanticSnapshot(database, key);
+  ZC_REQUIRE(snapshot.isPublished());
+  ZC_EXPECT(snapshot.outline().size() == 0);
 }
 
 ZC_TEST("resolveSemanticSnapshot reports unavailable-cancelled for a pre-cancelled token") {

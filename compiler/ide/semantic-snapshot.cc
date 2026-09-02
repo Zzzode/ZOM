@@ -19,23 +19,25 @@ namespace zomlang::compiler::ide {
 SemanticSnapshot SemanticSnapshot::published(zc::ArrayPtr<const uint8_t> sourceKeyBytes,
                                              uint64_t sourceByteLength, DocumentVersion version,
                                              zc::Array<SnapshotToken>&& tokens,
+                                             zc::Array<SnapshotOutlineEntry>&& outline,
                                              zc::Array<SnapshotDiagnostic>&& diagnostics) {
   return SemanticSnapshot(Kind::Published, zc::heapArray<uint8_t>(sourceKeyBytes), sourceByteLength,
-                          version, zc::mv(tokens), zc::mv(diagnostics),
+                          version, zc::mv(tokens), zc::mv(outline), zc::mv(diagnostics),
                           SnapshotUnavailableReason::EvaluationRejected);
 }
 
 SemanticSnapshot SemanticSnapshot::sourceRejected(DocumentVersion version,
                                                   zc::Array<SnapshotDiagnostic>&& diagnostics) {
   return SemanticSnapshot(Kind::SourceRejected, zc::heapArray<uint8_t>(0), 0, version,
-                          zc::Array<SnapshotToken>(), zc::mv(diagnostics),
-                          SnapshotUnavailableReason::EvaluationRejected);
+                          zc::Array<SnapshotToken>(), zc::Array<SnapshotOutlineEntry>(),
+                          zc::mv(diagnostics), SnapshotUnavailableReason::EvaluationRejected);
 }
 
 SemanticSnapshot SemanticSnapshot::unavailable(SnapshotUnavailableReason reason) {
   return SemanticSnapshot(Kind::Unavailable, zc::heapArray<uint8_t>(0), 0,
                           DocumentVersion::initial(0), zc::Array<SnapshotToken>(),
-                          zc::Array<SnapshotDiagnostic>(), reason);
+                          zc::Array<SnapshotOutlineEntry>(), zc::Array<SnapshotDiagnostic>(),
+                          reason);
 }
 
 }  // namespace zomlang::compiler::ide

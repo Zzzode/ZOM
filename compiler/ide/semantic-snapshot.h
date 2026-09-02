@@ -18,6 +18,7 @@
 
 #include "compiler/ide/document-version.h"
 #include "compiler/ide/snapshot-diagnostic.h"
+#include "compiler/ide/snapshot-outline.h"
 #include "compiler/ide/snapshot-token.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
@@ -73,10 +74,13 @@ public:
   /// \param sourceByteLength The parsed source length in bytes.
   /// \param version The document version this projection is labelled with.
   /// \param tokens The projected lexical tokens in source order, consumed.
+  /// \param outline The projected top-level declaration outline in source order,
+  ///                consumed.
   /// \param diagnostics The projected warning-severity diagnostics, consumed.
   ZC_NODISCARD static SemanticSnapshot published(zc::ArrayPtr<const uint8_t> sourceKeyBytes,
                                                  uint64_t sourceByteLength, DocumentVersion version,
                                                  zc::Array<SnapshotToken>&& tokens,
+                                                 zc::Array<SnapshotOutlineEntry>&& outline,
                                                  zc::Array<SnapshotDiagnostic>&& diagnostics);
 
   /// \brief Builds the projection of a rejected parse.
@@ -105,6 +109,12 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const SnapshotToken> tokens() const ZC_LIFETIMEBOUND {
     return tokenValues.asPtr();
   }
+  /// \brief The projected top-level declaration outline in source order; only the
+  /// Published arm carries an outline, so this is empty on the SourceRejected and
+  /// Unavailable arms.
+  ZC_NODISCARD zc::ArrayPtr<const SnapshotOutlineEntry> outline() const ZC_LIFETIMEBOUND {
+    return outlineValues.asPtr();
+  }
   /// \brief The opaque canonical source-key bytes; valid only on the Published arm.
   ZC_NODISCARD zc::ArrayPtr<const uint8_t> sourceKeyBytes() const ZC_LIFETIMEBOUND {
     return sourceKeyBytesValue.asPtr();
@@ -119,6 +129,7 @@ public:
 private:
   SemanticSnapshot(Kind kind, zc::Array<uint8_t>&& sourceKeyBytes, uint64_t sourceByteLength,
                    DocumentVersion version, zc::Array<SnapshotToken>&& tokens,
+                   zc::Array<SnapshotOutlineEntry>&& outline,
                    zc::Array<SnapshotDiagnostic>&& diagnostics,
                    SnapshotUnavailableReason reason) noexcept
       : kindValue(kind),
@@ -126,6 +137,7 @@ private:
         sourceByteLengthValue(sourceByteLength),
         versionValue(version),
         tokenValues(zc::mv(tokens)),
+        outlineValues(zc::mv(outline)),
         diagnosticValues(zc::mv(diagnostics)),
         unavailableReasonValue(reason) {}
 
@@ -134,6 +146,7 @@ private:
   uint64_t sourceByteLengthValue;
   DocumentVersion versionValue;
   zc::Array<SnapshotToken> tokenValues;
+  zc::Array<SnapshotOutlineEntry> outlineValues;
   zc::Array<SnapshotDiagnostic> diagnosticValues;
   SnapshotUnavailableReason unavailableReasonValue;
 };
