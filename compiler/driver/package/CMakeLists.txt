@@ -14,6 +14,7 @@ target_sources(
           ${CMAKE_CURRENT_SOURCE_DIR}/manifest-parser.cc
           ${CMAKE_CURRENT_SOURCE_DIR}/package-compilation-request.cc
           ${CMAKE_CURRENT_SOURCE_DIR}/package-diagnostic.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/package-input-installer.cc
           ${CMAKE_CURRENT_SOURCE_DIR}/package-resolver.cc
           ${CMAKE_CURRENT_SOURCE_DIR}/registry-record.cc
           ${CMAKE_CURRENT_SOURCE_DIR}/semver-constraint.cc

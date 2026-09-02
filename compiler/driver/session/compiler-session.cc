@@ -14,9 +14,6 @@
 
 #include "compiler/driver/session/compiler-session.h"
 
-#include "zc/core/encoding.h"
-#include "zc/core/filesystem.h"
-#include "zc/core/map.h"
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/ast/tree.h"
 #include "compiler/basic/compiler-opts.h"
@@ -51,6 +48,7 @@
 #include "compiler/driver/interface/imported-signature-view-projector.h"
 #include "compiler/driver/interface/module-interface-diagnostic-adapter.h"
 #include "compiler/driver/package/package-diagnostic.h"
+#include "compiler/driver/package/package-input-installer.h"
 #include "compiler/driver/query/binding/active-definition-authority-query.h"
 #include "compiler/driver/query/binding/active-definition-authority-session.h"
 #include "compiler/driver/query/binding/incremental-binding-query-adapter.h"
@@ -72,6 +70,9 @@
 #include "compiler/ownership/surface-admission.h"
 #include "compiler/parser/query/parse-source-query.h"
 #include "compiler/source/manager.h"
+#include "zc/core/encoding.h"
+#include "zc/core/filesystem.h"
+#include "zc/core/map.h"
 
 namespace zomlang {
 namespace compiler {
@@ -4045,19 +4046,21 @@ bool CompilerSession::installVerifiedPackageInput(VerifiedPackageSessionInput&& 
     return false;
   }
 
-  zc::Maybe<VerifiedCrateGraph> crateGraph;
-  auto graphResult = VerifiedCrateGraph::buildFinal(input.impl->request, input.impl->graph,
-                                                    input.impl->buildScriptPlan);
-  if (!graphResult.is<VerifiedCrateGraph>()) { return false; }
-  crateGraph = zc::mv(graphResult.get<VerifiedCrateGraph>());
+  auto installed = package::buildInstalledPackageInputs(
+      zc::mv(input.impl->request), zc::mv(input.impl->hostTarget), zc::mv(input.impl->target),
+      zc::mv(input.impl->graph), zc::mv(input.impl->buildScriptPlan),
+      zc::mv(input.impl->snapshots));
+  if (installed == zc::none) { return false; }
 
-  impl->packageRequest = zc::mv(input.impl->request);
-  impl->verifiedHostTarget = zc::mv(input.impl->hostTarget);
-  impl->verifiedTarget = zc::mv(input.impl->target);
-  impl->packageGraph = zc::mv(input.impl->graph);
-  impl->buildScriptPlan = zc::mv(input.impl->buildScriptPlan);
-  ZC_IF_SOME(graph, crateGraph) { impl->crateGraph = zc::mv(graph); }
-  impl->packageSnapshots = zc::mv(input.impl->snapshots);
+  ZC_IF_SOME(bundle, installed) {
+    impl->packageRequest = zc::mv(bundle.request);
+    impl->verifiedHostTarget = zc::mv(bundle.hostTarget);
+    impl->verifiedTarget = zc::mv(bundle.target);
+    impl->packageGraph = zc::mv(bundle.graph);
+    impl->buildScriptPlan = zc::mv(bundle.buildScriptPlan);
+    impl->crateGraph = zc::mv(bundle.crateGraph);
+    impl->packageSnapshots = zc::mv(bundle.snapshots);
+  }
   return true;
 }
 
