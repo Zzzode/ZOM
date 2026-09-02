@@ -14,6 +14,10 @@
 
 #include "compiler/lsp/json-parse.h"
 
+#include <cmath>
+#include <cstdint>
+
+#include "yyjson.h"
 #include "zc/core/debug.h"
 #include "zc/core/encoding.h"
 #include "zc/core/string.h"
@@ -22,334 +26,154 @@
 namespace zomlang::compiler::lsp {
 namespace {
 
-// A cursor over the input bytes. All parse routines advance `pos` and fail closed
-// by returning false / none without partial commitment. The recursion depth is an
-// explicit parameter checked before each descent, so malicious deep nesting is
-// rejected before it can overflow the native stack.
-class Parser final {
+// Owns a yyjson_doc so every early return frees the whole DOM exactly once. The
+// yyjson reader allocates the DOM up front; on any conversion failure this
+// disposer runs the single yyjson_doc_free cleanup.
+class YyjsonDoc final {
 public:
-  Parser(zc::ArrayPtr<const uint8_t> bytes, const JsonLimits& limits)
-      : bytes(bytes), limits(limits) {}
-
-  // Parses a whole document: optional whitespace, one value, optional whitespace,
-  // then end of input. Any trailing non-whitespace byte rejects.
-  ZC_NODISCARD zc::Maybe<JsonValue> parseDocument() {
-    skipWhitespace();
-    auto value = parseValue(0);
-    if (value == zc::none) { return zc::none; }
-    skipWhitespace();
-    if (pos != bytes.size()) { return zc::none; }  // trailing bytes
-    return value;
+  explicit YyjsonDoc(yyjson_doc* doc) : doc(doc) {}
+  ~YyjsonDoc() {
+    if (doc != nullptr) { yyjson_doc_free(doc); }
   }
+  YyjsonDoc(YyjsonDoc&&) = delete;
+  YyjsonDoc& operator=(YyjsonDoc&&) = delete;
+  YyjsonDoc(const YyjsonDoc&) = delete;
+  YyjsonDoc& operator=(const YyjsonDoc&) = delete;
+
+  ZC_NODISCARD yyjson_doc* get() const { return doc; }
 
 private:
-  ZC_NODISCARD bool atEnd() const { return pos >= bytes.size(); }
-  ZC_NODISCARD uint8_t peek() const { return bytes[pos]; }
-
-  void skipWhitespace() {
-    while (!atEnd()) {
-      const uint8_t c = bytes[pos];
-      if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
-        ++pos;
-      } else {
-        break;
-      }
-    }
-  }
-
-  // Consumes a bare literal (`true`/`false`/`null`) if it matches exactly at pos.
-  ZC_NODISCARD bool consumeLiteral(zc::StringPtr literal) {
-    if (bytes.size() - pos < literal.size()) { return false; }
-    for (size_t i = 0; i < literal.size(); ++i) {
-      if (bytes[pos + i] != static_cast<uint8_t>(literal[i])) { return false; }
-    }
-    pos += literal.size();
-    return true;
-  }
-
-  ZC_NODISCARD zc::Maybe<JsonValue> parseValue(uint32_t depth) {
-    if (atEnd()) { return zc::none; }
-    const uint8_t c = peek();
-    switch (c) {
-      case '{':
-        return parseObject(depth);
-      case '[':
-        return parseArray(depth);
-      case '"': {
-        ZC_IF_SOME(str, parseString()) { return JsonValue::string(zc::mv(str)); }
-        return zc::none;
-      }
-      case 't':
-        if (consumeLiteral("true"_zc)) { return JsonValue::boolean(true); }
-        return zc::none;
-      case 'f':
-        if (consumeLiteral("false"_zc)) { return JsonValue::boolean(false); }
-        return zc::none;
-      case 'n':
-        if (consumeLiteral("null"_zc)) { return JsonValue::null(); }
-        return zc::none;
-      default:
-        return parseNumber();
-    }
-  }
-
-  ZC_NODISCARD zc::Maybe<JsonValue> parseArray(uint32_t depth) {
-    // Check depth before descending into elements so nesting cannot overflow.
-    if (depth >= limits.maxDepth) { return zc::none; }
-    ++pos;  // consume '['
-    skipWhitespace();
-    zc::Vector<JsonValue> elements;
-    if (!atEnd() && peek() == ']') {
-      ++pos;
-      return JsonValue::array(elements.releaseAsArray());
-    }
-    for (;;) {
-      skipWhitespace();
-      auto element = parseValue(depth + 1);
-      if (element == zc::none) { return zc::none; }
-      if (elements.size() >= limits.maxArrayElements) { return zc::none; }
-      elements.add(zc::mv(ZC_ASSERT_NONNULL(element)));
-      skipWhitespace();
-      if (atEnd()) { return zc::none; }
-      const uint8_t c = peek();
-      if (c == ',') {
-        ++pos;
-        continue;
-      }
-      if (c == ']') {
-        ++pos;
-        return JsonValue::array(elements.releaseAsArray());
-      }
-      return zc::none;  // neither ',' nor ']'
-    }
-  }
-
-  ZC_NODISCARD zc::Maybe<JsonValue> parseObject(uint32_t depth) {
-    if (depth >= limits.maxDepth) { return zc::none; }
-    ++pos;  // consume '{'
-    skipWhitespace();
-    zc::Vector<JsonMember> members;
-    if (!atEnd() && peek() == '}') {
-      ++pos;
-      return JsonValue::object(members.releaseAsArray());
-    }
-    for (;;) {
-      skipWhitespace();
-      if (atEnd() || peek() != '"') { return zc::none; }  // key must be a string
-      auto key = parseString();
-      if (key == zc::none) { return zc::none; }
-      zc::String keyStr = zc::mv(ZC_ASSERT_NONNULL(key));
-      // Reject a duplicate key before building the member.
-      for (const auto& existing : members) {
-        if (existing.key == keyStr) { return zc::none; }
-      }
-      skipWhitespace();
-      if (atEnd() || peek() != ':') { return zc::none; }
-      ++pos;  // consume ':'
-      skipWhitespace();
-      auto value = parseValue(depth + 1);
-      if (value == zc::none) { return zc::none; }
-      if (members.size() >= limits.maxObjectMembers) { return zc::none; }
-      members.add(JsonMember{zc::mv(keyStr), zc::mv(ZC_ASSERT_NONNULL(value))});
-      skipWhitespace();
-      if (atEnd()) { return zc::none; }
-      const uint8_t c = peek();
-      if (c == ',') {
-        ++pos;
-        continue;
-      }
-      if (c == '}') {
-        ++pos;
-        return JsonValue::object(members.releaseAsArray());
-      }
-      return zc::none;
-    }
-  }
-
-  // Parses a JSON string starting at the opening quote. Emits decoded UTF-8 bytes,
-  // resolving `\uXXXX` escapes (including surrogate pairs) and rejecting lone or
-  // malformed surrogates, unknown escapes, unescaped control characters, and
-  // malformed UTF-8 in the raw span.
-  ZC_NODISCARD zc::Maybe<zc::String> parseString() {
-    ++pos;  // consume opening '"'
-    zc::Vector<char> out;
-    for (;;) {
-      if (atEnd()) { return zc::none; }  // unterminated
-      if (out.size() > limits.maxStringBytes) { return zc::none; }
-      const uint8_t c = bytes[pos];
-      if (c == '"') {
-        ++pos;
-        break;
-      }
-      if (c == '\\') {
-        ++pos;
-        if (!parseEscape(out)) { return zc::none; }
-        continue;
-      }
-      if (c < 0x20) { return zc::none; }  // unescaped control character
-      // A raw byte: copy it. UTF-8 validity of the whole decoded string is checked
-      // once at the end.
-      out.add(static_cast<char>(c));
-      ++pos;
-    }
-    // Validate the decoded bytes are well-formed UTF-8 (encodeUtf16 flags any
-    // ill-formed input, including unpaired surrogates round-tripped from escapes).
-    auto view = zc::arrayPtr(out.begin(), out.size());
-    if (zc::encodeUtf16(view).hadErrors) { return zc::none; }
-    return zc::heapString(view);
-  }
-
-  // Handles the character after a backslash, appending decoded UTF-8 to `out`.
-  ZC_NODISCARD bool parseEscape(zc::Vector<char>& out) {
-    if (atEnd()) { return false; }
-    const uint8_t e = bytes[pos];
-    ++pos;
-    switch (e) {
-      case '"':
-        out.add('"');
-        return true;
-      case '\\':
-        out.add('\\');
-        return true;
-      case '/':
-        out.add('/');
-        return true;
-      case 'b':
-        out.add('\b');
-        return true;
-      case 'f':
-        out.add('\f');
-        return true;
-      case 'n':
-        out.add('\n');
-        return true;
-      case 'r':
-        out.add('\r');
-        return true;
-      case 't':
-        out.add('\t');
-        return true;
-      case 'u':
-        return parseUnicodeEscape(out);
-      default:
-        return false;  // unknown escape
-    }
-  }
-
-  // Reads exactly four hex digits into a code unit.
-  ZC_NODISCARD bool readHex4(uint32_t& codeUnit) {
-    if (bytes.size() - pos < 4) { return false; }
-    uint32_t value = 0;
-    for (size_t i = 0; i < 4; ++i) {
-      const uint8_t d = bytes[pos + i];
-      value <<= 4;
-      if (d >= '0' && d <= '9') {
-        value |= static_cast<uint32_t>(d - '0');
-      } else if (d >= 'a' && d <= 'f') {
-        value |= static_cast<uint32_t>(d - 'a' + 10);
-      } else if (d >= 'A' && d <= 'F') {
-        value |= static_cast<uint32_t>(d - 'A' + 10);
-      } else {
-        return false;  // not a hex digit
-      }
-    }
-    pos += 4;
-    codeUnit = value;
-    return true;
-  }
-
-  // Handles `\uXXXX`, joining a high+low surrogate pair into one scalar. A lone or
-  // reversed surrogate is rejected.
-  ZC_NODISCARD bool parseUnicodeEscape(zc::Vector<char>& out) {
-    uint32_t unit = 0;
-    if (!readHex4(unit)) { return false; }
-    uint32_t scalar;
-    if (unit >= 0xD800 && unit <= 0xDBFF) {
-      // High surrogate: must be followed by `\uXXXX` naming a low surrogate.
-      if (bytes.size() - pos < 2 || bytes[pos] != '\\' || bytes[pos + 1] != 'u') { return false; }
-      pos += 2;
-      uint32_t low = 0;
-      if (!readHex4(low)) { return false; }
-      if (low < 0xDC00 || low > 0xDFFF) { return false; }  // not a low surrogate
-      scalar = 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
-    } else if (unit >= 0xDC00 && unit <= 0xDFFF) {
-      return false;  // lone low surrogate
-    } else {
-      scalar = unit;
-    }
-    appendUtf8(out, scalar);
-    return true;
-  }
-
-  // Encodes one Unicode scalar as UTF-8 into `out`. `scalar` is guaranteed to be a
-  // valid scalar value (not a surrogate) by the caller.
-  static void appendUtf8(zc::Vector<char>& out, uint32_t scalar) {
-    if (scalar <= 0x7F) {
-      out.add(static_cast<char>(scalar));
-    } else if (scalar <= 0x7FF) {
-      out.add(static_cast<char>(0xC0 | (scalar >> 6)));
-      out.add(static_cast<char>(0x80 | (scalar & 0x3F)));
-    } else if (scalar <= 0xFFFF) {
-      out.add(static_cast<char>(0xE0 | (scalar >> 12)));
-      out.add(static_cast<char>(0x80 | ((scalar >> 6) & 0x3F)));
-      out.add(static_cast<char>(0x80 | (scalar & 0x3F)));
-    } else {
-      out.add(static_cast<char>(0xF0 | (scalar >> 18)));
-      out.add(static_cast<char>(0x80 | ((scalar >> 12) & 0x3F)));
-      out.add(static_cast<char>(0x80 | ((scalar >> 6) & 0x3F)));
-      out.add(static_cast<char>(0x80 | (scalar & 0x3F)));
-    }
-  }
-
-  // Parses a JSON number per the grammar: optional '-', integer part with no
-  // leading zeros, optional fraction, optional exponent. The matched span is then
-  // parsed to a double and rejected unless finite.
-  ZC_NODISCARD zc::Maybe<JsonValue> parseNumber() {
-    const size_t start = pos;
-    if (!atEnd() && peek() == '-') { ++pos; }
-    // Integer part.
-    if (atEnd()) { return zc::none; }
-    if (peek() == '0') {
-      ++pos;  // a leading zero must stand alone
-    } else if (peek() >= '1' && peek() <= '9') {
-      while (!atEnd() && peek() >= '0' && peek() <= '9') { ++pos; }
-    } else {
-      return zc::none;  // no digits
-    }
-    // Fraction.
-    if (!atEnd() && peek() == '.') {
-      ++pos;
-      if (atEnd() || peek() < '0' || peek() > '9') { return zc::none; }
-      while (!atEnd() && peek() >= '0' && peek() <= '9') { ++pos; }
-    }
-    // Exponent.
-    if (!atEnd() && (peek() == 'e' || peek() == 'E')) {
-      ++pos;
-      if (!atEnd() && (peek() == '+' || peek() == '-')) { ++pos; }
-      if (atEnd() || peek() < '0' || peek() > '9') { return zc::none; }
-      while (!atEnd() && peek() >= '0' && peek() <= '9') { ++pos; }
-    }
-    auto span = zc::arrayPtr(reinterpret_cast<const char*>(bytes.begin() + start), pos - start);
-    auto text = zc::heapString(span);
-    ZC_IF_SOME(value, text.asPtr().tryParseAs<double>()) {
-      // JsonValue::number is the single fail-closed authority: it rejects a value
-      // that overflowed to +/-Infinity (or any non-finite result).
-      return JsonValue::number(value);
-    }
-    return zc::none;
-  }
-
-  zc::ArrayPtr<const uint8_t> bytes;
-  const JsonLimits& limits;
-  size_t pos = 0;
+  yyjson_doc* doc;
 };
+
+// The largest integer magnitude a double represents exactly. An integer whose
+// magnitude exceeds this cannot round-trip through a double, so the parser
+// rejects it rather than silently rounding a JSON-RPC id or other precise value.
+constexpr uint64_t kMaxExactDouble = 1ull << 53;
+
+// Running budget threaded through the conversion so a document that yyjson
+// accepts still fails closed when it exceeds any structural bound.
+struct Budget final {
+  const JsonLimits& limits;
+  size_t nodes = 0;
+  size_t totalStringBytes = 0;
+
+  // Charges one materialized value against the node budget.
+  ZC_NODISCARD bool chargeNode() {
+    if (nodes >= limits.maxNodes) { return false; }
+    ++nodes;
+    return true;
+  }
+
+  // Charges one decoded string's bytes against the per-string and total-string
+  // budgets.
+  ZC_NODISCARD bool chargeString(size_t bytes) {
+    if (bytes > limits.maxStringBytes) { return false; }
+    if (bytes > limits.maxTotalStringBytes - totalStringBytes) { return false; }
+    totalStringBytes += bytes;
+    return true;
+  }
+};
+
+// Whether `bytes` is well-formed UTF-8. yyjson already rejects invalid unicode
+// under the strict flags, but the transport re-validates decoded strings as
+// defense in depth.
+bool isValidUtf8(zc::ArrayPtr<const char> bytes) { return !zc::encodeUtf16(bytes).hadErrors; }
+
+// Converts one yyjson value into a JsonValue, enforcing the depth, node, size,
+// duplicate-key, UTF-8, and number-precision bounds. `depth` is the current
+// nesting depth; the array/object cases check it before descending.
+zc::Maybe<JsonValue> convert(yyjson_val* value, uint32_t depth, Budget& budget) {
+  if (value == nullptr) { return zc::none; }
+  if (!budget.chargeNode()) { return zc::none; }
+
+  if (yyjson_is_null(value)) { return JsonValue::null(); }
+  if (yyjson_is_bool(value)) { return JsonValue::boolean(yyjson_get_bool(value)); }
+
+  if (yyjson_is_uint(value)) {
+    const uint64_t raw = yyjson_get_uint(value);
+    if (raw > kMaxExactDouble) { return zc::none; }  // not lossless as a double
+    return JsonValue::number(static_cast<double>(raw));
+  }
+  if (yyjson_is_sint(value)) {
+    const int64_t raw = yyjson_get_sint(value);
+    const uint64_t magnitude =
+        raw < 0 ? static_cast<uint64_t>(-(raw + 1)) + 1u : static_cast<uint64_t>(raw);
+    if (magnitude > kMaxExactDouble) { return zc::none; }
+    return JsonValue::number(static_cast<double>(raw));
+  }
+  if (yyjson_is_real(value)) {
+    const double raw = yyjson_get_real(value);
+    if (!std::isfinite(raw)) { return zc::none; }  // JSON has no NaN/Infinity
+    return JsonValue::number(raw);
+  }
+  // A big integer read as raw (YYJSON_READ_BIGNUM_AS_RAW) cannot be represented
+  // as a finite double without losing precision, so it is rejected.
+  if (yyjson_is_raw(value)) { return zc::none; }
+
+  if (yyjson_is_str(value)) {
+    auto text = zc::arrayPtr(yyjson_get_str(value), yyjson_get_len(value));
+    if (!budget.chargeString(text.size())) { return zc::none; }
+    if (!isValidUtf8(text)) { return zc::none; }
+    return JsonValue::string(zc::heapString(text));
+  }
+
+  if (yyjson_is_arr(value)) {
+    if (depth >= budget.limits.maxDepth) { return zc::none; }
+    zc::Vector<JsonValue> elements;
+    yyjson_arr_iter iter = yyjson_arr_iter_with(value);
+    yyjson_val* element = nullptr;
+    while ((element = yyjson_arr_iter_next(&iter)) != nullptr) {
+      if (elements.size() >= budget.limits.maxArrayElements) { return zc::none; }
+      auto converted = convert(element, depth + 1, budget);
+      if (converted == zc::none) { return zc::none; }
+      elements.add(zc::mv(ZC_ASSERT_NONNULL(converted)));
+    }
+    return JsonValue::array(elements.releaseAsArray());
+  }
+
+  if (yyjson_is_obj(value)) {
+    if (depth >= budget.limits.maxDepth) { return zc::none; }
+    zc::Vector<JsonMember> members;
+    yyjson_obj_iter iter = yyjson_obj_iter_with(value);
+    yyjson_val* key = nullptr;
+    while ((key = yyjson_obj_iter_next(&iter)) != nullptr) {
+      if (members.size() >= budget.limits.maxObjectMembers) { return zc::none; }
+      auto keyText = zc::arrayPtr(yyjson_get_str(key), yyjson_get_len(key));
+      if (!budget.chargeString(keyText.size())) { return zc::none; }
+      if (!isValidUtf8(keyText)) { return zc::none; }
+      // yyjson permits duplicate keys; the transport rejects them.
+      for (const auto& existing : members) {
+        if (existing.key == keyText) { return zc::none; }
+      }
+      auto converted = convert(yyjson_obj_iter_get_val(key), depth + 1, budget);
+      if (converted == zc::none) { return zc::none; }
+      members.add(JsonMember{zc::heapString(keyText), zc::mv(ZC_ASSERT_NONNULL(converted))});
+    }
+    return JsonValue::object(members.releaseAsArray());
+  }
+
+  return zc::none;  // an unexpected yyjson value kind
+}
 
 }  // namespace
 
 zc::Maybe<JsonValue> parseJson(zc::ArrayPtr<const uint8_t> bytes, const JsonLimits& limits) {
   if (bytes.size() > limits.maxInputBytes) { return zc::none; }
-  Parser parser(bytes, limits);
-  return parser.parseDocument();
+  // yyjson does not modify the input without YYJSON_READ_INSITU, so a const cast
+  // to its char* parameter is safe. Strict flags reject comments, trailing
+  // commas, infinities, NaN, and invalid unicode; without
+  // YYJSON_READ_STOP_WHEN_DONE, trailing non-whitespace after the top-level value
+  // is an error. YYJSON_READ_BIGNUM_AS_RAW makes an integer too large for a finite
+  // double a raw value, which the converter rejects rather than rounding.
+  yyjson_read_err err;
+  yyjson_doc* raw =
+      yyjson_read_opts(const_cast<char*>(reinterpret_cast<const char*>(bytes.begin())),
+                       bytes.size(), YYJSON_READ_BIGNUM_AS_RAW, nullptr, &err);
+  if (raw == nullptr) { return zc::none; }
+  YyjsonDoc doc(raw);
+  Budget budget{limits};
+  return convert(yyjson_doc_get_root(doc.get()), 0, budget);
 }
 
 }  // namespace zomlang::compiler::lsp

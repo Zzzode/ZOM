@@ -27,31 +27,39 @@ namespace zomlang::compiler::lsp {
 ///
 /// RFC 0023 "IDE Semantic Snapshots" LSP transport (T1): the parser is fed
 /// untrusted bytes off the wire, so it fails closed on any input that exceeds a
-/// bound rather than consuming unbounded memory or stack. The nesting depth is
-/// checked before every array/object element descends, so a deeply nested input
-/// (`[[[[...` ) is rejected before the recursion can overflow the C++ stack.
+/// bound rather than consuming unbounded memory. The underlying yyjson reader is
+/// iterative, so it does not overflow the native stack on deep nesting; the depth
+/// bound below is a semantic policy limit enforced while converting yyjson's DOM
+/// into the closed JsonValue model, alongside the node, size, and byte budgets.
 struct JsonLimits final {
   /// Maximum total input length in bytes.
   size_t maxInputBytes = 8u * 1024u * 1024u;
-  /// Maximum array/object nesting depth. A conservative bound well under the
-  /// native stack budget: the parser rejects at depth `maxDepth + 1`.
+  /// Maximum array/object nesting depth. The conversion rejects at depth
+  /// `maxDepth + 1`.
   uint32_t maxDepth = 128;
+  /// Maximum total number of values materialized from one document.
+  size_t maxNodes = 1u << 20;
   /// Maximum number of elements in one array.
   size_t maxArrayElements = 1u << 20;
   /// Maximum number of members in one object.
   size_t maxObjectMembers = 1u << 20;
   /// Maximum decoded length, in bytes, of one JSON string (key or value).
   size_t maxStringBytes = 4u * 1024u * 1024u;
+  /// Maximum summed decoded length, in bytes, of all strings in one document.
+  size_t maxTotalStringBytes = 64u * 1024u * 1024u;
 };
 
 /// \brief Parses one complete JSON document from UTF-8 bytes.
 ///
-/// Hand-written bounded recursive descent. Returns none, committing nothing, on
-/// any of: input longer than the byte bound; malformed structure; a number that
-/// is not finite (JSON has no NaN/Infinity literal) or overflows a double; a
-/// duplicate object key; malformed UTF-8 or an invalid `\u` surrogate; a string,
-/// array, object, or nesting bound exceeded; a bad escape; or any trailing
-/// non-whitespace byte after the top-level value.
+/// Reads with the vendored yyjson library under strict options, then converts
+/// yyjson's DOM into the closed JsonValue model, enforcing the bounds in
+/// `limits`. Returns none, committing nothing, on any of: input longer than the
+/// byte bound; malformed structure; a number that is not finite (JSON has no
+/// NaN/Infinity literal) or an integer whose magnitude exceeds 2^53 and so cannot
+/// convert to a double without losing precision; a duplicate object key;
+/// malformed UTF-8 or an invalid `\u` surrogate; a node, string, array, object,
+/// depth, or total-string bound exceeded; or any trailing non-whitespace byte
+/// after the top-level value.
 ///
 /// \param bytes The UTF-8 document bytes.
 /// \param limits The bounds to enforce.

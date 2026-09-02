@@ -59,6 +59,7 @@ target_link_libraries(
   frontend
   PUBLIC zc
          query
+         yyjson
          zom_vendor_archive
          zom_vendor_sodium
          zom_vendor_tomlplusplus

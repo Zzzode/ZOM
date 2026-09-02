@@ -12,13 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// RFC 0023 "IDE Semantic Snapshots" LSP transport (T1): prove the zc-native JSON
-// layer parses well-formed documents into the closed JsonValue model, enforces
-// conservative bounds against untrusted input (nesting depth checked before every
-// descent, input/string/array/object sizes), rejects everything JSON forbids
-// (duplicate keys, NaN/Infinity/overflow numbers, malformed UTF-8, invalid
-// surrogates, bad escapes, trailing bytes), and serializes back to compact,
-// deterministic, order-preserving bytes that round-trip.
+// RFC 0023 "IDE Semantic Snapshots" LSP transport (T1): prove the JSON layer,
+// which reads with the vendored yyjson library and converts its DOM into the
+// closed JsonValue model, parses well-formed documents, enforces conservative
+// bounds against untrusted input (nesting depth, input/string/array/object/node
+// sizes, total string bytes), rejects everything JSON forbids (duplicate keys,
+// NaN/Infinity/overflow numbers, integers that lose precision as a double,
+// malformed UTF-8, invalid surrogates, bad escapes, trailing bytes), and
+// serializes back to compact, deterministic, order-preserving bytes that
+// round-trip.
 
 #include "compiler/lsp/json-value.h"
 
@@ -168,10 +170,12 @@ ZC_TEST("parseJson rejects bad escapes, control characters, and invalid surrogat
   ZC_EXPECT(parseJson(zc::arrayPtr(rawUtf8, sizeof(rawUtf8))) == zc::none);
 }
 
-ZC_TEST("parseJson enforces the nesting depth bound before overflowing the stack") {
+ZC_TEST("parseJson enforces the semantic nesting depth bound") {
   JsonLimits limits;
   limits.maxDepth = 8;
-  // Depth exactly at the bound parses; one deeper is rejected.
+  // Depth exactly at the bound parses; one deeper is rejected. yyjson's reader is
+  // iterative and does not overflow the stack, so this is a semantic policy bound
+  // enforced during conversion, not a crash guard.
   auto atBound = [&](uint32_t depth) {
     zc::Vector<char> text;
     for (uint32_t i = 0; i < depth; ++i) { text.add('['); }
@@ -245,6 +249,41 @@ ZC_TEST("JsonValue clone deep-copies a nested value") {
   auto value = ZC_ASSERT_NONNULL(parse("{\"a\":[1,{\"b\":true}]}"_zc));
   auto copy = value.clone();
   ZC_EXPECT(serializeText(copy) == serializeText(value));
+}
+
+ZC_TEST("parseJson rejects integers that lose precision as a double") {
+  // 2^53 is the largest integer a double represents exactly; it is accepted.
+  ZC_EXPECT(parse("9007199254740992"_zc) != zc::none);   // 2^53
+  ZC_EXPECT(parse("-9007199254740992"_zc) != zc::none);  // -2^53
+  // 2^53 + 1 cannot round-trip through a double, so it is rejected rather than
+  // silently rounded (matters for JSON-RPC ids and other precise integers).
+  ZC_EXPECT(parse("9007199254740993"_zc) == zc::none);   // 2^53 + 1
+  ZC_EXPECT(parse("-9007199254740993"_zc) == zc::none);  // -(2^53 + 1)
+  // A very large integer and INT64/UINT64-scale values are rejected.
+  ZC_EXPECT(parse("9223372036854775807"_zc) == zc::none);             // 2^63 - 1
+  ZC_EXPECT(parse("123456789012345678901234567890"_zc) == zc::none);  // 30 digits
+  // A small integer and an exact fractional value are accepted.
+  ZC_EXPECT(ZC_ASSERT_NONNULL(parse("42"_zc)).asNumber() == 42.0);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(parse("1.5"_zc)).asNumber() == 1.5);
+}
+
+ZC_TEST("parseJson enforces the node and total-string budgets") {
+  {
+    JsonLimits limits;
+    limits.maxNodes = 3;
+    // [1,2] is three nodes (array + two numbers): accepted.
+    ZC_EXPECT(parseJson(bytes("[1,2]"_zc), limits) != zc::none);
+    // [1,2,3] is four nodes: rejected.
+    ZC_EXPECT(parseJson(bytes("[1,2,3]"_zc), limits) == zc::none);
+  }
+  {
+    JsonLimits limits;
+    limits.maxTotalStringBytes = 4;
+    // Two 2-byte strings sum to exactly the bound: accepted.
+    ZC_EXPECT(parseJson(bytes("[\"ab\",\"cd\"]"_zc), limits) != zc::none);
+    // A third byte over the summed bound: rejected.
+    ZC_EXPECT(parseJson(bytes("[\"ab\",\"cde\"]"_zc), limits) == zc::none);
+  }
 }
 
 }  // namespace
