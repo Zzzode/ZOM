@@ -33,6 +33,7 @@
 #include "compiler/driver/package/package-compilation-request.h"
 #include "compiler/driver/package/package-diagnostic.h"
 #include "compiler/driver/package/source-record.h"
+#include "compiler/driver/package/workspace-loader.h"
 #include "compiler/driver/session/compiler-session.h"
 #include "compiler/format/lexeme-printer.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
@@ -697,45 +698,11 @@ public:
     return true;
   }
 
-  static identity::CanonicalWorkspaceRelativePath workspacePath(zc::PathPtr path) {
-    zc::Vector<identity::CanonicalPathSegment> segments(path.size());
-    for (const auto& component : path) {
-      auto admitted = identity::CanonicalPathSegment::fromSource(component);
-      ZC_IF_SOME(value, admitted) {
-        segments.add(zc::mv(value));
-      } else {
-        ZC_UNREACHABLE;
-      }
-    }
-    return identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(segments));
-  }
-
-  static zc::Maybe<package::PackageDiagnosticDocument> packageDiagnosticDocument(
-      identity::CanonicalWorkspaceRelativePath&& path, zc::ArrayPtr<const zc::byte> source) {
-    auto digest = identity::sha256(source);
-    if (digest == zc::none) { return zc::none; }
-    ZC_IF_SOME(digestValue, digest) {
-      auto key = package::InputDocumentKey::from(
-          package::InputDocumentKind::Manifest,
-          package::DiagnosticDocumentPath::workspace(zc::mv(path)), digestValue);
-      ZC_IF_SOME(keyValue, key) {
-        return package::PackageDiagnosticDocument::from(zc::mv(keyValue), source);
-      }
-    }
-    return zc::none;
-  }
-
   static zc::Path filesystemPath(const identity::CanonicalWorkspaceRelativePath& path) {
     zc::Path result(nullptr);
     for (uint32_t index = 0; index < path.leadingParents(); ++index) {
       result = zc::mv(result).eval(".."_zc);
     }
-    for (const auto& segment : path.segments()) { result = zc::mv(result).append(segment.text()); }
-    return result;
-  }
-
-  static zc::Path filesystemPath(const identity::CanonicalRelativePath& path) {
-    zc::Path result(nullptr);
     for (const auto& segment : path.segments()) { result = zc::mv(result).append(segment.text()); }
     return result;
   }
@@ -764,94 +731,6 @@ public:
       }
       return zc::none;
     } catch (const zc::Exception&) { return zc::none; }
-  }
-
-  zc::OneOf<zc::Path, package::InvocationIssue> discoverManifestPath(
-      const zc::Filesystem& filesystem) const {
-    try {
-      if (manifestPaths.size() == 1) {
-        auto path = filesystem.getCurrentPath().eval(manifestPaths[0]);
-        if (path.basename().size() != 1 || path.basename()[0] != "Zom.toml"_zc) {
-          return package::InvocationIssue::InvalidManifestPath;
-        }
-        auto metadata = filesystem.getRoot().tryLstat(path);
-        if (metadata == zc::none) { return package::InvocationIssue::InvalidManifestPath; }
-        ZC_IF_SOME(value, metadata) {
-          if (value.type != zc::FsNode::Type::FILE) {
-            return package::InvocationIssue::InvalidManifestPath;
-          }
-        }
-        return zc::mv(path);
-      }
-      auto directory = filesystem.getCurrentPath().clone();
-      for (;;) {
-        auto candidate = directory.clone().append("Zom.toml"_zc);
-        auto metadata = filesystem.getRoot().tryLstat(candidate);
-        ZC_IF_SOME(value, metadata) {
-          if (value.type == zc::FsNode::Type::FILE) { return zc::mv(candidate); }
-        }
-        if (directory.size() == 0) { break; }
-        directory = zc::mv(directory).parent();
-      }
-    } catch (const zc::Exception&) { return package::InvocationIssue::InvalidManifestPath; }
-    return package::InvocationIssue::ManifestNotFound;
-  }
-
-  struct LoadedWorkspace final {
-    package::NormalizedWorkspace workspace;
-    zc::Path rootPath;
-    zc::Vector<package::PackageDiagnosticDocument> diagnosticDocuments;
-  };
-
-  zc::Maybe<LoadedWorkspace> loadWorkspace(const zc::Filesystem& filesystem,
-                                           zc::Path&& manifestPath) {
-    try {
-      auto rootPath = manifestPath.parent().clone();
-      auto rootDirectory = filesystem.getRoot().openSubdir(rootPath);
-      auto rootSource = rootDirectory->openFile(zc::Path("Zom.toml"_zc))->readAllText();
-      auto rootInventory = package::PackageSourceInventory::walk(*rootDirectory);
-      if (rootInventory == zc::none) { return zc::none; }
-      ZC_IF_SOME(rootInventoryValue, rootInventory) {
-        zc::Vector<package::PackageDiagnosticDocument> diagnosticDocuments;
-        auto rootDiagnosticDocument =
-            packageDiagnosticDocument(workspacePath(zc::Path("Zom.toml"_zc)), rootSource.asBytes());
-        if (rootDiagnosticDocument == zc::none) { return zc::none; }
-        ZC_IF_SOME(document, rootDiagnosticDocument) { diagnosticDocuments.add(zc::mv(document)); }
-        package::ManifestParser parser;
-        auto parsed = parser.parseWorkspaceManifest(workspacePath(zc::Path("Zom.toml"_zc)),
-                                                    rootSource, rootInventoryValue);
-        if (parsed.is<package::ManifestFailure>()) { return zc::none; }
-        const auto& rootManifest = parsed.get<package::NormalizedManifest>();
-        zc::Vector<package::WorkspaceMemberInput> members;
-        if (rootManifest.hasWorkspace()) {
-          for (const auto& memberPath : rootManifest.workspaceMembers()) {
-            auto relative = filesystemPath(memberPath);
-            auto memberDirectory = rootDirectory->openSubdir(relative);
-            auto memberSource = memberDirectory->openFile(zc::Path("Zom.toml"_zc))->readAllText();
-            auto memberInventory = package::PackageSourceInventory::walk(*memberDirectory);
-            if (memberInventory == zc::none) { return zc::none; }
-            ZC_IF_SOME(memberInventoryValue, memberInventory) {
-              auto memberManifestPath = relative.clone().append("Zom.toml"_zc);
-              auto memberDiagnosticDocument = packageDiagnosticDocument(
-                  workspacePath(memberManifestPath), memberSource.asBytes());
-              if (memberDiagnosticDocument == zc::none) { return zc::none; }
-              ZC_IF_SOME(document, memberDiagnosticDocument) {
-                diagnosticDocuments.add(zc::mv(document));
-              }
-              members.add(package::WorkspaceMemberInput::from(
-                  memberPath.clone(), zc::mv(memberSource), zc::mv(memberInventoryValue)));
-            }
-          }
-        }
-        auto normalized =
-            package::normalizeWorkspace(rootSource, rootInventoryValue, zc::mv(members));
-        if (normalized.is<package::NormalizedWorkspace>()) {
-          return LoadedWorkspace{zc::mv(normalized.get<package::NormalizedWorkspace>()),
-                                 zc::mv(rootPath), zc::mv(diagnosticDocuments)};
-        }
-      }
-    } catch (const zc::Exception&) { return zc::none; }
-    return zc::none;
   }
 
   static identity::PackageBaseKey packageBase(zc::MemoryResource& resource,
@@ -1051,19 +930,45 @@ public:
           normalizedRequest.target().panicStrategy());
     }
     auto filesystem = zc::newDiskFilesystem();
-    auto manifest = discoverManifestPath(*filesystem);
+    auto manifest = package::discoverManifestPath(*filesystem, manifestPaths.asPtr());
     if (manifest.is<package::InvocationIssue>()) {
       package::PackageDiagnosticAdapter::emitInvocationIssue(
           session->getDiagnosticEngine(), manifest.get<package::InvocationIssue>());
       context.error(zc::StringPtr());
       return true;
     }
-    auto loaded = loadWorkspace(*filesystem, zc::mv(manifest.get<zc::Path>()));
-    if (loaded == zc::none) {
-      context.error("Package manifest or workspace normalization failed."_zc);
+    auto loadResult = package::loadWorkspace(*filesystem, zc::mv(manifest.get<zc::Path>()));
+    if (loadResult.is<package::WorkspaceLoadFailure>()) {
+      auto& failure = loadResult.get<package::WorkspaceLoadFailure>();
+      ZC_SWITCH_ONEOF(failure) {
+        ZC_CASE_ONEOF(parseFailure, package::ManifestParseFailed) {
+          ZC_REQUIRE(package::PackageDiagnosticAdapter::emitManifestFailure(
+                         session->getDiagnosticEngine(), parseFailure.diagnosticDocuments.asPtr(),
+                         parseFailure.failure),
+                     "manifest parse failure must resolve its retained provenance");
+          context.error(zc::StringPtr());
+        }
+        ZC_CASE_ONEOF(normalizeFailure, package::WorkspaceNormalizeFailed) {
+          ZC_REQUIRE(package::PackageDiagnosticAdapter::emitManifestFailure(
+                         session->getDiagnosticEngine(),
+                         normalizeFailure.diagnosticDocuments.asPtr(), normalizeFailure.failure),
+                     "workspace normalize failure must resolve its retained provenance");
+          context.error(zc::StringPtr());
+        }
+        ZC_CASE_ONEOF(_, package::ManifestReadFailed) {
+          context.error("Failed to read the workspace manifest."_zc);
+        }
+        ZC_CASE_ONEOF(_, package::InventoryRejected) {
+          context.error("Failed to admit the package source inventory."_zc);
+        }
+        ZC_CASE_ONEOF(_, package::DiagnosticDocumentRejected) {
+          context.error("Failed to construct a manifest diagnostic document."_zc);
+        }
+      }
       return true;
     }
-    ZC_IF_SOME(workspace, loaded) {
+    {
+      auto& workspace = loadResult.get<package::LoadedWorkspace>();
       auto verified = package::verifyPackageCompilationRequest(
           normalized.get<package::NormalizedPackageCompilationRequest>(), workspace.workspace);
       if (verified.is<package::TargetSelectionIssue>()) {

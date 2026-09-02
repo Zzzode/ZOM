@@ -25,6 +25,7 @@ target_sources(
           ${CMAKE_CURRENT_SOURCE_DIR}/trusted-runtime-manifest.cc
           ${CMAKE_CURRENT_SOURCE_DIR}/trusted-runtime-elf.cc
           ${CMAKE_CURRENT_SOURCE_DIR}/sodium-runtime.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/workspace-loader.cc
           ${CMAKE_CURRENT_SOURCE_DIR}/workspace-normalizer.cc
           ${CMAKE_CURRENT_SOURCE_DIR}/zstd-decoder.cc)
 target_link_libraries(
