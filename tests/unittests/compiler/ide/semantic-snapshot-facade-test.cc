@@ -27,6 +27,7 @@
 #include "compiler/ide/document-version.h"
 #include "compiler/ide/semantic-snapshot-key.h"
 #include "compiler/ide/semantic-snapshot.h"
+#include "compiler/ide/snapshot-token.h"
 #include "compiler/identity/source-query-input.h"
 #include "compiler/ir/target-registry.h"
 #include "compiler/parser/query/parse-source-query.h"
@@ -219,6 +220,60 @@ ZC_TEST("resolveSemanticSnapshot publishes a clean source with the document vers
   for (const auto& diagnostic : snapshot.diagnostics()) {
     ZC_EXPECT(diagnostic.severity() < diagnostics::DiagSeverity::kError);
   }
+}
+
+ZC_TEST("resolveSemanticSnapshot projects the clean-parse token stream by category and range") {
+  auto database = facadeTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto sourceKey = sourceQueryKey("facade-tokens.zom"_zc);
+  auto sourceBytes = zc::heapArray("let value = 42;"_zcb);
+  const uint64_t sourceLength = sourceBytes.size();
+  auto sourceValue = sourceSnapshotValue("facade-tokens.zom"_zc, zc::mv(sourceBytes));
+  auto registry = targetRegistry();
+  auto options = compilationOptionsValue(registry, package::SelectedLanguageOptions{});
+  auto write = transaction(database);
+  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue).isApplied());
+  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
+
+  auto key = SemanticSnapshotKey::bind(sourceKey.clone(), DocumentVersion::initial(3));
+  auto snapshot = resolveSemanticSnapshot(database, key);
+  ZC_REQUIRE(snapshot.isPublished());
+
+  const auto tokens = snapshot.tokens();
+  // `let value = 42;` lexes to five significant tokens; the end-of-file sentinel
+  // is dropped by the projection, so it never appears here.
+  ZC_REQUIRE(tokens.size() == 5);
+  ZC_EXPECT(tokens[0].category == SnapshotTokenCategory::Keyword);        // let
+  ZC_EXPECT(tokens[1].category == SnapshotTokenCategory::Identifier);     // value
+  ZC_EXPECT(tokens[2].category == SnapshotTokenCategory::Operator);       // =
+  ZC_EXPECT(tokens[3].category == SnapshotTokenCategory::NumberLiteral);  // 42
+  ZC_EXPECT(tokens[4].category == SnapshotTokenCategory::Punctuation);    // ;
+
+  // Ranges are half-open, non-decreasing, and bounded by the source length; no
+  // token is the zero-width end-of-file sentinel.
+  uint64_t previousStart = 0;
+  for (const auto& token : tokens) {
+    ZC_EXPECT(token.byteStart <= token.byteEnd);
+    ZC_EXPECT(token.byteEnd <= sourceLength);
+    ZC_EXPECT(token.byteStart >= previousStart);
+    ZC_EXPECT(token.byteStart < token.byteEnd);  // every projected token spans real bytes
+    previousStart = token.byteStart;
+  }
+  // The first token covers `let` at the start of the buffer.
+  ZC_EXPECT(tokens[0].byteStart == 0);
+  ZC_EXPECT(tokens[0].byteEnd == 3);
+}
+
+ZC_TEST("resolveSemanticSnapshot exposes no tokens on the unavailable arm") {
+  auto database = facadeTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  // No inputs committed for this key, so the demand is a runtime rejection.
+  auto sourceKey = sourceQueryKey("facade-tokens-missing.zom"_zc);
+  auto key = SemanticSnapshotKey::bind(sourceKey.clone(), DocumentVersion::initial(1));
+  auto snapshot = resolveSemanticSnapshot(database, key);
+  ZC_REQUIRE(snapshot.isUnavailable());
+  ZC_EXPECT(snapshot.tokens().size() == 0);
 }
 
 ZC_TEST("resolveSemanticSnapshot reports unavailable-cancelled for a pre-cancelled token") {

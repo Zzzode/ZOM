@@ -17,6 +17,7 @@
 #include "compiler/diagnostics/fact/diagnostic-fact.h"
 #include "compiler/diagnostics/fact/diagnostic-materializer.h"
 #include "compiler/ide/snapshot-diagnostic.h"
+#include "compiler/ide/snapshot-token.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/key/source-key.h"
 #include "compiler/identity/source-query-input.h"
@@ -154,6 +155,26 @@ zc::Maybe<zc::Array<SnapshotDiagnostic>> projectRejectedFactsWithRanges(
   return zc::none;
 }
 
+// Projects the parsed token stream into the IDE-safe SnapshotToken sequence.
+// Each token's compiler-internal SyntaxKind is collapsed to a closed category and
+// only its half-open byte range crosses the boundary. The end-of-file sentinel
+// (always the last token of a successful parse) is dropped: it is a zero-width
+// marker, not a lexeme a feature renders. The parse capability already validated
+// the ranges (each byteEnd <= source length, non-decreasing starts), so this
+// defensively re-clamps against the source length and skips any token that does
+// not satisfy byteStart <= byteEnd <= sourceByteLength rather than emitting a
+// degenerate span.
+zc::Array<SnapshotToken> projectTokens(zc::ArrayPtr<const parser::CanonicalParsedToken> tokens,
+                                       uint64_t sourceByteLength) {
+  zc::Vector<SnapshotToken> projected(tokens.size());
+  for (const auto& token : tokens) {
+    if (token.kind == ast::SyntaxKind::EndOfFile) { continue; }
+    if (token.byteStart > token.byteEnd || token.byteEnd > sourceByteLength) { continue; }
+    projected.add(SnapshotToken{projectTokenCategory(token.kind), token.byteStart, token.byteEnd});
+  }
+  return projected.releaseAsArray();
+}
+
 // Projects a resolved parse-capability demand into a sanitized snapshot. The
 // demand is moved in so its published lease stays alive for the projection; both
 // the token-less and token-accepting overloads share this body and differ only
@@ -194,6 +215,7 @@ SemanticSnapshot projectParseDemand(
                                                            parsed.provenance());
   return SemanticSnapshot::published(parsed.canonicalSourceKey(), parsed.sourceBytes().size(),
                                      key.documentVersion(),
+                                     projectTokens(parsed.tokens(), parsed.sourceBytes().size()),
                                      projectPublishedFacts(parsed.facts(), resolver));
 }
 

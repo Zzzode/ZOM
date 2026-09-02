@@ -18,6 +18,7 @@
 
 #include "compiler/ide/document-version.h"
 #include "compiler/ide/snapshot-diagnostic.h"
+#include "compiler/ide/snapshot-token.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 
@@ -44,14 +45,15 @@ enum class SnapshotUnavailableReason : uint8_t {
 /// RFC 0023 "IDE Semantic Snapshots": the editor semantic facade returns one of
 /// three closed arms and never a compiler capability handle. `Published` carries
 /// the sanitized projection of a verified parse (source identity as opaque
-/// canonical bytes, the source byte length, and warning-severity diagnostics).
+/// canonical bytes, the source byte length, the projected lexical tokens, and
+/// warning-severity diagnostics).
 /// `SourceRejected` carries the projected error diagnostics of a rejected parse.
 /// `Unavailable` carries a closed reason for a runtime rejection. A parse query
 /// has no key-rejection arm, so none is modelled.
 ///
 /// The value exposes no `CompilerSession`, `QueryDatabase`, capability lease,
-/// source manager, or buffer; only files (as opaque key bytes), ranges, and
-/// closed states cross the boundary.
+/// source manager, or buffer; only files (as opaque key bytes), ranges, tokens,
+/// and closed states cross the boundary.
 class SemanticSnapshot final {
 public:
   enum class Kind : uint8_t {
@@ -70,9 +72,11 @@ public:
   /// \param sourceKeyBytes The opaque canonical source-key bytes, copied.
   /// \param sourceByteLength The parsed source length in bytes.
   /// \param version The document version this projection is labelled with.
+  /// \param tokens The projected lexical tokens in source order, consumed.
   /// \param diagnostics The projected warning-severity diagnostics, consumed.
   ZC_NODISCARD static SemanticSnapshot published(zc::ArrayPtr<const uint8_t> sourceKeyBytes,
                                                  uint64_t sourceByteLength, DocumentVersion version,
+                                                 zc::Array<SnapshotToken>&& tokens,
                                                  zc::Array<SnapshotDiagnostic>&& diagnostics);
 
   /// \brief Builds the projection of a rejected parse.
@@ -96,6 +100,11 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const SnapshotDiagnostic> diagnostics() const ZC_LIFETIMEBOUND {
     return diagnosticValues.asPtr();
   }
+  /// \brief The projected lexical tokens in source order; only the Published arm
+  /// carries tokens, so this is empty on the SourceRejected and Unavailable arms.
+  ZC_NODISCARD zc::ArrayPtr<const SnapshotToken> tokens() const ZC_LIFETIMEBOUND {
+    return tokenValues.asPtr();
+  }
   /// \brief The opaque canonical source-key bytes; valid only on the Published arm.
   ZC_NODISCARD zc::ArrayPtr<const uint8_t> sourceKeyBytes() const ZC_LIFETIMEBOUND {
     return sourceKeyBytesValue.asPtr();
@@ -109,12 +118,14 @@ public:
 
 private:
   SemanticSnapshot(Kind kind, zc::Array<uint8_t>&& sourceKeyBytes, uint64_t sourceByteLength,
-                   DocumentVersion version, zc::Array<SnapshotDiagnostic>&& diagnostics,
+                   DocumentVersion version, zc::Array<SnapshotToken>&& tokens,
+                   zc::Array<SnapshotDiagnostic>&& diagnostics,
                    SnapshotUnavailableReason reason) noexcept
       : kindValue(kind),
         sourceKeyBytesValue(zc::mv(sourceKeyBytes)),
         sourceByteLengthValue(sourceByteLength),
         versionValue(version),
+        tokenValues(zc::mv(tokens)),
         diagnosticValues(zc::mv(diagnostics)),
         unavailableReasonValue(reason) {}
 
@@ -122,6 +133,7 @@ private:
   zc::Array<uint8_t> sourceKeyBytesValue;
   uint64_t sourceByteLengthValue;
   DocumentVersion versionValue;
+  zc::Array<SnapshotToken> tokenValues;
   zc::Array<SnapshotDiagnostic> diagnosticValues;
   SnapshotUnavailableReason unavailableReasonValue;
 };
