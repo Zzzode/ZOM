@@ -18,6 +18,7 @@
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/key/source-key.h"
 #include "compiler/identity/source-query-input.h"
+#include "compiler/parser/query/effective-source-query.h"
 #include "compiler/parser/query/parse-source-query.h"
 #include "zc/core/vector.h"
 
@@ -47,8 +48,7 @@ bool dependenciesAreExactlyTrackedInputs(
     const query::QuerySnapshot& snapshot,
     const identity::source_query::StableSourceQueryKey& sourceKey,
     const identity::CrateKey& crate) {
-  auto sourceFingerprint =
-      snapshot.keyFingerprint<identity::source_query::SourceSnapshotInput>(sourceKey);
+  auto sourceFingerprint = snapshot.keyFingerprint<parser::EffectiveSourceSnapshot>(sourceKey);
   auto optionsFingerprint =
       snapshot.keyFingerprint<identity::source_query::CompilationOptionsInput>(crate);
   if (sourceFingerprint == zc::none || optionsFingerprint == zc::none) { return false; }
@@ -82,23 +82,45 @@ zc::Maybe<SemanticSnapshotFreshness> SemanticSnapshotFreshness::seal(
 
   if (!dependenciesAreExactlyTrackedInputs(snapshot, key.sourceKey(), crate)) { return zc::none; }
 
+  // The cross-check validates ParseSourceQuery's direct dependency
+  // (EffectiveSourceSnapshot), but the change stamp records the four underlying
+  // source-determining inputs directly: the workspace source, the editor overlay,
+  // the source selection, and the compilation options. Every one is an input
+  // whose changedAt advances immediately on a set, so an overlay-bytes or
+  // selection change goes stale -- which a stamp of the derived query alone would
+  // miss, since a semantic query's changedAt moves only on re-evaluation. The
+  // overlay and selection inputs may be absent (the workspace default); their
+  // absence is a valid stamp state that flips present when an overlay is later
+  // committed. Migration-phase note: overlay identity is keyed by the same
+  // StableSourceQueryKey as the workspace source; a process-local EditorDocumentId
+  // and multi-open lifecycle are a later tightening.
   auto sourceStamp =
       stampInput<identity::source_query::SourceSnapshotInput>(snapshot, key.sourceKey());
+  auto overlayStamp =
+      stampInput<identity::source_query::EditorDocumentInput>(snapshot, key.sourceKey());
+  auto selectionStamp =
+      stampInput<identity::source_query::IdeSourceSelectionInput>(snapshot, key.sourceKey());
   auto optionsStamp = stampInput<identity::source_query::CompilationOptionsInput>(snapshot, crate);
-  // A published or source-rejected parse necessarily read both inputs, so both
-  // must be present; an absent input here is an inconsistency, fail closed.
+  // A published or source-rejected parse necessarily read the workspace source
+  // and options through the effective-source query, so both must be present; the
+  // overlay and selection are optional (absent under the workspace default).
   if (!sourceStamp.present || !optionsStamp.present) { return zc::none; }
 
   return SemanticSnapshotFreshness(snapshot.revision(), key.sourceKey().clone(), zc::mv(crate),
-                                   sourceStamp, optionsStamp);
+                                   sourceStamp, overlayStamp, selectionStamp, optionsStamp);
 }
 
 bool SemanticSnapshotFreshness::isFreshAgainst(const query::QuerySnapshot& current) const {
   auto sourceStamp =
       stampInput<identity::source_query::SourceSnapshotInput>(current, sourceKeyValue);
+  auto overlayStamp =
+      stampInput<identity::source_query::EditorDocumentInput>(current, sourceKeyValue);
+  auto selectionStamp =
+      stampInput<identity::source_query::IdeSourceSelectionInput>(current, sourceKeyValue);
   auto optionsStamp =
       stampInput<identity::source_query::CompilationOptionsInput>(current, crateValue);
-  return sourceStamp == sourceStampValue && optionsStamp == optionsStampValue;
+  return sourceStamp == sourceStampValue && overlayStamp == overlayStampValue &&
+         selectionStamp == selectionStampValue && optionsStamp == optionsStampValue;
 }
 
 namespace {

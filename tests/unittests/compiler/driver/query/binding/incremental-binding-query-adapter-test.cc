@@ -5,18 +5,19 @@
 
 #include "compiler/driver/query/binding/incremental-binding-query-adapter.h"
 
-#include "zc/ztest/test.h"
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/basic/thread-pool.h"
 #include "compiler/binder/graph/parsed-module.h"
 #include "compiler/driver/core/query.h"
 #include "compiler/driver/query/binding/incremental-package-graph-query-input.h"
-#include "compiler/driver/query/module-graph/module-graph-query-input.h"
 #include "compiler/driver/query/binding/named-identity-inventory-query.h"
+#include "compiler/driver/query/module-graph/module-graph-query-input.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/ir/target-registry.h"
+#include "compiler/parser/query/effective-source-query.h"
 #include "compiler/parser/query/parse-source-query.h"
 #include "compiler/source/core-distribution.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {
 namespace {
@@ -433,7 +434,11 @@ ZC_TEST("Incremental binding query parses one source from its exact tracked inpu
   trailing.back() = 0;
   ZC_EXPECT(parser::CanonicalParsedSource::decodeCanonical(trailing.asPtr()) == zc::none);
 
-  auto sourceFingerprint = snapshot.keyFingerprint<SourceSnapshotInput>(sourceKey);
+  // ParseSourceQuery now reads the effective source (which layers the editor
+  // overlay over the workspace source) rather than the workspace input directly;
+  // its direct dependency set is exactly {EffectiveSourceSnapshot,
+  // CompilationOptionsInput}, read once each by provide and verify.
+  auto sourceFingerprint = snapshot.keyFingerprint<parser::EffectiveSourceSnapshot>(sourceKey);
   auto optionsFingerprint = snapshot.keyFingerprint<CompilationOptionsInput>(crateKey());
   ZC_REQUIRE(sourceFingerprint != zc::none);
   ZC_REQUIRE(optionsFingerprint != zc::none);
@@ -717,9 +722,9 @@ ZC_TEST("Incremental binding query publishes verified stable named inventories")
             zc::none);
   auto admissionFingerprint = snapshot.keyFingerprint<StableIdentityAdmissionQuery>(moduleKey);
   ZC_REQUIRE(admissionFingerprint != zc::none);
-  auto selectedFingerprint = snapshot.keyFingerprint<module_graph_query::SelectedModuleSource>(
-      ZC_REQUIRE_NONNULL(module_graph_query::SelectedModuleSource::decodeKey(
-          moduleKey.canonicalModuleBytes())));
+  auto selectedFingerprint =
+      snapshot.keyFingerprint<module_graph_query::SelectedModuleSource>(ZC_REQUIRE_NONNULL(
+          module_graph_query::SelectedModuleSource::decodeKey(moduleKey.canonicalModuleBytes())));
   auto parseFingerprint = snapshot.keyFingerprint<parser::ParseSourceQuery>(sourceKey);
   ZC_REQUIRE(selectedFingerprint != zc::none);
   ZC_REQUIRE(parseFingerprint != zc::none);

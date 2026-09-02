@@ -14,6 +14,7 @@
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/key/source-key.h"
 #include "compiler/parser/parser.h"
+#include "compiler/parser/query/effective-source-query.h"
 #include "compiler/source/manager.h"
 #include "zc/core/debug.h"
 
@@ -279,7 +280,7 @@ zc::Maybe<ParseSourceQuery::Key> ParseSourceQuery::decodeKey(zc::ArrayPtr<const 
 
 query::CapabilityProviderResult<ParseSourceQuery> ParseSourceQuery::provide(
     query::CapabilityQueryContext<ParseSourceQuery>& context, const Key& key) {
-  auto sourceResult = context.get<identity::source_query::SourceSnapshotInput>(key);
+  auto sourceResult = context.get<EffectiveSourceSnapshot>(key);
   if (sourceResult.isRuntimeFailure()) {
     return query::CapabilityProviderResult<ParseSourceQuery>::runtimeRejected(
         sourceResult.runtimeFailure());

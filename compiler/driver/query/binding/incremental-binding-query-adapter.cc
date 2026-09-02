@@ -16,6 +16,7 @@
 #include "compiler/driver/query/module-graph/incremental-module-resolution-query.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
+#include "compiler/parser/query/effective-source-query.h"
 #include "compiler/parser/query/parse-source-query.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {
@@ -915,6 +916,7 @@ bool registerIncrementalBindingQueryAdapter(query::QueryDatabase& database) {
   }
   if (!database.registerDescriptor<ActiveSources>().isRegistered()) { return false; }
   if (!identity::source_query::registerSourceQueryInputs(database)) { return false; }
+  if (!parser::registerEffectiveSourceQuery(database)) { return false; }
   if (!parser::registerParseSourceQuery(database)) { return false; }
   if (!database.registerDescriptor<ActiveCrates>().isRegistered()) { return false; }
   if (!registerActiveIdentityMembershipQueries(database)) { return false; }

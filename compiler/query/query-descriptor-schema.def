@@ -85,4 +85,7 @@ ZOM_SEMANTIC(77, zomlang::compiler::driver::core_library_query::CorePreludeSurfa
 ZOM_SEMANTIC(78, zomlang::compiler::driver::core_library_query::CoreRoleAuthority, "CoreRoleAuthority", "zom.query.core-role-authority", Semantic, Retained, "compiler/driver/core/query")
 ZOM_CAPABILITY(79, zomlang::compiler::driver::core_library_query::MaterializeCoreAuthority, "MaterializeCoreAuthority", "zom.query.materialize-core-authority", Retained, FinalSealedSnapshot, None, "compiler/driver/core/query")
 ZOM_CAPABILITY(80, zomlang::compiler::driver::core_library_query::FinalizeCoreModuleInterface, "FinalizeCoreModuleInterface", "zom.query.finalize-core-module-interface", Retained, FinalSealedSnapshot, None, "compiler/driver/core/query")
+ZOM_INPUT(81, zomlang::compiler::identity::source_query::EditorDocumentInput, "EditorDocumentInput", "zom.query.editor-document", Low, "compiler/identity/source-query-input")
+ZOM_INPUT(82, zomlang::compiler::identity::source_query::IdeSourceSelectionInput, "IdeSourceSelectionInput", "zom.query.ide-source-selection", Low, "compiler/identity/source-query-input")
+ZOM_SEMANTIC(83, zomlang::compiler::parser::EffectiveSourceSnapshot, "EffectiveSourceSnapshot", "zom.query.effective-source-snapshot", Semantic, Retained, "compiler/parser/query/effective-source-query")
 // clang-format on

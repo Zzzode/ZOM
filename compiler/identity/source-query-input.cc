@@ -5,13 +5,13 @@
 
 #include "compiler/identity/source-query-input.h"
 
-#include "zc/core/debug.h"
 #include "compiler/driver/package/package-compilation-request.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/key/crate-key.h"
 #include "compiler/identity/key/source-key.h"
 #include "compiler/identity/source-snapshot.h"
+#include "zc/core/debug.h"
 
 namespace zomlang::compiler::identity::source_query {
 namespace {
@@ -304,10 +304,92 @@ zc::Maybe<SourceSnapshotInput::Value> SourceSnapshotInput::decodeValue(
   return CanonicalSourceSnapshot::decodeCanonical(bytes);
 }
 
+zc::Array<uint8_t> EditorDocumentInput::encodeKey(const Key& key) {
+  return zc::heapArray<uint8_t>(key.canonicalSourceBytes());
+}
+zc::Maybe<EditorDocumentInput::Key> EditorDocumentInput::decodeKey(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  return StableSourceQueryKey::decodeBounded(bytes);
+}
+zc::Array<uint8_t> EditorDocumentInput::encodeValue(const Value& value) {
+  return value.encodeCanonical();
+}
+zc::Maybe<EditorDocumentInput::Value> EditorDocumentInput::decodeValue(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  return CanonicalSourceSnapshot::decodeCanonical(bytes);
+}
+
+IdeSourceSelection IdeSourceSelection::openOverlay(const Sha256Digest& contentDigest) {
+  return IdeSourceSelection(Kind::OpenOverlay, contentDigest);
+}
+IdeSourceSelection IdeSourceSelection::workspaceFile(const Sha256Digest& contentDigest) {
+  return IdeSourceSelection(Kind::WorkspaceFile, contentDigest);
+}
+IdeSourceSelection IdeSourceSelection::unavailable() {
+  return IdeSourceSelection(Kind::Unavailable, Sha256Digest());
+}
+IdeSourceSelection IdeSourceSelection::clone() const {
+  return IdeSourceSelection(kindField, contentDigestField);
+}
+bool IdeSourceSelection::operator==(const IdeSourceSelection& other) const noexcept {
+  if (kindField != other.kindField) { return false; }
+  // The Unavailable arm carries no meaningful digest; the two content-bearing
+  // arms compare their pinned digest.
+  if (kindField == Kind::Unavailable) { return true; }
+  return contentDigestField == other.contentDigestField;
+}
+zc::Array<uint8_t> IdeSourceSelection::encodeCanonical() const {
+  CanonicalEncoder encoder;
+  encoder.encodeUint8(static_cast<uint8_t>(kindField));
+  // The digest frame is present for both content arms and empty for Unavailable,
+  // so the encoding is total and canonical.
+  if (kindField == Kind::Unavailable) {
+    encoder.encodeByteString({});
+  } else {
+    encoder.encodeDigest(contentDigestField);
+  }
+  return encoder.finish();
+}
+zc::Maybe<IdeSourceSelection> IdeSourceSelection::decodeCanonical(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  CanonicalDecoder decoder(bytes);
+  auto tag = decoder.decodeUint8();
+  if (tag == zc::none) { return zc::none; }
+  const auto kind = static_cast<Kind>(ZC_ASSERT_NONNULL(tag));
+  if (kind == Kind::Unavailable) {
+    auto empty = decoder.decodeByteString(0);
+    if (empty == zc::none || ZC_ASSERT_NONNULL(empty).size() != 0 || !decoder.finished()) {
+      return zc::none;
+    }
+    return IdeSourceSelection::unavailable();
+  }
+  if (kind != Kind::OpenOverlay && kind != Kind::WorkspaceFile) { return zc::none; }
+  auto digest = decoder.decodeDigest();
+  if (digest == zc::none || !decoder.finished()) { return zc::none; }
+  return IdeSourceSelection(kind, ZC_ASSERT_NONNULL(digest));
+}
+
+zc::Array<uint8_t> IdeSourceSelectionInput::encodeKey(const Key& key) {
+  return zc::heapArray<uint8_t>(key.canonicalSourceBytes());
+}
+zc::Maybe<IdeSourceSelectionInput::Key> IdeSourceSelectionInput::decodeKey(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  return StableSourceQueryKey::decodeBounded(bytes);
+}
+zc::Array<uint8_t> IdeSourceSelectionInput::encodeValue(const Value& value) {
+  return value.encodeCanonical();
+}
+zc::Maybe<IdeSourceSelectionInput::Value> IdeSourceSelectionInput::decodeValue(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  return IdeSourceSelection::decodeCanonical(bytes);
+}
+
 bool registerSourceQueryInputs(query::QueryDatabase& database) {
   auto compilationOptions = database.registerDescriptor<CompilationOptionsInput>();
   if (!compilationOptions.isRegistered()) { return false; }
-  return database.registerDescriptor<SourceSnapshotInput>().isRegistered();
+  if (!database.registerDescriptor<SourceSnapshotInput>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<EditorDocumentInput>().isRegistered()) { return false; }
+  return database.registerDescriptor<IdeSourceSelectionInput>().isRegistered();
 }
 
 }  // namespace zomlang::compiler::identity::source_query

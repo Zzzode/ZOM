@@ -39,12 +39,13 @@ struct SemanticSnapshotInputStamp final {
 /// NOT the RFC 0023 "Analysis lease": it does not collect a transitive input
 /// frontier, it does not run under a sealed atomic validate-and-publish window,
 /// and it must never be named a lease or claim `InputsCurrent`/`InputsChanged`
-/// semantics. It records only the two inputs that `ParseSourceQuery` reads
-/// directly (the source snapshot and the compilation options) at the exact
-/// revision the snapshot was resolved on, after cross-checking that the parse's
-/// recorded dependency set is exactly those two inputs. When the RFC Analysis
-/// Lease and `collectInputFrontier` land, this evolves into that machinery; the
-/// captured stamp shape is the shape the frontier will produce.
+/// semantics. It records the source-determining inputs -- the workspace source
+/// snapshot, the editor overlay, the source selection, and the compilation
+/// options -- at the exact revision the snapshot was resolved on, after
+/// cross-checking that the parse's recorded dependency set is exactly the
+/// effective-source query and the options. When the RFC Analysis Lease and
+/// `collectInputFrontier` land, this evolves into that machinery; the captured
+/// stamp shape is the shape the frontier will produce.
 ///
 /// A stamp is sealed on the resolving snapshot only, because the parse capability
 /// memo is revision-local and is dropped at the next commit, so the dependency
@@ -60,10 +61,13 @@ public:
   ///
   /// Derives the source and options input keys from the snapshot key, then
   /// cross-checks that `ParseSourceQuery`'s recorded dependencies on this
-  /// snapshot are exactly those two inputs. Fails closed (returns none) when the
-  /// source key does not decode, an input's metadata is absent, or the recorded
-  /// dependency set is not exactly the expected pair, so the caller degrades
-  /// rather than trusting an unvalidated stamp.
+  /// snapshot are exactly the effective-source query and the compilation options.
+  /// Stamps the four source-determining inputs (workspace source, editor overlay,
+  /// selection, options); the overlay and selection may legitimately be absent
+  /// under the workspace default. Fails closed (returns none) when the source key
+  /// does not decode, the workspace source or options metadata is absent, or the
+  /// recorded dependency set is not exactly the expected pair, so the caller
+  /// degrades rather than trusting an unvalidated stamp.
   ///
   /// \param snapshot The snapshot the semantic snapshot was resolved on.
   /// \param key The snapshot key identifying the source content.
@@ -73,12 +77,20 @@ public:
 
   /// \brief Whether the tracked inputs are unchanged as of `current`.
   ///
-  /// Re-reads the two tracked inputs' metadata on `current` and reports fresh
-  /// only when both inputs retain their sealed presence and change revision.
-  /// This is a single-hop compare, not the RFC's atomic frontier validation.
+  /// Re-reads every source-determining input's metadata on `current` and reports
+  /// fresh only when all of them retain their sealed presence and change
+  /// revision. The tracked set is the four inputs that determine the effective
+  /// source and the parse: the workspace source snapshot, the editor overlay, the
+  /// source selection, and the compilation options. Tracking all four (rather
+  /// than only the derived effective-source query, whose changedAt moves only on
+  /// re-evaluation) makes an overlay-bytes or selection change go stale. This is a
+  /// conservative single-hop over-approximation: an overlay edit while the
+  /// selection reads the workspace still marks stale even though the effective
+  /// source is unchanged, which is safe (never fresh when the source could have
+  /// changed) but not minimal. It is not the RFC's atomic frontier validation.
   ///
   /// \param current A later (or equal) snapshot to compare against.
-  /// \return true when both tracked inputs are unchanged since sealing.
+  /// \return true when every tracked input is unchanged since sealing.
   ZC_NODISCARD bool isFreshAgainst(const query::QuerySnapshot& current) const;
 
   /// \brief The revision the snapshot was resolved on.
@@ -90,17 +102,23 @@ private:
   SemanticSnapshotFreshness(query::DatabaseRevision resolvedRevision,
                             identity::source_query::StableSourceQueryKey&& sourceKey,
                             identity::CrateKey&& crate, SemanticSnapshotInputStamp source,
+                            SemanticSnapshotInputStamp overlay,
+                            SemanticSnapshotInputStamp selection,
                             SemanticSnapshotInputStamp options) noexcept
       : resolvedRevisionValue(resolvedRevision),
         sourceKeyValue(zc::mv(sourceKey)),
         crateValue(zc::mv(crate)),
         sourceStampValue(source),
+        overlayStampValue(overlay),
+        selectionStampValue(selection),
         optionsStampValue(options) {}
 
   query::DatabaseRevision resolvedRevisionValue;
   identity::source_query::StableSourceQueryKey sourceKeyValue;
   identity::CrateKey crateValue;
   SemanticSnapshotInputStamp sourceStampValue;
+  SemanticSnapshotInputStamp overlayStampValue;
+  SemanticSnapshotInputStamp selectionStampValue;
   SemanticSnapshotInputStamp optionsStampValue;
 };
 

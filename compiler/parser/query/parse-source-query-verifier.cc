@@ -11,6 +11,7 @@
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/key/source-key.h"
 #include "compiler/parser/parser.h"
+#include "compiler/parser/query/effective-source-query.h"
 #include "compiler/parser/query/parse-source-query.h"
 #include "compiler/source/manager.h"
 #include "zc/core/debug.h"
@@ -72,7 +73,7 @@ bool factsAreWarningsOnly(zc::ArrayPtr<const diagnostics::DiagnosticFact> facts)
 zc::Maybe<zc::Array<uint8_t>> ParseSourceQuery::verify(
     query::CapabilityQueryContext<ParseSourceQuery>& context, const Key& key,
     const Capability& candidate) {
-  auto sourceResult = context.get<identity::source_query::SourceSnapshotInput>(key);
+  auto sourceResult = context.get<EffectiveSourceSnapshot>(key);
   auto crate = expectedSourceCrate(key);
   auto sourceFile = expectedSourceFile(key);
   if (crate == zc::none || sourceFile == zc::none) { return zc::none; }
@@ -132,7 +133,7 @@ zc::Maybe<zc::Array<uint8_t>> ParseSourceQuery::verify(
 static query::CapabilityRejectionCheck verifyParseSourceRejection(
     query::CapabilityQueryContext<ParseSourceQuery>& context, const ParseSourceQuery::Key& key,
     const query::CanonicalNonEmptySequence<diagnostics::DiagnosticFact>& diagnostics) {
-  auto sourceResult = context.get<identity::source_query::SourceSnapshotInput>(key);
+  auto sourceResult = context.get<EffectiveSourceSnapshot>(key);
   auto crate = expectedSourceCrate(key);
   auto sourceFile = expectedSourceFile(key);
   auto logicalName = expectedLogicalName(key);

@@ -148,6 +148,11 @@ zc::Maybe<zc::Array<SnapshotDiagnostic>> projectRejectedFactsWithRanges(
   if (sourceFile == zc::none || !decoder.finished()) { return zc::none; }
   auto crate = ZC_ASSERT_NONNULL(sourceFile).crate().clone();
 
+  // Migration-phase note: this reconstructs rejected-parse ranges against the
+  // workspace source bytes. When an editor overlay is active the parse ran over
+  // the overlay bytes (via EffectiveSourceSnapshot), so overlay-aware range
+  // reconstruction is a later tightening; today an overlay rejection keeps its
+  // ranges best-effort against the workspace bytes.
   auto source =
       probeInputValue<identity::source_query::SourceSnapshotInput>(snapshot, key.sourceKey());
   auto options = probeInputValue<identity::source_query::CompilationOptionsInput>(snapshot, crate);

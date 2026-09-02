@@ -270,6 +270,48 @@ ZC_TEST("Freshness stamp goes stale when the tracked source is edited") {
   ZC_EXPECT(!ZC_REQUIRE_NONNULL(tracked.freshness).isFreshAgainst(database.snapshot()));
 }
 
+ZC_TEST("Freshness stamp goes stale when an editor overlay is committed over the source") {
+  auto database = freshnessTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto registry = targetRegistry();
+  auto sourceKey = sourceQueryKey("freshness-overlay.zom"_zc);
+  {
+    auto write = transaction(database);
+    ZC_REQUIRE(write
+                   .set<SourceSnapshotInput>(sourceKey,
+                                             sourceSnapshotValue("freshness-overlay.zom"_zc,
+                                                                 zc::heapArray("let a = 1;"_zcb)))
+                   .isApplied());
+    ZC_REQUIRE(
+        write
+            .set<CompilationOptionsInput>(
+                crateKey(), compilationOptionsValue(registry, package::SelectedLanguageOptions{}))
+            .isApplied());
+    ZC_REQUIRE(write.commit().isCommitted());
+  }
+  auto key = SemanticSnapshotKey::bind(sourceKey.clone(), DocumentVersion::initial(1));
+  auto tracked = resolveSemanticSnapshotTracked(database, key);
+  ZC_REQUIRE(tracked.snapshot.isPublished());
+  ZC_REQUIRE(tracked.freshness != zc::none);
+
+  // Commit an editor overlay plus an OpenOverlay selection. The workspace source
+  // input's changedAt does not move, but the overlay and selection inputs are
+  // newly present, so the four-input stamp goes stale even though a workspace-only
+  // stamp would wrongly report fresh.
+  {
+    auto overlay =
+        sourceSnapshotValue("freshness-overlay.zom"_zc, zc::heapArray("let overlay = 4242;"_zcb));
+    auto write = transaction(database);
+    ZC_REQUIRE(write.set<EditorDocumentInput>(sourceKey, overlay).isApplied());
+    ZC_REQUIRE(write
+                   .set<IdeSourceSelectionInput>(
+                       sourceKey, IdeSourceSelection::openOverlay(overlay.contentDigest()))
+                   .isApplied());
+    ZC_REQUIRE(write.commit().isCommitted());
+  }
+  ZC_EXPECT(!ZC_REQUIRE_NONNULL(tracked.freshness).isFreshAgainst(database.snapshot()));
+}
+
 ZC_TEST("Tracked resolve reports unavailable-cancelled with no freshness for a cancelled token") {
   auto database = freshnessTestDatabase();
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));

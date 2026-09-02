@@ -340,6 +340,95 @@ ZC_TEST("resolveSemanticSnapshot projects an empty outline for a source with no 
   ZC_EXPECT(snapshot.outline().size() == 0);
 }
 
+ZC_TEST("resolveSemanticSnapshot parses the editor overlay bytes when an overlay is selected") {
+  auto database = facadeTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto sourceKey = sourceQueryKey("facade-overlay.zom"_zc);
+  auto registry = targetRegistry();
+  auto options = compilationOptionsValue(registry, package::SelectedLanguageOptions{});
+
+  // Commit the workspace source; no selection yet -> migration-phase workspace
+  // default. The parse reflects the workspace bytes.
+  auto workspace = sourceSnapshotValue("facade-overlay.zom"_zc, zc::heapArray("let a = 1;"_zcb));
+  const uint64_t workspaceLength = workspace.bytes().size();
+  {
+    auto write = transaction(database);
+    ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, workspace).isApplied());
+    ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+    ZC_REQUIRE(write.commit().isCommitted());
+  }
+  auto key = SemanticSnapshotKey::bind(sourceKey.clone(), DocumentVersion::initial(7));
+  auto workspaceSnapshot = resolveSemanticSnapshot(database, key);
+  ZC_REQUIRE(workspaceSnapshot.isPublished());
+  ZC_EXPECT(workspaceSnapshot.sourceByteLength() == workspaceLength);
+
+  // Commit an editor overlay with different, longer bytes plus an OpenOverlay
+  // selection pinning the overlay digest. The parse now reflects the OVERLAY.
+  auto overlay =
+      sourceSnapshotValue("facade-overlay.zom"_zc, zc::heapArray("let overlay = 4242;"_zcb));
+  const uint64_t overlayLength = overlay.bytes().size();
+  auto selection = identity::source_query::IdeSourceSelection::openOverlay(overlay.contentDigest());
+  {
+    auto write = transaction(database);
+    ZC_REQUIRE(write.set<EditorDocumentInput>(sourceKey, overlay).isApplied());
+    ZC_REQUIRE(write.set<IdeSourceSelectionInput>(sourceKey, selection).isApplied());
+    ZC_REQUIRE(write.commit().isCommitted());
+  }
+  auto overlaySnapshot = resolveSemanticSnapshot(database, key);
+  ZC_REQUIRE(overlaySnapshot.isPublished());
+  ZC_EXPECT(overlaySnapshot.sourceByteLength() == overlayLength);
+  ZC_EXPECT(overlaySnapshot.sourceByteLength() != workspaceLength);
+}
+
+ZC_TEST("resolveSemanticSnapshot is unavailable when the selection is Unavailable") {
+  auto database = facadeTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto sourceKey = sourceQueryKey("facade-selection-unavailable.zom"_zc);
+  auto registry = targetRegistry();
+  auto options = compilationOptionsValue(registry, package::SelectedLanguageOptions{});
+  auto workspace =
+      sourceSnapshotValue("facade-selection-unavailable.zom"_zc, zc::heapArray("let a = 1;"_zcb));
+  auto write = transaction(database);
+  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, workspace).isApplied());
+  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+  // An explicit Unavailable selection: the effective source is missing even
+  // though the workspace bytes are committed.
+  ZC_REQUIRE(
+      write.set<IdeSourceSelectionInput>(sourceKey, IdeSourceSelection::unavailable()).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
+
+  auto key = SemanticSnapshotKey::bind(sourceKey.clone(), DocumentVersion::initial(8));
+  auto snapshot = resolveSemanticSnapshot(database, key);
+  ZC_REQUIRE(snapshot.isUnavailable());
+}
+
+ZC_TEST("resolveSemanticSnapshot rejects an overlay whose bytes disagree with the pinned digest") {
+  auto database = facadeTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto sourceKey = sourceQueryKey("facade-overlay-mismatch.zom"_zc);
+  auto registry = targetRegistry();
+  auto options = compilationOptionsValue(registry, package::SelectedLanguageOptions{});
+  auto overlay =
+      sourceSnapshotValue("facade-overlay-mismatch.zom"_zc, zc::heapArray("let a = 1;"_zcb));
+  // A different set of bytes whose digest the selection pins, disagreeing with
+  // the committed overlay bytes.
+  auto other =
+      sourceSnapshotValue("facade-overlay-mismatch.zom"_zc, zc::heapArray("let bbbb = 2;"_zcb));
+  auto write = transaction(database);
+  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, overlay).isApplied());
+  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+  ZC_REQUIRE(write.set<EditorDocumentInput>(sourceKey, overlay).isApplied());
+  ZC_REQUIRE(write
+                 .set<IdeSourceSelectionInput>(
+                     sourceKey, IdeSourceSelection::openOverlay(other.contentDigest()))
+                 .isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
+
+  auto key = SemanticSnapshotKey::bind(sourceKey.clone(), DocumentVersion::initial(9));
+  auto snapshot = resolveSemanticSnapshot(database, key);
+  ZC_REQUIRE(snapshot.isUnavailable());
+}
+
 ZC_TEST("resolveSemanticSnapshot reports unavailable-cancelled for a pre-cancelled token") {
   auto database = facadeTestDatabase();
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
