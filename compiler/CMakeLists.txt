@@ -19,6 +19,7 @@ add_subdirectory(mir)
 add_subdirectory(lir)
 add_subdirectory(ownership)
 add_subdirectory(ide)
+add_subdirectory(lsp)
 
 # RFC 0023: the production parser now emits the recoverable CST event stream,
 # and the CST verifier replays it through the AST schema authority.
@@ -48,6 +49,7 @@ add_library(
   $<TARGET_OBJECTS:lexer>
   $<TARGET_OBJECTS:mir>
   $<TARGET_OBJECTS:lir>
+  $<TARGET_OBJECTS:lsp>
   $<TARGET_OBJECTS:ownership>
   $<TARGET_OBJECTS:parser>
   $<TARGET_OBJECTS:source>
@@ -79,6 +81,7 @@ set_target_include_directories(
   lexer
   mir
   lir
+  lsp
   ownership
   parser
   query
