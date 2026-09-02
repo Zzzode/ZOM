@@ -766,38 +766,6 @@ public:
     } catch (const zc::Exception&) { return zc::none; }
   }
 
-  static zc::Maybe<package::PackageSourceInventory> inventory(const zc::ReadableDirectory& root) {
-    zc::Vector<identity::CanonicalRelativePath> files;
-    zc::Vector<zc::Path> pending;
-    pending.add(zc::Path(nullptr));
-    while (pending.size() != 0) {
-      auto relativeDirectory = zc::mv(pending.back());
-      pending.removeLast();
-      zc::Own<const zc::ReadableDirectory> directory =
-          relativeDirectory.size() == 0 ? root.clone() : root.openSubdir(relativeDirectory);
-      for (auto& entry : directory->listEntries()) {
-        auto path = relativeDirectory.clone().append(zc::mv(entry.name));
-        if (entry.type == zc::FsNode::Type::DIRECTORY) {
-          pending.add(zc::mv(path));
-          continue;
-        }
-        if (entry.type != zc::FsNode::Type::FILE) { continue; }
-        zc::Vector<identity::CanonicalPathSegment> segments(path.size());
-        bool valid = true;
-        for (const auto& component : path) {
-          auto admitted = identity::CanonicalPathSegment::fromSource(component);
-          if (admitted == zc::none) {
-            valid = false;
-            break;
-          }
-          ZC_IF_SOME(value, admitted) { segments.add(zc::mv(value)); }
-        }
-        if (valid) { files.add(identity::CanonicalRelativePath::from(zc::mv(segments))); }
-      }
-    }
-    return package::PackageSourceInventory::from(zc::mv(files));
-  }
-
   zc::OneOf<zc::Path, package::InvocationIssue> discoverManifestPath(
       const zc::Filesystem& filesystem) const {
     try {
@@ -841,7 +809,7 @@ public:
       auto rootPath = manifestPath.parent().clone();
       auto rootDirectory = filesystem.getRoot().openSubdir(rootPath);
       auto rootSource = rootDirectory->openFile(zc::Path("Zom.toml"_zc))->readAllText();
-      auto rootInventory = inventory(*rootDirectory);
+      auto rootInventory = package::PackageSourceInventory::walk(*rootDirectory);
       if (rootInventory == zc::none) { return zc::none; }
       ZC_IF_SOME(rootInventoryValue, rootInventory) {
         zc::Vector<package::PackageDiagnosticDocument> diagnosticDocuments;
@@ -860,7 +828,7 @@ public:
             auto relative = filesystemPath(memberPath);
             auto memberDirectory = rootDirectory->openSubdir(relative);
             auto memberSource = memberDirectory->openFile(zc::Path("Zom.toml"_zc))->readAllText();
-            auto memberInventory = inventory(*memberDirectory);
+            auto memberInventory = package::PackageSourceInventory::walk(*memberDirectory);
             if (memberInventory == zc::none) { return zc::none; }
             ZC_IF_SOME(memberInventoryValue, memberInventory) {
               auto memberManifestPath = relative.clone().append("Zom.toml"_zc);

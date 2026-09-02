@@ -14,10 +14,11 @@
 
 #pragma once
 
+#include "compiler/identity/key/package-key.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
+#include "zc/core/filesystem.h"
 #include "zc/core/vector.h"
-#include "compiler/identity/key/package-key.h"
 
 namespace zomlang::compiler::driver::package {
 
@@ -27,6 +28,26 @@ public:
   /// \brief Sorts regular-file paths by canonical bytes and rejects duplicates.
   ZC_NODISCARD static zc::Maybe<PackageSourceInventory> from(
       zc::Vector<identity::CanonicalRelativePath>&& regularFiles);
+
+  /// \brief Walks a package directory tree and collects its regular files.
+  ///
+  /// Recurses through `root`, mapping each regular file's path components to
+  /// canonical path segments. A file whose path contains a non-canonical
+  /// component is silently skipped, not admitted, so the inventory tolerates
+  /// files outside the canonical namespace rather than rejecting the package.
+  ///
+  /// This lenient skip differs deliberately from `admittedEntries` in
+  /// `source-snapshot.cc`, which fails closed on a non-canonical entry and also
+  /// rejects duplicate, Unicode-collision, and case-fold-collision names. The two
+  /// serve different roles: this walk lists source-relative paths for manifest
+  /// processing, while `admittedEntries` materializes a collision-safe verified
+  /// snapshot. Unifying the two is a separate semantic decision, not part of this
+  /// listing.
+  ///
+  /// \param root The package root directory to walk.
+  /// \return The sorted, duplicate-free inventory, or none when `from` rejects
+  ///         the collected paths.
+  ZC_NODISCARD static zc::Maybe<PackageSourceInventory> walk(const zc::ReadableDirectory& root);
 
   PackageSourceInventory(PackageSourceInventory&&) noexcept = default;
   PackageSourceInventory& operator=(PackageSourceInventory&&) noexcept = default;

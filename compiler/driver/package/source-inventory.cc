@@ -51,6 +51,38 @@ zc::Maybe<PackageSourceInventory> PackageSourceInventory::from(
   return PackageSourceInventory(zc::mv(regularFiles));
 }
 
+zc::Maybe<PackageSourceInventory> PackageSourceInventory::walk(const zc::ReadableDirectory& root) {
+  zc::Vector<identity::CanonicalRelativePath> files;
+  zc::Vector<zc::Path> pending;
+  pending.add(zc::Path(nullptr));
+  while (pending.size() != 0) {
+    auto relativeDirectory = zc::mv(pending.back());
+    pending.removeLast();
+    zc::Own<const zc::ReadableDirectory> directory =
+        relativeDirectory.size() == 0 ? root.clone() : root.openSubdir(relativeDirectory);
+    for (auto& entry : directory->listEntries()) {
+      auto path = relativeDirectory.clone().append(zc::mv(entry.name));
+      if (entry.type == zc::FsNode::Type::DIRECTORY) {
+        pending.add(zc::mv(path));
+        continue;
+      }
+      if (entry.type != zc::FsNode::Type::FILE) { continue; }
+      zc::Vector<identity::CanonicalPathSegment> segments(path.size());
+      bool valid = true;
+      for (const auto& component : path) {
+        auto admitted = identity::CanonicalPathSegment::fromSource(component);
+        if (admitted == zc::none) {
+          valid = false;
+          break;
+        }
+        ZC_IF_SOME(value, admitted) { segments.add(zc::mv(value)); }
+      }
+      if (valid) { files.add(identity::CanonicalRelativePath::from(zc::mv(segments))); }
+    }
+  }
+  return PackageSourceInventory::from(zc::mv(files));
+}
+
 PackageSourceInventory PackageSourceInventory::clone() const {
   zc::Vector<identity::CanonicalRelativePath> result(regularFileValues.size());
   for (const auto& file : regularFileValues) { result.add(file.clone()); }
