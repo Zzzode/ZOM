@@ -19,6 +19,15 @@ DEFAULT_BASE_FILE = Path(
 )
 CONFLICT_MARKER = re.compile(r"^(?:<{7}|={7}|>{7}|\|{7})(?:\s|$)")
 
+# Trees excluded from the hygiene scan: vendored upstream third-party source
+# (whose whitespace we do not own and must not modify, matching check-format.py's
+# exclusions) and agent runtime session memory. These are git pathspecs appended
+# after the `--` separator.
+EXCLUDED_PATHSPECS = (
+    ":(exclude)thirdparty/**",
+    ":(exclude).codex/**",
+)
+
 
 def load_base_gate() -> ModuleType:
     path = ROOT / "scripts/check-english-only.py"
@@ -67,12 +76,15 @@ def changed_paths(root: Path, base: str) -> list[Path]:
         base,
         "HEAD",
         "--",
+        *EXCLUDED_PATHSPECS,
     ).stdout
     return [Path(field.decode("utf-8")) for field in output.splitlines() if field]
 
 
 def check_whitespace(root: Path, base: str) -> None:
-    completed = git(root, "diff", "--check", base, "HEAD", "--", check=False)
+    completed = git(
+        root, "diff", "--check", base, "HEAD", "--", *EXCLUDED_PATHSPECS, check=False
+    )
     if completed.returncode != 0:
         detail = completed.stdout.decode("utf-8", errors="replace").strip()
         raise HygieneError(

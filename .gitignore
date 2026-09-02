@@ -79,6 +79,10 @@ _thirdparty/
 # Runtime scheduler lock (live pid/session state, never committed)
 .codex/scheduled_tasks.lock
 
+# Agent runtime session memory (per-session state, never committed). Tracked
+# .codex content (rules/, skills/, subagents/) is unaffected.
+.codex/projects/
+
 # Local build and profiling artifacts
 /a.out
 /default.profraw
