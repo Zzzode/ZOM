@@ -32,6 +32,7 @@ if(ZOM_ENABLE_LLVM_BACKEND)
   include(${ZOM_CMAKE_DIR}/utils/llvm.cmake)
 endif()
 
+add_subdirectory(thirdparty)
 add_subdirectory(libraries)
 add_subdirectory(core)
 add_subdirectory(compiler)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Provision the locked LLVM toolchain from source.
 
-Reads the repository LLVM source lock (third_party/llvm/llvm-lock.json), shallow-
+Reads the repository LLVM source lock (thirdparty/llvm/llvm-lock.json), shallow-
 clones the locked tag, configures an X86;AArch64 Release with every optional
 dependency disabled, builds, and installs to a prefix (default
 $HOME/toolchains/llvm22). It then verifies that the install reports the locked
@@ -14,7 +14,7 @@ or building. Use --check-only to run just that verification against an existing
 prefix.
 
 The locked source -- not a system package -- is the source of truth. See
-third_party/llvm/README.md and the RFC 0016 LLVM build and CI contract.
+thirdparty/llvm/README.md and the RFC 0016 LLVM build and CI contract.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-LOCK = ROOT / "third_party" / "llvm" / "llvm-lock.json"
+LOCK = ROOT / "thirdparty" / "llvm" / "llvm-lock.json"
 DEFAULT_PREFIX = Path.home() / "toolchains" / "llvm22"
 DEFAULT_WORK_DIR = Path.home() / "toolchains" / "src"
 

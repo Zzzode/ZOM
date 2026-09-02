@@ -27,7 +27,7 @@ def find_clang_format():
 def is_format_owned(file_path):
     """Return whether a C/C++ source is maintained under ZOM formatting rules."""
     parts = PurePath(file_path).parts
-    if "third_party" in parts or "vendor" in parts:
+    if "thirdparty" in parts or "vendor" in parts:
         return False
     if file_path.startswith(("src/rtsvm/", "src/rts/", "test/rtsvm/")):
         return file_path.startswith("src/rtsvm/vm/heap/")
@@ -175,7 +175,7 @@ def get_files_from_path(path):
     elif os.path.isdir(path):
         # Directory - recursively find all C/C++ files
         for root, dirs, filenames in os.walk(path):
-            dirs[:] = [d for d in dirs if d not in {"third_party", "vendor", "rtsvm", "rts"}]
+            dirs[:] = [d for d in dirs if d not in {"thirdparty", "vendor", "rtsvm", "rts"}]
 
             for filename in filenames:
                 if os.path.splitext(filename)[1] in allowed_extensions:

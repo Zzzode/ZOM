@@ -25,7 +25,7 @@ EXCLUDED_DIRECTORY_NAMES = {
     ".git",
     ".venv",
     "node_modules",
-    "third_party",
+    "thirdparty",
     "vendor",
 }
 

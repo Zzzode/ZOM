@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check the LLVM source lock against the CMake discovery gate.
 
-Verifies that third_party/llvm/llvm-lock.json cannot drift from
+Verifies that thirdparty/llvm/llvm-lock.json cannot drift from
 cmake/utils/llvm.cmake: the lock's version must equal ZOM_LLVM_REQUIRED_VERSION,
 its targets must equal ZOM_LLVM_REQUIRED_TARGETS, and its components must equal
 ZOM_LLVM_REQUIRED_COMPONENTS. This composes with (does not duplicate) the
@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-LOCK = ROOT / "third_party" / "llvm" / "llvm-lock.json"
+LOCK = ROOT / "thirdparty" / "llvm" / "llvm-lock.json"
 GATE = ROOT / "cmake" / "utils" / "llvm.cmake"
 
 

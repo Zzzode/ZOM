@@ -13,7 +13,7 @@
 // the License.
 //
 // Contains tables derived from Unicode Character Database 15.1.0.
-// See third_party/unicode/LICENSE.txt and third_party/unicode/README.md.
+// See thirdparty/unicode/LICENSE.txt and thirdparty/unicode/README.md.
 
 #pragma once
 

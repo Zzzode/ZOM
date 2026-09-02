@@ -15,19 +15,21 @@
 
 """Verify the integrity of vendored general-purpose third-party libraries.
 
-Each subdirectory of ``libraries/third_party`` that carries a
-``third-party-manifest.json`` is checked: every file the manifest lists must
-exist on disk and hash to the recorded SHA-256, no listed file may be missing,
-and the enabled sources/headers and license must be among the listed files. The
-manifest records the upstream release tarball's own SHA-256 for provenance; this
-script verifies the extracted files that actually live in the tree, so a silent
-edit to a vendored source is a hard failure.
+Each subdirectory of ``thirdparty`` that carries a ``third-party-manifest.json``
+is checked: every file the manifest lists must exist on disk and hash to the
+recorded SHA-256, no listed file may be missing, and the enabled sources/headers
+and license must be among the listed files. The manifest records the upstream
+release tarball's own SHA-256 for provenance; this script verifies the extracted
+files that actually live in the tree, so a silent edit to a vendored source is a
+hard failure.
 
 This is deliberately separate from ``tests/tools/check-vendored-dependencies.py``,
 which is scoped to the RFC 0012 package-manager vendor directory
 (``compiler/driver/package/vendor``) and its five package-resolver dependencies.
-General-purpose libraries linked by the compiler proper live under
-``libraries/third_party`` and are governed by this script instead.
+General-purpose libraries linked by the compiler proper live under ``thirdparty``
+and are governed by this script instead. Only directories with a manifest are
+verified, so the non-built ``thirdparty/llvm`` and ``thirdparty/unicode`` lock and
+reference assets are ignored.
 """
 
 from __future__ import annotations
@@ -37,7 +39,7 @@ import json
 import sys
 from pathlib import Path
 
-THIRD_PARTY_ROOT = Path(__file__).resolve().parents[1] / "libraries" / "third_party"
+THIRD_PARTY_ROOT = Path(__file__).resolve().parents[1] / "thirdparty"
 MANIFEST_NAME = "third-party-manifest.json"
 
 

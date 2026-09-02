@@ -18,7 +18,7 @@ LLVM patches later. The locked source -- not any system package
 | Version | `22.1.8` |
 | Targets | `X86;AArch64` |
 
-The machine-readable lock is `third_party/llvm/llvm-lock.json`. The version
+The machine-readable lock is `thirdparty/llvm/llvm-lock.json`. The version
 string there is required to equal `ZOM_LLVM_REQUIRED_VERSION` in
 `cmake/utils/llvm.cmake`; `scripts/check-llvm-lock.py` enforces that they cannot
 drift.

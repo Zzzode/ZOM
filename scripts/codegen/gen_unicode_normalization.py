@@ -126,7 +126,7 @@ def render_header(
 // the License.
 //
 // Contains tables derived from Unicode Character Database {version}.
-// See third_party/unicode/LICENSE.txt and third_party/unicode/README.md.
+// See thirdparty/unicode/LICENSE.txt and thirdparty/unicode/README.md.
 
 #pragma once
 
@@ -254,7 +254,7 @@ def render_cc(
 // the License.
 //
 // Contains tables derived from Unicode Character Database {version}.
-// See third_party/unicode/LICENSE.txt and third_party/unicode/README.md.
+// See thirdparty/unicode/LICENSE.txt and thirdparty/unicode/README.md.
 
 #include "compiler/identity/text/unicode-normalization-data.h"
 

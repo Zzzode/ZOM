@@ -965,7 +965,7 @@ NFC output and fixes the aggregate expected SHA-256 as
 The sanitizer test reproduces that digest over every runtime result. Both data
 generators pass byte-for-byte `--check`, all four identity test targets pass,
 and the complete sanitizer unit label passes 59/59. Unicode License v3, source
-URLs, and exact input SHA-256 values are recorded under `third_party/unicode`.
+URLs, and exact input SHA-256 values are recorded under `thirdparty/unicode`.
 
 This closes only the normalization algorithm and its pinned data provenance.
 Canonical scalar constructors, `CanonicalEncoder` non-NFC rejection, URL and

@@ -88,7 +88,7 @@ def render_header(version: str, input_count: int, byte_count: int, digest: bytes
 // the License.
 //
 // Contains test data derived from Unicode Character Database {version}.
-// See third_party/unicode/LICENSE.txt and third_party/unicode/README.md.
+// See thirdparty/unicode/LICENSE.txt and thirdparty/unicode/README.md.
 
 #pragma once
 
@@ -141,7 +141,7 @@ def render_cc(version: str, pairs: list[tuple[bytes, bytes]]) -> str:
 // the License.
 //
 // Contains test data derived from Unicode Character Database {version}.
-// See third_party/unicode/LICENSE.txt and third_party/unicode/README.md.
+// See thirdparty/unicode/LICENSE.txt and thirdparty/unicode/README.md.
 
 #include "unicode-normalization-conformance-data.h"
 

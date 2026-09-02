@@ -306,7 +306,7 @@ Both generators pass byte-for-byte `--check`, all four identity targets pass,
 all 59 sanitizer unit-test targets pass, and the exact-current-byte default
 suite passes 1,187/1,187 in 942.01 seconds with the complete grammar oracle
 passing in 941.27 seconds. Unicode source provenance, exact input digests, and
-Unicode License v3 are recorded under `third_party/unicode`. This proves the
+Unicode License v3 are recorded under `thirdparty/unicode`. This proves the
 normalization primitive only; the strong-scalar admission boundary and
 `CanonicalEncoder` non-NFC rejection are not yet implemented.
 
