@@ -17,6 +17,10 @@ SELF = Path("scripts/check-no-internal-versioning.py")
 
 POLICY_DEFINITION_FILES = {
     Path("AGENTS.md"),
+    # CLAUDE.md is a symbolic link to AGENTS.md, so it carries the identical
+    # policy text (which enumerates the banned V0/V1/V2 markers as examples).
+    # git lists the link as its own path, so it must be excluded explicitly too.
+    Path("CLAUDE.md"),
     Path(".codex/rules/design-principles.md"),
     Path("docs/rfc/README.md"),
 }
@@ -118,6 +122,49 @@ PATH_PREFIX_CATEGORY_ALLOWLIST = (
     (Path("libraries/zc/unittests/tls"), "internal-contract-generation"),
 )
 
+# A reference to the one already-removed internal contract name `zom-v1`, which
+# RFC 0016's migration record documents by byte and digest. The allowlist is
+# deliberately narrow: the exact token must be `zom-v1`, it must be wrapped in
+# backticks (a quoted reference, not a live identifier), and the file must be one
+# of the specific migration documents that describe the removal. A bare `zom-v1`,
+# any other versioned token (`zom-v2`), or a backticked `zom-v1` in any other file
+# is still reported.
+REMOVED_NAME_REFERENCE = re.compile(r"`zom-v1`")
+REMOVED_NAME_REFERENCE_FILES = {
+    Path("docs/rfc/tracking/0016-review-and-implementation.md"),
+    Path("docs/rfc/0016-context-bound-target-registry-verification.md"),
+    Path("docs/plan/2026-q4.md"),
+}
+REMOVED_NAME_REFERENCE_CATEGORIES = {
+    "zom-owned-string-generation",
+    "zom-spec-generation",
+}
+
+# Precise per-file line allowlists for a handful of documentation matches that
+# name an external product release or an external decoder wording, not an internal
+# contract generation. Each entry is (path, category, line-substring): the match
+# is allowed only when its line contains the exact substring, so widening the
+# document elsewhere still reports.
+LINE_PHRASE_ALLOWLIST = (
+    # The IDE product's public feature milestone, not an internal contract.
+    (
+        Path("docs/design/tooling/product-ecosystem.md"),
+        "internal-contract-generation",
+        "v1: diagnostics",
+    ),
+    (
+        Path("docs/design/tooling/product-ecosystem.md"),
+        "internal-contract-generation",
+        "for v1.",
+    ),
+    # A quoted reference to an external decoder's `v3` wording in a migration note.
+    (
+        Path("docs/rfc/tracking/0022-review-and-implementation.md"),
+        "internal-contract-generation",
+        "`v3` decoder wording",
+    ),
+)
+
 
 @dataclass(frozen=True)
 class Finding:
@@ -198,6 +245,32 @@ def externally_allowed_span(line: str, start: int, end: int) -> bool:
     )
 
 
+def removed_name_reference_allowed(
+    path: Path, category: str, line: str, start: int, end: int
+) -> bool:
+    """Whether a match is a backticked reference to the removed `zom-v1` name.
+
+    Allowed only for the exact `zom-v1` token, wrapped in backticks, inside one of
+    the documented migration files, for the string/spec-generation categories. Any
+    other token, an unbackticked occurrence, or another file is still reported.
+    """
+    if path not in REMOVED_NAME_REFERENCE_FILES:
+        return False
+    if category not in REMOVED_NAME_REFERENCE_CATEGORIES:
+        return False
+    return any(
+        reference.start() <= start and end <= reference.end()
+        for reference in REMOVED_NAME_REFERENCE.finditer(line)
+    )
+
+
+def line_phrase_allowed(path: Path, category: str, line: str) -> bool:
+    return any(
+        path == allowed_path and category == allowed_category and phrase in line
+        for allowed_path, allowed_category, phrase in LINE_PHRASE_ALLOWLIST
+    )
+
+
 def scan_text(path: Path, text: str) -> list[Finding]:
     findings: list[Finding] = []
     checks = (
@@ -212,7 +285,22 @@ def scan_text(path: Path, text: str) -> list[Finding]:
         ("encoded-internal-generation", ENCODED_INTERNAL_GENERATION),
         ("internal-contract-generation", INTERNAL_VERSIONED_TOKEN),
     )
+    in_mermaid_fence = False
     for line_number, line in enumerate(text.splitlines(), start=1):
+        stripped = line.lstrip()
+        # Track Mermaid fenced blocks so diagram node ids like V1/V2 are not read
+        # as version generations. Only a ```mermaid fence grants the exemption; a
+        # plain ``` opens a non-exempt fence. The state is per-file and resets each
+        # scan, so an unclosed fence cannot leak into another file (fail-safe).
+        if stripped.startswith("```"):
+            fence_info = stripped[3:].strip().lower()
+            if in_mermaid_fence:
+                in_mermaid_fence = False
+            elif fence_info == "mermaid":
+                in_mermaid_fence = True
+            continue
+        if in_mermaid_fence:
+            continue
         for category, pattern in checks:
             for match in pattern.finditer(line):
                 matched = match.group(0)
@@ -221,6 +309,12 @@ def scan_text(path: Path, text: str) -> list[Finding]:
                 if category == "product-api-generation" and allowed_api_identifier(matched):
                     continue
                 if externally_allowed_span(line, match.start(), match.end()):
+                    continue
+                if removed_name_reference_allowed(
+                    path, category, line, match.start(), match.end()
+                ):
+                    continue
+                if line_phrase_allowed(path, category, line):
                     continue
                 findings.append(
                     Finding(
@@ -356,6 +450,58 @@ def run_self_test() -> int:
     if scan_text(Path("external-standards.txt"), allowed):
         print("self-test rejected an explicitly allowed external version", file=sys.stderr)
         return 1
+
+    # Precision-allowlist boundaries. Each must-reject case guards against a
+    # false negative the narrow allowlists could otherwise open; each must-allow
+    # case reproduces one of the known documentation false positives.
+    migration_file = Path("docs/rfc/tracking/0016-review-and-implementation.md")
+    must_reject = (
+        # A bare (unbackticked) removed name in a migration file still reports.
+        (migration_file, "the zom-v1 profile is current\n"),
+        # A different versioned token in a migration file still reports.
+        (migration_file, "the `zom-v2` profile is current\n"),
+        # A backticked removed name in any other file still reports.
+        (Path("docs/other.md"), "uses `zom-v1` today\n"),
+        # A Mermaid node id outside a mermaid fence still reports.
+        (Path("docs/diagram.md"), 'V1["build view"]\n'),
+        # A product-version phrase in a file with no line allowlist still reports.
+        (Path("docs/other-product.md"), "ship v1: diagnostics now\n"),
+    )
+    for path, content in must_reject:
+        if not scan_text(path, content):
+            print(
+                f"self-test failed to reject a precision boundary: {path}: {content!r}",
+                file=sys.stderr,
+            )
+            return 1
+
+    must_allow = (
+        # The removed-name reference, backticked, in each migration file.
+        (migration_file, "derived over the `zom-v1` bytes, so both\n"),
+        (
+            Path("docs/rfc/0016-context-bound-target-registry-verification.md"),
+            "the `zom-v1`->`zom` codec-fixture regeneration\n",
+        ),
+        (Path("docs/plan/2026-q4.md"), "`zom-v1`->`zom` codec regeneration\n"),
+        # A Mermaid node id inside a mermaid fence.
+        (Path("docs/diagram.md"), "```mermaid\n    U --> V1[\"build view\"]\n```\n"),
+        # The product feature-milestone lines and the external decoder wording.
+        (
+            Path("docs/design/tooling/product-ecosystem.md"),
+            "never the CLI. v1: diagnostics + hover\n",
+        ),
+        (
+            Path("docs/rfc/tracking/0022-review-and-implementation.md"),
+            "and the `v3` decoder wording, recomputed\n",
+        ),
+    )
+    for path, content in must_allow:
+        if scan_text(path, content):
+            print(
+                f"self-test rejected an allowed precision boundary: {path}: {content!r}",
+                file=sys.stderr,
+            )
+            return 1
 
     print("internal versioning self-test passed")
     return 0
