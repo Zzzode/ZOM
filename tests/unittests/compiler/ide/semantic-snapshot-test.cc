@@ -24,6 +24,8 @@
 #include "compiler/diagnostics/core/diagnostic-ids.h"
 #include "compiler/ide/document-version.h"
 #include "compiler/ide/snapshot-diagnostic.h"
+#include "compiler/ide/snapshot-outline.h"
+#include "compiler/ide/snapshot-token.h"
 #include "zc/core/array.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
@@ -49,8 +51,9 @@ zc::Array<SnapshotDiagnostic> oneRangelessError() {
 
 ZC_TEST("SemanticSnapshot published arm exposes source identity and warnings") {
   const uint8_t keyBytes[] = {0x01, 0x02, 0x03};
-  auto snapshot = SemanticSnapshot::published(zc::arrayPtr(keyBytes), 42,
-                                              DocumentVersion::initial(7), oneWarning());
+  auto snapshot = SemanticSnapshot::published(
+      zc::arrayPtr(keyBytes), 42, DocumentVersion::initial(7), zc::Array<SnapshotToken>(),
+      zc::Array<SnapshotOutlineEntry>(), oneWarning());
   ZC_EXPECT(snapshot.kind() == SemanticSnapshot::Kind::Published);
   ZC_EXPECT(snapshot.isPublished());
   ZC_EXPECT(!snapshot.isSourceRejected());
@@ -58,6 +61,8 @@ ZC_TEST("SemanticSnapshot published arm exposes source identity and warnings") {
   ZC_EXPECT(snapshot.sourceByteLength() == 42);
   ZC_EXPECT(snapshot.documentVersion() == DocumentVersion::initial(7));
   ZC_EXPECT(snapshot.sourceKeyBytes() == zc::arrayPtr(keyBytes));
+  ZC_EXPECT(snapshot.tokens().size() == 0);
+  ZC_EXPECT(snapshot.outline().size() == 0);
   ZC_EXPECT(snapshot.diagnostics().size() == 1);
   ZC_EXPECT(snapshot.diagnostics()[0].severity() == diagnostics::DiagSeverity::kWarning);
 }
@@ -67,8 +72,9 @@ ZC_TEST("SemanticSnapshot published arm owns a copy of the source key bytes") {
   keyBytes[0] = 0x0a;
   keyBytes[1] = 0x0b;
   keyBytes[2] = 0x0c;
-  auto snapshot = SemanticSnapshot::published(keyBytes.asPtr(), 3, DocumentVersion::initial(1),
-                                              zc::Array<SnapshotDiagnostic>());
+  auto snapshot = SemanticSnapshot::published(
+      keyBytes.asPtr(), 3, DocumentVersion::initial(1), zc::Array<SnapshotToken>(),
+      zc::Array<SnapshotOutlineEntry>(), zc::Array<SnapshotDiagnostic>());
   keyBytes[0] = 0xff;  // mutate the source after projection
   ZC_EXPECT(snapshot.sourceKeyBytes()[0] == 0x0a);
 }
