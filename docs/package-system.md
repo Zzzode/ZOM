@@ -189,7 +189,7 @@ only when re-encoding reproduces the original bytes.
 
 | CLI mode | Behavior |
 |---|---|
-| no lock flag | Use a valid existing `Zom.lock`; otherwise resolve in memory without writing a lock file. |
+| no lock flag | Replay a valid existing `Zom.lock`; if none exists, resolve in memory. Never writes a lock file. |
 | `--locked` | Require an existing valid lock graph and replay it without invoking the solver. |
 | `--update-lock` | Resolve the graph and atomically replace `Zom.lock`. |
 
@@ -197,6 +197,13 @@ only when re-encoding reproduces the original bytes.
 a temporary file, file synchronization, rename, and directory synchronization.
 A failure exposes either the complete prior graph or the complete replacement,
 never a partial lock graph.
+
+Neither the default mode nor `--locked` updates a lock graph that no longer
+matches the workspace. When an existing `Zom.lock` disagrees with current
+manifests, the build is rejected and `--update-lock` is required to refresh it;
+the compiler never substitutes a different dependency graph during an ordinary
+build, because a lock graph binds the digests that package and crate identity
+are derived from.
 
 The current CLI lock replay verifies the graph against the materialized local
 workspace records. A lock graph requiring a source that the CLI has not

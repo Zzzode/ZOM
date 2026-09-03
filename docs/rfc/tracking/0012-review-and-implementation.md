@@ -514,8 +514,21 @@ primitive, file sync, atomic commit, and directory sync; injected failures at
 all five stages prove pre-commit preservation and post-commit reporting.
 Locked replay compares the verified current graph, checks registry trust, visits
 each package and edge once, and records zero resolver invocations. Corruption,
-round-trip, release-build, and fault-injection tests pass. The P5 lockfile
-boundary is complete.
+round-trip, release-build, and fault-injection tests pass.
+
+The P5 lockfile boundary is not complete. Reviewed on 2026-09-03: the registry
+trust check described above lives only in `LockedReplayVerifier`, which has no
+production caller. Its only references are its own definition and four unit
+tests, `TrustDomainMismatch` has no other producer, and no consumer of
+`trustedRegistries` exists anywhere in `compiler/` or `utils/`. The production
+`--locked` path runs `PackageResolver::resolveLocked`, whose signature does not
+accept a trusted registry set, so it verifies digest agreement without verifying
+that the locked graph names a trusted registry. The earlier "boundary is
+complete" claim reflected the verifier's existence, not its participation in a
+build. Closing this requires wiring the trusted registry set into the production
+locked path per implementation-plan step 13; three further lock contracts
+(publication authority, semantic staleness, targeted update) were added to the
+RFC in the same review and are likewise unimplemented.
 
 P6 now has a closed, canonically encoded package compilation request with
 sorted non-empty target selections, normalized feature sets, lock mode,

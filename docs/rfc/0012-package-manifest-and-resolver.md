@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, module-system, error-system, ir-backend, runtime-memory, spec-audit, verification]
 approvers: [rfc, module-system, error-system, ir-backend, runtime-memory, spec-audit, verification]
 created: 2026-07-10
-updated: 2026-07-25
+updated: 2026-09-03
 area: compiler
 requires: [11]
 supersedes: []
@@ -127,6 +127,68 @@ names, non-reproducible feature/version selection, and unsafe archive
 extraction. This RFC avoids them through canonical source keys, a completely
 sorted resolver result and lock graph, and isolated digest-verified source
 materialization.
+
+### Lock Mode And Publication Prior Art
+
+Four lock-file behaviors in this RFC follow an established consensus rather than
+a ZOM-specific invention.
+
+A mode that forbids mutation and fails instead is universal: Cargo `--locked`,
+Go `-mod=readonly`, pnpm `--frozen-lockfile`, uv `--locked`, Bundler
+`deployment`, and Swift Package Manager
+`--only-use-versions-from-resolved-file` all express the same contract. ZOM
+adopts it as the behavior of `LockedOnly` and `PreferLocked`.
+
+Rejecting a stale lock instead of silently repairing it is the minority position
+and is chosen deliberately. Cargo, pnpm, uv, and Poetry re-resolve and rewrite
+the lock file during an ordinary build; Go and Bundler refuse and name the
+repairing command. ZOM follows Go and Bundler because a ZOM lock graph binds the
+digests that feed RFC 0011 identity, so a silent substitution would change
+semantic identity as a side effect of a build. Go's paired requirement is
+adopted with it: the rejection names the repair (`go mod tidy` in Go's case), so
+the fail-closed default never leaves a workspace without a stated next step.
+
+Making the resolution boundary structurally unable to write the lock file
+follows Go, where `-mod=readonly` is the default rather than a flag, and where
+`gopls` does not write `go.sum`; the `build.allowModfileModifications` escape
+hatch exists but is documented for eventual removal. The opposite arrangement is
+a known hazard: `cargo metadata` creates `Cargo.lock` as a side effect, so
+rust-analyzer writes the lock file during ordinary analysis, and Cargo supplies a
+separate target directory setting to keep editor analysis from contending with
+builds. ZOM removes the capability from the resolution boundary instead of
+documenting a rule against using it.
+
+Deciding staleness by whether a recorded selection still satisfies its
+requirement, rather than by byte equality, follows uv: a requirement edited so
+that it still admits the locked version leaves the lock file current. Using a
+recorded manifest digest to decide staleness cheaply is independently established
+by Go's `/go.mod` hash lines, Swift Package Manager's `originHash`, and Poetry's
+`content-hash`.
+
+Conservative targeted update is unanimous across the surveyed managers:
+`cargo update <spec>`, `uv lock --upgrade-package`, `pnpm up <pattern>`,
+`poetry update <pkg>`, `bundle lock --update <gem> --conservative`, and
+`swift package update <pkg>` all re-resolve named packages while retaining every
+other recorded selection. No surveyed manager omits it.
+
+This RFC deliberately declines one widely adopted practice. Cargo
+(`version = 3`), npm (`lockfileVersion`), pnpm (`lockfileVersion`), Swift
+Package Manager, uv, and Poetry all record a lock-file schema version and refuse
+a file written by a newer tool. A schema version exists so a released tool can
+recognize a file it did not write; ZOM has no released tool and no stability
+manifest, so the field would carry a constant value and invent a compatibility
+generation for a contract that is replaced outright. The lock format is instead
+changed in place together with its golden fixture. Introducing a schema version
+belongs with the first stability commitment, not before it.
+
+References:
+
+- <https://doc.rust-lang.org/cargo/commands/cargo-update.html>
+- <https://doc.rust-lang.org/cargo/faq.html>
+- <https://go.dev/ref/mod#go-mod-file-updates>
+- <https://docs.astral.sh/uv/concepts/resolution/>
+- <https://pnpm.io/cli/update>
+
 
 ## Guide-Level Explanation
 
@@ -490,7 +552,7 @@ zomc compile
   [--features <name[,name...]>]
   [--no-default-features]
   [--target <registered-target-profile>]
-  [--locked | --update-lock]
+  [--locked | --update-lock [<package-name>...]]
   [--no-unicode]
   [--allow-dollar-identifiers]
   [--no-regex-literals]
@@ -519,7 +581,11 @@ when it turns that selection into `VerifiedTargetSelection`. Custom target JSON
 and free-form LLVM data-layout strings are not part of this RFC.
 
 No lock flag means `PreferLocked`; `--locked` means `LockedOnly`; and
-`--update-lock` means `Update`. The two flags are mutually exclusive. The three
+`--update-lock` means `Update`. Bare `--update-lock` re-resolves the whole
+graph; `--update-lock <package-name>...` performs the targeted update defined
+below, and naming a package that the workspace does not require is an
+`InvocationFailure`. The two flags are mutually exclusive. The three
+mode semantics are defined in `Lock Mode Semantics` below. The three
 language flags map directly to `SelectedLanguageOptions`. Output and emission
 flags remain non-semantic compiler options and do not enter this request. The
 `run` command is outside this RFC and does not provide an alternate package or
@@ -1132,9 +1198,11 @@ VCS repository/revision/subdirectory, or local
 `leadingParentCount`/segments record, so no host path spelling or lossy textual
 path form is needed. No other field or table is accepted.
 
-The file writes `schema` first. Package entries sort by decoded `key` bytes;
-dependency entries sort by domain tag, NFC-normalized alias bytes, and decoded
-target-key bytes. Fields within each table appear in the exact order above.
+The file carries no schema, format, or generator field: this repository has no
+released contract, so a lock graph written by any build of the compiler is
+replaced outright rather than recognized across generations. Package entries
+sort by decoded `key` bytes; dependency entries sort by domain tag,
+NFC-normalized alias bytes, and decoded target-key bytes. Fields within each table appear in the exact order above.
 Arrays use one-line TOML syntax with comma-space separators. Strings use basic
 TOML quoting with the shortest required escapes. UTF-8 text is NFC-normalized,
 hex is lowercase, integers use decimal form, blank lines occur exactly where
@@ -1146,6 +1214,21 @@ The reader decodes every `source-key` and `key`, reconstructs the RFC 0011
 name, version, feature, and source-kind fields. An edge target must name exactly
 one package entry.
 
+Every locked replay additionally verifies registry trust before its result may
+be consumed. For each locked package whose source kind is `Registry`, the
+package's registry identity must encode byte-for-byte equal to a member of the
+caller-supplied trusted registry set; a package naming a registry outside that
+set is `TrustDomainMismatch`. This check is not optional and not a property of
+digest agreement: a lock graph may record internally consistent manifest,
+source-tree, and archive digests and still name a registry the workspace does
+not trust, so a replay path that compares only digests admits an untrusted
+supply-chain origin. The trusted registry set is therefore a required input of
+the locked replay boundary, and a replay implementation that cannot receive it
+does not satisfy this contract. `signing-key` is recorded for registry packages
+so this check has a verifiable trust anchor; recording it without enforcing the
+registry trust domain would assert an integrity guarantee the compiler does not
+make.
+
 The complete file is replaced atomically in the workspace root: create a fresh
 same-directory temporary file, write all bytes, fsync the file, rename over
 `Zom.lock`, then fsync the directory. A failure before rename leaves the old
@@ -1153,6 +1236,81 @@ file intact and removes the temporary file when possible; a failure after
 rename reports failure without rewriting either graph. Unknown fields,
 duplicate keys or edges, invalid digests, foreign trust identities, partial
 files, and graphs that do not satisfy current manifests are rejected.
+
+### Lock Mode Semantics
+
+`PackageLockMode` selects one of three behaviors when a workspace already has a
+lock graph. The mode governs exactly two decisions: whether the resolver may
+depart from the recorded graph, and whether the lock file on disk may be
+rewritten. It governs nothing else, and in particular it is not a network
+policy: no mode in this RFC grants or withholds remote source acquisition.
+
+| Mode | Departs from the recorded graph | Rewrites `Zom.lock` |
+|---|---|---|
+| `LockedOnly` | Never | Never |
+| `PreferLocked` | Never | Never |
+| `Update` | Always re-resolves | Yes, on success |
+
+`PreferLocked` is fail-closed. When a lock graph is present, it is replayed and
+never silently repaired: a workspace whose manifests no longer agree with the
+recorded graph is rejected rather than re-resolved. Rejecting is the correct
+default because a lock graph binds manifest, source-tree, and archive digests
+that feed RFC 0011 identity, so silently substituting a different graph would
+change semantic identity as a side effect of an ordinary build. `LockedOnly`
+differs from `PreferLocked` in exactly one respect: `LockedOnly` also rejects a
+workspace with no lock graph at all, whereas `PreferLocked` resolves normally in
+that case and still does not write a lock file.
+
+Because rejection is the default outcome of an ordinary edit, every rejection
+must be actionable. A lock-staleness rejection names the package whose recorded
+selection no longer agrees with current inputs, names the disagreeing input
+class, and names the exact command that repairs the workspace. A bare failure
+code is not a conforming diagnostic for this rejection.
+
+Staleness is a semantic comparison, not a byte comparison of the encoded graph.
+A lock graph remains current when every recorded package selection still
+satisfies its current dependency requirement and every recorded digest still
+matches its current input. Widening or otherwise editing a requirement in a way
+that still admits the recorded selection does not make the graph stale, and does
+not require the user to update the lock file. A recorded selection that no
+longer satisfies its requirement, a digest that no longer matches, and a
+requirement with no recorded selection are each stale.
+
+The recorded `manifest-sha256` is what makes this check cheap: a workspace whose
+manifest digests all still match cannot have changed its requirements, so
+staleness is decided without invoking the resolver.
+
+#### Lock Publication Authority
+
+Writing `Zom.lock` is a distinct authority from resolving a package input. The
+resolution boundary is read-only: it reads manifests, sources, and any existing
+lock graph, and returns a resolved result together with the lock graph that
+would represent it. It never writes to the workspace. Publishing that graph to
+`Zom.lock` belongs to the command that the user invoked with `Update`.
+
+This separation is a structural requirement, not a convention for callers to
+observe. The compiler has consumers other than the build commands -- an IDE
+workspace resolves the same package inputs continuously, against unsaved editor
+state, without the user requesting a build. A resolution boundary that is able
+to write `Zom.lock` makes an ordinary keystroke capable of rewriting a file the
+user commits to version control, recording digests derived from a transient
+buffer. Making the boundary read-only removes that capability instead of
+documenting a rule against exercising it, so no consumer can publish a lock
+graph by passing the wrong mode.
+
+#### Targeted Update
+
+`Update` re-resolves the entire graph. A workspace also needs to advance one
+dependency without perturbing unrelated selections: a full re-resolution rewrites
+every recorded digest, so upgrading a single package produces a lock diff that
+cannot be reviewed for the change it was meant to make.
+
+A targeted update names one or more packages and is conservative: named packages
+are re-resolved, every other recorded selection is retained, and the operation
+is rejected rather than silently widened if a named package cannot advance while
+holding the rest of the graph fixed. Retaining unnamed selections is the
+contract, not an optimization -- a targeted update that perturbs an unnamed
+selection is a failed targeted update.
 
 ### Secure Source Materialization
 
@@ -1838,6 +1996,7 @@ ResolverFailure =
 LockFailure =
   LockGraphInvalid { provenance, issue: LockIssue }
   LockUpdateFailed { provenance, stage: LockWriteStage }
+  LockStale { provenance, package, kind: LockStalenessKind }
 
 MaterializationFailure =
   SourceMaterializationInvalid { provenance, package,
@@ -1868,7 +2027,8 @@ InvocationIssue =
   ManifestNotFound | InvalidManifestPath | MissingPackageSelection |
   DuplicatePackageSelection | MissingTargetSelection |
   DuplicateTargetSelection | PositionalSourceArgument | InvalidFeatureList |
-  ConflictingLockMode | UnknownTargetProfile | InvalidPanicStrategy
+  ConflictingLockMode | UnknownTargetProfile | InvalidPanicStrategy |
+  UnknownUpdateLockPackage
 
 FeatureIssue =
   UnknownFeature | UnknownDependency | DependencyNotOptional | DuplicateEdge |
@@ -1878,10 +2038,14 @@ TargetSelectionIssue =
   UnknownWorkspacePackage | UnknownTarget | UnknownRootFeature
 
 LockIssue =
-  ReadFailed | InvalidUtf8 | TomlSyntax | UnsupportedSchema | UnknownField | MissingField |
+  ReadFailed | InvalidUtf8 | TomlSyntax | UnknownField | MissingField |
   WrongValueType | NonCanonicalEncoding | DuplicatePackageKey | DuplicateEdge |
   PackageKeyMismatch | SourceKeyMismatch | DanglingEdge | InvalidDigest |
   SourceFieldMismatch | TrustDomainMismatch | CurrentInputMismatch
+
+LockStalenessKind =
+  RequirementNoLongerSatisfied | ManifestDigestChanged | SourceTreeDigestChanged |
+  ArchiveDigestChanged | RequirementUnrecorded | RecordedPackageUnrequired
 
 MaterializationIssue =
   UnsupportedArchiveFormat | ArchiveDecodeFailed | TrailingArchiveData |
@@ -2010,6 +2174,7 @@ diagnostics before a producer can return its failure type:
 | `ZOM7015 PackageTargetSelectionInvalid` | Error | `Package target selection is invalid ({0})`, `TargetSelectionIssue` | target declaration or source-less root |
 | `ZOM7016 PackageInvocationInvalid` | Error | `Package invocation is invalid ({0})`, `InvocationIssue` | invocation |
 | `ZOM7017 PackageVcsSelectorEquivocation` | Error | `VCS selector resolved to conflicting revisions`, no arguments | introducing VCS requirement |
+| `ZOM7018 PackageLockStale` | Error | `Package lock graph no longer matches {0} ({1}); run zomc build --update-lock {0}`, `PackageName`, `LockStalenessKind` | stale requirement or lock entry |
 | `ZOM9905 BuildScriptLimitInvariantViolation` | Fatal | `Internal build-script limit configuration is invalid ({0})`, `BuildScriptLimitInvariantIssue` | invocation |
 | `ZOM9906 TrustedBuildRuntimeInvariantViolation` | Fatal | `Internal trusted build runtime is invalid ({0})`, `TrustedRuntimeInvariantIssue` | invocation |
 | `ZOM7091 PackageRequirementIntroducedHere` | Note | `Dependency requirement introduced here`, no arguments | additional root requirement |
@@ -2082,6 +2247,24 @@ selecting or materializing dependencies. Build scripts execute only after their
 dependency graph and source snapshots verify and must receive an explicit
 capability set.
 
+Registry trust verification on locked replay is part of this boundary, not an
+optional refinement. Digest agreement proves that a lock graph is internally
+consistent; it does not prove that the graph names a registry the workspace
+trusts. A replay path that admits a locked package without checking its registry
+identity against the trusted set accepts an untrusted supply-chain origin while
+appearing to verify integrity, and the recorded `signing-key` field makes that
+appearance stronger. A replay implementation that cannot receive the trusted
+registry set therefore does not satisfy this RFC, and a locked build that skips
+the check is a trust-boundary defect rather than a missing feature.
+
+Lock publication is also a safety boundary. Writing `Zom.lock` records the
+digests that RFC 0011 identity is derived from into a file the user commits, so
+the authority to write it belongs only to a command the user invoked for that
+purpose. Continuous consumers such as an IDE workspace resolve the same inputs
+against unsaved editor state; if the resolution boundary can publish, ordinary
+editing can commit digests derived from a transient buffer. The boundary is
+therefore read-only by construction.
+
 ## Drawbacks And Risks
 
 The surface is larger than the current direct-source driver and requires a TOML
@@ -2148,6 +2331,12 @@ implementation introduces one closed manifest and lock format, removes direct
 driver assumptions that conflict with it, and fixes every caller in the same
 change. No alternate manifest name, dual resolver, compatibility parser, or
 fallback identity path is permitted.
+
+This is also why the lock format carries no schema version. A lock graph is
+replaced outright together with its golden fixture, so no build of the compiler
+needs to recognize a format generation it did not write. When the project makes
+its first stability commitment, a schema version and its refusal behavior are
+introduced then, against a format that finally has released readers.
 
 ## Documentation And Teaching Plan
 
@@ -2278,7 +2467,20 @@ ctest --test-dir build-release -R '^performance-package-resolver$' --output-on-f
 19. `BuildScriptLimitKeyVerifier` enforces every range and cross-field relation
    before preflight; all IPC lengths are bounded before allocation and exported
    semantic environment bytes remain bounded in the execution key.
-20. Every required owner approves the RFC before acceptance.
+20. Locked replay receives the trusted registry set and rejects a locked
+    registry package whose registry identity is outside it; no production replay
+    path reaches a consumable result without that check.
+21. The resolution boundary cannot write `Zom.lock`. Lock publication is reached
+    only from a command invoked with `Update`, and no lock-mode value passed to
+    the resolution boundary can cause a workspace write.
+22. `PreferLocked` rejects a stale lock graph with a diagnostic that names the
+    package, the staleness kind, and the repairing command; staleness is decided
+    by requirement satisfaction and digest agreement, so widening a requirement
+    that still admits the recorded selection is not stale.
+23. A targeted update re-resolves only the named packages, retains every other
+    recorded selection byte-for-byte, and fails rather than perturbing an
+    unnamed selection.
+24. Every required owner approves the RFC before acceptance.
 
 ## Implementation Plan
 
@@ -2303,6 +2505,17 @@ ctest --test-dir build-release -R '^performance-package-resolver$' --output-on-f
     tests, including the enabled performance CTest path.
 12. Publish normative package documentation and move the RFC through its
     implementation states only with owner evidence.
+13. Wire locked replay to the trusted registry set so the registry trust check
+    runs on the production `LockedOnly` path, and add a negative test that a
+    locked graph naming an untrusted registry is rejected.
+14. Move lock publication out of the resolution boundary: the boundary returns
+    the lock graph it resolved and performs no workspace write, and the invoking
+    command publishes it under `Update`.
+15. Implement semantic lock staleness and its actionable diagnostic, replacing
+    byte-equality rejection, and cover the `PreferLocked` stale-lock path that
+    currently has no test.
+16. Implement conservative targeted update behind `--update-lock <package>...`,
+    including the retention assertion for unnamed selections.
 
 ## Test Plan
 
@@ -2321,7 +2534,8 @@ ctest --test-dir build-release -R '^performance-package-resolver$' --output-on-f
   `MissingPackageSelection`, `DuplicatePackageSelection`,
   `MissingTargetSelection`, `DuplicateTargetSelection`,
   `PositionalSourceArgument`, `InvalidFeatureList`, `ConflictingLockMode`,
-  `UnknownTargetProfile`, and `InvalidPanicStrategy`). Each asserts exact
+  `UnknownTargetProfile`, `InvalidPanicStrategy`, and
+  `UnknownUpdateLockPackage`). Each asserts exact
   `ZOM7016`, an `Invocation` anchor with `requestDigest = none`, no raw argv or
   path bytes, and deterministic output. Separate integration fixtures pass the
   verified package request to RFC 0010 and assert unsupported capability is
@@ -2333,6 +2547,18 @@ ctest --test-dir build-release -R '^performance-package-resolver$' --output-on-f
   different package. Positive fixtures prove ordinary final crate keys and
   exported environments derive only from the matching result. An empty build
   plan must publish empty results and the executor call count must remain zero.
+- Lock modes and publication: a locked graph naming a registry outside the
+  trusted set is rejected as `TrustDomainMismatch` on the production
+  `LockedOnly` path, and a positive fixture proves the same graph is admitted
+  once its registry is trusted. A resolution call under every lock-mode value,
+  including `Update`, leaves the workspace directory byte-identical, proving the
+  boundary cannot publish. `PreferLocked` with a stale lock emits `ZOM7018`
+  naming the package, the `LockStalenessKind`, and the repairing command; a
+  requirement widened so that it still admits the recorded selection is asserted
+  to remain current and to require no update. A targeted update advances only the
+  named package and asserts every unnamed recorded selection is retained
+  byte-for-byte, and a named package that cannot advance while the rest of the
+  graph is held fixed is rejected instead of widening it.
 - Conformance: workspace, duplicate workspace package name with exact
   `ZOM7001`/`ZOM7093` ordering, target, alias, source, version, incompatible-version,
   feature, domain-to-consumer expansion, missing provider library, cycle, trust,
@@ -2457,3 +2683,4 @@ None
 | 2026-07-12 | IMPLEMENTING | Corrected the executable runtime descriptor allocation and added exact cache-candidate and frozen build-result integrity contracts discovered during production launcher and session implementation. Fresh exact-hash owner review is required before LANDED. |
 | 2026-07-13 | IMPLEMENTING | Exact-hash landing review returned the implementation for incomplete build-result publication, production sandbox evidence, typed failure projection, and the unwired build-script CLI path. Result publication and the first production-filter regressions are repaired; native build-script execution remains blocked on RFC 0010 backend, trusted-runtime, and cache implementation. |
 | 2026-07-25 | IMPLEMENTING | Synchronized RFC 0025's accepted user-package-only boundary, `ZOM3027` package failure rail, producer ordering, and atomic test cutover at proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`; implementation evidence remains owned by the named R25 tasks. |
+| 2026-09-03 | IMPLEMENTING | Closed the lock-mode, lock-publication, staleness, and targeted-update contracts against a survey of six production package managers, and made registry trust verification on locked replay an explicit trust-boundary requirement after review found the verifier had no production caller. Deleted the never-implemented `schema` field sentence and the `UnsupportedSchema` failure arm, and recorded why a lock schema version is deliberately declined before the first stability commitment. Owner review of these four contracts and their implementation evidence is pending. |
