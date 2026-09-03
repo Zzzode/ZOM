@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include "zc/core/memory.h"
-#include "zc/core/string.h"
 #include "compiler/ast/tree.h"
 #include "compiler/basic/compiler-opts.h"
 #include "compiler/basic/zomlang-opts.h"
@@ -34,6 +32,7 @@
 #include "compiler/driver/package/build-script-plan.h"
 #include "compiler/driver/package/build-script-runtime.h"
 #include "compiler/driver/package/package-compilation-request.h"
+#include "compiler/driver/package/package-input-installer.h"
 #include "compiler/driver/package/package-resolver.h"
 #include "compiler/driver/package/source-snapshot.h"
 #include "compiler/driver/query/module-graph/materialized-module-graph-query.h"
@@ -48,6 +47,8 @@
 #include "compiler/ownership/ownership-event-overlay.h"
 #include "compiler/ownership/ownership-proof-validation.h"
 #include "compiler/type/semantic-type-store.h"
+#include "zc/core/memory.h"
+#include "zc/core/string.h"
 
 namespace zomlang {
 namespace compiler {
@@ -128,12 +129,7 @@ private:
   struct Impl;
   zc::Own<Impl> impl;
 
-  VerifiedPackageSessionInput(package::VerifiedPackageCompilationRequest&& request,
-                              ir::VerifiedTargetSelection&& hostTarget,
-                              ir::VerifiedTargetSelection&& target,
-                              package::ResolutionOutput&& graph,
-                              package::VerifiedBuildScriptPlan&& buildScriptPlan,
-                              zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots);
+  explicit VerifiedPackageSessionInput(package::InstalledPackageInputs&& inputs);
   friend class CompilerSession;
 };
 
@@ -278,6 +274,14 @@ public:
 
   /// \brief Installs one fully verified package input before parsing begins.
   ZC_NODISCARD bool installVerifiedPackageInput(VerifiedPackageSessionInput&& input);
+  /// \brief Installs one already-verified package inputs bundle before parsing begins.
+  ///
+  /// Shares the exact move-and-install path of the `VerifiedPackageSessionInput`
+  /// overload; both funnel to one internal implementation, so neither expands the
+  /// crate graph a second time. Used by callers that hold an
+  /// `InstalledPackageInputs` bundle directly (the CLI and the IDE workspace
+  /// service).
+  ZC_NODISCARD bool installVerifiedPackageInput(package::InstalledPackageInputs&& inputs);
   /// \brief Atomically installs the verified source-backed core distribution for this context.
   ZC_NODISCARD bool installVerifiedCoreDistribution(
       const source::core::VerifiedCoreDistribution& distribution);

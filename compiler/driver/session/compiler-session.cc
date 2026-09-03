@@ -49,6 +49,7 @@
 #include "compiler/driver/interface/module-interface-diagnostic-adapter.h"
 #include "compiler/driver/package/package-diagnostic.h"
 #include "compiler/driver/package/package-input-installer.h"
+#include "compiler/driver/package/verified-package-inputs.h"
 #include "compiler/driver/query/binding/active-definition-authority-query.h"
 #include "compiler/driver/query/binding/active-definition-authority-session.h"
 #include "compiler/driver/query/binding/incremental-binding-query-adapter.h"
@@ -147,17 +148,6 @@ identity::CanonicalRelativePath parentDirectory(const identity::CanonicalRelativ
   return identity::CanonicalRelativePath::from(zc::mv(segments));
 }
 
-zc::Array<uint8_t> targetSelectionBytes(const package::RegisteredTargetSelection& selection) {
-  identity::CanonicalEncoder encoder;
-  selection.encode(encoder);
-  return encoder.finish();
-}
-
-bool sameTargetSelection(const package::RegisteredTargetSelection& left,
-                         const package::RegisteredTargetSelection& right) {
-  return sameBytes(targetSelectionBytes(left), targetSelectionBytes(right));
-}
-
 bool packageMatchesBase(const identity::PackageKey& package, const identity::PackageBaseKey& base) {
   identity::CanonicalEncoder packageSource;
   identity::CanonicalEncoder baseSource;
@@ -194,41 +184,6 @@ zc::String coreSourceIdentifier(const identity::CanonicalRelativePath& path) {
   return result;
 }
 
-bool graphContainsPackage(const package::ResolutionOutput& graph,
-                          const identity::PackageKey& package) {
-  const auto expected = package.encode();
-  for (const auto& selected : graph.packages()) {
-    if (sameBytes(expected, selected.key().encode())) { return true; }
-  }
-  return false;
-}
-
-bool graphAndSnapshotsMatch(const package::ResolutionOutput& graph,
-                            zc::ArrayPtr<const package::ResolvedPackageSourceSnapshot> snapshots) {
-  if (graph.packages().size() == 0 || snapshots.size() == 0) { return false; }
-  for (const auto& selected : graph.packages()) {
-    bool found = false;
-    for (const auto& snapshot : snapshots) {
-      if (packageMatchesBase(selected.key(), snapshot.package())) {
-        found = true;
-        break;
-      }
-    }
-    if (!found) { return false; }
-  }
-  for (const auto& snapshot : snapshots) {
-    bool found = false;
-    for (const auto& selected : graph.packages()) {
-      if (packageMatchesBase(selected.key(), snapshot.package())) {
-        found = true;
-        break;
-      }
-    }
-    if (!found) { return false; }
-  }
-  return true;
-}
-
 zc::Maybe<identity::SourceOriginKey> sourceOriginFor(const identity::PackageKey& package,
                                                      const identity::CanonicalRelativePath& path) {
   const auto& packageSource = package.source();
@@ -263,32 +218,13 @@ bool containsIdentityHandle(const zc::Vector<Handle>& handles, Handle candidate)
 // VerifiedPackageSessionInput
 
 struct VerifiedPackageSessionInput::Impl final {
-  Impl(package::VerifiedPackageCompilationRequest&& request,
-       ir::VerifiedTargetSelection&& hostTarget, ir::VerifiedTargetSelection&& target,
-       package::ResolutionOutput&& graph, package::VerifiedBuildScriptPlan&& buildScriptPlan,
-       zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots) noexcept
-      : request(zc::mv(request)),
-        hostTarget(zc::mv(hostTarget)),
-        target(zc::mv(target)),
-        graph(zc::mv(graph)),
-        buildScriptPlan(zc::mv(buildScriptPlan)),
-        snapshots(zc::mv(snapshots)) {}
+  explicit Impl(package::InstalledPackageInputs&& inputs) noexcept : inputs(zc::mv(inputs)) {}
 
-  package::VerifiedPackageCompilationRequest request;
-  ir::VerifiedTargetSelection hostTarget;
-  ir::VerifiedTargetSelection target;
-  package::ResolutionOutput graph;
-  package::VerifiedBuildScriptPlan buildScriptPlan;
-  zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
+  package::InstalledPackageInputs inputs;
 };
 
-VerifiedPackageSessionInput::VerifiedPackageSessionInput(
-    package::VerifiedPackageCompilationRequest&& request, ir::VerifiedTargetSelection&& hostTarget,
-    ir::VerifiedTargetSelection&& target, package::ResolutionOutput&& graph,
-    package::VerifiedBuildScriptPlan&& buildScriptPlan,
-    zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots)
-    : impl(zc::heap<Impl>(zc::mv(request), zc::mv(hostTarget), zc::mv(target), zc::mv(graph),
-                          zc::mv(buildScriptPlan), zc::mv(snapshots))) {}
+VerifiedPackageSessionInput::VerifiedPackageSessionInput(package::InstalledPackageInputs&& inputs)
+    : impl(zc::heap<Impl>(zc::mv(inputs))) {}
 
 VerifiedPackageSessionInput::~VerifiedPackageSessionInput() noexcept(false) = default;
 VerifiedPackageSessionInput::VerifiedPackageSessionInput(VerifiedPackageSessionInput&&) noexcept =
@@ -300,26 +236,10 @@ zc::Maybe<VerifiedPackageSessionInput> VerifiedPackageSessionInput::from(
     package::VerifiedPackageCompilationRequest&& request, ir::VerifiedTargetSelection&& hostTarget,
     ir::VerifiedTargetSelection&& target, package::ResolutionOutput&& graph,
     zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots) {
-  const auto& requestHost = request.hostTarget();
-  const auto& requestTarget = request.target();
-  const auto& verifiedHost = hostTarget.packageSelection();
-  const auto& verifiedTarget = target.packageSelection();
-  if (requestHost.registryRevision() != verifiedHost.registryRevision() ||
-      requestTarget.registryRevision() != verifiedTarget.registryRevision() ||
-      verifiedHost.registryRevision() != verifiedTarget.registryRevision() ||
-      !sameTargetSelection(requestHost, verifiedHost) ||
-      !sameTargetSelection(requestTarget, verifiedTarget) ||
-      !graphAndSnapshotsMatch(graph, snapshots)) {
-    return zc::none;
-  }
-  for (const auto& root : request.roots()) {
-    if (!graphContainsPackage(graph, root.packageKey())) { return zc::none; }
-  }
-  auto plan = VerifiedPreparatoryCrateGraph::buildPlan(request, graph);
-  if (!plan.is<package::VerifiedBuildScriptPlan>()) { return zc::none; }
-  auto buildScriptPlan = zc::mv(plan.get<package::VerifiedBuildScriptPlan>());
-  return VerifiedPackageSessionInput(zc::mv(request), zc::mv(hostTarget), zc::mv(target),
-                                     zc::mv(graph), zc::mv(buildScriptPlan), zc::mv(snapshots));
+  auto result = package::verifyAndBuildPackageInputs(
+      zc::mv(request), zc::mv(hostTarget), zc::mv(target), zc::mv(graph), zc::mv(snapshots));
+  if (result.is<package::VerifyFailure>()) { return zc::none; }
+  return VerifiedPackageSessionInput(zc::mv(result.get<package::InstalledPackageInputs>()));
 }
 
 namespace {
@@ -918,6 +838,26 @@ struct CompilerSession::Impl {
     pendingModulePaths.upsert(buffer, cloneModulePath(modulePath));
     added = true;
     return buffer;
+  }
+
+  // Installs an already-verified package inputs bundle by moving each component
+  // into session state. This is the sole install path shared by both
+  // installVerifiedPackageInput overloads; it expands no crate graph, so the
+  // final crate graph is built exactly once, before this point.
+  bool installInstalledInputs(package::InstalledPackageInputs&& inputs) {
+    if (packageRequest != zc::none || verifiedHostTarget != zc::none ||
+        verifiedTarget != zc::none || packageGraph != zc::none || buildScriptPlan != zc::none ||
+        packageSnapshots.size() != 0 || sourceManager->getManagedBufferIds().size() != 0) {
+      return false;
+    }
+    packageRequest = zc::mv(inputs.request);
+    verifiedHostTarget = zc::mv(inputs.hostTarget);
+    verifiedTarget = zc::mv(inputs.target);
+    packageGraph = zc::mv(inputs.graph);
+    buildScriptPlan = zc::mv(inputs.buildScriptPlan);
+    crateGraph = zc::mv(inputs.crateGraph);
+    packageSnapshots = zc::mv(inputs.snapshots);
+    return true;
   }
 
   zc::Maybe<const package::FinalizedCompilationRoot&> compilationRoot(
@@ -4038,30 +3978,12 @@ zc::MemoryResource& CompilerSession::getPackageResolutionMemoryResource() noexce
 }
 
 bool CompilerSession::installVerifiedPackageInput(VerifiedPackageSessionInput&& input) {
-  if (input.impl.get() == nullptr || impl->packageRequest != zc::none ||
-      impl->verifiedHostTarget != zc::none || impl->verifiedTarget != zc::none ||
-      impl->packageGraph != zc::none || impl->buildScriptPlan != zc::none ||
-      impl->packageSnapshots.size() != 0 ||
-      impl->sourceManager->getManagedBufferIds().size() != 0) {
-    return false;
-  }
+  if (input.impl.get() == nullptr) { return false; }
+  return impl->installInstalledInputs(zc::mv(input.impl->inputs));
+}
 
-  auto installed = package::buildInstalledPackageInputs(
-      zc::mv(input.impl->request), zc::mv(input.impl->hostTarget), zc::mv(input.impl->target),
-      zc::mv(input.impl->graph), zc::mv(input.impl->buildScriptPlan),
-      zc::mv(input.impl->snapshots));
-  if (installed == zc::none) { return false; }
-
-  ZC_IF_SOME(bundle, installed) {
-    impl->packageRequest = zc::mv(bundle.request);
-    impl->verifiedHostTarget = zc::mv(bundle.hostTarget);
-    impl->verifiedTarget = zc::mv(bundle.target);
-    impl->packageGraph = zc::mv(bundle.graph);
-    impl->buildScriptPlan = zc::mv(bundle.buildScriptPlan);
-    impl->crateGraph = zc::mv(bundle.crateGraph);
-    impl->packageSnapshots = zc::mv(bundle.snapshots);
-  }
-  return true;
+bool CompilerSession::installVerifiedPackageInput(package::InstalledPackageInputs&& inputs) {
+  return impl->installInstalledInputs(zc::mv(inputs));
 }
 
 bool CompilerSession::installVerifiedCoreDistribution(

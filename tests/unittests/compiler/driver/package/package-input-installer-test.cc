@@ -53,12 +53,11 @@ ZC_TEST("buildInstalledPackageInputs expands the final crate graph and bundles t
       fixture::verifiedTargetSelection(registry), zc::mv(graph), zc::mv(buildScriptPlan),
       fixture::resolvedSnapshots("fn main() {}\n"_zc));
 
-  ZC_REQUIRE(installed != zc::none);
-  ZC_IF_SOME(bundle, installed) {
-    // The expanded crate graph carries exactly the one requested binary root.
-    ZC_EXPECT(bundle.crateGraph.roots().size() == 1);
-    ZC_EXPECT(bundle.snapshots.size() == 1);
-  }
+  ZC_REQUIRE(installed.is<InstalledPackageInputs>());
+  auto& bundle = installed.get<InstalledPackageInputs>();
+  // The expanded crate graph carries exactly the one requested binary root.
+  ZC_EXPECT(bundle.crateGraph.roots().size() == 1);
+  ZC_EXPECT(bundle.snapshots.size() == 1);
 }
 
 }  // namespace

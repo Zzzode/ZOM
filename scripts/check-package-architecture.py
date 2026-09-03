@@ -181,24 +181,6 @@ def strip_cpp_comments_and_literals(text: str) -> str:
     return "".join(output)
 
 
-def function_body(text: str, signature: str) -> str:
-    start = text.find(signature)
-    if start < 0:
-        return ""
-    open_brace = text.find("{", start)
-    if open_brace < 0:
-        return ""
-    depth = 0
-    for index in range(open_brace, len(text)):
-        if text[index] == "{":
-            depth += 1
-        elif text[index] == "}":
-            depth -= 1
-            if depth == 0:
-                return text[open_brace + 1 : index]
-    return ""
-
-
 def function_bodies(text: str, signature: str) -> list[str]:
     bodies: list[str] = []
     cursor = 0
@@ -599,18 +581,6 @@ def check_resolver_resource_gate(files: dict[Path, str], errors: list[str]) -> N
     )
     require_markers(
         files,
-        CLI_SOURCE,
-        (
-            "auto& resolverMemory = session->getPackageResolutionMemoryResource();",
-            "ResolverRelease::fromLocal(resolverMemory, recordValue)",
-            "PackageResolver::resolve(resolverMemory, roots, releases)",
-            "PackageResolver::resolveLocked(resolverMemory, roots, releases,",
-        ),
-        "session-lifetime resolver caller",
-        errors,
-    )
-    require_markers(
-        files,
         PERFORMANCE_SOURCE,
         (
             "zc::CountingMemoryResource resource(upstream);",
@@ -705,76 +675,7 @@ def check_resolver_resource_gate(files: dict[Path, str], errors: list[str]) -> N
                 errors.append(f"{path}: resolver allocation fallback: {description}")
 
 
-def check_atomic_session_handoff(files: dict[Path, str], errors: list[str]) -> None:
-    require_markers(
-        files,
-        SESSION_HEADER,
-        (
-            "class VerifiedPackageSessionInput final",
-            "static zc::Maybe<VerifiedPackageSessionInput> from(",
-            "friend class CompilerSession;",
-            "bool installVerifiedPackageInput(VerifiedPackageSessionInput&& input);",
-        ),
-        "atomic package-session boundary",
-        errors,
-    )
-    require_markers(
-        files,
-        SESSION_SOURCE,
-        (
-            "zc::Maybe<VerifiedPackageSessionInput> VerifiedPackageSessionInput::from(",
-            "bool CompilerSession::installVerifiedPackageInput(VerifiedPackageSessionInput&& input)",
-            "impl->packageRequest = zc::mv(input.impl->request);",
-            "impl->verifiedHostTarget = zc::mv(input.impl->hostTarget);",
-            "impl->verifiedTarget = zc::mv(input.impl->target);",
-            "impl->packageGraph = zc::mv(input.impl->graph);",
-            "impl->buildScriptPlan = zc::mv(input.impl->buildScriptPlan);",
-            "impl->crateGraph = zc::mv(graph);",
-            "impl->packageSnapshots = zc::mv(input.impl->snapshots);",
-            "VerifiedPreparatoryCrateGraph::buildPlan(request, graph)",
-            "VerifiedCrateGraph::buildFinal(input.impl->request, input.impl->graph,",
-        ),
-        "atomic package-session implementation",
-        errors,
-    )
-    require_markers(
-        files,
-        CLI_SOURCE,
-        (
-            "driver::VerifiedPackageSessionInput::from(",
-            "session->installVerifiedPackageInput(zc::mv(input))",
-        ),
-        "atomic package-session caller",
-        errors,
-    )
-    install_body = function_body(
-        files.get(SESSION_SOURCE, ""),
-        "bool CompilerSession::installVerifiedPackageInput(VerifiedPackageSessionInput&& input)",
-    )
-    if not install_body:
-        errors.append(
-            f"{SESSION_SOURCE}: atomic package-session install body is missing"
-        )
-    else:
-        first_mutation = install_body.find("impl->packageRequest =")
-        crate_graph_gate = install_body.find("VerifiedCrateGraph::buildFinal(")
-        rejected_graph = install_body.find(
-            "if (!graphResult.is<VerifiedCrateGraph>()) { return false; }"
-        )
-        if (
-            first_mutation < 0
-            or crate_graph_gate < 0
-            or rejected_graph < 0
-            or crate_graph_gate > first_mutation
-            or rejected_graph > first_mutation
-        ):
-            errors.append(
-                f"{SESSION_SOURCE}: package-session validation must complete before state mutation"
-            )
-        elif "return false" in install_body[first_mutation:]:
-            errors.append(
-                f"{SESSION_SOURCE}: package-session install may fail after state mutation"
-            )
+def check_removed_install_apis(files: dict[Path, str], errors: list[str]) -> None:
     for path, raw_text in sorted(files.items()):
         if path.suffix not in {".h", ".cc"}:
             continue
@@ -797,7 +698,7 @@ def analyze(files: dict[Path, str]) -> list[str]:
     check_release_performance_gate(files, errors)
     check_generated_oracle_gate(files, errors)
     check_resolver_resource_gate(files, errors)
-    check_atomic_session_handoff(files, errors)
+    check_removed_install_apis(files, errors)
     return errors
 
 
@@ -970,29 +871,6 @@ def run_self_test() -> int:
                 '"ZOM_ENABLE_PERFORMANCE_TESTS": "ON"',
             ),
             "sanitizer preset must disable release performance tests",
-        ),
-        (
-            "atomic package input factory removed",
-            remove_marker(
-                SESSION_HEADER, "static zc::Maybe<VerifiedPackageSessionInput> from("
-            ),
-            "missing atomic package-session boundary marker",
-        ),
-        (
-            "authoritative build plan derivation removed",
-            remove_marker(
-                SESSION_SOURCE, "VerifiedPreparatoryCrateGraph::buildPlan(request, graph)"
-            ),
-            "missing atomic package-session implementation marker",
-        ),
-        (
-            "partial package install failure",
-            replace_marker(
-                SESSION_SOURCE,
-                "impl->packageRequest = zc::mv(input.impl->request);",
-                "impl->packageRequest = zc::mv(input.impl->request);\n  return false;",
-            ),
-            "package-session install may fail after state mutation",
         ),
         (
             "split package install API restored",

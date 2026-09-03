@@ -16,11 +16,11 @@
 
 #include <climits>
 
-#include "zc/core/encoding.h"
-#include "zc/core/memory.h"
 #include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/diagnostics/core/diagnostic.h"
 #include "compiler/source/manager.h"
+#include "zc/core/encoding.h"
+#include "zc/core/memory.h"
 
 namespace zomlang::compiler::driver::package {
 namespace {
@@ -382,6 +382,36 @@ zc::StringPtr trustedRuntimeInvariantDisplay(TrustedRuntimeInvariantIssue issue)
   ZC_UNREACHABLE;
 }
 
+zc::StringPtr verifyFailureDisplay(const VerifyFailure& failure) noexcept {
+  ZC_SWITCH_ONEOF(failure) {
+    ZC_CASE_ONEOF(mismatch, RegistryRevisionMismatch) {
+      switch (mismatch.kind) {
+        case RegistryRevisionMismatchKind::HostRequestVersusVerified:
+          return "registry-revision-mismatch-host-request"_zc;
+        case RegistryRevisionMismatchKind::TargetRequestVersusVerified:
+          return "registry-revision-mismatch-target-request"_zc;
+        case RegistryRevisionMismatchKind::CrossVerified:
+          return "registry-revision-mismatch-cross-verified"_zc;
+      }
+      ZC_UNREACHABLE;
+    }
+    ZC_CASE_ONEOF(mismatch, TargetSelectionMismatch) {
+      switch (mismatch.side) {
+        case TargetSelectionMismatchSide::Host:
+          return "target-selection-mismatch-host"_zc;
+        case TargetSelectionMismatchSide::Target:
+          return "target-selection-mismatch-target"_zc;
+      }
+      ZC_UNREACHABLE;
+    }
+    ZC_CASE_ONEOF(_, GraphSnapshotMismatch) { return "graph-snapshot-mismatch"_zc; }
+    ZC_CASE_ONEOF(_, RootPackageMissing) { return "root-package-missing"_zc; }
+    ZC_CASE_ONEOF(_, BuildPlanFailed) { return "build-plan-failed"_zc; }
+    ZC_CASE_ONEOF(_, CrateGraphExpansionFailed) { return "crate-graph-expansion-failed"_zc; }
+  }
+  ZC_UNREACHABLE;
+}
+
 void PackageDiagnosticAdapter::emitInvocationIssue(diagnostics::DiagnosticEngine& diagnostics,
                                                    InvocationIssue issue) {
   diagnostics.diagnose<diagnostics::DiagID::PackageInvocationInvalid>(
@@ -410,6 +440,12 @@ void PackageDiagnosticAdapter::emitTrustedRuntimeInvariant(
     diagnostics::DiagnosticEngine& diagnostics, TrustedRuntimeInvariantIssue issue) {
   diagnostics.diagnose<diagnostics::DiagID::TrustedBuildRuntimeInvariantViolation>(
       source::SourceLoc(), trustedRuntimeInvariantDisplay(issue));
+}
+
+void PackageDiagnosticAdapter::emitVerifyFailure(diagnostics::DiagnosticEngine& diagnostics,
+                                                 const VerifyFailure& failure) {
+  diagnostics.diagnose<diagnostics::DiagID::PackageInvocationInvalid>(
+      source::SourceLoc(), verifyFailureDisplay(failure));
 }
 
 bool PackageDiagnosticAdapter::emitManifestFailure(

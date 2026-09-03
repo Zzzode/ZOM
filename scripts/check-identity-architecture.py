@@ -2248,10 +2248,7 @@ def check_stable_identity_architecture(
             f"{CRATE_GRAPH}: missing build-plan crate identity marker "
             "const package::VerifiedBuildScriptPlan& buildPlan"
         )
-    required_plan_markers = (
-        "buildProducerFor(",
-        "VerifiedCrateGraph::buildFinal(input.impl->request, input.impl->graph,",
-    )
+    required_plan_markers = ("buildProducerFor(",)
     combined_plan_surface = (
         package_request
         + package_request_implementation

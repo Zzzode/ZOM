@@ -21,6 +21,7 @@
 #include "compiler/driver/package/source-snapshot.h"
 #include "compiler/ir/target-registry.h"
 #include "zc/core/common.h"
+#include "zc/core/one-of.h"
 #include "zc/core/vector.h"
 
 namespace zomlang::compiler::driver::package {
@@ -46,10 +47,11 @@ struct InstalledPackageInputs final {
 ///
 /// Runs `VerifiedCrateGraph::buildFinal` over the verified request, resolution,
 /// and build-script plan, then moves every component into an
-/// `InstalledPackageInputs`. Returns `zc::none` when crate-graph expansion
-/// rejects the inputs, in which case the moved-from arguments are consumed and no
-/// bundle is produced. This is the session-agnostic core of package-input
-/// installation: it commits nothing and owns no session state.
+/// `InstalledPackageInputs`. Returns the `CrateGraphIssue` when crate-graph
+/// expansion rejects the inputs, in which case the moved-from arguments are
+/// consumed and no bundle is produced. This is the session-agnostic core of
+/// package-input installation and the sole `VerifiedCrateGraph::buildFinal` call
+/// site: it commits nothing and owns no session state.
 ///
 /// \param request The verified package compilation request; consumed.
 /// \param hostTarget The verified host target selection; consumed.
@@ -57,8 +59,8 @@ struct InstalledPackageInputs final {
 /// \param graph The package resolution output; consumed.
 /// \param buildScriptPlan The verified build-script plan; consumed.
 /// \param snapshots The resolved package source snapshots; consumed.
-/// \return The bundled inputs, or `zc::none` when crate-graph expansion fails.
-ZC_NODISCARD zc::Maybe<InstalledPackageInputs> buildInstalledPackageInputs(
+/// \return The bundled inputs, or the `CrateGraphIssue` when expansion fails.
+ZC_NODISCARD zc::OneOf<InstalledPackageInputs, CrateGraphIssue> buildInstalledPackageInputs(
     VerifiedPackageCompilationRequest&& request, ir::VerifiedTargetSelection&& hostTarget,
     ir::VerifiedTargetSelection&& target, ResolutionOutput&& graph,
     VerifiedBuildScriptPlan&& buildScriptPlan,

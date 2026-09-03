@@ -149,6 +149,11 @@ REGISTRY_SET_SOURCE = Path(
     "compiler/identity/semantic-identity-registry-set.cc"
 )
 BINDING_INPUT_SOURCE = Path("compiler/binder/binding-input.cc")
+# The session-agnostic package-input verification authority. Build-plan derivation
+# (VerifiedPreparatoryCrateGraph::buildPlan) moved here from CompilerSession so the
+# CLI and the IDE workspace service share one verify-and-build entry point; the
+# required-presence check below keeps that ownership anchored to this file.
+VERIFIED_PACKAGE_INPUTS_SOURCE = Path("compiler/driver/package/verified-package-inputs.cc")
 VERIFIED_VENDOR_ROOT = Path("compiler/driver/package/vendor")
 
 EXPECTED_DRIVER_FILES = {
@@ -303,7 +308,6 @@ SESSION_SOURCE_MARKERS = (
     "snapshot.getCapability<module_graph_query::MaterializeModuleGraph>(roots)",
     "finalSealedSnapshot = zc::mv(admitted).takeSnapshot();",
     "VerifiedPreparatoryCrateGraph::build(request, node, resolution, plan, completed)",
-    "VerifiedPreparatoryCrateGraph::buildPlan(request, graph)",
     "executor.execute(node, graph.get<VerifiedPreparatoryCrateGraph>(), completed)",
     "zc::Maybe<identity::RegistryBrandIssuer> factStoreBrands;",
     "zc::Own<checker::checked::CheckedFactsRepository> checkedFactsRepository;",
@@ -784,6 +788,28 @@ def check_crate_graph_authority(
             errors.append(f"{path}: caller-supplied build-script plan is forbidden")
 
 
+def check_verified_package_inputs_authority(
+    files: dict[Path, str], errors: list[str], scan_paths: set[Path] | None
+) -> None:
+    # Build-plan derivation is the shared verify-and-build authority, not a session
+    # duty: the marker must live in verified-package-inputs.cc and nowhere else, so
+    # neither CompilerSession nor any other file re-runs VerifiedPreparatoryCrateGraph
+    # ::buildPlan(request, graph) and forks a second authority.
+    marker = "VerifiedPreparatoryCrateGraph::buildPlan(request, graph)"
+    source = files.get(VERIFIED_PACKAGE_INPUTS_SOURCE, "")
+    if marker not in source:
+        errors.append(
+            f"{VERIFIED_PACKAGE_INPUTS_SOURCE}: missing verify-and-build authority marker: {marker}"
+        )
+    for path, text in files.items():
+        if path == VERIFIED_PACKAGE_INPUTS_SOURCE or path.suffix not in {".h", ".cc"} or (
+            scan_paths is not None and path not in scan_paths
+        ):
+            continue
+        if marker in text:
+            errors.append(f"{path}: build-plan authority bypasses verified-package-inputs.cc")
+
+
 def analyze(
     files: dict[Path, str], stripped_sources: dict[Path, str] | None = None,
     scan_paths: set[Path] | None = None
@@ -798,6 +824,7 @@ def analyze(
     check_cli_root(files, stripped_sources, errors, scan_paths)
     check_build_wiring(files, errors)
     check_crate_graph_authority(files, errors, scan_paths)
+    check_verified_package_inputs_authority(files, errors, scan_paths)
     return errors
 
 
@@ -1257,13 +1284,36 @@ def run_self_test() -> int:
         ),
         "missing session ownership marker",
     )
+    failures += expect_rejection(
+        baseline, baseline_stripped_sources,
+        "missing verify-and-build authority marker",
+        lambda files: files.__setitem__(
+            VERIFIED_PACKAGE_INPUTS_SOURCE,
+            files[VERIFIED_PACKAGE_INPUTS_SOURCE].replace(
+                "VerifiedPreparatoryCrateGraph::buildPlan(request, graph)",
+                "bypassBuildPlan(request, graph)",
+                1,
+            ),
+        ),
+        "missing verify-and-build authority marker",
+    )
+    failures += expect_rejection(
+        baseline, baseline_stripped_sources,
+        "build-plan authority bypasses the owner file",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE]
+            + "\nvoid bypass() { VerifiedPreparatoryCrateGraph::buildPlan(request, graph); }\n",
+        ),
+        "build-plan authority bypasses verified-package-inputs.cc",
+    )
 
     if failures:
         print("CompilerSession architecture self-test failed:", file=sys.stderr)
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
         return 1
-    print("CompilerSession architecture negative fixtures passed (33/33).")
+    print("CompilerSession architecture negative fixtures passed (35/35).")
     return 0
 
 

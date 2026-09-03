@@ -16,15 +16,16 @@
 
 #include <cstdint>
 
-#include "zc/core/array.h"
-#include "zc/core/common.h"
-#include "zc/core/string.h"
-#include "zc/core/vector.h"
 #include "compiler/diagnostics/text/diagnostic-text.h"
 #include "compiler/driver/package/build-script-runtime.h"
 #include "compiler/driver/package/manifest-parser.h"
 #include "compiler/driver/package/materialization-issue.h"
 #include "compiler/driver/package/package-compilation-request.h"
+#include "compiler/driver/package/verified-package-inputs.h"
+#include "zc/core/array.h"
+#include "zc/core/common.h"
+#include "zc/core/string.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::diagnostics {
 class DiagnosticEngine;
@@ -84,6 +85,9 @@ ZC_NODISCARD zc::StringPtr buildScriptLimitInvariantDisplay(
     BuildScriptLimitInvariantIssue issue) noexcept;
 ZC_NODISCARD zc::StringPtr trustedRuntimeInvariantDisplay(
     TrustedRuntimeInvariantIssue issue) noexcept;
+/// \brief Returns the closed, non-secret display token that locates one
+/// package-input verification failure.
+ZC_NODISCARD zc::StringPtr verifyFailureDisplay(const VerifyFailure& failure) noexcept;
 
 /// \brief Translates typed package failures into the compiler diagnostic engine.
 class PackageDiagnosticAdapter final {
@@ -98,6 +102,8 @@ public:
                                             BuildScriptLimitInvariantIssue issue);
   static void emitTrustedRuntimeInvariant(diagnostics::DiagnosticEngine& diagnostics,
                                           TrustedRuntimeInvariantIssue issue);
+  static void emitVerifyFailure(diagnostics::DiagnosticEngine& diagnostics,
+                                const VerifyFailure& failure);
   static bool emitManifestFailure(diagnostics::DiagnosticEngine& diagnostics,
                                   zc::ArrayPtr<const PackageDiagnosticDocument> documents,
                                   const ManifestFailure& failure);

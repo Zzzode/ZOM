@@ -34,6 +34,7 @@
 #include "compiler/driver/package/package-diagnostic.h"
 #include "compiler/driver/package/source-record.h"
 #include "compiler/driver/package/workspace-loader.h"
+#include "compiler/driver/package/workspace-package-resolver.h"
 #include "compiler/driver/session/compiler-session.h"
 #include "compiler/format/lexeme-printer.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
@@ -698,15 +699,6 @@ public:
     return true;
   }
 
-  static zc::Path filesystemPath(const identity::CanonicalWorkspaceRelativePath& path) {
-    zc::Path result(nullptr);
-    for (uint32_t index = 0; index < path.leadingParents(); ++index) {
-      result = zc::mv(result).eval(".."_zc);
-    }
-    for (const auto& segment : path.segments()) { result = zc::mv(result).append(segment.text()); }
-    return result;
-  }
-
   zc::Maybe<source::core::VerifiedCoreDistribution> admitCoreDistribution(
       const zc::Filesystem& filesystem) const {
     try {
@@ -733,160 +725,80 @@ public:
     } catch (const zc::Exception&) { return zc::none; }
   }
 
-  static identity::PackageBaseKey packageBase(zc::MemoryResource& resource,
-                                              const identity::PackageKey& packageKey) {
-    auto name = identity::PackageName::fromCanonical(resource, packageKey.name());
-    auto version = identity::ResolvedVersion::fromCanonical(resource, packageKey.version());
-    ZC_IF_SOME(nameValue, name) {
-      ZC_IF_SOME(versionValue, version) {
-        return identity::PackageBaseKey::from(packageKey.source().clone(resource),
-                                              zc::mv(nameValue), zc::mv(versionValue));
-      }
-    }
-    ZC_UNREACHABLE;
-  }
-
-  static identity::SortedFeatureSet packageFeatures(zc::MemoryResource& resource,
-                                                    const identity::PackageKey& packageKey) {
-    zc::Vector<identity::FeatureName> features(resource, packageKey.features().size());
-    for (const auto& feature : packageKey.features()) { features.add(feature.clone(resource)); }
-    auto result = identity::SortedFeatureSet::from(zc::mv(features));
-    ZC_IF_SOME(value, result) { return zc::mv(value); }
-    ZC_UNREACHABLE;
-  }
-
-  zc::Maybe<driver::VerifiedPackageSessionInput> resolvePackageInput(
+  zc::Maybe<package::InstalledPackageInputs> resolvePackageInput(
       const zc::Filesystem& filesystem, zc::PathPtr workspaceRoot,
       const package::NormalizedPackageCompilationRequest& normalizedRequest,
       package::VerifiedPackageCompilationRequest&& request,
       ir::VerifiedTargetSelection&& verifiedHostTarget,
       ir::VerifiedTargetSelection&& verifiedTarget, const package::NormalizedWorkspace& workspace) {
     auto& resolverMemory = session->getPackageResolutionMemoryResource();
-    zc::Vector<package::ResolverRelease> releases(resolverMemory);
-    zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
     auto snapshotParent =
         filesystem.getRoot().tryOpenSubdir(workspaceRoot.parent(), zc::WriteMode::MODIFY);
-    if (snapshotParent == zc::none) { return zc::none; }
+    if (snapshotParent == zc::none) {
+      package::PackageDiagnosticAdapter::emitMaterializationIssue(
+          session->getDiagnosticEngine(),
+          package::MaterializationIssue::FreshDirectoryCreateFailed);
+      return zc::none;
+    }
     zc::Own<const zc::Directory> snapshotParentDirectory;
     ZC_IF_SOME(directory, snapshotParent) { snapshotParentDirectory = zc::mv(directory); }
     package::ReplacementFreshSourceDirectoryFactory factory(*snapshotParentDirectory);
 
-    auto admitPackage = [&](const package::NormalizedManifest& manifest,
-                            identity::CanonicalWorkspaceRelativePath&& relativePath) -> bool {
-      auto name = identity::PackageName::fromCanonical(manifest.packageName());
-      auto version = identity::ResolvedVersion::fromCanonical(manifest.packageVersion());
-      if (name == zc::none || version == zc::none) { return false; }
-      identity::PackageBaseKey base = packageBase(resolverMemory, request.roots()[0].packageKey());
-      ZC_IF_SOME(nameValue, name) {
-        ZC_IF_SOME(versionValue, version) {
-          base = identity::PackageBaseKey::from(
-              identity::CanonicalPackageSource::localPath(relativePath.clone()), zc::mv(nameValue),
-              zc::mv(versionValue));
-        }
+    auto resolved = package::resolveWorkspacePackageInput(
+        filesystem, workspaceRoot, resolverMemory, normalizedRequest, zc::mv(request),
+        zc::mv(verifiedHostTarget), zc::mv(verifiedTarget), workspace, factory);
+    ZC_SWITCH_ONEOF(resolved) {
+      ZC_CASE_ONEOF(inputs, package::InstalledPackageInputs) { return zc::mv(inputs); }
+      ZC_CASE_ONEOF(failure, package::ResolveFailure) {
+        emitResolveFailure(failure);
+        return zc::none;
       }
-      auto packageRoot = workspaceRoot.clone().eval(filesystemPath(relativePath).toString());
-      auto directory = filesystem.getRoot().openSubdir(packageRoot);
-      package::SourceDirectoryMaterializer materializer;
-      auto snapshot = materializer.materialize(*directory, factory);
-      if (snapshot.is<package::MaterializationIssue>()) {
+      ZC_CASE_ONEOF(failure, package::VerifyFailure) {
+        package::PackageDiagnosticAdapter::emitVerifyFailure(session->getDiagnosticEngine(),
+                                                             failure);
+        return zc::none;
+      }
+    }
+    ZC_UNREACHABLE;
+  }
+
+  // Renders a locatable diagnostic for each typed workspace-resolution failure.
+  void emitResolveFailure(const package::ResolveFailure& failure) {
+    ZC_SWITCH_ONEOF(failure) {
+      ZC_CASE_ONEOF(materialization, package::SourceMaterializationFailed) {
+        package::PackageDiagnosticAdapter::emitMaterializationIssue(session->getDiagnosticEngine(),
+                                                                    materialization.issue);
+      }
+      ZC_CASE_ONEOF(_, package::SnapshotParentUnavailable) {
         package::PackageDiagnosticAdapter::emitMaterializationIssue(
-            session->getDiagnosticEngine(), snapshot.get<package::MaterializationIssue>());
-        return false;
+            session->getDiagnosticEngine(),
+            package::MaterializationIssue::FreshDirectoryCreateFailed);
       }
-      auto& snapshotValue = snapshot.get<package::DigestVerifiedSourceSnapshot>();
-      auto record =
-          package::LocalPackageRecord::from(base.clone(), manifest.clone(), snapshotValue);
-      if (record == zc::none) { return false; }
-      ZC_IF_SOME(recordValue, record) {
-        releases.add(package::ResolverRelease::fromLocal(resolverMemory, recordValue));
+      ZC_CASE_ONEOF(_, package::PackageNameOrVersionInvalid) {
+        session->getDiagnosticEngine().diagnose<diagnostics::DiagID::PackageInvocationInvalid>(
+            source::SourceLoc(), "package-name-or-version-invalid"_zc);
       }
-      snapshots.add(
-          package::ResolvedPackageSourceSnapshot::from(base.clone(), zc::mv(snapshotValue)));
-      return true;
-    };
-
-    if (workspace.root().hasPackage()) {
-      zc::Vector<identity::CanonicalPathSegment> noSegments;
-      if (!admitPackage(workspace.root(),
-                        identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(noSegments)))) {
-        return zc::none;
+      ZC_CASE_ONEOF(_, package::LocalRecordRejected) {
+        session->getDiagnosticEngine().diagnose<diagnostics::DiagID::PackageInvocationInvalid>(
+            source::SourceLoc(), "local-record-rejected"_zc);
       }
-    }
-    for (const auto& member : workspace.members()) {
-      if (!admitPackage(member.manifest(), member.packageDirectory().clone())) { return zc::none; }
-    }
-
-    const auto workspaceDirectory =
-        filesystem.getRoot().openSubdir(workspaceRoot, zc::WriteMode::MODIFY);
-    bool includeDevelopment = false;
-    for (const auto& target : normalizedRequest.requestedTargets()) {
-      includeDevelopment = includeDevelopment || target.kind == identity::CrateTargetKind::Test ||
-                           target.kind == identity::CrateTargetKind::Benchmark ||
-                           target.kind == identity::CrateTargetKind::Example;
-    }
-    zc::Vector<package::ResolverRoot> roots(resolverMemory);
-    roots.add(package::ResolverRoot::from(
-        packageBase(resolverMemory, request.roots()[0].packageKey()),
-        packageFeatures(resolverMemory, request.roots()[0].packageKey()), false,
-        includeDevelopment));
-    const bool useLocked =
-        normalizedRequest.lockMode() == package::PackageLockMode::LockedOnly ||
-        (normalizedRequest.lockMode() == package::PackageLockMode::PreferLocked &&
-         workspaceDirectory->exists(zc::Path("Zom.lock"_zc)));
-    if (useLocked) {
-      auto locked = package::LockfileCodec::read(*workspaceDirectory);
-      if (locked.is<package::LockIssue>()) { return zc::none; }
-      const auto& lockedGraph = locked.get<package::VerifiedLockGraph>();
-      package::LockReplayMetrics metrics;
-      auto resolved = package::PackageResolver::resolveLocked(resolverMemory, roots, releases,
-                                                              lockedGraph, metrics);
-      if (resolved.is<package::PackageResolverFailure>() || metrics.solverInvocations != 0) {
-        return zc::none;
+      ZC_CASE_ONEOF(_, package::LockReadFailed) {
+        session->getDiagnosticEngine().diagnose<diagnostics::DiagID::PackageInvocationInvalid>(
+            source::SourceLoc(), "lock-read-failed"_zc);
       }
-      auto& graph = resolved.get<package::ResolutionOutput>();
-      zc::Vector<package::ResolvedPackageSourceSnapshot> selectedSnapshots;
-      for (auto& snapshot : snapshots) {
-        for (const auto& selected : graph.packages()) {
-          identity::CanonicalEncoder snapshotEncoder(resolverMemory);
-          identity::CanonicalEncoder selectedEncoder(resolverMemory);
-          snapshot.package().encode(snapshotEncoder);
-          packageBase(resolverMemory, selected.key()).encode(selectedEncoder);
-          if (snapshotEncoder.finish().asPtr() == selectedEncoder.finish().asPtr()) {
-            selectedSnapshots.add(zc::mv(snapshot));
-            break;
-          }
-        }
+      ZC_CASE_ONEOF(_, package::LockedResolveFailed) {
+        session->getDiagnosticEngine().diagnose<diagnostics::DiagID::PackageInvocationInvalid>(
+            source::SourceLoc(), "locked-resolve-failed"_zc);
       }
-      return driver::VerifiedPackageSessionInput::from(zc::mv(request), zc::mv(verifiedHostTarget),
-                                                       zc::mv(verifiedTarget), zc::mv(graph),
-                                                       zc::mv(selectedSnapshots));
-    }
-
-    auto resolved = package::PackageResolver::resolve(resolverMemory, roots, releases);
-    if (resolved.is<package::PackageResolverFailure>()) { return zc::none; }
-    auto& graph = resolved.get<package::ResolutionOutput>();
-    if (normalizedRequest.lockMode() == package::PackageLockMode::Update) {
-      const auto canonical = package::LockfileCodec::write(graph.lockGraph());
-      if (package::AtomicLockfileWriter::write(*workspaceDirectory, canonical) != zc::none) {
-        return zc::none;
+      ZC_CASE_ONEOF(_, package::LockWriteFailed) {
+        session->getDiagnosticEngine().diagnose<diagnostics::DiagID::PackageInvocationInvalid>(
+            source::SourceLoc(), "lock-write-failed"_zc);
+      }
+      ZC_CASE_ONEOF(_, package::ResolveFailed) {
+        session->getDiagnosticEngine().diagnose<diagnostics::DiagID::PackageInvocationInvalid>(
+            source::SourceLoc(), "resolve-failed"_zc);
       }
     }
-    zc::Vector<package::ResolvedPackageSourceSnapshot> selectedSnapshots;
-    for (auto& snapshot : snapshots) {
-      for (const auto& selected : graph.packages()) {
-        identity::CanonicalEncoder snapshotEncoder(resolverMemory);
-        identity::CanonicalEncoder selectedEncoder(resolverMemory);
-        snapshot.package().encode(snapshotEncoder);
-        packageBase(resolverMemory, selected.key()).encode(selectedEncoder);
-        if (snapshotEncoder.finish().asPtr() == selectedEncoder.finish().asPtr()) {
-          selectedSnapshots.add(zc::mv(snapshot));
-          break;
-        }
-      }
-    }
-    return driver::VerifiedPackageSessionInput::from(zc::mv(request), zc::mv(verifiedHostTarget),
-                                                     zc::mv(verifiedTarget), zc::mv(graph),
-                                                     zc::mv(selectedSnapshots));
   }
 
   zc::MainBuilder::Validity emitOutput() {

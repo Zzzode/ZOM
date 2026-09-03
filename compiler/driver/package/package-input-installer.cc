@@ -16,13 +16,13 @@
 
 namespace zomlang::compiler::driver::package {
 
-zc::Maybe<InstalledPackageInputs> buildInstalledPackageInputs(
+zc::OneOf<InstalledPackageInputs, CrateGraphIssue> buildInstalledPackageInputs(
     VerifiedPackageCompilationRequest&& request, ir::VerifiedTargetSelection&& hostTarget,
     ir::VerifiedTargetSelection&& target, ResolutionOutput&& graph,
     VerifiedBuildScriptPlan&& buildScriptPlan,
     zc::Vector<ResolvedPackageSourceSnapshot>&& snapshots) {
   auto graphResult = VerifiedCrateGraph::buildFinal(request, graph, buildScriptPlan);
-  if (!graphResult.is<VerifiedCrateGraph>()) { return zc::none; }
+  if (!graphResult.is<VerifiedCrateGraph>()) { return graphResult.get<CrateGraphIssue>(); }
   return InstalledPackageInputs{zc::mv(request),
                                 zc::mv(hostTarget),
                                 zc::mv(target),
