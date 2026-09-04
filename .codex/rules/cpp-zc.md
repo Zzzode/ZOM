@@ -179,6 +179,12 @@ exemption conditional: it holds exactly as long as those passes recompute from s
 Incremental reparse over a retained syntax tree puts the parser under both failures above
 and requires the same typed-failure treatment.
 
+`scripts/check-diagnostics-layering.py` enforces this: outside
+`compiler/diagnostics/`, only an adapter under `<subsystem>/diagnostics/` and the session
+that owns the engine may name `DiagnosticEngine`. Adapters not yet moved into their
+subsystem's group are listed explicitly in the script; shrink that list by moving the file,
+never by adding to it.
+
 All `ZOMxxxx` codes live in exactly one place: `compiler/diagnostics/defs/*.def`. A
 subsystem must never declare a parallel enum that restates those numeric values. To give a
 subsystem its own vocabulary, wrap `DiagID` in a newtype with a private constructor and

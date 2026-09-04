@@ -122,6 +122,28 @@ add_test(
 )
 
 add_test(
+  NAME diagnostics-layering
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-diagnostics-layering.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(diagnostics-layering PROPERTIES
+  LABELS "conformance;diagnostics;architecture"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME diagnostics-layering-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-diagnostics-layering.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(diagnostics-layering-negative PROPERTIES
+  LABELS "conformance;diagnostics;architecture;negative"
+  TIMEOUT 120
+)
+
+add_test(
   NAME compiler-session-architecture
   COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-compiler-session-architecture.py --check
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
