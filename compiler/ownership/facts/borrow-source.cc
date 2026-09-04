@@ -81,14 +81,14 @@ ir::IrOperationResult<Result> rejectInvariant(const mir::VerifiedBuiltMir& built
   identity::DefId definition;
   if (builtMir.functions().size() != 0) definition = builtMir.functions()[0].owner;
   AuthorityIdentityResolver resolver(identities);
-  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::OwnershipProofValidation,
+  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::ProofValidation,
                                                      ir::IrFailureOwner::definition(definition));
   ZC_IREQUIRE(fallback != zc::none, "Borrow source failure fallback must be legal");
   zc::Maybe<ir::IrFailureSite> noSite;
   zc::Maybe<identity::SourceSpan> noSpan;
   zc::Vector<uint32_t> noPath;
   auto descriptor = ir::IrFailureDescriptor::decoded(
-      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::OwnershipProofValidation, kind,
+      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::ProofValidation, kind,
       ir::IrFailureOwner::definition(definition), zc::mv(noSite), ir::IrFailureDetail::none(),
       zc::mv(noSpan), zc::mv(noPath), ordinal);
   ZC_IF_SOME(fallbackValue, fallback) {
@@ -112,8 +112,8 @@ ir::IrOperationResult<Result> rejectInvariant(const mir::VerifiedBuiltMir& built
   ZC_UNREACHABLE
 }
 
-zc::Maybe<const OwnershipFunctionEventOverlay&> overlayFor(
-    const VerifiedOwnershipEventOverlay& overlay, identity::DefId owner) {
+zc::Maybe<const FunctionEventOverlay&> overlayFor(const VerifiedOwnershipEventOverlay& overlay,
+                                                  identity::DefId owner) {
   for (const auto& function : overlay.functions()) {
     if (function.owner == owner) return function;
   }
@@ -128,7 +128,7 @@ bool allFunctionsAdmitted(const mir::VerifiedBuiltMir& builtMir) {
 }
 
 zc::Maybe<identity::SourceSpan> sourceSpanFor(const mir::MirFunction& function,
-                                              const OwnershipFunctionEventOverlay& overlay,
+                                              const FunctionEventOverlay& overlay,
                                               const MirEventKey& event) {
   for (const auto& source : overlay.sourceMap) {
     if (source.key == event) return source.span.clone();
@@ -374,7 +374,7 @@ zc::Maybe<MirEventKey> lastUseOfDestination(const mir::MirFunction& function,
 
 /// \brief Converts a loan's AfterEvent activation point to a comparable event key.
 zc::Maybe<MirEventKey> activationEvent(const mir::MirFunction& function, const LoanFact& loan) {
-  if (loan.activeFrom.kind() != OwnershipPointKind::AfterEvent) return zc::none;
+  if (loan.activeFrom.kind() != PointKind::AfterEvent) return zc::none;
   const auto& issue = loan.activeFrom.afterEventValue().event;
   const auto& point = issue.location.point;
   if (point.kind() == MirPointKind::BeforeStatement) {
@@ -420,7 +420,7 @@ bool isReborrowOf(const mir::MirPlace& borrowSource, const mir::MirPlace& loanDe
 void escapeFailures(const mir::VerifiedBuiltMir& builtMir,
                     const VerifiedOwnershipEventOverlay& overlay,
                     const VerifiedReferenceDefinitions& references,
-                    zc::Vector<OwnershipSourceFailure>& failures, uint32_t& traversalOrdinal) {
+                    zc::Vector<SourceFailure>& failures, uint32_t& traversalOrdinal) {
   for (const auto& definition : references.definitions()) {
     if (!definition.origin.detail.is<LocalReferenceOrigin>()) continue;
     zc::Maybe<const mir::MirFunction&> mirFunction;
@@ -463,8 +463,7 @@ void escapeFailures(const mir::VerifiedBuiltMir& builtMir,
 void borrowConflictFailures(const mir::VerifiedBuiltMir& builtMir,
                             const VerifiedOwnershipEventOverlay& overlay,
                             const VerifiedMovePaths& movePaths, const VerifiedLoanFacts& loans,
-                            zc::Vector<OwnershipSourceFailure>& failures,
-                            uint32_t& traversalOrdinal) {
+                            zc::Vector<SourceFailure>& failures, uint32_t& traversalOrdinal) {
   for (const auto& function : builtMir.functions()) {
     auto functionOverlay = overlayFor(overlay, function.owner);
     if (functionOverlay == zc::none) continue;
@@ -524,8 +523,7 @@ void borrowConflictFailures(const mir::VerifiedBuiltMir& builtMir,
 void moveOutOfBorrowFailures(const mir::VerifiedBuiltMir& builtMir,
                              const VerifiedOwnershipEventOverlay& overlay,
                              const VerifiedMovePaths& movePaths, const VerifiedLoanFacts& loans,
-                             zc::Vector<OwnershipSourceFailure>& failures,
-                             uint32_t& traversalOrdinal) {
+                             zc::Vector<SourceFailure>& failures, uint32_t& traversalOrdinal) {
   for (const auto& function : builtMir.functions()) {
     auto functionOverlay = overlayFor(overlay, function.owner);
     if (functionOverlay == zc::none) continue;
@@ -643,7 +641,7 @@ void moveOutOfBorrowFailures(const mir::VerifiedBuiltMir& builtMir,
   }
 }
 
-zc::Maybe<zc::Vector<OwnershipSourceFailure>> borrowSourceFailures(
+zc::Maybe<zc::Vector<SourceFailure>> borrowSourceFailures(
     const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay,
     const VerifiedMovePaths& movePaths, const VerifiedLoanFacts& loans,
     const VerifiedReferenceDefinitions& references) {
@@ -653,7 +651,7 @@ zc::Maybe<zc::Vector<OwnershipSourceFailure>> borrowSourceFailures(
   // current single-path production MIR; branch-aware ordering is tracked
   // separately.
   if (!allFunctionsAdmitted(builtMir)) return zc::none;
-  zc::Vector<OwnershipSourceFailure> failures;
+  zc::Vector<SourceFailure> failures;
   uint32_t traversalOrdinal = 0;
   escapeFailures(builtMir, overlay, references, failures, traversalOrdinal);
   borrowConflictFailures(builtMir, overlay, movePaths, loans, failures, traversalOrdinal);
@@ -700,10 +698,9 @@ BorrowSourceVerificationResult BorrowSourceVerifier::verify(
   }
   ZC_IF_SOME(values, failures) {
     auto suppressed = SourceSuppression::suppress(zc::mv(values));
-    auto deduplicated = OwnershipSourceFailureOrdering::deduplicate(zc::mv(suppressed));
-    auto sorted =
-        ir::SortedSourceFailureFacts<OwnershipSourceFailure, OwnershipSourceFailureOrdering>::from(
-            zc::mv(deduplicated));
+    auto deduplicated = SourceFailureOrdering::deduplicate(zc::mv(suppressed));
+    auto sorted = ir::SortedSourceFailureFacts<SourceFailure, SourceFailureOrdering>::from(
+        zc::mv(deduplicated));
     ZC_IF_SOME(value, sorted) {
       return BorrowSourceVerificationResult::sourceRejected(zc::mv(value));
     }

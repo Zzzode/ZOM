@@ -165,7 +165,7 @@ diagnostics::DiagID irDiagnosticId(IrFailureKind kind, IrFailurePhase phase) noe
     case IrFailurePhase::MirConstruction:
     case IrFailurePhase::BuiltMirVerification:
       return DiagID::BuiltMirInvariant;
-    case IrFailurePhase::OwnershipProofValidation:
+    case IrFailurePhase::ProofValidation:
       return DiagID::OwnershipProofInvariant;
     case IrFailurePhase::CleanupElaboration:
     case IrFailurePhase::CoroutineElaboration:

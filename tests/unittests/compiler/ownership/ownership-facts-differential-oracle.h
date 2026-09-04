@@ -106,15 +106,14 @@ inline bool sameEventKey(const MirEventKey& left, const MirEventKey& right) {
          left.location.point == right.location.point && left.operandOrdinal == right.operandOrdinal;
 }
 
-inline bool sameOwnershipPoint(const facts::OwnershipPoint& left,
-                               const facts::OwnershipPoint& right) {
+inline bool sameOwnershipPoint(const facts::Point& left, const facts::Point& right) {
   if (left.kind() != right.kind()) return false;
   switch (left.kind()) {
-    case facts::OwnershipPointKind::Cfg:
+    case facts::PointKind::Cfg:
       return left.cfgValue().point == right.cfgValue().point;
-    case facts::OwnershipPointKind::BeforeEvent:
+    case facts::PointKind::BeforeEvent:
       return sameEventKey(left.beforeEventValue().event, right.beforeEventValue().event);
-    case facts::OwnershipPointKind::AfterEvent:
+    case facts::PointKind::AfterEvent:
       return sameEventKey(left.afterEventValue().event, right.afterEventValue().event);
   }
   return false;
@@ -331,7 +330,7 @@ public:
         if (functionOverlay == zc::none) return zc::none;
         ZC_IF_SOME(value, functionOverlay) {
           for (const auto& slot : value.slots) {
-            if (!hasRole(slot, OwnershipEventRole::BorrowIssue)) continue;
+            if (!hasRole(slot, EventRole::BorrowIssue)) continue;
             auto loan = deriveLoan(function, value, pathValues, slot);
             if (loan == zc::none) return zc::none;
             ZC_IF_SOME(loanValue, loan) { loans.add(zc::mv(loanValue)); }
@@ -399,15 +398,14 @@ public:
     zc::Vector<facts::ReborrowState> states;
     ZC_IF_SOME(references, referenceValues) {
       for (const auto& reference : references) {
-        const facts::OwnershipPoint points[] = {
-            facts::OwnershipPoint(reference.livePoints.afterCommit),
-            facts::OwnershipPoint(reference.livePoints.afterCommitCfg),
-            facts::OwnershipPoint(reference.livePoints.beforeReturnCfg),
-            facts::OwnershipPoint(reference.livePoints.beforeReturn),
-            facts::OwnershipPoint(reference.livePoints.afterReturn)};
+        const facts::Point points[] = {facts::Point(reference.livePoints.afterCommit),
+                                       facts::Point(reference.livePoints.afterCommitCfg),
+                                       facts::Point(reference.livePoints.beforeReturnCfg),
+                                       facts::Point(reference.livePoints.beforeReturn),
+                                       facts::Point(reference.livePoints.afterReturn)};
         for (const auto& point : points) {
-          states.add(facts::ReborrowState{reference.owner, facts::OwnershipPoint(point),
-                                          reference.loan, reference.origin.detail,
+          states.add(facts::ReborrowState{reference.owner, facts::Point(point), reference.loan,
+                                          reference.origin.detail,
                                           facts::MovePathKey{reference.destination.owner,
                                                              reference.destination.place.clone()}});
         }
@@ -418,10 +416,10 @@ public:
 
   /// \brief Independently recomputes logical resources from MIR
   /// initializations (the production derivation walks overlay plans).
-  ZC_NODISCARD zc::Maybe<zc::Vector<facts::OwnershipResourceFunction>> resources() const {
+  ZC_NODISCARD zc::Maybe<zc::Vector<facts::ResourceFunction>> resources() const {
     auto paths = movePaths();
     if (paths == zc::none) return zc::none;
-    zc::Vector<facts::OwnershipResourceFunction> functions;
+    zc::Vector<facts::ResourceFunction> functions;
     ZC_IF_SOME(pathValues, paths) {
       if (pathValues.size() != builtMir.functions().size()) return zc::none;
       for (size_t index = 0; index < builtMir.functions().size(); ++index) {
@@ -440,8 +438,7 @@ public:
 private:
   // ---- shared lookups -----------------------------------------------------
 
-  ZC_NODISCARD zc::Maybe<const OwnershipFunctionEventOverlay&> overlayFunction(
-      identity::DefId owner) const {
+  ZC_NODISCARD zc::Maybe<const FunctionEventOverlay&> overlayFunction(identity::DefId owner) const {
     for (const auto& function : overlay.functions()) {
       if (function.owner == owner) return function;
     }
@@ -464,7 +461,7 @@ private:
     return zc::none;
   }
 
-  static bool hasRole(const MirEventSlot& slot, OwnershipEventRole role) {
+  static bool hasRole(const MirEventSlot& slot, EventRole role) {
     for (const auto candidate : slot.roles) {
       if (candidate == role) return true;
     }
@@ -629,22 +626,21 @@ private:
   // ---- flow ----------------------------------------------------------------
 
   struct FlowChain final {
-    zc::Vector<facts::OwnershipPoint> points;
+    zc::Vector<facts::Point> points;
     zc::Vector<facts::FlowEdge> edges;
   };
 
-  static bool flowContains(zc::ArrayPtr<const facts::OwnershipPoint> points,
-                           const facts::OwnershipPoint& point) {
+  static bool flowContains(zc::ArrayPtr<const facts::Point> points, const facts::Point& point) {
     for (const auto& candidate : points) {
       if (sameOwnershipPoint(candidate, point)) return true;
     }
     return false;
   }
 
-  static void chainLocation(FlowChain& flow, const OwnershipFunctionEventOverlay& functionOverlay,
-                            MirPoint point, zc::Maybe<facts::OwnershipPoint>& current) {
-    facts::OwnershipPoint cfg = facts::OwnershipPoint::cfg(MirPoint(point));
-    if (!flowContains(flow.points.asPtr(), cfg)) flow.points.add(facts::OwnershipPoint(cfg));
+  static void chainLocation(FlowChain& flow, const FunctionEventOverlay& functionOverlay,
+                            MirPoint point, zc::Maybe<facts::Point>& current) {
+    facts::Point cfg = facts::Point::cfg(MirPoint(point));
+    if (!flowContains(flow.points.asPtr(), cfg)) flow.points.add(facts::Point(cfg));
     ZC_IF_SOME(currentValue, current) {
       if (!sameOwnershipPoint(currentValue, cfg)) {
         bool duplicate = false;
@@ -654,17 +650,16 @@ private:
             break;
           }
         }
-        if (!duplicate) flow.edges.add(facts::FlowEdge{facts::OwnershipPoint(currentValue), cfg});
+        if (!duplicate) flow.edges.add(facts::FlowEdge{facts::Point(currentValue), cfg});
       }
     }
-    current = facts::OwnershipPoint(cfg);
+    current = facts::Point(cfg);
     for (const auto& slot : functionOverlay.slots) {
       if (slot.key.location.point != point) continue;
-      facts::OwnershipPoint before = facts::OwnershipPoint::beforeEvent(MirEventKey(slot.key));
-      facts::OwnershipPoint after = facts::OwnershipPoint::afterEvent(MirEventKey(slot.key));
-      if (!flowContains(flow.points.asPtr(), before))
-        flow.points.add(facts::OwnershipPoint(before));
-      if (!flowContains(flow.points.asPtr(), after)) flow.points.add(facts::OwnershipPoint(after));
+      facts::Point before = facts::Point::beforeEvent(MirEventKey(slot.key));
+      facts::Point after = facts::Point::afterEvent(MirEventKey(slot.key));
+      if (!flowContains(flow.points.asPtr(), before)) flow.points.add(facts::Point(before));
+      if (!flowContains(flow.points.asPtr(), after)) flow.points.add(facts::Point(after));
       bool duplicate = false;
       for (const auto& edge : flow.edges) {
         if (sameOwnershipPoint(edge.from, ZC_ASSERT_NONNULL(current)) &&
@@ -674,8 +669,8 @@ private:
         }
       }
       if (!duplicate) {
-        flow.edges.add(facts::FlowEdge{facts::OwnershipPoint(ZC_ASSERT_NONNULL(current)),
-                                       facts::OwnershipPoint(before)});
+        flow.edges.add(
+            facts::FlowEdge{facts::Point(ZC_ASSERT_NONNULL(current)), facts::Point(before)});
       }
       duplicate = false;
       for (const auto& edge : flow.edges) {
@@ -685,19 +680,17 @@ private:
         }
       }
       if (!duplicate) {
-        flow.edges.add(
-            facts::FlowEdge{facts::OwnershipPoint(before), facts::OwnershipPoint(after)});
+        flow.edges.add(facts::FlowEdge{facts::Point(before), facts::Point(after)});
       }
-      current = facts::OwnershipPoint(after);
+      current = facts::Point(after);
     }
   }
 
   ZC_NODISCARD zc::Maybe<facts::FlowFunction> deriveFlow(
-      const mir::MirFunction& function,
-      const OwnershipFunctionEventOverlay& functionOverlay) const {
+      const mir::MirFunction& function, const FunctionEventOverlay& functionOverlay) const {
     if (function.blocks.size() == 0) return zc::none;
     FlowChain flow;
-    zc::Maybe<facts::OwnershipPoint> current;
+    zc::Maybe<facts::Point> current;
     chainLocation(flow, functionOverlay, MirPoint::entry(), current);
     for (size_t index = 0; index < function.blocks.size(); ++index) {
       const auto& block = function.blocks[index];
@@ -728,7 +721,7 @@ private:
         const auto& switchInt = block.terminator.switchIntValue();
         // Every edge fans out from the beforeTerminator point, matching the
         // production CFG derivation.
-        zc::Maybe<facts::OwnershipPoint> branchPoint = current;
+        zc::Maybe<facts::Point> branchPoint = current;
         for (uint32_t ordinal = 0; ordinal < switchInt.arms.size(); ++ordinal) {
           current = branchPoint;
           chainLocation(flow, functionOverlay,
@@ -744,9 +737,8 @@ private:
       }
     }
     for (const auto& slot : functionOverlay.slots) {
-      const facts::OwnershipPoint before =
-          facts::OwnershipPoint::beforeEvent(MirEventKey(slot.key));
-      const facts::OwnershipPoint after = facts::OwnershipPoint::afterEvent(MirEventKey(slot.key));
+      const facts::Point before = facts::Point::beforeEvent(MirEventKey(slot.key));
+      const facts::Point after = facts::Point::afterEvent(MirEventKey(slot.key));
       if (!flowContains(flow.points.asPtr(), before) || !flowContains(flow.points.asPtr(), after)) {
         return zc::none;
       }
@@ -1323,7 +1315,7 @@ private:
   }
 
   ZC_NODISCARD zc::Maybe<facts::LoanFact> deriveLoan(
-      const mir::MirFunction& function, const OwnershipFunctionEventOverlay& functionOverlay,
+      const mir::MirFunction& function, const FunctionEventOverlay& functionOverlay,
       const zc::Vector<facts::MovePathFunction>& paths, const MirEventSlot& slot) const {
     if (slot.key.location.point.kind() != MirPointKind::BeforeStatement) return zc::none;
     const auto& point = slot.key.location.point.beforeStatementValue();
@@ -1354,10 +1346,8 @@ private:
       if (activation != zc::none) return zc::none;
       activation = MirEventKey(fact.activation);
     }
-    facts::OwnershipPoint activeFrom = facts::OwnershipPoint::afterEvent(MirEventKey(issue));
-    ZC_IF_SOME(event, activation) {
-      activeFrom = facts::OwnershipPoint::afterEvent(MirEventKey(event));
-    }
+    facts::Point activeFrom = facts::Point::afterEvent(MirEventKey(issue));
+    ZC_IF_SOME(event, activation) { activeFrom = facts::Point::afterEvent(MirEventKey(event)); }
     ZC_IF_SOME(sourcePath, source) {
       ZC_IF_SOME(destinationPath, destination) {
         return facts::LoanFact{
@@ -1367,7 +1357,7 @@ private:
                 MirLocation{function.owner, MirPoint::beforeStatement(point.block, point.ordinal)},
                 2},
             borrow.kind,
-            facts::OwnershipPoint(activeFrom),
+            facts::Point(activeFrom),
             facts::MovePathKey{sourcePath.owner, sourcePath.place.clone()},
             facts::MovePathKey{destinationPath.owner, destinationPath.place.clone()}};
       }
@@ -1377,12 +1367,12 @@ private:
 
   // ---- references --------------------------------------------------------------
 
-  static bool hasEntryRoot(const OwnershipFunctionEventOverlay& functionOverlay, uint32_t ordinal) {
+  static bool hasEntryRoot(const FunctionEventOverlay& functionOverlay, uint32_t ordinal) {
     size_t matches = 0;
     for (const auto& slot : functionOverlay.slots) {
       if (slot.key.location.point.kind() != MirPointKind::Entry ||
-          slot.key.operandOrdinal != ordinal || slot.stage != OwnershipEventStage::Commit ||
-          slot.roles.size() != 1 || slot.roles[0] != OwnershipEventRole::EntryRoot) {
+          slot.key.operandOrdinal != ordinal || slot.stage != EventStage::Commit ||
+          slot.roles.size() != 1 || slot.roles[0] != EventRole::EntryRoot) {
         continue;
       }
       ++matches;
@@ -1415,7 +1405,7 @@ private:
 
   ZC_NODISCARD zc::Maybe<MirEventKey> returnedFrom(
       const mir::MirFunction& function, const mir::MirPlace& destination,
-      const OwnershipFunctionEventOverlay& functionOverlay) const {
+      const FunctionEventOverlay& functionOverlay) const {
     zc::Maybe<MirEventKey> result;
     for (const auto& block : function.blocks) {
       if (block.terminator.kind() != mir::MirTerminatorKind::Return ||
@@ -1429,16 +1419,15 @@ private:
           continue;
         }
         const auto transferRole = value.kind() == mir::MirOperandKind::Copy
-                                      ? OwnershipEventRole::OperandCopy
-                                      : OwnershipEventRole::OperandMove;
+                                      ? EventRole::OperandCopy
+                                      : EventRole::OperandMove;
         const MirEventKey event{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
                                 0};
         bool matches = false;
         size_t slots = 0;
         for (const auto& slot : functionOverlay.slots) {
-          if (slot.key != event || slot.stage != OwnershipEventStage::Source ||
-              slot.roles.size() != 2 || slot.roles[0] != OwnershipEventRole::OperandRead ||
-              slot.roles[1] != transferRole) {
+          if (slot.key != event || slot.stage != EventStage::Source || slot.roles.size() != 2 ||
+              slot.roles[0] != EventRole::OperandRead || slot.roles[1] != transferRole) {
             continue;
           }
           ++slots;
@@ -1531,7 +1520,7 @@ private:
   }
 
   ZC_NODISCARD zc::Maybe<zc::Vector<facts::ReferenceDefinition>> deriveReferences(
-      const mir::MirFunction& function, const OwnershipFunctionEventOverlay& functionOverlay,
+      const mir::MirFunction& function, const FunctionEventOverlay& functionOverlay,
       const zc::Vector<facts::MovePathFunction>& paths,
       zc::ArrayPtr<const facts::LoanFact> loans) const {
     zc::Vector<facts::ReferenceDefinition> definitions;
@@ -1588,15 +1577,15 @@ private:
             const auto& commit = loanValue.commit.location.point.beforeStatementValue();
             const auto& returnedPoint = returnEvent.location.point.beforeTerminatorValue();
             facts::ReferenceLivePoints livePoints{
-                facts::OwnershipPoint::afterEvent(MirEventKey(loanValue.commit)),
-                facts::OwnershipPoint::cfg(MirPoint::afterStatement(commit.block, commit.ordinal)),
-                facts::OwnershipPoint::cfg(MirPoint::beforeTerminator(returnedPoint.block)),
-                facts::OwnershipPoint::beforeEvent(MirEventKey(returnEvent)),
-                facts::OwnershipPoint::afterEvent(MirEventKey(returnEvent))};
+                facts::Point::afterEvent(MirEventKey(loanValue.commit)),
+                facts::Point::cfg(MirPoint::afterStatement(commit.block, commit.ordinal)),
+                facts::Point::cfg(MirPoint::beforeTerminator(returnedPoint.block)),
+                facts::Point::beforeEvent(MirEventKey(returnEvent)),
+                facts::Point::afterEvent(MirEventKey(returnEvent))};
             definitions.add(facts::ReferenceDefinition{
                 function.owner, MirEventKey(loanValue.commit), MirEventKey(loanValue.issue),
                 facts::ReferenceInputOrigin{
-                    entryEvent, facts::OwnershipPoint(loanValue.activeFrom), detail,
+                    entryEvent, facts::Point(loanValue.activeFrom), detail,
                     facts::MovePathKey{loanValue.source.owner, loanValue.source.place.clone()}},
                 MirEventKey(returnEvent),
                 facts::MovePathKey{loanValue.destination.owner,
@@ -1611,7 +1600,7 @@ private:
 
   // ---- regions ------------------------------------------------------------------
 
-  static bool flowHasPoint(const facts::FlowFunction& flow, const facts::OwnershipPoint& point) {
+  static bool flowHasPoint(const facts::FlowFunction& flow, const facts::Point& point) {
     for (const auto& candidate : flow.points) {
       if (sameOwnershipPoint(candidate, point)) return true;
     }
@@ -1620,11 +1609,11 @@ private:
 
   /// \brief Iterative ordered reachability (the production derivation is
   /// recursive).
-  static bool reaches(const facts::FlowFunction& flow, const facts::OwnershipPoint& from,
-                      const facts::OwnershipPoint& to) {
-    zc::Vector<const facts::OwnershipPoint*> pending;
-    zc::Vector<const facts::OwnershipPoint*> visited;
-    const facts::OwnershipPoint* start = nullptr;
+  static bool reaches(const facts::FlowFunction& flow, const facts::Point& from,
+                      const facts::Point& to) {
+    zc::Vector<const facts::Point*> pending;
+    zc::Vector<const facts::Point*> visited;
+    const facts::Point* start = nullptr;
     for (const auto& point : flow.points) {
       if (sameOwnershipPoint(point, from)) {
         start = &point;
@@ -1634,7 +1623,7 @@ private:
     if (start == nullptr) return false;
     pending.add(start);
     while (pending.size() != 0) {
-      const facts::OwnershipPoint* current = pending[pending.size() - 1];
+      const facts::Point* current = pending[pending.size() - 1];
       pending.removeLast();
       if (sameOwnershipPoint(*current, to)) return true;
       bool alreadyVisited = false;
@@ -1689,13 +1678,13 @@ private:
         if (candidate.owner == reference.owner) flow = &candidate;
       }
       if (flow == nullptr) return zc::none;
-      zc::Vector<facts::OwnershipPoint> members;
-      members.add(facts::OwnershipPoint(loanValue.activeFrom));
-      members.add(facts::OwnershipPoint(reference.livePoints.afterCommit));
-      members.add(facts::OwnershipPoint(reference.livePoints.afterCommitCfg));
-      members.add(facts::OwnershipPoint(reference.livePoints.beforeReturnCfg));
-      members.add(facts::OwnershipPoint(reference.livePoints.beforeReturn));
-      members.add(facts::OwnershipPoint(reference.livePoints.afterReturn));
+      zc::Vector<facts::Point> members;
+      members.add(facts::Point(loanValue.activeFrom));
+      members.add(facts::Point(reference.livePoints.afterCommit));
+      members.add(facts::Point(reference.livePoints.afterCommitCfg));
+      members.add(facts::Point(reference.livePoints.beforeReturnCfg));
+      members.add(facts::Point(reference.livePoints.beforeReturn));
+      members.add(facts::Point(reference.livePoints.afterReturn));
       for (const auto& member : members) {
         if (!flowHasPoint(*flow, member)) return zc::none;
       }
@@ -1711,8 +1700,7 @@ private:
 
   // ---- resources ---------------------------------------------------------------
 
-  static bool positive(const OwnershipMarkerUseKey& key,
-                       const OwnershipFunctionEventOverlay& functionOverlay) {
+  static bool positive(const MarkerUseKey& key, const FunctionEventOverlay& functionOverlay) {
     for (const auto& use : functionOverlay.markerUses) {
       if (use.key.event != key.event || use.key.marker != key.marker ||
           use.key.subject != key.subject ||
@@ -1720,14 +1708,13 @@ private:
           use.key.coherenceRevision.digest() != key.coherenceRevision.digest()) {
         continue;
       }
-      return use.decision.is<OwnershipMarkerDecisionPositive>();
+      return use.decision.is<MarkerDecisionPositive>();
     }
     return false;
   }
 
   ZC_NODISCARD static zc::Maybe<facts::DropRequirement> requirement(
-      const LogicalDropPlanComponent& component,
-      const OwnershipFunctionEventOverlay& functionOverlay) {
+      const LogicalDropPlanComponent& component, const FunctionEventOverlay& functionOverlay) {
     const bool copy = positive(component.copyDecision, functionOverlay);
     const bool linear = positive(component.linearDecision, functionOverlay);
     if (component.dropAction != zc::none && copy) return zc::none;
@@ -1797,7 +1784,7 @@ private:
   }
 
   ZC_NODISCARD static zc::Maybe<uint32_t> resourceAt(
-      const zc::Vector<facts::OwnershipResourceFact>& resourceFacts,
+      const zc::Vector<facts::ResourceFact>& resourceFacts,
       const zc::Vector<facts::DropTransfer>& transfers,
       const zc::Vector<facts::CastResourceRoute>& castRoutes, const facts::MovePathKey& place) {
     for (uint32_t ordinal = 0; ordinal < resourceFacts.size(); ++ordinal) {
@@ -1818,10 +1805,10 @@ private:
     return zc::none;
   }
 
-  ZC_NODISCARD zc::Maybe<facts::OwnershipResourceFunction> deriveResources(
+  ZC_NODISCARD zc::Maybe<facts::ResourceFunction> deriveResources(
       const mir::MirFunction& function, const facts::MovePathFunction& paths,
-      const OwnershipFunctionEventOverlay& functionOverlay) const {
-    zc::Vector<facts::OwnershipResourceFact> resourceFacts;
+      const FunctionEventOverlay& functionOverlay) const {
+    zc::Vector<facts::ResourceFact> resourceFacts;
     zc::Vector<facts::DropTransfer> transfers;
     zc::Vector<facts::CastResourceRoute> castRoutes;
     zc::Vector<facts::DropPlan> dropPlans;
@@ -1957,7 +1944,7 @@ private:
             factOrdinal = static_cast<uint32_t>(resourceFacts.size());
             identity::SemanticTypeId subjectType = component.valueType;
             if (castOriginType != zc::none) subjectType = ZC_ASSERT_NONNULL(castOriginType);
-            resourceFacts.add(facts::OwnershipResourceFact{
+            resourceFacts.add(facts::ResourceFact{
                 facts::DropResourceSubject{MirEventKey(introduction),
                                            facts::MovePathKey{origin.owner, origin.place.clone()},
                                            subjectType},
@@ -1981,16 +1968,16 @@ private:
     for (const auto& plan : pending) {
       if (!applyPlan(*plan.plan, plan.isTransfer)) return zc::none;
     }
-    return facts::OwnershipResourceFunction{function.owner,
-                                            zc::mv(resourceFacts),
-                                            zc::mv(transfers),
-                                            zc::mv(castRoutes),
-                                            zc::mv(dropPlans),
-                                            {},
-                                            {},
-                                            {},
-                                            {},
-                                            {}};
+    return facts::ResourceFunction{function.owner,
+                                   zc::mv(resourceFacts),
+                                   zc::mv(transfers),
+                                   zc::mv(castRoutes),
+                                   zc::mv(dropPlans),
+                                   {},
+                                   {},
+                                   {},
+                                   {},
+                                   {}};
   }
 
   const mir::VerifiedBuiltMir& builtMir;
@@ -2034,7 +2021,7 @@ inline bool matchesMovePaths(zc::ArrayPtr<const facts::MovePathFunction> oracle,
   return true;
 }
 
-inline bool sameFlowPoint(const facts::OwnershipPoint& left, const facts::OwnershipPoint& right) {
+inline bool sameFlowPoint(const facts::Point& left, const facts::Point& right) {
   return sameOwnershipPoint(left, right);
 }
 
@@ -2151,8 +2138,7 @@ inline bool sameResourceSubject(const facts::DropResourceSubject& left,
          sameMovePathKey(left.origin, right.origin) && left.originType == right.originType;
 }
 
-inline bool sameResourceFact(const facts::OwnershipResourceFact& left,
-                             const facts::OwnershipResourceFact& right) {
+inline bool sameResourceFact(const facts::ResourceFact& left, const facts::ResourceFact& right) {
   return sameResourceSubject(left.subject, right.subject) &&
          left.requirement == right.requirement &&
          sameDropAction(left.dropAction, right.dropAction) &&
@@ -2172,8 +2158,8 @@ inline bool sameCastRoute(const facts::CastResourceRoute& left,
 }
 
 inline bool sameDropPlan(const facts::DropPlan& left, const facts::DropPlan& right,
-                         zc::ArrayPtr<const facts::OwnershipResourceFact> leftFacts,
-                         zc::ArrayPtr<const facts::OwnershipResourceFact> rightFacts) {
+                         zc::ArrayPtr<const facts::ResourceFact> leftFacts,
+                         zc::ArrayPtr<const facts::ResourceFact> rightFacts) {
   if (!sameResourceSubject(left.subject, right.subject) || left.mode != right.mode ||
       left.components.size() != right.components.size()) {
     return false;
@@ -2193,8 +2179,8 @@ inline bool sameDropPlan(const facts::DropPlan& left, const facts::DropPlan& rig
   return true;
 }
 
-inline bool matchesResources(zc::ArrayPtr<const facts::OwnershipResourceFunction> oracle,
-                             zc::ArrayPtr<const facts::OwnershipResourceFunction> production) {
+inline bool matchesResources(zc::ArrayPtr<const facts::ResourceFunction> oracle,
+                             zc::ArrayPtr<const facts::ResourceFunction> production) {
   if (oracle.size() != production.size()) return false;
   for (size_t index = 0; index < oracle.size(); ++index) {
     if (oracle[index].owner != production[index].owner ||

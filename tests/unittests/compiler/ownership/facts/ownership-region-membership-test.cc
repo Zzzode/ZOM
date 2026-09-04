@@ -333,7 +333,7 @@ ir::IrOperationResult<facts::VerifiedRegionMemberships> buildAndVerifyRegionMemb
 
 /// Returns true when the region is live at the given ownership point.
 bool isRegionLiveAt(zc::ArrayPtr<const facts::RegionMembership> memberships,
-                    const facts::RegionKey& region, const facts::OwnershipPoint& point) {
+                    const facts::RegionKey& region, const facts::Point& point) {
   for (const auto& membership : memberships) {
     if (membership.region == region && membership.point == point) return true;
   }
@@ -341,10 +341,10 @@ bool isRegionLiveAt(zc::ArrayPtr<const facts::RegionMembership> memberships,
 }
 
 /// Finds the sole function's entry CFG point in the verified flow.
-const facts::OwnershipPoint& flowEntryPoint(const facts::VerifiedFlow& flow) {
+const facts::Point& flowEntryPoint(const facts::VerifiedFlow& flow) {
   ZC_REQUIRE(flow.functions().size() == 1);
   for (const auto& point : flow.functions()[0].points) {
-    if (point.kind() == facts::OwnershipPointKind::Cfg &&
+    if (point.kind() == facts::PointKind::Cfg &&
         point.cfgValue().point.kind() == MirPointKind::Entry) {
       return point;
     }
@@ -525,7 +525,7 @@ ZC_TEST("Region membership rejects a foreign overlay revision") {
   auto candidateResult = buildRegionMemberships(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
-  candidate.overlayRevision = OwnershipEventOverlayRevision::fromDigest(identity::Sha256Digest{});
+  candidate.overlayRevision = EventOverlayRevision::fromDigest(identity::Sha256Digest{});
   ZC_REQUIRE(candidate.overlayRevision.digest() != fixture.overlay().revision().digest());
 
   auto verified = facts::RegionMembershipVerifier::verify(
@@ -569,7 +569,7 @@ ZC_TEST("Region membership rejects a spurious membership on a scalar function") 
   const auto owner = fixture.builtMir().functions()[0].owner;
   const auto entry = flowEntryPoint(fixture.inputs().flow());
   candidate.memberships.add(
-      facts::RegionMembership{facts::RegionKey::staticRegion(owner), facts::OwnershipPoint{entry}});
+      facts::RegionMembership{facts::RegionKey::staticRegion(owner), facts::Point{entry}});
 
   auto verified = facts::RegionMembershipVerifier::verify(
       zc::mv(candidate), fixture.inputs().flow(), fixture.inputs().loans(), fixture.builtMir(),

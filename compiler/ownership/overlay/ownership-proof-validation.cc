@@ -18,13 +18,12 @@ namespace zomlang::compiler::ownership {
 
 struct ValidatedOwnershipProofs::Impl final {
   Impl(facts::VerifiedOwnershipInputs&& inputs,
-       facts::VerifiedRegionMemberships&& regionMemberships,
-       OwnershipProofValidationReport report) noexcept
+       facts::VerifiedRegionMemberships&& regionMemberships, ProofValidationReport report) noexcept
       : inputs(zc::mv(inputs)), regionMemberships(zc::mv(regionMemberships)), report(report) {}
 
   facts::VerifiedOwnershipInputs inputs;
   facts::VerifiedRegionMemberships regionMemberships;
-  OwnershipProofValidationReport report;
+  ProofValidationReport report;
 };
 
 ValidatedOwnershipProofs::ValidatedOwnershipProofs(zc::Own<Impl>&& impl) noexcept
@@ -47,7 +46,7 @@ const facts::VerifiedCaptureFacts& ValidatedOwnershipProofs::captures() const no
   return impl->inputs.captures();
 }
 
-const OwnershipProofValidationReport& ValidatedOwnershipProofs::report() const noexcept {
+const ProofValidationReport& ValidatedOwnershipProofs::report() const noexcept {
   return impl->report;
 }
 
@@ -55,7 +54,7 @@ facts::VerifiedOwnershipInputs ValidatedOwnershipProofs::takeInputs() && noexcep
   return zc::mv(impl->inputs);
 }
 
-ir::IrOperationResult<ValidatedOwnershipProofs> OwnershipProofValidation::validate(
+ir::IrOperationResult<ValidatedOwnershipProofs> ProofValidation::validate(
     facts::VerifiedOwnershipInputs&& inputs, facts::VerifiedRegionMemberships&& regionMemberships) {
   // Deferred RFC 0013 cross-checks. These await inputs the admitted subset does
   // not yet produce, so implementing them now would add unreachable, untestable
@@ -68,7 +67,7 @@ ir::IrOperationResult<ValidatedOwnershipProofs> OwnershipProofValidation::valida
   // Conflicting-borrow and use-after-move rejection are not listed here: they
   // are performed on the production path by BorrowSourceVerifier and
   // InitializationSourceVerifier respectively, before this validation runs.
-  OwnershipProofValidationReport report;
+  ProofValidationReport report;
   report.validatedEscapeProofs = inputs.escapes().escapes().size();
   report.validatedRegionMemberships = regionMemberships.memberships().size();
   report.validatedCaptureFacts = inputs.captures().captures().size();

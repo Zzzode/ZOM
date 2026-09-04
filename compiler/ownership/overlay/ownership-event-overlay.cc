@@ -199,7 +199,7 @@ zc::Maybe<zc::Array<uint8_t>> encodeEventKey(const MirEventKey& event,
 }
 
 zc::Maybe<zc::Array<uint8_t>> encodeMarkerUseKey(
-    const OwnershipMarkerUseKey& key, const checker::CheckerIdentityAuthority& identities,
+    const MarkerUseKey& key, const checker::CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes) {
   auto event = encodeEventKey(key.event, identities);
   auto marker = identities.definition(key.marker);
@@ -219,15 +219,15 @@ zc::Maybe<zc::Array<uint8_t>> encodeMarkerUseKey(
   return encoder.finish();
 }
 
-zc::Maybe<zc::Array<uint8_t>> encodeMarkerUse(const OwnershipMarkerUse& use,
+zc::Maybe<zc::Array<uint8_t>> encodeMarkerUse(const MarkerUse& use,
                                               const checker::CheckerIdentityAuthority& identities,
                                               const type::SemanticTypeStore& semanticTypes) {
   auto key = encodeMarkerUseKey(use.key, identities, semanticTypes);
   if (key == zc::none) return zc::none;
   identity::CanonicalEncoder encoder;
   ZC_IF_SOME(value, key) { encoder.encodeByteString(value.asPtr()); }
-  if (use.decision.is<OwnershipMarkerDecisionPositive>()) {
-    const auto& proof = use.decision.get<OwnershipMarkerDecisionPositive>().proof;
+  if (use.decision.is<MarkerDecisionPositive>()) {
+    const auto& proof = use.decision.get<MarkerDecisionPositive>().proof;
     if (proof.key.marker != use.key.marker || proof.key.subject != use.key.subject ||
         proof.polarity != checker::signature::Polarity::Positive) {
       return zc::none;
@@ -239,8 +239,8 @@ zc::Maybe<zc::Array<uint8_t>> encodeMarkerUse(const OwnershipMarkerUse& use,
     ZC_IF_SOME(value, record) { encoder.encodeByteString(value.asPtr()); }
     return encoder.finish();
   }
-  if (use.decision.is<OwnershipMarkerDecisionExplicitNegative>()) {
-    const auto& fact = use.decision.get<OwnershipMarkerDecisionExplicitNegative>().explicitFact;
+  if (use.decision.is<MarkerDecisionExplicitNegative>()) {
+    const auto& fact = use.decision.get<MarkerDecisionExplicitNegative>().explicitFact;
     if (fact.key.marker != use.key.marker || fact.key.subject != use.key.subject ||
         fact.polarity != checker::signature::Polarity::Negative) {
       return zc::none;
@@ -530,8 +530,7 @@ zc::Maybe<zc::Array<uint8_t>> encodeCastResourcePlan(
 }
 
 zc::Maybe<zc::Array<uint8_t>> encodeFunctionOverlay(
-    const OwnershipFunctionEventOverlay& overlay,
-    const checker::CheckerIdentityAuthority& identities,
+    const FunctionEventOverlay& overlay, const checker::CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes) {
   identity::CanonicalEncoder encoder;
   auto owner = identities.definition(overlay.owner);
@@ -553,8 +552,8 @@ zc::Maybe<zc::Array<uint8_t>> encodeFunctionOverlay(
     encoder.encodeByteString(keyBytes.asPtr());
 
     const uint8_t stage = static_cast<uint8_t>(slot.stage);
-    if (stage < static_cast<uint8_t>(OwnershipEventStage::Source) ||
-        stage > static_cast<uint8_t>(OwnershipEventStage::Commit) || slot.roles.size() == 0) {
+    if (stage < static_cast<uint8_t>(EventStage::Source) ||
+        stage > static_cast<uint8_t>(EventStage::Commit) || slot.roles.size() == 0) {
       return zc::none;
     }
     identity::CanonicalEncoder slotEncoder;
@@ -564,8 +563,7 @@ zc::Maybe<zc::Array<uint8_t>> encodeFunctionOverlay(
     uint8_t previousRole = 0;
     for (auto role : slot.roles) {
       const uint8_t roleTag = static_cast<uint8_t>(role);
-      if (roleTag <= previousRole ||
-          roleTag > static_cast<uint8_t>(OwnershipEventRole::CastCarrierDrop)) {
+      if (roleTag <= previousRole || roleTag > static_cast<uint8_t>(EventRole::CastCarrierDrop)) {
         return zc::none;
       }
       const uint8_t encodedRole[] = {roleTag};
@@ -778,7 +776,7 @@ zc::Maybe<identity::DefId> firstFunctionDefinition(const mir::VerifiedBuiltMir& 
   return zc::none;
 }
 
-bool hasExactOverlayInput(const OwnershipEventOverlayInput& input) {
+bool hasExactOverlayInput(const EventOverlayInput& input) {
   const auto& admitted = input.admitted;
   const auto& checked = input.checked;
   const auto& hir = input.hir;
@@ -868,7 +866,7 @@ bool sameSpan(const identity::SourceSpan& left, const identity::SourceSpan& righ
          left.byteEnd() == right.byteEnd();
 }
 
-void sortRoles(zc::Vector<OwnershipEventRole>& roles) {
+void sortRoles(zc::Vector<EventRole>& roles) {
   for (size_t index = 1; index < roles.size(); ++index) {
     auto current = roles[index];
     size_t insertion = index;
@@ -919,40 +917,37 @@ void sortSources(zc::Vector<MirEventSource>& sources) {
   }
 }
 
-zc::Maybe<OwnershipMarkerDecision> markerDecision(checker::marker::MarkerProofEngine& proofs,
-                                                  identity::DefId marker,
-                                                  identity::SemanticTypeId subject) {
+zc::Maybe<MarkerDecision> markerDecision(checker::marker::MarkerProofEngine& proofs,
+                                         identity::DefId marker, identity::SemanticTypeId subject) {
   auto result = proofs.prove(marker, subject);
   if (result.is<checker::marker::MarkerProofPositive>()) {
-    return OwnershipMarkerDecision(OwnershipMarkerDecisionPositive{
-        result.get<checker::marker::MarkerProofPositive>().proof.clone()});
+    return MarkerDecision(
+        MarkerDecisionPositive{result.get<checker::marker::MarkerProofPositive>().proof.clone()});
   }
   if (result.is<checker::marker::MarkerProofNegative>()) {
-    return OwnershipMarkerDecision(OwnershipMarkerDecisionExplicitNegative{
+    return MarkerDecision(MarkerDecisionExplicitNegative{
         result.get<checker::marker::MarkerProofNegative>().explicitFact.clone()});
   }
   if (result.is<checker::marker::MarkerProofUnsatisfied>()) {
-    return OwnershipMarkerDecision(OwnershipMarkerDecisionUnsatisfied{});
+    return MarkerDecision(MarkerDecisionUnsatisfied{});
   }
   return zc::none;
 }
 
-bool appendMarkerUse(zc::Vector<OwnershipMarkerUse>& uses,
-                     checker::marker::MarkerProofEngine& proofs,
-                     const OwnershipEventOverlayInput& input, const MirEventKey& event,
+bool appendMarkerUse(zc::Vector<MarkerUse>& uses, checker::marker::MarkerProofEngine& proofs,
+                     const EventOverlayInput& input, const MirEventKey& event,
                      identity::DefId marker, identity::SemanticTypeId subject) {
   auto decision = markerDecision(proofs, marker, subject);
   if (decision == zc::none) return false;
   ZC_IF_SOME(value, decision) {
-    uses.add(OwnershipMarkerUse{
-        OwnershipMarkerUseKey{event, marker, subject, input.body.markerPolicies.revision(),
-                              input.body.coherence.revision()},
-        zc::mv(value)});
+    uses.add(MarkerUse{MarkerUseKey{event, marker, subject, input.body.markerPolicies.revision(),
+                                    input.body.coherence.revision()},
+                       zc::mv(value)});
   }
   return true;
 }
 
-bool sortMarkerUses(zc::Vector<OwnershipMarkerUse>& uses,
+bool sortMarkerUses(zc::Vector<MarkerUse>& uses,
                     const checker::CheckerIdentityAuthority& identities,
                     const type::SemanticTypeStore& semanticTypes) {
   zc::Vector<zc::Array<uint8_t>> keys;
@@ -1194,7 +1189,7 @@ private:
   zc::ArrayPtr<const TypeSubstitution> substitutions;
 };
 
-const signature::SemanticSignature* resolveSignaturePointer(const OwnershipEventOverlayInput& input,
+const signature::SemanticSignature* resolveSignaturePointer(const EventOverlayInput& input,
                                                             identity::DefId definition) {
   const signature::SemanticSignature* local = nullptr;
   for (const auto& value : input.body.signatureFacts.signatures()) {
@@ -1211,21 +1206,21 @@ const signature::SemanticSignature* resolveSignaturePointer(const OwnershipEvent
   return imported;
 }
 
-zc::Maybe<identity::DefId> materializedDefinitionForType(const OwnershipEventOverlayInput& input,
+zc::Maybe<identity::DefId> materializedDefinitionForType(const EventOverlayInput& input,
                                                          identity::DefId definition) {
   auto entry = input.body.identities.definition(definition);
   ZC_IF_SOME(value, entry) { return value.handle(); }
   return zc::none;
 }
 
-zc::Maybe<const identity::DefinitionKey&> definitionKeyForType(
-    const OwnershipEventOverlayInput& input, identity::DefId definition) {
+zc::Maybe<const identity::DefinitionKey&> definitionKeyForType(const EventOverlayInput& input,
+                                                               identity::DefId definition) {
   auto entry = input.body.identities.definition(definition);
   ZC_IF_SOME(value, entry) { return value.key(); }
   return zc::none;
 }
 
-bool genericSubstitutions(const OwnershipEventOverlayInput& input, identity::DefId definition,
+bool genericSubstitutions(const EventOverlayInput& input, identity::DefId definition,
                           const signature::NominalSignature& nominalSignature,
                           const type::semantic::NominalTypeData& subject,
                           zc::Vector<TypeSubstitution>& output) {
@@ -1269,7 +1264,7 @@ struct StoredField final {
 ///
 /// Returns none for types with no projectable stored fields (primitives, tuples, objects,
 /// enums, or any type whose signature cannot be resolved).
-zc::Maybe<zc::Vector<StoredField>> enumerateStoredFields(const OwnershipEventOverlayInput& input,
+zc::Maybe<zc::Vector<StoredField>> enumerateStoredFields(const EventOverlayInput& input,
                                                          identity::SemanticTypeId typeId) {
   auto lookup = input.body.semanticTypes.get(typeId);
   if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
@@ -1313,7 +1308,7 @@ zc::Maybe<zc::Vector<StoredField>> enumerateStoredFields(const OwnershipEventOve
 ///
 /// Returns the deinitializer definition for struct nominals that declare one,
 /// and none for primitives, tuples, objects, enums, or structs without a deinitializer.
-zc::Maybe<identity::DefId> directDeinitializerForType(const OwnershipEventOverlayInput& input,
+zc::Maybe<identity::DefId> directDeinitializerForType(const EventOverlayInput& input,
                                                       identity::SemanticTypeId typeId) {
   auto lookup = input.body.semanticTypes.get(typeId);
   if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
@@ -1342,8 +1337,8 @@ zc::Maybe<identity::DefId> directDeinitializerForType(const OwnershipEventOverla
 struct ProjectionQueryNode final {
   mir::MirPlace place;
   identity::SemanticTypeId valueType;
-  OwnershipMarkerUseKey copyKey;
-  OwnershipMarkerUseKey linearKey;
+  MarkerUseKey copyKey;
+  MarkerUseKey linearKey;
   bool copyPositive;
   bool linearPositive;
   zc::Maybe<identity::DefId> directDeinitializer;
@@ -1351,9 +1346,9 @@ struct ProjectionQueryNode final {
 };
 
 /// \brief Phase one: query Copy and Linear at one place and recursively discover descendants.
-zc::Maybe<ProjectionQueryNode> discoverProjectionNode(zc::Vector<OwnershipMarkerUse>& markerUses,
+zc::Maybe<ProjectionQueryNode> discoverProjectionNode(zc::Vector<MarkerUse>& markerUses,
                                                       checker::marker::MarkerProofEngine& proofs,
-                                                      const OwnershipEventOverlayInput& input,
+                                                      const EventOverlayInput& input,
                                                       const MirEventKey& initialization,
                                                       mir::MirPlace&& place, identity::DefId copy,
                                                       identity::DefId linear) {
@@ -1364,21 +1359,19 @@ zc::Maybe<ProjectionQueryNode> discoverProjectionNode(zc::Vector<OwnershipMarker
   if (copyDecision == zc::none) return zc::none;
   auto linearDecision = markerDecision(proofs, linear, valueType);
   if (linearDecision == zc::none) return zc::none;
-  OwnershipMarkerUseKey copyKey{initialization, copy, valueType,
-                                input.body.markerPolicies.revision(),
-                                input.body.coherence.revision()};
-  OwnershipMarkerUseKey linearKey{initialization, linear, valueType,
-                                  input.body.markerPolicies.revision(),
-                                  input.body.coherence.revision()};
+  MarkerUseKey copyKey{initialization, copy, valueType, input.body.markerPolicies.revision(),
+                       input.body.coherence.revision()};
+  MarkerUseKey linearKey{initialization, linear, valueType, input.body.markerPolicies.revision(),
+                         input.body.coherence.revision()};
   bool copyPositive = false;
   bool linearPositive = false;
   ZC_IF_SOME(decision, copyDecision) {
-    copyPositive = decision.is<OwnershipMarkerDecisionPositive>();
-    markerUses.add(OwnershipMarkerUse{copyKey, zc::mv(decision)});
+    copyPositive = decision.is<MarkerDecisionPositive>();
+    markerUses.add(MarkerUse{copyKey, zc::mv(decision)});
   }
   ZC_IF_SOME(decision, linearDecision) {
-    linearPositive = decision.is<OwnershipMarkerDecisionPositive>();
-    markerUses.add(OwnershipMarkerUse{linearKey, zc::mv(decision)});
+    linearPositive = decision.is<MarkerDecisionPositive>();
+    markerUses.add(MarkerUse{linearKey, zc::mv(decision)});
   }
   auto directDeinitializer = directDeinitializerForType(input, valueType);
   zc::Vector<ProjectionQueryNode> children;
@@ -1468,18 +1461,17 @@ zc::Maybe<zc::Vector<LogicalDropPlanComponent>> foldProjectionTree(ProjectionQue
   return result;
 }
 
-bool appendLogicalDropPlan(zc::Vector<LogicalDropPlan>& plans,
-                           zc::Vector<OwnershipMarkerUse>& markerUses,
+bool appendLogicalDropPlan(zc::Vector<LogicalDropPlan>& plans, zc::Vector<MarkerUse>& markerUses,
                            checker::marker::MarkerProofEngine& proofs,
-                           const OwnershipEventOverlayInput& input,
-                           const MirEventKey& initialization, const mir::MirPlace& root,
-                           const OwnershipMarkerUse& copyUse, const OwnershipMarkerUse& linearUse,
-                           identity::DefId copy, identity::DefId linear) {
+                           const EventOverlayInput& input, const MirEventKey& initialization,
+                           const mir::MirPlace& root, const MarkerUse& copyUse,
+                           const MarkerUse& linearUse, identity::DefId copy,
+                           identity::DefId linear) {
   // Capture root decisions before descendant discovery appends to markerUses and invalidates refs.
-  const bool copyPositive = copyUse.decision.is<OwnershipMarkerDecisionPositive>();
-  const bool linearPositive = linearUse.decision.is<OwnershipMarkerDecisionPositive>();
-  const OwnershipMarkerUseKey copyKey = copyUse.key;
-  const OwnershipMarkerUseKey linearKey = linearUse.key;
+  const bool copyPositive = copyUse.decision.is<MarkerDecisionPositive>();
+  const bool linearPositive = linearUse.decision.is<MarkerDecisionPositive>();
+  const MarkerUseKey copyKey = copyUse.key;
+  const MarkerUseKey linearKey = linearUse.key;
   auto directDeinitializer = directDeinitializerForType(input, root.resultType());
   zc::Vector<ProjectionQueryNode> children;
   if (directDeinitializer == zc::none) {
@@ -1537,7 +1529,7 @@ bool sortLogicalDropPlans(zc::Vector<LogicalDropPlan>& plans,
   return true;
 }
 
-zc::Maybe<DeferredActivationFact> projectDeferredActivation(const OwnershipEventOverlayInput& input,
+zc::Maybe<DeferredActivationFact> projectDeferredActivation(const EventOverlayInput& input,
                                                             const mir::MirFunction& function,
                                                             const mir::MirBasicBlock& block,
                                                             const mir::MirCallTerminator& call) {
@@ -1652,7 +1644,7 @@ zc::Maybe<zc::Vector<MirEventSource>> projectSourceMap(const mir::MirFunction& f
   return sources;
 }
 
-bool sortFunctions(zc::Vector<OwnershipFunctionEventOverlay>& functions,
+bool sortFunctions(zc::Vector<FunctionEventOverlay>& functions,
                    const checker::CheckerIdentityAuthority& identities) {
   zc::Vector<zc::Array<uint8_t>> keys;
   for (const auto& function : functions) {
@@ -1717,7 +1709,7 @@ bool sameMirPlace(const mir::MirPlace& left, const mir::MirPlace& right) {
 /// statement can construct a closure today and this reports false for every
 /// statement. This is the single capture-boundary hook shared by the builder
 /// and the verifier: when closures are admitted, the predicate gains the
-/// closure check and both paths start emitting OwnershipEventRole::Capture on
+/// closure check and both paths start emitting EventRole::Capture on
 /// the construction commit event.
 bool isClosureConstruction(const mir::MirStatement& statement) noexcept {
   switch (statement.kind()) {
@@ -1798,8 +1790,8 @@ bool sortCastResourcePlans(zc::Vector<VerifiedCastResourcePlanFact>& plans,
   return true;
 }
 
-zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
-    const OwnershipEventOverlayInput& input, const checker::CheckerIdentityAuthority& identities) {
+zc::Maybe<zc::Vector<FunctionEventOverlay>> projectCandidateFunctions(
+    const EventOverlayInput& input, const checker::CheckerIdentityAuthority& identities) {
   const auto& builtMir = input.built;
   auto proofInput = checker::marker::MarkerProofInput::from(input.body);
   if (proofInput == zc::none) return zc::none;
@@ -1807,25 +1799,24 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
   const auto copy = input.body.standardMarkers.copy();
   const auto linear = input.body.standardMarkers.linear();
   if (!copy.isValid() || !linear.isValid() || copy == linear) return zc::none;
-  zc::Vector<OwnershipFunctionEventOverlay> functions;
+  zc::Vector<FunctionEventOverlay> functions;
   for (const auto& function : builtMir.functions()) {
     zc::Vector<MirEventSlot> slots;
     zc::Vector<DeferredActivationFact> deferredActivations;
-    zc::Vector<OwnershipMarkerUse> markerUses;
+    zc::Vector<MarkerUse> markerUses;
     zc::Vector<LogicalDropPlan> logicalDropPlans;
     zc::Vector<VerifiedCastResourcePlanFact> castResourcePlans;
     zc::Vector<mir::MirPlace> castDestinations;
     for (uint32_t ordinal = 0; ordinal < function.locals.size(); ++ordinal) {
-      zc::Vector<OwnershipEventRole> roles;
+      zc::Vector<EventRole> roles;
       const MirEventKey event{MirLocation{function.owner, MirPoint::entry()}, ordinal};
-      roles.add(OwnershipEventRole::EntryRoot);
-      slots.add(MirEventSlot{event, OwnershipEventStage::Commit, zc::mv(roles)});
+      roles.add(EventRole::EntryRoot);
+      slots.add(MirEventSlot{event, EventStage::Commit, zc::mv(roles)});
     }
     for (const auto& block : function.blocks) {
       uint32_t statementOrdinal = 0;
       for (const auto& statement : block.statements) {
-        auto emit = [&](uint32_t eventOrdinal, OwnershipEventStage stage,
-                        zc::Vector<OwnershipEventRole>&& roles) {
+        auto emit = [&](uint32_t eventOrdinal, EventStage stage, zc::Vector<EventRole>&& roles) {
           slots.add(MirEventSlot{
               MirEventKey{MirLocation{function.owner,
                                       MirPoint::beforeStatement(block.id, statementOrdinal)},
@@ -1834,31 +1825,29 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
         };
         switch (statement.kind()) {
           case mir::MirStatementKind::Assign: {
-            zc::Vector<OwnershipEventRole> operandRoles;
+            zc::Vector<EventRole> operandRoles;
             const auto& rvalue = statement.assignmentValue().value;
             const bool typeChangingCast = isTypeChangingMove(statement.assignmentValue());
             if (rvalue.kind() == mir::MirRvalueKind::Use) {
               const auto& operand = rvalue.useValue().operand;
               switch (operand.kind()) {
                 case mir::MirOperandKind::Copy:
-                  operandRoles.add(OwnershipEventRole::OperandRead);
-                  operandRoles.add(OwnershipEventRole::OperandCopy);
+                  operandRoles.add(EventRole::OperandRead);
+                  operandRoles.add(EventRole::OperandCopy);
                   break;
                 case mir::MirOperandKind::Move:
-                  operandRoles.add(OwnershipEventRole::OperandRead);
-                  operandRoles.add(OwnershipEventRole::OperandMove);
-                  if (typeChangingCast) {
-                    operandRoles.add(OwnershipEventRole::CastCarrierInitialize);
-                  }
+                  operandRoles.add(EventRole::OperandRead);
+                  operandRoles.add(EventRole::OperandMove);
+                  if (typeChangingCast) { operandRoles.add(EventRole::CastCarrierInitialize); }
                   break;
                 case mir::MirOperandKind::Constant:
-                  operandRoles.add(OwnershipEventRole::ConstantOperand);
+                  operandRoles.add(EventRole::ConstantOperand);
                   break;
               }
             } else {
-              operandRoles.add(OwnershipEventRole::ConstantOperand);
+              operandRoles.add(EventRole::ConstantOperand);
             }
-            emit(0, OwnershipEventStage::Source, zc::mv(operandRoles));
+            emit(0, EventStage::Source, zc::mv(operandRoles));
             if (rvalue.kind() == mir::MirRvalueKind::Use &&
                 rvalue.useValue().operand.kind() == mir::MirOperandKind::Copy) {
               const auto& operand = rvalue.useValue().operand;
@@ -1870,14 +1859,14 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
                 return zc::none;
               }
             }
-            zc::Vector<OwnershipEventRole> effectRoles;
-            effectRoles.add(OwnershipEventRole::Operation);
-            emit(1, OwnershipEventStage::Effect, zc::mv(effectRoles));
-            zc::Vector<OwnershipEventRole> commitRoles;
-            commitRoles.add(OwnershipEventRole::DestinationWrite);
-            if (typeChangingCast) { commitRoles.add(OwnershipEventRole::CastCarrierTransfer); }
-            if (isClosureConstruction(statement)) { commitRoles.add(OwnershipEventRole::Capture); }
-            emit(2, OwnershipEventStage::Commit, zc::mv(commitRoles));
+            zc::Vector<EventRole> effectRoles;
+            effectRoles.add(EventRole::Operation);
+            emit(1, EventStage::Effect, zc::mv(effectRoles));
+            zc::Vector<EventRole> commitRoles;
+            commitRoles.add(EventRole::DestinationWrite);
+            if (typeChangingCast) { commitRoles.add(EventRole::CastCarrierTransfer); }
+            if (isClosureConstruction(statement)) { commitRoles.add(EventRole::Capture); }
+            emit(2, EventStage::Commit, zc::mv(commitRoles));
             if (typeChangingCast) {
               auto plan = buildCastResourcePlan(function, block, statementOrdinal,
                                                 statement.assignmentValue());
@@ -1909,64 +1898,64 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
             break;
           }
           case mir::MirStatementKind::StorageLive: {
-            zc::Vector<OwnershipEventRole> effectRoles;
-            effectRoles.add(OwnershipEventRole::Operation);
-            effectRoles.add(OwnershipEventRole::StorageLive);
-            emit(0, OwnershipEventStage::Effect, zc::mv(effectRoles));
+            zc::Vector<EventRole> effectRoles;
+            effectRoles.add(EventRole::Operation);
+            effectRoles.add(EventRole::StorageLive);
+            emit(0, EventStage::Effect, zc::mv(effectRoles));
             break;
           }
           case mir::MirStatementKind::StorageDead: {
-            zc::Vector<OwnershipEventRole> effectRoles;
-            effectRoles.add(OwnershipEventRole::Operation);
-            effectRoles.add(OwnershipEventRole::StorageDead);
-            emit(0, OwnershipEventStage::Effect, zc::mv(effectRoles));
+            zc::Vector<EventRole> effectRoles;
+            effectRoles.add(EventRole::Operation);
+            effectRoles.add(EventRole::StorageDead);
+            emit(0, EventStage::Effect, zc::mv(effectRoles));
             break;
           }
           case mir::MirStatementKind::BorrowCreation: {
-            zc::Vector<OwnershipEventRole> sourceRoles;
-            sourceRoles.add(OwnershipEventRole::OperandRead);
-            emit(0, OwnershipEventStage::Source, zc::mv(sourceRoles));
-            zc::Vector<OwnershipEventRole> effectRoles;
-            effectRoles.add(OwnershipEventRole::Operation);
-            effectRoles.add(OwnershipEventRole::BorrowIssue);
-            emit(1, OwnershipEventStage::Effect, zc::mv(effectRoles));
-            zc::Vector<OwnershipEventRole> commitRoles;
-            commitRoles.add(OwnershipEventRole::DestinationWrite);
-            emit(2, OwnershipEventStage::Commit, zc::mv(commitRoles));
+            zc::Vector<EventRole> sourceRoles;
+            sourceRoles.add(EventRole::OperandRead);
+            emit(0, EventStage::Source, zc::mv(sourceRoles));
+            zc::Vector<EventRole> effectRoles;
+            effectRoles.add(EventRole::Operation);
+            effectRoles.add(EventRole::BorrowIssue);
+            emit(1, EventStage::Effect, zc::mv(effectRoles));
+            zc::Vector<EventRole> commitRoles;
+            commitRoles.add(EventRole::DestinationWrite);
+            emit(2, EventStage::Commit, zc::mv(commitRoles));
             break;
           }
           case mir::MirStatementKind::SetDiscriminant: {
-            zc::Vector<OwnershipEventRole> effectRoles;
-            effectRoles.add(OwnershipEventRole::Operation);
-            emit(0, OwnershipEventStage::Effect, zc::mv(effectRoles));
-            zc::Vector<OwnershipEventRole> commitRoles;
-            commitRoles.add(OwnershipEventRole::DestinationWrite);
-            commitRoles.add(OwnershipEventRole::SetDiscriminant);
-            emit(1, OwnershipEventStage::Commit, zc::mv(commitRoles));
+            zc::Vector<EventRole> effectRoles;
+            effectRoles.add(EventRole::Operation);
+            emit(0, EventStage::Effect, zc::mv(effectRoles));
+            zc::Vector<EventRole> commitRoles;
+            commitRoles.add(EventRole::DestinationWrite);
+            commitRoles.add(EventRole::SetDiscriminant);
+            emit(1, EventStage::Commit, zc::mv(commitRoles));
             break;
           }
           case mir::MirStatementKind::Deinitialize: {
-            zc::Vector<OwnershipEventRole> effectRoles;
-            effectRoles.add(OwnershipEventRole::Operation);
-            effectRoles.add(OwnershipEventRole::Deinitialize);
+            zc::Vector<EventRole> effectRoles;
+            effectRoles.add(EventRole::Operation);
+            effectRoles.add(EventRole::Deinitialize);
             const auto& deinitPlace = statement.deinitializeValue().destination;
             for (const auto& castDestination : castDestinations) {
               if (sameMirPlace(deinitPlace, castDestination)) {
-                effectRoles.add(OwnershipEventRole::CastCarrierDrop);
+                effectRoles.add(EventRole::CastCarrierDrop);
                 break;
               }
             }
-            emit(0, OwnershipEventStage::Effect, zc::mv(effectRoles));
+            emit(0, EventStage::Effect, zc::mv(effectRoles));
             break;
           }
           case mir::MirStatementKind::UnsafeScopeBoundary: {
             const auto& boundary = statement.unsafeScopeBoundaryValue();
-            zc::Vector<OwnershipEventRole> effectRoles;
-            effectRoles.add(OwnershipEventRole::Operation);
+            zc::Vector<EventRole> effectRoles;
+            effectRoles.add(EventRole::Operation);
             if (boundary.kind == mir::MirUnsafeScopeBoundaryKind::Enter) {
-              effectRoles.add(OwnershipEventRole::UnsafeAcknowledgement);
+              effectRoles.add(EventRole::UnsafeAcknowledgement);
             }
-            emit(0, OwnershipEventStage::Effect, zc::mv(effectRoles));
+            emit(0, EventStage::Effect, zc::mv(effectRoles));
             break;
           }
         }
@@ -1975,24 +1964,24 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
       uint32_t terminatorOrdinal = 0;
       if (block.terminator.kind() == mir::MirTerminatorKind::Return) {
         ZC_IF_SOME(value, block.terminator.returnValue().value) {
-          zc::Vector<OwnershipEventRole> operandRoles;
+          zc::Vector<EventRole> operandRoles;
           switch (value.kind()) {
             case mir::MirOperandKind::Copy:
-              operandRoles.add(OwnershipEventRole::OperandRead);
-              operandRoles.add(OwnershipEventRole::OperandCopy);
+              operandRoles.add(EventRole::OperandRead);
+              operandRoles.add(EventRole::OperandCopy);
               break;
             case mir::MirOperandKind::Move:
-              operandRoles.add(OwnershipEventRole::OperandRead);
-              operandRoles.add(OwnershipEventRole::OperandMove);
+              operandRoles.add(EventRole::OperandRead);
+              operandRoles.add(EventRole::OperandMove);
               break;
             case mir::MirOperandKind::Constant:
-              operandRoles.add(OwnershipEventRole::ConstantOperand);
+              operandRoles.add(EventRole::ConstantOperand);
               break;
           }
           slots.add(MirEventSlot{
               MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
                           terminatorOrdinal++},
-              OwnershipEventStage::Source, zc::mv(operandRoles)});
+              EventStage::Source, zc::mv(operandRoles)});
           if (value.kind() == mir::MirOperandKind::Copy) {
             const MirEventKey event{
                 MirLocation{function.owner, MirPoint::beforeTerminator(block.id)}, 0};
@@ -2006,43 +1995,43 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
         const auto& call = block.terminator.callValue();
         if (call.unwindTarget != zc::none) return zc::none;
         for (const auto& argument : call.arguments) {
-          zc::Vector<OwnershipEventRole> argumentRoles;
+          zc::Vector<EventRole> argumentRoles;
           switch (argument.kind()) {
             case mir::MirOperandKind::Copy:
-              argumentRoles.add(OwnershipEventRole::OperandRead);
-              argumentRoles.add(OwnershipEventRole::OperandCopy);
+              argumentRoles.add(EventRole::OperandRead);
+              argumentRoles.add(EventRole::OperandCopy);
               break;
             case mir::MirOperandKind::Move:
-              argumentRoles.add(OwnershipEventRole::OperandRead);
-              argumentRoles.add(OwnershipEventRole::OperandMove);
+              argumentRoles.add(EventRole::OperandRead);
+              argumentRoles.add(EventRole::OperandMove);
               break;
             case mir::MirOperandKind::Constant:
-              argumentRoles.add(OwnershipEventRole::ConstantOperand);
+              argumentRoles.add(EventRole::ConstantOperand);
               break;
           }
           const MirEventKey event{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
                                   terminatorOrdinal++};
-          slots.add(MirEventSlot{event, OwnershipEventStage::Source, zc::mv(argumentRoles)});
+          slots.add(MirEventSlot{event, EventStage::Source, zc::mv(argumentRoles)});
           if (argument.kind() == mir::MirOperandKind::Copy &&
               !appendMarkerUse(markerUses, proofs, input, event, copy,
                                argument.place().resultType())) {
             return zc::none;
           }
         }
-        zc::Vector<OwnershipEventRole> commitRoles;
-        commitRoles.add(OwnershipEventRole::DestinationWrite);
+        zc::Vector<EventRole> commitRoles;
+        commitRoles.add(EventRole::DestinationWrite);
         slots.add(MirEventSlot{
             MirEventKey{MirLocation{function.owner, MirPoint::edge(block.id, 0, call.normalTarget)},
                         0},
-            OwnershipEventStage::Commit, zc::mv(commitRoles)});
+            EventStage::Commit, zc::mv(commitRoles)});
         if (call.effect.commitsOnNormalEdge()) {
           if (call.effect.activatedMutableReceiver() == zc::none) return zc::none;
-          zc::Vector<OwnershipEventRole> activationRoles;
-          activationRoles.add(OwnershipEventRole::BorrowActivation);
+          zc::Vector<EventRole> activationRoles;
+          activationRoles.add(EventRole::BorrowActivation);
           slots.add(MirEventSlot{
               MirEventKey{
                   MirLocation{function.owner, MirPoint::edge(block.id, 0, call.normalTarget)}, 1},
-              OwnershipEventStage::Commit, zc::mv(activationRoles)});
+              EventStage::Commit, zc::mv(activationRoles)});
           auto deferred = projectDeferredActivation(input, function, block, call);
           if (deferred == zc::none) return zc::none;
           ZC_IF_SOME(value, deferred) { deferredActivations.add(zc::mv(value)); }
@@ -2063,24 +2052,24 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
         }
       } else if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
         const auto& discriminant = block.terminator.switchIntValue().discriminant;
-        zc::Vector<OwnershipEventRole> operandRoles;
+        zc::Vector<EventRole> operandRoles;
         switch (discriminant.kind()) {
           case mir::MirOperandKind::Copy:
-            operandRoles.add(OwnershipEventRole::OperandRead);
-            operandRoles.add(OwnershipEventRole::OperandCopy);
+            operandRoles.add(EventRole::OperandRead);
+            operandRoles.add(EventRole::OperandCopy);
             break;
           case mir::MirOperandKind::Move:
-            operandRoles.add(OwnershipEventRole::OperandRead);
-            operandRoles.add(OwnershipEventRole::OperandMove);
+            operandRoles.add(EventRole::OperandRead);
+            operandRoles.add(EventRole::OperandMove);
             break;
           case mir::MirOperandKind::Constant:
-            operandRoles.add(OwnershipEventRole::ConstantOperand);
+            operandRoles.add(EventRole::ConstantOperand);
             break;
         }
         slots.add(MirEventSlot{
             MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
                         terminatorOrdinal++},
-            OwnershipEventStage::Source, zc::mv(operandRoles)});
+            EventStage::Source, zc::mv(operandRoles)});
         if (discriminant.kind() == mir::MirOperandKind::Copy) {
           const MirEventKey event{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
                                   0};
@@ -2095,12 +2084,12 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
         // Any other terminator kind is outside the overlay's closed algebra.
         return zc::none;
       }
-      zc::Vector<OwnershipEventRole> effectRoles;
-      effectRoles.add(OwnershipEventRole::Operation);
+      zc::Vector<EventRole> effectRoles;
+      effectRoles.add(EventRole::Operation);
       slots.add(MirEventSlot{
           MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
                       terminatorOrdinal},
-          OwnershipEventStage::Effect, zc::mv(effectRoles)});
+          EventStage::Effect, zc::mv(effectRoles)});
     }
     sortSlots(slots);
     sortDeferredActivations(deferredActivations);
@@ -2110,7 +2099,7 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
     auto sourceMap = projectSourceMap(function, slots);
     if (sourceMap == zc::none) return zc::none;
     ZC_IF_SOME(value, sourceMap) {
-      functions.add(OwnershipFunctionEventOverlay{
+      functions.add(FunctionEventOverlay{
           function.owner, zc::mv(slots), zc::mv(value), zc::mv(deferredActivations),
           zc::mv(markerUses), zc::mv(logicalDropPlans), zc::Vector<MirUnsafeOccurrence>{},
           zc::mv(castResourcePlans)});
@@ -2120,8 +2109,8 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
   return functions;
 }
 
-zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunctions(
-    const OwnershipEventOverlayInput& input, const checker::CheckerIdentityAuthority& identities) {
+zc::Maybe<zc::Vector<FunctionEventOverlay>> reconstructExpectedFunctions(
+    const EventOverlayInput& input, const checker::CheckerIdentityAuthority& identities) {
   const auto& builtMir = input.built;
   auto proofInput = checker::marker::MarkerProofInput::from(input.body);
   if (proofInput == zc::none) return zc::none;
@@ -2129,25 +2118,24 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
   const auto copy = input.body.standardMarkers.copy();
   const auto linear = input.body.standardMarkers.linear();
   if (!copy.isValid() || !linear.isValid() || copy == linear) return zc::none;
-  zc::Vector<OwnershipFunctionEventOverlay> functions;
+  zc::Vector<FunctionEventOverlay> functions;
   for (const auto& function : builtMir.functions()) {
     zc::Vector<MirEventSlot> slots;
     zc::Vector<DeferredActivationFact> deferredActivations;
-    zc::Vector<OwnershipMarkerUse> markerUses;
+    zc::Vector<MarkerUse> markerUses;
     zc::Vector<LogicalDropPlan> logicalDropPlans;
     zc::Vector<VerifiedCastResourcePlanFact> castResourcePlans;
     zc::Vector<mir::MirPlace> castDestinations;
     for (uint32_t ordinal = 0; ordinal < function.locals.size(); ++ordinal) {
-      zc::Vector<OwnershipEventRole> roles;
+      zc::Vector<EventRole> roles;
       const MirEventKey event{MirLocation{function.owner, MirPoint::entry()}, ordinal};
-      roles.add(OwnershipEventRole::EntryRoot);
-      slots.add(MirEventSlot{event, OwnershipEventStage::Commit, zc::mv(roles)});
+      roles.add(EventRole::EntryRoot);
+      slots.add(MirEventSlot{event, EventStage::Commit, zc::mv(roles)});
     }
     for (const auto& block : function.blocks) {
       uint32_t statementOrdinal = 0;
       for (const auto& statement : block.statements) {
-        auto record = [&](uint32_t eventOrdinal, OwnershipEventStage stage,
-                          zc::Vector<OwnershipEventRole>&& roles) {
+        auto record = [&](uint32_t eventOrdinal, EventStage stage, zc::Vector<EventRole>&& roles) {
           slots.add(MirEventSlot{
               MirEventKey{MirLocation{function.owner,
                                       MirPoint::beforeStatement(block.id, statementOrdinal)},
@@ -2156,28 +2144,28 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
         };
         switch (statement.kind()) {
           case mir::MirStatementKind::Assign: {
-            zc::Vector<OwnershipEventRole> source;
+            zc::Vector<EventRole> source;
             const auto& rvalue = statement.assignmentValue().value;
             const bool typeChangingCast = isTypeChangingMove(statement.assignmentValue());
             if (rvalue.kind() == mir::MirRvalueKind::Use) {
               switch (rvalue.useValue().operand.kind()) {
                 case mir::MirOperandKind::Copy:
-                  source.add(OwnershipEventRole::OperandRead);
-                  source.add(OwnershipEventRole::OperandCopy);
+                  source.add(EventRole::OperandRead);
+                  source.add(EventRole::OperandCopy);
                   break;
                 case mir::MirOperandKind::Move:
-                  source.add(OwnershipEventRole::OperandRead);
-                  source.add(OwnershipEventRole::OperandMove);
-                  if (typeChangingCast) { source.add(OwnershipEventRole::CastCarrierInitialize); }
+                  source.add(EventRole::OperandRead);
+                  source.add(EventRole::OperandMove);
+                  if (typeChangingCast) { source.add(EventRole::CastCarrierInitialize); }
                   break;
                 case mir::MirOperandKind::Constant:
-                  source.add(OwnershipEventRole::ConstantOperand);
+                  source.add(EventRole::ConstantOperand);
                   break;
               }
             } else {
-              source.add(OwnershipEventRole::ConstantOperand);
+              source.add(EventRole::ConstantOperand);
             }
-            record(0, OwnershipEventStage::Source, zc::mv(source));
+            record(0, EventStage::Source, zc::mv(source));
             if (rvalue.kind() == mir::MirRvalueKind::Use &&
                 rvalue.useValue().operand.kind() == mir::MirOperandKind::Copy) {
               const auto& operand = rvalue.useValue().operand;
@@ -2189,14 +2177,14 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
                 return zc::none;
               }
             }
-            zc::Vector<OwnershipEventRole> effect;
-            effect.add(OwnershipEventRole::Operation);
-            record(1, OwnershipEventStage::Effect, zc::mv(effect));
-            zc::Vector<OwnershipEventRole> commit;
-            commit.add(OwnershipEventRole::DestinationWrite);
-            if (typeChangingCast) { commit.add(OwnershipEventRole::CastCarrierTransfer); }
-            if (isClosureConstruction(statement)) { commit.add(OwnershipEventRole::Capture); }
-            record(2, OwnershipEventStage::Commit, zc::mv(commit));
+            zc::Vector<EventRole> effect;
+            effect.add(EventRole::Operation);
+            record(1, EventStage::Effect, zc::mv(effect));
+            zc::Vector<EventRole> commit;
+            commit.add(EventRole::DestinationWrite);
+            if (typeChangingCast) { commit.add(EventRole::CastCarrierTransfer); }
+            if (isClosureConstruction(statement)) { commit.add(EventRole::Capture); }
+            record(2, EventStage::Commit, zc::mv(commit));
             if (typeChangingCast) {
               auto plan = buildCastResourcePlan(function, block, statementOrdinal,
                                                 statement.assignmentValue());
@@ -2228,64 +2216,64 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
             break;
           }
           case mir::MirStatementKind::StorageLive: {
-            zc::Vector<OwnershipEventRole> roles;
-            roles.add(OwnershipEventRole::Operation);
-            roles.add(OwnershipEventRole::StorageLive);
-            record(0, OwnershipEventStage::Effect, zc::mv(roles));
+            zc::Vector<EventRole> roles;
+            roles.add(EventRole::Operation);
+            roles.add(EventRole::StorageLive);
+            record(0, EventStage::Effect, zc::mv(roles));
             break;
           }
           case mir::MirStatementKind::StorageDead: {
-            zc::Vector<OwnershipEventRole> roles;
-            roles.add(OwnershipEventRole::Operation);
-            roles.add(OwnershipEventRole::StorageDead);
-            record(0, OwnershipEventStage::Effect, zc::mv(roles));
+            zc::Vector<EventRole> roles;
+            roles.add(EventRole::Operation);
+            roles.add(EventRole::StorageDead);
+            record(0, EventStage::Effect, zc::mv(roles));
             break;
           }
           case mir::MirStatementKind::BorrowCreation: {
-            zc::Vector<OwnershipEventRole> source;
-            source.add(OwnershipEventRole::OperandRead);
-            record(0, OwnershipEventStage::Source, zc::mv(source));
-            zc::Vector<OwnershipEventRole> effect;
-            effect.add(OwnershipEventRole::Operation);
-            effect.add(OwnershipEventRole::BorrowIssue);
-            record(1, OwnershipEventStage::Effect, zc::mv(effect));
-            zc::Vector<OwnershipEventRole> commit;
-            commit.add(OwnershipEventRole::DestinationWrite);
-            record(2, OwnershipEventStage::Commit, zc::mv(commit));
+            zc::Vector<EventRole> source;
+            source.add(EventRole::OperandRead);
+            record(0, EventStage::Source, zc::mv(source));
+            zc::Vector<EventRole> effect;
+            effect.add(EventRole::Operation);
+            effect.add(EventRole::BorrowIssue);
+            record(1, EventStage::Effect, zc::mv(effect));
+            zc::Vector<EventRole> commit;
+            commit.add(EventRole::DestinationWrite);
+            record(2, EventStage::Commit, zc::mv(commit));
             break;
           }
           case mir::MirStatementKind::SetDiscriminant: {
-            zc::Vector<OwnershipEventRole> effect;
-            effect.add(OwnershipEventRole::Operation);
-            record(0, OwnershipEventStage::Effect, zc::mv(effect));
-            zc::Vector<OwnershipEventRole> commit;
-            commit.add(OwnershipEventRole::DestinationWrite);
-            commit.add(OwnershipEventRole::SetDiscriminant);
-            record(1, OwnershipEventStage::Commit, zc::mv(commit));
+            zc::Vector<EventRole> effect;
+            effect.add(EventRole::Operation);
+            record(0, EventStage::Effect, zc::mv(effect));
+            zc::Vector<EventRole> commit;
+            commit.add(EventRole::DestinationWrite);
+            commit.add(EventRole::SetDiscriminant);
+            record(1, EventStage::Commit, zc::mv(commit));
             break;
           }
           case mir::MirStatementKind::Deinitialize: {
-            zc::Vector<OwnershipEventRole> roles;
-            roles.add(OwnershipEventRole::Operation);
-            roles.add(OwnershipEventRole::Deinitialize);
+            zc::Vector<EventRole> roles;
+            roles.add(EventRole::Operation);
+            roles.add(EventRole::Deinitialize);
             const auto& deinitPlace = statement.deinitializeValue().destination;
             for (const auto& castDestination : castDestinations) {
               if (sameMirPlace(deinitPlace, castDestination)) {
-                roles.add(OwnershipEventRole::CastCarrierDrop);
+                roles.add(EventRole::CastCarrierDrop);
                 break;
               }
             }
-            record(0, OwnershipEventStage::Effect, zc::mv(roles));
+            record(0, EventStage::Effect, zc::mv(roles));
             break;
           }
           case mir::MirStatementKind::UnsafeScopeBoundary: {
             const auto& boundary = statement.unsafeScopeBoundaryValue();
-            zc::Vector<OwnershipEventRole> roles;
-            roles.add(OwnershipEventRole::Operation);
+            zc::Vector<EventRole> roles;
+            roles.add(EventRole::Operation);
             if (boundary.kind == mir::MirUnsafeScopeBoundaryKind::Enter) {
-              roles.add(OwnershipEventRole::UnsafeAcknowledgement);
+              roles.add(EventRole::UnsafeAcknowledgement);
             }
-            record(0, OwnershipEventStage::Effect, zc::mv(roles));
+            record(0, EventStage::Effect, zc::mv(roles));
             break;
           }
         }
@@ -2294,24 +2282,24 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
       uint32_t terminatorOrdinal = 0;
       if (block.terminator.kind() == mir::MirTerminatorKind::Return) {
         ZC_IF_SOME(operand, block.terminator.returnValue().value) {
-          zc::Vector<OwnershipEventRole> source;
+          zc::Vector<EventRole> source;
           switch (operand.kind()) {
             case mir::MirOperandKind::Copy:
-              source.add(OwnershipEventRole::OperandRead);
-              source.add(OwnershipEventRole::OperandCopy);
+              source.add(EventRole::OperandRead);
+              source.add(EventRole::OperandCopy);
               break;
             case mir::MirOperandKind::Move:
-              source.add(OwnershipEventRole::OperandRead);
-              source.add(OwnershipEventRole::OperandMove);
+              source.add(EventRole::OperandRead);
+              source.add(EventRole::OperandMove);
               break;
             case mir::MirOperandKind::Constant:
-              source.add(OwnershipEventRole::ConstantOperand);
+              source.add(EventRole::ConstantOperand);
               break;
           }
           slots.add(MirEventSlot{
               MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
                           terminatorOrdinal++},
-              OwnershipEventStage::Source, zc::mv(source)});
+              EventStage::Source, zc::mv(source)});
           if (operand.kind() == mir::MirOperandKind::Copy) {
             const MirEventKey event{
                 MirLocation{function.owner, MirPoint::beforeTerminator(block.id)}, 0};
@@ -2325,43 +2313,43 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
         const auto& call = block.terminator.callValue();
         if (call.unwindTarget != zc::none) return zc::none;
         for (const auto& argument : call.arguments) {
-          zc::Vector<OwnershipEventRole> argumentRoles;
+          zc::Vector<EventRole> argumentRoles;
           switch (argument.kind()) {
             case mir::MirOperandKind::Copy:
-              argumentRoles.add(OwnershipEventRole::OperandRead);
-              argumentRoles.add(OwnershipEventRole::OperandCopy);
+              argumentRoles.add(EventRole::OperandRead);
+              argumentRoles.add(EventRole::OperandCopy);
               break;
             case mir::MirOperandKind::Move:
-              argumentRoles.add(OwnershipEventRole::OperandRead);
-              argumentRoles.add(OwnershipEventRole::OperandMove);
+              argumentRoles.add(EventRole::OperandRead);
+              argumentRoles.add(EventRole::OperandMove);
               break;
             case mir::MirOperandKind::Constant:
-              argumentRoles.add(OwnershipEventRole::ConstantOperand);
+              argumentRoles.add(EventRole::ConstantOperand);
               break;
           }
           const MirEventKey event{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
                                   terminatorOrdinal++};
-          slots.add(MirEventSlot{event, OwnershipEventStage::Source, zc::mv(argumentRoles)});
+          slots.add(MirEventSlot{event, EventStage::Source, zc::mv(argumentRoles)});
           if (argument.kind() == mir::MirOperandKind::Copy &&
               !appendMarkerUse(markerUses, proofs, input, event, copy,
                                argument.place().resultType())) {
             return zc::none;
           }
         }
-        zc::Vector<OwnershipEventRole> commit;
-        commit.add(OwnershipEventRole::DestinationWrite);
+        zc::Vector<EventRole> commit;
+        commit.add(EventRole::DestinationWrite);
         slots.add(MirEventSlot{
             MirEventKey{MirLocation{function.owner, MirPoint::edge(block.id, 0, call.normalTarget)},
                         0},
-            OwnershipEventStage::Commit, zc::mv(commit)});
+            EventStage::Commit, zc::mv(commit)});
         if (call.effect.commitsOnNormalEdge()) {
           if (call.effect.activatedMutableReceiver() == zc::none) return zc::none;
-          zc::Vector<OwnershipEventRole> activationRoles;
-          activationRoles.add(OwnershipEventRole::BorrowActivation);
+          zc::Vector<EventRole> activationRoles;
+          activationRoles.add(EventRole::BorrowActivation);
           slots.add(MirEventSlot{
               MirEventKey{
                   MirLocation{function.owner, MirPoint::edge(block.id, 0, call.normalTarget)}, 1},
-              OwnershipEventStage::Commit, zc::mv(activationRoles)});
+              EventStage::Commit, zc::mv(activationRoles)});
           auto deferred = projectDeferredActivation(input, function, block, call);
           if (deferred == zc::none) return zc::none;
           ZC_IF_SOME(value, deferred) { deferredActivations.add(zc::mv(value)); }
@@ -2382,24 +2370,24 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
         }
       } else if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
         const auto& discriminant = block.terminator.switchIntValue().discriminant;
-        zc::Vector<OwnershipEventRole> operandRoles;
+        zc::Vector<EventRole> operandRoles;
         switch (discriminant.kind()) {
           case mir::MirOperandKind::Copy:
-            operandRoles.add(OwnershipEventRole::OperandRead);
-            operandRoles.add(OwnershipEventRole::OperandCopy);
+            operandRoles.add(EventRole::OperandRead);
+            operandRoles.add(EventRole::OperandCopy);
             break;
           case mir::MirOperandKind::Move:
-            operandRoles.add(OwnershipEventRole::OperandRead);
-            operandRoles.add(OwnershipEventRole::OperandMove);
+            operandRoles.add(EventRole::OperandRead);
+            operandRoles.add(EventRole::OperandMove);
             break;
           case mir::MirOperandKind::Constant:
-            operandRoles.add(OwnershipEventRole::ConstantOperand);
+            operandRoles.add(EventRole::ConstantOperand);
             break;
         }
         slots.add(MirEventSlot{
             MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
                         terminatorOrdinal++},
-            OwnershipEventStage::Source, zc::mv(operandRoles)});
+            EventStage::Source, zc::mv(operandRoles)});
         if (discriminant.kind() == mir::MirOperandKind::Copy) {
           const MirEventKey event{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
                                   0};
@@ -2414,12 +2402,12 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
         // Any other terminator kind is outside the overlay's closed algebra.
         return zc::none;
       }
-      zc::Vector<OwnershipEventRole> effect;
-      effect.add(OwnershipEventRole::Operation);
+      zc::Vector<EventRole> effect;
+      effect.add(EventRole::Operation);
       slots.add(MirEventSlot{
           MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
                       terminatorOrdinal},
-          OwnershipEventStage::Effect, zc::mv(effect)});
+          EventStage::Effect, zc::mv(effect)});
     }
     sortSlots(slots);
     sortDeferredActivations(deferredActivations);
@@ -2429,7 +2417,7 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
     auto sourceMap = projectSourceMap(function, slots);
     if (sourceMap == zc::none) return zc::none;
     ZC_IF_SOME(value, sourceMap) {
-      functions.add(OwnershipFunctionEventOverlay{
+      functions.add(FunctionEventOverlay{
           function.owner, zc::mv(slots), zc::mv(value), zc::mv(deferredActivations),
           zc::mv(markerUses), zc::mv(logicalDropPlans), zc::Vector<MirUnsafeOccurrence>{},
           zc::mv(castResourcePlans)});
@@ -2462,7 +2450,7 @@ bool hasRawToReferenceCast(const VerifiedCastResourcePlanFact& plan,
 
 }  // namespace
 
-zc::Maybe<zc::Array<uint8_t>> OwnershipEventOverlayCodec::encodeFramed(
+zc::Maybe<zc::Array<uint8_t>> EventOverlayCodec::encodeFramed(
     const identity::Sha256Digest& contextFingerprint, zc::ArrayPtr<const uint8_t> expandedModuleKey,
     const identity::Sha256Digest& checkedFactsRevision,
     const identity::Sha256Digest& builtRevisionDigest,
@@ -2486,7 +2474,7 @@ zc::Maybe<zc::Array<uint8_t>> OwnershipEventOverlayCodec::encodeFramed(
   return encoder.finish();
 }
 
-zc::Maybe<zc::Array<uint8_t>> OwnershipEventOverlayCodec::encode(
+zc::Maybe<zc::Array<uint8_t>> EventOverlayCodec::encode(
     const identity::ContextFingerprint& contextFingerprint,
     zc::ArrayPtr<const uint8_t> expandedModuleKey,
     const checker::checked::CheckedFactsRevision& checkedFactsRevision,
@@ -2496,7 +2484,7 @@ zc::Maybe<zc::Array<uint8_t>> OwnershipEventOverlayCodec::encode(
                       builtRevision.digest(), canonicalFunctions);
 }
 
-zc::Maybe<OwnershipEventOverlayRevision> OwnershipEventOverlayCodec::compute(
+zc::Maybe<EventOverlayRevision> EventOverlayCodec::compute(
     const identity::ContextFingerprint& contextFingerprint,
     zc::ArrayPtr<const uint8_t> expandedModuleKey,
     const checker::checked::CheckedFactsRevision& checkedFactsRevision,
@@ -2507,38 +2495,37 @@ zc::Maybe<OwnershipEventOverlayRevision> OwnershipEventOverlayCodec::compute(
   if (bytes == zc::none) return zc::none;
   ZC_IF_SOME(value, bytes) {
     auto digest = identity::sha256(value.asPtr());
-    ZC_IF_SOME(hash, digest) { return OwnershipEventOverlayRevision::fromDigest(hash); }
+    ZC_IF_SOME(hash, digest) { return EventOverlayRevision::fromDigest(hash); }
   }
   return zc::none;
 }
 
-ir::IrOperationResult<OwnershipEventOverlayCandidate> OwnershipEventOverlayBuilder::build(
-    const OwnershipEventOverlayInput& input) {
+ir::IrOperationResult<EventOverlayCandidate> EventOverlayBuilder::build(
+    const EventOverlayInput& input) {
   const auto& builtMir = input.built;
   const auto identities = builtMir.retainIdentityAuthority();
   const auto module = builtMir.module();
   if (!hasExactOverlayInput(input)) {
-    return rejectOwnership<OwnershipEventOverlayCandidate>(
-        ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InputRevisionMismatch,
-        module, firstFunctionDefinition(builtMir), identities, 0);
+    return rejectOwnership<EventOverlayCandidate>(ir::IrFailurePhase::ProofValidation,
+                                                  ir::IrFailureKind::InputRevisionMismatch, module,
+                                                  firstFunctionDefinition(builtMir), identities, 0);
   }
   auto functions = projectCandidateFunctions(input, identities);
   if (functions == zc::none) {
-    return rejectOwnership<OwnershipEventOverlayCandidate>(
-        ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InvalidOwnershipProof,
-        module, firstFunctionDefinition(builtMir), identities, 0);
+    return rejectOwnership<EventOverlayCandidate>(ir::IrFailurePhase::ProofValidation,
+                                                  ir::IrFailureKind::InvalidOwnershipProof, module,
+                                                  firstFunctionDefinition(builtMir), identities, 0);
   }
   ZC_IF_SOME(value, functions) {
-    return ir::IrOperationResult<OwnershipEventOverlayCandidate>::verified(
-        OwnershipEventOverlayCandidate(
-            builtMir.semanticContext(), builtMir.contextFingerprint().clone(), builtMir.module(),
-            builtMir.checkedFactsRevision(), builtMir.revision(), zc::mv(value)));
+    return ir::IrOperationResult<EventOverlayCandidate>::verified(EventOverlayCandidate(
+        builtMir.semanticContext(), builtMir.contextFingerprint().clone(), builtMir.module(),
+        builtMir.checkedFactsRevision(), builtMir.revision(), zc::mv(value)));
   }
   ZC_UNREACHABLE
 }
 
-ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifier::verify(
-    OwnershipEventOverlayCandidate&& candidate, const OwnershipEventOverlayInput& input) {
+ir::IrOperationResult<VerifiedOwnershipEventOverlay> EventOverlayVerifier::verify(
+    EventOverlayCandidate&& candidate, const EventOverlayInput& input) {
   const auto& builtMir = input.built;
   const auto identities = builtMir.retainIdentityAuthority();
   const auto module = builtMir.module();
@@ -2549,8 +2536,8 @@ ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifi
       candidate.builtRevision.digest() != builtMir.revision().digest() ||
       candidate.functions.size() != builtMir.functions().size()) {
     return rejectOwnership<VerifiedOwnershipEventOverlay>(
-        ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InputRevisionMismatch,
-        module, firstFunctionDefinition(builtMir), identities, 0);
+        ir::IrFailurePhase::ProofValidation, ir::IrFailureKind::InputRevisionMismatch, module,
+        firstFunctionDefinition(builtMir), identities, 0);
   }
   // Strict raw-to-reference rejection: a cast whose checked source semantic type
   // is a raw pointer and whose target or result type is a safe reference is
@@ -2560,7 +2547,7 @@ ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifi
     for (const auto& plan : function.castResourcePlans) {
       if (hasRawToReferenceCast(plan, input.body.semanticTypes)) {
         return rejectOwnership<VerifiedOwnershipEventOverlay>(
-            ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InvalidFact, module,
+            ir::IrFailurePhase::ProofValidation, ir::IrFailureKind::InvalidFact, module,
             function.owner, identities, 0);
       }
     }
@@ -2568,14 +2555,14 @@ ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifi
   auto expectedFunctions = reconstructExpectedFunctions(input, identities);
   if (expectedFunctions == zc::none) {
     return rejectOwnership<VerifiedOwnershipEventOverlay>(
-        ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InvalidOwnershipProof,
-        module, firstFunctionDefinition(builtMir), identities, 0);
+        ir::IrFailurePhase::ProofValidation, ir::IrFailureKind::InvalidOwnershipProof, module,
+        firstFunctionDefinition(builtMir), identities, 0);
   }
   zc::Vector<zc::Array<uint8_t>> recomputedRecords;
   ZC_IF_SOME(expected, expectedFunctions) {
     if (expected.size() != candidate.functions.size()) {
       return rejectOwnership<VerifiedOwnershipEventOverlay>(
-          ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::AdditionalFact, module,
+          ir::IrFailurePhase::ProofValidation, ir::IrFailureKind::AdditionalFact, module,
           firstFunctionDefinition(builtMir), identities, 0);
     }
     for (size_t index = 0; index < expected.size(); ++index) {
@@ -2583,12 +2570,12 @@ ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifi
       const auto& candidateFunction = candidate.functions[index];
       if (expectedFunction.owner != candidateFunction.owner) {
         return rejectOwnership<VerifiedOwnershipEventOverlay>(
-            ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InvalidFact, module,
+            ir::IrFailurePhase::ProofValidation, ir::IrFailureKind::InvalidFact, module,
             expectedFunction.owner, identities, static_cast<uint32_t>(index + 1));
       }
       if (expectedFunction.sourceMap.size() != candidateFunction.sourceMap.size()) {
         return rejectOwnership<VerifiedOwnershipEventOverlay>(
-            ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::AdditionalFact, module,
+            ir::IrFailurePhase::ProofValidation, ir::IrFailureKind::AdditionalFact, module,
             expectedFunction.owner, identities, static_cast<uint32_t>(index + 1));
       }
       for (size_t sourceIndex = 0; sourceIndex < expectedFunction.sourceMap.size(); ++sourceIndex) {
@@ -2597,14 +2584,14 @@ ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifi
         if (expectedSource.key != candidateSource.key ||
             !sameSpan(expectedSource.span, candidateSource.span)) {
           return rejectOwnership<VerifiedOwnershipEventOverlay>(
-              ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InvalidFact, module,
+              ir::IrFailurePhase::ProofValidation, ir::IrFailureKind::InvalidFact, module,
               expectedFunction.owner, identities, static_cast<uint32_t>(sourceIndex + 1));
         }
       }
       for (const auto& slot : candidateFunction.slots) {
         if (slot.key.location.owner != candidateFunction.owner) {
           return rejectOwnership<VerifiedOwnershipEventOverlay>(
-              ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InvalidFact, module,
+              ir::IrFailurePhase::ProofValidation, ir::IrFailureKind::InvalidFact, module,
               expectedFunction.owner, identities, static_cast<uint32_t>(index + 1));
         }
       }
@@ -2614,8 +2601,8 @@ ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifi
           encodeFunctionOverlay(candidateFunction, identities, input.body.semanticTypes);
       if (expectedEncoded == zc::none || candidateEncoded == zc::none) {
         return rejectOwnership<VerifiedOwnershipEventOverlay>(
-            ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::CanonicalCodecMismatch,
-            module, expectedFunction.owner, identities, static_cast<uint32_t>(index + 1));
+            ir::IrFailurePhase::ProofValidation, ir::IrFailureKind::CanonicalCodecMismatch, module,
+            expectedFunction.owner, identities, static_cast<uint32_t>(index + 1));
       }
       zc::Array<uint8_t> expectedBytes;
       zc::Array<uint8_t> candidateBytes;
@@ -2623,8 +2610,8 @@ ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifi
       ZC_IF_SOME(value, candidateEncoded) { candidateBytes = zc::mv(value); }
       if (expectedBytes.asPtr() != candidateBytes.asPtr()) {
         return rejectOwnership<VerifiedOwnershipEventOverlay>(
-            ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::CanonicalCodecMismatch,
-            module, expectedFunction.owner, identities, static_cast<uint32_t>(index + 1));
+            ir::IrFailurePhase::ProofValidation, ir::IrFailureKind::CanonicalCodecMismatch, module,
+            expectedFunction.owner, identities, static_cast<uint32_t>(index + 1));
       }
       recomputedRecords.add(zc::mv(expectedBytes));
     }
@@ -2632,18 +2619,18 @@ ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifi
   auto moduleKey = identities.module(builtMir.module());
   if (moduleKey == zc::none) {
     return rejectOwnership<VerifiedOwnershipEventOverlay>(
-        ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::MissingRequiredFact,
-        module, firstFunctionDefinition(builtMir), identities, 0);
+        ir::IrFailurePhase::ProofValidation, ir::IrFailureKind::MissingRequiredFact, module,
+        firstFunctionDefinition(builtMir), identities, 0);
   }
   zc::Array<uint8_t> expandedModuleKey;
   ZC_IF_SOME(key, moduleKey) { expandedModuleKey = key.key().encode(); }
-  zc::Maybe<OwnershipEventOverlayRevision> revision = OwnershipEventOverlayCodec::compute(
+  zc::Maybe<EventOverlayRevision> revision = EventOverlayCodec::compute(
       candidate.contextFingerprint, expandedModuleKey.asPtr(), candidate.checkedFactsRevision,
       candidate.builtRevision, recomputedRecords.asPtr());
   if (revision == zc::none) {
     return rejectOwnership<VerifiedOwnershipEventOverlay>(
-        ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::CanonicalCodecMismatch,
-        module, firstFunctionDefinition(builtMir), identities, 0);
+        ir::IrFailurePhase::ProofValidation, ir::IrFailureKind::CanonicalCodecMismatch, module,
+        firstFunctionDefinition(builtMir), identities, 0);
   }
   ZC_IF_SOME(value, revision) {
     auto impl = zc::heap<VerifiedOwnershipEventOverlay::Impl>(
@@ -2660,8 +2647,8 @@ struct VerifiedOwnershipEventOverlay::Impl final {
   Impl(identity::SemanticContextBrand semanticContext,
        identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
        checker::checked::CheckedFactsRevision checkedFactsRevision,
-       mir::MirRevisionId builtRevision, zc::Vector<OwnershipFunctionEventOverlay>&& functions,
-       OwnershipEventOverlayRevision revision, OwnershipAdmittedBoundModule&& boundModule) noexcept
+       mir::MirRevisionId builtRevision, zc::Vector<FunctionEventOverlay>&& functions,
+       EventOverlayRevision revision, AdmittedBoundModule&& boundModule) noexcept
       : boundModule(zc::mv(boundModule)),
         semanticContext(semanticContext),
         contextFingerprint(zc::mv(contextFingerprint)),
@@ -2671,14 +2658,14 @@ struct VerifiedOwnershipEventOverlay::Impl final {
         functions(zc::mv(functions)),
         revision(revision) {}
 
-  OwnershipAdmittedBoundModule boundModule;
+  AdmittedBoundModule boundModule;
   identity::SemanticContextBrand semanticContext;
   identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   checker::checked::CheckedFactsRevision checkedFactsRevision;
   mir::MirRevisionId builtRevision;
-  zc::Vector<OwnershipFunctionEventOverlay> functions;
-  OwnershipEventOverlayRevision revision;
+  zc::Vector<FunctionEventOverlay> functions;
+  EventOverlayRevision revision;
 };
 
 VerifiedOwnershipEventOverlay::VerifiedOwnershipEventOverlay(zc::Own<Impl>&& impl) noexcept
@@ -2704,11 +2691,10 @@ const checker::checked::CheckedFactsRevision& VerifiedOwnershipEventOverlay::che
 const mir::MirRevisionId& VerifiedOwnershipEventOverlay::builtRevision() const noexcept {
   return impl->builtRevision;
 }
-zc::ArrayPtr<const OwnershipFunctionEventOverlay> VerifiedOwnershipEventOverlay::functions()
-    const noexcept {
+zc::ArrayPtr<const FunctionEventOverlay> VerifiedOwnershipEventOverlay::functions() const noexcept {
   return impl->functions.asPtr();
 }
-const OwnershipEventOverlayRevision& VerifiedOwnershipEventOverlay::revision() const noexcept {
+const EventOverlayRevision& VerifiedOwnershipEventOverlay::revision() const noexcept {
   return impl->revision;
 }
 

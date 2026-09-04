@@ -79,14 +79,14 @@ ir::IrOperationResult<Result> reject(const mir::VerifiedBuiltMir& builtMir,
   identity::DefId definition;
   if (builtMir.functions().size() != 0) definition = builtMir.functions()[0].owner;
   AuthorityIdentityResolver resolver(identities);
-  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::OwnershipProofValidation,
+  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::ProofValidation,
                                                      ir::IrFailureOwner::definition(definition));
   ZC_IREQUIRE(fallback != zc::none, "Region failure fallback must be legal");
   zc::Maybe<ir::IrFailureSite> noSite;
   zc::Maybe<identity::SourceSpan> noSpan;
   zc::Vector<uint32_t> noPath;
   auto descriptor = ir::IrFailureDescriptor::decoded(
-      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::OwnershipProofValidation, kind,
+      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::ProofValidation, kind,
       ir::IrFailureOwner::definition(definition), zc::mv(noSite), ir::IrFailureDetail::none(),
       zc::mv(noSpan), zc::mv(noPath), ordinal);
   ZC_IF_SOME(fallbackValue, fallback) {
@@ -110,8 +110,7 @@ ir::IrOperationResult<Result> reject(const mir::VerifiedBuiltMir& builtMir,
   ZC_UNREACHABLE
 }
 
-bool sameMembers(zc::ArrayPtr<const OwnershipPoint> left,
-                 zc::ArrayPtr<const OwnershipPoint> right) {
+bool sameMembers(zc::ArrayPtr<const Point> left, zc::ArrayPtr<const Point> right) {
   if (left.size() != right.size()) return false;
   for (size_t index = 0; index < left.size(); ++index) {
     if (left[index] != right[index]) return false;
@@ -151,15 +150,15 @@ zc::Maybe<const FlowFunction&> flowFor(const VerifiedFlow& flow, identity::DefId
   return result;
 }
 
-bool hasPoint(const FlowFunction& flow, const OwnershipPoint& point) {
+bool hasPoint(const FlowFunction& flow, const Point& point) {
   for (const auto& value : flow.points) {
     if (value == point) return true;
   }
   return false;
 }
 
-bool reaches(const FlowFunction& flow, const OwnershipPoint& from, const OwnershipPoint& to,
-             zc::Vector<OwnershipPoint>& visited) {
+bool reaches(const FlowFunction& flow, const Point& from, const Point& to,
+             zc::Vector<Point>& visited) {
   if (from == to) return true;
   for (const auto& value : visited) {
     if (value == from) return false;
@@ -173,7 +172,7 @@ bool reaches(const FlowFunction& flow, const OwnershipPoint& from, const Ownersh
 }
 
 bool flowContainsMembers(const VerifiedFlow& flow, identity::DefId owner,
-                         zc::ArrayPtr<const OwnershipPoint> members) {
+                         zc::ArrayPtr<const Point> members) {
   auto function = flowFor(flow, owner);
   if (function == zc::none || members.size() == 0) return false;
   ZC_IF_SOME(value, function) {
@@ -181,7 +180,7 @@ bool flowContainsMembers(const VerifiedFlow& flow, identity::DefId owner,
       if (!hasPoint(value, member)) return false;
     }
     for (size_t index = 1; index < members.size(); ++index) {
-      zc::Vector<OwnershipPoint> visited;
+      zc::Vector<Point> visited;
       if (!reaches(value, members[index - 1], members[index], visited)) return false;
     }
     return true;
@@ -219,7 +218,7 @@ zc::Maybe<zc::Vector<ReborrowRegion>> derive(const VerifiedFlow& flow,
            (reference.origin.detail.is<LocalReferenceOrigin>() &&
             reference.origin.entry.location.point.kind() == MirPointKind::BeforeStatement));
       if (value.activeFrom != reference.origin.activation || !entryShapeValid) { return zc::none; }
-      zc::Vector<OwnershipPoint> members;
+      zc::Vector<Point> members;
       members.add(value.activeFrom);
       members.add(reference.livePoints.afterCommit);
       members.add(reference.livePoints.afterCommitCfg);
@@ -252,7 +251,7 @@ bool sameRegions(zc::ArrayPtr<const ReborrowRegion> left,
 ReborrowRegionCandidate::ReborrowRegionCandidate(
     identity::SemanticContextBrand semanticContext,
     identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
-    mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
+    mir::MirRevisionId builtRevision, EventOverlayRevision overlayRevision,
     driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
     zc::Vector<ReborrowRegion>&& regions) noexcept
     : semanticContext(semanticContext),
@@ -286,7 +285,7 @@ identity::ModuleId VerifiedReborrowRegions::module() const noexcept {
 const mir::MirRevisionId& VerifiedReborrowRegions::builtRevision() const noexcept {
   return impl->candidate.builtRevision;
 }
-const OwnershipEventOverlayRevision& VerifiedReborrowRegions::overlayRevision() const noexcept {
+const EventOverlayRevision& VerifiedReborrowRegions::overlayRevision() const noexcept {
   return impl->candidate.overlayRevision;
 }
 const driver::borrow_evidence::BorrowEvidenceRevision&

@@ -320,8 +320,8 @@ void retainStrongest(SignatureViewOrigin candidate, SignatureViewOrigin& current
 
 zc::Maybe<checker::cross_module::ImportedSignatureModule>
 ImportedSignatureViewProjector::projectCore(
-    const ownership::OwnershipAdmittedBoundModule& requester,
-    const VerifiedCoreModuleInterface& source, SignatureViewOrigin origin,
+    const ownership::AdmittedBoundModule& requester, const VerifiedCoreModuleInterface& source,
+    SignatureViewOrigin origin,
     zc::ArrayPtr<const ImportedDefinitionBindingSelection> definitionBindings,
     zc::ArrayPtr<const ImportedModuleTargetSelection> moduleTargetNames,
     const checker::CheckerIdentityAuthority& identities) {
@@ -469,7 +469,7 @@ ImportedSignatureViewProjector::projectCore(
 }
 
 zc::Maybe<checker::cross_module::ImportedSignatureView> ImportedSignatureViewProjector::build(
-    const ownership::OwnershipAdmittedBoundModule& requester,
+    const ownership::AdmittedBoundModule& requester,
     zc::ArrayPtr<const VerifiedInterfaceSource> dependencyInterfaces,
     const type::SemanticTypeStore& semanticTypes,
     const checker::CheckerIdentityAuthority& identities) {

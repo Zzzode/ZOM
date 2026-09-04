@@ -20,10 +20,10 @@
 #include "zc/core/vector.h"
 
 namespace zomlang::compiler::ownership {
-class OwnershipAdmittedBoundModule;
-class OwnershipEventOverlayBuilder;
-class OwnershipEventOverlayVerifier;
-class OwnershipFinalizer;
+class AdmittedBoundModule;
+class EventOverlayBuilder;
+class EventOverlayVerifier;
+class Finalizer;
 class DropElaborator;
 namespace facts {
 class FlowBuilder;
@@ -36,9 +36,9 @@ class LoanBuilder;
 class LoanVerifier;
 class MovePathBuilder;
 class MovePathVerifier;
-class OwnershipInputVerifier;
-class OwnershipResourceBuilder;
-class OwnershipResourceVerifier;
+class InputVerifier;
+class ResourceBuilder;
+class ResourceVerifier;
 class ReborrowRegionBuilder;
 class ReborrowRegionVerifier;
 class ReborrowStateBuilder;
@@ -654,7 +654,7 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const zc::Array<uint8_t>> canonicalFunctionRecords() const noexcept;
 
 private:
-  ZC_NODISCARD ownership::OwnershipAdmittedBoundModule retainAdmittedBoundModule() const;
+  ZC_NODISCARD ownership::AdmittedBoundModule retainAdmittedBoundModule() const;
   ZC_NODISCARD checker::CheckerIdentityAuthority retainIdentityAuthority() const;
   ZC_NODISCARD driver::borrow_evidence::VerifiedBorrowEvidenceLease retainBorrowEvidenceLease()
       const;
@@ -669,8 +669,8 @@ private:
   zc::Own<Impl> impl;
 
   friend class BuiltMirVerifier;
-  friend class ownership::OwnershipEventOverlayBuilder;
-  friend class ownership::OwnershipEventOverlayVerifier;
+  friend class ownership::EventOverlayBuilder;
+  friend class ownership::EventOverlayVerifier;
   friend class ownership::facts::InitializationSourceVerifier;
   friend class ownership::facts::BorrowSourceVerifier;
   friend class ownership::facts::FlowBuilder;
@@ -681,9 +681,9 @@ private:
   friend class ownership::facts::LoanVerifier;
   friend class ownership::facts::MovePathBuilder;
   friend class ownership::facts::MovePathVerifier;
-  friend class ownership::facts::OwnershipInputVerifier;
-  friend class ownership::facts::OwnershipResourceBuilder;
-  friend class ownership::facts::OwnershipResourceVerifier;
+  friend class ownership::facts::InputVerifier;
+  friend class ownership::facts::ResourceBuilder;
+  friend class ownership::facts::ResourceVerifier;
   friend class ownership::facts::ReborrowRegionBuilder;
   friend class ownership::facts::ReborrowRegionVerifier;
   friend class ownership::facts::ReborrowStateBuilder;
@@ -699,7 +699,7 @@ private:
   friend class ownership::facts::RegionOutlivesBuilder;
   friend class ownership::facts::RegionOutlivesVerifier;
   friend class ownership::DropElaborator;
-  friend class ownership::OwnershipFinalizer;
+  friend class ownership::Finalizer;
 };
 
 /// \brief Lowers the complete currently supported HIR expression slice into Built MIR.

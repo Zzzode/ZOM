@@ -40,7 +40,7 @@ zc::Maybe<uint64_t> checkedMul3(uint64_t a, uint64_t b, uint64_t c) noexcept {
 ///     product(q in Q, 1 + Aq + Aq*Cq)
 ///
 /// Returns none if the computation overflows uint64_t.
-zc::Maybe<uint64_t> computeResourceBound(const OwnershipBudgetFactors& factors) noexcept {
+zc::Maybe<uint64_t> computeResourceBound(const BudgetFactors& factors) noexcept {
   uint64_t k = 1;
   // 4^Ccast
   for (uint64_t i = 0; i < factors.castCarriers; ++i) {
@@ -71,8 +71,8 @@ zc::Maybe<uint64_t> computeResourceBound(const OwnershipBudgetFactors& factors) 
 
 }  // namespace
 
-OwnershipBudgetCheckResult OwnershipBudgetVerifier::check(
-    const OwnershipBudgetFactors& factors, const OwnershipBudgetCounters& counters) noexcept {
+BudgetCheckResult BudgetVerifier::check(const BudgetFactors& factors,
+                                        const BudgetCounters& counters) noexcept {
   const uint64_t p = factors.cutpointCount();
   const uint64_t m = factors.movePaths;
   const uint64_t d = factors.lossCauses;
@@ -83,7 +83,7 @@ OwnershipBudgetCheckResult OwnershipBudgetVerifier::check(
   const uint64_t araw = factors.rawProvenanceCarriers;
   const uint64_t u = factors.rawOrigins;
 
-  OwnershipBudgetCheckResult result;
+  BudgetCheckResult result;
 
   auto check = [&](uint64_t counter, zc::Maybe<uint64_t> bound, zc::StringPtr name) {
     if (!result.withinBudget) return;

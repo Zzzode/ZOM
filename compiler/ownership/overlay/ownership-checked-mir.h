@@ -30,7 +30,7 @@ namespace zomlang::compiler::ownership {
 
 /// \brief Immutable RFC 0007 ownership-checked MIR capability.
 ///
-/// OwnershipCheckedMir is the sole committed successor of Built MIR, the
+/// CheckedMir is the sole committed successor of Built MIR, the
 /// verified ownership event overlay, and the verified ownership facts. The
 /// finalizer consumes all three move-only products, rechecks every revision,
 /// lease, and identity without dereferencing unvalidated handles, and either
@@ -42,12 +42,12 @@ namespace zomlang::compiler::ownership {
 /// capability in the encoded or runtime wrapper; every successor operation
 /// receives a live capability again and resolves the embedded lease before
 /// inspecting or moving the predecessor payload.
-class OwnershipCheckedMir final {
+class CheckedMir final {
 public:
-  ~OwnershipCheckedMir() noexcept(false);
-  OwnershipCheckedMir(OwnershipCheckedMir&&) noexcept;
-  OwnershipCheckedMir& operator=(OwnershipCheckedMir&&) noexcept;
-  ZC_DISALLOW_COPY(OwnershipCheckedMir);
+  ~CheckedMir() noexcept(false);
+  CheckedMir(CheckedMir&&) noexcept;
+  CheckedMir& operator=(CheckedMir&&) noexcept;
+  ZC_DISALLOW_COPY(CheckedMir);
 
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
   ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
@@ -59,17 +59,17 @@ public:
   /// \brief Returns the owned immutable verified ownership facts bundle.
   ZC_NODISCARD const facts::VerifiedOwnershipInputs& facts() const noexcept;
   ZC_NODISCARD const mir::MirRevisionId& builtRevision() const noexcept;
-  ZC_NODISCARD const OwnershipEventOverlayRevision& eventOverlayRevision() const noexcept;
-  ZC_NODISCARD const facts::OwnershipFactsRevision& factsRevision() const noexcept;
+  ZC_NODISCARD const EventOverlayRevision& eventOverlayRevision() const noexcept;
+  ZC_NODISCARD const facts::FactsRevision& factsRevision() const noexcept;
   ZC_NODISCARD const driver::borrow_evidence::BorrowEvidenceRevision& borrowEvidenceRevision()
       const noexcept;
 
 private:
   struct Impl;
-  explicit OwnershipCheckedMir(zc::Own<Impl>&& impl) noexcept;
+  explicit CheckedMir(zc::Own<Impl>&& impl) noexcept;
   zc::Own<Impl> impl;
 
-  friend class OwnershipFinalizer;
+  friend class Finalizer;
 };
 
 /// \brief Sole publisher of immutable ownership-checked MIR wrappers.
@@ -83,9 +83,9 @@ private:
 /// VerifiedBuiltMir.borrowEvidenceLease. A foreign, missing, stale, swapped,
 /// or post-teardown lease or capability selects RFC 0010 InputRevisionMismatch
 /// before candidate construction.
-class OwnershipFinalizer final {
+class Finalizer final {
 public:
-  ZC_NODISCARD static ir::IrOperationResult<OwnershipCheckedMir> finalizeOwnership(
+  ZC_NODISCARD static ir::IrOperationResult<CheckedMir> finalizeOwnership(
       mir::VerifiedBuiltMir&& builtMir, VerifiedOwnershipEventOverlay&& eventOverlay,
       facts::VerifiedOwnershipInputs&& facts,
       const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& repository,

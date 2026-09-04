@@ -5,14 +5,14 @@
 
 #pragma once
 
-#include "zc/core/array.h"
-#include "zc/core/common.h"
 #include "compiler/checker/facts/cross-module-facts.h"
 #include "compiler/driver/interface/interface-source.h"
 #include "compiler/driver/query/module-graph/materialized-module-graph-query.h"
+#include "zc/core/array.h"
+#include "zc/core/common.h"
 
 namespace zomlang::compiler::ownership {
-class OwnershipAdmittedBoundModule;
+class AdmittedBoundModule;
 }
 
 namespace zomlang::compiler::driver {
@@ -21,14 +21,14 @@ namespace zomlang::compiler::driver {
 class ImportedSignatureViewProjector final {
 public:
   ZC_NODISCARD static zc::Maybe<checker::cross_module::ImportedSignatureView> build(
-      const ownership::OwnershipAdmittedBoundModule& requester,
+      const ownership::AdmittedBoundModule& requester,
       zc::ArrayPtr<const VerifiedInterfaceSource> dependencyInterfaces,
       const type::SemanticTypeStore& semanticTypes,
       const checker::CheckerIdentityAuthority& identities);
 
 private:
   ZC_NODISCARD static zc::Maybe<checker::cross_module::ImportedSignatureModule> projectCore(
-      const ownership::OwnershipAdmittedBoundModule& requester,
+      const ownership::AdmittedBoundModule& requester,
       const core_library_query::VerifiedCoreModuleInterface& source,
       checker::cross_module::SignatureViewOrigin origin,
       zc::ArrayPtr<const checker::cross_module::ImportedDefinitionBindingSelection>

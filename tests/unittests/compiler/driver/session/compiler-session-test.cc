@@ -14,10 +14,6 @@
 
 #include "compiler/driver/session/compiler-session.h"
 
-#include "zc/core/common.h"
-#include "zc/core/string.h"
-#include "zc/core/time.h"
-#include "zc/ztest/test.h"
 #include "compiler/basic/compiler-opts.h"
 #include "compiler/diagnostics/consumer/diagnostic-consumer.h"
 #include "compiler/diagnostics/core/diagnostic-engine.h"
@@ -26,6 +22,10 @@
 #include "compiler/driver/package/source-record.h"
 #include "compiler/source/manager.h"
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
+#include "zc/core/common.h"
+#include "zc/core/string.h"
+#include "zc/core/time.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang {
 namespace compiler {
@@ -752,7 +752,7 @@ ZC_TEST("CompilerSessionTest.PublishesSharedParameterReborrow") {
   ZC_EXPECT(loan.commit.location.point.beforeStatementValue().ordinal == 1);
   ZC_EXPECT(loan.commit.operandOrdinal == 2);
   ZC_EXPECT(loan.kind == mir::MirBorrowKind::Shared);
-  ZC_EXPECT(loan.activeFrom.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(loan.activeFrom.kind() == ownership::facts::PointKind::AfterEvent);
   ZC_EXPECT(loan.activeFrom.afterEventValue().event.operandOrdinal == 1);
   ZC_EXPECT(loan.source.place.local() == borrow.source.local());
   ZC_EXPECT(loan.destination.place.local() == borrow.destination.local());
@@ -763,7 +763,7 @@ ZC_TEST("CompilerSessionTest.PublishesSharedParameterReborrow") {
   ZC_EXPECT(reference.loan.operandOrdinal == 1);
   ZC_EXPECT(reference.origin.entry.location.point.kind() == ownership::MirPointKind::Entry);
   ZC_EXPECT(reference.origin.entry.operandOrdinal == 0);
-  ZC_EXPECT(reference.origin.activation.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(reference.origin.activation.kind() == ownership::facts::PointKind::AfterEvent);
   ZC_EXPECT(reference.origin.activation.afterEventValue().event.operandOrdinal == 1);
   ZC_EXPECT(
       reference.origin.detail.get<ownership::facts::ParameterReferenceOrigin>().rootParameter == 0);
@@ -774,22 +774,17 @@ ZC_TEST("CompilerSessionTest.PublishesSharedParameterReborrow") {
   ZC_EXPECT(reference.returned.location.point.kind() == ownership::MirPointKind::BeforeTerminator);
   ZC_EXPECT(reference.returned.operandOrdinal == 0);
   ZC_EXPECT(reference.destination.place.local() == borrow.destination.local());
-  ZC_EXPECT(reference.livePoints.afterCommit.kind() ==
-            ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(reference.livePoints.afterCommit.kind() == ownership::facts::PointKind::AfterEvent);
   ZC_EXPECT(reference.livePoints.afterCommit.afterEventValue().event.operandOrdinal == 2);
-  ZC_EXPECT(reference.livePoints.afterCommitCfg.kind() ==
-            ownership::facts::OwnershipPointKind::Cfg);
+  ZC_EXPECT(reference.livePoints.afterCommitCfg.kind() == ownership::facts::PointKind::Cfg);
   ZC_EXPECT(reference.livePoints.afterCommitCfg.cfgValue().point.kind() ==
             ownership::MirPointKind::AfterStatement);
-  ZC_EXPECT(reference.livePoints.beforeReturnCfg.kind() ==
-            ownership::facts::OwnershipPointKind::Cfg);
+  ZC_EXPECT(reference.livePoints.beforeReturnCfg.kind() == ownership::facts::PointKind::Cfg);
   ZC_EXPECT(reference.livePoints.beforeReturnCfg.cfgValue().point.kind() ==
             ownership::MirPointKind::BeforeTerminator);
-  ZC_EXPECT(reference.livePoints.beforeReturn.kind() ==
-            ownership::facts::OwnershipPointKind::BeforeEvent);
+  ZC_EXPECT(reference.livePoints.beforeReturn.kind() == ownership::facts::PointKind::BeforeEvent);
   ZC_EXPECT(reference.livePoints.beforeReturn.beforeEventValue().event.operandOrdinal == 0);
-  ZC_EXPECT(reference.livePoints.afterReturn.kind() ==
-            ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(reference.livePoints.afterReturn.kind() == ownership::facts::PointKind::AfterEvent);
   ZC_EXPECT(reference.livePoints.afterReturn.afterEventValue().event.operandOrdinal == 0);
   ZC_REQUIRE(regions.regions().size() == 1);
   const auto& region = regions.regions()[0];
@@ -799,9 +794,9 @@ ZC_TEST("CompilerSessionTest.PublishesSharedParameterReborrow") {
   ZC_EXPECT(region.loan.operandOrdinal == 1);
   ZC_EXPECT(region.origin.get<ownership::facts::ParameterReferenceOrigin>().rootParameter == 0);
   ZC_REQUIRE(region.members.size() == 6);
-  ZC_EXPECT(region.members[0].kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(region.members[0].kind() == ownership::facts::PointKind::AfterEvent);
   ZC_EXPECT(region.members[0].afterEventValue().event.operandOrdinal == 1);
-  ZC_EXPECT(region.members[5].kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(region.members[5].kind() == ownership::facts::PointKind::AfterEvent);
   ZC_EXPECT(region.members[5].afterEventValue().event.operandOrdinal == 0);
   ZC_REQUIRE(states.states().size() == 5);
   const auto& referenceState = states.states()[0];
@@ -810,9 +805,9 @@ ZC_TEST("CompilerSessionTest.PublishesSharedParameterReborrow") {
   ZC_EXPECT(referenceState.origin.get<ownership::facts::ParameterReferenceOrigin>().rootParameter ==
             0);
   ZC_EXPECT(referenceState.destination.place.local() == borrow.destination.local());
-  ZC_EXPECT(referenceState.point.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(referenceState.point.kind() == ownership::facts::PointKind::AfterEvent);
   ZC_EXPECT(referenceState.point.afterEventValue().event.operandOrdinal == 2);
-  ZC_EXPECT(states.states()[4].point.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(states.states()[4].point.kind() == ownership::facts::PointKind::AfterEvent);
   ZC_EXPECT(states.states()[4].point.afterEventValue().event.operandOrdinal == 0);
 
   ZC_REQUIRE(movePaths.functions().size() == 1);
@@ -900,7 +895,7 @@ ZC_TEST("CompilerSessionTest.PublishesMutableParameterReborrow") {
   ZC_EXPECT(loan.commit.location.point.beforeStatementValue().ordinal == 1);
   ZC_EXPECT(loan.commit.operandOrdinal == 2);
   ZC_EXPECT(loan.kind == mir::MirBorrowKind::Mutable);
-  ZC_EXPECT(loan.activeFrom.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(loan.activeFrom.kind() == ownership::facts::PointKind::AfterEvent);
   ZC_EXPECT(loan.activeFrom.afterEventValue().event.operandOrdinal == 1);
   ZC_EXPECT(loan.source.place.local() == borrow.source.local());
   ZC_EXPECT(loan.destination.place.local() == borrow.destination.local());
@@ -911,7 +906,7 @@ ZC_TEST("CompilerSessionTest.PublishesMutableParameterReborrow") {
   ZC_EXPECT(reference.loan.operandOrdinal == 1);
   ZC_EXPECT(reference.origin.entry.location.point.kind() == ownership::MirPointKind::Entry);
   ZC_EXPECT(reference.origin.entry.operandOrdinal == 0);
-  ZC_EXPECT(reference.origin.activation.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(reference.origin.activation.kind() == ownership::facts::PointKind::AfterEvent);
   ZC_EXPECT(reference.origin.activation.afterEventValue().event.operandOrdinal == 1);
   ZC_EXPECT(
       reference.origin.detail.get<ownership::facts::ParameterReferenceOrigin>().rootParameter == 0);
@@ -922,22 +917,17 @@ ZC_TEST("CompilerSessionTest.PublishesMutableParameterReborrow") {
   ZC_EXPECT(reference.returned.location.point.kind() == ownership::MirPointKind::BeforeTerminator);
   ZC_EXPECT(reference.returned.operandOrdinal == 0);
   ZC_EXPECT(reference.destination.place.local() == borrow.destination.local());
-  ZC_EXPECT(reference.livePoints.afterCommit.kind() ==
-            ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(reference.livePoints.afterCommit.kind() == ownership::facts::PointKind::AfterEvent);
   ZC_EXPECT(reference.livePoints.afterCommit.afterEventValue().event.operandOrdinal == 2);
-  ZC_EXPECT(reference.livePoints.afterCommitCfg.kind() ==
-            ownership::facts::OwnershipPointKind::Cfg);
+  ZC_EXPECT(reference.livePoints.afterCommitCfg.kind() == ownership::facts::PointKind::Cfg);
   ZC_EXPECT(reference.livePoints.afterCommitCfg.cfgValue().point.kind() ==
             ownership::MirPointKind::AfterStatement);
-  ZC_EXPECT(reference.livePoints.beforeReturnCfg.kind() ==
-            ownership::facts::OwnershipPointKind::Cfg);
+  ZC_EXPECT(reference.livePoints.beforeReturnCfg.kind() == ownership::facts::PointKind::Cfg);
   ZC_EXPECT(reference.livePoints.beforeReturnCfg.cfgValue().point.kind() ==
             ownership::MirPointKind::BeforeTerminator);
-  ZC_EXPECT(reference.livePoints.beforeReturn.kind() ==
-            ownership::facts::OwnershipPointKind::BeforeEvent);
+  ZC_EXPECT(reference.livePoints.beforeReturn.kind() == ownership::facts::PointKind::BeforeEvent);
   ZC_EXPECT(reference.livePoints.beforeReturn.beforeEventValue().event.operandOrdinal == 0);
-  ZC_EXPECT(reference.livePoints.afterReturn.kind() ==
-            ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(reference.livePoints.afterReturn.kind() == ownership::facts::PointKind::AfterEvent);
   ZC_EXPECT(reference.livePoints.afterReturn.afterEventValue().event.operandOrdinal == 0);
   ZC_REQUIRE(regions.regions().size() == 1);
   const auto& region = regions.regions()[0];
@@ -947,9 +937,9 @@ ZC_TEST("CompilerSessionTest.PublishesMutableParameterReborrow") {
   ZC_EXPECT(region.loan.operandOrdinal == 1);
   ZC_EXPECT(region.origin.get<ownership::facts::ParameterReferenceOrigin>().rootParameter == 0);
   ZC_REQUIRE(region.members.size() == 6);
-  ZC_EXPECT(region.members[0].kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(region.members[0].kind() == ownership::facts::PointKind::AfterEvent);
   ZC_EXPECT(region.members[0].afterEventValue().event.operandOrdinal == 1);
-  ZC_EXPECT(region.members[5].kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(region.members[5].kind() == ownership::facts::PointKind::AfterEvent);
   ZC_EXPECT(region.members[5].afterEventValue().event.operandOrdinal == 0);
   ZC_REQUIRE(states.states().size() == 5);
   const auto& referenceState = states.states()[0];
@@ -958,9 +948,9 @@ ZC_TEST("CompilerSessionTest.PublishesMutableParameterReborrow") {
   ZC_EXPECT(referenceState.origin.get<ownership::facts::ParameterReferenceOrigin>().rootParameter ==
             0);
   ZC_EXPECT(referenceState.destination.place.local() == borrow.destination.local());
-  ZC_EXPECT(referenceState.point.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(referenceState.point.kind() == ownership::facts::PointKind::AfterEvent);
   ZC_EXPECT(referenceState.point.afterEventValue().event.operandOrdinal == 2);
-  ZC_EXPECT(states.states()[4].point.kind() == ownership::facts::OwnershipPointKind::AfterEvent);
+  ZC_EXPECT(states.states()[4].point.kind() == ownership::facts::PointKind::AfterEvent);
   ZC_EXPECT(states.states()[4].point.afterEventValue().event.operandOrdinal == 0);
 
   bool foundBorrowRead = false;
@@ -972,20 +962,20 @@ ZC_TEST("CompilerSessionTest.PublishesMutableParameterReborrow") {
       continue;
     }
     if (slot.key.operandOrdinal == 0) {
-      ZC_EXPECT(slot.stage == ownership::OwnershipEventStage::Source);
+      ZC_EXPECT(slot.stage == ownership::EventStage::Source);
       ZC_REQUIRE(slot.roles.size() == 1);
-      ZC_EXPECT(slot.roles[0] == ownership::OwnershipEventRole::OperandRead);
+      ZC_EXPECT(slot.roles[0] == ownership::EventRole::OperandRead);
       foundBorrowRead = true;
     } else if (slot.key.operandOrdinal == 1) {
-      ZC_EXPECT(slot.stage == ownership::OwnershipEventStage::Effect);
+      ZC_EXPECT(slot.stage == ownership::EventStage::Effect);
       ZC_REQUIRE(slot.roles.size() == 2);
-      ZC_EXPECT(slot.roles[0] == ownership::OwnershipEventRole::Operation);
-      ZC_EXPECT(slot.roles[1] == ownership::OwnershipEventRole::BorrowIssue);
+      ZC_EXPECT(slot.roles[0] == ownership::EventRole::Operation);
+      ZC_EXPECT(slot.roles[1] == ownership::EventRole::BorrowIssue);
       foundBorrowIssue = true;
     } else if (slot.key.operandOrdinal == 2) {
-      ZC_EXPECT(slot.stage == ownership::OwnershipEventStage::Commit);
+      ZC_EXPECT(slot.stage == ownership::EventStage::Commit);
       ZC_REQUIRE(slot.roles.size() == 1);
-      ZC_EXPECT(slot.roles[0] == ownership::OwnershipEventRole::DestinationWrite);
+      ZC_EXPECT(slot.roles[0] == ownership::EventRole::DestinationWrite);
       foundBorrowCommit = true;
     }
   }

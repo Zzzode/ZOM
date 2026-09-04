@@ -37,7 +37,7 @@ namespace zomlang::compiler::ownership::facts {
 /// transfers, cast routes, drop plans, linear obligations, linear carriers,
 /// linear SCCs, raw-origin universe, and raw provenance.
 /// The module identity is bound through the expanded module key in the frame header.
-class OwnershipFactsCodec final {
+class FactsCodec final {
 public:
   /// \brief Encodes the framed `zom.ownership-facts` stream from pre-encoded groups.
   /// \param contextFingerprint Context fingerprint digest shared with the Built MIR.
@@ -62,7 +62,7 @@ public:
 
   /// \brief Computes the domain-separated facts revision for one verified snapshot.
   /// \return The revision, or none when encoding fails.
-  ZC_NODISCARD static zc::Maybe<OwnershipFactsRevision> compute(
+  ZC_NODISCARD static zc::Maybe<FactsRevision> compute(
       const VerifiedOwnershipInputs& inputs, const VerifiedOwnershipEventOverlay& overlay,
       const checker::CheckerIdentityAuthority& identities,
       const type::SemanticTypeStore& semanticTypes);

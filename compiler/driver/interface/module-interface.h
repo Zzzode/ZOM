@@ -5,25 +5,25 @@
 
 #pragma once
 
+#include "compiler/binder/metadata/binding-metadata.h"
+#include "compiler/checker/facts/coherence-facts.h"
+#include "compiler/checker/facts/cross-module-facts.h"
+#include "compiler/checker/facts/signature-facts.h"
+#include "compiler/checker/module-interface-contract.h"
+#include "compiler/driver/query/module-graph/materialized-module-graph-query.h"
+#include "compiler/identity/crypto/sha256.h"
+#include "compiler/identity/key/definition-key.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "compiler/binder/metadata/binding-metadata.h"
-#include "compiler/checker/facts/coherence-facts.h"
-#include "compiler/checker/facts/cross-module-facts.h"
-#include "compiler/checker/module-interface-contract.h"
-#include "compiler/checker/facts/signature-facts.h"
-#include "compiler/driver/query/module-graph/materialized-module-graph-query.h"
-#include "compiler/identity/key/definition-key.h"
-#include "compiler/identity/crypto/sha256.h"
 
 namespace zomlang::compiler::checker::borrow {
 class VerifiedBorrowInterfaceSurface;
 }
 
 namespace zomlang::compiler::ownership {
-class OwnershipAdmittedBoundModule;
+class AdmittedBoundModule;
 }
 
 namespace zomlang::compiler::driver {
@@ -156,7 +156,7 @@ public:
 
   /// \brief Project one requester-authorized imported-signature module capability.
   ZC_NODISCARD zc::Maybe<checker::cross_module::ImportedSignatureModule> projectImportedSignatures(
-      const ownership::OwnershipAdmittedBoundModule& requester,
+      const ownership::AdmittedBoundModule& requester,
       checker::cross_module::SignatureViewOrigin origin,
       zc::ArrayPtr<const checker::cross_module::ImportedDefinitionBindingSelection>
           definitionBindings,
@@ -173,7 +173,7 @@ private:
 
 /// \brief Complete verified-only inputs for atomic module-interface publication.
 struct ModuleInterfaceBuildInput final {
-  const ownership::OwnershipAdmittedBoundModule& boundModule;
+  const ownership::AdmittedBoundModule& boundModule;
   const checker::signature::VerifiedSignatureFacts& signatureFacts;
   const checker::cross_module::ImportedSignatureView& importedSignatures;
   const checker::signature::VerifiedMarkerPolicyRegistry& markerPolicies;

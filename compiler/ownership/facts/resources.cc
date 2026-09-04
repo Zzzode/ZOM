@@ -81,14 +81,14 @@ ir::IrOperationResult<Result> reject(const mir::VerifiedBuiltMir& builtMir,
   identity::DefId definition;
   if (builtMir.functions().size() != 0) definition = builtMir.functions()[0].owner;
   AuthorityIdentityResolver resolver(identities);
-  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::OwnershipProofValidation,
+  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::ProofValidation,
                                                      ir::IrFailureOwner::definition(definition));
   ZC_IREQUIRE(fallback != zc::none, "Resource fact failure fallback must be legal");
   zc::Maybe<ir::IrFailureSite> noSite;
   zc::Maybe<identity::SourceSpan> noSpan;
   zc::Vector<uint32_t> noPath;
   auto descriptor = ir::IrFailureDescriptor::decoded(
-      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::OwnershipProofValidation, kind,
+      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::ProofValidation, kind,
       ir::IrFailureOwner::definition(definition), zc::mv(noSite), ir::IrFailureDetail::none(),
       zc::mv(noSpan), zc::mv(noPath), ordinal);
   ZC_IF_SOME(fallbackValue, fallback) {
@@ -145,7 +145,7 @@ bool samePlace(const mir::MirPlace& left, const mir::MirPlace& right) {
   return true;
 }
 
-bool positive(const OwnershipMarkerUseKey& key, const OwnershipFunctionEventOverlay& overlay) {
+bool positive(const MarkerUseKey& key, const FunctionEventOverlay& overlay) {
   for (const auto& use : overlay.markerUses) {
     if (use.key.event != key.event || use.key.marker != key.marker ||
         use.key.subject != key.subject ||
@@ -153,7 +153,7 @@ bool positive(const OwnershipMarkerUseKey& key, const OwnershipFunctionEventOver
         use.key.coherenceRevision.digest() != key.coherenceRevision.digest()) {
       continue;
     }
-    return use.decision.is<OwnershipMarkerDecisionPositive>();
+    return use.decision.is<MarkerDecisionPositive>();
   }
   return false;
 }
@@ -192,7 +192,7 @@ bool allFunctionsAdmitted(const mir::VerifiedBuiltMir& builtMir) {
 }
 
 zc::Maybe<DropRequirement> requirement(const LogicalDropPlanComponent& component,
-                                       const OwnershipFunctionEventOverlay& overlay) {
+                                       const FunctionEventOverlay& overlay) {
   const bool copy = positive(component.copyDecision, overlay);
   const bool linear = positive(component.linearDecision, overlay);
   if (component.dropAction != zc::none && copy) return zc::none;
@@ -232,7 +232,7 @@ bool sameMovePath(const MovePathKey& left, const MovePathKey& right) {
   return left.owner == right.owner && samePlace(left.place, right.place);
 }
 
-zc::Maybe<uint32_t> resourceAt(const zc::Vector<OwnershipResourceFact>& facts,
+zc::Maybe<uint32_t> resourceAt(const zc::Vector<ResourceFact>& facts,
                                const zc::Vector<DropTransfer>& transfers,
                                const zc::Vector<CastResourceRoute>& castRoutes,
                                const MovePathKey& place) {
@@ -390,7 +390,7 @@ struct LinearDerivation {
 };
 
 zc::Maybe<LinearDerivation> deriveLinear(const mir::MirFunction& function,
-                                         const zc::Vector<OwnershipResourceFact>& facts,
+                                         const zc::Vector<ResourceFact>& facts,
                                          const zc::Vector<DropTransfer>& transfers,
                                          const zc::Vector<CastResourceRoute>& castRoutes) {
   // The movement sequence is sorted by structural event order, which is a total
@@ -564,12 +564,12 @@ zc::Maybe<LinearDerivation> deriveLinear(const mir::MirFunction& function,
   return LinearDerivation{zc::mv(obligations), zc::mv(carriers), zc::mv(sccs)};
 }
 
-zc::Maybe<zc::Vector<OwnershipResourceFunction>> derive(
-    const VerifiedMovePaths& movePaths, const mir::VerifiedBuiltMir& builtMir,
-    const VerifiedOwnershipEventOverlay& overlay) {
-  zc::Vector<OwnershipResourceFunction> functions;
+zc::Maybe<zc::Vector<ResourceFunction>> derive(const VerifiedMovePaths& movePaths,
+                                               const mir::VerifiedBuiltMir& builtMir,
+                                               const VerifiedOwnershipEventOverlay& overlay) {
+  zc::Vector<ResourceFunction> functions;
   for (const auto& mirFunction : builtMir.functions()) {
-    zc::Maybe<const OwnershipFunctionEventOverlay&> overlayFunction;
+    zc::Maybe<const FunctionEventOverlay&> overlayFunction;
     for (const auto& candidate : overlay.functions()) {
       if (candidate.owner == mirFunction.owner) {
         overlayFunction = candidate;
@@ -578,7 +578,7 @@ zc::Maybe<zc::Vector<OwnershipResourceFunction>> derive(
     }
     if (overlayFunction == zc::none) return zc::none;
     ZC_IF_SOME(value, overlayFunction) {
-      zc::Vector<OwnershipResourceFact> facts;
+      zc::Vector<ResourceFact> facts;
       zc::Vector<DropTransfer> transfers;
       zc::Vector<CastResourceRoute> castRoutes;
       zc::Vector<DropPlan> dropPlans;
@@ -679,7 +679,7 @@ zc::Maybe<zc::Vector<OwnershipResourceFunction>> derive(
                 factOrdinal = static_cast<uint32_t>(facts.size());
                 identity::SemanticTypeId subjectType = component.valueType;
                 if (castOriginType != zc::none) subjectType = ZC_ASSERT_NONNULL(castOriginType);
-                facts.add(OwnershipResourceFact{
+                facts.add(ResourceFact{
                     DropResourceSubject{introduction, zc::mv(origin), subjectType},
                     expectedRequirement, component.dropAction, component.declarationOrdinal});
               }
@@ -706,7 +706,7 @@ zc::Maybe<zc::Vector<OwnershipResourceFunction>> derive(
         // structure is in place for when raw operations enter the subset.
         zc::Vector<RawProvenanceOrigin> rawOriginUniverse;
         zc::Vector<RawProvenanceFact> rawProvenance;
-        functions.add(OwnershipResourceFunction{
+        functions.add(ResourceFunction{
             mirFunction.owner, zc::mv(facts), zc::mv(transfers), zc::mv(castRoutes),
             zc::mv(dropPlans), zc::mv(linearValue.obligations), zc::mv(linearValue.carriers),
             zc::mv(linearValue.sccs), zc::mv(rawOriginUniverse), zc::mv(rawProvenance)});
@@ -721,7 +721,7 @@ bool sameSubjects(const DropResourceSubject& left, const DropResourceSubject& ri
          samePlace(left.origin.place, right.origin.place) && left.originType == right.originType;
 }
 
-bool sameFacts(const OwnershipResourceFact& left, const OwnershipResourceFact& right) {
+bool sameFacts(const ResourceFact& left, const ResourceFact& right) {
   return sameSubjects(left.subject, right.subject) && left.requirement == right.requirement &&
          sameActions(left.dropAction, right.dropAction) &&
          left.declarationOrdinal == right.declarationOrdinal;
@@ -854,8 +854,8 @@ bool sameRawProvenanceFacts(const RawProvenanceFact& left, const RawProvenanceFa
   return true;
 }
 
-bool sameFunctions(zc::ArrayPtr<const OwnershipResourceFunction> left,
-                   zc::ArrayPtr<const OwnershipResourceFunction> right) {
+bool sameFunctions(zc::ArrayPtr<const ResourceFunction> left,
+                   zc::ArrayPtr<const ResourceFunction> right) {
   if (left.size() != right.size()) return false;
   for (size_t functionIndex = 0; functionIndex < left.size(); ++functionIndex) {
     if (left[functionIndex].owner != right[functionIndex].owner ||
@@ -933,8 +933,8 @@ bool sameFunctions(zc::ArrayPtr<const OwnershipResourceFunction> left,
   return true;
 }
 
-zc::Maybe<const OwnershipFunctionEventOverlay&> overlayFor(
-    const VerifiedOwnershipEventOverlay& overlay, identity::DefId owner) {
+zc::Maybe<const FunctionEventOverlay&> overlayFor(const VerifiedOwnershipEventOverlay& overlay,
+                                                  identity::DefId owner) {
   for (const auto& function : overlay.functions()) {
     if (function.owner == owner) return function;
   }
@@ -942,7 +942,7 @@ zc::Maybe<const OwnershipFunctionEventOverlay&> overlayFor(
 }
 
 zc::Maybe<identity::SourceSpan> sourceSpanFor(const mir::MirFunction& function,
-                                              const OwnershipFunctionEventOverlay& overlay,
+                                              const FunctionEventOverlay& overlay,
                                               const MirEventKey& event) {
   for (const auto& source : overlay.sourceMap) {
     if (source.key == event) return source.span.clone();
@@ -990,10 +990,10 @@ zc::Maybe<identity::SourceSpan> sourceSpanFor(const mir::MirFunction& function,
   return zc::none;
 }
 
-zc::Maybe<zc::Vector<OwnershipSourceFailure>> linearSourceFailures(
+zc::Maybe<zc::Vector<SourceFailure>> linearSourceFailures(
     const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay,
     const VerifiedOwnershipResourceFacts& resources) {
-  zc::Vector<OwnershipSourceFailure> failures;
+  zc::Vector<SourceFailure> failures;
   uint32_t traversalOrdinal = 0;
   for (const auto& resourceFunction : resources.functions()) {
     zc::Maybe<const mir::MirFunction&> mirFunction;
@@ -1030,11 +1030,11 @@ zc::Maybe<zc::Vector<OwnershipSourceFailure>> linearSourceFailures(
 
 }  // namespace
 
-OwnershipResourceCandidate::OwnershipResourceCandidate(
-    identity::SemanticContextBrand semanticContext,
-    identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
-    mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
-    zc::Vector<OwnershipResourceFunction>&& functions) noexcept
+ResourceCandidate::ResourceCandidate(identity::SemanticContextBrand semanticContext,
+                                     identity::ContextFingerprint&& contextFingerprint,
+                                     identity::ModuleId module, mir::MirRevisionId builtRevision,
+                                     EventOverlayRevision overlayRevision,
+                                     zc::Vector<ResourceFunction>&& functions) noexcept
     : semanticContext(semanticContext),
       contextFingerprint(zc::mv(contextFingerprint)),
       module(module),
@@ -1043,8 +1043,8 @@ OwnershipResourceCandidate::OwnershipResourceCandidate(
       functions(zc::mv(functions)) {}
 
 struct VerifiedOwnershipResourceFacts::Impl final {
-  explicit Impl(OwnershipResourceCandidate&& candidate) noexcept : candidate(zc::mv(candidate)) {}
-  OwnershipResourceCandidate candidate;
+  explicit Impl(ResourceCandidate&& candidate) noexcept : candidate(zc::mv(candidate)) {}
+  ResourceCandidate candidate;
 };
 
 VerifiedOwnershipResourceFacts::VerifiedOwnershipResourceFacts(zc::Own<Impl>&& impl) noexcept
@@ -1067,42 +1067,40 @@ identity::ModuleId VerifiedOwnershipResourceFacts::module() const noexcept {
 const mir::MirRevisionId& VerifiedOwnershipResourceFacts::builtRevision() const noexcept {
   return impl->candidate.builtRevision;
 }
-const OwnershipEventOverlayRevision& VerifiedOwnershipResourceFacts::overlayRevision()
-    const noexcept {
+const EventOverlayRevision& VerifiedOwnershipResourceFacts::overlayRevision() const noexcept {
   return impl->candidate.overlayRevision;
 }
-zc::ArrayPtr<const OwnershipResourceFunction> VerifiedOwnershipResourceFacts::functions()
-    const noexcept {
+zc::ArrayPtr<const ResourceFunction> VerifiedOwnershipResourceFacts::functions() const noexcept {
   return impl->candidate.functions.asPtr();
 }
 
-ir::IrOperationResult<OwnershipResourceCandidate> OwnershipResourceBuilder::build(
+ir::IrOperationResult<ResourceCandidate> ResourceBuilder::build(
     const VerifiedMovePaths& movePaths, const mir::VerifiedBuiltMir& builtMir,
     const VerifiedOwnershipEventOverlay& overlay) {
   const auto identities = builtMir.retainIdentityAuthority();
   if (!inputsMatch(movePaths, builtMir, overlay)) {
-    return reject<OwnershipResourceCandidate>(builtMir, identities,
-                                              ir::IrFailureKind::InputRevisionMismatch, 0);
+    return reject<ResourceCandidate>(builtMir, identities, ir::IrFailureKind::InputRevisionMismatch,
+                                     0);
   }
   if (!allFunctionsAdmitted(builtMir)) {
-    return reject<OwnershipResourceCandidate>(builtMir, identities,
-                                              ir::IrFailureKind::InvalidControlFlow, 2);
+    return reject<ResourceCandidate>(builtMir, identities, ir::IrFailureKind::InvalidControlFlow,
+                                     2);
   }
   auto functions = derive(movePaths, builtMir, overlay);
   if (functions == zc::none) {
-    return reject<OwnershipResourceCandidate>(builtMir, identities,
-                                              ir::IrFailureKind::InvalidOwnershipProof, 1);
+    return reject<ResourceCandidate>(builtMir, identities, ir::IrFailureKind::InvalidOwnershipProof,
+                                     1);
   }
   ZC_IF_SOME(value, functions) {
-    return ir::IrOperationResult<OwnershipResourceCandidate>::verified(OwnershipResourceCandidate(
+    return ir::IrOperationResult<ResourceCandidate>::verified(ResourceCandidate(
         builtMir.semanticContext(), builtMir.contextFingerprint().clone(), builtMir.module(),
         builtMir.revision(), overlay.revision(), zc::mv(value)));
   }
   ZC_UNREACHABLE
 }
 
-ir::IrOperationResult<VerifiedOwnershipResourceFacts> OwnershipResourceVerifier::verify(
-    OwnershipResourceCandidate&& candidate, const VerifiedMovePaths& movePaths,
+ir::IrOperationResult<VerifiedOwnershipResourceFacts> ResourceVerifier::verify(
+    ResourceCandidate&& candidate, const VerifiedMovePaths& movePaths,
     const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay) {
   const auto identities = builtMir.retainIdentityAuthority();
   if (candidate.semanticContext != builtMir.semanticContext() ||
@@ -1128,7 +1126,7 @@ ir::IrOperationResult<VerifiedOwnershipResourceFacts> OwnershipResourceVerifier:
           zc::heap<VerifiedOwnershipResourceFacts::Impl>(zc::mv(candidate))));
 }
 
-LinearSourceVerificationResult OwnershipResourceVerifier::verifyLinearSource(
+LinearSourceVerificationResult ResourceVerifier::verifyLinearSource(
     const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay,
     const VerifiedOwnershipResourceFacts& resources) {
   if (resources.semanticContext() != builtMir.semanticContext() ||
@@ -1150,10 +1148,9 @@ LinearSourceVerificationResult OwnershipResourceVerifier::verifyLinearSource(
   }
   ZC_IF_SOME(values, failures) {
     auto suppressed = SourceSuppression::suppress(zc::mv(values));
-    auto deduplicated = OwnershipSourceFailureOrdering::deduplicate(zc::mv(suppressed));
-    auto sorted =
-        ir::SortedSourceFailureFacts<OwnershipSourceFailure, OwnershipSourceFailureOrdering>::from(
-            zc::mv(deduplicated));
+    auto deduplicated = SourceFailureOrdering::deduplicate(zc::mv(suppressed));
+    auto sorted = ir::SortedSourceFailureFacts<SourceFailure, SourceFailureOrdering>::from(
+        zc::mv(deduplicated));
     ZC_IF_SOME(value, sorted) {
       return LinearSourceVerificationResult::sourceRejected(zc::mv(value));
     }
@@ -1161,7 +1158,7 @@ LinearSourceVerificationResult OwnershipResourceVerifier::verifyLinearSource(
   return LinearSourceVerificationResult::verified(LinearSourceAccepted{});
 }
 
-LinearSourceVerificationResult OwnershipResourceVerifier::rejectLinearSource(
+LinearSourceVerificationResult ResourceVerifier::rejectLinearSource(
     const mir::VerifiedBuiltMir& builtMir, const checker::CheckerIdentityAuthority& identities,
     ir::IrFailureKind kind, uint32_t ordinal) {
   auto rejected = reject<LinearSourceAccepted>(builtMir, identities, kind, ordinal);

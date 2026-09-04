@@ -321,7 +321,7 @@ facts::RegionKey makeLoanRegion(uint32_t operandOrdinal = 0) {
   return facts::RegionKey::loanRegion(LoanKey{makeEventKey(operandOrdinal)});
 }
 
-facts::RegionMembership makeMembership(facts::RegionKey region, facts::OwnershipPoint point) {
+facts::RegionMembership makeMembership(facts::RegionKey region, facts::Point point) {
   return facts::RegionMembership{zc::mv(region), zc::mv(point)};
 }
 
@@ -371,10 +371,10 @@ ZC_TEST("Region outlives static region outlives every region") {
   const auto loanA = makeLoanRegion(0);
   const auto loanB = makeLoanRegion(1);
 
-  const auto p1 = facts::OwnershipPoint::cfg(MirPoint::entry());
-  const auto p2 = facts::OwnershipPoint::beforeEvent(makeEventKey(0));
-  const auto p3 = facts::OwnershipPoint::afterEvent(makeEventKey(1));
-  const auto p4 = facts::OwnershipPoint::beforeEvent(makeEventKey(2));
+  const auto p1 = facts::Point::cfg(MirPoint::entry());
+  const auto p2 = facts::Point::beforeEvent(makeEventKey(0));
+  const auto p3 = facts::Point::afterEvent(makeEventKey(1));
+  const auto p4 = facts::Point::beforeEvent(makeEventKey(2));
 
   zc::Vector<facts::RegionMembership> memberships;
   // Static is live at every point.
@@ -406,10 +406,10 @@ ZC_TEST("Region outlives unrelated loans have no relation") {
   const auto loanA = makeLoanRegion(0);
   const auto loanB = makeLoanRegion(1);
 
-  const auto p1 = facts::OwnershipPoint::cfg(MirPoint::entry());
-  const auto p2 = facts::OwnershipPoint::beforeEvent(makeEventKey(0));
-  const auto p3 = facts::OwnershipPoint::afterEvent(makeEventKey(1));
-  const auto p4 = facts::OwnershipPoint::beforeEvent(makeEventKey(2));
+  const auto p1 = facts::Point::cfg(MirPoint::entry());
+  const auto p2 = facts::Point::beforeEvent(makeEventKey(0));
+  const auto p3 = facts::Point::afterEvent(makeEventKey(1));
+  const auto p4 = facts::Point::beforeEvent(makeEventKey(2));
 
   zc::Vector<facts::RegionMembership> memberships;
   memberships.add(makeMembership(loanA.clone(), p1));
@@ -495,7 +495,7 @@ ZC_TEST("Region outlives rejects a foreign overlay revision") {
   auto candidateResult = buildRegionOutlives(memberships.verifiedValue(), fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
-  candidate.overlayRevision = OwnershipEventOverlayRevision::fromDigest(identity::Sha256Digest{});
+  candidate.overlayRevision = EventOverlayRevision::fromDigest(identity::Sha256Digest{});
   ZC_REQUIRE(candidate.overlayRevision.digest() != fixture.overlay().revision().digest());
 
   auto verified = facts::RegionOutlivesVerifier::verify(

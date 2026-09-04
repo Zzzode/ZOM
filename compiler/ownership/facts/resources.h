@@ -16,11 +16,11 @@
 
 #include <cstdint>
 
-#include "zc/core/memory.h"
-#include "zc/core/vector.h"
 #include "compiler/ownership/facts/linear-source.h"
 #include "compiler/ownership/facts/paths.h"
 #include "compiler/ownership/facts/raw-provenance.h"
+#include "zc/core/memory.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::ownership::facts {
 
@@ -43,7 +43,7 @@ enum class DropRequirement : uint8_t {
   LinearLogical = 0x03,
 };
 
-struct OwnershipResourceFact final {
+struct ResourceFact final {
   DropResourceSubject subject;
   DropRequirement requirement;
   zc::Maybe<LogicalDropAction> dropAction;
@@ -236,9 +236,9 @@ struct DropPlan final {
 };
 
 /// \brief Complete logical resource inventory for one current-subset MIR function.
-struct OwnershipResourceFunction final {
+struct ResourceFunction final {
   identity::DefId owner;
-  zc::Vector<OwnershipResourceFact> facts;
+  zc::Vector<ResourceFact> facts;
   zc::Vector<DropTransfer> transfers;
   zc::Vector<CastResourceRoute> castRoutes;
   zc::Vector<DropPlan> dropPlans;
@@ -259,23 +259,22 @@ struct OwnershipResourceFunction final {
 };
 
 /// \brief Untrusted logical resource inventory awaiting independent reconstruction.
-class OwnershipResourceCandidate final {
+class ResourceCandidate final {
 public:
-  OwnershipResourceCandidate(identity::SemanticContextBrand semanticContext,
-                             identity::ContextFingerprint&& contextFingerprint,
-                             identity::ModuleId module, mir::MirRevisionId builtRevision,
-                             OwnershipEventOverlayRevision overlayRevision,
-                             zc::Vector<OwnershipResourceFunction>&& functions) noexcept;
-  OwnershipResourceCandidate(OwnershipResourceCandidate&&) noexcept = default;
-  OwnershipResourceCandidate& operator=(OwnershipResourceCandidate&&) noexcept = delete;
-  ZC_DISALLOW_COPY(OwnershipResourceCandidate);
+  ResourceCandidate(identity::SemanticContextBrand semanticContext,
+                    identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
+                    mir::MirRevisionId builtRevision, EventOverlayRevision overlayRevision,
+                    zc::Vector<ResourceFunction>&& functions) noexcept;
+  ResourceCandidate(ResourceCandidate&&) noexcept = default;
+  ResourceCandidate& operator=(ResourceCandidate&&) noexcept = delete;
+  ZC_DISALLOW_COPY(ResourceCandidate);
 
   identity::SemanticContextBrand semanticContext;
   identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   mir::MirRevisionId builtRevision;
-  OwnershipEventOverlayRevision overlayRevision;
-  zc::Vector<OwnershipResourceFunction> functions;
+  EventOverlayRevision overlayRevision;
+  zc::Vector<ResourceFunction> functions;
 };
 
 /// \brief Immutable logical resource facts bound to one Built MIR and event overlay.
@@ -290,30 +289,30 @@ public:
   ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const mir::MirRevisionId& builtRevision() const noexcept;
-  ZC_NODISCARD const OwnershipEventOverlayRevision& overlayRevision() const noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const OwnershipResourceFunction> functions() const noexcept;
+  ZC_NODISCARD const EventOverlayRevision& overlayRevision() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const ResourceFunction> functions() const noexcept;
 
 private:
   struct Impl;
   explicit VerifiedOwnershipResourceFacts(zc::Own<Impl>&& impl) noexcept;
   zc::Own<Impl> impl;
 
-  friend class OwnershipResourceVerifier;
+  friend class ResourceVerifier;
 };
 
 /// \brief Projects checker-authorized logical resources into immutable ownership inputs.
-class OwnershipResourceBuilder final {
+class ResourceBuilder final {
 public:
-  ZC_NODISCARD static ir::IrOperationResult<OwnershipResourceCandidate> build(
+  ZC_NODISCARD static ir::IrOperationResult<ResourceCandidate> build(
       const VerifiedMovePaths& movePaths, const mir::VerifiedBuiltMir& builtMir,
       const VerifiedOwnershipEventOverlay& overlay);
 };
 
 /// \brief Independently reconstructs logical resources from verified overlay and MIR inputs.
-class OwnershipResourceVerifier final {
+class ResourceVerifier final {
 public:
   ZC_NODISCARD static ir::IrOperationResult<VerifiedOwnershipResourceFacts> verify(
-      OwnershipResourceCandidate&& candidate, const VerifiedMovePaths& movePaths,
+      ResourceCandidate&& candidate, const VerifiedMovePaths& movePaths,
       const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay);
 
   /// \brief Validates linear obligations against verified resource facts and

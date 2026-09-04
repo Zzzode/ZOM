@@ -22,7 +22,7 @@
 #include "zc/core/vector.h"
 
 namespace zomlang::compiler::ownership {
-class OwnershipAdmittedBoundModule;
+class AdmittedBoundModule;
 }
 
 namespace zomlang::compiler::hir {
@@ -38,7 +38,7 @@ struct ModuleInterfaceLineage final {
 
 /// \brief Complete verified-only inputs for one checked-module assembly.
 struct CheckedModuleBuildInput final {
-  const ownership::OwnershipAdmittedBoundModule& boundModule;
+  const ownership::AdmittedBoundModule& boundModule;
   const checker::signature::VerifiedSignatureFacts& localSignatureFacts;
   const driver::VerifiedModuleInterface& moduleInterface;
   const checker::cross_module::ImportedSignatureView& importedSignatures;
@@ -81,7 +81,7 @@ public:
 private:
   struct Impl;
   explicit VerifiedCheckedModule(zc::Own<Impl>&& impl) noexcept;
-  ZC_NODISCARD ownership::OwnershipAdmittedBoundModule retainAdmittedBoundModule() const;
+  ZC_NODISCARD ownership::AdmittedBoundModule retainAdmittedBoundModule() const;
   ZC_NODISCARD const checker::checked::CheckedFactsRepository& checkedRepository() const noexcept;
   ZC_NODISCARD const checker::checked::VerifiedCheckedFacts& checkedFacts() const noexcept;
   ZC_NODISCARD const checker::dispatch::VerifiedDispatchFacts& dispatchFacts() const noexcept;

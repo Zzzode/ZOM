@@ -96,7 +96,7 @@ bool legalKind(IrRejectedBranch branch, IrFailurePhase phase, IrFailureKind kind
     case IrFailurePhase::BuiltMirVerification:
       return kind == IrFailureKind::InvalidControlFlow || kind == IrFailureKind::InvalidPlace ||
              kind == IrFailureKind::UnresolvedDispatch;
-    case IrFailurePhase::OwnershipProofValidation:
+    case IrFailurePhase::ProofValidation:
       return kind == IrFailureKind::InvalidPlace || kind == IrFailureKind::InvalidOwnershipProof ||
              kind == IrFailureKind::InvalidControlFlow;
     case IrFailurePhase::CleanupElaboration:
@@ -167,7 +167,7 @@ bool legalOwnerSite(IrFailurePhase phase, IrFailureOwnerKind owner,
              (siteIsNone(site) || siteIs(site, IrFailureSiteKind::Hir) ||
               siteIs(site, IrFailureSiteKind::Mir));
     case IrFailurePhase::BuiltMirVerification:
-    case IrFailurePhase::OwnershipProofValidation:
+    case IrFailurePhase::ProofValidation:
     case IrFailurePhase::CleanupElaboration:
     case IrFailurePhase::CoroutineElaboration:
     case IrFailurePhase::ExecutableMirVerification:

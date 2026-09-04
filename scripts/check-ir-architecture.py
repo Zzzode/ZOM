@@ -178,7 +178,7 @@ REQUIRED_BUILT_MIR_MARKERS = (
 )
 
 REQUIRED_SESSION_MIR_MARKERS = (
-    "zc::Vector<ownership::OwnershipCheckedMir> ownershipCheckedMirModules",
+    "zc::Vector<ownership::CheckedMir> ownershipCheckedMirModules",
     "getOwnershipCheckedMirModules",
     "mir::BuiltMirBuilder::build",
     "mir::BuiltMirVerifier::verify",
@@ -473,7 +473,7 @@ def check_diagnostic_adapter(files: dict[Path, str], errors: list[str]) -> None:
         "HirVerification",
         "MirConstruction",
         "BuiltMirVerification",
-        "OwnershipProofValidation",
+        "ProofValidation",
         "CleanupElaboration",
         "CoroutineElaboration",
         "ExecutableMirVerification",

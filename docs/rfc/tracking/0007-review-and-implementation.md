@@ -85,7 +85,7 @@ The review found eight blocking contracts:
    reflexive-transitive closure;
 5. the conflict inventory mixed an implicit reflexive rule with an encoded
    pair contract that did not exclude self-pairs or state the exact bound;
-6. `OwnershipCheckedMir` depended on an undefined ownership repository
+6. `CheckedMir` depended on an undefined ownership repository
    lifetime instead of the accepted RFC 0013 borrow-evidence lease;
 7. raw provenance did not define a closed finite origin universe or a complete
    termination bound; and
@@ -110,7 +110,7 @@ The new draft replaces those contracts directly:
   `a.livePoints`;
 - reflexive place conflicts are implicit while encoded records contain only
   distinct lower-key-first unordered pairs within `M * (M - 1) / 2`;
-- `OwnershipCheckedMir` resolves only the exact RFC 0013 embedded
+- `CheckedMir` resolves only the exact RFC 0013 embedded
   `VerifiedBorrowEvidenceLease`; ownership facts are moved values and there is
   no ownership repository or ownership lease;
 - the four-class `RawOriginUniverse` is derived from a closed Built MIR root
@@ -160,7 +160,7 @@ The repaired draft directly closes all findings:
   loop exit exactly once;
 - raw carriers allow SCCs and self-edges and publish the least root-seeded
   provenance closure on the finite carrier-origin lattice;
-- `analyzeOwnership`, `OwnershipCheckedMir`, and every successor constructor
+- `analyzeOwnership`, `CheckedMir`, and every successor constructor
   require an explicit live `BorrowEvidenceRepositoryCapability`, with no
   lease-only or global lookup;
 - all exponential budgets use arbitrary-precision or exact symbolic products,
@@ -210,7 +210,7 @@ The repaired draft closes those blockers directly:
   payloads have exact roles and transfer; `MirStatement::BorrowCreation` is the
   sole issuance form and Built MIR rejects every other issuance shape before
   ownership;
-- `OwnershipPoint` adds structural `Cfg`, `BeforeEvent`, and `AfterEvent`
+- `Point` adds structural `Cfg`, `BeforeEvent`, and `AfterEvent`
   cutpoints, and initialization, references, loans, regions, linear state, raw
   carriers, escape containment, operational bounds, mutations, and tests all
   use those exact boundaries; and
@@ -250,7 +250,7 @@ It received no owner approval. The review found seven blockers:
    collide on a bare `MirEventKey`;
 3. deferred activation had no explicit independently verifiable fact derived
    from the exact RFC 0005 and RFC 0009 receiver records;
-4. `OwnershipCheckedMir` and successor construction had no exact public API,
+4. `CheckedMir` and successor construction had no exact public API,
    borrow/move ownership notation, result algebra, or rejection ownership;
 5. speculative task-scope production contradicted Chapter 15's frontend-only
    semantic boundary;
@@ -378,7 +378,7 @@ It received no approval. The review found two remaining blockers:
    `MarkerFact` payloads even though RFC 0015 `Unsatisfied` carries no fact.
    This left no closed distinction between explicit negative evidence and an
    unsatisfied proof query and could authorize a forged negative fact; and
-2. `OwnershipMarkerUse` was a loose prose-only union. No authoritative
+2. `MarkerUse` was a loose prose-only union. No authoritative
    revision-bound checker-time inventory keyed the event, marker, subject,
    policy revision, coherence revision, and decision into the overlay handoff.
    Claims that HIR, MIR, or ownership facts already transported that inventory
@@ -388,7 +388,7 @@ It received no approval. The review found two remaining blockers:
 
 The repaired draft closes both blockers directly:
 
-- `OwnershipMarkerDecision` is the exact closed persisted projection of RFC
+- `MarkerDecision` is the exact closed persisted projection of RFC
   0015: `Positive`, `ExplicitNegative`, and payload-free `Unsatisfied` use tags
   `0x01`, `0x02`, and `0x03`. `ExplicitNegative` contains only the exact
   verified explicit negative coherence fact. `Unsatisfied` contains no
@@ -396,9 +396,9 @@ The repaired draft closes both blockers directly:
   encodable tag or authority to synthesize evidence;
 - RFC 0015 `InvariantRejected` is not persisted. Identity failures select RFC
   0010 `IdentityInvariantRejected`, checker failures select
-  `IrInvariantRejected(InvalidFact, OwnershipProofValidation)`, and neither
+  `IrInvariantRejected(InvalidFact, ProofValidation)`, and neither
   branch publishes a partial marker use, resource plan, or event overlay;
-- each `OwnershipFunctionEventOverlay` now carries the complete sorted
+- each `FunctionEventOverlay` now carries the complete sorted
   `markerUses` map keyed by event, expanded marker, expanded subject, exact
   marker-policy revision, and exact coherence revision. The
   checker-time producer and independent verifier reconstruct the same closed
@@ -411,7 +411,7 @@ The repaired draft closes both blockers directly:
   collapsing `ExplicitNegative` into `Unsatisfied`;
 - `zom.ownership-event-overlay` contains the marker-use map with no parallel
   decoder. Its canonical vectors are recorded under Verification Evidence; and
-- ownership facts bind the opaque `OwnershipEventOverlayRevision`. A
+- ownership facts bind the opaque `EventOverlayRevision`. A
   lineage-composition oracle proves that
   every marker-use mutation changes both the event overlay revision and the
   enclosing ownership facts revision.
@@ -461,7 +461,7 @@ The repaired draft closes both blockers directly:
   the admitted module. Invalid canonical identity selects
   `IdentityInvariantRejected`; foreign, missing, stale, swapped, or post-
   teardown lineage selects `InputRevisionMismatch`; query-level checker
-  rejection selects `InvalidFact` at `OwnershipProofValidation`. Every branch
+  rejection selects `InvalidFact` at `ProofValidation`. Every branch
   publishes no partial marker use, plan, candidate, or verified overlay;
 - resource projection is one exact two-phase algorithm. Phase one visits the
   root and every action-free stored-field descendant in canonical declaration
@@ -529,7 +529,7 @@ The repaired `REVIEW` proposal closes all four blockers directly:
 
 - current-state text now consistently names `REVIEW` while historical status
   records remain unchanged;
-- `OwnershipFunctionEventOverlay.deferredActivations` is the sole authoritative
+- `FunctionEventOverlay.deferredActivations` is the sole authoritative
   activation map. Producer and independent overlay verifier separately rebuild
   every RFC 0005/RFC 0009 receiver association while the checked wrapper and
   `BodyCheckingInput` are live. Ownership facts contain no duplicate map, and
@@ -598,8 +598,8 @@ receiver `BorrowActivation` on that same edge. This is event-slot evidence, not
 production ownership proof publication.
 `MirRvalueKind` admits `Use` and `NominalAggregate`; no borrow rvalue exists. The repository
 does not yet contain the complete RFC 0007 ownership input,
-`OwnershipSourceFailure`, `VerifiedOwnershipFacts`, its independent verifier,
-or `OwnershipCheckedMir` construction.
+`SourceFailure`, `VerifiedOwnershipFacts`, its independent verifier,
+or `CheckedMir` construction.
 
 `VerifiedBuiltMir` retains the exact RFC 0013 `VerifiedBorrowEvidenceLease`.
 `BorrowEvidenceRepository` now mints a move-only
@@ -623,10 +623,10 @@ unfinished ownership facts contract.
 deleted without reassignment. `ZOM4093 UninitializedPlaceUse`, `ZOM4094
 PlaceBecameUnavailableHere`, and `ZOM4095 ConcurrencySemanticsUnavailable` are
 registered. Before signature checking, `CompilerSession` now admits every
-bound module through `OwnershipSurfaceAdmissionBuilder` and rejects every
+bound module through `SurfaceAdmissionBuilder` and rejects every
 `SpawnExpression` and `SuspendStatement` with `ZOM4095`, publishing no
 signature, checked, HIR, MIR, overlay, or ownership facts. Only an
-`OwnershipAdmittedBoundModule` continues through the session pipeline. This
+`AdmittedBoundModule` continues through the session pipeline. This
 session guard is production fail-closed behavior: marker-shape construction,
 signature construction, imported-signature projection, module-interface
 publication, CheckedModule, HIR, Built MIR, and the ownership event overlay
@@ -660,7 +660,7 @@ for the aggregate. It rejects a
 returned annotated root local or field projection without an initializer,
 emits `ZOM4093` at the return use and `ZOM4094` at the unavailable declaration,
 and publishes no ownership outputs. This narrow admission result is not the complete
-`OwnershipSourceFailure` algebra or an ownership-proof verifier. Its
+`SourceFailure` algebra or an ownership-proof verifier. Its
 `InitializationSourceVerificationResult` is an ownership-specific sealed result:
 only `InitializationSourceVerifier` can construct verified, source-rejected, or
 invariant-rejected alternatives. A return of an uninitialized sibling field
@@ -684,7 +684,7 @@ as a `DropTransfer`. It is an input inventory only: it does not lower cleanup
 or establish resource discharge. Each loan binds its
 exact `BorrowIssue` event and destination commit, canonical source and
 destination `MovePathKey` values, borrow kind, explicit immediate activation,
-and exact `OwnershipPoint::AfterEvent(BorrowIssue)` activation cutpoint, plus
+and exact `Point::AfterEvent(BorrowIssue)` activation cutpoint, plus
 Built MIR revision, event-overlay revision, and RFC 0013 borrow-evidence
 revision. The admitted HIR/MIR subset also lowers a mutable local receiver call
 into one borrow-creation temporary and one normal-edge `BorrowActivation`.
@@ -720,7 +720,7 @@ The bounded reference-state inventory independently reconstructs the reference v
 post-commit through post-return cutpoints, and consumes the verified region membership rather than
 reconstructing a parallel liveness relation. It does not publish a complete point-state map, joins,
 or general reaching definitions.
-An independent `OwnershipInputVerifier` consumes all eight inventories and
+An independent `InputVerifier` consumes all eight inventories and
 publishes one `VerifiedOwnershipInputs` snapshot only when every lineage value
 matches the same Built MIR and event overlay, and the supplied borrow-evidence
 lease and repository capability exactly match the Built MIR's retained pair.
@@ -896,7 +896,7 @@ and tracker
 
 RFC 0007 is `IMPLEMENTING`. The coordinated enablement transaction below
 authorizes the ordered implementation series. No incomplete slice may publish
-`VerifiedOwnershipFacts`, `OwnershipCheckedMir`, or a successor artifact;
+`VerifiedOwnershipFacts`, `CheckedMir`, or a successor artifact;
 those artifacts remain unavailable until their complete proof and validation
 contracts are implemented.
 
@@ -921,8 +921,8 @@ The ordered implementation series is now authorized:
 | Move paths, initialization, and drop | Implemented | Current production evidence covers scalar initialization, a sequential scalar or nominal-aggregate local transfer to a distinct root local, and an ordered sequence of writes to one mutable zero-projection root local, plus a locally initialized nominal aggregate whose root and field projections retain independent published states. Marker proof classifies every sequential source and return use as `Copy` or `Move`; a non-`Copy` aggregate move retains the first local as the resource subject origin and records the second-local initialization as a `DropTransfer`. Root initialization propagates to retained descendants, while a field overwrite updates that field without changing a sibling. A declared aggregate local may initialize one or more distinct fields and return an initialized field; its root remains unavailable with its `NeverInitialized` cause. Each field's first write is an initialization and a later write to that field is an overwrite, with independently reconstructed HIR and Built MIR evidence. The compiler lowers an ordered sequence of mutable owner-local field overwrites to non-empty destination places, with checked member/place facts, and a return from either a written field or a distinct sibling field. `VerifiedMovePaths` orders the current root/field inventory structurally, retains each distinct pair lower-key-first, answers identical-key conflicts, and resolves both orientations of every verified root/field pair. The resource input inventory gives every current-subset logical resource a canonical `DropResourceSubject` containing its introduction event, origin move path, and origin type, plus the closed `Logical`, `Linear`, or `LinearLogical` requirement derived from checker marker evidence and the exact optional logical-drop action. A non-Copy parameter-root move or move from an already introduced root resource to a local root preserves the original subject and records the exact source event, source path, and destination path as a `DropTransfer`; projected and unrecognized moves remain outside the resource-transfer subset. The resource builder now computes linear obligations, carriers, and SCCs for every `Linear` or `LinearLogical` resource fact: one `LinearObligationFact` with a root `LinearCarrierFact` per linear fact, a transferred carrier with an incoming transition per ownership-preserving transfer or cast route, a `LinearConsumption` per return or consuming-call move operand, and `LinearCarrierScc` records computed by Tarjan's algorithm over the carrier transition graph. The verifier independently reconstructs and compares all three linear inventories. Current `StorageLive` accepts only a root and retained descendants that are exactly `Dead`; current `StorageDead` accepts them only when exactly `Uninitialized`. Initialized and already-dead storage are rejected. Type-changing cast subject preservation is now implemented: the resource builder records a `CastResourceRoute` for each type-changing transfer, preserving the subject's introduction event, origin move path, and origin type across the cast, and the verifier independently reconstructs the subject-preservation relation and rejects spurious or tampered routes. A differential oracle now recomputes all eight facts inventories from Built MIR, the event overlay, and the borrow evidence using deliberately different drivers and compares against production as sets, with differential tests covering scalar parameter return, aggregate local return, sequential aggregate move, direct call result, and parameter reborrow. Complete loss causes, open/closed component drop with pre-consumption and abort-only action panic, general partial initialization, and multiple and non-field projections are now implemented. The complete projection conflict relation, three-bit lattice joins, and general resource transfer are now implemented. |
 | Loans, references, and regions | In Progress (bounded reborrow admission and receiver activation) | Complete before/after point phases, issue/activation/commit timing, exact checker-time overlay `DeferredActivationFact`, independent reconstruction while checker authority lives, ownership-side overlay bijection with no checker lookup, `Storage` and event-granular NLL value regions, reaching reference definitions, root/active multi-origin transfer, reborrow restoration, exact outlives closure, call evidence, escape, and differential oracle. Production admits `&*parameter` and `&mut *parameter`, either directly or through one owner-local initialized from that parameter, only when the parameter and result have matching reference mutability and type. The checker publishes the nested node types, HIR retains an explicit reborrow node with its semantic mutability and, for the local form, its exact source alias, Built MIR emits one matching-kind `BorrowCreation` from the direct parameter or local-alias dereference into a temporary reference, and the move-path and initialization verifiers accept its typed single dereference projection. The published current-subset loan inventory independently binds each borrow issue and destination commit. Parameter reborrows activate at `AfterEvent(BorrowIssue)`; a mutable local receiver borrow instead activates at the unique normal-edge `BorrowActivation` event bound to its temporary. `VerifiedReferenceDefinitions` independently reconstructs each corresponding returned parameter-reborrow definition at its canonical move path with its RFC 0013 `DirectRoot(Parameter)` root, parameter-entry, canonical referent path, child-loan, and returned temporary read input relation, plus independently derived `AfterEvent(commit)`, post-commit CFG, pre-return CFG, `BeforeEvent(return)`, and `AfterEvent(return)` live points. A non-escaping receiver temporary remains a loan input and does not synthesize a returned-reference definition. `VerifiedReborrowRegions` publishes the six-point current-subset membership only after every member is found and ordered-reachable in the independently verified flow inventory. These inventories do not claim escape safety or multi-origin transfer. The differential oracle independently recomputes the loan, reference, region, and state inventories and matches them against production as sets. Local-source borrows are now admitted: `&value` and `&mut value` from a locally initialized scalar produce one loan with the correct `Shared` or `Mutable` borrow kind, a reference definition with a `LocalReferenceOrigin` and `StorageLive` entry, a six-point region, and five post-commit through post-return states. The surface admission rejects a local borrow whose referent has no initializer at the borrow point. The RFC 0007 region key foundation is now implemented: `RegionKey` provides the 6-variant region identity (Static, Input, Loan, Storage, LocalValue, ClosureValue) with canonical tags 0x01-0x06, complete ordering, and clone support; `BorrowInputKey` provides receiver/parameter borrow input identity with tags 0x01-0x02; and `ReferenceRoot` and `ReferenceOrigin` provide complete reference origin records with region, referent, introduction, and activation. The borrow-source verifier is now wired into the production `checkSources()` pipeline between verified reference definitions and reborrow-region derivation: it independently reconstructs each loan's liveness from the verified move-path, loan, and reference inventories and rejects a returned reference whose origin is a function-local binding as `BorrowDoesNotLiveLongEnoughFailure`, emitting `ZOM4061` at the return use with its `ZOM4062` `BorrowReferentHere` note through `emitOwnershipSourceFailures`, with no committed ownership products. General region liveness, escape checks for store and closure boundaries, and all other borrow expressions remain unavailable. |
 | Marker, linear, unsafe, and capture boundaries | In Progress (marker proof construction, descendant query, postorder fold, and unsafe-scope lowering) | RFC 0015 marker-input construction, lifetime, lineage validation, producer/verifier isolation, full descendant Copy/Linear query tree, postorder component fold, collision-free unsafe ordinals, four-class raw-origin universe, strict raw-to-reference rejection, least raw SCC closure, and complete admissible escape records. The MIR 283-byte unsafe-scope oracle is implemented as an executable test with byte-mutation coverage. Marker proof construction now records positive `Copy` and positive `Linear` decisions from independent body inputs, the descendant query tree enumerates aggregate field descendants, and the postorder fold emits a maximal linear component for an aggregate, suppresses components for a `Copy` aggregate, and retains a logical component for a non-`Copy` aggregate. The 512-byte event-overlay unsafe-collision oracle is implemented as an executable test with byte-mutation coverage. Unsafe-scope boundary lowering is implemented for the scalar-return path: HIR retains `HirUnsafeBlockExpression`, Built MIR emits `Enter`/`Exit` statements, and the verifier validates scope ownership, LIFO nesting, and open-scope closure. Cast-carrier emission is implemented in the event overlay builder: a type-changing move assignment emits `CastCarrierInitialize` on the move source, `CastCarrierTransfer` on the commit, and `CastCarrierDrop` on a matching deinitialize, with a `VerifiedCastResourcePlanFact` recording the carrier key, cast mode, cast kind, carrier/target/result types, and the identity-proven resource route. The emission is dormant in production because Built MIR has no cast terminator; same-type moves produce no cast-carrier roles or plans. Linear obligation, carrier, and SCC computation is implemented in the resource builder: each `Linear` or `LinearLogical` resource fact creates one `LinearObligationFact` with a root `LinearCarrierFact`, each ownership-preserving transfer or cast route creates a transferred carrier with an incoming transition, each return or consuming-call move operand creates a `LinearConsumption`, and Tarjan's SCC algorithm computes `LinearCarrierScc` records over the carrier transition graph. With the current straight-line MIR (no loop terminators), every SCC is a singleton, but the computation is exact for future loop support including multi-predecessor carriers and stable pending backedges. The ownership-facts codec encodes the three new linear inventories (obligations, carriers, SCCs) with canonical byte layouts. Unit tests cover a linear obligation with a direct return consumption, a linear obligation tracked across a transfer to a second carrier with a return consumption, verifier rejection of a tampered linear carrier, and the absence of cast-carrier roles on a same-type move. The escape record algebra is now implemented: `EscapeKind` provides the 3-variant escape kind (Return, Store, ClosureCapture) with tags 0x01-0x03; `EscapeOriginRoute` provides Direct/RawCarrier routes with tags 0x01-0x02; `EscapeProof` provides the 5-variant proof algebra (Owned, Static, DirectInput, Contained, AddressOnly) with tags 0x01-0x05; and `EscapeFact`, `EscapeCandidate`, `VerifiedEscapeFacts`, `EscapeBuilder`, and `EscapeVerifier` form the candidate/verified/builder/verifier quartet. The builder returns an empty inventory for the current straight-line MIR subset; the verifier independently confirms emptiness and rejects non-empty candidates. Thirty-nine unit tests cover construction, equality, ordering, canonical tags, and clone for all types. The remaining raw-origin, escape production logic, and capture boundary contracts are not yet implemented. |
-| Verified ownership facts and typestate | In Progress (facts revision, codec, and all byte oracles) | `OwnershipFactsRevision` and `OwnershipFactsCodec` are implemented. The codec encodes thirteen canonical groups (the eight facts inventories, the four overlay-derived drop/unsafe/cast/marker inventories, and one metadata group) into the `zom.ownership-facts` domain with a module-key-bound frame header. The resources group now also encodes the three linear inventories (`LinearObligationFact`, `LinearCarrierFact`, and `LinearCarrierScc` sequences) and the raw-provenance inventories (`RawProvenanceOrigin` universe and `RawProvenanceFact` sequences) with canonical byte layouts. The revision is computed by the codec at input-verification time, stored in `VerifiedOwnershipInputs`, and recomputed by `OwnershipFinalizer` before publishing `OwnershipCheckedMir`. The MIR 283-byte unsafe-scope oracle is implemented as an executable test with byte-mutation coverage. The event-overlay 141-byte empty and 206-byte empty-function oracles are implemented as executable tests; the 512-byte two-occurrence collision oracle is now implemented as an executable test with byte-mutation coverage. The ownership-facts 165-byte empty-function, 286-byte function-framing, and 378-byte non-empty point-state oracles are now implemented as executable tests: each asserts the exact byte count, full preimage hex, and SHA-256 digest from the RFC, plus mutation sensitivity for every framed input byte. No duplicate activation or marker inventory exists in facts. The mutation matrix now includes reborrow-state lineage tests: six tests tamper each lineage field (semantic context brand, context fingerprint, module identity, built revision, overlay revision, and borrow evidence revision) on a `ReborrowStateCandidate` and require the independent verifier to reject with `InputRevisionMismatch`, publishing no ownership output. Production codec byte oracles now exercise the real `OwnershipFactsCodec::encode` path with session-materialized identity authority: deterministic non-empty encoding, source-change sensitivity, and parameter reborrow encoding. The symbolic budget verifier is now implemented: `OwnershipBudgetFactors` retains the 17-field symbolic factor vector, `OwnershipBudgetCounters` tracks 18 per-analysis monotone counters, and `OwnershipBudgetVerifier::check` derives component-wise bounds with checked uint64_t arithmetic, failing on overflow. The resource-alternative bound K is never materialized as a fixed-width integer. Fourteen unit tests cover happy path, exact bounds, individual counter violations, overflow handling, and edge cases. Remaining work includes the complete mutation matrix. |
-| Session and cleanup integration | Implemented (drop elaboration, coroutine elaboration, and executable-MIR verification wired into session) | The session atomically publishes `VerifiedOwnershipInputs`, which owns independently verified move-path, flow, initialization, loan, reference-definition, region, and reference-state inventories after matching their Built MIR, overlay, and borrow-evidence lineage. The verifier requires the exact retained Built MIR borrow-evidence lease and repository capability, resolves that pair while the staging repository remains live, and retains fresh private copies in the published snapshot. The flow inventory covers the current linear and direct-call-continuation MIR subset. The session now finalizes each module's staged Built MIR, event overlay, and ownership facts through `OwnershipFinalizer::finalizeOwnership`, which performs fail-closed rechecks of the semantic context brand, fingerprint, module identity, built/overlay/facts revisions, and borrow evidence lease resolution before publishing one `OwnershipCheckedMir` wrapper. The wrapper owns all three products and exposes them through `builtMir()`, `eventOverlay()`, and `facts()`; it retains no repository pointer or capability. The complete RFC 0007 successor chain is implemented, unit-tested, and wired into the session pipeline immediately after `finalizeOwnership` succeeds. First, `DropElaborator::elaborateDrops` consumes the `OwnershipCheckedMir`, rechecks every revision, lease, and identity, links every Positive Linear drop discharge to its verified `facts::LinearConsume` (a return operand selects `ReturnTransfer` at the `BeforeTerminator` cutpoint, a consuming-call operand selects `ConsumingCallTransfer`, and an obligation with no terminator consumption synthesizes a `LogicalDrop` consume at the function exit), validates that every pending drop obligation has a complete discharge path through the linear CFG, and publishes one `DropElaboratedMir` wrapper with a recorded `DropDischargeRecord` inventory. Next, `CoroutineElaborator::elaborateCoroutines` rechecks the full ownership-rail lineage (semantic context brand, fingerprint, module identity, Built MIR, overlay, and facts revisions, resolved lease revision, and lease byte equality) and structurally validates that the current closed terminator algebra (`Return`, `Unreachable`, `Call`) admits no coroutine suspension point. Finally, `ExecutableMirVerifier::verifyExecutableMir` rechecks the lineage and certifies cleanup consumption completeness through `cleanupConsumed()`: every Positive Linear obligation in the verified resource facts is consumed by exactly one emitted discharge's linked `LinearConsume`, and an incomplete cleanup rejects with `IrFailureKind::InvalidCleanup` at `OwnershipProofValidation`. The session extracts the `OwnershipCheckedMir` payload via `takeCheckedMir()` and atomically commits both `ownershipCheckedMirModules` and `verifiedExecutableMirModules`; `VerifiedExecutableMir` is the terminal ownership-rail artifact handed to the RFC 0006 cleanup consumer and target lowering. A rejected finalization, elaboration, or verification destroys its consumed local input and publishes no predecessor or partial successor; the session retains its previous transaction until every wrapper commits. Cleanup consumption and the RFC 0007 successor contracts are complete; the remaining rail work is the broader In-Progress slices in this table (general region liveness, escape and capture-boundary production logic, and the complete mutation matrix). |
+| Verified ownership facts and typestate | In Progress (facts revision, codec, and all byte oracles) | `FactsRevision` and `FactsCodec` are implemented. The codec encodes thirteen canonical groups (the eight facts inventories, the four overlay-derived drop/unsafe/cast/marker inventories, and one metadata group) into the `zom.ownership-facts` domain with a module-key-bound frame header. The resources group now also encodes the three linear inventories (`LinearObligationFact`, `LinearCarrierFact`, and `LinearCarrierScc` sequences) and the raw-provenance inventories (`RawProvenanceOrigin` universe and `RawProvenanceFact` sequences) with canonical byte layouts. The revision is computed by the codec at input-verification time, stored in `VerifiedOwnershipInputs`, and recomputed by `Finalizer` before publishing `CheckedMir`. The MIR 283-byte unsafe-scope oracle is implemented as an executable test with byte-mutation coverage. The event-overlay 141-byte empty and 206-byte empty-function oracles are implemented as executable tests; the 512-byte two-occurrence collision oracle is now implemented as an executable test with byte-mutation coverage. The ownership-facts 165-byte empty-function, 286-byte function-framing, and 378-byte non-empty point-state oracles are now implemented as executable tests: each asserts the exact byte count, full preimage hex, and SHA-256 digest from the RFC, plus mutation sensitivity for every framed input byte. No duplicate activation or marker inventory exists in facts. The mutation matrix now includes reborrow-state lineage tests: six tests tamper each lineage field (semantic context brand, context fingerprint, module identity, built revision, overlay revision, and borrow evidence revision) on a `ReborrowStateCandidate` and require the independent verifier to reject with `InputRevisionMismatch`, publishing no ownership output. Production codec byte oracles now exercise the real `FactsCodec::encode` path with session-materialized identity authority: deterministic non-empty encoding, source-change sensitivity, and parameter reborrow encoding. The symbolic budget verifier is now implemented: `BudgetFactors` retains the 17-field symbolic factor vector, `BudgetCounters` tracks 18 per-analysis monotone counters, and `BudgetVerifier::check` derives component-wise bounds with checked uint64_t arithmetic, failing on overflow. The resource-alternative bound K is never materialized as a fixed-width integer. Fourteen unit tests cover happy path, exact bounds, individual counter violations, overflow handling, and edge cases. Remaining work includes the complete mutation matrix. |
+| Session and cleanup integration | Implemented (drop elaboration, coroutine elaboration, and executable-MIR verification wired into session) | The session atomically publishes `VerifiedOwnershipInputs`, which owns independently verified move-path, flow, initialization, loan, reference-definition, region, and reference-state inventories after matching their Built MIR, overlay, and borrow-evidence lineage. The verifier requires the exact retained Built MIR borrow-evidence lease and repository capability, resolves that pair while the staging repository remains live, and retains fresh private copies in the published snapshot. The flow inventory covers the current linear and direct-call-continuation MIR subset. The session now finalizes each module's staged Built MIR, event overlay, and ownership facts through `Finalizer::finalizeOwnership`, which performs fail-closed rechecks of the semantic context brand, fingerprint, module identity, built/overlay/facts revisions, and borrow evidence lease resolution before publishing one `CheckedMir` wrapper. The wrapper owns all three products and exposes them through `builtMir()`, `eventOverlay()`, and `facts()`; it retains no repository pointer or capability. The complete RFC 0007 successor chain is implemented, unit-tested, and wired into the session pipeline immediately after `finalizeOwnership` succeeds. First, `DropElaborator::elaborateDrops` consumes the `CheckedMir`, rechecks every revision, lease, and identity, links every Positive Linear drop discharge to its verified `facts::LinearConsume` (a return operand selects `ReturnTransfer` at the `BeforeTerminator` cutpoint, a consuming-call operand selects `ConsumingCallTransfer`, and an obligation with no terminator consumption synthesizes a `LogicalDrop` consume at the function exit), validates that every pending drop obligation has a complete discharge path through the linear CFG, and publishes one `DropElaboratedMir` wrapper with a recorded `DropDischargeRecord` inventory. Next, `CoroutineElaborator::elaborateCoroutines` rechecks the full ownership-rail lineage (semantic context brand, fingerprint, module identity, Built MIR, overlay, and facts revisions, resolved lease revision, and lease byte equality) and structurally validates that the current closed terminator algebra (`Return`, `Unreachable`, `Call`) admits no coroutine suspension point. Finally, `ExecutableMirVerifier::verifyExecutableMir` rechecks the lineage and certifies cleanup consumption completeness through `cleanupConsumed()`: every Positive Linear obligation in the verified resource facts is consumed by exactly one emitted discharge's linked `LinearConsume`, and an incomplete cleanup rejects with `IrFailureKind::InvalidCleanup` at `ProofValidation`. The session extracts the `CheckedMir` payload via `takeCheckedMir()` and atomically commits both `ownershipCheckedMirModules` and `verifiedExecutableMirModules`; `VerifiedExecutableMir` is the terminal ownership-rail artifact handed to the RFC 0006 cleanup consumer and target lowering. A rejected finalization, elaboration, or verification destroys its consumed local input and publishes no predecessor or partial successor; the session retains its previous transaction until every wrapper commits. Cleanup consumption and the RFC 0007 successor contracts are complete; the remaining rail work is the broader In-Progress slices in this table (general region liveness, escape and capture-boundary production logic, and the complete mutation matrix). |
 | Repository completion gates | Authorized | Exact architecture and coverage scripts, coverage checker self-test, per-file 70-percent line floor, aggregate baseline non-regression, sanitizer, default CTest, lit, conformance, corpus, determinism, spec, format, CJK, and diff hygiene |
 
 ### Event Identity, Source Map, And Slot Codec Executable Evidence
@@ -967,7 +967,7 @@ identity, presentation source association, and the slot codec:
   and event source span, and require verification failure.
 
 This evidence does not complete the six-inventory
-`OwnershipFunctionEventOverlay` contract. `slots`, `markerUses`,
+`FunctionEventOverlay` contract. `slots`, `markerUses`,
 `deferredActivations`, and current-subset `logicalDropPlans` for primitive and
 whole nominal aggregate roots have executable producer, verifier, canonical
 framing, and mutation coverage. `unsafeOccurrences` and `castResourcePlans`
@@ -1043,7 +1043,7 @@ only one RFC does not unblock any slice.
 
 The session now finalizes each module's staged Built MIR, verified event
 overlay, and verified ownership facts through
-`OwnershipFinalizer::finalizeOwnership`, producing one `OwnershipCheckedMir`
+`Finalizer::finalizeOwnership`, producing one `CheckedMir`
 wrapper per module:
 
 - `finalizeOwnership` consumes `Moved<VerifiedBuiltMir>`,
@@ -1053,7 +1053,7 @@ wrapper per module:
   the semantic context brand, context fingerprint, module identity, built
   revision, overlay revision, facts revision, and borrow evidence lease
   resolution before publishing the wrapper.
-- `OwnershipCheckedMir` is an owning Pimpl wrapper that stores the Built MIR,
+- `CheckedMir` is an owning Pimpl wrapper that stores the Built MIR,
   verified event overlay, and verified facts behind one revision-checked
   handle. It exposes the payload through `builtMir()`, `eventOverlay()`, and
   `facts()`, and retains no repository pointer or capability. Successor
@@ -1064,7 +1064,7 @@ wrapper per module:
   finalize loop. `getOwnershipCheckedMirModules()` replaces the three old
   accessors.
 - The event overlay now declares `unsafeOccurrences` and `castResourcePlans`
-  as complete typed inventories on `OwnershipFunctionEventOverlay`.
+  as complete typed inventories on `FunctionEventOverlay`.
   `MirUnsafeOccurrence` records one unsafe operation with its requirement,
   optional dominating acknowledgement, and source span.
   `VerifiedCastResourcePlanFact` records one checked-cast plan with
@@ -1077,15 +1077,15 @@ wrapper per module:
   placeholders. The body checker emits empty cast and unsafe fact maps
   today, so both inventories are groundwork for future RFC 0005 cast and
   unsafe lowering.
-- `OwnershipFactsRevision` and `OwnershipFactsCodec` bind the eight facts
+- `FactsRevision` and `FactsCodec` bind the eight facts
   inventories and the four overlay-derived inventories into one
   domain-separated `zom.ownership-facts` revision. The codec encodes
   thirteen canonical groups with a module-key-bound frame header; the
-  revision is computed at `OwnershipInputVerifier::verify` time, stored in
-  `VerifiedOwnershipInputs`, and recomputed by `OwnershipFinalizer` before
-  publishing `OwnershipCheckedMir`.
+  revision is computed at `InputVerifier::verify` time, stored in
+  `VerifiedOwnershipInputs`, and recomputed by `Finalizer` before
+  publishing `CheckedMir`.
 - `DropElaborator` and `DropElaboratedMir` form the first committed successor
-  of `OwnershipCheckedMir`. The elaborator consumes the checked wrapper,
+  of `CheckedMir`. The elaborator consumes the checked wrapper,
   rechecks every revision, lease, and identity, links every Positive Linear
   drop discharge to its verified `facts::LinearConsume` (a return operand
   selects `ReturnTransfer` at the `BeforeTerminator` cutpoint, a
@@ -1107,11 +1107,11 @@ wrapper per module:
   completeness through `cleanupConsumed()`, requiring every Positive Linear
   obligation in the verified resource facts to be consumed by exactly one
   emitted discharge's linked `LinearConsume`. An incomplete cleanup rejects
-  with `IrFailureKind::InvalidCleanup` at `OwnershipProofValidation`.
+  with `IrFailureKind::InvalidCleanup` at `ProofValidation`.
 - The full chain is implemented, unit-tested, and wired into the session
   pipeline: immediately after `finalizeOwnership` succeeds, the session calls
   `elaborateDrops`, then `elaborateCoroutines`, then `verifyExecutableMir` on
-  each consumed wrapper, extracts the `OwnershipCheckedMir` payload via
+  each consumed wrapper, extracts the `CheckedMir` payload via
   `takeCheckedMir()`, and commits both `ownershipCheckedMirModules` and
   `verifiedExecutableMirModules` atomically. A rejected finalization,
   elaboration, or verification destroys its consumed local input and publishes
@@ -1142,7 +1142,7 @@ reference inventories bound to the same Built MIR and event overlay:
   MIR, event overlay, and borrow-evidence repository are retained only behind
   the test-only `firstStagedBorrowSourceRejectionForTesting` accessor and are
   never exposed through a production accessor.
-- `OwnershipProofValidation::validate` runs on the production path over
+- `ProofValidation::validate` runs on the production path over
   `VerifiedOwnershipInputs` and `VerifiedRegionMemberships`, publishing one
   `ValidatedOwnershipProofs` per module and reporting escape, region-membership,
   and capture counts. Conflicting-borrow and use-after-move rejection stay on
@@ -1197,7 +1197,7 @@ control flow (gate tests in this file). They do NOT yet establish general
 region-membership or escape ownership proof over the new CFG shapes: the escape
 builder derives only `Return` escapes for the admitted subset, general region
 liveness over branch/loop points is not produced, and the three deferred
-`OwnershipProofValidation` cross-checks remain unimplemented. The
+`ProofValidation` cross-checks remain unimplemented. The
 `Loans, references, and regions`, `Marker, linear, unsafe, and capture
 boundaries`, and `Verified ownership facts and typestate` rows therefore remain
 `In Progress`; fail-closed admission stays the enforcement boundary for every

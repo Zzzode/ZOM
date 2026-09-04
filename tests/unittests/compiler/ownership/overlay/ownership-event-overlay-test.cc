@@ -274,7 +274,7 @@ public:
     ZC_UNREACHABLE
   }
 
-  OwnershipEventOverlayInput overlayInput() const {
+  EventOverlayInput overlayInput() const {
     auto input = session.getOwnershipEventOverlayInput(builtMir().module());
     ZC_REQUIRE(input != zc::none);
     ZC_IF_SOME(value, input) { return zc::mv(value); }
@@ -353,14 +353,13 @@ private:
   driver::CompilerSession session;
 };
 
-ir::IrOperationResult<OwnershipEventOverlayCandidate> buildOverlay(
-    const OwnershipPipelineFixture& fixture) {
-  return OwnershipEventOverlayBuilder::build(fixture.overlayInput());
+ir::IrOperationResult<EventOverlayCandidate> buildOverlay(const OwnershipPipelineFixture& fixture) {
+  return EventOverlayBuilder::build(fixture.overlayInput());
 }
 
 ir::IrOperationResult<VerifiedOwnershipEventOverlay> verifyOverlay(
-    OwnershipEventOverlayCandidate&& candidate, const OwnershipPipelineFixture& fixture) {
-  return OwnershipEventOverlayVerifier::verify(zc::mv(candidate), fixture.overlayInput());
+    EventOverlayCandidate&& candidate, const OwnershipPipelineFixture& fixture) {
+  return EventOverlayVerifier::verify(zc::mv(candidate), fixture.overlayInput());
 }
 
 const facts::VerifiedOwnershipInputs& ownershipInputs(const driver::CompilerSession& session) {
@@ -427,10 +426,10 @@ ir::IrOperationResult<facts::VerifiedOwnershipInputs> verifyOwnershipInputs(
   ZC_REQUIRE(states.isVerified());
 
   auto resourceCandidate =
-      facts::OwnershipResourceBuilder::build(movePaths.verifiedValue(), builtMir, overlay);
+      facts::ResourceBuilder::build(movePaths.verifiedValue(), builtMir, overlay);
   ZC_REQUIRE(resourceCandidate.isVerified());
-  auto resources = facts::OwnershipResourceVerifier::verify(
-      zc::mv(resourceCandidate).takeVerified(), movePaths.verifiedValue(), builtMir, overlay);
+  auto resources = facts::ResourceVerifier::verify(zc::mv(resourceCandidate).takeVerified(),
+                                                   movePaths.verifiedValue(), builtMir, overlay);
   ZC_REQUIRE(resources.isVerified());
 
   auto captureCandidate =
@@ -467,7 +466,7 @@ ir::IrOperationResult<facts::VerifiedOwnershipInputs> verifyOwnershipInputs(
   ZC_REQUIRE(outlives.isVerified());
 
   auto overlayInput = fixture.overlayInput();
-  return facts::OwnershipInputVerifier::verify(
+  return facts::InputVerifier::verify(
       zc::mv(movePaths).takeVerified(), zc::mv(flow).takeVerified(),
       zc::mv(initialization).takeVerified(), zc::mv(loans).takeVerified(),
       zc::mv(references).takeVerified(), zc::mv(regions).takeVerified(),
@@ -547,10 +546,10 @@ RejectedBorrowInventory buildRejectedBorrowInventory(const RejectedBorrowPipelin
   ZC_REQUIRE(states.isVerified());
 
   auto resourceCandidate =
-      facts::OwnershipResourceBuilder::build(movePaths.verifiedValue(), builtMir, overlay);
+      facts::ResourceBuilder::build(movePaths.verifiedValue(), builtMir, overlay);
   ZC_REQUIRE(resourceCandidate.isVerified());
-  auto resources = facts::OwnershipResourceVerifier::verify(
-      zc::mv(resourceCandidate).takeVerified(), movePaths.verifiedValue(), builtMir, overlay);
+  auto resources = facts::ResourceVerifier::verify(zc::mv(resourceCandidate).takeVerified(),
+                                                   movePaths.verifiedValue(), builtMir, overlay);
   ZC_REQUIRE(resources.isVerified());
 
   return RejectedBorrowInventory{
@@ -594,8 +593,8 @@ ZC_TEST("Ownership event overlay builder and verifier accept one scalar initiali
       ZC_EXPECT(use.key.event.operandOrdinal == 0);
     }
     ZC_EXPECT(use.key.subject == builtMir.functions()[0].locals[0].type);
-    if (use.decision.is<OwnershipMarkerDecisionPositive>()) foundPositive = true;
-    if (use.decision.is<OwnershipMarkerDecisionUnsatisfied>()) foundUnsatisfied = true;
+    if (use.decision.is<MarkerDecisionPositive>()) foundPositive = true;
+    if (use.decision.is<MarkerDecisionUnsatisfied>()) foundUnsatisfied = true;
   }
   ZC_EXPECT(foundPositive);
   ZC_EXPECT(foundUnsatisfied);
@@ -612,19 +611,19 @@ ZC_TEST("Ownership event overlay builder and verifier accept one scalar initiali
   ZC_EXPECT(candidateSlots[0].key.location.owner == owner);
   ZC_EXPECT(candidateSlots[0].key.location.point.kind() == MirPointKind::Entry);
   ZC_EXPECT(candidateSlots[0].key.operandOrdinal == 0);
-  ZC_EXPECT(candidateSlots[0].stage == OwnershipEventStage::Commit);
+  ZC_EXPECT(candidateSlots[0].stage == EventStage::Commit);
   ZC_REQUIRE(candidateSlots[0].roles.size() == 1);
-  ZC_EXPECT(candidateSlots[0].roles[0] == OwnershipEventRole::EntryRoot);
+  ZC_EXPECT(candidateSlots[0].roles[0] == EventRole::EntryRoot);
 
   ZC_EXPECT(candidateSlots[1].key.location.owner == owner);
   ZC_EXPECT(candidateSlots[1].key.location.point.kind() == MirPointKind::BeforeStatement);
   ZC_EXPECT(candidateSlots[1].key.location.point.beforeStatementValue().block == block);
   ZC_EXPECT(candidateSlots[1].key.location.point.beforeStatementValue().ordinal == 0);
   ZC_EXPECT(candidateSlots[1].key.operandOrdinal == 0);
-  ZC_EXPECT(candidateSlots[1].stage == OwnershipEventStage::Effect);
+  ZC_EXPECT(candidateSlots[1].stage == EventStage::Effect);
   ZC_REQUIRE(candidateSlots[1].roles.size() == 2);
-  ZC_EXPECT(candidateSlots[1].roles[0] == OwnershipEventRole::Operation);
-  ZC_EXPECT(candidateSlots[1].roles[1] == OwnershipEventRole::StorageLive);
+  ZC_EXPECT(candidateSlots[1].roles[0] == EventRole::Operation);
+  ZC_EXPECT(candidateSlots[1].roles[1] == EventRole::StorageLive);
 
   for (size_t index = 2; index <= 4; ++index) {
     ZC_EXPECT(candidateSlots[index].key.location.owner == owner);
@@ -633,15 +632,15 @@ ZC_TEST("Ownership event overlay builder and verifier accept one scalar initiali
     ZC_EXPECT(candidateSlots[index].key.location.point.beforeStatementValue().ordinal == 1);
     ZC_EXPECT(candidateSlots[index].key.operandOrdinal == index - 2);
   }
-  ZC_EXPECT(candidateSlots[2].stage == OwnershipEventStage::Source);
+  ZC_EXPECT(candidateSlots[2].stage == EventStage::Source);
   ZC_REQUIRE(candidateSlots[2].roles.size() == 1);
-  ZC_EXPECT(candidateSlots[2].roles[0] == OwnershipEventRole::ConstantOperand);
-  ZC_EXPECT(candidateSlots[3].stage == OwnershipEventStage::Effect);
+  ZC_EXPECT(candidateSlots[2].roles[0] == EventRole::ConstantOperand);
+  ZC_EXPECT(candidateSlots[3].stage == EventStage::Effect);
   ZC_REQUIRE(candidateSlots[3].roles.size() == 1);
-  ZC_EXPECT(candidateSlots[3].roles[0] == OwnershipEventRole::Operation);
-  ZC_EXPECT(candidateSlots[4].stage == OwnershipEventStage::Commit);
+  ZC_EXPECT(candidateSlots[3].roles[0] == EventRole::Operation);
+  ZC_EXPECT(candidateSlots[4].stage == EventStage::Commit);
   ZC_REQUIRE(candidateSlots[4].roles.size() == 1);
-  ZC_EXPECT(candidateSlots[4].roles[0] == OwnershipEventRole::DestinationWrite);
+  ZC_EXPECT(candidateSlots[4].roles[0] == EventRole::DestinationWrite);
 
   for (size_t index = 5; index <= 6; ++index) {
     ZC_EXPECT(candidateSlots[index].key.location.owner == owner);
@@ -649,13 +648,13 @@ ZC_TEST("Ownership event overlay builder and verifier accept one scalar initiali
     ZC_EXPECT(candidateSlots[index].key.location.point.beforeTerminatorValue().block == block);
     ZC_EXPECT(candidateSlots[index].key.operandOrdinal == index - 5);
   }
-  ZC_EXPECT(candidateSlots[5].stage == OwnershipEventStage::Source);
+  ZC_EXPECT(candidateSlots[5].stage == EventStage::Source);
   ZC_REQUIRE(candidateSlots[5].roles.size() == 2);
-  ZC_EXPECT(candidateSlots[5].roles[0] == OwnershipEventRole::OperandRead);
-  ZC_EXPECT(candidateSlots[5].roles[1] == OwnershipEventRole::OperandCopy);
-  ZC_EXPECT(candidateSlots[6].stage == OwnershipEventStage::Effect);
+  ZC_EXPECT(candidateSlots[5].roles[0] == EventRole::OperandRead);
+  ZC_EXPECT(candidateSlots[5].roles[1] == EventRole::OperandCopy);
+  ZC_EXPECT(candidateSlots[6].stage == EventStage::Effect);
   ZC_REQUIRE(candidateSlots[6].roles.size() == 1);
-  ZC_EXPECT(candidateSlots[6].roles[0] == OwnershipEventRole::Operation);
+  ZC_EXPECT(candidateSlots[6].roles[0] == EventRole::Operation);
   ZC_EXPECT(sourceMap[0].span.byteStart() ==
             builtMir.functions()[0].locals[0].sourceSpan.byteStart());
   ZC_EXPECT(sourceMap[0].span.byteEnd() == builtMir.functions()[0].locals[0].sourceSpan.byteEnd());
@@ -735,10 +734,10 @@ ZC_TEST("Ownership event overlay builder rejects a cross-session MIR capability"
   auto firstInput = first.overlayInput();
   auto secondInput = second.overlayInput();
   auto firstBody = first.overlayInput();
-  OwnershipEventOverlayInput mismatched{firstInput.admitted, firstInput.checked, firstInput.hir,
-                                        secondInput.built, zc::mv(firstBody.body)};
+  EventOverlayInput mismatched{firstInput.admitted, firstInput.checked, firstInput.hir,
+                               secondInput.built, zc::mv(firstBody.body)};
 
-  auto result = OwnershipEventOverlayBuilder::build(mismatched);
+  auto result = EventOverlayBuilder::build(mismatched);
   ZC_REQUIRE(result.isIrInvariantRejected());
   ZC_REQUIRE(result.invariantFailures().facts().size() == 1);
   ZC_EXPECT(result.invariantFailures().facts()[0].kind() ==
@@ -750,10 +749,10 @@ ZC_TEST("Ownership event overlay builder rejects a body outside the admitted lea
   OwnershipPipelineFixture second("let value = 0;"_zc);
   auto firstInput = first.overlayInput();
   auto secondInput = second.overlayInput();
-  OwnershipEventOverlayInput mismatched{firstInput.admitted, firstInput.checked, firstInput.hir,
-                                        firstInput.built, zc::mv(secondInput.body)};
+  EventOverlayInput mismatched{firstInput.admitted, firstInput.checked, firstInput.hir,
+                               firstInput.built, zc::mv(secondInput.body)};
 
-  auto result = OwnershipEventOverlayBuilder::build(mismatched);
+  auto result = EventOverlayBuilder::build(mismatched);
   ZC_REQUIRE(result.isIrInvariantRejected());
   ZC_REQUIRE(result.invariantFailures().facts().size() == 1);
   ZC_EXPECT(result.invariantFailures().facts()[0].kind() ==
@@ -770,8 +769,8 @@ ZC_TEST("Ownership event overlay verifier rejects a tampered function slot count
   const auto& first = candidate.functions[0].slots[0];
   MirEventSlot extra{
       MirEventKey{MirLocation{candidate.functions[0].owner, first.key.location.point}, 999},
-      OwnershipEventStage::Effect, zc::Vector<OwnershipEventRole>{}};
-  extra.roles.add(OwnershipEventRole::Operation);
+      EventStage::Effect, zc::Vector<EventRole>{}};
+  extra.roles.add(EventRole::Operation);
   candidate.functions[0].slots.add(zc::mv(extra));
 
   auto verifiedResult = verifyOverlay(zc::mv(candidate), fixture);
@@ -865,8 +864,8 @@ ZC_TEST("Ownership event overlay verifier rejects a tampered slot role") {
   ZC_REQUIRE(candidate.functions[0].slots.size() != 0);
   ZC_REQUIRE(candidate.functions[0].slots[0].roles.size() != 0);
   auto originalRole = candidate.functions[0].slots[0].roles[0];
-  auto newRole = originalRole == OwnershipEventRole::Operation ? OwnershipEventRole::StorageLive
-                                                               : OwnershipEventRole::Operation;
+  auto newRole =
+      originalRole == EventRole::Operation ? EventRole::StorageLive : EventRole::Operation;
   candidate.functions[0].slots[0].roles[0] = newRole;
 
   auto verifiedResult = verifyOverlay(zc::mv(candidate), fixture);
@@ -982,11 +981,11 @@ ZC_TEST("Ownership points provide structural equality and order") {
                                     1};
   const MirEventKey differentEvent{MirLocation{function.owner, MirPoint::beforeTerminator(block)},
                                    2};
-  const auto cfgPoint = facts::OwnershipPoint::cfg(beforeStatement);
-  const auto equivalentCfgPoint = facts::OwnershipPoint::cfg(MirPoint::beforeStatement(block, 0));
-  const auto beforeEventPoint = facts::OwnershipPoint::beforeEvent(event);
-  const auto equivalentBeforeEventPoint = facts::OwnershipPoint::beforeEvent(equivalentEvent);
-  const auto afterEventPoint = facts::OwnershipPoint::afterEvent(event);
+  const auto cfgPoint = facts::Point::cfg(beforeStatement);
+  const auto equivalentCfgPoint = facts::Point::cfg(MirPoint::beforeStatement(block, 0));
+  const auto beforeEventPoint = facts::Point::beforeEvent(event);
+  const auto equivalentBeforeEventPoint = facts::Point::beforeEvent(equivalentEvent);
+  const auto afterEventPoint = facts::Point::afterEvent(event);
   ZC_EXPECT(event == equivalentEvent);
   ZC_EXPECT(event != differentEvent);
   ZC_EXPECT(cfgPoint == equivalentCfgPoint);
@@ -1281,7 +1280,7 @@ ZC_TEST("Initialization verifier rejects a tampered local state") {
       inputs.movePaths());
   ZC_REQUIRE(staleCandidateResult.isVerified());
   auto staleCandidate = zc::mv(staleCandidateResult).takeVerified();
-  staleCandidate.overlayRevision = OwnershipEventOverlayRevision();
+  staleCandidate.overlayRevision = EventOverlayRevision();
 
   auto staleResult = facts::InitializationVerifier::verify(
       zc::mv(staleCandidate), builtMir, session.getOwnershipCheckedMirModules()[0].eventOverlay(),
@@ -1525,7 +1524,7 @@ ZC_TEST("Loan verifier rejects a tampered active point, issue, commit, and forei
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.loans.size() == 1);
-  candidate.loans[0].activeFrom = facts::OwnershipPoint::beforeEvent(candidate.loans[0].issue);
+  candidate.loans[0].activeFrom = facts::Point::beforeEvent(candidate.loans[0].issue);
   auto activePointResult =
       facts::LoanVerifier::verify(zc::mv(candidate), movePaths, builtMir,
                                   session.getOwnershipCheckedMirModules()[0].eventOverlay());
@@ -1651,16 +1650,15 @@ ZC_TEST("Resource verifier rejects a missing logical resource function") {
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
-  auto candidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  auto candidateResult = facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
   ZC_REQUIRE(candidate.functions[0].facts.size() == 0);
   candidate.functions.removeLast();
 
-  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
-      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  auto verifiedResult =
+      facts::ResourceVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -1674,8 +1672,7 @@ ZC_TEST("Resource verifier rejects a spurious logical resource") {
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
-  auto candidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  auto candidateResult = facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -1683,7 +1680,7 @@ ZC_TEST("Resource verifier rejects a spurious logical resource") {
   ZC_REQUIRE(overlay.functions().size() == 1);
   ZC_REQUIRE(overlay.functions()[0].logicalDropPlans.size() == 1);
   const auto& plan = overlay.functions()[0].logicalDropPlans[0];
-  candidate.functions[0].facts.add(facts::OwnershipResourceFact{
+  candidate.functions[0].facts.add(facts::ResourceFact{
       facts::DropResourceSubject{
           plan.initialization, facts::MovePathKey{candidate.functions[0].owner, plan.root.clone()},
           plan.root.resultType()},
@@ -1692,8 +1689,8 @@ ZC_TEST("Resource verifier rejects a spurious logical resource") {
       0,
   });
 
-  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
-      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  auto verifiedResult =
+      facts::ResourceVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -1769,16 +1766,15 @@ ZC_TEST("Resource verifier rejects a tampered linear resource") {
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
-  auto candidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  auto candidateResult = facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
   ZC_REQUIRE(candidate.functions[0].facts.size() == 1);
   candidate.functions[0].facts[0].requirement = facts::DropRequirement::Logical;
 
-  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
-      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  auto verifiedResult =
+      facts::ResourceVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -1796,8 +1792,7 @@ ZC_TEST("Resource verifier rejects a tampered resource action") {
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
-  auto candidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  auto candidateResult = facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -1805,8 +1800,8 @@ ZC_TEST("Resource verifier rejects a tampered resource action") {
   candidate.functions[0].facts[0].dropAction = LogicalDropAction{
       LogicalDropBuiltinAction{candidate.functions[0].facts[0].subject.originType}};
 
-  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
-      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  auto verifiedResult =
+      facts::ResourceVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -1824,16 +1819,15 @@ ZC_TEST("Resource verifier rejects a tampered resource subject") {
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
-  auto candidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  auto candidateResult = facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
   ZC_REQUIRE(candidate.functions[0].facts.size() == 1);
   ++candidate.functions[0].facts[0].subject.introduction.operandOrdinal;
 
-  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
-      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  auto verifiedResult =
+      facts::ResourceVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -1954,8 +1948,7 @@ ZC_TEST("Resource verifier rejects a spurious cast route") {
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
-  auto candidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  auto candidateResult = facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -1968,8 +1961,8 @@ ZC_TEST("Resource verifier rejects a spurious cast route") {
       fact.subject.clone(), facts::MovePathKey{transfer.from.owner, transfer.from.place.clone()},
       facts::MovePathKey{transfer.to.owner, transfer.to.place.clone()}, transfer.event});
 
-  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
-      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  auto verifiedResult =
+      facts::ResourceVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -1987,8 +1980,7 @@ ZC_TEST("Resource verifier rejects a tampered cast route subject") {
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
-  auto candidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  auto candidateResult = facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -2003,8 +1995,8 @@ ZC_TEST("Resource verifier rejects a tampered cast route subject") {
   route.subject.introduction.operandOrdinal = 999;
   candidate.functions[0].castRoutes.add(zc::mv(route));
 
-  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
-      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  auto verifiedResult =
+      facts::ResourceVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -2070,16 +2062,15 @@ ZC_TEST("Resource verifier rejects a tampered linear carrier") {
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
-  auto candidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  auto candidateResult = facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
   ZC_REQUIRE(candidate.functions[0].linearCarriers.size() == 1);
   candidate.functions[0].linearCarriers[0].key.creation.operandOrdinal = 999;
 
-  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
-      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  auto verifiedResult =
+      facts::ResourceVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -2098,9 +2089,9 @@ ZC_TEST("Same-type move emits no cast-carrier roles") {
   ZC_REQUIRE(overlay.functions().size() == 1);
   for (const auto& slot : overlay.functions()[0].slots) {
     for (const auto role : slot.roles) {
-      ZC_EXPECT(role != OwnershipEventRole::CastCarrierInitialize);
-      ZC_EXPECT(role != OwnershipEventRole::CastCarrierTransfer);
-      ZC_EXPECT(role != OwnershipEventRole::CastCarrierDrop);
+      ZC_EXPECT(role != EventRole::CastCarrierInitialize);
+      ZC_EXPECT(role != EventRole::CastCarrierTransfer);
+      ZC_EXPECT(role != EventRole::CastCarrierDrop);
     }
   }
   ZC_EXPECT(overlay.functions()[0].castResourcePlans.size() == 0);
@@ -2117,16 +2108,15 @@ ZC_TEST("Resource verifier rejects a tampered drop plan mode") {
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
-  auto candidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  auto candidateResult = facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
   ZC_REQUIRE(candidate.functions[0].dropPlans.size() == 1);
   candidate.functions[0].dropPlans[0].mode = facts::DropPlanMode::Open;
 
-  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
-      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  auto verifiedResult =
+      facts::ResourceVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -2140,8 +2130,7 @@ ZC_TEST("Resource verifier rejects a spurious drop plan") {
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
-  auto candidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  auto candidateResult = facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -2159,8 +2148,8 @@ ZC_TEST("Resource verifier rejects a spurious drop plan") {
           overlayPlan.root.resultType()},
       facts::DropPlanMode::Closed, zc::mv(components)});
 
-  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
-      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  auto verifiedResult =
+      facts::ResourceVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -2178,8 +2167,7 @@ ZC_TEST("Resource verifier rejects a tampered drop plan component ordinal") {
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
-  auto candidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  auto candidateResult = facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -2187,8 +2175,8 @@ ZC_TEST("Resource verifier rejects a tampered drop plan component ordinal") {
   ZC_REQUIRE(candidate.functions[0].dropPlans[0].components.size() == 1);
   candidate.functions[0].dropPlans[0].components[0].factOrdinal = 1;
 
-  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
-      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  auto verifiedResult =
+      facts::ResourceVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -2209,11 +2197,11 @@ ZC_TEST("Flow verifier rejects a tampered direct-call continuation") {
   bool tampered = false;
   for (auto& function : candidate.functions) {
     for (auto& edge : function.edges) {
-      if (edge.from.kind() != facts::OwnershipPointKind::Cfg ||
+      if (edge.from.kind() != facts::PointKind::Cfg ||
           edge.from.cfgValue().point.kind() != MirPointKind::Edge) {
         continue;
       }
-      edge.to = facts::OwnershipPoint::cfg(MirPoint::entry());
+      edge.to = facts::Point::cfg(MirPoint::entry());
       tampered = true;
       break;
     }
@@ -2245,7 +2233,7 @@ ZC_TEST("Flow inventory connects direct-call continuation cutpoints") {
     for (const auto& flowFunction : flow.functions()) {
       if (flowFunction.owner != function.owner) continue;
       for (const auto& point : flowFunction.points) {
-        if (point.kind() != facts::OwnershipPointKind::Cfg ||
+        if (point.kind() != facts::PointKind::Cfg ||
             point.cfgValue().point.kind() != MirPointKind::Edge) {
           continue;
         }
@@ -2256,9 +2244,9 @@ ZC_TEST("Flow inventory connects direct-call continuation cutpoints") {
         }
       }
       for (const auto& edge : flowFunction.edges) {
-        if (edge.from.kind() == facts::OwnershipPointKind::Cfg &&
+        if (edge.from.kind() == facts::PointKind::Cfg &&
             edge.from.cfgValue().point.kind() == MirPointKind::Edge &&
-            edge.to.kind() == facts::OwnershipPointKind::BeforeEvent) {
+            edge.to.kind() == facts::PointKind::BeforeEvent) {
           const auto& continuation = edge.from.cfgValue().point.edgeValue();
           const auto& event = edge.to.beforeEventValue().event;
           if (continuation.from == function.blocks[0].id && continuation.edgeOrdinal == 0 &&
@@ -2267,8 +2255,8 @@ ZC_TEST("Flow inventory connects direct-call continuation cutpoints") {
             foundCommitEntry = true;
           }
         }
-        if (edge.from.kind() == facts::OwnershipPointKind::BeforeEvent &&
-            edge.to.kind() == facts::OwnershipPointKind::AfterEvent) {
+        if (edge.from.kind() == facts::PointKind::BeforeEvent &&
+            edge.to.kind() == facts::PointKind::AfterEvent) {
           const auto& before = edge.from.beforeEventValue().event;
           const auto& after = edge.to.afterEventValue().event;
           if (before.location.owner == function.owner && before.operandOrdinal == 0 &&
@@ -2284,8 +2272,8 @@ ZC_TEST("Flow inventory connects direct-call continuation cutpoints") {
             foundCommitExit = true;
           }
         }
-        if (edge.from.kind() == facts::OwnershipPointKind::AfterEvent &&
-            edge.to.kind() == facts::OwnershipPointKind::Cfg &&
+        if (edge.from.kind() == facts::PointKind::AfterEvent &&
+            edge.to.kind() == facts::PointKind::Cfg &&
             edge.to.cfgValue().point.kind() == MirPointKind::BeforeStatement) {
           const auto& event = edge.from.afterEventValue().event;
           const auto& target = edge.to.cfgValue().point.beforeStatementValue();
@@ -2656,7 +2644,7 @@ ZC_TEST("Reference definition verifier rejects tampered definition inputs") {
       facts::ReferenceDefinitionBuilder::build(movePaths, loans, builtMir, overlay);
   ZC_REQUIRE(activationCandidateResult.isVerified());
   auto activationCandidate = zc::mv(activationCandidateResult).takeVerified();
-  activationCandidate.definitions[0].origin.activation = facts::OwnershipPoint::beforeEvent(
+  activationCandidate.definitions[0].origin.activation = facts::Point::beforeEvent(
       activationCandidate.definitions[0].origin.activation.afterEventValue().event);
   auto activationResult = facts::ReferenceDefinitionVerifier::verify(
       zc::mv(activationCandidate), movePaths, loans, builtMir, overlay);
@@ -2718,7 +2706,7 @@ ZC_TEST("Reference definition verifier rejects tampered definition inputs") {
   ZC_REQUIRE(livenessCandidateResult.isVerified());
   auto livenessCandidate = zc::mv(livenessCandidateResult).takeVerified();
   livenessCandidate.definitions[0].livePoints.beforeReturn =
-      facts::OwnershipPoint::afterEvent(livenessCandidate.definitions[0].returned);
+      facts::Point::afterEvent(livenessCandidate.definitions[0].returned);
   auto livenessResult = facts::ReferenceDefinitionVerifier::verify(
       zc::mv(livenessCandidate), movePaths, loans, builtMir, overlay);
   ZC_REQUIRE(livenessResult.isIrInvariantRejected());
@@ -2773,7 +2761,7 @@ ZC_TEST("Parameter reborrow region verifier rejects tampered members") {
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.regions.size() == 1);
   ZC_REQUIRE(candidate.regions[0].members.size() == 6);
-  candidate.regions[0].members[0] = facts::OwnershipPoint::beforeEvent(candidate.regions[0].loan);
+  candidate.regions[0].members[0] = facts::Point::beforeEvent(candidate.regions[0].loan);
 
   auto verifiedResult = facts::ReborrowRegionVerifier::verify(
       zc::mv(candidate), inputs.flow(), inputs.loans(), inputs.references(), builtMir, overlay);
@@ -2803,7 +2791,7 @@ ZC_TEST("Parameter reborrow reference-state verifier rejects tampered point") {
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.states.size() == 5);
-  candidate.states[0].point = facts::OwnershipPoint::beforeEvent(candidate.states[0].loan);
+  candidate.states[0].point = facts::Point::beforeEvent(candidate.states[0].loan);
 
   auto verifiedResult = facts::ReborrowStateVerifier::verify(zc::mv(candidate), inputs.references(),
                                                              inputs.regions(), builtMir, overlay);
@@ -3324,16 +3312,15 @@ ZC_TEST("Resource verifier rejects a missing sequential aggregate transfer") {
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
-  auto candidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  auto candidateResult = facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
   ZC_REQUIRE(candidate.functions[0].transfers.size() == 1);
   candidate.functions[0].transfers.removeLast();
 
-  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
-      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  auto verifiedResult =
+      facts::ResourceVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -3403,7 +3390,7 @@ ZC_TEST("Ownership resources transfer and verify a moved direct-call result") {
   ZC_EXPECT(foundTransfer);
 
   auto missingCandidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+      facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(missingCandidateResult.isVerified());
   auto missingCandidate = zc::mv(missingCandidateResult).takeVerified();
   bool removed = false;
@@ -3415,7 +3402,7 @@ ZC_TEST("Ownership resources transfer and verify a moved direct-call result") {
   }
   ZC_REQUIRE(removed);
 
-  auto missingVerifiedResult = facts::OwnershipResourceVerifier::verify(
+  auto missingVerifiedResult = facts::ResourceVerifier::verify(
       zc::mv(missingCandidate), inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(missingVerifiedResult.isIrInvariantRejected());
   ZC_EXPECT(missingVerifiedResult.invariantFailures().facts().size() == 1);
@@ -3423,7 +3410,7 @@ ZC_TEST("Ownership resources transfer and verify a moved direct-call result") {
             ir::IrFailureKind::InvalidOwnershipProof);
 
   auto tamperedCandidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+      facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(tamperedCandidateResult.isVerified());
   auto tamperedCandidate = zc::mv(tamperedCandidateResult).takeVerified();
   bool tampered = false;
@@ -3435,7 +3422,7 @@ ZC_TEST("Ownership resources transfer and verify a moved direct-call result") {
   }
   ZC_REQUIRE(tampered);
 
-  auto tamperedVerifiedResult = facts::OwnershipResourceVerifier::verify(
+  auto tamperedVerifiedResult = facts::ResourceVerifier::verify(
       zc::mv(tamperedCandidate), inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(tamperedVerifiedResult.isIrInvariantRejected());
   ZC_EXPECT(tamperedVerifiedResult.invariantFailures().facts().size() == 1);
@@ -3457,7 +3444,7 @@ ZC_TEST("Ownership resources record exact drop transfer paths for a call result"
   const auto& resources = inputs.resources();
   ZC_REQUIRE(resources.functions().size() == 2);
 
-  const facts::OwnershipResourceFunction* entry = nullptr;
+  const facts::ResourceFunction* entry = nullptr;
   for (const auto& function : resources.functions()) {
     if (function.transfers.size() != 0) entry = &function;
   }
@@ -3484,16 +3471,15 @@ ZC_TEST("Resource verifier rejects a tampered parameter move transfer") {
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
-  auto candidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  auto candidateResult = facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
   ZC_REQUIRE(candidate.functions[0].transfers.size() == 1);
   ++candidate.functions[0].transfers[0].event.operandOrdinal;
 
-  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
-      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  auto verifiedResult =
+      facts::ResourceVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -3511,16 +3497,15 @@ ZC_TEST("Resource verifier rejects a missing parameter move transfer") {
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
   const auto& inputs = ownershipInputs(session);
 
-  auto candidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  auto candidateResult = facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
   ZC_REQUIRE(candidate.functions[0].transfers.size() == 1);
   candidate.functions[0].transfers.removeLast();
 
-  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
-      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  auto verifiedResult =
+      facts::ResourceVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -4202,9 +4187,9 @@ ZC_TEST("Ownership event overlay records mutable receiver activation on normal c
           slot.key.operandOrdinal != 1) {
         continue;
       }
-      ZC_EXPECT(slot.stage == OwnershipEventStage::Commit);
+      ZC_EXPECT(slot.stage == EventStage::Commit);
       ZC_REQUIRE(slot.roles.size() == 1);
-      ZC_EXPECT(slot.roles[0] == OwnershipEventRole::BorrowActivation);
+      ZC_EXPECT(slot.roles[0] == EventRole::BorrowActivation);
       foundActivation = true;
     }
   }
@@ -4239,7 +4224,7 @@ ZC_TEST("Ownership event overlay records mutable receiver activation on normal c
   ZC_REQUIRE(inputs.loans().loans().size() == 1);
   ZC_EXPECT(
       inputs.loans().loans()[0].activeFrom ==
-      facts::OwnershipPoint::afterEvent(MirEventKey{
+      facts::Point::afterEvent(MirEventKey{
           MirLocation{function.owner, MirPoint::edge(function.blocks[0].id, 0, call.normalTarget)},
           1}));
   ZC_EXPECT(inputs.references().definitions().size() == 0);
@@ -4250,7 +4235,7 @@ ZC_TEST("Ownership event overlay records mutable receiver activation on normal c
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.loans.size() == 1);
-  candidate.loans[0].activeFrom = facts::OwnershipPoint::afterEvent(candidate.loans[0].issue);
+  candidate.loans[0].activeFrom = facts::Point::afterEvent(candidate.loans[0].issue);
   auto verification = facts::LoanVerifier::verify(
       zc::mv(candidate), inputs.movePaths(), session.getOwnershipCheckedMirModules()[0].builtMir(),
       session.getOwnershipCheckedMirModules()[0].eventOverlay());
@@ -4313,9 +4298,9 @@ ZC_TEST("Ownership event overlay models direct call operation and result commit"
         if (slot.key.location.point.kind() == MirPointKind::BeforeTerminator &&
             slot.key.location.point.beforeTerminatorValue().block == function.blocks[0].id) {
           ZC_EXPECT(slot.key.operandOrdinal == 0);
-          ZC_EXPECT(slot.stage == OwnershipEventStage::Effect);
+          ZC_EXPECT(slot.stage == EventStage::Effect);
           ZC_REQUIRE(slot.roles.size() == 1);
-          ZC_EXPECT(slot.roles[0] == OwnershipEventRole::Operation);
+          ZC_EXPECT(slot.roles[0] == EventRole::Operation);
           foundOperation = true;
           continue;
         }
@@ -4323,10 +4308,10 @@ ZC_TEST("Ownership event overlay models direct call operation and result commit"
             slot.key.location.point.beforeStatementValue().block == function.blocks[1].id &&
             slot.key.location.point.beforeStatementValue().ordinal == 2) {
           ZC_EXPECT(slot.key.operandOrdinal == 0);
-          ZC_EXPECT(slot.stage == OwnershipEventStage::Effect);
+          ZC_EXPECT(slot.stage == EventStage::Effect);
           ZC_REQUIRE(slot.roles.size() == 2);
-          ZC_EXPECT(slot.roles[0] == OwnershipEventRole::Operation);
-          ZC_EXPECT(slot.roles[1] == OwnershipEventRole::StorageDead);
+          ZC_EXPECT(slot.roles[0] == EventRole::Operation);
+          ZC_EXPECT(slot.roles[1] == EventRole::StorageDead);
           foundStorageDead = true;
           continue;
         }
@@ -4336,9 +4321,9 @@ ZC_TEST("Ownership event overlay models direct call operation and result commit"
             slot.key.location.point.edgeValue().to != call.normalTarget) {
           continue;
         }
-        ZC_EXPECT(slot.stage == OwnershipEventStage::Commit);
+        ZC_EXPECT(slot.stage == EventStage::Commit);
         ZC_REQUIRE(slot.roles.size() == 1);
-        ZC_EXPECT(slot.roles[0] == OwnershipEventRole::DestinationWrite);
+        ZC_EXPECT(slot.roles[0] == EventRole::DestinationWrite);
         foundCommit = true;
       }
       for (const auto& use : functionOverlay.markerUses) {
@@ -4351,8 +4336,8 @@ ZC_TEST("Ownership event overlay models direct call operation and result commit"
         ZC_EXPECT(use.key.event.operandOrdinal == 0);
         ZC_EXPECT(use.key.subject == call.destination.resultType());
         ++callMarkerUses;
-        if (use.decision.is<OwnershipMarkerDecisionPositive>()) foundPositive = true;
-        if (use.decision.is<OwnershipMarkerDecisionUnsatisfied>()) foundUnsatisfied = true;
+        if (use.decision.is<MarkerDecisionPositive>()) foundPositive = true;
+        if (use.decision.is<MarkerDecisionUnsatisfied>()) foundUnsatisfied = true;
       }
     }
     ZC_EXPECT(foundOperation);
@@ -4448,15 +4433,15 @@ ZC_TEST("Ownership event overlay models scalar direct call argument sources") {
           continue;
         }
         if (slot.key.operandOrdinal == 0) {
-          ZC_EXPECT(slot.stage == OwnershipEventStage::Source);
+          ZC_EXPECT(slot.stage == EventStage::Source);
           ZC_REQUIRE(slot.roles.size() == 1);
-          ZC_EXPECT(slot.roles[0] == OwnershipEventRole::ConstantOperand);
+          ZC_EXPECT(slot.roles[0] == EventRole::ConstantOperand);
           foundArgumentSource = true;
         }
         if (slot.key.operandOrdinal == 1) {
-          ZC_EXPECT(slot.stage == OwnershipEventStage::Effect);
+          ZC_EXPECT(slot.stage == EventStage::Effect);
           ZC_REQUIRE(slot.roles.size() == 1);
-          ZC_EXPECT(slot.roles[0] == OwnershipEventRole::Operation);
+          ZC_EXPECT(slot.roles[0] == EventRole::Operation);
           foundCallEffect = true;
         }
       }
@@ -4486,19 +4471,19 @@ ZC_TEST("Ownership event overlay publishes source roles for copy, reborrow, and 
           slot.key.location.point.beforeStatementValue().block == copyFunction.blocks[0].id &&
           slot.key.location.point.beforeStatementValue().ordinal == 1 &&
           slot.key.operandOrdinal == 0) {
-        ZC_EXPECT(slot.stage == OwnershipEventStage::Source);
+        ZC_EXPECT(slot.stage == EventStage::Source);
         ZC_REQUIRE(slot.roles.size() == 2);
-        ZC_EXPECT(slot.roles[0] == OwnershipEventRole::OperandRead);
-        ZC_EXPECT(slot.roles[1] == OwnershipEventRole::OperandCopy);
+        ZC_EXPECT(slot.roles[0] == EventRole::OperandRead);
+        ZC_EXPECT(slot.roles[1] == EventRole::OperandCopy);
         foundAssignmentSource = true;
       }
       if (slot.key.location.point.kind() == MirPointKind::BeforeTerminator &&
           slot.key.location.point.beforeTerminatorValue().block == copyFunction.blocks[0].id &&
           slot.key.operandOrdinal == 0) {
-        ZC_EXPECT(slot.stage == OwnershipEventStage::Source);
+        ZC_EXPECT(slot.stage == EventStage::Source);
         ZC_REQUIRE(slot.roles.size() == 2);
-        ZC_EXPECT(slot.roles[0] == OwnershipEventRole::OperandRead);
-        ZC_EXPECT(slot.roles[1] == OwnershipEventRole::OperandCopy);
+        ZC_EXPECT(slot.roles[0] == EventRole::OperandRead);
+        ZC_EXPECT(slot.roles[1] == EventRole::OperandCopy);
         foundReturnSource = true;
       }
     }
@@ -4539,22 +4524,22 @@ ZC_TEST("Ownership event overlay publishes source roles for copy, reborrow, and 
           continue;
         }
         if (slot.key.operandOrdinal == 0) {
-          ZC_EXPECT(slot.stage == OwnershipEventStage::Source);
+          ZC_EXPECT(slot.stage == EventStage::Source);
           ZC_REQUIRE(slot.roles.size() == 1);
-          ZC_EXPECT(slot.roles[0] == OwnershipEventRole::OperandRead);
+          ZC_EXPECT(slot.roles[0] == EventRole::OperandRead);
           foundBorrowSource = true;
         }
         if (slot.key.operandOrdinal == 1) {
-          ZC_EXPECT(slot.stage == OwnershipEventStage::Effect);
+          ZC_EXPECT(slot.stage == EventStage::Effect);
           ZC_REQUIRE(slot.roles.size() == 2);
-          ZC_EXPECT(slot.roles[0] == OwnershipEventRole::Operation);
-          ZC_EXPECT(slot.roles[1] == OwnershipEventRole::BorrowIssue);
+          ZC_EXPECT(slot.roles[0] == EventRole::Operation);
+          ZC_EXPECT(slot.roles[1] == EventRole::BorrowIssue);
           foundBorrowEffect = true;
         }
         if (slot.key.operandOrdinal == 2) {
-          ZC_EXPECT(slot.stage == OwnershipEventStage::Commit);
+          ZC_EXPECT(slot.stage == EventStage::Commit);
           ZC_REQUIRE(slot.roles.size() == 1);
-          ZC_EXPECT(slot.roles[0] == OwnershipEventRole::DestinationWrite);
+          ZC_EXPECT(slot.roles[0] == EventRole::DestinationWrite);
           foundBorrowCommit = true;
         }
       }
@@ -4610,9 +4595,9 @@ ZC_TEST("Ownership facts initialize a returned user local from a direct call") {
             slot.key.location.point.edgeValue().to != continuation.id) {
           continue;
         }
-        ZC_EXPECT(slot.stage == OwnershipEventStage::Commit);
+        ZC_EXPECT(slot.stage == EventStage::Commit);
         ZC_REQUIRE(slot.roles.size() == 1);
-        ZC_EXPECT(slot.roles[0] == OwnershipEventRole::DestinationWrite);
+        ZC_EXPECT(slot.roles[0] == EventRole::DestinationWrite);
         foundCommit = true;
       }
       ZC_REQUIRE(functionOverlay.logicalDropPlans.size() == 1);
@@ -4679,10 +4664,10 @@ ZC_TEST("Ownership event overlay verifier rejects a tampered direct call result 
             slot.key.location.point.edgeValue().to != call.normalTarget) {
           continue;
         }
-        ZC_REQUIRE(slot.stage == OwnershipEventStage::Commit);
+        ZC_REQUIRE(slot.stage == EventStage::Commit);
         ZC_REQUIRE(slot.roles.size() == 1);
-        ZC_REQUIRE(slot.roles[0] == OwnershipEventRole::DestinationWrite);
-        slot.stage = OwnershipEventStage::Effect;
+        ZC_REQUIRE(slot.roles[0] == EventRole::DestinationWrite);
+        slot.stage = EventStage::Effect;
         tampered = true;
       }
     }
@@ -4884,8 +4869,8 @@ ZC_TEST("Ownership event overlay projects standard marker decisions on resource 
   bool foundPositive = false;
   bool foundUnsatisfied = false;
   for (const auto& use : overlay.functions()[0].markerUses) {
-    if (use.decision.is<OwnershipMarkerDecisionPositive>()) foundPositive = true;
-    if (use.decision.is<OwnershipMarkerDecisionUnsatisfied>()) foundUnsatisfied = true;
+    if (use.decision.is<MarkerDecisionPositive>()) foundPositive = true;
+    if (use.decision.is<MarkerDecisionUnsatisfied>()) foundUnsatisfied = true;
   }
   ZC_EXPECT(foundPositive);
   ZC_EXPECT(foundUnsatisfied);
@@ -4915,11 +4900,11 @@ ZC_TEST("Ownership marker proof construction records a positive Copy decision") 
   for (const auto& use : function.markerUses) {
     if (use.key.subject != cellType) continue;
     if (use.key.marker == copyMarker) {
-      ZC_EXPECT(use.decision.is<OwnershipMarkerDecisionPositive>());
+      ZC_EXPECT(use.decision.is<MarkerDecisionPositive>());
       foundCopyPositive = true;
     }
     if (use.key.marker == linearMarker) {
-      ZC_EXPECT(use.decision.is<OwnershipMarkerDecisionUnsatisfied>());
+      ZC_EXPECT(use.decision.is<MarkerDecisionUnsatisfied>());
       foundLinearUnsatisfied = true;
     }
   }
@@ -4953,11 +4938,11 @@ ZC_TEST("Ownership marker proof construction records a positive Linear decision"
   for (const auto& use : function.markerUses) {
     if (use.key.subject != cellType) continue;
     if (use.key.marker == linearMarker) {
-      ZC_EXPECT(use.decision.is<OwnershipMarkerDecisionPositive>());
+      ZC_EXPECT(use.decision.is<MarkerDecisionPositive>());
       foundLinearPositive = true;
     }
     if (use.key.marker == copyMarker) {
-      ZC_EXPECT(use.decision.is<OwnershipMarkerDecisionPositive>());
+      ZC_EXPECT(use.decision.is<MarkerDecisionPositive>());
       foundCopyPositive = true;
     }
   }
@@ -5099,7 +5084,7 @@ ZC_TEST("Ownership postorder fold retains a logical component for a non-copy agg
 }
 
 /// \brief Resolves the materialized struct definition behind one nominal type.
-zc::Maybe<identity::DefId> nominalStructDefinition(const OwnershipEventOverlayInput& input,
+zc::Maybe<identity::DefId> nominalStructDefinition(const EventOverlayInput& input,
                                                    identity::SemanticTypeId typeId) {
   auto lookup = input.body.semanticTypes.get(typeId);
   if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
@@ -5117,7 +5102,7 @@ zc::Maybe<identity::DefId> nominalStructDefinition(const OwnershipEventOverlayIn
 ///
 /// Test oracle mirroring directDeinitializerForType through the overlay input's public
 /// authority surface, so the expected DefId does not come from the production path.
-zc::Maybe<identity::DefId> expectedDeinitializer(const OwnershipEventOverlayInput& input,
+zc::Maybe<identity::DefId> expectedDeinitializer(const EventOverlayInput& input,
                                                  identity::SemanticTypeId typeId) {
   auto definition = nominalStructDefinition(input, typeId);
   if (definition == zc::none) return zc::none;
@@ -5736,7 +5721,7 @@ ZC_TEST("Ownership diagnostic adapter maps every closed failure variant") {
     fixture.compilerSession().getDiagnosticEngine().addConsumer(
         zc::heap<AdapterDiagnosticConsumer>(capture));
 
-    zc::Vector<OwnershipSourceFailure> failures;
+    zc::Vector<SourceFailure> failures;
     failures.add(UseAfterMoveFailure{
         identity.owner, identity.event, identity.span.clone(), syntheticPlace(identity), 0,
         causeVector(InitializationFailureCause{facts::InitializationLossKind::Moved, identity.event,
@@ -5828,7 +5813,7 @@ ZC_TEST("Ownership diagnostic adapter emits notes in cause order") {
     causes.add(InitializationFailureCause{facts::InitializationLossKind::Moved, identity.event,
                                           identity.span.clone()});
 
-    zc::Vector<OwnershipSourceFailure> failures;
+    zc::Vector<SourceFailure> failures;
     failures.add(UseAfterMoveFailure{identity.owner, identity.event, identity.span.clone(),
                                      syntheticPlace(identity), 0, zc::mv(causes)});
 
@@ -5865,11 +5850,11 @@ ZC_TEST("Ownership source failure ordering distinguishes a secondary cause span"
       identity.owner,     identity.event, identity.span.clone(), syntheticPlace(identity), 0,
       zc::mv(rightCauses)};
 
-  OwnershipSourceFailure leftFailure{zc::mv(left)};
-  OwnershipSourceFailure rightFailure{zc::mv(right)};
+  SourceFailure leftFailure{zc::mv(left)};
+  SourceFailure rightFailure{zc::mv(right)};
 
-  ZC_EXPECT(OwnershipSourceFailureOrdering::less(leftFailure, rightFailure) !=
-            OwnershipSourceFailureOrdering::less(rightFailure, leftFailure));
+  ZC_EXPECT(SourceFailureOrdering::less(leftFailure, rightFailure) !=
+            SourceFailureOrdering::less(rightFailure, leftFailure));
 }
 
 ZC_TEST("Ownership source failure ordering distinguishes the primary diagnostic ID") {
@@ -5897,11 +5882,11 @@ ZC_TEST("Ownership source failure ordering distinguishes the primary diagnostic 
       causeVector(LoanFailureCause{LoanKey{identity.event}, syntheticPlace(identity),
                                    identity.event, identity.span.clone()})};
 
-  OwnershipSourceFailure uninitializedFailure{zc::mv(uninitialized)};
-  OwnershipSourceFailure conflictFailure{zc::mv(conflict)};
+  SourceFailure uninitializedFailure{zc::mv(uninitialized)};
+  SourceFailure conflictFailure{zc::mv(conflict)};
 
-  ZC_EXPECT(OwnershipSourceFailureOrdering::less(conflictFailure, uninitializedFailure));
-  ZC_EXPECT(!OwnershipSourceFailureOrdering::less(uninitializedFailure, conflictFailure));
+  ZC_EXPECT(SourceFailureOrdering::less(conflictFailure, uninitializedFailure));
+  ZC_EXPECT(!SourceFailureOrdering::less(uninitializedFailure, conflictFailure));
 }
 
 ZC_TEST("Ownership source failure equality distinguishes the owner key") {
@@ -5920,14 +5905,14 @@ ZC_TEST("Ownership source failure equality distinguishes the owner key") {
                                                identity.span.clone()})};
   };
 
-  OwnershipSourceFailure leftFailure{make(identity.owner)};
-  OwnershipSourceFailure rightFailure{make(otherOwner)};
+  SourceFailure leftFailure{make(identity.owner)};
+  SourceFailure rightFailure{make(otherOwner)};
 
   // Distinct owners now have deterministic context-local ordering (context
   // brand then arena slot). Equality still separates them for deduplication.
-  ZC_EXPECT(!OwnershipSourceFailureOrdering::equal(leftFailure, rightFailure));
-  ZC_EXPECT(OwnershipSourceFailureOrdering::less(leftFailure, rightFailure) !=
-            OwnershipSourceFailureOrdering::less(rightFailure, leftFailure));
+  ZC_EXPECT(!SourceFailureOrdering::equal(leftFailure, rightFailure));
+  ZC_EXPECT(SourceFailureOrdering::less(leftFailure, rightFailure) !=
+            SourceFailureOrdering::less(rightFailure, leftFailure));
 }
 
 ZC_TEST("Ownership source failure deduplication collapses byte-identical failures") {
@@ -5945,11 +5930,11 @@ ZC_TEST("Ownership source failure deduplication collapses byte-identical failure
                                                identity.span.clone()})};
   };
 
-  zc::Vector<OwnershipSourceFailure> failures;
+  zc::Vector<SourceFailure> failures;
   failures.add(make());
   failures.add(make());
 
-  auto deduplicated = OwnershipSourceFailureOrdering::deduplicate(zc::mv(failures));
+  auto deduplicated = SourceFailureOrdering::deduplicate(zc::mv(failures));
   ZC_EXPECT(deduplicated.size() == 1);
 }
 
@@ -5969,11 +5954,11 @@ ZC_TEST("Ownership source failure deduplication retains distinct owners") {
                                                identity.span.clone()})};
   };
 
-  zc::Vector<OwnershipSourceFailure> failures;
+  zc::Vector<SourceFailure> failures;
   failures.add(make(identity.owner));
   failures.add(make(otherOwner));
 
-  auto deduplicated = OwnershipSourceFailureOrdering::deduplicate(zc::mv(failures));
+  auto deduplicated = SourceFailureOrdering::deduplicate(zc::mv(failures));
   ZC_EXPECT(deduplicated.size() == 2);
 }
 
@@ -5988,12 +5973,12 @@ ZC_TEST("Ownership source failure ordering distinguishes unsafe boundaries on on
       RawPointerBoundaryRequiresUnsafeFailure{identity.owner, identity.event, identity.span.clone(),
                                               0, UnsafeBoundaryKey{identity.event, 1}};
 
-  OwnershipSourceFailure leftFailure{zc::mv(left)};
-  OwnershipSourceFailure rightFailure{zc::mv(right)};
+  SourceFailure leftFailure{zc::mv(left)};
+  SourceFailure rightFailure{zc::mv(right)};
 
-  ZC_EXPECT(OwnershipSourceFailureOrdering::less(leftFailure, rightFailure));
-  ZC_EXPECT(!OwnershipSourceFailureOrdering::less(rightFailure, leftFailure));
-  ZC_EXPECT(!OwnershipSourceFailureOrdering::equal(leftFailure, rightFailure));
+  ZC_EXPECT(SourceFailureOrdering::less(leftFailure, rightFailure));
+  ZC_EXPECT(!SourceFailureOrdering::less(rightFailure, leftFailure));
+  ZC_EXPECT(!SourceFailureOrdering::equal(leftFailure, rightFailure));
 }
 
 ZC_TEST("Ownership event overlay projects unsafe scope boundaries from a scalar return") {
@@ -6029,12 +6014,12 @@ ZC_TEST("Ownership event overlay projects unsafe scope boundaries from a scalar 
     if (slot.key.location.point.beforeStatementValue().block != block.id) continue;
     const auto ordinal = slot.key.location.point.beforeStatementValue().ordinal;
     if (ordinal == 0) {
-      ZC_EXPECT(slot.stage == OwnershipEventStage::Effect);
+      ZC_EXPECT(slot.stage == EventStage::Effect);
       bool hasOperation = false;
       bool hasUnsafeAcknowledgement = false;
       for (const auto role : slot.roles) {
-        if (role == OwnershipEventRole::Operation) hasOperation = true;
-        if (role == OwnershipEventRole::UnsafeAcknowledgement) hasUnsafeAcknowledgement = true;
+        if (role == EventRole::Operation) hasOperation = true;
+        if (role == EventRole::UnsafeAcknowledgement) hasUnsafeAcknowledgement = true;
       }
       ZC_EXPECT(hasOperation);
       ZC_EXPECT(hasUnsafeAcknowledgement);
@@ -6042,10 +6027,10 @@ ZC_TEST("Ownership event overlay projects unsafe scope boundaries from a scalar 
       foundUnsafeAcknowledgement = foundUnsafeAcknowledgement || hasUnsafeAcknowledgement;
     }
     if (ordinal == 1) {
-      ZC_EXPECT(slot.stage == OwnershipEventStage::Effect);
+      ZC_EXPECT(slot.stage == EventStage::Effect);
       bool hasOperation = false;
       for (const auto role : slot.roles) {
-        if (role == OwnershipEventRole::Operation) hasOperation = true;
+        if (role == EventRole::Operation) hasOperation = true;
       }
       ZC_EXPECT(hasOperation);
       foundExit = true;
@@ -6096,19 +6081,19 @@ ZC_TEST("Ownership event overlay projects unsafe scope boundaries from a sequent
     if (slot.key.location.point.beforeStatementValue().block != block.id) continue;
     const auto ordinal = slot.key.location.point.beforeStatementValue().ordinal;
     if (ordinal == 4) {
-      ZC_EXPECT(slot.stage == OwnershipEventStage::Effect);
+      ZC_EXPECT(slot.stage == EventStage::Effect);
       bool hasOperation = false;
       for (const auto role : slot.roles) {
-        if (role == OwnershipEventRole::Operation) hasOperation = true;
+        if (role == EventRole::Operation) hasOperation = true;
       }
       ZC_EXPECT(hasOperation);
       foundEnter = true;
     }
     if (ordinal == 5) {
-      ZC_EXPECT(slot.stage == OwnershipEventStage::Effect);
+      ZC_EXPECT(slot.stage == EventStage::Effect);
       bool hasOperation = false;
       for (const auto role : slot.roles) {
-        if (role == OwnershipEventRole::Operation) hasOperation = true;
+        if (role == EventRole::Operation) hasOperation = true;
       }
       ZC_EXPECT(hasOperation);
       foundExit = true;
@@ -6156,19 +6141,19 @@ ZC_TEST("Ownership event overlay projects unsafe scope boundaries from a local r
     if (slot.key.location.point.beforeStatementValue().block != block.id) continue;
     const auto ordinal = slot.key.location.point.beforeStatementValue().ordinal;
     if (ordinal == 2) {
-      ZC_EXPECT(slot.stage == OwnershipEventStage::Effect);
+      ZC_EXPECT(slot.stage == EventStage::Effect);
       bool hasOperation = false;
       for (const auto role : slot.roles) {
-        if (role == OwnershipEventRole::Operation) hasOperation = true;
+        if (role == EventRole::Operation) hasOperation = true;
       }
       ZC_EXPECT(hasOperation);
       foundEnter = true;
     }
     if (ordinal == 3) {
-      ZC_EXPECT(slot.stage == OwnershipEventStage::Effect);
+      ZC_EXPECT(slot.stage == EventStage::Effect);
       bool hasOperation = false;
       for (const auto role : slot.roles) {
-        if (role == OwnershipEventRole::Operation) hasOperation = true;
+        if (role == EventRole::Operation) hasOperation = true;
       }
       ZC_EXPECT(hasOperation);
       foundExit = true;
@@ -6206,7 +6191,7 @@ ZC_TEST("Source suppression rule 3 suppresses UseAfterMove at the second-consump
         causeVector(LinearConsumptionCause{event, identity.span.clone()})};
   };
 
-  zc::Vector<OwnershipSourceFailure> failures;
+  zc::Vector<SourceFailure> failures;
   failures.add(twice(0));
   failures.add(movedUse(1));
 
@@ -6241,7 +6226,7 @@ ZC_TEST("Source suppression rule 4 suppresses UseAfterMove at the blocked-move e
                                      identity.span.clone()})};
   };
 
-  zc::Vector<OwnershipSourceFailure> failures;
+  zc::Vector<SourceFailure> failures;
   failures.add(blocked(0));
   failures.add(movedUse(1));
 
@@ -6270,7 +6255,7 @@ ZC_TEST("Source suppression rule 7 retains unsafe and independent safe failures"
                                                identity.span.clone()})};
   };
 
-  zc::Vector<OwnershipSourceFailure> failures;
+  zc::Vector<SourceFailure> failures;
   failures.add(unsafe(0));
   failures.add(movedUse(1));
 
@@ -6306,7 +6291,7 @@ ZC_TEST("Source suppression retains UseAfterMove at a different event") {
         causeVector(LinearConsumptionCause{event, identity.span.clone()})};
   };
 
-  zc::Vector<OwnershipSourceFailure> failures;
+  zc::Vector<SourceFailure> failures;
   failures.add(twice(0));
   failures.add(movedUse(otherEvent, 1));
 
@@ -6339,7 +6324,7 @@ ZC_TEST("Source suppression retains UninitializedPlaceUse at a suppressed event"
         causeVector(LinearConsumptionCause{event, identity.span.clone()})};
   };
 
-  zc::Vector<OwnershipSourceFailure> failures;
+  zc::Vector<SourceFailure> failures;
   failures.add(twice(0));
   failures.add(uninitialized(1));
 
@@ -6370,7 +6355,7 @@ ZC_TEST("Source suppression retains every first-consumption cause on the primary
                                                identity.span.clone()})};
   };
 
-  zc::Vector<OwnershipSourceFailure> failures;
+  zc::Vector<SourceFailure> failures;
   failures.add(LinearConsumedTwiceFailure{identity.owner, event, identity.span.clone(),
                                           syntheticPlace(identity), 0, zc::mv(causes)});
   failures.add(movedUse(1));
@@ -6407,7 +6392,7 @@ ZC_TEST("Source suppression is a no-op without a suppressing primary") {
                                                event, identity.span.clone()})};
   };
 
-  zc::Vector<OwnershipSourceFailure> failures;
+  zc::Vector<SourceFailure> failures;
   failures.add(movedUse(0));
   failures.add(uninitialized(1));
 

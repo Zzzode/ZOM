@@ -132,14 +132,14 @@ def check(values: dict[Path, str]) -> list[str]:
 
     overlay = values.get(OVERLAY, "")
     for marker in (
-        "OwnershipAdmittedBoundModule boundModule;",
+        "AdmittedBoundModule boundModule;",
         "builtMir.retainAdmittedBoundModule()",
         "const auto& admitted = input.admitted;",
         "const auto& admittedBound = admitted.boundModule();",
         "MarkerProofInput::from(input.body)",
         "markerUses",
-        "OwnershipEventOverlayBuilder::build(",
-        "OwnershipEventOverlayVerifier::verify(",
+        "EventOverlayBuilder::build(",
+        "EventOverlayVerifier::verify(",
     ):
         if marker not in overlay:
             errors.append(f"{OVERLAY}: missing required retained-overlay contract: {marker}")
@@ -151,7 +151,7 @@ def check(values: dict[Path, str]) -> list[str]:
         "reject<DropElaboratedMir>(",
         "ir::IrFailureKind::InputRevisionMismatch",
         "ir::IrFailureKind::InvalidCleanup",
-        "ir::IrFailurePhase::OwnershipProofValidation",
+        "ir::IrFailurePhase::ProofValidation",
         "zc::mv(impl->checked)",
     ):
         if marker not in drop_elaborated:
@@ -164,7 +164,7 @@ def check(values: dict[Path, str]) -> list[str]:
         "enum class DropDischargeKind : uint8_t",
         "struct DropDischargeRecord final",
         "zc::ArrayPtr<const DropDischargeRecord> discharges() const noexcept;",
-        "OwnershipCheckedMir takeCheckedMir() && noexcept;",
+        "CheckedMir takeCheckedMir() && noexcept;",
         "static ir::IrOperationResult<DropElaboratedMir> elaborateDrops(",
     ):
         if marker not in drop_elaborated_header:
@@ -181,11 +181,11 @@ def check(values: dict[Path, str]) -> list[str]:
 
     admission_header = values.get(ADMISSION_HEADER, "")
     for marker in (
-        "class OwnershipSurfaceSourceRejected final",
-        "class OwnershipAdmittedBoundModule final",
-        "friend class OwnershipSurfaceAdmissionBuilder;",
-        "using OwnershipSurfaceAdmissionResult =",
-        "OwnershipSurfaceAdmissionBuilder final",
+        "class SurfaceSourceRejected final",
+        "class AdmittedBoundModule final",
+        "friend class SurfaceAdmissionBuilder;",
+        "using SurfaceAdmissionResult =",
+        "SurfaceAdmissionBuilder final",
     ):
         if marker not in admission_header:
             errors.append(f"{ADMISSION_HEADER}: missing ownership admission contract: {marker}")
@@ -195,8 +195,8 @@ def check(values: dict[Path, str]) -> list[str]:
         "ast::visitTreePreOrder(",
         "ast::SyntaxKind::SpawnExpression",
         "ast::SyntaxKind::SuspendStatement",
-        "OwnershipSurfaceSourceRejected(",
-        "OwnershipAdmittedBoundModule(",
+        "SurfaceSourceRejected(",
+        "AdmittedBoundModule(",
     ):
         if marker not in admission_source:
             errors.append(f"{ADMISSION_SOURCE}: missing ownership admission implementation: {marker}")
@@ -243,7 +243,7 @@ def check(values: dict[Path, str]) -> list[str]:
     for marker in (
         "struct FlowEdge final",
         "struct FlowFunction final",
-        "zc::Vector<OwnershipPoint> points;",
+        "zc::Vector<Point> points;",
         "zc::Vector<FlowEdge> edges;",
         "class VerifiedFlow final",
     ):
@@ -258,7 +258,7 @@ def check(values: dict[Path, str]) -> list[str]:
         "rootKey(",
         "states[index].state != InitializationState::dead()",
         "states[index].state != InitializationState::uninitialized()",
-        "bool hasOperandRead(const OwnershipFunctionEventOverlay& overlay, const MirEventKey& event)",
+        "bool hasOperandRead(const FunctionEventOverlay& overlay, const MirEventKey& event)",
         "if (!hasOperandRead(overlay, primary)) return false;",
     ):
         if marker not in initialization:
@@ -294,7 +294,7 @@ def check(values: dict[Path, str]) -> list[str]:
     for marker in (
         "LoanBuilder::build(",
         "LoanVerifier::verify(",
-        "OwnershipEventRole::BorrowIssue",
+        "EventRole::BorrowIssue",
         "hasBorrowCommit(overlay, function.owner, point)",
         "builtMir.borrowEvidenceRevision()",
         "hasBorrowIssue(overlay, function.owner, point)",
@@ -306,7 +306,7 @@ def check(values: dict[Path, str]) -> list[str]:
         "struct LoanFact final",
         "MirEventKey issue;",
         "MirEventKey commit;",
-        "OwnershipPoint activeFrom;",
+        "Point activeFrom;",
         "MovePathKey source;",
         "MovePathKey destination;",
         "BorrowEvidenceRevision borrowEvidenceRevision;",
@@ -321,15 +321,15 @@ def check(values: dict[Path, str]) -> list[str]:
 
     points_header = values.get(POINTS_HEADER, "")
     for marker in (
-        "enum class OwnershipPointKind : uint8_t { Cfg = 0x01, BeforeEvent = 0x02, AfterEvent = 0x03 };",
-        "struct OwnershipCfgPoint final",
-        "struct OwnershipBeforeEventPoint final",
-        "struct OwnershipAfterEventPoint final",
-        "class OwnershipPoint final",
-        "static OwnershipPoint cfg(MirPoint point) noexcept",
-        "static OwnershipPoint beforeEvent(MirEventKey event) noexcept",
-        "static OwnershipPoint afterEvent(MirEventKey event) noexcept",
-        "zc::OneOf<OwnershipCfgPoint, OwnershipBeforeEventPoint, OwnershipAfterEventPoint>",
+        "enum class PointKind : uint8_t { Cfg = 0x01, BeforeEvent = 0x02, AfterEvent = 0x03 };",
+        "struct CfgPoint final",
+        "struct BeforeEventPoint final",
+        "struct AfterEventPoint final",
+        "class Point final",
+        "static Point cfg(MirPoint point) noexcept",
+        "static Point beforeEvent(MirEventKey event) noexcept",
+        "static Point afterEvent(MirEventKey event) noexcept",
+        "zc::OneOf<CfgPoint, BeforeEventPoint, AfterEventPoint>",
     ):
         if marker not in points_header:
             errors.append(f"{POINTS_HEADER}: missing event cutpoint contract: {marker}")
@@ -354,7 +354,7 @@ def check(values: dict[Path, str]) -> list[str]:
         "MirEventKey introduction;",
         "MirEventKey loan;",
         "ReferenceInputOrigin origin;",
-        "OwnershipPoint activation;",
+        "Point activation;",
         "uint32_t rootParameter;",
         "MovePathKey referent;",
         "ReferenceLivePoints livePoints;",
@@ -382,7 +382,7 @@ def check(values: dict[Path, str]) -> list[str]:
         "MirEventKey entry;",
         "MirEventKey loan;",
         "zc::OneOf<ParameterReferenceOrigin, LocalReferenceOrigin> origin;",
-        "zc::Vector<OwnershipPoint> members;",
+        "zc::Vector<Point> members;",
         "class VerifiedReborrowRegions final",
     ):
         if marker not in regions_header:
@@ -401,7 +401,7 @@ def check(values: dict[Path, str]) -> list[str]:
     states_header = values.get(STATES_HEADER, "")
     for marker in (
         "struct ReborrowState final",
-        "OwnershipPoint point;",
+        "Point point;",
         "MirEventKey loan;",
         "zc::OneOf<ParameterReferenceOrigin, LocalReferenceOrigin> origin;",
         "MovePathKey destination;",
@@ -412,8 +412,8 @@ def check(values: dict[Path, str]) -> list[str]:
 
     resources = values.get(RESOURCES, "")
     for marker in (
-        "OwnershipResourceBuilder::build(",
-        "OwnershipResourceVerifier::verify(",
+        "ResourceBuilder::build(",
+        "ResourceVerifier::verify(",
         "value.logicalDropPlans",
         "zc::Maybe<DropRequirement> requirement(",
         "positive(component.copyDecision, overlay)",
@@ -442,7 +442,7 @@ def check(values: dict[Path, str]) -> list[str]:
         "MovePathKey origin;",
         "identity::SemanticTypeId originType;",
         "enum class DropRequirement : uint8_t",
-        "struct OwnershipResourceFact final",
+        "struct ResourceFact final",
         "DropResourceSubject subject;",
         "DropRequirement requirement;",
         "zc::Maybe<LogicalDropAction> dropAction;",
@@ -494,7 +494,7 @@ def check(values: dict[Path, str]) -> list[str]:
 
     inputs = values.get(INPUTS, "")
     for marker in (
-        "OwnershipInputVerifier::verify(",
+        "InputVerifier::verify(",
         "bool matches(",
         "builtMir.borrowEvidenceRevision()",
         "VerifiedReborrowRegions&& regions",
@@ -519,20 +519,20 @@ def check(values: dict[Path, str]) -> list[str]:
         "const VerifiedOwnershipResourceFacts& resources() const noexcept;",
         "const driver::borrow_evidence::VerifiedBorrowEvidenceLease& lease,",
         "const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& capability,",
-        "class OwnershipInputVerifier final",
+        "class InputVerifier final",
     ):
         if marker not in inputs_header:
             errors.append(f"{INPUTS_HEADER}: missing ownership-input bundle contract: {marker}")
     for marker in (
-        "const OwnershipFactsRevision& factsRevision() const noexcept;",
-        "void setFactsRevision(OwnershipFactsRevision revision) noexcept;",
+        "const FactsRevision& factsRevision() const noexcept;",
+        "void setFactsRevision(FactsRevision revision) noexcept;",
     ):
         if marker not in inputs_header:
             errors.append(f"{INPUTS_HEADER}: missing ownership facts-revision contract: {marker}")
 
     inputs = values.get(INPUTS, "")
     for marker in (
-        "OwnershipFactsCodec::compute(inputs, overlay, identities, semanticTypes)",
+        "FactsCodec::compute(inputs, overlay, identities, semanticTypes)",
         "inputs.setFactsRevision(value);",
     ):
         if marker not in inputs:
@@ -540,8 +540,8 @@ def check(values: dict[Path, str]) -> list[str]:
 
     facts_revision_header = values.get(FACTS_REVISION_HEADER, "")
     for marker in (
-        "class OwnershipFactsRevision final",
-        "static OwnershipFactsRevision fromDigest(",
+        "class FactsRevision final",
+        "static FactsRevision fromDigest(",
         "const identity::Sha256Digest& digest) noexcept;",
         "const identity::Sha256Digest& digest() const noexcept;",
     ):
@@ -550,18 +550,18 @@ def check(values: dict[Path, str]) -> list[str]:
 
     facts_revision = values.get(FACTS_REVISION, "")
     for marker in (
-        "OwnershipFactsRevision::fromDigest(",
-        "OwnershipFactsRevision::digest() const noexcept",
+        "FactsRevision::fromDigest(",
+        "FactsRevision::digest() const noexcept",
     ):
         if marker not in facts_revision:
             errors.append(f"{FACTS_REVISION}: missing facts-revision implementation: {marker}")
 
     facts_codec_header = values.get(FACTS_CODEC_HEADER, "")
     for marker in (
-        "class OwnershipFactsCodec final",
+        "class FactsCodec final",
         "static zc::Maybe<zc::Array<uint8_t>> encodeFramed(",
         "static zc::Maybe<zc::Array<uint8_t>> encode(",
-        "static zc::Maybe<OwnershipFactsRevision> compute(",
+        "static zc::Maybe<FactsRevision> compute(",
     ):
         if marker not in facts_codec_header:
             errors.append(f"{FACTS_CODEC_HEADER}: missing facts-codec contract: {marker}")
@@ -570,17 +570,17 @@ def check(values: dict[Path, str]) -> list[str]:
     for marker in (
         'constexpr char domain[] = "zom.ownership-facts";',
         "canonicalGroups.size() != 13",
-        "OwnershipFactsCodec::encodeFramed(",
-        "OwnershipFactsCodec::encode(",
-        "OwnershipFactsCodec::compute(",
-        "OwnershipFactsRevision::fromDigest(hash)",
+        "FactsCodec::encodeFramed(",
+        "FactsCodec::encode(",
+        "FactsCodec::compute(",
+        "FactsRevision::fromDigest(hash)",
     ):
         if marker not in facts_codec:
             errors.append(f"{FACTS_CODEC}: missing facts-codec implementation: {marker}")
 
     ownership_checked_mir = values.get(OWNERSHIP_CHECKED_MIR, "")
     for marker in (
-        "facts::OwnershipFactsCodec::compute(facts, eventOverlay, identities, semanticTypes)",
+        "facts::FactsCodec::compute(facts, eventOverlay, identities, semanticTypes)",
         "if (recomputed != facts.factsRevision())",
     ):
         if marker not in ownership_checked_mir:
@@ -590,8 +590,8 @@ def check(values: dict[Path, str]) -> list[str]:
 
     ownership_checked_mir_header = values.get(OWNERSHIP_CHECKED_MIR_HEADER, "")
     for marker in (
-        "const facts::OwnershipFactsRevision& factsRevision() const noexcept;",
-        "friend class OwnershipFinalizer;",
+        "const facts::FactsRevision& factsRevision() const noexcept;",
+        "friend class Finalizer;",
     ):
         if marker not in ownership_checked_mir_header:
             errors.append(
@@ -704,19 +704,19 @@ def check(values: dict[Path, str]) -> list[str]:
 
     session = values.get(SESSION, "")
     for marker in (
-        "zc::Vector<ownership::OwnershipAdmittedBoundModule> checkerModules(",
-        "ownership::OwnershipSurfaceAdmissionBuilder::admit(boundModule.retain())",
-        "admission.is<ownership::OwnershipSurfaceSourceRejected>()",
+        "zc::Vector<ownership::AdmittedBoundModule> checkerModules(",
+        "ownership::SurfaceAdmissionBuilder::admit(boundModule.retain())",
+        "admission.is<ownership::SurfaceSourceRejected>()",
         "diagnostics::DiagID::ConcurrencySemanticsUnavailable",
         "diagnostics::DiagID::ControlFlowSemanticsUnavailable",
         "stagedOwnershipEventOverlays.add(zc::mv(verifiedOwnership).takeVerified());",
-        "ownership::OwnershipProofValidation::validate(",
+        "ownership::ProofValidation::validate(",
         "zc::mv(verifiedOwnershipInputs).takeVerified(),",
         "stagedValidatedOwnershipProofs.add(zc::mv(validatedOwnershipProofs).takeVerified());",
         "zc::mv(stagedValidatedOwnershipProofs[index]).takeInputs(),",
-        "ownership::OwnershipFinalizer::finalizeOwnership(",
+        "ownership::Finalizer::finalizeOwnership(",
         "impl->ownershipCheckedMirModules = zc::mv(stagedOwnershipCheckedMir);",
-        "zc::Vector<ownership::OwnershipAdmittedBoundModule> ownershipAdmittedModules;",
+        "zc::Vector<ownership::AdmittedBoundModule> ownershipAdmittedModules;",
         "stagedOwnershipAdmittedModules.add(checkerBound.retain());",
         "impl->ownershipAdmittedModules = zc::mv(stagedOwnershipAdmittedModules);",
         "ownershipAdmittedModules.clear();",
@@ -731,16 +731,16 @@ def check(values: dict[Path, str]) -> list[str]:
         "verifiedFlow.verifiedValue(), verifiedLoans.verifiedValue()",
         "ReborrowStateBuilder::build(",
         "ReborrowStateVerifier::verify(",
-        "OwnershipResourceBuilder::build(",
-        "OwnershipResourceVerifier::verify(",
+        "ResourceBuilder::build(",
+        "ResourceVerifier::verify(",
         "FlowBuilder::build(",
         "FlowVerifier::verify(",
         "verifiedFlow.verifiedValue(), verifiedMovePaths.verifiedValue()",
-        "OwnershipInputVerifier::verify(",
+        "InputVerifier::verify(",
     ):
         if marker not in session:
             errors.append(f"{SESSION}: missing ownership publication contract: {marker}")
-    finalize_call = session.find("ownership::OwnershipFinalizer::finalizeOwnership(")
+    finalize_call = session.find("ownership::Finalizer::finalizeOwnership(")
     checked_commit = session.find("impl->ownershipCheckedMirModules = zc::mv(stagedOwnershipCheckedMir);")
     if (
         finalize_call != -1
@@ -889,8 +889,8 @@ def main() -> int:
             return 1
         admission_mutation = dict(values)
         admission_mutation[SESSION] = admission_mutation.get(SESSION, "").replace(
-            "ownership::OwnershipSurfaceAdmissionBuilder::admit(boundModule.retain())",
-            "ownership::OwnershipSurfaceAdmissionBuilder::admit(unverifiedBoundModule.retain())",
+            "ownership::SurfaceAdmissionBuilder::admit(boundModule.retain())",
+            "ownership::SurfaceAdmissionBuilder::admit(unverifiedBoundModule.retain())",
             1,
         )
         if not check(admission_mutation):
@@ -1045,7 +1045,7 @@ def main() -> int:
             return 1
         loan_issue_mutation = dict(values)
         loan_issue_mutation[LOANS] = loan_issue_mutation.get(LOANS, "").replace(
-            "OwnershipEventRole::BorrowIssue", "OwnershipEventRole::BorrowActivation", 1
+            "EventRole::BorrowIssue", "EventRole::BorrowActivation", 1
         )
         if not check(loan_issue_mutation):
             print("ownership loan-issue architecture self-test escaped")
@@ -1062,14 +1062,14 @@ def main() -> int:
         loan_activation_mutation = dict(values)
         loan_activation_mutation[LOANS_HEADER] = loan_activation_mutation.get(
             LOANS_HEADER, ""
-        ).replace("OwnershipPoint activeFrom;", "LoanActivation activation;\n  OwnershipPoint activeFrom;", 1)
+        ).replace("Point activeFrom;", "LoanActivation activation;\n  Point activeFrom;", 1)
         if not check(loan_activation_mutation):
             print("ownership redundant loan-activation architecture self-test escaped")
             return 1
         loan_active_from_mutation = dict(values)
         loan_active_from_mutation[LOANS_HEADER] = loan_active_from_mutation.get(
             LOANS_HEADER, ""
-        ).replace("OwnershipPoint activeFrom;", "OwnershipPoint staleActiveFrom;", 1)
+        ).replace("Point activeFrom;", "Point staleActiveFrom;", 1)
         if not check(loan_active_from_mutation):
             print("ownership loan-active-from architecture self-test escaped")
             return 1
@@ -1104,7 +1104,7 @@ def main() -> int:
         reference_activation_mutation = dict(values)
         reference_activation_mutation[REFERENCES_HEADER] = reference_activation_mutation.get(
             REFERENCES_HEADER, ""
-        ).replace("OwnershipPoint activation;", "OwnershipPoint staleActivation;", 1)
+        ).replace("Point activation;", "Point staleActivation;", 1)
         if not check(reference_activation_mutation):
             print("ownership reference-activation architecture self-test escaped")
             return 1
@@ -1146,7 +1146,7 @@ def main() -> int:
         region_members_mutation = dict(values)
         region_members_mutation[REGIONS_HEADER] = region_members_mutation.get(
             REGIONS_HEADER, ""
-        ).replace("zc::Vector<OwnershipPoint> members;", "zc::Vector<OwnershipPoint> staleMembers;", 1)
+        ).replace("zc::Vector<Point> members;", "zc::Vector<Point> staleMembers;", 1)
         if not check(region_members_mutation):
             print("ownership region-members architecture self-test escaped")
             return 1
@@ -1171,7 +1171,7 @@ def main() -> int:
         state_point_mutation = dict(values)
         state_point_mutation[STATES_HEADER] = state_point_mutation.get(
             STATES_HEADER, ""
-        ).replace("OwnershipPoint point;", "OwnershipPoint stalePoint;", 1)
+        ).replace("Point point;", "Point stalePoint;", 1)
         if not check(state_point_mutation):
             print("ownership reference-state point architecture self-test escaped")
             return 1
@@ -1253,7 +1253,7 @@ def main() -> int:
             return 1
         resource_session_mutation = dict(values)
         resource_session_mutation[SESSION] = resource_session_mutation.get(SESSION, "").replace(
-            "OwnershipResourceVerifier::verify(", "OwnershipResourceVerifier::staleVerify(", 1
+            "ResourceVerifier::verify(", "ResourceVerifier::staleVerify(", 1
         )
         if not check(resource_session_mutation):
             print("ownership resource-session architecture self-test escaped")
@@ -1300,8 +1300,8 @@ def main() -> int:
         for marker in (
             "ReferenceDefinitionBuilder::build(",
             "ReferenceDefinitionVerifier::verify(",
-            "OwnershipInputVerifier::verify(",
-            "ownership::OwnershipProofValidation::validate(",
+            "InputVerifier::verify(",
+            "ownership::ProofValidation::validate(",
             "stagedValidatedOwnershipProofs.add(zc::mv(validatedOwnershipProofs).takeVerified());",
             "impl->ownershipCheckedMirModules = zc::mv(stagedOwnershipCheckedMir);",
         ):
@@ -1359,7 +1359,7 @@ def main() -> int:
         facts_revision_header_mutation = dict(values)
         facts_revision_header_mutation[FACTS_REVISION_HEADER] = (
             facts_revision_header_mutation.get(FACTS_REVISION_HEADER, "").replace(
-                "class OwnershipFactsRevision final",
+                "class FactsRevision final",
                 "class RemovedOwnershipFactsRevision final",
                 1,
             )
@@ -1370,14 +1370,14 @@ def main() -> int:
         facts_revision_source_mutation = dict(values)
         facts_revision_source_mutation[FACTS_REVISION] = facts_revision_source_mutation.get(
             FACTS_REVISION, ""
-        ).replace("OwnershipFactsRevision::fromDigest(", "OwnershipFactsRevision::staleFromDigest(", 1)
+        ).replace("FactsRevision::fromDigest(", "FactsRevision::staleFromDigest(", 1)
         if not check(facts_revision_source_mutation):
             print("ownership facts-revision source architecture self-test escaped")
             return 1
         facts_codec_header_mutation = dict(values)
         facts_codec_header_mutation[FACTS_CODEC_HEADER] = facts_codec_header_mutation.get(
             FACTS_CODEC_HEADER, ""
-        ).replace("class OwnershipFactsCodec final", "class RemovedOwnershipFactsCodec final", 1)
+        ).replace("class FactsCodec final", "class RemovedOwnershipFactsCodec final", 1)
         if not check(facts_codec_header_mutation):
             print("ownership facts-codec header architecture self-test escaped")
             return 1
@@ -1402,7 +1402,7 @@ def main() -> int:
         facts_codec_compute_mutation = dict(values)
         facts_codec_compute_mutation[FACTS_CODEC] = facts_codec_compute_mutation.get(
             FACTS_CODEC, ""
-        ).replace("OwnershipFactsCodec::compute(", "OwnershipFactsCodec::staleCompute(", 1)
+        ).replace("FactsCodec::compute(", "FactsCodec::staleCompute(", 1)
         if not check(facts_codec_compute_mutation):
             print("ownership facts-codec compute architecture self-test escaped")
             return 1
@@ -1410,8 +1410,8 @@ def main() -> int:
         inputs_facts_revision_mutation[INPUTS] = inputs_facts_revision_mutation.get(
             INPUTS, ""
         ).replace(
-            "OwnershipFactsCodec::compute(inputs, overlay, identities, semanticTypes)",
-            "OwnershipFactsCodec::staleCompute(inputs, overlay, identities, semanticTypes)",
+            "FactsCodec::compute(inputs, overlay, identities, semanticTypes)",
+            "FactsCodec::staleCompute(inputs, overlay, identities, semanticTypes)",
             1,
         )
         if not check(inputs_facts_revision_mutation):
@@ -1421,8 +1421,8 @@ def main() -> int:
         checked_mir_recompute_mutation[OWNERSHIP_CHECKED_MIR] = checked_mir_recompute_mutation.get(
             OWNERSHIP_CHECKED_MIR, ""
         ).replace(
-            "facts::OwnershipFactsCodec::compute(facts, eventOverlay, identities, semanticTypes)",
-            "facts::OwnershipFactsCodec::staleCompute(facts, eventOverlay, identities, semanticTypes)",
+            "facts::FactsCodec::compute(facts, eventOverlay, identities, semanticTypes)",
+            "facts::FactsCodec::staleCompute(facts, eventOverlay, identities, semanticTypes)",
             1,
         )
         if not check(checked_mir_recompute_mutation):

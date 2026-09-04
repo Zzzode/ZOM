@@ -141,7 +141,7 @@ struct BorrowDoesNotLiveLongEnoughFailure final {
 
 /// \brief Linear value is not consumed on all normal paths.
 ///
-/// Produced by `OwnershipResourceVerifier::verifyLinearSource` for a linear
+/// Produced by `ResourceVerifier::verifyLinearSource` for a linear
 /// obligation whose consumptions sequence is empty on a normal exit. With the
 /// current straight-line MIR subset, an obligation is pending at the normal
 /// exit exactly when it has no Return or ConsumingCall consumption.
@@ -194,8 +194,8 @@ struct MoveOutOfBorrowFailure final {
 /// \brief Closed tagged union of every source-visible ownership failure.
 ///
 /// Variant declaration order fixes the canonical tag order used by
-/// `OwnershipSourceFailureOrdering`.
-using OwnershipSourceFailure =
+/// `SourceFailureOrdering`.
+using SourceFailure =
     zc::OneOf<UseAfterMoveFailure, MutableBorrowConflictFailure, UninitializedPlaceUseFailure,
               SharedBorrowConflictFailure, BorrowDoesNotLiveLongEnoughFailure,
               LinearNotConsumedFailure, LinearConsumedTwiceFailure,
@@ -391,7 +391,7 @@ bool equalCauseSequence(const zc::Vector<Cause>& left, const zc::Vector<Cause>& 
 }
 
 template <typename Variant>
-bool equalCauseFailure(const Variant& left, const OwnershipSourceFailure& right) noexcept {
+bool equalCauseFailure(const Variant& left, const SourceFailure& right) noexcept {
   const auto& rightValue = right.get<Variant>();
   return left.owner == rightValue.owner && left.primary == rightValue.primary &&
          equalSpan(left.useSpan, rightValue.useSpan) &&
@@ -400,8 +400,7 @@ bool equalCauseFailure(const Variant& left, const OwnershipSourceFailure& right)
          equalCauseSequence(left.causes, rightValue.causes);
 }
 
-inline bool equalFailure(const OwnershipSourceFailure& left,
-                         const OwnershipSourceFailure& right) noexcept {
+inline bool equalFailure(const SourceFailure& left, const SourceFailure& right) noexcept {
   if (left.which() != right.which()) return false;
   ZC_SWITCH_ONEOF(left) {
     ZC_CASE_ONEOF(leftValue, UseAfterMoveFailure) { return equalCauseFailure(leftValue, right); }
@@ -435,7 +434,7 @@ inline bool equalFailure(const OwnershipSourceFailure& left,
   return false;
 }
 
-inline const MirEventKey& primaryEvent(const OwnershipSourceFailure& failure) noexcept {
+inline const MirEventKey& primaryEvent(const SourceFailure& failure) noexcept {
   ZC_SWITCH_ONEOF(failure) {
     ZC_CASE_ONEOF(value, UseAfterMoveFailure) { return value.primary; }
     ZC_CASE_ONEOF(value, MutableBorrowConflictFailure) { return value.primary; }
@@ -450,7 +449,7 @@ inline const MirEventKey& primaryEvent(const OwnershipSourceFailure& failure) no
   ZC_UNREACHABLE
 }
 
-inline uint32_t primaryDiagId(const OwnershipSourceFailure& failure) noexcept {
+inline uint32_t primaryDiagId(const SourceFailure& failure) noexcept {
   using diagnostics::DiagID;
   static constexpr uint32_t ids[9] = {
       static_cast<uint32_t>(DiagID::UseAfterMove),
@@ -483,7 +482,7 @@ struct FailureCommonKey {
     key.owner = value.owner;                          \
   }
 
-inline FailureCommonKey commonKey(const OwnershipSourceFailure& failure) noexcept {
+inline FailureCommonKey commonKey(const SourceFailure& failure) noexcept {
   FailureCommonKey key{
       0, 0, primaryDiagId(failure), 0, identity::DefId{}, static_cast<uint8_t>(failure.which())};
   ZC_SWITCH_ONEOF(failure) {
@@ -508,8 +507,7 @@ inline FailureCommonKey commonKey(const OwnershipSourceFailure& failure) noexcep
     return lessCauseSequence(leftValue.causes, rightValue.causes); \
   }
 
-inline bool lessPayload(const OwnershipSourceFailure& left,
-                        const OwnershipSourceFailure& right) noexcept {
+inline bool lessPayload(const SourceFailure& left, const SourceFailure& right) noexcept {
   ZC_SWITCH_ONEOF(left) {
     ZOM_OWNERSHIP_FAILURE_CAUSES(UseAfterMoveFailure)
     ZOM_OWNERSHIP_FAILURE_CAUSES(MutableBorrowConflictFailure)
@@ -543,9 +541,8 @@ inline bool lessPayload(const OwnershipSourceFailure& left,
 /// ordering (which requires identity-authority expansion to canonical digest
 /// bytes). The expanded-key ordering remains a future improvement; the
 /// current ordering is sufficient for deterministic sort and deduplication.
-struct OwnershipSourceFailureOrdering final {
-  ZC_NODISCARD static bool less(const OwnershipSourceFailure& left,
-                                const OwnershipSourceFailure& right) noexcept {
+struct SourceFailureOrdering final {
+  ZC_NODISCARD static bool less(const SourceFailure& left, const SourceFailure& right) noexcept {
     const auto leftKey = detail::commonKey(left);
     const auto rightKey = detail::commonKey(right);
     if (leftKey.spanStart != rightKey.spanStart) return leftKey.spanStart < rightKey.spanStart;
@@ -560,15 +557,13 @@ struct OwnershipSourceFailureOrdering final {
   }
 
   /// \brief Returns whether two failures are byte-identical for deduplication.
-  ZC_NODISCARD static bool equal(const OwnershipSourceFailure& left,
-                                 const OwnershipSourceFailure& right) noexcept {
+  ZC_NODISCARD static bool equal(const SourceFailure& left, const SourceFailure& right) noexcept {
     return detail::equalFailure(left, right);
   }
 
   /// \brief Sorts failures by the canonical ordering and removes adjacent
   /// byte-identical failures, returning the deduplicated sequence.
-  ZC_NODISCARD static zc::Vector<OwnershipSourceFailure> deduplicate(
-      zc::Vector<OwnershipSourceFailure>&& failures) {
+  ZC_NODISCARD static zc::Vector<SourceFailure> deduplicate(zc::Vector<SourceFailure>&& failures) {
     for (size_t index = 1; index < failures.size(); ++index) {
       auto current = zc::mv(failures[index]);
       size_t insertion = index;

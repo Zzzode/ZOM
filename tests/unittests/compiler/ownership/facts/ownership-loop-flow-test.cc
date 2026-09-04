@@ -464,7 +464,7 @@ private:
 /// Returns true when the flow graph carries the CFG edge point (from, ordinal, to).
 bool flowHasEdgePoint(const facts::FlowFunction& flow, mir::MirBlockId from, uint32_t ordinal,
                       mir::MirBlockId to) {
-  const auto edgePoint = facts::OwnershipPoint::cfg(MirPoint::edge(from, ordinal, to));
+  const auto edgePoint = facts::Point::cfg(MirPoint::edge(from, ordinal, to));
   for (const auto& point : flow.points) {
     if (point == edgePoint) return true;
   }
@@ -611,8 +611,8 @@ facts::FlowFunction makeFlow(identity::DefId owner, zc::ArrayPtr<const CfgEdge> 
   facts::FlowFunction flow;
   flow.owner = owner;
   for (const auto& edge : edges) {
-    flow.points.add(facts::OwnershipPoint::cfg(
-        MirPoint::edge(blockId(edge.from), edge.ordinal, blockId(edge.to))));
+    flow.points.add(
+        facts::Point::cfg(MirPoint::edge(blockId(edge.from), edge.ordinal, blockId(edge.to))));
   }
   return flow;
 }

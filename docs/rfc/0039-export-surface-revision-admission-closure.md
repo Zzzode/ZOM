@@ -87,7 +87,7 @@ validation recomputes the hash from separately available object content:
 <https://git-scm.com/docs/user-manual>.
 
 The repository already applies the same boundary to `MirRevisionId` and
-`OwnershipEventOverlayRevision`: their `fromDigest` operations reconstruct
+`EventOverlayRevision`: their `fromDigest` operations reconstruct
 typed identities, while their producers separately compute the digest from
 the complete canonical preimage.
 

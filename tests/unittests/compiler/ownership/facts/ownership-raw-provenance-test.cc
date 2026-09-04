@@ -101,7 +101,7 @@ ZC_TEST("cloneRawProvenanceOrigin clones RawUnsafeAddressOrigin") {
 }
 
 ZC_TEST("cloneRawProvenanceOrigin clones RawReferenceOrigin") {
-  ReferenceInputOrigin refOrigin{makeEventKey(1), OwnershipPoint::cfg(MirPoint::entry()),
+  ReferenceInputOrigin refOrigin{makeEventKey(1), Point::cfg(MirPoint::entry()),
                                  ParameterReferenceOrigin{0}, makeMovePathKey(1)};
   RawProvenanceOrigin origin{RawReferenceOrigin{refOrigin.clone()}};
   auto cloned = cloneRawProvenanceOrigin(origin);

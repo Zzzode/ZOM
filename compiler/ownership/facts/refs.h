@@ -14,11 +14,11 @@
 
 #pragma once
 
+#include "compiler/ownership/facts/loans.h"
+#include "compiler/ownership/facts/paths.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "compiler/ownership/facts/loans.h"
-#include "compiler/ownership/facts/paths.h"
 
 namespace zomlang::compiler::ownership::facts {
 
@@ -37,7 +37,7 @@ struct LocalReferenceOrigin final {
 /// \brief The origin (parameter entry or local introduction) behind one reference definition.
 struct ReferenceInputOrigin final {
   MirEventKey entry;
-  OwnershipPoint activation;
+  Point activation;
   zc::OneOf<ParameterReferenceOrigin, LocalReferenceOrigin> detail;
   MovePathKey referent;
 
@@ -49,11 +49,11 @@ struct ReferenceInputOrigin final {
 
 /// \brief Exact current-subset ownership points for one reference value's liveness.
 struct ReferenceLivePoints final {
-  OwnershipPoint afterCommit;
-  OwnershipPoint afterCommitCfg;
-  OwnershipPoint beforeReturnCfg;
-  OwnershipPoint beforeReturn;
-  OwnershipPoint afterReturn;
+  Point afterCommit;
+  Point afterCommitCfg;
+  Point beforeReturnCfg;
+  Point beforeReturn;
+  Point afterReturn;
 };
 
 /// \brief One current-subset reference value installed at a verified move path.
@@ -73,7 +73,7 @@ public:
   ReferenceDefinitionCandidate(
       identity::SemanticContextBrand semanticContext,
       identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
-      mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
+      mir::MirRevisionId builtRevision, EventOverlayRevision overlayRevision,
       driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
       zc::Vector<ReferenceDefinition>&& definitions) noexcept;
   ReferenceDefinitionCandidate(ReferenceDefinitionCandidate&&) noexcept = default;
@@ -84,7 +84,7 @@ public:
   identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   mir::MirRevisionId builtRevision;
-  OwnershipEventOverlayRevision overlayRevision;
+  EventOverlayRevision overlayRevision;
   driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision;
   zc::Vector<ReferenceDefinition> definitions;
 };
@@ -101,7 +101,7 @@ public:
   ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const mir::MirRevisionId& builtRevision() const noexcept;
-  ZC_NODISCARD const OwnershipEventOverlayRevision& overlayRevision() const noexcept;
+  ZC_NODISCARD const EventOverlayRevision& overlayRevision() const noexcept;
   ZC_NODISCARD const driver::borrow_evidence::BorrowEvidenceRevision& borrowEvidenceRevision()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const ReferenceDefinition> definitions() const noexcept;

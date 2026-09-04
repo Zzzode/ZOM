@@ -4613,8 +4613,7 @@ struct VerifiedBuiltMir::Impl final {
        const checker::checked::CheckedFactsRevision& checkedFactsRevision,
        const checker::dispatch::DispatchFactsRevision& dispatchFactsRevision,
        const driver::borrow_evidence::BorrowEvidenceRevision& borrowEvidenceRevision,
-       ownership::OwnershipAdmittedBoundModule&& boundModule,
-       checker::CheckerIdentityAuthority&& identities,
+       ownership::AdmittedBoundModule&& boundModule, checker::CheckerIdentityAuthority&& identities,
        driver::borrow_evidence::VerifiedBorrowEvidenceLease&& borrowEvidenceLease,
        driver::borrow_evidence::BorrowEvidenceRepositoryCapability&& borrowEvidenceCapability,
        zc::Vector<MirFunction>&& functions, zc::Vector<zc::Array<uint8_t>>&& canonicalFunctions,
@@ -4635,7 +4634,7 @@ struct VerifiedBuiltMir::Impl final {
         revision(revision),
         borrowEvidenceLease(zc::mv(borrowEvidenceLease)) {}
 
-  ownership::OwnershipAdmittedBoundModule boundModule;
+  ownership::AdmittedBoundModule boundModule;
   checker::CheckerIdentityAuthority identities;
   identity::SemanticContextBrand semanticContext;
   identity::ContextFingerprint contextFingerprint;
@@ -4691,7 +4690,7 @@ const driver::borrow_evidence::VerifiedBorrowEvidenceLease& VerifiedBuiltMir::bo
   return impl->borrowEvidenceLease;
 }
 
-ownership::OwnershipAdmittedBoundModule VerifiedBuiltMir::retainAdmittedBoundModule() const {
+ownership::AdmittedBoundModule VerifiedBuiltMir::retainAdmittedBoundModule() const {
   return impl->boundModule.retain();
 }
 

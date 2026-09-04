@@ -36,8 +36,7 @@ struct BorrowSourceAccepted final {};
 /// verifier's independent reconstruction.
 class BorrowSourceVerificationResult final {
 public:
-  using SourceFailures =
-      ir::SortedSourceFailureFacts<OwnershipSourceFailure, OwnershipSourceFailureOrdering>;
+  using SourceFailures = ir::SortedSourceFailureFacts<SourceFailure, SourceFailureOrdering>;
 
   BorrowSourceVerificationResult(BorrowSourceVerificationResult&&) noexcept = default;
   BorrowSourceVerificationResult& operator=(BorrowSourceVerificationResult&&) noexcept = default;

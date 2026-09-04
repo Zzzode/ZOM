@@ -325,12 +325,12 @@ public:
           // executes the same public verified-builder sequence before body checking, so the test
           // can isolate borrow-evidence verification from later HIR failures.
           auto& semanticTypes = const_cast<type::SemanticTypeStore&>(constSemanticTypes);
-          zc::Vector<ownership::OwnershipAdmittedBoundModule> admittedModules(boundModules.size());
+          zc::Vector<ownership::AdmittedBoundModule> admittedModules(boundModules.size());
           zc::Vector<checker::signature::MarkerShapeModuleInput> markerInputs(boundModules.size());
           for (const auto& bound : boundModules) {
-            auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(bound.retain());
-            ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
-            admittedModules.add(zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>());
+            auto admission = ownership::SurfaceAdmissionBuilder::admit(bound.retain());
+            ZC_REQUIRE(admission.is<ownership::AdmittedBoundModule>());
+            admittedModules.add(zc::mv(admission).get<ownership::AdmittedBoundModule>());
             markerInputs.add(checker::signature::MarkerShapeModuleInput{admittedModules.back()});
           }
           auto shapeResult = checker::signature::MarkerShapeInventoryBuilder::build(
@@ -457,9 +457,9 @@ public:
     ZC_IF_SOME(bound, identities().boundModule(signatureFactModules[requester])) {
       ZC_IF_SOME(policies, markerPolicies) {
         ZC_IF_SOME(semanticTypes, session.getSemanticTypeStore()) {
-          auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(bound.retain());
-          ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
-          auto admitted = zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>();
+          auto admission = ownership::SurfaceAdmissionBuilder::admit(bound.retain());
+          ZC_REQUIRE(admission.is<ownership::AdmittedBoundModule>());
+          auto admitted = zc::mv(admission).get<ownership::AdmittedBoundModule>();
           return ModuleInterfaceVerifier::build(ModuleInterfaceBuildInput{
               admitted, signatureFacts[requester], importedViews[requester], policies,
               moduleInterfaces[requester].borrowSurface().clone(), semanticTypes, authority});
@@ -475,9 +475,9 @@ public:
       ZC_IF_SOME(bound, identities().boundModule(signatureFactModules[requester])) {
         ZC_IF_SOME(policies, markerPolicies) {
           ZC_IF_SOME(semanticTypes, session.getSemanticTypeStore()) {
-            auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(bound.retain());
-            ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
-            auto admitted = zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>();
+            auto admission = ownership::SurfaceAdmissionBuilder::admit(bound.retain());
+            ZC_REQUIRE(admission.is<ownership::AdmittedBoundModule>());
+            auto admitted = zc::mv(admission).get<ownership::AdmittedBoundModule>();
             return ModuleInterfaceVerifier::build(ModuleInterfaceBuildInput{
                 admitted, signatureFacts[requester], importedViews[requester], policies,
                 moduleInterfaces[index].borrowSurface().clone(), semanticTypes, identities()});

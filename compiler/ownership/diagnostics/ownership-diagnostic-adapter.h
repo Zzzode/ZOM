@@ -29,11 +29,11 @@ namespace zomlang::compiler::ownership {
 
 /// \brief Emit closed ownership source failures with their cause-note diagnostics.
 ///
-/// The switch over `OwnershipSourceFailure` is compile-time exhaustive: adding a
+/// The switch over `SourceFailure` is compile-time exhaustive: adding a
 /// variant without extending this adapter produces a `-Wswitch` warning. Each
 /// cause in the active variant's cause sequence becomes one child note.
 void emitOwnershipSourceFailures(diagnostics::DiagnosticEngine& diagnostics,
                                  const binder::VerifiedParsedModule& parsedModule,
-                                 zc::ArrayPtr<const OwnershipSourceFailure> failures);
+                                 zc::ArrayPtr<const SourceFailure> failures);
 
 }  // namespace zomlang::compiler::ownership

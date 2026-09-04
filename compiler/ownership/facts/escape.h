@@ -219,7 +219,7 @@ struct EscapeDirectInputProof final {
 
 /// \brief Contained escape proof: the escaping value is contained at required points.
 struct EscapeContainedProof final {
-  zc::Vector<OwnershipPoint> requiredPoints;
+  zc::Vector<Point> requiredPoints;
 };
 
 /// \brief Address-only escape proof: the escaping value is only an address.
@@ -250,7 +250,7 @@ public:
   ZC_NODISCARD static EscapeProof directInput(BorrowInputKey input) {
     return EscapeProof(EscapeDirectInputProof{zc::mv(input)});
   }
-  ZC_NODISCARD static EscapeProof contained(zc::Vector<OwnershipPoint> requiredPoints) {
+  ZC_NODISCARD static EscapeProof contained(zc::Vector<Point> requiredPoints) {
     return EscapeProof(EscapeContainedProof{zc::mv(requiredPoints)});
   }
   ZC_NODISCARD static EscapeProof addressOnly() noexcept {
@@ -353,7 +353,7 @@ class EscapeCandidate final {
 public:
   EscapeCandidate(identity::SemanticContextBrand semanticContext,
                   identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
-                  mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
+                  mir::MirRevisionId builtRevision, EventOverlayRevision overlayRevision,
                   driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
                   zc::Vector<EscapeFact>&& escapes) noexcept;
   EscapeCandidate(EscapeCandidate&&) noexcept = default;
@@ -364,7 +364,7 @@ public:
   identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   mir::MirRevisionId builtRevision;
-  OwnershipEventOverlayRevision overlayRevision;
+  EventOverlayRevision overlayRevision;
   driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision;
   zc::Vector<EscapeFact> escapes;
 };
@@ -381,7 +381,7 @@ public:
   ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const mir::MirRevisionId& builtRevision() const noexcept;
-  ZC_NODISCARD const OwnershipEventOverlayRevision& overlayRevision() const noexcept;
+  ZC_NODISCARD const EventOverlayRevision& overlayRevision() const noexcept;
   ZC_NODISCARD const driver::borrow_evidence::BorrowEvidenceRevision& borrowEvidenceRevision()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const EscapeFact> escapes() const noexcept;

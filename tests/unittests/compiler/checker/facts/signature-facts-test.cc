@@ -496,14 +496,14 @@ class DeclaredFieldOrderFixture final {
 public:
   explicit DeclaredFieldOrderFixture(zc::StringPtr sourceText) : session(sourceText) {
     const auto& identities = session.identityAuthority();
-    zc::Vector<ownership::OwnershipAdmittedBoundModule> admitted(identities.modules().size());
+    zc::Vector<ownership::AdmittedBoundModule> admitted(identities.modules().size());
     zc::Vector<MarkerShapeModuleInput> shapeInputs(identities.modules().size());
     zc::Maybe<size_t> userIndex;
     for (size_t index = 0; index < identities.modules().size(); ++index) {
       const auto& candidate = identities.modules()[index];
-      auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(candidate.retain());
-      ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
-      admitted.add(zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>());
+      auto admission = ownership::SurfaceAdmissionBuilder::admit(candidate.retain());
+      ZC_REQUIRE(admission.is<ownership::AdmittedBoundModule>());
+      admitted.add(zc::mv(admission).get<ownership::AdmittedBoundModule>());
       shapeInputs.add(MarkerShapeModuleInput{admitted.back()});
       if (candidate.module() == session.module()) { userIndex = index; }
     }

@@ -5,15 +5,15 @@
 
 #pragma once
 
+#include "compiler/checker/operator-kind.h"
+#include "compiler/hir/checked-module.h"
+#include "compiler/hir/hir-node-id.h"
+#include "compiler/type/semantic-type-data.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "compiler/checker/operator-kind.h"
-#include "compiler/hir/checked-module.h"
-#include "compiler/hir/hir-node-id.h"
-#include "compiler/type/semantic-type-data.h"
 
 namespace zomlang::compiler::mir {
 class BuiltMirBuilder;
@@ -21,7 +21,7 @@ class BuiltMirVerifier;
 }  // namespace zomlang::compiler::mir
 
 namespace zomlang::compiler::ownership {
-class OwnershipAdmittedBoundModule;
+class AdmittedBoundModule;
 }  // namespace zomlang::compiler::ownership
 
 namespace zomlang::compiler::hir {
@@ -425,7 +425,7 @@ public:
   ZC_NODISCARD zc::Maybe<zc::String> dump() const;
 
 private:
-  ZC_NODISCARD ownership::OwnershipAdmittedBoundModule retainAdmittedBoundModule() const;
+  ZC_NODISCARD ownership::AdmittedBoundModule retainAdmittedBoundModule() const;
   ZC_NODISCARD checker::CheckerIdentityAuthority retainIdentityAuthority() const;
   ZC_NODISCARD driver::borrow_evidence::BorrowEvidenceRepositoryCapability
   borrowEvidenceCapability() const noexcept;

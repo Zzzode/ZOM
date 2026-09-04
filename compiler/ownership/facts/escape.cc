@@ -83,14 +83,14 @@ ir::IrOperationResult<Result> reject(const mir::VerifiedBuiltMir& builtMir,
   identity::DefId definition;
   if (builtMir.functions().size() != 0) definition = builtMir.functions()[0].owner;
   AuthorityIdentityResolver resolver(identities);
-  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::OwnershipProofValidation,
+  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::ProofValidation,
                                                      ir::IrFailureOwner::definition(definition));
   ZC_IREQUIRE(fallback != zc::none, "Escape failure fallback must be legal");
   zc::Maybe<ir::IrFailureSite> noSite;
   zc::Maybe<identity::SourceSpan> noSpan;
   zc::Vector<uint32_t> noPath;
   auto descriptor = ir::IrFailureDescriptor::decoded(
-      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::OwnershipProofValidation, kind,
+      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::ProofValidation, kind,
       ir::IrFailureOwner::definition(definition), zc::mv(noSite), ir::IrFailureDetail::none(),
       zc::mv(noSpan), zc::mv(noPath), ordinal);
   ZC_IF_SOME(fallbackValue, fallback) {
@@ -194,7 +194,7 @@ bool sameMovePath(const MovePathKey& left, const MovePathKey& right) {
 /// \brief Returns whether one event slot carries the Escape role.
 bool hasEscapeRole(const MirEventSlot& slot) noexcept {
   for (const auto role : slot.roles) {
-    if (role == OwnershipEventRole::Escape) return true;
+    if (role == EventRole::Escape) return true;
   }
   return false;
 }
@@ -216,7 +216,7 @@ zc::Maybe<ReferenceOrigin> referenceOrigin(const ReferenceDefinition& definition
     return zc::none;
   }
   // The admitted subset activates every reference at an AfterEvent point.
-  if (definition.origin.activation.kind() != OwnershipPointKind::AfterEvent) return zc::none;
+  if (definition.origin.activation.kind() != PointKind::AfterEvent) return zc::none;
   const auto& activation = definition.origin.activation.afterEventValue().event;
   ZC_IF_SOME(region, rootRegion) {
     return ReferenceOrigin{ReferenceRoot{region.clone(),
@@ -253,7 +253,7 @@ zc::Maybe<EscapeProof> escapeProof(const ReferenceDefinition& definition,
     return EscapeProof::directInput(BorrowInputKey::parameter(index));
   }
   if (!definition.origin.detail.is<LocalReferenceOrigin>()) return zc::none;
-  zc::Vector<OwnershipPoint> requiredPoints;
+  zc::Vector<Point> requiredPoints;
   requiredPoints.add(definition.livePoints.afterCommit);
   requiredPoints.add(definition.livePoints.afterCommitCfg);
   requiredPoints.add(definition.livePoints.beforeReturnCfg);
@@ -365,8 +365,8 @@ zc::Maybe<zc::Vector<EscapeFact>> deriveCaptureEscapes(
     ZC_IF_SOME(value, fact) {
       value.key = capture.construction;
       value.source = MovePathKey{capture.captured.owner, capture.captured.place.clone()};
-      zc::Vector<OwnershipPoint> requiredPoints;
-      requiredPoints.add(OwnershipPoint::beforeEvent(capture.construction));
+      zc::Vector<Point> requiredPoints;
+      requiredPoints.add(Point::beforeEvent(capture.construction));
       value.proof = EscapeProof::contained(zc::mv(requiredPoints));
       escapes.add(zc::mv(value));
     }
@@ -461,7 +461,7 @@ bool staticEscapeProofAdmissible(zc::ArrayPtr<const EscapeOriginCause> origins,
     bool contained = false;
     for (const auto& membership : memberships) {
       if (membership.region == cause.origin.active &&
-          membership.point.kind() == OwnershipPointKind::BeforeEvent &&
+          membership.point.kind() == PointKind::BeforeEvent &&
           membership.point.beforeEventValue().event == key) {
         contained = true;
         break;
@@ -485,7 +485,7 @@ bool addressOnlyEscapeProofAdmissible(
 EscapeCandidate::EscapeCandidate(
     identity::SemanticContextBrand semanticContext,
     identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
-    mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
+    mir::MirRevisionId builtRevision, EventOverlayRevision overlayRevision,
     driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
     zc::Vector<EscapeFact>&& escapes) noexcept
     : semanticContext(semanticContext),
@@ -521,7 +521,7 @@ identity::ModuleId VerifiedEscapeFacts::module() const noexcept { return impl->c
 const mir::MirRevisionId& VerifiedEscapeFacts::builtRevision() const noexcept {
   return impl->candidate.builtRevision;
 }
-const OwnershipEventOverlayRevision& VerifiedEscapeFacts::overlayRevision() const noexcept {
+const EventOverlayRevision& VerifiedEscapeFacts::overlayRevision() const noexcept {
   return impl->candidate.overlayRevision;
 }
 const driver::borrow_evidence::BorrowEvidenceRevision& VerifiedEscapeFacts::borrowEvidenceRevision()

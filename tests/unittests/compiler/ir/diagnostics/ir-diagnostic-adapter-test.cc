@@ -101,7 +101,7 @@ diagnostics::DiagID expectedPhaseDiagnostic(IrFailurePhase phase) {
     case IrFailurePhase::MirConstruction:
     case IrFailurePhase::BuiltMirVerification:
       return DiagID::BuiltMirInvariant;
-    case IrFailurePhase::OwnershipProofValidation:
+    case IrFailurePhase::ProofValidation:
       return DiagID::OwnershipProofInvariant;
     case IrFailurePhase::CleanupElaboration:
     case IrFailurePhase::CoroutineElaboration:

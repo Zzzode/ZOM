@@ -27,7 +27,7 @@ This RFC defines the two upstream contracts required before RFC 0007 can be
 redesigned over Built MIR:
 
 1. one source-rejecting ownership-analysis result at RFC 0010
-   `OwnershipProofValidation`; and
+   `ProofValidation`; and
 2. one revision-bound, cross-module direct-reference relation in RFC 0008
    module interfaces and the verified frontend handoff.
 
@@ -59,7 +59,7 @@ region relations require a later language RFC.
 ## Goals
 
 - Add a source-rejecting ownership result at exactly
-  `OwnershipProofValidation`.
+  `ProofValidation`.
 - Fix the verified success type to `VerifiedOwnershipFacts`.
 - Preserve RFC 0011 identity failures and RFC 0010 IR invariant failures.
 - Define a closed, deterministic direct-reference signature summary.
@@ -174,7 +174,7 @@ For RFC 0010, this RFC replaces only:
 
 - the claim that `FeatureBoundaryVerificationResult` is the sole
   source-rejecting IR extension;
-- the `OwnershipProofValidation` legality row and generated constructors;
+- the `ProofValidation` legality row and generated constructors;
 - the `VerifiedCheckedModule` borrow-evidence handoff;
 - ownership-result validation against the canonical Built MIR and
   borrow-evidence lineage;
@@ -713,7 +713,7 @@ VerifiedBuiltMir {
 ```
 
 Ownership facts record the exact Built `MirRevisionId` and
-`BorrowEvidenceRevision`. `OwnershipCheckedMir` can be constructed only when
+`BorrowEvidenceRevision`. `CheckedMir` can be constructed only when
 both match the embedded verified Built MIR and the resolved lease. HIR carries
 the same lease from `VerifiedCheckedModule`; MIR construction rejects a swap
 before computing the revision. Built MIR contains no reserved phase tags,
@@ -732,7 +732,7 @@ analyzeOwnership(
 OwnershipAnalysisResult =
   Verified { facts: VerifiedOwnershipFacts }
   | SourceRejected {
-      failures: SortedNonEmptySequence<RFC0007::OwnershipSourceFailure>,
+      failures: SortedNonEmptySequence<RFC0007::SourceFailure>,
     }
   | IdentityInvariantRejected {
       failures: SortedNonEmptySequence<RFC0011::IdentityInvariant>,
@@ -749,7 +749,7 @@ qualified source-failure reference with its exact closed algebra before this
 operation can move to implementation.
 
 The operation and ownership proof verifier are one
-`OwnershipProofValidation` phase. The exact precedence is:
+`ProofValidation` phase. The exact precedence is:
 
 1. validate context, identities, the canonical Built MIR artifact and revision,
    evidence lease, and evidence revision;
@@ -762,15 +762,15 @@ The operation and ownership proof verifier are one
 6. otherwise build and verify the ownership-fact candidate; and
 7. publish `VerifiedOwnershipFacts` only after proof verification succeeds.
 
-`SourceRejected` is legal only at `OwnershipProofValidation`. Identity failures
+`SourceRejected` is legal only at `ProofValidation`. Identity failures
 use RFC 0011. IR failures use only the accepted RFC 0010
-`OwnershipProofValidation` kind/owner/site row and map to `ZOM9945`, except
+`ProofValidation` kind/owner/site row and map to `ZOM9945`, except
 `CanonicalCodecMismatch`, which maps to `ZOM9949`.
 
 Generated phase-specific constructors expose the fixed operation above only.
 HIR, MIR construction, cleanup, coroutine, LIR, and backend phases cannot name
 the source constructor. A rejected result cannot carry ownership facts,
-`OwnershipCheckedMir`, or any successor MIR. `FeatureBoundaryVerificationResult`
+`CheckedMir`, or any successor MIR. `FeatureBoundaryVerificationResult`
 remains the only other source-rejecting IR result and remains legal only at
 `FeatureBoundaryVerification`.
 
@@ -910,7 +910,7 @@ no dual schema, optional surface, decoder, shim, feature flag, or fallback.
 
 ## Operational Readiness
 
-CI rejects any ownership source result outside `OwnershipProofValidation`, any
+CI rejects any ownership source result outside `ProofValidation`, any
 module interface without a complete borrow surface, and any consumer that
 reconstructs foreign summaries. Revisions and
 diagnostics must be byte-identical under worker counts `1, 2, 4, 8`, fixed map
@@ -938,7 +938,7 @@ seed permutations, reversed source order, aliases, and re-exports.
     repository lease and covers direct, impl, witness, dyn, and abstract calls;
     borrow-bearing body-local closures fail with `ZOM4085` before assembly.
 11. `analyzeOwnership` has the fixed success type, runs only at
-    `OwnershipProofValidation`, and publishes no fact or successor on rejection.
+    `ProofValidation`, and publishes no fact or successor on rejection.
 12. Generated tests cover result branch by every phase, wrong success type,
     source result outside ownership, and rejected results carrying successor
     values.

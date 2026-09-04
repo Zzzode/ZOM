@@ -794,7 +794,7 @@ owned deinitializers without source-name lookup.
 The direct replacement input is:
 
 ```text
-OwnershipEventOverlayInput {
+EventOverlayInput {
   checked: const OwnershipAdmittedCheckedModule,
   hir: const VerifiedHirModule,
   built: const VerifiedBuiltMir,
@@ -874,7 +874,7 @@ boundary. A revision mismatch never maps to `CanonicalCodecMismatch`, and an
 identity failure is never collapsed into a checker invariant.
 
 An ownership-boundary lineage mismatch maps to RFC 0007
-`InputRevisionMismatch` at `OwnershipProofValidation`. No failure publishes a
+`InputRevisionMismatch` at `ProofValidation`. No failure publishes a
 partial authority or overlay.
 
 ### RFC 0025 Source-Backed Core Synchronization

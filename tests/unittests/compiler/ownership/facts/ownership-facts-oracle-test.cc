@@ -343,7 +343,7 @@ void expectOracleMatchesInventory(const OwnershipPipelineFixture& fixture) {
 //
 // Constructs one canonical function record representing a local-borrow body
 // (entry root, constant-assign destination write, borrow issue + activation,
-// return read), frames it through the production OwnershipEventOverlayCodec
+// return read), frames it through the production EventOverlayCodec
 // with fixed revisions, and asserts the exact byte count. A companion test
 // mutates every load-bearing byte and asserts the digest changes, proving the
 // encoding is collision-free for this record shape.
@@ -443,9 +443,9 @@ zc::Maybe<zc::Array<uint8_t>> frameLocalBorrowOverlay(zc::ArrayPtr<const uint8_t
   const uint8_t module[] = {0xa1};
   zc::Vector<zc::Array<uint8_t>> functions;
   functions.add(zc::heapArray(functionRecord));
-  return OwnershipEventOverlayCodec::encodeFramed(repeatedDigest(0x00), zc::arrayPtr(module),
-                                                  repeatedDigest(0x44), repeatedDigest(0x22),
-                                                  functions.asPtr());
+  return EventOverlayCodec::encodeFramed(repeatedDigest(0x00), zc::arrayPtr(module),
+                                         repeatedDigest(0x44), repeatedDigest(0x22),
+                                         functions.asPtr());
 }
 
 zc::Maybe<identity::Sha256Digest> digestOf(zc::ArrayPtr<const uint8_t> bytes) {
@@ -547,7 +547,7 @@ ZC_TEST("Ownership event overlay local-borrow oracle changes when any input byte
 // A test-owned encoder reproduces the exact facts framing layout from the RFC
 // (domain + null + context fingerprint + module key + MIR revision + overlay
 // revision + borrow-evidence revision + function sequence) without calling the
-// production OwnershipFactsCodec, whose group layout differs. Each test
+// production FactsCodec, whose group layout differs. Each test
 // asserts the exact byte count, the full preimage hex, and the SHA-256 digest
 // from the RFC, plus mutation sensitivity.
 // ---------------------------------------------------------------------------
@@ -754,7 +754,7 @@ ZC_TEST("Ownership facts oracles change when any input byte is mutated") {
 // ---------------------------------------------------------------------------
 // Production codec byte oracles.
 //
-// These tests exercise the production OwnershipFactsCodec directly (not the
+// These tests exercise the production FactsCodec directly (not the
 // test-owned encodeFactsOracle encoder) to verify that the production encoding
 // is deterministic, non-empty, and sensitive to input changes.
 // ---------------------------------------------------------------------------
@@ -773,7 +773,7 @@ static zc::Maybe<zc::Array<uint8_t>> encodeProductionFacts(
   ZC_REQUIRE(semanticTypes != zc::none);
   ZC_IF_SOME(id, identities) {
     ZC_IF_SOME(types, semanticTypes) {
-      return facts::OwnershipFactsCodec::encode(inputs, overlay, id, types);
+      return facts::FactsCodec::encode(inputs, overlay, id, types);
     }
   }
   return zc::none;

@@ -79,14 +79,14 @@ ir::IrOperationResult<Result> reject(const mir::VerifiedBuiltMir& builtMir,
   identity::DefId definition;
   if (builtMir.functions().size() != 0) definition = builtMir.functions()[0].owner;
   AuthorityIdentityResolver resolver(identities);
-  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::OwnershipProofValidation,
+  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::ProofValidation,
                                                      ir::IrFailureOwner::definition(definition));
   ZC_IREQUIRE(fallback != zc::none, "Region membership failure fallback must be legal");
   zc::Maybe<ir::IrFailureSite> noSite;
   zc::Maybe<identity::SourceSpan> noSpan;
   zc::Vector<uint32_t> noPath;
   auto descriptor = ir::IrFailureDescriptor::decoded(
-      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::OwnershipProofValidation, kind,
+      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::ProofValidation, kind,
       ir::IrFailureOwner::definition(definition), zc::mv(noSite), ir::IrFailureDetail::none(),
       zc::mv(noSpan), zc::mv(noPath), ordinal);
   ZC_IF_SOME(fallbackValue, fallback) {
@@ -115,16 +115,16 @@ ir::IrOperationResult<Result> reject(const mir::VerifiedBuiltMir& builtMir,
 // ---------------------------------------------------------------------------
 
 /// \brief Orders two ownership points by kind then canonical location.
-bool lessPoint(const OwnershipPoint& left, const OwnershipPoint& right) noexcept {
+bool lessPoint(const Point& left, const Point& right) noexcept {
   if (left.kind() != right.kind()) {
     return static_cast<uint8_t>(left.kind()) < static_cast<uint8_t>(right.kind());
   }
   switch (left.kind()) {
-    case OwnershipPointKind::Cfg:
+    case PointKind::Cfg:
       return left.cfgValue().point < right.cfgValue().point;
-    case OwnershipPointKind::BeforeEvent:
+    case PointKind::BeforeEvent:
       return lessEventKey(left.beforeEventValue().event, right.beforeEventValue().event);
-    case OwnershipPointKind::AfterEvent:
+    case PointKind::AfterEvent:
       return lessEventKey(left.afterEventValue().event, right.afterEventValue().event);
   }
   return false;
@@ -234,9 +234,9 @@ bool inputsMatch(const VerifiedFlow& flow, const VerifiedLoanFacts& loans,
 // Function lookup
 // ---------------------------------------------------------------------------
 
-zc::Maybe<const OwnershipFunctionEventOverlay&> overlayFor(
-    const VerifiedOwnershipEventOverlay& overlay, identity::DefId owner) {
-  zc::Maybe<const OwnershipFunctionEventOverlay&> result;
+zc::Maybe<const FunctionEventOverlay&> overlayFor(const VerifiedOwnershipEventOverlay& overlay,
+                                                  identity::DefId owner) {
+  zc::Maybe<const FunctionEventOverlay&> result;
   for (const auto& function : overlay.functions()) {
     if (function.owner != owner) continue;
     if (result != zc::none) return zc::none;
@@ -414,7 +414,7 @@ zc::Maybe<MirEventKey> lastUseOfDestination(const mir::MirFunction& function,
 // Forward dataflow
 // ---------------------------------------------------------------------------
 
-zc::Maybe<size_t> pointIndex(const FlowFunction& flow, const OwnershipPoint& point) {
+zc::Maybe<size_t> pointIndex(const FlowFunction& flow, const Point& point) {
   for (size_t index = 0; index < flow.points.size(); ++index) {
     if (flow.points[index] == point) return index;
   }
@@ -427,11 +427,11 @@ zc::Maybe<size_t> pointIndex(const FlowFunction& flow, const OwnershipPoint& poi
 /// region keyed by its local ordinal. Input regions are never killed: a borrow
 /// input is live for the entire function body.
 bool seedInputRegions(const FlowFunction& flow, const mir::MirFunction& function,
-                      const OwnershipFunctionEventOverlay& overlay,
+                      const FunctionEventOverlay& overlay,
                       zc::Vector<zc::Vector<RegionKey>>& seeds) {
   zc::Maybe<size_t> entryIndex;
   for (size_t index = 0; index < flow.points.size(); ++index) {
-    if (flow.points[index].kind() != OwnershipPointKind::Cfg) continue;
+    if (flow.points[index].kind() != PointKind::Cfg) continue;
     if (flow.points[index].cfgValue().point.kind() != MirPointKind::Entry) continue;
     if (entryIndex != zc::none) return false;
     entryIndex = index;
@@ -439,8 +439,8 @@ bool seedInputRegions(const FlowFunction& flow, const mir::MirFunction& function
   if (entryIndex == zc::none) return false;
   for (const auto& slot : overlay.slots) {
     if (slot.key.location.point.kind() != MirPointKind::Entry) continue;
-    if (slot.stage != OwnershipEventStage::Commit) continue;
-    if (slot.roles.size() != 1 || slot.roles[0] != OwnershipEventRole::EntryRoot) continue;
+    if (slot.stage != EventStage::Commit) continue;
+    if (slot.roles.size() != 1 || slot.roles[0] != EventRole::EntryRoot) continue;
     const uint32_t ordinal = slot.key.operandOrdinal;
     if (ordinal >= function.locals.size()) return false;
     if (function.locals[ordinal].kind != mir::MirLocalKind::Parameter) continue;
@@ -470,7 +470,7 @@ bool seedLoanRegions(const FlowFunction& flow, const mir::MirFunction& function,
       continue;
     }
     ZC_IF_SOME(lastUseEvent, lastUse) {
-      auto killIndex = pointIndex(flow, OwnershipPoint::afterEvent(lastUseEvent));
+      auto killIndex = pointIndex(flow, Point::afterEvent(lastUseEvent));
       if (killIndex == zc::none) return false;
       addRegion(seeds[ZC_ASSERT_NONNULL(activeIndex)], region);
       addRegion(kills[ZC_ASSERT_NONNULL(killIndex)], zc::mv(region));
@@ -490,7 +490,7 @@ bool seedLoanRegions(const FlowFunction& flow, const mir::MirFunction& function,
 /// it is in live-out[P].
 zc::Maybe<zc::Vector<RegionMembership>> deriveFunction(const FlowFunction& flow,
                                                        const mir::MirFunction& function,
-                                                       const OwnershipFunctionEventOverlay& overlay,
+                                                       const FunctionEventOverlay& overlay,
                                                        zc::ArrayPtr<const LoanFact> allLoans) {
   const size_t pointCount = flow.points.size();
   zc::Vector<zc::Vector<size_t>> successors;
@@ -578,7 +578,7 @@ zc::Maybe<zc::Vector<RegionMembership>> derive(const VerifiedFlow& flow,
 RegionMembershipCandidate::RegionMembershipCandidate(
     identity::SemanticContextBrand semanticContext,
     identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
-    mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
+    mir::MirRevisionId builtRevision, EventOverlayRevision overlayRevision,
     driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
     zc::Vector<RegionMembership>&& memberships) noexcept
     : semanticContext(semanticContext),
@@ -613,7 +613,7 @@ identity::ModuleId VerifiedRegionMemberships::module() const noexcept {
 const mir::MirRevisionId& VerifiedRegionMemberships::builtRevision() const noexcept {
   return impl->candidate.builtRevision;
 }
-const OwnershipEventOverlayRevision& VerifiedRegionMemberships::overlayRevision() const noexcept {
+const EventOverlayRevision& VerifiedRegionMemberships::overlayRevision() const noexcept {
   return impl->candidate.overlayRevision;
 }
 const driver::borrow_evidence::BorrowEvidenceRevision&

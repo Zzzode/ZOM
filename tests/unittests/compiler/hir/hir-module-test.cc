@@ -286,9 +286,9 @@ ZC_TEST("CheckedModuleBuilder rejects a foreign checker identity authority") {
         ZC_IF_SOME(evidenceLease, lease) {
           ZC_IF_SOME(borrow, borrowRepository) {
             ZC_IF_SOME(types, semanticTypes) {
-              auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(bound.retain());
-              ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
-              auto admitted = zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>();
+              auto admission = ownership::SurfaceAdmissionBuilder::admit(bound.retain());
+              ZC_REQUIRE(admission.is<ownership::AdmittedBoundModule>());
+              auto admitted = zc::mv(admission).get<ownership::AdmittedBoundModule>();
               auto result = CheckedModuleBuilder::build(CheckedModuleBuildInput{
                   admitted, signatures[0], interfaces[0], importedViews[0],
                   interfaceSources.asPtr(), zc::mv(evidenceLease), repository, dispatchFacts[0],

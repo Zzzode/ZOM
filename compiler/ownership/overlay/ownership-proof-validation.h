@@ -26,7 +26,7 @@
 namespace zomlang::compiler::ownership {
 
 /// \brief Summary of one RFC 0013 ownership proof validation pass.
-struct OwnershipProofValidationReport final {
+struct ProofValidationReport final {
   /// Number of escape proofs examined during the pass.
   size_t validatedEscapeProofs = 0;
   /// Number of region memberships examined during the pass.
@@ -59,7 +59,7 @@ public:
   /// \brief Returns the validated capture facts.
   ZC_NODISCARD const facts::VerifiedCaptureFacts& captures() const noexcept;
   /// \brief Returns the validation report.
-  ZC_NODISCARD const OwnershipProofValidationReport& report() const noexcept;
+  ZC_NODISCARD const ProofValidationReport& report() const noexcept;
   /// \brief Consumes the embedded verified ownership inputs for the finalizer.
   ZC_NODISCARD facts::VerifiedOwnershipInputs takeInputs() && noexcept;
 
@@ -68,7 +68,7 @@ private:
   explicit ValidatedOwnershipProofs(zc::Own<Impl>&& impl) noexcept;
   zc::Own<Impl> impl;
 
-  friend class OwnershipProofValidation;
+  friend class ProofValidation;
 };
 
 /// \brief Validates all ownership proofs before publication (RFC 0013).
@@ -78,7 +78,7 @@ private:
 /// supporting facts, and either publishes one ValidatedOwnershipProofs or
 /// rejects the operation. A rejected validation destroys its consumed inputs
 /// and publishes no partial successor.
-class OwnershipProofValidation final {
+class ProofValidation final {
 public:
   ZC_NODISCARD static ir::IrOperationResult<ValidatedOwnershipProofs> validate(
       facts::VerifiedOwnershipInputs&& inputs,

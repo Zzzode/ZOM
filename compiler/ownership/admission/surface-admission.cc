@@ -20,8 +20,7 @@
 namespace zomlang::compiler::ownership {
 namespace {
 
-bool occursAfter(const OwnershipSurfaceFailure& left,
-                 const OwnershipSurfaceFailure& right) noexcept {
+bool occursAfter(const SurfaceFailure& left, const SurfaceFailure& right) noexcept {
   if (left.primarySpan.byteStart() != right.primarySpan.byteStart()) {
     return left.primarySpan.byteStart() > right.primarySpan.byteStart();
   }
@@ -34,8 +33,7 @@ bool occursAfter(const OwnershipSurfaceFailure& left,
   return static_cast<uint8_t>(left.kind) > static_cast<uint8_t>(right.kind);
 }
 
-void insertFailure(zc::Vector<OwnershipSurfaceFailure>& failures,
-                   OwnershipSurfaceFailure&& failure) {
+void insertFailure(zc::Vector<SurfaceFailure>& failures, SurfaceFailure&& failure) {
   failures.add(zc::mv(failure));
   for (size_t index = failures.size() - 1;
        index != 0 && occursAfter(failures[index - 1], failures[index]); --index) {
@@ -759,105 +757,89 @@ bool requiresFunctionBodyFailure(const ast::Tree& tree, const ast::Node& functio
 
 }  // namespace
 
-struct OwnershipSurfaceSourceRejected::Impl final {
-  explicit Impl(zc::Vector<OwnershipSurfaceFailure>&& failures) noexcept
-      : failureValues(zc::mv(failures)) {}
+struct SurfaceSourceRejected::Impl final {
+  explicit Impl(zc::Vector<SurfaceFailure>&& failures) noexcept : failureValues(zc::mv(failures)) {}
 
-  zc::Vector<OwnershipSurfaceFailure> failureValues;
+  zc::Vector<SurfaceFailure> failureValues;
 };
 
-OwnershipSurfaceSourceRejected::OwnershipSurfaceSourceRejected(zc::Own<Impl>&& impl) noexcept
-    : impl(zc::mv(impl)) {}
-OwnershipSurfaceSourceRejected::~OwnershipSurfaceSourceRejected() noexcept(false) = default;
-OwnershipSurfaceSourceRejected::OwnershipSurfaceSourceRejected(
-    OwnershipSurfaceSourceRejected&&) noexcept = default;
-OwnershipSurfaceSourceRejected& OwnershipSurfaceSourceRejected::operator=(
-    OwnershipSurfaceSourceRejected&&) noexcept = default;
-zc::ArrayPtr<const OwnershipSurfaceFailure> OwnershipSurfaceSourceRejected::failures()
-    const noexcept {
+SurfaceSourceRejected::SurfaceSourceRejected(zc::Own<Impl>&& impl) noexcept : impl(zc::mv(impl)) {}
+SurfaceSourceRejected::~SurfaceSourceRejected() noexcept(false) = default;
+SurfaceSourceRejected::SurfaceSourceRejected(SurfaceSourceRejected&&) noexcept = default;
+SurfaceSourceRejected& SurfaceSourceRejected::operator=(SurfaceSourceRejected&&) noexcept = default;
+zc::ArrayPtr<const SurfaceFailure> SurfaceSourceRejected::failures() const noexcept {
   return impl->failureValues.asPtr();
 }
 
-struct OwnershipAdmittedBoundModule::Impl final {
+struct AdmittedBoundModule::Impl final {
   explicit Impl(driver::module_graph_query::CheckerBoundModuleView&& boundModule) noexcept
       : boundModuleValue(zc::mv(boundModule)) {}
 
   driver::module_graph_query::CheckerBoundModuleView boundModuleValue;
 };
 
-OwnershipAdmittedBoundModule::OwnershipAdmittedBoundModule(zc::Own<Impl>&& impl) noexcept
-    : impl(zc::mv(impl)) {}
-OwnershipAdmittedBoundModule::~OwnershipAdmittedBoundModule() noexcept(false) = default;
-OwnershipAdmittedBoundModule::OwnershipAdmittedBoundModule(
-    OwnershipAdmittedBoundModule&&) noexcept = default;
-OwnershipAdmittedBoundModule& OwnershipAdmittedBoundModule::operator=(
-    OwnershipAdmittedBoundModule&&) noexcept = default;
-const driver::module_graph_query::CheckerBoundModuleView&
-OwnershipAdmittedBoundModule::boundModule() const noexcept {
+AdmittedBoundModule::AdmittedBoundModule(zc::Own<Impl>&& impl) noexcept : impl(zc::mv(impl)) {}
+AdmittedBoundModule::~AdmittedBoundModule() noexcept(false) = default;
+AdmittedBoundModule::AdmittedBoundModule(AdmittedBoundModule&&) noexcept = default;
+AdmittedBoundModule& AdmittedBoundModule::operator=(AdmittedBoundModule&&) noexcept = default;
+const driver::module_graph_query::CheckerBoundModuleView& AdmittedBoundModule::boundModule()
+    const noexcept {
   return impl->boundModuleValue;
 }
-OwnershipAdmittedBoundModule OwnershipAdmittedBoundModule::retain() const {
-  return OwnershipAdmittedBoundModule(zc::heap<Impl>(impl->boundModuleValue.retain()));
+AdmittedBoundModule AdmittedBoundModule::retain() const {
+  return AdmittedBoundModule(zc::heap<Impl>(impl->boundModuleValue.retain()));
 }
-OwnershipAdmittedBoundModule::operator const driver::module_graph_query::CheckerBoundModuleView&()
+AdmittedBoundModule::operator const driver::module_graph_query::CheckerBoundModuleView&()
     const noexcept {
   return boundModule();
 }
-identity::SemanticContextBrand OwnershipAdmittedBoundModule::semanticContext() const noexcept {
+identity::SemanticContextBrand AdmittedBoundModule::semanticContext() const noexcept {
   return boundModule().semanticContext();
 }
-identity::CompilationUnitId OwnershipAdmittedBoundModule::compilationUnit() const noexcept {
+identity::CompilationUnitId AdmittedBoundModule::compilationUnit() const noexcept {
   return boundModule().compilationUnit();
 }
-identity::CrateId OwnershipAdmittedBoundModule::crate() const noexcept {
-  return boundModule().crate();
-}
-identity::ModuleId OwnershipAdmittedBoundModule::module() const noexcept {
-  return boundModule().module();
-}
-identity::SourceFileId OwnershipAdmittedBoundModule::sourceFile() const noexcept {
+identity::CrateId AdmittedBoundModule::crate() const noexcept { return boundModule().crate(); }
+identity::ModuleId AdmittedBoundModule::module() const noexcept { return boundModule().module(); }
+identity::SourceFileId AdmittedBoundModule::sourceFile() const noexcept {
   return boundModule().sourceFile();
 }
-const identity::ContextFingerprint& OwnershipAdmittedBoundModule::semanticFingerprint()
-    const noexcept {
+const identity::ContextFingerprint& AdmittedBoundModule::semanticFingerprint() const noexcept {
   return boundModule().semanticFingerprint();
 }
-const ast::Tree& OwnershipAdmittedBoundModule::tree() const noexcept {
-  return boundModule().tree();
-}
-const binder::CanonicalParsedModule& OwnershipAdmittedBoundModule::parsedModule() const noexcept {
+const ast::Tree& AdmittedBoundModule::tree() const noexcept { return boundModule().tree(); }
+const binder::CanonicalParsedModule& AdmittedBoundModule::parsedModule() const noexcept {
   return boundModule().parsedModule();
 }
-const binder::ImmutableDefinitionInventory& OwnershipAdmittedBoundModule::definitions()
-    const noexcept {
+const binder::ImmutableDefinitionInventory& AdmittedBoundModule::definitions() const noexcept {
   return boundModule().definitions();
 }
 zc::ArrayPtr<const binder::MaterializedDependencyExportSurface>
-OwnershipAdmittedBoundModule::dependencySurfaces() const noexcept {
+AdmittedBoundModule::dependencySurfaces() const noexcept {
   return boundModule().dependencySurfaces();
 }
-zc::Maybe<const binder::MaterializedDependencyExportSurface&>
-OwnershipAdmittedBoundModule::preludeSurface() const noexcept {
+zc::Maybe<const binder::MaterializedDependencyExportSurface&> AdmittedBoundModule::preludeSurface()
+    const noexcept {
   return boundModule().preludeSurface();
 }
-zc::ArrayPtr<const binder::ImportBindingFact> OwnershipAdmittedBoundModule::resolvedImports()
+zc::ArrayPtr<const binder::ImportBindingFact> AdmittedBoundModule::resolvedImports()
     const noexcept {
   return boundModule().resolvedImports();
 }
-zc::ArrayPtr<const binder::ModuleAliasBindingFact>
-OwnershipAdmittedBoundModule::resolvedModuleAliases() const noexcept {
+zc::ArrayPtr<const binder::ModuleAliasBindingFact> AdmittedBoundModule::resolvedModuleAliases()
+    const noexcept {
   return boundModule().resolvedModuleAliases();
 }
-const binder::ImmutableBindingMetadata& OwnershipAdmittedBoundModule::bindings() const noexcept {
+const binder::ImmutableBindingMetadata& AdmittedBoundModule::bindings() const noexcept {
   return boundModule().bindings();
 }
-const binder::VerifiedExportSurface& OwnershipAdmittedBoundModule::bindingSurface() const noexcept {
+const binder::VerifiedExportSurface& AdmittedBoundModule::bindingSurface() const noexcept {
   return boundModule().bindingSurface();
 }
 
-OwnershipSurfaceAdmissionResult OwnershipSurfaceAdmissionBuilder::admit(
+SurfaceAdmissionResult SurfaceAdmissionBuilder::admit(
     driver::module_graph_query::CheckerBoundModuleView&& boundModule) {
-  zc::Vector<OwnershipSurfaceFailure> failures;
+  zc::Vector<SurfaceFailure> failures;
   uint32_t traversalOrdinal = 0;
   // Custom traversal that skips the interior of unsafe blocks: their tail
   // expression is admitted as the block's value, not as a standalone
@@ -866,50 +848,50 @@ OwnershipSurfaceAdmissionResult OwnershipSurfaceAdmissionBuilder::admit(
     const auto& syntax = boundModule.tree().node(nodeId);
     ZC_IREQUIRE(traversalOrdinal != UINT32_MAX, "ownership surface traversal overflow");
     const uint32_t ordinal = traversalOrdinal++;
-    OwnershipSurfaceSyntaxKind kind;
+    SurfaceSyntaxKind kind;
     bool rejected = false;
     if (syntax.kind == ast::SyntaxKind::SpawnExpression) {
-      kind = OwnershipSurfaceSyntaxKind::Spawn;
+      kind = SurfaceSyntaxKind::Spawn;
       rejected = true;
     } else if (syntax.kind == ast::SyntaxKind::SuspendStatement) {
-      kind = OwnershipSurfaceSyntaxKind::Suspend;
+      kind = SurfaceSyntaxKind::Suspend;
       rejected = true;
     } else if (syntax.kind == ast::SyntaxKind::MatchStmt) {
-      kind = OwnershipSurfaceSyntaxKind::Match;
+      kind = SurfaceSyntaxKind::Match;
       rejected = true;
     } else if ((syntax.kind == ast::SyntaxKind::WhileStmt &&
                 !isAdmittedLoopStatement(boundModule.tree(), nodeId)) ||
                syntax.kind == ast::SyntaxKind::ForStmt ||
                syntax.kind == ast::SyntaxKind::ForInStatement ||
                syntax.kind == ast::SyntaxKind::DoWhileStatement) {
-      kind = OwnershipSurfaceSyntaxKind::Loop;
+      kind = SurfaceSyntaxKind::Loop;
       rejected = true;
     } else if (syntax.kind == ast::SyntaxKind::BreakStmt ||
                syntax.kind == ast::SyntaxKind::ContinueStatement) {
-      kind = OwnershipSurfaceSyntaxKind::LoopControl;
+      kind = SurfaceSyntaxKind::LoopControl;
       rejected = true;
     } else if (syntax.kind == ast::SyntaxKind::LabeledStatement) {
-      kind = OwnershipSurfaceSyntaxKind::Label;
+      kind = SurfaceSyntaxKind::Label;
       rejected = true;
     } else if (syntax.kind == ast::SyntaxKind::ReturnStmt &&
                !boundModule.tree().contains(
                    ast::NodeId(syntax.payload.words[ast::kReturnStmtValueWord]))) {
-      kind = OwnershipSurfaceSyntaxKind::VoidReturn;
+      kind = SurfaceSyntaxKind::VoidReturn;
       rejected = true;
     } else if (syntax.kind == ast::SyntaxKind::ExpressionStatement &&
                !isAdmittedExpressionStatement(boundModule.tree(), syntax)) {
-      kind = OwnershipSurfaceSyntaxKind::ExpressionStatement;
+      kind = SurfaceSyntaxKind::ExpressionStatement;
       rejected = true;
     } else if (syntax.kind == ast::SyntaxKind::FunctionDecl &&
                requiresFunctionBodyFailure(boundModule.tree(), syntax)) {
-      kind = OwnershipSurfaceSyntaxKind::FunctionBody;
+      kind = SurfaceSyntaxKind::FunctionBody;
       rejected = true;
     }
     if (rejected) {
       auto span = boundModule.parsedModule().spanFor(syntax.range);
       ZC_IREQUIRE(span != zc::none, "ownership surface syntax must retain a source span");
       ZC_IF_SOME(value, span) {
-        insertFailure(failures, OwnershipSurfaceFailure{kind, value.clone(), ordinal});
+        insertFailure(failures, SurfaceFailure{kind, value.clone(), ordinal});
       }
     }
     if (syntax.kind == ast::SyntaxKind::UnsafeBlockExpr) return;
@@ -918,11 +900,9 @@ OwnershipSurfaceAdmissionResult OwnershipSurfaceAdmissionBuilder::admit(
   };
   walk(boundModule.tree().root(), walk);
   if (failures.size() != 0) {
-    return OwnershipSurfaceSourceRejected(
-        zc::heap<OwnershipSurfaceSourceRejected::Impl>(zc::mv(failures)));
+    return SurfaceSourceRejected(zc::heap<SurfaceSourceRejected::Impl>(zc::mv(failures)));
   }
-  return OwnershipAdmittedBoundModule(
-      zc::heap<OwnershipAdmittedBoundModule::Impl>(zc::mv(boundModule)));
+  return AdmittedBoundModule(zc::heap<AdmittedBoundModule::Impl>(zc::mv(boundModule)));
 }
 
 }  // namespace zomlang::compiler::ownership

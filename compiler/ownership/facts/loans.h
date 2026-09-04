@@ -16,10 +16,10 @@
 
 #include <cstdint>
 
-#include "zc/core/memory.h"
-#include "zc/core/vector.h"
 #include "compiler/ownership/facts/paths.h"
 #include "compiler/ownership/facts/points.h"
+#include "zc/core/memory.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::ownership::facts {
 
@@ -29,7 +29,7 @@ struct LoanFact final {
   MirEventKey issue;
   MirEventKey commit;
   mir::MirBorrowKind kind;
-  OwnershipPoint activeFrom;
+  Point activeFrom;
   MovePathKey source;
   MovePathKey destination;
 };
@@ -39,7 +39,7 @@ class LoanCandidate final {
 public:
   LoanCandidate(identity::SemanticContextBrand semanticContext,
                 identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
-                mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
+                mir::MirRevisionId builtRevision, EventOverlayRevision overlayRevision,
                 driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
                 zc::Vector<LoanFact>&& loans) noexcept;
   LoanCandidate(LoanCandidate&&) noexcept = default;
@@ -50,7 +50,7 @@ public:
   identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   mir::MirRevisionId builtRevision;
-  OwnershipEventOverlayRevision overlayRevision;
+  EventOverlayRevision overlayRevision;
   driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision;
   zc::Vector<LoanFact> loans;
 };
@@ -67,7 +67,7 @@ public:
   ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const mir::MirRevisionId& builtRevision() const noexcept;
-  ZC_NODISCARD const OwnershipEventOverlayRevision& overlayRevision() const noexcept;
+  ZC_NODISCARD const EventOverlayRevision& overlayRevision() const noexcept;
   ZC_NODISCARD const driver::borrow_evidence::BorrowEvidenceRevision& borrowEvidenceRevision()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const LoanFact> loans() const noexcept;

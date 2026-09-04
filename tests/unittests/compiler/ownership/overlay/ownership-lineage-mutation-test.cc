@@ -248,7 +248,7 @@ public:
     return session.getOwnershipCheckedMirModules()[0].builtMir();
   }
 
-  OwnershipEventOverlayInput overlayInput() const {
+  EventOverlayInput overlayInput() const {
     auto input = session.getOwnershipEventOverlayInput(builtMir().module());
     ZC_REQUIRE(input != zc::none);
     ZC_IF_SOME(value, input) { return zc::mv(value); }
@@ -315,14 +315,13 @@ private:
   driver::CompilerSession session;
 };
 
-ir::IrOperationResult<OwnershipEventOverlayCandidate> buildOverlay(
-    const OwnershipPipelineFixture& fixture) {
-  return OwnershipEventOverlayBuilder::build(fixture.overlayInput());
+ir::IrOperationResult<EventOverlayCandidate> buildOverlay(const OwnershipPipelineFixture& fixture) {
+  return EventOverlayBuilder::build(fixture.overlayInput());
 }
 
 ir::IrOperationResult<VerifiedOwnershipEventOverlay> verifyOverlay(
-    OwnershipEventOverlayCandidate&& candidate, const OwnershipPipelineFixture& fixture) {
-  return OwnershipEventOverlayVerifier::verify(zc::mv(candidate), fixture.overlayInput());
+    EventOverlayCandidate&& candidate, const OwnershipPipelineFixture& fixture) {
+  return EventOverlayVerifier::verify(zc::mv(candidate), fixture.overlayInput());
 }
 
 const facts::VerifiedOwnershipInputs& ownershipInputs(const driver::CompilerSession& session) {
@@ -412,7 +411,7 @@ auto tamperBuiltRevision = [](auto& candidate, const auto& builtMir, const auto&
 };
 
 auto tamperOverlayRevision = [](auto& candidate, const auto&, const auto& overlay) {
-  candidate.overlayRevision = OwnershipEventOverlayRevision::fromDigest(identity::Sha256Digest{});
+  candidate.overlayRevision = EventOverlayRevision::fromDigest(identity::Sha256Digest{});
   ZC_REQUIRE(candidate.overlayRevision.digest() != overlay.revision().digest());
 };
 
@@ -553,15 +552,14 @@ void expectOwnershipResourceLineageRejection(const OwnershipPipelineFixture& fix
   const auto& overlay = sessionOverlay(session);
   const auto& inputs = ownershipInputs(session);
 
-  auto candidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  auto candidateResult = facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() != 0);
   tamper(candidate, builtMir, overlay);
 
-  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
-      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  auto verifiedResult =
+      facts::ResourceVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   expectPublishedRejection(verifiedResult, ir::IrFailureKind::InputRevisionMismatch);
 }
 
@@ -634,9 +632,9 @@ ZC_TEST("Ownership lineage mutation rejects a tampered fact point phase") {
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.states.size() != 0);
   // The first state point is the after-commit event point; flip its phase.
-  ZC_REQUIRE(candidate.states[0].point.kind() == facts::OwnershipPointKind::AfterEvent);
+  ZC_REQUIRE(candidate.states[0].point.kind() == facts::PointKind::AfterEvent);
   candidate.states[0].point =
-      facts::OwnershipPoint::beforeEvent(candidate.states[0].point.afterEventValue().event);
+      facts::Point::beforeEvent(candidate.states[0].point.afterEventValue().event);
 
   auto verifiedResult = facts::ReborrowStateVerifier::verify(zc::mv(candidate), inputs.references(),
                                                              inputs.regions(), builtMir, overlay);
@@ -736,8 +734,7 @@ ZC_TEST("Ownership lineage mutation rejects a tampered marker-derived drop requi
   const auto& overlay = sessionOverlay(session);
   const auto& inputs = ownershipInputs(session);
 
-  auto candidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  auto candidateResult = facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -745,8 +742,8 @@ ZC_TEST("Ownership lineage mutation rejects a tampered marker-derived drop requi
   ZC_EXPECT(candidate.functions[0].facts[0].requirement == facts::DropRequirement::Logical);
   candidate.functions[0].facts[0].requirement = facts::DropRequirement::Linear;
 
-  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
-      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  auto verifiedResult =
+      facts::ResourceVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   expectPublishedRejection(verifiedResult, ir::IrFailureKind::InvalidOwnershipProof);
 }
 
@@ -762,16 +759,15 @@ ZC_TEST("Ownership lineage mutation rejects a tampered logical drop plan subject
   const auto& overlay = sessionOverlay(session);
   const auto& inputs = ownershipInputs(session);
 
-  auto candidateResult =
-      facts::OwnershipResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
+  auto candidateResult = facts::ResourceBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
   ZC_REQUIRE(candidate.functions[0].dropPlans.size() == 1);
   candidate.functions[0].dropPlans[0].subject.introduction.operandOrdinal += 1;
 
-  auto verifiedResult = facts::OwnershipResourceVerifier::verify(
-      zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
+  auto verifiedResult =
+      facts::ResourceVerifier::verify(zc::mv(candidate), inputs.movePaths(), builtMir, overlay);
   expectPublishedRejection(verifiedResult, ir::IrFailureKind::InvalidOwnershipProof);
 }
 
@@ -824,12 +820,12 @@ ZC_TEST("Ownership lineage mutation rejects a foreign built revision") {
 
 ZC_TEST("Ownership lineage mutation rejects a foreign overlay revision") {
   OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
-  expectReborrowStateLineageRejection(fixture, [](facts::ReborrowStateCandidate& candidate,
-                                                  const mir::VerifiedBuiltMir&,
-                                                  const VerifiedOwnershipEventOverlay& overlay) {
-    candidate.overlayRevision = OwnershipEventOverlayRevision::fromDigest(identity::Sha256Digest{});
-    ZC_REQUIRE(candidate.overlayRevision.digest() != overlay.revision().digest());
-  });
+  expectReborrowStateLineageRejection(
+      fixture, [](facts::ReborrowStateCandidate& candidate, const mir::VerifiedBuiltMir&,
+                  const VerifiedOwnershipEventOverlay& overlay) {
+        candidate.overlayRevision = EventOverlayRevision::fromDigest(identity::Sha256Digest{});
+        ZC_REQUIRE(candidate.overlayRevision.digest() != overlay.revision().digest());
+      });
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign borrow evidence revision") {
@@ -1051,7 +1047,7 @@ ZC_TEST("Ownership lineage mutation rejects a foreign initialization overlay rev
   expectInitializationLineageRejection(fixture, tamperOverlayRevision);
 }
 
-// --- OwnershipResourceCandidate lineage tamper tests ---
+// --- ResourceCandidate lineage tamper tests ---
 
 ZC_TEST("Ownership lineage mutation rejects a foreign resource semantic context brand") {
   OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
@@ -1277,10 +1273,10 @@ ZC_TEST("Ownership escape derivation produces a contained return escape for a lo
   ZC_REQUIRE(references.isVerified());
 
   auto resourceCandidate =
-      facts::OwnershipResourceBuilder::build(movePaths.verifiedValue(), builtMir, overlay);
+      facts::ResourceBuilder::build(movePaths.verifiedValue(), builtMir, overlay);
   ZC_REQUIRE(resourceCandidate.isVerified());
-  auto resources = facts::OwnershipResourceVerifier::verify(
-      zc::mv(resourceCandidate).takeVerified(), movePaths.verifiedValue(), builtMir, overlay);
+  auto resources = facts::ResourceVerifier::verify(zc::mv(resourceCandidate).takeVerified(),
+                                                   movePaths.verifiedValue(), builtMir, overlay);
   ZC_REQUIRE(resources.isVerified());
 
   auto captureCandidate =

@@ -61,7 +61,7 @@ class MovePathCandidate final {
 public:
   MovePathCandidate(identity::SemanticContextBrand semanticContext,
                     identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
-                    mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
+                    mir::MirRevisionId builtRevision, EventOverlayRevision overlayRevision,
                     zc::Vector<MovePathFunction>&& functions) noexcept;
   MovePathCandidate(MovePathCandidate&&) noexcept = default;
   MovePathCandidate& operator=(MovePathCandidate&&) noexcept = delete;
@@ -71,7 +71,7 @@ public:
   identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   mir::MirRevisionId builtRevision;
-  OwnershipEventOverlayRevision overlayRevision;
+  EventOverlayRevision overlayRevision;
   zc::Vector<MovePathFunction> functions;
 };
 
@@ -87,7 +87,7 @@ public:
   ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const mir::MirRevisionId& builtRevision() const noexcept;
-  ZC_NODISCARD const OwnershipEventOverlayRevision& overlayRevision() const noexcept;
+  ZC_NODISCARD const EventOverlayRevision& overlayRevision() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const MovePathFunction> functions() const noexcept;
   ZC_NODISCARD bool conflicts(const MovePathKey& first, const MovePathKey& second) const noexcept;
 

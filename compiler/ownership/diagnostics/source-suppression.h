@@ -40,8 +40,8 @@ namespace zomlang::compiler::ownership {
 /// once per obligation) and require no post-hoc suppression.
 class SourceSuppression final {
 public:
-  ZC_NODISCARD static zc::Vector<OwnershipSourceFailure> suppress(
-      zc::Vector<OwnershipSourceFailure>&& failures) noexcept;
+  ZC_NODISCARD static zc::Vector<SourceFailure> suppress(
+      zc::Vector<SourceFailure>&& failures) noexcept;
 };
 
 }  // namespace zomlang::compiler::ownership

@@ -79,14 +79,14 @@ ir::IrOperationResult<Result> reject(const mir::VerifiedBuiltMir& builtMir,
   identity::DefId definition;
   if (builtMir.functions().size() != 0) definition = builtMir.functions()[0].owner;
   AuthorityIdentityResolver resolver(identities);
-  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::OwnershipProofValidation,
+  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::ProofValidation,
                                                      ir::IrFailureOwner::definition(definition));
   ZC_IREQUIRE(fallback != zc::none, "Reference definition failure fallback must be legal");
   zc::Maybe<ir::IrFailureSite> noSite;
   zc::Maybe<identity::SourceSpan> noSpan;
   zc::Vector<uint32_t> noPath;
   auto descriptor = ir::IrFailureDescriptor::decoded(
-      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::OwnershipProofValidation, kind,
+      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::ProofValidation, kind,
       ir::IrFailureOwner::definition(definition), zc::mv(noSite), ir::IrFailureDetail::none(),
       zc::mv(noSpan), zc::mv(noPath), ordinal);
   ZC_IF_SOME(fallbackValue, fallback) {
@@ -166,8 +166,8 @@ bool hasEntryRoot(const VerifiedOwnershipEventOverlay& overlay, identity::DefId 
     size_t matches = 0;
     for (const auto& slot : function.slots) {
       if (slot.key.location.point.kind() != MirPointKind::Entry ||
-          slot.key.operandOrdinal != ordinal || slot.stage != OwnershipEventStage::Commit ||
-          slot.roles.size() != 1 || slot.roles[0] != OwnershipEventRole::EntryRoot) {
+          slot.key.operandOrdinal != ordinal || slot.stage != EventStage::Commit ||
+          slot.roles.size() != 1 || slot.roles[0] != EventRole::EntryRoot) {
         continue;
       }
       ++matches;
@@ -215,18 +215,16 @@ zc::Maybe<MirEventKey> returnedFrom(const mir::MirFunction& function,
           !samePlace(value.place(), destination)) {
         continue;
       }
-      const auto transferRole = value.kind() == mir::MirOperandKind::Copy
-                                    ? OwnershipEventRole::OperandCopy
-                                    : OwnershipEventRole::OperandMove;
+      const auto transferRole = value.kind() == mir::MirOperandKind::Copy ? EventRole::OperandCopy
+                                                                          : EventRole::OperandMove;
       const MirEventKey event{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)}, 0};
       bool matches = false;
       for (const auto& overlayFunction : overlay.functions()) {
         if (overlayFunction.owner != function.owner) continue;
         size_t slots = 0;
         for (const auto& slot : overlayFunction.slots) {
-          if (slot.key != event || slot.stage != OwnershipEventStage::Source ||
-              slot.roles.size() != 2 || slot.roles[0] != OwnershipEventRole::OperandRead ||
-              slot.roles[1] != transferRole) {
+          if (slot.key != event || slot.stage != EventStage::Source || slot.roles.size() != 2 ||
+              slot.roles[0] != EventRole::OperandRead || slot.roles[1] != transferRole) {
             continue;
           }
           ++slots;
@@ -250,11 +248,10 @@ zc::Maybe<ReferenceLivePoints> livePoints(const MirEventKey& introduction,
   }
   const auto& commit = introduction.location.point.beforeStatementValue();
   const auto& returnedPoint = returned.location.point.beforeTerminatorValue();
-  return ReferenceLivePoints{
-      OwnershipPoint::afterEvent(introduction),
-      OwnershipPoint::cfg(MirPoint::afterStatement(commit.block, commit.ordinal)),
-      OwnershipPoint::cfg(MirPoint::beforeTerminator(returnedPoint.block)),
-      OwnershipPoint::beforeEvent(returned), OwnershipPoint::afterEvent(returned)};
+  return ReferenceLivePoints{Point::afterEvent(introduction),
+                             Point::cfg(MirPoint::afterStatement(commit.block, commit.ordinal)),
+                             Point::cfg(MirPoint::beforeTerminator(returnedPoint.block)),
+                             Point::beforeEvent(returned), Point::afterEvent(returned)};
 }
 
 zc::Maybe<uint32_t> parameterOrigin(const mir::MirFunction& function, const mir::MirPlace& source) {
@@ -427,7 +424,7 @@ bool sameDefinitions(zc::ArrayPtr<const ReferenceDefinition> left,
 ReferenceDefinitionCandidate::ReferenceDefinitionCandidate(
     identity::SemanticContextBrand semanticContext,
     identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
-    mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
+    mir::MirRevisionId builtRevision, EventOverlayRevision overlayRevision,
     driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
     zc::Vector<ReferenceDefinition>&& definitions) noexcept
     : semanticContext(semanticContext),
@@ -463,8 +460,7 @@ identity::ModuleId VerifiedReferenceDefinitions::module() const noexcept {
 const mir::MirRevisionId& VerifiedReferenceDefinitions::builtRevision() const noexcept {
   return impl->candidate.builtRevision;
 }
-const OwnershipEventOverlayRevision& VerifiedReferenceDefinitions::overlayRevision()
-    const noexcept {
+const EventOverlayRevision& VerifiedReferenceDefinitions::overlayRevision() const noexcept {
   return impl->candidate.overlayRevision;
 }
 const driver::borrow_evidence::BorrowEvidenceRevision&

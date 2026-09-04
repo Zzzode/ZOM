@@ -67,7 +67,7 @@ struct DropDischargeRecord final {
 
 /// \brief Immutable RFC 0007 drop-elaborated MIR capability.
 ///
-/// DropElaboratedMir is the sole committed successor of OwnershipCheckedMir.
+/// DropElaboratedMir is the sole committed successor of CheckedMir.
 /// The elaborator consumes the checked wrapper, rechecks every revision, lease,
 /// and identity without dereferencing unvalidated handles, validates that every
 /// pending drop obligation has a complete discharge path across the admitted
@@ -79,7 +79,7 @@ struct DropDischargeRecord final {
 /// publishes one wrapper or publishes no value. A rejected operation destroys
 /// its consumed local input and returns no predecessor or partial successor.
 ///
-/// The wrapper stores the OwnershipCheckedMir and the recorded drop-discharge
+/// The wrapper stores the CheckedMir and the recorded drop-discharge
 /// inventory. It does not retain a repository pointer or capability in the
 /// encoded or runtime wrapper; every successor operation receives a live
 /// capability again and resolves the embedded lease before inspecting or
@@ -99,7 +99,7 @@ public:
   /// Valid only before takeCheckedMir is called. The session extracts the
   /// checked payload for separate publication; after that call the wrapper
   /// retains only the discharge inventory.
-  ZC_NODISCARD const OwnershipCheckedMir& checkedMir() const noexcept;
+  ZC_NODISCARD const CheckedMir& checkedMir() const noexcept;
   /// \brief Returns the recorded drop-discharge inventory in execution order.
   ZC_NODISCARD zc::ArrayPtr<const DropDischargeRecord> discharges() const noexcept;
   /// \brief Moves the owned ownership-checked MIR payload out of this wrapper.
@@ -107,7 +107,7 @@ public:
   /// The session calls this after elaboration to publish the checked payload
   /// alongside the discharge inventory. The wrapper retains the discharge
   /// inventory; checkedMir is no longer valid after this call.
-  ZC_NODISCARD OwnershipCheckedMir takeCheckedMir() && noexcept;
+  ZC_NODISCARD CheckedMir takeCheckedMir() && noexcept;
 
 private:
   struct Impl;
@@ -120,7 +120,7 @@ private:
 
 /// \brief Sole publisher of immutable drop-elaborated MIR wrappers.
 ///
-/// The elaborator consumes OwnershipCheckedMir and rechecks, without
+/// The elaborator consumes CheckedMir and rechecks, without
 /// dereferencing unvalidated handles: semantic context brand and fingerprint;
 /// module identity; the canonical Built MIR artifact and exact MirRevisionId;
 /// the exact event overlay revision; the facts revision triple; the resolved
@@ -136,7 +136,7 @@ private:
 /// places legitimately appears in multiple closed drop plans, one per move
 /// site, so a fact may be covered by more than one plan. The elaborator rejects
 /// a missing discharge (a fact with no plan at all) or a component order
-/// violation with IrInvariantRejected at OwnershipProofValidation.
+/// violation with IrInvariantRejected at ProofValidation.
 ///
 /// Each discharge is classified from the verified linear-consumption inventory.
 /// A linear obligation records one consumption per consuming event: a value
@@ -156,19 +156,19 @@ private:
 class DropElaborator final {
 public:
   ZC_NODISCARD static ir::IrOperationResult<DropElaboratedMir> elaborateDrops(
-      OwnershipCheckedMir&& checked,
+      CheckedMir&& checked,
       const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& repository);
 
   /// \brief Pure discharge-inventory computation over verified facts and CFG.
   ///
   /// Exposed as a test seam so the multi-block cleanup graph can be exercised
-  /// with hand-built MIR without forging a sealed OwnershipCheckedMir. Returns
+  /// with hand-built MIR without forging a sealed CheckedMir. Returns
   /// none on any missing discharge, component-order violation, unadmitted
   /// topology, or unconsumed linear obligation. elaborateDrops calls this with
   /// the checked module's resource facts, Built MIR functions, and
   /// initialization functions.
   ZC_NODISCARD static zc::Maybe<zc::Vector<DropDischargeRecord>> computeDischarges(
-      zc::ArrayPtr<const facts::OwnershipResourceFunction> resources,
+      zc::ArrayPtr<const facts::ResourceFunction> resources,
       zc::ArrayPtr<const mir::MirFunction> mirFunctions,
       zc::ArrayPtr<const facts::InitializationFunction> initialization);
 
@@ -179,7 +179,7 @@ public:
   /// because only DropElaborator is a friend of VerifiedBuiltMir, which owns
   /// the private lease and identity-authority methods.
   ZC_NODISCARD static bool recheckLineage(
-      const OwnershipCheckedMir& checked,
+      const CheckedMir& checked,
       const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& repository);
 
   /// \brief Retains the checker identity authority for IR failure construction.
@@ -220,7 +220,7 @@ public:
   /// \brief Moves the owned drop-elaborated predecessor out of this wrapper.
   ZC_NODISCARD DropElaboratedMir takeDropElaboratedMir() && noexcept;
   /// \brief Moves the owned ownership-checked MIR payload out of the predecessor chain.
-  ZC_NODISCARD OwnershipCheckedMir takeCheckedMir() && noexcept;
+  ZC_NODISCARD CheckedMir takeCheckedMir() && noexcept;
 
 private:
   struct Impl;
@@ -273,7 +273,7 @@ public:
   /// \brief Returns the recorded drop-discharge inventory in execution order.
   ZC_NODISCARD zc::ArrayPtr<const DropDischargeRecord> discharges() const noexcept;
   /// \brief Moves the owned ownership-checked MIR payload out of the predecessor chain.
-  ZC_NODISCARD OwnershipCheckedMir takeCheckedMir() && noexcept;
+  ZC_NODISCARD CheckedMir takeCheckedMir() && noexcept;
 
 private:
   struct Impl;
@@ -292,7 +292,7 @@ private:
 /// LinearConsume, and no discharge links an obligation absent from the facts.
 /// A foreign, missing, stale, swapped, or post-teardown lease or capability
 /// selects RFC 0010 InputRevisionMismatch; an incomplete cleanup selects
-/// InvalidCleanup at OwnershipProofValidation.
+/// InvalidCleanup at ProofValidation.
 class ExecutableMirVerifier final {
 public:
   ZC_NODISCARD static ir::IrOperationResult<VerifiedExecutableMir> verifyExecutableMir(

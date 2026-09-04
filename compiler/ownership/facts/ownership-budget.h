@@ -31,7 +31,7 @@ namespace zomlang::compiler::ownership::facts {
 /// K is never materialized as a fixed-width integer. Instead, the factor
 /// components are retained and per-analysis bounds are derived component-wise.
 /// All factors come from verified finite inventories.
-struct OwnershipBudgetFactors final {
+struct BudgetFactors final {
   /// Reachable ownership event slots.
   uint64_t eventSlots = 0;
   /// Reachable MIR CFG points.
@@ -69,7 +69,7 @@ struct OwnershipBudgetFactors final {
   /// Raw origins (U).
   uint64_t rawOrigins = 0;
 
-  /// \brief Returns P = Pcfg + 2 * X, the number of reachable OwnershipPoint cutpoints.
+  /// \brief Returns P = Pcfg + 2 * X, the number of reachable Point cutpoints.
   ZC_NODISCARD constexpr uint64_t cutpointCount() const noexcept {
     return cfgPoints + 2 * eventSlots;
   }
@@ -81,7 +81,7 @@ struct OwnershipBudgetFactors final {
 /// analysis pass. A counter exceeding its component-wise derived bound is
 /// `InvalidOwnershipProof`, because it proves a non-monotone transfer,
 /// duplicate queue admission, or corrupted inventory.
-struct OwnershipBudgetCounters final {
+struct BudgetCounters final {
   /// Initialization state bits (bound: 3 * P * M).
   uint64_t initStateBits = 0;
   /// Initialization loss-cause memberships (bound: P * M * D).
@@ -121,7 +121,7 @@ struct OwnershipBudgetCounters final {
 };
 
 /// \brief Result of a budget verification check.
-struct OwnershipBudgetCheckResult final {
+struct BudgetCheckResult final {
   /// \brief True when every counter is within its component-wise bound.
   bool withinBudget = true;
   /// \brief The name of the first counter that exceeded its bound, if any.
@@ -138,14 +138,14 @@ struct OwnershipBudgetCheckResult final {
 /// Bound arithmetic uses checked uint64_t multiplication. If a bound
 /// computation overflows, the inventories are impossibly large and the check
 /// fails.
-class OwnershipBudgetVerifier final {
+class BudgetVerifier final {
 public:
   /// \brief Checks counters against the component-wise derived bounds.
   /// \param factors The symbolic factor vector from verified inventories.
   /// \param counters The per-analysis monotone solver counters.
   /// \return A result indicating whether every counter is within budget.
-  ZC_NODISCARD static OwnershipBudgetCheckResult check(
-      const OwnershipBudgetFactors& factors, const OwnershipBudgetCounters& counters) noexcept;
+  ZC_NODISCARD static BudgetCheckResult check(const BudgetFactors& factors,
+                                              const BudgetCounters& counters) noexcept;
 };
 
 }  // namespace zomlang::compiler::ownership::facts

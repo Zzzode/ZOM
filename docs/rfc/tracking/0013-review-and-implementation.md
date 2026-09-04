@@ -141,7 +141,7 @@ lineage, or parallel MIR revision.
 | BorrowEvidence authority | Implemented | `borrow-evidence-test` passes complete local/imported reconstruction, the exact 173-byte empty oracle, independent verification, branded repository leases, and deterministic missing/additional/duplicate/order/codec/stale/swap mutations |
 | Checked-module and HIR lineage | Implemented | `hir-module-test` and `compiler-session-package-test` pass exact retained checked and borrow leases, repository re-resolution, deterministic lineage dumps, and all-or-nothing session publication |
 | Built MIR revision | Implemented | `built-mir-test` passes the exact non-empty `9f8de0ad...ad7985` and empty `b9a8988d...38cbc9` oracles; direct HIR lowering, the independent verifier, atomic session adoption, and all 21 IR architecture mutations pass |
-| Ownership result seam | Pending | Closed source, identity, capability, and IR-invariant branches at OwnershipProofValidation with successor suppression |
+| Ownership result seam | Pending | Closed source, identity, capability, and IR-invariant branches at ProofValidation with successor suppression |
 | Production cutover | Pending | RFC 0007 implementation prerequisites, full sanitizer/default CTest, determinism, spec alignment, architecture, format, and diff-hygiene evidence |
 
 The series may publish no production ownership result until the RFC 0007

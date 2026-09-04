@@ -80,14 +80,14 @@ ir::IrOperationResult<VerifiedOwnershipInputs> reject(
   identity::DefId definition;
   if (builtMir.functions().size() != 0) definition = builtMir.functions()[0].owner;
   AuthorityIdentityResolver resolver(identities);
-  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::OwnershipProofValidation,
+  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::ProofValidation,
                                                      ir::IrFailureOwner::definition(definition));
   ZC_IREQUIRE(fallback != zc::none, "Ownership input failure fallback must be legal");
   zc::Maybe<ir::IrFailureSite> noSite;
   zc::Maybe<identity::SourceSpan> noSpan;
   zc::Vector<uint32_t> noPath;
   auto descriptor = ir::IrFailureDescriptor::decoded(
-      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::OwnershipProofValidation,
+      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::ProofValidation,
       ir::IrFailureKind::InputRevisionMismatch, ir::IrFailureOwner::definition(definition),
       zc::mv(noSite), ir::IrFailureDetail::none(), zc::mv(noSpan), zc::mv(noPath), ordinal);
   ZC_IF_SOME(fallbackValue, fallback) {
@@ -237,7 +237,7 @@ struct VerifiedOwnershipInputs::Impl final {
   VerifiedRegionOutlives outlives;
   driver::borrow_evidence::VerifiedBorrowEvidenceLease borrowEvidenceLease;
   driver::borrow_evidence::BorrowEvidenceRepositoryCapability borrowEvidenceCapability;
-  OwnershipFactsRevision factsRevision;
+  FactsRevision factsRevision;
 };
 
 VerifiedOwnershipInputs::VerifiedOwnershipInputs(zc::Own<Impl>&& impl) noexcept
@@ -258,17 +258,17 @@ identity::ModuleId VerifiedOwnershipInputs::module() const noexcept {
 const mir::MirRevisionId& VerifiedOwnershipInputs::builtRevision() const noexcept {
   return impl->movePaths.builtRevision();
 }
-const OwnershipEventOverlayRevision& VerifiedOwnershipInputs::overlayRevision() const noexcept {
+const EventOverlayRevision& VerifiedOwnershipInputs::overlayRevision() const noexcept {
   return impl->movePaths.overlayRevision();
 }
 const driver::borrow_evidence::BorrowEvidenceRevision&
 VerifiedOwnershipInputs::borrowEvidenceRevision() const noexcept {
   return impl->loans.borrowEvidenceRevision();
 }
-const OwnershipFactsRevision& VerifiedOwnershipInputs::factsRevision() const noexcept {
+const FactsRevision& VerifiedOwnershipInputs::factsRevision() const noexcept {
   return impl->factsRevision;
 }
-void VerifiedOwnershipInputs::setFactsRevision(OwnershipFactsRevision revision) noexcept {
+void VerifiedOwnershipInputs::setFactsRevision(FactsRevision revision) noexcept {
   impl->factsRevision = revision;
 }
 bool VerifiedOwnershipInputs::hasLiveBorrowEvidence() const noexcept {
@@ -308,7 +308,7 @@ const VerifiedRegionOutlives& VerifiedOwnershipInputs::outlives() const noexcept
   return impl->outlives;
 }
 
-ir::IrOperationResult<VerifiedOwnershipInputs> OwnershipInputVerifier::verify(
+ir::IrOperationResult<VerifiedOwnershipInputs> InputVerifier::verify(
     VerifiedMovePaths&& movePaths, VerifiedFlow&& flow,
     VerifiedInitializationFacts&& initialization, VerifiedLoanFacts&& loans,
     VerifiedReferenceDefinitions&& references, VerifiedReborrowRegions&& regions,
@@ -332,7 +332,7 @@ ir::IrOperationResult<VerifiedOwnershipInputs> OwnershipInputVerifier::verify(
       zc::mv(movePaths), zc::mv(flow), zc::mv(initialization), zc::mv(loans), zc::mv(references),
       zc::mv(regions), zc::mv(states), zc::mv(resources), zc::mv(escapes), zc::mv(captures),
       zc::mv(outlives), zc::mv(retainedLease), zc::mv(retainedCapability)));
-  auto revision = OwnershipFactsCodec::compute(inputs, overlay, identities, semanticTypes);
+  auto revision = FactsCodec::compute(inputs, overlay, identities, semanticTypes);
   if (revision == zc::none) { return reject(builtMir, identities, 0); }
   ZC_IF_SOME(value, revision) { inputs.setFactsRevision(value); }
   return ir::IrOperationResult<VerifiedOwnershipInputs>::verified(zc::mv(inputs));

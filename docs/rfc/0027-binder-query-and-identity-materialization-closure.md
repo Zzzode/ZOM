@@ -2600,7 +2600,7 @@ capability, checks all HIR identities and imported-interface lineage, and
 moves the retained lease into `VerifiedHirModule`. `BuiltMirBuilder` retains
 the HIR lease; its verifier checks module identity, graph witness, semantic
 types, definitions, implementations, and HIR lineage before moving the lease
-into `VerifiedBuiltMir`. `OwnershipEventOverlayBuilder` retains the Built MIR
+into `VerifiedBuiltMir`. `EventOverlayBuilder` retains the Built MIR
 lease; its verifier checks the exact Built MIR revision, module,
 ownership-event coverage, and bound-module lineage before moving the lease
 into `VerifiedOwnershipEventOverlay`.

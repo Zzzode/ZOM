@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include "zc/core/memory.h"
 #include "compiler/ownership/facts/borrow-source.h"
 #include "compiler/ownership/facts/capture.h"
 #include "compiler/ownership/facts/escape.h"
@@ -24,6 +23,7 @@
 #include "compiler/ownership/facts/region-outlives.h"
 #include "compiler/ownership/facts/resources.h"
 #include "compiler/ownership/facts/states.h"
+#include "zc/core/memory.h"
 
 namespace zomlang::compiler::type {
 class SemanticTypeStore;
@@ -47,10 +47,10 @@ public:
   ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const mir::MirRevisionId& builtRevision() const noexcept;
-  ZC_NODISCARD const OwnershipEventOverlayRevision& overlayRevision() const noexcept;
+  ZC_NODISCARD const EventOverlayRevision& overlayRevision() const noexcept;
   ZC_NODISCARD const driver::borrow_evidence::BorrowEvidenceRevision& borrowEvidenceRevision()
       const noexcept;
-  ZC_NODISCARD const OwnershipFactsRevision& factsRevision() const noexcept;
+  ZC_NODISCARD const FactsRevision& factsRevision() const noexcept;
   ZC_NODISCARD bool hasLiveBorrowEvidence() const noexcept;
   ZC_NODISCARD const VerifiedMovePaths& movePaths() const noexcept;
   ZC_NODISCARD const VerifiedFlow& flow() const noexcept;
@@ -67,14 +67,14 @@ public:
 private:
   struct Impl;
   explicit VerifiedOwnershipInputs(zc::Own<Impl>&& impl) noexcept;
-  void setFactsRevision(OwnershipFactsRevision revision) noexcept;
+  void setFactsRevision(FactsRevision revision) noexcept;
   zc::Own<Impl> impl;
 
-  friend class OwnershipInputVerifier;
+  friend class InputVerifier;
 };
 
 /// \brief Checks that verified ownership inputs form one coherent analysis snapshot.
-class OwnershipInputVerifier final {
+class InputVerifier final {
 public:
   ZC_NODISCARD static ir::IrOperationResult<VerifiedOwnershipInputs> verify(
       VerifiedMovePaths&& movePaths, VerifiedFlow&& flow,

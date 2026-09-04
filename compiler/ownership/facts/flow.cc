@@ -80,14 +80,14 @@ ir::IrOperationResult<Result> reject(const mir::VerifiedBuiltMir& builtMir,
   identity::DefId definition;
   if (builtMir.functions().size() != 0) definition = builtMir.functions()[0].owner;
   AuthorityIdentityResolver resolver(identities);
-  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::OwnershipProofValidation,
+  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::ProofValidation,
                                                      ir::IrFailureOwner::definition(definition));
   ZC_IREQUIRE(fallback != zc::none, "Flow failure fallback must be legal");
   zc::Maybe<ir::IrFailureSite> noSite;
   zc::Maybe<identity::SourceSpan> noSpan;
   zc::Vector<uint32_t> noPath;
   auto descriptor = ir::IrFailureDescriptor::decoded(
-      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::OwnershipProofValidation, kind,
+      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::ProofValidation, kind,
       ir::IrFailureOwner::definition(definition), zc::mv(noSite), ir::IrFailureDetail::none(),
       zc::mv(noSpan), zc::mv(noPath), ordinal);
   ZC_IF_SOME(fallbackValue, fallback) {
@@ -121,7 +121,7 @@ bool sameEdges(zc::ArrayPtr<const FlowEdge> left, zc::ArrayPtr<const FlowEdge> r
   return true;
 }
 
-bool samePoints(zc::ArrayPtr<const OwnershipPoint> left, zc::ArrayPtr<const OwnershipPoint> right) {
+bool samePoints(zc::ArrayPtr<const Point> left, zc::ArrayPtr<const Point> right) {
   if (left.size() != right.size()) return false;
   for (size_t index = 0; index < left.size(); ++index) {
     if (left[index] != right[index]) return false;
@@ -156,9 +156,9 @@ bool allFunctionsAdmitted(const mir::VerifiedBuiltMir& builtMir) {
   return true;
 }
 
-zc::Maybe<const OwnershipFunctionEventOverlay&> overlayFor(
-    const VerifiedOwnershipEventOverlay& overlay, identity::DefId owner) {
-  zc::Maybe<const OwnershipFunctionEventOverlay&> result;
+zc::Maybe<const FunctionEventOverlay&> overlayFor(const VerifiedOwnershipEventOverlay& overlay,
+                                                  identity::DefId owner) {
+  zc::Maybe<const FunctionEventOverlay&> result;
   for (const auto& function : overlay.functions()) {
     if (function.owner != owner) continue;
     if (result != zc::none) return zc::none;
@@ -179,20 +179,20 @@ zc::Maybe<MirPoint> blockStart(const mir::MirBasicBlock& block) {
   return MirPoint::beforeTerminator(block.id);
 }
 
-bool containsPoint(zc::ArrayPtr<const OwnershipPoint> points, const OwnershipPoint& point) {
+bool containsPoint(zc::ArrayPtr<const Point> points, const Point& point) {
   for (const auto& value : points) {
     if (value == point) return true;
   }
   return false;
 }
 
-bool appendPoint(FlowFunction& flow, OwnershipPoint point) {
+bool appendPoint(FlowFunction& flow, Point point) {
   if (containsPoint(flow.points.asPtr(), point)) return true;
   flow.points.add(zc::mv(point));
   return true;
 }
 
-bool appendEdge(FlowFunction& flow, const OwnershipPoint& from, const OwnershipPoint& to) {
+bool appendEdge(FlowFunction& flow, const Point& from, const Point& to) {
   if (from == to) return false;
   for (const auto& edge : flow.edges) {
     if (edge.from == from && edge.to == to) return false;
@@ -201,9 +201,9 @@ bool appendEdge(FlowFunction& flow, const OwnershipPoint& from, const OwnershipP
   return true;
 }
 
-bool appendLocation(FlowFunction& flow, const OwnershipFunctionEventOverlay& overlay,
-                    MirPoint point, zc::Maybe<OwnershipPoint>& current) {
-  OwnershipPoint cfg = OwnershipPoint::cfg(zc::mv(point));
+bool appendLocation(FlowFunction& flow, const FunctionEventOverlay& overlay, MirPoint point,
+                    zc::Maybe<Point>& current) {
+  Point cfg = Point::cfg(zc::mv(point));
   if (!appendPoint(flow, cfg)) return false;
   if (current != zc::none && ZC_ASSERT_NONNULL(current) != cfg &&
       !appendEdge(flow, ZC_ASSERT_NONNULL(current), cfg)) {
@@ -212,8 +212,8 @@ bool appendLocation(FlowFunction& flow, const OwnershipFunctionEventOverlay& ove
   current = cfg;
   for (const auto& slot : overlay.slots) {
     if (slot.key.location.point != cfg.cfgValue().point) continue;
-    OwnershipPoint before = OwnershipPoint::beforeEvent(slot.key);
-    OwnershipPoint after = OwnershipPoint::afterEvent(slot.key);
+    Point before = Point::beforeEvent(slot.key);
+    Point after = Point::afterEvent(slot.key);
     if (!appendPoint(flow, before) || !appendPoint(flow, after) ||
         !appendEdge(flow, ZC_ASSERT_NONNULL(current), before) || !appendEdge(flow, before, after)) {
       return false;
@@ -223,10 +223,10 @@ bool appendLocation(FlowFunction& flow, const OwnershipFunctionEventOverlay& ove
   return true;
 }
 
-bool hasAllSlotPoints(const FlowFunction& flow, const OwnershipFunctionEventOverlay& overlay) {
+bool hasAllSlotPoints(const FlowFunction& flow, const FunctionEventOverlay& overlay) {
   for (const auto& slot : overlay.slots) {
-    if (!containsPoint(flow.points.asPtr(), OwnershipPoint::beforeEvent(slot.key)) ||
-        !containsPoint(flow.points.asPtr(), OwnershipPoint::afterEvent(slot.key))) {
+    if (!containsPoint(flow.points.asPtr(), Point::beforeEvent(slot.key)) ||
+        !containsPoint(flow.points.asPtr(), Point::afterEvent(slot.key))) {
       return false;
     }
   }
@@ -243,11 +243,11 @@ struct FlowFunctionOutcome final {
 };
 
 FlowFunctionOutcome deriveFunction(const mir::MirFunction& function,
-                                   const OwnershipFunctionEventOverlay& overlay) {
+                                   const FunctionEventOverlay& overlay) {
   if (function.blocks.size() == 0) return {zc::none, FlowRejection::Proof};
   if (!isAdmittedFlowSubset(function)) return {zc::none, FlowRejection::ControlFlow};
-  FlowFunction flow{function.owner, zc::Vector<OwnershipPoint>(), zc::Vector<FlowEdge>()};
-  zc::Maybe<OwnershipPoint> current;
+  FlowFunction flow{function.owner, zc::Vector<Point>(), zc::Vector<FlowEdge>()};
+  zc::Maybe<Point> current;
   if (!appendLocation(flow, overlay, MirPoint::entry(), current)) {
     return {zc::none, FlowRejection::Proof};
   }
@@ -295,7 +295,7 @@ FlowFunctionOutcome deriveFunction(const mir::MirFunction& function,
     const auto& block = function.blocks[currentBlock];
     auto start = blockStart(block);
     if (start == zc::none) return {zc::none, FlowRejection::Proof};
-    OwnershipPoint startPoint = OwnershipPoint::cfg(zc::mv(ZC_ASSERT_NONNULL(start)));
+    Point startPoint = Point::cfg(zc::mv(ZC_ASSERT_NONNULL(start)));
     if (block.id == function.blocks[0].id &&
         !appendEdge(flow, ZC_ASSERT_NONNULL(current), startPoint)) {
       return {zc::none, FlowRejection::Proof};
@@ -331,7 +331,7 @@ FlowFunctionOutcome deriveFunction(const mir::MirFunction& function,
     }
     // The beforeTerminator location is the common predecessor of every edge;
     // each successor chains from it so a branch terminator fans out correctly.
-    zc::Maybe<OwnershipPoint> branchPoint = current;
+    zc::Maybe<Point> branchPoint = current;
     auto chainEdge = [&](uint32_t edgeOrdinal, mir::MirBlockId target) -> bool {
       current = branchPoint;
       if (!appendLocation(flow, overlay, MirPoint::edge(block.id, edgeOrdinal, target), current)) {
@@ -342,9 +342,8 @@ FlowFunctionOutcome deriveFunction(const mir::MirFunction& function,
       size_t nextBlock = 0;
       ZC_IF_SOME(value, next) { nextBlock = value; }
       auto nextStart = blockStart(function.blocks[nextBlock]);
-      if (nextStart == zc::none ||
-          !appendEdge(flow, ZC_ASSERT_NONNULL(current),
-                      OwnershipPoint::cfg(zc::mv(ZC_ASSERT_NONNULL(nextStart))))) {
+      if (nextStart == zc::none || !appendEdge(flow, ZC_ASSERT_NONNULL(current),
+                                               Point::cfg(zc::mv(ZC_ASSERT_NONNULL(nextStart))))) {
         return false;
       }
       // A successor still on the current DFS path is a loop back edge, and a
@@ -420,7 +419,7 @@ FlowOutcome derive(const mir::VerifiedBuiltMir& builtMir,
 FlowCandidate::FlowCandidate(identity::SemanticContextBrand semanticContext,
                              identity::ContextFingerprint&& contextFingerprint,
                              identity::ModuleId module, mir::MirRevisionId builtRevision,
-                             OwnershipEventOverlayRevision overlayRevision,
+                             EventOverlayRevision overlayRevision,
                              zc::Vector<FlowFunction>&& functions) noexcept
     : semanticContext(semanticContext),
       contextFingerprint(zc::mv(contextFingerprint)),
@@ -448,7 +447,7 @@ identity::ModuleId VerifiedFlow::module() const noexcept { return impl->candidat
 const mir::MirRevisionId& VerifiedFlow::builtRevision() const noexcept {
   return impl->candidate.builtRevision;
 }
-const OwnershipEventOverlayRevision& VerifiedFlow::overlayRevision() const noexcept {
+const EventOverlayRevision& VerifiedFlow::overlayRevision() const noexcept {
   return impl->candidate.overlayRevision;
 }
 zc::ArrayPtr<const FlowFunction> VerifiedFlow::functions() const noexcept {

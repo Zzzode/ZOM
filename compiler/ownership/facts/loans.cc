@@ -80,14 +80,14 @@ ir::IrOperationResult<Result> reject(const mir::VerifiedBuiltMir& builtMir,
   identity::DefId definition;
   if (builtMir.functions().size() != 0) definition = builtMir.functions()[0].owner;
   AuthorityIdentityResolver resolver(identities);
-  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::OwnershipProofValidation,
+  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::ProofValidation,
                                                      ir::IrFailureOwner::definition(definition));
   ZC_IREQUIRE(fallback != zc::none, "Loan fact failure fallback must be legal");
   zc::Maybe<ir::IrFailureSite> noSite;
   zc::Maybe<identity::SourceSpan> noSpan;
   zc::Vector<uint32_t> noPath;
   auto descriptor = ir::IrFailureDescriptor::decoded(
-      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::OwnershipProofValidation, kind,
+      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::ProofValidation, kind,
       ir::IrFailureOwner::definition(definition), zc::mv(noSite), ir::IrFailureDetail::none(),
       zc::mv(noSpan), zc::mv(noPath), ordinal);
   ZC_IF_SOME(fallbackValue, fallback) {
@@ -159,9 +159,8 @@ bool hasBorrowIssue(const VerifiedOwnershipEventOverlay& overlay, identity::DefI
     size_t matches = 0;
     for (const auto& slot : function.slots) {
       if (slot.key.location.point != point || slot.key.operandOrdinal != 1 ||
-          slot.stage != OwnershipEventStage::Effect || slot.roles.size() != 2 ||
-          slot.roles[0] != OwnershipEventRole::Operation ||
-          slot.roles[1] != OwnershipEventRole::BorrowIssue) {
+          slot.stage != EventStage::Effect || slot.roles.size() != 2 ||
+          slot.roles[0] != EventRole::Operation || slot.roles[1] != EventRole::BorrowIssue) {
         continue;
       }
       ++matches;
@@ -178,8 +177,8 @@ bool hasBorrowCommit(const VerifiedOwnershipEventOverlay& overlay, identity::Def
     size_t matches = 0;
     for (const auto& slot : function.slots) {
       if (slot.key.location.point != point || slot.key.operandOrdinal != 2 ||
-          slot.stage != OwnershipEventStage::Commit || slot.roles.size() != 1 ||
-          slot.roles[0] != OwnershipEventRole::DestinationWrite) {
+          slot.stage != EventStage::Commit || slot.roles.size() != 1 ||
+          slot.roles[0] != EventRole::DestinationWrite) {
         continue;
       }
       ++matches;
@@ -196,8 +195,8 @@ size_t borrowActivationCount(const VerifiedOwnershipEventOverlay& overlay, ident
     size_t matches = 0;
     for (const auto& slot : function.slots) {
       if (slot.key.location.point != point || slot.key.operandOrdinal != 1 ||
-          slot.stage != OwnershipEventStage::Commit || slot.roles.size() != 1 ||
-          slot.roles[0] != OwnershipEventRole::BorrowActivation) {
+          slot.stage != EventStage::Commit || slot.roles.size() != 1 ||
+          slot.roles[0] != EventRole::BorrowActivation) {
         continue;
       }
       ++matches;
@@ -211,7 +210,7 @@ bool hasValidDeferredActivations(const mir::VerifiedBuiltMir& builtMir,
                                  const VerifiedOwnershipEventOverlay& overlay) {
   size_t expectedFacts = 0;
   for (const auto& function : builtMir.functions()) {
-    zc::Maybe<const OwnershipFunctionEventOverlay&> functionOverlay;
+    zc::Maybe<const FunctionEventOverlay&> functionOverlay;
     for (const auto& candidate : overlay.functions()) {
       if (candidate.owner != function.owner) continue;
       if (functionOverlay != zc::none) return false;
@@ -329,8 +328,8 @@ zc::Maybe<zc::Vector<LoanFact>> derive(const VerifiedMovePaths& movePaths,
         if (source == zc::none || destination == zc::none) return zc::none;
         const MirEventKey issue{MirLocation{function.owner, point}, 1};
         auto activation = deferredActivationFor(overlay, function.owner, issue);
-        OwnershipPoint activeFrom = OwnershipPoint::afterEvent(issue);
-        ZC_IF_SOME(event, activation) { activeFrom = OwnershipPoint::afterEvent(zc::mv(event)); }
+        Point activeFrom = Point::afterEvent(issue);
+        ZC_IF_SOME(event, activation) { activeFrom = Point::afterEvent(zc::mv(event)); }
         ZC_IF_SOME(sourcePath, source) {
           ZC_IF_SOME(destinationPath, destination) {
             loans.add(LoanFact{function.owner, MirEventKey{MirLocation{function.owner, point}, 1},
@@ -377,7 +376,7 @@ bool inputsMatch(const VerifiedMovePaths& movePaths, const mir::VerifiedBuiltMir
 LoanCandidate::LoanCandidate(identity::SemanticContextBrand semanticContext,
                              identity::ContextFingerprint&& contextFingerprint,
                              identity::ModuleId module, mir::MirRevisionId builtRevision,
-                             OwnershipEventOverlayRevision overlayRevision,
+                             EventOverlayRevision overlayRevision,
                              driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
                              zc::Vector<LoanFact>&& loans) noexcept
     : semanticContext(semanticContext),
@@ -407,7 +406,7 @@ identity::ModuleId VerifiedLoanFacts::module() const noexcept { return impl->can
 const mir::MirRevisionId& VerifiedLoanFacts::builtRevision() const noexcept {
   return impl->candidate.builtRevision;
 }
-const OwnershipEventOverlayRevision& VerifiedLoanFacts::overlayRevision() const noexcept {
+const EventOverlayRevision& VerifiedLoanFacts::overlayRevision() const noexcept {
   return impl->candidate.overlayRevision;
 }
 const driver::borrow_evidence::BorrowEvidenceRevision& VerifiedLoanFacts::borrowEvidenceRevision()

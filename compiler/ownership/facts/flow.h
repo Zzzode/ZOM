@@ -14,22 +14,22 @@
 
 #pragma once
 
+#include "compiler/ownership/facts/points.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
-#include "compiler/ownership/facts/points.h"
 
 namespace zomlang::compiler::ownership::facts {
 
 /// \brief One directed transition between adjacent ownership-analysis points.
 struct FlowEdge final {
-  OwnershipPoint from;
-  OwnershipPoint to;
+  Point from;
+  Point to;
 };
 
 /// \brief Complete current-subset ownership flow graph for one MIR function.
 struct FlowFunction final {
   identity::DefId owner;
-  zc::Vector<OwnershipPoint> points;
+  zc::Vector<Point> points;
   zc::Vector<FlowEdge> edges;
 };
 
@@ -38,7 +38,7 @@ class FlowCandidate final {
 public:
   FlowCandidate(identity::SemanticContextBrand semanticContext,
                 identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
-                mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
+                mir::MirRevisionId builtRevision, EventOverlayRevision overlayRevision,
                 zc::Vector<FlowFunction>&& functions) noexcept;
   FlowCandidate(FlowCandidate&&) noexcept = default;
   FlowCandidate& operator=(FlowCandidate&&) noexcept = delete;
@@ -48,7 +48,7 @@ public:
   identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   mir::MirRevisionId builtRevision;
-  OwnershipEventOverlayRevision overlayRevision;
+  EventOverlayRevision overlayRevision;
   zc::Vector<FlowFunction> functions;
 };
 
@@ -64,7 +64,7 @@ public:
   ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const mir::MirRevisionId& builtRevision() const noexcept;
-  ZC_NODISCARD const OwnershipEventOverlayRevision& overlayRevision() const noexcept;
+  ZC_NODISCARD const EventOverlayRevision& overlayRevision() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const FlowFunction> functions() const noexcept;
 
 private:

@@ -79,14 +79,14 @@ ir::IrOperationResult<Result> reject(const mir::VerifiedBuiltMir& builtMir,
   identity::DefId definition;
   if (builtMir.functions().size() != 0) definition = builtMir.functions()[0].owner;
   AuthorityIdentityResolver resolver(identities);
-  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::OwnershipProofValidation,
+  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::ProofValidation,
                                                      ir::IrFailureOwner::definition(definition));
   ZC_IREQUIRE(fallback != zc::none, "Move-path failure fallback must be legal");
   zc::Maybe<ir::IrFailureSite> noSite;
   zc::Maybe<identity::SourceSpan> noSpan;
   zc::Vector<uint32_t> noPath;
   auto descriptor = ir::IrFailureDescriptor::decoded(
-      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::OwnershipProofValidation, kind,
+      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::ProofValidation, kind,
       ir::IrFailureOwner::definition(definition), zc::mv(noSite), ir::IrFailureDetail::none(),
       zc::mv(noSpan), zc::mv(noPath), ordinal);
   ZC_IF_SOME(fallbackValue, fallback) {
@@ -589,7 +589,7 @@ bool placesConflict(const mir::MirPlace& first, const mir::MirPlace& second) noe
 MovePathCandidate::MovePathCandidate(identity::SemanticContextBrand semanticContext,
                                      identity::ContextFingerprint&& contextFingerprint,
                                      identity::ModuleId module, mir::MirRevisionId builtRevision,
-                                     OwnershipEventOverlayRevision overlayRevision,
+                                     EventOverlayRevision overlayRevision,
                                      zc::Vector<MovePathFunction>&& functions) noexcept
     : semanticContext(semanticContext),
       contextFingerprint(zc::mv(contextFingerprint)),
@@ -611,7 +611,7 @@ struct VerifiedMovePaths::Impl final {
   identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   mir::MirRevisionId builtRevision;
-  OwnershipEventOverlayRevision overlayRevision;
+  EventOverlayRevision overlayRevision;
   zc::Vector<MovePathFunction> functions;
 };
 
@@ -629,7 +629,7 @@ identity::ModuleId VerifiedMovePaths::module() const noexcept { return impl->mod
 const mir::MirRevisionId& VerifiedMovePaths::builtRevision() const noexcept {
   return impl->builtRevision;
 }
-const OwnershipEventOverlayRevision& VerifiedMovePaths::overlayRevision() const noexcept {
+const EventOverlayRevision& VerifiedMovePaths::overlayRevision() const noexcept {
   return impl->overlayRevision;
 }
 zc::ArrayPtr<const MovePathFunction> VerifiedMovePaths::functions() const noexcept {

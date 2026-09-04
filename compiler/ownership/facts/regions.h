@@ -14,10 +14,10 @@
 
 #pragma once
 
-#include "zc/core/memory.h"
-#include "zc/core/vector.h"
 #include "compiler/ownership/facts/flow.h"
 #include "compiler/ownership/facts/refs.h"
+#include "zc/core/memory.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::ownership::facts {
 
@@ -27,7 +27,7 @@ struct ReborrowRegion final {
   MirEventKey entry;
   MirEventKey loan;
   zc::OneOf<ParameterReferenceOrigin, LocalReferenceOrigin> origin;
-  zc::Vector<OwnershipPoint> members;
+  zc::Vector<Point> members;
 };
 
 /// \brief Untrusted loan-region inventory awaiting reconstruction.
@@ -36,7 +36,7 @@ public:
   ReborrowRegionCandidate(identity::SemanticContextBrand semanticContext,
                           identity::ContextFingerprint&& contextFingerprint,
                           identity::ModuleId module, mir::MirRevisionId builtRevision,
-                          OwnershipEventOverlayRevision overlayRevision,
+                          EventOverlayRevision overlayRevision,
                           driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
                           zc::Vector<ReborrowRegion>&& regions) noexcept;
   ReborrowRegionCandidate(ReborrowRegionCandidate&&) noexcept = default;
@@ -47,7 +47,7 @@ public:
   identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   mir::MirRevisionId builtRevision;
-  OwnershipEventOverlayRevision overlayRevision;
+  EventOverlayRevision overlayRevision;
   driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision;
   zc::Vector<ReborrowRegion> regions;
 };
@@ -64,7 +64,7 @@ public:
   ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const mir::MirRevisionId& builtRevision() const noexcept;
-  ZC_NODISCARD const OwnershipEventOverlayRevision& overlayRevision() const noexcept;
+  ZC_NODISCARD const EventOverlayRevision& overlayRevision() const noexcept;
   ZC_NODISCARD const driver::borrow_evidence::BorrowEvidenceRevision& borrowEvidenceRevision()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const ReborrowRegion> regions() const noexcept;

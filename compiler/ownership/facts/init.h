@@ -98,8 +98,7 @@ struct InitializationSourceAccepted final {};
 /// are legal only at ownership proof validation.
 class InitializationSourceVerificationResult final {
 public:
-  using SourceFailures =
-      ir::SortedSourceFailureFacts<OwnershipSourceFailure, OwnershipSourceFailureOrdering>;
+  using SourceFailures = ir::SortedSourceFailureFacts<SourceFailure, SourceFailureOrdering>;
 
   InitializationSourceVerificationResult(InitializationSourceVerificationResult&&) noexcept =
       default;
@@ -179,7 +178,7 @@ public:
   InitializationCandidate(identity::SemanticContextBrand semanticContext,
                           identity::ContextFingerprint&& contextFingerprint,
                           identity::ModuleId module, mir::MirRevisionId builtRevision,
-                          OwnershipEventOverlayRevision overlayRevision,
+                          EventOverlayRevision overlayRevision,
                           zc::Vector<InitializationFunction>&& functions) noexcept;
   InitializationCandidate(InitializationCandidate&&) noexcept = default;
   InitializationCandidate& operator=(InitializationCandidate&&) noexcept = delete;
@@ -189,7 +188,7 @@ public:
   identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   mir::MirRevisionId builtRevision;
-  OwnershipEventOverlayRevision overlayRevision;
+  EventOverlayRevision overlayRevision;
   zc::Vector<InitializationFunction> functions;
 };
 
@@ -205,7 +204,7 @@ public:
   ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const mir::MirRevisionId& builtRevision() const noexcept;
-  ZC_NODISCARD const OwnershipEventOverlayRevision& overlayRevision() const noexcept;
+  ZC_NODISCARD const EventOverlayRevision& overlayRevision() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const InitializationFunction> functions() const noexcept;
 
 private:

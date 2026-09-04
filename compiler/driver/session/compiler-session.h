@@ -213,9 +213,9 @@ public:
   /// \brief Returns immutable RFC 0007 ownership-checked MIR wrappers in dependency order.
   ///
   /// Each wrapper owns its Built MIR, verified event overlay, and verified
-  /// ownership facts; access the payload through OwnershipCheckedMir::builtMir,
+  /// ownership facts; access the payload through CheckedMir::builtMir,
   /// eventOverlay, and facts.
-  ZC_NODISCARD zc::ArrayPtr<const ownership::OwnershipCheckedMir> getOwnershipCheckedMirModules()
+  ZC_NODISCARD zc::ArrayPtr<const ownership::CheckedMir> getOwnershipCheckedMirModules()
       const noexcept;
   /// \brief Returns immutable RFC 0013 validated ownership proofs in dependency order.
   ///
@@ -227,12 +227,12 @@ public:
   ///
   /// Each terminal wrapper owns the full successor chain (drop-elaborated,
   /// coroutine-elaborated) and retains the recorded drop-discharge inventory;
-  /// the owned OwnershipCheckedMir payload is published separately through
+  /// the owned CheckedMir payload is published separately through
   /// getOwnershipCheckedMirModules after VerifiedExecutableMir::takeCheckedMir.
   ZC_NODISCARD zc::ArrayPtr<const ownership::VerifiedExecutableMir>
   getVerifiedExecutableMirModules() const noexcept;
   /// \brief Returns the exact retained checker-to-MIR handoff for one ownership overlay.
-  ZC_NODISCARD zc::Maybe<ownership::OwnershipEventOverlayInput> getOwnershipEventOverlayInput(
+  ZC_NODISCARD zc::Maybe<ownership::EventOverlayInput> getOwnershipEventOverlayInput(
       identity::ModuleId module) const noexcept;
   /// \brief Test-only: Built MIR, overlay, and borrow evidence staged before a
   /// borrow-source rejection.

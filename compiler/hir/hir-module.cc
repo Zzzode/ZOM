@@ -1711,8 +1711,7 @@ HirModuleCandidate::HirModuleCandidate(HirModuleCandidate&&) noexcept = default;
 HirModuleCandidate& HirModuleCandidate::operator=(HirModuleCandidate&&) noexcept = default;
 
 struct VerifiedHirModule::Impl final {
-  Impl(VerifiedCheckedModule&& admittedCheckedModule,
-       ownership::OwnershipAdmittedBoundModule&& boundModule,
+  Impl(VerifiedCheckedModule&& admittedCheckedModule, ownership::AdmittedBoundModule&& boundModule,
        checker::CheckerIdentityAuthority&& identities,
        const checker::checked::CheckedFactsRepository& checkedRepository,
        driver::borrow_evidence::BorrowEvidenceRepositoryCapability&& borrowEvidenceCapability,
@@ -1781,7 +1780,7 @@ struct VerifiedHirModule::Impl final {
   }
 
   VerifiedCheckedModule admittedCheckedModule;
-  ownership::OwnershipAdmittedBoundModule boundModule;
+  ownership::AdmittedBoundModule boundModule;
   checker::CheckerIdentityAuthority identities;
   identity::SemanticContextBrand semanticContext;
   identity::ContextFingerprint contextFingerprint;
@@ -1872,7 +1871,7 @@ zc::ArrayPtr<const ModuleInterfaceLineage> VerifiedHirModule::visibleImportedInt
   return impl->visibleImportedInterfaces.asPtr();
 }
 
-ownership::OwnershipAdmittedBoundModule VerifiedHirModule::retainAdmittedBoundModule() const {
+ownership::AdmittedBoundModule VerifiedHirModule::retainAdmittedBoundModule() const {
   return impl->boundModule.retain();
 }
 

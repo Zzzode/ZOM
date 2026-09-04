@@ -20,7 +20,7 @@ namespace {
 /// \brief Collects the primary events of every LinearConsumedTwice and
 /// MoveOutOfBorrow primary. A UseAfterMove at one of these events is a cascade
 /// that the authoritative primary suppresses.
-zc::Vector<MirEventKey> suppressingEvents(const zc::Vector<OwnershipSourceFailure>& failures) {
+zc::Vector<MirEventKey> suppressingEvents(const zc::Vector<SourceFailure>& failures) {
   zc::Vector<MirEventKey> events;
   for (const auto& failure : failures) {
     if (failure.is<LinearConsumedTwiceFailure>()) {
@@ -42,11 +42,11 @@ bool isSuppressedUseAfterMove(const UseAfterMoveFailure& failure,
 
 }  // namespace
 
-zc::Vector<OwnershipSourceFailure> SourceSuppression::suppress(
-    zc::Vector<OwnershipSourceFailure>&& failures) noexcept {
+zc::Vector<SourceFailure> SourceSuppression::suppress(
+    zc::Vector<SourceFailure>&& failures) noexcept {
   const auto suppressing = suppressingEvents(failures);
   if (suppressing.size() == 0) return zc::mv(failures);
-  zc::Vector<OwnershipSourceFailure> retained;
+  zc::Vector<SourceFailure> retained;
   retained.reserve(failures.size());
   for (auto& failure : failures) {
     if (failure.is<UseAfterMoveFailure>() &&

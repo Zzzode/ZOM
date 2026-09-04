@@ -16,14 +16,12 @@
 
 namespace zomlang::compiler::ownership::facts {
 
-OwnershipFactsRevision OwnershipFactsRevision::fromDigest(
-    const identity::Sha256Digest& digest) noexcept {
-  return OwnershipFactsRevision(digest);
+FactsRevision FactsRevision::fromDigest(const identity::Sha256Digest& digest) noexcept {
+  return FactsRevision(digest);
 }
 
-const identity::Sha256Digest& OwnershipFactsRevision::digest() const noexcept { return value; }
+const identity::Sha256Digest& FactsRevision::digest() const noexcept { return value; }
 
-OwnershipFactsRevision::OwnershipFactsRevision(const identity::Sha256Digest& digest) noexcept
-    : value(digest) {}
+FactsRevision::FactsRevision(const identity::Sha256Digest& digest) noexcept : value(digest) {}
 
 }  // namespace zomlang::compiler::ownership::facts

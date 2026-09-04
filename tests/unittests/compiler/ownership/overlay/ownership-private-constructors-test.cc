@@ -101,9 +101,9 @@ ZC_TEST("OwnershipVerifiedTypes.HaveNoPublicConstructionPath") {
       !__is_constructible(VerifiedOwnershipEventOverlay, const VerifiedOwnershipEventOverlay&));
   static_assert(__is_constructible(VerifiedOwnershipEventOverlay, VerifiedOwnershipEventOverlay&&));
 
-  static_assert(!__is_constructible(OwnershipCheckedMir));
-  static_assert(!__is_constructible(OwnershipCheckedMir, const OwnershipCheckedMir&));
-  static_assert(__is_constructible(OwnershipCheckedMir, OwnershipCheckedMir&&));
+  static_assert(!__is_constructible(CheckedMir));
+  static_assert(!__is_constructible(CheckedMir, const CheckedMir&));
+  static_assert(__is_constructible(CheckedMir, CheckedMir&&));
 
   // Source verification results expose private constructors whose argument
   // types include public IR rejection operations. External code can name the

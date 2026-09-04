@@ -517,13 +517,13 @@ def check_signature_requirement_closure(files: dict[Path, str], errors: list[str
     source = files.get(SIGNATURE_FACTS_SOURCE, "")
     if (
         "struct MarkerShapeModuleInput final {\n"
-        "  const ownership::OwnershipAdmittedBoundModule& boundModule;"
+        "  const ownership::AdmittedBoundModule& boundModule;"
         not in header
     ):
         errors.append(
             f"{SIGNATURE_FACTS_HEADER}: marker-shape construction must require ownership admission"
         )
-    if "const ownership::OwnershipAdmittedBoundModule& boundModule;" not in header:
+    if "const ownership::AdmittedBoundModule& boundModule;" not in header:
         errors.append(
             f"{SIGNATURE_FACTS_HEADER}: signature construction must require ownership admission"
         )
@@ -1152,9 +1152,9 @@ def check_rfc0015_interface_cutover(
         (COHERENCE_FACTS_SOURCE, "markerPolicies.revision().digest()"),
         (MODULE_INTERFACE_HEADER, "projectCoherenceInput() const"),
         (MODULE_INTERFACE_HEADER,
-         "const ownership::OwnershipAdmittedBoundModule& boundModule;"),
+         "const ownership::AdmittedBoundModule& boundModule;"),
         (MODULE_INTERFACE_SOURCE, "VerifiedModuleInterface::projectCoherenceInput() const"),
-        (MODULE_INTERFACE_SOURCE, "Impl(ownership::OwnershipAdmittedBoundModule&& boundModule,"),
+        (MODULE_INTERFACE_SOURCE, "Impl(ownership::AdmittedBoundModule&& boundModule,"),
         (MODULE_INTERFACE_SOURCE, "input.boundModule.retain(), input.boundModule.semanticContext()"),
         (MODULE_INTERFACE_SOURCE, "evidence.is<checker::signature::ExplicitMarkerEvidence>()"),
         (MODULE_INTERFACE_SOURCE, "zc::Vector<zc::Array<uint8_t>> implHeadRecords;"),
@@ -1185,26 +1185,26 @@ def check_rfc0015_interface_cutover(
 
 def check_checked_module_admission(files: dict[Path, str], errors: list[str]) -> None:
     required = (
-        (CHECKED_MODULE_HEADER, "const ownership::OwnershipAdmittedBoundModule& boundModule;"),
-        (CHECKED_MODULE_SOURCE, "Impl(ownership::OwnershipAdmittedBoundModule&& boundModule,"),
+        (CHECKED_MODULE_HEADER, "const ownership::AdmittedBoundModule& boundModule;"),
+        (CHECKED_MODULE_SOURCE, "Impl(ownership::AdmittedBoundModule&& boundModule,"),
         (CHECKED_MODULE_SOURCE, "input.boundModule.retain(), input.moduleInterface"),
         (
             CHECKED_MODULE_HEADER,
-            "ownership::OwnershipAdmittedBoundModule retainAdmittedBoundModule() const;",
+            "ownership::AdmittedBoundModule retainAdmittedBoundModule() const;",
         ),
         (
             HIR_MODULE_HEADER,
-            "ownership::OwnershipAdmittedBoundModule retainAdmittedBoundModule() const;",
+            "ownership::AdmittedBoundModule retainAdmittedBoundModule() const;",
         ),
-        (HIR_MODULE_SOURCE, "ownership::OwnershipAdmittedBoundModule boundModule;"),
+        (HIR_MODULE_SOURCE, "ownership::AdmittedBoundModule boundModule;"),
         (HIR_MODULE_SOURCE, "checkedModule.retainAdmittedBoundModule()"),
         (
             BUILT_MIR_HEADER,
-            "ownership::OwnershipAdmittedBoundModule retainAdmittedBoundModule() const;",
+            "ownership::AdmittedBoundModule retainAdmittedBoundModule() const;",
         ),
-        (BUILT_MIR_SOURCE, "ownership::OwnershipAdmittedBoundModule boundModule;"),
+        (BUILT_MIR_SOURCE, "ownership::AdmittedBoundModule boundModule;"),
         (BUILT_MIR_SOURCE, "hirModule.retainAdmittedBoundModule()"),
-        (OWNERSHIP_OVERLAY_SOURCE, "OwnershipAdmittedBoundModule boundModule;"),
+        (OWNERSHIP_OVERLAY_SOURCE, "AdmittedBoundModule boundModule;"),
         (OWNERSHIP_OVERLAY_SOURCE, "builtMir.retainAdmittedBoundModule()"),
     )
     for path, marker in required:
@@ -1563,7 +1563,7 @@ def run_self_test() -> int:
             files,
             SIGNATURE_FACTS_HEADER,
             "struct MarkerShapeModuleInput final {\n"
-            "  const ownership::OwnershipAdmittedBoundModule& boundModule;",
+            "  const ownership::AdmittedBoundModule& boundModule;",
         ),
         "marker-shape construction must require ownership admission",
     )
@@ -1916,7 +1916,7 @@ def run_self_test() -> int:
         lambda files: remove_once(
             files,
             CHECKED_MODULE_HEADER,
-            "const ownership::OwnershipAdmittedBoundModule& boundModule;",
+            "const ownership::AdmittedBoundModule& boundModule;",
         ),
         "retained ownership admission chain is incomplete",
     )
@@ -1936,7 +1936,7 @@ def run_self_test() -> int:
         lambda files: remove_once(
             files,
             HIR_MODULE_HEADER,
-            "ownership::OwnershipAdmittedBoundModule retainAdmittedBoundModule() const;",
+            "ownership::AdmittedBoundModule retainAdmittedBoundModule() const;",
         ),
         "retained ownership admission chain is incomplete",
     )
@@ -1946,7 +1946,7 @@ def run_self_test() -> int:
         lambda files: remove_once(
             files,
             MODULE_INTERFACE_HEADER,
-            "const ownership::OwnershipAdmittedBoundModule& boundModule;",
+            "const ownership::AdmittedBoundModule& boundModule;",
         ),
         "missing RFC 0015 atomic cutover marker",
     )

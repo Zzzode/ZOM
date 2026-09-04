@@ -551,13 +551,13 @@ struct CompilerSession::Impl {
   zc::Vector<checker::body::VerifiedBodyFactRequirementInventory> bodyRequirements;
   zc::Vector<VerifiedModuleInterface> moduleInterfaces;
   zc::Maybe<checker::CheckerIdentityAuthority> checkerIdentityAuthority;
-  zc::Vector<ownership::OwnershipAdmittedBoundModule> ownershipAdmittedModules;
+  zc::Vector<ownership::AdmittedBoundModule> ownershipAdmittedModules;
   zc::Vector<ownership::ValidatedOwnershipProofs> validatedOwnershipProofs;
   zc::Maybe<checker::coherence::FrozenCoherenceView> coherenceView;
   zc::Vector<checker::checked::CheckedEvidenceLease> checkedEvidence;
   zc::Vector<checker::dispatch::VerifiedDispatchFacts> dispatchFacts;
   zc::Vector<hir::VerifiedHirModule> hirModules;
-  zc::Vector<ownership::OwnershipCheckedMir> ownershipCheckedMirModules;
+  zc::Vector<ownership::CheckedMir> ownershipCheckedMirModules;
   zc::Vector<ownership::VerifiedExecutableMir> verifiedExecutableMirModules;
   zc::Vector<ir::IrDiagnosticGroup> irFailureGroups;
   zc::Vector<identity::IdentityInvariant> irIdentityInvariantFailures;
@@ -2083,7 +2083,7 @@ zc::ArrayPtr<const hir::VerifiedHirModule> CompilerSession::getVerifiedHirModule
   return impl->hirModules;
 }
 
-zc::ArrayPtr<const ownership::OwnershipCheckedMir> CompilerSession::getOwnershipCheckedMirModules()
+zc::ArrayPtr<const ownership::CheckedMir> CompilerSession::getOwnershipCheckedMirModules()
     const noexcept {
   return impl->ownershipCheckedMirModules;
 }
@@ -2098,7 +2098,7 @@ CompilerSession::getVerifiedExecutableMirModules() const noexcept {
   return impl->verifiedExecutableMirModules;
 }
 
-zc::Maybe<ownership::OwnershipEventOverlayInput> CompilerSession::getOwnershipEventOverlayInput(
+zc::Maybe<ownership::EventOverlayInput> CompilerSession::getOwnershipEventOverlayInput(
     identity::ModuleId module) const noexcept {
   if (impl->checkerIdentityAuthority == zc::none || impl->markerPolicies == zc::none ||
       impl->coreLibrary == zc::none || impl->coherenceView == zc::none ||
@@ -2122,7 +2122,7 @@ zc::Maybe<ownership::OwnershipEventOverlayInput> CompilerSession::getOwnershipEv
     ZC_IF_SOME(crateEntry, crate) {
       const auto& standardMarkers =
           ZC_ASSERT_NONNULL(impl->coreLibrary).authorityLease().capability().authority();
-      return ownership::OwnershipEventOverlayInput{
+      return ownership::EventOverlayInput{
           admittedModule, hirModule.admittedCheckedModule(), hirModule, builtMir,
           checker::body::BodyCheckingInput{
               admittedModule.boundModule().retain(), authority,
@@ -2682,11 +2682,11 @@ bool CompilerSession::checkSources() {
     return false;
   };
 
-  zc::Vector<ownership::OwnershipAdmittedBoundModule> checkerModules(boundModules.size());
+  zc::Vector<ownership::AdmittedBoundModule> checkerModules(boundModules.size());
   for (const auto& boundModule : boundModules) {
     const auto module = boundModule.module();
-    auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(boundModule.retain());
-    if (admission.is<ownership::OwnershipSurfaceSourceRejected>()) {
+    auto admission = ownership::SurfaceAdmissionBuilder::admit(boundModule.retain());
+    if (admission.is<ownership::SurfaceSourceRejected>()) {
       auto parsed = parsedFor(module);
       if (parsed == zc::none) {
         return rejectOne(module, checker::signature::CheckerInvariantKind::InputReceiptMismatch,
@@ -2694,18 +2694,17 @@ bool CompilerSession::checkSources() {
       }
       ZC_IF_SOME(parsedModule, parsed) {
         // Surface admission failures are mapped inline until they migrate to the
-        // closed OwnershipSourceFailure union and emitOwnershipSourceFailures.
-        for (const auto& failure :
-             admission.get<ownership::OwnershipSurfaceSourceRejected>().failures()) {
+        // closed SourceFailure union and emitOwnershipSourceFailures.
+        for (const auto& failure : admission.get<ownership::SurfaceSourceRejected>().failures()) {
           diagnostics::DiagID diagnostic = diagnostics::DiagID::ControlFlowSemanticsUnavailable;
-          if (failure.kind == ownership::OwnershipSurfaceSyntaxKind::Spawn ||
-              failure.kind == ownership::OwnershipSurfaceSyntaxKind::Suspend) {
+          if (failure.kind == ownership::SurfaceSyntaxKind::Spawn ||
+              failure.kind == ownership::SurfaceSyntaxKind::Suspend) {
             diagnostic = diagnostics::DiagID::ConcurrencySemanticsUnavailable;
-          } else if (failure.kind == ownership::OwnershipSurfaceSyntaxKind::VoidReturn) {
+          } else if (failure.kind == ownership::SurfaceSyntaxKind::VoidReturn) {
             diagnostic = diagnostics::DiagID::VoidReturnSemanticsUnavailable;
-          } else if (failure.kind == ownership::OwnershipSurfaceSyntaxKind::ExpressionStatement) {
+          } else if (failure.kind == ownership::SurfaceSyntaxKind::ExpressionStatement) {
             diagnostic = diagnostics::DiagID::ExpressionStatementSemanticsUnavailable;
-          } else if (failure.kind == ownership::OwnershipSurfaceSyntaxKind::FunctionBody) {
+          } else if (failure.kind == ownership::SurfaceSyntaxKind::FunctionBody) {
             diagnostic = diagnostics::DiagID::FunctionBodySemanticsUnavailable;
           }
           impl->diagnosticEngine->emit(
@@ -2714,7 +2713,7 @@ bool CompilerSession::checkSources() {
       }
       return false;
     }
-    checkerModules.add(zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>());
+    checkerModules.add(zc::mv(admission).get<ownership::AdmittedBoundModule>());
   }
 
   zc::Maybe<checker::signature::VerifiedMarkerShapeInventory> stagedMarkerShapes;
@@ -2733,8 +2732,8 @@ bool CompilerSession::checkSources() {
   zc::Vector<mir::VerifiedBuiltMir> stagedBuiltMirModules;
   zc::Vector<ownership::VerifiedOwnershipEventOverlay> stagedOwnershipEventOverlays;
   zc::Vector<ownership::ValidatedOwnershipProofs> stagedValidatedOwnershipProofs;
-  zc::Vector<ownership::OwnershipAdmittedBoundModule> stagedOwnershipAdmittedModules;
-  zc::Vector<ownership::OwnershipCheckedMir> stagedOwnershipCheckedMir;
+  zc::Vector<ownership::AdmittedBoundModule> stagedOwnershipAdmittedModules;
+  zc::Vector<ownership::CheckedMir> stagedOwnershipCheckedMir;
   zc::Vector<ownership::VerifiedExecutableMir> stagedVerifiedExecutableMir;
   zc::Vector<size_t> checkerFactModuleIndices;
   zc::Vector<size_t> checkerFactIndexByModule;
@@ -3421,9 +3420,9 @@ bool CompilerSession::checkSources() {
 
     const auto& hirModule = stagedHirModules[stagedHirModules.size() - 1];
     const auto& builtMir = stagedBuiltMirModules[stagedBuiltMirModules.size() - 1];
-    ownership::OwnershipEventOverlayInput ownershipInput{
-        checkerBound, hirModule.admittedCheckedModule(), hirModule, builtMir, zc::mv(bodyInput)};
-    auto ownershipCandidate = ownership::OwnershipEventOverlayBuilder::build(ownershipInput);
+    ownership::EventOverlayInput ownershipInput{checkerBound, hirModule.admittedCheckedModule(),
+                                                hirModule, builtMir, zc::mv(bodyInput)};
+    auto ownershipCandidate = ownership::EventOverlayBuilder::build(ownershipInput);
     if (ownershipCandidate.isCapabilityRejected()) {
       return rejectIrCapability(ownershipCandidate.capabilityFailures());
     }
@@ -3433,7 +3432,7 @@ bool CompilerSession::checkSources() {
     if (ownershipCandidate.isIrInvariantRejected()) {
       return rejectIrInvariant(ownershipCandidate.invariantFailures());
     }
-    auto verifiedOwnership = ownership::OwnershipEventOverlayVerifier::verify(
+    auto verifiedOwnership = ownership::EventOverlayVerifier::verify(
         zc::mv(ownershipCandidate).takeVerified(), ownershipInput);
     if (verifiedOwnership.isCapabilityRejected()) {
       return rejectIrCapability(verifiedOwnership.capabilityFailures());
@@ -3691,7 +3690,7 @@ bool CompilerSession::checkSources() {
     if (verifiedReferenceStates.isIrInvariantRejected()) {
       return rejectIrInvariant(verifiedReferenceStates.invariantFailures());
     }
-    auto resourceCandidate = ownership::facts::OwnershipResourceBuilder::build(
+    auto resourceCandidate = ownership::facts::ResourceBuilder::build(
         verifiedMovePaths.verifiedValue(), stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
         stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1]);
     if (resourceCandidate.isCapabilityRejected()) {
@@ -3703,7 +3702,7 @@ bool CompilerSession::checkSources() {
     if (resourceCandidate.isIrInvariantRejected()) {
       return rejectIrInvariant(resourceCandidate.invariantFailures());
     }
-    auto verifiedResources = ownership::facts::OwnershipResourceVerifier::verify(
+    auto verifiedResources = ownership::facts::ResourceVerifier::verify(
         zc::mv(resourceCandidate).takeVerified(), verifiedMovePaths.verifiedValue(),
         stagedBuiltMirModules[stagedBuiltMirModules.size() - 1],
         stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1]);
@@ -3824,7 +3823,7 @@ bool CompilerSession::checkSources() {
     if (verifiedRegionOutlives.isIrInvariantRejected()) {
       return rejectIrInvariant(verifiedRegionOutlives.invariantFailures());
     }
-    auto verifiedOwnershipInputs = ownership::facts::OwnershipInputVerifier::verify(
+    auto verifiedOwnershipInputs = ownership::facts::InputVerifier::verify(
         zc::mv(verifiedMovePaths).takeVerified(), zc::mv(verifiedFlow).takeVerified(),
         zc::mv(verifiedInitialization).takeVerified(), zc::mv(verifiedLoans).takeVerified(),
         zc::mv(verifiedReferences).takeVerified(), zc::mv(verifiedRegions).takeVerified(),
@@ -3844,9 +3843,9 @@ bool CompilerSession::checkSources() {
     if (verifiedOwnershipInputs.isIrInvariantRejected()) {
       return rejectIrInvariant(verifiedOwnershipInputs.invariantFailures());
     }
-    auto validatedOwnershipProofs = ownership::OwnershipProofValidation::validate(
-        zc::mv(verifiedOwnershipInputs).takeVerified(),
-        zc::mv(verifiedRegionMemberships).takeVerified());
+    auto validatedOwnershipProofs =
+        ownership::ProofValidation::validate(zc::mv(verifiedOwnershipInputs).takeVerified(),
+                                             zc::mv(verifiedRegionMemberships).takeVerified());
     if (validatedOwnershipProofs.isCapabilityRejected()) {
       return rejectIrCapability(validatedOwnershipProofs.capabilityFailures());
     }
@@ -3861,7 +3860,7 @@ bool CompilerSession::checkSources() {
   }
   // Finalize ownership, elaborate drops, elaborate coroutines, and verify
   // executable MIR: consume Built MIR, the verified event overlay, and the
-  // verified facts into one fail-closed OwnershipCheckedMir wrapper per
+  // verified facts into one fail-closed CheckedMir wrapper per
   // module, then run the RFC 0007 successor chain (elaborateDrops,
   // elaborateCoroutines, verifyExecutableMir) so every pending drop
   // obligation is discharged by the emitted cleanup and every Positive
@@ -3870,7 +3869,7 @@ bool CompilerSession::checkSources() {
   // successor; the session retains its previous transaction until every
   // wrapper is committed atomically below.
   for (size_t index = 0; index < stagedBuiltMirModules.size(); ++index) {
-    auto checked = ownership::OwnershipFinalizer::finalizeOwnership(
+    auto checked = ownership::Finalizer::finalizeOwnership(
         zc::mv(stagedBuiltMirModules[index]), zc::mv(stagedOwnershipEventOverlays[index]),
         zc::mv(stagedValidatedOwnershipProofs[index]).takeInputs(),
         stagedBorrowEvidenceRepository->capability(), *impl->semanticTypeStore);

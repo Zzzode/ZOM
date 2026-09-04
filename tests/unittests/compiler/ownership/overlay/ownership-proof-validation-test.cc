@@ -308,10 +308,10 @@ ir::IrOperationResult<ValidatedOwnershipProofs> buildAndValidateProofs(
   ZC_REQUIRE(states.isVerified());
 
   auto resourceCandidate =
-      facts::OwnershipResourceBuilder::build(movePaths.verifiedValue(), builtMir, overlay);
+      facts::ResourceBuilder::build(movePaths.verifiedValue(), builtMir, overlay);
   ZC_REQUIRE(resourceCandidate.isVerified());
-  auto resources = facts::OwnershipResourceVerifier::verify(
-      zc::mv(resourceCandidate).takeVerified(), movePaths.verifiedValue(), builtMir, overlay);
+  auto resources = facts::ResourceVerifier::verify(zc::mv(resourceCandidate).takeVerified(),
+                                                   movePaths.verifiedValue(), builtMir, overlay);
   ZC_REQUIRE(resources.isVerified());
 
   auto captureCandidate =
@@ -355,7 +355,7 @@ ir::IrOperationResult<ValidatedOwnershipProofs> buildAndValidateProofs(
     ZC_UNREACHABLE
   }();
 
-  auto inputs = facts::OwnershipInputVerifier::verify(
+  auto inputs = facts::InputVerifier::verify(
       zc::mv(movePaths).takeVerified(), zc::mv(flow).takeVerified(),
       zc::mv(initialization).takeVerified(), zc::mv(loans).takeVerified(),
       zc::mv(references).takeVerified(), zc::mv(regions).takeVerified(),
@@ -365,8 +365,8 @@ ir::IrOperationResult<ValidatedOwnershipProofs> buildAndValidateProofs(
       overlayInput.body.semanticTypes);
   ZC_REQUIRE(inputs.isVerified());
 
-  return OwnershipProofValidation::validate(zc::mv(inputs).takeVerified(),
-                                            zc::mv(memberships).takeVerified());
+  return ProofValidation::validate(zc::mv(inputs).takeVerified(),
+                                   zc::mv(memberships).takeVerified());
 }
 
 }  // namespace

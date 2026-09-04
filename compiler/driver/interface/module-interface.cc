@@ -896,8 +896,7 @@ zc::Maybe<zc::Array<uint8_t>> ModuleInterfaceCanonicalCodec::encodeExportedBindi
 }
 
 struct VerifiedModuleInterface::Impl final {
-  Impl(ownership::OwnershipAdmittedBoundModule&& boundModule,
-       identity::SemanticContextBrand semanticContext,
+  Impl(ownership::AdmittedBoundModule&& boundModule, identity::SemanticContextBrand semanticContext,
        module_interface::ModuleInterfaceRevision revision,
        identity::CompilationUnitId compilationUnit, identity::CrateId crate,
        identity::ModuleId module, const identity::Sha256Digest& sourceContentDigest,
@@ -932,7 +931,7 @@ struct VerifiedModuleInterface::Impl final {
         markerFacts(zc::mv(markerFacts)),
         markerFactRecords(zc::mv(markerFactRecords)) {}
 
-  ownership::OwnershipAdmittedBoundModule boundModule;
+  ownership::AdmittedBoundModule boundModule;
   identity::SemanticContextBrand semanticContext;
   module_interface::ModuleInterfaceRevision revision;
   identity::CompilationUnitId compilationUnit;
@@ -1036,7 +1035,7 @@ checker::coherence::CoherenceModuleInput VerifiedModuleInterface::projectCoheren
 
 zc::Maybe<checker::cross_module::ImportedSignatureModule>
 VerifiedModuleInterface::projectImportedSignatures(
-    const ownership::OwnershipAdmittedBoundModule& requester,
+    const ownership::AdmittedBoundModule& requester,
     checker::cross_module::SignatureViewOrigin origin,
     zc::ArrayPtr<const checker::cross_module::ImportedDefinitionBindingSelection>
         definitionBindings,

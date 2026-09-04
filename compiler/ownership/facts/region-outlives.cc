@@ -79,14 +79,14 @@ ir::IrOperationResult<Result> reject(const mir::VerifiedBuiltMir& builtMir,
   identity::DefId definition;
   if (builtMir.functions().size() != 0) definition = builtMir.functions()[0].owner;
   AuthorityIdentityResolver resolver(identities);
-  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::OwnershipProofValidation,
+  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::ProofValidation,
                                                      ir::IrFailureOwner::definition(definition));
   ZC_IREQUIRE(fallback != zc::none, "Region outlives failure fallback must be legal");
   zc::Maybe<ir::IrFailureSite> noSite;
   zc::Maybe<identity::SourceSpan> noSpan;
   zc::Vector<uint32_t> noPath;
   auto descriptor = ir::IrFailureDescriptor::decoded(
-      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::OwnershipProofValidation, kind,
+      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::ProofValidation, kind,
       ir::IrFailureOwner::definition(definition), zc::mv(noSite), ir::IrFailureDetail::none(),
       zc::mv(noSpan), zc::mv(noPath), ordinal);
   ZC_IF_SOME(fallbackValue, fallback) {
@@ -134,8 +134,7 @@ void sortOutlives(zc::Vector<RegionOutlivesFact>& outlives) {
 }
 
 /// \brief Returns true when every point in `subset` is also in `superset`.
-bool isSubset(zc::ArrayPtr<const OwnershipPoint> subset,
-              zc::ArrayPtr<const OwnershipPoint> superset) {
+bool isSubset(zc::ArrayPtr<const Point> subset, zc::ArrayPtr<const Point> superset) {
   for (const auto& point : subset) {
     bool found = false;
     for (const auto& candidate : superset) {
@@ -179,7 +178,7 @@ zc::Vector<RegionOutlivesFact> deriveOutlives(zc::ArrayPtr<const RegionMembershi
 
   // Build the live-point set of each region. The admitted subset carries only
   // a handful of points per region, so a linear scan per membership suffices.
-  zc::Vector<zc::Vector<OwnershipPoint>> livePoints;
+  zc::Vector<zc::Vector<Point>> livePoints;
   livePoints.resize(regions.size());
   for (const auto& membership : memberships) {
     for (size_t index = 0; index < regions.size(); ++index) {
@@ -238,7 +237,7 @@ bool inputsMatch(const VerifiedRegionMemberships& memberships,
 RegionOutlivesCandidate::RegionOutlivesCandidate(
     identity::SemanticContextBrand semanticContext,
     identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
-    mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
+    mir::MirRevisionId builtRevision, EventOverlayRevision overlayRevision,
     driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
     zc::Vector<RegionOutlivesFact>&& outlives) noexcept
     : semanticContext(semanticContext),
@@ -272,7 +271,7 @@ identity::ModuleId VerifiedRegionOutlives::module() const noexcept {
 const mir::MirRevisionId& VerifiedRegionOutlives::builtRevision() const noexcept {
   return impl->candidate.builtRevision;
 }
-const OwnershipEventOverlayRevision& VerifiedRegionOutlives::overlayRevision() const noexcept {
+const EventOverlayRevision& VerifiedRegionOutlives::overlayRevision() const noexcept {
   return impl->candidate.overlayRevision;
 }
 const driver::borrow_evidence::BorrowEvidenceRevision&

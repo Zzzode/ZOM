@@ -21,71 +21,69 @@
 namespace zomlang::compiler::ownership::facts {
 
 /// \brief Closed kind algebra for one ownership-analysis state point.
-enum class OwnershipPointKind : uint8_t { Cfg = 0x01, BeforeEvent = 0x02, AfterEvent = 0x03 };
+enum class PointKind : uint8_t { Cfg = 0x01, BeforeEvent = 0x02, AfterEvent = 0x03 };
 
 /// \brief One CFG state point.
-struct OwnershipCfgPoint final {
+struct CfgPoint final {
   MirPoint point;
 };
 
 /// \brief State immediately before one ownership event.
-struct OwnershipBeforeEventPoint final {
+struct BeforeEventPoint final {
   MirEventKey event;
 };
 
 /// \brief State immediately after one ownership event.
-struct OwnershipAfterEventPoint final {
+struct AfterEventPoint final {
   MirEventKey event;
 };
 
 /// \brief Exact RFC 0007 ownership point for analysis inputs and point states.
-class OwnershipPoint final {
+class Point final {
 public:
-  OwnershipPoint(OwnershipPoint&&) noexcept = default;
-  OwnershipPoint& operator=(OwnershipPoint&&) noexcept = default;
-  OwnershipPoint(const OwnershipPoint&) = default;
-  OwnershipPoint& operator=(const OwnershipPoint&) = default;
+  Point(Point&&) noexcept = default;
+  Point& operator=(Point&&) noexcept = default;
+  Point(const Point&) = default;
+  Point& operator=(const Point&) = default;
 
-  ZC_NODISCARD static OwnershipPoint cfg(MirPoint point) noexcept {
-    return OwnershipPoint(OwnershipCfgPoint{zc::mv(point)});
+  ZC_NODISCARD static Point cfg(MirPoint point) noexcept { return Point(CfgPoint{zc::mv(point)}); }
+  ZC_NODISCARD static Point beforeEvent(MirEventKey event) noexcept {
+    return Point(BeforeEventPoint{zc::mv(event)});
   }
-  ZC_NODISCARD static OwnershipPoint beforeEvent(MirEventKey event) noexcept {
-    return OwnershipPoint(OwnershipBeforeEventPoint{zc::mv(event)});
+  ZC_NODISCARD static Point afterEvent(MirEventKey event) noexcept {
+    return Point(AfterEventPoint{zc::mv(event)});
   }
-  ZC_NODISCARD static OwnershipPoint afterEvent(MirEventKey event) noexcept {
-    return OwnershipPoint(OwnershipAfterEventPoint{zc::mv(event)});
+  ZC_NODISCARD PointKind kind() const noexcept {
+    if (value.is<CfgPoint>()) return PointKind::Cfg;
+    if (value.is<BeforeEventPoint>()) return PointKind::BeforeEvent;
+    return PointKind::AfterEvent;
   }
-  ZC_NODISCARD OwnershipPointKind kind() const noexcept {
-    if (value.is<OwnershipCfgPoint>()) return OwnershipPointKind::Cfg;
-    if (value.is<OwnershipBeforeEventPoint>()) return OwnershipPointKind::BeforeEvent;
-    return OwnershipPointKind::AfterEvent;
+  ZC_NODISCARD const CfgPoint& cfgValue() const { return value.get<CfgPoint>(); }
+  ZC_NODISCARD const BeforeEventPoint& beforeEventValue() const {
+    return value.get<BeforeEventPoint>();
   }
-  ZC_NODISCARD const OwnershipCfgPoint& cfgValue() const { return value.get<OwnershipCfgPoint>(); }
-  ZC_NODISCARD const OwnershipBeforeEventPoint& beforeEventValue() const {
-    return value.get<OwnershipBeforeEventPoint>();
+  ZC_NODISCARD const AfterEventPoint& afterEventValue() const {
+    return value.get<AfterEventPoint>();
   }
-  ZC_NODISCARD const OwnershipAfterEventPoint& afterEventValue() const {
-    return value.get<OwnershipAfterEventPoint>();
-  }
-  bool operator==(const OwnershipPoint& other) const noexcept {
+  bool operator==(const Point& other) const noexcept {
     if (kind() != other.kind()) return false;
     switch (kind()) {
-      case OwnershipPointKind::Cfg:
+      case PointKind::Cfg:
         return cfgValue().point == other.cfgValue().point;
-      case OwnershipPointKind::BeforeEvent:
+      case PointKind::BeforeEvent:
         return beforeEventValue().event == other.beforeEventValue().event;
-      case OwnershipPointKind::AfterEvent:
+      case PointKind::AfterEvent:
         return afterEventValue().event == other.afterEventValue().event;
     }
     return false;
   }
-  bool operator!=(const OwnershipPoint& other) const noexcept { return !(*this == other); }
+  bool operator!=(const Point& other) const noexcept { return !(*this == other); }
 
 private:
-  explicit OwnershipPoint(OwnershipCfgPoint point) noexcept : value(zc::mv(point)) {}
-  explicit OwnershipPoint(OwnershipBeforeEventPoint point) noexcept : value(zc::mv(point)) {}
-  explicit OwnershipPoint(OwnershipAfterEventPoint point) noexcept : value(zc::mv(point)) {}
-  zc::OneOf<OwnershipCfgPoint, OwnershipBeforeEventPoint, OwnershipAfterEventPoint> value;
+  explicit Point(CfgPoint point) noexcept : value(zc::mv(point)) {}
+  explicit Point(BeforeEventPoint point) noexcept : value(zc::mv(point)) {}
+  explicit Point(AfterEventPoint point) noexcept : value(zc::mv(point)) {}
+  zc::OneOf<CfgPoint, BeforeEventPoint, AfterEventPoint> value;
 };
 
 }  // namespace zomlang::compiler::ownership::facts

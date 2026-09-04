@@ -39,7 +39,7 @@ class CheckerBoundModuleView;
 }
 
 namespace zomlang::compiler::ownership {
-class OwnershipAdmittedBoundModule;
+class AdmittedBoundModule;
 }
 
 namespace zomlang::compiler::checker {
@@ -1150,7 +1150,7 @@ private:
 };
 
 struct MarkerShapeModuleInput final {
-  const ownership::OwnershipAdmittedBoundModule& boundModule;
+  const ownership::AdmittedBoundModule& boundModule;
 };
 
 using MarkerShapeInventoryBuildResult =
@@ -1181,7 +1181,7 @@ public:
 
 /// \brief Immutable verified-only inputs accepted by production signature construction.
 struct SignatureFactsBuildInput final {
-  const ownership::OwnershipAdmittedBoundModule& boundModule;
+  const ownership::AdmittedBoundModule& boundModule;
   type::SemanticTypeStore& semanticTypes;
   const VerifiedMarkerShapeInventory& markerShapes;
   const VerifiedMarkerPolicyRegistry& markerPolicies;

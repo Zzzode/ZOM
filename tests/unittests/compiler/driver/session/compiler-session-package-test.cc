@@ -1856,16 +1856,15 @@ ZC_TEST("CompilerSession retains empty prelude signature lineage after local sha
     const auto boundModuleIndices = dependencyOrderedBoundModuleIndices(identities);
     ZC_IF_SOME(constSemanticTypes, session.getSemanticTypeStore()) {
       auto& semanticTypes = const_cast<type::SemanticTypeStore&>(constSemanticTypes);
-      zc::Vector<ownership::OwnershipAdmittedBoundModule> admittedMarkerModules(
-          boundModuleIndices.size());
+      zc::Vector<ownership::AdmittedBoundModule> admittedMarkerModules(boundModuleIndices.size());
       zc::Vector<checker::signature::MarkerShapeModuleInput> markerInputs(
           boundModuleIndices.size());
       for (const auto candidateIndex : boundModuleIndices) {
         const auto& candidate = identities.modules()[candidateIndex];
-        auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(
+        auto admission = ownership::SurfaceAdmissionBuilder::admit(
             checkerBoundModule(identities, candidate.module()).retain());
-        ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
-        admittedMarkerModules.add(zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>());
+        ZC_REQUIRE(admission.is<ownership::AdmittedBoundModule>());
+        admittedMarkerModules.add(zc::mv(admission).get<ownership::AdmittedBoundModule>());
         markerInputs.add(checker::signature::MarkerShapeModuleInput{admittedMarkerModules.back()});
       }
       auto shapeResult = checker::signature::MarkerShapeInventoryBuilder::build(
@@ -1888,10 +1887,10 @@ ZC_TEST("CompilerSession retains empty prelude signature lineage after local sha
       zc::Maybe<size_t> userModuleIndex;
       for (const auto candidateIndex : boundModuleIndices) {
         const auto& candidate = identities.modules()[candidateIndex];
-        auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(
+        auto admission = ownership::SurfaceAdmissionBuilder::admit(
             checkerBoundModule(identities, candidate.module()).retain());
-        ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
-        auto admitted = zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>();
+        ZC_REQUIRE(admission.is<ownership::AdmittedBoundModule>());
+        auto admitted = zc::mv(admission).get<ownership::AdmittedBoundModule>();
         auto signatureResult = checker::signature::SignatureFactsBuilder::build(
             checker::signature::SignatureFactsBuildInput{admitted, semanticTypes, shapes, policies,
                                                          identities});
@@ -2041,15 +2040,14 @@ ZC_TEST("MarkerProofEngine resolves explicit builtin and structural evidence") {
     const auto boundModuleIndices = dependencyOrderedBoundModuleIndices(identities);
     ZC_IF_SOME(constSemanticTypes, session.getSemanticTypeStore()) {
       auto& semanticTypes = const_cast<type::SemanticTypeStore&>(constSemanticTypes);
-      zc::Vector<ownership::OwnershipAdmittedBoundModule> admittedShapeModules(
-          boundModuleIndices.size());
+      zc::Vector<ownership::AdmittedBoundModule> admittedShapeModules(boundModuleIndices.size());
       zc::Vector<checker::signature::MarkerShapeModuleInput> shapeInputs(boundModuleIndices.size());
       for (const auto candidateIndex : boundModuleIndices) {
         const auto& candidate = identities.modules()[candidateIndex];
-        auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(
+        auto admission = ownership::SurfaceAdmissionBuilder::admit(
             checkerBoundModule(identities, candidate.module()).retain());
-        ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
-        admittedShapeModules.add(zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>());
+        ZC_REQUIRE(admission.is<ownership::AdmittedBoundModule>());
+        admittedShapeModules.add(zc::mv(admission).get<ownership::AdmittedBoundModule>());
         shapeInputs.add(checker::signature::MarkerShapeModuleInput{admittedShapeModules.back()});
       }
       auto shapeResult = checker::signature::MarkerShapeInventoryBuilder::build(
@@ -2105,10 +2103,10 @@ ZC_TEST("MarkerProofEngine resolves explicit builtin and structural evidence") {
         zc::Maybe<size_t> userModuleIndex;
         for (const auto candidateIndex : boundModuleIndices) {
           const auto& candidate = identities.modules()[candidateIndex];
-          auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(
+          auto admission = ownership::SurfaceAdmissionBuilder::admit(
               checkerBoundModule(identities, candidate.module()).retain());
-          ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
-          auto admitted = zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>();
+          ZC_REQUIRE(admission.is<ownership::AdmittedBoundModule>());
+          auto admitted = zc::mv(admission).get<ownership::AdmittedBoundModule>();
           auto signatureResult = checker::signature::SignatureFactsBuilder::build(
               checker::signature::SignatureFactsBuildInput{admitted, semanticTypes, shapes, policy,
                                                            identities});
@@ -3355,7 +3353,7 @@ ZC_TEST("CompilerSession publishes escape facts and region memberships for a par
   bool inputLiveAtEntry = false;
   for (const auto& membership : memberships) {
     if (membership.region == inputRegion &&
-        membership.point.kind() == ownership::facts::OwnershipPointKind::Cfg &&
+        membership.point.kind() == ownership::facts::PointKind::Cfg &&
         membership.point.cfgValue().point.kind() == ownership::MirPointKind::Entry) {
       inputLiveAtEntry = true;
       break;

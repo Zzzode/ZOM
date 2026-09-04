@@ -49,7 +49,7 @@ class CaptureCandidate final {
 public:
   CaptureCandidate(identity::SemanticContextBrand semanticContext,
                    identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
-                   mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
+                   mir::MirRevisionId builtRevision, EventOverlayRevision overlayRevision,
                    driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
                    zc::Vector<CaptureFact>&& captures) noexcept;
   CaptureCandidate(CaptureCandidate&&) noexcept = default;
@@ -60,7 +60,7 @@ public:
   identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   mir::MirRevisionId builtRevision;
-  OwnershipEventOverlayRevision overlayRevision;
+  EventOverlayRevision overlayRevision;
   driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision;
   zc::Vector<CaptureFact> captures;
 };
@@ -77,7 +77,7 @@ public:
   ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const mir::MirRevisionId& builtRevision() const noexcept;
-  ZC_NODISCARD const OwnershipEventOverlayRevision& overlayRevision() const noexcept;
+  ZC_NODISCARD const EventOverlayRevision& overlayRevision() const noexcept;
   ZC_NODISCARD const driver::borrow_evidence::BorrowEvidenceRevision& borrowEvidenceRevision()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const CaptureFact> captures() const noexcept;

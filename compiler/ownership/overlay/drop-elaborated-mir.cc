@@ -80,14 +80,14 @@ ir::IrOperationResult<Result> reject(const mir::VerifiedBuiltMir& builtMir,
   identity::DefId definition;
   if (builtMir.functions().size() != 0) definition = builtMir.functions()[0].owner;
   AuthorityIdentityResolver resolver(identities);
-  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::OwnershipProofValidation,
+  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::ProofValidation,
                                                      ir::IrFailureOwner::definition(definition));
   ZC_IREQUIRE(fallback != zc::none, "Drop elaboration failure fallback must be legal");
   zc::Maybe<ir::IrFailureSite> noSite;
   zc::Maybe<identity::SourceSpan> noSpan;
   zc::Vector<uint32_t> noPath;
   auto descriptor = ir::IrFailureDescriptor::decoded(
-      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::OwnershipProofValidation, kind,
+      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::ProofValidation, kind,
       ir::IrFailureOwner::definition(definition), zc::mv(noSite), ir::IrFailureDetail::none(),
       zc::mv(noSpan), zc::mv(noPath), ordinal);
   ZC_IF_SOME(fallbackValue, fallback) {
@@ -269,7 +269,7 @@ bool initializedAtReturnExit(const facts::InitializationFunction& initialization
 }
 
 zc::Maybe<zc::Vector<DropDischargeRecord>> elaborateLinear(
-    zc::ArrayPtr<const facts::OwnershipResourceFunction> resources,
+    zc::ArrayPtr<const facts::ResourceFunction> resources,
     zc::ArrayPtr<const mir::MirFunction> mirFunctions,
     zc::ArrayPtr<const facts::InitializationFunction> initialization) {
   zc::Vector<DropDischargeRecord> discharges;
@@ -437,7 +437,7 @@ bool cleanupConsumed(const DropElaboratedMir& elaborated) {
 }  // namespace
 
 struct DropElaboratedMir::Impl final {
-  Impl(OwnershipCheckedMir&& checked, zc::Vector<DropDischargeRecord>&& discharges) noexcept
+  Impl(CheckedMir&& checked, zc::Vector<DropDischargeRecord>&& discharges) noexcept
       : semanticContext(checked.semanticContext()),
         contextFingerprint(checked.contextFingerprint().clone()),
         module(checked.module()),
@@ -447,7 +447,7 @@ struct DropElaboratedMir::Impl final {
   identity::SemanticContextBrand semanticContext;
   identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
-  OwnershipCheckedMir checked;
+  CheckedMir checked;
   zc::Vector<DropDischargeRecord> discharges;
 };
 
@@ -463,16 +463,14 @@ const identity::ContextFingerprint& DropElaboratedMir::contextFingerprint() cons
   return impl->contextFingerprint;
 }
 identity::ModuleId DropElaboratedMir::module() const noexcept { return impl->module; }
-const OwnershipCheckedMir& DropElaboratedMir::checkedMir() const noexcept { return impl->checked; }
+const CheckedMir& DropElaboratedMir::checkedMir() const noexcept { return impl->checked; }
 zc::ArrayPtr<const DropDischargeRecord> DropElaboratedMir::discharges() const noexcept {
   return impl->discharges.asPtr();
 }
-OwnershipCheckedMir DropElaboratedMir::takeCheckedMir() && noexcept {
-  return zc::mv(impl->checked);
-}
+CheckedMir DropElaboratedMir::takeCheckedMir() && noexcept { return zc::mv(impl->checked); }
 
 ir::IrOperationResult<DropElaboratedMir> DropElaborator::elaborateDrops(
-    OwnershipCheckedMir&& checked,
+    CheckedMir&& checked,
     const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& repository) {
   const auto& builtMir = checked.builtMir();
   const auto identities = retainIdentityAuthority(builtMir);
@@ -494,14 +492,14 @@ ir::IrOperationResult<DropElaboratedMir> DropElaborator::elaborateDrops(
 }
 
 zc::Maybe<zc::Vector<DropDischargeRecord>> DropElaborator::computeDischarges(
-    zc::ArrayPtr<const facts::OwnershipResourceFunction> resources,
+    zc::ArrayPtr<const facts::ResourceFunction> resources,
     zc::ArrayPtr<const mir::MirFunction> mirFunctions,
     zc::ArrayPtr<const facts::InitializationFunction> initialization) {
   return elaborateLinear(resources, mirFunctions, initialization);
 }
 
 bool DropElaborator::recheckLineage(
-    const OwnershipCheckedMir& checked,
+    const CheckedMir& checked,
     const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& capability) {
   const auto& builtMir = checked.builtMir();
   const auto& overlay = checked.eventOverlay();
@@ -545,7 +543,7 @@ zc::ArrayPtr<const DropDischargeRecord> CoroutineElaboratedMir::discharges() con
 DropElaboratedMir CoroutineElaboratedMir::takeDropElaboratedMir() && noexcept {
   return zc::mv(impl->elaborated);
 }
-OwnershipCheckedMir CoroutineElaboratedMir::takeCheckedMir() && noexcept {
+CheckedMir CoroutineElaboratedMir::takeCheckedMir() && noexcept {
   return zc::mv(impl->elaborated).takeCheckedMir();
 }
 
@@ -589,7 +587,7 @@ identity::ModuleId VerifiedExecutableMir::module() const noexcept {
 zc::ArrayPtr<const DropDischargeRecord> VerifiedExecutableMir::discharges() const noexcept {
   return impl->elaborated.discharges();
 }
-OwnershipCheckedMir VerifiedExecutableMir::takeCheckedMir() && noexcept {
+CheckedMir VerifiedExecutableMir::takeCheckedMir() && noexcept {
   return zc::mv(impl->elaborated).takeCheckedMir();
 }
 

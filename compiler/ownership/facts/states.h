@@ -14,16 +14,16 @@
 
 #pragma once
 
+#include "compiler/ownership/facts/regions.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
-#include "compiler/ownership/facts/regions.h"
 
 namespace zomlang::compiler::ownership::facts {
 
 /// \brief One reference value present at one exact point of an admitted reference origin.
 struct ReborrowState final {
   identity::DefId owner;
-  OwnershipPoint point;
+  Point point;
   MirEventKey loan;
   zc::OneOf<ParameterReferenceOrigin, LocalReferenceOrigin> origin;
   MovePathKey destination;
@@ -35,7 +35,7 @@ public:
   ReborrowStateCandidate(identity::SemanticContextBrand semanticContext,
                          identity::ContextFingerprint&& contextFingerprint,
                          identity::ModuleId module, mir::MirRevisionId builtRevision,
-                         OwnershipEventOverlayRevision overlayRevision,
+                         EventOverlayRevision overlayRevision,
                          driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
                          zc::Vector<ReborrowState>&& states) noexcept;
   ReborrowStateCandidate(ReborrowStateCandidate&&) noexcept = default;
@@ -46,7 +46,7 @@ public:
   identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   mir::MirRevisionId builtRevision;
-  OwnershipEventOverlayRevision overlayRevision;
+  EventOverlayRevision overlayRevision;
   driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision;
   zc::Vector<ReborrowState> states;
 };
@@ -63,7 +63,7 @@ public:
   ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const mir::MirRevisionId& builtRevision() const noexcept;
-  ZC_NODISCARD const OwnershipEventOverlayRevision& overlayRevision() const noexcept;
+  ZC_NODISCARD const EventOverlayRevision& overlayRevision() const noexcept;
   ZC_NODISCARD const driver::borrow_evidence::BorrowEvidenceRevision& borrowEvidenceRevision()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const ReborrowState> states() const noexcept;

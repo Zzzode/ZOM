@@ -242,7 +242,7 @@ public:
     return session.getOwnershipCheckedMirModules()[0].builtMir();
   }
 
-  OwnershipEventOverlayInput overlayInput() const {
+  EventOverlayInput overlayInput() const {
     auto input = session.getOwnershipEventOverlayInput(builtMir().module());
     ZC_REQUIRE(input != zc::none);
     ZC_IF_SOME(value, input) { return zc::mv(value); }
@@ -300,7 +300,7 @@ ZC_TEST("Linear source verifier accepts a returned linear value") {
   const auto& overlay = sessionOverlay(session);
   const auto& resources = ownershipInputs(session).resources();
 
-  auto result = facts::OwnershipResourceVerifier::verifyLinearSource(builtMir, overlay, resources);
+  auto result = facts::ResourceVerifier::verifyLinearSource(builtMir, overlay, resources);
   ZC_EXPECT(result.isVerified());
 }
 
@@ -319,7 +319,7 @@ ZC_TEST("Linear source verifier rejects an unconsumed linear value") {
   const auto& function = resources.functions()[0];
   ZC_REQUIRE(function.linearObligations.size() == 1);
 
-  auto result = facts::OwnershipResourceVerifier::verifyLinearSource(builtMir, overlay, resources);
+  auto result = facts::ResourceVerifier::verifyLinearSource(builtMir, overlay, resources);
   ZC_EXPECT(result.isSourceRejected());
   auto failures = zc::mv(result).takeSourceFailures();
   ZC_REQUIRE(failures.facts().size() == 1);
@@ -341,7 +341,7 @@ ZC_TEST("Linear source verifier rejects foreign resource facts") {
   const auto& secondSession = second.compilerSession();
   const auto& secondInputs = ownershipInputs(secondSession);
 
-  auto foreign = facts::OwnershipResourceVerifier::verifyLinearSource(
+  auto foreign = facts::ResourceVerifier::verifyLinearSource(
       first.builtMir(), sessionOverlay(firstSession), secondInputs.resources());
   ZC_REQUIRE(foreign.isIrInvariantRejected());
   auto failures = zc::mv(foreign).takeInvariantFailures();
@@ -359,7 +359,7 @@ ZC_TEST("Linear source verifier rejects a foreign event overlay") {
   const auto& secondSession = second.compilerSession();
   const auto& firstInputs = ownershipInputs(firstSession);
 
-  auto foreign = facts::OwnershipResourceVerifier::verifyLinearSource(
+  auto foreign = facts::ResourceVerifier::verifyLinearSource(
       first.builtMir(), sessionOverlay(secondSession), firstInputs.resources());
   ZC_REQUIRE(foreign.isIrInvariantRejected());
   auto failures = zc::mv(foreign).takeInvariantFailures();

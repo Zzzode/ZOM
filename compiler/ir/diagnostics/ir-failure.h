@@ -40,7 +40,7 @@ enum class IrFailurePhase : uint8_t {
   HirVerification = 0x03,
   MirConstruction = 0x04,
   BuiltMirVerification = 0x05,
-  OwnershipProofValidation = 0x06,
+  ProofValidation = 0x06,
   CleanupElaboration = 0x07,
   CoroutineElaboration = 0x08,
   ExecutableMirVerification = 0x09,

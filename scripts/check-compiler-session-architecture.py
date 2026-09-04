@@ -348,7 +348,7 @@ ORDINARY_MODULE_PARTITION_MARKERS = (
     "mir::BuiltMirBuilder::build(mirInput)",
     "stagedHirModules.size() != ordinaryBoundModuleIndices.size()",
     "stagedOwnershipCheckedMir.size() != ordinaryBoundModuleIndices.size()",
-    "ownership::OwnershipFinalizer::finalizeOwnership(",
+    "ownership::Finalizer::finalizeOwnership(",
     "impl->ownershipCheckedMirModules = zc::mv(stagedOwnershipCheckedMir);",
     "for (const auto index : ordinaryBoundModuleIndices)",
     "const auto factIndex = checkerFactIndexByModule[index];",

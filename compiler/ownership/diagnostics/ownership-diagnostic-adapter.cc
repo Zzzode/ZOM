@@ -47,7 +47,7 @@ void emitWithCauses(diagnostics::DiagnosticEngine& diagnostics,
 
 void emitOwnershipSourceFailures(diagnostics::DiagnosticEngine& diagnostics,
                                  const binder::VerifiedParsedModule& parsedModule,
-                                 zc::ArrayPtr<const OwnershipSourceFailure> failures) {
+                                 zc::ArrayPtr<const SourceFailure> failures) {
   for (const auto& failure : failures) {
     ZC_SWITCH_ONEOF(failure) {
       ZC_CASE_ONEOF(value, UseAfterMoveFailure) {

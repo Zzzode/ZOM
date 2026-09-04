@@ -323,7 +323,7 @@ bool validateDispatchRevision(const CheckedModuleBuildInput& input,
 }  // namespace
 
 struct VerifiedCheckedModule::Impl final {
-  Impl(ownership::OwnershipAdmittedBoundModule&& boundModule,
+  Impl(ownership::AdmittedBoundModule&& boundModule,
        const driver::VerifiedModuleInterface& ownModuleInterface,
        const checker::checked::CheckedFactsRepository& checkedRepository,
        const checker::checked::VerifiedCheckedFacts& checkedFacts,
@@ -349,7 +349,7 @@ struct VerifiedCheckedModule::Impl final {
         ownInterfaceValue(zc::mv(ownInterface)),
         visibleImportedInterfaceValues(zc::mv(visibleImportedInterfaces)) {}
 
-  ownership::OwnershipAdmittedBoundModule boundModuleValue;
+  ownership::AdmittedBoundModule boundModuleValue;
   const driver::VerifiedModuleInterface& ownModuleInterfaceValue;
   const checker::checked::CheckedFactsRepository& checkedRepositoryValue;
   const checker::checked::VerifiedCheckedFacts& checkedFactsValue;
@@ -431,7 +431,7 @@ VerifiedCheckedModule::borrowEvidenceLease() const noexcept {
   return impl->borrowEvidenceLeaseValue;
 }
 
-ownership::OwnershipAdmittedBoundModule VerifiedCheckedModule::retainAdmittedBoundModule() const {
+ownership::AdmittedBoundModule VerifiedCheckedModule::retainAdmittedBoundModule() const {
   return impl->boundModuleValue.retain();
 }
 

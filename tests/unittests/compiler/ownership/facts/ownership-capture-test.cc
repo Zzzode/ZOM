@@ -406,7 +406,7 @@ ZC_TEST("Ownership capture derivation rejects a foreign overlay revision") {
   auto candidateResult = facts::CaptureBuilder::build(inputs.movePaths(), builtMir, overlay);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
-  candidate.overlayRevision = OwnershipEventOverlayRevision::fromDigest(identity::Sha256Digest{});
+  candidate.overlayRevision = EventOverlayRevision::fromDigest(identity::Sha256Digest{});
   ZC_REQUIRE(candidate.overlayRevision.digest() != overlay.revision().digest());
 
   auto verifiedResult =

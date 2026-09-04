@@ -14,10 +14,10 @@
 
 #pragma once
 
-#include "zc/core/memory.h"
-#include "zc/core/vector.h"
 #include "compiler/ownership/facts/region-key.h"
 #include "compiler/ownership/facts/region-membership.h"
+#include "zc/core/memory.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::ownership::facts {
 
@@ -37,7 +37,7 @@ public:
   RegionOutlivesCandidate(identity::SemanticContextBrand semanticContext,
                           identity::ContextFingerprint&& contextFingerprint,
                           identity::ModuleId module, mir::MirRevisionId builtRevision,
-                          OwnershipEventOverlayRevision overlayRevision,
+                          EventOverlayRevision overlayRevision,
                           driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision,
                           zc::Vector<RegionOutlivesFact>&& outlives) noexcept;
   RegionOutlivesCandidate(RegionOutlivesCandidate&&) noexcept = default;
@@ -48,7 +48,7 @@ public:
   identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   mir::MirRevisionId builtRevision;
-  OwnershipEventOverlayRevision overlayRevision;
+  EventOverlayRevision overlayRevision;
   driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision;
   zc::Vector<RegionOutlivesFact> outlives;
 };
@@ -65,7 +65,7 @@ public:
   ZC_NODISCARD const identity::ContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const mir::MirRevisionId& builtRevision() const noexcept;
-  ZC_NODISCARD const OwnershipEventOverlayRevision& overlayRevision() const noexcept;
+  ZC_NODISCARD const EventOverlayRevision& overlayRevision() const noexcept;
   ZC_NODISCARD const driver::borrow_evidence::BorrowEvidenceRevision& borrowEvidenceRevision()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const RegionOutlivesFact> outlives() const noexcept;

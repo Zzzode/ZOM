@@ -35,7 +35,7 @@ Invalid source returns the fixed RFC 0013 `OwnershipAnalysisResult` source
 branch. Successful analysis publishes immutable `VerifiedOwnershipFacts`
 keyed by MIR identities and the exact Built MIR and borrow-evidence revisions.
 The facts also bind the exact event-overlay revision.
-Only matching facts can construct `OwnershipCheckedMir`. AST identities,
+Only matching facts can construct `CheckedMir`. AST identities,
 binder tables, type-environment trees, name lookup, and a separately rebuilt
 CFG are not ownership inputs.
 
@@ -90,11 +90,11 @@ borrowed, and linearly obligated places without repeating semantic analysis.
 - Consume exact revision-bound `Copy` and `Linear` decisions plus checked
   capture, receiver-adjustment, and unsafe facts without resolving marker names
   or source syntax again.
-- Define a closed `OwnershipSourceFailure` algebra with exact diagnostic
+- Define a closed `SourceFailure` algebra with exact diagnostic
   mapping, deterministic suppression, ordering, and complete secondary facts.
 - Define immutable `VerifiedOwnershipFacts`, its independent verifier, exact
   canonical codec, revision oracles, and proof-lineage mutation matrix.
-- Define non-bypassable `OwnershipCheckedMir` construction and successor
+- Define non-bypassable `CheckedMir` construction and successor
   suppression on every rejected branch.
 - Define deterministic parallel execution and finite monotone work budgets.
 
@@ -276,7 +276,7 @@ result algebra, lease encoding, MIR domain, framing, and lineage fields do
 not change; RFC 0007 completes the closed MIR statement tag set with the
 direct-replacement unsafe-scope variant defined below and adds its event
 overlay to the ownership wrapper and fact lineage. It also
-supplies the qualified `RFC0007::OwnershipSourceFailure`,
+supplies the qualified `RFC0007::SourceFailure`,
 ownership facts, algorithms, and proof construction required by those clauses.
 
 RFC 0011 is `LANDED`. RFC 0006 and RFC 0013 recorded their independent
@@ -343,30 +343,30 @@ checking requires complete expression types:
 ```text
 ConcurrencySyntaxKind = Spawn | Suspend
 
-OwnershipSurfaceFailure {
+SurfaceFailure {
   kind: ConcurrencySyntaxKind,
   primarySpan: SourceSpan,
   traversalOrdinal: uint32,
 }
 
-OwnershipAdmittedBoundModule {
+AdmittedBoundModule {
   input: RFC0005::VerifiedBoundModuleInput,
 }
 
 OwnershipAdmittedCheckedModule {
-  admission: OwnershipAdmittedBoundModule,
+  admission: AdmittedBoundModule,
   checked: RFC0010::VerifiedCheckedModule,
 }
 
-OwnershipSurfaceAdmissionResult =
-    Verified { module: OwnershipAdmittedBoundModule }
+SurfaceAdmissionResult =
+    Verified { module: AdmittedBoundModule }
   | SourceRejected {
-      failures: SortedNonEmptySequence<OwnershipSurfaceFailure>,
+      failures: SortedNonEmptySequence<SurfaceFailure>,
     }
 
 admitOwnershipSurface(
   input: Moved<RFC0005::VerifiedBoundModuleInput>,
-) -> OwnershipSurfaceAdmissionResult
+) -> SurfaceAdmissionResult
 
 buildHir(
   input: Borrowed<const OwnershipAdmittedCheckedModule>,
@@ -374,15 +374,15 @@ buildHir(
 ```
 
 `ConcurrencySyntaxKind` tags are `Spawn = 0x01` and `Suspend = 0x02`;
-`OwnershipSurfaceAdmissionResult` tags are `Verified = 0x01` and
+`SurfaceAdmissionResult` tags are `Verified = 0x01` and
 `SourceRejected = 0x02`. Failure fields encode in declaration order. The phase walks the immutable AST
 in schema traversal order and publishes one failure for every
 `SpawnExpression` or `SuspendStatement`; order is validated primary span,
-traversal ordinal, then kind tag. `OwnershipAdmittedBoundModule` has a private
+traversal ordinal, then kind tag. `AdmittedBoundModule` has a private
 constructor, owns the moved bound-module capability, and exists only when the
 failure sequence is empty. Signature checking, body checking, and
 `CheckedModuleBuilder` accept only a borrowed
-`OwnershipAdmittedBoundModule`; their existing checked source and invariant
+`AdmittedBoundModule`; their existing checked source and invariant
 result algebras do not change.
 
 After complete checking, a private session operation atomically moves the
@@ -420,9 +420,9 @@ field. RFC 0007 therefore does not claim that either inventory is encoded in
 `zom.mir-revision`. It owns one separate immutable overlay:
 
 ```text
-OwnershipEventOverlayRevision = SHA256Digest
+EventOverlayRevision = SHA256Digest
 
-OwnershipFunctionEventOverlay {
+FunctionEventOverlay {
   owner: DefId,
   slots: SortedMap<MirEventKey, MirEventSlot>,
   deferredActivations:
@@ -430,7 +430,7 @@ OwnershipFunctionEventOverlay {
   unsafeOccurrences:
       SortedMap<UnsafeBoundaryKey, MirUnsafeOccurrence>,
   markerUses:
-      SortedMap<OwnershipMarkerUseKey, OwnershipMarkerUse>,
+      SortedMap<MarkerUseKey, MarkerUse>,
   logicalDropPlans: SortedMap<MirEventKey, LogicalDropPlan>,
   castResourcePlans:
       SortedMap<CastCarrierKey, VerifiedCastResourcePlanFact>,
@@ -442,11 +442,11 @@ VerifiedOwnershipEventOverlay {
   module: ModuleId,
   checkedFactsRevision: CheckedFactsRevision,
   builtRevision: MirRevisionId,
-  functions: SortedMap<DefId, OwnershipFunctionEventOverlay>,
-  revision: OwnershipEventOverlayRevision,
+  functions: SortedMap<DefId, FunctionEventOverlay>,
+  revision: EventOverlayRevision,
 }
 
-OwnershipEventOverlayInput {
+EventOverlayInput {
   checked: const OwnershipAdmittedCheckedModule,
   hir: const RFC0010::VerifiedHirModule,
   built: const RFC0013::VerifiedBuiltMir,
@@ -454,12 +454,12 @@ OwnershipEventOverlayInput {
 }
 
 buildOwnershipEventOverlay(
-  input: Borrowed<const OwnershipEventOverlayInput>,
-) -> RFC0010::IrOperationResult<OwnershipEventOverlayCandidate>
+  input: Borrowed<const EventOverlayInput>,
+) -> RFC0010::IrOperationResult<EventOverlayCandidate>
 
 verifyOwnershipEventOverlay(
-  candidate: Borrowed<const OwnershipEventOverlayCandidate>,
-  input: Borrowed<const OwnershipEventOverlayInput>,
+  candidate: Borrowed<const EventOverlayCandidate>,
+  input: Borrowed<const EventOverlayInput>,
 ) -> RFC0010::IrOperationResult<VerifiedOwnershipEventOverlay>
 ```
 
@@ -467,7 +467,7 @@ The checker/session invokes `buildOwnershipEventOverlay` after Built MIR
 verification and before ownership analysis, while the admitted checked module
 and its exact RFC 0005 `BodyCheckingInput` are still alive. Immediately before
 the call, the private checker/session constructs one
-`OwnershipEventOverlayInput` from those exact live capabilities. The producer
+`EventOverlayInput` from those exact live capabilities. The producer
 and verifier each call RFC 0015's sole
 `MarkerProofInput::from(const BodyCheckingInput&)` constructor independently.
 Each proof input is a non-owning pass-duration borrow and is destroyed before
@@ -495,10 +495,10 @@ imported-signature view revision, and frozen-coherence revision must equal
 `input.checked` and its checked-facts lineage exactly. An invalid canonical identity
 selects RFC 0010 `IdentityInvariantRejected`. A valid identity with a foreign,
 missing, stale, swapped, or post-teardown lineage selects
-`IrInvariantRejected(InputRevisionMismatch, OwnershipProofValidation)`. An RFC
+`IrInvariantRejected(InputRevisionMismatch, ProofValidation)`. An RFC
 0015 query-level `InvariantRejected` retains the mapping below: identity
 failures select `IdentityInvariantRejected`; checker failures select
-`IrInvariantRejected(InvalidFact, OwnershipProofValidation)`. Every rejected
+`IrInvariantRejected(InvalidFact, ProofValidation)`. Every rejected
 branch publishes no deferred-activation fact, marker use, logical-drop plan,
 cast-resource plan, candidate overlay, or verified overlay.
 
@@ -517,7 +517,7 @@ available. The producer and verifier each derive a distinct call-duration
 `MarkerProofInput` from `input.body`, validate its lineage independently, use
 it only for that pass, and destroy it before the pass returns.
 Every RFC 0015 query required by the ownership handoff is recorded in the
-same function overlay as one revision-bound `OwnershipMarkerUse`. This is
+same function overlay as one revision-bound `MarkerUse`. This is
 an RFC 0007-owned checker projection; RFC 0005 does not publish or encode a
 logical drop plan.
 The overlay verifier independently reconstructs all six inventories and
@@ -577,14 +577,14 @@ MirEventKey {
   operandOrdinal: uint32,
 }
 
-OwnershipPoint =
+Point =
     Cfg { point: MirPoint }
   | BeforeEvent { event: MirEventKey }
   | AfterEvent { event: MirEventKey }
 
-OwnershipEventStage = Source | Effect | Commit
+EventStage = Source | Effect | Commit
 
-OwnershipEventRole =
+EventRole =
     Operation
   | EntryRoot
   | OperandRead
@@ -616,8 +616,8 @@ OwnershipEventRole =
 
 MirEventSlot {
   key: MirEventKey,
-  stage: OwnershipEventStage,
-  roles: SortedNonEmptySequence<OwnershipEventRole>,
+  stage: EventStage,
+  roles: SortedNonEmptySequence<EventRole>,
 }
 
 CastCarrierKey {
@@ -640,12 +640,12 @@ CastCarrierFact {
   linearObligations: SortedUniqueSequence<LinearObligationKey>,
 }
 
-OwnershipMarkerDecision =
+MarkerDecision =
     Positive { proof: RFC0005::MarkerFact }
   | ExplicitNegative { explicitFact: RFC0005::MarkerFact }
   | Unsatisfied
 
-OwnershipMarkerUseKey {
+MarkerUseKey {
   event: MirEventKey,
   marker: DefId,
   subject: SemanticTypeId,
@@ -653,9 +653,9 @@ OwnershipMarkerUseKey {
   coherenceRevision: RFC0005::CoherenceViewRevision,
 }
 
-OwnershipMarkerUse {
-  key: OwnershipMarkerUseKey,
-  decision: OwnershipMarkerDecision,
+MarkerUse {
+  key: MarkerUseKey,
+  decision: MarkerDecision,
 }
 
 LogicalDropAction =
@@ -667,8 +667,8 @@ LogicalDropPlanComponent {
   place: MovePathKey,
   valueType: SemanticTypeId,
   dropAction: Maybe<LogicalDropAction>,
-  copyDecision: OwnershipMarkerUseKey,
-  linearDecision: OwnershipMarkerUseKey,
+  copyDecision: MarkerUseKey,
+  linearDecision: MarkerUseKey,
   declarationOrdinal: uint32,
 }
 
@@ -733,13 +733,13 @@ Block and statement identities are the deterministic RFC 0010 MIR identities.
 `Cancellation` remains an upstream closed-union tag but is inadmissible under
 the pre-checker Chapter 15 gate; no verified RFC 0007 input contains that exit.
 An edge ordinal is its index in the terminator's closed successor field order.
-`OwnershipPoint` tags are `Cfg = 0x01`, `BeforeEvent = 0x02`, and
-`AfterEvent = 0x03`. `OwnershipEventStage` tags are `Source = 0x01`,
-`Effect = 0x02`, and `Commit = 0x03`. `OwnershipEventRole` tags are `0x01`
+`Point` tags are `Cfg = 0x01`, `BeforeEvent = 0x02`, and
+`AfterEvent = 0x03`. `EventStage` tags are `Source = 0x01`,
+`Effect = 0x02`, and `Commit = 0x03`. `EventRole` tags are `0x01`
 through `0x1c` in declaration order. `CastCarrierSourceMode` tags are `Copy =
 0x01`, `Move = 0x02`, and `Constant = 0x03`; `CastCarrierPhase` tags are
 `Absent = 0x01`, `Initialized = 0x02`, `Transferred = 0x03`, and `Dropped =
-0x04`. `OwnershipMarkerDecision` tags are `Positive = 0x01`,
+0x04`. `MarkerDecision` tags are `Positive = 0x01`,
 `ExplicitNegative = 0x02`, and `Unsatisfied = 0x03`.
 `LogicalDropAction` tags are `Declared = 0x01`, `Builtin = 0x02`, and
 `Dynamic = 0x03`. `CastResourceRouteProof` tags are `Identity = 0x01`,
@@ -748,7 +748,7 @@ through `0x1c` in declaration order. `CastCarrierSourceMode` tags are `Copy =
 and `Exit = 0x02`. Closed-union and record fields encode in declaration order.
 Marker-use keys order by canonical `event`, expanded `marker`, expanded
 `subject`, `markerPolicyRevision`, then `coherenceRevision`; the map key must
-equal `OwnershipMarkerUse.key`. Carrier keys order by `check`, plan-component
+equal `MarkerUse.key`. Carrier keys order by `check`, plan-component
 maps order by `place`, routes order by `carrier`, `result`, then complete
 route-proof bytes, and every fact/map key must agree.
 `MirEventKey` is the
@@ -1009,7 +1009,7 @@ operation ordinal, or by a fact-specific ordinal.
 Every stage and every role other than the set-valued `UnsafeOperation` role is
 a pure projection of Built MIR bytes. `UnsafeOperation` is present exactly
 when that event's overlay-owned unsafe-occurrence subsequence is non-empty; the
-role and subsequence are committed only to `OwnershipEventOverlayRevision`.
+role and subsequence are committed only to `EventOverlayRevision`.
 They do not enter or alter `MirRevisionId`.
 
 `MirCheckedCast` branch projection is total. The source event creates one
@@ -1181,7 +1181,7 @@ Event-key and slot fields encode in declaration order; keys order by location
 then operand ordinal, stages by tag, and roles by tag. The RFC 0007 overlay
 verifier regenerates the complete slot sequence, stage, and role set, rejects a
 missing, additional, reordered, or kind-incompatible slot, and commits the
-derived view to `OwnershipEventOverlayRevision`. Slot identity, stage, and all
+derived view to `EventOverlayRevision`. Slot identity, stage, and all
 roles except `UnsafeOperation` must be a pure projection of fields already
 encoded by `zom.mir-revision`; unsafe occurrence multiplicity and the
 set-valued role are the separately encoded checked-fact association defined by
@@ -1315,7 +1315,7 @@ all three. Inclusion and kill boundaries are exact:
 - an NLL value region contains `BeforeEvent` of every use. It also contains
   `AfterEvent` of a last non-consuming use, but excludes `AfterEvent` of a move,
   overwrite, deinitialize, drop, or storage-death kill. Static regions contain
-  every reachable `OwnershipPoint`.
+  every reachable `Point`.
 
 The equality relations between adjacent cutpoints are semantic transfer rules,
 not codec deduplication: every reachable cutpoint remains a distinct structural
@@ -1386,7 +1386,7 @@ without changing proven-disjoint siblings.
 ### Initialization Lattice And CFG Dataflow
 
 Initialization uses three may-bits for every reachable
-`(OwnershipPoint, MovePathKey)` pair:
+`(Point, MovePathKey)` pair:
 
 ```text
 InitializationState =
@@ -1706,7 +1706,7 @@ Loan kind tags are `Shared = 0x01` and `Mutable = 0x02`; activation tags are
 declaration order. Loan keys order by canonical issue event. Source origins,
 parent loans, and child keys order canonically; phase sequences order by tag.
 `DeferredActivationFact` fields encode in declaration order. The authoritative
-map is `OwnershipFunctionEventOverlay.deferredActivations`, orders by `loan`,
+map is `FunctionEventOverlay.deferredActivations`, orders by `loan`,
 and requires every map key to equal `fact.loan`. No second deferred-activation
 map is published in ownership facts.
 
@@ -1816,7 +1816,7 @@ RegionKey =
 
 RegionFact {
   key: RegionKey,
-  livePoints: SortedUniqueSequence<OwnershipPoint>,
+  livePoints: SortedUniqueSequence<Point>,
   outlives: SortedUniqueSequence<RegionKey>,
 }
 
@@ -2042,7 +2042,7 @@ EscapeProof =
   | Static
   | DirectInput { input: BorrowInputKey }
   | Contained {
-      requiredPoints: SortedNonEmptySequence<OwnershipPoint>,
+      requiredPoints: SortedNonEmptySequence<Point>,
     }
   | AddressOnly
 
@@ -2096,7 +2096,7 @@ incomplete-point-set, foreign-carrier, or proof-incompatible row as
 
 Ownership analysis does not query a marker by text and does not rerun RFC
 0015's marker proof engine. Instead, each event-overlay pass constructs a fresh
-proof input from `OwnershipEventOverlayInput.body`, performs the complete query
+proof input from `EventOverlayInput.body`, performs the complete query
 set, and publishes or independently verifies the authoritative `markerUses`
 map. The query set contains exactly
 one canonical key for every `Copy` operand and both the `Copy` and `Linear`
@@ -2122,11 +2122,11 @@ that event. The key carries the exact policy-registry and frozen-coherence
 revisions from the same body-derived proof input; both must match the admitted
 checked module and its checked-facts lineage. The proof input itself, its
 interning capability, active stacks, and memo are not fields of
-`OwnershipMarkerUse`, the overlay, ownership facts, or any repository.
+`MarkerUse`, the overlay, ownership facts, or any repository.
 
 The RFC 0015 result maps into the closed persisted algebra without loss:
 
-| RFC 0015 `MarkerProofResult` | RFC 0007 `OwnershipMarkerDecision` |
+| RFC 0015 `MarkerProofResult` | RFC 0007 `MarkerDecision` |
 |---|---|
 | `Positive { proof }` | `Positive { proof }` |
 | `Negative { explicitFact }` | `ExplicitNegative { explicitFact }` |
@@ -2135,7 +2135,7 @@ The RFC 0015 result maps into the closed persisted algebra without loss:
 
 `InvariantRejected` is not an encodable marker-decision tag. Identity failures
 select RFC 0010 `IdentityInvariantRejected`; checker failures select
-`IrInvariantRejected` with `InvalidFact` at `OwnershipProofValidation`. The
+`IrInvariantRejected` with `InvalidFact` at `ProofValidation`. The
 typed checker failures remain in the compiler bug bundle. Neither branch may
 be converted to `Unsatisfied` or persisted in a partial overlay.
 
@@ -2448,7 +2448,7 @@ association table. The
 overlay codec, not `zom.mir-revision`, fixes and hashes these fields. A
 missing, additional, reordered, duplicated, gapped, wrong-span,
 wrong-acknowledgement, or source-incompatible occurrence selects RFC 0010
-`InvalidFact` at `OwnershipProofValidation` before ownership analysis. An event
+`InvalidFact` at `ProofValidation` before ownership analysis. An event
 slot carries the set-valued `UnsafeOperation` role when its occurrence
 subsequence is non-empty; multiplicity exists only in `UnsafeBoundaryKey`,
 never by duplicating a role.
@@ -2505,13 +2505,13 @@ The enclosing function-map key must equal `owner`; each slot-map key must equal
 `MirEventSlot.key`; each deferred-activation key must equal
 `DeferredActivationFact.loan`; and each unsafe-map key must equal
 `MirUnsafeOccurrence.key`. Each marker-use map key must equal
-`OwnershipMarkerUse.key`; each logical-drop-plan key must equal its
+`MarkerUse.key`; each logical-drop-plan key must equal its
 initialization event; and each cast-resource-plan key must equal
 `VerifiedCastResourcePlanFact.key`. Every event owner must equal the function
 owner. The decoder rejects any disagreement, duplicate, gap, additional row,
 missing row, or out-of-order key without normalization.
 
-`OwnershipEventOverlayRevision` is SHA-256 over:
+`EventOverlayRevision` is SHA-256 over:
 
 ```text
 ASCII("zom.ownership-event-overlay")
@@ -2520,7 +2520,7 @@ ContextFingerprint
 Frame(Encode(expanded owning ModuleKey))
 CheckedFactsRevision
 Encode(MirRevisionId digest)
-EncodeFramedSequence(OwnershipFunctionEventOverlay in expanded DefId order)
+EncodeFramedSequence(FunctionEventOverlay in expanded DefId order)
 ```
 
 The canonical domain is `zom.ownership-event-overlay`. This RFC is
@@ -2703,7 +2703,7 @@ EscapeFailureCause {
   span: SourceSpan,
 }
 
-OwnershipSourceFailure =
+SourceFailure =
     UseAfterMove {
       owner: DefId, primary: MirEventKey, primarySpan: SourceSpan,
       place: MovePathKey,
@@ -2872,17 +2872,17 @@ VerifiedOwnershipFacts {
   contextFingerprint: ContextFingerprint,
   module: ModuleId,
   builtRevision: MirRevisionId,
-  eventOverlayRevision: OwnershipEventOverlayRevision,
+  eventOverlayRevision: EventOverlayRevision,
   borrowEvidenceRevision: BorrowEvidenceRevision,
   functions: SortedMap<DefId, OwnershipFunctionFacts>,
-  revision: OwnershipFactsRevision,
+  revision: FactsRevision,
 }
 
 OwnershipFunctionFacts {
   owner: DefId,
   movePaths: SortedMap<MovePathKey, MovePathFact>,
   conflicts: SortedUniqueSequence<MovePathPair>,
-  pointStates: SortedMap<OwnershipPoint, OwnershipPointState>,
+  pointStates: SortedMap<Point, OwnershipPointState>,
   loans: SortedMap<LoanKey, LoanFact>,
   regions: SortedMap<RegionKey, RegionFact>,
   dropObligations:
@@ -2902,7 +2902,7 @@ OwnershipFunctionFacts {
 }
 
 OwnershipPointState {
-  point: OwnershipPoint,
+  point: Point,
   initialization:
       SortedMap<MovePathKey, InitializationPointFact>,
   references: SortedMap<MovePathKey, ReferencePointFact>,
@@ -3001,7 +3001,7 @@ EncodeSortedMap(escapes)
 EncodeSortedMap(unsafeBoundaries)
 ```
 
-`OwnershipFactsRevision` is SHA-256 over:
+`FactsRevision` is SHA-256 over:
 
 ```text
 ASCII("zom.ownership-facts")
@@ -3009,7 +3009,7 @@ ASCII("zom.ownership-facts")
 ContextFingerprint
 Frame(Encode(expanded owning ModuleKey))
 Encode(Built MirRevisionId)
-OwnershipEventOverlayRevision
+EventOverlayRevision
 BorrowEvidenceRevision
 EncodeFramedSequence(OwnershipFunctionFacts in expanded DefId order)
 ```
@@ -3024,7 +3024,7 @@ The empty-function oracle uses a zero context fingerprint, module bytes `a1`,
 32 MIR revision digest bytes `22`, event-overlay bytes `55`,
 borrow-evidence bytes `33`, and zero functions. Its complete 165-byte preimage
 is shown below. The `55` bytes represent an
-`OwnershipEventOverlayRevision` computed under the required
+`EventOverlayRevision` computed under the required
 `zom.ownership-event-overlay` domain; the ownership facts field width and bytes are
 otherwise unchanged because this codec binds the overlay revision as an opaque
 digest rather than duplicating overlay inventories.
@@ -3049,7 +3049,7 @@ Its SHA-256 is
 
 The exact non-empty point-state oracle uses the same parents and owner. It
 encodes one `pointStates` map entry whose key and value point are
-`OwnershipPoint::Cfg(MirPoint::Entry)` (`01 01`), empty initialization,
+`Point::Cfg(MirPoint::Entry)` (`01 01`), empty initialization,
 reference, loan, and raw-carrier maps, and one `OwnershipResourceStateAlternative` with
 empty drop-obligation, linear-obligation, and cast-carrier state maps. All other function
 groups are empty. This is a codec-valid component oracle; the semantic proof
@@ -3081,7 +3081,7 @@ The fixed `55` vectors isolate ownership facts framing and therefore remain exac
 The producer and verifier are separate implementations:
 
 - the event-overlay producer and verifier receive the same
-  `OwnershipEventOverlayInput` while its exact RFC 0005 `BodyCheckingInput` and
+  `EventOverlayInput` while its exact RFC 0005 `BodyCheckingInput` and
   admitted checked module remain live. Each constructs a distinct RFC 0015
   `MarkerProofInput` and query context with an empty private active stack and
   completed-result memo, independently derives the complete phase-one resource
@@ -3140,7 +3140,7 @@ The result remains the fixed RFC 0013 algebra:
 OwnershipAnalysisResult =
     Verified { facts: VerifiedOwnershipFacts }
   | SourceRejected {
-      failures: SortedNonEmptySequence<OwnershipSourceFailure>,
+      failures: SortedNonEmptySequence<SourceFailure>,
     }
   | IdentityInvariantRejected {
       failures: SortedNonEmptySequence<RFC0011::IdentityInvariant>,
@@ -3178,16 +3178,16 @@ The validation order is exact:
     `CanonicalCodecMismatch` for candidate failure, or publish exactly one
     verified value.
 
-Every IR failure is legal only at RFC 0010 `OwnershipProofValidation`, has a
+Every IR failure is legal only at RFC 0010 `ProofValidation`, has a
 `Definition` owner and `None` or `Mir` site, and has `IrFailureDetail::None`.
 All non-codec IR failures map to `ZOM9945 OwnershipProofInvariant`.
 `CanonicalCodecMismatch` maps to `ZOM9949 IrCanonicalCodecMismatch`. Identity
 failures retain RFC 0011 `ZOM9910-ZOM9921` mappings.
 
-### OwnershipCheckedMir Construction
+### CheckedMir Construction
 
 `VerifiedOwnershipFacts` has a private constructor available only to the
-independent verifier. `OwnershipCheckedMir` and every successor wrapper also
+independent verifier. `CheckedMir` and every successor wrapper also
 have private constructors. After the pre-checker admission and event-overlay
 operations defined above, the public ownership-analysis and successor surface
 is exactly:
@@ -3205,10 +3205,10 @@ finalizeOwnership(
   overlay: Moved<VerifiedOwnershipEventOverlay>,
   facts: Moved<VerifiedOwnershipFacts>,
   repository: Borrowed<const BorrowEvidenceRepositoryCapability>,
-) -> RFC0010::IrOperationResult<OwnershipCheckedMir>
+) -> RFC0010::IrOperationResult<CheckedMir>
 
 elaborateDrops(
-  input: Moved<OwnershipCheckedMir>,
+  input: Moved<CheckedMir>,
   repository: Borrowed<const BorrowEvidenceRepositoryCapability>,
 ) -> RFC0010::IrOperationResult<RFC0013::DropElaboratedMir>
 
@@ -3242,7 +3242,7 @@ Construction rechecks, without dereferencing unvalidated handles:
 - semantic context brand and fingerprint;
 - module identity;
 - canonical Built MIR artifact and exact `MirRevisionId`;
-- exact `OwnershipEventOverlayRevision`, checked-facts revision, and complete
+- exact `EventOverlayRevision`, checked-facts revision, and complete
   overlay revision recomputation;
 - wrapper, facts, and resolved lease `BorrowEvidenceRevision` equality;
 - facts revision recomputation;
@@ -3259,7 +3259,7 @@ This is RFC 0007's explicit extension of the RFC 0013 wrapper field set; it does
 not alter MIR. The constructor exposes no
 overload accepting a bare module, digest, caller-built fact map, or different
 lease. Ownership facts are moved values owned directly by
-`OwnershipCheckedMir`; there is no ownership-fact repository or ownership
+`CheckedMir`; there is no ownership-fact repository or ownership
 lease. The constructor does not retain a repository pointer or capability in
 the encoded or runtime wrapper. Every successor operation directly receives a
 live capability again, resolves the embedded lease before inspecting or moving
@@ -3274,7 +3274,7 @@ swapped, or post-teardown lease or capability selects RFC 0010
 `analyzeOwnership`, bound to the exact event-overlay revision, is the only
 production token that can satisfy construction.
 A rejected branch constructs neither
-`OwnershipCheckedMir` nor any drop-, coroutine-, executable-MIR, LIR, or backend
+`CheckedMir` nor any drop-, coroutine-, executable-MIR, LIR, or backend
 successor.
 
 ### Deterministic Parallelism
@@ -3293,7 +3293,7 @@ must produce byte-identical failures, facts, revisions, and dumps.
 ### Operational Budgets And Termination
 
 Let `X` be reachable ownership event slots, `Pcfg` reachable MIR CFG points,
-`P = Pcfg + 2 * X` reachable `OwnershipPoint` cutpoints, `E` CFG edges, `M`
+`P = Pcfg + 2 * X` reachable `Point` cutpoints, `E` CFG edges, `M`
 move paths, `D` distinct initialization-loss causes, `L` loans, `R` regions,
 `B` drop obligations, `Q` linear obligations, `Ccast` checked-cast carriers,
 `Ab` the verified place-carrier count for drop obligation `b`, `Cb` its
@@ -3586,7 +3586,7 @@ After that transaction, the implementation is one direct ownership rail:
 5. implement marker, linear, closure, checked-cast, raw-provenance, and unsafe
    rules;
 6. implement ownership facts, independent verification, revisions, and
-   `OwnershipCheckedMir` construction;
+   `CheckedMir` construction;
 7. wire the session transaction and RFC 0006 cleanup consumer; and
 8. enable ownership-gated successor construction only after every required
    conformance and architecture gate passes.
@@ -3676,7 +3676,7 @@ RFC 0010 or RFC 0011 invariant facts.
    inventory, one authoritative logical drop plan per
    initialization, and one verified cast-resource plan per cast.
    `buildOwnershipEventOverlay` and `verifyOwnershipEventOverlay` receive the
-   same exact `OwnershipEventOverlayInput` while its RFC 0005
+   same exact `EventOverlayInput` while its RFC 0005
    `BodyCheckingInput` is live; each pass constructs its own RFC 0015 proof
    input, query context, active stack, and memo, none of which is stored in the
    overlay, facts, wrapper, repository, singleton, or global lookup.
@@ -3759,7 +3759,7 @@ RFC 0010 or RFC 0011 invariant facts.
     checked fact, reference definition, loan, region, or reference escape proof;
     cyclic carrier propagation computes the least SCC provenance closure and
     terminates within the `Araw * Araw` edge and `Araw * U` origin bounds.
-12. Every `OwnershipSourceFailure` variant maps to its exact primary and note
+12. Every `SourceFailure` variant maps to its exact primary and note
     diagnostic, including proposed `ZOM4093-ZOM4094`, while pre-checker
     admission maps only to fresh `ZOM4095` and deletes `ZOM4067-ZOM4068`
     without reassignment. Ownership failures retain every
@@ -3785,7 +3785,7 @@ RFC 0010 or RFC 0011 invariant facts.
 15. The independent overlay verifier recomputes the causal event projection,
     every deferred-activation row, authoritative marker-use query, logical-drop
     plan, and cast-resource plan through its own proof input constructed from
-    the shared `OwnershipEventOverlayInput.body` while the admitted checked
+    the shared `EventOverlayInput.body` while the admitted checked
     module and exact `BodyCheckingInput` are live. Producer and verifier use
     distinct proof inputs, empty active stacks, and memos; the verifier derives
     its own complete phase-one query tree and phase-two postorder fold without
@@ -3856,7 +3856,7 @@ RFC 0010 or RFC 0011 invariant facts.
    evidence consumption.
 6. Implement return, storage, closure, checked-cast, raw-provenance, strict raw-
    to-reference rejection, and unsafe-boundary checks.
-7. Thread the complete `OwnershipEventOverlayInput` through the checker-time
+7. Thread the complete `EventOverlayInput` through the checker-time
    handoff. Build the authoritative Copy and Linear inventory by completing the
    full descendant query tree before a postorder logical-drop-plan fold; make
    producer and verifier construct separate body-derived proof inputs, query
@@ -3866,7 +3866,7 @@ RFC 0010 or RFC 0011 invariant facts.
 8. Add the complete immutable ownership-facts schema, canonical codec,
    revision, producer, independent verifier, resource-plan component vectors,
    and mutation injection.
-9. Add capability-bearing private `OwnershipCheckedMir` and successor
+9. Add capability-bearing private `CheckedMir` and successor
    construction plus atomic CompilerSession publication; connect RFC 0006
    cleanup only to that wrapper.
 10. Add unit, lit, conformance, differential, translated-corpus, determinism,
@@ -3992,7 +3992,7 @@ RFC 0010 or RFC 0011 invariant facts.
   empty-function, and 513-byte unsafe-collision vectors; exact
   `zom.ownership-facts` 165-byte empty, 286-byte function-framing, and
   378-byte non-empty point-state vectors; non-empty component vectors including
-  `OwnershipPoint`, deferred activation, drop obligations, cast carriers,
+  `Point`, deferred activation, drop obligations, cast carriers,
   cast result resource plans, `DropResourceSubject`, all marker-decision tags,
   positive evidence forms, explicit negative fact, payload-free unsatisfied
   decision, all optional drop-action and route-proof forms, unsafe ordinal,

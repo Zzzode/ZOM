@@ -36,24 +36,21 @@
 namespace zomlang::compiler::ownership {
 
 /// \brief Revision-bound digest of one complete ownership event overlay.
-class OwnershipEventOverlayRevision final {
+class EventOverlayRevision final {
 public:
-  constexpr OwnershipEventOverlayRevision() noexcept = default;
-  ZC_NODISCARD static OwnershipEventOverlayRevision fromDigest(
+  constexpr EventOverlayRevision() noexcept = default;
+  ZC_NODISCARD static EventOverlayRevision fromDigest(
       const identity::Sha256Digest& digest) noexcept {
-    return OwnershipEventOverlayRevision(digest);
+    return EventOverlayRevision(digest);
   }
   ZC_NODISCARD const identity::Sha256Digest& digest() const noexcept { return value; }
-  constexpr bool operator==(OwnershipEventOverlayRevision other) const noexcept {
+  constexpr bool operator==(EventOverlayRevision other) const noexcept {
     return value == other.value;
   }
-  constexpr bool operator!=(OwnershipEventOverlayRevision other) const noexcept {
-    return !(*this == other);
-  }
+  constexpr bool operator!=(EventOverlayRevision other) const noexcept { return !(*this == other); }
 
 private:
-  explicit OwnershipEventOverlayRevision(const identity::Sha256Digest& digest) noexcept
-      : value(digest) {}
+  explicit EventOverlayRevision(const identity::Sha256Digest& digest) noexcept : value(digest) {}
   identity::Sha256Digest value;
 };
 
@@ -161,10 +158,10 @@ struct MirEventKey final {
 };
 
 /// \brief Phase of one ownership event relative to its MIR source.
-enum class OwnershipEventStage : uint8_t { Source = 0x01, Effect = 0x02, Commit = 0x03 };
+enum class EventStage : uint8_t { Source = 0x01, Effect = 0x02, Commit = 0x03 };
 
 /// \brief Closed role algebra for one MIR event slot.
-enum class OwnershipEventRole : uint8_t {
+enum class EventRole : uint8_t {
   Operation = 0x01,
   EntryRoot = 0x02,
   OperandRead = 0x03,
@@ -198,8 +195,8 @@ enum class OwnershipEventRole : uint8_t {
 /// \brief One verified event slot in one function overlay.
 struct MirEventSlot final {
   MirEventKey key;
-  OwnershipEventStage stage;
-  zc::Vector<OwnershipEventRole> roles;
+  EventStage stage;
+  zc::Vector<EventRole> roles;
 };
 
 /// \brief Presentation-only validated source association for one MIR event.
@@ -228,24 +225,23 @@ struct DeferredActivationFact final {
 };
 
 /// \brief One persisted RFC 0015 marker-proof outcome for an ownership event.
-struct OwnershipMarkerDecisionPositive final {
+struct MarkerDecisionPositive final {
   checker::signature::MarkerFact proof;
 };
 
 /// \brief One persisted explicit negative RFC 0015 marker-proof outcome.
-struct OwnershipMarkerDecisionExplicitNegative final {
+struct MarkerDecisionExplicitNegative final {
   checker::signature::MarkerFact explicitFact;
 };
 
 /// \brief One persisted marker query without a satisfiable proof.
-struct OwnershipMarkerDecisionUnsatisfied final {};
+struct MarkerDecisionUnsatisfied final {};
 
-using OwnershipMarkerDecision =
-    zc::OneOf<OwnershipMarkerDecisionPositive, OwnershipMarkerDecisionExplicitNegative,
-              OwnershipMarkerDecisionUnsatisfied>;
+using MarkerDecision =
+    zc::OneOf<MarkerDecisionPositive, MarkerDecisionExplicitNegative, MarkerDecisionUnsatisfied>;
 
 /// \brief Exact revision-bound identity of one ownership marker query.
-struct OwnershipMarkerUseKey final {
+struct MarkerUseKey final {
   MirEventKey event;
   identity::DefId marker;
   identity::SemanticTypeId subject;
@@ -254,9 +250,9 @@ struct OwnershipMarkerUseKey final {
 };
 
 /// \brief Immutable ownership projection of one Copy or Linear marker query.
-struct OwnershipMarkerUse final {
-  OwnershipMarkerUseKey key;
-  OwnershipMarkerDecision decision;
+struct MarkerUse final {
+  MarkerUseKey key;
+  MarkerDecision decision;
 };
 
 /// \brief Closed logical deinitialization action algebra for one resource component.
@@ -277,8 +273,8 @@ struct LogicalDropPlanComponent final {
   mir::MirPlace place;
   identity::SemanticTypeId valueType;
   zc::Maybe<LogicalDropAction> dropAction;
-  OwnershipMarkerUseKey copyDecision;
-  OwnershipMarkerUseKey linearDecision;
+  MarkerUseKey copyDecision;
+  MarkerUseKey linearDecision;
   uint32_t declarationOrdinal;
 };
 
@@ -371,8 +367,8 @@ struct VerifiedCastResourcePlanFact final {
 };
 
 /// \brief Exact live checker and IR capabilities required to construct one ownership overlay.
-struct OwnershipEventOverlayInput final {
-  const OwnershipAdmittedBoundModule& admitted;
+struct EventOverlayInput final {
+  const AdmittedBoundModule& admitted;
   const hir::VerifiedCheckedModule& checked;
   const hir::VerifiedHirModule& hir;
   const mir::VerifiedBuiltMir& built;
@@ -380,42 +376,42 @@ struct OwnershipEventOverlayInput final {
 };
 
 /// \brief One function-scoped slice of the ownership event overlay.
-struct OwnershipFunctionEventOverlay final {
+struct FunctionEventOverlay final {
   identity::DefId owner;
   zc::Vector<MirEventSlot> slots;
   zc::Vector<MirEventSource> sourceMap;
   zc::Vector<DeferredActivationFact> deferredActivations;
-  zc::Vector<OwnershipMarkerUse> markerUses;
+  zc::Vector<MarkerUse> markerUses;
   zc::Vector<LogicalDropPlan> logicalDropPlans;
   zc::Vector<MirUnsafeOccurrence> unsafeOccurrences;
   zc::Vector<VerifiedCastResourcePlanFact> castResourcePlans;
 };
 
 /// \brief Untrusted mutable overlay product admitted only by the independent verifier.
-class OwnershipEventOverlayCandidate final {
+class EventOverlayCandidate final {
 public:
-  OwnershipEventOverlayCandidate(identity::SemanticContextBrand semanticContext,
-                                 identity::ContextFingerprint&& contextFingerprint,
-                                 identity::ModuleId module,
-                                 checker::checked::CheckedFactsRevision checkedFactsRevision,
-                                 mir::MirRevisionId builtRevision,
-                                 zc::Vector<OwnershipFunctionEventOverlay>&& functions) noexcept
+  EventOverlayCandidate(identity::SemanticContextBrand semanticContext,
+                        identity::ContextFingerprint&& contextFingerprint,
+                        identity::ModuleId module,
+                        checker::checked::CheckedFactsRevision checkedFactsRevision,
+                        mir::MirRevisionId builtRevision,
+                        zc::Vector<FunctionEventOverlay>&& functions) noexcept
       : semanticContext(semanticContext),
         contextFingerprint(zc::mv(contextFingerprint)),
         module(module),
         checkedFactsRevision(checkedFactsRevision),
         builtRevision(builtRevision),
         functions(zc::mv(functions)) {}
-  OwnershipEventOverlayCandidate(OwnershipEventOverlayCandidate&&) noexcept = default;
-  OwnershipEventOverlayCandidate& operator=(OwnershipEventOverlayCandidate&&) noexcept = delete;
-  ZC_DISALLOW_COPY(OwnershipEventOverlayCandidate);
+  EventOverlayCandidate(EventOverlayCandidate&&) noexcept = default;
+  EventOverlayCandidate& operator=(EventOverlayCandidate&&) noexcept = delete;
+  ZC_DISALLOW_COPY(EventOverlayCandidate);
 
   identity::SemanticContextBrand semanticContext;
   identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   checker::checked::CheckedFactsRevision checkedFactsRevision;
   mir::MirRevisionId builtRevision;
-  zc::Vector<OwnershipFunctionEventOverlay> functions;
+  zc::Vector<FunctionEventOverlay> functions;
 };
 
 /// \brief Immutable, revision-checked ownership event overlay published by the verifier.
@@ -431,19 +427,19 @@ public:
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const checker::checked::CheckedFactsRevision& checkedFactsRevision() const noexcept;
   ZC_NODISCARD const mir::MirRevisionId& builtRevision() const noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const OwnershipFunctionEventOverlay> functions() const noexcept;
-  ZC_NODISCARD const OwnershipEventOverlayRevision& revision() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const FunctionEventOverlay> functions() const noexcept;
+  ZC_NODISCARD const EventOverlayRevision& revision() const noexcept;
 
 private:
   struct Impl;
   explicit VerifiedOwnershipEventOverlay(zc::Own<Impl>&& impl) noexcept;
   zc::Own<Impl> impl;
 
-  friend class OwnershipEventOverlayVerifier;
+  friend class EventOverlayVerifier;
 };
 
 /// \brief Exact canonical ownership event overlay framing codec.
-class OwnershipEventOverlayCodec final {
+class EventOverlayCodec final {
 public:
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeFramed(
       const identity::Sha256Digest& contextFingerprint,
@@ -457,7 +453,7 @@ public:
       const checker::checked::CheckedFactsRevision& checkedFactsRevision,
       const mir::MirRevisionId& builtRevision,
       zc::ArrayPtr<const zc::Array<uint8_t>> canonicalFunctions);
-  ZC_NODISCARD static zc::Maybe<OwnershipEventOverlayRevision> compute(
+  ZC_NODISCARD static zc::Maybe<EventOverlayRevision> compute(
       const identity::ContextFingerprint& contextFingerprint,
       zc::ArrayPtr<const uint8_t> expandedModuleKey,
       const checker::checked::CheckedFactsRevision& checkedFactsRevision,
@@ -466,17 +462,17 @@ public:
 };
 
 /// \brief Builds the ownership event overlay from one exact live checker-to-MIR handoff.
-class OwnershipEventOverlayBuilder final {
+class EventOverlayBuilder final {
 public:
-  ZC_NODISCARD static ir::IrOperationResult<OwnershipEventOverlayCandidate> build(
-      const OwnershipEventOverlayInput& input);
+  ZC_NODISCARD static ir::IrOperationResult<EventOverlayCandidate> build(
+      const EventOverlayInput& input);
 };
 
 /// \brief Sole publisher of immutable revision-checked ownership event overlays.
-class OwnershipEventOverlayVerifier final {
+class EventOverlayVerifier final {
 public:
   ZC_NODISCARD static ir::IrOperationResult<VerifiedOwnershipEventOverlay> verify(
-      OwnershipEventOverlayCandidate&& candidate, const OwnershipEventOverlayInput& input);
+      EventOverlayCandidate&& candidate, const EventOverlayInput& input);
 };
 
 }  // namespace zomlang::compiler::ownership

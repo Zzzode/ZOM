@@ -108,7 +108,7 @@ bool expectedKind(IrRejectedBranch branch, IrFailurePhase phase, IrFailureKind k
     case IrFailurePhase::BuiltMirVerification:
       return kind == IrFailureKind::InvalidControlFlow || kind == IrFailureKind::InvalidPlace ||
              kind == IrFailureKind::UnresolvedDispatch;
-    case IrFailurePhase::OwnershipProofValidation:
+    case IrFailurePhase::ProofValidation:
       return kind == IrFailureKind::InvalidPlace || kind == IrFailureKind::InvalidOwnershipProof ||
              kind == IrFailureKind::InvalidControlFlow;
     case IrFailurePhase::CleanupElaboration:
@@ -172,7 +172,7 @@ bool expectedOwnerSite(IrFailurePhase phase, IrFailureOwnerKind owner,
              (expectedNone(site) || expectedSite(site, IrFailureSiteKind::Hir) ||
               expectedSite(site, IrFailureSiteKind::Mir));
     case IrFailurePhase::BuiltMirVerification:
-    case IrFailurePhase::OwnershipProofValidation:
+    case IrFailurePhase::ProofValidation:
     case IrFailurePhase::CleanupElaboration:
     case IrFailurePhase::CoroutineElaboration:
     case IrFailurePhase::ExecutableMirVerification:

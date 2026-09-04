@@ -81,14 +81,14 @@ ir::IrOperationResult<Result> rejectInvariant(const mir::VerifiedBuiltMir& built
   identity::DefId definition;
   if (builtMir.functions().size() != 0) definition = builtMir.functions()[0].owner;
   AuthorityIdentityResolver resolver(identities);
-  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::OwnershipProofValidation,
+  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::ProofValidation,
                                                      ir::IrFailureOwner::definition(definition));
   ZC_IREQUIRE(fallback != zc::none, "Initialization failure fallback must be legal");
   zc::Maybe<ir::IrFailureSite> noSite;
   zc::Maybe<identity::SourceSpan> noSpan;
   zc::Vector<uint32_t> noPath;
   auto descriptor = ir::IrFailureDescriptor::decoded(
-      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::OwnershipProofValidation, kind,
+      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::ProofValidation, kind,
       ir::IrFailureOwner::definition(definition), zc::mv(noSite), ir::IrFailureDetail::none(),
       zc::mv(noSpan), zc::mv(noPath), ordinal);
   ZC_IF_SOME(fallbackValue, fallback) {
@@ -304,16 +304,16 @@ MovePathKey rootKey(identity::DefId owner, const mir::MirLocalDeclaration& local
 
 MovePathKey cloneKey(const MovePathKey& key) { return MovePathKey{key.owner, key.place.clone()}; }
 
-zc::Maybe<const OwnershipFunctionEventOverlay&> overlayFor(
-    const VerifiedOwnershipEventOverlay& overlay, identity::DefId owner) {
+zc::Maybe<const FunctionEventOverlay&> overlayFor(const VerifiedOwnershipEventOverlay& overlay,
+                                                  identity::DefId owner) {
   for (const auto& function : overlay.functions()) {
     if (function.owner == owner) return function;
   }
   return zc::none;
 }
 
-bool hasInitializationPlan(const OwnershipFunctionEventOverlay& overlay,
-                           const MirEventKey& initialization, const mir::MirPlace& root) {
+bool hasInitializationPlan(const FunctionEventOverlay& overlay, const MirEventKey& initialization,
+                           const mir::MirPlace& root) {
   bool found = false;
   for (const auto& plan : overlay.logicalDropPlans) {
     if (plan.initialization != initialization) continue;
@@ -324,7 +324,7 @@ bool hasInitializationPlan(const OwnershipFunctionEventOverlay& overlay,
 }
 
 bool hasCompleteInitializationPlans(const mir::MirFunction& function,
-                                    const OwnershipFunctionEventOverlay& overlay) {
+                                    const FunctionEventOverlay& overlay) {
   size_t expectedPlans = 0;
   for (const auto& block : function.blocks) {
     for (uint32_t ordinal = 0; ordinal < block.statements.size(); ++ordinal) {
@@ -530,7 +530,7 @@ zc::Maybe<size_t> blockIndex(const mir::MirFunction& function, mir::MirBlockId i
 zc::Vector<mir::MirBlockId> predecessorBlocks(const FlowFunction& flow, mir::MirBlockId target) {
   zc::Vector<mir::MirBlockId> predecessors;
   for (const auto& point : flow.points) {
-    if (point.kind() != OwnershipPointKind::Cfg) continue;
+    if (point.kind() != PointKind::Cfg) continue;
     const auto& location = point.cfgValue().point;
     if (location.kind() != MirPointKind::Edge) continue;
     if (location.edgeValue().to != target) continue;
@@ -1030,9 +1030,7 @@ bool allFunctionsAdmitted(const mir::VerifiedBuiltMir& builtMir) {
 
 bool hasFlowPoint(const FlowFunction& flow, const MirPoint& point) {
   for (const auto& candidate : flow.points) {
-    if (candidate.kind() != OwnershipPointKind::Cfg || candidate.cfgValue().point != point) {
-      continue;
-    }
+    if (candidate.kind() != PointKind::Cfg || candidate.cfgValue().point != point) { continue; }
     return true;
   }
   return false;
@@ -1084,7 +1082,7 @@ bool validInputs(const mir::VerifiedBuiltMir& builtMir,
 }
 
 zc::Maybe<identity::SourceSpan> sourceSpanFor(const mir::MirFunction& function,
-                                              const OwnershipFunctionEventOverlay& overlay,
+                                              const FunctionEventOverlay& overlay,
                                               const MirEventKey& event) {
   for (const auto& source : overlay.sourceMap) {
     if (source.key == event) return source.span.clone();
@@ -1149,24 +1147,23 @@ zc::Maybe<const InitializationFact&> initializationAt(const InitializationFuncti
   return zc::none;
 }
 
-bool hasRole(const MirEventSlot& slot, OwnershipEventRole role) {
+bool hasRole(const MirEventSlot& slot, EventRole role) {
   for (const auto candidate : slot.roles) {
     if (candidate == role) return true;
   }
   return false;
 }
 
-bool hasOperandRead(const OwnershipFunctionEventOverlay& overlay, const MirEventKey& event) {
+bool hasOperandRead(const FunctionEventOverlay& overlay, const MirEventKey& event) {
   for (const auto& slot : overlay.slots) {
     if (slot.key == event) {
-      return slot.stage == OwnershipEventStage::Source &&
-             hasRole(slot, OwnershipEventRole::OperandRead);
+      return slot.stage == EventStage::Source && hasRole(slot, EventRole::OperandRead);
     }
   }
   return false;
 }
 
-bool sameMarkerUseKey(const OwnershipMarkerUseKey& left, const OwnershipMarkerUseKey& right) {
+bool sameMarkerUseKey(const MarkerUseKey& left, const MarkerUseKey& right) {
   return left.event == right.event && left.marker == right.marker &&
          left.subject == right.subject &&
          left.markerPolicyRevision.digest() == right.markerPolicyRevision.digest() &&
@@ -1178,16 +1175,14 @@ bool sameMarkerUseKey(const OwnershipMarkerUseKey& left, const OwnershipMarkerUs
 ///
 /// Each drop-plan component records the marker-use key queried for its Linear
 /// obligation; the place is Linear-positive exactly when that key resolves to
-/// an `OwnershipMarkerDecisionPositive` in the overlay's marker-use inventory.
-zc::Vector<mir::MirPlace> linearPositivePlaces(const OwnershipFunctionEventOverlay& overlay) {
+/// an `MarkerDecisionPositive` in the overlay's marker-use inventory.
+zc::Vector<mir::MirPlace> linearPositivePlaces(const FunctionEventOverlay& overlay) {
   zc::Vector<mir::MirPlace> places;
   for (const auto& plan : overlay.logicalDropPlans) {
     for (const auto& component : plan.components) {
       for (const auto& use : overlay.markerUses) {
         if (!sameMarkerUseKey(use.key, component.linearDecision)) continue;
-        if (use.decision.is<OwnershipMarkerDecisionPositive>()) {
-          places.add(component.place.clone());
-        }
+        if (use.decision.is<MarkerDecisionPositive>()) { places.add(component.place.clone()); }
         break;
       }
     }
@@ -1202,12 +1197,11 @@ bool isLinearPositive(const mir::MirPlace& place, const zc::Vector<mir::MirPlace
   return false;
 }
 
-bool appendSourceFailure(const mir::MirFunction& function,
-                         const OwnershipFunctionEventOverlay& overlay,
+bool appendSourceFailure(const mir::MirFunction& function, const FunctionEventOverlay& overlay,
                          const InitializationFunction& initialization, const MirPoint& point,
                          const mir::MirOperand& operand, const identity::SourceSpan& useSpan,
                          uint32_t operandOrdinal, uint32_t& traversalOrdinal,
-                         zc::Vector<OwnershipSourceFailure>& failures,
+                         zc::Vector<SourceFailure>& failures,
                          const zc::Vector<mir::MirPlace>& linearPlaces) {
   if (operand.kind() == mir::MirOperandKind::Constant) return true;
   const auto primary = eventAt(function.owner, MirPoint(point), operandOrdinal);
@@ -1263,12 +1257,11 @@ bool appendSourceFailure(const mir::MirFunction& function,
   ZC_UNREACHABLE
 }
 
-bool appendSourceFailure(const mir::MirFunction& function,
-                         const OwnershipFunctionEventOverlay& overlay,
+bool appendSourceFailure(const mir::MirFunction& function, const FunctionEventOverlay& overlay,
                          const InitializationFunction& initialization, const MirPoint& point,
                          const mir::MirPlace& place, const identity::SourceSpan& useSpan,
                          uint32_t operandOrdinal, uint32_t& traversalOrdinal,
-                         zc::Vector<OwnershipSourceFailure>& failures,
+                         zc::Vector<SourceFailure>& failures,
                          const zc::Vector<mir::MirPlace>& linearPlaces) {
   auto operand = mir::MirOperand::copy(place.clone());
   return appendSourceFailure(function, overlay, initialization, point, operand, useSpan,
@@ -1282,7 +1275,7 @@ bool appendSourceFailure(const mir::MirFunction& function,
 /// neither suppress another unsafe occurrence nor any independent safe
 /// ownership failure, so the caller retains every emitted failure and the
 /// suppression pass leaves them untouched.
-bool appendUnsafeAcknowledgementFailures(zc::Vector<OwnershipSourceFailure>& failures,
+bool appendUnsafeAcknowledgementFailures(zc::Vector<SourceFailure>& failures,
                                          const mir::VerifiedBuiltMir& builtMir,
                                          const VerifiedOwnershipEventOverlay& overlay,
                                          uint32_t& traversalOrdinal) {
@@ -1302,10 +1295,10 @@ bool appendUnsafeAcknowledgementFailures(zc::Vector<OwnershipSourceFailure>& fai
   return true;
 }
 
-zc::Maybe<zc::Vector<OwnershipSourceFailure>> sourceFailures(
+zc::Maybe<zc::Vector<SourceFailure>> sourceFailures(
     const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEventOverlay& overlay,
     const VerifiedInitializationFacts& initialization) {
-  zc::Vector<OwnershipSourceFailure> failures;
+  zc::Vector<SourceFailure> failures;
   uint32_t traversalOrdinal = 0;
   for (const auto& function : builtMir.functions()) {
     auto facts = initializationFor(initialization, function.owner);
@@ -1441,7 +1434,7 @@ zc::Vector<InitializationLossCause> InitializationLattice::mergeLossCauses(
 InitializationCandidate::InitializationCandidate(
     identity::SemanticContextBrand semanticContext,
     identity::ContextFingerprint&& contextFingerprint, identity::ModuleId module,
-    mir::MirRevisionId builtRevision, OwnershipEventOverlayRevision overlayRevision,
+    mir::MirRevisionId builtRevision, EventOverlayRevision overlayRevision,
     zc::Vector<InitializationFunction>&& functions) noexcept
     : semanticContext(semanticContext),
       contextFingerprint(zc::mv(contextFingerprint)),
@@ -1463,7 +1456,7 @@ struct VerifiedInitializationFacts::Impl final {
   identity::ContextFingerprint contextFingerprint;
   identity::ModuleId module;
   mir::MirRevisionId builtRevision;
-  OwnershipEventOverlayRevision overlayRevision;
+  EventOverlayRevision overlayRevision;
   zc::Vector<InitializationFunction> functions;
 };
 
@@ -1485,7 +1478,7 @@ identity::ModuleId VerifiedInitializationFacts::module() const noexcept { return
 const mir::MirRevisionId& VerifiedInitializationFacts::builtRevision() const noexcept {
   return impl->builtRevision;
 }
-const OwnershipEventOverlayRevision& VerifiedInitializationFacts::overlayRevision() const noexcept {
+const EventOverlayRevision& VerifiedInitializationFacts::overlayRevision() const noexcept {
   return impl->overlayRevision;
 }
 zc::ArrayPtr<const InitializationFunction> VerifiedInitializationFacts::functions() const noexcept {
@@ -1514,10 +1507,9 @@ InitializationSourceVerificationResult InitializationSourceVerifier::verify(
   }
   ZC_IF_SOME(values, failures) {
     auto suppressed = SourceSuppression::suppress(zc::mv(values));
-    auto deduplicated = OwnershipSourceFailureOrdering::deduplicate(zc::mv(suppressed));
-    auto sorted =
-        ir::SortedSourceFailureFacts<OwnershipSourceFailure, OwnershipSourceFailureOrdering>::from(
-            zc::mv(deduplicated));
+    auto deduplicated = SourceFailureOrdering::deduplicate(zc::mv(suppressed));
+    auto sorted = ir::SortedSourceFailureFacts<SourceFailure, SourceFailureOrdering>::from(
+        zc::mv(deduplicated));
     ZC_IF_SOME(value, sorted) {
       return InitializationSourceVerificationResult::sourceRejected(zc::mv(value));
     }

@@ -22,9 +22,9 @@ MIR.
 ## Role in the pipeline
 
 - **Admitting filter:** `compiler/ownership/admission/surface-admission.cc`
-  (`OwnershipSurfaceAdmissionBuilder::admit`). Each `isAdmitted*` predicate is a
+  (`SurfaceAdmissionBuilder::admit`). Each `isAdmitted*` predicate is a
   construct boundary; a shape that no predicate admits fails closed with an
-  `OwnershipSurfaceFailure` before any HIR is built.
+  `SurfaceFailure` before any HIR is built.
 - **Live HIR builder / verifier / capability:** `hir::HirBuilder::build` ->
   `hir::HirVerifier::verify` -> `hir::VerifiedHirModule`
   (`compiler/hir/hir-module.{h,cc}`).

@@ -20,8 +20,8 @@ namespace zomlang::compiler::ownership::facts {
 namespace {
 
 /// \brief Builds factors with small but nonzero values for every dimension.
-OwnershipBudgetFactors makeSmallFactors() {
-  OwnershipBudgetFactors factors;
+BudgetFactors makeSmallFactors() {
+  BudgetFactors factors;
   factors.eventSlots = 2;
   factors.cfgPoints = 3;
   factors.movePaths = 4;
@@ -43,7 +43,7 @@ OwnershipBudgetFactors makeSmallFactors() {
 }
 
 /// \brief Builds counters that are all zero (trivially within budget).
-OwnershipBudgetCounters makeZeroCounters() { return OwnershipBudgetCounters{}; }
+BudgetCounters makeZeroCounters() { return BudgetCounters{}; }
 
 // ---------------------------------------------------------------------------
 // Happy path
@@ -52,7 +52,7 @@ OwnershipBudgetCounters makeZeroCounters() { return OwnershipBudgetCounters{}; }
 ZC_TEST("OwnershipBudgetTest.ZeroCountersAreWithinBudget") {
   auto factors = makeSmallFactors();
   auto counters = makeZeroCounters();
-  auto result = OwnershipBudgetVerifier::check(factors, counters);
+  auto result = BudgetVerifier::check(factors, counters);
   ZC_EXPECT(result.withinBudget);
   ZC_EXPECT(result.exceededCounter == zc::none);
 }
@@ -63,7 +63,7 @@ ZC_TEST("OwnershipBudgetTest.CountersAtExactBoundAreWithinBudget") {
   const uint64_t p = factors.cutpointCount();
   ZC_EXPECT(p == 7);
 
-  OwnershipBudgetCounters counters;
+  BudgetCounters counters;
   counters.initStateBits = 3 * p * factors.movePaths;                              // 3 * 7 * 4 = 84
   counters.initLossCauseMemberships = p * factors.movePaths * factors.lossCauses;  // 7*4*2=56
   counters.loanPhaseBits = 3 * p * factors.loans;                                  // 3*7*3 = 63
@@ -86,7 +86,7 @@ ZC_TEST("OwnershipBudgetTest.CountersAtExactBoundAreWithinBudget") {
   counters.rawOriginMemberships = factors.rawProvenanceCarriers * factors.rawOrigins;  // 2*2=4
   counters.placeConflictPairs = factors.movePaths * (factors.movePaths - 1) / 2;       // 4*3/2=6
 
-  auto result = OwnershipBudgetVerifier::check(factors, counters);
+  auto result = BudgetVerifier::check(factors, counters);
   ZC_EXPECT(result.withinBudget);
   ZC_EXPECT(result.exceededCounter == zc::none);
 }
@@ -96,14 +96,14 @@ ZC_TEST("OwnershipBudgetTest.CountersAtExactBoundAreWithinBudget") {
 // ---------------------------------------------------------------------------
 
 ZC_TEST("OwnershipBudgetTest.CutpointCountIsCfgPointsPlusTwoEventSlots") {
-  OwnershipBudgetFactors factors;
+  BudgetFactors factors;
   factors.cfgPoints = 5;
   factors.eventSlots = 3;
   ZC_EXPECT(factors.cutpointCount() == 11);
 }
 
 ZC_TEST("OwnershipBudgetTest.CutpointCountWithZeroEventSlots") {
-  OwnershipBudgetFactors factors;
+  BudgetFactors factors;
   factors.cfgPoints = 5;
   factors.eventSlots = 0;
   ZC_EXPECT(factors.cutpointCount() == 5);
@@ -115,46 +115,46 @@ ZC_TEST("OwnershipBudgetTest.CutpointCountWithZeroEventSlots") {
 
 ZC_TEST("OwnershipBudgetTest.InitStateBitsExceedingBoundFails") {
   auto factors = makeSmallFactors();
-  OwnershipBudgetCounters counters;
+  BudgetCounters counters;
   counters.initStateBits = 3 * factors.cutpointCount() * factors.movePaths + 1;
-  auto result = OwnershipBudgetVerifier::check(factors, counters);
+  auto result = BudgetVerifier::check(factors, counters);
   ZC_EXPECT(!result.withinBudget);
   ZC_IF_SOME(name, result.exceededCounter) { ZC_EXPECT(name == "initStateBits"); }
 }
 
 ZC_TEST("OwnershipBudgetTest.LoanPhaseBitsExceedingBoundFails") {
   auto factors = makeSmallFactors();
-  OwnershipBudgetCounters counters;
+  BudgetCounters counters;
   counters.loanPhaseBits = 3 * factors.cutpointCount() * factors.loans + 1;
-  auto result = OwnershipBudgetVerifier::check(factors, counters);
+  auto result = BudgetVerifier::check(factors, counters);
   ZC_EXPECT(!result.withinBudget);
   ZC_IF_SOME(name, result.exceededCounter) { ZC_EXPECT(name == "loanPhaseBits"); }
 }
 
 ZC_TEST("OwnershipBudgetTest.ResourceAlternativesExceedingBoundFails") {
   auto factors = makeSmallFactors();
-  OwnershipBudgetCounters counters;
+  BudgetCounters counters;
   counters.resourceAlternatives = UINT64_MAX;
-  auto result = OwnershipBudgetVerifier::check(factors, counters);
+  auto result = BudgetVerifier::check(factors, counters);
   ZC_EXPECT(!result.withinBudget);
   ZC_IF_SOME(name, result.exceededCounter) { ZC_EXPECT(name == "resourceAlternatives"); }
 }
 
 ZC_TEST("OwnershipBudgetTest.PlaceConflictPairsExceedingBoundFails") {
   auto factors = makeSmallFactors();
-  OwnershipBudgetCounters counters;
+  BudgetCounters counters;
   counters.placeConflictPairs = factors.movePaths * (factors.movePaths - 1) / 2 + 1;
-  auto result = OwnershipBudgetVerifier::check(factors, counters);
+  auto result = BudgetVerifier::check(factors, counters);
   ZC_EXPECT(!result.withinBudget);
   ZC_IF_SOME(name, result.exceededCounter) { ZC_EXPECT(name == "placeConflictPairs"); }
 }
 
 ZC_TEST("OwnershipBudgetTest.RawReachingCarriersExceedingBoundFails") {
   auto factors = makeSmallFactors();
-  OwnershipBudgetCounters counters;
+  BudgetCounters counters;
   counters.rawReachingCarriers =
       factors.cutpointCount() * factors.movePaths * factors.rawProvenanceCarriers + 1;
-  auto result = OwnershipBudgetVerifier::check(factors, counters);
+  auto result = BudgetVerifier::check(factors, counters);
   ZC_EXPECT(!result.withinBudget);
   ZC_IF_SOME(name, result.exceededCounter) { ZC_EXPECT(name == "rawReachingCarriers"); }
 }
@@ -164,7 +164,7 @@ ZC_TEST("OwnershipBudgetTest.RawReachingCarriersExceedingBoundFails") {
 // ---------------------------------------------------------------------------
 
 ZC_TEST("OwnershipBudgetTest.OverflowInBoundComputationFails") {
-  OwnershipBudgetFactors factors;
+  BudgetFactors factors;
   factors.eventSlots = 1;
   factors.cfgPoints = 1;
   factors.movePaths = UINT64_MAX;
@@ -181,14 +181,14 @@ ZC_TEST("OwnershipBudgetTest.OverflowInBoundComputationFails") {
   factors.rawOrigins = 1;
 
   auto counters = makeZeroCounters();
-  auto result = OwnershipBudgetVerifier::check(factors, counters);
+  auto result = BudgetVerifier::check(factors, counters);
   // initStateBits bound = 3 * P * M overflows → first check fails
   ZC_EXPECT(!result.withinBudget);
   ZC_IF_SOME(name, result.exceededCounter) { ZC_EXPECT(name == "initStateBits"); }
 }
 
 ZC_TEST("OwnershipBudgetTest.OverflowInResourceBoundFails") {
-  OwnershipBudgetFactors factors;
+  BudgetFactors factors;
   factors.eventSlots = 0;
   factors.cfgPoints = 1;
   factors.movePaths = 1;
@@ -205,7 +205,7 @@ ZC_TEST("OwnershipBudgetTest.OverflowInResourceBoundFails") {
   factors.rawOrigins = 1;
 
   auto counters = makeZeroCounters();
-  auto result = OwnershipBudgetVerifier::check(factors, counters);
+  auto result = BudgetVerifier::check(factors, counters);
   // All checks before resourceAlternatives pass with zero counters, but K
   // overflows so resourceAlternatives fails.
   ZC_EXPECT(!result.withinBudget);
@@ -217,14 +217,14 @@ ZC_TEST("OwnershipBudgetTest.OverflowInResourceBoundFails") {
 // ---------------------------------------------------------------------------
 
 ZC_TEST("OwnershipBudgetTest.AllZeroFactorsAreWithinBudget") {
-  OwnershipBudgetFactors factors;  // all zeros
+  BudgetFactors factors;  // all zeros
   auto counters = makeZeroCounters();
-  auto result = OwnershipBudgetVerifier::check(factors, counters);
+  auto result = BudgetVerifier::check(factors, counters);
   ZC_EXPECT(result.withinBudget);
 }
 
 ZC_TEST("OwnershipBudgetTest.EmptyDropAndLinearVectorsAreWithinBudget") {
-  OwnershipBudgetFactors factors;
+  BudgetFactors factors;
   factors.eventSlots = 1;
   factors.cfgPoints = 1;
   factors.movePaths = 1;
@@ -238,17 +238,17 @@ ZC_TEST("OwnershipBudgetTest.EmptyDropAndLinearVectorsAreWithinBudget") {
   factors.rawOrigins = 1;
 
   auto counters = makeZeroCounters();
-  auto result = OwnershipBudgetVerifier::check(factors, counters);
+  auto result = BudgetVerifier::check(factors, counters);
   ZC_EXPECT(result.withinBudget);
 }
 
 ZC_TEST("OwnershipBudgetTest.FirstViolationIsReported") {
   auto factors = makeSmallFactors();
-  OwnershipBudgetCounters counters;
+  BudgetCounters counters;
   // Violate initStateBits (first check) and loanPhaseBits (later check).
   counters.initStateBits = UINT64_MAX;
   counters.loanPhaseBits = UINT64_MAX;
-  auto result = OwnershipBudgetVerifier::check(factors, counters);
+  auto result = BudgetVerifier::check(factors, counters);
   ZC_EXPECT(!result.withinBudget);
   ZC_IF_SOME(name, result.exceededCounter) { ZC_EXPECT(name == "initStateBits"); }
 }

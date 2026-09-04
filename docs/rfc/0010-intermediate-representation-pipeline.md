@@ -690,7 +690,7 @@ and imported-interface lineage record, and moves that lease into
 `VerifiedHirModule`. `BuiltMirBuilder` retains the HIR lease, independently
 checks module identity, graph witness, semantic types, definitions,
 implementations, and HIR lineage, and moves the lease into
-`VerifiedBuiltMir`. `OwnershipEventOverlayBuilder` retains the Built MIR lease,
+`VerifiedBuiltMir`. `EventOverlayBuilder` retains the Built MIR lease,
 independently checks the exact Built MIR revision, module, ownership-event
 coverage, and bound-module lineage, and moves the lease into
 `VerifiedOwnershipEventOverlay`.
@@ -1100,7 +1100,7 @@ IrFailureSite =
 
 IrFailurePhase =
   CheckedModuleAssembly | HirConstruction | HirVerification
-  | MirConstruction | BuiltMirVerification | OwnershipProofValidation
+  | MirConstruction | BuiltMirVerification | ProofValidation
   | CleanupElaboration | CoroutineElaboration | ExecutableMirVerification
   | Monomorphization | TargetSelection | LirLowering | LirVerification
   | LlvmTranslation | ObjectEmission | FeatureBoundaryVerification
@@ -1252,7 +1252,7 @@ illegal. Every `IrInvariantRejected` row requires `IrFailureDetail::None`.
 | `HirVerification` | `IrInvariantRejected`: `InputRevisionMismatch`, `MissingRequiredFact`, `AdditionalFact`, `InvalidFact`, `InvalidControlFlow`, `UnresolvedDispatch`, `CanonicalCodecMismatch` | `Module` / `{None}`; `Definition` / `{None, Hir}` | `None` |
 | `MirConstruction` | `IrInvariantRejected`: `InputRevisionMismatch`, `MissingRequiredFact`, `AdditionalFact`, `InvalidFact`, `InvalidControlFlow`, `InvalidPlace`, `UnresolvedDispatch`, `CanonicalCodecMismatch` | `Definition` / `{None, Hir, Mir}` | `None` |
 | `BuiltMirVerification` | `IrInvariantRejected`: `InputRevisionMismatch`, `MissingRequiredFact`, `AdditionalFact`, `InvalidFact`, `InvalidControlFlow`, `InvalidPlace`, `UnresolvedDispatch`, `CanonicalCodecMismatch` | `Definition` / `{None, Mir}` | `None` |
-| `OwnershipProofValidation` | `IrInvariantRejected`: `InputRevisionMismatch`, `MissingRequiredFact`, `AdditionalFact`, `InvalidFact`, `InvalidPlace`, `InvalidOwnershipProof`, `CanonicalCodecMismatch` | `Definition` / `{None, Mir}` | `None` |
+| `ProofValidation` | `IrInvariantRejected`: `InputRevisionMismatch`, `MissingRequiredFact`, `AdditionalFact`, `InvalidFact`, `InvalidPlace`, `InvalidOwnershipProof`, `CanonicalCodecMismatch` | `Definition` / `{None, Mir}` | `None` |
 | `CleanupElaboration` | `IrInvariantRejected`: `InputRevisionMismatch`, `MissingRequiredFact`, `AdditionalFact`, `InvalidFact`, `InvalidControlFlow`, `InvalidPlace`, `InvalidOwnershipProof`, `InvalidCleanup`, `CanonicalCodecMismatch` | `Definition` / `{None, Mir}` | `None` |
 | `CoroutineElaboration` | `IrInvariantRejected`: `InputRevisionMismatch`, `MissingRequiredFact`, `AdditionalFact`, `InvalidFact`, `InvalidControlFlow`, `InvalidPlace`, `InvalidOwnershipProof`, `InvalidCleanup`, `InvalidCoroutineState`, `CanonicalCodecMismatch` | `Definition` / `{None, Mir}` | `None` |
 | `ExecutableMirVerification` | `IrInvariantRejected`: `InputRevisionMismatch`, `MissingRequiredFact`, `AdditionalFact`, `InvalidFact`, `InvalidControlFlow`, `InvalidPlace`, `InvalidOwnershipProof`, `InvalidCleanup`, `InvalidCoroutineState`, `CanonicalCodecMismatch` | `Definition` / `{None, Mir}` | `None` |

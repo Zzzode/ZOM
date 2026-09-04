@@ -29,12 +29,11 @@ struct LinearSourceAccepted final {};
 /// This result is deliberately separate from RFC 0010 feature-boundary results:
 /// ownership source rejections are inputs to RFC 0013 ownership analysis and
 /// are legal only at ownership proof validation. The result can be constructed
-/// only by `OwnershipResourceVerifier`; every other producer must go through
+/// only by `ResourceVerifier`; every other producer must go through
 /// the verifier's independent reconstruction.
 class LinearSourceVerificationResult final {
 public:
-  using SourceFailures =
-      ir::SortedSourceFailureFacts<OwnershipSourceFailure, OwnershipSourceFailureOrdering>;
+  using SourceFailures = ir::SortedSourceFailureFacts<SourceFailure, SourceFailureOrdering>;
 
   LinearSourceVerificationResult(LinearSourceVerificationResult&&) noexcept = default;
   LinearSourceVerificationResult& operator=(LinearSourceVerificationResult&&) noexcept = default;
@@ -100,7 +99,7 @@ private:
             ir::IrInvariantRejectedIrOperation>
       value;
 
-  friend class OwnershipResourceVerifier;
+  friend class ResourceVerifier;
 };
 
 }  // namespace zomlang::compiler::ownership::facts

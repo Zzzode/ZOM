@@ -74,20 +74,20 @@ private:
   const checker::CheckerIdentityAuthority& identities;
 };
 
-ir::IrOperationResult<OwnershipCheckedMir> reject(
-    const mir::VerifiedBuiltMir& builtMir, const checker::CheckerIdentityAuthority& identities,
-    uint32_t ordinal) {
+ir::IrOperationResult<CheckedMir> reject(const mir::VerifiedBuiltMir& builtMir,
+                                         const checker::CheckerIdentityAuthority& identities,
+                                         uint32_t ordinal) {
   identity::DefId definition;
   if (builtMir.functions().size() != 0) definition = builtMir.functions()[0].owner;
   AuthorityIdentityResolver resolver(identities);
-  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::OwnershipProofValidation,
+  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::ProofValidation,
                                                      ir::IrFailureOwner::definition(definition));
   ZC_IREQUIRE(fallback != zc::none, "Ownership finalize failure fallback must be legal");
   zc::Maybe<ir::IrFailureSite> noSite;
   zc::Maybe<identity::SourceSpan> noSpan;
   zc::Vector<uint32_t> noPath;
   auto descriptor = ir::IrFailureDescriptor::decoded(
-      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::OwnershipProofValidation,
+      ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::ProofValidation,
       ir::IrFailureKind::InputRevisionMismatch, ir::IrFailureOwner::definition(definition),
       zc::mv(noSite), ir::IrFailureDetail::none(), zc::mv(noSpan), zc::mv(noPath), ordinal);
   ZC_IF_SOME(fallbackValue, fallback) {
@@ -97,8 +97,7 @@ ir::IrOperationResult<OwnershipCheckedMir> reject(
       failures.add(zc::mv(admitted).get<ir::IdentityRejectedIrFailureDescriptor>().failure);
       auto sorted = ir::SortedIdentityInvariantFacts::from(zc::mv(failures));
       ZC_IF_SOME(values, sorted) {
-        return ir::IrOperationResult<OwnershipCheckedMir>::identityInvariantRejected(
-            zc::mv(values));
+        return ir::IrOperationResult<CheckedMir>::identityInvariantRejected(zc::mv(values));
       }
       ZC_UNREACHABLE
     }
@@ -110,7 +109,7 @@ ir::IrOperationResult<OwnershipCheckedMir> reject(
     }
     auto sorted = ir::SortedIrInvariantFailureFacts::from(zc::mv(failures));
     ZC_IF_SOME(values, sorted) {
-      return ir::IrOperationResult<OwnershipCheckedMir>::irInvariantRejected(zc::mv(values));
+      return ir::IrOperationResult<CheckedMir>::irInvariantRejected(zc::mv(values));
     }
   }
   ZC_UNREACHABLE
@@ -147,7 +146,7 @@ bool matches(const mir::VerifiedBuiltMir& builtMir, const VerifiedOwnershipEvent
 
 }  // namespace
 
-struct OwnershipCheckedMir::Impl final {
+struct CheckedMir::Impl final {
   Impl(mir::VerifiedBuiltMir&& builtMir, VerifiedOwnershipEventOverlay&& eventOverlay,
        facts::VerifiedOwnershipInputs&& facts) noexcept
       : builtMir(zc::mv(builtMir)), eventOverlay(zc::mv(eventOverlay)), facts(zc::mv(facts)) {}
@@ -157,42 +156,38 @@ struct OwnershipCheckedMir::Impl final {
   facts::VerifiedOwnershipInputs facts;
 };
 
-OwnershipCheckedMir::OwnershipCheckedMir(zc::Own<Impl>&& impl) noexcept : impl(zc::mv(impl)) {}
-OwnershipCheckedMir::~OwnershipCheckedMir() noexcept(false) = default;
-OwnershipCheckedMir::OwnershipCheckedMir(OwnershipCheckedMir&&) noexcept = default;
-OwnershipCheckedMir& OwnershipCheckedMir::operator=(OwnershipCheckedMir&&) noexcept = default;
+CheckedMir::CheckedMir(zc::Own<Impl>&& impl) noexcept : impl(zc::mv(impl)) {}
+CheckedMir::~CheckedMir() noexcept(false) = default;
+CheckedMir::CheckedMir(CheckedMir&&) noexcept = default;
+CheckedMir& CheckedMir::operator=(CheckedMir&&) noexcept = default;
 
-identity::SemanticContextBrand OwnershipCheckedMir::semanticContext() const noexcept {
+identity::SemanticContextBrand CheckedMir::semanticContext() const noexcept {
   return impl->builtMir.semanticContext();
 }
-const identity::ContextFingerprint& OwnershipCheckedMir::contextFingerprint() const noexcept {
+const identity::ContextFingerprint& CheckedMir::contextFingerprint() const noexcept {
   return impl->builtMir.contextFingerprint();
 }
-identity::ModuleId OwnershipCheckedMir::module() const noexcept { return impl->builtMir.module(); }
-const mir::VerifiedBuiltMir& OwnershipCheckedMir::builtMir() const noexcept {
-  return impl->builtMir;
-}
-const VerifiedOwnershipEventOverlay& OwnershipCheckedMir::eventOverlay() const noexcept {
+identity::ModuleId CheckedMir::module() const noexcept { return impl->builtMir.module(); }
+const mir::VerifiedBuiltMir& CheckedMir::builtMir() const noexcept { return impl->builtMir; }
+const VerifiedOwnershipEventOverlay& CheckedMir::eventOverlay() const noexcept {
   return impl->eventOverlay;
 }
-const facts::VerifiedOwnershipInputs& OwnershipCheckedMir::facts() const noexcept {
-  return impl->facts;
-}
-const mir::MirRevisionId& OwnershipCheckedMir::builtRevision() const noexcept {
+const facts::VerifiedOwnershipInputs& CheckedMir::facts() const noexcept { return impl->facts; }
+const mir::MirRevisionId& CheckedMir::builtRevision() const noexcept {
   return impl->builtMir.revision();
 }
-const OwnershipEventOverlayRevision& OwnershipCheckedMir::eventOverlayRevision() const noexcept {
+const EventOverlayRevision& CheckedMir::eventOverlayRevision() const noexcept {
   return impl->eventOverlay.revision();
 }
-const facts::OwnershipFactsRevision& OwnershipCheckedMir::factsRevision() const noexcept {
+const facts::FactsRevision& CheckedMir::factsRevision() const noexcept {
   return impl->facts.factsRevision();
 }
-const driver::borrow_evidence::BorrowEvidenceRevision& OwnershipCheckedMir::borrowEvidenceRevision()
+const driver::borrow_evidence::BorrowEvidenceRevision& CheckedMir::borrowEvidenceRevision()
     const noexcept {
   return impl->builtMir.borrowEvidenceRevision();
 }
 
-ir::IrOperationResult<OwnershipCheckedMir> OwnershipFinalizer::finalizeOwnership(
+ir::IrOperationResult<CheckedMir> Finalizer::finalizeOwnership(
     mir::VerifiedBuiltMir&& builtMir, VerifiedOwnershipEventOverlay&& eventOverlay,
     facts::VerifiedOwnershipInputs&& facts,
     const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& repository,
@@ -205,13 +200,13 @@ ir::IrOperationResult<OwnershipCheckedMir> OwnershipFinalizer::finalizeOwnership
     return reject(builtMir, identities, 0);
   }
   auto recomputedFactsRevision =
-      facts::OwnershipFactsCodec::compute(facts, eventOverlay, identities, semanticTypes);
+      facts::FactsCodec::compute(facts, eventOverlay, identities, semanticTypes);
   if (recomputedFactsRevision == zc::none) { return reject(builtMir, identities, 0); }
   ZC_IF_SOME(recomputed, recomputedFactsRevision) {
     if (recomputed != facts.factsRevision()) { return reject(builtMir, identities, 0); }
   }
-  return ir::IrOperationResult<OwnershipCheckedMir>::verified(OwnershipCheckedMir(
-      zc::heap<OwnershipCheckedMir::Impl>(zc::mv(builtMir), zc::mv(eventOverlay), zc::mv(facts))));
+  return ir::IrOperationResult<CheckedMir>::verified(CheckedMir(
+      zc::heap<CheckedMir::Impl>(zc::mv(builtMir), zc::mv(eventOverlay), zc::mv(facts))));
 }
 
 }  // namespace zomlang::compiler::ownership

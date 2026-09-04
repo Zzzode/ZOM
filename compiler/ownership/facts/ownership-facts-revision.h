@@ -23,25 +23,20 @@ namespace zomlang::compiler::ownership::facts {
 /// The revision binds the eight independently verified facts inventories owned by
 /// VerifiedOwnershipInputs together with the overlay-derived drop, unsafe, cast, and
 /// marker-decision inventories and the Built MIR, event overlay, and borrow-evidence
-/// lineage. It is computed by OwnershipFactsCodec and compared by digest.
-class OwnershipFactsRevision final {
+/// lineage. It is computed by FactsCodec and compared by digest.
+class FactsRevision final {
 public:
-  constexpr OwnershipFactsRevision() noexcept = default;
+  constexpr FactsRevision() noexcept = default;
 
-  ZC_NODISCARD static OwnershipFactsRevision fromDigest(
-      const identity::Sha256Digest& digest) noexcept;
+  ZC_NODISCARD static FactsRevision fromDigest(const identity::Sha256Digest& digest) noexcept;
 
   ZC_NODISCARD const identity::Sha256Digest& digest() const noexcept;
 
-  constexpr bool operator==(OwnershipFactsRevision other) const noexcept {
-    return value == other.value;
-  }
-  constexpr bool operator!=(OwnershipFactsRevision other) const noexcept {
-    return !(*this == other);
-  }
+  constexpr bool operator==(FactsRevision other) const noexcept { return value == other.value; }
+  constexpr bool operator!=(FactsRevision other) const noexcept { return !(*this == other); }
 
 private:
-  explicit OwnershipFactsRevision(const identity::Sha256Digest& digest) noexcept;
+  explicit FactsRevision(const identity::Sha256Digest& digest) noexcept;
 
   identity::Sha256Digest value;
 };

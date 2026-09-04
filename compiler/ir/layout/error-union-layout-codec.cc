@@ -36,7 +36,7 @@ identity::Sha256Digest hashOf(zc::ArrayPtr<const uint8_t> bytes) {
 
 /// \brief Emits `domain` characters as individual bytes followed by a NUL.
 ///
-/// Mirrors the OwnershipFactsCodec domain-separation idiom exactly.
+/// Mirrors the FactsCodec domain-separation idiom exactly.
 void encodeDomain(identity::CanonicalEncoder& encoder, const char* domain, size_t length) {
   for (size_t index = 0; index < length; ++index) {
     encoder.encodeUint8(static_cast<uint8_t>(domain[index]));

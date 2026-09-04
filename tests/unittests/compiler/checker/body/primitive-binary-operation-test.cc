@@ -237,13 +237,12 @@ public:
     ZC_REQUIRE(driver::core_library_test::userBoundModuleCount(identities) == 1);
     userModule = driver::core_library_test::soleUserBoundModule(identities).module();
 
-    zc::Vector<ownership::OwnershipAdmittedBoundModule> admittedModules(
-        identities.modules().size());
+    zc::Vector<ownership::AdmittedBoundModule> admittedModules(identities.modules().size());
     zc::Vector<signature::MarkerShapeModuleInput> shapeInputs(identities.modules().size());
     for (const auto& candidate : identities.modules()) {
-      auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(candidate.retain());
-      ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
-      admittedModules.add(zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>());
+      auto admission = ownership::SurfaceAdmissionBuilder::admit(candidate.retain());
+      ZC_REQUIRE(admission.is<ownership::AdmittedBoundModule>());
+      admittedModules.add(zc::mv(admission).get<ownership::AdmittedBoundModule>());
       shapeInputs.add(signature::MarkerShapeModuleInput{admittedModules.back()});
     }
     auto shapeResult = signature::MarkerShapeInventoryBuilder::build(
@@ -1021,8 +1020,8 @@ ZC_TEST("LocalWrite.RejectsCallValueWriteAtSurfaceAdmission") {
   auto coreLibrary = driver::core_library_test::materializeCoreLibrary(session, identities);
   ZC_REQUIRE(coreLibrary != zc::none);
   const auto& userBound = driver::core_library_test::soleUserBoundModule(identities);
-  auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(userBound.retain());
-  ZC_EXPECT(admission.is<ownership::OwnershipSurfaceSourceRejected>());
+  auto admission = ownership::SurfaceAdmissionBuilder::admit(userBound.retain());
+  ZC_EXPECT(admission.is<ownership::SurfaceSourceRejected>());
 }
 
 }  // namespace zomlang::compiler::checker::body

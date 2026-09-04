@@ -26,7 +26,7 @@ namespace zomlang::compiler::ir {
 /// `encode` produces the exact `zom.error-union-layout` framed byte stream for one
 /// descriptor; `compute` returns its SHA-256 revision. `encodeManifest` produces
 /// the `zom.target-artifact-abi` framed stream; `computeManifestRevision` returns
-/// its SHA-256 revision. Both mirror the OwnershipFactsCodec encoder discipline:
+/// its SHA-256 revision. Both mirror the FactsCodec encoder discipline:
 /// domain characters as individual bytes followed by a NUL, 8-byte big-endian
 /// integers, 8-byte big-endian length-prefixed byte strings, and 32 raw digest
 /// bytes. `SemanticTypeKey` values are opaque byte strings; the codec never

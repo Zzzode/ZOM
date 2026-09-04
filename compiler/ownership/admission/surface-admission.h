@@ -25,7 +25,7 @@
 namespace zomlang::compiler::ownership {
 
 /// \brief Parsed syntax that lacks an admitted complete frontend contract.
-enum class OwnershipSurfaceSyntaxKind : uint8_t {
+enum class SurfaceSyntaxKind : uint8_t {
   Spawn = 0x01,
   Suspend = 0x02,
   Match = 0x03,
@@ -38,40 +38,40 @@ enum class OwnershipSurfaceSyntaxKind : uint8_t {
 };
 
 /// \brief One source-ordered ownership-surface rejection.
-struct OwnershipSurfaceFailure final {
-  OwnershipSurfaceSyntaxKind kind;
+struct SurfaceFailure final {
+  SurfaceSyntaxKind kind;
   identity::SourceSpan primarySpan;
   uint32_t traversalOrdinal;
 };
 
-class OwnershipSurfaceSourceRejected final {
+class SurfaceSourceRejected final {
 public:
-  ~OwnershipSurfaceSourceRejected() noexcept(false);
-  OwnershipSurfaceSourceRejected(OwnershipSurfaceSourceRejected&&) noexcept;
-  OwnershipSurfaceSourceRejected& operator=(OwnershipSurfaceSourceRejected&&) noexcept;
-  ZC_DISALLOW_COPY(OwnershipSurfaceSourceRejected);
+  ~SurfaceSourceRejected() noexcept(false);
+  SurfaceSourceRejected(SurfaceSourceRejected&&) noexcept;
+  SurfaceSourceRejected& operator=(SurfaceSourceRejected&&) noexcept;
+  ZC_DISALLOW_COPY(SurfaceSourceRejected);
 
-  ZC_NODISCARD zc::ArrayPtr<const OwnershipSurfaceFailure> failures() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const SurfaceFailure> failures() const noexcept;
 
 private:
   struct Impl;
-  explicit OwnershipSurfaceSourceRejected(zc::Own<Impl>&& impl) noexcept;
+  explicit SurfaceSourceRejected(zc::Own<Impl>&& impl) noexcept;
   zc::Own<Impl> impl;
 
-  friend class OwnershipSurfaceAdmissionBuilder;
+  friend class SurfaceAdmissionBuilder;
 };
 
 /// \brief A bound-module lease admitted to the complete frontend surface.
-class OwnershipAdmittedBoundModule final {
+class AdmittedBoundModule final {
 public:
-  ~OwnershipAdmittedBoundModule() noexcept(false);
-  OwnershipAdmittedBoundModule(OwnershipAdmittedBoundModule&&) noexcept;
-  OwnershipAdmittedBoundModule& operator=(OwnershipAdmittedBoundModule&&) noexcept;
-  ZC_DISALLOW_COPY(OwnershipAdmittedBoundModule);
+  ~AdmittedBoundModule() noexcept(false);
+  AdmittedBoundModule(AdmittedBoundModule&&) noexcept;
+  AdmittedBoundModule& operator=(AdmittedBoundModule&&) noexcept;
+  ZC_DISALLOW_COPY(AdmittedBoundModule);
 
   ZC_NODISCARD const driver::module_graph_query::CheckerBoundModuleView& boundModule()
       const noexcept;
-  ZC_NODISCARD OwnershipAdmittedBoundModule retain() const;
+  ZC_NODISCARD AdmittedBoundModule retain() const;
   ZC_NODISCARD operator const driver::module_graph_query::CheckerBoundModuleView&() const noexcept;
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
   ZC_NODISCARD identity::CompilationUnitId compilationUnit() const noexcept;
@@ -94,19 +94,18 @@ public:
 
 private:
   struct Impl;
-  explicit OwnershipAdmittedBoundModule(zc::Own<Impl>&& impl) noexcept;
+  explicit AdmittedBoundModule(zc::Own<Impl>&& impl) noexcept;
   zc::Own<Impl> impl;
 
-  friend class OwnershipSurfaceAdmissionBuilder;
+  friend class SurfaceAdmissionBuilder;
 };
 
-using OwnershipSurfaceAdmissionResult =
-    zc::OneOf<OwnershipAdmittedBoundModule, OwnershipSurfaceSourceRejected>;
+using SurfaceAdmissionResult = zc::OneOf<AdmittedBoundModule, SurfaceSourceRejected>;
 
 /// \brief Admits a bound module only when every parsed frontend form has a complete contract.
-class OwnershipSurfaceAdmissionBuilder final {
+class SurfaceAdmissionBuilder final {
 public:
-  ZC_NODISCARD static OwnershipSurfaceAdmissionResult admit(
+  ZC_NODISCARD static SurfaceAdmissionResult admit(
       driver::module_graph_query::CheckerBoundModuleView&& boundModule);
 };
 

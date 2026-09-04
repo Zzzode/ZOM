@@ -257,13 +257,12 @@ public:
     ZC_REQUIRE(driver::core_library_test::userBoundModuleCount(identities) == 1);
     userModule = driver::core_library_test::soleUserBoundModule(identities).module();
 
-    zc::Vector<ownership::OwnershipAdmittedBoundModule> admittedModules(
-        identities.modules().size());
+    zc::Vector<ownership::AdmittedBoundModule> admittedModules(identities.modules().size());
     zc::Vector<signature::MarkerShapeModuleInput> shapeInputs(identities.modules().size());
     for (const auto& candidate : identities.modules()) {
-      auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(candidate.retain());
-      ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
-      admittedModules.add(zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>());
+      auto admission = ownership::SurfaceAdmissionBuilder::admit(candidate.retain());
+      ZC_REQUIRE(admission.is<ownership::AdmittedBoundModule>());
+      admittedModules.add(zc::mv(admission).get<ownership::AdmittedBoundModule>());
       shapeInputs.add(signature::MarkerShapeModuleInput{admittedModules.back()});
     }
     auto shapeResult = signature::MarkerShapeInventoryBuilder::build(
@@ -582,9 +581,9 @@ public:
       interfaceSources.add(
           driver::VerifiedInterfaceSource(driver::UserVerifiedInterfaceSource{interface}));
     }
-    auto admission = ownership::OwnershipSurfaceAdmissionBuilder::admit(boundModule().retain());
-    ZC_REQUIRE(admission.is<ownership::OwnershipAdmittedBoundModule>());
-    auto admitted = zc::mv(admission).get<ownership::OwnershipAdmittedBoundModule>();
+    auto admission = ownership::SurfaceAdmissionBuilder::admit(boundModule().retain());
+    ZC_REQUIRE(admission.is<ownership::AdmittedBoundModule>());
+    auto admitted = zc::mv(admission).get<ownership::AdmittedBoundModule>();
     return driver::ImportedSignatureViewProjector::build(
         admitted, interfaceSources.asPtr(), semanticTypes(), ZC_REQUIRE_NONNULL(identityAuthority));
   }
