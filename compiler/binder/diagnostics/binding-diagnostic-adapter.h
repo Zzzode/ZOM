@@ -5,9 +5,9 @@
 
 #pragma once
 
+#include "compiler/binder/metadata/binding-metadata.h"
 #include "zc/core/common.h"
 #include "zc/core/string.h"
-#include "compiler/binder/metadata/binding-metadata.h"
 
 namespace zomlang::compiler::diagnostics {
 class DiagnosticEngine;
@@ -37,18 +37,17 @@ private:
 class BindingDiagnosticAdapter final {
 public:
   ZC_NODISCARD static bool emitControlTransferFailure(diagnostics::DiagnosticEngine& diagnostics,
-                                                      BinderDiagnosticCode code,
+                                                      BinderErrorId code,
                                                       source::SourceLoc primary);
   ZC_NODISCARD static bool emitLabelLookupFailure(diagnostics::DiagnosticEngine& diagnostics,
-                                                  BinderDiagnosticCode code,
-                                                  source::SourceLoc primary,
+                                                  BinderErrorId code, source::SourceLoc primary,
                                                   VerifiedIdentifierArgument&& identifier);
   ZC_NODISCARD static bool emitLookupFailure(diagnostics::DiagnosticEngine& diagnostics,
-                                             BinderDiagnosticCode code, source::SourceLoc primary,
+                                             BinderErrorId code, source::SourceLoc primary,
                                              VerifiedIdentifierArgument&& identifier,
                                              Namespace expectedNamespace);
   ZC_NODISCARD static bool emitRedeclaration(diagnostics::DiagnosticEngine& diagnostics,
-                                             BinderDiagnosticCode code, source::SourceLoc primary,
+                                             BinderErrorId code, source::SourceLoc primary,
                                              source::SourceLoc previous,
                                              VerifiedIdentifierArgument&& identifier);
 };

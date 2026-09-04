@@ -1,19 +1,19 @@
 #include "compiler/driver/query/binding/named-identity-inventory-query.h"
 
-#include "zc/core/debug.h"
 #include "compiler/ast/generated/node-accessors.h"
 #include "compiler/ast/generated/node-schema.h"
-#include "compiler/binder/metadata/definition-inventory.h"
 #include "compiler/binder/graph/parsed-module.h"
-#include "compiler/binder/stable/stable-binding-codec.h"
-#include "compiler/binder/stable/stable-binding-diagnostic-fact.h"
+#include "compiler/binder/metadata/definition-inventory.h"
 #include "compiler/binder/stable/candidate/producer.h"
 #include "compiler/binder/stable/candidate/verifier.h"
+#include "compiler/binder/stable/stable-binding-codec.h"
+#include "compiler/binder/stable/stable-binding-diagnostic-fact.h"
 #include "compiler/diagnostics/toolchain/module-root-argument.h"
 #include "compiler/driver/query/module-graph/module-graph-query-input.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/parser/query/parse-source-query.h"
+#include "zc/core/debug.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {
 namespace {
@@ -62,8 +62,7 @@ zc::Maybe<ast::NodeId> selectModuleNode(const ast::Tree& tree, const identity::M
     if (value != module.path().back()) {
       zc::Vector<identity::ModulePathSegment> declaredPath;
       declaredPath.add(value.clone());
-      if (diagnostics::ModuleRootArgument::fromCanonicalPath(zc::mv(declaredPath)) ==
-          zc::none) {
+      if (diagnostics::ModuleRootArgument::fromCanonicalPath(zc::mv(declaredPath)) == zc::none) {
         return zc::none;
       }
     }
@@ -79,8 +78,8 @@ query::TypedQueryResult<LoadedIdentitySource> loadIdentitySource(Context& contex
     return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(
         query::QueryRuntimeFailure::InvalidKeyEncoding);
   }
-  auto selected = context.template get<module_graph_query::SelectedModuleSource>(
-      ZC_ASSERT_NONNULL(module));
+  auto selected =
+      context.template get<module_graph_query::SelectedModuleSource>(ZC_ASSERT_NONNULL(module));
   if (selected.isRuntimeFailure()) {
     return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(selected.runtimeFailure());
   }
@@ -590,7 +589,7 @@ zc::Maybe<diagnostics::DiagnosticFact> definitionRedeclarationDiagnostic(
   const auto& duplicate = definitions[redeclaration.duplicate];
   const auto& previous = definitions[redeclaration.first];
   return binder::StableBindingDiagnosticFactFactory::definitionRedeclaration(
-      duplicate.site, previous.site, static_cast<diagnostics::DiagID>(redeclaration.diagnostic),
+      duplicate.site, previous.site, redeclaration.diagnostic.diagnosticId(),
       duplicate.authority.record().name());
 }
 

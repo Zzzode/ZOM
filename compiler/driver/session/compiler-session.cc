@@ -2454,9 +2454,8 @@ bool CompilerSession::bindSources() {
       const auto& outcome = lookup.outcome.value();
       if (outcome.is<binder::StableMissingLookupOutcome>()) {
         if (!binder::BindingDiagnosticAdapter::emitLookupFailure(
-                *impl->diagnosticEngine, binder::BinderDiagnosticCode::UndefinedIdentifier,
-                location, binder::VerifiedIdentifierArgument::from(lookup.name),
-                lookup.nameSpace)) {
+                *impl->diagnosticEngine, binder::BinderErrorId::UndefinedIdentifier(), location,
+                binder::VerifiedIdentifierArgument::from(lookup.name), lookup.nameSpace)) {
           return false;
         }
       }

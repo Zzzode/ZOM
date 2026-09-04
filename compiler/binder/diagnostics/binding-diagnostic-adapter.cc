@@ -37,147 +37,102 @@ VerifiedIdentifierArgument VerifiedIdentifierArgument::from(
 zc::String VerifiedIdentifierArgument::take() && { return zc::mv(value); }
 
 bool BindingDiagnosticAdapter::emitControlTransferFailure(
-    diagnostics::DiagnosticEngine& diagnostics, BinderDiagnosticCode code,
-    source::SourceLoc primary) {
+    diagnostics::DiagnosticEngine& diagnostics, BinderErrorId code, source::SourceLoc primary) {
   using diagnostics::DiagID;
-  switch (code) {
-    case BinderDiagnosticCode::BreakTargetNotFound:
+  switch (code.diagnosticId()) {
+    case DiagID::BreakTargetNotFound:
       diagnostics.diagnose<DiagID::BreakTargetNotFound>(primary).emit();
       return true;
-    case BinderDiagnosticCode::ContinueTargetNotFound:
+    case DiagID::ContinueTargetNotFound:
       diagnostics.diagnose<DiagID::ContinueTargetNotFound>(primary).emit();
       return true;
-    case BinderDiagnosticCode::ContinueTargetNotLoop:
+    case DiagID::ContinueTargetNotLoop:
       diagnostics.diagnose<DiagID::ContinueTargetNotLoop>(primary).emit();
       return true;
-    case BinderDiagnosticCode::ContextualSelfOutsideType:
-    case BinderDiagnosticCode::UndefinedIdentifier:
-    case BinderDiagnosticCode::SymbolNamespaceMismatch:
-    case BinderDiagnosticCode::RedeclareVariable:
-    case BinderDiagnosticCode::RedeclareParameter:
-    case BinderDiagnosticCode::RedeclareFunction:
-    case BinderDiagnosticCode::RedeclareClass:
-    case BinderDiagnosticCode::RedeclareInterface:
-    case BinderDiagnosticCode::RedeclareEnum:
-    case BinderDiagnosticCode::RedeclareTypeAlias:
-    case BinderDiagnosticCode::DuplicateIdentifier:
-    case BinderDiagnosticCode::PreviousDeclarationHere:
+    default:
       return false;
   }
   ZC_UNREACHABLE;
 }
 
 bool BindingDiagnosticAdapter::emitLabelLookupFailure(diagnostics::DiagnosticEngine& diagnostics,
-                                                      BinderDiagnosticCode code,
-                                                      source::SourceLoc primary,
+                                                      BinderErrorId code, source::SourceLoc primary,
                                                       VerifiedIdentifierArgument&& identifier) {
   using diagnostics::DiagID;
-  switch (code) {
-    case BinderDiagnosticCode::UndefinedIdentifier:
+  switch (code.diagnosticId()) {
+    case DiagID::UndefinedIdentifier:
       diagnostics.diagnose<DiagID::UndefinedIdentifier>(primary, zc::mv(identifier).take()).emit();
       return true;
-    case BinderDiagnosticCode::SymbolNamespaceMismatch:
-    case BinderDiagnosticCode::RedeclareVariable:
-    case BinderDiagnosticCode::RedeclareParameter:
-    case BinderDiagnosticCode::RedeclareFunction:
-    case BinderDiagnosticCode::RedeclareClass:
-    case BinderDiagnosticCode::RedeclareInterface:
-    case BinderDiagnosticCode::RedeclareEnum:
-    case BinderDiagnosticCode::RedeclareTypeAlias:
-    case BinderDiagnosticCode::DuplicateIdentifier:
-    case BinderDiagnosticCode::PreviousDeclarationHere:
-    case BinderDiagnosticCode::BreakTargetNotFound:
-    case BinderDiagnosticCode::ContinueTargetNotFound:
-    case BinderDiagnosticCode::ContinueTargetNotLoop:
-    case BinderDiagnosticCode::ContextualSelfOutsideType:
+    default:
       return false;
   }
   ZC_UNREACHABLE;
 }
 
 bool BindingDiagnosticAdapter::emitLookupFailure(diagnostics::DiagnosticEngine& diagnostics,
-                                                 BinderDiagnosticCode code,
-                                                 source::SourceLoc primary,
+                                                 BinderErrorId code, source::SourceLoc primary,
                                                  VerifiedIdentifierArgument&& identifier,
                                                  Namespace expectedNamespace) {
   using diagnostics::DiagID;
-  switch (code) {
-    case BinderDiagnosticCode::UndefinedIdentifier:
+  switch (code.diagnosticId()) {
+    case DiagID::UndefinedIdentifier:
       diagnostics.diagnose<DiagID::UndefinedIdentifier>(primary, zc::mv(identifier).take()).emit();
       return true;
-    case BinderDiagnosticCode::SymbolNamespaceMismatch: {
+    case DiagID::SymbolNamespaceMismatch: {
       const zc::StringPtr expected = expectedNamespace == Namespace::Value ? "value"_zc : "type"_zc;
       diagnostics
           .diagnose<DiagID::SymbolNamespaceMismatch>(primary, zc::mv(identifier).take(), expected)
           .emit();
       return true;
     }
-    case BinderDiagnosticCode::ContextualSelfOutsideType:
+    case DiagID::ContextualSelfOutsideType:
       diagnostics.diagnose<DiagID::ContextualSelfOutsideType>(primary).emit();
       return true;
-    case BinderDiagnosticCode::RedeclareVariable:
-    case BinderDiagnosticCode::RedeclareParameter:
-    case BinderDiagnosticCode::RedeclareFunction:
-    case BinderDiagnosticCode::RedeclareClass:
-    case BinderDiagnosticCode::RedeclareInterface:
-    case BinderDiagnosticCode::RedeclareEnum:
-    case BinderDiagnosticCode::RedeclareTypeAlias:
-    case BinderDiagnosticCode::DuplicateIdentifier:
-    case BinderDiagnosticCode::PreviousDeclarationHere:
-    case BinderDiagnosticCode::BreakTargetNotFound:
-    case BinderDiagnosticCode::ContinueTargetNotFound:
-    case BinderDiagnosticCode::ContinueTargetNotLoop:
+    default:
       return false;
   }
   ZC_UNREACHABLE;
 }
 
 bool BindingDiagnosticAdapter::emitRedeclaration(diagnostics::DiagnosticEngine& diagnostics,
-                                                 BinderDiagnosticCode code,
-                                                 source::SourceLoc primary,
+                                                 BinderErrorId code, source::SourceLoc primary,
                                                  source::SourceLoc previous,
                                                  VerifiedIdentifierArgument&& identifier) {
   using diagnostics::DiagID;
-  switch (code) {
-    case BinderDiagnosticCode::RedeclareVariable:
+  switch (code.diagnosticId()) {
+    case DiagID::RedeclareVariable:
       emitTypedRedeclaration<DiagID::RedeclareVariable>(diagnostics, primary, previous,
                                                         zc::mv(identifier));
       return true;
-    case BinderDiagnosticCode::RedeclareParameter:
+    case DiagID::RedeclareParameter:
       emitTypedRedeclaration<DiagID::RedeclareParameter>(diagnostics, primary, previous,
                                                          zc::mv(identifier));
       return true;
-    case BinderDiagnosticCode::RedeclareFunction:
+    case DiagID::RedeclareFunction:
       emitTypedRedeclaration<DiagID::RedeclareFunction>(diagnostics, primary, previous,
                                                         zc::mv(identifier));
       return true;
-    case BinderDiagnosticCode::RedeclareClass:
+    case DiagID::RedeclareClass:
       emitTypedRedeclaration<DiagID::RedeclareClass>(diagnostics, primary, previous,
                                                      zc::mv(identifier));
       return true;
-    case BinderDiagnosticCode::RedeclareInterface:
+    case DiagID::RedeclareInterface:
       emitTypedRedeclaration<DiagID::RedeclareInterface>(diagnostics, primary, previous,
                                                          zc::mv(identifier));
       return true;
-    case BinderDiagnosticCode::RedeclareEnum:
+    case DiagID::RedeclareEnum:
       emitTypedRedeclaration<DiagID::RedeclareEnum>(diagnostics, primary, previous,
                                                     zc::mv(identifier));
       return true;
-    case BinderDiagnosticCode::RedeclareTypeAlias:
+    case DiagID::RedeclareTypeAlias:
       emitTypedRedeclaration<DiagID::RedeclareTypeAlias>(diagnostics, primary, previous,
                                                          zc::mv(identifier));
       return true;
-    case BinderDiagnosticCode::DuplicateIdentifier:
+    case DiagID::DuplicateIdentifier:
       emitTypedRedeclaration<DiagID::DuplicateIdentifier>(diagnostics, primary, previous,
                                                           zc::mv(identifier));
       return true;
-    case BinderDiagnosticCode::UndefinedIdentifier:
-    case BinderDiagnosticCode::SymbolNamespaceMismatch:
-    case BinderDiagnosticCode::PreviousDeclarationHere:
-    case BinderDiagnosticCode::BreakTargetNotFound:
-    case BinderDiagnosticCode::ContinueTargetNotFound:
-    case BinderDiagnosticCode::ContinueTargetNotLoop:
-    case BinderDiagnosticCode::ContextualSelfOutsideType:
+    default:
       return false;
   }
   ZC_UNREACHABLE;

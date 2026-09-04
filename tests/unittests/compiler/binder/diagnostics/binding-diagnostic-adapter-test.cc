@@ -14,12 +14,12 @@
 
 #include "compiler/binder/diagnostics/binding-diagnostic-adapter.h"
 
-#include "zc/core/vector.h"
-#include "zc/ztest/test.h"
 #include "compiler/diagnostics/consumer/diagnostic-consumer.h"
 #include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/source/manager.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
+#include "zc/core/vector.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -69,11 +69,11 @@ ZC_TEST("BindingDiagnosticAdapter.EmitsZeroArgumentControlTransferFailures") {
   diagnostics.addConsumer(zc::mv(consumer));
 
   ZC_EXPECT(BindingDiagnosticAdapter::emitControlTransferFailure(
-      diagnostics, BinderDiagnosticCode::BreakTargetNotFound, breakLoc));
+      diagnostics, BinderErrorId::BreakTargetNotFound(), breakLoc));
   ZC_EXPECT(BindingDiagnosticAdapter::emitControlTransferFailure(
-      diagnostics, BinderDiagnosticCode::ContinueTargetNotFound, continueLoc));
+      diagnostics, BinderErrorId::ContinueTargetNotFound(), continueLoc));
   ZC_EXPECT(BindingDiagnosticAdapter::emitControlTransferFailure(
-      diagnostics, BinderDiagnosticCode::ContinueTargetNotLoop, blockLoc));
+      diagnostics, BinderErrorId::ContinueTargetNotLoop(), blockLoc));
 
   ZC_REQUIRE(captured.ids.size() == 3);
   ZC_REQUIRE(captured.locations.size() == 3);
@@ -102,7 +102,7 @@ ZC_TEST("BindingDiagnosticAdapter.EmitsTypedMissingLabelFailure") {
   ZC_REQUIRE(identifier != zc::none);
   ZC_IF_SOME(value, identifier) {
     ZC_EXPECT(BindingDiagnosticAdapter::emitLabelLookupFailure(
-        diagnostics, BinderDiagnosticCode::UndefinedIdentifier, primary,
+        diagnostics, BinderErrorId::UndefinedIdentifier(), primary,
         VerifiedIdentifierArgument::from(value)));
   }
   ZC_REQUIRE(captured.ids.size() == 1);
@@ -121,10 +121,12 @@ ZC_TEST("BindingDiagnosticAdapter.RejectsUnsupportedControlTransferCodes") {
   const auto& captured = *consumer;
   diagnostics.addConsumer(zc::mv(consumer));
 
-  const BinderDiagnosticCode rejected[] = {
-      BinderDiagnosticCode::UndefinedIdentifier,
-      BinderDiagnosticCode::RedeclareVariable,
-      BinderDiagnosticCode::PreviousDeclarationHere,
+  // A note id is no longer representable here: emitControlTransferFailure takes
+  // BinderErrorId, so passing PreviousDeclarationHere is a compile error rather
+  // than a runtime rejection. Only in-partition errors need a runtime check.
+  const BinderErrorId rejected[] = {
+      BinderErrorId::UndefinedIdentifier(),
+      BinderErrorId::RedeclareVariable(),
   };
   for (const auto code : rejected) {
     ZC_EXPECT(!BindingDiagnosticAdapter::emitControlTransferFailure(diagnostics, code, primary));

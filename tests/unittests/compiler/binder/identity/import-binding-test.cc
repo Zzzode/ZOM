@@ -343,13 +343,11 @@ ZC_TEST("ImportBindingProjector.RetainsFactsAndEmitsClosedDuplicateAndUndefinedF
   ZC_EXPECT(candidate.surfaceSeeds.empty());
   ZC_EXPECT(candidate.localExports.empty());
   ZC_REQUIRE(candidate.sourceFailures.size() == 2);
-  ZC_EXPECT(candidate.sourceFailures[0].failure.diagnostic ==
-            BinderDiagnosticCode::DuplicateIdentifier);
+  ZC_EXPECT(candidate.sourceFailures[0].failure.diagnostic == BinderErrorId::DuplicateIdentifier());
   ZC_REQUIRE(candidate.sourceFailures[0].failure.notes.size() == 1);
   ZC_EXPECT(candidate.sourceFailures[0].failure.notes[0].diagnostic ==
-            BinderDiagnosticCode::PreviousDeclarationHere);
-  ZC_EXPECT(candidate.sourceFailures[1].failure.diagnostic ==
-            BinderDiagnosticCode::UndefinedIdentifier);
+            BinderNoteId::PreviousDeclarationHere());
+  ZC_EXPECT(candidate.sourceFailures[1].failure.diagnostic == BinderErrorId::UndefinedIdentifier());
   ZC_EXPECT(candidate.sourceFailures[1].failure.notes.empty());
   ZC_EXPECT(candidate.sourceFailures[0].failure.emitterOrdinal <
             candidate.sourceFailures[1].failure.emitterOrdinal);

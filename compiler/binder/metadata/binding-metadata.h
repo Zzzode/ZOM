@@ -6,6 +6,7 @@
 #pragma once
 
 #include "compiler/ast/tree.h"
+#include "compiler/binder/diagnostics/binder-diagnostic-id.h"
 #include "compiler/binder/identity/local-identity.h"
 #include "compiler/binder/metadata/definition-site.h"
 #include "compiler/identity/canonical/canonical-scalar.h"
@@ -370,31 +371,13 @@ private:
   identity::Sha256Digest value;
 };
 
-enum class BinderDiagnosticCode : uint16_t {
-  UndefinedIdentifier = 3001,
-  SymbolNamespaceMismatch = 3002,
-  RedeclareVariable = 3003,
-  RedeclareParameter = 3004,
-  RedeclareFunction = 3005,
-  RedeclareClass = 3006,
-  RedeclareInterface = 3007,
-  RedeclareEnum = 3008,
-  RedeclareTypeAlias = 3009,
-  DuplicateIdentifier = 3010,
-  PreviousDeclarationHere = 3017,
-  BreakTargetNotFound = 3020,
-  ContinueTargetNotFound = 3021,
-  ContinueTargetNotLoop = 3022,
-  ContextualSelfOutsideType = 3025
-};
-
 struct BindingDiagnosticNoteRef final {
-  BinderDiagnosticCode diagnostic;
+  BinderNoteId diagnostic;
   identity::SourceSpan source;
 };
 
 struct BindingFailureRef final {
-  BinderDiagnosticCode diagnostic;
+  BinderErrorId diagnostic;
   identity::SourceSpan primary;
   uint64_t emitterOrdinal;
   zc::Vector<BindingDiagnosticNoteRef> notes;

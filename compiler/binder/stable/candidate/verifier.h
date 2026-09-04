@@ -5,10 +5,10 @@
 
 #pragma once
 
-#include "zc/core/one-of.h"
-#include "zc/core/vector.h"
 #include "compiler/binder/metadata/binding-metadata.h"
 #include "compiler/binder/stable/candidate/producer.h"
+#include "zc/core/one-of.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::binder {
 
@@ -83,7 +83,7 @@ public:
 struct StableDefinitionRedeclaration final {
   uint32_t first;
   uint32_t duplicate;
-  BinderDiagnosticCode diagnostic;
+  BinderErrorId diagnostic;
 };
 
 using StableDefinitionRedeclarationValidation =

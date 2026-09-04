@@ -5,10 +5,10 @@
 
 #include "compiler/binder/stable/candidate/verifier.h"
 
-#include "zc/core/string.h"
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/binder/canonical/canonical-header-verifier.h"
 #include "compiler/binder/metadata/definition-inventory.h"
+#include "zc/core/string.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -775,32 +775,32 @@ zc::Maybe<identity::OverloadHeaderAuthority> cloneOverload(
   return zc::none;
 }
 
-zc::Maybe<BinderDiagnosticCode> redeclarationCode(identity::DefinitionKind kind) {
+zc::Maybe<BinderErrorId> redeclarationCode(identity::DefinitionKind kind) {
   using identity::DefinitionKind;
   switch (kind) {
     case DefinitionKind::Function:
     case DefinitionKind::Method:
     case DefinitionKind::Constructor:
     case DefinitionKind::Destructor:
-      return BinderDiagnosticCode::RedeclareFunction;
+      return BinderErrorId::RedeclareFunction();
     case DefinitionKind::Class:
-      return BinderDiagnosticCode::RedeclareClass;
+      return BinderErrorId::RedeclareClass();
     case DefinitionKind::Interface:
-      return BinderDiagnosticCode::RedeclareInterface;
+      return BinderErrorId::RedeclareInterface();
     case DefinitionKind::Enum:
-      return BinderDiagnosticCode::RedeclareEnum;
+      return BinderErrorId::RedeclareEnum();
     case DefinitionKind::TypeAlias:
     case DefinitionKind::AssociatedType:
-      return BinderDiagnosticCode::RedeclareTypeAlias;
+      return BinderErrorId::RedeclareTypeAlias();
     case DefinitionKind::Field:
     case DefinitionKind::Constant:
     case DefinitionKind::Static:
-      return BinderDiagnosticCode::RedeclareVariable;
+      return BinderErrorId::RedeclareVariable();
     case DefinitionKind::Struct:
     case DefinitionKind::Error:
     case DefinitionKind::EnumVariant:
     case DefinitionKind::ModuleAlias:
-      return BinderDiagnosticCode::DuplicateIdentifier;
+      return BinderErrorId::DuplicateIdentifier();
     case DefinitionKind::Parameter:
     case DefinitionKind::TypeParameter:
     case DefinitionKind::Local:

@@ -14,9 +14,9 @@
 
 #include "compiler/binder/identity/import-binding.h"
 
+#include "compiler/identity/canonical/canonical-encoder.h"
 #include "zc/core/encoding.h"
 #include "zc/core/map.h"
-#include "compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -275,12 +275,12 @@ ImportBindingProjectionResult ImportBindingProjector::project(
 
   ImportBindingProjectionCandidate candidate;
   const auto addFailure = [&](ast::NodeId node, const identity::DeclaredDefinitionName& name,
-                              BinderDiagnosticCode diagnostic, const identity::SourceSpan& primary,
+                              BinderErrorId diagnostic, const identity::SourceSpan& primary,
                               uint32_t ordinal, zc::Maybe<const identity::SourceSpan&> previous) {
     zc::Vector<BindingDiagnosticNoteRef> notes;
     ZC_IF_SOME(previousValue, previous) {
-      notes.add(BindingDiagnosticNoteRef{BinderDiagnosticCode::PreviousDeclarationHere,
-                                         previousValue.clone()});
+      notes.add(
+          BindingDiagnosticNoteRef{BinderNoteId::PreviousDeclarationHere(), previousValue.clone()});
     }
     candidate.sourceFailures.add(ImportBindingFailureProjection(
         node, name.clone(),
@@ -293,7 +293,7 @@ ImportBindingProjectionResult ImportBindingProjector::project(
     auto previous = bindingIndices.find(key);
     if (previous != zc::none) {
       ZC_IF_SOME(previousIndex, previous) {
-        addFailure(binding.node, binding.name.name(), BinderDiagnosticCode::DuplicateIdentifier,
+        addFailure(binding.node, binding.name.name(), BinderErrorId::DuplicateIdentifier(),
                    binding.binding.declarationSpan, ordinal,
                    availableBindings[previousIndex].binding.declarationSpan);
       }
@@ -385,8 +385,8 @@ ImportBindingProjectionResult ImportBindingProjector::project(
     }
     if (resolvedIndex == availableBindings.size()) {
       auto sourceName = bindingName(item.sourceName);
-      addFailure(item.node, sourceName, BinderDiagnosticCode::UndefinedIdentifier,
-                 item.sourceNameSpan, operation.schemaPreorderOrdinal, zc::none);
+      addFailure(item.node, sourceName, BinderErrorId::UndefinedIdentifier(), item.sourceNameSpan,
+                 operation.schemaPreorderOrdinal, zc::none);
       continue;
     }
     const auto& source = availableBindings[resolvedIndex];
