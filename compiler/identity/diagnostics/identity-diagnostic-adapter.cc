@@ -17,23 +17,6 @@
 #include "zc/core/string.h"
 
 namespace zomlang::compiler::identity {
-namespace {
-
-bool sameRange(zc::Maybe<const UnbrandedSourceRange&> left,
-               zc::Maybe<const UnbrandedSourceRange&> right) {
-  if (left == zc::none) { return right == zc::none; }
-  if (right == zc::none) { return false; }
-  ZC_IF_SOME(leftValue, left) {
-    ZC_IF_SOME(rightValue, right) {
-      const auto leftBytes = leftValue.encode();
-      const auto rightBytes = rightValue.encode();
-      return leftBytes.asPtr() == rightBytes.asPtr();
-    }
-  }
-  ZC_UNREACHABLE
-}
-
-}  // namespace
 
 IdentityDiagnosticGroup::IdentityDiagnosticGroup(diagnostics::DiagID diagnosticId,
                                                  zc::Maybe<UnbrandedSourceRange>&& diagnosticRange,
@@ -85,7 +68,7 @@ zc::Vector<IdentityDiagnosticGroup> groupIdentityInvariants(
   for (const auto& fact : facts) {
     const auto id = identityDiagnosticId(fact.kind());
     if (groups.size() != 0 && groups.back().diagnosticId() == id &&
-        sameRange(groups.back().diagnosticRange(), fact.diagnosticRange())) {
+        UnbrandedSourceRange::same(groups.back().diagnosticRange(), fact.diagnosticRange())) {
       ++groups.back().countValue;
       continue;
     }

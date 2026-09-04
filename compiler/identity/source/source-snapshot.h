@@ -34,6 +34,14 @@ public:
   ZC_NODISCARD uint64_t byteEnd() const noexcept;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
 
+  /// \brief Compares two optional ranges by canonical encoding, with `none` equal to `none`.
+  ///
+  /// Diagnostic grouping anchors on this: two failures share a group only when
+  /// they carry the same range, and a source-less failure only ever joins
+  /// another source-less one.
+  ZC_NODISCARD static bool same(zc::Maybe<const UnbrandedSourceRange&> left,
+                                zc::Maybe<const UnbrandedSourceRange&> right);
+
 private:
   UnbrandedSourceRange(SourceFileKey&& source, const Sha256Digest& contentDigest,
                        uint64_t byteStart, uint64_t byteEnd) noexcept;

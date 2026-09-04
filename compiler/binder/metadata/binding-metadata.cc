@@ -36,20 +36,6 @@ int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> r
   return 0;
 }
 
-bool sameRange(zc::Maybe<const identity::UnbrandedSourceRange&> left,
-               zc::Maybe<const identity::UnbrandedSourceRange&> right) {
-  if (left == zc::none) { return right == zc::none; }
-  if (right == zc::none) { return false; }
-  ZC_IF_SOME(leftValue, left) {
-    ZC_IF_SOME(rightValue, right) {
-      const auto leftBytes = leftValue.encode();
-      const auto rightBytes = rightValue.encode();
-      return leftBytes.asPtr() == rightBytes.asPtr();
-    }
-  }
-  ZC_UNREACHABLE
-}
-
 }  // namespace
 
 ScopeId::ScopeId(identity::ModuleId module, uint32_t index) noexcept
@@ -487,7 +473,7 @@ zc::Maybe<zc::Vector<BinderInvariantDiagnosticGroup>> groupBinderInvariants(
     zc::Maybe<const identity::UnbrandedSourceRange&> range;
     ZC_IF_SOME(value, facts[index].diagnosticRange) { range = value; }
     if (groups.size() != 0 && groups.back().diagnosticId() == id &&
-        sameRange(groups.back().diagnosticRange(), range)) {
+        identity::UnbrandedSourceRange::same(groups.back().diagnosticRange(), range)) {
       ++groups.back().countValue;
       continue;
     }

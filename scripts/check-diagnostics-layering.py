@@ -54,6 +54,11 @@ SESSION_OWNER = frozenset(
 # Adapters that have not been moved into their subsystem's diagnostics/ group.
 # Shrink this set by moving the file; never grow it. A new adapter goes
 # straight into <subsystem>/diagnostics/ and needs no entry here.
+#
+# The package pair stays put: check-compiler-session-architecture.py exempts
+# the `package` path segment from the strict driver surface and assertion
+# rules, so moving these into driver/diagnostics/ would force that gate to be
+# loosened. This gate already makes the boundary visible without that trade.
 UNGROUPED_ADAPTERS = frozenset(
     {
         "compiler/binder/metadata/binding-metadata.h",
@@ -133,6 +138,7 @@ def self_test() -> int:
         ("compiler/driver/session/compiler-session.cc", None),
         ("compiler/ownership/diagnostics/ownership-diagnostic-adapter.cc", None),
         ("compiler/driver/package/package-diagnostic.cc", None),
+        ("compiler/binder/metadata/binding-metadata.cc", None),
         ("compiler/checker/body/body-checker.cc", "violation"),
         ("compiler/binder/graph/parsed-module.cc", "violation"),
     ]

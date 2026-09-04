@@ -47,6 +47,20 @@ zc::Array<uint8_t> UnbrandedSourceRange::encode() const {
   return encoder.finish();
 }
 
+bool UnbrandedSourceRange::same(zc::Maybe<const UnbrandedSourceRange&> left,
+                                zc::Maybe<const UnbrandedSourceRange&> right) {
+  if (left == zc::none) { return right == zc::none; }
+  if (right == zc::none) { return false; }
+  ZC_IF_SOME(leftValue, left) {
+    ZC_IF_SOME(rightValue, right) {
+      const auto leftBytes = leftValue.encode();
+      const auto rightBytes = rightValue.encode();
+      return leftBytes.asPtr() == rightBytes.asPtr();
+    }
+  }
+  ZC_UNREACHABLE
+}
+
 ImmutableSourceSnapshot::ImmutableSourceSnapshot(SourceFileKey&& source,
                                                  const Sha256Digest& contentDigest,
                                                  zc::Array<uint8_t>&& bytes) noexcept
