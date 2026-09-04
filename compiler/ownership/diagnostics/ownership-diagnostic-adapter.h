@@ -14,8 +14,8 @@
 
 #pragma once
 
+#include "compiler/ownership/diagnostics/ownership-source-failure.h"
 #include "zc/core/array.h"
-#include "compiler/ownership/ownership-source-failure.h"
 
 namespace zomlang::compiler::binder {
 class VerifiedParsedModule;

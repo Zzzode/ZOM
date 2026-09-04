@@ -15,7 +15,7 @@
 #include "compiler/checker/facts/signature-facts.h"
 
 #include "compiler/identity/crypto/sha256.h"
-#include "compiler/ownership/surface-admission.h"
+#include "compiler/ownership/admission/surface-admission.h"
 #include "tests/unittests/compiler/checker/checker-authority-test-fixture.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
 #include "zc/core/encoding.h"

@@ -26,17 +26,17 @@
       "lineCount": 783,
       "linePercent": 59.13
     },
-    "compiler/ownership/drop-elaborated-mir.cc": {
+    "compiler/ownership/overlay/drop-elaborated-mir.cc": {
       "coveredLines": 135,
       "lineCount": 193,
       "linePercent": 69.95
     },
-    "compiler/ownership/ownership-checked-mir.cc": {
+    "compiler/ownership/overlay/ownership-checked-mir.cc": {
       "coveredLines": 50,
       "lineCount": 153,
       "linePercent": 32.68
     },
-    "compiler/ownership/ownership-event-overlay.cc": {
+    "compiler/ownership/overlay/ownership-event-overlay.cc": {
       "coveredLines": 1544,
       "lineCount": 2295,
       "linePercent": 67.28

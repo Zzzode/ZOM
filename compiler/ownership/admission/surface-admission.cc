@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "compiler/ownership/surface-admission.h"
+#include "compiler/ownership/admission/surface-admission.h"
 
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/ast/generated/node-traverse.h"

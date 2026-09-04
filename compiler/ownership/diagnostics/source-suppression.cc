@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "compiler/ownership/source-suppression.h"
+#include "compiler/ownership/diagnostics/source-suppression.h"
 
 namespace zomlang::compiler::ownership {
 namespace {

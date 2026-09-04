@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "compiler/ownership/ownership-diagnostic-adapter.h"
+#include "compiler/ownership/diagnostics/ownership-diagnostic-adapter.h"
 
-#include "zc/core/memory.h"
 #include "compiler/binder/graph/parsed-module.h"
 #include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/diagnostics/core/diagnostic.h"
 #include "compiler/source/location.h"
+#include "zc/core/memory.h"
 
 namespace zomlang::compiler::ownership {
 namespace {

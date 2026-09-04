@@ -33,7 +33,7 @@
 #include "compiler/ownership/facts/regions.h"
 #include "compiler/ownership/facts/resources.h"
 #include "compiler/ownership/facts/states.h"
-#include "compiler/ownership/ownership-event-overlay.h"
+#include "compiler/ownership/overlay/ownership-event-overlay.h"
 #include "compiler/source/manager.h"
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "zc/ztest/test.h"

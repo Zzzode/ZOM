@@ -1103,7 +1103,7 @@ and
 The focused existing suites are:
 
 - `tests/unittests/compiler/checker/marker-proof-test.cc`;
-- `tests/unittests/compiler/ownership/ownership-event-overlay-test.cc`;
+- `tests/unittests/compiler/ownership/overlay/ownership-event-overlay-test.cc`;
 - `tests/unittests/compiler/driver/compiler-session-package-test.cc`;
   and
 - `tests/unittests/compiler/driver/incremental-module-resolution-query-test.cc`.

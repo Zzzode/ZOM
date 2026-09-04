@@ -26,7 +26,7 @@
 #include "compiler/ir/diagnostics/ir-failure.h"
 #include "compiler/ir/ir-identity.h"
 #include "compiler/mir/built-mir.h"
-#include "compiler/ownership/surface-admission.h"
+#include "compiler/ownership/admission/surface-admission.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"

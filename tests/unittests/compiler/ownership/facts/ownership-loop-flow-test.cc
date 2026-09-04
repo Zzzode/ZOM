@@ -24,7 +24,7 @@
 #include "compiler/ownership/facts/init.h"
 #include "compiler/ownership/facts/inputs.h"
 #include "compiler/ownership/facts/region-membership.h"
-#include "compiler/ownership/ownership-event-overlay.h"
+#include "compiler/ownership/overlay/ownership-event-overlay.h"
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
 #include "tests/unittests/compiler/test-semantic-type-context.h"

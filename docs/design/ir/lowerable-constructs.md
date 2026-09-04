@@ -21,7 +21,7 @@ MIR.
 
 ## Role in the pipeline
 
-- **Admitting filter:** `compiler/ownership/surface-admission.cc`
+- **Admitting filter:** `compiler/ownership/admission/surface-admission.cc`
   (`OwnershipSurfaceAdmissionBuilder::admit`). Each `isAdmitted*` predicate is a
   construct boundary; a shape that no predicate admits fails closed with an
   `OwnershipSurfaceFailure` before any HIR is built.

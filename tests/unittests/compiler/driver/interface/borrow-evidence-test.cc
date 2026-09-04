@@ -5,17 +5,17 @@
 
 #include "compiler/driver/interface/borrow-evidence.h"
 
-#include "zc/core/encoding.h"
-#include "zc/core/time.h"
-#include "zc/ztest/test.h"
 #include "compiler/checker/checker-identity-authority.h"
 #include "compiler/diagnostics/core/diagnostic-engine.h"
-#include "compiler/driver/session/compiler-session.h"
 #include "compiler/driver/interface/imported-signature-view-projector.h"
 #include "compiler/driver/package/manifest-parser.h"
 #include "compiler/driver/package/source-record.h"
-#include "compiler/ownership/surface-admission.h"
+#include "compiler/driver/session/compiler-session.h"
+#include "compiler/ownership/admission/surface-admission.h"
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
+#include "zc/core/encoding.h"
+#include "zc/core/time.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::driver::borrow_evidence {
 namespace {

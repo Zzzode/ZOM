@@ -16,11 +16,11 @@
 
 #include <cstdint>
 
+#include "compiler/driver/query/module-graph/materialized-module-graph-query.h"
 #include "zc/core/array.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "compiler/driver/query/module-graph/materialized-module-graph-query.h"
 
 namespace zomlang::compiler::ownership {
 

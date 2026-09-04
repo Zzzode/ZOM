@@ -16,11 +16,11 @@
 
 #include <cstdint>
 
-#include "zc/core/memory.h"
-#include "zc/core/vector.h"
+#include "compiler/ownership/diagnostics/ownership-source-failure.h"
 #include "compiler/ownership/facts/flow.h"
 #include "compiler/ownership/facts/paths.h"
-#include "compiler/ownership/ownership-source-failure.h"
+#include "zc/core/memory.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::ownership::facts {
 

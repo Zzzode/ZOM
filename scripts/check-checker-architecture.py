@@ -31,7 +31,7 @@ HIR_MODULE_SOURCE = Path("compiler/hir/hir-module.cc")
 BUILT_MIR_HEADER = Path("compiler/mir/built-mir.h")
 BUILT_MIR_SOURCE = Path("compiler/mir/built-mir.cc")
 OWNERSHIP_OVERLAY_SOURCE = Path(
-    "compiler/ownership/ownership-event-overlay.cc"
+    "compiler/ownership/overlay/ownership-event-overlay.cc"
 )
 ORDINARY_CORE_INTERFACE_CONSUMERS = (
     MODULE_INTERFACE_HEADER,
@@ -44,7 +44,7 @@ ORDINARY_CORE_INTERFACE_CONSUMERS = (
     HIR_MODULE_SOURCE,
     BUILT_MIR_HEADER,
     BUILT_MIR_SOURCE,
-    Path("compiler/ownership/ownership-event-overlay.h"),
+    Path("compiler/ownership/overlay/ownership-event-overlay.h"),
     OWNERSHIP_OVERLAY_SOURCE,
 )
 BOOTSTRAP_CORE_INTERFACE_TYPES = (
@@ -171,7 +171,7 @@ VERIFIED_SIGNATURE_FACTS_ALLOWED = {
     Path("compiler/hir/hir-module.cc"),
     Path("compiler/mir/built-mir.h"),
     Path("compiler/mir/built-mir.cc"),
-    Path("compiler/ownership/ownership-event-overlay.cc"),
+    Path("compiler/ownership/overlay/ownership-event-overlay.cc"),
     Path("compiler/driver/session/compiler-session.h"),
     SESSION_SOURCE,
     MARKER_PROOF_TEST,

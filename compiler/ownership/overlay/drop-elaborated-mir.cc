@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "compiler/ownership/drop-elaborated-mir.h"
+#include "compiler/ownership/overlay/drop-elaborated-mir.h"
 
 #include "compiler/ir/diagnostics/ir-diagnostic-adapter.h"
 #include "compiler/ownership/facts/flow-subset.h"

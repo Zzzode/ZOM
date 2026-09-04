@@ -20,12 +20,12 @@
 #include "compiler/ir/diagnostics/ir-failure.h"
 #include "compiler/ir/target/target-registry.h"
 #include "compiler/mir/built-mir.h"
-#include "compiler/ownership/facts/flow.h"
 #include "compiler/ownership/facts/inputs.h"
 #include "compiler/ownership/facts/loans.h"
-#include "compiler/ownership/facts/paths.h"
+#include "compiler/ownership/facts/region-key.h"
 #include "compiler/ownership/facts/region-membership.h"
-#include "compiler/ownership/ownership-event-overlay.h"
+#include "compiler/ownership/facts/region-outlives.h"
+#include "compiler/ownership/overlay/ownership-event-overlay.h"
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "zc/ztest/test.h"
 
@@ -40,14 +40,14 @@ template <typename Scalar>
 Scalar scalar(zc::StringPtr text) {
   auto result = Scalar::fromCanonical(text);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid region-membership fixture scalar");
+  ZC_FAIL_REQUIRE("invalid region-outlives fixture scalar");
 }
 
 identity::SortedFeatureSet emptyFeatures() {
   zc::Vector<identity::FeatureName> values;
   auto result = identity::SortedFeatureSet::from(zc::mv(values));
   ZC_IF_SOME(value, result) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid region-membership fixture feature set");
+  ZC_FAIL_REQUIRE("invalid region-outlives fixture feature set");
 }
 
 identity::CanonicalPackageSource packageSource() {
@@ -87,13 +87,13 @@ identity::CanonicalTargetSpecificationKey targetProjection() {
         zc::mv(values));
     ZC_IF_SOME(value, result) { return zc::mv(value); }
   }
-  ZC_FAIL_REQUIRE("invalid region-membership fixture target projection");
+  ZC_FAIL_REQUIRE("invalid region-outlives fixture target projection");
 }
 
 package::RegisteredTargetProfileName targetProfileName() {
   auto result = package::RegisteredTargetProfileName::from("host"_zc);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid region-membership fixture target profile name");
+  ZC_FAIL_REQUIRE("invalid region-outlives fixture target profile name");
 }
 
 ir::TargetRegistrySnapshot targetRegistry() {
@@ -112,7 +112,7 @@ ir::TargetRegistrySnapshot targetRegistry() {
   ZC_IF_SOME(value, profile) { profiles.add(zc::mv(value)); }
   auto registry = ir::TargetRegistrySnapshot::from(targetProfileName(), zc::mv(profiles));
   ZC_IF_SOME(value, registry) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid region-membership fixture target registry");
+  ZC_FAIL_REQUIRE("invalid region-outlives fixture target registry");
 }
 
 package::RegisteredTargetSelection targetSelection(const ir::TargetRegistrySnapshot& registry) {
@@ -122,7 +122,7 @@ package::RegisteredTargetSelection targetSelection(const ir::TargetRegistrySnaps
     auto result = targets.select(zc::none, package::PackagePanicStrategy::Unwind);
     ZC_IF_SOME(value, result) { return zc::mv(value); }
   }
-  ZC_FAIL_REQUIRE("invalid region-membership fixture target selection");
+  ZC_FAIL_REQUIRE("invalid region-outlives fixture target selection");
 }
 
 ir::VerifiedTargetSelection verifiedTargetSelection(const ir::TargetRegistrySnapshot& registry) {
@@ -141,7 +141,7 @@ package::VerifiedPackageCompilationRequest compilationRequest(
       zc::mv(roots), targetSelection(registry), targetSelection(registry),
       package::SelectedLanguageOptions{}, package::PackageLockMode::PreferLocked);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid region-membership fixture compilation request");
+  ZC_FAIL_REQUIRE("invalid region-outlives fixture compilation request");
 }
 
 class MemoryFreshDirectory final : public package::FreshSourceDirectory {
@@ -256,53 +256,6 @@ private:
   driver::CompilerSession session;
 };
 
-/// Fixture for a source the borrow-source verifier rejects during checkSources
-/// (a returned function-local borrow). The session publishes no ownership-
-/// checked module, so the Built MIR and event overlay are pulled from the
-/// staged borrow-source rejection view instead. Tests rebuild fact families
-/// directly from that verified MIR.
-class RejectedBorrowPipelineFixture final {
-public:
-  explicit RejectedBorrowPipelineFixture(zc::StringPtr sourceText)
-      : session(contextFactory, languageOptions, compilerOptions) {
-    auto registry = targetRegistry();
-    auto input = driver::VerifiedPackageSessionInput::from(
-        compilationRequest(registry), verifiedTargetSelection(registry),
-        verifiedTargetSelection(registry),
-        resolution(session.getPackageResolutionMemoryResource(), sourceText),
-        resolvedSnapshots(sourceText));
-    ZC_REQUIRE(input != zc::none);
-    ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
-    driver::core_library_test::installCoreDistribution(session);
-    const auto roots = session.getFinalizedCompilationRoots();
-    ZC_REQUIRE(roots.size() == 1);
-    ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
-    ZC_REQUIRE(session.parseSources());
-    ZC_REQUIRE(session.bindSources());
-    ZC_REQUIRE(!session.checkSources());
-    ZC_REQUIRE(session.getDiagnosticEngine().hasErrors());
-    ZC_REQUIRE(session.firstStagedBorrowSourceRejectionForTesting() != zc::none);
-  }
-
-  const mir::VerifiedBuiltMir& builtMir() const {
-    auto staged = session.firstStagedBorrowSourceRejectionForTesting();
-    ZC_IF_SOME(value, staged) { return value.builtMir; }
-    ZC_FAIL_REQUIRE("no staged borrow-source rejection");
-  }
-
-  const VerifiedOwnershipEventOverlay& overlay() const {
-    auto staged = session.firstStagedBorrowSourceRejectionForTesting();
-    ZC_IF_SOME(value, staged) { return value.eventOverlay; }
-    ZC_FAIL_REQUIRE("no staged borrow-source rejection");
-  }
-
-private:
-  basic::LangOptions languageOptions;
-  basic::CompilerOptions compilerOptions;
-  identity::SemanticContextFactory contextFactory;
-  driver::CompilerSession session;
-};
-
 /// Asserts that a rejected ownership operation published exactly one invariant
 /// failure of the expected kind and produced no verified ownership output.
 template <typename Result>
@@ -331,154 +284,168 @@ ir::IrOperationResult<facts::VerifiedRegionMemberships> buildAndVerifyRegionMemb
                                                  fixture.overlay());
 }
 
-/// Returns true when the region is live at the given ownership point.
-bool isRegionLiveAt(zc::ArrayPtr<const facts::RegionMembership> memberships,
-                    const facts::RegionKey& region, const facts::OwnershipPoint& point) {
-  for (const auto& membership : memberships) {
-    if (membership.region == region && membership.point == point) return true;
+/// Builds a region-outlives candidate from verified memberships.
+ir::IrOperationResult<facts::RegionOutlivesCandidate> buildRegionOutlives(
+    const facts::VerifiedRegionMemberships& memberships, const OwnershipPipelineFixture& fixture) {
+  return facts::RegionOutlivesBuilder::build(memberships, fixture.builtMir(), fixture.overlay());
+}
+
+/// Builds and independently verifies region outlives from the fixture.
+ir::IrOperationResult<facts::VerifiedRegionOutlives> buildAndVerifyRegionOutlives(
+    const OwnershipPipelineFixture& fixture) {
+  auto memberships = buildAndVerifyRegionMemberships(fixture);
+  ZC_REQUIRE(memberships.isVerified());
+  auto candidateResult = buildRegionOutlives(memberships.verifiedValue(), fixture);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  return facts::RegionOutlivesVerifier::verify(zc::mv(candidate), memberships.verifiedValue(),
+                                               fixture.builtMir(), fixture.overlay());
+}
+
+/// Returns true when the outlives inventory contains the (from, to) relation.
+bool hasOutlives(zc::ArrayPtr<const facts::RegionOutlivesFact> outlives,
+                 const facts::RegionKey& from, const facts::RegionKey& to) {
+  for (const auto& fact : outlives) {
+    if (fact.from == from && fact.to == to) return true;
   }
   return false;
 }
 
-/// Finds the sole function's entry CFG point in the verified flow.
-const facts::OwnershipPoint& flowEntryPoint(const facts::VerifiedFlow& flow) {
-  ZC_REQUIRE(flow.functions().size() == 1);
-  for (const auto& point : flow.functions()[0].points) {
-    if (point.kind() == facts::OwnershipPointKind::Cfg &&
-        point.cfgValue().point.kind() == MirPointKind::Entry) {
-      return point;
-    }
-  }
-  ZC_FAIL_REQUIRE("flow function has no entry CFG point");
+// Pure-derivation helpers for the subset semantics.
+
+MirEventKey makeEventKey(uint32_t operandOrdinal = 0) {
+  return MirEventKey{MirLocation{identity::DefId{}, MirPoint::entry()}, operandOrdinal};
 }
 
-/// Counts how many flow points carry the given region.
-size_t countRegionLivePoints(zc::ArrayPtr<const facts::RegionMembership> memberships,
-                             const facts::RegionKey& region) {
-  size_t count = 0;
-  for (const auto& membership : memberships) {
-    if (membership.region == region) ++count;
-  }
-  return count;
+facts::RegionKey makeLoanRegion(uint32_t operandOrdinal = 0) {
+  return facts::RegionKey::loanRegion(LoanKey{makeEventKey(operandOrdinal)});
+}
+
+facts::RegionMembership makeMembership(facts::RegionKey region, facts::OwnershipPoint point) {
+  return facts::RegionMembership{zc::mv(region), zc::mv(point)};
 }
 
 }  // namespace
 
 // A scalar function has no reference parameters and no loans, so the region
-// liveness dataflow produces an empty membership inventory.
+// liveness dataflow produces an empty membership inventory and the outlives
+// relation is empty as well.
 
-ZC_TEST("Region membership produces empty inventory for a scalar function") {
+ZC_TEST("Region outlives produces empty inventory for a scalar function") {
   OwnershipPipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
-  auto verified = buildAndVerifyRegionMemberships(fixture);
+  auto verified = buildAndVerifyRegionOutlives(fixture);
   ZC_REQUIRE(verified.isVerified());
-  ZC_EXPECT(verified.verifiedValue().memberships().size() == 0);
+  ZC_EXPECT(verified.verifiedValue().outlives().size() == 0);
 }
 
-// A parameter reborrow introduces one Input region seeded at the function entry
-// CFG point. Input regions are never killed, so the region is live at every
-// reachable flow point.
+// A parameter reborrow introduces one Input region live at every reachable
+// point and one Loan region live from its borrow issue onward. The loan's
+// live-point set is a subset of the input's, so the input outlives the loan.
 
-ZC_TEST("Region membership seeds input region at every point for a parameter reborrow") {
+ZC_TEST("Region outlives derives input outlives loan for a parameter reborrow") {
   OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
-  const auto& inputs = fixture.inputs();
-  auto verified = buildAndVerifyRegionMemberships(fixture);
+  auto verified = buildAndVerifyRegionOutlives(fixture);
   ZC_REQUIRE(verified.isVerified());
-  const auto& memberships = verified.verifiedValue().memberships();
-  ZC_EXPECT(memberships.size() != 0);
+  const auto& outlives = verified.verifiedValue().outlives();
+  ZC_EXPECT(outlives.size() != 0);
 
   const auto owner = fixture.builtMir().functions()[0].owner;
   const auto inputRegion =
       facts::RegionKey::inputRegion(owner, facts::BorrowInputKey::parameter(0));
-  const auto& entry = flowEntryPoint(inputs.flow());
-  ZC_EXPECT(isRegionLiveAt(memberships, inputRegion, entry));
+  ZC_REQUIRE(fixture.inputs().loans().loans().size() == 1);
+  const auto loanRegion =
+      facts::RegionKey::loanRegion(LoanKey{fixture.inputs().loans().loans()[0].issue});
 
-  // The Input region is never killed, so it must be live at every flow point.
-  const auto flowPointCount = inputs.flow().functions()[0].points.size();
-  ZC_EXPECT(countRegionLivePoints(memberships, inputRegion) == flowPointCount);
-
-  // Every membership must name either the Input region or the reborrow Loan
-  // region; no other region kinds are admissible for this shape.
-  for (const auto& membership : memberships) {
-    ZC_EXPECT(membership.region.isInput() || membership.region.isLoan());
-  }
+  ZC_EXPECT(hasOutlives(outlives, inputRegion, loanRegion));
+  // The loan is not live at the function entry, so it cannot outlive the input.
+  ZC_EXPECT(!hasOutlives(outlives, loanRegion, inputRegion));
 }
 
-// A local borrow introduces one Loan region seeded at the loan activation
-// point. The loan is killed at the AfterEvent of the destination's last use,
-// so the Loan region is absent at the function entry and present from the
-// activation onward.
+// A region live at every point outlives every region whose live-point set is a
+// subset. A Static region is live for the entire program, so it outlives every
+// loan. The pure derivation is exercised directly because the production
+// membership dataflow does not seed Static regions yet.
 
-ZC_TEST("Region membership activates loan region at borrow for a local borrow") {
-  RejectedBorrowPipelineFixture fixture(
-      "fun entry() -> &i32 { let value: i32 = 0; return &value; }"_zc);
-  const auto& builtMir = fixture.builtMir();
-  const auto& overlay = fixture.overlay();
+ZC_TEST("Region outlives static region outlives every region") {
+  const auto staticRegion = facts::RegionKey::staticRegion(identity::DefId{});
+  const auto loanA = makeLoanRegion(0);
+  const auto loanB = makeLoanRegion(1);
 
-  // The source is rejected during checkSources, so no ownership-checked module
-  // is published. Rebuild the flow and loan inventories directly from the
-  // staged verified Built MIR to exercise region-membership derivation.
-  auto movePathCandidate = facts::MovePathBuilder::build(builtMir, overlay);
-  ZC_REQUIRE(movePathCandidate.isVerified());
-  auto movePaths =
-      facts::MovePathVerifier::verify(zc::mv(movePathCandidate).takeVerified(), builtMir, overlay);
-  ZC_REQUIRE(movePaths.isVerified());
+  const auto p1 = facts::OwnershipPoint::cfg(MirPoint::entry());
+  const auto p2 = facts::OwnershipPoint::beforeEvent(makeEventKey(0));
+  const auto p3 = facts::OwnershipPoint::afterEvent(makeEventKey(1));
+  const auto p4 = facts::OwnershipPoint::beforeEvent(makeEventKey(2));
 
-  auto flowCandidate = facts::FlowBuilder::build(builtMir, overlay);
-  ZC_REQUIRE(flowCandidate.isVerified());
-  auto flow = facts::FlowVerifier::verify(zc::mv(flowCandidate).takeVerified(), builtMir, overlay);
-  ZC_REQUIRE(flow.isVerified());
+  zc::Vector<facts::RegionMembership> memberships;
+  // Static is live at every point.
+  memberships.add(makeMembership(staticRegion.clone(), p1));
+  memberships.add(makeMembership(staticRegion.clone(), p2));
+  memberships.add(makeMembership(staticRegion.clone(), p3));
+  memberships.add(makeMembership(staticRegion.clone(), p4));
+  // Loan A is live at the first two points only.
+  memberships.add(makeMembership(loanA.clone(), p1));
+  memberships.add(makeMembership(loanA.clone(), p2));
+  // Loan B is live at the last two points only.
+  memberships.add(makeMembership(loanB.clone(), p3));
+  memberships.add(makeMembership(loanB.clone(), p4));
 
-  auto loanCandidate = facts::LoanBuilder::build(movePaths.verifiedValue(), builtMir, overlay);
-  ZC_REQUIRE(loanCandidate.isVerified());
-  auto loans = facts::LoanVerifier::verify(zc::mv(loanCandidate).takeVerified(),
-                                           movePaths.verifiedValue(), builtMir, overlay);
-  ZC_REQUIRE(loans.isVerified());
-
-  auto membershipCandidate = facts::RegionMembershipBuilder::build(
-      flow.verifiedValue(), loans.verifiedValue(), builtMir, overlay);
-  ZC_REQUIRE(membershipCandidate.isVerified());
-  auto verified = facts::RegionMembershipVerifier::verify(
-      zc::mv(membershipCandidate).takeVerified(), flow.verifiedValue(), loans.verifiedValue(),
-      builtMir, overlay);
-  ZC_REQUIRE(verified.isVerified());
-  const auto& memberships = verified.verifiedValue().memberships();
-  ZC_EXPECT(memberships.size() != 0);
-
-  // No reference parameters means no Input region.
-  for (const auto& membership : memberships) { ZC_EXPECT(!membership.region.isInput()); }
-
-  // The sole loan's region must be live from its activation point.
-  ZC_REQUIRE(loans.verifiedValue().loans().size() == 1);
-  const auto& loan = loans.verifiedValue().loans()[0];
-  const auto loanRegion = facts::RegionKey::loanRegion(LoanKey{loan.issue});
-  const auto& entry = flowEntryPoint(flow.verifiedValue());
-  ZC_EXPECT(!isRegionLiveAt(memberships, loanRegion, entry));
-  ZC_EXPECT(isRegionLiveAt(memberships, loanRegion, loan.activeFrom));
+  auto outlives = facts::RegionOutlivesBuilder::derive(memberships.asPtr());
+  ZC_EXPECT(hasOutlives(outlives.asPtr(), staticRegion, loanA));
+  ZC_EXPECT(hasOutlives(outlives.asPtr(), staticRegion, loanB));
+  // Neither loan outlives the static region or the other loan.
+  ZC_EXPECT(!hasOutlives(outlives.asPtr(), loanA, staticRegion));
+  ZC_EXPECT(!hasOutlives(outlives.asPtr(), loanB, staticRegion));
+  ZC_EXPECT(!hasOutlives(outlives.asPtr(), loanA, loanB));
+  ZC_EXPECT(!hasOutlives(outlives.asPtr(), loanB, loanA));
 }
 
-// Every region-membership candidate carries lineage fields that bind it to the
+// Two loans with disjoint live-point sets have no subset relation in either
+// direction, so the outlives inventory records no edge between them.
+
+ZC_TEST("Region outlives unrelated loans have no relation") {
+  const auto loanA = makeLoanRegion(0);
+  const auto loanB = makeLoanRegion(1);
+
+  const auto p1 = facts::OwnershipPoint::cfg(MirPoint::entry());
+  const auto p2 = facts::OwnershipPoint::beforeEvent(makeEventKey(0));
+  const auto p3 = facts::OwnershipPoint::afterEvent(makeEventKey(1));
+  const auto p4 = facts::OwnershipPoint::beforeEvent(makeEventKey(2));
+
+  zc::Vector<facts::RegionMembership> memberships;
+  memberships.add(makeMembership(loanA.clone(), p1));
+  memberships.add(makeMembership(loanA.clone(), p2));
+  memberships.add(makeMembership(loanB.clone(), p3));
+  memberships.add(makeMembership(loanB.clone(), p4));
+
+  auto outlives = facts::RegionOutlivesBuilder::derive(memberships.asPtr());
+  ZC_EXPECT(outlives.size() == 0);
+}
+
+// Every region-outlives candidate carries lineage fields that bind it to the
 // Built MIR, event overlay, and borrow-evidence composition. Tampering any one
 // field must make the independent verifier reject the candidate with an input
 // revision mismatch.
 
-ZC_TEST("Region membership rejects a foreign semantic context brand") {
+ZC_TEST("Region outlives rejects a foreign semantic context brand") {
   OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
-  auto candidateResult = buildRegionMemberships(fixture);
+  auto memberships = buildAndVerifyRegionMemberships(fixture);
+  ZC_REQUIRE(memberships.isVerified());
+  auto candidateResult = buildRegionOutlives(memberships.verifiedValue(), fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
-  ZC_REQUIRE(candidate.memberships.size() != 0);
   candidate.semanticContext = identity::SemanticContextBrand{};
   ZC_REQUIRE(candidate.semanticContext != fixture.builtMir().semanticContext());
 
-  auto verified = facts::RegionMembershipVerifier::verify(
-      zc::mv(candidate), fixture.inputs().flow(), fixture.inputs().loans(), fixture.builtMir(),
-      fixture.overlay());
+  auto verified = facts::RegionOutlivesVerifier::verify(
+      zc::mv(candidate), memberships.verifiedValue(), fixture.builtMir(), fixture.overlay());
   expectPublishedRejection(verified, ir::IrFailureKind::InputRevisionMismatch);
 }
 
-ZC_TEST("Region membership rejects a foreign context fingerprint") {
+ZC_TEST("Region outlives rejects a foreign context fingerprint") {
   OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
-  auto candidateResult = buildRegionMemberships(fixture);
+  auto memberships = buildAndVerifyRegionMemberships(fixture);
+  ZC_REQUIRE(memberships.isVerified());
+  auto candidateResult = buildRegionOutlives(memberships.verifiedValue(), fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   candidate.contextFingerprint =
@@ -486,112 +453,117 @@ ZC_TEST("Region membership rejects a foreign context fingerprint") {
   ZC_REQUIRE(candidate.contextFingerprint.digest() !=
              fixture.builtMir().contextFingerprint().digest());
 
-  auto verified = facts::RegionMembershipVerifier::verify(
-      zc::mv(candidate), fixture.inputs().flow(), fixture.inputs().loans(), fixture.builtMir(),
-      fixture.overlay());
+  auto verified = facts::RegionOutlivesVerifier::verify(
+      zc::mv(candidate), memberships.verifiedValue(), fixture.builtMir(), fixture.overlay());
   expectPublishedRejection(verified, ir::IrFailureKind::InputRevisionMismatch);
 }
 
-ZC_TEST("Region membership rejects a foreign module identity") {
+ZC_TEST("Region outlives rejects a foreign module identity") {
   OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
-  auto candidateResult = buildRegionMemberships(fixture);
+  auto memberships = buildAndVerifyRegionMemberships(fixture);
+  ZC_REQUIRE(memberships.isVerified());
+  auto candidateResult = buildRegionOutlives(memberships.verifiedValue(), fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   candidate.module = identity::ModuleId{};
   ZC_REQUIRE(candidate.module != fixture.builtMir().module());
 
-  auto verified = facts::RegionMembershipVerifier::verify(
-      zc::mv(candidate), fixture.inputs().flow(), fixture.inputs().loans(), fixture.builtMir(),
-      fixture.overlay());
+  auto verified = facts::RegionOutlivesVerifier::verify(
+      zc::mv(candidate), memberships.verifiedValue(), fixture.builtMir(), fixture.overlay());
   expectPublishedRejection(verified, ir::IrFailureKind::InputRevisionMismatch);
 }
 
-ZC_TEST("Region membership rejects a foreign built revision") {
+ZC_TEST("Region outlives rejects a foreign built revision") {
   OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
-  auto candidateResult = buildRegionMemberships(fixture);
+  auto memberships = buildAndVerifyRegionMemberships(fixture);
+  ZC_REQUIRE(memberships.isVerified());
+  auto candidateResult = buildRegionOutlives(memberships.verifiedValue(), fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   candidate.builtRevision = mir::MirRevisionId::fromDigest(identity::Sha256Digest{});
   ZC_REQUIRE(candidate.builtRevision.digest() != fixture.builtMir().revision().digest());
 
-  auto verified = facts::RegionMembershipVerifier::verify(
-      zc::mv(candidate), fixture.inputs().flow(), fixture.inputs().loans(), fixture.builtMir(),
-      fixture.overlay());
+  auto verified = facts::RegionOutlivesVerifier::verify(
+      zc::mv(candidate), memberships.verifiedValue(), fixture.builtMir(), fixture.overlay());
   expectPublishedRejection(verified, ir::IrFailureKind::InputRevisionMismatch);
 }
 
-ZC_TEST("Region membership rejects a foreign overlay revision") {
+ZC_TEST("Region outlives rejects a foreign overlay revision") {
   OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
-  auto candidateResult = buildRegionMemberships(fixture);
+  auto memberships = buildAndVerifyRegionMemberships(fixture);
+  ZC_REQUIRE(memberships.isVerified());
+  auto candidateResult = buildRegionOutlives(memberships.verifiedValue(), fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   candidate.overlayRevision = OwnershipEventOverlayRevision::fromDigest(identity::Sha256Digest{});
   ZC_REQUIRE(candidate.overlayRevision.digest() != fixture.overlay().revision().digest());
 
-  auto verified = facts::RegionMembershipVerifier::verify(
-      zc::mv(candidate), fixture.inputs().flow(), fixture.inputs().loans(), fixture.builtMir(),
-      fixture.overlay());
+  auto verified = facts::RegionOutlivesVerifier::verify(
+      zc::mv(candidate), memberships.verifiedValue(), fixture.builtMir(), fixture.overlay());
   expectPublishedRejection(verified, ir::IrFailureKind::InputRevisionMismatch);
 }
 
-ZC_TEST("Region membership rejects a foreign borrow evidence revision") {
+ZC_TEST("Region outlives rejects a foreign borrow evidence revision") {
   OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   // BorrowEvidenceRevision has no public digest constructor, so a second,
   // genuinely different compilation donates a foreign-but-valid revision.
   OwnershipPipelineFixture foreign("fun entry() -> i32 { return 0; }"_zc);
   ZC_REQUIRE(fixture.builtMir().borrowEvidenceRevision().digest() !=
              foreign.builtMir().borrowEvidenceRevision().digest());
-  auto candidateResult = buildRegionMemberships(fixture);
+  auto memberships = buildAndVerifyRegionMemberships(fixture);
+  ZC_REQUIRE(memberships.isVerified());
+  auto candidateResult = buildRegionOutlives(memberships.verifiedValue(), fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   candidate.borrowEvidenceRevision = foreign.builtMir().borrowEvidenceRevision();
   ZC_REQUIRE(candidate.borrowEvidenceRevision.digest() !=
              fixture.builtMir().borrowEvidenceRevision().digest());
 
-  auto verified = facts::RegionMembershipVerifier::verify(
-      zc::mv(candidate), fixture.inputs().flow(), fixture.inputs().loans(), fixture.builtMir(),
-      fixture.overlay());
+  auto verified = facts::RegionOutlivesVerifier::verify(
+      zc::mv(candidate), memberships.verifiedValue(), fixture.builtMir(), fixture.overlay());
   expectPublishedRejection(verified, ir::IrFailureKind::InputRevisionMismatch);
 }
 
-// The verifier independently reconstructs the expected membership inventory. A
-// candidate that carries a membership the reconstruction does not derive (a
-// spurious row on an otherwise empty scalar function) must be rejected.
+// The verifier independently reconstructs the expected outlives inventory. A
+// candidate that carries a relation the reconstruction cannot derive (a
+// spurious edge on an otherwise empty scalar function) must be rejected.
 
-ZC_TEST("Region membership rejects a spurious membership on a scalar function") {
+ZC_TEST("Region outlives rejects a spurious fact on a scalar function") {
   OwnershipPipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
-  auto candidateResult = buildRegionMemberships(fixture);
+  auto memberships = buildAndVerifyRegionMemberships(fixture);
+  ZC_REQUIRE(memberships.isVerified());
+  auto candidateResult = buildRegionOutlives(memberships.verifiedValue(), fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
-  ZC_REQUIRE(candidate.memberships.size() == 0);
+  ZC_REQUIRE(candidate.outlives.size() == 0);
 
-  // Fabricate a well-formed membership the reconstruction cannot derive.
+  // Fabricate a well-formed outlives fact the reconstruction cannot derive.
   const auto owner = fixture.builtMir().functions()[0].owner;
-  const auto entry = flowEntryPoint(fixture.inputs().flow());
-  candidate.memberships.add(
-      facts::RegionMembership{facts::RegionKey::staticRegion(owner), facts::OwnershipPoint{entry}});
+  candidate.outlives.add(facts::RegionOutlivesFact{
+      facts::RegionKey::staticRegion(owner),
+      facts::RegionKey::inputRegion(owner, facts::BorrowInputKey::parameter(0))});
 
-  auto verified = facts::RegionMembershipVerifier::verify(
-      zc::mv(candidate), fixture.inputs().flow(), fixture.inputs().loans(), fixture.builtMir(),
-      fixture.overlay());
+  auto verified = facts::RegionOutlivesVerifier::verify(
+      zc::mv(candidate), memberships.verifiedValue(), fixture.builtMir(), fixture.overlay());
   expectPublishedRejection(verified, ir::IrFailureKind::InvalidOwnershipProof);
 }
 
-// The verifier independently reconstructs the expected membership inventory. A
-// candidate that drops every membership the reconstruction derives (an empty
+// The verifier independently reconstructs the expected outlives inventory. A
+// candidate that drops every relation the reconstruction derives (an empty
 // candidate on a reborrow function) must be rejected.
 
-ZC_TEST("Region membership rejects a missing membership on a reborrow function") {
+ZC_TEST("Region outlives rejects a missing fact on a reborrow function") {
   OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
-  auto candidateResult = buildRegionMemberships(fixture);
+  auto memberships = buildAndVerifyRegionMemberships(fixture);
+  ZC_REQUIRE(memberships.isVerified());
+  auto candidateResult = buildRegionOutlives(memberships.verifiedValue(), fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
-  ZC_REQUIRE(candidate.memberships.size() != 0);
-  candidate.memberships.clear();
+  ZC_REQUIRE(candidate.outlives.size() != 0);
+  candidate.outlives.clear();
 
-  auto verified = facts::RegionMembershipVerifier::verify(
-      zc::mv(candidate), fixture.inputs().flow(), fixture.inputs().loans(), fixture.builtMir(),
-      fixture.overlay());
+  auto verified = facts::RegionOutlivesVerifier::verify(
+      zc::mv(candidate), memberships.verifiedValue(), fixture.builtMir(), fixture.overlay());
   expectPublishedRejection(verified, ir::IrFailureKind::InvalidOwnershipProof);
 }
 

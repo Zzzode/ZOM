@@ -3,7 +3,7 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "compiler/ownership/ownership-event-overlay.h"
+#include "compiler/ownership/overlay/ownership-event-overlay.h"
 
 #include "compiler/diagnostics/consumer/diagnostic-consumer.h"
 #include "compiler/diagnostics/core/diagnostic-engine.h"
@@ -15,13 +15,13 @@
 #include "compiler/identity/crypto/sha256.h"
 #include "compiler/ir/target/target-registry.h"
 #include "compiler/mir/built-mir.h"
+#include "compiler/ownership/diagnostics/ownership-diagnostic-adapter.h"
+#include "compiler/ownership/diagnostics/source-suppression.h"
 #include "compiler/ownership/facts/flow.h"
 #include "compiler/ownership/facts/init.h"
 #include "compiler/ownership/facts/loans.h"
 #include "compiler/ownership/facts/paths.h"
 #include "compiler/ownership/facts/resources.h"
-#include "compiler/ownership/ownership-diagnostic-adapter.h"
-#include "compiler/ownership/source-suppression.h"
 #include "compiler/source/manager.h"
 #include "compiler/type/semantic-type-data.h"
 #include "compiler/type/semantic-type-store.h"

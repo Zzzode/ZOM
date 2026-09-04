@@ -26,8 +26,8 @@
 #include "compiler/ownership/facts/regions.h"
 #include "compiler/ownership/facts/resources.h"
 #include "compiler/ownership/facts/states.h"
-#include "compiler/ownership/ownership-checked-mir.h"
-#include "compiler/ownership/ownership-event-overlay.h"
+#include "compiler/ownership/overlay/ownership-checked-mir.h"
+#include "compiler/ownership/overlay/ownership-event-overlay.h"
 #include "zc/ztest/test.h"
 
 namespace zomlang::compiler::ownership {

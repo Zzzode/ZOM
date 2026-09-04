@@ -9,7 +9,7 @@
 #include "compiler/checker/checker-identity-authority.h"
 #include "compiler/driver/core/query.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
-#include "compiler/ownership/surface-admission.h"
+#include "compiler/ownership/admission/surface-admission.h"
 
 namespace zomlang::compiler::driver {
 namespace {

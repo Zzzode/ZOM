@@ -16,8 +16,6 @@
 
 #include <cstdint>
 
-#include "zc/core/common.h"
-#include "zc/core/vector.h"
 #include "compiler/ownership/facts/capture.h"
 #include "compiler/ownership/facts/flow.h"
 #include "compiler/ownership/facts/points.h"
@@ -25,7 +23,9 @@
 #include "compiler/ownership/facts/region-key.h"
 #include "compiler/ownership/facts/region-membership.h"
 #include "compiler/ownership/facts/resources.h"
-#include "compiler/ownership/ownership-event-overlay.h"
+#include "compiler/ownership/overlay/ownership-event-overlay.h"
+#include "zc/core/common.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::ownership::facts {
 

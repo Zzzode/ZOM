@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "compiler/diagnostics/consumer/diagnostic-consumer.h"
 #include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/driver/interface/borrow-evidence.h"
 #include "compiler/driver/package/manifest-parser.h"
@@ -22,13 +23,11 @@
 #include "compiler/ir/diagnostics/ir-failure.h"
 #include "compiler/ir/target/target-registry.h"
 #include "compiler/mir/built-mir.h"
-#include "compiler/ownership/facts/borrow-source.h"
+#include "compiler/ownership/diagnostics/ownership-source-failure.h"
 #include "compiler/ownership/facts/inputs.h"
-#include "compiler/ownership/facts/loans.h"
-#include "compiler/ownership/facts/paths.h"
-#include "compiler/ownership/facts/refs.h"
-#include "compiler/ownership/ownership-event-overlay.h"
-#include "compiler/ownership/ownership-source-failure.h"
+#include "compiler/ownership/facts/linear-source.h"
+#include "compiler/ownership/facts/resources.h"
+#include "compiler/ownership/overlay/ownership-event-overlay.h"
 #include "compiler/source/manager.h"
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "zc/ztest/test.h"
@@ -43,14 +42,14 @@ template <typename Scalar>
 Scalar scalar(zc::StringPtr text) {
   auto result = Scalar::fromCanonical(text);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid borrow-source fixture scalar");
+  ZC_FAIL_REQUIRE("invalid ownership fixture scalar");
 }
 
 identity::SortedFeatureSet emptyFeatures() {
   zc::Vector<identity::FeatureName> values;
   auto result = identity::SortedFeatureSet::from(zc::mv(values));
   ZC_IF_SOME(value, result) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid borrow-source fixture feature set");
+  ZC_FAIL_REQUIRE("invalid ownership fixture feature set");
 }
 
 identity::CanonicalPackageSource packageSource() {
@@ -90,13 +89,13 @@ identity::CanonicalTargetSpecificationKey targetProjection() {
         zc::mv(values));
     ZC_IF_SOME(value, result) { return zc::mv(value); }
   }
-  ZC_FAIL_REQUIRE("invalid borrow-source fixture target projection");
+  ZC_FAIL_REQUIRE("invalid ownership fixture target projection");
 }
 
 package::RegisteredTargetProfileName targetProfileName() {
   auto result = package::RegisteredTargetProfileName::from("host"_zc);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid borrow-source fixture target profile name");
+  ZC_FAIL_REQUIRE("invalid ownership fixture target profile name");
 }
 
 ir::TargetRegistrySnapshot targetRegistry() {
@@ -115,7 +114,7 @@ ir::TargetRegistrySnapshot targetRegistry() {
   ZC_IF_SOME(value, profile) { profiles.add(zc::mv(value)); }
   auto registry = ir::TargetRegistrySnapshot::from(targetProfileName(), zc::mv(profiles));
   ZC_IF_SOME(value, registry) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid borrow-source fixture target registry");
+  ZC_FAIL_REQUIRE("invalid ownership fixture target registry");
 }
 
 package::RegisteredTargetSelection targetSelection(const ir::TargetRegistrySnapshot& registry) {
@@ -125,7 +124,7 @@ package::RegisteredTargetSelection targetSelection(const ir::TargetRegistrySnaps
     auto result = targets.select(zc::none, package::PackagePanicStrategy::Unwind);
     ZC_IF_SOME(value, result) { return zc::mv(value); }
   }
-  ZC_FAIL_REQUIRE("invalid borrow-source fixture target selection");
+  ZC_FAIL_REQUIRE("invalid ownership fixture target selection");
 }
 
 ir::VerifiedTargetSelection verifiedTargetSelection(const ir::TargetRegistrySnapshot& registry) {
@@ -144,7 +143,7 @@ package::VerifiedPackageCompilationRequest compilationRequest(
       zc::mv(roots), targetSelection(registry), targetSelection(registry),
       package::SelectedLanguageOptions{}, package::PackageLockMode::PreferLocked);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid borrow-source fixture compilation request");
+  ZC_FAIL_REQUIRE("invalid ownership fixture compilation request");
 }
 
 class MemoryFreshDirectory final : public package::FreshSourceDirectory {
@@ -216,10 +215,9 @@ zc::Vector<package::ResolvedPackageSourceSnapshot> resolvedSnapshots(zc::StringP
   return snapshots;
 }
 
-/// Fixture that runs the full session pipeline and requires success.
-class BorrowSourcePipelineFixture final {
+class OwnershipPipelineFixture final {
 public:
-  explicit BorrowSourcePipelineFixture(zc::StringPtr sourceText)
+  explicit OwnershipPipelineFixture(zc::StringPtr sourceText)
       : session(contextFactory, languageOptions, compilerOptions) {
     auto registry = targetRegistry();
     auto input = driver::VerifiedPackageSessionInput::from(
@@ -244,46 +242,15 @@ public:
     return session.getOwnershipCheckedMirModules()[0].builtMir();
   }
 
-  const VerifiedOwnershipEventOverlay& overlay() const {
-    return session.getOwnershipCheckedMirModules()[0].eventOverlay();
-  }
-
-  const facts::VerifiedOwnershipInputs& inputs() const {
-    return session.getOwnershipCheckedMirModules()[0].facts();
-  }
-
-private:
-  basic::LangOptions languageOptions;
-  basic::CompilerOptions compilerOptions;
-  identity::SemanticContextFactory contextFactory;
-  driver::CompilerSession session;
-};
-
-/// Fixture that runs parse and bind but leaves the ownership check to the test,
-/// so a test can observe a `checkSources()` rejection. The accept-only
-/// `BorrowSourcePipelineFixture` cannot express this because its constructor
-/// requires the check to succeed.
-class BorrowSourceCheckFixture final {
-public:
-  explicit BorrowSourceCheckFixture(zc::StringPtr sourceText)
-      : session(contextFactory, languageOptions, compilerOptions) {
-    auto registry = targetRegistry();
-    auto input = driver::VerifiedPackageSessionInput::from(
-        compilationRequest(registry), verifiedTargetSelection(registry),
-        verifiedTargetSelection(registry),
-        resolution(session.getPackageResolutionMemoryResource(), sourceText),
-        resolvedSnapshots(sourceText));
+  OwnershipEventOverlayInput overlayInput() const {
+    auto input = session.getOwnershipEventOverlayInput(builtMir().module());
     ZC_REQUIRE(input != zc::none);
-    ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
-    driver::core_library_test::installCoreDistribution(session);
-    const auto roots = session.getFinalizedCompilationRoots();
-    ZC_REQUIRE(roots.size() == 1);
-    ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
-    ZC_REQUIRE(session.parseSources());
-    ZC_REQUIRE(session.bindSources());
+    ZC_IF_SOME(value, input) { return zc::mv(value); }
+    ZC_UNREACHABLE
   }
 
   driver::CompilerSession& compilerSession() noexcept { return session; }
+  const driver::CompilerSession& compilerSession() const noexcept { return session; }
 
 private:
   basic::LangOptions languageOptions;
@@ -292,43 +259,112 @@ private:
   driver::CompilerSession session;
 };
 
+const facts::VerifiedOwnershipInputs& ownershipInputs(const driver::CompilerSession& session) {
+  const auto checkedMir = session.getOwnershipCheckedMirModules();
+  ZC_REQUIRE(checkedMir.size() == 1);
+  return checkedMir[0].facts();
+}
+
+const VerifiedOwnershipEventOverlay& sessionOverlay(const driver::CompilerSession& session) {
+  const auto checkedMir = session.getOwnershipCheckedMirModules();
+  ZC_REQUIRE(checkedMir.size() == 1);
+  return checkedMir[0].eventOverlay();
+}
+
+zc::StringPtr linearReturnSource() {
+  return "import core::marker::{Copy, Linear};\n"
+         "struct Cell { value: i32, }\n"
+         "impl !Copy for Cell;\n"
+         "unsafe impl Linear for Cell;\n"
+         "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc;
+}
+
+zc::StringPtr linearUnconsumedSource() {
+  return "import core::marker::{Copy, Linear};\n"
+         "struct Cell { value: i32, }\n"
+         "impl !Copy for Cell;\n"
+         "unsafe impl Linear for Cell;\n"
+         "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc;
+}
+
 }  // namespace
 
-// The borrow-source verifier accepts a parameter reborrow because the parameter
-// outlives the function return.
+// The linear source verifier independently validates linear obligations against
+// verified resource facts. A returned linear value has a Return consumption, so
+// the verifier publishes a verified result.
 
-ZC_TEST("Borrow source verifier accepts a parameter reborrow") {
-  BorrowSourcePipelineFixture fixture("fun entry(p: &i32) -> &i32 { return &*p; }"_zc);
-  auto result = facts::BorrowSourceVerifier::verify(
-      fixture.builtMir(), fixture.overlay(), fixture.inputs().movePaths(), fixture.inputs().loans(),
-      fixture.inputs().references());
+ZC_TEST("Linear source verifier accepts a returned linear value") {
+  OwnershipPipelineFixture fixture(linearReturnSource());
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = sessionOverlay(session);
+  const auto& resources = ownershipInputs(session).resources();
+
+  auto result = facts::OwnershipResourceVerifier::verifyLinearSource(builtMir, overlay, resources);
   ZC_EXPECT(result.isVerified());
 }
 
-ZC_TEST("Borrow source verifier accepts a mutable parameter reborrow") {
-  BorrowSourcePipelineFixture fixture("fun entry(p: &mut i32) -> &mut i32 { return &mut *p; }"_zc);
-  auto result = facts::BorrowSourceVerifier::verify(
-      fixture.builtMir(), fixture.overlay(), fixture.inputs().movePaths(), fixture.inputs().loans(),
-      fixture.inputs().references());
-  ZC_EXPECT(result.isVerified());
+// A linear value that is not returned or consumed by a call has an empty
+// consumptions sequence. The verifier emits one LinearNotConsumedFailure for
+// that obligation, with the obligation's introduction event as the primary.
+
+ZC_TEST("Linear source verifier rejects an unconsumed linear value") {
+  OwnershipPipelineFixture fixture(linearUnconsumedSource());
+  const auto& session = fixture.compilerSession();
+  const auto& builtMir = fixture.builtMir();
+  const auto& overlay = sessionOverlay(session);
+  const auto& resources = ownershipInputs(session).resources();
+
+  ZC_REQUIRE(resources.functions().size() == 1);
+  const auto& function = resources.functions()[0];
+  ZC_REQUIRE(function.linearObligations.size() == 1);
+
+  auto result = facts::OwnershipResourceVerifier::verifyLinearSource(builtMir, overlay, resources);
+  ZC_EXPECT(result.isSourceRejected());
+  auto failures = zc::mv(result).takeSourceFailures();
+  ZC_REQUIRE(failures.facts().size() == 1);
+  ZC_REQUIRE(failures.facts()[0].is<LinearNotConsumedFailure>());
+  const auto& failure = failures.facts()[0].get<LinearNotConsumedFailure>();
+  ZC_EXPECT(failure.owner == function.owner);
+  ZC_EXPECT(failure.primary == function.linearObligations[0].key.introduction);
+  ZC_EXPECT(failure.traversalOrdinal == 0);
+  ZC_EXPECT(failure.causes.size() == 0);
 }
 
-// A returned reference whose origin is a function-local binding cannot escape:
-// the local storage dies before the caller can use it. The borrow-source
-// verifier is wired into the check pipeline, so `checkSources()` itself rejects
-// the module and records a ZOM4061 borrow-does-not-live-long-enough error.
+// A foreign resource-facts revision must reject with InputRevisionMismatch
+// before any source-failure collection, publishing no ownership output.
 
-ZC_TEST("Check pipeline rejects a returned local borrow") {
-  BorrowSourceCheckFixture fixture("fun entry() -> &i32 { let value: i32 = 0; return &value; }"_zc);
-  ZC_EXPECT(!fixture.compilerSession().checkSources());
-  ZC_EXPECT(fixture.compilerSession().getDiagnosticEngine().hasErrors());
+ZC_TEST("Linear source verifier rejects foreign resource facts") {
+  OwnershipPipelineFixture first(linearReturnSource());
+  OwnershipPipelineFixture second(linearUnconsumedSource());
+  const auto& firstSession = first.compilerSession();
+  const auto& secondSession = second.compilerSession();
+  const auto& secondInputs = ownershipInputs(secondSession);
+
+  auto foreign = facts::OwnershipResourceVerifier::verifyLinearSource(
+      first.builtMir(), sessionOverlay(firstSession), secondInputs.resources());
+  ZC_REQUIRE(foreign.isIrInvariantRejected());
+  auto failures = zc::mv(foreign).takeInvariantFailures();
+  ZC_REQUIRE(failures.facts().size() == 1);
+  ZC_EXPECT(failures.facts()[0].kind() == ir::IrFailureKind::InputRevisionMismatch);
 }
 
-ZC_TEST("Check pipeline rejects a returned mutable local borrow") {
-  BorrowSourceCheckFixture fixture(
-      "fun entry() -> &mut i32 { mut value: i32 = 0; return &mut value; }"_zc);
-  ZC_EXPECT(!fixture.compilerSession().checkSources());
-  ZC_EXPECT(fixture.compilerSession().getDiagnosticEngine().hasErrors());
+// A foreign event overlay must reject with InputRevisionMismatch before any
+// source-failure collection, publishing no ownership output.
+
+ZC_TEST("Linear source verifier rejects a foreign event overlay") {
+  OwnershipPipelineFixture first(linearReturnSource());
+  OwnershipPipelineFixture second(linearUnconsumedSource());
+  const auto& firstSession = first.compilerSession();
+  const auto& secondSession = second.compilerSession();
+  const auto& firstInputs = ownershipInputs(firstSession);
+
+  auto foreign = facts::OwnershipResourceVerifier::verifyLinearSource(
+      first.builtMir(), sessionOverlay(secondSession), firstInputs.resources());
+  ZC_REQUIRE(foreign.isIrInvariantRejected());
+  auto failures = zc::mv(foreign).takeInvariantFailures();
+  ZC_REQUIRE(failures.facts().size() == 1);
+  ZC_EXPECT(failures.facts()[0].kind() == ir::IrFailureKind::InputRevisionMismatch);
 }
 
 }  // namespace zomlang::compiler::ownership

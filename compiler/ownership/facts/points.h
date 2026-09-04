@@ -16,7 +16,7 @@
 
 #include <cstdint>
 
-#include "compiler/ownership/ownership-event-overlay.h"
+#include "compiler/ownership/overlay/ownership-event-overlay.h"
 
 namespace zomlang::compiler::ownership::facts {
 

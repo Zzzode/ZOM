@@ -19,7 +19,7 @@
 #include "compiler/mir/built-mir.h"
 #include "compiler/ownership/facts/inputs.h"
 #include "compiler/ownership/facts/ownership-facts-revision.h"
-#include "compiler/ownership/ownership-event-overlay.h"
+#include "compiler/ownership/overlay/ownership-event-overlay.h"
 #include "zc/core/memory.h"
 
 namespace zomlang::compiler::type {

@@ -14,10 +14,10 @@
 
 #pragma once
 
+#include "compiler/mir/built-mir.h"
+#include "compiler/ownership/overlay/ownership-event-overlay.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
-#include "compiler/mir/built-mir.h"
-#include "compiler/ownership/ownership-event-overlay.h"
 
 namespace zomlang::compiler::ownership::facts {
 

@@ -8,7 +8,7 @@
 #include "compiler/driver/core/query.h"
 #include "compiler/identity/key/definition-key.h"
 #include "compiler/identity/key/source-key.h"
-#include "compiler/ownership/surface-admission.h"
+#include "compiler/ownership/admission/surface-admission.h"
 
 namespace zomlang::compiler::hir {
 namespace {
@@ -373,8 +373,7 @@ identity::SemanticContextBrand VerifiedCheckedModule::semanticContext() const no
   return impl->boundModuleValue.semanticContext();
 }
 
-const identity::ContextFingerprint& VerifiedCheckedModule::contextFingerprint()
-    const noexcept {
+const identity::ContextFingerprint& VerifiedCheckedModule::contextFingerprint() const noexcept {
   return impl->boundModuleValue.semanticFingerprint();
 }
 

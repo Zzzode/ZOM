@@ -14,14 +14,14 @@
 
 #pragma once
 
-#include "zc/core/array.h"
-#include "zc/core/common.h"
 #include "compiler/checker/checker-identity-authority.h"
 #include "compiler/identity/crypto/sha256.h"
 #include "compiler/ownership/facts/inputs.h"
 #include "compiler/ownership/facts/ownership-facts-revision.h"
-#include "compiler/ownership/ownership-event-overlay.h"
+#include "compiler/ownership/overlay/ownership-event-overlay.h"
 #include "compiler/type/semantic-type-store.h"
+#include "zc/core/array.h"
+#include "zc/core/common.h"
 
 namespace zomlang::compiler::ownership::facts {
 

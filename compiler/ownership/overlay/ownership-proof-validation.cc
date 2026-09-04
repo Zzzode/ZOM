@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "compiler/ownership/ownership-proof-validation.h"
+#include "compiler/ownership/overlay/ownership-proof-validation.h"
 
 namespace zomlang::compiler::ownership {
 
@@ -20,9 +20,7 @@ struct ValidatedOwnershipProofs::Impl final {
   Impl(facts::VerifiedOwnershipInputs&& inputs,
        facts::VerifiedRegionMemberships&& regionMemberships,
        OwnershipProofValidationReport report) noexcept
-      : inputs(zc::mv(inputs)),
-        regionMemberships(zc::mv(regionMemberships)),
-        report(report) {}
+      : inputs(zc::mv(inputs)), regionMemberships(zc::mv(regionMemberships)), report(report) {}
 
   facts::VerifiedOwnershipInputs inputs;
   facts::VerifiedRegionMemberships regionMemberships;
@@ -40,7 +38,8 @@ const facts::VerifiedEscapeFacts& ValidatedOwnershipProofs::escapes() const noex
   return impl->inputs.escapes();
 }
 
-const facts::VerifiedRegionMemberships& ValidatedOwnershipProofs::regionMemberships() const noexcept {
+const facts::VerifiedRegionMemberships& ValidatedOwnershipProofs::regionMemberships()
+    const noexcept {
   return impl->regionMemberships;
 }
 
@@ -57,8 +56,7 @@ facts::VerifiedOwnershipInputs ValidatedOwnershipProofs::takeInputs() && noexcep
 }
 
 ir::IrOperationResult<ValidatedOwnershipProofs> OwnershipProofValidation::validate(
-    facts::VerifiedOwnershipInputs&& inputs,
-    facts::VerifiedRegionMemberships&& regionMemberships) {
+    facts::VerifiedOwnershipInputs&& inputs, facts::VerifiedRegionMemberships&& regionMemberships) {
   // Deferred RFC 0013 cross-checks. These await inputs the admitted subset does
   // not yet produce, so implementing them now would add unreachable, untestable
   // branches:
@@ -74,8 +72,8 @@ ir::IrOperationResult<ValidatedOwnershipProofs> OwnershipProofValidation::valida
   report.validatedEscapeProofs = inputs.escapes().escapes().size();
   report.validatedRegionMemberships = regionMemberships.memberships().size();
   report.validatedCaptureFacts = inputs.captures().captures().size();
-  auto validated = ValidatedOwnershipProofs(zc::heap<ValidatedOwnershipProofs::Impl>(
-      zc::mv(inputs), zc::mv(regionMemberships), report));
+  auto validated = ValidatedOwnershipProofs(
+      zc::heap<ValidatedOwnershipProofs::Impl>(zc::mv(inputs), zc::mv(regionMemberships), report));
   return ir::IrOperationResult<ValidatedOwnershipProofs>::verified(zc::mv(validated));
 }
 

@@ -11,7 +11,7 @@
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/crypto/sha256.h"
 #include "compiler/identity/key/definition-key.h"
-#include "compiler/ownership/surface-admission.h"
+#include "compiler/ownership/admission/surface-admission.h"
 #include "compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::mir {

@@ -157,7 +157,7 @@ def evaluate(
 
 
 def self_test() -> int:
-    tracked_path = "compiler/ownership/ownership-event-overlay.cc"
+    tracked_path = "compiler/ownership/overlay/ownership-event-overlay.cc"
     clean_path = "compiler/ownership/ownership-finalizer.cc"
     changed = {tracked_path, clean_path}
     report = {

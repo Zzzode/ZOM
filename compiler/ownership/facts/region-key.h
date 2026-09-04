@@ -16,10 +16,10 @@
 
 #include <cstdint>
 
-#include "zc/core/common.h"
 #include "compiler/identity/handle.h"
 #include "compiler/ownership/facts/paths.h"
-#include "compiler/ownership/ownership-event-overlay.h"
+#include "compiler/ownership/overlay/ownership-event-overlay.h"
+#include "zc/core/common.h"
 
 namespace zomlang::compiler::ownership::facts {
 

@@ -7,7 +7,6 @@
 
 #include <cstdint>
 
-#include "zc/core/encoding.h"
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/binder/metadata/definition-inventory.h"
@@ -16,7 +15,8 @@
 #include "compiler/binder/metadata/immutable-definition-inventory.h"
 #include "compiler/checker/facts/signature-facts.h"
 #include "compiler/identity/key/definition-key.h"
-#include "compiler/ownership/surface-admission.h"
+#include "compiler/ownership/admission/surface-admission.h"
+#include "zc/core/encoding.h"
 
 namespace zomlang::compiler::hir {
 namespace {

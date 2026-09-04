@@ -19,8 +19,8 @@
 #include "compiler/mir/built-mir.h"
 #include "compiler/ownership/facts/init.h"
 #include "compiler/ownership/facts/resources.h"
-#include "compiler/ownership/ownership-checked-mir.h"
-#include "compiler/ownership/ownership-event-overlay.h"
+#include "compiler/ownership/overlay/ownership-checked-mir.h"
+#include "compiler/ownership/overlay/ownership-event-overlay.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
 

@@ -20,7 +20,7 @@
 #include "compiler/ir/target/target-registry.h"
 #include "compiler/ownership/facts/inputs.h"
 #include "compiler/ownership/facts/ownership-facts-codec.h"
-#include "compiler/ownership/ownership-checked-mir.h"
+#include "compiler/ownership/overlay/ownership-checked-mir.h"
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "tests/unittests/compiler/ownership/ownership-facts-differential-oracle.h"
 #include "zc/core/encoding.h"

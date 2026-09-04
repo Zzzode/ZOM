@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "compiler/ownership/ownership-checked-mir.h"
+#include "compiler/ownership/overlay/ownership-checked-mir.h"
 
 #include "compiler/ir/diagnostics/ir-diagnostic-adapter.h"
 #include "compiler/ownership/facts/ownership-facts-codec.h"

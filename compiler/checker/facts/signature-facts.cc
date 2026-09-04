@@ -23,7 +23,7 @@
 #include "compiler/driver/query/module-graph/materialized-module-graph-query.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
-#include "compiler/ownership/surface-admission.h"
+#include "compiler/ownership/admission/surface-admission.h"
 #include "zc/core/one-of.h"
 
 namespace zomlang::compiler::checker::signature {

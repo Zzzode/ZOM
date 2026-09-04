@@ -3,9 +3,6 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zc/core/filesystem.h"
-#include "zc/core/time.h"
-#include "zc/ztest/test.h"
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/checker/body/body-checker.h"
@@ -20,8 +17,11 @@
 #include "compiler/driver/package/manifest-parser.h"
 #include "compiler/driver/package/source-record.h"
 #include "compiler/driver/session/compiler-session.h"
-#include "compiler/ownership/surface-admission.h"
+#include "compiler/ownership/admission/surface-admission.h"
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
+#include "zc/core/filesystem.h"
+#include "zc/core/time.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::checker::body {
 namespace {

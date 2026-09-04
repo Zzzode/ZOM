@@ -1,11 +1,11 @@
 set(OWNERSHIP_SRC
-  ${CMAKE_CURRENT_SOURCE_DIR}/ownership-event-overlay.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/ownership-checked-mir.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/ownership-proof-validation.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/drop-elaborated-mir.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/ownership-diagnostic-adapter.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/source-suppression.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/surface-admission.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/overlay/ownership-event-overlay.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/overlay/ownership-checked-mir.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/overlay/ownership-proof-validation.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/overlay/drop-elaborated-mir.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/ownership-diagnostic-adapter.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/source-suppression.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/admission/surface-admission.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/inputs.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/flow.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/flow-subset.cc

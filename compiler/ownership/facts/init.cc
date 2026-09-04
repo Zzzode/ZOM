@@ -15,8 +15,8 @@
 #include "compiler/ownership/facts/init.h"
 
 #include "compiler/ir/diagnostics/ir-diagnostic-adapter.h"
+#include "compiler/ownership/diagnostics/source-suppression.h"
 #include "compiler/ownership/facts/flow-subset.h"
-#include "compiler/ownership/source-suppression.h"
 
 namespace zomlang::compiler::ownership::facts {
 namespace {

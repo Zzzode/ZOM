@@ -16,9 +16,6 @@
 
 #include <cstdint>
 
-#include "zc/core/array.h"
-#include "zc/core/common.h"
-#include "zc/core/vector.h"
 #include "compiler/driver/interface/borrow-evidence.h"
 #include "compiler/mir/built-mir.h"
 #include "compiler/ownership/facts/flow.h"
@@ -29,7 +26,10 @@
 #include "compiler/ownership/facts/regions.h"
 #include "compiler/ownership/facts/resources.h"
 #include "compiler/ownership/facts/states.h"
-#include "compiler/ownership/ownership-event-overlay.h"
+#include "compiler/ownership/overlay/ownership-event-overlay.h"
+#include "zc/core/array.h"
+#include "zc/core/common.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::ownership {
 namespace test_oracle {

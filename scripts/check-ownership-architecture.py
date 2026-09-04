@@ -8,14 +8,14 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OVERLAY = Path("compiler/ownership/ownership-event-overlay.cc")
-DROP_ELABORATED = Path("compiler/ownership/drop-elaborated-mir.cc")
-DROP_ELABORATED_HEADER = Path("compiler/ownership/drop-elaborated-mir.h")
+OVERLAY = Path("compiler/ownership/overlay/ownership-event-overlay.cc")
+DROP_ELABORATED = Path("compiler/ownership/overlay/drop-elaborated-mir.cc")
+DROP_ELABORATED_HEADER = Path("compiler/ownership/overlay/drop-elaborated-mir.h")
 DROP_ELABORATED_TEST = Path(
-    "tests/unittests/compiler/ownership/ownership-drop-elaboration-test.cc"
+    "tests/unittests/compiler/ownership/overlay/ownership-drop-elaboration-test.cc"
 )
-ADMISSION_HEADER = Path("compiler/ownership/surface-admission.h")
-ADMISSION_SOURCE = Path("compiler/ownership/surface-admission.cc")
+ADMISSION_HEADER = Path("compiler/ownership/admission/surface-admission.h")
+ADMISSION_SOURCE = Path("compiler/ownership/admission/surface-admission.cc")
 MOVE_PATHS = Path("compiler/ownership/facts/paths.cc")
 MOVE_PATHS_HEADER = Path("compiler/ownership/facts/paths.h")
 FLOW = Path("compiler/ownership/facts/flow.cc")
@@ -41,9 +41,9 @@ FACTS_REVISION_HEADER = Path(
 )
 FACTS_CODEC = Path("compiler/ownership/facts/ownership-facts-codec.cc")
 FACTS_CODEC_HEADER = Path("compiler/ownership/facts/ownership-facts-codec.h")
-OWNERSHIP_CHECKED_MIR = Path("compiler/ownership/ownership-checked-mir.cc")
+OWNERSHIP_CHECKED_MIR = Path("compiler/ownership/overlay/ownership-checked-mir.cc")
 OWNERSHIP_CHECKED_MIR_HEADER = Path(
-    "compiler/ownership/ownership-checked-mir.h"
+    "compiler/ownership/overlay/ownership-checked-mir.h"
 )
 BORROW_EVIDENCE_HEADER = Path("compiler/driver/interface/borrow-evidence.h")
 BORROW_EVIDENCE_SOURCE = Path("compiler/driver/interface/borrow-evidence.cc")
@@ -56,7 +56,7 @@ MIR_HEADER = Path("compiler/mir/built-mir.h")
 BUILT_MIR_TEST = Path("tests/unittests/compiler/mir/built-mir-test.cc")
 OWNERSHIP_CMAKE = Path("compiler/ownership/CMakeLists.txt")
 SESSION = Path("compiler/driver/session/compiler-session.cc")
-TEST = Path("tests/unittests/compiler/ownership/ownership-event-overlay-test.cc")
+TEST = Path("tests/unittests/compiler/ownership/overlay/ownership-event-overlay-test.cc")
 HIR_TEST = Path("tests/unittests/compiler/hir/hir-module-test.cc")
 SESSION_TEST = Path(
     "tests/unittests/compiler/driver/session/compiler-session-package-test.cc"
@@ -610,7 +610,7 @@ def check(values: dict[Path, str]) -> list[str]:
 
     ownership_cmake = values.get(OWNERSHIP_CMAKE, "")
     for marker in (
-        "${CMAKE_CURRENT_SOURCE_DIR}/drop-elaborated-mir.cc",
+        "${CMAKE_CURRENT_SOURCE_DIR}/overlay/drop-elaborated-mir.cc",
         "${CMAKE_CURRENT_SOURCE_DIR}/facts/inputs.cc",
         "${CMAKE_CURRENT_SOURCE_DIR}/facts/flow.cc",
         "${CMAKE_CURRENT_SOURCE_DIR}/facts/loans.cc",
@@ -1345,7 +1345,7 @@ def main() -> int:
         drop_elaborated_cmake_mutation = dict(values)
         drop_elaborated_cmake_mutation[OWNERSHIP_CMAKE] = drop_elaborated_cmake_mutation.get(
             OWNERSHIP_CMAKE, ""
-        ).replace("${CMAKE_CURRENT_SOURCE_DIR}/drop-elaborated-mir.cc", "", 1)
+        ).replace("${CMAKE_CURRENT_SOURCE_DIR}/overlay/drop-elaborated-mir.cc", "", 1)
         if not check(drop_elaborated_cmake_mutation):
             print("ownership drop-elaboration build architecture self-test escaped")
             return 1

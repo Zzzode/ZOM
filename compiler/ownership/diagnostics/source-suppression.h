@@ -14,8 +14,8 @@
 
 #pragma once
 
+#include "compiler/ownership/diagnostics/ownership-source-failure.h"
 #include "zc/core/vector.h"
-#include "compiler/ownership/ownership-source-failure.h"
 
 namespace zomlang::compiler::ownership {
 

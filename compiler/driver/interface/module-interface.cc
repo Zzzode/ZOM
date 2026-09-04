@@ -5,12 +5,12 @@
 
 #include "compiler/driver/interface/module-interface.h"
 
-#include "zc/core/vector.h"
 #include "compiler/checker/borrow/borrow-interface.h"
 #include "compiler/checker/checker-identity-authority.h"
 #include "compiler/checker/facts/cross-module-facts.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
-#include "compiler/ownership/surface-admission.h"
+#include "compiler/ownership/admission/surface-admission.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::driver {
 namespace {

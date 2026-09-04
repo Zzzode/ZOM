@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "zc/ztest/test.h"
 #include "compiler/mir/built-mir.h"
 #include "compiler/ownership/facts/escape.h"
 #include "compiler/ownership/facts/raw-provenance.h"
 #include "compiler/ownership/facts/region-key.h"
 #include "tests/unittests/compiler/test-semantic-type-context.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::ownership::facts {
 namespace {

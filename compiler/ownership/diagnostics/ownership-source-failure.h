@@ -16,13 +16,13 @@
 
 #include <cstdint>
 
-#include "zc/core/one-of.h"
-#include "zc/core/vector.h"
 #include "compiler/diagnostics/core/diagnostic-ids.h"
 #include "compiler/identity/handle.h"
 #include "compiler/identity/key/source-key.h"
 #include "compiler/ownership/facts/paths.h"
-#include "compiler/ownership/ownership-event-overlay.h"
+#include "compiler/ownership/overlay/ownership-event-overlay.h"
+#include "zc/core/one-of.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::ownership {
 namespace facts {

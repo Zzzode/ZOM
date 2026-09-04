@@ -15,7 +15,7 @@
 #pragma once
 
 #include "compiler/ir/diagnostics/ir-failure.h"
-#include "compiler/ownership/ownership-source-failure.h"
+#include "compiler/ownership/diagnostics/ownership-source-failure.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
 
