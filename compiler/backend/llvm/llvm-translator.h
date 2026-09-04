@@ -14,9 +14,9 @@
 
 #pragma once
 
+#include "compiler/lir/lir-module.h"
 #include "zc/core/array.h"
 #include "zc/core/string.h"
-#include "compiler/lir/lir-module.h"
 
 // This header is the RFC 0021 LLVM isolation wall. It exposes a ZOM-native
 // interface only: no `llvm/...` header is included here or reachable from any
@@ -91,7 +91,7 @@ public:
   ///
   /// \param module Minimal LIR module produced by MIR -> LIR lowering.
   /// \return A success result with the textual IR, or a failure result.
-  ZC_NODISCARD LlvmTranslationResult translate(const lir::LirModule& module);
+  ZC_NODISCARD LlvmTranslationResult translate(const lir::Module& module);
 
 private:
   struct Impl;

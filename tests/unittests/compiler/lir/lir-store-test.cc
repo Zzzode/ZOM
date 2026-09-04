@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "zc/ztest/test.h"
 #include "compiler/lir/lir-identity.h"
 #include "compiler/lir/lir-stores.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::lir {
 namespace {
 
 /// \brief Returns a valid integer carrier of the given width.
-LirValueType requireInteger(IntegerBitWidth width) {
-  auto type = LirValueType::integer(width);
+ValueType requireInteger(IntegerBitWidth width) {
+  auto type = ValueType::integer(width);
   ZC_IF_SOME(value, type) { return value; }
   ZC_UNREACHABLE
 }
@@ -29,14 +29,14 @@ LirValueType requireInteger(IntegerBitWidth width) {
 // Store-local identities are one-based and zero is invalid, per RFC 0021.
 
 ZC_TEST("LIR store-local identities reject zero and validate one-based ordinals") {
-  ZC_EXPECT(LirValueTypeId::fromOrdinal(0) == zc::none);
+  ZC_EXPECT(ValueTypeId::fromOrdinal(0) == zc::none);
   ZC_EXPECT(LayoutId::fromOrdinal(0) == zc::none);
   ZC_EXPECT(FnAbiId::fromOrdinal(0) == zc::none);
   ZC_EXPECT(RuntimeSymbolId::fromOrdinal(0) == zc::none);
-  ZC_EXPECT(LirSourceLocationId::fromOrdinal(0) == zc::none);
+  ZC_EXPECT(SourceLocationId::fromOrdinal(0) == zc::none);
 
-  ZC_EXPECT(LirValueTypeId().isValid() == false);
-  ZC_IF_SOME(id, LirValueTypeId::fromOrdinal(3)) {
+  ZC_EXPECT(ValueTypeId().isValid() == false);
+  ZC_IF_SOME(id, ValueTypeId::fromOrdinal(3)) {
     ZC_EXPECT(id.isValid());
     ZC_EXPECT(id.ordinal() == 3);
   }
@@ -46,7 +46,7 @@ ZC_TEST("LIR store-local identities reject zero and validate one-based ordinals"
 // looks the record back up unchanged.
 
 ZC_TEST("LIR value-type store interns, dedups, and round-trips") {
-  LirValueTypeStore store;
+  ValueTypeStore store;
   const auto i32 = store.intern(requireInteger(IntegerBitWidth::Bit32));
   const auto i64 = store.intern(requireInteger(IntegerBitWidth::Bit64));
   const auto i32Again = store.intern(requireInteger(IntegerBitWidth::Bit32));
@@ -59,13 +59,13 @@ ZC_TEST("LIR value-type store interns, dedups, and round-trips") {
   ZC_EXPECT(store.size() == 2);
 
   ZC_IF_SOME(record, store.lookup(i32)) {
-    ZC_EXPECT(record.kind() == LirValueTypeKind::Integer);
+    ZC_EXPECT(record.kind() == ValueTypeKind::Integer);
     ZC_EXPECT(record.integerWidth() == IntegerBitWidth::Bit32);
   }
   ZC_IF_SOME(record, store.lookup(i64)) {
     ZC_EXPECT(record.integerWidth() == IntegerBitWidth::Bit64);
   }
-  ZC_EXPECT(store.lookup(LirValueTypeId()) == zc::none);
+  ZC_EXPECT(store.lookup(ValueTypeId()) == zc::none);
 }
 
 // Pointer carriers are opaque and distinguished only by address space; the
@@ -73,12 +73,12 @@ ZC_TEST("LIR value-type store interns, dedups, and round-trips") {
 // invalid formats.
 
 ZC_TEST("LIR value type construction fails closed on invalid domains") {
-  ZC_EXPECT(LirValueType::integer(static_cast<IntegerBitWidth>(7)) == zc::none);
-  ZC_EXPECT(LirValueType::floating(static_cast<FloatFormat>(9)) == zc::none);
+  ZC_EXPECT(ValueType::integer(static_cast<IntegerBitWidth>(7)) == zc::none);
+  ZC_EXPECT(ValueType::floating(static_cast<FloatFormat>(9)) == zc::none);
 
-  auto p0 = LirValueType::pointer(0);
-  auto p1 = LirValueType::pointer(1);
-  ZC_EXPECT(p0.kind() == LirValueTypeKind::Pointer);
+  auto p0 = ValueType::pointer(0);
+  auto p1 = ValueType::pointer(1);
+  ZC_EXPECT(p0.kind() == ValueTypeKind::Pointer);
   ZC_EXPECT(p0 != p1);
 }
 
@@ -86,11 +86,11 @@ ZC_TEST("LIR value type construction fails closed on invalid domains") {
 // alignment or an invalid carrier.
 
 ZC_TEST("LIR layout store interns scalar layouts and validates alignment") {
-  LirValueTypeStore types;
+  ValueTypeStore types;
   const auto carrier = types.intern(requireInteger(IntegerBitWidth::Bit32));
 
   ZC_EXPECT(StorageLayout::scalar(4, 3, carrier) == zc::none);
-  ZC_EXPECT(StorageLayout::scalar(4, 4, LirValueTypeId()) == zc::none);
+  ZC_EXPECT(StorageLayout::scalar(4, 4, ValueTypeId()) == zc::none);
 
   LayoutStore layouts;
   ZC_IF_SOME(layout, StorageLayout::scalar(4, 4, carrier)) {
@@ -111,7 +111,7 @@ ZC_TEST("LIR layout store interns scalar layouts and validates alignment") {
 // and dedups structurally equal records.
 
 ZC_TEST("LIR function-ABI store interns ordered carrier decompositions") {
-  LirValueTypeStore types;
+  ValueTypeStore types;
   const auto i32 = types.intern(requireInteger(IntegerBitWidth::Bit32));
   const auto i64 = types.intern(requireInteger(IntegerBitWidth::Bit64));
 
@@ -177,13 +177,13 @@ ZC_TEST("LIR runtime-symbol store interns named imports and fails closed") {
 // equal spans.
 
 ZC_TEST("LIR source-location store interns byte spans") {
-  ZC_EXPECT(LirSourceLocation::from(10, 4) == zc::none);
+  ZC_EXPECT(SourceLocation::from(10, 4) == zc::none);
 
-  LirSourceLocationStore store;
-  ZC_IF_SOME(location, LirSourceLocation::from(4, 10)) {
+  SourceLocationStore store;
+  ZC_IF_SOME(location, SourceLocation::from(4, 10)) {
     const auto id = store.intern(location);
-    ZC_IF_SOME(again, LirSourceLocation::from(4, 10)) { ZC_EXPECT(store.intern(again) == id); }
-    ZC_IF_SOME(other, LirSourceLocation::from(4, 11)) { ZC_EXPECT(store.intern(other) != id); }
+    ZC_IF_SOME(again, SourceLocation::from(4, 10)) { ZC_EXPECT(store.intern(again) == id); }
+    ZC_IF_SOME(other, SourceLocation::from(4, 11)) { ZC_EXPECT(store.intern(other) != id); }
     ZC_EXPECT(store.size() == 2);
     ZC_IF_SOME(record, store.lookup(id)) {
       ZC_EXPECT(record.byteStart() == 4);

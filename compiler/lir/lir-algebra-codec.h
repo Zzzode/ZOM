@@ -14,35 +14,35 @@
 
 #pragma once
 
+#include "compiler/identity/crypto/sha256.h"
 #include "zc/core/array.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "compiler/identity/crypto/sha256.h"
 
 namespace zomlang::compiler::lir {
 
 /// \brief Domain-separated immutable revision of one LIR lowering algebra.
 ///
-/// Computed by LirAlgebraCodec over the `zom.lir-algebra` framed registry
+/// Computed by AlgebraCodec over the `zom.lir-algebra` framed registry
 /// stream and compared by digest. See RFC 0021 "LIR Algebra Registry".
-class LirAlgebraRevision final {
+class AlgebraRevision final {
 public:
-  constexpr LirAlgebraRevision() noexcept = default;
+  constexpr AlgebraRevision() noexcept = default;
 
-  ZC_NODISCARD static LirAlgebraRevision fromDigest(const identity::Sha256Digest& digest) noexcept;
+  ZC_NODISCARD static AlgebraRevision fromDigest(const identity::Sha256Digest& digest) noexcept;
 
   ZC_NODISCARD const identity::Sha256Digest& digest() const noexcept { return value; }
 
-  bool operator==(const LirAlgebraRevision& other) const noexcept { return value == other.value; }
-  bool operator!=(const LirAlgebraRevision& other) const noexcept { return !(*this == other); }
+  bool operator==(const AlgebraRevision& other) const noexcept { return value == other.value; }
+  bool operator!=(const AlgebraRevision& other) const noexcept { return !(*this == other); }
 
 private:
-  explicit LirAlgebraRevision(const identity::Sha256Digest& digest) noexcept : value(digest) {}
+  explicit AlgebraRevision(const identity::Sha256Digest& digest) noexcept : value(digest) {}
 
   identity::Sha256Digest value;
 };
 
-/// \brief Retained LIR lowering algebra (RFC 0021 `LirAlgebraRegistry`).
+/// \brief Retained LIR lowering algebra (RFC 0021 `AlgebraRegistry`).
 ///
 /// The registry retains the complete algebra, not only its digest. This
 /// foundation slice models the canonical framing: the ASCII source-MIR revision
@@ -52,19 +52,19 @@ private:
 /// populated initial recipe table (the eight source recipes and eight generated
 /// recipes named in RFC 0021) is the next store step. The empty/initial registry
 /// reproduces the RFC's documented 56-byte oracle.
-class LirAlgebraRegistry final {
+class AlgebraRegistry final {
 public:
-  LirAlgebraRegistry() = default;
-  ZC_DISALLOW_COPY(LirAlgebraRegistry);
-  LirAlgebraRegistry(LirAlgebraRegistry&&) = default;
-  LirAlgebraRegistry& operator=(LirAlgebraRegistry&&) = default;
+  AlgebraRegistry() = default;
+  ZC_DISALLOW_COPY(AlgebraRegistry);
+  AlgebraRegistry(AlgebraRegistry&&) = default;
+  AlgebraRegistry& operator=(AlgebraRegistry&&) = default;
 
   /// \brief Builds a registry with the default `zom.mir-revision` source domain.
-  ZC_NODISCARD static LirAlgebraRegistry empty();
+  ZC_NODISCARD static AlgebraRegistry empty();
 
   /// \brief Builds a registry with an explicit ASCII source-MIR revision domain.
   /// \return The registry, or none for an empty or non-ASCII domain.
-  ZC_NODISCARD static zc::Maybe<LirAlgebraRegistry> withSourceDomain(zc::StringPtr domain);
+  ZC_NODISCARD static zc::Maybe<AlgebraRegistry> withSourceDomain(zc::StringPtr domain);
 
   /// \brief Appends one canonical source recipe as an already-framed byte record.
   void addRecipe(zc::ArrayPtr<const uint8_t> canonicalRecord);
@@ -82,7 +82,7 @@ public:
   }
 
 private:
-  explicit LirAlgebraRegistry(zc::String&& domain) noexcept : domainValue(zc::mv(domain)) {}
+  explicit AlgebraRegistry(zc::String&& domain) noexcept : domainValue(zc::mv(domain)) {}
 
   zc::String domainValue;
   zc::Vector<zc::Array<uint8_t>> recipeRecords;
@@ -98,12 +98,12 @@ private:
 /// `Frame` is a big-endian uint64 byte length followed by the exact bytes;
 /// `EncodeFramedSequence` is a big-endian uint64 element count followed by one
 /// `Frame` per element.
-class LirAlgebraCodec final {
+class AlgebraCodec final {
 public:
   /// \brief Encodes the registry to its canonical preimage bytes.
-  ZC_NODISCARD static zc::Array<uint8_t> encode(const LirAlgebraRegistry& registry);
-  /// \brief Computes the registry's `LirAlgebraRevision` (SHA-256 of the preimage).
-  ZC_NODISCARD static LirAlgebraRevision compute(const LirAlgebraRegistry& registry);
+  ZC_NODISCARD static zc::Array<uint8_t> encode(const AlgebraRegistry& registry);
+  /// \brief Computes the registry's `AlgebraRevision` (SHA-256 of the preimage).
+  ZC_NODISCARD static AlgebraRevision compute(const AlgebraRegistry& registry);
 };
 
 }  // namespace zomlang::compiler::lir

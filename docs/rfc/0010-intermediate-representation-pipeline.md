@@ -955,8 +955,8 @@ TargetSpecId
 RuntimeSymbolId
 InstanceId
 PassMode { ignore, direct, pair, indirect }
-LirModule
-LirFunction { instance, fnAbi, blocks }
+Module
+Function { instance, fnAbi, blocks }
 LirBlock { parameters, instructions, terminator }
 ```
 

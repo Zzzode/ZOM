@@ -265,7 +265,7 @@ ZC_TEST("Whole-struct return lowers MIR -> LIR -> verified LLVM literal struct")
   ZC_REQUIRE(lirModule.functions().size() == 1);
   ZC_REQUIRE(lirModule.functions()[0].blocks().size() == 1);
   const auto& terminator = lirModule.functions()[0].blocks()[0].terminator();
-  ZC_EXPECT(terminator.kind() == lir::LirTerminatorKind::ReturnAggregate);
+  ZC_EXPECT(terminator.kind() == lir::TerminatorKind::ReturnAggregate);
   ZC_REQUIRE(terminator.returnAggregateSlots().size() == 2);
   ZC_EXPECT(terminator.returnAggregateSlots()[0].bits() == 42);
   ZC_EXPECT(terminator.returnAggregateSlots()[1].bits() == 7);
@@ -1120,29 +1120,28 @@ ZC_TEST("MIR -> LIR lowering fails closed on a non-integer scalar initializer") 
 // Builds a single-block LIR function that returns a multi-slot integer bundle
 // directly (the RFC 0021 carrier-bundle shape). The slots are i32 constants in
 // the given order.
-lir::LirModule buildAggregateReturnModule(zc::ArrayPtr<const uint64_t> slotValues) {
-  auto i32 = lir::LirValueType::integer(lir::IntegerBitWidth::Bit32);
+lir::Module buildAggregateReturnModule(zc::ArrayPtr<const uint64_t> slotValues) {
+  auto i32 = lir::ValueType::integer(lir::IntegerBitWidth::Bit32);
   ZC_REQUIRE(i32 != zc::none);
   const auto carrier = ZC_REQUIRE_NONNULL(i32);
 
-  zc::Vector<lir::LirIntegerConstant> slots(slotValues.size());
+  zc::Vector<lir::IntegerConstant> slots(slotValues.size());
   for (const auto value : slotValues) {
-    auto constant = lir::LirIntegerConstant::from(carrier, value);
+    auto constant = lir::IntegerConstant::from(carrier, value);
     ZC_REQUIRE(constant != zc::none);
     slots.add(ZC_REQUIRE_NONNULL(constant));
   }
-  auto terminator = lir::LirTerminator::returnAggregate(zc::mv(slots));
+  auto terminator = lir::Terminator::returnAggregate(zc::mv(slots));
   ZC_REQUIRE(terminator != zc::none);
 
   auto blockId = lir::LirBlockId::fromOrdinal(1);
   ZC_REQUIRE(blockId != zc::none);
-  zc::Vector<lir::LirBasicBlock> blocks;
-  blocks.add(
-      lir::LirBasicBlock(ZC_REQUIRE_NONNULL(blockId), ZC_REQUIRE_NONNULL(zc::mv(terminator))));
+  zc::Vector<lir::BasicBlock> blocks;
+  blocks.add(lir::BasicBlock(ZC_REQUIRE_NONNULL(blockId), ZC_REQUIRE_NONNULL(zc::mv(terminator))));
 
-  zc::Vector<lir::LirFunction> functions;
-  functions.add(lir::LirFunction(zc::heapString("zom.module_init"), carrier, zc::mv(blocks)));
-  return lir::LirModule(zc::mv(functions));
+  zc::Vector<lir::Function> functions;
+  functions.add(lir::Function(zc::heapString("zom.module_init"), carrier, zc::mv(blocks)));
+  return lir::Module(zc::mv(functions));
 }
 
 ZC_TEST("Multi-slot aggregate return lowers to a verified LLVM literal struct") {
@@ -1179,19 +1178,19 @@ ZC_TEST("Single-slot aggregate return lowers to a verified one-field struct") {
 ZC_TEST("Scalar integer return is unchanged by the aggregate return path") {
   // A single-block ReturnInteger function still returns a bare i32, proving the
   // literal-struct path does not perturb the scalar return.
-  auto i32 = lir::LirValueType::integer(lir::IntegerBitWidth::Bit32);
+  auto i32 = lir::ValueType::integer(lir::IntegerBitWidth::Bit32);
   ZC_REQUIRE(i32 != zc::none);
   const auto carrier = ZC_REQUIRE_NONNULL(i32);
-  auto constant = lir::LirIntegerConstant::from(carrier, 5);
+  auto constant = lir::IntegerConstant::from(carrier, 5);
   ZC_REQUIRE(constant != zc::none);
   auto blockId = lir::LirBlockId::fromOrdinal(1);
   ZC_REQUIRE(blockId != zc::none);
-  zc::Vector<lir::LirBasicBlock> blocks;
-  blocks.add(lir::LirBasicBlock(ZC_REQUIRE_NONNULL(blockId),
-                                lir::LirTerminator::returnInteger(ZC_REQUIRE_NONNULL(constant))));
-  zc::Vector<lir::LirFunction> functions;
-  functions.add(lir::LirFunction(zc::heapString("zom.module_init"), carrier, zc::mv(blocks)));
-  lir::LirModule module(zc::mv(functions));
+  zc::Vector<lir::BasicBlock> blocks;
+  blocks.add(lir::BasicBlock(ZC_REQUIRE_NONNULL(blockId),
+                             lir::Terminator::returnInteger(ZC_REQUIRE_NONNULL(constant))));
+  zc::Vector<lir::Function> functions;
+  functions.add(lir::Function(zc::heapString("zom.module_init"), carrier, zc::mv(blocks)));
+  lir::Module module(zc::mv(functions));
 
   LlvmTranslator translator;
   auto result = translator.translate(module);
@@ -1403,8 +1402,8 @@ ZC_TEST("Comparison-driven conditional lowering fails closed on a non-comparison
 // targets the callee, never the leaf. The module is built directly to isolate the
 // translator from the MIR -> LIR selector. The `calleeIndex` is the callee's
 // emission-order position (1), not the MIR array position.
-lir::LirModule buildCallWithLeafModule() {
-  auto i32 = lir::LirValueType::integer(lir::IntegerBitWidth::Bit32);
+lir::Module buildCallWithLeafModule() {
+  auto i32 = lir::ValueType::integer(lir::IntegerBitWidth::Bit32);
   ZC_REQUIRE(i32 != zc::none);
   const auto carrier = ZC_REQUIRE_NONNULL(i32);
 
@@ -1415,52 +1414,52 @@ lir::LirModule buildCallWithLeafModule() {
   ZC_REQUIRE(callerEntry != zc::none && callerCont != zc::none && calleeEntry != zc::none &&
              leafEntry != zc::none);
 
-  auto calleeConstant = lir::LirIntegerConstant::from(carrier, 42);
-  auto leafConstant = lir::LirIntegerConstant::from(carrier, 9);
+  auto calleeConstant = lir::IntegerConstant::from(carrier, 42);
+  auto leafConstant = lir::IntegerConstant::from(carrier, 9);
   ZC_REQUIRE(calleeConstant != zc::none && leafConstant != zc::none);
 
-  zc::Vector<lir::LirFunction> functions;
+  zc::Vector<lir::Function> functions;
 
   // Function 0: the caller. Its entry block calls emission-order index 1 (the
   // callee) storing the result into local ordinal 1, then continues to a return
   // of that local. The leaf at index 2 is never referenced.
   {
-    zc::Vector<lir::LirBasicBlock> callerBlocks;
-    zc::Vector<lir::LirStatement> entryStatements;
-    callerBlocks.add(lir::LirBasicBlock(
-        ZC_REQUIRE_NONNULL(callerEntry), zc::mv(entryStatements),
-        lir::LirTerminator::callFunction(/*calleeIndex=*/1, /*destinationOrdinal=*/1,
-                                         ZC_REQUIRE_NONNULL(callerCont))));
-    zc::Vector<lir::LirStatement> contStatements;
-    callerBlocks.add(lir::LirBasicBlock(ZC_REQUIRE_NONNULL(callerCont), zc::mv(contStatements),
-                                        lir::LirTerminator::returnLocal(1)));
-    zc::Vector<lir::LirLocal> parameters;
-    zc::Vector<lir::LirLocal> locals;
-    locals.add(lir::LirLocal(1, carrier));
-    functions.add(lir::LirFunction(zc::heapString("zom.caller"), carrier, zc::mv(parameters),
-                                   zc::mv(locals), zc::mv(callerBlocks)));
+    zc::Vector<lir::BasicBlock> callerBlocks;
+    zc::Vector<lir::Statement> entryStatements;
+    callerBlocks.add(
+        lir::BasicBlock(ZC_REQUIRE_NONNULL(callerEntry), zc::mv(entryStatements),
+                        lir::Terminator::callFunction(/*calleeIndex=*/1, /*destinationOrdinal=*/1,
+                                                      ZC_REQUIRE_NONNULL(callerCont))));
+    zc::Vector<lir::Statement> contStatements;
+    callerBlocks.add(lir::BasicBlock(ZC_REQUIRE_NONNULL(callerCont), zc::mv(contStatements),
+                                     lir::Terminator::returnLocal(1)));
+    zc::Vector<lir::Local> parameters;
+    zc::Vector<lir::Local> locals;
+    locals.add(lir::Local(1, carrier));
+    functions.add(lir::Function(zc::heapString("zom.caller"), carrier, zc::mv(parameters),
+                                zc::mv(locals), zc::mv(callerBlocks)));
   }
 
   // Function 1: the callee, a single block returning its integer constant.
   {
-    zc::Vector<lir::LirBasicBlock> calleeBlocks;
+    zc::Vector<lir::BasicBlock> calleeBlocks;
     calleeBlocks.add(
-        lir::LirBasicBlock(ZC_REQUIRE_NONNULL(calleeEntry),
-                           lir::LirTerminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
-    functions.add(lir::LirFunction(zc::heapString("zom.callee"), carrier, zc::mv(calleeBlocks)));
+        lir::BasicBlock(ZC_REQUIRE_NONNULL(calleeEntry),
+                        lir::Terminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
+    functions.add(lir::Function(zc::heapString("zom.callee"), carrier, zc::mv(calleeBlocks)));
   }
 
   // Function 2: the standalone leaf, a single block returning its integer
   // constant. It calls nothing and is called by nothing.
   {
-    zc::Vector<lir::LirBasicBlock> leafBlocks;
+    zc::Vector<lir::BasicBlock> leafBlocks;
     leafBlocks.add(
-        lir::LirBasicBlock(ZC_REQUIRE_NONNULL(leafEntry),
-                           lir::LirTerminator::returnInteger(ZC_REQUIRE_NONNULL(leafConstant))));
-    functions.add(lir::LirFunction(zc::heapString("zom.leaf"), carrier, zc::mv(leafBlocks)));
+        lir::BasicBlock(ZC_REQUIRE_NONNULL(leafEntry),
+                        lir::Terminator::returnInteger(ZC_REQUIRE_NONNULL(leafConstant))));
+    functions.add(lir::Function(zc::heapString("zom.leaf"), carrier, zc::mv(leafBlocks)));
   }
 
-  return lir::LirModule(zc::mv(functions));
+  return lir::Module(zc::mv(functions));
 }
 
 // Counts non-overlapping occurrences of `needle` in `haystack`.

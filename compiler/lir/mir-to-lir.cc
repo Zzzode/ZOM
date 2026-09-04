@@ -70,13 +70,13 @@ zc::Maybe<uint64_t> zeroExtendedBits(const checker::signature::CanonicalInteger&
 }
 
 /// \brief Resolves the integer carrier for a semantic type owned by the store.
-zc::Maybe<LirValueType> integerCarrierFor(identity::SemanticTypeId type,
-                                          const type::SemanticTypeStore& semanticTypes) {
+zc::Maybe<ValueType> integerCarrierFor(identity::SemanticTypeId type,
+                                       const type::SemanticTypeStore& semanticTypes) {
   auto lookup = semanticTypes.get(type);
   if (!lookup.is<type::SemanticTypeLookup>()) { return zc::none; }
   const auto& data = lookup.get<type::SemanticTypeLookup>().data();
   ZC_IF_SOME(primitive, data.primitiveKind()) {
-    ZC_IF_SOME(width, integerWidthFor(primitive)) { return LirValueType::integer(width); }
+    ZC_IF_SOME(width, integerWidthFor(primitive)) { return ValueType::integer(width); }
   }
   return zc::none;
 }
@@ -85,58 +85,58 @@ zc::Maybe<LirValueType> integerCarrierFor(identity::SemanticTypeId type,
 ///
 /// The boolean discriminant of the conditional lowers to a one-bit integer
 /// carrier. A non-Bool type fails closed.
-zc::Maybe<LirValueType> boolCarrierFor(identity::SemanticTypeId type,
-                                       const type::SemanticTypeStore& semanticTypes) {
+zc::Maybe<ValueType> boolCarrierFor(identity::SemanticTypeId type,
+                                    const type::SemanticTypeStore& semanticTypes) {
   auto lookup = semanticTypes.get(type);
   if (!lookup.is<type::SemanticTypeLookup>()) { return zc::none; }
   const auto& data = lookup.get<type::SemanticTypeLookup>().data();
   ZC_IF_SOME(primitive, data.primitiveKind()) {
     if (primitive == type::semantic::PrimitiveKind::Bool) {
-      return LirValueType::integer(IntegerBitWidth::Bit1);
+      return ValueType::integer(IntegerBitWidth::Bit1);
     }
   }
   return zc::none;
 }
 
 /// \brief Maps a MIR relational operator to its LIR comparison operator.
-LirComparisonOp lirComparisonOpFor(mir::MirComparisonOperator op) noexcept {
+ComparisonOp lirComparisonOpFor(mir::MirComparisonOperator op) noexcept {
   switch (op) {
     case mir::MirComparisonOperator::Eq:
-      return LirComparisonOp::Eq;
+      return ComparisonOp::Eq;
     case mir::MirComparisonOperator::Ne:
-      return LirComparisonOp::Ne;
+      return ComparisonOp::Ne;
     case mir::MirComparisonOperator::Lt:
-      return LirComparisonOp::Lt;
+      return ComparisonOp::Lt;
     case mir::MirComparisonOperator::Le:
-      return LirComparisonOp::Le;
+      return ComparisonOp::Le;
     case mir::MirComparisonOperator::Gt:
-      return LirComparisonOp::Gt;
+      return ComparisonOp::Gt;
     case mir::MirComparisonOperator::Ge:
-      return LirComparisonOp::Ge;
+      return ComparisonOp::Ge;
   }
-  return LirComparisonOp::Eq;
+  return ComparisonOp::Eq;
 }
 
 /// \brief Lowers a MIR operand (integer constant or parameter place-use) to a
 /// LIR operand of the given integer carrier.
 /// \return The operand, or none for a non-integer constant or a projected place.
-zc::Maybe<LirOperand> lirOperandFor(const mir::MirOperand& operand, LirValueType carrier) {
+zc::Maybe<Operand> lirOperandFor(const mir::MirOperand& operand, ValueType carrier) {
   if (operand.kind() == mir::MirOperandKind::Constant) {
     const auto integer = operand.constantValue().value.integerValue();
     if (integer == zc::none) { return zc::none; }
     auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), carrier.integerWidth());
     if (bits == zc::none) { return zc::none; }
-    auto constant = LirIntegerConstant::from(carrier, ZC_REQUIRE_NONNULL(bits));
+    auto constant = IntegerConstant::from(carrier, ZC_REQUIRE_NONNULL(bits));
     if (constant == zc::none) { return zc::none; }
-    return LirOperand::constant(ZC_REQUIRE_NONNULL(constant));
+    return Operand::constant(ZC_REQUIRE_NONNULL(constant));
   }
   if (operand.place().projections().size() != 0) { return zc::none; }
-  return LirOperand::localUse(operand.place().local().ordinal());
+  return Operand::localUse(operand.place().local().ordinal());
 }
 
 }  // namespace
 
-zc::Maybe<LirModule> MirToLirLowering::lowerScalarInitializer(
+zc::Maybe<Module> MirToLirLowering::lowerScalarInitializer(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified scalar module-initializer shape. This mirrors the
   // structural facts that mir::validScalarFunction already checked; we re-check
@@ -187,24 +187,24 @@ zc::Maybe<LirModule> MirToLirLowering::lowerScalarInitializer(
   auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), carrierValue.integerWidth());
   if (bits == zc::none) { return zc::none; }
 
-  auto lirConstant = LirIntegerConstant::from(carrierValue, ZC_REQUIRE_NONNULL(bits));
+  auto lirConstant = IntegerConstant::from(carrierValue, ZC_REQUIRE_NONNULL(bits));
   if (lirConstant == zc::none) { return zc::none; }
 
   // Build the single entry block returning the constant.
   auto entryId = LirBlockId::fromOrdinal(1);
   if (entryId == zc::none) { return zc::none; }
-  zc::Vector<LirBasicBlock> blocks;
-  blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(entryId),
-                           LirTerminator::returnInteger(ZC_REQUIRE_NONNULL(lirConstant))));
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId),
+                        Terminator::returnInteger(ZC_REQUIRE_NONNULL(lirConstant))));
 
   // A module initializer has no user symbol name in this slice; use the stable
   // reserved ASCII runtime symbol for the module initializer entry.
-  zc::Vector<LirFunction> functions;
-  functions.add(LirFunction(zc::heapString("zom.module_init"), carrierValue, zc::mv(blocks)));
-  return LirModule(zc::mv(functions));
+  zc::Vector<Function> functions;
+  functions.add(Function(zc::heapString("zom.module_init"), carrierValue, zc::mv(blocks)));
+  return Module(zc::mv(functions));
 }
 
-zc::Maybe<LirModule> MirToLirLowering::lowerAggregateFieldInitializer(
+zc::Maybe<Module> MirToLirLowering::lowerAggregateFieldInitializer(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified struct-local field-return shape. This mirrors the
   // structural facts that mir::validLocalAggregateFieldReturnFunction already
@@ -276,24 +276,24 @@ zc::Maybe<LirModule> MirToLirLowering::lowerAggregateFieldInitializer(
   auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), carrierValue.integerWidth());
   if (bits == zc::none) { return zc::none; }
 
-  auto lirConstant = LirIntegerConstant::from(carrierValue, ZC_REQUIRE_NONNULL(bits));
+  auto lirConstant = IntegerConstant::from(carrierValue, ZC_REQUIRE_NONNULL(bits));
   if (lirConstant == zc::none) { return zc::none; }
 
   // Build the single entry block returning the folded field value.
   auto entryId = LirBlockId::fromOrdinal(1);
   if (entryId == zc::none) { return zc::none; }
-  zc::Vector<LirBasicBlock> blocks;
-  blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(entryId),
-                           LirTerminator::returnInteger(ZC_REQUIRE_NONNULL(lirConstant))));
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId),
+                        Terminator::returnInteger(ZC_REQUIRE_NONNULL(lirConstant))));
 
   // Reuse the stable reserved module-initializer entry symbol so the folded
   // result slots into the existing translate/emit/execute path.
-  zc::Vector<LirFunction> functions;
-  functions.add(LirFunction(zc::heapString("zom.module_init"), carrierValue, zc::mv(blocks)));
-  return LirModule(zc::mv(functions));
+  zc::Vector<Function> functions;
+  functions.add(Function(zc::heapString("zom.module_init"), carrierValue, zc::mv(blocks)));
+  return Module(zc::mv(functions));
 }
 
-zc::Maybe<LirModule> MirToLirLowering::lowerAggregateReturn(
+zc::Maybe<Module> MirToLirLowering::lowerAggregateReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified whole-struct constant-return shape. This mirrors the
   // structural facts mir::validLocalAggregateReturnFunction checked; we re-check
@@ -341,7 +341,7 @@ zc::Maybe<LirModule> MirToLirLowering::lowerAggregateReturn(
   // order, which is destroyed by the digest sort in the signature facts, and it
   // makes no claim about the target ABI struct layout.
   if (aggregate.elements.size() == 0) { return zc::none; }
-  zc::Vector<LirIntegerConstant> slots(aggregate.elements.size());
+  zc::Vector<IntegerConstant> slots(aggregate.elements.size());
   for (const auto& element : aggregate.elements) {
     if (element.operand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
     const auto& constant = element.operand.constantValue();
@@ -352,7 +352,7 @@ zc::Maybe<LirModule> MirToLirLowering::lowerAggregateReturn(
     if (integer == zc::none) { return zc::none; }
     auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), carrierValue.integerWidth());
     if (bits == zc::none) { return zc::none; }
-    auto slot = LirIntegerConstant::from(carrierValue, ZC_REQUIRE_NONNULL(bits));
+    auto slot = IntegerConstant::from(carrierValue, ZC_REQUIRE_NONNULL(bits));
     if (slot == zc::none) { return zc::none; }
     slots.add(ZC_REQUIRE_NONNULL(slot));
   }
@@ -362,20 +362,20 @@ zc::Maybe<LirModule> MirToLirLowering::lowerAggregateReturn(
   // the slot carriers, so this only satisfies the integer entry check.
   const auto placeholderCarrier = slots[0].carrier();
 
-  auto terminator = LirTerminator::returnAggregate(zc::mv(slots));
+  auto terminator = Terminator::returnAggregate(zc::mv(slots));
   if (terminator == zc::none) { return zc::none; }
 
   auto entryId = LirBlockId::fromOrdinal(1);
   if (entryId == zc::none) { return zc::none; }
-  zc::Vector<LirBasicBlock> blocks;
-  blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(entryId), ZC_REQUIRE_NONNULL(zc::mv(terminator))));
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), ZC_REQUIRE_NONNULL(zc::mv(terminator))));
 
-  zc::Vector<LirFunction> functions;
-  functions.add(LirFunction(zc::heapString("zom.module_init"), placeholderCarrier, zc::mv(blocks)));
-  return LirModule(zc::mv(functions));
+  zc::Vector<Function> functions;
+  functions.add(Function(zc::heapString("zom.module_init"), placeholderCarrier, zc::mv(blocks)));
+  return Module(zc::mv(functions));
 }
 
-zc::Maybe<LirModule> MirToLirLowering::lowerConditionalReturn(
+zc::Maybe<Module> MirToLirLowering::lowerConditionalReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified four-block boolean-conditional return shape. This
   // re-checks the structure that mir::validConditionalReturnFunction validated
@@ -440,7 +440,7 @@ zc::Maybe<LirModule> MirToLirLowering::lowerConditionalReturn(
 
   // Each arm assigns the result local (a constant or a parameter place-use) then
   // jumps to the join.
-  auto lowerArm = [&](const mir::MirBasicBlock& branch, zc::Vector<LirStatement>& out) -> bool {
+  auto lowerArm = [&](const mir::MirBasicBlock& branch, zc::Vector<Statement>& out) -> bool {
     if (branch.statements.size() != 1 ||
         branch.statements[0].kind() != mir::MirStatementKind::Assign ||
         branch.terminator.kind() != mir::MirTerminatorKind::Goto ||
@@ -467,12 +467,12 @@ zc::Maybe<LirModule> MirToLirLowering::lowerConditionalReturn(
     }
     auto lowered = lirOperandFor(operand, resultCarrierValue);
     if (lowered == zc::none) { return false; }
-    out.add(LirStatement::assign(resultOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+    out.add(Statement::assign(resultOrdinal, ZC_REQUIRE_NONNULL(lowered)));
     return true;
   };
 
-  zc::Vector<LirStatement> thenStatements;
-  zc::Vector<LirStatement> elseStatements;
+  zc::Vector<Statement> thenStatements;
+  zc::Vector<Statement> elseStatements;
   if (!lowerArm(thenBlock, thenStatements) || !lowerArm(elseBlock, elseStatements)) {
     return zc::none;
   }
@@ -500,44 +500,44 @@ zc::Maybe<LirModule> MirToLirLowering::lowerConditionalReturn(
     return zc::none;
   }
 
-  zc::Vector<LirBasicBlock> blocks;
+  zc::Vector<BasicBlock> blocks;
   {
-    zc::Vector<LirStatement> none;
-    blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(none),
-                             LirTerminator::condBranch(conditionOrdinal, ZC_REQUIRE_NONNULL(thenId),
-                                                       ZC_REQUIRE_NONNULL(elseId))));
+    zc::Vector<Statement> none;
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(none),
+                          Terminator::condBranch(conditionOrdinal, ZC_REQUIRE_NONNULL(thenId),
+                                                 ZC_REQUIRE_NONNULL(elseId))));
   }
-  blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(thenId), zc::mv(thenStatements),
-                           LirTerminator::gotoBlock(ZC_REQUIRE_NONNULL(joinId))));
-  blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(elseId), zc::mv(elseStatements),
-                           LirTerminator::gotoBlock(ZC_REQUIRE_NONNULL(joinId))));
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(thenId), zc::mv(thenStatements),
+                        Terminator::gotoBlock(ZC_REQUIRE_NONNULL(joinId))));
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(elseId), zc::mv(elseStatements),
+                        Terminator::gotoBlock(ZC_REQUIRE_NONNULL(joinId))));
   {
-    zc::Vector<LirStatement> none;
-    blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(joinId), zc::mv(none),
-                             LirTerminator::returnLocal(resultOrdinal)));
+    zc::Vector<Statement> none;
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(joinId), zc::mv(none),
+                          Terminator::returnLocal(resultOrdinal)));
   }
 
   // Declare every parameter local: the boolean discriminant as its i1 carrier,
   // integer value parameters as their integer carriers.
-  zc::Vector<LirLocal> parameters;
+  zc::Vector<Local> parameters;
   for (size_t i = 0; i < parameterCount; ++i) {
     const auto& parameterLocal = function.locals[i];
-    zc::Maybe<LirValueType> carrier = boolCarrierFor(parameterLocal.type, semanticTypes);
+    zc::Maybe<ValueType> carrier = boolCarrierFor(parameterLocal.type, semanticTypes);
     if (carrier == zc::none) { carrier = integerCarrierFor(parameterLocal.type, semanticTypes); }
     if (carrier == zc::none) { return zc::none; }
-    parameters.add(LirLocal(parameterLocal.id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
+    parameters.add(Local(parameterLocal.id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
   }
-  zc::Vector<LirLocal> locals;
-  locals.add(LirLocal(resultOrdinal, resultCarrierValue));
+  zc::Vector<Local> locals;
+  locals.add(Local(resultOrdinal, resultCarrierValue));
 
-  zc::Vector<LirFunction> functions;
-  functions.add(LirFunction(zc::heapString("zom.conditional"), resultCarrierValue,
-                            zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
-  return LirModule(zc::mv(functions));
+  zc::Vector<Function> functions;
+  functions.add(Function(zc::heapString("zom.conditional"), resultCarrierValue, zc::mv(parameters),
+                         zc::mv(locals), zc::mv(blocks)));
+  return Module(zc::mv(functions));
 }
 
-zc::Maybe<LirModule> MirToLirLowering::lowerLoopReturn(
-    const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
+zc::Maybe<Module> MirToLirLowering::lowerLoopReturn(const mir::MirFunction& function,
+                                                    const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified reducible four-block while-loop return shape,
   // re-checking the structure that mir::validLoopReturnFunction validated. This
   // slice handles exactly one boolean parameter and one result local.
@@ -615,7 +615,7 @@ zc::Maybe<LirModule> MirToLirLowering::lowerLoopReturn(
   if (integer == zc::none) { return zc::none; }
   auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), resultCarrierValue.integerWidth());
   if (bits == zc::none) { return zc::none; }
-  auto exitConstant = LirIntegerConstant::from(resultCarrierValue, ZC_REQUIRE_NONNULL(bits));
+  auto exitConstant = IntegerConstant::from(resultCarrierValue, ZC_REQUIRE_NONNULL(bits));
   if (exitConstant == zc::none) { return zc::none; }
 
   const auto& returnValue = exit.terminator.returnValue().value;
@@ -635,43 +635,43 @@ zc::Maybe<LirModule> MirToLirLowering::lowerLoopReturn(
     return zc::none;
   }
 
-  zc::Vector<LirBasicBlock> blocks;
+  zc::Vector<BasicBlock> blocks;
   {
-    zc::Vector<LirStatement> none;
-    blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(none),
-                             LirTerminator::gotoBlock(ZC_REQUIRE_NONNULL(headerId))));
+    zc::Vector<Statement> none;
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(none),
+                          Terminator::gotoBlock(ZC_REQUIRE_NONNULL(headerId))));
   }
   {
-    zc::Vector<LirStatement> none;
-    blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(headerId), zc::mv(none),
-                             LirTerminator::condBranch(parameterOrdinal, ZC_REQUIRE_NONNULL(bodyId),
-                                                       ZC_REQUIRE_NONNULL(exitId))));
+    zc::Vector<Statement> none;
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(headerId), zc::mv(none),
+                          Terminator::condBranch(parameterOrdinal, ZC_REQUIRE_NONNULL(bodyId),
+                                                 ZC_REQUIRE_NONNULL(exitId))));
   }
   {
-    zc::Vector<LirStatement> none;
-    blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(bodyId), zc::mv(none),
-                             LirTerminator::gotoBlock(ZC_REQUIRE_NONNULL(headerId))));
+    zc::Vector<Statement> none;
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(bodyId), zc::mv(none),
+                          Terminator::gotoBlock(ZC_REQUIRE_NONNULL(headerId))));
   }
   {
-    zc::Vector<LirStatement> exitStatements;
-    exitStatements.add(LirStatement::assign(
-        resultOrdinal, LirOperand::constant(ZC_REQUIRE_NONNULL(exitConstant))));
-    blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(exitId), zc::mv(exitStatements),
-                             LirTerminator::returnLocal(resultOrdinal)));
+    zc::Vector<Statement> exitStatements;
+    exitStatements.add(
+        Statement::assign(resultOrdinal, Operand::constant(ZC_REQUIRE_NONNULL(exitConstant))));
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(exitId), zc::mv(exitStatements),
+                          Terminator::returnLocal(resultOrdinal)));
   }
 
-  zc::Vector<LirLocal> parameters;
-  parameters.add(LirLocal(parameterOrdinal, ZC_REQUIRE_NONNULL(parameterCarrier)));
-  zc::Vector<LirLocal> locals;
-  locals.add(LirLocal(resultOrdinal, resultCarrierValue));
+  zc::Vector<Local> parameters;
+  parameters.add(Local(parameterOrdinal, ZC_REQUIRE_NONNULL(parameterCarrier)));
+  zc::Vector<Local> locals;
+  locals.add(Local(resultOrdinal, resultCarrierValue));
 
-  zc::Vector<LirFunction> functions;
-  functions.add(LirFunction(zc::heapString("zom.loop"), resultCarrierValue, zc::mv(parameters),
-                            zc::mv(locals), zc::mv(blocks)));
-  return LirModule(zc::mv(functions));
+  zc::Vector<Function> functions;
+  functions.add(Function(zc::heapString("zom.loop"), resultCarrierValue, zc::mv(parameters),
+                         zc::mv(locals), zc::mv(blocks)));
+  return Module(zc::mv(functions));
 }
 
-zc::Maybe<LirModule> MirToLirLowering::lowerEqualityConditionalReturn(
+zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified comparison-driven conditional shape, re-checking the
   // structure that mir::validEqualityConditionalReturnFunction validated: N
@@ -730,7 +730,7 @@ zc::Maybe<LirModule> MirToLirLowering::lowerEqualityConditionalReturn(
   // share the operand type; use the result-less operand carrier from the
   // comparison operand types (each operand is a parameter place-use or constant
   // of the same integer operand type).
-  auto operandCarrierFor = [&](const mir::MirOperand& operand) -> zc::Maybe<LirValueType> {
+  auto operandCarrierFor = [&](const mir::MirOperand& operand) -> zc::Maybe<ValueType> {
     if (operand.kind() == mir::MirOperandKind::Constant) {
       return integerCarrierFor(operand.constantValue().type, semanticTypes);
     }
@@ -753,7 +753,7 @@ zc::Maybe<LirModule> MirToLirLowering::lowerEqualityConditionalReturn(
   }
 
   // Each arm assigns the result an integer constant, then jumps to the join.
-  auto lowerArm = [&](const mir::MirBasicBlock& branch, zc::Vector<LirStatement>& out) -> bool {
+  auto lowerArm = [&](const mir::MirBasicBlock& branch, zc::Vector<Statement>& out) -> bool {
     if (branch.statements.size() != 1 ||
         branch.statements[0].kind() != mir::MirStatementKind::Assign ||
         branch.terminator.kind() != mir::MirTerminatorKind::Goto ||
@@ -773,11 +773,11 @@ zc::Maybe<LirModule> MirToLirLowering::lowerEqualityConditionalReturn(
     }
     auto lowered = lirOperandFor(operand, resultCarrierValue);
     if (lowered == zc::none) { return false; }
-    out.add(LirStatement::assign(resultOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+    out.add(Statement::assign(resultOrdinal, ZC_REQUIRE_NONNULL(lowered)));
     return true;
   };
-  zc::Vector<LirStatement> thenStatements;
-  zc::Vector<LirStatement> elseStatements;
+  zc::Vector<Statement> thenStatements;
+  zc::Vector<Statement> elseStatements;
   if (!lowerArm(thenBlock, thenStatements) || !lowerArm(elseBlock, elseStatements)) {
     return zc::none;
   }
@@ -805,46 +805,46 @@ zc::Maybe<LirModule> MirToLirLowering::lowerEqualityConditionalReturn(
     return zc::none;
   }
 
-  zc::Vector<LirBasicBlock> blocks;
+  zc::Vector<BasicBlock> blocks;
   {
-    zc::Vector<LirStatement> entryStatements;
-    entryStatements.add(LirStatement::compare(tempOrdinal, lirComparisonOpFor(comparison.op),
-                                              ZC_REQUIRE_NONNULL(lirLeft),
-                                              ZC_REQUIRE_NONNULL(lirRight)));
-    blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
-                             LirTerminator::condBranch(tempOrdinal, ZC_REQUIRE_NONNULL(thenId),
-                                                       ZC_REQUIRE_NONNULL(elseId))));
+    zc::Vector<Statement> entryStatements;
+    entryStatements.add(Statement::compare(tempOrdinal, lirComparisonOpFor(comparison.op),
+                                           ZC_REQUIRE_NONNULL(lirLeft),
+                                           ZC_REQUIRE_NONNULL(lirRight)));
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
+                          Terminator::condBranch(tempOrdinal, ZC_REQUIRE_NONNULL(thenId),
+                                                 ZC_REQUIRE_NONNULL(elseId))));
   }
-  blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(thenId), zc::mv(thenStatements),
-                           LirTerminator::gotoBlock(ZC_REQUIRE_NONNULL(joinId))));
-  blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(elseId), zc::mv(elseStatements),
-                           LirTerminator::gotoBlock(ZC_REQUIRE_NONNULL(joinId))));
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(thenId), zc::mv(thenStatements),
+                        Terminator::gotoBlock(ZC_REQUIRE_NONNULL(joinId))));
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(elseId), zc::mv(elseStatements),
+                        Terminator::gotoBlock(ZC_REQUIRE_NONNULL(joinId))));
   {
-    zc::Vector<LirStatement> none;
-    blocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(joinId), zc::mv(none),
-                             LirTerminator::returnLocal(resultOrdinal)));
+    zc::Vector<Statement> none;
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(joinId), zc::mv(none),
+                          Terminator::returnLocal(resultOrdinal)));
   }
 
   // Declare every integer parameter local plus the result and temp body locals.
-  zc::Vector<LirLocal> parameters;
+  zc::Vector<Local> parameters;
   for (size_t i = 0; i < parameterCount; ++i) {
     auto carrier = integerCarrierFor(function.locals[i].type, semanticTypes);
     if (carrier == zc::none) { return zc::none; }
-    parameters.add(LirLocal(function.locals[i].id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
+    parameters.add(Local(function.locals[i].id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
   }
-  zc::Vector<LirLocal> locals;
-  locals.add(LirLocal(resultOrdinal, resultCarrierValue));
-  locals.add(LirLocal(tempOrdinal, tempCarrierValue));
+  zc::Vector<Local> locals;
+  locals.add(Local(resultOrdinal, resultCarrierValue));
+  locals.add(Local(tempOrdinal, tempCarrierValue));
 
-  zc::Vector<LirFunction> functions;
-  functions.add(LirFunction(zc::heapString("zom.conditional_cmp"), resultCarrierValue,
-                            zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
-  return LirModule(zc::mv(functions));
+  zc::Vector<Function> functions;
+  functions.add(Function(zc::heapString("zom.conditional_cmp"), resultCarrierValue,
+                         zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  return Module(zc::mv(functions));
 }
 
-zc::Maybe<LirModule> MirToLirLowering::lowerCallModule(
-    const mir::MirFunction& caller, const mir::MirFunction& callee,
-    const type::SemanticTypeStore& semanticTypes) {
+zc::Maybe<Module> MirToLirLowering::lowerCallModule(const mir::MirFunction& caller,
+                                                    const mir::MirFunction& callee,
+                                                    const type::SemanticTypeStore& semanticTypes) {
   // Callee: the scalar constant-return shape (no locals, one block returning an
   // integer constant). Build its single-block ReturnInteger LIR function.
   if (callee.kind != mir::MirFunctionKind::Function || callee.locals.size() != 0 ||
@@ -861,7 +861,7 @@ zc::Maybe<LirModule> MirToLirLowering::lowerCallModule(
   }
   const auto& calleeReturn = calleeBlock.terminator.returnValue().value;
   if (calleeReturn == zc::none) { return zc::none; }
-  zc::Maybe<LirIntegerConstant> calleeConstant;
+  zc::Maybe<IntegerConstant> calleeConstant;
   ZC_IF_SOME(value, calleeReturn) {
     if (value.kind() != mir::MirOperandKind::Constant ||
         value.constantValue().type != callee.resultType) {
@@ -871,7 +871,7 @@ zc::Maybe<LirModule> MirToLirLowering::lowerCallModule(
     if (integer == zc::none) { return zc::none; }
     auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), calleeCarrierValue.integerWidth());
     if (bits == zc::none) { return zc::none; }
-    calleeConstant = LirIntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(bits));
+    calleeConstant = IntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(bits));
   }
   if (calleeConstant == zc::none) { return zc::none; }
 
@@ -926,40 +926,38 @@ zc::Maybe<LirModule> MirToLirLowering::lowerCallModule(
     return zc::none;
   }
 
-  zc::Vector<LirFunction> functions;
+  zc::Vector<Function> functions;
 
   // Function 0: the caller. Its call targets function index 1 (the callee),
   // stores the integer result into the result slot, and continues to the return.
   {
-    zc::Vector<LirBasicBlock> callerBlocks;
-    zc::Vector<LirStatement> entryStatements;
-    callerBlocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
-                                   LirTerminator::callFunction(/*calleeIndex=*/1, resultOrdinal,
-                                                               ZC_REQUIRE_NONNULL(callerContId))));
-    zc::Vector<LirStatement> contStatements;
-    callerBlocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(callerContId), zc::mv(contStatements),
-                                   LirTerminator::returnLocal(resultOrdinal)));
-    zc::Vector<LirLocal> parameters;
-    zc::Vector<LirLocal> locals;
-    locals.add(LirLocal(resultOrdinal, callerCarrierValue));
-    functions.add(LirFunction(zc::heapString("zom.caller"), callerCarrierValue, zc::mv(parameters),
-                              zc::mv(locals), zc::mv(callerBlocks)));
+    zc::Vector<BasicBlock> callerBlocks;
+    zc::Vector<Statement> entryStatements;
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
+                                Terminator::callFunction(/*calleeIndex=*/1, resultOrdinal,
+                                                         ZC_REQUIRE_NONNULL(callerContId))));
+    zc::Vector<Statement> contStatements;
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerContId), zc::mv(contStatements),
+                                Terminator::returnLocal(resultOrdinal)));
+    zc::Vector<Local> parameters;
+    zc::Vector<Local> locals;
+    locals.add(Local(resultOrdinal, callerCarrierValue));
+    functions.add(Function(zc::heapString("zom.caller"), callerCarrierValue, zc::mv(parameters),
+                           zc::mv(locals), zc::mv(callerBlocks)));
   }
 
   // Function 1: the callee, a single block returning the integer constant.
   {
-    zc::Vector<LirBasicBlock> calleeBlocks;
-    calleeBlocks.add(
-        LirBasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId),
-                      LirTerminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
-    functions.add(
-        LirFunction(zc::heapString("zom.callee"), calleeCarrierValue, zc::mv(calleeBlocks)));
+    zc::Vector<BasicBlock> calleeBlocks;
+    calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId),
+                                Terminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
+    functions.add(Function(zc::heapString("zom.callee"), calleeCarrierValue, zc::mv(calleeBlocks)));
   }
 
-  return LirModule(zc::mv(functions));
+  return Module(zc::mv(functions));
 }
 
-zc::Maybe<LirModule> MirToLirLowering::lowerCallModuleWithArgument(
+zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
     const mir::MirFunction& caller, const mir::MirFunction& callee,
     const type::SemanticTypeStore& semanticTypes) {
   // Callee: the single-parameter return shape (one Parameter local, one block
@@ -1035,7 +1033,7 @@ zc::Maybe<LirModule> MirToLirLowering::lowerCallModuleWithArgument(
       zeroExtendedBits(ZC_REQUIRE_NONNULL(argumentInteger), calleeCarrierValue.integerWidth());
   if (argumentBits == zc::none) { return zc::none; }
   auto argumentConstant =
-      LirIntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(argumentBits));
+      IntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(argumentBits));
   if (argumentConstant == zc::none) { return zc::none; }
 
   if (continuation.statements.size() != 0 ||
@@ -1059,47 +1057,47 @@ zc::Maybe<LirModule> MirToLirLowering::lowerCallModuleWithArgument(
     return zc::none;
   }
 
-  zc::Vector<LirFunction> functions;
+  zc::Vector<Function> functions;
 
   // Function 0: the caller. Its call targets function index 1 (the callee),
   // passes the integer-constant argument, stores the integer result into the
   // result slot, and continues to the return.
   {
-    zc::Vector<LirBasicBlock> callerBlocks;
-    zc::Vector<LirStatement> entryStatements;
+    zc::Vector<BasicBlock> callerBlocks;
+    zc::Vector<Statement> entryStatements;
     callerBlocks.add(
-        LirBasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
-                      LirTerminator::callFunctionWithArgument(/*calleeIndex=*/1, resultOrdinal,
-                                                              ZC_REQUIRE_NONNULL(argumentConstant),
-                                                              ZC_REQUIRE_NONNULL(callerContId))));
-    zc::Vector<LirStatement> contStatements;
-    callerBlocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(callerContId), zc::mv(contStatements),
-                                   LirTerminator::returnLocal(resultOrdinal)));
-    zc::Vector<LirLocal> parameters;
-    zc::Vector<LirLocal> locals;
-    locals.add(LirLocal(resultOrdinal, callerCarrierValue));
-    functions.add(LirFunction(zc::heapString("zom.caller"), callerCarrierValue, zc::mv(parameters),
-                              zc::mv(locals), zc::mv(callerBlocks)));
+        BasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
+                   Terminator::callFunctionWithArgument(/*calleeIndex=*/1, resultOrdinal,
+                                                        ZC_REQUIRE_NONNULL(argumentConstant),
+                                                        ZC_REQUIRE_NONNULL(callerContId))));
+    zc::Vector<Statement> contStatements;
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerContId), zc::mv(contStatements),
+                                Terminator::returnLocal(resultOrdinal)));
+    zc::Vector<Local> parameters;
+    zc::Vector<Local> locals;
+    locals.add(Local(resultOrdinal, callerCarrierValue));
+    functions.add(Function(zc::heapString("zom.caller"), callerCarrierValue, zc::mv(parameters),
+                           zc::mv(locals), zc::mv(callerBlocks)));
   }
 
   // Function 1: the callee, one parameter, a single block returning the
   // parameter slot.
   {
-    zc::Vector<LirBasicBlock> calleeBlocks;
-    zc::Vector<LirStatement> none;
-    calleeBlocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId), zc::mv(none),
-                                   LirTerminator::returnLocal(calleeParamOrdinal)));
-    zc::Vector<LirLocal> parameters;
-    parameters.add(LirLocal(calleeParamOrdinal, calleeCarrierValue));
-    zc::Vector<LirLocal> locals;
-    functions.add(LirFunction(zc::heapString("zom.callee"), calleeCarrierValue, zc::mv(parameters),
-                              zc::mv(locals), zc::mv(calleeBlocks)));
+    zc::Vector<BasicBlock> calleeBlocks;
+    zc::Vector<Statement> none;
+    calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId), zc::mv(none),
+                                Terminator::returnLocal(calleeParamOrdinal)));
+    zc::Vector<Local> parameters;
+    parameters.add(Local(calleeParamOrdinal, calleeCarrierValue));
+    zc::Vector<Local> locals;
+    functions.add(Function(zc::heapString("zom.callee"), calleeCarrierValue, zc::mv(parameters),
+                           zc::mv(locals), zc::mv(calleeBlocks)));
   }
 
-  return LirModule(zc::mv(functions));
+  return Module(zc::mv(functions));
 }
 
-zc::Maybe<LirModule> MirToLirLowering::lowerCallModuleWithArguments(
+zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArguments(
     const mir::MirFunction& caller, const mir::MirFunction& callee,
     const type::SemanticTypeStore& semanticTypes) {
   // Callee: exactly two parameter locals, one block returning the first parameter.
@@ -1170,7 +1168,7 @@ zc::Maybe<LirModule> MirToLirLowering::lowerCallModuleWithArguments(
   // Each argument must be an integer constant of the matching callee parameter
   // type. Lower each to its carrier constant in argument order.
   const identity::SemanticTypeId calleeParamTypes[] = {calleeParam0.type, calleeParam1.type};
-  zc::Vector<LirIntegerConstant> argumentConstants(2);
+  zc::Vector<IntegerConstant> argumentConstants(2);
   for (size_t index = 0; index < call.arguments.size(); ++index) {
     const auto& argument = call.arguments[index];
     if (argument.kind() != mir::MirOperandKind::Constant ||
@@ -1186,7 +1184,7 @@ zc::Maybe<LirModule> MirToLirLowering::lowerCallModuleWithArguments(
         zeroExtendedBits(ZC_REQUIRE_NONNULL(argumentInteger), argumentCarrierValue.integerWidth());
     if (argumentBits == zc::none) { return zc::none; }
     auto argumentConstant =
-        LirIntegerConstant::from(argumentCarrierValue, ZC_REQUIRE_NONNULL(argumentBits));
+        IntegerConstant::from(argumentCarrierValue, ZC_REQUIRE_NONNULL(argumentBits));
     if (argumentConstant == zc::none) { return zc::none; }
     argumentConstants.add(ZC_REQUIRE_NONNULL(argumentConstant));
   }
@@ -1212,48 +1210,48 @@ zc::Maybe<LirModule> MirToLirLowering::lowerCallModuleWithArguments(
     return zc::none;
   }
 
-  zc::Vector<LirFunction> functions;
+  zc::Vector<Function> functions;
 
   // Function 0: the caller. Its call targets function index 1 (the callee), passes
   // the two integer-constant arguments, stores the integer result into the result
   // slot, and continues to the return.
   {
-    zc::Vector<LirBasicBlock> callerBlocks;
-    zc::Vector<LirStatement> entryStatements;
-    auto callTerminator = LirTerminator::callFunctionWithArguments(
+    zc::Vector<BasicBlock> callerBlocks;
+    zc::Vector<Statement> entryStatements;
+    auto callTerminator = Terminator::callFunctionWithArguments(
         /*calleeIndex=*/1, resultOrdinal, zc::mv(argumentConstants),
         ZC_REQUIRE_NONNULL(callerContId));
     if (callTerminator == zc::none) { return zc::none; }
-    callerBlocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
-                                   ZC_REQUIRE_NONNULL(zc::mv(callTerminator))));
-    zc::Vector<LirStatement> contStatements;
-    callerBlocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(callerContId), zc::mv(contStatements),
-                                   LirTerminator::returnLocal(resultOrdinal)));
-    zc::Vector<LirLocal> parameters;
-    zc::Vector<LirLocal> locals;
-    locals.add(LirLocal(resultOrdinal, callerCarrierValue));
-    functions.add(LirFunction(zc::heapString("zom.caller"), callerCarrierValue, zc::mv(parameters),
-                              zc::mv(locals), zc::mv(callerBlocks)));
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
+                                ZC_REQUIRE_NONNULL(zc::mv(callTerminator))));
+    zc::Vector<Statement> contStatements;
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerContId), zc::mv(contStatements),
+                                Terminator::returnLocal(resultOrdinal)));
+    zc::Vector<Local> parameters;
+    zc::Vector<Local> locals;
+    locals.add(Local(resultOrdinal, callerCarrierValue));
+    functions.add(Function(zc::heapString("zom.caller"), callerCarrierValue, zc::mv(parameters),
+                           zc::mv(locals), zc::mv(callerBlocks)));
   }
 
   // Function 1: the callee, two parameters, a single block returning parameter 0.
   {
-    zc::Vector<LirBasicBlock> calleeBlocks;
-    zc::Vector<LirStatement> none;
-    calleeBlocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId), zc::mv(none),
-                                   LirTerminator::returnLocal(calleeParam0Ordinal)));
-    zc::Vector<LirLocal> parameters;
-    parameters.add(LirLocal(calleeParam0Ordinal, calleeCarrierValue));
-    parameters.add(LirLocal(calleeParam1Ordinal, ZC_REQUIRE_NONNULL(calleeParam1Carrier)));
-    zc::Vector<LirLocal> locals;
-    functions.add(LirFunction(zc::heapString("zom.callee"), calleeCarrierValue, zc::mv(parameters),
-                              zc::mv(locals), zc::mv(calleeBlocks)));
+    zc::Vector<BasicBlock> calleeBlocks;
+    zc::Vector<Statement> none;
+    calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId), zc::mv(none),
+                                Terminator::returnLocal(calleeParam0Ordinal)));
+    zc::Vector<Local> parameters;
+    parameters.add(Local(calleeParam0Ordinal, calleeCarrierValue));
+    parameters.add(Local(calleeParam1Ordinal, ZC_REQUIRE_NONNULL(calleeParam1Carrier)));
+    zc::Vector<Local> locals;
+    functions.add(Function(zc::heapString("zom.callee"), calleeCarrierValue, zc::mv(parameters),
+                           zc::mv(locals), zc::mv(calleeBlocks)));
   }
 
-  return LirModule(zc::mv(functions));
+  return Module(zc::mv(functions));
 }
 
-zc::Maybe<LirModule> MirToLirLowering::lowerCallModuleWithLeaf(
+zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithLeaf(
     const mir::MirFunction& caller, const mir::MirFunction& callee, const mir::MirFunction& leaf,
     const type::SemanticTypeStore& semanticTypes) {
   // Callee: the scalar constant-return shape (no locals, one block returning an
@@ -1272,7 +1270,7 @@ zc::Maybe<LirModule> MirToLirLowering::lowerCallModuleWithLeaf(
   }
   const auto& calleeReturn = calleeBlock.terminator.returnValue().value;
   if (calleeReturn == zc::none) { return zc::none; }
-  zc::Maybe<LirIntegerConstant> calleeConstant;
+  zc::Maybe<IntegerConstant> calleeConstant;
   ZC_IF_SOME(value, calleeReturn) {
     if (value.kind() != mir::MirOperandKind::Constant ||
         value.constantValue().type != callee.resultType) {
@@ -1282,7 +1280,7 @@ zc::Maybe<LirModule> MirToLirLowering::lowerCallModuleWithLeaf(
     if (integer == zc::none) { return zc::none; }
     auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), calleeCarrierValue.integerWidth());
     if (bits == zc::none) { return zc::none; }
-    calleeConstant = LirIntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(bits));
+    calleeConstant = IntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(bits));
   }
   if (calleeConstant == zc::none) { return zc::none; }
 
@@ -1302,7 +1300,7 @@ zc::Maybe<LirModule> MirToLirLowering::lowerCallModuleWithLeaf(
   }
   const auto& leafReturn = leafBlock.terminator.returnValue().value;
   if (leafReturn == zc::none) { return zc::none; }
-  zc::Maybe<LirIntegerConstant> leafConstant;
+  zc::Maybe<IntegerConstant> leafConstant;
   ZC_IF_SOME(value, leafReturn) {
     if (value.kind() != mir::MirOperandKind::Constant ||
         value.constantValue().type != leaf.resultType) {
@@ -1312,7 +1310,7 @@ zc::Maybe<LirModule> MirToLirLowering::lowerCallModuleWithLeaf(
     if (integer == zc::none) { return zc::none; }
     auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), leafCarrierValue.integerWidth());
     if (bits == zc::none) { return zc::none; }
-    leafConstant = LirIntegerConstant::from(leafCarrierValue, ZC_REQUIRE_NONNULL(bits));
+    leafConstant = IntegerConstant::from(leafCarrierValue, ZC_REQUIRE_NONNULL(bits));
   }
   if (leafConstant == zc::none) { return zc::none; }
 
@@ -1369,47 +1367,45 @@ zc::Maybe<LirModule> MirToLirLowering::lowerCallModuleWithLeaf(
     return zc::none;
   }
 
-  zc::Vector<LirFunction> functions;
+  zc::Vector<Function> functions;
 
   // Function 0: the caller. Its call targets function index 1 (the callee) in the
   // fixed emission order below; the leaf at index 2 is never referenced. The
   // calleeIndex is the emission-order position, not the MIR array position.
   {
-    zc::Vector<LirBasicBlock> callerBlocks;
-    zc::Vector<LirStatement> entryStatements;
-    callerBlocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
-                                   LirTerminator::callFunction(/*calleeIndex=*/1, resultOrdinal,
-                                                               ZC_REQUIRE_NONNULL(callerContId))));
-    zc::Vector<LirStatement> contStatements;
-    callerBlocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(callerContId), zc::mv(contStatements),
-                                   LirTerminator::returnLocal(resultOrdinal)));
-    zc::Vector<LirLocal> parameters;
-    zc::Vector<LirLocal> locals;
-    locals.add(LirLocal(resultOrdinal, callerCarrierValue));
-    functions.add(LirFunction(zc::heapString("zom.caller"), callerCarrierValue, zc::mv(parameters),
-                              zc::mv(locals), zc::mv(callerBlocks)));
+    zc::Vector<BasicBlock> callerBlocks;
+    zc::Vector<Statement> entryStatements;
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
+                                Terminator::callFunction(/*calleeIndex=*/1, resultOrdinal,
+                                                         ZC_REQUIRE_NONNULL(callerContId))));
+    zc::Vector<Statement> contStatements;
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerContId), zc::mv(contStatements),
+                                Terminator::returnLocal(resultOrdinal)));
+    zc::Vector<Local> parameters;
+    zc::Vector<Local> locals;
+    locals.add(Local(resultOrdinal, callerCarrierValue));
+    functions.add(Function(zc::heapString("zom.caller"), callerCarrierValue, zc::mv(parameters),
+                           zc::mv(locals), zc::mv(callerBlocks)));
   }
 
   // Function 1: the callee, a single block returning its integer constant.
   {
-    zc::Vector<LirBasicBlock> calleeBlocks;
-    calleeBlocks.add(
-        LirBasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId),
-                      LirTerminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
-    functions.add(
-        LirFunction(zc::heapString("zom.callee"), calleeCarrierValue, zc::mv(calleeBlocks)));
+    zc::Vector<BasicBlock> calleeBlocks;
+    calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId),
+                                Terminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
+    functions.add(Function(zc::heapString("zom.callee"), calleeCarrierValue, zc::mv(calleeBlocks)));
   }
 
   // Function 2: the standalone leaf, a single block returning its integer
   // constant. It calls nothing and is called by nothing.
   {
-    zc::Vector<LirBasicBlock> leafBlocks;
-    leafBlocks.add(LirBasicBlock(ZC_REQUIRE_NONNULL(leafEntryId),
-                                 LirTerminator::returnInteger(ZC_REQUIRE_NONNULL(leafConstant))));
-    functions.add(LirFunction(zc::heapString("zom.leaf"), leafCarrierValue, zc::mv(leafBlocks)));
+    zc::Vector<BasicBlock> leafBlocks;
+    leafBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(leafEntryId),
+                              Terminator::returnInteger(ZC_REQUIRE_NONNULL(leafConstant))));
+    functions.add(Function(zc::heapString("zom.leaf"), leafCarrierValue, zc::mv(leafBlocks)));
   }
 
-  return LirModule(zc::mv(functions));
+  return Module(zc::mv(functions));
 }
 
 }  // namespace zomlang::compiler::lir

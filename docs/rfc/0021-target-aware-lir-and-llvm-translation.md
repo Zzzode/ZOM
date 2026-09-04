@@ -241,7 +241,7 @@ Mature low-level IRs repeatedly expose three frontend failure classes:
 
 1. **Conflating value type and memory layout.** This produces incorrect field
    offsets, ABI coercions, or address calculations. ZOM uses distinct
-   `LirValueTypeId`, `LayoutId`, and `FnAbiId` stores.
+   `ValueTypeId`, `LayoutId`, and `FnAbiId` stores.
 2. **Asserting optimizer facts without proof.** Incorrect `inbounds`,
    `noalias`, `nonnull`, `noundef`, `nsw`, `nuw`, `exact`, or fast-math flags
    can silently miscompile a correct source program. ZOM omits such facts by
@@ -585,7 +585,7 @@ VerifiedAbiClassifierRegistry {
 
 VerifiedLlvmTranslatorContract {
   llvmBaseline: LlvmBaseline,
-  lirAlgebra: LirAlgebraRegistry,
+  lirAlgebra: AlgebraRegistry,
   abiClassifiers: VerifiedAbiClassifierRegistry,
   revision: LlvmTranslatorContractRevision,
 }
@@ -645,11 +645,11 @@ The translator contract retains the complete lowering algebra, not only its
 digest:
 
 ```text
-LirAlgebraRegistry {
+AlgebraRegistry {
   sourceMirRevisionDomain: AsciiBytes,
   recipes: SortedSequence<LirRecipeRecord>,
   generatedRecipes: SortedSequence<GeneratedRecipeRecord>,
-  revision: LirAlgebraRevision,
+  revision: AlgebraRevision,
 }
 
 LirLoweringRecipeId =
@@ -749,7 +749,7 @@ Adding a MIR or generated variant replaces this closed registry, changes the
 canonical registry, and updates this normative table and oracle in the same RFC
 change.
 
-`LirAlgebraRevision` is SHA-256 over:
+`AlgebraRevision` is SHA-256 over:
 
 ```text
 ASCII("zom.lir-algebra")
@@ -778,13 +778,13 @@ SHA256(
   ASCII("zom.llvm-translator-contract")
   0x00
   Encode(LlvmBaseline)
-  LirAlgebraRevision
+  AlgebraRevision
   AbiClassifierRegistryRevision
 )
 ```
 
 The contract retains the complete algebra and classifier records, not only
-their digests. Construction independently recomputes `LirAlgebraRevision` and
+their digests. Construction independently recomputes `AlgebraRevision` and
 `AbiClassifierRegistryRevision`, requires the exact
 LLVM baseline selected by the RFC 0016 code-generation capability set, and
 publishes no contract on mismatch. No process-local brand enters this
@@ -1010,7 +1010,7 @@ but final IDs and module order derive only from canonical keys.
 ### Module And Store Model
 
 ```text
-LirModule {
+Module {
   contextBrand: SemanticContextBrand,
   contextFingerprint: ContextFingerprint,
   package: PackageId,
@@ -1028,16 +1028,16 @@ LirModule {
   codegenCapabilityRegistryRevision: CodegenCapabilityRegistryRevision,
   targetAuthorityBundleRevision: TargetAuthorityBundleRevision,
   llvmTranslatorContractRevision: LlvmTranslatorContractRevision,
-  valueTypes: LirValueTypeStore,
+  valueTypes: ValueTypeStore,
   layouts: LayoutStore,
   functionAbis: FnAbiStore,
   exceptionRegions: SortedSequence<EhRegion>,
-  sourceLocations: SortedSequence<LirSourceLocation>,
+  sourceLocations: SortedSequence<SourceLocation>,
   backendAttributeAuthorizations:
       SortedSequence<CanonicalBackendAttributeAuthorization>,
   symbols: LirSymbolStore,
   globals: SortedSequence<LirGlobal>,
-  functions: SortedSequence<LirFunction>,
+  functions: SortedSequence<Function>,
 }
 ```
 
@@ -1051,7 +1051,7 @@ and checked-evidence leases used to verify it. Revisions are cache and equality
 inputs, not a substitute for the non-forgeable authorities that LLVM
 translation must read.
 
-`LirValueTypeId`, `LayoutId`, and `FnAbiId` are distinct store-local branded
+`ValueTypeId`, `LayoutId`, and `FnAbiId` are distinct store-local branded
 handles. They cannot compare equal across stores or modules. Numeric slots are
 never used in canonical ordering, revision inputs, symbols, or cross-module
 identity. Canonical structural records are the only persistent comparison
@@ -1080,7 +1080,7 @@ record, and target object format. Symbol IDs expand through the complete origin
 record in canonical encodings; numeric IDs and raw names are never identity.
 
 `LirBlockId`, `LirValueId`, `LirStackSlotId`, `LirGlobalId`, and
-`LirSourceLocationId` are one-based deterministic module-local identities.
+`SourceLocationId` are one-based deterministic module-local identities.
 Zero is invalid. Every lowered block first receives a structural key:
 
 ```text
@@ -1111,10 +1111,10 @@ is fixed; builder IDs never participate in canonical order.
 
 ### SSA Carrier Types
 
-`LirValueType` describes only an SSA carrier:
+`ValueType` describes only an SSA carrier:
 
 ```text
-LirValueType =
+ValueType =
   Integer { bitWidth: IntegerBitWidth }
   | Float { format: FloatFormat }
   | Pointer { addressSpace: uint32 }
@@ -1133,7 +1133,7 @@ have no carrier. Aggregates use ordered carrier bundles when loadable and an
 address plus `LayoutId` when address-only. Function addresses are opaque
 pointers whose calls require a separate `FnAbiId`.
 
-Every SSA value has exactly one `LirValueTypeId`. Multi-result instructions
+Every SSA value has exactly one `ValueTypeId`. Multi-result instructions
 return an ordered sequence of individually typed values.
 
 ### Layout Model
@@ -1159,7 +1159,7 @@ Layout {
 }
 
 LlvmStorageShape =
-  ScalarStorage { carrier: LirValueTypeId }
+  ScalarStorage { carrier: ValueTypeId }
   | ExplicitStructStorage {
       packed: bool,
       elements: Sequence<LlvmStorageElement>,
@@ -1196,7 +1196,7 @@ LayoutAbiShape =
   | Aggregate
 
 ScalarLayout {
-  carrier: LirValueTypeId,
+  carrier: ValueTypeId,
   storageBytes: uint64,
   validRange: Maybe<InclusiveBitRange>,
   pointerValidity: PointerValidity,
@@ -1331,13 +1331,13 @@ LlvmCoercionShape =
       trailingPaddingBytes: uint32,
     }
   | Array {
-      element: LirValueTypeId,
+      element: ValueTypeId,
       slots: NonEmptySequence<uint32>,
     }
 
 LlvmCoercionElement {
   slot: uint32,
-  carrier: LirValueTypeId,
+  carrier: ValueTypeId,
   paddingBeforeBytes: uint32,
 }
 
@@ -1347,7 +1347,7 @@ LlvmDirectParameter {
 }
 
 AbiSlot {
-  carrier: LirValueTypeId,
+  carrier: ValueTypeId,
   sourceLayout: LayoutId,
   extension: IntegerExtension,
 }
@@ -1400,7 +1400,7 @@ define source and C ABI varargs safety before this field may change.
 ### Function, Block, And Value Model
 
 ```text
-LirFunction {
+Function {
   key: LirFunctionKey,
   symbol: LirSymbolId,
   linkage: LirLinkage,
@@ -1450,17 +1450,17 @@ LirBlock {
   origin: LirBlockOriginKey,
   parameters: Sequence<LirBlockParameter>,
   instructions: Sequence<LirInstruction>,
-  terminator: LirTerminator,
+  terminator: Terminator,
 }
 
 LirBlockParameter {
   value: LirValueId,
-  type: LirValueTypeId,
-  source: LirSourceLocationId,
+  type: ValueTypeId,
+  source: SourceLocationId,
 }
 
-LirSourceLocation {
-  id: LirSourceLocationId,
+SourceLocation {
+  id: SourceLocationId,
   source: SourceFileKey,
   byteStart: uint64,
   byteEnd: uint64,
@@ -1512,7 +1512,7 @@ Instruction ordinals are one-based in execution order. A terminator site uses
 `instructionCount + 1`; zero is invalid.
 
 `LirLoweringRecipeId` is the closed enum in the retained
-`LirAlgebraRegistry` bound by `VerifiedLlvmTranslatorContract`. Each recipe
+`AlgebraRegistry` bound by `VerifiedLlvmTranslatorContract`. Each recipe
 maps exactly one
 executable-MIR statement or terminator variant to an ordered LIR operation
 class sequence, result/place mapping, successor shape, and effect count. The
@@ -1561,9 +1561,9 @@ after reachable blocks.
 
 ```text
 LirConstant =
-  IntegerBits { type: LirValueTypeId, bits: CanonicalBits }
-  | FloatBits { type: LirValueTypeId, bits: CanonicalBits }
-  | NullPointer { type: LirValueTypeId }
+  IntegerBits { type: ValueTypeId, bits: CanonicalBits }
+  | FloatBits { type: ValueTypeId, bits: CanonicalBits }
+  | NullPointer { type: ValueTypeId }
   | GlobalAddress { global: LirGlobalId }
   | FunctionAddress { function: LirFunctionKey }
 
@@ -1607,7 +1607,7 @@ GlobalInitializer =
   | SymbolAddress {
       symbol: LirSymbolId,
       addend: int64,
-      pointerType: LirValueTypeId,
+      pointerType: ValueTypeId,
     }
 
 GlobalInitializerElement {
@@ -1676,7 +1676,7 @@ result list:
 ```text
 LirInstruction {
   site: LirOperationSite,
-  source: LirSourceLocationId,
+  source: SourceLocationId,
   origin: LirSemanticOrigin,
   operation: LirOperation,
   results: Sequence<LirInstructionResult>,
@@ -1684,7 +1684,7 @@ LirInstruction {
 
 LirInstructionResult {
   value: LirValueId,
-  type: LirValueTypeId,
+  type: ValueTypeId,
 }
 
 LirOperation =
@@ -1716,22 +1716,22 @@ LirOperation =
   | IntegerCast {
       op: IntegerCastOp,
       operand: LirValueId,
-      target: LirValueTypeId,
+      target: ValueTypeId,
     }
   | FloatCast {
       op: FloatCastOp,
       operand: LirValueId,
-      target: LirValueTypeId,
+      target: ValueTypeId,
     }
   | IntegerFloatCast {
       op: IntegerFloatCastOp,
       operand: LirValueId,
-      target: LirValueTypeId,
+      target: ValueTypeId,
     }
   | PointerCast {
       op: PointerCastOp,
       operand: LirValueId,
-      target: LirValueTypeId,
+      target: ValueTypeId,
     }
   | Select {
       condition: LirValueId,
@@ -1757,11 +1757,11 @@ LirOperation =
     }
   | ExposeAddress {
       pointer: LirValueId,
-      integerType: LirValueTypeId,
+      integerType: ValueTypeId,
     }
   | FromExposedAddress {
       address: LirValueId,
-      pointerType: LirValueTypeId,
+      pointerType: ValueTypeId,
     }
   | Load { access: MemoryAccess }
   | Store { access: MemoryAccess, value: LirValueId }
@@ -1978,9 +1978,9 @@ evidence.
 ### Terminator Inventory
 
 ```text
-LirTerminator {
+Terminator {
   site: LirOperationSite,
-  source: LirSourceLocationId,
+  source: SourceLocationId,
   origin: LirSemanticOrigin,
   operation: LirTerminatorOperation,
 }
@@ -2025,7 +2025,7 @@ SwitchCase {
 
 LirTerminatorResult {
   value: LirValueId,
-  type: LirValueTypeId,
+  type: ValueTypeId,
 }
 
 Successor {
@@ -2150,7 +2150,7 @@ Memory access is:
 MemoryAccess {
   address: LirValueId,
   layout: LayoutId,
-  carrier: LirValueTypeId,
+  carrier: ValueTypeId,
   alignment: NonZeroPowerOfTwo,
   volatility: Volatility,
   authorization: MemoryAccessAuthorization,
@@ -2348,7 +2348,7 @@ AtomicScope = System
 
 AtomicAccess {
   address: LirValueId,
-  carrier: LirValueTypeId,
+  carrier: ValueTypeId,
   layout: LayoutId,
   alignment: NonZeroPowerOfTwo,
   ordering: AtomicOrdering,
@@ -2359,7 +2359,7 @@ AtomicAccess {
 
 AtomicCompareExchangeAccess {
   address: LirValueId,
-  carrier: LirValueTypeId,
+  carrier: ValueTypeId,
   layout: LayoutId,
   alignment: NonZeroPowerOfTwo,
   successOrdering: AtomicOrdering,
@@ -2546,7 +2546,7 @@ exact RFC 0016 contract and no other entry. Runtime logical types are
 materialized before classification by exhaustively applying RFC 0016's
 normative logical-lowering table:
 
-- fixed and pointer-sized integers intern exact `LirValueType` records using
+- fixed and pointer-sized integers intern exact `ValueType` records using
   the selected target widths;
 - pointers intern the declared address space and named opaque or record
   identity without inventing a pointee storage type;

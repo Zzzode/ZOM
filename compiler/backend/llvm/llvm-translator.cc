@@ -77,14 +77,14 @@ LlvmTranslator::~LlvmTranslator() noexcept = default;
 LlvmTranslator::LlvmTranslator(LlvmTranslator&&) noexcept = default;
 LlvmTranslator& LlvmTranslator::operator=(LlvmTranslator&&) noexcept = default;
 
-LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
+LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
   const auto functions = module.functions();
   if (functions.size() < 1 || functions.size() > 3) {
     return LlvmTranslationResult::failure(
         zc::heapString("LIR module must contain one, two, or three functions in this slice"));
   }
   for (const auto& candidate : functions) {
-    if (candidate.returnCarrier().kind() != lir::LirValueTypeKind::Integer) {
+    if (candidate.returnCarrier().kind() != lir::ValueTypeKind::Integer) {
       return LlvmTranslationResult::failure(
           zc::heapString("LIR function return carrier must be an integer"));
     }
@@ -94,14 +94,14 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
   // function (conditional diamond, reducible while-loop, comparison-driven
   // conditional, or the two-block Call+Return caller) whose entry begins with a
   // Goto, a conditional branch, or a call.
-  auto isSupportedShape = [](const lir::LirFunction& candidate) -> bool {
+  auto isSupportedShape = [](const lir::Function& candidate) -> bool {
     const auto candidateBlocks = candidate.blocks();
     // A multi-slot aggregate return is lowered only as a single entry block that
     // returns the bundle directly (mirroring the single-block scalar return). A
     // ReturnAggregate in any other position is not lowered in this slice, so
     // reject it before translation begins and the body emitter never reaches it.
     for (size_t index = 0; index < candidateBlocks.size(); ++index) {
-      if (candidateBlocks[index].terminator().kind() == lir::LirTerminatorKind::ReturnAggregate) {
+      if (candidateBlocks[index].terminator().kind() == lir::TerminatorKind::ReturnAggregate) {
         if (index != 0 || candidateBlocks.size() != 1) { return false; }
       }
     }
@@ -111,14 +111,14 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
       // one-parameter callee that returns its parameter), or returns a multi-slot
       // aggregate bundle.
       const auto kind = candidateBlocks[0].terminator().kind();
-      return kind == lir::LirTerminatorKind::ReturnInteger ||
-             kind == lir::LirTerminatorKind::ReturnLocal ||
-             kind == lir::LirTerminatorKind::ReturnAggregate;
+      return kind == lir::TerminatorKind::ReturnInteger ||
+             kind == lir::TerminatorKind::ReturnLocal ||
+             kind == lir::TerminatorKind::ReturnAggregate;
     }
     if (candidateBlocks.size() < 2) { return false; }
     const auto entryKind = candidateBlocks[0].terminator().kind();
-    return entryKind == lir::LirTerminatorKind::CondBranch ||
-           entryKind == lir::LirTerminatorKind::Goto || entryKind == lir::LirTerminatorKind::Call;
+    return entryKind == lir::TerminatorKind::CondBranch || entryKind == lir::TerminatorKind::Goto ||
+           entryKind == lir::TerminatorKind::Call;
   };
   for (const auto& candidate : functions) {
     if (!isSupportedShape(candidate)) {
@@ -166,16 +166,16 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
   // returns a literal struct whose element types are the slot carriers in slot
   // order (RFC 0021 carrier bundle); every other shape returns its scalar integer
   // carrier. The struct is an LLVM literal aggregate, not an LIR SSA value type.
-  auto aggregateReturnSlots = [](const lir::LirFunction& candidate)
-      -> zc::Maybe<zc::ArrayPtr<const lir::LirIntegerConstant>> {
+  auto aggregateReturnSlots =
+      [](const lir::Function& candidate) -> zc::Maybe<zc::ArrayPtr<const lir::IntegerConstant>> {
     const auto candidateBlocks = candidate.blocks();
     if (candidateBlocks.size() == 1 &&
-        candidateBlocks[0].terminator().kind() == lir::LirTerminatorKind::ReturnAggregate) {
+        candidateBlocks[0].terminator().kind() == lir::TerminatorKind::ReturnAggregate) {
       return candidateBlocks[0].terminator().returnAggregateSlots();
     }
     return zc::none;
   };
-  auto functionReturnType = [&](const lir::LirFunction& candidate) -> ::llvm::Type* {
+  auto functionReturnType = [&](const lir::Function& candidate) -> ::llvm::Type* {
     ZC_IF_SOME(slots, aggregateReturnSlots(candidate)) {
       zc::Vector<::llvm::Type*> elementTypes(slots.size());
       for (const auto& slot : slots) {
@@ -207,8 +207,7 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
     const auto blocks = function.blocks();
     ::llvm::IntegerType* returnType = integerType(function.returnCarrier().integerWidth());
 
-    if (blocks.size() == 1 &&
-        blocks[0].terminator().kind() == lir::LirTerminatorKind::ReturnInteger) {
+    if (blocks.size() == 1 && blocks[0].terminator().kind() == lir::TerminatorKind::ReturnInteger) {
       // Single entry block returning the integer constant.
       ::llvm::BasicBlock* entryBlock = ::llvm::BasicBlock::Create(*context, "entry", llvmFunction);
       const auto& returnConstant = blocks[0].terminator().returnIntegerValue();
@@ -219,7 +218,7 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
     }
 
     if (blocks.size() == 1 &&
-        blocks[0].terminator().kind() == lir::LirTerminatorKind::ReturnAggregate) {
+        blocks[0].terminator().kind() == lir::TerminatorKind::ReturnAggregate) {
       // Single entry block returning a multi-slot bundle as a literal struct:
       // build the struct value from zeroinitializer and insertvalue each slot at
       // its monotone index, then return it. The function's declared return type
@@ -296,7 +295,7 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
     }
     for (const auto& local : locals) { (void)slotFor(local.ordinal()); }
 
-    auto loadOperand = [&](const lir::LirOperand& operand,
+    auto loadOperand = [&](const lir::Operand& operand,
                            ::llvm::BasicBlock* target) -> ::llvm::Value* {
       if (operand.isConstant()) {
         auto* type = integerType(operand.constantValue().carrier().integerWidth());
@@ -313,27 +312,27 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
       for (const auto& statement : source.statements()) {
         auto* destination = slotFor(statement.destinationOrdinal());
         ::llvm::Value* stored = nullptr;
-        if (statement.kind() == lir::LirStatementKind::Compare) {
+        if (statement.kind() == lir::StatementKind::Compare) {
           ::llvm::Value* left = loadOperand(statement.left(), target);
           ::llvm::Value* right = loadOperand(statement.right(), target);
           ::llvm::CmpInst::Predicate predicate = ::llvm::CmpInst::ICMP_EQ;
           switch (statement.comparisonOp()) {
-            case lir::LirComparisonOp::Eq:
+            case lir::ComparisonOp::Eq:
               predicate = ::llvm::CmpInst::ICMP_EQ;
               break;
-            case lir::LirComparisonOp::Ne:
+            case lir::ComparisonOp::Ne:
               predicate = ::llvm::CmpInst::ICMP_NE;
               break;
-            case lir::LirComparisonOp::Lt:
+            case lir::ComparisonOp::Lt:
               predicate = ::llvm::CmpInst::ICMP_SLT;
               break;
-            case lir::LirComparisonOp::Le:
+            case lir::ComparisonOp::Le:
               predicate = ::llvm::CmpInst::ICMP_SLE;
               break;
-            case lir::LirComparisonOp::Gt:
+            case lir::ComparisonOp::Gt:
               predicate = ::llvm::CmpInst::ICMP_SGT;
               break;
-            case lir::LirComparisonOp::Ge:
+            case lir::ComparisonOp::Ge:
               predicate = ::llvm::CmpInst::ICMP_SGE;
               break;
           }
@@ -346,10 +345,10 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
       }
       const auto& terminator = source.terminator();
       switch (terminator.kind()) {
-        case lir::LirTerminatorKind::Goto:
+        case lir::TerminatorKind::Goto:
           ::llvm::BranchInst::Create(blockFor(terminator.gotoTarget()), target);
           break;
-        case lir::LirTerminatorKind::CondBranch: {
+        case lir::TerminatorKind::CondBranch: {
           auto* conditionSlot = slotFor(terminator.conditionOrdinal());
           auto* condition = new ::llvm::LoadInst(conditionSlot->getAllocatedType(), conditionSlot,
                                                  "cond", target);
@@ -357,7 +356,7 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
                                      blockFor(terminator.condFalseTarget()), condition, target);
           break;
         }
-        case lir::LirTerminatorKind::Call: {
+        case lir::TerminatorKind::Call: {
           // Call a module-local defined function, passing zero, one, or a bounded
           // vector of integer-constant arguments; store the integer result into
           // the destination slot, then branch to the normal target.
@@ -380,19 +379,19 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::LirModule& module) {
           ::llvm::BranchInst::Create(blockFor(terminator.callNormalTarget()), target);
           break;
         }
-        case lir::LirTerminatorKind::ReturnLocal: {
+        case lir::TerminatorKind::ReturnLocal: {
           auto* slot = slotFor(terminator.returnLocalOrdinal());
           auto* loaded = new ::llvm::LoadInst(slot->getAllocatedType(), slot, "value", target);
           ::llvm::ReturnInst::Create(*context, loaded, target);
           break;
         }
-        case lir::LirTerminatorKind::ReturnInteger: {
+        case lir::TerminatorKind::ReturnInteger: {
           ::llvm::Constant* value = ::llvm::ConstantInt::get(
               returnType, terminator.returnIntegerValue().bits(), /*IsSigned=*/false);
           ::llvm::ReturnInst::Create(*context, value, target);
           break;
         }
-        case lir::LirTerminatorKind::ReturnAggregate:
+        case lir::TerminatorKind::ReturnAggregate:
           // A multi-slot aggregate return is not lowered in this slice; the
           // shape gate above (isSupportedShape) rejects a function carrying it
           // before translation reaches here, so this arm is unreachable. The

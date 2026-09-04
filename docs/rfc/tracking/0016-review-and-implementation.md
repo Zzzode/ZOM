@@ -38,7 +38,7 @@ Three independent pre-edit reviews found the same blocking contract:
 - a public LIR/backend consumer could accept
   `VerifiedFinalTargetSelection`, while the downstream LIR design required a
   wrapper-owned operation;
-- importing the downstream `LirAlgebraRegistry` and translator contract into
+- importing the downstream `AlgebraRegistry` and translator contract into
   RFC 0016 would create a circular proposal dependency;
 - a runtime ABI manifest containing a semantic-context brand and physical
   function ABI keys could not exist before the final context and LIR ABI store;

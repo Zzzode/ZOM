@@ -14,8 +14,8 @@
 
 #pragma once
 
-#include "zc/core/vector.h"
 #include "compiler/lir/lir-store.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::lir {
 
@@ -25,22 +25,22 @@ namespace zomlang::compiler::lir {
 // stores non-interchangeable at compile time. These are pure data structures;
 // no live MIR consumer or lowering path constructs them in this slice.
 
-/// \brief Closed store of SSA carrier type records, keyed by `LirValueTypeId`.
-class LirValueTypeStore final {
+/// \brief Closed store of SSA carrier type records, keyed by `ValueTypeId`.
+class ValueTypeStore final {
 public:
-  LirValueTypeStore() = default;
-  ZC_DISALLOW_COPY(LirValueTypeStore);
-  LirValueTypeStore(LirValueTypeStore&&) = default;
-  LirValueTypeStore& operator=(LirValueTypeStore&&) = default;
+  ValueTypeStore() = default;
+  ZC_DISALLOW_COPY(ValueTypeStore);
+  ValueTypeStore(ValueTypeStore&&) = default;
+  ValueTypeStore& operator=(ValueTypeStore&&) = default;
 
   /// \brief Interns a carrier type, returning the existing handle when equal.
-  ZC_NODISCARD LirValueTypeId intern(const LirValueType& type);
+  ZC_NODISCARD ValueTypeId intern(const ValueType& type);
 
   ZC_NODISCARD size_t size() const noexcept { return records.size(); }
-  ZC_NODISCARD zc::Maybe<const LirValueType&> lookup(LirValueTypeId id) const noexcept;
+  ZC_NODISCARD zc::Maybe<const ValueType&> lookup(ValueTypeId id) const noexcept;
 
 private:
-  zc::Vector<LirValueType> records;
+  zc::Vector<ValueType> records;
 };
 
 /// \brief Closed store of storage-layout records, keyed by `LayoutId`.
@@ -97,22 +97,22 @@ private:
   zc::Vector<RuntimeSymbol> records;
 };
 
-/// \brief Closed store of source-location records, keyed by `LirSourceLocationId`.
-class LirSourceLocationStore final {
+/// \brief Closed store of source-location records, keyed by `SourceLocationId`.
+class SourceLocationStore final {
 public:
-  LirSourceLocationStore() = default;
-  ZC_DISALLOW_COPY(LirSourceLocationStore);
-  LirSourceLocationStore(LirSourceLocationStore&&) = default;
-  LirSourceLocationStore& operator=(LirSourceLocationStore&&) = default;
+  SourceLocationStore() = default;
+  ZC_DISALLOW_COPY(SourceLocationStore);
+  SourceLocationStore(SourceLocationStore&&) = default;
+  SourceLocationStore& operator=(SourceLocationStore&&) = default;
 
   /// \brief Interns a source location, returning the existing handle when equal.
-  ZC_NODISCARD LirSourceLocationId intern(const LirSourceLocation& location);
+  ZC_NODISCARD SourceLocationId intern(const SourceLocation& location);
 
   ZC_NODISCARD size_t size() const noexcept { return records.size(); }
-  ZC_NODISCARD zc::Maybe<const LirSourceLocation&> lookup(LirSourceLocationId id) const noexcept;
+  ZC_NODISCARD zc::Maybe<const SourceLocation&> lookup(SourceLocationId id) const noexcept;
 
 private:
-  zc::Vector<LirSourceLocation> records;
+  zc::Vector<SourceLocation> records;
 };
 
 }  // namespace zomlang::compiler::lir

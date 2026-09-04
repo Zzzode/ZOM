@@ -71,28 +71,28 @@ identity::Sha256Digest requireDigest(zc::ArrayPtr<const uint8_t> bytes) {
 
 }  // namespace
 
-LirAlgebraRevision LirAlgebraRevision::fromDigest(const identity::Sha256Digest& digest) noexcept {
-  return LirAlgebraRevision(digest);
+AlgebraRevision AlgebraRevision::fromDigest(const identity::Sha256Digest& digest) noexcept {
+  return AlgebraRevision(digest);
 }
 
-LirAlgebraRegistry LirAlgebraRegistry::empty() {
-  return LirAlgebraRegistry(zc::str(kDefaultSourceMirRevisionDomain));
+AlgebraRegistry AlgebraRegistry::empty() {
+  return AlgebraRegistry(zc::str(kDefaultSourceMirRevisionDomain));
 }
 
-zc::Maybe<LirAlgebraRegistry> LirAlgebraRegistry::withSourceDomain(zc::StringPtr domain) {
+zc::Maybe<AlgebraRegistry> AlgebraRegistry::withSourceDomain(zc::StringPtr domain) {
   if (!isAscii(domain)) { return zc::none; }
-  return LirAlgebraRegistry(zc::str(domain));
+  return AlgebraRegistry(zc::str(domain));
 }
 
-void LirAlgebraRegistry::addRecipe(zc::ArrayPtr<const uint8_t> canonicalRecord) {
+void AlgebraRegistry::addRecipe(zc::ArrayPtr<const uint8_t> canonicalRecord) {
   recipeRecords.add(zc::heapArray<uint8_t>(canonicalRecord));
 }
 
-void LirAlgebraRegistry::addGeneratedRecipe(zc::ArrayPtr<const uint8_t> canonicalRecord) {
+void AlgebraRegistry::addGeneratedRecipe(zc::ArrayPtr<const uint8_t> canonicalRecord) {
   generatedRecords.add(zc::heapArray<uint8_t>(canonicalRecord));
 }
 
-zc::Array<uint8_t> LirAlgebraCodec::encode(const LirAlgebraRegistry& registry) {
+zc::Array<uint8_t> AlgebraCodec::encode(const AlgebraRegistry& registry) {
   zc::Vector<uint8_t> preimage;
   append(preimage, "zom.lir-algebra"_zc);
   preimage.add(0);
@@ -102,9 +102,9 @@ zc::Array<uint8_t> LirAlgebraCodec::encode(const LirAlgebraRegistry& registry) {
   return preimage.releaseAsArray();
 }
 
-LirAlgebraRevision LirAlgebraCodec::compute(const LirAlgebraRegistry& registry) {
+AlgebraRevision AlgebraCodec::compute(const AlgebraRegistry& registry) {
   auto bytes = encode(registry);
-  return LirAlgebraRevision::fromDigest(requireDigest(bytes.asPtr()));
+  return AlgebraRevision::fromDigest(requireDigest(bytes.asPtr()));
 }
 
 }  // namespace zomlang::compiler::lir

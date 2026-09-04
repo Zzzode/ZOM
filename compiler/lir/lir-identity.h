@@ -20,9 +20,9 @@
 
 namespace zomlang::compiler::lir {
 
-// RFC 0021 defines `LirValueTypeId`, `LayoutId`, and `FnAbiId` as distinct
+// RFC 0021 defines `ValueTypeId`, `LayoutId`, and `FnAbiId` as distinct
 // store-local branded handles that cannot compare equal across stores, and
-// `RuntimeSymbolId` plus `LirSourceLocationId` as one-based deterministic
+// `RuntimeSymbolId` plus `SourceLocationId` as one-based deterministic
 // module-local identities where zero is invalid. Each identity below is its
 // own C++ type, so a handle issued by one store cannot be compared, assigned,
 // or passed where another store's handle is expected. Numeric slots never
@@ -30,26 +30,26 @@ namespace zomlang::compiler::lir {
 // records are the only persistent comparison keys.
 
 /// \brief Store-local branded identity of one SSA carrier type record.
-class LirValueTypeId final {
+class ValueTypeId final {
 public:
-  constexpr LirValueTypeId() noexcept = default;
+  constexpr ValueTypeId() noexcept = default;
 
   /// \brief Builds a valid identity from a store's one-based interning order.
   /// \param ordinal One-based value-type ordinal.
   /// \return The identity, or none for zero.
-  ZC_NODISCARD static zc::Maybe<LirValueTypeId> fromOrdinal(uint32_t ordinal) noexcept {
+  ZC_NODISCARD static zc::Maybe<ValueTypeId> fromOrdinal(uint32_t ordinal) noexcept {
     if (ordinal == 0) { return zc::none; }
-    return LirValueTypeId(ordinal);
+    return ValueTypeId(ordinal);
   }
 
   ZC_NODISCARD constexpr bool isValid() const noexcept { return value != 0; }
   ZC_NODISCARD constexpr uint32_t ordinal() const noexcept { return value; }
 
-  constexpr bool operator==(LirValueTypeId other) const noexcept { return value == other.value; }
-  constexpr bool operator!=(LirValueTypeId other) const noexcept { return !(*this == other); }
+  constexpr bool operator==(ValueTypeId other) const noexcept { return value == other.value; }
+  constexpr bool operator!=(ValueTypeId other) const noexcept { return !(*this == other); }
 
 private:
-  explicit constexpr LirValueTypeId(uint32_t ordinal) noexcept : value(ordinal) {}
+  explicit constexpr ValueTypeId(uint32_t ordinal) noexcept : value(ordinal) {}
 
   uint32_t value = 0;
 };
@@ -130,28 +130,26 @@ private:
 };
 
 /// \brief Module-local branded identity of one source-location record.
-class LirSourceLocationId final {
+class SourceLocationId final {
 public:
-  constexpr LirSourceLocationId() noexcept = default;
+  constexpr SourceLocationId() noexcept = default;
 
   /// \brief Builds a valid identity from a store's one-based interning order.
   /// \param ordinal One-based source-location ordinal.
   /// \return The identity, or none for zero.
-  ZC_NODISCARD static zc::Maybe<LirSourceLocationId> fromOrdinal(uint32_t ordinal) noexcept {
+  ZC_NODISCARD static zc::Maybe<SourceLocationId> fromOrdinal(uint32_t ordinal) noexcept {
     if (ordinal == 0) { return zc::none; }
-    return LirSourceLocationId(ordinal);
+    return SourceLocationId(ordinal);
   }
 
   ZC_NODISCARD constexpr bool isValid() const noexcept { return value != 0; }
   ZC_NODISCARD constexpr uint32_t ordinal() const noexcept { return value; }
 
-  constexpr bool operator==(LirSourceLocationId other) const noexcept {
-    return value == other.value;
-  }
-  constexpr bool operator!=(LirSourceLocationId other) const noexcept { return !(*this == other); }
+  constexpr bool operator==(SourceLocationId other) const noexcept { return value == other.value; }
+  constexpr bool operator!=(SourceLocationId other) const noexcept { return !(*this == other); }
 
 private:
-  explicit constexpr LirSourceLocationId(uint32_t ordinal) noexcept : value(ordinal) {}
+  explicit constexpr SourceLocationId(uint32_t ordinal) noexcept : value(ordinal) {}
 
   uint32_t value = 0;
 };

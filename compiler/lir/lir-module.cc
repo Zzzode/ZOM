@@ -16,86 +16,81 @@
 
 namespace zomlang::compiler::lir {
 
-zc::Maybe<LirIntegerConstant> LirIntegerConstant::from(LirValueType carrier,
-                                                       uint64_t bits) noexcept {
-  if (carrier.kind() != LirValueTypeKind::Integer) { return zc::none; }
-  return LirIntegerConstant(carrier, bits);
+zc::Maybe<IntegerConstant> IntegerConstant::from(ValueType carrier, uint64_t bits) noexcept {
+  if (carrier.kind() != ValueTypeKind::Integer) { return zc::none; }
+  return IntegerConstant(carrier, bits);
 }
 
-LirOperand LirOperand::constant(LirIntegerConstant value) noexcept { return LirOperand(value); }
-LirOperand LirOperand::localUse(uint32_t localOrdinal) noexcept { return LirOperand(localOrdinal); }
+Operand Operand::constant(IntegerConstant value) noexcept { return Operand(value); }
+Operand Operand::localUse(uint32_t localOrdinal) noexcept { return Operand(localOrdinal); }
 
 // A never-read placeholder constant for a localUse operand, which carries no
 // integer constant. The i1 carrier always exists, so `from` cannot fail.
-LirIntegerConstant LirOperand::fallbackConstant() noexcept {
-  auto carrier = LirValueType::integer(IntegerBitWidth::Bit1);
-  auto value = LirIntegerConstant::from(ZC_ASSERT_NONNULL(carrier), 0);
+IntegerConstant Operand::fallbackConstant() noexcept {
+  auto carrier = ValueType::integer(IntegerBitWidth::Bit1);
+  auto value = IntegerConstant::from(ZC_ASSERT_NONNULL(carrier), 0);
   return ZC_ASSERT_NONNULL(value);
 }
 
-LirStatement LirStatement::assign(uint32_t destinationOrdinal, LirOperand value) noexcept {
-  return LirStatement(LirStatementKind::Assign, destinationOrdinal, LirComparisonOp::Eq, value,
-                      value);
+Statement Statement::assign(uint32_t destinationOrdinal, Operand value) noexcept {
+  return Statement(StatementKind::Assign, destinationOrdinal, ComparisonOp::Eq, value, value);
 }
 
-LirStatement LirStatement::compare(uint32_t destinationOrdinal, LirComparisonOp op, LirOperand left,
-                                   LirOperand right) noexcept {
-  return LirStatement(LirStatementKind::Compare, destinationOrdinal, op, left, right);
+Statement Statement::compare(uint32_t destinationOrdinal, ComparisonOp op, Operand left,
+                             Operand right) noexcept {
+  return Statement(StatementKind::Compare, destinationOrdinal, op, left, right);
 }
 
 // A never-read placeholder constant for terminators that carry no integer
 // constant. The i1 carrier always exists, so `from` cannot fail here.
-LirIntegerConstant LirTerminator::fallbackConstant() noexcept {
-  auto carrier = LirValueType::integer(IntegerBitWidth::Bit1);
-  auto value = LirIntegerConstant::from(ZC_ASSERT_NONNULL(carrier), 0);
+IntegerConstant Terminator::fallbackConstant() noexcept {
+  auto carrier = ValueType::integer(IntegerBitWidth::Bit1);
+  auto value = IntegerConstant::from(ZC_ASSERT_NONNULL(carrier), 0);
   return ZC_ASSERT_NONNULL(value);
 }
 
-LirTerminator LirTerminator::returnInteger(LirIntegerConstant value) noexcept {
-  return LirTerminator(value);
+Terminator Terminator::returnInteger(IntegerConstant value) noexcept { return Terminator(value); }
+
+Terminator Terminator::gotoBlock(LirBlockId target) noexcept {
+  return Terminator(TerminatorKind::Goto, 0, target, target);
 }
 
-LirTerminator LirTerminator::gotoBlock(LirBlockId target) noexcept {
-  return LirTerminator(LirTerminatorKind::Goto, 0, target, target);
+Terminator Terminator::condBranch(uint32_t conditionOrdinal, LirBlockId trueTarget,
+                                  LirBlockId falseTarget) noexcept {
+  return Terminator(TerminatorKind::CondBranch, conditionOrdinal, trueTarget, falseTarget);
 }
 
-LirTerminator LirTerminator::condBranch(uint32_t conditionOrdinal, LirBlockId trueTarget,
-                                        LirBlockId falseTarget) noexcept {
-  return LirTerminator(LirTerminatorKind::CondBranch, conditionOrdinal, trueTarget, falseTarget);
+Terminator Terminator::returnLocal(uint32_t localOrdinal) noexcept {
+  return Terminator(TerminatorKind::ReturnLocal, localOrdinal, LirBlockId(), LirBlockId());
 }
 
-LirTerminator LirTerminator::returnLocal(uint32_t localOrdinal) noexcept {
-  return LirTerminator(LirTerminatorKind::ReturnLocal, localOrdinal, LirBlockId(), LirBlockId());
+Terminator Terminator::callFunction(uint32_t calleeIndex, uint32_t destinationOrdinal,
+                                    LirBlockId normalTarget) noexcept {
+  return Terminator(calleeIndex, destinationOrdinal, normalTarget);
 }
 
-LirTerminator LirTerminator::callFunction(uint32_t calleeIndex, uint32_t destinationOrdinal,
-                                          LirBlockId normalTarget) noexcept {
-  return LirTerminator(calleeIndex, destinationOrdinal, normalTarget);
+Terminator Terminator::callFunctionWithArgument(uint32_t calleeIndex, uint32_t destinationOrdinal,
+                                                IntegerConstant argument,
+                                                LirBlockId normalTarget) noexcept {
+  return Terminator(calleeIndex, destinationOrdinal, argument, normalTarget);
 }
 
-LirTerminator LirTerminator::callFunctionWithArgument(uint32_t calleeIndex,
-                                                      uint32_t destinationOrdinal,
-                                                      LirIntegerConstant argument,
-                                                      LirBlockId normalTarget) noexcept {
-  return LirTerminator(calleeIndex, destinationOrdinal, argument, normalTarget);
-}
-
-zc::Maybe<LirTerminator> LirTerminator::callFunctionWithArguments(
-    uint32_t calleeIndex, uint32_t destinationOrdinal, zc::Vector<LirIntegerConstant>&& arguments,
-    LirBlockId normalTarget) noexcept {
+zc::Maybe<Terminator> Terminator::callFunctionWithArguments(uint32_t calleeIndex,
+                                                            uint32_t destinationOrdinal,
+                                                            zc::Vector<IntegerConstant>&& arguments,
+                                                            LirBlockId normalTarget) noexcept {
   // A multi-argument call must carry at least one argument and stay within the
   // argument cap; an empty or over-cap vector is not a representable call. The
   // factory enforces the cap itself so no caller can construct an unbounded call.
   if (arguments.size() == 0 || arguments.size() > kMaxCallArguments) { return zc::none; }
-  return LirTerminator(calleeIndex, destinationOrdinal, zc::mv(arguments), normalTarget);
+  return Terminator(calleeIndex, destinationOrdinal, zc::mv(arguments), normalTarget);
 }
 
-zc::Maybe<LirTerminator> LirTerminator::returnAggregate(
-    zc::Vector<LirIntegerConstant>&& slots) noexcept {
+zc::Maybe<Terminator> Terminator::returnAggregate(zc::Vector<IntegerConstant>&& slots) noexcept {
   // A multi-slot direct return must carry at least one slot and stay within the
   // bundle cap; an empty or over-cap bundle is not a representable return.
   if (slots.size() == 0 || slots.size() > kMaxAggregateReturnSlots) { return zc::none; }
-  return LirTerminator(zc::mv(slots));
+  return Terminator(zc::mv(slots));
 }
 
 }  // namespace zomlang::compiler::lir

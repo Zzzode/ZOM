@@ -46,7 +46,7 @@ public:
   /// \param function Verified Built MIR function to lower.
   /// \param semanticTypes Session-owned type store that owns `function.resultType`.
   /// \return The lowered LIR module, or none when the function is outside the slice.
-  ZC_NODISCARD static zc::Maybe<LirModule> lowerScalarInitializer(
+  ZC_NODISCARD static zc::Maybe<Module> lowerScalarInitializer(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
   /// \brief Lowers one struct-local field-return function to a scalar LIR module.
@@ -64,7 +64,7 @@ public:
   /// \param function Verified Built MIR function to lower.
   /// \param semanticTypes Session-owned type store that owns `function.resultType`.
   /// \return The lowered LIR module, or none when the function is outside the slice.
-  ZC_NODISCARD static zc::Maybe<LirModule> lowerAggregateFieldInitializer(
+  ZC_NODISCARD static zc::Maybe<Module> lowerAggregateFieldInitializer(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
   /// \brief Lowers one whole-struct constant return function to LIR.
@@ -91,7 +91,7 @@ public:
   /// \param function Verified Built MIR function to lower.
   /// \param semanticTypes Session-owned type store that owns the element types.
   /// \return The lowered LIR module, or none when the function is outside the slice.
-  ZC_NODISCARD static zc::Maybe<LirModule> lowerAggregateReturn(
+  ZC_NODISCARD static zc::Maybe<Module> lowerAggregateReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
   /// \brief Lowers one four-block boolean-conditional return function to LIR.
@@ -109,7 +109,7 @@ public:
   /// \param function Verified Built MIR function to lower.
   /// \param semanticTypes Session-owned type store that owns the function types.
   /// \return The lowered LIR module, or none when the function is outside the slice.
-  ZC_NODISCARD static zc::Maybe<LirModule> lowerConditionalReturn(
+  ZC_NODISCARD static zc::Maybe<Module> lowerConditionalReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
   /// \brief Lowers one reducible four-block while-loop return function to LIR.
@@ -128,7 +128,7 @@ public:
   /// \param function Verified Built MIR function to lower.
   /// \param semanticTypes Session-owned type store that owns the function types.
   /// \return The lowered LIR module, or none when the function is outside the slice.
-  ZC_NODISCARD static zc::Maybe<LirModule> lowerLoopReturn(
+  ZC_NODISCARD static zc::Maybe<Module> lowerLoopReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
   /// \brief Lowers one four-block comparison-driven conditional return to LIR.
@@ -147,7 +147,7 @@ public:
   /// \param function Verified Built MIR function to lower.
   /// \param semanticTypes Session-owned type store that owns the function types.
   /// \return The lowered LIR module, or none when the function is outside the slice.
-  ZC_NODISCARD static zc::Maybe<LirModule> lowerEqualityConditionalReturn(
+  ZC_NODISCARD static zc::Maybe<Module> lowerEqualityConditionalReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
   /// \brief Lowers one same-module zero-argument direct call to a two-function
@@ -168,7 +168,7 @@ public:
   /// \param callee Verified callee MIR function (the scalar constant-return shape).
   /// \param semanticTypes Session-owned type store that owns the function types.
   /// \return The lowered two-function LIR module, or none when outside the slice.
-  ZC_NODISCARD static zc::Maybe<LirModule> lowerCallModule(
+  ZC_NODISCARD static zc::Maybe<Module> lowerCallModule(
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
 
@@ -189,7 +189,7 @@ public:
   /// \param callee Verified callee MIR function (single-parameter return shape).
   /// \param semanticTypes Session-owned type store that owns the function types.
   /// \return The lowered two-function LIR module, or none when outside the slice.
-  ZC_NODISCARD static zc::Maybe<LirModule> lowerCallModuleWithArgument(
+  ZC_NODISCARD static zc::Maybe<Module> lowerCallModuleWithArgument(
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
 
@@ -209,7 +209,7 @@ public:
   /// \param callee Verified callee MIR function (two-parameter return shape).
   /// \param semanticTypes Session-owned type store that owns the function types.
   /// \return The lowered two-function LIR module, or none when outside the slice.
-  ZC_NODISCARD static zc::Maybe<LirModule> lowerCallModuleWithArguments(
+  ZC_NODISCARD static zc::Maybe<Module> lowerCallModuleWithArguments(
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
 
@@ -233,7 +233,7 @@ public:
   /// \param leaf Verified standalone MIR function (scalar constant-return shape).
   /// \param semanticTypes Session-owned type store that owns the function types.
   /// \return The lowered three-function LIR module, or none when outside the slice.
-  ZC_NODISCARD static zc::Maybe<LirModule> lowerCallModuleWithLeaf(
+  ZC_NODISCARD static zc::Maybe<Module> lowerCallModuleWithLeaf(
       const mir::MirFunction& caller, const mir::MirFunction& callee, const mir::MirFunction& leaf,
       const type::SemanticTypeStore& semanticTypes);
 };

@@ -1212,7 +1212,7 @@ private:
     // aggregate field-return slices fold to the reserved no-argument `zom.module_init`
     // entry the runtime `_start` calls. Every other shape stays fail-closed here,
     // and `zomc run` remains gated on the host-compatibility path regardless.
-    zc::Maybe<lir::LirModule> lir;
+    zc::Maybe<lir::Module> lir;
     ZC_IF_SOME(types, semanticTypes) {
       if (functions.size() == 1) {
         if (functions[0].kind == mir::MirFunctionKind::ModuleInitializer) {

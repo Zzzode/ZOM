@@ -29,17 +29,17 @@ Id requireOrdinal(uint32_t ordinal) {
 
 }  // namespace
 
-LirValueTypeId LirValueTypeStore::intern(const LirValueType& type) {
+ValueTypeId ValueTypeStore::intern(const ValueType& type) {
   for (size_t index = 0; index < records.size(); ++index) {
     if (records[index] == type) {
-      return requireOrdinal<LirValueTypeId>(static_cast<uint32_t>(index + 1));
+      return requireOrdinal<ValueTypeId>(static_cast<uint32_t>(index + 1));
     }
   }
   records.add(type);
-  return requireOrdinal<LirValueTypeId>(static_cast<uint32_t>(records.size()));
+  return requireOrdinal<ValueTypeId>(static_cast<uint32_t>(records.size()));
 }
 
-zc::Maybe<const LirValueType&> LirValueTypeStore::lookup(LirValueTypeId id) const noexcept {
+zc::Maybe<const ValueType&> ValueTypeStore::lookup(ValueTypeId id) const noexcept {
   if (!id.isValid() || id.ordinal() > records.size()) { return zc::none; }
   return records[id.ordinal() - 1];
 }
@@ -87,18 +87,17 @@ zc::Maybe<const RuntimeSymbol&> RuntimeSymbolStore::lookup(RuntimeSymbolId id) c
   return records[id.ordinal() - 1];
 }
 
-LirSourceLocationId LirSourceLocationStore::intern(const LirSourceLocation& location) {
+SourceLocationId SourceLocationStore::intern(const SourceLocation& location) {
   for (size_t index = 0; index < records.size(); ++index) {
     if (records[index] == location) {
-      return requireOrdinal<LirSourceLocationId>(static_cast<uint32_t>(index + 1));
+      return requireOrdinal<SourceLocationId>(static_cast<uint32_t>(index + 1));
     }
   }
   records.add(location);
-  return requireOrdinal<LirSourceLocationId>(static_cast<uint32_t>(records.size()));
+  return requireOrdinal<SourceLocationId>(static_cast<uint32_t>(records.size()));
 }
 
-zc::Maybe<const LirSourceLocation&> LirSourceLocationStore::lookup(
-    LirSourceLocationId id) const noexcept {
+zc::Maybe<const SourceLocation&> SourceLocationStore::lookup(SourceLocationId id) const noexcept {
   if (!id.isValid() || id.ordinal() > records.size()) { return zc::none; }
   return records[id.ordinal() - 1];
 }

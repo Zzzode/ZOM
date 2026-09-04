@@ -16,9 +16,9 @@
 
 #include <cstdint>
 
+#include "compiler/lir/lir-identity.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "compiler/lir/lir-identity.h"
 
 namespace zomlang::compiler::lir {
 
@@ -27,8 +27,8 @@ namespace zomlang::compiler::lir {
 // function-ABI, runtime-symbol, and source-location stores. Closed enum tags
 // begin at 0x01 in declaration order, matching the canonical encoding rule.
 
-/// \brief Closed SSA carrier kind (RFC 0021 `LirValueType`).
-enum class LirValueTypeKind : uint8_t {
+/// \brief Closed SSA carrier kind (RFC 0021 `ValueType`).
+enum class ValueTypeKind : uint8_t {
   Integer = 0x01,
   Float = 0x02,
   Pointer = 0x03,
@@ -54,25 +54,25 @@ enum class FloatFormat : uint8_t {
 /// `Integer` has no signedness and `Pointer` is opaque, carrying only an
 /// address space, exactly as RFC 0021 requires. Construction fails closed on an
 /// out-of-domain width or format.
-class LirValueType final {
+class ValueType final {
 public:
   /// \brief Builds an integer carrier of the given closed bit width.
-  ZC_NODISCARD static zc::Maybe<LirValueType> integer(IntegerBitWidth width) noexcept;
+  ZC_NODISCARD static zc::Maybe<ValueType> integer(IntegerBitWidth width) noexcept;
   /// \brief Builds a floating-point carrier of the given closed format.
-  ZC_NODISCARD static zc::Maybe<LirValueType> floating(FloatFormat format) noexcept;
+  ZC_NODISCARD static zc::Maybe<ValueType> floating(FloatFormat format) noexcept;
   /// \brief Builds an opaque pointer carrier in the given address space.
-  ZC_NODISCARD static LirValueType pointer(uint32_t addressSpace) noexcept;
+  ZC_NODISCARD static ValueType pointer(uint32_t addressSpace) noexcept;
 
-  ZC_NODISCARD LirValueTypeKind kind() const noexcept { return kindValue; }
+  ZC_NODISCARD ValueTypeKind kind() const noexcept { return kindValue; }
   ZC_NODISCARD IntegerBitWidth integerWidth() const noexcept { return integerValue; }
   ZC_NODISCARD FloatFormat floatFormat() const noexcept { return floatValue; }
   ZC_NODISCARD uint32_t pointerAddressSpace() const noexcept { return addressSpaceValue; }
 
-  bool operator==(const LirValueType& other) const noexcept;
-  bool operator!=(const LirValueType& other) const noexcept { return !(*this == other); }
+  bool operator==(const ValueType& other) const noexcept;
+  bool operator!=(const ValueType& other) const noexcept { return !(*this == other); }
 
 private:
-  LirValueTypeKind kindValue = LirValueTypeKind::Integer;
+  ValueTypeKind kindValue = ValueTypeKind::Integer;
   IntegerBitWidth integerValue = IntegerBitWidth::Bit1;
   FloatFormat floatValue = FloatFormat::Binary32;
   uint32_t addressSpaceValue = 0;
@@ -91,22 +91,22 @@ public:
   /// \param carrier Store-local carrier occupying the slot.
   /// \return The layout, or none for an invalid alignment or carrier.
   ZC_NODISCARD static zc::Maybe<StorageLayout> scalar(uint64_t sizeBytes, uint32_t abiAlignment,
-                                                      LirValueTypeId carrier) noexcept;
+                                                      ValueTypeId carrier) noexcept;
 
   ZC_NODISCARD uint64_t sizeBytes() const noexcept { return sizeValue; }
   ZC_NODISCARD uint32_t abiAlignment() const noexcept { return alignmentValue; }
-  ZC_NODISCARD LirValueTypeId carrier() const noexcept { return carrierValue; }
+  ZC_NODISCARD ValueTypeId carrier() const noexcept { return carrierValue; }
 
   bool operator==(const StorageLayout& other) const noexcept;
   bool operator!=(const StorageLayout& other) const noexcept { return !(*this == other); }
 
 private:
-  StorageLayout(uint64_t sizeBytes, uint32_t abiAlignment, LirValueTypeId carrier) noexcept
+  StorageLayout(uint64_t sizeBytes, uint32_t abiAlignment, ValueTypeId carrier) noexcept
       : sizeValue(sizeBytes), alignmentValue(abiAlignment), carrierValue(carrier) {}
 
   uint64_t sizeValue = 0;
   uint32_t alignmentValue = 0;
-  LirValueTypeId carrierValue;
+  ValueTypeId carrierValue;
 };
 
 /// \brief One immutable function-ABI record (RFC 0021 `FnAbi`).
@@ -120,14 +120,14 @@ public:
   FnAbi() = default;
 
   /// \brief Appends a return carrier in physical order.
-  void addReturnCarrier(LirValueTypeId carrier);
+  void addReturnCarrier(ValueTypeId carrier);
   /// \brief Appends a parameter carrier in physical order.
-  void addParameterCarrier(LirValueTypeId carrier);
+  void addParameterCarrier(ValueTypeId carrier);
 
-  ZC_NODISCARD zc::ArrayPtr<const LirValueTypeId> returnCarriers() const noexcept {
+  ZC_NODISCARD zc::ArrayPtr<const ValueTypeId> returnCarriers() const noexcept {
     return returnValues.asPtr();
   }
-  ZC_NODISCARD zc::ArrayPtr<const LirValueTypeId> parameterCarriers() const noexcept {
+  ZC_NODISCARD zc::ArrayPtr<const ValueTypeId> parameterCarriers() const noexcept {
     return parameterValues.asPtr();
   }
 
@@ -137,8 +137,8 @@ public:
   bool operator!=(const FnAbi& other) const noexcept { return !(*this == other); }
 
 private:
-  zc::Vector<LirValueTypeId> returnValues;
-  zc::Vector<LirValueTypeId> parameterValues;
+  zc::Vector<ValueTypeId> returnValues;
+  zc::Vector<ValueTypeId> parameterValues;
 };
 
 /// \brief One immutable imported runtime-symbol record (RFC 0021 runtime ABI).
@@ -167,25 +167,24 @@ private:
   FnAbiId fnAbiValue;
 };
 
-/// \brief One immutable source-location record (RFC 0021 `LirSourceLocation`).
+/// \brief One immutable source-location record (RFC 0021 `SourceLocation`).
 ///
 /// This foundation slice retains the byte span; the source file key and
 /// inlining chain are the next RFC 0021 provenance step.
-class LirSourceLocation final {
+class SourceLocation final {
 public:
   /// \brief Builds a source location from a half-open byte span.
   /// \return The location, or none when the end precedes the start.
-  ZC_NODISCARD static zc::Maybe<LirSourceLocation> from(uint64_t byteStart,
-                                                        uint64_t byteEnd) noexcept;
+  ZC_NODISCARD static zc::Maybe<SourceLocation> from(uint64_t byteStart, uint64_t byteEnd) noexcept;
 
   ZC_NODISCARD uint64_t byteStart() const noexcept { return startValue; }
   ZC_NODISCARD uint64_t byteEnd() const noexcept { return endValue; }
 
-  bool operator==(const LirSourceLocation& other) const noexcept;
-  bool operator!=(const LirSourceLocation& other) const noexcept { return !(*this == other); }
+  bool operator==(const SourceLocation& other) const noexcept;
+  bool operator!=(const SourceLocation& other) const noexcept { return !(*this == other); }
 
 private:
-  LirSourceLocation(uint64_t byteStart, uint64_t byteEnd) noexcept
+  SourceLocation(uint64_t byteStart, uint64_t byteEnd) noexcept
       : startValue(byteStart), endValue(byteEnd) {}
 
   uint64_t startValue = 0;

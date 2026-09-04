@@ -45,44 +45,44 @@ bool isFloatFormat(FloatFormat format) noexcept {
 
 }  // namespace
 
-zc::Maybe<LirValueType> LirValueType::integer(IntegerBitWidth width) noexcept {
+zc::Maybe<ValueType> ValueType::integer(IntegerBitWidth width) noexcept {
   if (!isIntegerBitWidth(width)) { return zc::none; }
-  LirValueType type;
-  type.kindValue = LirValueTypeKind::Integer;
+  ValueType type;
+  type.kindValue = ValueTypeKind::Integer;
   type.integerValue = width;
   return type;
 }
 
-zc::Maybe<LirValueType> LirValueType::floating(FloatFormat format) noexcept {
+zc::Maybe<ValueType> ValueType::floating(FloatFormat format) noexcept {
   if (!isFloatFormat(format)) { return zc::none; }
-  LirValueType type;
-  type.kindValue = LirValueTypeKind::Float;
+  ValueType type;
+  type.kindValue = ValueTypeKind::Float;
   type.floatValue = format;
   return type;
 }
 
-LirValueType LirValueType::pointer(uint32_t addressSpace) noexcept {
-  LirValueType type;
-  type.kindValue = LirValueTypeKind::Pointer;
+ValueType ValueType::pointer(uint32_t addressSpace) noexcept {
+  ValueType type;
+  type.kindValue = ValueTypeKind::Pointer;
   type.addressSpaceValue = addressSpace;
   return type;
 }
 
-bool LirValueType::operator==(const LirValueType& other) const noexcept {
+bool ValueType::operator==(const ValueType& other) const noexcept {
   if (kindValue != other.kindValue) { return false; }
   switch (kindValue) {
-    case LirValueTypeKind::Integer:
+    case ValueTypeKind::Integer:
       return integerValue == other.integerValue;
-    case LirValueTypeKind::Float:
+    case ValueTypeKind::Float:
       return floatValue == other.floatValue;
-    case LirValueTypeKind::Pointer:
+    case ValueTypeKind::Pointer:
       return addressSpaceValue == other.addressSpaceValue;
   }
   return false;
 }
 
 zc::Maybe<StorageLayout> StorageLayout::scalar(uint64_t sizeBytes, uint32_t abiAlignment,
-                                               LirValueTypeId carrier) noexcept {
+                                               ValueTypeId carrier) noexcept {
   if (!isPowerOfTwo(abiAlignment) || !carrier.isValid()) { return zc::none; }
   return StorageLayout(sizeBytes, abiAlignment, carrier);
 }
@@ -92,8 +92,8 @@ bool StorageLayout::operator==(const StorageLayout& other) const noexcept {
          carrierValue == other.carrierValue;
 }
 
-void FnAbi::addReturnCarrier(LirValueTypeId carrier) { returnValues.add(carrier); }
-void FnAbi::addParameterCarrier(LirValueTypeId carrier) { parameterValues.add(carrier); }
+void FnAbi::addReturnCarrier(ValueTypeId carrier) { returnValues.add(carrier); }
+void FnAbi::addParameterCarrier(ValueTypeId carrier) { parameterValues.add(carrier); }
 
 FnAbi FnAbi::clone() const {
   FnAbi copy;
@@ -127,13 +127,12 @@ bool RuntimeSymbol::operator==(const RuntimeSymbol& other) const noexcept {
   return fnAbiValue == other.fnAbiValue && nameValue == other.nameValue;
 }
 
-zc::Maybe<LirSourceLocation> LirSourceLocation::from(uint64_t byteStart,
-                                                     uint64_t byteEnd) noexcept {
+zc::Maybe<SourceLocation> SourceLocation::from(uint64_t byteStart, uint64_t byteEnd) noexcept {
   if (byteEnd < byteStart) { return zc::none; }
-  return LirSourceLocation(byteStart, byteEnd);
+  return SourceLocation(byteStart, byteEnd);
 }
 
-bool LirSourceLocation::operator==(const LirSourceLocation& other) const noexcept {
+bool SourceLocation::operator==(const SourceLocation& other) const noexcept {
   return startValue == other.startValue && endValue == other.endValue;
 }
 
