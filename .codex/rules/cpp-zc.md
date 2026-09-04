@@ -162,14 +162,22 @@ no intra-subsystem dependencies (`identity/brand.h`) belongs at the top level.
 Analysis libraries return **typed failures** and must not depend on `DiagnosticEngine`.
 A dedicated adapter translates those failures into `DiagID` diagnostics at the boundary.
 
-This is not stylistic. RFC 0017 requires that incremental query providers do not emit while
-running — a provider that could emit would produce different output on a cache hit than on
-a cold run. The typed-failure layer is what keeps providers pure. It also makes analysis
-testable by asserting a value instead of grepping rendered English, and makes a missed
-failure case a compile error rather than a silent omission.
+This is not stylistic. Emitting inside a memoized computation fails in two independent
+ways. First, the emitting body does not execute on a cache hit, so the diagnostic appears
+on a cold run and silently disappears on every reuse — RFC 0017 requires providers to stay
+pure for exactly this reason. Second, a cached artifact that carries a diagnostic cannot be
+reused at all: the cache cannot know whether an unrelated edit repairs the error, so it
+must discard the entry and recompute every parent. Roslyn documents the second effect for
+its incremental parser and moves such diagnostics into a later phase to protect IDE typing
+latency. The typed-failure layer avoids both. It also makes analysis testable by asserting
+a value instead of grepping rendered English, and makes a missed failure case a compile
+error rather than a silent omission.
 
 Straight-line passes that are not query providers — the lexer and parser — correctly emit
-`DiagID` directly. The distinction is memoization, not subsystem seniority.
+`DiagID` directly. The distinction is memoization, not subsystem seniority, which makes the
+exemption conditional: it holds exactly as long as those passes recompute from scratch.
+Incremental reparse over a retained syntax tree puts the parser under both failures above
+and requires the same typed-failure treatment.
 
 All `ZOMxxxx` codes live in exactly one place: `compiler/diagnostics/defs/*.def`. A
 subsystem must never declare a parallel enum that restates those numeric values. To give a
