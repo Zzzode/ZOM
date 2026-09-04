@@ -100,6 +100,82 @@ before it escapes the owning scope.
 | Macros from zc | `ZC_` prefix | `ZC_IF_SOME`, `ZC_LIKELY` |
 | ZOM-specific macros | `ZOM_` prefix | `ZOM_DIAGNOSTIC`, `ZOM_ASSERT` |
 
+### A Type Must Not Repeat Its Namespace
+
+The namespace already qualifies the name. Repeating it writes the qualifier twice at
+every use site.
+
+```cpp
+namespace zomlang::compiler::mir {
+class Function;      // correct  -> mir::Function
+class MirFunction;   // rejected -> mir::MirFunction
+}
+```
+
+The one exception: a prefix is **semantic, not stutter, when the type lives outside its
+matching namespace**, because there the prefix is the only thing distinguishing it. These
+are the current exceptions, and they are exceptions precisely because stripping them
+produces a collision or destroys a distinction:
+
+| Type | Why the prefix stays |
+|---|---|
+| `ir::{FrontendHandoff,Hir,Mir,Lir,Backend,Ir}FailureSite` | A deliberate parallel family in one namespace; stripping yields three identical `FailureSite` |
+| `diagnostics::{Identity,Binder}DiagnosticEmitter` | Both would strip onto the real `diagnostics::DiagnosticEmitter` |
+| `binder::IdentitySyntaxSite*` | `Identity` names the analysed domain, not the owning namespace |
+| `ir::IdentityInvariant*` | Same |
+| `checker::checked::CheckerRecoveryClass` | Would collide with `checker::inference::RecoveryClass` |
+
+Adding to this table requires the same justification: name the collision or the lost
+distinction.
+
+### A File Must Not Repeat Its Directory
+
+`ir/failure.h`, not `ir/ir-failure.h`. `query/database.h`, not `query/query-database.h`.
+The same reasoning as above — the path already says it.
+
+---
+
+## Source Layout
+
+A subsystem directory that grows past roughly a dozen files groups into subdirectories.
+Group by **dependency edge, not by name prefix**: files belong together when they include
+each other or share a dependency signature, which is frequently not what their filenames
+suggest.
+
+Rules that hold regardless of size:
+
+- Each subsystem places its diagnostic adapter in `<subsystem>/diagnostics/`.
+- Subdirectories are pure path prefixes. They need no `CMakeLists.txt` and no
+  `add_subdirectory` — the parent lists `${CMAKE_CURRENT_SOURCE_DIR}/<subdir>/<file>.cc`.
+- Keep CMake source lists **explicit**. Several architecture gates read these files as text
+  and assert exact paths, so a `GLOB_RECURSE` conversion silently disarms them.
+- Includes are repo-root-relative (`#include "compiler/ir/target/registry.h"`), never
+  relative. Moving a file is then a mechanical string rewrite.
+
+When a file resists every group, leave it flat rather than forcing it. Root vocabulary with
+no intra-subsystem dependencies (`identity/brand.h`) belongs at the top level.
+
+---
+
+## Diagnostics Layering
+
+Analysis libraries return **typed failures** and must not depend on `DiagnosticEngine`.
+A dedicated adapter translates those failures into `DiagID` diagnostics at the boundary.
+
+This is not stylistic. RFC 0017 requires that incremental query providers do not emit while
+running — a provider that could emit would produce different output on a cache hit than on
+a cold run. The typed-failure layer is what keeps providers pure. It also makes analysis
+testable by asserting a value instead of grepping rendered English, and makes a missed
+failure case a compile error rather than a silent omission.
+
+Straight-line passes that are not query providers — the lexer and parser — correctly emit
+`DiagID` directly. The distinction is memoization, not subsystem seniority.
+
+All `ZOMxxxx` codes live in exactly one place: `compiler/diagnostics/defs/*.def`. A
+subsystem must never declare a parallel enum that restates those numeric values. To give a
+subsystem its own vocabulary, wrap `DiagID` in a newtype with a private constructor and
+generated factories, as `compiler/checker/diagnostics/checker-diagnostic-id.h` does.
+
 ---
 
 ## `std::` Usage
