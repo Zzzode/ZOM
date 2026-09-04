@@ -3,7 +3,7 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "compiler/checker/borrow/borrow-interface-diagnostic-adapter.h"
+#include "compiler/checker/diagnostics/borrow-interface-diagnostic-adapter.h"
 
 #include "compiler/diagnostics/core/diagnostic-engine.h"
 

@@ -1,12 +1,12 @@
 set(DRIVER_SRC
   session/compiler-session.cc
+  diagnostics/module-interface-diagnostic-adapter.cc
   graph/crate-graph.cc
   graph/module-discovery.cc
   interface/borrow-evidence.cc
   interface/coherence-builder.cc
   interface/imported-signature-view-projector.cc
   interface/module-interface.cc
-  interface/module-interface-diagnostic-adapter.cc
   query/binding/active-definition-authority-query.cc
   query/binding/active-definition-authority-session.cc
   query/binding/active-identity-membership-query.cc

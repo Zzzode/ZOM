@@ -28,10 +28,10 @@ IMPORTED_VIEW_PROJECTOR_SOURCE = Path(
 MODULE_INTERFACE_HEADER = Path("compiler/driver/interface/module-interface.h")
 MODULE_INTERFACE_SOURCE = Path("compiler/driver/interface/module-interface.cc")
 MODULE_INTERFACE_DIAGNOSTIC_HEADER = Path(
-    "compiler/driver/interface/module-interface-diagnostic-adapter.h"
+    "compiler/driver/diagnostics/module-interface-diagnostic-adapter.h"
 )
 MODULE_INTERFACE_DIAGNOSTIC_SOURCE = Path(
-    "compiler/driver/interface/module-interface-diagnostic-adapter.cc"
+    "compiler/driver/diagnostics/module-interface-diagnostic-adapter.cc"
 )
 BORROW_EVIDENCE_HEADER = Path("compiler/driver/interface/borrow-evidence.h")
 BORROW_EVIDENCE_SOURCE = Path("compiler/driver/interface/borrow-evidence.cc")
@@ -209,13 +209,13 @@ EXPECTED_DRIVER_FILES = {
 DRIVER_BUILD_MARKER = (
     "set(DRIVER_SRC\n"
     "  session/compiler-session.cc\n"
+    "  diagnostics/module-interface-diagnostic-adapter.cc\n"
     "  graph/crate-graph.cc\n"
     "  graph/module-discovery.cc\n"
     "  interface/borrow-evidence.cc\n"
     "  interface/coherence-builder.cc\n"
     "  interface/imported-signature-view-projector.cc\n"
     "  interface/module-interface.cc\n"
-    "  interface/module-interface-diagnostic-adapter.cc\n"
     "  query/binding/active-definition-authority-query.cc\n"
     "  query/binding/active-definition-authority-session.cc\n"
     "  query/binding/active-identity-membership-query.cc\n"

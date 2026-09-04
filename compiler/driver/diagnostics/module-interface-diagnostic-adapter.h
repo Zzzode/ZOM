@@ -5,9 +5,9 @@
 
 #pragma once
 
-#include "zc/core/array.h"
 #include "compiler/binder/graph/parsed-module.h"
 #include "compiler/driver/interface/module-interface.h"
+#include "zc/core/array.h"
 
 namespace zomlang::compiler::diagnostics {
 class DiagnosticEngine;

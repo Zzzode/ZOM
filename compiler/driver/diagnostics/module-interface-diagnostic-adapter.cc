@@ -3,11 +3,11 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "compiler/driver/interface/module-interface-diagnostic-adapter.h"
+#include "compiler/driver/diagnostics/module-interface-diagnostic-adapter.h"
 
-#include "zc/core/string.h"
 #include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/diagnostics/core/diagnostic.h"
+#include "zc/core/string.h"
 
 namespace zomlang::compiler::driver {
 namespace {
