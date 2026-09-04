@@ -9,7 +9,7 @@
 
 #include "compiler/checker/inference/checked-facts.h"
 #include "compiler/hir/hir-node-id.h"
-#include "compiler/identity/identity-invariant.h"
+#include "compiler/identity/diagnostics/identity-invariant.h"
 #include "compiler/identity/semantic/context-fingerprint.h"
 #include "compiler/ir/ir-identity.h"
 #include "zc/core/array.h"

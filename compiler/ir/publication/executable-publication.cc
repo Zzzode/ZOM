@@ -14,7 +14,7 @@
 
 #include "compiler/ir/publication/executable-publication.h"
 
-#include "compiler/identity/identity-invariant.h"
+#include "compiler/identity/diagnostics/identity-invariant.h"
 #include "compiler/identity/semantic/context-fingerprint.h"
 #include "compiler/ir/link/link-publication-internal.h"
 #include "compiler/ir/publication/executable-inspector.h"

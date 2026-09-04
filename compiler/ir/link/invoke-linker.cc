@@ -15,7 +15,7 @@
 #include "compiler/ir/link/invoke-linker.h"
 //
 #include "compiler/identity/crypto/sha256.h"
-#include "compiler/identity/identity-invariant.h"
+#include "compiler/identity/diagnostics/identity-invariant.h"
 #include "compiler/identity/semantic/context-fingerprint.h"
 #include "compiler/ir/link/invoke-linker-internal.h"
 #include "compiler/ir/link/link-publication-internal.h"

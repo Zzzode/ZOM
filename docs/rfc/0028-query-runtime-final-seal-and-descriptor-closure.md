@@ -1487,7 +1487,7 @@ The production descriptor and verifier families are:
 - `compiler/binder/surface/module-body-syntax-verifier.cc`;
 - `compiler/binder/stable/candidate/producer.{h,cc}`;
 - `compiler/binder/stable/candidate/verifier.{h,cc}`;
-- `compiler/identity/source-query-input.{h,cc}`;
+- `compiler/identity/source/source-query-input.{h,cc}`;
 - `compiler/parser/parse-source-query.{h,cc}`;
 - `compiler/parser/query/parse-source-query-verifier.cc`;
 - `compiler/driver/active-definition-authority-query.{h,cc}`;
@@ -1917,7 +1917,7 @@ The review partitions have these exact file sets:
 | `R28-13B` | `compiler/query/query-database.h`; `compiler/query/query-database.cc` |
 | `R28-13C` | `compiler/query/query-descriptor-schema.def`; `compiler/query/CMakeLists.txt` |
 | `R28-13C1` | `scripts/generate-query-descriptor-schema.py`; `scripts/check-query-descriptor-architecture.py` |
-| `R28-13D.1` | `compiler/identity/source-query-input.{h,cc}`; `compiler/driver/active-definition-authority-query.{h,cc}`; `compiler/driver/query/binding/active-definition-authority-session.cc` |
+| `R28-13D.1` | `compiler/identity/source/source-query-input.{h,cc}`; `compiler/driver/active-definition-authority-query.{h,cc}`; `compiler/driver/query/binding/active-definition-authority-session.cc` |
 | `R28-13D.2` | `compiler/driver/core-library-query-provider.{h,cc}`; `compiler/driver/core-library-query-verifier.{h,cc}` |
 | `R28-13D.3` | `compiler/driver/incremental-binding-query-adapter.{h,cc}`; `compiler/driver/incremental-module-resolution-query.{h,cc}`; `compiler/driver/incremental-package-graph-query-input.{h,cc}` |
 | `R28-13D.4` | `compiler/driver/module-graph-query-input.{h,cc}`; `compiler/driver/module-graph-query.{h,cc}`; `compiler/driver/session/compiler-session.cc` |

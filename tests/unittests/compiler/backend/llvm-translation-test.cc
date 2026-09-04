@@ -20,7 +20,7 @@
 
 #include "compiler/backend/llvm/llvm-translator.h"
 #include "compiler/checker/facts/signature-facts.h"
-#include "compiler/identity/source-snapshot.h"
+#include "compiler/identity/source/source-snapshot.h"
 #include "compiler/lir/lir-module.h"
 #include "compiler/lir/lir-store.h"
 #include "compiler/lir/mir-to-lir.h"

@@ -5,11 +5,11 @@
 
 #include "compiler/driver/query/module-graph/incremental-module-resolution-query.h"
 
+#include "compiler/basic/thread-pool.h"
+#include "compiler/identity/source/source-snapshot.h"
+#include "tests/unittests/compiler/test-semantic-identities.h"
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
-#include "compiler/basic/thread-pool.h"
-#include "compiler/identity/source-snapshot.h"
-#include "tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::driver::incremental_module_resolution_query {
 namespace {
@@ -41,8 +41,8 @@ identity::SemanticContextBrand context(identity::SemanticContextFactory& factory
   return ZC_REQUIRE_NONNULL(result);
 }
 
-identity::IdentityInternerSet identityAuthorities(
-    identity::SemanticContextFactory& factory, identity::SemanticContextBrand owner) {
+identity::IdentityInternerSet identityAuthorities(identity::SemanticContextFactory& factory,
+                                                  identity::SemanticContextBrand owner) {
   auto result = identity::IdentityInternerSet::create(factory, owner);
   return zc::mv(ZC_REQUIRE_NONNULL(result));
 }

@@ -5,15 +5,15 @@
 
 #pragma once
 
+#include "compiler/driver/package/package-compilation-request.h"
+#include "compiler/identity/source/source-query-input.h"
+#include "compiler/identity/source/source-snapshot.h"
+#include "compiler/query/query-database.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/debug.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "compiler/driver/package/package-compilation-request.h"
-#include "compiler/identity/source-query-input.h"
-#include "compiler/identity/source-snapshot.h"
-#include "compiler/query/query-database.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {
 

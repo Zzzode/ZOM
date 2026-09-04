@@ -5,24 +5,24 @@
 
 #include "compiler/driver/core/query.h"
 
-#include "zc/core/encoding.h"
-#include "zc/core/map.h"
-#include "compiler/binder/surface/module-body-syntax.h"
 #include "compiler/binder/graph/module-skeleton-query.h"
 #include "compiler/binder/stable/stable-binding-codec.h"
+#include "compiler/binder/surface/module-body-syntax.h"
 #include "compiler/checker/checker-identity-authority.h"
-#include "compiler/driver/core/verifier.h"
 #include "compiler/driver/core/marker-authority.h"
 #include "compiler/driver/core/role-seed-failure.h"
 #include "compiler/driver/core/signature.h"
-#include "compiler/driver/query/module-graph/materialized-module-graph-query.h"
-#include "compiler/driver/query/module-graph/module-graph-query-input.h"
+#include "compiler/driver/core/verifier.h"
+#include "compiler/driver/package/canonical-package-compilation-request.h"
 #include "compiler/driver/query/binding/named-identity-inventory-query.h"
 #include "compiler/driver/query/binding/named-item-query.h"
-#include "compiler/driver/package/canonical-package-compilation-request.h"
+#include "compiler/driver/query/module-graph/materialized-module-graph-query.h"
+#include "compiler/driver/query/module-graph/module-graph-query-input.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
-#include "compiler/identity/source-snapshot.h"
+#include "compiler/identity/source/source-snapshot.h"
+#include "zc/core/encoding.h"
+#include "zc/core/map.h"
 
 namespace zomlang::compiler::driver::core_library_query {
 namespace {
@@ -1067,8 +1067,7 @@ zc::Array<uint8_t> CoreModuleGraphRecord::encodeCanonical() const {
 
 zc::Array<uint8_t> CoreModuleGraph::encodeKey(const Key& key) { return key.encodeCanonical(); }
 
-zc::Maybe<CoreModuleGraph::Key> CoreModuleGraph::decodeKey(
-    zc::ArrayPtr<const uint8_t> bytes) {
+zc::Maybe<CoreModuleGraph::Key> CoreModuleGraph::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
   return ContextualCoreCrateKey::decodeCanonical(bytes);
 }
 
@@ -1076,8 +1075,7 @@ zc::Array<uint8_t> CoreModuleGraph::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<CoreModuleGraph::Value> CoreModuleGraph::decodeValue(
-    zc::ArrayPtr<const uint8_t> bytes) {
+zc::Maybe<CoreModuleGraph::Value> CoreModuleGraph::decodeValue(zc::ArrayPtr<const uint8_t> bytes) {
   return CoreModuleGraphRecord::decodeCanonical(bytes);
 }
 
@@ -1087,7 +1085,7 @@ query::TypedQueryResult<CoreModuleGraph::Value> CoreModuleGraph::provide(
 }
 
 bool CoreModuleGraph::verify(query::QueryContext& context, const Key& key,
-                                  const query::TypedQueryResult<Value>& result) {
+                             const query::TypedQueryResult<Value>& result) {
   return CoreLibraryQueryVerifier::verifyModuleGraph(context, key, result);
 }
 
@@ -1247,22 +1245,19 @@ zc::Maybe<CoreRoleSeed::Key> CoreRoleSeed::decodeKey(zc::ArrayPtr<const uint8_t>
   return ContextualCoreCrateKey::decodeCanonical(bytes);
 }
 
-zc::Array<uint8_t> CoreRoleSeed::encodeValue(const Value& value) {
-  return value.encodeCanonical();
-}
+zc::Array<uint8_t> CoreRoleSeed::encodeValue(const Value& value) { return value.encodeCanonical(); }
 
-zc::Maybe<CoreRoleSeed::Value> CoreRoleSeed::decodeValue(
-    zc::ArrayPtr<const uint8_t> bytes) {
+zc::Maybe<CoreRoleSeed::Value> CoreRoleSeed::decodeValue(zc::ArrayPtr<const uint8_t> bytes) {
   return CoreRoleSeedRecord::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<CoreRoleSeed::Value> CoreRoleSeed::provide(
-    query::QueryContext& context, const Key& key) {
+query::TypedQueryResult<CoreRoleSeed::Value> CoreRoleSeed::provide(query::QueryContext& context,
+                                                                   const Key& key) {
   return provideCoreRoleSeed(context, key);
 }
 
 bool CoreRoleSeed::verify(query::QueryContext& context, const Key& key,
-                               const query::TypedQueryResult<Value>& result) {
+                          const query::TypedQueryResult<Value>& result) {
   return CoreLibraryQueryVerifier::verifyRoleSeed(context, key, result);
 }
 
@@ -1398,10 +1393,9 @@ query::CapabilityProviderResult<MaterializeCoreRoleSeed> MaterializeCoreRoleSeed
         materialized.get<query::QueryRuntimeFailure>());
   }
   auto candidate = zc::heap<Capability>(zc::mv(materialized).get<Capability>());
-  auto witness =
-      query::CapabilityCandidateContract<MaterializeCoreRoleSeed>::encode(*candidate);
+  auto witness = query::CapabilityCandidateContract<MaterializeCoreRoleSeed>::encode(*candidate);
   return query::CapabilityProviderResult<MaterializeCoreRoleSeed>::candidate(zc::mv(candidate),
-                                                                                  zc::mv(witness));
+                                                                             zc::mv(witness));
 }
 
 zc::Maybe<zc::Array<uint8_t>> MaterializeCoreRoleSeed::verify(
@@ -1547,8 +1541,7 @@ zc::Vector<CoreRoleSeedEntry> stableRolesFromMaterialized(
 zc::Maybe<checker::CheckerIdentityAuthority> materializeCheckerIdentities(
     query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterface>& context,
     const incremental_binding_query::CompilationRootSetQueryKey& roots) {
-  auto graph =
-      context.getCapability<module_graph_query::MaterializeModuleGraph>(roots.clone());
+  auto graph = context.getCapability<module_graph_query::MaterializeModuleGraph>(roots.clone());
   if (!graph.isPublished()) { return zc::none; }
   zc::Vector<checker::CheckerIdentityAuthority::BoundModuleView> views;
   for (const auto& module : graph.lease().capability().modules()) {
@@ -1648,8 +1641,7 @@ query::TypedQueryResult<CoreBootstrapModuleInterfaceRecord> provideCoreBootstrap
     return query::TypedQueryResult<CoreBootstrapModuleInterfaceRecord>::semanticFailure(
         zc::heapArray<uint8_t>(graph.semanticFailureBytes()));
   }
-  auto seed =
-      context.getCapability<MaterializeCoreRoleSeed>(zc::mv(ZC_ASSERT_NONNULL(coreKey)));
+  auto seed = context.getCapability<MaterializeCoreRoleSeed>(zc::mv(ZC_ASSERT_NONNULL(coreKey)));
   auto boundKey = incremental_binding_query::ContextualModuleKey::from(key.contextRoots().clone(),
                                                                        key.module().clone());
   auto bound = context.getCapability<module_graph_query::VerifyBoundModule>(zc::mv(boundKey));
@@ -1679,8 +1671,7 @@ CoreBootstrapInterfaceMaterialization materializeCoreBootstrapInterface(
       ContextualCoreCrateKey::from(key.contextRoots().clone(), key.module().crate().clone());
   if (coreKey == zc::none) { return query::QueryRuntimeFailure::ProviderRejected; }
   auto record = context.get<CoreBootstrapModuleInterface>(key);
-  auto seed =
-      context.getCapability<MaterializeCoreRoleSeed>(zc::mv(ZC_ASSERT_NONNULL(coreKey)));
+  auto seed = context.getCapability<MaterializeCoreRoleSeed>(zc::mv(ZC_ASSERT_NONNULL(coreKey)));
   auto boundKey = incremental_binding_query::ContextualModuleKey::from(key.contextRoots().clone(),
                                                                        key.module().clone());
   auto bound = context.getCapability<module_graph_query::VerifyBoundModule>(zc::mv(boundKey));
@@ -2208,12 +2199,9 @@ zc::Array<uint8_t> CoreExportSurfaceRecord::encodeCanonical() const {
   return frame(kCoreExportSurfaceValueDomain, payload.asPtr());
 }
 
-zc::Array<uint8_t> CoreExportSurface::encodeKey(const Key& key) {
-  return key.encodeCanonical();
-}
+zc::Array<uint8_t> CoreExportSurface::encodeKey(const Key& key) { return key.encodeCanonical(); }
 
-zc::Maybe<CoreExportSurface::Key> CoreExportSurface::decodeKey(
-    zc::ArrayPtr<const uint8_t> bytes) {
+zc::Maybe<CoreExportSurface::Key> CoreExportSurface::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
   return ContextualCoreModuleKey::decodeCanonical(bytes);
 }
 
@@ -2232,7 +2220,7 @@ query::TypedQueryResult<CoreExportSurface::Value> CoreExportSurface::provide(
 }
 
 bool CoreExportSurface::verify(query::QueryContext& context, const Key& key,
-                                    const query::TypedQueryResult<Value>& result) {
+                               const query::TypedQueryResult<Value>& result) {
   return CoreLibraryQueryVerifier::verifyExportSurface(context, key, result);
 }
 
@@ -2737,9 +2725,7 @@ zc::Array<uint8_t> CoreRoleAuthorityRecord::encodeCanonical() const {
                    .asPtr());
 }
 
-zc::Array<uint8_t> CorePreludeSurface::encodeKey(const Key& key) {
-  return key.encodeCanonical();
-}
+zc::Array<uint8_t> CorePreludeSurface::encodeKey(const Key& key) { return key.encodeCanonical(); }
 
 zc::Maybe<CorePreludeSurface::Key> CorePreludeSurface::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
@@ -2761,16 +2747,13 @@ query::TypedQueryResult<CorePreludeSurface::Value> CorePreludeSurface::provide(
 }
 
 bool CorePreludeSurface::verify(query::QueryContext& context, const Key& key,
-                                     const query::TypedQueryResult<Value>& result) {
+                                const query::TypedQueryResult<Value>& result) {
   return CoreLibraryQueryVerifier::verifyPreludeSurface(context, key, result);
 }
 
-zc::Array<uint8_t> CoreRoleAuthority::encodeKey(const Key& key) {
-  return key.encodeCanonical();
-}
+zc::Array<uint8_t> CoreRoleAuthority::encodeKey(const Key& key) { return key.encodeCanonical(); }
 
-zc::Maybe<CoreRoleAuthority::Key> CoreRoleAuthority::decodeKey(
-    zc::ArrayPtr<const uint8_t> bytes) {
+zc::Maybe<CoreRoleAuthority::Key> CoreRoleAuthority::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
   return ContextualCoreCrateKey::decodeCanonical(bytes);
 }
 
@@ -2815,7 +2798,7 @@ query::TypedQueryResult<CoreRoleAuthority::Value> CoreRoleAuthority::provide(
 }
 
 bool CoreRoleAuthority::verify(query::QueryContext& context, const Key& key,
-                                    const query::TypedQueryResult<Value>& result) {
+                               const query::TypedQueryResult<Value>& result) {
   return CoreLibraryQueryVerifier::verifyRoleAuthority(context, key, result);
 }
 
@@ -3064,8 +3047,7 @@ zc::Maybe<VerifiedCoreAuthorityBundle> VerifiedCoreAuthorityBundle::from(
 identity::SemanticContextBrand VerifiedCoreAuthorityBundle::context() const noexcept {
   return impl->context;
 }
-const identity::ContextFingerprint& VerifiedCoreAuthorityBundle::fingerprint()
-    const noexcept {
+const identity::ContextFingerprint& VerifiedCoreAuthorityBundle::fingerprint() const noexcept {
   return impl->fingerprint;
 }
 const CoreRoleAuthorityRecord& VerifiedCoreAuthorityBundle::record() const noexcept {
@@ -3503,8 +3485,8 @@ zc::OneOf<VerifiedCoreModuleInterface, query::QueryRuntimeFailure> finalizeCoreM
     auto markerKey = ContextualCoreModuleKey::from(key.contextRoots().clone(),
                                                    seedRecord.value().markerModule().clone());
     if (markerKey == zc::none) { return query::QueryRuntimeFailure::ProviderRejected; }
-    auto marker = context.getCapability<FinalizeCoreModuleInterface>(
-        zc::mv(ZC_ASSERT_NONNULL(markerKey)));
+    auto marker =
+        context.getCapability<FinalizeCoreModuleInterface>(zc::mv(ZC_ASSERT_NONNULL(markerKey)));
     if (!marker.isPublished() || marker.lease().capability().record().module().encode().asPtr() !=
                                      seedRecord.value().markerModule().encode().asPtr()) {
       return query::QueryRuntimeFailure::ProviderRejected;
@@ -3782,8 +3764,7 @@ zc::Maybe<VerifiedCoreModuleInterface> VerifiedCoreModuleInterface::from(
 identity::SemanticContextBrand VerifiedCoreModuleInterface::context() const noexcept {
   return impl->context;
 }
-const identity::ContextFingerprint& VerifiedCoreModuleInterface::fingerprint()
-    const noexcept {
+const identity::ContextFingerprint& VerifiedCoreModuleInterface::fingerprint() const noexcept {
   return impl->fingerprint;
 }
 identity::ModuleId VerifiedCoreModuleInterface::module() const noexcept { return impl->module; }
@@ -3816,13 +3797,13 @@ zc::Maybe<CoreBootstrapModuleInterface::Value> CoreBootstrapModuleInterface::dec
   return CoreBootstrapModuleInterfaceRecord::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<CoreBootstrapModuleInterface::Value>
-CoreBootstrapModuleInterface::provide(query::QueryContext& context, const Key& key) {
+query::TypedQueryResult<CoreBootstrapModuleInterface::Value> CoreBootstrapModuleInterface::provide(
+    query::QueryContext& context, const Key& key) {
   return provideCoreBootstrapModuleInterface(context, key);
 }
 
 bool CoreBootstrapModuleInterface::verify(query::QueryContext& context, const Key& key,
-                                               const query::TypedQueryResult<Value>& result) {
+                                          const query::TypedQueryResult<Value>& result) {
   return CoreLibraryQueryVerifier::verifyBootstrapModuleInterfaceRecord(context, key, result);
 }
 
@@ -3850,8 +3831,8 @@ MaterializeCoreBootstrapModuleInterface::provide(
       zc::mv(candidate), zc::mv(witness));
 }
 zc::Maybe<zc::Array<uint8_t>> MaterializeCoreBootstrapModuleInterface::verify(
-    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterface>& context,
-    const Key& key, const Capability& candidate) {
+    query::CapabilityQueryContext<MaterializeCoreBootstrapModuleInterface>& context, const Key& key,
+    const Capability& candidate) {
   return CoreLibraryQueryVerifier::verifyBootstrapModuleInterface(context, key, candidate);
 }
 
@@ -3864,8 +3845,7 @@ zc::Maybe<MaterializeCoreAuthority::Key> MaterializeCoreAuthority::decodeKey(
   return ContextualCoreCrateKey::decodeCanonical(bytes);
 }
 
-query::CapabilityProviderResult<MaterializeCoreAuthority>
-MaterializeCoreAuthority::provide(
+query::CapabilityProviderResult<MaterializeCoreAuthority> MaterializeCoreAuthority::provide(
     query::CapabilityQueryContext<MaterializeCoreAuthority>& context, const Key& key) {
   auto record = context.get<CoreRoleAuthority>(key.clone());
   auto distribution = context.get<CoreDistributionInput>(identity::ToolchainUnitKey::core());
@@ -3890,8 +3870,7 @@ MaterializeCoreAuthority::provide(
   auto authorityPrelude = ZC_ASSERT_NONNULL(preludeModule).clone();
   auto preludeKey = incremental_binding_query::ContextualModuleKey::from(
       key.contextRoots().clone(), zc::mv(ZC_ASSERT_NONNULL(preludeModule)));
-  auto prelude =
-      context.getCapability<module_graph_query::VerifyBoundModule>(zc::mv(preludeKey));
+  auto prelude = context.getCapability<module_graph_query::VerifyBoundModule>(zc::mv(preludeKey));
   if (!prelude.isPublished()) {
     return query::CapabilityProviderResult<MaterializeCoreAuthority>::runtimeRejected(
         prelude.isRuntimeRejected() ? prelude.runtimeFailure()
@@ -3908,7 +3887,7 @@ MaterializeCoreAuthority::provide(
   auto owned = zc::heap<Capability>(zc::mv(ZC_ASSERT_NONNULL(candidate)));
   auto witness = query::CapabilityCandidateContract<MaterializeCoreAuthority>::encode(*owned);
   return query::CapabilityProviderResult<MaterializeCoreAuthority>::candidate(zc::mv(owned),
-                                                                                   zc::mv(witness));
+                                                                              zc::mv(witness));
 }
 
 zc::Maybe<zc::Array<uint8_t>> MaterializeCoreAuthority::verify(
@@ -3926,8 +3905,7 @@ zc::Maybe<FinalizeCoreModuleInterface::Key> FinalizeCoreModuleInterface::decodeK
   return ContextualCoreModuleKey::decodeCanonical(bytes);
 }
 
-query::CapabilityProviderResult<FinalizeCoreModuleInterface>
-FinalizeCoreModuleInterface::provide(
+query::CapabilityProviderResult<FinalizeCoreModuleInterface> FinalizeCoreModuleInterface::provide(
     query::CapabilityQueryContext<FinalizeCoreModuleInterface>& context, const Key& key) {
   auto finalized = finalizeCoreModuleInterface(context, key);
   if (finalized.is<query::QueryRuntimeFailure>()) {
@@ -3937,8 +3915,8 @@ FinalizeCoreModuleInterface::provide(
   auto candidate = zc::heap<Capability>(zc::mv(finalized).get<Capability>());
   auto witness =
       query::CapabilityCandidateContract<FinalizeCoreModuleInterface>::encode(*candidate);
-  return query::CapabilityProviderResult<FinalizeCoreModuleInterface>::candidate(
-      zc::mv(candidate), zc::mv(witness));
+  return query::CapabilityProviderResult<FinalizeCoreModuleInterface>::candidate(zc::mv(candidate),
+                                                                                 zc::mv(witness));
 }
 
 zc::Maybe<zc::Array<uint8_t>> FinalizeCoreModuleInterface::verify(
@@ -4600,9 +4578,7 @@ bool registerCoreLibraryQueryProvider(query::QueryDatabase& database) {
   if (!distribution.isRegistered()) { return false; }
   if (!database.registerDescriptor<CoreModuleGraph>().isRegistered()) { return false; }
   if (!database.registerDescriptor<CoreRoleSeed>().isRegistered()) { return false; }
-  if (!database.registerDescriptor<CoreBootstrapModuleInterface>().isRegistered()) {
-    return false;
-  }
+  if (!database.registerDescriptor<CoreBootstrapModuleInterface>().isRegistered()) { return false; }
   if (!database.registerDescriptor<CoreExportSurface>().isRegistered()) { return false; }
   if (!database.registerDescriptor<CorePreludeSurface>().isRegistered()) { return false; }
   if (!database.registerDescriptor<CoreRoleAuthority>().isRegistered()) { return false; }
@@ -4610,9 +4586,7 @@ bool registerCoreLibraryQueryProvider(query::QueryDatabase& database) {
   if (!database.registerDescriptor<MaterializeCoreBootstrapModuleInterface>().isRegistered()) {
     return false;
   }
-  if (!database.registerDescriptor<MaterializeCoreAuthority>().isRegistered()) {
-    return false;
-  }
+  if (!database.registerDescriptor<MaterializeCoreAuthority>().isRegistered()) { return false; }
   return database.registerDescriptor<FinalizeCoreModuleInterface>().isRegistered();
 }
 
@@ -4659,17 +4633,15 @@ CapabilityCandidateContract<driver::core_library_query::FinalizeCoreModuleInterf
   return zc::none;
 }
 
-StableWitnessBytes CapabilityCandidateContract<
-    driver::core_library_query::MaterializeCoreBootstrapModuleInterface>::
+StableWitnessBytes
+CapabilityCandidateContract<driver::core_library_query::MaterializeCoreBootstrapModuleInterface>::
     encode(const Descriptor::Capability& candidate) {
   return StableWitnessBytes(candidate.encodeCanonical());
 }
 
 zc::Maybe<zc::Own<CapabilityCandidateContract<
-    driver::core_library_query::MaterializeCoreBootstrapModuleInterface>::Descriptor::
-                      Capability>>
-CapabilityCandidateContract<
-    driver::core_library_query::MaterializeCoreBootstrapModuleInterface>::
+    driver::core_library_query::MaterializeCoreBootstrapModuleInterface>::Descriptor::Capability>>
+CapabilityCandidateContract<driver::core_library_query::MaterializeCoreBootstrapModuleInterface>::
     decode(zc::ArrayPtr<const uint8_t>) {
   return zc::none;
 }

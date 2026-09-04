@@ -14,10 +14,10 @@
 
 #pragma once
 
+#include "compiler/identity/key/definition-key.h"
+#include "compiler/identity/source/source-snapshot.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
-#include "compiler/identity/key/definition-key.h"
-#include "compiler/identity/source-snapshot.h"
 
 namespace zomlang::compiler::identity {
 
@@ -81,8 +81,7 @@ private:
 class ContextFingerprint final {
 public:
   /// \brief Reconstructs a fingerprint from an independently verified canonical digest.
-  ZC_NODISCARD static ContextFingerprint fromCanonicalDigest(
-      const Sha256Digest& digest) noexcept;
+  ZC_NODISCARD static ContextFingerprint fromCanonicalDigest(const Sha256Digest& digest) noexcept;
 
   /// \brief Computes the RFC 0011 domain-separated fingerprint.
   /// \return None when any supposedly unique sequence contains duplicate encodings.

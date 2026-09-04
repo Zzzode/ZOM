@@ -14,7 +14,7 @@
 #include "compiler/driver/query/module-graph/module-dependency-provenance-query.h"
 #include "compiler/driver/query/module-graph/module-graph-query.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
-#include "compiler/identity/source-snapshot.h"
+#include "compiler/identity/source/source-snapshot.h"
 #include "compiler/ir/target/target-registry.h"
 #include "compiler/parser/parser.h"
 #include "compiler/source/manager.h"

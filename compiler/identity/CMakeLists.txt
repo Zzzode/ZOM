@@ -1,10 +1,10 @@
 set(IDENTITY_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/brand.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/identity-invariant.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/identity-diagnostic-adapter.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/sorted-feature-set.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/source-query-input.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/source-snapshot.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/identity-invariant.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/identity-diagnostic-adapter.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/canonical/sorted-feature-set.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/source/source-query-input.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/source/source-snapshot.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical/canonical-decoder.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical/canonical-encoder.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical/canonical-scalar.cc

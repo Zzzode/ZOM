@@ -29,7 +29,7 @@ CANONICAL_IDENTITY_INTERNER = Path(
 CANONICAL_IDENTITY_INTERNER_IMPLEMENTATION = Path(
     "compiler/identity/canonical/identity-interner-set.cc"
 )
-IDENTITY_INVARIANT = Path("compiler/identity/identity-invariant.h")
+IDENTITY_INVARIANT = Path("compiler/identity/diagnostics/identity-invariant.h")
 IDENTITY_DUMP_IMPLEMENTATION = Path("compiler/identity/identity-dump.cc")
 SEMANTIC_CONTEXT_FINGERPRINT = Path(
     "compiler/identity/semantic/context-fingerprint.h"

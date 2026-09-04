@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "compiler/identity/source-query-input.h"
+#include "compiler/identity/source/source-query-input.h"
 #include "compiler/query/query-database.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"

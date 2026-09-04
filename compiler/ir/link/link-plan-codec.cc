@@ -14,9 +14,9 @@
 
 #include "compiler/ir/link/link-plan-codec.h"
 
-#include "compiler/identity/identity-invariant.h"
+#include "compiler/identity/diagnostics/identity-invariant.h"
 #include "compiler/identity/semantic/context-fingerprint.h"
-#include "compiler/identity/source-snapshot.h"
+#include "compiler/identity/source/source-snapshot.h"
 
 namespace zomlang::compiler::ir {
 namespace {

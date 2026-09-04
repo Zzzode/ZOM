@@ -7,12 +7,12 @@
 
 #include <cstring>
 
+#include "compiler/diagnostics/core/diagnostic-engine.h"
+#include "compiler/diagnostics/core/diagnostic.h"
+#include "compiler/diagnostics/text/diagnostic-text.h"
+#include "compiler/identity/diagnostics/identity-diagnostic-adapter.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
-#include "compiler/diagnostics/text/diagnostic-text.h"
-#include "compiler/diagnostics/core/diagnostic.h"
-#include "compiler/identity/identity-diagnostic-adapter.h"
 
 namespace zomlang::compiler::checker {
 namespace {

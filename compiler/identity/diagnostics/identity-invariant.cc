@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "compiler/identity/identity-invariant.h"
+#include "compiler/identity/diagnostics/identity-invariant.h"
 
 #include "zc/core/vector.h"
 

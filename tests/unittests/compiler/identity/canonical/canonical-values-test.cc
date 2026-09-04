@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
+#include "compiler/identity/canonical/canonical-encoder.h"
+#include "compiler/identity/canonical/sorted-feature-set.h"
+#include "compiler/identity/semantic/semantic-version.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
-#include "compiler/identity/canonical/canonical-encoder.h"
-#include "compiler/identity/semantic/semantic-version.h"
-#include "compiler/identity/sorted-feature-set.h"
 
 namespace zomlang::compiler::identity {
 namespace {

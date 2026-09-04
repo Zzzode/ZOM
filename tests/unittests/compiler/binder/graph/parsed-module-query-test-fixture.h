@@ -5,12 +5,12 @@
 
 #pragma once
 
-#include "zc/core/debug.h"
 #include "compiler/binder/graph/parsed-module.h"
-#include "compiler/identity/source-snapshot.h"
+#include "compiler/identity/source/source-snapshot.h"
 #include "compiler/parser/query/canonical-parsed-source.h"
 #include "compiler/parser/token-snapshot.h"
 #include "compiler/source/manager.h"
+#include "zc/core/debug.h"
 
 namespace zomlang::compiler::binder::test {
 

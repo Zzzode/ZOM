@@ -5,8 +5,8 @@
 
 #include "compiler/binder/identity/identity-pre-admission.h"
 
+#include "compiler/identity/source/source-snapshot.h"
 #include "zc/ztest/test.h"
-#include "compiler/identity/source-snapshot.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -154,9 +154,9 @@ identity::ImplHeader implHeader(bool withObligation = false) {
     zc::Vector<identity::CanonicalGenericParameter> generics;
     zc::Vector<identity::CanonicalBoundObligation> obligations;
     if (withObligation) { obligations.add(obligation()); }
-    auto value = identity::ImplHeader::from(
-        zc::mv(generics), identity::ImplPolarity::Positive, identity::ImplSafety::Safe,
-        zc::mv(admittedTrait), namedType("T"_zc), zc::mv(obligations));
+    auto value = identity::ImplHeader::from(zc::mv(generics), identity::ImplPolarity::Positive,
+                                            identity::ImplSafety::Safe, zc::mv(admittedTrait),
+                                            namedType("T"_zc), zc::mv(obligations));
     ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   }
   ZC_FAIL_REQUIRE("invalid implementation header fixture");
@@ -195,8 +195,7 @@ identity::DefinitionIdentityRecord functionRecord(const identity::OverloadHeader
   ZC_FAIL_REQUIRE("invalid function identity record fixture");
 }
 
-identity::IdentityInternerSet admittedImplAuthorities(
-    const identity::ImplIdentityRecord& record) {
+identity::IdentityInternerSet admittedImplAuthorities(const identity::ImplIdentityRecord& record) {
   identity::SemanticContextFactory factory;
   auto context = factory.issue();
   ZC_REQUIRE(context != zc::none);

@@ -14,14 +14,14 @@
 
 #pragma once
 
+#include "compiler/identity/brand.h"
+#include "compiler/identity/canonical/identity-interner-set.h"
+#include "compiler/identity/diagnostics/identity-invariant.h"
+#include "compiler/identity/semantic/type-id.h"
+#include "compiler/type/semantic-type-key.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
-#include "compiler/identity/brand.h"
-#include "compiler/identity/canonical/identity-interner-set.h"
-#include "compiler/identity/identity-invariant.h"
-#include "compiler/identity/semantic/type-id.h"
-#include "compiler/type/semantic-type-key.h"
 
 namespace zomlang::compiler::type {
 

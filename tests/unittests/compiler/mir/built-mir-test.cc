@@ -5,12 +5,12 @@
 
 #include "compiler/mir/built-mir.h"
 
-#include "zc/core/encoding.h"
-#include "zc/ztest/test.h"
 #include "compiler/identity/crypto/sha256.h"
-#include "compiler/identity/source-snapshot.h"
+#include "compiler/identity/source/source-snapshot.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
 #include "tests/unittests/compiler/test-semantic-type-context.h"
+#include "zc/core/encoding.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::mir {
 namespace {

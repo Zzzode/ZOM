@@ -12,7 +12,7 @@
 #include "compiler/driver/query/binding/incremental-package-graph-query-input.h"
 #include "compiler/driver/query/module-graph/module-graph-query-input.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
-#include "compiler/identity/source-snapshot.h"
+#include "compiler/identity/source/source-snapshot.h"
 #include "compiler/ir/target/target-registry.h"
 #include "compiler/source/core-source-admission.h"
 #include "tests/unittests/compiler/driver/canonical-mutation-test-helpers.h"

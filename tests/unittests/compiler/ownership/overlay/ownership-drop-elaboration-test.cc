@@ -15,7 +15,7 @@
 #include "compiler/driver/interface/borrow-evidence.h"
 #include "compiler/driver/package/source-record.h"
 #include "compiler/driver/session/compiler-session.h"
-#include "compiler/identity/source-snapshot.h"
+#include "compiler/identity/source/source-snapshot.h"
 #include "compiler/ir/target/target-registry.h"
 #include "compiler/mir/built-mir.h"
 #include "compiler/ownership/facts/init.h"

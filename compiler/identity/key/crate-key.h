@@ -16,11 +16,11 @@
 
 #include <cstdint>
 
-#include "zc/core/common.h"
 #include "compiler/identity/canonical/canonical-scalar.h"
-#include "compiler/identity/key/compilation-unit-key.h"
+#include "compiler/identity/canonical/sorted-feature-set.h"
 #include "compiler/identity/crypto/sha256.h"
-#include "compiler/identity/sorted-feature-set.h"
+#include "compiler/identity/key/compilation-unit-key.h"
+#include "zc/core/common.h"
 
 namespace zomlang::compiler::identity {
 

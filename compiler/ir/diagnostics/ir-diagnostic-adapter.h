@@ -7,7 +7,7 @@
 
 #include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/diagnostics/core/diagnostic-ids.h"
-#include "compiler/identity/identity-diagnostic-adapter.h"
+#include "compiler/identity/diagnostics/identity-diagnostic-adapter.h"
 #include "compiler/ir/diagnostics/ir-failure.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"

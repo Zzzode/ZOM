@@ -14,10 +14,10 @@
 
 #pragma once
 
+#include "compiler/identity/canonical/canonical-scalar.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/vector.h"
-#include "compiler/identity/canonical/canonical-scalar.h"
 
 namespace zomlang::compiler::identity {
 

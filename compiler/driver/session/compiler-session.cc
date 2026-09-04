@@ -63,7 +63,7 @@
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/canonical/identity-interner-set.h"
-#include "compiler/identity/identity-diagnostic-adapter.h"
+#include "compiler/identity/diagnostics/identity-diagnostic-adapter.h"
 #include "compiler/ownership/admission/surface-admission.h"
 #include "compiler/ownership/diagnostics/ownership-diagnostic-adapter.h"
 #include "compiler/ownership/overlay/drop-elaborated-mir.h"

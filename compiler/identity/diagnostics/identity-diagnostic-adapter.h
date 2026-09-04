@@ -13,11 +13,11 @@
 
 #pragma once
 
-#include "zc/core/common.h"
-#include "zc/core/vector.h"
 #include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/diagnostics/core/diagnostic-ids.h"
-#include "compiler/identity/identity-invariant.h"
+#include "compiler/identity/diagnostics/identity-invariant.h"
+#include "zc/core/common.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::identity {
 

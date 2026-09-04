@@ -16,15 +16,15 @@
 
 #include <cstdint>
 
+#include "compiler/identity/canonical/canonical-scalar.h"
+#include "compiler/identity/canonical/canonical-url.h"
+#include "compiler/identity/canonical/sorted-feature-set.h"
+#include "compiler/identity/crypto/sha256.h"
+#include "compiler/identity/semantic/semantic-version.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "compiler/identity/canonical/canonical-scalar.h"
-#include "compiler/identity/canonical/canonical-url.h"
-#include "compiler/identity/semantic/semantic-version.h"
-#include "compiler/identity/crypto/sha256.h"
-#include "compiler/identity/sorted-feature-set.h"
 
 namespace zomlang::compiler::identity {
 

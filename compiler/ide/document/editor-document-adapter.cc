@@ -17,7 +17,7 @@
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/key/package-key.h"
 #include "compiler/identity/key/source-key.h"
-#include "compiler/identity/source-snapshot.h"
+#include "compiler/identity/source/source-snapshot.h"
 #include "zc/core/encoding.h"
 #include "zc/core/hash.h"
 #include "zc/core/map.h"

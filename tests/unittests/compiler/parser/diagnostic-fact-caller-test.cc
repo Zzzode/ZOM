@@ -3,10 +3,10 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zc/ztest/test.h"
-#include "compiler/identity/source-query-input.h"
+#include "compiler/identity/source/source-query-input.h"
 #include "compiler/parser/query/parse-source-query.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::parser {
 namespace {

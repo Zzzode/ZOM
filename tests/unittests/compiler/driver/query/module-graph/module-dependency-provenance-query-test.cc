@@ -5,9 +5,9 @@
 
 #include "compiler/driver/query/module-graph/module-dependency-provenance-query.h"
 
-#include "zc/ztest/test.h"
-#include "compiler/identity/source-snapshot.h"
+#include "compiler/identity/source/source-snapshot.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::driver::module_graph_query {
 namespace {
@@ -17,8 +17,8 @@ using ExpectedFailureAlternatives =
                                  query::KeyRejection<binder::BinderKeyFailure>>;
 static_assert(
     zc::isSameType<ModuleDependencyProvenance::Capability, ModuleDependencyProvenanceMap>());
-static_assert(zc::isSameType<ModuleDependencyProvenance::FailureAlternatives,
-                             ExpectedFailureAlternatives>());
+static_assert(
+    zc::isSameType<ModuleDependencyProvenance::FailureAlternatives, ExpectedFailureAlternatives>());
 
 template <typename T>
 T require(zc::Maybe<T>&& value) {
@@ -98,8 +98,7 @@ zc::Array<uint8_t> withTrailingByte(zc::ArrayPtr<const uint8_t> bytes) {
 ZC_TEST("ModuleDependencyProvenanceQueryTest.DescriptorAndKeyContractAreExact") {
   ZC_EXPECT(ModuleDependencyProvenance::descriptor.admission ==
             query::CapabilityAdmission::FinalSealedSnapshot);
-  ZC_EXPECT(ModuleDependencyProvenance::descriptor.retention ==
-            query::RetentionClass::Retained);
+  ZC_EXPECT(ModuleDependencyProvenance::descriptor.retention == query::RetentionClass::Retained);
   auto key = tests::test_identity_detail::module();
   auto encoded = ModuleDependencyProvenance::encodeKey(key);
   auto decoded = ModuleDependencyProvenance::decodeKey(encoded.asPtr());

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "compiler/identity/source-snapshot.h"
+#include "compiler/identity/source/source-snapshot.h"
 #include "compiler/mir/built-mir.h"
 #include "compiler/ownership/facts/flow-subset.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"

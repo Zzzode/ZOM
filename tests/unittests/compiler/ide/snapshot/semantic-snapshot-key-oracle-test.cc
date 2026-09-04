@@ -23,7 +23,7 @@
 
 #include "compiler/ide/document/document-version.h"
 #include "compiler/ide/snapshot/semantic-snapshot-key.h"
-#include "compiler/identity/source-query-input.h"
+#include "compiler/identity/source/source-query-input.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"

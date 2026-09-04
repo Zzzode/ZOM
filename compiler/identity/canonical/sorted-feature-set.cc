@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "compiler/identity/sorted-feature-set.h"
+#include "compiler/identity/canonical/sorted-feature-set.h"
 
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"

@@ -3,14 +3,14 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "compiler/identity/source-query-input.h"
+#include "compiler/identity/source/source-query-input.h"
 
 #include "compiler/driver/package/package-compilation-request.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/key/crate-key.h"
 #include "compiler/identity/key/source-key.h"
-#include "compiler/identity/source-snapshot.h"
+#include "compiler/identity/source/source-snapshot.h"
 #include "zc/core/debug.h"
 
 namespace zomlang::compiler::identity::source_query {

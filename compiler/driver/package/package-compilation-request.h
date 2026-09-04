@@ -16,17 +16,17 @@
 
 #include <cstdint>
 
+#include "compiler/diagnostics/toolchain/module-root-argument.h"
+#include "compiler/driver/package/workspace-normalizer.h"
+#include "compiler/identity/canonical/sorted-feature-set.h"
+#include "compiler/identity/crypto/sha256.h"
+#include "compiler/identity/key/crate-key.h"
+#include "compiler/identity/key/package-key.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/one-of.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "compiler/diagnostics/toolchain/module-root-argument.h"
-#include "compiler/driver/package/workspace-normalizer.h"
-#include "compiler/identity/key/crate-key.h"
-#include "compiler/identity/key/package-key.h"
-#include "compiler/identity/crypto/sha256.h"
-#include "compiler/identity/sorted-feature-set.h"
 
 namespace zomlang::compiler::ir {
 class TargetRegistrySnapshot;

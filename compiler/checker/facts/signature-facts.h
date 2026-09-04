@@ -20,7 +20,7 @@
 #include "compiler/binder/graph/parsed-module.h"
 #include "compiler/binder/metadata/binding-metadata.h"
 #include "compiler/diagnostics/core/diagnostic-ids.h"
-#include "compiler/identity/identity-invariant.h"
+#include "compiler/identity/diagnostics/identity-invariant.h"
 #include "compiler/identity/semantic/context-fingerprint.h"
 #include "compiler/type/semantic-type-data.h"
 #include "compiler/type/semantic-type-store.h"

@@ -16,12 +16,12 @@
 
 #include <cstdint>
 
+#include "compiler/driver/package/manifest-parser.h"
+#include "compiler/identity/canonical/sorted-feature-set.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "compiler/driver/package/manifest-parser.h"
-#include "compiler/identity/sorted-feature-set.h"
 
 namespace zomlang::compiler::driver::package {
 

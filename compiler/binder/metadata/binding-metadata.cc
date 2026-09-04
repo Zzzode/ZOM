@@ -5,12 +5,12 @@
 
 #include "compiler/binder/metadata/binding-metadata.h"
 
-#include "zc/core/string.h"
-#include "zc/core/vector.h"
 #include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/diagnostics/core/diagnostic.h"
-#include "compiler/identity/identity-diagnostic-adapter.h"
 #include "compiler/identity/crypto/sha256.h"
+#include "compiler/identity/diagnostics/identity-diagnostic-adapter.h"
+#include "zc/core/string.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::binder {
 namespace {

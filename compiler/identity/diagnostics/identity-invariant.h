@@ -16,10 +16,10 @@
 
 #include <cstdint>
 
+#include "compiler/identity/source/source-snapshot.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
-#include "compiler/identity/source-snapshot.h"
 
 namespace zomlang::compiler::identity {
 

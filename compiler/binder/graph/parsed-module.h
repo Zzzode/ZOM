@@ -5,14 +5,14 @@
 
 #pragma once
 
+#include "compiler/ast/tree.h"
+#include "compiler/identity/brand.h"
+#include "compiler/identity/source/source-snapshot.h"
+#include "compiler/parser/query/canonical-parsed-source.h"
+#include "compiler/source/manager.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
-#include "compiler/ast/tree.h"
-#include "compiler/identity/brand.h"
-#include "compiler/identity/source-snapshot.h"
-#include "compiler/parser/query/canonical-parsed-source.h"
-#include "compiler/source/manager.h"
 
 namespace zomlang::compiler::binder {
 

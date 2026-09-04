@@ -5,14 +5,14 @@
 
 #pragma once
 
+#include "compiler/diagnostics/fact/diagnostic-fact.h"
+#include "compiler/identity/crypto/sha256.h"
+#include "compiler/identity/source/source-query-input.h"
+#include "compiler/parser/query/canonical-parsed-source.h"
+#include "compiler/query/query-database.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/vector.h"
-#include "compiler/diagnostics/fact/diagnostic-fact.h"
-#include "compiler/identity/crypto/sha256.h"
-#include "compiler/identity/source-query-input.h"
-#include "compiler/parser/query/canonical-parsed-source.h"
-#include "compiler/query/query-database.h"
 
 namespace zomlang::compiler::parser {
 

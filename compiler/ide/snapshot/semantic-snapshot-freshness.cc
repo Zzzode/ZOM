@@ -17,7 +17,7 @@
 #include "compiler/ide/snapshot/semantic-snapshot-facade.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/key/source-key.h"
-#include "compiler/identity/source-query-input.h"
+#include "compiler/identity/source/source-query-input.h"
 #include "compiler/parser/query/effective-source-query.h"
 #include "compiler/parser/query/parse-source-query.h"
 #include "zc/core/vector.h"

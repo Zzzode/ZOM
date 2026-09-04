@@ -7,18 +7,18 @@
 
 #include <cstdint>
 
+#include "compiler/ast/node-id.h"
+#include "compiler/checker/body/body-checker.h"
+#include "compiler/checker/checker-identity-authority.h"
+#include "compiler/checker/facts/checked-facts-repository.h"
+#include "compiler/identity/diagnostics/identity-invariant.h"
+#include "compiler/identity/semantic/context-fingerprint.h"
+#include "compiler/type/semantic-type-store.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "compiler/ast/node-id.h"
-#include "compiler/checker/body/body-checker.h"
-#include "compiler/checker/facts/checked-facts-repository.h"
-#include "compiler/checker/checker-identity-authority.h"
-#include "compiler/identity/identity-invariant.h"
-#include "compiler/identity/semantic/context-fingerprint.h"
-#include "compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::driver::module_graph_query {
 class CheckerBoundModuleView;

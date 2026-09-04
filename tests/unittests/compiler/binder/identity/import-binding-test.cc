@@ -14,10 +14,10 @@
 
 #include "compiler/binder/identity/import-binding.h"
 
-#include "zc/ztest/test.h"
+#include "compiler/identity/canonical/sorted-feature-set.h"
 #include "compiler/identity/key/package-key.h"
-#include "compiler/identity/sorted-feature-set.h"
-#include "compiler/identity/source-snapshot.h"
+#include "compiler/identity/source/source-snapshot.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -133,8 +133,7 @@ identity::DefinitionNamespace definitionNamespace(Namespace nameSpace) {
 }
 
 identity::ImportBindingKey semanticBinding(ImportBindingKind kind, Namespace nameSpace,
-                                                   zc::StringPtr sourceName,
-                                                   zc::StringPtr localName) {
+                                           zc::StringPtr sourceName, zc::StringPtr localName) {
   const auto operation = kind == ImportBindingKind::Import
                              ? identity::SemanticImportOperation::Import
                              : identity::SemanticImportOperation::ForeignReexport;

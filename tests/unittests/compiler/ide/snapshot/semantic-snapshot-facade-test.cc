@@ -29,7 +29,7 @@
 #include "compiler/ide/snapshot/semantic-snapshot.h"
 #include "compiler/ide/snapshot/snapshot-outline.h"
 #include "compiler/ide/snapshot/snapshot-token.h"
-#include "compiler/identity/source-query-input.h"
+#include "compiler/identity/source/source-query-input.h"
 #include "compiler/ir/target/target-registry.h"
 #include "compiler/parser/query/parse-source-query.h"
 #include "zc/core/vector.h"

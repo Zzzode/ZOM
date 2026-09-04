@@ -11,10 +11,10 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zc/ztest/test.h"
 #include "compiler/diagnostics/core/diagnostic-info.h"
-#include "compiler/identity/identity-diagnostic-adapter.h"
+#include "compiler/identity/diagnostics/identity-diagnostic-adapter.h"
 #include "compiler/source/manager.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::identity {
 namespace {

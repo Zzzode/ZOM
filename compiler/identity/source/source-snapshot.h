@@ -14,9 +14,9 @@
 
 #pragma once
 
+#include "compiler/identity/key/source-key.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
-#include "compiler/identity/key/source-key.h"
 
 namespace zomlang::compiler::identity {
 

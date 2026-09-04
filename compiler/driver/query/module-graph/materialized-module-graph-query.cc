@@ -11,16 +11,16 @@
 #include "compiler/binder/stable/stable-binding-codec.h"
 #include "compiler/binder/stable/stable-binding-diagnostic-fact.h"
 #include "compiler/driver/core/query.h"
-#include "compiler/driver/query/module-graph/incremental-module-resolution-query.h"
 #include "compiler/driver/query/binding/incremental-package-graph-query-input.h"
-#include "compiler/driver/query/module-graph/module-dependency-provenance-query.h"
 #include "compiler/driver/query/binding/named-item-query.h"
 #include "compiler/driver/query/binding/owner-body-query.h"
+#include "compiler/driver/query/module-graph/incremental-module-resolution-query.h"
+#include "compiler/driver/query/module-graph/module-dependency-provenance-query.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/crypto/sha256.h"
-#include "compiler/identity/source-query-input.h"
-#include "compiler/identity/source-snapshot.h"
+#include "compiler/identity/source/source-query-input.h"
+#include "compiler/identity/source/source-snapshot.h"
 #include "compiler/parser/query/parse-source-query.h"
 
 namespace zomlang::compiler {
@@ -743,8 +743,7 @@ ProviderModuleAcquisitionResult acquireProviderModules(
     if (sites.isRuntimeFailure()) {
       return MaterializerProviderResult::runtimeRejected(sites.runtimeFailure());
     }
-    auto requests =
-        requireValue<module_graph_query::ModuleDependencyRequests>(context, module);
+    auto requests = requireValue<module_graph_query::ModuleDependencyRequests>(context, module);
     if (requests.isRuntimeFailure()) {
       return MaterializerProviderResult::runtimeRejected(requests.runtimeFailure());
     }
@@ -762,8 +761,7 @@ ProviderModuleAcquisitionResult acquireProviderModules(
             query::QueryRuntimeFailure::InvariantViolation);
       }
       auto resolution =
-          requireValue<incremental_module_resolution_query::ResolveModuleRequest>(context,
-                                                                                       request);
+          requireValue<incremental_module_resolution_query::ResolveModuleRequest>(context, request);
       if (resolution.isRuntimeFailure()) {
         return MaterializerProviderResult::runtimeRejected(resolution.runtimeFailure());
       }
@@ -851,8 +849,7 @@ ProviderModuleAcquisitionResult acquireProviderModules(
 
   for (size_t index = 0; index < acquisition.modules.size(); ++index) {
     const auto& module = acquisition.modules[index];
-    auto provenance =
-        context.getCapability<module_graph_query::ModuleDependencyProvenance>(module);
+    auto provenance = context.getCapability<module_graph_query::ModuleDependencyProvenance>(module);
     if (provenance.isRuntimeRejected()) {
       return MaterializerProviderResult::runtimeRejected(provenance.runtimeFailure());
     }
@@ -1068,8 +1065,7 @@ MaterializerProviderResult publishProviderCandidate(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   auto owned = zc::heap<MaterializedModuleGraph>(zc::mv(ZC_ASSERT_NONNULL(candidate)));
-  auto stableWitness =
-      query::CapabilityCandidateContract<MaterializeModuleGraph>::encode(*owned);
+  auto stableWitness = query::CapabilityCandidateContract<MaterializeModuleGraph>::encode(*owned);
   return MaterializerProviderResult::candidate(zc::mv(owned), zc::mv(stableWitness));
 }
 
@@ -1410,8 +1406,7 @@ zc::Maybe<VerifierModuleAcquisition> acquireVerifierModules(
     for (const auto& request : requests.value().requests()) {
       if (request.requester().encode().asPtr() != module.encode().asPtr()) { return zc::none; }
       auto resolution =
-          context.get<driver::incremental_module_resolution_query::ResolveModuleRequest>(
-              request);
+          context.get<driver::incremental_module_resolution_query::ResolveModuleRequest>(request);
       if (resolution.isRuntimeFailure() || resolution.kind() != query::QueryValueKind::Value ||
           resolution.value().candidates().size() != 1) {
         return zc::none;
@@ -1483,8 +1478,7 @@ zc::Maybe<VerifierModuleAcquisition> acquireVerifierModules(
   }
 
   for (size_t index = 0; index < acquisition.modules.size(); ++index) {
-    auto provenance =
-        context.getCapability<ModuleDependencyProvenance>(acquisition.modules[index]);
+    auto provenance = context.getCapability<ModuleDependencyProvenance>(acquisition.modules[index]);
     if (!provenance.isPublished()) { return zc::none; }
     const auto& value = provenance.lease().capability();
     zc::Maybe<const VerifierSourceContent&> content;
@@ -1550,8 +1544,7 @@ query::CapabilityRejectionCheck verifyMaterializerRejection(
         return query::CapabilityRejectionCheck::Rejected;
       }
       auto resolution =
-          context.get<driver::incremental_module_resolution_query::ResolveModuleRequest>(
-              request);
+          context.get<driver::incremental_module_resolution_query::ResolveModuleRequest>(request);
       if (resolution.isRuntimeFailure() || resolution.kind() != query::QueryValueKind::Value ||
           resolution.value().candidates().size() != 1) {
         return query::CapabilityRejectionCheck::Rejected;
@@ -1621,8 +1614,7 @@ query::CapabilityRejectionCheck verifyMaterializerRejection(
   }
 
   for (size_t index = 0; index < acquisition.modules.size(); ++index) {
-    auto provenance =
-        context.getCapability<ModuleDependencyProvenance>(acquisition.modules[index]);
+    auto provenance = context.getCapability<ModuleDependencyProvenance>(acquisition.modules[index]);
     if (provenance.isRuntimeRejected()) { return query::CapabilityRejectionCheck::Rejected; }
     if (provenance.isKeyRejected()) { return keyHandler(provenance.keyFailure()); }
     if (provenance.isSourceRejected()) { return sourceHandler(provenance.diagnostics().values()); }
@@ -2046,8 +2038,7 @@ MaterializedModuleGraphWitness::contextRoots() const noexcept {
   return impl->contextRoots;
 }
 
-const identity::ContextFingerprint& MaterializedModuleGraphWitness::fingerprint()
-    const noexcept {
+const identity::ContextFingerprint& MaterializedModuleGraphWitness::fingerprint() const noexcept {
   return impl->fingerprint;
 }
 
@@ -2132,8 +2123,7 @@ zc::Maybe<MaterializedModuleGraphWitness> MaterializedModuleGraphWitness::decode
   if (roots == zc::none || graph == zc::none || scc == zc::none) { return zc::none; }
   auto result =
       from(zc::mv(ZC_ASSERT_NONNULL(roots)),
-           identity::ContextFingerprint::fromCanonicalDigest(
-               ZC_ASSERT_NONNULL(fingerprintDigest)),
+           identity::ContextFingerprint::fromCanonicalDigest(ZC_ASSERT_NONNULL(fingerprintDigest)),
            zc::mv(ZC_ASSERT_NONNULL(graph)), zc::mv(ZC_ASSERT_NONNULL(scc)), zc::mv(edges),
            binder::ModuleGraphRevision::fromCanonicalDigest(ZC_ASSERT_NONNULL(revisionDigest)));
   if (result == zc::none || ZC_ASSERT_NONNULL(result).encodeCanonical().asPtr() != bytes) {
@@ -2541,8 +2531,7 @@ DependencySkeletonAcquisition acquireDependencySkeletons(
     }
     auto dependencyKey = incremental_binding_query::ContextualModuleKey::from(
         key.contextRoots().clone(), ZC_ASSERT_NONNULL(dependency).key().clone());
-    auto materialized =
-        context.getCapability<MaterializeModuleSkeleton>(zc::mv(dependencyKey));
+    auto materialized = context.getCapability<MaterializeModuleSkeleton>(zc::mv(dependencyKey));
     if (materialized.isSourceRejected()) { return forwardSkeletonSourceRejection(materialized); }
     if (materialized.isKeyRejected()) { return forwardSkeletonKeyRejection(materialized); }
     if (materialized.isRuntimeRejected()) {
@@ -2576,8 +2565,7 @@ verifyDependencySkeletons(query::CapabilityQueryContext<MaterializeModuleSkeleto
     }
     auto dependencyKey = incremental_binding_query::ContextualModuleKey::from(
         key.contextRoots().clone(), ZC_ASSERT_NONNULL(dependency).key().clone());
-    auto materialized =
-        context.getCapability<MaterializeModuleSkeleton>(zc::mv(dependencyKey));
+    auto materialized = context.getCapability<MaterializeModuleSkeleton>(zc::mv(dependencyKey));
     if (!materialized.isPublished()) { return zc::none; }
     result.add(zc::mv(materialized).takeLease());
   }
@@ -4654,8 +4642,7 @@ query::DatabaseRevision MaterializedModuleSkeleton::revision() const noexcept {
   return impl->identities.revision();
 }
 
-const identity::ContextFingerprint& MaterializedModuleSkeleton::fingerprint()
-    const noexcept {
+const identity::ContextFingerprint& MaterializedModuleSkeleton::fingerprint() const noexcept {
   return impl->identities.fingerprint();
 }
 
@@ -4841,8 +4828,7 @@ zc::Maybe<MaterializeModuleSkeleton::Key> MaterializeModuleSkeleton::decodeKey(
   return incremental_binding_query::ContextualModuleKey::decodeCanonical(bytes);
 }
 
-query::CapabilityProviderResult<MaterializeModuleSkeleton>
-MaterializeModuleSkeleton::provide(
+query::CapabilityProviderResult<MaterializeModuleSkeleton> MaterializeModuleSkeleton::provide(
     query::CapabilityQueryContext<MaterializeModuleSkeleton>& context, const Key& key) {
   auto selected = context.get<SelectedModuleSource>(key.module());
   if (selected.isRuntimeFailure()) {
@@ -7142,9 +7128,7 @@ zc::Array<uint8_t> MaterializedOwnerBody::encodeCanonical() const {
   return frame(kOwnerBodyWitnessDomain, encoder.finish().asPtr());
 }
 
-zc::Array<uint8_t> MaterializeOwnerBody::encodeKey(const Key& key) {
-  return key.encodeCanonical();
-}
+zc::Array<uint8_t> MaterializeOwnerBody::encodeKey(const Key& key) { return key.encodeCanonical(); }
 
 zc::Maybe<MaterializeOwnerBody::Key> MaterializeOwnerBody::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
@@ -7237,8 +7221,7 @@ query::CapabilityProviderResult<MaterializeOwnerBody> MaterializeOwnerBody::prov
     return OwnerBodyProviderResult::runtimeRejected(query::QueryRuntimeFailure::InvariantViolation);
   }
   auto owned = zc::heap<Capability>(zc::mv(ZC_ASSERT_NONNULL(candidate)));
-  auto stableWitness =
-      query::CapabilityCandidateContract<MaterializeOwnerBody>::encode(*owned);
+  auto stableWitness = query::CapabilityCandidateContract<MaterializeOwnerBody>::encode(*owned);
   return OwnerBodyProviderResult::candidate(zc::mv(owned), zc::mv(stableWitness));
 }
 
@@ -8023,8 +8006,7 @@ identity::SourceFileId CheckerBoundModuleView::sourceFile() const noexcept {
   return impl->sourceFile;
 }
 
-const identity::ContextFingerprint& CheckerBoundModuleView::semanticFingerprint()
-    const noexcept {
+const identity::ContextFingerprint& CheckerBoundModuleView::semanticFingerprint() const noexcept {
   return impl->lease.capability().fingerprint();
 }
 
@@ -8071,12 +8053,9 @@ const CheckerBoundModuleView::BoundModuleLease& CheckerBoundModuleView::boundMod
   return impl->lease;
 }
 
-zc::Array<uint8_t> VerifyBoundModule::encodeKey(const Key& key) {
-  return key.encodeCanonical();
-}
+zc::Array<uint8_t> VerifyBoundModule::encodeKey(const Key& key) { return key.encodeCanonical(); }
 
-zc::Maybe<VerifyBoundModule::Key> VerifyBoundModule::decodeKey(
-    zc::ArrayPtr<const uint8_t> bytes) {
+zc::Maybe<VerifyBoundModule::Key> VerifyBoundModule::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
   return incremental_binding_query::ContextualModuleKey::decodeCanonical(bytes);
 }
 
@@ -8359,8 +8338,7 @@ TypedQueryResult<identity::DefId> ActiveMaterialization<identity::DefinitionKey>
   return mapIdentityInternResult(resources.internDefinition(context, key, record));
 }
 
-using MaterializeModuleSkeletonDescriptor =
-    driver::module_graph_query::MaterializeModuleSkeleton;
+using MaterializeModuleSkeletonDescriptor = driver::module_graph_query::MaterializeModuleSkeleton;
 
 StableWitnessBytes CapabilityCandidateContract<MaterializeModuleSkeletonDescriptor>::encode(
     const MaterializeModuleSkeletonDescriptor::Capability& candidate) {
@@ -8642,8 +8620,8 @@ CapabilityRejectionCheck CapabilityFailureContract<VerifyBoundModuleDescriptor,
   auto graph = context.getCapability<driver::module_graph_query::MaterializeModuleGraph>(
       key.contextRoots().clone());
   if (graph.isSourceRejected()) { return matches(graph.diagnostics()); }
-  auto skeleton = context.getCapability<driver::module_graph_query::MaterializeModuleSkeleton>(
-      key.clone());
+  auto skeleton =
+      context.getCapability<driver::module_graph_query::MaterializeModuleSkeleton>(key.clone());
   if (skeleton.isSourceRejected()) { return matches(skeleton.diagnostics()); }
   if (!skeleton.isPublished()) { return CapabilityRejectionCheck::Rejected; }
   auto sourceKey = identity::source_query::StableSourceQueryKey::fromVerified(
@@ -8657,8 +8635,8 @@ CapabilityRejectionCheck CapabilityFailureContract<VerifyBoundModuleDescriptor,
        skeleton.lease().capability().identities().stableWitness().bodyOwners().values()) {
     auto ownerKey = driver::incremental_binding_query::ContextualBodyOwnerKey::from(
         key.contextRoots().clone(), owner.clone());
-    auto body = context.getCapability<driver::module_graph_query::MaterializeOwnerBody>(
-        zc::mv(ownerKey));
+    auto body =
+        context.getCapability<driver::module_graph_query::MaterializeOwnerBody>(zc::mv(ownerKey));
     if (body.isSourceRejected()) { return matches(body.diagnostics()); }
   }
   return CapabilityRejectionCheck::Rejected;
@@ -8686,8 +8664,8 @@ CapabilityFailureContract<VerifyBoundModuleDescriptor, KeyRejection<binder::Bind
     return graph.keyFailure() == failure ? CapabilityRejectionCheck::Verified
                                          : CapabilityRejectionCheck::Rejected;
   }
-  auto skeleton = context.getCapability<driver::module_graph_query::MaterializeModuleSkeleton>(
-      key.clone());
+  auto skeleton =
+      context.getCapability<driver::module_graph_query::MaterializeModuleSkeleton>(key.clone());
   if (skeleton.isKeyRejected()) {
     return skeleton.keyFailure() == failure ? CapabilityRejectionCheck::Verified
                                             : CapabilityRejectionCheck::Rejected;
@@ -8703,8 +8681,8 @@ CapabilityFailureContract<VerifyBoundModuleDescriptor, KeyRejection<binder::Bind
        skeleton.lease().capability().identities().stableWitness().bodyOwners().values()) {
     auto ownerKey = driver::incremental_binding_query::ContextualBodyOwnerKey::from(
         key.contextRoots().clone(), owner.clone());
-    auto body = context.getCapability<driver::module_graph_query::MaterializeOwnerBody>(
-        zc::mv(ownerKey));
+    auto body =
+        context.getCapability<driver::module_graph_query::MaterializeOwnerBody>(zc::mv(ownerKey));
     if (body.isKeyRejected()) {
       return body.keyFailure() == failure ? CapabilityRejectionCheck::Verified
                                           : CapabilityRejectionCheck::Rejected;
@@ -8723,33 +8701,30 @@ namespace {
   zomlang::compiler::driver::incremental_binding_query::ContextualModuleKey
 #define ZOM_M1_KEY_ContextualBodyOwnerKey \
   zomlang::compiler::driver::incremental_binding_query::ContextualBodyOwnerKey
-#define ZOM_M1_CAPABILITY_SELECT_M1(name, domainLiteral, keyType, capabilityType)                \
-  static_assert(zomlang::compiler::query::CapabilityQueryDescriptor<                             \
-                zomlang::compiler::driver::module_graph_query::name>);                    \
-  static_assert(zc::isSameType<zomlang::compiler::driver::module_graph_query::name::Key,  \
-                               ZOM_M1_KEY_##keyType>());                                         \
-  static_assert(                                                                                 \
-      zc::isSameType<zomlang::compiler::driver::module_graph_query::name::Capability,     \
-                     zomlang::compiler::driver::module_graph_query::capabilityType>());          \
-  static_assert(zc::isSameType<                                                                  \
-                zomlang::compiler::driver::module_graph_query::name::FailureAlternatives, \
-                zomlang::compiler::query::CapabilityFailureList<                                 \
-                    zomlang::compiler::query::SourceRejection<                                   \
-                        zomlang::compiler::diagnostics::DiagnosticFact>,                         \
-                    zomlang::compiler::query::KeyRejection<                                      \
-                        zomlang::compiler::binder::BinderKeyFailure>>>());                       \
-  static_assert(zomlang::compiler::driver::module_graph_query::name::descriptor.domain == \
-                domainLiteral##_zcc);                                                            \
-  static_assert(                                                                                 \
-      zomlang::compiler::driver::module_graph_query::name::descriptor.retention ==        \
-      zomlang::compiler::query::RetentionClass::Retained);                                       \
-  static_assert(zomlang::compiler::driver::module_graph_query::name::descriptor.cycle ==  \
-                zomlang::compiler::query::QueryCyclePolicy::Reject);                             \
-  static_assert(zomlang::compiler::driver::module_graph_query::name::descriptor.cost ==   \
-                zomlang::compiler::query::QueryCostClass::Linear);                               \
-  static_assert(                                                                                 \
-      zomlang::compiler::driver::module_graph_query::name::descriptor.admission ==        \
-      zomlang::compiler::query::CapabilityAdmission::FinalSealedSnapshot)
+#define ZOM_M1_CAPABILITY_SELECT_M1(name, domainLiteral, keyType, capabilityType)                 \
+  static_assert(zomlang::compiler::query::CapabilityQueryDescriptor<                              \
+                zomlang::compiler::driver::module_graph_query::name>);                            \
+  static_assert(zc::isSameType<zomlang::compiler::driver::module_graph_query::name::Key,          \
+                               ZOM_M1_KEY_##keyType>());                                          \
+  static_assert(zc::isSameType<zomlang::compiler::driver::module_graph_query::name::Capability,   \
+                               zomlang::compiler::driver::module_graph_query::capabilityType>()); \
+  static_assert(                                                                                  \
+      zc::isSameType<zomlang::compiler::driver::module_graph_query::name::FailureAlternatives,    \
+                     zomlang::compiler::query::CapabilityFailureList<                             \
+                         zomlang::compiler::query::SourceRejection<                               \
+                             zomlang::compiler::diagnostics::DiagnosticFact>,                     \
+                         zomlang::compiler::query::KeyRejection<                                  \
+                             zomlang::compiler::binder::BinderKeyFailure>>>());                   \
+  static_assert(zomlang::compiler::driver::module_graph_query::name::descriptor.domain ==         \
+                domainLiteral##_zcc);                                                             \
+  static_assert(zomlang::compiler::driver::module_graph_query::name::descriptor.retention ==      \
+                zomlang::compiler::query::RetentionClass::Retained);                              \
+  static_assert(zomlang::compiler::driver::module_graph_query::name::descriptor.cycle ==          \
+                zomlang::compiler::query::QueryCyclePolicy::Reject);                              \
+  static_assert(zomlang::compiler::driver::module_graph_query::name::descriptor.cost ==           \
+                zomlang::compiler::query::QueryCostClass::Linear);                                \
+  static_assert(zomlang::compiler::driver::module_graph_query::name::descriptor.admission ==      \
+                zomlang::compiler::query::CapabilityAdmission::FinalSealedSnapshot)
 #define ZOM_M1_CAPABILITY_SELECT_R28_16A(name, domain, keyType, capabilityType)
 #define ZOM_M1_CAPABILITY_SELECT_M2(name, domain, keyType, capabilityType) \
   ZOM_M1_CAPABILITY_SELECT_M1(name, domain, keyType, capabilityType)
@@ -8778,20 +8753,20 @@ namespace {
 #undef ZOM_M1_KEY_ContextualModuleKey
 #undef ZOM_M1_KEY_CompilationRootSetQueryKey
 
-#define ZOM_M1_PERMISSION_MaterializeModuleGraph(globalKey, membership)                     \
-  static_assert(zomlang::compiler::query::ActiveMaterializerPermission<                     \
+#define ZOM_M1_PERMISSION_MaterializeModuleGraph(globalKey, membership)                \
+  static_assert(zomlang::compiler::query::ActiveMaterializerPermission<                \
                 zomlang::compiler::driver::module_graph_query::MaterializeModuleGraph, \
-                zomlang::compiler::identity::globalKey,                                     \
+                zomlang::compiler::identity::globalKey,                                \
                 zomlang::compiler::driver::incremental_binding_query::membership##Query>::allowed)
-#define ZOM_M1_PERMISSION_MaterializeModuleSkeleton(globalKey, membership)                     \
-  static_assert(zomlang::compiler::query::ActiveMaterializerPermission<                        \
-                zomlang::compiler::driver::module_graph_query::MaterializeModuleSkeleton, \
-                zomlang::compiler::identity::globalKey,                                        \
-                zomlang::compiler::driver::incremental_binding_query::membership##Query>::allowed)
-#define ZOM_M1_PERMISSION_MaterializeOwnerBody(globalKey, membership)                     \
+#define ZOM_M1_PERMISSION_MaterializeModuleSkeleton(globalKey, membership)                \
   static_assert(zomlang::compiler::query::ActiveMaterializerPermission<                   \
-                zomlang::compiler::driver::module_graph_query::MaterializeOwnerBody, \
+                zomlang::compiler::driver::module_graph_query::MaterializeModuleSkeleton, \
                 zomlang::compiler::identity::globalKey,                                   \
+                zomlang::compiler::driver::incremental_binding_query::membership##Query>::allowed)
+#define ZOM_M1_PERMISSION_MaterializeOwnerBody(globalKey, membership)                \
+  static_assert(zomlang::compiler::query::ActiveMaterializerPermission<              \
+                zomlang::compiler::driver::module_graph_query::MaterializeOwnerBody, \
+                zomlang::compiler::identity::globalKey,                              \
                 zomlang::compiler::driver::incremental_binding_query::membership##Query>::allowed)
 #define ZOM_M1_PERMISSION_SELECT(descriptor, globalKey, membership) \
   ZOM_M1_PERMISSION_SELECT_EXPAND(descriptor, globalKey, membership)

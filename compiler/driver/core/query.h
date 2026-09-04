@@ -17,7 +17,7 @@
 #include "compiler/identity/key/compilation-unit-key.h"
 #include "compiler/identity/key/module-resolution-key.h"
 #include "compiler/identity/semantic/context-fingerprint.h"
-#include "compiler/identity/source-query-input.h"
+#include "compiler/identity/source/source-query-input.h"
 #include "compiler/query/query-database.h"
 #include "compiler/source/core-distribution.h"
 #include "compiler/source/core-source-catalog.h"
@@ -298,7 +298,7 @@ struct MaterializeCoreRoleSeed final {
   using FailureAlternatives = query::CapabilityFailureList<>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "MaterializeCoreRoleSeed"_zcc, "zom.query.materialize-core-role-seed"_zcc,
+      "MaterializeCoreRoleSeed"_zcc,      "zom.query.materialize-core-role-seed"_zcc,
       query::RetentionClass::Retained,    query::QueryCyclePolicy::Reject,
       query::QueryCostClass::Linear,      query::CapabilityAdmission::FinalSealedSnapshot,
       query::FinalFailureProjection::None};
@@ -644,9 +644,9 @@ struct MaterializeCoreAuthority final {
   using FailureAlternatives = query::CapabilityFailureList<>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "MaterializeCoreAuthority"_zcc, "zom.query.materialize-core-authority"_zcc,
-      query::RetentionClass::Retained,     query::QueryCyclePolicy::Reject,
-      query::QueryCostClass::Linear,       query::CapabilityAdmission::FinalSealedSnapshot,
+      "MaterializeCoreAuthority"_zcc,     "zom.query.materialize-core-authority"_zcc,
+      query::RetentionClass::Retained,    query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear,      query::CapabilityAdmission::FinalSealedSnapshot,
       query::FinalFailureProjection::None};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
@@ -781,9 +781,9 @@ struct FinalizeCoreModuleInterface final {
   using FailureAlternatives = query::CapabilityFailureList<>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "FinalizeCoreModuleInterface"_zcc, "zom.query.finalize-core-module-interface"_zcc,
-      query::RetentionClass::Retained,        query::QueryCyclePolicy::Reject,
-      query::QueryCostClass::Linear,          query::CapabilityAdmission::FinalSealedSnapshot,
+      "FinalizeCoreModuleInterface"_zcc,  "zom.query.finalize-core-module-interface"_zcc,
+      query::RetentionClass::Retained,    query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear,      query::CapabilityAdmission::FinalSealedSnapshot,
       query::FinalFailureProjection::None};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
@@ -985,8 +985,7 @@ public:
 };
 
 template <>
-class CapabilityCandidateContract<driver::core_library_query::FinalizeCoreModuleInterface>
-    final {
+class CapabilityCandidateContract<driver::core_library_query::FinalizeCoreModuleInterface> final {
 public:
   using Descriptor = driver::core_library_query::FinalizeCoreModuleInterface;
   ZC_NODISCARD static StableWitnessBytes encode(const Descriptor::Capability& candidate);
@@ -994,13 +993,13 @@ public:
       zc::ArrayPtr<const uint8_t> bytes);
 };
 
-#define ZOM_DECLARE_CORE_ROLE_SEED_MATERIALIZER_PERMISSION(GlobalKey, Membership)               \
-  template <>                                                                                   \
-  struct ActiveMaterializerPermission<driver::core_library_query::MaterializeCoreRoleSeed, \
-                                      GlobalKey,                                                \
-                                      driver::incremental_binding_query::Membership##Query>     \
-      final {                                                                                   \
-    static constexpr bool allowed = true;                                                       \
+#define ZOM_DECLARE_CORE_ROLE_SEED_MATERIALIZER_PERMISSION(GlobalKey, Membership)           \
+  template <>                                                                               \
+  struct ActiveMaterializerPermission<driver::core_library_query::MaterializeCoreRoleSeed,  \
+                                      GlobalKey,                                            \
+                                      driver::incremental_binding_query::Membership##Query> \
+      final {                                                                               \
+    static constexpr bool allowed = true;                                                   \
   }
 
 ZOM_DECLARE_CORE_ROLE_SEED_MATERIALIZER_PERMISSION(identity::CrateKey, ActiveCrateMembership);

@@ -5,18 +5,18 @@
 
 #pragma once
 
+#include "compiler/ast/tree.h"
+#include "compiler/binder/identity/local-identity.h"
+#include "compiler/binder/metadata/definition-site.h"
+#include "compiler/identity/canonical/canonical-scalar.h"
+#include "compiler/identity/key/definition-key.h"
+#include "compiler/identity/key/import-binding-key.h"
+#include "compiler/identity/source/source-snapshot.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "compiler/ast/tree.h"
-#include "compiler/binder/metadata/definition-site.h"
-#include "compiler/binder/identity/local-identity.h"
-#include "compiler/identity/canonical/canonical-scalar.h"
-#include "compiler/identity/key/definition-key.h"
-#include "compiler/identity/key/import-binding-key.h"
-#include "compiler/identity/source-snapshot.h"
 
 namespace zomlang::compiler::diagnostics {
 enum class DiagID : uint32_t;
