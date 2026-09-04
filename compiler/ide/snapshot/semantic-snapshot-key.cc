@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "compiler/ide/semantic-snapshot-key.h"
+#include "compiler/ide/snapshot/semantic-snapshot-key.h"
 
 #include "zc/core/vector.h"
 

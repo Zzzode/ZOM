@@ -18,7 +18,7 @@
 // consecutive, monotonicity within one open lifecycle. This is a pure immutable
 // value; it constructs no query, session, or AST.
 
-#include "compiler/ide/document-version.h"
+#include "compiler/ide/document/document-version.h"
 
 #include <cstdint>
 

@@ -16,7 +16,7 @@
 
 #include <cstdint>
 
-#include "compiler/ide/document-version.h"
+#include "compiler/ide/document/document-version.h"
 #include "compiler/identity/source-query-input.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"

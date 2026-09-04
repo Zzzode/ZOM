@@ -21,12 +21,12 @@
 // wrong. This is not the RFC Analysis Lease and claims no InputsCurrent/Changed
 // semantics.
 
-#include "compiler/ide/semantic-snapshot-freshness.h"
+#include "compiler/ide/snapshot/semantic-snapshot-freshness.h"
 
 #include "compiler/basic/thread-pool.h"
 #include "compiler/driver/query/binding/incremental-binding-query-adapter.h"
-#include "compiler/ide/document-version.h"
-#include "compiler/ide/semantic-snapshot-key.h"
+#include "compiler/ide/document/document-version.h"
+#include "compiler/ide/snapshot/semantic-snapshot-key.h"
 #include "compiler/identity/source-query-input.h"
 #include "compiler/ir/target-registry.h"
 #include "zc/core/vector.h"

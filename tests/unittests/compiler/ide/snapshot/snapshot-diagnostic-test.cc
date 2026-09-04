@@ -18,7 +18,7 @@
 // copies of the message arguments. It composes as pure data; it touches no
 // query, session, or fact.
 
-#include "compiler/ide/snapshot-diagnostic.h"
+#include "compiler/ide/snapshot/snapshot-diagnostic.h"
 
 #include "compiler/diagnostics/core/diagnostic-ids.h"
 #include "zc/core/array.h"

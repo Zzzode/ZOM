@@ -17,15 +17,15 @@
 // carries only IDE-safe values and no compiler handle. This composes as pure
 // data; it drives no query.
 
-#include "compiler/ide/semantic-snapshot.h"
+#include "compiler/ide/snapshot/semantic-snapshot.h"
 
 #include <cstdint>
 
 #include "compiler/diagnostics/core/diagnostic-ids.h"
-#include "compiler/ide/document-version.h"
-#include "compiler/ide/snapshot-diagnostic.h"
-#include "compiler/ide/snapshot-outline.h"
-#include "compiler/ide/snapshot-token.h"
+#include "compiler/ide/document/document-version.h"
+#include "compiler/ide/snapshot/snapshot-diagnostic.h"
+#include "compiler/ide/snapshot/snapshot-outline.h"
+#include "compiler/ide/snapshot/snapshot-token.h"
 #include "zc/core/array.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"

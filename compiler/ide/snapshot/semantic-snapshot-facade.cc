@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "compiler/ide/semantic-snapshot-facade.h"
+#include "compiler/ide/snapshot/semantic-snapshot-facade.h"
 
 #include "compiler/ast/generated/node-accessors.h"
 #include "compiler/ast/tree.h"
 #include "compiler/diagnostics/fact/diagnostic-fact.h"
 #include "compiler/diagnostics/fact/diagnostic-materializer.h"
-#include "compiler/ide/snapshot-diagnostic.h"
-#include "compiler/ide/snapshot-outline.h"
-#include "compiler/ide/snapshot-token.h"
+#include "compiler/ide/snapshot/snapshot-diagnostic.h"
+#include "compiler/ide/snapshot/snapshot-outline.h"
+#include "compiler/ide/snapshot/snapshot-token.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/key/source-key.h"
 #include "compiler/identity/source-query-input.h"

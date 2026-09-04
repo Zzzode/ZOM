@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "compiler/ide/snapshot-token.h"
+#include "compiler/ide/snapshot/snapshot-token.h"
 
 namespace zomlang::compiler::ide {
 

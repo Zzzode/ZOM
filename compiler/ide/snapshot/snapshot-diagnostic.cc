@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "compiler/ide/snapshot-diagnostic.h"
+#include "compiler/ide/snapshot/snapshot-diagnostic.h"
 
 #include "compiler/diagnostics/core/diagnostic-info.h"
 

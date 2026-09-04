@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "compiler/ide/snapshot-outline.h"
+#include "compiler/ide/snapshot/snapshot-outline.h"
 
 namespace zomlang::compiler::ide {
 

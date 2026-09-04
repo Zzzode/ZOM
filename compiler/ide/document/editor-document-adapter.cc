@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "compiler/ide/editor-document-adapter.h"
+#include "compiler/ide/document/editor-document-adapter.h"
 
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/key/package-key.h"

@@ -14,8 +14,8 @@
 
 #pragma once
 
-#include "compiler/ide/semantic-snapshot-key.h"
-#include "compiler/ide/semantic-snapshot.h"
+#include "compiler/ide/snapshot/semantic-snapshot-key.h"
+#include "compiler/ide/snapshot/semantic-snapshot.h"
 #include "compiler/query/query-database.h"
 
 namespace zomlang::compiler::ide {

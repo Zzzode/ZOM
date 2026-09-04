@@ -16,10 +16,10 @@
 
 #include <cstdint>
 
-#include "compiler/ide/document-version.h"
-#include "compiler/ide/snapshot-diagnostic.h"
-#include "compiler/ide/snapshot-outline.h"
-#include "compiler/ide/snapshot-token.h"
+#include "compiler/ide/document/document-version.h"
+#include "compiler/ide/snapshot/snapshot-diagnostic.h"
+#include "compiler/ide/snapshot/snapshot-outline.h"
+#include "compiler/ide/snapshot/snapshot-token.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 

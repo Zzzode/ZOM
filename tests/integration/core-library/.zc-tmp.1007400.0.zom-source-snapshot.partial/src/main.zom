@@ -1,0 +1,9 @@
+// KR5.2 / gap#2 backend-lowering fixture: a single function that initializes a
+// one-field struct with a constant and returns that field. The field read is
+// folded at MIR -> LIR lowering, so it lowers to the reserved no-argument i32
+// `zom.module_init` shape and emits a verified native ELF object. Unlike the
+// parameterized diamond/loop/comparison/call slices, this entry shape matches the
+// runtime `_start` contract, but this fixture only exercises object emission --
+// execution stays out of scope for this slice.
+struct Box { v: i32, }
+fun entry() -> i32 { let b = Box { v: 42 }; return b.v; }

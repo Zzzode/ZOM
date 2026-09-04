@@ -20,15 +20,15 @@
 // the production query database exactly as the incremental-binding adapter test
 // does, so the parse query runs against its real tracked inputs.
 
-#include "compiler/ide/semantic-snapshot-facade.h"
+#include "compiler/ide/snapshot/semantic-snapshot-facade.h"
 
 #include "compiler/basic/thread-pool.h"
 #include "compiler/driver/query/binding/incremental-binding-query-adapter.h"
-#include "compiler/ide/document-version.h"
-#include "compiler/ide/semantic-snapshot-key.h"
-#include "compiler/ide/semantic-snapshot.h"
-#include "compiler/ide/snapshot-outline.h"
-#include "compiler/ide/snapshot-token.h"
+#include "compiler/ide/document/document-version.h"
+#include "compiler/ide/snapshot/semantic-snapshot-key.h"
+#include "compiler/ide/snapshot/semantic-snapshot.h"
+#include "compiler/ide/snapshot/snapshot-outline.h"
+#include "compiler/ide/snapshot/snapshot-token.h"
 #include "compiler/identity/source-query-input.h"
 #include "compiler/ir/target-registry.h"
 #include "compiler/parser/query/parse-source-query.h"

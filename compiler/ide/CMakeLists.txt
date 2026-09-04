@@ -1,12 +1,12 @@
 set(IDE_SRC
-  ${CMAKE_CURRENT_SOURCE_DIR}/editor-document-adapter.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/semantic-snapshot-facade.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/semantic-snapshot-freshness.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/semantic-snapshot-key.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/semantic-snapshot.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/snapshot-diagnostic.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/snapshot-outline.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/snapshot-token.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/document/editor-document-adapter.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/snapshot/semantic-snapshot-facade.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/snapshot/semantic-snapshot-freshness.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/snapshot/semantic-snapshot-key.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/snapshot/semantic-snapshot.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/snapshot/snapshot-diagnostic.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/snapshot/snapshot-outline.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/snapshot/snapshot-token.cc
 )
 
 add_library(ide STATIC ${IDE_SRC})

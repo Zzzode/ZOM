@@ -21,8 +21,8 @@
 
 #include <cstdint>
 
-#include "compiler/ide/document-version.h"
-#include "compiler/ide/semantic-snapshot-key.h"
+#include "compiler/ide/document/document-version.h"
+#include "compiler/ide/snapshot/semantic-snapshot-key.h"
 #include "compiler/identity/source-query-input.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
 #include "zc/core/vector.h"

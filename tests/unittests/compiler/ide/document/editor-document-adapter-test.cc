@@ -24,13 +24,13 @@
 // the adapter is constructed with a stable crate and maps a URI within it
 // deterministically.
 
-#include "compiler/ide/editor-document-adapter.h"
+#include "compiler/ide/document/editor-document-adapter.h"
 
 #include "compiler/basic/thread-pool.h"
 #include "compiler/driver/query/binding/incremental-binding-query-adapter.h"
-#include "compiler/ide/document-version.h"
-#include "compiler/ide/semantic-snapshot-facade.h"
-#include "compiler/ide/semantic-snapshot-key.h"
+#include "compiler/ide/document/document-version.h"
+#include "compiler/ide/snapshot/semantic-snapshot-facade.h"
+#include "compiler/ide/snapshot/semantic-snapshot-key.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/key/source-key.h"
 #include "compiler/identity/source-query-input.h"

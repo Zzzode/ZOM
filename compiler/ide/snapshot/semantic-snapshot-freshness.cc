@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "compiler/ide/semantic-snapshot-freshness.h"
+#include "compiler/ide/snapshot/semantic-snapshot-freshness.h"
 
-#include "compiler/ide/semantic-snapshot-facade.h"
+#include "compiler/ide/snapshot/semantic-snapshot-facade.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/key/source-key.h"
 #include "compiler/identity/source-query-input.h"
