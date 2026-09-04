@@ -22,7 +22,7 @@
 #include "compiler/driver/package/source-snapshot.h"
 #include "compiler/driver/package/verified-package-inputs.h"
 #include "compiler/driver/package/workspace-normalizer.h"
-#include "compiler/ir/target-registry.h"
+#include "compiler/ir/target/target-registry.h"
 #include "zc/core/filesystem.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"

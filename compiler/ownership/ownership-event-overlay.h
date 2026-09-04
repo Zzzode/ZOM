@@ -16,11 +16,6 @@
 
 #include <cstdint>
 
-#include "zc/core/array.h"
-#include "zc/core/common.h"
-#include "zc/core/memory.h"
-#include "zc/core/one-of.h"
-#include "zc/core/vector.h"
 #include "compiler/checker/body/body-checker.h"
 #include "compiler/checker/checker-identity-authority.h"
 #include "compiler/hir/hir-module.h"
@@ -28,10 +23,15 @@
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/crypto/sha256.h"
 #include "compiler/identity/semantic/context-fingerprint.h"
-#include "compiler/ir/ir-failure.h"
+#include "compiler/ir/diagnostics/ir-failure.h"
 #include "compiler/ir/ir-identity.h"
 #include "compiler/mir/built-mir.h"
 #include "compiler/ownership/surface-admission.h"
+#include "zc/core/array.h"
+#include "zc/core/common.h"
+#include "zc/core/memory.h"
+#include "zc/core/one-of.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::ownership {
 

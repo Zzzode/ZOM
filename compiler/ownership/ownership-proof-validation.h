@@ -16,12 +16,12 @@
 
 #include <cstddef>
 
-#include "zc/core/memory.h"
-#include "compiler/ir/ir-failure.h"
+#include "compiler/ir/diagnostics/ir-failure.h"
 #include "compiler/ownership/facts/capture.h"
 #include "compiler/ownership/facts/escape.h"
 #include "compiler/ownership/facts/inputs.h"
 #include "compiler/ownership/facts/region-membership.h"
+#include "zc/core/memory.h"
 
 namespace zomlang::compiler::ownership {
 

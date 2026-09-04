@@ -17,13 +17,13 @@
 #include <cerrno>
 #include <cstdlib>
 
-#include "zc/core/filesystem.h"
-#include "zc/core/time.h"
-#include "zc/ztest/test.h"
 #include "compiler/driver/package/linux-native-sandbox.h"
 #include "compiler/driver/package/linux-sandbox-policy.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
-#include "compiler/ir/target-registry.h"
+#include "compiler/ir/target/target-registry.h"
+#include "zc/core/filesystem.h"
+#include "zc/core/time.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::driver::package {
 namespace {

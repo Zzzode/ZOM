@@ -26,7 +26,7 @@ RUNTIME_PRODUCERS = {
     "package-resolver-test": ROOT
     / "tests/unittests/compiler/driver/package/package-resolver-test.cc",
     "target-registry-test": ROOT
-    / "tests/unittests/compiler/ir/target-registry-test.cc",
+    / "tests/unittests/compiler/ir/target/target-registry-test.cc",
     "build-script-execution-key-test": ROOT
     / "tests/unittests/compiler/driver/package/build-script-execution-key-test.cc",
     "source-record-test": ROOT

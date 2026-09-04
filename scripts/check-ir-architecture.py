@@ -12,36 +12,36 @@ DOCS_ROOT = ROOT / "docs"
 IR_ROOT = Path("compiler/ir")
 IRGEN_ROOT = Path("compiler/irgen")
 MIR_ROOT = Path("compiler/mir")
-TARGET_HEADER = IR_ROOT / "target-registry.h"
-TARGET_SOURCE = IR_ROOT / "target-registry.cc"
-FAILURE_HEADER = IR_ROOT / "ir-failure.h"
-FAILURE_SOURCE = IR_ROOT / "ir-failure.cc"
-DIAGNOSTIC_ADAPTER_HEADER = IR_ROOT / "ir-diagnostic-adapter.h"
-DIAGNOSTIC_ADAPTER_SOURCE = IR_ROOT / "ir-diagnostic-adapter.cc"
+TARGET_HEADER = IR_ROOT / "target/target-registry.h"
+TARGET_SOURCE = IR_ROOT / "target/target-registry.cc"
+FAILURE_HEADER = IR_ROOT / "diagnostics/ir-failure.h"
+FAILURE_SOURCE = IR_ROOT / "diagnostics/ir-failure.cc"
+DIAGNOSTIC_ADAPTER_HEADER = IR_ROOT / "diagnostics/ir-diagnostic-adapter.h"
+DIAGNOSTIC_ADAPTER_SOURCE = IR_ROOT / "diagnostics/ir-diagnostic-adapter.cc"
 IDENTITY_HEADER = IR_ROOT / "ir-identity.h"
 IDENTITY_SOURCE = IR_ROOT / "ir-identity.cc"
 IR_CMAKE = IR_ROOT / "CMakeLists.txt"
-LINK_PLAN_HEADER = IR_ROOT / "link-plan-codec.h"
-LINK_PLAN_SOURCE = IR_ROOT / "link-plan-codec.cc"
-EXECUTABLE_INSPECTOR_HEADER = IR_ROOT / "executable-inspector.h"
-EXECUTABLE_INSPECTOR_SOURCE = IR_ROOT / "executable-inspector.cc"
-EXECUTABLE_PUBLICATION_HEADER = IR_ROOT / "executable-publication.h"
-EXECUTABLE_PUBLICATION_SOURCE = IR_ROOT / "executable-publication.cc"
+LINK_PLAN_HEADER = IR_ROOT / "link/link-plan-codec.h"
+LINK_PLAN_SOURCE = IR_ROOT / "link/link-plan-codec.cc"
+EXECUTABLE_INSPECTOR_HEADER = IR_ROOT / "publication/executable-inspector.h"
+EXECUTABLE_INSPECTOR_SOURCE = IR_ROOT / "publication/executable-inspector.cc"
+EXECUTABLE_PUBLICATION_HEADER = IR_ROOT / "publication/executable-publication.h"
+EXECUTABLE_PUBLICATION_SOURCE = IR_ROOT / "publication/executable-publication.cc"
 # RFC 0043 D3b: the snapshot capability, its token seam, and its test peer are a
 # test-only internal surface. Only the implementation file may include it from
 # the compiler tree; every other production translation unit is forbidden (the
 # invoke-linker-test lives under tests/, outside this scan, so it is exempt).
-INVOKE_LINKER_INTERNAL_HEADER = IR_ROOT / "invoke-linker-internal.h"
-INVOKE_LINKER_INTERNAL_INCLUDE = 'compiler/ir/invoke-linker-internal.h'
-INVOKE_LINKER_INTERNAL_ALLOWED = (IR_ROOT / "invoke-linker.cc",)
-EXECUTABLE_PUBLICATION_INTERNAL_HEADER = IR_ROOT / "executable-publication-internal.h"
-EXECUTABLE_PUBLICATION_INTERNAL_INCLUDE = 'compiler/ir/executable-publication-internal.h'
-EXECUTABLE_PUBLICATION_INTERNAL_ALLOWED = (IR_ROOT / "executable-publication.cc",)
-LINK_PUBLICATION_INTERNAL_HEADER = IR_ROOT / "link-publication-internal.h"
-LINK_PUBLICATION_INTERNAL_INCLUDE = 'compiler/ir/link-publication-internal.h'
+INVOKE_LINKER_INTERNAL_HEADER = IR_ROOT / "link/invoke-linker-internal.h"
+INVOKE_LINKER_INTERNAL_INCLUDE = 'compiler/ir/link/invoke-linker-internal.h'
+INVOKE_LINKER_INTERNAL_ALLOWED = (IR_ROOT / "link/invoke-linker.cc",)
+EXECUTABLE_PUBLICATION_INTERNAL_HEADER = IR_ROOT / "publication/executable-publication-internal.h"
+EXECUTABLE_PUBLICATION_INTERNAL_INCLUDE = 'compiler/ir/publication/executable-publication-internal.h'
+EXECUTABLE_PUBLICATION_INTERNAL_ALLOWED = (IR_ROOT / "publication/executable-publication.cc",)
+LINK_PUBLICATION_INTERNAL_HEADER = IR_ROOT / "link/link-publication-internal.h"
+LINK_PUBLICATION_INTERNAL_INCLUDE = 'compiler/ir/link/link-publication-internal.h'
 LINK_PUBLICATION_INTERNAL_ALLOWED = (
-    IR_ROOT / "executable-publication.cc",
-    IR_ROOT / "invoke-linker.cc",
+    IR_ROOT / "publication/executable-publication.cc",
+    IR_ROOT / "link/invoke-linker.cc",
 )
 MIR_HEADER = MIR_ROOT / "built-mir.h"
 MIR_SOURCE = MIR_ROOT / "built-mir.cc"
@@ -187,7 +187,7 @@ REQUIRED_SESSION_MIR_MARKERS = (
 
 FORBIDDEN_BUILT_MIR_DEPENDENCIES = (
     "compiler/irgen/",
-    "compiler/ir/target-registry.h",
+    "compiler/ir/target/target-registry.h",
     "TargetDataLayout",
     "CanonicalTargetSpec",
     "VerifiedTargetSelection",
@@ -242,7 +242,7 @@ def check_invoke_linker_internal_boundary(files: dict[Path, str], errors: list[s
             errors.append(
                 f"{path}: including {INVOKE_LINKER_INTERNAL_INCLUDE} is forbidden; the D3b "
                 "snapshot capability is a test-only internal surface (only "
-                "compiler/ir/invoke-linker.cc may include it)"
+                "compiler/ir/link/invoke-linker.cc may include it)"
             )
 
 
@@ -370,7 +370,7 @@ def check_target_registry(files: dict[Path, str], errors: list[str]) -> None:
     for marker in REQUIRED_TARGET_MARKERS:
         if marker not in header:
             errors.append(f"{TARGET_HEADER}: missing canonical target marker {marker}")
-    if '#include "compiler/ir/target-registry.h"' not in source:
+    if '#include "compiler/ir/target/target-registry.h"' not in source:
         errors.append(f"{TARGET_SOURCE}: target registry must include its canonical owner header")
     for marker in FORBIDDEN_TARGET_DEPENDENCIES:
         if marker in header or marker in source:
@@ -414,7 +414,7 @@ def check_failure_contract(files: dict[Path, str], errors: list[str]) -> None:
     for marker in REQUIRED_IDENTITY_MARKERS:
         if marker not in identity:
             errors.append(f"{IDENTITY_HEADER}: missing canonical IR identity marker {marker}")
-    if '#include "compiler/ir/ir-failure.h"' not in source:
+    if '#include "compiler/ir/diagnostics/ir-failure.h"' not in source:
         errors.append(f"{FAILURE_SOURCE}: failure implementation must include its owner header")
     if '#include "compiler/ir/ir-identity.h"' not in files.get(IDENTITY_SOURCE, ""):
         errors.append(f"{IDENTITY_SOURCE}: identity implementation must include its owner header")
@@ -440,7 +440,7 @@ def check_diagnostic_adapter(files: dict[Path, str], errors: list[str]) -> None:
     for marker in REQUIRED_DIAGNOSTIC_ADAPTER_MARKERS:
         if marker not in header and marker not in source:
             errors.append(f"{DIAGNOSTIC_ADAPTER_HEADER}: missing exhaustive adapter marker {marker}")
-    if '#include "compiler/ir/ir-diagnostic-adapter.h"' not in source:
+    if '#include "compiler/ir/diagnostics/ir-diagnostic-adapter.h"' not in source:
         errors.append(
             f"{DIAGNOSTIC_ADAPTER_SOURCE}: implementation must include its canonical owner header"
         )
@@ -632,7 +632,7 @@ def run_self_test() -> int:
         baseline,
         "Built MIR target dependency injected",
         lambda files: append_source(
-            files, MIR_SOURCE, '\n#include "compiler/ir/target-registry.h"\n'
+            files, MIR_SOURCE, '\n#include "compiler/ir/target/target-registry.h"\n'
         ),
         "Built MIR depends on forbidden target/prototype marker",
     )
@@ -759,9 +759,9 @@ def run_self_test() -> int:
         baseline,
         "invoke-linker internal header leaked into another IR translation unit",
         lambda files: files.__setitem__(
-            IR_ROOT / "target-registry.cc",
+            IR_ROOT / "target/target-registry.cc",
             f'#include "{INVOKE_LINKER_INTERNAL_INCLUDE}"\n'
-            + files[IR_ROOT / "target-registry.cc"],
+            + files[IR_ROOT / "target/target-registry.cc"],
         ),
         "is a test-only internal surface",
     )
@@ -769,9 +769,9 @@ def run_self_test() -> int:
         baseline,
         "D1 publication entry point leaked into another IR translation unit",
         lambda files: files.__setitem__(
-            IR_ROOT / "target-registry.cc",
+            IR_ROOT / "target/target-registry.cc",
             f'#include "{EXECUTABLE_PUBLICATION_INTERNAL_INCLUDE}"\n'
-            + files[IR_ROOT / "target-registry.cc"],
+            + files[IR_ROOT / "target/target-registry.cc"],
         ),
         "D1 publication entry point is an internal surface",
     )
@@ -779,9 +779,9 @@ def run_self_test() -> int:
         baseline,
         "D1 link-publication attorney leaked into another IR translation unit",
         lambda files: files.__setitem__(
-            IR_ROOT / "target-registry.cc",
+            IR_ROOT / "target/target-registry.cc",
             f'#include "{LINK_PUBLICATION_INTERNAL_INCLUDE}"\n'
-            + files[IR_ROOT / "target-registry.cc"],
+            + files[IR_ROOT / "target/target-registry.cc"],
         ),
         "D1 link-publication attorney is an internal surface",
     )

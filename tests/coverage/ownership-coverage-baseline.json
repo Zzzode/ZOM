@@ -21,7 +21,7 @@
       "lineCount": 46,
       "linePercent": 52.17
     },
-    "compiler/ir/ir-failure.cc": {
+    "compiler/ir/diagnostics/ir-failure.cc": {
       "coveredLines": 463,
       "lineCount": 783,
       "linePercent": 59.13

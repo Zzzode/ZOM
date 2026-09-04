@@ -1,0 +1,235 @@
+// Copyright (c) 2026 Zode.Z. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and limitations under
+// the License.
+
+#include "compiler/ir/target/toolchain-discovery.h"
+
+#include "compiler/identity/crypto/sha256.h"
+#include "zc/core/debug.h"
+
+namespace zomlang::compiler::ir {
+
+namespace {
+
+// A normalized absolute POSIX path: non-empty, begins with '/', and has no
+// empty, "." or ".." segment. Mirrors the link-plan path contract.
+bool isNormalizedAbsolutePath(zc::StringPtr path) {
+  if (path.size() == 0 || path[0] != '/') { return false; }
+  size_t segmentStart = 1;
+  for (size_t index = 1; index <= path.size(); ++index) {
+    const bool atEnd = index == path.size();
+    if (!atEnd && path[index] != '/') { continue; }
+    const size_t length = index - segmentStart;
+    if (length == 0) { return false; }
+    if (length == 1 && path[segmentStart] == '.') { return false; }
+    if (length == 2 && path[segmentStart] == '.' && path[segmentStart + 1] == '.') { return false; }
+    segmentStart = index + 1;
+  }
+  return true;
+}
+
+}  // namespace
+
+// =======================================================================================
+// VerifiedSysroot
+
+zc::Maybe<VerifiedSysroot> VerifiedSysroot::open(const zc::Filesystem& filesystem,
+                                                 zc::StringPtr canonicalAbsolutePath) {
+  // The identity must be a normalized absolute path with at least one segment
+  // (the bare root "/" is rejected).
+  if (!isNormalizedAbsolutePath(canonicalAbsolutePath)) { return zc::none; }
+  // Root the capability at the filesystem's TRUE root, never a caller-supplied
+  // subdirectory, so the recorded canonical identity cannot be a lie relative to
+  // an arbitrary directory posing as the root. Every open error (missing, not a
+  // directory, permission, type) maps to none, never a thrown exception.
+  try {
+    ZC_IF_SOME(directory, filesystem.getRoot().tryOpenSubdir(
+                              zc::Path::parse(canonicalAbsolutePath.slice(1)))) {
+      return VerifiedSysroot(zc::heapString(canonicalAbsolutePath), zc::mv(directory));
+    }
+    return zc::none;
+  } catch (const zc::Exception&) { return zc::none; }
+}
+
+// =======================================================================================
+// ToolchainDiscoveryResult
+
+ToolchainDiscoveryResult ToolchainDiscoveryResult::forClosure(ToolchainClosureRecord&& closure) {
+  return ToolchainDiscoveryResult(zc::mv(closure));
+}
+
+ToolchainDiscoveryResult ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure reason) {
+  return ToolchainDiscoveryResult(reason);
+}
+
+const ToolchainClosureRecord& ToolchainDiscoveryResult::closure() const {
+  ZC_IREQUIRE(closureValue != zc::none, "ToolchainDiscoveryResult::closure() on a failure");
+  return ZC_REQUIRE_NONNULL(closureValue);
+}
+
+// =======================================================================================
+// discoverToolchain
+
+namespace {
+
+// A valid sysroot-relative path: non-empty, not absolute, and with no empty,
+// "." or ".." segment and no interior NUL. This is checked BEFORE any filesystem
+// read, so a traversal or malformed path never reaches zc::Path::parse (which
+// would throw or canonicalize) and the bytes read always match the recorded
+// path.
+bool isValidSysrootRelativePath(zc::StringPtr path) {
+  if (path.size() == 0 || path[0] == '/') { return false; }
+  size_t segmentStart = 0;
+  for (size_t index = 0; index <= path.size(); ++index) {
+    const bool atEnd = index == path.size();
+    if (!atEnd) {
+      if (path[index] == '\0') { return false; }
+      if (path[index] != '/') { continue; }
+    }
+    const size_t length = index - segmentStart;
+    if (length == 0) { return false; }  // empty segment: leading/trailing/'//'
+    if (length == 1 && path[segmentStart] == '.') { return false; }
+    if (length == 2 && path[segmentStart] == '.' && path[segmentStart + 1] == '.') { return false; }
+    segmentStart = index + 1;
+  }
+  return true;
+}
+
+// Reads a file's bytes under the search root, or none if it does not exist. The
+// relative path must already have passed isValidSysrootRelativePath. A
+// present-but-empty file returns an empty array (distinguished from a missing
+// file, which returns none).
+zc::Maybe<zc::Array<zc::byte>> tryReadFile(const zc::ReadableDirectory& root,
+                                           zc::StringPtr relativePath) {
+  ZC_IF_SOME(file, root.tryOpenFile(zc::Path::parse(relativePath))) { return file->readAllBytes(); }
+  return zc::none;
+}
+
+// Digests `bytes` into a validated input record with `role` and `recordedPath`,
+// or none if the digest cannot be computed or the record is rejected.
+zc::Maybe<LinkInputRecord> makeInputRecord(zc::StringPtr recordedPath, LinkInputRole role,
+                                           zc::ArrayPtr<const zc::byte> bytes) {
+  ZC_IF_SOME(digest, identity::sha256(bytes.asBytes())) {
+    return LinkInputRecord::make(recordedPath, role, digest, bytes.size());
+  }
+  return zc::none;
+}
+
+// Derives the normalized absolute recorded path from the sysroot identity and a
+// sysroot-relative path that has ALREADY passed isValidSysrootRelativePath, so
+// the recorded/executed path names the same object that was read and digested.
+zc::String deriveRecordedPath(zc::StringPtr sysroot, zc::StringPtr relativePath) {
+  return zc::str(sysroot, "/", relativePath);
+}
+
+}  // namespace
+
+ToolchainDiscoveryResult discoverToolchain(const VerifiedSysroot& sysroot,
+                                           const ToolchainSearchSpec& spec) {
+  // Fail-closed spec validation: the target identity and linker relative path
+  // must be present before we touch the filesystem. The sysroot identity is
+  // guaranteed normalized-absolute by the VerifiedSysroot capability.
+  if (spec.targetSpecificationIdentity.size() == 0 || spec.linkerRelativePath.size() == 0) {
+    return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::MalformedSpec);
+  }
+  const zc::ReadableDirectory& searchRoot = sysroot.directory();
+
+  // The linker's relative path must be a valid sysroot-relative path BEFORE any
+  // read, so a traversal/NUL/non-normalized path never reaches the filesystem
+  // and the recorded absolute path (derived from the bound sysroot identity)
+  // names the same object that is read and digested.
+  if (!isValidSysrootRelativePath(spec.linkerRelativePath)) {
+    return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::MalformedSpec);
+  }
+  zc::String linkerRecorded = deriveRecordedPath(sysroot.identity(), spec.linkerRelativePath);
+
+  // Resolve and digest the linker driver program from the same relative path.
+  zc::Maybe<zc::Array<zc::byte>> linkerBytes = tryReadFile(searchRoot, spec.linkerRelativePath);
+  if (linkerBytes == zc::none) {
+    return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::LinkerNotFound);
+  }
+  zc::Array<zc::byte> linkerContent = ZC_REQUIRE_NONNULL(zc::mv(linkerBytes));
+  if (linkerContent.size() == 0) {
+    return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::EmptyInput);
+  }
+  zc::Maybe<identity::Sha256Digest> linkerDigest = identity::sha256(linkerContent.asBytes());
+  if (linkerDigest == zc::none) {
+    return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::DigestFailed);
+  }
+
+  // Resolve and digest every CRT object and default library, sorting each into
+  // its role bucket. The spec's declared order is preserved within a role. Each
+  // recorded path is derived from the same relative path that was read.
+  zc::Vector<LinkInputRecord> crtObjects;
+  zc::Vector<LinkInputRecord> defaultLibraries;
+  for (const ToolchainSearchInput& input : spec.inputs) {
+    if (input.role != LinkInputRole::CrtObject && input.role != LinkInputRole::DefaultLibrary) {
+      return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::InvalidInputRole);
+    }
+
+    if (!isValidSysrootRelativePath(input.relativePath)) {
+      return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::MalformedSpec);
+    }
+    zc::String recordedPath = deriveRecordedPath(sysroot.identity(), input.relativePath);
+
+    zc::Maybe<zc::Array<zc::byte>> bytes = tryReadFile(searchRoot, input.relativePath);
+    if (bytes == zc::none) {
+      return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::InputNotFound);
+    }
+    zc::Array<zc::byte> content = ZC_REQUIRE_NONNULL(zc::mv(bytes));
+    if (content.size() == 0) {
+      return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::EmptyInput);
+    }
+
+    zc::Maybe<LinkInputRecord> record = makeInputRecord(recordedPath, input.role, content);
+    if (record == zc::none) {
+      return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::DigestFailed);
+    }
+    if (input.role == LinkInputRole::CrtObject) {
+      crtObjects.add(ZC_REQUIRE_NONNULL(zc::mv(record)));
+    } else {
+      defaultLibraries.add(ZC_REQUIRE_NONNULL(zc::mv(record)));
+    }
+  }
+
+  // Final closed check: assemble the validated closure. `make` enforces the
+  // absolute-path, non-empty, and role-consistency invariants once more.
+  zc::Maybe<ToolchainClosureRecord> closure = ToolchainClosureRecord::make(
+      spec.targetSpecificationIdentity.asPtr(), sysroot.identity(), spec.linkerKind, linkerRecorded,
+      ZC_REQUIRE_NONNULL(zc::mv(linkerDigest)), linkerContent.size(), crtObjects.releaseAsArray(),
+      defaultLibraries.releaseAsArray());
+  if (closure == zc::none) {
+    return ToolchainDiscoveryResult::forFailure(ToolchainDiscoveryFailure::ClosureRejected);
+  }
+  return ToolchainDiscoveryResult::forClosure(ZC_REQUIRE_NONNULL(zc::mv(closure)));
+}
+
+// =======================================================================================
+// verifyClosureMatchesHostFormat
+
+bool verifyClosureMatchesHostFormat(const ToolchainClosureRecord& closure,
+                                    ObjectFormat hostObjectFormat) {
+  switch (hostObjectFormat) {
+    case ObjectFormat::Elf:
+      return closure.linkerKind() == LinkerDriverKind::ElfDriver;
+    case ObjectFormat::MachO:
+      return closure.linkerKind() == LinkerDriverKind::MachODriver;
+    case ObjectFormat::Coff:
+    case ObjectFormat::Wasm:
+      // No driver family is defined for these formats yet; fail closed.
+      return false;
+  }
+  return false;
+}
+
+}  // namespace zomlang::compiler::ir

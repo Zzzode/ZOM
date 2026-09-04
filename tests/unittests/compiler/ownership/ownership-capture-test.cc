@@ -12,20 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "zc/ztest/test.h"
 #include "compiler/driver/interface/borrow-evidence.h"
 #include "compiler/driver/package/manifest-parser.h"
 #include "compiler/driver/package/source-record.h"
 #include "compiler/driver/session/compiler-session.h"
 #include "compiler/identity/crypto/sha256.h"
-#include "compiler/ir/ir-failure.h"
-#include "compiler/ir/target-registry.h"
+#include "compiler/ir/diagnostics/ir-failure.h"
+#include "compiler/ir/target/target-registry.h"
 #include "compiler/mir/built-mir.h"
 #include "compiler/ownership/facts/capture.h"
 #include "compiler/ownership/facts/inputs.h"
 #include "compiler/ownership/facts/paths.h"
 #include "compiler/ownership/ownership-event-overlay.h"
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::ownership {
 namespace {
@@ -312,10 +312,9 @@ ZC_TEST("Ownership capture derivation rejects a spurious capture fact") {
   const auto construction = MirEventKey{MirLocation{identity::DefId{}, MirPoint::entry()}, 0};
   candidate.captures.add(facts::CaptureFact{
       construction, zc::mv(closure), zc::mv(captured),
-      facts::RegionKey::closureValueRegion(construction,
-                                           facts::MovePathKey{movePathFunctions[0].facts[0].key.owner,
-                                                              movePathFunctions[0].facts[0].key.place
-                                                                  .clone()}),
+      facts::RegionKey::closureValueRegion(
+          construction, facts::MovePathKey{movePathFunctions[0].facts[0].key.owner,
+                                           movePathFunctions[0].facts[0].key.place.clone()}),
       facts::RegionKey::staticRegion(identity::DefId{})});
 
   auto verifiedResult =

@@ -244,7 +244,7 @@ where ZOM's accepted choices already match industry practice.
   (excluding coverage tooling) returns nothing. `compiler/backend` and
   `compiler/lir` do not exist. The whole integration is therefore **additive**
   and changes no existing runtime behavior.
-- `compiler/ir/target-registry.{h,cc}` carries the triple, data layout, CPU, and
+- `compiler/ir/target/target-registry.{h,cc}` carries the triple, data layout, CPU, and
   features as validated ASCII strings and never calls an LLVM API; the `ir`
   library links no LLVM. The RFC 0016 admission probe order (typed
   `llvm::TargetRegistry` lookup, `MCSubtargetInfo`, `TargetMachine`,

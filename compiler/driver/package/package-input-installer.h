@@ -19,7 +19,7 @@
 #include "compiler/driver/package/package-compilation-request.h"
 #include "compiler/driver/package/package-resolver.h"
 #include "compiler/driver/package/source-snapshot.h"
-#include "compiler/ir/target-registry.h"
+#include "compiler/ir/target/target-registry.h"
 #include "zc/core/common.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"

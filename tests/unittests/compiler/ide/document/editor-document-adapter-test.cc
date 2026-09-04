@@ -35,7 +35,7 @@
 #include "compiler/identity/key/source-key.h"
 #include "compiler/identity/source-query-input.h"
 #include "compiler/identity/source-snapshot.h"
-#include "compiler/ir/target-registry.h"
+#include "compiler/ir/target/target-registry.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
 

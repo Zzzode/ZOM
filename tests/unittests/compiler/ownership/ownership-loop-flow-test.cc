@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "zc/ztest/test.h"
 #include "compiler/driver/interface/borrow-evidence.h"
 #include "compiler/driver/package/manifest-parser.h"
 #include "compiler/driver/package/source-record.h"
 #include "compiler/driver/session/compiler-session.h"
 #include "compiler/identity/source-snapshot.h"
-#include "compiler/ir/target-registry.h"
+#include "compiler/ir/target/target-registry.h"
 #include "compiler/mir/built-mir.h"
 #include "compiler/ownership/facts/flow-subset.h"
 #include "compiler/ownership/facts/flow.h"
@@ -29,6 +28,7 @@
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
 #include "tests/unittests/compiler/test-semantic-type-context.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::ownership {
 namespace {

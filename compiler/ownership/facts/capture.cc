@@ -14,7 +14,7 @@
 
 #include "compiler/ownership/facts/capture.h"
 
-#include "compiler/ir/ir-failure.h"
+#include "compiler/ir/diagnostics/ir-failure.h"
 
 namespace zomlang::compiler::ownership::facts {
 namespace {

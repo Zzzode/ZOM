@@ -28,7 +28,7 @@
 #include "compiler/ide/document/document-version.h"
 #include "compiler/ide/snapshot/semantic-snapshot-key.h"
 #include "compiler/identity/source-query-input.h"
-#include "compiler/ir/target-registry.h"
+#include "compiler/ir/target/target-registry.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
 

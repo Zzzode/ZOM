@@ -26,10 +26,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # process image is a plain ELF the descriptor-exec path can run cleanly.
     target_compile_options(${TARGET} PRIVATE -fno-sanitize=all -DZOM_FAKE_LINKER_MODE=${MODE})
     target_link_options(${TARGET} PRIVATE -fno-sanitize=all)
-    if(TARGET invoke-linker-test)
-      add_dependencies(invoke-linker-test ${TARGET})
+    if(TARGET link-invoke-linker-test)
+      add_dependencies(link-invoke-linker-test ${TARGET})
       target_compile_definitions(
-        invoke-linker-test PRIVATE ${DEFINE_NAME}="$<TARGET_FILE:${TARGET}>")
+        link-invoke-linker-test PRIVATE ${DEFINE_NAME}="$<TARGET_FILE:${TARGET}>")
     endif()
   endfunction()
 

@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "zc/core/encoding.h"
-#include "zc/ztest/test.h"
 #include "compiler/driver/package/manifest-parser.h"
 #include "compiler/driver/package/source-record.h"
 #include "compiler/driver/session/compiler-session.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/crypto/sha256.h"
-#include "compiler/ir/target-registry.h"
+#include "compiler/ir/target/target-registry.h"
 #include "compiler/ownership/facts/inputs.h"
 #include "compiler/ownership/facts/ownership-facts-codec.h"
 #include "compiler/ownership/ownership-checked-mir.h"
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "tests/unittests/compiler/ownership/ownership-facts-differential-oracle.h"
+#include "zc/core/encoding.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::ownership {
 namespace {

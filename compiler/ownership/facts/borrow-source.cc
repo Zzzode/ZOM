@@ -14,7 +14,7 @@
 
 #include "compiler/ownership/facts/borrow-source.h"
 
-#include "compiler/ir/ir-diagnostic-adapter.h"
+#include "compiler/ir/diagnostics/ir-diagnostic-adapter.h"
 #include "compiler/ownership/facts/flow-subset.h"
 #include "compiler/ownership/source-suppression.h"
 

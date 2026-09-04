@@ -14,15 +14,15 @@
 
 #pragma once
 
-#include "zc/core/memory.h"
-#include "zc/core/vector.h"
 #include "compiler/driver/interface/borrow-evidence.h"
-#include "compiler/ir/ir-failure.h"
+#include "compiler/ir/diagnostics/ir-failure.h"
 #include "compiler/mir/built-mir.h"
 #include "compiler/ownership/facts/init.h"
 #include "compiler/ownership/facts/resources.h"
 #include "compiler/ownership/ownership-checked-mir.h"
 #include "compiler/ownership/ownership-event-overlay.h"
+#include "zc/core/memory.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::ownership {
 

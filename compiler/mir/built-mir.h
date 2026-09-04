@@ -7,17 +7,17 @@
 
 #include <cstdint>
 
+#include "compiler/checker/body/body-checker.h"
+#include "compiler/checker/inference/checked-facts.h"
+#include "compiler/hir/hir-module.h"
+#include "compiler/identity/semantic/context-fingerprint.h"
+#include "compiler/ir/diagnostics/ir-failure.h"
+#include "compiler/ir/ir-identity.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "compiler/checker/body/body-checker.h"
-#include "compiler/checker/inference/checked-facts.h"
-#include "compiler/hir/hir-module.h"
-#include "compiler/identity/semantic/context-fingerprint.h"
-#include "compiler/ir/ir-failure.h"
-#include "compiler/ir/ir-identity.h"
 
 namespace zomlang::compiler::ownership {
 class OwnershipAdmittedBoundModule;

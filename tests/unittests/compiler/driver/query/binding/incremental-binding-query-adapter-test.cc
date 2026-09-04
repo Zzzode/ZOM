@@ -13,7 +13,7 @@
 #include "compiler/driver/query/binding/named-identity-inventory-query.h"
 #include "compiler/driver/query/module-graph/module-graph-query-input.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
-#include "compiler/ir/target-registry.h"
+#include "compiler/ir/target/target-registry.h"
 #include "compiler/parser/query/effective-source-query.h"
 #include "compiler/parser/query/parse-source-query.h"
 #include "compiler/source/core-distribution.h"

@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "zc/ztest/test.h"
-#include "compiler/ir/ir-failure.h"
+#include "compiler/ir/diagnostics/ir-failure.h"
 #include "compiler/ownership/facts/borrow-source.h"
 #include "compiler/ownership/facts/capture.h"
 #include "compiler/ownership/facts/escape.h"
@@ -29,6 +28,7 @@
 #include "compiler/ownership/facts/states.h"
 #include "compiler/ownership/ownership-checked-mir.h"
 #include "compiler/ownership/ownership-event-overlay.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::ownership {
 namespace {

@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zc/core/encoding.h"
-#include "zc/ztest/test.h"
 #include "compiler/driver/package/build-script-plan.h"
 #include "compiler/driver/package/canonical-package-compilation-request.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/crypto/sha256.h"
-#include "compiler/ir/target-registry.h"
+#include "compiler/ir/target/target-registry.h"
+#include "zc/core/encoding.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::driver::package {
 namespace {

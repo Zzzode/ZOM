@@ -23,7 +23,7 @@
 
 #include "compiler/driver/package/source-inventory.h"
 #include "compiler/driver/package/workspace-normalizer.h"
-#include "compiler/ir/target-registry.h"
+#include "compiler/ir/target/target-registry.h"
 #include "zc/core/filesystem.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"

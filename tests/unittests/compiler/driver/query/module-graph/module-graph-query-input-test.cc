@@ -3,9 +3,6 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zc/core/encoding.h"
-#include "zc/core/map.h"
-#include "zc/ztest/test.h"
 #include "compiler/basic/string-pool.h"
 #include "compiler/basic/thread-pool.h"
 #include "compiler/basic/zomlang-opts.h"
@@ -13,18 +10,21 @@
 #include "compiler/binder/graph/parsed-module-graph-input.h"
 #include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "compiler/driver/core/query.h"
+#include "compiler/driver/package/package-compilation-request.h"
 #include "compiler/driver/query/module-graph/module-dependency-provenance-query.h"
 #include "compiler/driver/query/module-graph/module-graph-query.h"
-#include "compiler/driver/package/package-compilation-request.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/source-snapshot.h"
-#include "compiler/ir/target-registry.h"
+#include "compiler/ir/target/target-registry.h"
 #include "compiler/parser/parser.h"
 #include "compiler/source/manager.h"
 #include "tests/unittests/compiler/binder/graph/parsed-module-query-test-fixture.h"
 #include "tests/unittests/compiler/driver/canonical-mutation-test-helpers.h"
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
+#include "zc/core/encoding.h"
+#include "zc/core/map.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::driver::module_graph_query {
 namespace {
@@ -735,13 +735,11 @@ query::QueryDatabase database(basic::ThreadPool& scheduler) {
       incremental_module_resolution_query::registerIncrementalModuleResolutionQueries(result));
   ZC_REQUIRE(result.registerDescriptor<incremental_binding_query::UserPackageActiveSourcesInput>()
                  .isRegistered());
-  ZC_REQUIRE(
-      result.registerDescriptor<incremental_binding_query::ActiveSources>().isRegistered());
+  ZC_REQUIRE(result.registerDescriptor<incremental_binding_query::ActiveSources>().isRegistered());
   ZC_REQUIRE(
       result.registerDescriptor<identity::source_query::SourceSnapshotInput>().isRegistered());
   ZC_REQUIRE(core_library_query::registerCoreLibraryQueryProvider(result));
-  ZC_REQUIRE(
-      result.registerDescriptor<incremental_binding_query::ActiveCrates>().isRegistered());
+  ZC_REQUIRE(result.registerDescriptor<incremental_binding_query::ActiveCrates>().isRegistered());
   ZC_REQUIRE(registerStableModuleGraphQueries(result));
   return result;
 }

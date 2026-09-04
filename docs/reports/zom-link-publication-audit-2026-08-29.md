@@ -39,9 +39,9 @@ D5-only publication authority remain open and block D1 acceptance.
 
 ### LP-001 - High - Public-path check-then-unlink can delete a competitor
 
-**Files:** `compiler/ir/executable-publication.cc:361-379`,
-`compiler/ir/executable-publication.cc:982-985`,
-`compiler/ir/executable-publication.cc:1397-1405`
+**Files:** `compiler/ir/publication/executable-publication.cc:361-379`,
+`compiler/ir/publication/executable-publication.cc:982-985`,
+`compiler/ir/publication/executable-publication.cc:1397-1405`
 
 `unlinkIdentityChecked` verifies `(dev, ino)` with `fstatat` and then performs a
 separate `unlinkat`. A competitor can replace the directory entry between those
@@ -60,9 +60,9 @@ captured after manifest-rename rejection and a competitor transaction root.
 
 ### LP-002 - High - A competitor journal stage can be adopted and deleted
 
-**Files:** `compiler/ir/executable-publication.cc:382-415`,
-`compiler/ir/executable-publication.cc:1039-1043`,
-`compiler/ir/executable-publication.cc:1076-1080`
+**Files:** `compiler/ir/publication/executable-publication.cc:382-415`,
+`compiler/ir/publication/executable-publication.cc:1039-1043`,
+`compiler/ir/publication/executable-publication.cc:1076-1080`
 
 When a stage install loses `RENAME_NOREPLACE`, `commitJournal` returns no ownership
 proof. The caller probes the final stage path, adds it to `journalLeaves`, and
@@ -77,8 +77,8 @@ closed syscall-level journal-commit outcome remains part of LP-008.
 
 ### LP-003 - High - The journal checksum is not publication ownership proof
 
-**Files:** `compiler/ir/executable-publication.cc:382-407`,
-`compiler/ir/executable-publication.cc:1194-1218`
+**Files:** `compiler/ir/publication/executable-publication.cc:382-407`,
+`compiler/ir/publication/executable-publication.cc:1194-1218`
 
 The journal uses an unkeyed SHA-256 checksum. A peer with write access to the
 shared output directory can construct a checksum-valid `Started` record naming a
@@ -97,7 +97,7 @@ against a malicious same-UID process that already controls the user's artifacts.
 
 ### LP-004 - High - Publication can mint `Published` after post-rename drift
 
-**Files:** `compiler/ir/executable-publication.cc:1086-1144`
+**Files:** `compiler/ir/publication/executable-publication.cc:1086-1144`
 
 The last pair verification occurs before the manifest rename. After the
 `ManifestRenamed` checkpoint, a competitor can replace or modify either final
@@ -112,8 +112,8 @@ structured cleanup obligation when cleanup cannot complete.
 
 ### LP-005 - High - D1 is publicly callable without the required D5 proof
 
-**Files:** `compiler/ir/executable-publication.h:236-247`,
-`compiler/ir/executable-manifest-codec.h:171-177`
+**Files:** `compiler/ir/publication/executable-publication.h:236-247`,
+`compiler/ir/publication/executable-manifest-codec.h:171-177`
 
 Any caller can build a pure-data verified manifest and call `publishLinkedOutput`
 without proving executable format, target architecture, entry symbol, runtime
@@ -128,7 +128,7 @@ the production consumer.
 
 ### LP-006 - Medium - `ManifestCommitted` with a missing manifest deleted the executable
 
-**Files:** `compiler/ir/executable-publication.cc:1385-1406`
+**Files:** `compiler/ir/publication/executable-publication.cc:1385-1406`
 
 The generic executable-only recovery branch applied to every durable stage. A
 `ManifestCommitted` chain with a missing manifest was treated as an unpublished
@@ -139,7 +139,7 @@ external tampering and requires retention plus explicit repair.
 
 ### LP-007 - Medium - Missing `Started` could hide a broken later-stage chain
 
-**Files:** `compiler/ir/executable-publication.cc:1194-1256`
+**Files:** `compiler/ir/publication/executable-publication.cc:1194-1256`
 
 Recovery enumerated only `journal.*.started`. With `Started` missing, a remaining
 later-stage record and no final entries or transaction root produced `Clean`,
@@ -150,8 +150,8 @@ artifact now produces `ExplicitRepairRequired`, with a focused regression test.
 
 ### LP-008 - Medium - Initial journal sync failure can lose a durable debt
 
-**Files:** `compiler/ir/executable-publication.cc:382-407`,
-`compiler/ir/executable-publication.cc:938-940`
+**Files:** `compiler/ir/publication/executable-publication.cc:382-407`,
+`compiler/ir/publication/executable-publication.cc:938-940`
 
 If the `Started` rename succeeds and the following directory sync fails,
 `commitJournal` returns none. The caller uses the pre-journal rejection path and
@@ -168,7 +168,7 @@ the pair and return the correct primary-less recovery shape.
 
 ### LP-009 - Medium - The documented crash matrix is not tested as a total function
 
-**Files:** `tests/unittests/compiler/ir/invoke-linker-test.cc:803-847`
+**Files:** `tests/unittests/compiler/ir/link/invoke-linker-test.cc:803-847`
 
 The test named "total function" follows nine checkpoints in one successful
 linear run. It does not construct most documented `(highest durable stage,
@@ -187,8 +187,8 @@ recovery entry may return `Published` only after re-opening and verifying INV-1.
 
 ### LP-010 - Low - Recovery obligations accepted a verified primary value
 
-**Files:** `compiler/ir/executable-publication.h:89`,
-`compiler/ir/executable-publication.cc:763-772`
+**Files:** `compiler/ir/publication/executable-publication.h:89`,
+`compiler/ir/publication/executable-publication.cc:763-772`
 
 `PublicationRejection` aliases the full `IrOperationResult` and can therefore hold
 a verified artifact. The recovery factories previously accepted that invalid

@@ -14,7 +14,7 @@
 
 #include "compiler/ownership/facts/inputs.h"
 
-#include "compiler/ir/ir-diagnostic-adapter.h"
+#include "compiler/ir/diagnostics/ir-diagnostic-adapter.h"
 #include "compiler/ownership/facts/ownership-facts-codec.h"
 #include "compiler/type/semantic-type-store.h"
 

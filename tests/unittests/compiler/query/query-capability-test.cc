@@ -12,20 +12,20 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "query-test-specs.h"
-#include "zc/core/mutex.h"
-#include "zc/core/thread.h"
-#include "zc/ztest/test.h"
 #include "compiler/binder/canonical/canonical-input-payload-digest.h"
-#include "compiler/driver/query/binding/active-definition-authority-query.h"
 #include "compiler/driver/core/query.h"
+#include "compiler/driver/query/binding/active-definition-authority-query.h"
 #include "compiler/driver/query/binding/incremental-binding-query-adapter.h"
 #include "compiler/driver/query/module-graph/module-graph-query-input.h"
 #include "compiler/driver/query/module-graph/module-graph-query.h"
 #include "compiler/identity/canonical/identity-interner-set.h"
-#include "compiler/ir/target-registry.h"
+#include "compiler/ir/target/target-registry.h"
+#include "query-test-specs.h"
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
+#include "zc/core/mutex.h"
+#include "zc/core/thread.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::query::test {
 
@@ -343,8 +343,7 @@ void registerProductionFinalSealQueries(QueryDatabase& database) {
   ZC_REQUIRE(database.registerDescriptor<graph_query::SelectedModuleSource>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<graph_query::ActiveModules>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleDependencySites>().isRegistered());
-  ZC_REQUIRE(
-      database.registerDescriptor<graph_query::ModuleDependencyRequests>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleDependencyRequests>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleDependencies>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleGraph>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleGraphScc>().isRegistered());

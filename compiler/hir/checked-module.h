@@ -5,21 +5,21 @@
 
 #pragma once
 
-#include "zc/core/array.h"
-#include "zc/core/common.h"
-#include "zc/core/memory.h"
-#include "zc/core/vector.h"
-#include "compiler/checker/facts/checked-facts-repository.h"
 #include "compiler/checker/checker-identity-authority.h"
+#include "compiler/checker/facts/checked-facts-repository.h"
 #include "compiler/checker/facts/dispatch-facts.h"
 #include "compiler/checker/facts/signature-facts.h"
 #include "compiler/driver/interface/borrow-evidence.h"
 #include "compiler/driver/interface/interface-source.h"
-#include "compiler/driver/query/module-graph/materialized-module-graph-query.h"
 #include "compiler/driver/interface/module-interface.h"
+#include "compiler/driver/query/module-graph/materialized-module-graph-query.h"
 #include "compiler/identity/semantic/context-fingerprint.h"
-#include "compiler/ir/ir-failure.h"
+#include "compiler/ir/diagnostics/ir-failure.h"
 #include "compiler/type/semantic-type-store.h"
+#include "zc/core/array.h"
+#include "zc/core/common.h"
+#include "zc/core/memory.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::ownership {
 class OwnershipAdmittedBoundModule;

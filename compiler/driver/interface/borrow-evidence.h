@@ -7,12 +7,6 @@
 
 #include <atomic>
 
-#include "zc/core/array.h"
-#include "zc/core/common.h"
-#include "zc/core/memory.h"
-#include "zc/core/one-of.h"
-#include "zc/core/refcount.h"
-#include "zc/core/vector.h"
 #include "compiler/checker/borrow/borrow-interface.h"
 #include "compiler/checker/checker-identity-authority.h"
 #include "compiler/checker/facts/cross-module-facts.h"
@@ -20,9 +14,15 @@
 #include "compiler/driver/interface/interface-source.h"
 #include "compiler/driver/interface/module-interface.h"
 #include "compiler/identity/brand.h"
-#include "compiler/identity/semantic/context-fingerprint.h"
 #include "compiler/identity/crypto/sha256.h"
-#include "compiler/ir/ir-failure.h"
+#include "compiler/identity/semantic/context-fingerprint.h"
+#include "compiler/ir/diagnostics/ir-failure.h"
+#include "zc/core/array.h"
+#include "zc/core/common.h"
+#include "zc/core/memory.h"
+#include "zc/core/one-of.h"
+#include "zc/core/refcount.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::hir {
 class VerifiedHirModule;

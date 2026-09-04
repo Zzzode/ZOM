@@ -246,7 +246,7 @@ contract.
 
 Landed in this slice:
 
-1. **Closed failure algebra extended in code.** `compiler/ir/ir-failure.h` now
+1. **Closed failure algebra extended in code.** `compiler/ir/diagnostics/ir-failure.h` now
    defines `IrFailurePhase::LinkPlanConstruction` (`0x11`),
    `LinkerInvocation` (`0x12`), and `ExecutablePublication` (`0x13`) past the
    terminal `FeatureBoundaryVerification` (`0x10`), and
@@ -256,7 +256,7 @@ Landed in this slice:
    `ir-failure-test` and `ir-diagnostic-adapter-test` were extended to cover the
    new coordinates; the extension is append-only, so every prior tag encoding is
    byte-identical.
-2. **Link-plan codec and independent verifier.** `compiler/ir/link-plan-codec.h`
+2. **Link-plan codec and independent verifier.** `compiler/ir/link/link-plan-codec.h`
    and `.cc` implement the immutable `ToolchainClosureRecord`, `LinkInputRecord`
    (object/CRT/library/runtime roles), `LinkerArgumentRecord` (initial landed
    shape; removed in the current approved contract - see the 2026-08-29 refinement
@@ -271,7 +271,7 @@ Landed in this slice:
    missing entry symbol or empty object set, `InvalidFact` for a mis-roled or
    out-of-root record, `AdditionalFact` for a duplicate canonical key).
 3. **Deterministic oracle and fail-closed mutation matrix.**
-   `tests/unittests/compiler/ir/link-plan-codec-oracle-test.cc` freezes a minimal
+   `tests/unittests/compiler/ir/link/link-plan-codec-oracle-test.cc` freezes a minimal
    plan's 503-byte preimage, its full hex, and its `LinkPlanId`
    (`287f421b8e9713cdd0c371c5d14e419818a652160a756fcbaf4fc0313452a405`), proves
    field sensitivity (output path, argument order, and input digest each move the
@@ -293,7 +293,7 @@ recorded in the RFC 0043 Status History, not here. (b) Item 3's frozen oracle is
 superseded: after the argument-surface removal and the inspection-profile
 binding the live minimal plan is 518 bytes with `LinkPlanId`
 `54e60703...817c8dfd` (see the Implementation Tracker row and
-`tests/unittests/compiler/ir/link-plan-codec-oracle-test.cc`), not the
+`tests/unittests/compiler/ir/link/link-plan-codec-oracle-test.cc`), not the
 503-byte / `287f421b...` values recorded above. The historical slice text is
 retained unaltered; this note is the authoritative correction.
 
@@ -490,7 +490,7 @@ in commit messages, and none blocks the current re-approval of the RFC text.
   (`ab15c079`) is covered by the adapter emit tests plus the route logic, but no
   end-to-end test injects a filesystem crash window to reach the snapshot arm of
   `LinkRecoveryRequired`; `invoke-linker-test` exercises only the publication arm.
-- **`splitTriple` field-count bound.** `compiler/ir/host-execution-profile.cc`
+- **`splitTriple` field-count bound.** `compiler/ir/target/host-execution-profile.cc`
   accepts a triple with three or more fields and no upper bound, diverging from
   the target-registry parser's exact 3-4 field acceptance. Non-blocking today
   because consumers read only the allow-listed arch and OS fields.

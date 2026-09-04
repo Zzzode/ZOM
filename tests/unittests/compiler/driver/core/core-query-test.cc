@@ -3,24 +3,24 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zc/core/filesystem.h"
-#include "zc/core/time.h"
-#include "zc/ztest/test.h"
 #include "compiler/basic/thread-pool.h"
 #include "compiler/driver/core/query.h"
 #include "compiler/driver/core/role-seed-failure.h"
 #include "compiler/driver/core/signature.h"
+#include "compiler/driver/package/package-compilation-request.h"
 #include "compiler/driver/query/binding/incremental-binding-query-adapter.h"
 #include "compiler/driver/query/binding/incremental-package-graph-query-input.h"
 #include "compiler/driver/query/module-graph/module-graph-query-input.h"
-#include "compiler/driver/package/package-compilation-request.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/source-snapshot.h"
-#include "compiler/ir/target-registry.h"
+#include "compiler/ir/target/target-registry.h"
 #include "compiler/source/core-source-admission.h"
 #include "tests/unittests/compiler/driver/canonical-mutation-test-helpers.h"
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
+#include "zc/core/filesystem.h"
+#include "zc/core/time.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::driver::core_library_query {
 namespace {
@@ -852,8 +852,8 @@ ZC_TEST("Active crates derive a singleton toolchain core from the distribution i
   auto crate = tests::test_identity_detail::coreCrate();
   auto roots = incremental_binding_query::CompilationRootSetQueryKey::singletonToolchainCore(crate);
   ZC_REQUIRE(roots != zc::none);
-  auto missing = database.snapshot().get<incremental_binding_query::ActiveCrates>(
-      ZC_REQUIRE_NONNULL(roots));
+  auto missing =
+      database.snapshot().get<incremental_binding_query::ActiveCrates>(ZC_REQUIRE_NONNULL(roots));
   ZC_REQUIRE(missing.isRuntimeFailure());
   ZC_EXPECT(missing.runtimeFailure() == query::QueryRuntimeFailure::MissingInput);
 
@@ -867,14 +867,13 @@ ZC_TEST("Active crates derive a singleton toolchain core from the distribution i
   ZC_REQUIRE(write.commit().isCommitted());
 
   auto snapshot = database.snapshot();
-  auto active =
-      snapshot.get<incremental_binding_query::ActiveCrates>(ZC_REQUIRE_NONNULL(roots));
+  auto active = snapshot.get<incremental_binding_query::ActiveCrates>(ZC_REQUIRE_NONNULL(roots));
   ZC_REQUIRE(!active.isRuntimeFailure());
   ZC_REQUIRE(active.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(active.value().crates().size() == 1);
   ZC_EXPECT(active.value().crates()[0].canonicalCrateBytes() == crate.encode().asPtr());
-  auto dependencies = snapshot.dependencies<incremental_binding_query::ActiveCrates>(
-      ZC_REQUIRE_NONNULL(roots));
+  auto dependencies =
+      snapshot.dependencies<incremental_binding_query::ActiveCrates>(ZC_REQUIRE_NONNULL(roots));
   ZC_REQUIRE(dependencies.size() == 2);
   const auto expectedDistributionKey =
       CoreDistributionInput::encodeKey(identity::ToolchainUnitKey::core());
