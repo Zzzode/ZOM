@@ -1,0 +1,504 @@
+domain: zom.rfc-0047-implementation-routing
+proposal_sha256: 279023f70a27166a9e902f38cabeeab1e50d8da6546a1b32a49b393c424d3d8a
+status_values: [create, generate, modify, delete]
+maximum_changed_source_lines_per_slice: 400
+line_budget_enforcement: split_task_before_acceptance_if_estimate_exceeds_limit
+line_budget_exemptions: [whole_file_deletion, generated_artifact]
+task_only_nodes:
+  - {task: R47-13, owner: rfc, purpose: acceptance decision}
+  - {task: R47-33, owner: error-system, purpose: publish verified cumulative cutover, depends_on: [R47-21B, R47-21C, R47-21K, R47-22C1, R47-22I1, R47-22I2, R47-22K, R47-22L2, R47-22N, R47-23R, R47-24F, R47-24J, R47-25F, R47-25O, R47-26C, R47-26J, R47-27E, R47-27G, R47-28G, R47-29D, R47-29I, R47-30A, R47-31B, R47-31M, R47-32A2, R47-32AG, R47-32C1, R47-32J4]}
+entries:
+  - {path: AGENTS.md, status: modify, task: R47-20A, owner: task-router, reviewers: [rfc], depends_on: [R47-13]}
+  - {path: .codex/subagents/manifest.yaml, status: modify, task: R47-20A, owner: task-router, reviewers: [rfc], depends_on: [R47-13]}
+  - {path: .codex/subagents/README.md, status: modify, task: R47-20A, owner: task-router, reviewers: [rfc], depends_on: [R47-13]}
+  - {path: .codex/subagents/task-router.md, status: modify, task: R47-20A, owner: task-router, reviewers: [rfc], depends_on: [R47-13]}
+  - {path: .codex/subagents/binder-checker.md, status: modify, task: R47-20A, owner: task-router, reviewers: [binder-checker], depends_on: [R47-13]}
+  - {path: .codex/subagents/error-system.md, status: modify, task: R47-20A, owner: task-router, reviewers: [error-system], depends_on: [R47-13]}
+  - {path: .codex/subagents/module-system.md, status: modify, task: R47-20A, owner: task-router, reviewers: [module-system], depends_on: [R47-13]}
+  - {path: .codex/subagents/lexer-parser.md, status: modify, task: R47-20A, owner: task-router, reviewers: [lexer-parser], depends_on: [R47-13]}
+  - {path: .codex/subagents/spec-audit.md, status: modify, task: R47-20A, owner: task-router, reviewers: [spec-audit], depends_on: [R47-13]}
+  - {path: .codex/subagents/tooling-lsp.md, status: modify, task: R47-20A, owner: task-router, reviewers: [tooling-lsp], depends_on: [R47-13]}
+  - {path: .codex/subagents/verification.md, status: modify, task: R47-20A, owner: task-router, reviewers: [verification], depends_on: [R47-13]}
+  - {path: .codex/rules/compiler-pipeline.md, status: modify, task: R47-20B, owner: task-router, reviewers: [error-system], depends_on: [R47-20A]}
+  - {path: .codex/rules/cpp-zc.md, status: modify, task: R47-20B, owner: task-router, reviewers: [runtime-memory], depends_on: [R47-20A]}
+  - {path: .codex/rules/testing.md, status: modify, task: R47-20B, owner: task-router, reviewers: [verification], depends_on: [R47-20A]}
+
+  - {path: tests/coverage/diagnostics-architecture.yml, status: create, task: R47-21A, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: scripts/check-diagnostics-architecture.py, status: create, task: R47-21A, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: scripts/check-diagnostics-layering.py, status: delete, task: R47-21A, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: scripts/check-diagnostic-coverage.py, status: modify, task: R47-21A, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: scripts/check-compiler-session-architecture.py, status: modify, task: R47-21A, owner: verification, reviewers: [module-system], depends_on: [R47-20B]}
+  - {path: scripts/check-ir-architecture.py, status: modify, task: R47-21A, owner: verification, reviewers: [ir-backend], depends_on: [R47-20B]}
+  - {path: scripts/check-identity-architecture.py, status: modify, task: R47-21A, owner: verification, reviewers: [module-system], depends_on: [R47-20B]}
+  - {path: scripts/check-checker-architecture.py, status: modify, task: R47-21L, owner: verification, reviewers: [binder-checker], depends_on: [R47-21A]}
+  - {path: scripts/check-impl-source-architecture.py, status: modify, task: R47-21L, owner: verification, reviewers: [module-system], depends_on: [R47-21A]}
+  - {path: scripts/check-parser-coverage.py, status: modify, task: R47-21L, owner: verification, reviewers: [lexer-parser, error-system], depends_on: [R47-21A]}
+  - {path: scripts/check-incremental-query-architecture.py, status: modify, task: R47-21M, owner: verification, reviewers: [module-system], depends_on: [R47-21L]}
+  - {path: scripts/check-stable-binding-schema.py, status: modify, task: R47-21M, owner: verification, reviewers: [binder-checker], depends_on: [R47-21L]}
+  - {path: scripts/check-query-descriptor-architecture.py, status: modify, task: R47-21N, owner: verification, reviewers: [module-system, binder-checker], depends_on: [R47-21M]}
+  - {path: scripts/generate-query-descriptor-schema.py, status: modify, task: R47-21N, owner: verification, reviewers: [module-system], depends_on: [R47-21M]}
+  - {path: scripts/check-rfc0047-coverage.py, status: create, task: R47-21J, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: scripts/run-rfc0047-coverage.py, status: create, task: R47-21J, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/coverage/rfc-0047-coverage-baseline.json, status: create, task: R47-21J, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: .github/workflows/CI.yml, status: modify, task: R47-21K, owner: verification, reviewers: [ir-backend], depends_on: [R47-21D, R47-21E, R47-21G, R47-21J]}
+  - {path: scripts/check-rfc0047-landing-scope.py, status: create, task: R47-21B, owner: verification, reviewers: [task-router], depends_on: [R47-20B]}
+  - {path: tests/coverage/rfc-0047-diagnostics-landing-files.txt, status: generate, task: R47-21B, owner: verification, reviewers: [task-router], depends_on: [R47-20B]}
+  - {path: scripts/run-diagnostics-architecture-benchmarks.py, status: create, task: R47-21C, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/performance/diagnostics-architecture-corpus.json, status: create, task: R47-21C, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/performance/diagnostics-architecture-baseline.json, status: create, task: R47-21C, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: scripts/run-diagnostics-fuzz.py, status: create, task: R47-21D, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/fuzzing/diagnostics/CMakeLists.txt, status: create, task: R47-21D, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/fuzzing/diagnostics/manifest.json, status: create, task: R47-21D, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/fuzzing/diagnostics/corpus/fact/seed.bin, status: create, task: R47-21D, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/fuzzing/diagnostics/corpus/provenance/seed.bin, status: create, task: R47-21D, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/fuzzing/diagnostics/corpus/collector/seed.bin, status: create, task: R47-21D, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/fuzzing/diagnostics/corpus/materializer/seed.bin, status: create, task: R47-21D, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/fuzzing/diagnostics/corpus/terminal/seed.bin, status: create, task: R47-21D, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/fuzzing/diagnostics/corpus/dto/seed.bin, status: create, task: R47-21D, owner: verification, reviewers: [tooling-lsp], depends_on: [R47-20B]}
+  - {path: tests/fuzzing/diagnostics/dictionaries/fact.dict, status: create, task: R47-21D, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/fuzzing/diagnostics/dictionaries/provenance.dict, status: create, task: R47-21D, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/fuzzing/diagnostics/dictionaries/collector.dict, status: create, task: R47-21D, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/fuzzing/diagnostics/dictionaries/materializer.dict, status: create, task: R47-21D, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/fuzzing/diagnostics/dictionaries/terminal.dict, status: create, task: R47-21D, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/fuzzing/diagnostics/dictionaries/dto.dict, status: create, task: R47-21D, owner: verification, reviewers: [tooling-lsp], depends_on: [R47-20B]}
+  - {path: tests/fuzzing/diagnostics/diagnostic-fact-fuzzer.cc, status: create, task: R47-21D, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/fuzzing/diagnostics/diagnostic-provenance-fuzzer.cc, status: create, task: R47-21D, owner: verification, reviewers: [error-system], depends_on: [R47-20B]}
+  - {path: tests/fuzzing/diagnostics/diagnostic-collector-fuzzer.cc, status: create, task: R47-21E, owner: verification, reviewers: [error-system], depends_on: [R47-21D]}
+  - {path: tests/fuzzing/diagnostics/diagnostic-materializer-fuzzer.cc, status: create, task: R47-21E, owner: verification, reviewers: [error-system], depends_on: [R47-21D]}
+  - {path: tests/fuzzing/diagnostics/diagnostic-terminal-fuzzer.cc, status: create, task: R47-21E, owner: verification, reviewers: [error-system], depends_on: [R47-21D]}
+  - {path: tests/fuzzing/diagnostics/diagnostic-dto-fuzzer.cc, status: create, task: R47-21E, owner: verification, reviewers: [tooling-lsp], depends_on: [R47-21D]}
+  - {path: tests/fuzzing/CMakeLists.txt, status: modify, task: R47-21E, owner: verification, reviewers: [ir-backend], depends_on: [R47-21D]}
+  - {path: CMakePresets.json, status: modify, task: R47-21G, owner: ir-backend, reviewers: [verification], depends_on: [R47-21E]}
+  - {path: tests/conformance/CMakeLists.txt, status: modify, task: R47-21F, owner: verification, reviewers: [error-system], depends_on: [R47-21E]}
+
+  - {path: scripts/codegen/gen-diagnostic-catalog.py, status: create, task: R47-21H, owner: verification, reviewers: [error-system], depends_on: [R47-21F, R47-21G, R47-21N]}
+  - {path: compiler/diagnostics/catalog/catalog.yml, status: create, task: R47-22A, owner: error-system, reviewers: [verification], depends_on: [R47-21H]}
+  - {path: compiler/diagnostics/catalog/parse.yml, status: create, task: R47-22A, owner: error-system, reviewers: [lexer-parser], depends_on: [R47-21H]}
+  - {path: compiler/diagnostics/catalog/binder.yml, status: create, task: R47-22A, owner: error-system, reviewers: [binder-checker], depends_on: [R47-21H]}
+  - {path: compiler/diagnostics/catalog/module.yml, status: create, task: R47-22A, owner: error-system, reviewers: [module-system], depends_on: [R47-21H]}
+  - {path: compiler/diagnostics/catalog/checker.yml, status: create, task: R47-22A, owner: error-system, reviewers: [binder-checker], depends_on: [R47-21H]}
+  - {path: compiler/diagnostics/catalog/lowering.yml, status: create, task: R47-22A, owner: error-system, reviewers: [ir-backend], depends_on: [R47-21H]}
+  - {path: compiler/diagnostics/catalog/package.yml, status: create, task: R47-22A, owner: error-system, reviewers: [module-system], depends_on: [R47-21H]}
+  - {path: scripts/codegen/gen-compiler-incidents.py, status: create, task: R47-21I, owner: verification, reviewers: [module-system, error-system], depends_on: [R47-21H]}
+  - {path: compiler/basic/incident/compiler-incidents.yml, status: create, task: R47-23K, owner: module-system, reviewers: [error-system, verification], depends_on: [R47-21I]}
+  - {path: compiler/basic/incident/compiler-incident.h, status: create, task: R47-23K, owner: module-system, reviewers: [error-system], depends_on: [R47-21I]}
+  - {path: compiler/basic/incident/compiler-incident.cc, status: create, task: R47-23K, owner: module-system, reviewers: [error-system], depends_on: [R47-21I]}
+  - {path: compiler/basic/incident/compiler-incident-inventory.generated.h, status: generate, task: R47-23L, owner: module-system, reviewers: [verification], depends_on: [R47-23K]}
+  - {path: compiler/basic/incident/compiler-incident-inventory.generated.cc, status: generate, task: R47-23L, owner: module-system, reviewers: [verification], depends_on: [R47-23K]}
+  - {path: compiler/basic/CMakeLists.txt, status: modify, task: R47-23L1, owner: ir-backend, reviewers: [module-system], depends_on: [R47-23L]}
+  - {path: compiler/diagnostics/generated/diagnostic-ids.generated.h, status: generate, task: R47-22B, owner: error-system, reviewers: [verification], depends_on: [R47-22A]}
+  - {path: compiler/diagnostics/generated/diagnostic-catalog.generated.h, status: generate, task: R47-22B, owner: error-system, reviewers: [verification], depends_on: [R47-22A]}
+  - {path: compiler/diagnostics/generated/diagnostic-catalog.generated.cc, status: generate, task: R47-22B, owner: error-system, reviewers: [verification], depends_on: [R47-22A]}
+  - {path: compiler/diagnostics/generated/diagnostic-factories.generated.h, status: generate, task: R47-22B, owner: error-system, reviewers: [verification], depends_on: [R47-22A]}
+  - {path: compiler/diagnostics/generated/diagnostic-factories.generated.cc, status: generate, task: R47-22B, owner: error-system, reviewers: [verification], depends_on: [R47-22A]}
+  - {path: compiler/diagnostics/generated/diagnostic-producer-inventory.generated.inc, status: generate, task: R47-22B, owner: error-system, reviewers: [verification], depends_on: [R47-22A]}
+  - {path: compiler/diagnostics/generated/diagnostic-architecture-inventory.generated.inc, status: generate, task: R47-22B, owner: error-system, reviewers: [verification], depends_on: [R47-22A]}
+  - {path: compiler/diagnostics/catalog/diagnostic-argument.h, status: create, task: R47-22B1, owner: error-system, reviewers: [binder-checker, module-system], depends_on: [R47-22B]}
+  - {path: compiler/diagnostics/catalog/diagnostic-argument.cc, status: create, task: R47-22B1, owner: error-system, reviewers: [binder-checker, module-system], depends_on: [R47-22B]}
+  - {path: compiler/diagnostics/core/diagnostic-ids.h, status: modify, task: R47-22C, owner: error-system, reviewers: [verification], depends_on: [R47-22B1]}
+  - {path: compiler/diagnostics/core/diagnostic-info.h, status: modify, task: R47-22C, owner: error-system, reviewers: [verification], depends_on: [R47-22B1]}
+  - {path: compiler/diagnostics/core/diagnostic.h, status: delete, task: R47-22C1, owner: error-system, reviewers: [verification], depends_on: [R47-22C]}
+  - {path: compiler/diagnostics/core/diagnostic.cc, status: delete, task: R47-22C1, owner: error-system, reviewers: [verification], depends_on: [R47-22C]}
+  - {path: compiler/diagnostics/fact/diagnostic-fact.h, status: modify, task: R47-22C, owner: error-system, reviewers: [module-system, binder-checker], depends_on: [R47-22B1]}
+  - {path: compiler/diagnostics/fact/diagnostic-fact.cc, status: modify, task: R47-22D, owner: error-system, reviewers: [module-system, binder-checker], depends_on: [R47-22C]}
+  - {path: compiler/diagnostics/incident/compiler-incident.h, status: create, task: R47-22E, owner: error-system, reviewers: [module-system], depends_on: [R47-22D, R47-23L1]}
+  - {path: compiler/diagnostics/incident/compiler-incident.cc, status: create, task: R47-22E, owner: error-system, reviewers: [module-system], depends_on: [R47-22D, R47-23L1]}
+  - {path: compiler/diagnostics/fact/diagnostic-materializer.h, status: modify, task: R47-22E1, owner: error-system, reviewers: [module-system], depends_on: [R47-22E]}
+  - {path: compiler/diagnostics/fact/diagnostic-materializer.cc, status: modify, task: R47-22E1, owner: error-system, reviewers: [module-system], depends_on: [R47-22E]}
+  - {path: compiler/diagnostics/fact/diagnostic-collector.h, status: create, task: R47-22F, owner: error-system, reviewers: [module-system], depends_on: [R47-22E1]}
+  - {path: compiler/diagnostics/fact/diagnostic-collector.cc, status: create, task: R47-22F, owner: error-system, reviewers: [module-system], depends_on: [R47-22E1]}
+  - {path: compiler/diagnostics/consumer/diagnostic-policy.h, status: create, task: R47-22G, owner: error-system, reviewers: [tooling-lsp], depends_on: [R47-22F]}
+  - {path: compiler/diagnostics/consumer/diagnostic-policy.cc, status: create, task: R47-22G, owner: error-system, reviewers: [tooling-lsp], depends_on: [R47-22F]}
+  - {path: compiler/diagnostics/text/diagnostic-text.h, status: modify, task: R47-22G1, owner: error-system, reviewers: [verification], depends_on: [R47-22G]}
+  - {path: compiler/diagnostics/text/diagnostic-text.cc, status: modify, task: R47-22G1, owner: error-system, reviewers: [verification], depends_on: [R47-22G]}
+  - {path: compiler/diagnostics/consumer/consoling-diagnostic-consumer.h, status: modify, task: R47-22H, owner: error-system, reviewers: [verification], depends_on: [R47-22G1]}
+  - {path: compiler/diagnostics/consumer/consoling-diagnostic-consumer.cc, status: modify, task: R47-22H, owner: error-system, reviewers: [verification], depends_on: [R47-22G1]}
+  - {path: compiler/diagnostics/consumer/diagnostic-consumer.h, status: modify, task: R47-22H, owner: error-system, reviewers: [verification], depends_on: [R47-22G1]}
+  - {path: compiler/diagnostics/consumer/diagnostic-consumer.cc, status: modify, task: R47-22H, owner: error-system, reviewers: [verification], depends_on: [R47-22G1]}
+  - {path: compiler/diagnostics/core/diagnostic-engine.h, status: delete, task: R47-22I1, owner: error-system, reviewers: [verification], depends_on: [R47-22H]}
+  - {path: compiler/diagnostics/core/diagnostic-engine.cc, status: delete, task: R47-22I1, owner: error-system, reviewers: [verification], depends_on: [R47-22H]}
+  - {path: compiler/diagnostics/core/diagnostic-state.h, status: delete, task: R47-22I1, owner: error-system, reviewers: [verification], depends_on: [R47-22H]}
+  - {path: compiler/diagnostics/core/diagnostic-state.cc, status: delete, task: R47-22I1, owner: error-system, reviewers: [verification], depends_on: [R47-22H]}
+  - {path: compiler/diagnostics/consumer/diagnostic-emitter.h, status: delete, task: R47-22I2, owner: error-system, reviewers: [lexer-parser], depends_on: [R47-24B]}
+  - {path: compiler/diagnostics/consumer/in-flight-diagnostic.h, status: delete, task: R47-22I2, owner: error-system, reviewers: [lexer-parser], depends_on: [R47-24B]}
+  - {path: compiler/diagnostics/consumer/in-flight-diagnostic.cc, status: delete, task: R47-22I2, owner: error-system, reviewers: [lexer-parser], depends_on: [R47-24B]}
+  - {path: compiler/diagnostics/defs/diagnostics-common.def, status: delete, task: R47-22J1, owner: error-system, reviewers: [verification], depends_on: [R47-22B]}
+  - {path: compiler/diagnostics/defs/diagnostics-parse.def, status: delete, task: R47-22J1, owner: error-system, reviewers: [lexer-parser], depends_on: [R47-22B]}
+  - {path: compiler/diagnostics/defs/diagnostics-binder.def, status: delete, task: R47-22J1, owner: error-system, reviewers: [binder-checker], depends_on: [R47-22B]}
+  - {path: compiler/diagnostics/defs/diagnostics-checker.def, status: delete, task: R47-22J2, owner: error-system, reviewers: [binder-checker], depends_on: [R47-22B]}
+  - {path: compiler/diagnostics/defs/diagnostics-identity.def, status: delete, task: R47-22J2, owner: error-system, reviewers: [module-system], depends_on: [R47-22B]}
+  - {path: compiler/diagnostics/defs/diagnostics-lowering.def, status: delete, task: R47-22J2, owner: error-system, reviewers: [ir-backend], depends_on: [R47-22B]}
+  - {path: compiler/diagnostics/defs/diagnostics-module.def, status: delete, task: R47-22J3, owner: error-system, reviewers: [module-system], depends_on: [R47-22B]}
+  - {path: compiler/diagnostics/defs/diagnostics-package.def, status: delete, task: R47-22J3, owner: error-system, reviewers: [module-system], depends_on: [R47-22B]}
+  - {path: compiler/checker/checker-source-diagnostics.def, status: delete, task: R47-22J3, owner: error-system, reviewers: [binder-checker], depends_on: [R47-22B]}
+  - {path: compiler/diagnostics/CMakeLists.txt, status: modify, task: R47-22K, owner: error-system, reviewers: [ir-backend], depends_on: [R47-22J1, R47-22J2, R47-22J3]}
+  - {path: compiler/binder/CMakeLists.txt, status: modify, task: R47-25F, owner: binder-checker, reviewers: [ir-backend], depends_on: [R47-25E]}
+  - {path: compiler/checker/CMakeLists.txt, status: modify, task: R47-25F, owner: binder-checker, reviewers: [ir-backend], depends_on: [R47-25E]}
+  - {path: compiler/identity/CMakeLists.txt, status: modify, task: R47-23R, owner: module-system, reviewers: [ir-backend], depends_on: [R47-23J1]}
+  - {path: compiler/driver/CMakeLists.txt, status: modify, task: R47-23R, owner: module-system, reviewers: [ir-backend], depends_on: [R47-23J1]}
+  - {path: compiler/ownership/CMakeLists.txt, status: modify, task: R47-26C, owner: runtime-memory, reviewers: [ir-backend], depends_on: [R47-26B1]}
+  - {path: compiler/ir/CMakeLists.txt, status: modify, task: R47-27E, owner: ir-backend, reviewers: [verification], depends_on: [R47-27D]}
+
+  - {path: compiler/query/query-types.h, status: modify, task: R47-23A, owner: module-system, reviewers: [error-system], depends_on: [R47-23L1]}
+  - {path: compiler/query/query-database.h, status: modify, task: R47-23A, owner: module-system, reviewers: [runtime-memory], depends_on: [R47-23L1]}
+  - {path: compiler/query/query-database.cc, status: modify, task: R47-23B, owner: module-system, reviewers: [error-system, verification], depends_on: [R47-23A]}
+  - {path: compiler/driver/core/query.cc, status: modify, task: R47-23M, owner: module-system, reviewers: [error-system], depends_on: [R47-23B]}
+  - {path: compiler/driver/query/binding/active-identity-membership-query.cc, status: modify, task: R47-23M, owner: module-system, reviewers: [binder-checker], depends_on: [R47-23B]}
+  - {path: compiler/driver/query/binding/named-identity-inventory-query.h, status: modify, task: R47-23N, owner: module-system, reviewers: [binder-checker, error-system], depends_on: [R47-23M]}
+  - {path: compiler/driver/query/binding/named-identity-inventory-query.cc, status: modify, task: R47-23N, owner: module-system, reviewers: [binder-checker, error-system], depends_on: [R47-23M]}
+  - {path: compiler/driver/query/binding/named-item-query.h, status: modify, task: R47-23N1, owner: module-system, reviewers: [binder-checker, error-system], depends_on: [R47-23N]}
+  - {path: compiler/driver/query/binding/named-item-query.cc, status: modify, task: R47-23N1, owner: module-system, reviewers: [binder-checker, error-system], depends_on: [R47-23N]}
+  - {path: compiler/driver/query/binding/owner-body-query.h, status: modify, task: R47-23N2, owner: module-system, reviewers: [binder-checker, error-system], depends_on: [R47-23N1]}
+  - {path: compiler/driver/query/binding/owner-body-query.cc, status: modify, task: R47-23N2, owner: module-system, reviewers: [binder-checker, error-system], depends_on: [R47-23N1]}
+  - {path: compiler/driver/query/module-graph/incremental-module-resolution-query.cc, status: modify, task: R47-23O, owner: module-system, reviewers: [binder-checker], depends_on: [R47-23N2]}
+  - {path: compiler/driver/query/module-graph/module-dependency-provenance-query.h, status: modify, task: R47-23O, owner: module-system, reviewers: [binder-checker, error-system], depends_on: [R47-23N2]}
+  - {path: compiler/driver/query/module-graph/module-dependency-provenance-query.cc, status: modify, task: R47-23O, owner: module-system, reviewers: [binder-checker, error-system], depends_on: [R47-23N2]}
+  - {path: compiler/driver/query/module-graph/module-graph-query-input.cc, status: modify, task: R47-23P, owner: module-system, reviewers: [verification], depends_on: [R47-23O]}
+  - {path: compiler/driver/query/module-graph/module-graph-query.cc, status: modify, task: R47-23P, owner: module-system, reviewers: [verification], depends_on: [R47-23O]}
+  - {path: compiler/driver/query/module-graph/materialized-module-graph-query.h, status: modify, task: R47-23P1, owner: module-system, reviewers: [binder-checker, error-system], depends_on: [R47-23P]}
+  - {path: compiler/driver/query/module-graph/materialized-module-graph-query.cc, status: modify, task: R47-23P2, owner: module-system, reviewers: [binder-checker, error-system], depends_on: [R47-23P1]}
+  - {path: compiler/binder/graph/module-skeleton-query.cc, status: modify, task: R47-23Q, owner: module-system, reviewers: [binder-checker], depends_on: [R47-23P2]}
+  - {path: compiler/parser/query/effective-source-query.cc, status: modify, task: R47-24F, owner: lexer-parser, reviewers: [module-system], depends_on: [R47-23Q]}
+  - {path: compiler/identity/diagnostics/identity-invariant.h, status: modify, task: R47-23C, owner: module-system, reviewers: [error-system], depends_on: [R47-23B]}
+  - {path: compiler/identity/diagnostics/identity-invariant.cc, status: modify, task: R47-23C, owner: module-system, reviewers: [error-system], depends_on: [R47-23B]}
+  - {path: compiler/identity/diagnostics/identity-diagnostic-projector.h, status: create, task: R47-23C1, owner: module-system, reviewers: [error-system], depends_on: [R47-23C]}
+  - {path: compiler/identity/diagnostics/identity-diagnostic-projector.cc, status: create, task: R47-23C1, owner: module-system, reviewers: [error-system], depends_on: [R47-23C]}
+  - {path: compiler/identity/diagnostics/identity-diagnostic-adapter.h, status: delete, task: R47-23C2, owner: module-system, reviewers: [error-system], depends_on: [R47-23C1]}
+  - {path: compiler/identity/diagnostics/identity-diagnostic-adapter.cc, status: delete, task: R47-23C2, owner: module-system, reviewers: [error-system], depends_on: [R47-23C1]}
+  - {path: compiler/driver/package/package-diagnostic-projector.h, status: create, task: R47-23D, owner: module-system, reviewers: [error-system], depends_on: [R47-23C2]}
+  - {path: compiler/driver/package/package-diagnostic-projector.cc, status: create, task: R47-23D, owner: module-system, reviewers: [error-system], depends_on: [R47-23C2]}
+  - {path: compiler/driver/package/package-diagnostic.h, status: modify, task: R47-23D1, owner: module-system, reviewers: [error-system], depends_on: [R47-23D]}
+  - {path: compiler/driver/package/package-diagnostic.cc, status: modify, task: R47-23D1, owner: module-system, reviewers: [error-system], depends_on: [R47-23D]}
+  - {path: compiler/driver/package/package-compilation-request.h, status: modify, task: R47-23E, owner: module-system, reviewers: [error-system], depends_on: [R47-23D1]}
+  - {path: compiler/driver/package/package-compilation-request.cc, status: modify, task: R47-23E, owner: module-system, reviewers: [error-system], depends_on: [R47-23D1]}
+  - {path: compiler/driver/diagnostics/module-interface-diagnostic-projector.h, status: create, task: R47-23F, owner: module-system, reviewers: [error-system], depends_on: [R47-23E]}
+  - {path: compiler/driver/diagnostics/module-interface-diagnostic-projector.cc, status: create, task: R47-23F, owner: module-system, reviewers: [error-system], depends_on: [R47-23E]}
+  - {path: compiler/driver/diagnostics/module-interface-diagnostic-adapter.h, status: delete, task: R47-23F1, owner: module-system, reviewers: [error-system], depends_on: [R47-23F]}
+  - {path: compiler/driver/diagnostics/module-interface-diagnostic-adapter.cc, status: delete, task: R47-23F1, owner: module-system, reviewers: [error-system], depends_on: [R47-23F]}
+  - {path: compiler/driver/session/compiler-session.h, status: modify, task: R47-23G, owner: module-system, reviewers: [error-system], depends_on: [R47-23F1]}
+  - {path: compiler/driver/session/compiler-session.cc, status: modify, task: R47-23H, owner: module-system, reviewers: [error-system], depends_on: [R47-23G]}
+  - {path: compiler/driver/query/binding/incremental-binding-query-adapter.cc, status: modify, task: R47-23I, owner: module-system, reviewers: [binder-checker], depends_on: [R47-23H]}
+  - {path: compiler/driver/query/binding/active-definition-authority-session.cc, status: modify, task: R47-23I1, owner: module-system, reviewers: [binder-checker], depends_on: [R47-23I]}
+  - {path: compiler/binder/graph/parsed-module.h, status: modify, task: R47-23I1, owner: module-system, reviewers: [binder-checker], depends_on: [R47-23I]}
+  - {path: compiler/binder/graph/parsed-module.cc, status: modify, task: R47-23I2, owner: module-system, reviewers: [binder-checker], depends_on: [R47-23I1]}
+  - {path: compiler/binder/diagnostics/module-graph-diagnostic-projector.h, status: create, task: R47-23J, owner: module-system, reviewers: [binder-checker, error-system], depends_on: [R47-23I2]}
+  - {path: compiler/binder/diagnostics/module-graph-diagnostic-projector.cc, status: create, task: R47-23J, owner: module-system, reviewers: [binder-checker, error-system], depends_on: [R47-23I2]}
+  - {path: compiler/binder/diagnostics/module-graph-diagnostic-adapter.h, status: delete, task: R47-23J1, owner: module-system, reviewers: [binder-checker], depends_on: [R47-23J]}
+  - {path: compiler/binder/diagnostics/module-graph-diagnostic-adapter.cc, status: delete, task: R47-23J1, owner: module-system, reviewers: [binder-checker], depends_on: [R47-23J]}
+
+  - {path: compiler/diagnostics/fact/source-diagnostic-draft-buffer.h, status: delete, task: R47-22L1, owner: error-system, reviewers: [lexer-parser], depends_on: [R47-24E]}
+  - {path: compiler/diagnostics/fact/source-diagnostic-draft-buffer.cc, status: delete, task: R47-22L2, owner: error-system, reviewers: [lexer-parser], depends_on: [R47-22L1], line_budget_exemption: whole_file_deletion}
+  - {path: compiler/diagnostics/source/source-diagnostic-sink.h, status: create, task: R47-22M, owner: error-system, reviewers: [lexer-parser], depends_on: [R47-23J1]}
+  - {path: compiler/diagnostics/source/source-diagnostic-sink.cc, status: create, task: R47-22M, owner: error-system, reviewers: [lexer-parser], depends_on: [R47-23J1]}
+  - {path: compiler/diagnostics/toolchain/module-root-argument.h, status: delete, task: R47-22N, owner: error-system, reviewers: [module-system], depends_on: [R47-23J1]}
+  - {path: compiler/diagnostics/toolchain/module-root-argument.cc, status: delete, task: R47-22N, owner: error-system, reviewers: [module-system], depends_on: [R47-23J1]}
+  - {path: compiler/lexer/lexer.h, status: modify, task: R47-24B, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-22M]}
+  - {path: compiler/lexer/lexer.cc, status: modify, task: R47-24B, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-22M]}
+  - {path: compiler/parser/parser-context.h, status: modify, task: R47-24B, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-22M]}
+  - {path: compiler/parser/parser-context.cc, status: modify, task: R47-24B, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-22M]}
+  - {path: compiler/parser/parser.h, status: modify, task: R47-24C, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-24B]}
+  - {path: compiler/parser/parser.cc, status: modify, task: R47-24C, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-24B]}
+  - {path: compiler/parser/parser-impl.h, status: modify, task: R47-24C, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-24B]}
+  - {path: compiler/parser/parser-recovery.cc, status: modify, task: R47-24G, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-24C]}
+  - {path: compiler/parser/token-cursor.h, status: modify, task: R47-24G, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-24C]}
+  - {path: compiler/parser/token-cursor.cc, status: modify, task: R47-24G, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-24C]}
+  - {path: compiler/parser/syntax/declaration-parser.cc, status: modify, task: R47-24H, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-24G]}
+  - {path: compiler/parser/syntax/expression-parser.cc, status: modify, task: R47-24H, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-24G]}
+  - {path: compiler/parser/syntax/pattern-parser.cc, status: modify, task: R47-24I, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-24H]}
+  - {path: compiler/parser/syntax/statement-parser.cc, status: modify, task: R47-24I, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-24H]}
+  - {path: compiler/parser/syntax/type-parser.cc, status: modify, task: R47-24J, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-24I]}
+  - {path: compiler/parser/CMakeLists.txt, status: modify, task: R47-24J, owner: lexer-parser, reviewers: [ir-backend], depends_on: [R47-24I]}
+  - {path: compiler/parser/query/parse-source-query.h, status: modify, task: R47-24D, owner: lexer-parser, reviewers: [module-system], depends_on: [R47-24C]}
+  - {path: compiler/parser/query/parse-source-query.cc, status: modify, task: R47-24D, owner: lexer-parser, reviewers: [module-system], depends_on: [R47-24C]}
+  - {path: compiler/parser/query/canonical-parsed-source.h, status: modify, task: R47-24D, owner: lexer-parser, reviewers: [module-system], depends_on: [R47-24C]}
+  - {path: compiler/parser/query/canonical-parsed-source.cc, status: modify, task: R47-24D, owner: lexer-parser, reviewers: [module-system], depends_on: [R47-24C]}
+  - {path: compiler/parser/query/parse-source-query-verifier.cc, status: modify, task: R47-24D, owner: lexer-parser, reviewers: [module-system], depends_on: [R47-24C]}
+  - {path: compiler/cst/parser-event-stream.h, status: modify, task: R47-24E, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-24D]}
+  - {path: compiler/cst/parser-event-stream.cc, status: modify, task: R47-24E, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-24D]}
+  - {path: compiler/cst/lexeme-codec.h, status: modify, task: R47-24E, owner: lexer-parser, reviewers: [error-system], depends_on: [R47-24D]}
+
+  - {path: compiler/binder/binder-source-diagnostics.def, status: delete, task: R47-25A, owner: binder-checker, reviewers: [error-system], depends_on: [R47-24E]}
+  - {path: compiler/binder/diagnostics/binder-diagnostic-id.h, status: delete, task: R47-25A, owner: binder-checker, reviewers: [error-system], depends_on: [R47-24E]}
+  - {path: compiler/binder/diagnostics/binder-diagnostic-id.cc, status: delete, task: R47-25A, owner: binder-checker, reviewers: [error-system], depends_on: [R47-24E]}
+  - {path: compiler/binder/diagnostics/binding-diagnostic-projector.h, status: create, task: R47-25A1, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25A]}
+  - {path: compiler/binder/diagnostics/binding-diagnostic-projector.cc, status: create, task: R47-25A1, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25A]}
+  - {path: compiler/binder/diagnostics/binding-diagnostic-adapter.h, status: delete, task: R47-25B, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25A1]}
+  - {path: compiler/binder/diagnostics/binding-diagnostic-adapter.cc, status: delete, task: R47-25B, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25A1]}
+  - {path: compiler/binder/metadata/binding-metadata.h, status: modify, task: R47-25B, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25A1]}
+  - {path: compiler/binder/metadata/binding-metadata.cc, status: modify, task: R47-25B, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25A1]}
+  - {path: compiler/binder/stable/stable-binding-diagnostic-fact.h, status: modify, task: R47-25B, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25A1]}
+  - {path: compiler/binder/stable/stable-binding-diagnostic-fact.cc, status: modify, task: R47-25B, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25A1]}
+  - {path: compiler/binder/stable/stable-binding-codec.h, status: modify, task: R47-25B1, owner: binder-checker, reviewers: [error-system, module-system], depends_on: [R47-25B]}
+  - {path: compiler/binder/stable/stable-binding-codec.cc, status: modify, task: R47-25B1, owner: binder-checker, reviewers: [error-system, module-system], depends_on: [R47-25B]}
+  - {path: compiler/binder/stable/stable-binding-facts.h, status: modify, task: R47-25B2, owner: binder-checker, reviewers: [error-system, module-system], depends_on: [R47-25B1]}
+  - {path: compiler/checker/diagnostics/checker-diagnostic-id.h, status: delete, task: R47-25C, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25B2]}
+  - {path: compiler/checker/diagnostics/checker-diagnostic-id.cc, status: delete, task: R47-25C, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25B2]}
+  - {path: compiler/checker/diagnostics/checker-diagnostic-projector.h, status: create, task: R47-25C1, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25C]}
+  - {path: compiler/checker/diagnostics/checker-diagnostic-projector.cc, status: create, task: R47-25C1, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25C]}
+  - {path: compiler/checker/diagnostics/checker-diagnostic-adapter.h, status: delete, task: R47-25D1, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25C1]}
+  - {path: compiler/checker/diagnostics/checker-diagnostic-adapter.cc, status: delete, task: R47-25D2, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25D1], line_budget_exemption: whole_file_deletion}
+  - {path: compiler/checker/diagnostics/borrow-interface-diagnostic-projector.h, status: create, task: R47-25D3, owner: binder-checker, reviewers: [error-system, runtime-memory], depends_on: [R47-25D2]}
+  - {path: compiler/checker/diagnostics/borrow-interface-diagnostic-projector.cc, status: create, task: R47-25D3, owner: binder-checker, reviewers: [error-system, runtime-memory], depends_on: [R47-25D2]}
+  - {path: compiler/checker/diagnostics/borrow-interface-diagnostic-adapter.h, status: delete, task: R47-25D4, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25D3]}
+  - {path: compiler/checker/diagnostics/borrow-interface-diagnostic-adapter.cc, status: delete, task: R47-25D4, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25D3]}
+  - {path: compiler/checker/inference/checked-facts.h, status: modify, task: R47-25E, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25D4]}
+  - {path: compiler/checker/inference/checked-facts.cc, status: modify, task: R47-25E, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25D4]}
+  - {path: compiler/binder/binding-fact-schema.def, status: modify, task: R47-25G, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25E]}
+  - {path: compiler/binder/stable-binding-schema.def, status: modify, task: R47-25G, owner: binder-checker, reviewers: [module-system], depends_on: [R47-25E]}
+  - {path: compiler/binder/graph/module-graph-source-failure.h, status: modify, task: R47-25G, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25E]}
+  - {path: compiler/binder/graph/module-graph-source-failure.cc, status: modify, task: R47-25G, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25E]}
+  - {path: compiler/binder/identity/import-binding.cc, status: modify, task: R47-25H, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25G]}
+  - {path: compiler/binder/stable/candidate/verifier.h, status: modify, task: R47-25H, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25G]}
+  - {path: compiler/binder/stable/candidate/verifier.cc, status: modify, task: R47-25I, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25H]}
+  - {path: compiler/checker/body/body-checker.cc, status: modify, task: R47-25J, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25I]}
+  - {path: compiler/checker/facts/scalar-literal-facts.cc, status: modify, task: R47-25K, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25J]}
+  - {path: compiler/checker/facts/coherence-facts.h, status: modify, task: R47-25K, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25J]}
+  - {path: compiler/checker/facts/coherence-facts.cc, status: modify, task: R47-25L, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25K]}
+  - {path: compiler/checker/facts/signature-facts.h, status: modify, task: R47-25M, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25L]}
+  - {path: compiler/checker/facts/signature-facts.cc, status: modify, task: R47-25N, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25M]}
+  - {path: compiler/checker/borrow/borrow-interface.h, status: modify, task: R47-25O, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25N]}
+  - {path: compiler/checker/operator-kind.h, status: modify, task: R47-25O, owner: binder-checker, reviewers: [error-system], depends_on: [R47-25N]}
+
+  - {path: compiler/ownership/diagnostics/source-suppression.h, status: modify, task: R47-26A, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-25E]}
+  - {path: compiler/ownership/diagnostics/source-suppression.cc, status: modify, task: R47-26A, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-25E]}
+  - {path: compiler/ownership/diagnostics/ownership-source-failure.h, status: modify, task: R47-26B, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-26A]}
+  - {path: compiler/ownership/diagnostics/ownership-diagnostic-projector.h, status: create, task: R47-26B, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-26A]}
+  - {path: compiler/ownership/diagnostics/ownership-diagnostic-projector.cc, status: create, task: R47-26B, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-26A]}
+  - {path: compiler/ownership/diagnostics/ownership-diagnostic-adapter.h, status: delete, task: R47-26B1, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-26B]}
+  - {path: compiler/ownership/diagnostics/ownership-diagnostic-adapter.cc, status: delete, task: R47-26B1, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-26B]}
+  - {path: compiler/ownership/facts/borrow-source.cc, status: modify, task: R47-26D, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-26B1]}
+  - {path: compiler/ownership/facts/flow.cc, status: modify, task: R47-26D, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-26B1]}
+  - {path: compiler/ownership/facts/init.cc, status: modify, task: R47-26E, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-26D]}
+  - {path: compiler/ownership/facts/inputs.cc, status: modify, task: R47-26E, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-26D]}
+  - {path: compiler/ownership/facts/loans.cc, status: modify, task: R47-26F, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-26E]}
+  - {path: compiler/ownership/facts/paths.cc, status: modify, task: R47-26F, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-26E]}
+  - {path: compiler/ownership/facts/refs.cc, status: modify, task: R47-26G, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-26F]}
+  - {path: compiler/ownership/facts/region-membership.cc, status: modify, task: R47-26G, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-26F]}
+  - {path: compiler/ownership/facts/region-outlives.cc, status: modify, task: R47-26H, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-26G]}
+  - {path: compiler/ownership/facts/regions.cc, status: modify, task: R47-26H, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-26G]}
+  - {path: compiler/ownership/facts/resources.cc, status: modify, task: R47-26I, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-26H]}
+  - {path: compiler/ownership/facts/states.cc, status: modify, task: R47-26I, owner: runtime-memory, reviewers: [error-system], depends_on: [R47-26H]}
+  - {path: compiler/ownership/overlay/drop-elaborated-mir.cc, status: modify, task: R47-26J, owner: runtime-memory, reviewers: [ir-backend], depends_on: [R47-26I]}
+  - {path: compiler/ownership/overlay/ownership-checked-mir.cc, status: modify, task: R47-26J, owner: runtime-memory, reviewers: [ir-backend], depends_on: [R47-26I]}
+
+  - {path: compiler/ir/diagnostics/ir-failure.h, status: modify, task: R47-27A, owner: ir-backend, reviewers: [error-system], depends_on: [R47-26B]}
+  - {path: compiler/ir/diagnostics/ir-failure.cc, status: modify, task: R47-27A, owner: ir-backend, reviewers: [error-system], depends_on: [R47-26B]}
+  - {path: compiler/ir/diagnostics/ir-diagnostic-projector.h, status: create, task: R47-27A, owner: ir-backend, reviewers: [error-system], depends_on: [R47-26B]}
+  - {path: compiler/ir/diagnostics/ir-diagnostic-projector.cc, status: create, task: R47-27A, owner: ir-backend, reviewers: [error-system], depends_on: [R47-26B]}
+  - {path: compiler/ir/diagnostics/ir-diagnostic-adapter.h, status: delete, task: R47-27A1, owner: ir-backend, reviewers: [error-system], depends_on: [R47-27A]}
+  - {path: compiler/ir/diagnostics/ir-diagnostic-adapter.cc, status: delete, task: R47-27A1, owner: ir-backend, reviewers: [error-system], depends_on: [R47-27A]}
+  - {path: compiler/ir/link/link-plan-codec.cc, status: modify, task: R47-27A2, owner: ir-backend, reviewers: [error-system], depends_on: [R47-27A1]}
+  - {path: compiler/ir/link/invoke-linker.h, status: modify, task: R47-27B, owner: ir-backend, reviewers: [runtime-memory], depends_on: [R47-27A2]}
+  - {path: compiler/ir/link/invoke-linker.cc, status: modify, task: R47-27B, owner: ir-backend, reviewers: [runtime-memory], depends_on: [R47-27A2]}
+  - {path: compiler/ir/publication/executable-publication.h, status: modify, task: R47-27C, owner: ir-backend, reviewers: [runtime-memory], depends_on: [R47-27B]}
+  - {path: compiler/ir/publication/executable-publication.cc, status: modify, task: R47-27C, owner: ir-backend, reviewers: [runtime-memory], depends_on: [R47-27B]}
+  - {path: utils/zomc/zomc.cc, status: modify, task: R47-27D, owner: ir-backend, reviewers: [error-system], depends_on: [R47-27C]}
+  - {path: compiler/backend/llvm/llvm-translator.h, status: modify, task: R47-27F, owner: ir-backend, reviewers: [error-system], depends_on: [R47-27D]}
+  - {path: compiler/backend/llvm/llvm-translator.cc, status: modify, task: R47-27F, owner: ir-backend, reviewers: [error-system], depends_on: [R47-27D]}
+  - {path: compiler/lir/mir-to-lir.h, status: modify, task: R47-27G, owner: ir-backend, reviewers: [error-system], depends_on: [R47-27F]}
+  - {path: compiler/lir/mir-to-lir.cc, status: modify, task: R47-27G, owner: ir-backend, reviewers: [error-system], depends_on: [R47-27F]}
+
+  - {path: compiler/ide/snapshot/snapshot-diagnostic.h, status: modify, task: R47-28A, owner: tooling-lsp, reviewers: [error-system], depends_on: [R47-27D]}
+  - {path: compiler/ide/snapshot/snapshot-diagnostic.cc, status: modify, task: R47-28A, owner: tooling-lsp, reviewers: [error-system], depends_on: [R47-27D]}
+  - {path: compiler/ide/snapshot/semantic-snapshot.h, status: modify, task: R47-28B, owner: tooling-lsp, reviewers: [module-system], depends_on: [R47-28A]}
+  - {path: compiler/ide/snapshot/semantic-snapshot.cc, status: modify, task: R47-28B, owner: tooling-lsp, reviewers: [module-system], depends_on: [R47-28A]}
+  - {path: compiler/ide/snapshot/semantic-snapshot-facade.h, status: modify, task: R47-28B, owner: tooling-lsp, reviewers: [module-system], depends_on: [R47-28A]}
+  - {path: compiler/ide/snapshot/semantic-snapshot-facade.cc, status: modify, task: R47-28C, owner: tooling-lsp, reviewers: [module-system], depends_on: [R47-28B]}
+  - {path: compiler/ide/snapshot/semantic-snapshot-freshness.h, status: delete, task: R47-28C1, owner: tooling-lsp, reviewers: [module-system], depends_on: [R47-28C]}
+  - {path: compiler/ide/snapshot/semantic-snapshot-freshness.cc, status: delete, task: R47-28C1, owner: tooling-lsp, reviewers: [module-system], depends_on: [R47-28C]}
+  - {path: compiler/identity/source/source-query-input.h, status: modify, task: R47-28C2, owner: module-system, reviewers: [tooling-lsp], depends_on: [R47-28C1]}
+  - {path: compiler/identity/source/source-query-input.cc, status: modify, task: R47-28C2, owner: module-system, reviewers: [tooling-lsp], depends_on: [R47-28C1]}
+  - {path: compiler/ide/snapshot/semantic-snapshot-key.h, status: modify, task: R47-28C3, owner: tooling-lsp, reviewers: [module-system], depends_on: [R47-28C2]}
+  - {path: compiler/ide/snapshot/semantic-snapshot-key.cc, status: modify, task: R47-28C3, owner: tooling-lsp, reviewers: [module-system], depends_on: [R47-28C2]}
+  - {path: compiler/ide/document/editor-document-adapter.h, status: modify, task: R47-28C4, owner: tooling-lsp, reviewers: [module-system], depends_on: [R47-28C3]}
+  - {path: compiler/ide/document/editor-document-adapter.cc, status: modify, task: R47-28C4, owner: tooling-lsp, reviewers: [module-system], depends_on: [R47-28C3]}
+  - {path: compiler/query/query-descriptor-schema.def, status: modify, task: R47-28C5, owner: module-system, reviewers: [verification, tooling-lsp], depends_on: [R47-28C4]}
+  - {path: compiler/lsp/diagnostic-adapter.h, status: create, task: R47-28D, owner: tooling-lsp, reviewers: [error-system], depends_on: [R47-28C5]}
+  - {path: compiler/lsp/diagnostic-adapter.cc, status: create, task: R47-28D, owner: tooling-lsp, reviewers: [error-system], depends_on: [R47-28C5]}
+  - {path: compiler/lsp/server.h, status: create, task: R47-28F, owner: tooling-lsp, reviewers: [module-system, verification], depends_on: [R47-28D]}
+  - {path: compiler/lsp/server.cc, status: create, task: R47-28F, owner: tooling-lsp, reviewers: [module-system, verification], depends_on: [R47-28D]}
+  - {path: compiler/lsp/outbound-message-bundle.h, status: create, task: R47-28G, owner: tooling-lsp, reviewers: [module-system], depends_on: [R47-28F]}
+  - {path: compiler/lsp/outbound-message-bundle.cc, status: create, task: R47-28G, owner: tooling-lsp, reviewers: [module-system], depends_on: [R47-28F]}
+  - {path: compiler/ide/CMakeLists.txt, status: modify, task: R47-28E, owner: tooling-lsp, reviewers: [ir-backend], depends_on: [R47-28D]}
+  - {path: compiler/lsp/CMakeLists.txt, status: modify, task: R47-28E, owner: tooling-lsp, reviewers: [ir-backend], depends_on: [R47-28D]}
+
+  - {path: tests/unittests/compiler/diagnostics/diagnostic-fact-codec-test.cc, status: modify, task: R47-32A, owner: verification, reviewers: [error-system], depends_on: [R47-28E]}
+  - {path: tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc, status: modify, task: R47-32A, owner: verification, reviewers: [error-system], depends_on: [R47-28E]}
+  - {path: tests/unittests/compiler/diagnostics/diagnostic-materializer-test.cc, status: modify, task: R47-32A, owner: verification, reviewers: [error-system], depends_on: [R47-28E]}
+  - {path: tests/unittests/compiler/diagnostics/diagnostic-argument-test.cc, status: create, task: R47-32A, owner: verification, reviewers: [error-system, binder-checker], depends_on: [R47-28E]}
+  - {path: tests/unittests/compiler/diagnostics/diagnostic-text-test.cc, status: modify, task: R47-32A, owner: verification, reviewers: [error-system], depends_on: [R47-28E]}
+  - {path: tests/unittests/compiler/diagnostics/diagnostic-test.cc, status: delete, task: R47-32A1, owner: verification, reviewers: [error-system], depends_on: [R47-32A], line_budget_exemption: whole_file_deletion}
+  - {path: tests/unittests/compiler/binder/identity/import-binding-test.cc, status: modify, task: R47-32A2, owner: verification, reviewers: [binder-checker], depends_on: [R47-32A1]}
+  - {path: tests/unittests/compiler/checker/diagnostics/checker-diagnostic-id-test.cc, status: delete, task: R47-32A2, owner: verification, reviewers: [binder-checker], depends_on: [R47-32A1]}
+  - {path: tests/unittests/compiler/diagnostics/diagnostic-collector-test.cc, status: create, task: R47-32A, owner: verification, reviewers: [error-system], depends_on: [R47-28E]}
+  - {path: tests/unittests/compiler/diagnostics/diagnostic-policy-test.cc, status: create, task: R47-32A, owner: verification, reviewers: [error-system], depends_on: [R47-28E]}
+  - {path: tests/unittests/compiler/diagnostics/compiler-incident-test.cc, status: create, task: R47-32B, owner: verification, reviewers: [error-system], depends_on: [R47-32A]}
+  - {path: tests/unittests/compiler/diagnostics/diagnostic-consumer-test.cc, status: modify, task: R47-32B, owner: verification, reviewers: [error-system], depends_on: [R47-32A]}
+  - {path: tests/unittests/compiler/diagnostics/diagnostic-state-test.cc, status: delete, task: R47-32B, owner: verification, reviewers: [error-system], depends_on: [R47-32A]}
+  - {path: tests/unittests/compiler/diagnostics/in-flight-diagnostic-test.cc, status: delete, task: R47-32B, owner: verification, reviewers: [error-system], depends_on: [R47-32A]}
+  - {path: tests/unittests/compiler/diagnostics/source-diagnostic-draft-buffer-test.cc, status: delete, task: R47-32B, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32A]}
+  - {path: tests/unittests/compiler/diagnostics/toolchain-module-root-argument-test.cc, status: delete, task: R47-32B, owner: verification, reviewers: [module-system, error-system], depends_on: [R47-32A]}
+  - {path: tests/unittests/compiler/parser/source-diagnostic-sink-test.cc, status: create, task: R47-32C, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32B]}
+  - {path: tests/unittests/compiler/parser/diagnostic-fact-caller-test.cc, status: modify, task: R47-32C, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32B]}
+  - {path: tests/unittests/compiler/parser/recovery-test.cc, status: modify, task: R47-32C, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32B]}
+  - {path: tests/unittests/compiler/parser/parser-test.cc, status: modify, task: R47-32C1, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32C]}
+  - {path: tests/unittests/compiler/parser/token-cursor-test.cc, status: modify, task: R47-32C1, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32C]}
+  - {path: tests/unittests/compiler/cst/lexeme-stream-builder-test.cc, status: modify, task: R47-32C, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32B]}
+  - {path: tests/unittests/compiler/binder/diagnostics/binding-diagnostic-adapter-test.cc, status: delete, task: R47-32D, owner: verification, reviewers: [binder-checker], depends_on: [R47-32C]}
+  - {path: tests/unittests/compiler/binder/CMakeLists.txt, status: modify, task: R47-32D, owner: verification, reviewers: [binder-checker], depends_on: [R47-32C]}
+  - {path: tests/unittests/compiler/binder/diagnostics/binding-diagnostic-projector-test.cc, status: create, task: R47-32D, owner: verification, reviewers: [binder-checker], depends_on: [R47-32C]}
+  - {path: tests/unittests/compiler/binder/stable/stable-binding-diagnostic-fact-test.cc, status: modify, task: R47-32D, owner: verification, reviewers: [binder-checker], depends_on: [R47-32C]}
+  - {path: tests/unittests/compiler/binder/stable/stable-binding-query-test.cc, status: modify, task: R47-32D1, owner: verification, reviewers: [binder-checker, module-system], depends_on: [R47-32D]}
+  - {path: tests/unittests/compiler/binder/stable/stable-binding-facts-test.cc, status: modify, task: R47-32D2, owner: verification, reviewers: [binder-checker, module-system], depends_on: [R47-32D1]}
+  - {path: tests/unittests/compiler/binder/graph/parsed-module-query-test-fixture.h, status: modify, task: R47-32D2, owner: verification, reviewers: [binder-checker, module-system], depends_on: [R47-32D1]}
+  - {path: tests/unittests/compiler/driver/query/module-graph/module-dependency-provenance-query-test.cc, status: modify, task: R47-32D3, owner: verification, reviewers: [module-system, binder-checker], depends_on: [R47-32D2]}
+  - {path: tests/unittests/compiler/checker/diagnostics/checker-diagnostic-adapter-test.cc, status: delete, task: R47-32E, owner: verification, reviewers: [binder-checker], depends_on: [R47-32D3], line_budget_exemption: whole_file_deletion}
+  - {path: tests/unittests/compiler/checker/diagnostics/checker-diagnostic-projector-test.cc, status: create, task: R47-32F, owner: verification, reviewers: [binder-checker], depends_on: [R47-32E]}
+  - {path: tests/unittests/compiler/checker/inference/checked-facts-test.cc, status: modify, task: R47-32F, owner: verification, reviewers: [binder-checker], depends_on: [R47-32E]}
+  - {path: tests/unittests/compiler/ownership/overlay/ownership-event-overlay-test.cc, status: modify, task: R47-32G, owner: verification, reviewers: [runtime-memory], depends_on: [R47-32F]}
+  - {path: tests/unittests/compiler/ir/diagnostics/ir-diagnostic-adapter-test.cc, status: delete, task: R47-32H1, owner: verification, reviewers: [ir-backend], depends_on: [R47-32G], line_budget_exemption: whole_file_deletion}
+  - {path: tests/unittests/compiler/ir/diagnostics/ir-diagnostic-projector-test.cc, status: create, task: R47-32H2, owner: verification, reviewers: [ir-backend], depends_on: [R47-32H1]}
+  - {path: tests/unittests/compiler/ir/diagnostics/ir-failure-test.cc, status: modify, task: R47-32H2, owner: verification, reviewers: [ir-backend], depends_on: [R47-32H1]}
+  - {path: tests/unittests/compiler/ir/link/invoke-linker-test.cc, status: modify, task: R47-32H2, owner: verification, reviewers: [ir-backend], depends_on: [R47-32H1]}
+  - {path: tests/unittests/compiler/ir/link/link-plan-codec-oracle-test.cc, status: modify, task: R47-32H2, owner: verification, reviewers: [ir-backend], depends_on: [R47-32H1]}
+  - {path: tests/unittests/compiler/ide/snapshot/snapshot-diagnostic-test.cc, status: modify, task: R47-32I, owner: verification, reviewers: [tooling-lsp], depends_on: [R47-32H2]}
+  - {path: tests/unittests/compiler/ide/snapshot/semantic-snapshot-facade-test.cc, status: modify, task: R47-32I, owner: verification, reviewers: [tooling-lsp], depends_on: [R47-32H2]}
+  - {path: tests/unittests/compiler/ide/document/editor-document-adapter-test.cc, status: modify, task: R47-32I, owner: verification, reviewers: [tooling-lsp, module-system], depends_on: [R47-32H2]}
+  - {path: tests/unittests/compiler/ide/snapshot/semantic-snapshot-key-oracle-test.cc, status: modify, task: R47-32I, owner: verification, reviewers: [tooling-lsp, module-system], depends_on: [R47-32H2]}
+  - {path: tests/unittests/compiler/lsp/diagnostic-adapter-test.cc, status: create, task: R47-32I, owner: verification, reviewers: [tooling-lsp], depends_on: [R47-32H2]}
+  - {path: tests/unittests/compiler/query/query-concurrency-test.cc, status: modify, task: R47-32J, owner: verification, reviewers: [module-system], depends_on: [R47-32I]}
+  - {path: tests/unittests/compiler/query/query-database-test.cc, status: modify, task: R47-32J, owner: verification, reviewers: [module-system], depends_on: [R47-32I]}
+  - {path: tests/unittests/compiler/query/query-capability-test.cc, status: modify, task: R47-32J1, owner: verification, reviewers: [module-system], depends_on: [R47-32J]}
+  - {path: tests/unittests/compiler/query/query-observability-test.cc, status: modify, task: R47-32J1, owner: verification, reviewers: [module-system], depends_on: [R47-32J]}
+  - {path: tests/unittests/compiler/query/query-red-green-test.cc, status: modify, task: R47-32J2, owner: verification, reviewers: [module-system], depends_on: [R47-32J1]}
+  - {path: tests/unittests/compiler/query/query-test-specs.h, status: modify, task: R47-32J2, owner: verification, reviewers: [module-system], depends_on: [R47-32J1]}
+  - {path: tests/unittests/compiler/query/query-test-descriptor-schema.def, status: modify, task: R47-32J2, owner: verification, reviewers: [module-system], depends_on: [R47-32J1]}
+  - {path: tests/unittests/compiler/driver/core/core-query-test.cc, status: modify, task: R47-32J3, owner: verification, reviewers: [module-system], depends_on: [R47-32J2]}
+  - {path: tests/unittests/compiler/driver/query/binding/active-definition-authority-session-test.cc, status: modify, task: R47-32J3, owner: verification, reviewers: [module-system], depends_on: [R47-32J2]}
+  - {path: tests/unittests/compiler/driver/query/binding/incremental-binding-query-adapter-test.cc, status: modify, task: R47-32J4, owner: verification, reviewers: [module-system, binder-checker], depends_on: [R47-32J3]}
+  - {path: tests/unittests/compiler/driver/package/package-diagnostic-test.cc, status: modify, task: R47-32K, owner: verification, reviewers: [module-system], depends_on: [R47-32J]}
+  - {path: tests/unittests/compiler/driver/session/compiler-session-package-test.cc, status: modify, task: R47-32K, owner: verification, reviewers: [module-system], depends_on: [R47-32J]}
+  - {path: tests/unittests/compiler/identity/diagnostics/identity-invariant-test.cc, status: modify, task: R47-32L, owner: verification, reviewers: [module-system], depends_on: [R47-32K]}
+  - {path: tests/unittests/compiler/driver/interface/borrow-evidence-test.cc, status: modify, task: R47-32L, owner: verification, reviewers: [module-system, runtime-memory], depends_on: [R47-32K]}
+  - {path: tests/unittests/compiler/backend/llvm-translation-test.cc, status: modify, task: R47-32M, owner: verification, reviewers: [ir-backend], depends_on: [R47-32L]}
+  - {path: tests/unittests/compiler/ir/publication/executable-publication-test.cc, status: modify, task: R47-32M, owner: verification, reviewers: [ir-backend], depends_on: [R47-32L]}
+  - {path: tests/unittests/compiler/ide/snapshot/semantic-snapshot-freshness-test.cc, status: delete, task: R47-32N, owner: verification, reviewers: [tooling-lsp], depends_on: [R47-32M], line_budget_exemption: whole_file_deletion}
+  - {path: tests/unittests/compiler/lsp/server-test.cc, status: create, task: R47-32N1, owner: verification, reviewers: [tooling-lsp], depends_on: [R47-32N]}
+  - {path: tests/benchmarks/compiler/parser-benchmark.cc, status: modify, task: R47-32O, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32N1]}
+  - {path: tests/fuzzing/lexer-fuzzer.cc, status: modify, task: R47-32O, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32N1]}
+  - {path: tests/fuzzing/parser-fuzzer.cc, status: modify, task: R47-32O, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32N1]}
+  - {path: tests/unittests/compiler/ast/schema-verifier-test.cc, status: modify, task: R47-32P, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32O]}
+  - {path: tests/unittests/compiler/binder/graph/module-dependency-requests-test.cc, status: modify, task: R47-32P, owner: verification, reviewers: [binder-checker], depends_on: [R47-32O]}
+  - {path: tests/unittests/compiler/binder/stable/definition/header-producer-test.cc, status: modify, task: R47-32Q, owner: verification, reviewers: [binder-checker], depends_on: [R47-32P]}
+  - {path: tests/unittests/compiler/binder/stable/header/fixture.h, status: modify, task: R47-32Q, owner: verification, reviewers: [binder-checker], depends_on: [R47-32P]}
+  - {path: tests/unittests/compiler/binder/stable/implementation/header-producer-test.cc, status: modify, task: R47-32R, owner: verification, reviewers: [binder-checker], depends_on: [R47-32Q]}
+  - {path: tests/unittests/compiler/binder/surface/module-body-syntax-test.cc, status: modify, task: R47-32R, owner: verification, reviewers: [binder-checker], depends_on: [R47-32Q]}
+  - {path: tests/unittests/compiler/checker/body/body-checker-test.cc, status: modify, task: R47-32S, owner: verification, reviewers: [binder-checker], depends_on: [R47-32R]}
+  - {path: tests/unittests/compiler/checker/body/marker-proof-test.cc, status: modify, task: R47-32S, owner: verification, reviewers: [binder-checker], depends_on: [R47-32R]}
+  - {path: tests/unittests/compiler/checker/body/primitive-binary-operation-test.cc, status: modify, task: R47-32T, owner: verification, reviewers: [binder-checker], depends_on: [R47-32S]}
+  - {path: tests/unittests/compiler/checker/checker-authority-test-fixture.h, status: modify, task: R47-32T, owner: verification, reviewers: [binder-checker], depends_on: [R47-32S]}
+  - {path: tests/unittests/compiler/driver/graph/module-discovery-test.cc, status: modify, task: R47-32U, owner: verification, reviewers: [module-system], depends_on: [R47-32T]}
+  - {path: tests/unittests/compiler/driver/query/module-graph/module-graph-query-input-test.cc, status: modify, task: R47-32U, owner: verification, reviewers: [module-system], depends_on: [R47-32T]}
+  - {path: tests/unittests/compiler/format/lexeme-printer-test.cc, status: modify, task: R47-32V, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32U]}
+  - {path: tests/unittests/compiler/hir/hir-module-test.cc, status: modify, task: R47-32V, owner: verification, reviewers: [ir-backend], depends_on: [R47-32U]}
+  - {path: tests/unittests/compiler/lexer/lexer-basic-test.cc, status: modify, task: R47-32W, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32V]}
+  - {path: tests/unittests/compiler/lexer/lexer-identifier-test.cc, status: modify, task: R47-32W, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32V]}
+  - {path: tests/unittests/compiler/lexer/lexer-literal-test.cc, status: modify, task: R47-32X, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32W]}
+  - {path: tests/unittests/compiler/lexer/lexer-utf8-test.cc, status: modify, task: R47-32X, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32W]}
+  - {path: tests/unittests/compiler/lexer/utils.h, status: modify, task: R47-32X, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32W]}
+  - {path: tests/unittests/compiler/ownership/facts/ownership-borrow-source-test.cc, status: modify, task: R47-32Y, owner: verification, reviewers: [runtime-memory], depends_on: [R47-32X]}
+  - {path: tests/unittests/compiler/ownership/facts/ownership-capture-test.cc, status: modify, task: R47-32Y, owner: verification, reviewers: [runtime-memory], depends_on: [R47-32X]}
+  - {path: tests/unittests/compiler/ownership/facts/ownership-facts-oracle-test.cc, status: modify, task: R47-32Z, owner: verification, reviewers: [runtime-memory], depends_on: [R47-32Y]}
+  - {path: tests/unittests/compiler/ownership/facts/ownership-linear-source-test.cc, status: modify, task: R47-32Z, owner: verification, reviewers: [runtime-memory], depends_on: [R47-32Y]}
+  - {path: tests/unittests/compiler/ownership/facts/ownership-loop-flow-test.cc, status: modify, task: R47-32AA, owner: verification, reviewers: [runtime-memory], depends_on: [R47-32Z]}
+  - {path: tests/unittests/compiler/ownership/facts/ownership-region-membership-test.cc, status: modify, task: R47-32AA, owner: verification, reviewers: [runtime-memory], depends_on: [R47-32Z]}
+  - {path: tests/unittests/compiler/ownership/facts/ownership-region-outlives-test.cc, status: modify, task: R47-32AB, owner: verification, reviewers: [runtime-memory], depends_on: [R47-32AA]}
+  - {path: tests/unittests/compiler/ownership/overlay/ownership-drop-elaboration-test.cc, status: modify, task: R47-32AB, owner: verification, reviewers: [runtime-memory], depends_on: [R47-32AA]}
+  - {path: tests/unittests/compiler/ownership/overlay/ownership-lineage-mutation-test.cc, status: modify, task: R47-32AC, owner: verification, reviewers: [runtime-memory], depends_on: [R47-32AB]}
+  - {path: tests/unittests/compiler/ownership/overlay/ownership-proof-validation-test.cc, status: modify, task: R47-32AC, owner: verification, reviewers: [runtime-memory], depends_on: [R47-32AB]}
+  - {path: tests/unittests/compiler/parser/parser-context-test.cc, status: modify, task: R47-32AD, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32AC]}
+  - {path: tests/unittests/compiler/test-ast-builder.h, status: modify, task: R47-32AD, owner: verification, reviewers: [lexer-parser], depends_on: [R47-32AC]}
+  - {path: tests/conformance/expectations/diagnostics/05-statements/body_shape_neg_02.check, status: modify, task: R47-32AE, owner: verification, reviewers: [binder-checker, error-system], depends_on: [R47-32AD]}
+  - {path: tests/conformance/expectations/diagnostics/05-statements/class_literal_body_shape_neg_03.check, status: modify, task: R47-32AE, owner: verification, reviewers: [binder-checker, error-system], depends_on: [R47-32AD]}
+  - {path: tests/conformance/expectations/diagnostics/05-statements/control_flow_semantics_unavailable_neg_01.check, status: modify, task: R47-32AE, owner: verification, reviewers: [binder-checker, error-system], depends_on: [R47-32AD]}
+  - {path: tests/conformance/expectations/diagnostics/05-statements/function_body_semantics_unavailable_neg_01.check, status: modify, task: R47-32AF, owner: verification, reviewers: [binder-checker, error-system], depends_on: [R47-32AE]}
+  - {path: tests/conformance/expectations/diagnostics/05-statements/return_pos_01.check, status: modify, task: R47-32AF, owner: verification, reviewers: [binder-checker, error-system], depends_on: [R47-32AE]}
+  - {path: tests/conformance/expectations/diagnostics/05-statements/use_after_move_neg_11.check, status: modify, task: R47-32AF, owner: verification, reviewers: [runtime-memory, error-system], depends_on: [R47-32AE]}
+  - {path: tests/conformance/expectations/diagnostics/09-interfaces/marker_impl_behavior_precedence_neg_31.check, status: modify, task: R47-32AG, owner: verification, reviewers: [binder-checker, error-system], depends_on: [R47-32AF]}
+  - {path: tests/conformance/expectations/diagnostics/09-interfaces/marker_impl_qualified_requires_unsafe_neg_30.check, status: modify, task: R47-32AG, owner: verification, reviewers: [binder-checker, runtime-memory, error-system], depends_on: [R47-32AF]}
+  - {path: tests/conformance/expectations/diagnostics/09-interfaces/marker_impl_short_requires_unsafe_neg_29.check, status: modify, task: R47-32AG, owner: verification, reviewers: [binder-checker, runtime-memory, error-system], depends_on: [R47-32AF]}
+  - {path: tests/unittests/compiler/driver/session/compiler-session-test.cc, status: modify, task: R47-32K, owner: verification, reviewers: [module-system], depends_on: [R47-32J]}
+
+  - {path: docs/spec/chapters/04-expressions.md, status: modify, task: R47-29L, owner: lexer-parser, reviewers: [spec-audit, error-system], depends_on: [R47-28E]}
+  - {path: docs/spec/chapters/05-statements.md, status: modify, task: R47-29L, owner: lexer-parser, reviewers: [spec-audit, error-system], depends_on: [R47-28E]}
+  - {path: docs/spec/chapters/11-error-handling.md, status: modify, task: R47-29E, owner: error-system, reviewers: [spec-audit], depends_on: [R47-28E]}
+  - {path: docs/spec/chapters/13-modules-and-imports.md, status: modify, task: R47-29M, owner: module-system, reviewers: [spec-audit], depends_on: [R47-28E]}
+  - {path: docs/spec/chapters/14-memory-management.md, status: modify, task: R47-29R, owner: runtime-memory, reviewers: [spec-audit], depends_on: [R47-28E]}
+  - {path: docs/design/diagnostics.md, status: create, task: R47-29C, owner: spec-audit, reviewers: [error-system], depends_on: [R47-29L, R47-29E, R47-29M, R47-29R]}
+  - {path: docs/design/architecture.md, status: modify, task: R47-29C, owner: spec-audit, reviewers: [error-system], depends_on: [R47-29L, R47-29E, R47-29M, R47-29R]}
+  - {path: docs/design/compiler-contracts.md, status: modify, task: R47-29C, owner: spec-audit, reviewers: [error-system], depends_on: [R47-29L, R47-29E, R47-29M, R47-29R]}
+  - {path: docs/design/query-runtime.md, status: modify, task: R47-29C, owner: spec-audit, reviewers: [module-system, error-system], depends_on: [R47-29L, R47-29E, R47-29M, R47-29R]}
+  - {path: docs/design/algebraic-data-types.md, status: modify, task: R47-29C, owner: spec-audit, reviewers: [binder-checker, error-system], depends_on: [R47-29L, R47-29E, R47-29M, R47-29R]}
+  - {path: docs/design/tooling/product-ecosystem.md, status: modify, task: R47-30A, owner: tooling-lsp, reviewers: [spec-audit], depends_on: [R47-28E]}
+  - {path: docs/package-system.md, status: modify, task: R47-29M, owner: module-system, reviewers: [spec-audit, error-system], depends_on: [R47-28E]}
+  - {path: docs/plan/2026-q4.md, status: modify, task: R47-29D, owner: spec-audit, reviewers: [error-system], depends_on: [R47-28E]}
+  - {path: docs/design/ir/lowering-and-verification.md, status: modify, task: R47-29I, owner: spec-audit, reviewers: [ir-backend], depends_on: [R47-28E]}
+  - {path: docs/design/ir/link-publication-transaction.md, status: modify, task: R47-29I, owner: spec-audit, reviewers: [ir-backend], depends_on: [R47-28E]}
+
+  - {path: docs/rfc/0002-parser-architecture.md, status: modify, task: R47-31C, owner: rfc, reviewers: [lexer-parser, error-system], depends_on: [R47-29C]}
+  - {path: docs/rfc/0003-lexer-architecture.md, status: modify, task: R47-31C, owner: rfc, reviewers: [lexer-parser, error-system], depends_on: [R47-29C]}
+  - {path: docs/rfc/0004-binder-architecture.md, status: modify, task: R47-31C, owner: rfc, reviewers: [binder-checker], depends_on: [R47-29C]}
+  - {path: docs/rfc/0005-type-system-architecture.md, status: modify, task: R47-31C, owner: rfc, reviewers: [binder-checker], depends_on: [R47-29C]}
+  - {path: docs/rfc/0006-error-lowering-runtime-abi.md, status: modify, task: R47-31C, owner: rfc, reviewers: [ir-backend], depends_on: [R47-29C]}
+  - {path: docs/rfc/0007-borrow-lifetime-ownership-checker.md, status: modify, task: R47-31C, owner: rfc, reviewers: [runtime-memory], depends_on: [R47-29C]}
+  - {path: docs/rfc/0008-compiler-session-cross-module.md, status: modify, task: R47-31D, owner: rfc, reviewers: [module-system], depends_on: [R47-31C]}
+  - {path: docs/rfc/0009-call-dispatch-and-operator-lowering.md, status: modify, task: R47-31D, owner: rfc, reviewers: [binder-checker, ir-backend], depends_on: [R47-31C]}
+  - {path: docs/rfc/0010-intermediate-representation-pipeline.md, status: modify, task: R47-31D, owner: rfc, reviewers: [ir-backend], depends_on: [R47-31C]}
+  - {path: docs/rfc/0011-semantic-identity-foundation.md, status: modify, task: R47-31D, owner: rfc, reviewers: [module-system], depends_on: [R47-31C]}
+  - {path: docs/rfc/0012-package-manifest-and-resolver.md, status: modify, task: R47-31E, owner: rfc, reviewers: [module-system], depends_on: [R47-31D]}
+  - {path: docs/rfc/0013-ownership-analysis-integration-boundary.md, status: modify, task: R47-31E, owner: rfc, reviewers: [runtime-memory], depends_on: [R47-31D]}
+  - {path: docs/rfc/0014-contextual-self-and-receiver-semantics.md, status: modify, task: R47-31E, owner: rfc, reviewers: [binder-checker], depends_on: [R47-31D]}
+  - {path: docs/rfc/0016-context-bound-target-registry-verification.md, status: modify, task: R47-31E, owner: rfc, reviewers: [ir-backend], depends_on: [R47-31D]}
+  - {path: docs/rfc/0017-incremental-compiler-query-architecture.md, status: modify, task: R47-31A, owner: rfc, reviewers: [module-system], depends_on: [R47-29C]}
+  - {path: docs/rfc/0018-stable-query-identity-wire-closure.md, status: modify, task: R47-31F, owner: rfc, reviewers: [module-system], depends_on: [R47-31E]}
+  - {path: docs/rfc/0019-stable-body-owner-and-query-closure.md, status: modify, task: R47-31F, owner: rfc, reviewers: [module-system, binder-checker, error-system], depends_on: [R47-31E]}
+  - {path: docs/rfc/0020-active-definition-authority-projection.md, status: modify, task: R47-31F, owner: rfc, reviewers: [module-system], depends_on: [R47-31E]}
+  - {path: docs/rfc/0021-target-aware-lir-and-llvm-translation.md, status: modify, task: R47-31F, owner: rfc, reviewers: [ir-backend], depends_on: [R47-31E]}
+  - {path: docs/rfc/0023-ide-semantic-snapshots-and-language-server-architecture.md, status: modify, task: R47-31A, owner: rfc, reviewers: [tooling-lsp], depends_on: [R47-29C]}
+  - {path: docs/rfc/0024-standard-marker-authority.md, status: modify, task: R47-31L, owner: rfc, reviewers: [binder-checker, module-system, error-system], depends_on: [R47-31K]}
+  - {path: docs/rfc/0025-source-backed-core-library-architecture.md, status: modify, task: R47-31G, owner: rfc, reviewers: [module-system], depends_on: [R47-31F]}
+  - {path: docs/rfc/0027-binder-query-and-identity-materialization-closure.md, status: modify, task: R47-31L, owner: rfc, reviewers: [module-system, binder-checker, error-system], depends_on: [R47-31K]}
+  - {path: docs/rfc/0028-query-runtime-final-seal-and-descriptor-closure.md, status: modify, task: R47-31G, owner: rfc, reviewers: [module-system], depends_on: [R47-31F]}
+  - {path: docs/rfc/0029-query-identity-and-capability-failure-closure.md, status: modify, task: R47-31B, owner: rfc, reviewers: [module-system], depends_on: [R47-31A]}
+  - {path: docs/rfc/0030-stable-binding-foundation-verification.md, status: modify, task: R47-31M, owner: rfc, reviewers: [module-system, binder-checker, error-system], depends_on: [R47-31L]}
+  - {path: docs/rfc/0031-stable-binding-schema-model-closure.md, status: modify, task: R47-31M, owner: rfc, reviewers: [module-system, binder-checker, error-system], depends_on: [R47-31L]}
+  - {path: docs/rfc/0036-bounded-diagnostic-fact-codec-closure.md, status: modify, task: R47-31B, owner: rfc, reviewers: [error-system], depends_on: [R47-31A]}
+  - {path: docs/rfc/0042-canonical-diagnostic-fact-atomic-cutover.md, status: modify, task: R47-31B, owner: rfc, reviewers: [error-system], depends_on: [R47-31A]}
+  - {path: docs/rfc/0043-platform-link-and-executable-publication.md, status: modify, task: R47-31G, owner: rfc, reviewers: [ir-backend], depends_on: [R47-31F]}
+  - {path: docs/rfc/tracking/0004-review-and-implementation.md, status: modify, task: R47-31H, owner: rfc, reviewers: [binder-checker], depends_on: [R47-31G]}
+  - {path: docs/rfc/tracking/0005-review-and-implementation.md, status: modify, task: R47-31H, owner: rfc, reviewers: [binder-checker], depends_on: [R47-31G]}
+  - {path: docs/rfc/tracking/0006-review-and-implementation.md, status: modify, task: R47-31H, owner: rfc, reviewers: [ir-backend], depends_on: [R47-31G]}
+  - {path: docs/rfc/tracking/0007-review-and-implementation.md, status: modify, task: R47-31H, owner: rfc, reviewers: [runtime-memory], depends_on: [R47-31G]}
+  - {path: docs/rfc/tracking/0008-review-and-implementation.md, status: modify, task: R47-31I, owner: rfc, reviewers: [module-system], depends_on: [R47-31H]}
+  - {path: docs/rfc/tracking/0009-review-and-implementation.md, status: modify, task: R47-31I, owner: rfc, reviewers: [binder-checker, ir-backend], depends_on: [R47-31H]}
+  - {path: docs/rfc/tracking/0010-review-and-implementation.md, status: modify, task: R47-31I, owner: rfc, reviewers: [ir-backend], depends_on: [R47-31H]}
+  - {path: docs/rfc/tracking/0011-review-and-implementation.md, status: modify, task: R47-31I, owner: rfc, reviewers: [module-system], depends_on: [R47-31H]}
+  - {path: docs/rfc/tracking/0012-review-and-implementation.md, status: modify, task: R47-31J, owner: rfc, reviewers: [module-system], depends_on: [R47-31I]}
+  - {path: docs/rfc/tracking/0013-review-and-implementation.md, status: modify, task: R47-31J, owner: rfc, reviewers: [runtime-memory], depends_on: [R47-31I]}
+  - {path: docs/rfc/tracking/0014-review-and-implementation.md, status: modify, task: R47-31J, owner: rfc, reviewers: [binder-checker], depends_on: [R47-31I]}
+  - {path: docs/rfc/tracking/0016-review-and-implementation.md, status: modify, task: R47-31J, owner: rfc, reviewers: [ir-backend], depends_on: [R47-31I]}
+  - {path: docs/rfc/tracking/0017-review-and-implementation.md, status: modify, task: R47-31K, owner: rfc, reviewers: [module-system], depends_on: [R47-31J]}
+  - {path: docs/rfc/tracking/0018-review-and-implementation.md, status: modify, task: R47-31K, owner: rfc, reviewers: [module-system], depends_on: [R47-31J]}
+  - {path: docs/rfc/tracking/0020-review-and-implementation.md, status: modify, task: R47-31K, owner: rfc, reviewers: [module-system], depends_on: [R47-31J]}
+  - {path: docs/rfc/tracking/0021-review-and-implementation.md, status: modify, task: R47-31K, owner: rfc, reviewers: [ir-backend], depends_on: [R47-31J]}
+  - {path: docs/rfc/tracking/0022-review-and-implementation.md, status: modify, task: R47-31L, owner: rfc, reviewers: [binder-checker, error-system], depends_on: [R47-31K]}
+  - {path: docs/rfc/tracking/0023-review-and-implementation.md, status: modify, task: R47-31L, owner: rfc, reviewers: [tooling-lsp], depends_on: [R47-31K]}
+  - {path: docs/rfc/tracking/0025-review-and-implementation.md, status: modify, task: R47-31L, owner: rfc, reviewers: [module-system], depends_on: [R47-31K]}
+  - {path: docs/rfc/tracking/0028-review-and-implementation.md, status: modify, task: R47-31L, owner: rfc, reviewers: [module-system], depends_on: [R47-31K]}
+  - {path: docs/rfc/tracking/0029-review-and-implementation.md, status: modify, task: R47-31L, owner: rfc, reviewers: [module-system], depends_on: [R47-31K]}
+  - {path: docs/rfc/tracking/0036-review-and-implementation.md, status: modify, task: R47-31M, owner: rfc, reviewers: [error-system], depends_on: [R47-31L]}
+  - {path: docs/rfc/tracking/0042-review-and-implementation.md, status: modify, task: R47-31M, owner: rfc, reviewers: [error-system], depends_on: [R47-31L]}
+  - {path: docs/rfc/tracking/0043-review-and-implementation.md, status: modify, task: R47-31M, owner: rfc, reviewers: [ir-backend], depends_on: [R47-31L]}
+  - {path: docs/rfc/0047-diagnostics-architecture.md, status: modify, task: R47-34, owner: rfc, reviewers: [error-system], depends_on: [R47-33]}
+  - {path: docs/rfc/tracking/0047-review-and-implementation.md, status: modify, task: R47-34, owner: rfc, reviewers: [verification], depends_on: [R47-33]}
+  - {path: docs/rfc/README.md, status: modify, task: R47-34, owner: rfc, reviewers: [verification], depends_on: [R47-33]}

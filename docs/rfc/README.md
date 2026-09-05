@@ -115,6 +115,7 @@ not reused.
 | [RFC 0044](0044-source-formatter-architecture.md) | Source Formatter Architecture | IMPLEMENTING | tooling | compiler | rfc | [Acceptance Criteria](0044-source-formatter-architecture.md#acceptance-criteria) | [Tracker](tracking/0044-review-and-implementation.md#implementation-tracker) |
 | [RFC 0045](0045-native-debugging-and-debug-adapter.md) | Native Debugging And Debug Adapter | ACCEPTED | tooling | compiler | rfc | [Acceptance Criteria](0045-native-debugging-and-debug-adapter.md#acceptance-criteria) | TBD |
 | [RFC 0046](0046-forced-error-operator-panic-abort-abi.md) | Forced Error Operator Panic Abort ABI | DRAFT | compiler | compiler | rfc | [Acceptance Criteria](0046-forced-error-operator-panic-abort-abi.md#acceptance-criteria) | TBD |
+| [RFC 0047](0047-diagnostics-architecture.md) | Diagnostics Architecture | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0047-review-and-implementation.md) | TBD |
 
 ## Status Values
 
