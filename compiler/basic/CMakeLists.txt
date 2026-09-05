@@ -1,4 +1,5 @@
 set(BASIC_SRC
+  ${CMAKE_CURRENT_SOURCE_DIR}/incident/compiler-incident.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/thread-pool.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/io-utils.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/string-escape.cc

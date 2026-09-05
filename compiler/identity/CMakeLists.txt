@@ -1,6 +1,7 @@
 set(IDENTITY_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/brand.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/identity-invariant.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/identity-diagnostic-projector.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/identity-diagnostic-adapter.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical/sorted-feature-set.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/source/source-query-input.cc
