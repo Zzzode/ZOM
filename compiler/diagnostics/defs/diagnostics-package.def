@@ -41,7 +41,3 @@ DIAG(7091, PackageRequirementIntroducedHere, kNote, "Dependency requirement intr
 DIAG(7092, PackageDependencyEdgeHere, kNote, "Dependency edge participates in this failure", 0)
 DIAG(7093, PreviousWorkspacePackageHere, kNote, "Previous workspace package with this name is here",
      0)
-DIAG(9905, BuildScriptLimitInvariantViolation, kFatal,
-     "Internal build-script limit configuration is invalid ({0})", 1)
-DIAG(9906, TrustedBuildRuntimeInvariantViolation, kFatal,
-     "Internal trusted build runtime is invalid ({0})", 1)

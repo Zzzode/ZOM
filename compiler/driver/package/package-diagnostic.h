@@ -81,10 +81,6 @@ private:
 ZC_NODISCARD zc::StringPtr manifestIssueDisplay(ManifestIssue issue) noexcept;
 ZC_NODISCARD zc::StringPtr materializationIssueDisplay(MaterializationIssue issue) noexcept;
 ZC_NODISCARD zc::StringPtr buildScriptIssueDisplay(BuildScriptIssue issue) noexcept;
-ZC_NODISCARD zc::StringPtr buildScriptLimitInvariantDisplay(
-    BuildScriptLimitInvariantIssue issue) noexcept;
-ZC_NODISCARD zc::StringPtr trustedRuntimeInvariantDisplay(
-    TrustedRuntimeInvariantIssue issue) noexcept;
 /// \brief Returns the closed, non-secret display token that locates one
 /// package-input verification failure.
 ZC_NODISCARD zc::StringPtr verifyFailureDisplay(const VerifyFailure& failure) noexcept;
@@ -98,10 +94,6 @@ public:
                                        MaterializationIssue issue);
   static void emitBuildScriptIssue(diagnostics::DiagnosticEngine& diagnostics,
                                    BuildScriptIssue issue);
-  static void emitBuildScriptLimitInvariant(diagnostics::DiagnosticEngine& diagnostics,
-                                            BuildScriptLimitInvariantIssue issue);
-  static void emitTrustedRuntimeInvariant(diagnostics::DiagnosticEngine& diagnostics,
-                                          TrustedRuntimeInvariantIssue issue);
   static void emitVerifyFailure(diagnostics::DiagnosticEngine& diagnostics,
                                 const VerifyFailure& failure);
   static bool emitManifestFailure(diagnostics::DiagnosticEngine& diagnostics,

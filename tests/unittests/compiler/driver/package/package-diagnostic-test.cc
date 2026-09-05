@@ -14,12 +14,12 @@
 
 #include "compiler/driver/package/package-diagnostic.h"
 
-#include "zc/core/vector.h"
-#include "zc/ztest/test.h"
 #include "compiler/diagnostics/consumer/diagnostic-consumer.h"
 #include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/diagnostics/core/diagnostic.h"
 #include "compiler/source/manager.h"
+#include "zc/core/vector.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::driver::package {
 namespace {
@@ -325,21 +325,6 @@ ZC_TEST("PackageDiagnosticTest.EmitsEveryMaterializationIssueThroughZOM7010") {
     PackageDiagnosticAdapter::emitMaterializationIssue(engine, issue);
     ZC_REQUIRE(capture.primaryIds.size() == 1);
     ZC_EXPECT(capture.primaryIds[0] == 7010);
-  }
-}
-
-ZC_TEST("PackageDiagnosticTest.ClosesBuildScriptInvariantDisplayAlgebras") {
-  for (uint8_t value = static_cast<uint8_t>(BuildScriptLimitInvariantIssue::CpuRange);
-       value <= static_cast<uint8_t>(BuildScriptLimitInvariantIssue::FrameRelation); ++value) {
-    ZC_EXPECT(buildScriptLimitInvariantDisplay(static_cast<BuildScriptLimitInvariantIssue>(value))
-                  .size() != 0);
-  }
-  for (uint8_t value = static_cast<uint8_t>(TrustedRuntimeInvariantIssue::EmptyObjectSet);
-       value <= static_cast<uint8_t>(TrustedRuntimeInvariantIssue::UnexpectedInitializer);
-       ++value) {
-    ZC_EXPECT(
-        trustedRuntimeInvariantDisplay(static_cast<TrustedRuntimeInvariantIssue>(value)).size() !=
-        0);
   }
 }
 

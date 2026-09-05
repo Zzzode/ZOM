@@ -322,66 +322,6 @@ zc::StringPtr materializationIssueDisplay(MaterializationIssue issue) noexcept {
   ZC_UNREACHABLE;
 }
 
-zc::StringPtr buildScriptLimitInvariantDisplay(BuildScriptLimitInvariantIssue issue) noexcept {
-  switch (issue) {
-    case BuildScriptLimitInvariantIssue::CpuRange:
-      return "cpu-range"_zc;
-    case BuildScriptLimitInvariantIssue::CpuGranularity:
-      return "cpu-granularity"_zc;
-    case BuildScriptLimitInvariantIssue::WallRange:
-      return "wall-range"_zc;
-    case BuildScriptLimitInvariantIssue::MemoryRange:
-      return "memory-range"_zc;
-    case BuildScriptLimitInvariantIssue::FileDescriptorRange:
-      return "file-descriptor-range"_zc;
-    case BuildScriptLimitInvariantIssue::FileCountRange:
-      return "file-count-range"_zc;
-    case BuildScriptLimitInvariantIssue::OutputRange:
-      return "output-range"_zc;
-    case BuildScriptLimitInvariantIssue::RequestFrameRange:
-      return "request-frame-range"_zc;
-    case BuildScriptLimitInvariantIssue::ResponseFrameRange:
-      return "response-frame-range"_zc;
-    case BuildScriptLimitInvariantIssue::EnvironmentValueRange:
-      return "environment-value-range"_zc;
-    case BuildScriptLimitInvariantIssue::ExportedEnvironmentRange:
-      return "exported-environment-range"_zc;
-    case BuildScriptLimitInvariantIssue::FrameRelation:
-      return "frame-relation"_zc;
-  }
-  ZC_UNREACHABLE;
-}
-
-zc::StringPtr trustedRuntimeInvariantDisplay(TrustedRuntimeInvariantIssue issue) noexcept {
-  switch (issue) {
-    case TrustedRuntimeInvariantIssue::EmptyObjectSet:
-      return "empty-object-set"_zc;
-    case TrustedRuntimeInvariantIssue::DuplicateObjectDigest:
-      return "duplicate-object-digest"_zc;
-    case TrustedRuntimeInvariantIssue::RuntimeAbiMismatch:
-      return "runtime-abi-mismatch"_zc;
-    case TrustedRuntimeInvariantIssue::ObjectDigestMismatch:
-      return "object-digest-mismatch"_zc;
-    case TrustedRuntimeInvariantIssue::SymbolManifestMismatch:
-      return "symbol-manifest-mismatch"_zc;
-    case TrustedRuntimeInvariantIssue::RelocationManifestMismatch:
-      return "relocation-manifest-mismatch"_zc;
-    case TrustedRuntimeInvariantIssue::OperationManifestMismatch:
-      return "operation-manifest-mismatch"_zc;
-    case TrustedRuntimeInvariantIssue::InvalidManifestRecord:
-      return "invalid-manifest-record"_zc;
-    case TrustedRuntimeInvariantIssue::UnmanifestedSymbol:
-      return "unmanifested-symbol"_zc;
-    case TrustedRuntimeInvariantIssue::UnmanifestedRelocation:
-      return "unmanifested-relocation"_zc;
-    case TrustedRuntimeInvariantIssue::WeakFallback:
-      return "weak-fallback"_zc;
-    case TrustedRuntimeInvariantIssue::UnexpectedInitializer:
-      return "unexpected-initializer"_zc;
-  }
-  ZC_UNREACHABLE;
-}
-
 zc::StringPtr verifyFailureDisplay(const VerifyFailure& failure) noexcept {
   ZC_SWITCH_ONEOF(failure) {
     ZC_CASE_ONEOF(mismatch, RegistryRevisionMismatch) {
@@ -428,18 +368,6 @@ void PackageDiagnosticAdapter::emitBuildScriptIssue(diagnostics::DiagnosticEngin
                                                     BuildScriptIssue issue) {
   diagnostics.diagnose<diagnostics::DiagID::PackageBuildScriptFailed>(
       source::SourceLoc(), buildScriptIssueDisplay(issue));
-}
-
-void PackageDiagnosticAdapter::emitBuildScriptLimitInvariant(
-    diagnostics::DiagnosticEngine& diagnostics, BuildScriptLimitInvariantIssue issue) {
-  diagnostics.diagnose<diagnostics::DiagID::BuildScriptLimitInvariantViolation>(
-      source::SourceLoc(), buildScriptLimitInvariantDisplay(issue));
-}
-
-void PackageDiagnosticAdapter::emitTrustedRuntimeInvariant(
-    diagnostics::DiagnosticEngine& diagnostics, TrustedRuntimeInvariantIssue issue) {
-  diagnostics.diagnose<diagnostics::DiagID::TrustedBuildRuntimeInvariantViolation>(
-      source::SourceLoc(), trustedRuntimeInvariantDisplay(issue));
 }
 
 void PackageDiagnosticAdapter::emitVerifyFailure(diagnostics::DiagnosticEngine& diagnostics,

@@ -224,8 +224,6 @@ ZC_TEST("DiagnosticTest.ActivePackageDiagnosticContractsAreStable") {
       {DiagID::PackageManifestInvalid, 7001, DiagSeverity::kError, 1},
       {DiagID::PackageTargetSelectionInvalid, 7015, DiagSeverity::kError, 1},
       {DiagID::PreviousWorkspacePackageHere, 7093, DiagSeverity::kNote, 0},
-      {DiagID::BuildScriptLimitInvariantViolation, 9905, DiagSeverity::kFatal, 1},
-      {DiagID::TrustedBuildRuntimeInvariantViolation, 9906, DiagSeverity::kFatal, 1},
   };
   for (const auto& entry : expected) {
     const auto info = getDiagnosticInfo(entry.id);
