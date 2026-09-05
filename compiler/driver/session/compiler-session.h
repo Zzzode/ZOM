@@ -70,6 +70,7 @@ class CheckerIdentityAuthority;
 }
 
 namespace basic {
+class BoundedIncidentSet;
 class StringPool;
 }  // namespace basic
 
@@ -249,6 +250,8 @@ public:
   /// \brief Returns complete identity failures retained from rejected IR operations.
   ZC_NODISCARD zc::ArrayPtr<const identity::IdentityInvariant> getIrIdentityInvariantFailures()
       const noexcept;
+  /// \brief Returns request-local internal incidents; never exposed as ZOM diagnostics.
+  ZC_NODISCARD const basic::BoundedIncidentSet& getIncidents() const noexcept;
 
   /// Get the string pool used by the compiler.
   /// \return A reference to the string pool

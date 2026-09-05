@@ -2,7 +2,6 @@ set(IDENTITY_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/brand.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/identity-invariant.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/identity-diagnostic-projector.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/identity-diagnostic-adapter.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical/sorted-feature-set.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/source/source-query-input.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/source/source-snapshot.cc
@@ -35,4 +34,4 @@ set(IDENTITY_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/text/unicode-normalization-data.cc)
 
 add_library(identity STATIC ${IDENTITY_SRC})
-target_link_libraries(identity PUBLIC zc lexer)
+target_link_libraries(identity PUBLIC zc lexer basic)

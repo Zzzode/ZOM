@@ -125,7 +125,7 @@ private:
 /// \brief Allocation-free deterministic aggregation of registered incident shapes.
 class BoundedIncidentSet final {
 public:
-  static constexpr size_t maximumDescriptors = 64;
+  static constexpr size_t maximumDescriptors = 12 * 13 * 14;
 
   ZC_NODISCARD bool add(CompilerIncidentDescriptor descriptor) noexcept;
   ZC_NODISCARD bool merge(const BoundedIncidentSet& other) noexcept;

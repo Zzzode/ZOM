@@ -5,15 +5,16 @@
 
 #pragma once
 
-#include "zc/core/array.h"
-#include "zc/core/string.h"
+#include "compiler/basic/incident/compiler-incident.h"
 #include "compiler/binder/graph/parsed-module.h"
-#include "compiler/checker/inference/checked-facts.h"
 #include "compiler/checker/checker-identity-authority.h"
 #include "compiler/checker/facts/coherence-facts.h"
 #include "compiler/checker/facts/dispatch-facts.h"
 #include "compiler/checker/facts/signature-facts.h"
+#include "compiler/checker/inference/checked-facts.h"
 #include "compiler/type/semantic-type-store.h"
+#include "zc/core/array.h"
+#include "zc/core/string.h"
 
 namespace zomlang::compiler::diagnostics {
 class DiagnosticEngine;
@@ -24,12 +25,14 @@ namespace zomlang::compiler::checker {
 /// \brief Emit the registered fatal diagnostics for a sorted verifier rejection.
 void emitCheckerVerificationFailures(
     diagnostics::DiagnosticEngine& diagnostics, const binder::VerifiedParsedModule& parsedModule,
-    zc::ArrayPtr<const signature::CheckerVerificationFailure> failures);
+    zc::ArrayPtr<const signature::CheckerVerificationFailure> failures,
+    basic::BoundedIncidentSet& incidents);
 
 /// \brief Emit registered fatal diagnostics for one dispatch invariant rejection.
 void emitDispatchVerificationFailures(
     diagnostics::DiagnosticEngine& diagnostics, const binder::VerifiedParsedModule& parsedModule,
-    zc::ArrayPtr<const dispatch::DispatchVerificationFailure> failures);
+    zc::ArrayPtr<const dispatch::DispatchVerificationFailure> failures,
+    basic::BoundedIncidentSet& incidents);
 
 /// \brief Emit closed source failures with their verifier-checked diagnostic arguments.
 void emitCheckedFactsSourceFailures(diagnostics::DiagnosticEngine& diagnostics,

@@ -243,11 +243,10 @@ void emitIrDiagnosticGroups(diagnostics::DiagnosticEngine& engine,
   }
 }
 
-void emitIrIdentityInvariantFailures(
-    diagnostics::DiagnosticEngine& engine, const SortedIdentityInvariantFacts& failures,
-    zc::Maybe<const identity::IdentityDiagnosticLocationResolver&> locationResolver) {
-  auto groups = identity::groupIdentityInvariants(failures.facts());
-  identity::emitIdentityDiagnosticGroups(engine, groups.asPtr(), locationResolver);
+bool projectIrIdentityInvariantFailures(basic::BoundedIncidentSet& incidents,
+                                        const SortedIdentityInvariantFacts& failures) {
+  auto projected = identity::IdentityDiagnosticProjector::projectAll(failures.facts());
+  return projected != zc::none && incidents.merge(ZC_ASSERT_NONNULL(projected));
 }
 
 }  // namespace zomlang::compiler::ir

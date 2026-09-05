@@ -337,14 +337,19 @@ ZC_TEST("CompilerSessionTest.OwnsDistinctSemanticContextsAndTypeStores") {
   }
 }
 
-ZC_TEST("CompilerSessionTest.BrandExhaustionUsesRegisteredDiagnostic") {
+ZC_TEST("CompilerSessionTest.BrandExhaustionUsesInternalIncident") {
   auto langOpts = basic::LangOptions();
   auto compilerOpts = basic::CompilerOptions();
   identity::SemanticContextFactory contextFactory(identity::SemanticContextIssueBudget{0, 1});
   auto session = zc::heap<CompilerSession>(contextFactory, langOpts, compilerOpts);
   ZC_EXPECT(!session->getSemanticContextBrand().isValid());
   ZC_EXPECT(session->getSemanticTypeStore() == zc::none);
-  ZC_EXPECT(session->getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(!session->getDiagnosticEngine().hasErrors());
+  const auto incidents = session->getIncidents().descriptors();
+  ZC_REQUIRE(incidents.size() == 1);
+  ZC_EXPECT(incidents[0].domain() == basic::CompilerIncidentDomain::Identity);
+  ZC_EXPECT(incidents[0].kind().tag() ==
+            static_cast<uint32_t>(identity::IdentityInvariantKind::BrandExhausted));
   ZC_EXPECT(!session->parseSources());
 }
 

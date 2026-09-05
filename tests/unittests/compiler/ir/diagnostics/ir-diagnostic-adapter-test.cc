@@ -276,17 +276,18 @@ ZC_TEST("IR capability grouping deduplicates one canonical root and retains ever
   }
 }
 
-ZC_TEST("IR identity branch delegates to the canonical RFC 0011 diagnostic adapter") {
+ZC_TEST("IR identity branch projects to internal incidents") {
   zc::Vector<identity::IdentityInvariant> facts;
   facts.add(identityFailure(2));
   facts.add(identityFailure(1));
   auto sorted = SortedIdentityInvariantFacts::from(zc::mv(facts));
   ZC_REQUIRE(sorted != zc::none);
   ZC_IF_SOME(values, sorted) {
-    source::SourceManager sourceManager;
-    diagnostics::DiagnosticEngine engine(sourceManager);
-    emitIrIdentityInvariantFailures(engine, values);
-    ZC_EXPECT(engine.errorCount() == 1);
+    basic::BoundedIncidentSet incidents;
+    ZC_EXPECT(projectIrIdentityInvariantFailures(incidents, values));
+    ZC_REQUIRE(incidents.size() == 1);
+    ZC_EXPECT(incidents.descriptors()[0].domain() == basic::CompilerIncidentDomain::Identity);
+    ZC_EXPECT(incidents.descriptors()[0].occurrences() == 2);
     ZC_EXPECT(values.facts().size() == 2);
   }
 }
@@ -343,7 +344,7 @@ ToolchainClosureRecord linkMinimalClosure() {
 
 // Mirrors the zomc-local materializeIrRejection routing over an IrOperationResult.
 template <typename VerifiedValue>
-void routeRejection(diagnostics::DiagnosticEngine& engine,
+void routeRejection(diagnostics::DiagnosticEngine& engine, basic::BoundedIncidentSet& incidents,
                     const IrOperationResult<VerifiedValue>& result) {
   if (result.isCapabilityRejected()) {
     auto groups = groupIrCapabilityFailures(result.capabilityFailures());
@@ -352,7 +353,8 @@ void routeRejection(diagnostics::DiagnosticEngine& engine,
     auto groups = groupIrInvariantFailures(result.invariantFailures());
     emitIrDiagnosticGroups(engine, groups.asPtr());
   } else if (result.isIdentityInvariantRejected()) {
-    emitIrIdentityInvariantFailures(engine, result.identityFailures());
+    ZC_REQUIRE(projectIrIdentityInvariantFailures(incidents, result.identityFailures()),
+               "identity incident projection must fit");
   }
 }
 
@@ -380,8 +382,10 @@ ZC_TEST("A rejected link plan materializes its failure algebra as diagnostics") 
 
   source::SourceManager sourceManager;
   diagnostics::DiagnosticEngine engine(sourceManager);
-  routeRejection(engine, result);
+  basic::BoundedIncidentSet incidents;
+  routeRejection(engine, incidents, result);
   ZC_EXPECT(engine.errorCount() == 1);
+  ZC_EXPECT(incidents.empty());
 }
 
 ZC_TEST("A verified link plan routes no diagnostics") {
@@ -395,8 +399,10 @@ ZC_TEST("A verified link plan routes no diagnostics") {
 
   source::SourceManager sourceManager;
   diagnostics::DiagnosticEngine engine(sourceManager);
-  routeRejection(engine, result);
+  basic::BoundedIncidentSet incidents;
+  routeRejection(engine, incidents, result);
   ZC_EXPECT(engine.errorCount() == 0);
+  ZC_EXPECT(incidents.empty());
 }
 
 }  // namespace zomlang::compiler::ir

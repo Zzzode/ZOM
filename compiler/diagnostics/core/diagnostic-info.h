@@ -14,8 +14,8 @@
 
 #pragma once
 
-#include "zc/core/string.h"
 #include "compiler/diagnostics/core/diagnostic-ids.h"
+#include "zc/core/string.h"
 
 namespace zomlang {
 namespace compiler {
@@ -41,7 +41,6 @@ struct DiagnosticTraits;
 #include "compiler/diagnostics/defs/diagnostics-binder.def"
 #include "compiler/diagnostics/defs/diagnostics-checker.def"
 #include "compiler/diagnostics/defs/diagnostics-common.def"
-#include "compiler/diagnostics/defs/diagnostics-identity.def"
 #include "compiler/diagnostics/defs/diagnostics-lowering.def"
 #include "compiler/diagnostics/defs/diagnostics-module.def"
 #include "compiler/diagnostics/defs/diagnostics-package.def"
@@ -70,7 +69,6 @@ constexpr DiagnosticInfo getDiagnosticInfo(const DiagID id) {
 #include "compiler/diagnostics/defs/diagnostics-binder.def"
 #include "compiler/diagnostics/defs/diagnostics-checker.def"
 #include "compiler/diagnostics/defs/diagnostics-common.def"
-#include "compiler/diagnostics/defs/diagnostics-identity.def"
 #include "compiler/diagnostics/defs/diagnostics-lowering.def"
 #include "compiler/diagnostics/defs/diagnostics-module.def"
 #include "compiler/diagnostics/defs/diagnostics-package.def"
@@ -91,7 +89,6 @@ constexpr bool isKnownDiagnostic(const DiagID id) {
 #include "compiler/diagnostics/defs/diagnostics-binder.def"
 #include "compiler/diagnostics/defs/diagnostics-checker.def"
 #include "compiler/diagnostics/defs/diagnostics-common.def"
-#include "compiler/diagnostics/defs/diagnostics-identity.def"
 #include "compiler/diagnostics/defs/diagnostics-lowering.def"
 #include "compiler/diagnostics/defs/diagnostics-module.def"
 #include "compiler/diagnostics/defs/diagnostics-package.def"

@@ -2,6 +2,7 @@ file(GLOB_RECURSE DIAGNOSTICS_SRC
   core/*.cc
   consumer/*.cc
   fact/*.cc
+  incident/*.cc
   text/*.cc
   toolchain/*.cc
 )

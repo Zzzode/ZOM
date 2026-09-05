@@ -5,6 +5,7 @@
 
 #include "compiler/basic/incident/compiler-incident.h"
 
+#include "compiler/diagnostics/incident/compiler-incident.h"
 #include "compiler/identity/diagnostics/identity-diagnostic-projector.h"
 #include "zc/ztest/test.h"
 
@@ -104,6 +105,39 @@ ZC_TEST("IdentityDiagnosticProjector ignores user-controlled invariant evidence"
 
   ZC_EXPECT(identity::IdentityDiagnosticProjector::project(first) ==
             identity::IdentityDiagnosticProjector::project(second));
+}
+
+ZC_TEST("Compiler incident rendering is stable and omits occurrence counts") {
+  const auto descriptor = identityIncident(identity::IdentityInvariantKind::InvalidHandle,
+                                           identity::IdentityAllocationPhase::Registry,
+                                           identity::IdentityApiSite::HandleLookup);
+  basic::BoundedIncidentSet one;
+  basic::BoundedIncidentSet many;
+  ZC_EXPECT(one.add(descriptor));
+  ZC_EXPECT(many.add(descriptor.repeated(42)));
+
+  auto first =
+      ZC_REQUIRE_NONNULL(diagnostics::renderCompilerIncident("ZomLang Version test"_zc, one));
+  auto second =
+      ZC_REQUIRE_NONNULL(diagnostics::renderCompilerIncident("ZomLang Version test"_zc, many));
+  ZC_EXPECT(first == second);
+  ZC_EXPECT(first.startsWith("error: internal compiler error\n"_zc));
+  ZC_EXPECT(first.contains("note: phase: identity\n"_zc));
+  ZC_EXPECT(first.contains("ZOM9910"_zc) == false);
+  const auto marker = first.find("note: incident: "_zc);
+  ZC_REQUIRE(marker != zc::none);
+  ZC_IF_SOME(offset, marker) {
+    const auto fingerprint = first.slice(offset + 16, offset + 48);
+    ZC_EXPECT(fingerprint.size() == 32);
+    for (const char value : fingerprint) {
+      ZC_EXPECT((value >= '0' && value <= '9') || (value >= 'a' && value <= 'f'));
+    }
+  }
+}
+
+ZC_TEST("Compiler incident rendering rejects an empty set") {
+  basic::BoundedIncidentSet incidents;
+  ZC_EXPECT(diagnostics::renderCompilerIncident("ZomLang Version test"_zc, incidents) == zc::none);
 }
 
 }  // namespace zomlang::compiler

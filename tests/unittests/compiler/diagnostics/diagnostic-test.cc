@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zc/core/io.h"
-#include "zc/core/string.h"
-#include "zc/ztest/test.h"
 #include "compiler/diagnostics/consumer/consoling-diagnostic-consumer.h"
 #include "compiler/diagnostics/consumer/diagnostic-consumer.h"
 #include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/source/manager.h"
+#include "zc/core/io.h"
+#include "zc/core/string.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang {
 namespace compiler {
@@ -327,22 +327,6 @@ ZC_TEST("DiagnosticTest.BackendDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::TargetCapabilityUnavailable) == 6009);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::LirInvariant) == 9947);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::IrCanonicalCodecMismatch) == 9949);
-}
-
-ZC_TEST("DiagnosticTest.IdentityDiagnosticIdsAreStable") {
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityInvalidHandle) == 9910);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityForeignContext) == 9911);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityForeignRegistry) == 9912);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentitySlotOutOfRange) == 9913);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityAncestorMismatch) == 9914);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityInvalidSourceRange) == 9915);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityDuplicateCanonicalKey) == 9916);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityInvalidClosedValue) == 9917);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityPostFreezeMutation) == 9918);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityBrandExhausted) == 9919);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityDuplicateSingletonStore) == 9920);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityNonCanonicalEncoding) == 9921);
-  ZC_EXPECT(DiagnosticTraits<DiagID::IdentityNonCanonicalEncoding>::argCount == 1);
 }
 
 ZC_TEST("DiagnosticTest.CheckerInvariantDiagnosticContractsAreStable") {

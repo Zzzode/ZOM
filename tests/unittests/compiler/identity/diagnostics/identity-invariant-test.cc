@@ -11,9 +11,7 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "compiler/diagnostics/core/diagnostic-info.h"
-#include "compiler/identity/diagnostics/identity-diagnostic-adapter.h"
-#include "compiler/source/manager.h"
+#include "compiler/identity/diagnostics/identity-diagnostic-projector.h"
 #include "zc/ztest/test.h"
 
 namespace zomlang::compiler::identity {
@@ -86,17 +84,7 @@ ZC_TEST("Identity invariant collector sorts complete structured facts") {
   ZC_EXPECT(structuralByte(facts[2]) == 0x02);
 }
 
-ZC_TEST("Identity diagnostics use registered fatal entries and preserve full facts") {
-  using diagnostics::DiagID;
-  using diagnostics::DiagnosticTraits;
-  ZC_EXPECT(identityDiagnosticId(IdentityInvariantKind::InvalidHandle) ==
-            DiagID::IdentityInvalidHandle);
-  ZC_EXPECT(identityDiagnosticId(IdentityInvariantKind::NonCanonicalEncoding) ==
-            DiagID::IdentityNonCanonicalEncoding);
-  ZC_EXPECT(DiagnosticTraits<DiagID::IdentityInvalidHandle>::severity ==
-            diagnostics::DiagSeverity::kFatal);
-  ZC_EXPECT(DiagnosticTraits<DiagID::IdentityInvalidHandle>::argCount == 1);
-
+ZC_TEST("Identity invariants project to internal incidents and preserve full facts") {
   IdentityInvariantCollector collector;
   collector.add(fact(IdentityInvariantKind::DuplicateCanonicalKey,
                      IdentityAllocationPhase::CompilationUnit, 0x01,
@@ -107,18 +95,18 @@ ZC_TEST("Identity diagnostics use registered fatal entries and preserve full fac
   collector.add(fact(IdentityInvariantKind::InvalidHandle, IdentityAllocationPhase::Registry, 0x01,
                      IdentityApiSite::HandleLookup, 2));
   collector.sort();
-  auto groups = groupIdentityInvariants(collector.facts());
+  auto incidents = IdentityDiagnosticProjector::projectAll(collector.facts());
   ZC_REQUIRE(collector.facts().size() == 3);
-  ZC_REQUIRE(groups.size() == 2);
-  ZC_EXPECT(groups[0].diagnosticId() == DiagID::IdentityInvalidHandle);
-  ZC_EXPECT(groups[0].occurrenceCount() == 1);
-  ZC_EXPECT(groups[1].diagnosticId() == DiagID::IdentityDuplicateCanonicalKey);
-  ZC_EXPECT(groups[1].occurrenceCount() == 2);
-
-  source::SourceManager sourceManager;
-  diagnostics::DiagnosticEngine engine(sourceManager);
-  emitIdentityDiagnosticGroups(engine, groups.asPtr());
-  ZC_EXPECT(engine.errorCount() == 2);
+  ZC_REQUIRE(incidents != zc::none);
+  ZC_REQUIRE(ZC_ASSERT_NONNULL(incidents).size() == 2);
+  const auto descriptors = ZC_ASSERT_NONNULL(incidents).descriptors();
+  ZC_EXPECT(descriptors[0].domain() == basic::CompilerIncidentDomain::Identity);
+  ZC_EXPECT(descriptors[0].kind().tag() ==
+            static_cast<uint32_t>(IdentityInvariantKind::InvalidHandle));
+  ZC_EXPECT(descriptors[0].occurrences() == 1);
+  ZC_EXPECT(descriptors[1].kind().tag() ==
+            static_cast<uint32_t>(IdentityInvariantKind::DuplicateCanonicalKey));
+  ZC_EXPECT(descriptors[1].occurrences() == 2);
 }
 
 }  // namespace zomlang::compiler::identity

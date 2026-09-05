@@ -24,10 +24,6 @@ enum class DiagID : uint32_t;
 class DiagnosticEngine;
 }  // namespace zomlang::compiler::diagnostics
 
-namespace zomlang::compiler::identity {
-class IdentityDiagnosticLocationResolver;
-}
-
 namespace zomlang::compiler::driver::module_graph_query {
 class MaterializedModuleSkeleton;
 class MaterializedOwnerBody;
@@ -686,15 +682,12 @@ private:
 ZC_NODISCARD zc::Maybe<zc::Vector<BinderInvariantDiagnosticGroup>> groupBinderInvariants(
     zc::ArrayPtr<const BinderInvariantFact> facts);
 
-void emitBinderInvariantGroups(
-    diagnostics::DiagnosticEngine& diagnostics,
-    zc::ArrayPtr<const BinderInvariantDiagnosticGroup> groups,
-    zc::Maybe<const identity::IdentityDiagnosticLocationResolver&> locationResolver = zc::none);
+void emitBinderInvariantGroups(diagnostics::DiagnosticEngine& diagnostics,
+                               zc::ArrayPtr<const BinderInvariantDiagnosticGroup> groups);
 
 /// \brief Emits one registered fatal binder invariant without inventing an anchor.
-void emitBinderInvariant(
-    diagnostics::DiagnosticEngine& diagnostics, const BinderInvariantFact& fact,
-    zc::Maybe<const identity::IdentityDiagnosticLocationResolver&> locationResolver = zc::none);
+void emitBinderInvariant(diagnostics::DiagnosticEngine& diagnostics,
+                         const BinderInvariantFact& fact);
 
 class VerifiedExportSurface final {
 public:

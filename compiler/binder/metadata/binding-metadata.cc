@@ -8,7 +8,7 @@
 #include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/diagnostics/core/diagnostic.h"
 #include "compiler/identity/crypto/sha256.h"
-#include "compiler/identity/diagnostics/identity-diagnostic-adapter.h"
+#include "compiler/identity/diagnostics/identity-invariant.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 
@@ -484,31 +484,18 @@ zc::Maybe<zc::Vector<BinderInvariantDiagnosticGroup>> groupBinderInvariants(
   return groups;
 }
 
-void emitBinderInvariantGroups(
-    diagnostics::DiagnosticEngine& diagnostics,
-    zc::ArrayPtr<const BinderInvariantDiagnosticGroup> groups,
-    zc::Maybe<const identity::IdentityDiagnosticLocationResolver&> locationResolver) {
+void emitBinderInvariantGroups(diagnostics::DiagnosticEngine& diagnostics,
+                               zc::ArrayPtr<const BinderInvariantDiagnosticGroup> groups) {
   for (const auto& group : groups) {
     source::SourceLoc location;
-    ZC_IF_SOME(range, group.diagnosticRange()) {
-      ZC_IF_SOME(resolver, locationResolver) {
-        ZC_IF_SOME(resolved, resolver.resolve(range)) { location = resolved; }
-      }
-    }
     diagnostics.emit(
         diagnostics::Diagnostic(group.diagnosticId(), location, zc::str(group.occurrenceCount())));
   }
 }
 
-void emitBinderInvariant(
-    diagnostics::DiagnosticEngine& diagnostics, const BinderInvariantFact& fact,
-    zc::Maybe<const identity::IdentityDiagnosticLocationResolver&> locationResolver) {
+void emitBinderInvariant(diagnostics::DiagnosticEngine& diagnostics,
+                         const BinderInvariantFact& fact) {
   source::SourceLoc location;
-  ZC_IF_SOME(range, fact.diagnosticRange) {
-    ZC_IF_SOME(resolver, locationResolver) {
-      ZC_IF_SOME(resolved, resolver.resolve(range)) { location = resolved; }
-    }
-  }
   diagnostics.emit(
       diagnostics::Diagnostic(binderInvariantDiagnosticId(fact.kind), location, zc::str(1u)));
 }

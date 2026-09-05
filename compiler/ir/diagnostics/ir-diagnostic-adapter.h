@@ -5,9 +5,10 @@
 
 #pragma once
 
+#include "compiler/basic/incident/compiler-incident.h"
 #include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/diagnostics/core/diagnostic-ids.h"
-#include "compiler/identity/diagnostics/identity-diagnostic-adapter.h"
+#include "compiler/identity/diagnostics/identity-diagnostic-projector.h"
 #include "compiler/ir/diagnostics/ir-failure.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
@@ -72,9 +73,8 @@ void emitIrDiagnosticGroups(
     diagnostics::DiagnosticEngine& engine, zc::ArrayPtr<const IrDiagnosticGroup> groups,
     zc::Maybe<const IrDiagnosticLocationResolver&> locationResolver = zc::none);
 
-/// \brief Routes RFC 0010 identity rejection through the canonical RFC 0011 adapter.
-void emitIrIdentityInvariantFailures(
-    diagnostics::DiagnosticEngine& engine, const SortedIdentityInvariantFacts& failures,
-    zc::Maybe<const identity::IdentityDiagnosticLocationResolver&> locationResolver = zc::none);
+/// \brief Projects RFC 0010 identity rejection onto the internal incident rail.
+ZC_NODISCARD bool projectIrIdentityInvariantFailures(basic::BoundedIncidentSet& incidents,
+                                                     const SortedIdentityInvariantFacts& failures);
 
 }  // namespace zomlang::compiler::ir

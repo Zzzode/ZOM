@@ -29,6 +29,7 @@
 #include "compiler/basic/zomlang-opts.h"
 #include "compiler/cst/lexeme-stream-builder.h"
 #include "compiler/diagnostics/core/diagnostic-engine.h"
+#include "compiler/diagnostics/incident/compiler-incident.h"
 #include "compiler/driver/package/lockfile.h"
 #include "compiler/driver/package/package-compilation-request.h"
 #include "compiler/driver/package/package-diagnostic.h"
@@ -813,6 +814,7 @@ public:
   }
 
   zc::MainBuilder::Validity emitOutputImpl() {
+    if (reportSessionIncident()) { return true; }
     if (manifestPaths.size() > 1) {
       package::PackageDiagnosticAdapter::emitInvocationIssue(
           session->getDiagnosticEngine(), package::InvocationIssue::InvalidManifestPath);
@@ -948,16 +950,19 @@ public:
       return emitAST();
     }
     if (!frontendReady || session->getDiagnosticEngine().hasErrors()) {
+      if (reportSessionIncident()) { return true; }
       return zc::str("Compilation failed during parsing or module discovery.");
     }
 
     // 3. Binding
     if (!session->bindSources() || session->getDiagnosticEngine().hasErrors()) {
+      if (reportSessionIncident()) { return true; }
       return zc::str("Compilation failed due to binding errors.");
     }
 
     // 4. Type checking
     if (!session->checkSources() || session->getDiagnosticEngine().hasErrors()) {
+      if (reportSessionIncident()) { return true; }
       return zc::str("Compilation failed due to type checking errors.");
     }
 
@@ -1583,6 +1588,15 @@ private:
 #endif
 
 private:
+  bool reportSessionIncident() {
+    const auto& incidents = session->getIncidents();
+    if (incidents.empty()) { return false; }
+    auto record = diagnostics::renderCompilerIncident(VERSION_STRING, incidents);
+    context.error(record == zc::none ? "error: internal compiler error"_zc
+                                     : zc::StringPtr(ZC_ASSERT_NONNULL(record)));
+    return true;
+  }
+
   zc::ProcessContext& context;
   identity::SemanticContextFactory contextFactory;
   zc::Own<driver::CompilerSession> session;

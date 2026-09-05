@@ -17,6 +17,7 @@
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/ast/tree.h"
 #include "compiler/basic/compiler-opts.h"
+#include "compiler/basic/incident/compiler-incident.h"
 #include "compiler/basic/string-pool.h"
 #include "compiler/basic/thread-pool.h"
 #include "compiler/basic/zomlang-opts.h"
@@ -63,7 +64,7 @@
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/canonical/identity-interner-set.h"
-#include "compiler/identity/diagnostics/identity-diagnostic-adapter.h"
+#include "compiler/identity/diagnostics/identity-diagnostic-projector.h"
 #include "compiler/ownership/admission/surface-admission.h"
 #include "compiler/ownership/diagnostics/ownership-diagnostic-adapter.h"
 #include "compiler/ownership/overlay/drop-elaborated-mir.h"
@@ -444,13 +445,15 @@ struct CompilerSession::Impl {
       return;
     }
     if (initializedContext.failure == SemanticContextResourceFailure::ContextBrandExhausted) {
-      diagnosticEngine->diagnose<diagnostics::DiagID::IdentityBrandExhausted>(source::SourceLoc(),
-                                                                              zc::str(uint64_t{1}));
+      recordIdentityIncident(identity::IdentityInvariantKind::BrandExhausted,
+                             identity::IdentityAllocationPhase::Context,
+                             identity::IdentityApiSite::ContextBrandIssue);
       return;
     }
     if (initializedContext.failure != SemanticContextResourceFailure::None) {
-      diagnosticEngine->diagnose<diagnostics::DiagID::IdentityDuplicateSingletonStore>(
-          source::SourceLoc(), zc::str(uint64_t{1}));
+      recordIdentityIncident(identity::IdentityInvariantKind::DuplicateSingletonStore,
+                             identity::IdentityAllocationPhase::Context,
+                             identity::IdentityApiSite::RegistryBrandIssue);
       return;
     }
   }
@@ -561,9 +564,23 @@ struct CompilerSession::Impl {
   zc::Vector<ownership::VerifiedExecutableMir> verifiedExecutableMirModules;
   zc::Vector<ir::IrDiagnosticGroup> irFailureGroups;
   zc::Vector<identity::IdentityInvariant> irIdentityInvariantFailures;
+  basic::BoundedIncidentSet incidents;
   bool verifiedCheckedSources = false;
   /// Closed Checker invariant rejection retained when no complete publication exists.
   zc::Vector<checker::signature::CheckerVerificationFailure> checkerFailures;
+
+  void recordIdentityIncident(identity::IdentityInvariantKind kind,
+                              identity::IdentityAllocationPhase phase,
+                              identity::IdentityApiSite producer) {
+    zc::Maybe<zc::Array<uint8_t>> noStructuralInput;
+    zc::Maybe<identity::UnbrandedSourceRange> noRange;
+    auto invariant = identity::IdentityInvariant::from(kind, phase, zc::mv(noStructuralInput),
+                                                       zc::mv(noRange), producer, 0);
+    ZC_REQUIRE(
+        invariant != zc::none && incidents.add(identity::IdentityDiagnosticProjector::project(
+                                     ZC_ASSERT_NONNULL(invariant))),
+        "identity incident registration must be complete");
+  }
 
   /// Test-only Built MIR, overlay, and borrow-evidence repository retained when
   /// checkSources rejects a module at the borrow-source stage. Never committed
@@ -2156,6 +2173,10 @@ zc::ArrayPtr<const identity::IdentityInvariant> CompilerSession::getIrIdentityIn
   return impl->irIdentityInvariantFailures;
 }
 
+const basic::BoundedIncidentSet& CompilerSession::getIncidents() const noexcept {
+  return impl->incidents;
+}
+
 const diagnostics::DiagnosticEngine& CompilerSession::getDiagnosticEngine() const {
   return *impl->diagnosticEngine;
 }
@@ -2165,7 +2186,10 @@ diagnostics::DiagnosticEngine& CompilerSession::getDiagnosticEngine() {
 }
 
 bool CompilerSession::parseSources() {
-  if (impl->diagnosticEngine->hasErrors() || impl->verifiedParsedSyntax) { return false; }
+  if (!impl->incidents.empty() || impl->diagnosticEngine->hasErrors() ||
+      impl->verifiedParsedSyntax) {
+    return false;
+  }
   if (impl->packageRequest == zc::none) { return true; }
   if (impl->coreDistributionInputs == zc::none) {
     impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
@@ -2405,7 +2429,7 @@ bool CompilerSession::parseSources() {
 }
 
 bool CompilerSession::bindSources() {
-  if (impl->diagnosticEngine->hasErrors()) { return false; }
+  if (!impl->incidents.empty() || impl->diagnosticEngine->hasErrors()) { return false; }
   if (impl->packageRequest == zc::none) { return true; }
   auto authority = materializeCheckerIdentityAuthority();
   if (authority == zc::none) {
@@ -2464,8 +2488,9 @@ bool CompilerSession::bindSources() {
   return !impl->diagnosticEngine->hasErrors();
 }
 bool CompilerSession::checkSources() {
-  if (impl->diagnosticEngine->hasErrors() || !impl->checkerFailures.empty() ||
-      !impl->irFailureGroups.empty() || !impl->irIdentityInvariantFailures.empty()) {
+  if (!impl->incidents.empty() || impl->diagnosticEngine->hasErrors() ||
+      !impl->checkerFailures.empty() || !impl->irFailureGroups.empty() ||
+      !impl->irIdentityInvariantFailures.empty()) {
     return false;
   }
   if (impl->packageRequest == zc::none) { return true; }
@@ -2593,7 +2618,7 @@ bool CompilerSession::checkSources() {
         for (auto& failure : failures) { impl->checkerFailures.add(zc::mv(failure)); }
         ZC_IF_SOME(parsed, parsedFor(module)) {
           checker::emitCheckerVerificationFailures(*impl->diagnosticEngine, parsed,
-                                                   impl->checkerFailures.asPtr());
+                                                   impl->checkerFailures.asPtr(), impl->incidents);
         }
         return false;
       };
@@ -2611,7 +2636,7 @@ bool CompilerSession::checkSources() {
                                   checker::dispatch::DispatchFactsInvariantRejected&& rejected) {
     ZC_IF_SOME(parsed, parsedFor(module)) {
       checker::emitDispatchVerificationFailures(*impl->diagnosticEngine, parsed,
-                                                rejected.failures.asPtr());
+                                                rejected.failures.asPtr(), impl->incidents);
     }
     return false;
   };
@@ -2663,7 +2688,8 @@ bool CompilerSession::checkSources() {
     return true;
   };
   const auto rejectIrIdentity = [&](const ir::SortedIdentityInvariantFacts& failures) {
-    ir::emitIrIdentityInvariantFailures(*impl->diagnosticEngine, failures);
+    ZC_REQUIRE(ir::projectIrIdentityInvariantFailures(impl->incidents, failures),
+               "IR identity incident projection must fit the registered inventory");
     for (const auto& failure : failures.facts()) {
       impl->irIdentityInvariantFailures.add(failure.clone());
     }

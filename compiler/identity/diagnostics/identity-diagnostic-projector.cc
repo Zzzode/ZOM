@@ -81,6 +81,7 @@ basic::CompilerIncidentDescriptor IdentityDiagnosticProjector::project(
 
 zc::Maybe<basic::BoundedIncidentSet> IdentityDiagnosticProjector::projectAll(
     zc::ArrayPtr<const IdentityInvariant> invariants) noexcept {
+  if (invariants.size() == 0) { return zc::none; }
   basic::BoundedIncidentSet incidents;
   for (const auto& invariant : invariants) {
     if (!incidents.add(project(invariant))) { return zc::none; }

@@ -27,7 +27,6 @@ enum class DiagID : uint32_t {
 #include "compiler/diagnostics/defs/diagnostics-binder.def"
 #include "compiler/diagnostics/defs/diagnostics-checker.def"
 #include "compiler/diagnostics/defs/diagnostics-common.def"
-#include "compiler/diagnostics/defs/diagnostics-identity.def"
 #include "compiler/diagnostics/defs/diagnostics-lowering.def"
 #include "compiler/diagnostics/defs/diagnostics-module.def"
 #include "compiler/diagnostics/defs/diagnostics-package.def"
