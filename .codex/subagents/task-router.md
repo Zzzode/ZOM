@@ -43,7 +43,8 @@ owner declared by `manifest.yaml`.
 - [ ] No sub-task is larger than ~400 lines of changed source (split if bigger).
 - [ ] The plan lists the exact files each subagent is expected to touch.
 - [ ] Query runtime, memo, red-green, and incremental identity work routes to
-      `module-system`; `scripts/generate-query-descriptor-schema.py`,
+      `module-system`, including dependency-minimal `compiler/basic/incident/**`;
+      `scripts/generate-query-descriptor-schema.py`,
       `scripts/check-query-descriptor-architecture.py`, query gates,
       adversaries, corpora, benchmarks, real-object request-decoder mismatch
       tests, per-database race gates, and
@@ -60,6 +61,13 @@ owner declared by `manifest.yaml`.
       `error-system`; native tests, build discovery, schema mutations,
       architecture enforcement, exact allowlists, and landing-scope gates
       route to `verification`.
+- [ ] `compiler/cst/**` routes to `lexer-parser`; `compiler/ide/**` and
+      `compiler/lsp/**` route to `tooling-lsp`; `.codex/rules/**` routes to
+      `task-router`; `docs/package-system.md` routes to `module-system`; and
+      `docs/plan/**` routes to `spec-audit`.
+- [ ] RFC 0047 implementation work uses its accepted exact-path routing DAG.
+      Every task has one primary owner, no changed file is added outside the
+      allowlist, and every branch reaches the single atomic publication node.
 - [ ] RFC 0027 `S1`, `S2`, and `S3` may be reviewed as bounded sequential
       tasks but have only the exact RFC 0030 `R29-12AB` atomic landing.
       `S6` remains the separate `R29-12D` transaction.

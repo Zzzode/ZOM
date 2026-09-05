@@ -33,7 +33,6 @@ Do **not** route here when:
 compiler/binder/**
 !compiler/binder/graph/module-* !compiler/binder/surface/module-*
 compiler/checker/**
-!compiler/checker/checker-source-diagnostics.def
 compiler/type/**
 docs/spec/chapters/03-types.md
 docs/spec/chapters/06-declarations.md
@@ -44,9 +43,8 @@ docs/spec/chapters/12-generics.md
 docs/spec/chapters/22-orphan-rule-and-coherence.md
 ```
 
-`module-system` remains the primary file owner for `binder/module-*`, and
-`error-system` remains the primary file owner for
-`checker-source-diagnostics.def`. `spec-audit` remains the drift owner for all
+`module-system` remains the primary file owner for `binder/module-*`.
+`spec-audit` remains the drift owner for all
 normative specification changes, including the semantic chapters listed here.
 
 ## Review Checklist (applies to every PR this subagent touches)
@@ -64,8 +62,9 @@ normative specification changes, including the semantic chapters listed here.
       and union widening are done here (in checker), not in the parser.
 - [ ] Type-system features landed without `Send` / `Drop` / `Clone` being
       at least stubs → blocker. Traits are a day-one primitive.
-- [ ] Type errors reference a stable `ZOMxxxx` code, auto-suggestions are
-      treated as bonus, not contracts.
+- [ ] Typed Binder and Checker issue algebras are projected exhaustively through
+      owner-local projectors into generated `ZOMxxxx` factories. Compiler
+      invariants use the internal incident rail and never receive public codes.
 - [ ] Stable Binder schema rows have one closed implementation-task owner,
       and every S2 fact has its matching S3 codec, canonical admission path,
       fixed wire oracle, and native test before landing.

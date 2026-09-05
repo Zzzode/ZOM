@@ -13,16 +13,16 @@ flowchart TD
     U[User request] --> TR[task-router<br/>keyword paths and AGENTS governance analysis]
 
     TR --> RF[rfc<br/>docs/rfc process proposals prior art]
-    TR --> LP[lexer-parser<br/>lexer/ parser/ AST/ ZomLexer.g4/ ZomParser.g4]
+    TR --> LP[lexer-parser<br/>lexer/ parser/ AST/ CST/ ZomLexer.g4/ ZomParser.g4]
     TR --> BC[binder-checker<br/>binder/ checker/ spec ch.03/06/08/09/10/12/22]
-    TR --> MS[module-system<br/>query/ identity/ source/ driver including borrow evidence]
+    TR --> MS[module-system<br/>query/ identity/ source/ basic incident/ driver including borrow evidence]
     TR --> ES[error-system<br/>diagnostics/ raises ZOMxxxx ?! !!]
     TR --> CN[concurrency<br/>runtime async/actor/channel scheduler]
     TR --> IB[ir-backend<br/>HIR/MIR/LIR lowering LLVM build and native artifacts]
     TR --> SA[spec-audit<br/>docs/spec/** docs/design/** drift and five-way]
     TR --> RM[runtime-memory<br/>zc/ ownership analysis/ runtime/ core source and mandatory borrow contract review]
     TR --> VR[verification<br/>tests CI workflows generators architecture and alignment gates benchmarks coverage]
-    TR --> TL[tooling-lsp<br/>IDE semantics LSP protocol document revisions]
+    TR --> TL[tooling-lsp<br/>compiler IDE/LSP semantics protocol document revisions]
 
     %% Escalation edges
     RF --> SA
@@ -87,6 +87,7 @@ surface; `↗` means it escalates to another subagent after doing its part.
 | RFC 0016 coverage CMake plumbing, runner, checker, inputs, and reports | ✅ route → | ↗ if contract changes | | | | | | ↗ supplies compiler path census | | | ✅ primary owner | |
 | RFC 0017 incremental-query gate, corpus, runner, and baseline | ✅ route → | ↗ if contract changes | | ↗ supplies Binder facts | ↗ supplies query contracts | ↗ supplies diagnostic facts | ↗ stress interaction | ↗ supplies CMake DAG | ↗ design audit | | ✅ primary owner | ↗ snapshot consumers |
 | LSP or IDE feature | ✅ route → | ↗ if contract changes | ↗ recovery syntax | ↗ semantic facts | ↗ query snapshots | ↗ diagnostics | ↗ cancellation semantics | | ↗ tooling design | | ↗ protocol and fixture gates | ✅ |
+| Diagnostics architecture or compiler incident | ✅ exact RFC 0047 routing | ✅ governance | ↗ source sink | ↗ typed projectors | ✅ query incident transport | ✅ catalog and consumers | | ↗ IR projector | ↗ design drift | ↗ ownership projector | ✅ gates and evidence | ↗ IDE/LSP projection |
 
 Path ownership and contract review are distinct where the table names a
 mandatory reviewer. `module-system` owns files under `compiler/driver`,
@@ -104,6 +105,11 @@ reviews that subtree only for cross-cutting drift.
 `tests/cmake/expect-compile-failure/CMakeLists.txt` fixture,
 all `tests/compile-fail/query-runtime/**` cases, and the
 query-runtime private test-access and race-test files named in the manifest.
+`module-system` owns the dependency-minimal `compiler/basic/incident/**`
+transport and `docs/package-system.md`. `lexer-parser` owns `compiler/cst/**`.
+`tooling-lsp` owns `compiler/ide/**` and `compiler/lsp/**`. `spec-audit` owns
+`docs/plan/**`. Diagnostics implementation follows RFC 0047's accepted
+exact-path routing DAG and uses one atomic publication cutover.
 
 ---
 

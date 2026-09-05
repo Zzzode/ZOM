@@ -33,6 +33,7 @@ Do **not** route here when:
 compiler/lexer/**
 compiler/parser/**
 compiler/ast/**
+compiler/cst/**
 docs/spec/chapters/02-lexical-structure.md
 docs/spec/chapters/04-expressions.md
 docs/spec/chapters/17-grammar-reference.md
@@ -55,8 +56,11 @@ docs/spec/ZomParser.g4
       `isBehaviorModifier()`.
 - [ ] Reserved keywords with no grammar rule are deleted from chapter 02 per
       design principle #4.
-- [ ] Diagnostics raised by the parser use `ZOMxxxx` codes from the
-      central registry, never ad-hoc strings.
+- [ ] Lexer and parser diagnostics enter the shared `SourceDiagnosticSink` as
+      typed drafts. Recovery-action admission is independent of diagnostic
+      storage, monotone across rollback, and bounded by RFC 0047.
+- [ ] Diagnostics raised by the parser use generated `ZOMxxxx` factories from
+      the central catalog, never ad-hoc strings or direct output emission.
 
 ## Required Evidence Before Closing
 

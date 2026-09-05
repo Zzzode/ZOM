@@ -144,7 +144,8 @@ suggest.
 
 Rules that hold regardless of size:
 
-- Each subsystem places its diagnostic adapter in `<subsystem>/diagnostics/`.
+- Each producing subsystem places its typed issue algebra and exhaustive
+  diagnostic projector in `<subsystem>/diagnostics/`.
 - Subdirectories are pure path prefixes. They need no `CMakeLists.txt` and no
   `add_subdirectory` — the parent lists `${CMAKE_CURRENT_SOURCE_DIR}/<subdir>/<file>.cc`.
 - Keep CMake source lists **explicit**. Several architecture gates read these files as text
@@ -159,8 +160,10 @@ no intra-subsystem dependencies (`identity/brand.h`) belongs at the top level.
 
 ## Diagnostics Layering
 
-Analysis libraries return **typed failures** and must not depend on `DiagnosticEngine`.
-A dedicated adapter translates those failures into `DiagID` diagnostics at the boundary.
+Analysis libraries return **typed issues or failures** and never emit through a
+mutable diagnostic engine. An owner-local exhaustive projector converts
+user-actionable issues into canonical diagnostic facts. Compiler invariant
+failures convert to the internal incident rail and never receive `DiagID`.
 
 This is not stylistic. Emitting inside a memoized computation fails in two independent
 ways. First, the emitting body does not execute on a cache hit, so the diagnostic appears
@@ -173,22 +176,20 @@ latency. The typed-failure layer avoids both. It also makes analysis testable by
 a value instead of grepping rendered English, and makes a missed failure case a compile
 error rather than a silent omission.
 
-Straight-line passes that are not query providers — the lexer and parser — correctly emit
-`DiagID` directly. The distinction is memoization, not subsystem seniority, which makes the
-exemption conditional: it holds exactly as long as those passes recompute from scratch.
-Incremental reparse over a retained syntax tree puts the parser under both failures above
-and requires the same typed-failure treatment.
+Lexer and parser use the shared `SourceDiagnosticSink`; speculative parser
+transactions and recovery-action admission remain explicit and bounded. No
+producer, query provider, or compiler session may own presentation policy or
+emit directly to an output consumer.
 
-`scripts/check-diagnostics-layering.py` enforces this: outside
-`compiler/diagnostics/`, only an adapter under `<subsystem>/diagnostics/` and the session
-that owns the engine may name `DiagnosticEngine`. Adapters not yet moved into their
-subsystem's group are listed explicitly in the script; shrink that list by moving the file,
-never by adding to it.
+`scripts/check-diagnostics-architecture.py` enforces the generated inventory,
+layering, projector, root, provenance, consumer, suppression, and exemption
+contracts. The cutover accepts no compatibility exception.
 
-All `ZOMxxxx` codes live in exactly one place: `compiler/diagnostics/defs/*.def`. A
-subsystem must never declare a parallel enum that restates those numeric values. To give a
-subsystem its own vocabulary, wrap `DiagID` in a newtype with a private constructor and
-generated factories, as `compiler/checker/diagnostics/checker-diagnostic-id.h` does.
+All `ZOMxxxx` codes live in the partitioned YAML catalog under
+`compiler/diagnostics/catalog/`. Generated IDs and code-specific factories are
+the only public construction path. A subsystem must never declare a parallel
+numeric enum. `ZOM9900-ZOM9999` is unassigned: compiler invariants use generated
+internal incident descriptors under `compiler/basic/incident/`.
 
 ---
 

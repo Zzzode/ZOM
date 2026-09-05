@@ -35,6 +35,7 @@ docs/overview.md
 docs/spec/**
 docs/design/**
 !docs/design/tooling/**
+docs/plan/**
 docs/reports/*spec-alignment*
 ```
 

@@ -39,7 +39,9 @@ compiler/driver/**
 compiler/identity/**
 compiler/query/**
 compiler/source/**
+compiler/basic/incident/**
 core/Zom.toml
+docs/package-system.md
 docs/spec/chapters/13-modules-and-imports.md
 docs/spec/chapters/23-visibility-ladder.md
 ```
@@ -58,6 +60,9 @@ memory contract requires a mandatory `runtime-memory` review.
 - [ ] Every provider reads semantic state through typed inputs or tracked query
       dependencies, and every deterministic value, absence, or failure read is
       recorded.
+- [ ] Query runtime failures preserve the closed operational, unavailable,
+      cancelled, and bounded incident alternatives without depending on
+      `compiler/diagnostics`.
 - [ ] `RevisionLocal` values never backdate; `Semantic` values contain no
       handles or provenance; active handle materialization occurs only in
       explicit `RevisionLocal` capability memos backed by the retained

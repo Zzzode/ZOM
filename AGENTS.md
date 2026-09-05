@@ -71,7 +71,8 @@ ZOM is a modern systems programming language.
 | `compiler/binder/` | Module dependency requests, scope construction, name resolution, and verified bound-module publication |
 | `compiler/checker/` | Signature, inference, dispatch, coherence, borrow-surface, and checked-fact validation |
 | `compiler/type/` | Canonical immutable semantic type data and the session-owned semantic type store |
-| `compiler/diagnostics/` | Diagnostic codes, records, and rendering |
+| `compiler/diagnostics/` | Generated diagnostic catalog, canonical facts, collection, materialization, policy, rendering, and consumers |
+| `compiler/basic/incident/` | Dependency-minimal compiler incident descriptors and bounded aggregation |
 | `compiler/driver/` | Cross-module `CompilerSession`, module discovery, interface publication, and package orchestration |
 | `compiler/identity/` | Branded canonical package, crate, module, definition, source, and revision identities |
 | `compiler/hir/` | Checked-module assembly and semantic HIR |
@@ -174,11 +175,12 @@ flowchart TD
     R -. minimal slice .-> LLVM[LLVM IR + native object]
     LLVM -. Linux x86-64 slice .-> LINK[Verified linked executable]
     LINK -. host-compatible slice .-> RUN[Executed by zomc run]
-    L --> D[DiagnosticEngine]
-    P --> D
-    B --> D
-    C --> D
-    M --> D
+    L --> DF[Typed diagnostic facts]
+    P --> DF
+    B --> DF
+    C --> DF
+    M --> DF
+    DF --> D[Collector and materializer]
 ```
 
 **CRITICAL KNOWN GAPS (as of 2026-08-29)** that are tracked by audit findings
@@ -256,16 +258,16 @@ the trigger matrix in `.codex/subagents/README.md`.
 |---|---|---|
 | `task-router` | Gate selection + escalation | Default entry for all non-trivial changes |
 | `rfc` | RFC process, templates, proposal review, prior-art gates | RFCs, proposals, accepted designs, governance changes |
-| `lexer-parser` | Tokenization, grammar, AST, operator precedence | lexer/**, parser/**, ast/**, spec grammar |
+| `lexer-parser` | Tokenization, grammar, AST, CST, operator precedence | lexer/**, parser/**, ast/**, cst/**, spec grammar |
 | `binder-checker` | Scopes, canonical definitions, traits, generics, type rules | binder/**, checker/**, type/**, traits, ADT |
-| `module-system` | Query database, identity, import/export, packages, visibility, dependency topology | query/**, identity/**, driver module graph and interfaces, `docs/spec/chapters/13-*` |
-| `error-system` | Result/Option, ?! / !! / ?: , raises clauses, panic boundaries | Diagnostic codes, error chapters, error operators in parser/lexer |
+| `module-system` | Query database, incident transport, identity, import/export, packages, visibility, dependency topology | basic/incident/**, query/**, identity/**, driver module graph and interfaces, `docs/package-system.md`, `docs/spec/chapters/13-*` |
+| `error-system` | Result/Option, ?! / !! / ?: , raises clauses, panic boundaries | Generated diagnostic catalog, canonical facts, collection, materialization, policy, rendering, consumers, and error chapters |
 | `concurrency` | async/await, Future, nursery, cancel, Sendable, memory model, primitives | runtime concurrency, spec 15-concurrency, channel/mutex, `Send/Sync`/`Sendable` |
 | `ir-backend` | HIR, MIR, LIR, lowering, target ABI, LLVM, native artifacts | compiler IR/backend and CLI, top-level/compiler/basic/trace CMake, CMake presets |
-| `tooling-lsp` | IDE semantic facade, LSP transport, document versions, cancellation, stale-response suppression | `tools/ide/**`, `tools/lsp/**`, `editors/**`, `docs/design/tooling/**` |
-| `spec-audit` | Spec ↔ implementation 1:1 alignment | `docs/spec/**`, `docs/design/**`, and compiler/spec drift |
+| `tooling-lsp` | IDE semantic facade, LSP transport, document versions, cancellation, stale-response suppression | `compiler/ide/**`, `compiler/lsp/**`, `tools/ide/**`, `tools/lsp/**`, `editors/**`, `docs/design/tooling/**` |
+| `spec-audit` | Spec ↔ implementation 1:1 alignment | `docs/spec/**`, `docs/design/**`, `docs/plan/**`, and compiler/spec drift |
 | `runtime-memory` | Ownership, zc types, RAII, memory model, unsafe boundaries | libraries/zc/**, compiler/ownership/**, runtime/**, FFI |
-| `verification` | Build + sanitizer + tests + format, evidence-gating | tests, CI workflows, README build contract, RFC 0016 coverage, incremental-query gates and benchmarks, English/spec alignment, and identity/IR architecture gates; runs last |
+| `verification` | Build + sanitizer + tests + format, evidence-gating | tests, CI workflows, README build contract, RFC 0016/0047 coverage, diagnostics generation/fuzz/performance/exact-scope gates, incremental-query gates and benchmarks, English/spec alignment, and identity/IR architecture gates; runs last |
 
 ---
 

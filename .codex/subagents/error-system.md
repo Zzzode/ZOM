@@ -2,17 +2,18 @@
 
 ## Mission
 
-Own the end-to-end story for errors in ZOM: lexer-level `?!` / `!!` token
-integration, parser `ZOMxxxx` diagnostic emission, raises-clause semantic
-validation in the checker, error-union widening, and the central registry
-of diagnostic codes plus their one-line headlines.
+Own the end-to-end diagnostics architecture for ZOM: the generated public
+catalog, typed arguments and factories, canonical facts, collection,
+materialization, policy, rendering, and request-level compiler-incident
+presentation. Producer subsystems own their typed issue algebras and projectors.
 
 ## Use When
 
 Route here when **any** of these are true:
 
 - Adding, removing, or renaming a `ZOMxxxx` diagnostic code.
-- Adding or changing a checker source diagnostic registry entry.
+- Adding or changing a catalog entry, typed argument, factory, collector,
+  materializer, policy, or diagnostic consumer.
 - Changing the wording, severity, or auto-suggestion behavior of a
   diagnostic.
 - Adding a new `?` / `?!` / `!!` / raises-clause semantic rule.
@@ -34,16 +35,17 @@ Do **not** route here when:
 
 ```
 compiler/diagnostics/**
-compiler/checker/checker-source-diagnostics.def
 docs/spec/chapters/11-error-handling.md
 ```
 
 ## Review Checklist (applies to every PR this subagent touches)
 
-- [ ] Every `ZOMxxxx` code lives in exactly one central list and has a
-      one-line "headline sentence" used consistently across the
-      diagnostic engine, spec, and lit tests.
+- [ ] Every `ZOMxxxx` code lives in exactly one generated catalog partition and
+      has a typed argument schema, message key, English template, owner,
+      producer disposition, and structured test.
 - [ ] No code is repurposed; removed codes are deleted and never reassigned.
+- [ ] `ZOM9900-ZOM9999` contains no live or reserved entry. Compiler invariants
+      project to dependency-minimal incident descriptors, never `DiagID`.
 - [ ] Every parse / bind / checker error path emits a code. No ad-hoc
       strings.
 - [ ] `?!` / `!!` tokens: their lexer dispatch, postfix precedence, and
@@ -53,8 +55,8 @@ docs/spec/chapters/11-error-handling.md
       function bodies actually raise the declared union; `?` inside a
       function widens the raises set correctly; mismatch is a stable
       error code.
-- [ ] Diagnostic locations (file / line / column / range / caret) are
-      well-defined per spec chapter 11.
+- [ ] Diagnostic locations use canonical provenance keys and resolve only while
+      the matching snapshot lease is retained.
 
 ## Required Evidence Before Closing
 

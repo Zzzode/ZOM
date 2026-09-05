@@ -32,6 +32,8 @@ Do **not** route here when:
 ## Owns
 
 ```text
+compiler/ide/**
+compiler/lsp/**
 tools/ide/**
 tools/lsp/**
 editors/**
@@ -68,6 +70,9 @@ docs/design/tooling/**
       one body does not execute binding or analysis for unrelated owners.
 - [ ] Protocol ordering, sorting, ranges, edits, and diagnostics are
       deterministic.
+- [ ] Diagnostic publication consumes an immutable published batch, validates
+      the complete transitive input frontier, and atomically enqueues one
+      versioned multi-document bundle.
 
 ## Required Evidence Before Closing
 

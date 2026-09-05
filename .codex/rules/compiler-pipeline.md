@@ -44,7 +44,8 @@ coordination happens via well-defined types.
 3. All keywords live in `ast/kinds.h` between `FirstKeyword` and `LastKeyword`.
    Never hard-code string comparisons in `lexer.cc` — use the centralized lookup.
 4. Lexer never produces a partial token or falls back to `Identifier` for a
-   malformed but recognizable operator. Emit a `ZOMxxxx` diagnostic instead.
+   malformed but recognizable operator. Report a typed draft to the shared
+   source diagnostic sink instead.
 
 ### Audit Checklist (Spec ↔ Lexer)
 
@@ -73,9 +74,9 @@ coordination happens via well-defined types.
    `VisibilityModifier` and `BehaviorModifier` EBNF productions + the lexical
    keyword table are a **three-way set**. `mut` is a declaration head and must
    never enter a modifier list.
-5. Parser errors emit a `ZOMxxxx` diagnostic code, never a generic string.
-   Diagnostic codes live in a centralized list; never invent ad-hoc string
-   messages.
+5. Parser errors report typed drafts through the shared source diagnostic sink.
+   Generated catalog factories select `ZOMxxxx`; never invent ad-hoc strings or
+   emit directly to a consumer.
 
 ### Audit Checklist (Spec ↔ Parser)
 
@@ -160,10 +161,11 @@ mutable inference state to downstream phases.
 1. Phase order in the driver matches the pipeline contract exactly. No back-edges
    (`parse` → `bind` → `parse again`), no skipping phases based on heuristics
    like "the source file has no generic so we can skip checker".
-2. `CompilerSession` is the single owner of `SourceManager`, `DiagnosticEngine`,
-   semantic identity registries, `SemanticTypeStore`, checked/borrow evidence
-   repositories, verified module graph, and staged phase outputs. No phase
-   constructs a competing authority.
+2. `CompilerSession` owns source management, the final diagnostic publication
+   service and consumers, semantic identity registries, `SemanticTypeStore`,
+   checked/borrow evidence repositories, verified module graph, and staged phase
+   outputs. It receives only sealed diagnostic batches and owns no issue-to-code
+   mapping. No phase constructs a competing authority.
 3. Every phase is independently testable with a ztest:
    parser, binder, checker, HIR, and MIR tests all run against a minimal
    `CompilerSession` fixture without invoking the driver binary.

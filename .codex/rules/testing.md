@@ -16,7 +16,7 @@ existing coverage is already sufficient.
 |---|---|---|---|
 | **Unit tests** | `ztest` (harness in-tree) | Low-level behavior of lexer, parser visitors, binder, zc types, utilities | `ctest --preset default -L unittest` |
 | **AST / integration tests** | **LLVM lit + FileCheck** (+ regen helper) | End-to-end frontend: compile a `.zom` source and assert on AST dump / diagnostics / bindings | `ctest --preset default -L lit` |
-| **Fuzz tests** (future) | `libFuzzer` + custom mutators | Lexer, parser robustness against adversarial input | Manual (`fuzz/` harness) |
+| **Fuzz tests** | `libFuzzer` + checked-in corpora and dictionaries | Lexer, parser, diagnostic fact/provenance/collector/materializer/consumer robustness | CI regression run plus pre-landing stress run |
 
 ---
 
@@ -142,7 +142,7 @@ make coverage
 ## Test Anti-Patterns (Block on Review)
 
 1. ❌ Tests that assert only on human-readable diagnostic text. Assert on the
-   `ZOMxxxx` diagnostic code / enum variant first; text is optional.
+   `ZOMxxxx` code or internal incident descriptor first; text is optional.
 2. ❌ A test whose only assertion is `EXPECT_TRUE(true);` to make coverage green.
 3. ❌ `Thread.sleep(1000)` or wall-clock waits to "let things happen." Use proper
    synchronization primitives or explicit poll loops with bounded timeout.
@@ -151,3 +151,5 @@ make coverage
    than let it silently train the team to ignore failures.
 5. ❌ Commenting out a failing assertion "to make CI green." Either fix the
    assertion or delete the whole test. No half-alive tests.
+6. ❌ Treating `ZOM9900-ZOM9999` as user diagnostics. Those values are
+   unassigned; compiler invariants use the internal incident rail.
