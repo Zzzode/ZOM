@@ -33,7 +33,7 @@ identity::Sha256Digest schemaDigest() {
   zc::Vector<uint8_t> schema;
   appendText(schema, kSchemaDomain);
   schema.add(0);
-  appendUint32(schema, 12 * 13 * 14 + 4 * 10 + 4 * 5 + 5 * 3 + 5 * 8 * 5);
+  appendUint32(schema, 12 * 13 * 14 + 4 * 10 + 4 * 5 + 5 * 3 + 5 * 8 * 5 + 4 * 5);
   for (uint32_t phase = 1; phase <= 12; ++phase) {
     for (uint32_t kind = 1; kind <= 13; ++kind) {
       for (uint32_t producer = 1; producer <= 14; ++producer) {
@@ -76,6 +76,14 @@ identity::Sha256Digest schemaDigest() {
         appendUint32(schema, kind);
         appendUint32(schema, producer);
       }
+    }
+  }
+  for (uint32_t phase = 1; phase <= 4; ++phase) {
+    for (uint32_t kind = 1; kind <= 5; ++kind) {
+      appendUint16(schema, static_cast<uint16_t>(basic::CompilerIncidentDomain::Driver));
+      appendUint32(schema, phase);
+      appendUint32(schema, kind);
+      appendUint32(schema, 0x101U);
     }
   }
   return ZC_REQUIRE_NONNULL(identity::sha256(schema.asPtr()));

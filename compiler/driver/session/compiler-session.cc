@@ -46,7 +46,7 @@
 #include "compiler/diagnostics/core/diagnostic.h"
 #include "compiler/diagnostics/fact/diagnostic-materializer.h"
 #include "compiler/driver/core/query.h"
-#include "compiler/driver/diagnostics/module-interface-diagnostic-adapter.h"
+#include "compiler/driver/diagnostics/module-interface-diagnostic-projector.h"
 #include "compiler/driver/graph/module-discovery.h"
 #include "compiler/driver/interface/coherence-builder.h"
 #include "compiler/driver/interface/imported-signature-view-projector.h"
@@ -3033,16 +3033,10 @@ bool CompilerSession::checkSources() {
               *impl->semanticTypeStore, checkerAuthority});
           if (!interfaceResult.is<VerifiedModuleInterface>()) {
             auto rejected = zc::mv(interfaceResult).get<ModuleInterfaceInvariantRejected>();
-            auto parsed = parsedFor(boundView.module());
-            if (parsed == zc::none) {
-              return rejectOne(boundView.module(),
-                               checker::signature::CheckerInvariantKind::InputReceiptMismatch,
-                               checker::signature::CheckerInvariantStage::Signature, 0);
-            }
-            ZC_IF_SOME(parsedModule, parsed) {
-              emitModuleInterfaceInvariantFacts(*impl->diagnosticEngine, parsedModule,
-                                                rejected.failures.asPtr());
-            }
+            auto projected =
+                ModuleInterfaceDiagnosticProjector::projectAll(rejected.failures.asPtr());
+            ZC_REQUIRE(projected != zc::none && impl->incidents.merge(ZC_ASSERT_NONNULL(projected)),
+                       "module interface incident projection must fit the registered inventory");
             return false;
           }
           stagedModuleInterfaces.add(zc::mv(interfaceResult).get<VerifiedModuleInterface>());

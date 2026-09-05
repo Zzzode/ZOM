@@ -213,27 +213,6 @@ ZC_TEST("DiagnosticTest.ActiveBinderAndBorrowDiagnosticIdsAreStable") {
   }
 }
 
-ZC_TEST("DiagnosticTest.ModuleInterfaceDiagnosticContractsAreStable") {
-  struct Expected final {
-    DiagID id;
-    uint32_t code;
-  };
-  const Expected expected[] = {
-      {DiagID::ModuleInterfaceInputMismatch, 9950},
-      {DiagID::ModuleInterfaceMissingProjection, 9951},
-      {DiagID::ModuleInterfaceAdditionalProjection, 9952},
-      {DiagID::ModuleInterfaceInvalidProjection, 9953},
-      {DiagID::ModuleInterfaceCanonicalCodecMismatch, 9954},
-  };
-  for (const auto& entry : expected) {
-    const auto info = getDiagnosticInfo(entry.id);
-    ZC_EXPECT(static_cast<uint32_t>(entry.id) == entry.code);
-    ZC_EXPECT(info.id == entry.id);
-    ZC_EXPECT(info.severity == DiagSeverity::kFatal);
-    ZC_EXPECT(info.argCount == 1);
-  }
-}
-
 ZC_TEST("DiagnosticTest.ActivePackageDiagnosticContractsAreStable") {
   struct Expected final {
     DiagID id;

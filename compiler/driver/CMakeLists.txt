@@ -1,6 +1,6 @@
 set(DRIVER_SRC
   session/compiler-session.cc
-  diagnostics/module-interface-diagnostic-adapter.cc
+  diagnostics/module-interface-diagnostic-projector.cc
   graph/crate-graph.cc
   graph/module-discovery.cc
   interface/borrow-evidence.cc
