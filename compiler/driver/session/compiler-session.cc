@@ -23,6 +23,7 @@
 #include "compiler/basic/zomlang-opts.h"
 #include "compiler/binder/diagnostics/binding-diagnostic-adapter.h"
 #include "compiler/binder/diagnostics/module-graph-diagnostic-adapter.h"
+#include "compiler/binder/diagnostics/module-graph-diagnostic-projector.h"
 #include "compiler/binder/graph/module-dependency-requests.h"
 #include "compiler/binder/graph/module-graph-source-failure.h"
 #include "compiler/binder/graph/parsed-module-graph-input.h"
@@ -92,12 +93,16 @@ bool publishSourceDiagnostics(zc::ArrayPtr<const diagnostics::DiagnosticFact> fa
                               const diagnostics::SourceDiagnosticProvenanceMap& provenance,
                               const identity::SourceFileKey& sourceKey,
                               source::SourceManager& sources, const source::BufferId& buffer,
-                              diagnostics::DiagnosticEngine& engine) {
+                              diagnostics::DiagnosticEngine& engine,
+                              basic::BoundedIncidentSet& incidents) {
   diagnostics::SourceDiagnosticProvenanceResolver resolver(sourceKey, provenance);
   auto materialized = diagnostics::materializeDiagnosticFacts(facts, resolver, sources, buffer);
   if (materialized.is<diagnostics::DiagnosticMaterializationFailure>()) {
-    engine.diagnose<diagnostics::DiagID::ModuleGraphInvariant>(source::SourceLoc(),
-                                                               zc::str(uint64_t{1}));
+    ZC_REQUIRE(incidents.add(binder::ModuleGraphDiagnosticProjector::project(
+                   binder::ModuleGraphIncidentPhase::SourceParsing,
+                   binder::ModuleGraphIncidentKind::MaterializationFailed,
+                   binder::ModuleGraphIncidentProducer::DiagnosticMaterializer)),
+               "module graph incident set capacity must cover the registered inventory");
     return false;
   }
   diagnostics::publishResolvedDiagnosticBatch(
@@ -436,13 +441,15 @@ struct CompilerSession::Impl {
     if (!incremental_binding_query::registerIncrementalBindingQueryAdapter(queryDatabase) ||
         !module_graph_query::registerModuleGraphQueries(queryDatabase) ||
         !module_graph_query::registerStableModuleGraphQueries(queryDatabase)) {
-      diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(source::SourceLoc(),
-                                                                            zc::str(uint64_t{1}));
+      rejectModuleGraph(binder::ModuleGraphIncidentPhase::Initialization,
+                        binder::ModuleGraphIncidentKind::RegistrationFailed,
+                        binder::ModuleGraphIncidentProducer::QueryRuntime);
       return;
     }
     if (!core_library_query::registerCoreLibraryQueryProvider(queryDatabase)) {
-      diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(source::SourceLoc(),
-                                                                            zc::str(uint64_t{1}));
+      rejectModuleGraph(binder::ModuleGraphIncidentPhase::Initialization,
+                        binder::ModuleGraphIncidentKind::RegistrationFailed,
+                        binder::ModuleGraphIncidentProducer::QueryRuntime);
       return;
     }
     if (initializedContext.failure == SemanticContextResourceFailure::ContextBrandExhausted) {
@@ -581,6 +588,15 @@ struct CompilerSession::Impl {
         invariant != zc::none && incidents.add(identity::IdentityDiagnosticProjector::project(
                                      ZC_ASSERT_NONNULL(invariant))),
         "identity incident registration must be complete");
+  }
+
+  bool rejectModuleGraph(binder::ModuleGraphIncidentPhase phase,
+                         binder::ModuleGraphIncidentKind kind,
+                         binder::ModuleGraphIncidentProducer producer, uint64_t occurrences = 1) {
+    ZC_REQUIRE(incidents.add(binder::ModuleGraphDiagnosticProjector::project(phase, kind, producer,
+                                                                             occurrences)),
+               "module graph incident set capacity must cover the registered inventory");
+    return false;
   }
 
   /// Test-only Built MIR, overlay, and borrow-evidence repository retained when
@@ -1591,22 +1607,26 @@ struct CompilerSession::Impl {
   bool stageMaterializedModuleGraphInputs() {
     if (packageRequest == zc::none) { return true; }
     if (crateGraph == zc::none) { return false; }
-    const auto rejectInvariant = [&]() {
-      diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(source::SourceLoc(),
-                                                                            zc::str(uint64_t{1}));
-      return false;
+    const auto rejectInvariant = [&](binder::ModuleGraphIncidentKind kind =
+                                         binder::ModuleGraphIncidentKind::InvalidDependencyGraph) {
+      return rejectModuleGraph(binder::ModuleGraphIncidentPhase::InputStaging, kind,
+                               binder::ModuleGraphIncidentProducer::Session);
     };
-    if (moduleKeys.size() == 0) { return rejectInvariant(); }
+    if (moduleKeys.size() == 0) {
+      return rejectInvariant(binder::ModuleGraphIncidentKind::MissingRequiredState);
+    }
 
     zc::TreeMap<zc::String, size_t> canonicalBindings;
     zc::TreeMap<zc::String, size_t> canonicalCrates;
     for (size_t index = 0; index < moduleKeys.size(); ++index) {
       const auto& binding = moduleKeys[index];
       if (semanticContextResources.identityInterners().module(binding.key) == zc::none) {
-        return rejectInvariant();
+        return rejectInvariant(binder::ModuleGraphIncidentKind::VerificationFailed);
       }
       auto moduleSortKey = zc::encodeHex(binding.key.encode().asPtr());
-      if (canonicalBindings.find(moduleSortKey) != zc::none) { return rejectInvariant(); }
+      if (canonicalBindings.find(moduleSortKey) != zc::none) {
+        return rejectInvariant(binder::ModuleGraphIncidentKind::DuplicateCanonicalIdentity);
+      }
       canonicalBindings.insert(zc::mv(moduleSortKey), index);
 
       auto crateSortKey = zc::encodeHex(binding.key.crate().encode().asPtr());
@@ -1615,7 +1635,7 @@ struct CompilerSession::Impl {
       }
     }
     if (canonicalBindings.size() != moduleKeys.size() || canonicalCrates.size() == 0) {
-      return rejectInvariant();
+      return rejectInvariant(binder::ModuleGraphIncidentKind::InvalidDependencyGraph);
     }
 
     zc::Vector<binder::ModuleSearchRoot> searchRoots(canonicalCrates.size());
@@ -1623,18 +1643,24 @@ struct CompilerSession::Impl {
       const auto& binding = moduleKeys[entry.value];
       const auto& crate = binding.key.crate();
       if (crate.unit().kind() == identity::CompilationUnitKind::Toolchain) {
-        if (coreDistributionInputs == zc::none) { return rejectInvariant(); }
+        if (coreDistributionInputs == zc::none) {
+          return rejectInvariant(binder::ModuleGraphIncidentKind::MissingRequiredState);
+        }
         ZC_IF_SOME(inputs, coreDistributionInputs) {
           auto root = binder::ModuleSearchRoot::toolchainCore(crate.clone(),
                                                               inputs.distribution().digest());
-          if (root == zc::none) { return rejectInvariant(); }
+          if (root == zc::none) {
+            return rejectInvariant(binder::ModuleGraphIncidentKind::VerificationFailed);
+          }
           searchRoots.add(zc::mv(ZC_ASSERT_NONNULL(root)));
         }
         continue;
       }
       const auto& package = crate.unit().userPackage();
       auto root = compilationRoot(crate);
-      if (root == zc::none) { return rejectInvariant(); }
+      if (root == zc::none) {
+        return rejectInvariant(binder::ModuleGraphIncidentKind::MissingRequiredState);
+      }
       ZC_IF_SOME(rootValue, root) {
         const auto packageRelativeRoot = parentDirectory(rootValue.sourcePath());
         switch (package.source().kind()) {
@@ -1682,16 +1708,22 @@ struct CompilerSession::Impl {
       zc::Maybe<size_t> parsedRecordIndex;
       for (size_t index = 0; index < parsedModules.size(); ++index) {
         if (parsedModules[index].buffer() != binding.buffer) { continue; }
-        if (parsedRecordIndex != zc::none) { return rejectInvariant(); }
+        if (parsedRecordIndex != zc::none) {
+          return rejectInvariant(binder::ModuleGraphIncidentKind::DuplicateCanonicalIdentity);
+        }
         parsedRecordIndex = index;
       }
-      if (parsedRecordIndex == zc::none) { return rejectInvariant(); }
+      if (parsedRecordIndex == zc::none) {
+        return rejectInvariant(binder::ModuleGraphIncidentKind::MissingRequiredState);
+      }
       size_t selectedParsedRecordIndex = 0;
       ZC_IF_SOME(value, parsedRecordIndex) { selectedParsedRecordIndex = value; }
       const auto& parsedRecord = parsedModules[selectedParsedRecordIndex];
 
       auto module = semanticContextResources.identityInterners().module(binding.key);
-      if (module == zc::none) { return rejectInvariant(); }
+      if (module == zc::none) {
+        return rejectInvariant(binder::ModuleGraphIncidentKind::VerificationFailed);
+      }
       ZC_IF_SOME(moduleValue, module) {
         const auto moduleId = moduleValue.handle();
         modules.add(binder::ModuleGraphModule(binding.key.clone(), moduleId));
@@ -1712,14 +1744,18 @@ struct CompilerSession::Impl {
                 !sameModulePath(candidateValue.path(), currentPath.asPtr())) {
               continue;
             }
-            if (parent != zc::none) { return rejectInvariant(); }
+            if (parent != zc::none) {
+              return rejectInvariant(binder::ModuleGraphIncidentKind::DuplicateCanonicalIdentity);
+            }
             parent = candidateValue.clone();
           }
           if (parent == zc::none) {
             parent = identity::ModuleKey::from(binding.key.crate().clone(),
                                                cloneModulePath(currentPath.asPtr()));
           }
-          if (parent == zc::none) { return rejectInvariant(); }
+          if (parent == zc::none) {
+            return rejectInvariant(binder::ModuleGraphIncidentKind::VerificationFailed);
+          }
           ZC_IF_SOME(parentValue, parent) { ancestry.add(zc::mv(parentValue)); }
         }
         requesterAncestry.add(
@@ -1733,7 +1769,7 @@ struct CompilerSession::Impl {
       ZC_IF_SOME(value, failure) {
         if (!binder::emitModuleGraphSourceFailure(*diagnosticEngine,
                                                   parsedInputs[index].parsedModule, value)) {
-          return rejectInvariant();
+          return rejectInvariant(binder::ModuleGraphIncidentKind::MaterializationFailed);
         }
         sourceRejected = true;
       }
@@ -1763,14 +1799,20 @@ struct CompilerSession::Impl {
               candidateValue.path()[0].text() != edge.provider().targetName()) {
             continue;
           }
-          if (providerRoot != zc::none) { return rejectInvariant(); }
+          if (providerRoot != zc::none) {
+            return rejectInvariant(binder::ModuleGraphIncidentKind::DuplicateCanonicalIdentity);
+          }
           providerRoot = candidateValue.clone();
         }
         if (edge.origin().kind() != identity::CrateDependencyOriginKind::UserPackage) { continue; }
         auto alias =
             identity::DependencyAlias::fromCanonical(edge.origin().userPackageEdge().alias());
-        if (alias == zc::none) { return rejectInvariant(); }
-        if (providerRoot == zc::none) { return rejectInvariant(); }
+        if (alias == zc::none) {
+          return rejectInvariant(binder::ModuleGraphIncidentKind::VerificationFailed);
+        }
+        if (providerRoot == zc::none) {
+          return rejectInvariant(binder::ModuleGraphIncidentKind::MissingRequiredState);
+        }
         ZC_IF_SOME(rootValue, providerRoot) {
           ZC_IF_SOME(aliasValue, alias) {
             dependencyAliasRoots.add(binder::ModuleDependencyAliasRoot(
@@ -1782,7 +1824,9 @@ struct CompilerSession::Impl {
         if (consumer.unit().kind() != identity::CompilationUnitKind::UserPackage) { continue; }
         auto projected = identity::projectToolchainCoreCrate(consumer);
         auto coreAlias = identity::DependencyAlias::fromCanonical("core"_zc);
-        if (projected == zc::none || coreAlias == zc::none) { return rejectInvariant(); }
+        if (projected == zc::none || coreAlias == zc::none) {
+          return rejectInvariant(binder::ModuleGraphIncidentKind::VerificationFailed);
+        }
         zc::Maybe<identity::ModuleKey> projectedRoot;
         for (const auto& binding : moduleKeys) {
           const auto& candidateValue = binding.key;
@@ -1791,10 +1835,14 @@ struct CompilerSession::Impl {
               candidateValue.path().size() != 1 || candidateValue.path()[0].text() != "core"_zc) {
             continue;
           }
-          if (projectedRoot != zc::none) { return rejectInvariant(); }
+          if (projectedRoot != zc::none) {
+            return rejectInvariant(binder::ModuleGraphIncidentKind::DuplicateCanonicalIdentity);
+          }
           projectedRoot = candidateValue.clone();
         }
-        if (projectedRoot == zc::none) { return rejectInvariant(); }
+        if (projectedRoot == zc::none) {
+          return rejectInvariant(binder::ModuleGraphIncidentKind::MissingRequiredState);
+        }
         dependencyAliasRoots.add(binder::ModuleDependencyAliasRoot(
             consumer.clone(), zc::mv(ZC_ASSERT_NONNULL(coreAlias)),
             zc::mv(ZC_ASSERT_NONNULL(projectedRoot))));
@@ -1808,8 +1856,9 @@ struct CompilerSession::Impl {
         zc::mv(catalog));
     if (!resolverResult.is<binder::StructuralModuleResolver>()) {
       const auto& failure = resolverResult.get<binder::ModuleResolutionInvariantFact>();
-      diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-          source::SourceLoc(), zc::str(failure.occurrence));
+      ZC_REQUIRE(incidents.add(binder::ModuleGraphDiagnosticProjector::project(
+                     failure, binder::ModuleGraphIncidentProducer::StructuralResolver)),
+                 "module graph incident set capacity must cover the registered inventory");
       return false;
     }
     auto resolver = zc::mv(resolverResult.get<binder::StructuralModuleResolver>());
@@ -1819,8 +1868,9 @@ struct CompilerSession::Impl {
                                                                     parsed.parsedModule, resolver);
       if (!derived.is<zc::Vector<binder::ModuleDependencyRequest>>()) {
         const auto& failure = derived.get<binder::ModuleResolutionInvariantFact>();
-        diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-            source::SourceLoc(), zc::str(failure.occurrence));
+        ZC_REQUIRE(incidents.add(binder::ModuleGraphDiagnosticProjector::project(
+                       failure, binder::ModuleGraphIncidentProducer::DependencyDeriver)),
+                   "module graph incident set capacity must cover the registered inventory");
         return false;
       }
       auto derivedRequests = zc::mv(derived.get<zc::Vector<binder::ModuleDependencyRequest>>());
@@ -1828,7 +1878,7 @@ struct CompilerSession::Impl {
     }
     if (!stageVerifiedModuleGraphInputs(resolver, requests.asPtr(), parsedInputs.asPtr())) {
       if (diagnosticEngine->hasErrors()) { return false; }
-      return rejectInvariant();
+      return rejectInvariant(binder::ModuleGraphIncidentKind::QueryContractViolation);
     }
     if (sourceRejected) { return false; }
     return true;
@@ -2192,17 +2242,19 @@ bool CompilerSession::parseSources() {
     return false;
   }
   if (impl->packageRequest == zc::none) { return true; }
+  const auto reject = [&](binder::ModuleGraphIncidentKind kind,
+                          binder::ModuleGraphIncidentProducer producer) {
+    return impl->rejectModuleGraph(binder::ModuleGraphIncidentPhase::SourceParsing, kind, producer);
+  };
   if (impl->coreDistributionInputs == zc::none) {
-    impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-        source::SourceLoc(), zc::str(uint64_t{1}));
-    return false;
+    return reject(binder::ModuleGraphIncidentKind::MissingRequiredState,
+                  binder::ModuleGraphIncidentProducer::Session);
   }
   if (!impl->internPackageAndCrateIdentities()) { return false; }
 
   if (impl->crateGraph == zc::none || impl->pendingSourceIdentities.size() == 0) {
-    impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-        source::SourceLoc(), zc::str(uint64_t{1}));
-    return false;
+    return reject(binder::ModuleGraphIncidentKind::MissingRequiredState,
+                  binder::ModuleGraphIncidentProducer::Session);
   }
   ZC_IF_SOME(graph, impl->crateGraph) {
     for (const auto& root : graph.roots()) {
@@ -2214,9 +2266,8 @@ bool CompilerSession::parseSources() {
         }
       }
       if (!found) {
-        impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-            source::SourceLoc(), zc::str(uint64_t{1}));
-        return false;
+        return reject(binder::ModuleGraphIncidentKind::InvalidDependencyGraph,
+                      binder::ModuleGraphIncidentProducer::Session);
       }
     }
   }
@@ -2235,40 +2286,35 @@ bool CompilerSession::parseSources() {
       if (alreadyProcessed) { continue; }
       auto key = zc::encodeHex(source.value.encode().asPtr());
       if (worklist.find(key) != zc::none) {
-        impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-            source::SourceLoc(), zc::str(uint64_t{1}));
-        return false;
+        return reject(binder::ModuleGraphIncidentKind::DuplicateCanonicalIdentity,
+                      binder::ModuleGraphIncidentProducer::Session);
       }
       worklist.insert(zc::mv(key), source.key);
     }
     if (worklist.size() == 0) { break; }
     if (!impl->stageParseSourceInputs()) {
-      impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-          source::SourceLoc(), zc::str(uint64_t{1}));
-      return false;
+      return reject(binder::ModuleGraphIncidentKind::MissingRequiredState,
+                    binder::ModuleGraphIncidentProducer::Session);
     }
     auto parseSnapshot = impl->queryDatabase.snapshot();
 
     for (const auto& entry : worklist) {
       auto sourceKey = impl->pendingSourceIdentities.find(entry.value);
       if (sourceKey == zc::none) {
-        impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-            source::SourceLoc(), zc::str(uint64_t{1}));
-        return false;
+        return reject(binder::ModuleGraphIncidentKind::MissingRequiredState,
+                      binder::ModuleGraphIncidentProducer::Session);
       }
       ZC_IF_SOME(sourceValue, sourceKey) {
         auto queryKey = source_query::StableSourceQueryKey::fromVerified(sourceValue);
         if (queryKey == zc::none) {
-          impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-              source::SourceLoc(), zc::str(uint64_t{1}));
-          return false;
+          return reject(binder::ModuleGraphIncidentKind::VerificationFailed,
+                        binder::ModuleGraphIncidentProducer::Session);
         }
         auto parsed =
             parseSnapshot.getCapability<parser::ParseSourceQuery>(ZC_ASSERT_NONNULL(queryKey));
         if (parsed.isRuntimeRejected()) {
-          impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-              source::SourceLoc(), zc::str(uint64_t{1}));
-          return false;
+          return reject(binder::ModuleGraphIncidentKind::QueryContractViolation,
+                        binder::ModuleGraphIncidentProducer::QueryRuntime);
         }
         if (parsed.isSourceRejected()) {
           zc::Maybe<source_query::CanonicalCompilationOptions> compilationOptions;
@@ -2283,44 +2329,40 @@ bool CompilerSession::parseSources() {
             canonicalSource = source_query::CanonicalSourceSnapshot::fromVerified(snapshot);
           }
           if (compilationOptions == zc::none || canonicalSource == zc::none) {
-            impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-                source::SourceLoc(), zc::str(uint64_t{1}));
-            return false;
+            return reject(binder::ModuleGraphIncidentKind::MaterializationFailed,
+                          binder::ModuleGraphIncidentProducer::Session);
           }
           auto rejected = parser::reconstructParseRejection(
               ZC_ASSERT_NONNULL(queryKey), ZC_ASSERT_NONNULL(compilationOptions),
               ZC_ASSERT_NONNULL(canonicalSource), parsed.diagnostics().values());
           if (rejected == zc::none) {
-            impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-                source::SourceLoc(), zc::str(uint64_t{1}));
-            return false;
+            return reject(binder::ModuleGraphIncidentKind::MaterializationFailed,
+                          binder::ModuleGraphIncidentProducer::DiagnosticMaterializer);
           }
-          static_cast<void>(publishSourceDiagnostics(
-              ZC_ASSERT_NONNULL(rejected).facts(), ZC_ASSERT_NONNULL(rejected).provenance(),
-              sourceValue, *impl->sourceManager, entry.value, *impl->diagnosticEngine));
+          static_cast<void>(publishSourceDiagnostics(ZC_ASSERT_NONNULL(rejected).facts(),
+                                                     ZC_ASSERT_NONNULL(rejected).provenance(),
+                                                     sourceValue, *impl->sourceManager, entry.value,
+                                                     *impl->diagnosticEngine, impl->incidents));
           return false;
         }
         if (!parsed.isPublished()) {
-          impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-              source::SourceLoc(), zc::str(uint64_t{1}));
-          return false;
+          return reject(binder::ModuleGraphIncidentKind::QueryContractViolation,
+                        binder::ModuleGraphIncidentProducer::QueryRuntime);
         }
         if (impl->compilerOpts.emission.outputType !=
             basic::CompilerOptions::EmissionOptions::OutputType::AST) {
           auto requests =
               extractStructuralModuleDependencyRequests(parsed.lease().capability().tree());
           if (!requests.is<zc::Vector<StructuralModuleDependencyRequest>>()) {
-            impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-                source::SourceLoc(), zc::str(uint64_t{1}));
-            return false;
+            return reject(binder::ModuleGraphIncidentKind::InvalidDependencyGraph,
+                          binder::ModuleGraphIncidentProducer::DependencyDeriver);
           }
           bool addedAny = false;
           if (!impl->discoverDependencies(
                   entry.value, requests.get<zc::Vector<StructuralModuleDependencyRequest>>(),
                   addedAny)) {
-            impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-                source::SourceLoc(), zc::str(uint64_t{1}));
-            return false;
+            return reject(binder::ModuleGraphIncidentKind::InvalidDependencyGraph,
+                          binder::ModuleGraphIncidentProducer::Session);
           }
         }
         processed.add(entry.value);
@@ -2330,8 +2372,8 @@ bool CompilerSession::parseSources() {
 
   if (processed.size() != impl->pendingSourceIdentities.size() || !impl->internSourceIdentities()) {
     if (!impl->diagnosticEngine->hasErrors()) {
-      impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-          source::SourceLoc(), zc::str(uint64_t{1}));
+      return reject(binder::ModuleGraphIncidentKind::InvalidDependencyGraph,
+                    binder::ModuleGraphIncidentProducer::Session);
     }
     return false;
   }
@@ -2351,14 +2393,13 @@ bool CompilerSession::parseSources() {
     auto parsed =
         parseSnapshot.getCapability<parser::ParseSourceQuery>(ZC_ASSERT_NONNULL(queryKey));
     if (!parsed.isPublished()) {
-      impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-          source::SourceLoc(), zc::str(uint64_t{1}));
-      return false;
+      return reject(binder::ModuleGraphIncidentKind::QueryContractViolation,
+                    binder::ModuleGraphIncidentProducer::QueryRuntime);
     }
     if (!publishSourceDiagnostics(parsed.lease().capability().facts(),
                                   parsed.lease().capability().provenance(),
                                   ZC_ASSERT_NONNULL(sourceKey), *impl->sourceManager, entry.value,
-                                  *impl->diagnosticEngine)) {
+                                  *impl->diagnosticEngine, impl->incidents)) {
       return false;
     }
     auto materializedSnapshot = identity::ImmutableSourceSnapshot::from(
@@ -2369,9 +2410,8 @@ bool CompilerSession::parseSources() {
         impl->contextBrand, ZC_ASSERT_NONNULL(materializedSnapshot), ZC_ASSERT_NONNULL(sourceKey),
         *impl->sourceManager, entry.value, parsed.lease().capability().clone());
     if (!verified.is<binder::VerifiedParsedModule>()) {
-      impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-          source::SourceLoc(), zc::str(uint64_t{1}));
-      return false;
+      return reject(binder::ModuleGraphIncidentKind::VerificationFailed,
+                    binder::ModuleGraphIncidentProducer::Session);
     }
     impl->parsedModules.add(
         ParsedModuleRecord(entry.value, zc::mv(verified.get<binder::VerifiedParsedModule>())));
@@ -2391,9 +2431,8 @@ bool CompilerSession::parseSources() {
   for (const auto& binding : impl->moduleKeys) {
     auto moduleKey = incremental_binding_query::StableModuleQueryKey::fromVerified(binding.key);
     if (moduleKey == zc::none) {
-      impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-          source::SourceLoc(), zc::str(uint64_t{1}));
-      return false;
+      return reject(binder::ModuleGraphIncidentKind::VerificationFailed,
+                    binder::ModuleGraphIncidentProducer::Session);
     }
     auto admission = identityAdmissionSnapshot
                          .getCapability<incremental_binding_query::StableIdentityAdmissionQuery>(
@@ -2408,9 +2447,8 @@ bool CompilerSession::parseSources() {
       return false;
     }
     if (!admission.isPublished()) {
-      impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-          source::SourceLoc(), zc::str(uint64_t{1}));
-      return false;
+      return reject(binder::ModuleGraphIncidentKind::QueryContractViolation,
+                    binder::ModuleGraphIncidentProducer::QueryRuntime);
     }
   }
   if (impl->stagedCompilationRoots == zc::none) { return false; }
@@ -2432,29 +2470,25 @@ bool CompilerSession::parseSources() {
 bool CompilerSession::bindSources() {
   if (!impl->incidents.empty() || impl->diagnosticEngine->hasErrors()) { return false; }
   if (impl->packageRequest == zc::none) { return true; }
+  const auto reject = [&](binder::ModuleGraphIncidentKind kind) {
+    return impl->rejectModuleGraph(binder::ModuleGraphIncidentPhase::Binding, kind,
+                                   binder::ModuleGraphIncidentProducer::Session);
+  };
   auto authority = materializeCheckerIdentityAuthority();
   if (authority == zc::none) {
-    impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-        source::SourceLoc(), zc::str(uint64_t{1}));
-    return false;
+    return reject(binder::ModuleGraphIncidentKind::MissingRequiredState);
   }
   if (ZC_REQUIRE_NONNULL(authority).modules().size() == 0) {
-    impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-        source::SourceLoc(), zc::str(uint64_t{2}));
-    return false;
+    return reject(binder::ModuleGraphIncidentKind::InvalidBindingHandoff);
   }
   for (const auto& module : ZC_REQUIRE_NONNULL(authority).modules()) {
     for (const auto& lookup : module.bindings().failedLookups()) {
       if (!module.tree().contains(lookup.node)) {
-        impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-            source::SourceLoc(), zc::str(uint64_t{3}));
-        return false;
+        return reject(binder::ModuleGraphIncidentKind::InvalidBindingHandoff);
       }
       auto span = module.parsedModule().spanFor(module.tree().node(lookup.node).range);
       if (span == zc::none) {
-        impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-            source::SourceLoc(), zc::str(uint64_t{4}));
-        return false;
+        return reject(binder::ModuleGraphIncidentKind::MaterializationFailed);
       }
       zc::Maybe<source::BufferId> buffer;
       for (const auto& candidate : impl->pendingSourceIdentities) {
@@ -2462,16 +2496,12 @@ bool CompilerSession::bindSources() {
           continue;
         }
         if (buffer != zc::none) {
-          impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-              source::SourceLoc(), zc::str(uint64_t{5}));
-          return false;
+          return reject(binder::ModuleGraphIncidentKind::DuplicateCanonicalIdentity);
         }
         buffer = candidate.key;
       }
       if (buffer == zc::none) {
-        impl->diagnosticEngine->diagnose<diagnostics::DiagID::ModuleGraphInvariant>(
-            source::SourceLoc(), zc::str(uint64_t{6}));
-        return false;
+        return reject(binder::ModuleGraphIncidentKind::MissingRequiredState);
       }
       const auto location =
           impl->sourceManager->getLocForBufferStart(ZC_ASSERT_NONNULL(buffer))

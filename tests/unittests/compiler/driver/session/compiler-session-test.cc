@@ -15,6 +15,7 @@
 #include "compiler/driver/session/compiler-session.h"
 
 #include "compiler/basic/compiler-opts.h"
+#include "compiler/binder/diagnostics/module-graph-diagnostic-projector.h"
 #include "compiler/diagnostics/consumer/diagnostic-consumer.h"
 #include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/driver/core/marker-authority.h"
@@ -420,7 +421,7 @@ ZC_TEST("CompilerSessionTest.PublishesCanonicalParseRejectionAtomically") {
   ZC_EXPECT(!session->hasVerifiedParsedSyntax());
   ZC_EXPECT(captured.ids.size() == 1);
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ExpressionExpected) == 1);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ModuleGraphInvariant) == 0);
+  ZC_EXPECT(session->getIncidents().empty());
 }
 
 ZC_TEST("CompilerSessionTest.PublishesRetainedMissingLookupDiagnosticDuringBinding") {
@@ -442,7 +443,12 @@ ZC_TEST("CompilerSessionTest.RejectsPackageParsingWithoutCoreDistribution") {
   ZC_EXPECT(!session->parseSources());
   ZC_EXPECT(!session->hasVerifiedParsedSyntax());
   ZC_EXPECT(session->materializeModuleGraph() == zc::none);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ModuleGraphInvariant) == 1);
+  ZC_EXPECT(captured.ids.empty());
+  const auto incidents = session->getIncidents().descriptors();
+  ZC_REQUIRE(incidents.size() == 1);
+  ZC_EXPECT(incidents[0].domain() == basic::CompilerIncidentDomain::Driver);
+  ZC_EXPECT(incidents[0].kind().tag() ==
+            static_cast<uint32_t>(binder::ModuleGraphIncidentKind::MissingRequiredState));
 }
 
 ZC_TEST("CompilerSessionTest.PublishesSourceBackedCoreModulesInCompleteSemanticGraph") {
@@ -1376,7 +1382,7 @@ ZC_TEST("CompilerSessionTest.RejectsReservedCoreRootWithoutPublishingModuleGraph
   ZC_EXPECT(captured.ids.size() == 1);
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ToolchainModuleRootReserved) == 1);
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ModuleDeclarationNameMismatch) == 0);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ModuleGraphInvariant) == 0);
+  ZC_EXPECT(session->getIncidents().empty());
 }
 
 ZC_TEST("CompilerSessionTest.SuppressesReservedRootCycleAndRetainsIndependentFailure") {
@@ -1397,7 +1403,7 @@ ZC_TEST("CompilerSessionTest.SuppressesReservedRootCycleAndRetainsIndependentFai
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::CircularImport) == 0);
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::CircularReexport) == 0);
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ModuleDeclarationNameMismatch) == 0);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ModuleGraphInvariant) == 0);
+  ZC_EXPECT(session->getIncidents().empty());
 }
 
 }  // namespace driver

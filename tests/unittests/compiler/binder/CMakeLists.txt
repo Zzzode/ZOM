@@ -14,6 +14,7 @@ add_ztest_unit_test("import-binding-test" "identity/import-binding-test.cc" LIBR
 add_ztest_unit_test("identity-pre-admission-test" "identity/identity-pre-admission-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
 add_ztest_unit_test("local-identity-test" "identity/local-identity-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
 add_ztest_unit_test("module-dependency-requests-test" "graph/module-dependency-requests-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)
+add_ztest_unit_test("module-graph-diagnostic-projector-test" "diagnostics/module-graph-diagnostic-projector-test.cc" LIBRARIES binder identity basic)
 add_ztest_unit_test("module-body-syntax-test" "surface/module-body-syntax-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)
 add_ztest_unit_test("materialized-module-skeleton-test" "graph/materialized-module-skeleton-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
 add_ztest_unit_test("owner-body-syntax-traversal-test" "surface/owner-body-query-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)

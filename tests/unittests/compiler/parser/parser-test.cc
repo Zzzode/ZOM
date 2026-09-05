@@ -52,11 +52,7 @@ public:
 
   ZC_NODISCARD zc::Maybe<ast::Tree> parse() {
     auto tree = parser.parse();
-    if (facts.hasInvariantViolation()) {
-      diagnostics.diagnose<diagnostics::DiagID::ModuleGraphInvariant>(source::SourceLoc(),
-                                                                      zc::str(uint64_t{1}));
-      return tree;
-    }
+    ZC_IREQUIRE(!facts.hasInvariantViolation(), facts.invariantMessage().cStr());
     auto sourceKey = tests::test_identity_detail::source();
     auto published = facts.publish(sourceKey, sources.getEntireTextForBuffer(buffer).size());
     ZC_IREQUIRE(published != zc::none, facts.invariantMessage().cStr());

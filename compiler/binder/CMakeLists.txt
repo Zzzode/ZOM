@@ -33,6 +33,7 @@ set(BINDER_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/binding-diagnostic-adapter.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/binding-diagnostic-projector.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/module-graph-diagnostic-adapter.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/module-graph-diagnostic-projector.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/stable/stable-binding-codec.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/stable/stable-binding-diagnostic-fact.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/stable/stable-binding-facts.cc
