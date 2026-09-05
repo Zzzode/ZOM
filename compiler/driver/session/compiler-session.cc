@@ -67,6 +67,7 @@
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/canonical/identity-interner-set.h"
 #include "compiler/identity/diagnostics/identity-diagnostic-projector.h"
+#include "compiler/ir/diagnostics/ir-diagnostic-projector.h"
 #include "compiler/ownership/admission/surface-admission.h"
 #include "compiler/ownership/diagnostics/ownership-diagnostic-adapter.h"
 #include "compiler/ownership/overlay/drop-elaborated-mir.h"
@@ -570,7 +571,7 @@ struct CompilerSession::Impl {
   zc::Vector<hir::VerifiedHirModule> hirModules;
   zc::Vector<ownership::CheckedMir> ownershipCheckedMirModules;
   zc::Vector<ownership::VerifiedExecutableMir> verifiedExecutableMirModules;
-  zc::Vector<ir::IrDiagnosticGroup> irFailureGroups;
+  zc::Vector<ir::IrCapabilityDiagnosticGroup> irCapabilityFailureGroups;
   zc::Vector<identity::IdentityInvariant> irIdentityInvariantFailures;
   basic::BoundedIncidentSet incidents;
   bool verifiedCheckedSources = false;
@@ -2215,8 +2216,9 @@ CompilerSession::firstStagedBorrowSourceRejectionForTesting() const noexcept {
                                       *impl->stagedBorrowSourceRejectedBorrowEvidence};
 }
 
-zc::ArrayPtr<const ir::IrDiagnosticGroup> CompilerSession::getIrFailureGroups() const noexcept {
-  return impl->irFailureGroups;
+zc::ArrayPtr<const ir::IrCapabilityDiagnosticGroup> CompilerSession::getIrCapabilityFailureGroups()
+    const noexcept {
+  return impl->irCapabilityFailureGroups;
 }
 
 zc::ArrayPtr<const identity::IdentityInvariant> CompilerSession::getIrIdentityInvariantFailures()
@@ -2520,7 +2522,7 @@ bool CompilerSession::bindSources() {
 }
 bool CompilerSession::checkSources() {
   if (!impl->incidents.empty() || impl->diagnosticEngine->hasErrors() ||
-      !impl->checkerFailures.empty() || !impl->irFailureGroups.empty() ||
+      !impl->checkerFailures.empty() || !impl->irCapabilityFailureGroups.empty() ||
       !impl->irIdentityInvariantFailures.empty()) {
     return false;
   }
@@ -2718,7 +2720,8 @@ bool CompilerSession::checkSources() {
     return true;
   };
   const auto rejectIrIdentity = [&](const ir::SortedIdentityInvariantFacts& failures) {
-    ZC_REQUIRE(ir::projectIrIdentityInvariantFailures(impl->incidents, failures),
+    auto projected = identity::IdentityDiagnosticProjector::projectAll(failures.facts());
+    ZC_REQUIRE(projected != zc::none && impl->incidents.merge(ZC_ASSERT_NONNULL(projected)),
                "IR identity incident projection must fit the registered inventory");
     for (const auto& failure : failures.facts()) {
       impl->irIdentityInvariantFailures.add(failure.clone());
@@ -2727,14 +2730,14 @@ bool CompilerSession::checkSources() {
   };
   const auto rejectIrCapability = [&](const ir::SortedCapabilityFailureFacts& failures) {
     auto groups = ir::groupIrCapabilityFailures(failures);
-    ir::emitIrDiagnosticGroups(*impl->diagnosticEngine, groups.asPtr());
-    impl->irFailureGroups = zc::mv(groups);
+    ir::emitIrCapabilityDiagnosticGroups(*impl->diagnosticEngine, groups.asPtr());
+    impl->irCapabilityFailureGroups = zc::mv(groups);
     return false;
   };
   const auto rejectIrInvariant = [&](const ir::SortedIrInvariantFailureFacts& failures) {
-    auto groups = ir::groupIrInvariantFailures(failures);
-    ir::emitIrDiagnosticGroups(*impl->diagnosticEngine, groups.asPtr());
-    impl->irFailureGroups = zc::mv(groups);
+    auto projected = ir::IrDiagnosticProjector::projectAll(failures);
+    ZC_REQUIRE(projected != zc::none && impl->incidents.merge(ZC_ASSERT_NONNULL(projected)),
+               "IR incident projection must fit the registered inventory");
     return false;
   };
 

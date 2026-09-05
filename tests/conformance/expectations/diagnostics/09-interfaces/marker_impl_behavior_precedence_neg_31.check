@@ -6,4 +6,3 @@
 // CHECK-LITERAL: Error [ZOM4089]: Behavior interfaces require an impl body
 // CHECK:   --> {{.*}}marker_impl_behavior_precedence_neg_31.zom:5:6
 // CHECK-NOT: ZOM4091
-// CHECK-NOT: ZOM9928

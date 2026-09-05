@@ -3079,7 +3079,7 @@ ZC_TEST("CompilerSession publishes verified ownership event overlays") {
   ZC_EXPECT(states[2].lossCauses[0].event.location.point.beforeStatementValue().ordinal == 0);
   ZC_EXPECT(states[4].lossCauses.size() == 0);
   ZC_EXPECT(states[6].lossCauses.size() == 0);
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
@@ -3135,7 +3135,7 @@ ZC_TEST("CompilerSession publishes verified ownership inputs for a returned func
   ZC_EXPECT(initializationFacts[4].state == facts::InitializationState::initialized());
   ZC_EXPECT(initializationFacts[6].state == facts::InitializationState::initialized());
   ZC_EXPECT(initializationFacts[6].lossCauses.size() == 0);
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
@@ -3215,7 +3215,7 @@ ZC_TEST("Ownership facts preserve sequential scalar local copies without resourc
   ZC_REQUIRE(resources.functions().size() == 1);
   ZC_EXPECT(resources.functions()[0].facts.size() == 0);
   ZC_EXPECT(resources.functions()[0].transfers.size() == 0);
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
@@ -3260,7 +3260,7 @@ ZC_TEST("Built MIR lowers three sequential scalar locals to StorageLive/Assign p
   ZC_IF_SOME(value, block.terminator.returnValue().value) {
     ZC_EXPECT(value.place().local() == function.locals[3].id);
   }
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
   ZC_EXPECT(session.getOwnershipCheckedMirModules().size() == 1);
 }
@@ -3297,7 +3297,7 @@ ZC_TEST("Ownership resources preserve a moved sequential aggregate local") {
   ZC_EXPECT(resourceFunction.transfers[0].event.location.point.kind() ==
             MirPointKind::BeforeStatement);
   ZC_EXPECT(resourceFunction.transfers[0].event.operandOrdinal == 0);
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
@@ -3457,7 +3457,7 @@ ZC_TEST("Ownership resources record exact drop transfer paths for a call result"
   ZC_EXPECT(transfer.to.place.projections().size() == 0);
   ZC_EXPECT(transfer.event.location.point.kind() == MirPointKind::BeforeStatement);
   ZC_EXPECT(transfer.event.operandOrdinal == 0);
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
 }
 
 ZC_TEST("Resource verifier rejects a tampered parameter move transfer") {
@@ -3978,7 +3978,7 @@ ZC_TEST("CompilerSession publishes a mutable local overwrite through ownership f
     foundInitializedAfterOverwrite = true;
   }
   ZC_EXPECT(foundInitializedAfterOverwrite);
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
@@ -4017,7 +4017,7 @@ ZC_TEST("CompilerSession initializes a mutable annotated local through ownership
     foundInitializedAfterWrite = true;
   }
   ZC_EXPECT(foundInitializedAfterWrite);
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
@@ -4063,7 +4063,7 @@ ZC_TEST("CompilerSession preserves consecutive mutable local writes through owne
     foundInitializedAfterFinalWrite = true;
   }
   ZC_EXPECT(foundInitializedAfterFinalWrite);
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
@@ -4102,7 +4102,7 @@ ZC_TEST("CompilerSession initializes then overwrites an annotated local through 
     foundInitializedAfterOverwrite = true;
   }
   ZC_EXPECT(foundInitializedAfterOverwrite);
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
@@ -4129,7 +4129,7 @@ ZC_TEST("CompilerSession retains following functions after consecutive local wri
   }
   ZC_EXPECT(foundHelper);
   ZC_EXPECT(foundEntry);
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
@@ -4156,7 +4156,7 @@ ZC_TEST("Ownership facts retain a parameter initialized function local") {
   const auto& inputs = ownershipInputs(session);
   ZC_REQUIRE(inputs.movePaths().functions()[0].facts.size() == 2);
   ZC_REQUIRE(inputs.initialization().functions().size() == 1);
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 

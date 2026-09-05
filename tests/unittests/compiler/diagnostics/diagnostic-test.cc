@@ -278,8 +278,6 @@ ZC_TEST("DiagnosticTest.BackendDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::PanicUnwindUnsupported) == 6006);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::BinaryEmissionUnavailable) == 6007);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::TargetCapabilityUnavailable) == 6009);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::LirInvariant) == 9947);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrCanonicalCodecMismatch) == 9949);
 }
 
 ZC_TEST("DiagnosticTest.MultipleDiagnostics") {

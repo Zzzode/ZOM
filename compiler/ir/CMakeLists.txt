@@ -1,5 +1,6 @@
 set(IR_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/ir-diagnostic-adapter.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/ir-diagnostic-projector.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/ir-failure.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/ir-identity.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/layout/error-union-layout-codec.cc

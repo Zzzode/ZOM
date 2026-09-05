@@ -5,10 +5,8 @@
 
 #pragma once
 
-#include "compiler/basic/incident/compiler-incident.h"
 #include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/diagnostics/core/diagnostic-ids.h"
-#include "compiler/identity/diagnostics/identity-diagnostic-projector.h"
 #include "compiler/ir/diagnostics/ir-failure.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
@@ -16,65 +14,35 @@
 
 namespace zomlang::compiler::ir {
 
-/// \brief Resolves one validated canonical IR source span into a live source buffer.
-class IrDiagnosticLocationResolver {
+/// \brief One registered capability-diagnostic group retaining every contributing IR fact.
+class IrCapabilityDiagnosticGroup final {
 public:
-  virtual ~IrDiagnosticLocationResolver() noexcept(false) = default;
-  ZC_DISALLOW_COPY(IrDiagnosticLocationResolver);
-
-  ZC_NODISCARD virtual zc::Maybe<source::SourceLoc> resolve(
-      const identity::SourceSpan& span) const = 0;
-
-protected:
-  IrDiagnosticLocationResolver() noexcept = default;
-  IrDiagnosticLocationResolver(IrDiagnosticLocationResolver&&) noexcept = default;
-  IrDiagnosticLocationResolver& operator=(IrDiagnosticLocationResolver&&) noexcept = default;
-};
-
-/// \brief One registered diagnostic group retaining every complete contributing IR fact.
-class IrDiagnosticGroup final {
-public:
-  IrDiagnosticGroup(IrDiagnosticGroup&&) noexcept;
-  IrDiagnosticGroup& operator=(IrDiagnosticGroup&&) noexcept;
-  ~IrDiagnosticGroup() noexcept(false);
-  ZC_DISALLOW_COPY(IrDiagnosticGroup);
+  IrCapabilityDiagnosticGroup(IrCapabilityDiagnosticGroup&&) noexcept;
+  IrCapabilityDiagnosticGroup& operator=(IrCapabilityDiagnosticGroup&&) noexcept;
+  ~IrCapabilityDiagnosticGroup() noexcept(false);
+  ZC_DISALLOW_COPY(IrCapabilityDiagnosticGroup);
 
   ZC_NODISCARD diagnostics::DiagID diagnosticId() const noexcept;
-  ZC_NODISCARD bool isInvariant() const noexcept;
   ZC_NODISCARD zc::Maybe<const identity::SourceSpan&> diagnosticSpan() const;
   ZC_NODISCARD uint64_t occurrenceCount() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const IrFailureFact> facts() const noexcept;
 
 private:
   struct Impl;
-  explicit IrDiagnosticGroup(zc::Own<Impl>&& impl) noexcept;
+  explicit IrCapabilityDiagnosticGroup(zc::Own<Impl>&& impl) noexcept;
 
   zc::Own<Impl> impl;
 
-  friend zc::Vector<IrDiagnosticGroup> groupIrCapabilityFailures(
+  friend zc::Vector<IrCapabilityDiagnosticGroup> groupIrCapabilityFailures(
       const SortedCapabilityFailureFacts& failures);
-  friend zc::Vector<IrDiagnosticGroup> groupIrInvariantFailures(
-      const SortedIrInvariantFailureFacts& failures);
 };
 
-/// \brief Exhaustively maps one closed RFC 0010 kind and phase to a registered diagnostic.
-ZC_NODISCARD diagnostics::DiagID irDiagnosticId(IrFailureKind kind, IrFailurePhase phase) noexcept;
-
 /// \brief Deduplicates adjacent capability failures by code, location, and canonical root.
-ZC_NODISCARD zc::Vector<IrDiagnosticGroup> groupIrCapabilityFailures(
+ZC_NODISCARD zc::Vector<IrCapabilityDiagnosticGroup> groupIrCapabilityFailures(
     const SortedCapabilityFailureFacts& failures);
 
-/// \brief Groups adjacent invariant failures only by mapped diagnostic and validated location.
-ZC_NODISCARD zc::Vector<IrDiagnosticGroup> groupIrInvariantFailures(
-    const SortedIrInvariantFailureFacts& failures);
-
-/// \brief Emits registered capability or invariant groups without fabricating a location.
-void emitIrDiagnosticGroups(
-    diagnostics::DiagnosticEngine& engine, zc::ArrayPtr<const IrDiagnosticGroup> groups,
-    zc::Maybe<const IrDiagnosticLocationResolver&> locationResolver = zc::none);
-
-/// \brief Projects RFC 0010 identity rejection onto the internal incident rail.
-ZC_NODISCARD bool projectIrIdentityInvariantFailures(basic::BoundedIncidentSet& incidents,
-                                                     const SortedIdentityInvariantFacts& failures);
+/// \brief Emits registered capability groups without fabricating a location.
+void emitIrCapabilityDiagnosticGroups(diagnostics::DiagnosticEngine& engine,
+                                      zc::ArrayPtr<const IrCapabilityDiagnosticGroup> groups);
 
 }  // namespace zomlang::compiler::ir

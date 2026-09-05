@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-// IR emission diagnostics. ZOM6000-ZOM6999 are user-facing lowering and
-// backend capability diagnostics. ZOM9900-ZOM9999 are compiler invariants.
+// User-facing IR emission and backend capability diagnostics.
 
 DIAG(6006, PanicUnwindUnsupported, kError,
      "The selected runtime and target do not support panic unwinding", 0)
@@ -25,19 +24,3 @@ DIAG(6010, RecursiveInstantiation, kError,
      "Generic instantiation is recursively expanding", 0)
 DIAG(6011, InstantiationBudgetExceeded, kError,
      "Generic instantiation exceeds the configured compiler limit", 0)
-DIAG(9942, CheckedModuleInvariant, kFatal,
-     "Internal checked-module invariant violated ({0} occurrence(s))", 1)
-DIAG(9943, HirInvariant, kFatal, "Internal HIR invariant violated ({0} occurrence(s))", 1)
-DIAG(9944, BuiltMirInvariant, kFatal,
-     "Internal Built MIR invariant violated ({0} occurrence(s))", 1)
-DIAG(9945, OwnershipProofInvariant, kFatal,
-     "Internal ownership proof invariant violated ({0} occurrence(s))", 1)
-DIAG(9946, ExecutableMirInvariant, kFatal,
-     "Internal executable MIR invariant violated ({0} occurrence(s))", 1)
-DIAG(9947, LirInvariant, kFatal, "Internal LIR invariant violated ({0} occurrence(s))", 1)
-DIAG(9948, BackendInvariant, kFatal,
-     "Internal backend invariant violated ({0} occurrence(s))", 1)
-DIAG(9949, IrCanonicalCodecMismatch, kFatal,
-     "Internal IR canonical encoding is invalid ({0} occurrence(s))", 1)
-DIAG(9955, FeatureBoundaryInvariant, kFatal,
-     "Internal feature-boundary invariant violated ({0} occurrence(s))", 1)

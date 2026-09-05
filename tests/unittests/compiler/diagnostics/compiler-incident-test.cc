@@ -123,7 +123,7 @@ ZC_TEST("Compiler incident rendering is stable and omits occurrence counts") {
   ZC_EXPECT(first == second);
   ZC_EXPECT(first.startsWith("error: internal compiler error\n"_zc));
   ZC_EXPECT(first.contains("note: phase: identity\n"_zc));
-  ZC_EXPECT(first.contains("ZOM9910"_zc) == false);
+  ZC_EXPECT(first.contains("ZOM"_zc) == false);
   const auto marker = first.find("note: incident: "_zc);
   ZC_REQUIRE(marker != zc::none);
   ZC_IF_SOME(offset, marker) {

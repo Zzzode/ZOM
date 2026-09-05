@@ -1753,7 +1753,7 @@ ZC_TEST("CompilerSession publishes the complete canonical Checker rail for an em
     ZC_EXPECT(evidence.evidence().revision().digest() ==
               builtMir.borrowEvidenceRevision().digest());
   }
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
@@ -2370,7 +2370,7 @@ ZC_TEST("CompilerSession publishes scalar initializer definition and pattern fac
     ZC_REQUIRE(markerRejected.invariantFailures().facts().size() == 1);
     ZC_EXPECT(markerRejected.invariantFailures().facts()[0].kind() ==
               ir::IrFailureKind::InvalidFact);
-    ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+    ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
     ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
   }
   auto repository = session.getCheckedFactsRepository();
@@ -2512,7 +2512,7 @@ ZC_TEST("CompilerSession publishes a checked scalar-return function through HIR 
     ZC_EXPECT(value.kind() == mir::MirOperandKind::Constant);
     ZC_EXPECT(value.constantValue().type == callable.success);
   }
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
@@ -2598,7 +2598,7 @@ ZC_TEST("CompilerSession lowers a sequential local copy through HIR and Built MI
     ZC_REQUIRE(rejected.invariantFailures().facts().size() == 1);
     ZC_EXPECT(rejected.invariantFailures().facts()[0].kind() == ir::IrFailureKind::InvalidFact);
   }
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
@@ -2657,7 +2657,7 @@ ZC_TEST("CompilerSession lowers a two-module package through HIR and Built MIR")
     ++scalarReturnFunctions;
   }
   ZC_EXPECT(scalarReturnFunctions == 2);
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
@@ -2734,7 +2734,7 @@ ZC_TEST("CompilerSession lowers a conditional return through HIR") {
   ZC_EXPECT(mirFunction.blocks[3].statements.size() == 0);
   ZC_EXPECT(mirFunction.blocks[3].terminator.kind() == mir::MirTerminatorKind::Return);
 
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
@@ -2805,7 +2805,7 @@ ZC_TEST("CompilerSession rejects unadmitted frontend syntax before Checker publi
     ZC_EXPECT(session.getBorrowEvidenceRepository() == zc::none);
     ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
     ZC_EXPECT(session.getOwnershipCheckedMirModules().size() == 0);
-    ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+    ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
     ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
   };
 
@@ -2857,7 +2857,7 @@ ZC_TEST("CompilerSession publishes canonical constant facts for scalar const ini
   ZC_EXPECT(session.getVerifiedDispatchFacts()[0].facts().size() == 0);
   ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
   ZC_EXPECT(session.getVerifiedHirModules()[0].declarations().size() == 1);
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
   auto repository = session.getCheckedFactsRepository();
   ZC_REQUIRE(repository != zc::none);
@@ -2906,7 +2906,7 @@ ZC_TEST("CompilerSession verifies recovered literal failures without publishing 
   ZC_EXPECT(session.getBorrowEvidenceRepository() == zc::none);
   ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
   ZC_EXPECT(session.getOwnershipCheckedMirModules().size() == 0);
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
@@ -3000,7 +3000,7 @@ ZC_TEST("CompilerSession publishes no partial Checker rail when a later module i
   ZC_EXPECT(session.getVerifiedDispatchFacts().size() == 0);
   ZC_EXPECT(session.getBorrowEvidenceRepository() == zc::none);
   ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
-  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 

@@ -3,4 +3,3 @@
 
 // CHECK-LITERAL: Error [ZOM4099]: Function body syntax has no admitted semantic contract
 // CHECK-LITERAL:   --> conformance/05-statements/body_shape_neg_02.zom:1:1
-// CHECK-NOT: ZOM9943

@@ -245,8 +245,9 @@ public:
   /// fact builders against verified MIR for sources the borrow checker rejects.
   ZC_NODISCARD zc::Maybe<StagedOwnershipMirForTesting> firstStagedBorrowSourceRejectionForTesting()
       const noexcept;
-  /// \brief Returns complete grouped IR failures retained after rejected lowering.
-  ZC_NODISCARD zc::ArrayPtr<const ir::IrDiagnosticGroup> getIrFailureGroups() const noexcept;
+  /// \brief Returns grouped actionable IR capability failures retained after rejection.
+  ZC_NODISCARD zc::ArrayPtr<const ir::IrCapabilityDiagnosticGroup> getIrCapabilityFailureGroups()
+      const noexcept;
   /// \brief Returns complete identity failures retained from rejected IR operations.
   ZC_NODISCARD zc::ArrayPtr<const identity::IdentityInvariant> getIrIdentityInvariantFailures()
       const noexcept;

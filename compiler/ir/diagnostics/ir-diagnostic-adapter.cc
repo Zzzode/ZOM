@@ -6,7 +6,6 @@
 #include "compiler/ir/diagnostics/ir-diagnostic-adapter.h"
 
 #include "compiler/diagnostics/core/diagnostic.h"
-#include "zc/core/string.h"
 
 namespace zomlang::compiler::ir {
 namespace {
@@ -97,36 +96,41 @@ zc::Maybe<identity::SourceSpan> cloneSpan(const IrFailureFact& fact) {
 
 }  // namespace
 
-struct IrDiagnosticGroup::Impl final {
-  Impl(diagnostics::DiagID diagnosticId, bool invariant,
-       zc::Maybe<identity::SourceSpan>&& diagnosticSpan, IrFailureFact&& firstFact)
-      : idValue(diagnosticId), invariantValue(invariant), spanValue(zc::mv(diagnosticSpan)) {
+struct IrCapabilityDiagnosticGroup::Impl final {
+  Impl(diagnostics::DiagID diagnosticId, zc::Maybe<identity::SourceSpan>&& diagnosticSpan,
+       IrFailureFact&& firstFact)
+      : idValue(diagnosticId), spanValue(zc::mv(diagnosticSpan)) {
     factValues.add(zc::mv(firstFact));
   }
 
   diagnostics::DiagID idValue;
-  bool invariantValue;
   zc::Maybe<identity::SourceSpan> spanValue;
   zc::Vector<IrFailureFact> factValues;
 };
 
-IrDiagnosticGroup::IrDiagnosticGroup(zc::Own<Impl>&& impl) noexcept : impl(zc::mv(impl)) {}
-IrDiagnosticGroup::IrDiagnosticGroup(IrDiagnosticGroup&&) noexcept = default;
-IrDiagnosticGroup& IrDiagnosticGroup::operator=(IrDiagnosticGroup&&) noexcept = default;
-IrDiagnosticGroup::~IrDiagnosticGroup() noexcept(false) = default;
+IrCapabilityDiagnosticGroup::IrCapabilityDiagnosticGroup(zc::Own<Impl>&& impl) noexcept
+    : impl(zc::mv(impl)) {}
+IrCapabilityDiagnosticGroup::IrCapabilityDiagnosticGroup(IrCapabilityDiagnosticGroup&&) noexcept =
+    default;
+IrCapabilityDiagnosticGroup& IrCapabilityDiagnosticGroup::operator=(
+    IrCapabilityDiagnosticGroup&&) noexcept = default;
+IrCapabilityDiagnosticGroup::~IrCapabilityDiagnosticGroup() noexcept(false) = default;
 
-diagnostics::DiagID IrDiagnosticGroup::diagnosticId() const noexcept { return impl->idValue; }
-bool IrDiagnosticGroup::isInvariant() const noexcept { return impl->invariantValue; }
-zc::Maybe<const identity::SourceSpan&> IrDiagnosticGroup::diagnosticSpan() const {
+diagnostics::DiagID IrCapabilityDiagnosticGroup::diagnosticId() const noexcept {
+  return impl->idValue;
+}
+zc::Maybe<const identity::SourceSpan&> IrCapabilityDiagnosticGroup::diagnosticSpan() const {
   ZC_IF_SOME(span, impl->spanValue) { return span; }
   return zc::none;
 }
-uint64_t IrDiagnosticGroup::occurrenceCount() const noexcept { return impl->factValues.size(); }
-zc::ArrayPtr<const IrFailureFact> IrDiagnosticGroup::facts() const noexcept {
+uint64_t IrCapabilityDiagnosticGroup::occurrenceCount() const noexcept {
+  return impl->factValues.size();
+}
+zc::ArrayPtr<const IrFailureFact> IrCapabilityDiagnosticGroup::facts() const noexcept {
   return impl->factValues.asPtr();
 }
 
-diagnostics::DiagID irDiagnosticId(IrFailureKind kind, IrFailurePhase phase) noexcept {
+diagnostics::DiagID capabilityDiagnosticId(IrFailureKind kind) noexcept {
   using diagnostics::DiagID;
   switch (kind) {
     case IrFailureKind::UnsupportedTargetCapability:
@@ -137,8 +141,6 @@ diagnostics::DiagID irDiagnosticId(IrFailureKind kind, IrFailurePhase phase) noe
       return DiagID::InstantiationBudgetExceeded;
     case IrFailureKind::OutputCreationFailed:
       return DiagID::IrOutputCreationFailed;
-    case IrFailureKind::CanonicalCodecMismatch:
-      return DiagID::IrCanonicalCodecMismatch;
     case IrFailureKind::InputRevisionMismatch:
     case IrFailureKind::MissingRequiredFact:
     case IrFailureKind::AdditionalFact:
@@ -153,100 +155,34 @@ diagnostics::DiagID irDiagnosticId(IrFailureKind kind, IrFailurePhase phase) noe
     case IrFailureKind::InvalidAbi:
     case IrFailureKind::UnresolvedDispatch:
     case IrFailureKind::BackendTranslationRejected:
-      break;
-  }
-
-  switch (phase) {
-    case IrFailurePhase::CheckedModuleAssembly:
-      return DiagID::CheckedModuleInvariant;
-    case IrFailurePhase::HirConstruction:
-    case IrFailurePhase::HirVerification:
-      return DiagID::HirInvariant;
-    case IrFailurePhase::MirConstruction:
-    case IrFailurePhase::BuiltMirVerification:
-      return DiagID::BuiltMirInvariant;
-    case IrFailurePhase::ProofValidation:
-      return DiagID::OwnershipProofInvariant;
-    case IrFailurePhase::CleanupElaboration:
-    case IrFailurePhase::CoroutineElaboration:
-    case IrFailurePhase::ExecutableMirVerification:
-      return DiagID::ExecutableMirInvariant;
-    case IrFailurePhase::Monomorphization:
-    case IrFailurePhase::TargetSelection:
-    case IrFailurePhase::LirLowering:
-    case IrFailurePhase::LirVerification:
-      return DiagID::LirInvariant;
-    case IrFailurePhase::LlvmTranslation:
-    case IrFailurePhase::ObjectEmission:
-      return DiagID::BackendInvariant;
-    case IrFailurePhase::FeatureBoundaryVerification:
-      return DiagID::FeatureBoundaryInvariant;
-    // RFC 0043 link/publication phases reuse the backend invariant family; the
-    // RFC adds no new diagnostic family.
-    case IrFailurePhase::LinkPlanConstruction:
-    case IrFailurePhase::LinkerInvocation:
-    case IrFailurePhase::ExecutablePublication:
-      return DiagID::BackendInvariant;
+    case IrFailureKind::CanonicalCodecMismatch:
+      ZC_UNREACHABLE
   }
   ZC_UNREACHABLE
 }
 
-zc::Vector<IrDiagnosticGroup> groupIrCapabilityFailures(
+zc::Vector<IrCapabilityDiagnosticGroup> groupIrCapabilityFailures(
     const SortedCapabilityFailureFacts& failures) {
-  zc::Vector<IrDiagnosticGroup> groups;
+  zc::Vector<IrCapabilityDiagnosticGroup> groups;
   for (const auto& fact : failures.facts()) {
-    const auto id = irDiagnosticId(fact.kind(), fact.phase());
+    const auto id = capabilityDiagnosticId(fact.kind());
     if (!groups.empty() && groups.back().diagnosticId() == id &&
         sameSpan(groups.back().diagnosticSpan(), fact.sourceSpan()) &&
         sameCapabilityRoot(groups.back().facts()[0], fact)) {
       groups.back().impl->factValues.add(fact.clone());
       continue;
     }
-    groups.add(IrDiagnosticGroup(
-        zc::heap<IrDiagnosticGroup::Impl>(id, false, cloneSpan(fact), fact.clone())));
+    groups.add(IrCapabilityDiagnosticGroup(
+        zc::heap<IrCapabilityDiagnosticGroup::Impl>(id, cloneSpan(fact), fact.clone())));
   }
   return groups;
 }
 
-zc::Vector<IrDiagnosticGroup> groupIrInvariantFailures(
-    const SortedIrInvariantFailureFacts& failures) {
-  zc::Vector<IrDiagnosticGroup> groups;
-  for (const auto& fact : failures.facts()) {
-    const auto id = irDiagnosticId(fact.kind(), fact.phase());
-    if (!groups.empty() && groups.back().diagnosticId() == id &&
-        sameSpan(groups.back().diagnosticSpan(), fact.sourceSpan())) {
-      groups.back().impl->factValues.add(fact.clone());
-      continue;
-    }
-    groups.add(IrDiagnosticGroup(
-        zc::heap<IrDiagnosticGroup::Impl>(id, true, cloneSpan(fact), fact.clone())));
-  }
-  return groups;
-}
-
-void emitIrDiagnosticGroups(diagnostics::DiagnosticEngine& engine,
-                            zc::ArrayPtr<const IrDiagnosticGroup> groups,
-                            zc::Maybe<const IrDiagnosticLocationResolver&> locationResolver) {
+void emitIrCapabilityDiagnosticGroups(diagnostics::DiagnosticEngine& engine,
+                                      zc::ArrayPtr<const IrCapabilityDiagnosticGroup> groups) {
   for (const auto& group : groups) {
-    source::SourceLoc location;
-    ZC_IF_SOME(span, group.diagnosticSpan()) {
-      ZC_IF_SOME(resolver, locationResolver) {
-        ZC_IF_SOME(resolved, resolver.resolve(span)) { location = resolved; }
-      }
-    }
-    if (group.isInvariant()) {
-      engine.emit(diagnostics::Diagnostic(group.diagnosticId(), location,
-                                          zc::str(group.occurrenceCount())));
-    } else {
-      engine.emit(diagnostics::Diagnostic(group.diagnosticId(), location));
-    }
+    engine.emit(diagnostics::Diagnostic(group.diagnosticId(), source::SourceLoc()));
   }
-}
-
-bool projectIrIdentityInvariantFailures(basic::BoundedIncidentSet& incidents,
-                                        const SortedIdentityInvariantFacts& failures) {
-  auto projected = identity::IdentityDiagnosticProjector::projectAll(failures.facts());
-  return projected != zc::none && incidents.merge(ZC_ASSERT_NONNULL(projected));
 }
 
 }  // namespace zomlang::compiler::ir

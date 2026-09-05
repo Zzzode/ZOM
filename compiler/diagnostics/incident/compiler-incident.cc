@@ -33,7 +33,7 @@ identity::Sha256Digest schemaDigest() {
   zc::Vector<uint8_t> schema;
   appendText(schema, kSchemaDomain);
   schema.add(0);
-  appendUint32(schema, 12 * 13 * 14 + 4 * 10 + 4 * 5 + 5 * 3 + 5 * 8 * 5 + 4 * 5);
+  appendUint32(schema, 12 * 13 * 14 + 4 * 10 + 4 * 5 + 5 * 3 + 5 * 8 * 5 + 4 * 5 + 19 * 19 * 6);
   for (uint32_t phase = 1; phase <= 12; ++phase) {
     for (uint32_t kind = 1; kind <= 13; ++kind) {
       for (uint32_t producer = 1; producer <= 14; ++producer) {
@@ -50,6 +50,19 @@ identity::Sha256Digest schemaDigest() {
       appendUint32(schema, phase);
       appendUint32(schema, kind);
       appendUint32(schema, 1);
+    }
+  }
+  for (uint32_t phase = 1; phase <= 19; ++phase) {
+    const bool backendPhase = phase == 14 || phase == 15 || phase >= 17;
+    const auto domain =
+        backendPhase ? basic::CompilerIncidentDomain::Backend : basic::CompilerIncidentDomain::Ir;
+    for (uint32_t kind = 1; kind <= 19; ++kind) {
+      for (uint32_t producer = 1; producer <= 6; ++producer) {
+        appendUint16(schema, static_cast<uint16_t>(domain));
+        appendUint32(schema, phase);
+        appendUint32(schema, kind);
+        appendUint32(schema, producer);
+      }
     }
   }
   for (uint32_t phase = 1; phase <= 4; ++phase) {

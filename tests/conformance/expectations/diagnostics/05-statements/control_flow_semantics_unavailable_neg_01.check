@@ -6,4 +6,3 @@
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |   while (true) { return 1; }
 // CHECK-LITERAL:   |   ^
-// CHECK-NOT: ZOM9943

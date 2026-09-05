@@ -6,4 +6,3 @@
 // CHECK-LITERAL: Error [ZOM4091]: A positive marker implementation requires unsafe
 // CHECK:   --> {{.*}}marker_impl_qualified_requires_unsafe_neg_30.zom:3:1
 // CHECK-NOT: ZOM4089
-// CHECK-NOT: ZOM9928

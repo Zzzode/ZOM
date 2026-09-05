@@ -1238,11 +1238,10 @@ ZC_TEST("CompilerSessionTest.RejectsUninitializedLocalUseWithoutPublishingOwners
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(!session->checkSources());
-  const auto failures = session->getIrFailureGroups();
+  const auto failures = session->getIrCapabilityFailureGroups();
   ZC_EXPECT(failures.size() == 0);
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UninitializedPlaceUse) == 1);
   ZC_EXPECT(childDiagnosticCount(captured, diagnostics::DiagID::PlaceBecameUnavailableHere) == 1);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::OwnershipProofInvariant) == 0);
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
 }
 
@@ -1258,10 +1257,9 @@ ZC_TEST("CompilerSessionTest.RejectsUseAfterMoveWithoutPublishingOwnershipInputs
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(!session->checkSources());
-  ZC_EXPECT(session->getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session->getIrCapabilityFailureGroups().size() == 0);
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UseAfterMove) == 1);
   ZC_EXPECT(childDiagnosticCount(captured, diagnostics::DiagID::ValueMovedHere) == 1);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::OwnershipProofInvariant) == 0);
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
 }
 
@@ -1349,7 +1347,6 @@ ZC_TEST(
   ZC_EXPECT(!session->checkSources());
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UninitializedPlaceUse) == 1);
   ZC_EXPECT(childDiagnosticCount(captured, diagnostics::DiagID::PlaceBecameUnavailableHere) == 1);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::OwnershipProofInvariant) == 0);
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
 }
 
@@ -1367,7 +1364,6 @@ ZC_TEST(
   ZC_EXPECT(!session->checkSources());
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UninitializedPlaceUse) == 1);
   ZC_EXPECT(childDiagnosticCount(captured, diagnostics::DiagID::PlaceBecameUnavailableHere) == 1);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::OwnershipProofInvariant) == 0);
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
 }
 

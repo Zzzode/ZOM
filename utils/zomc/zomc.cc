@@ -40,7 +40,9 @@
 #include "compiler/format/lexeme-printer.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/crypto/sha256.h"
+#include "compiler/identity/diagnostics/identity-diagnostic-projector.h"
 #include "compiler/ir/diagnostics/ir-diagnostic-adapter.h"
+#include "compiler/ir/diagnostics/ir-diagnostic-projector.h"
 #include "compiler/ir/link/link-plan-codec.h"
 #include "compiler/ir/publication/executable-publication.h"
 #include "compiler/ir/target/host-execution-profile.h"
@@ -694,9 +696,9 @@ public:
       return diagnoseEmission<diagnostics::DiagID::TargetCapabilityUnavailable>(
           source::SourceLoc());
     }
-    session->getDiagnosticEngine().diagnose<diagnostics::DiagID::LirInvariant>(
-        source::SourceLoc(), zc::str(uint64_t{1}));
-    context.error(zc::StringPtr());
+    ZC_REQUIRE(commandIncidents.add(ir::IrDiagnosticProjector::project(issue)),
+               "target-selection incident must fit the registered inventory");
+    reportSessionIncident();
     return true;
   }
 
@@ -1406,22 +1408,22 @@ private:
     return slash == 1 ? zc::str("/") : zc::heapString(path.slice(0, slash - 1));
   }
 
-  // Routes an RFC 0010 IR operation rejection (a failed link-plan verification or
-  // executable publication) into the session diagnostic engine so its
-  // LinkPlanConstruction / LinkerInvocation / ExecutablePublication failure facts
-  // materialize as their canonical ZOMxxxx diagnostics, instead of being dropped
-  // for a bare error string. A verified result carries no failure and is ignored.
+  // Routes an RFC 0010 operation rejection to its public capability or internal incident rail.
   template <typename VerifiedValue>
   void materializeIrRejection(const ir::IrOperationResult<VerifiedValue>& result) {
     diagnostics::DiagnosticEngine& engine = session->getDiagnosticEngine();
     if (result.isCapabilityRejected()) {
       auto groups = ir::groupIrCapabilityFailures(result.capabilityFailures());
-      ir::emitIrDiagnosticGroups(engine, groups.asPtr());
+      ir::emitIrCapabilityDiagnosticGroups(engine, groups.asPtr());
     } else if (result.isIrInvariantRejected()) {
-      auto groups = ir::groupIrInvariantFailures(result.invariantFailures());
-      ir::emitIrDiagnosticGroups(engine, groups.asPtr());
+      auto projected = ir::IrDiagnosticProjector::projectAll(result.invariantFailures());
+      ZC_REQUIRE(projected != zc::none && commandIncidents.merge(ZC_ASSERT_NONNULL(projected)),
+                 "IR incident projection must fit the registered inventory");
     } else if (result.isIdentityInvariantRejected()) {
-      ir::emitIrIdentityInvariantFailures(engine, result.identityFailures());
+      auto projected =
+          identity::IdentityDiagnosticProjector::projectAll(result.identityFailures().facts());
+      ZC_REQUIRE(projected != zc::none && commandIncidents.merge(ZC_ASSERT_NONNULL(projected)),
+                 "IR identity incident projection must fit the registered inventory");
     }
   }
 
@@ -1504,6 +1506,7 @@ private:
     auto plan = ir::LinkPlanVerifier::verify(zc::mv(request));
     if (!plan.isVerified()) {
       materializeIrRejection(plan);
+      if (reportSessionIncident()) { return true; }
       return zc::str("Native link plan verification failed.");
     }
 
@@ -1523,11 +1526,13 @@ private:
         ir::PublicationRecoveryRequired pub = zc::mv(recovery).takePublication();
         ZC_IF_SOME(primary, pub.primary) { materializeIrRejection(primary); }
       }
+      if (reportSessionIncident()) { return true; }
       return zc::str("Native publication requires explicit recovery.");
     }
     if (publication.isRejected()) {
       ir::PublicationRejection rejection = zc::mv(publication).takeRejected();
       materializeIrRejection(rejection);
+      if (reportSessionIncident()) { return true; }
       return zc::str("Native linking or publication failed.");
     }
     ir::PublishedExecutableArtifact artifact = zc::mv(publication).takePublished();
@@ -1589,7 +1594,9 @@ private:
 
 private:
   bool reportSessionIncident() {
-    const auto& incidents = session->getIncidents();
+    basic::BoundedIncidentSet incidents;
+    ZC_REQUIRE(incidents.merge(session->getIncidents()) && incidents.merge(commandIncidents),
+               "request incidents must fit the registered inventory");
     if (incidents.empty()) { return false; }
     auto record = diagnostics::renderCompilerIncident(VERSION_STRING, incidents);
     context.error(record == zc::none ? "error: internal compiler error"_zc
@@ -1608,6 +1615,7 @@ private:
   package::RawPackageCompilationRequest packageRequest;
   zc::Vector<zc::String> manifestPaths;
   zc::Maybe<source::core::VerifiedCoreDistribution> coreDistribution;
+  basic::BoundedIncidentSet commandIncidents;
   bool fmtCheckOnly = false;
   zc::Vector<zc::String> fmtSources;
 };

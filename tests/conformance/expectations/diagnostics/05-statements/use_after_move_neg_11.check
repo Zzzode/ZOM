@@ -6,4 +6,3 @@
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 6 |     owned;
 // CHECK-LITERAL:   |     ^
-// CHECK-NOT: ZOM9943
