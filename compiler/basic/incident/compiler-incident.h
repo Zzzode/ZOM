@@ -19,6 +19,10 @@ namespace zomlang::compiler::checker {
 class CheckerDiagnosticProjector;
 }
 
+namespace zomlang::compiler::binder {
+class BinderDiagnosticProjector;
+}
+
 namespace zomlang::compiler::basic {
 
 enum class CompilerIncidentDomain : uint16_t {
@@ -51,6 +55,7 @@ private:
   friend class CompilerIncidentDescriptor;
   friend class identity::IdentityDiagnosticProjector;
   friend class checker::CheckerDiagnosticProjector;
+  friend class binder::BinderDiagnosticProjector;
 };
 
 /// \brief Registry-assigned incident kind key within one domain.
@@ -69,6 +74,7 @@ private:
   friend class CompilerIncidentDescriptor;
   friend class identity::IdentityDiagnosticProjector;
   friend class checker::CheckerDiagnosticProjector;
+  friend class binder::BinderDiagnosticProjector;
 };
 
 /// \brief Registry-assigned producer key within one domain.
@@ -87,6 +93,7 @@ private:
   friend class CompilerIncidentDescriptor;
   friend class identity::IdentityDiagnosticProjector;
   friend class checker::CheckerDiagnosticProjector;
+  friend class binder::BinderDiagnosticProjector;
 };
 
 /// \brief Privacy-preserving shape of one internal compiler failure.
@@ -128,12 +135,13 @@ private:
   friend class BoundedIncidentSet;
   friend class identity::IdentityDiagnosticProjector;
   friend class checker::CheckerDiagnosticProjector;
+  friend class binder::BinderDiagnosticProjector;
 };
 
 /// \brief Allocation-free deterministic aggregation of registered incident shapes.
 class BoundedIncidentSet final {
 public:
-  static constexpr size_t maximumDescriptors = 12 * 13 * 14 + 4 * 10 + 4 * 5;
+  static constexpr size_t maximumDescriptors = 12 * 13 * 14 + 4 * 10 + 4 * 5 + 5 * 3;
 
   ZC_NODISCARD bool add(CompilerIncidentDescriptor descriptor) noexcept;
   ZC_NODISCARD bool merge(const BoundedIncidentSet& other) noexcept;

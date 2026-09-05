@@ -19,11 +19,6 @@
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
 
-namespace zomlang::compiler::diagnostics {
-enum class DiagID : uint32_t;
-class DiagnosticEngine;
-}  // namespace zomlang::compiler::diagnostics
-
 namespace zomlang::compiler::driver::module_graph_query {
 class MaterializedModuleSkeleton;
 class MaterializedOwnerBody;
@@ -655,39 +650,6 @@ struct BinderInvariantFact final {
   BinderEmitterSite emitterSite;
   uint32_t schemaPreorderOrdinal;
 };
-
-ZC_NODISCARD diagnostics::DiagID binderInvariantDiagnosticId(BinderInvariantKind kind);
-
-class BinderInvariantDiagnosticGroup final {
-public:
-  BinderInvariantDiagnosticGroup(BinderInvariantDiagnosticGroup&&) noexcept = default;
-  BinderInvariantDiagnosticGroup& operator=(BinderInvariantDiagnosticGroup&&) noexcept = default;
-  ZC_DISALLOW_COPY(BinderInvariantDiagnosticGroup);
-  ZC_NODISCARD diagnostics::DiagID diagnosticId() const noexcept;
-  ZC_NODISCARD zc::Maybe<const identity::UnbrandedSourceRange&> diagnosticRange() const;
-  ZC_NODISCARD uint64_t occurrenceCount() const noexcept;
-
-private:
-  BinderInvariantDiagnosticGroup(diagnostics::DiagID diagnosticId,
-                                 zc::Maybe<identity::UnbrandedSourceRange>&& diagnosticRange,
-                                 uint64_t occurrenceCount) noexcept;
-  diagnostics::DiagID idValue;
-  zc::Maybe<identity::UnbrandedSourceRange> rangeValue;
-  uint64_t countValue;
-  friend zc::Maybe<zc::Vector<BinderInvariantDiagnosticGroup>> groupBinderInvariants(
-      zc::ArrayPtr<const BinderInvariantFact> facts);
-};
-
-/// \brief Sorts and groups one module's invariant facts by registered ID and anchor.
-ZC_NODISCARD zc::Maybe<zc::Vector<BinderInvariantDiagnosticGroup>> groupBinderInvariants(
-    zc::ArrayPtr<const BinderInvariantFact> facts);
-
-void emitBinderInvariantGroups(diagnostics::DiagnosticEngine& diagnostics,
-                               zc::ArrayPtr<const BinderInvariantDiagnosticGroup> groups);
-
-/// \brief Emits one registered fatal binder invariant without inventing an anchor.
-void emitBinderInvariant(diagnostics::DiagnosticEngine& diagnostics,
-                         const BinderInvariantFact& fact);
 
 class VerifiedExportSurface final {
 public:

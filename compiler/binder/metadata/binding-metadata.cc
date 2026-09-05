@@ -5,11 +5,7 @@
 
 #include "compiler/binder/metadata/binding-metadata.h"
 
-#include "compiler/diagnostics/core/diagnostic-engine.h"
-#include "compiler/diagnostics/core/diagnostic.h"
 #include "compiler/identity/crypto/sha256.h"
-#include "compiler/identity/diagnostics/identity-invariant.h"
-#include "zc/core/string.h"
 #include "zc/core/vector.h"
 
 namespace zomlang::compiler::binder {
@@ -23,17 +19,6 @@ void appendUint64(zc::Vector<uint8_t>& bytes, uint64_t value) {
     bytes.add(static_cast<uint8_t>(value >> shift));
     if (shift == 0) { break; }
   }
-}
-
-int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) {
-  const size_t count = left.size() < right.size() ? left.size() : right.size();
-  for (size_t index = 0; index < count; ++index) {
-    if (left[index] < right[index]) { return -1; }
-    if (left[index] > right[index]) { return 1; }
-  }
-  if (left.size() < right.size()) { return -1; }
-  if (left.size() > right.size()) { return 1; }
-  return 0;
 }
 
 }  // namespace
@@ -396,108 +381,6 @@ ModuleAliasExportNamesRevision ModuleAliasExportNamesRevision::fromDigest(
 }
 const identity::Sha256Digest& ModuleAliasExportNamesRevision::digest() const noexcept {
   return value;
-}
-
-diagnostics::DiagID binderInvariantDiagnosticId(BinderInvariantKind kind) {
-  using diagnostics::DiagID;
-  switch (kind) {
-    case BinderInvariantKind::MalformedScopeGraph:
-      return DiagID::BinderMalformedScopeGraph;
-    case BinderInvariantKind::MissingRequiredResolution:
-      return DiagID::BinderMissingRequiredResolution;
-    case BinderInvariantKind::AliasCycle:
-      return DiagID::BinderAliasCycle;
-    case BinderInvariantKind::InvalidBindingFact:
-      return DiagID::BinderInvalidFact;
-    case BinderInvariantKind::InvalidEmitterOrdinal:
-      return DiagID::BinderInvalidEmitterOrdinal;
-  }
-  ZC_UNREACHABLE
-}
-
-BinderInvariantDiagnosticGroup::BinderInvariantDiagnosticGroup(
-    diagnostics::DiagID diagnosticId, zc::Maybe<identity::UnbrandedSourceRange>&& diagnosticRange,
-    uint64_t occurrenceCount) noexcept
-    : idValue(diagnosticId), rangeValue(zc::mv(diagnosticRange)), countValue(occurrenceCount) {}
-
-diagnostics::DiagID BinderInvariantDiagnosticGroup::diagnosticId() const noexcept {
-  return idValue;
-}
-zc::Maybe<const identity::UnbrandedSourceRange&> BinderInvariantDiagnosticGroup::diagnosticRange()
-    const {
-  ZC_IF_SOME(value, rangeValue) { return value; }
-  return zc::none;
-}
-uint64_t BinderInvariantDiagnosticGroup::occurrenceCount() const noexcept { return countValue; }
-
-zc::Maybe<zc::Vector<BinderInvariantDiagnosticGroup>> groupBinderInvariants(
-    zc::ArrayPtr<const BinderInvariantFact> facts) {
-  zc::Vector<size_t> order;
-  zc::Vector<zc::Array<uint8_t>> rangeBytes;
-  zc::Vector<bool> hasRange;
-  for (size_t index = 0; index < facts.size(); ++index) {
-    if (index != 0 && facts[index].module != facts[0].module) { return zc::none; }
-    order.add(index);
-    ZC_IF_SOME(range, facts[index].diagnosticRange) {
-      hasRange.add(true);
-      rangeBytes.add(range.encode());
-    } else {
-      hasRange.add(false);
-      rangeBytes.add(zc::heapArray<uint8_t>(0));
-    }
-  }
-  const auto less = [&](size_t left, size_t right) {
-    const auto leftKind = static_cast<uint8_t>(facts[left].kind);
-    const auto rightKind = static_cast<uint8_t>(facts[right].kind);
-    if (leftKind != rightKind) { return leftKind < rightKind; }
-    if (hasRange[left] != hasRange[right]) { return !hasRange[left]; }
-    const int rangeOrder = compareBytes(rangeBytes[left].asPtr(), rangeBytes[right].asPtr());
-    if (rangeOrder != 0) { return rangeOrder < 0; }
-    const auto leftSite = static_cast<uint8_t>(facts[left].emitterSite);
-    const auto rightSite = static_cast<uint8_t>(facts[right].emitterSite);
-    if (leftSite != rightSite) { return leftSite < rightSite; }
-    return facts[left].schemaPreorderOrdinal < facts[right].schemaPreorderOrdinal;
-  };
-  for (size_t index = 1; index < order.size(); ++index) {
-    const size_t current = order[index];
-    size_t insertion = index;
-    while (insertion > 0 && less(current, order[insertion - 1])) {
-      order[insertion] = order[insertion - 1];
-      --insertion;
-    }
-    order[insertion] = current;
-  }
-  zc::Vector<BinderInvariantDiagnosticGroup> groups;
-  for (const auto index : order) {
-    const auto id = binderInvariantDiagnosticId(facts[index].kind);
-    zc::Maybe<const identity::UnbrandedSourceRange&> range;
-    ZC_IF_SOME(value, facts[index].diagnosticRange) { range = value; }
-    if (groups.size() != 0 && groups.back().diagnosticId() == id &&
-        identity::UnbrandedSourceRange::same(groups.back().diagnosticRange(), range)) {
-      ++groups.back().countValue;
-      continue;
-    }
-    zc::Maybe<identity::UnbrandedSourceRange> ownedRange;
-    ZC_IF_SOME(value, range) { ownedRange = value.clone(); }
-    groups.add(BinderInvariantDiagnosticGroup(id, zc::mv(ownedRange), 1));
-  }
-  return groups;
-}
-
-void emitBinderInvariantGroups(diagnostics::DiagnosticEngine& diagnostics,
-                               zc::ArrayPtr<const BinderInvariantDiagnosticGroup> groups) {
-  for (const auto& group : groups) {
-    source::SourceLoc location;
-    diagnostics.emit(
-        diagnostics::Diagnostic(group.diagnosticId(), location, zc::str(group.occurrenceCount())));
-  }
-}
-
-void emitBinderInvariant(diagnostics::DiagnosticEngine& diagnostics,
-                         const BinderInvariantFact& fact) {
-  source::SourceLoc location;
-  diagnostics.emit(
-      diagnostics::Diagnostic(binderInvariantDiagnosticId(fact.kind), location, zc::str(1u)));
 }
 
 }  // namespace zomlang::compiler::binder

@@ -38,23 +38,6 @@ public:
   }
 };
 
-identity::ModuleId moduleIdentity() {
-  using namespace tests::test_identity_detail;
-  identity::SemanticContextFactory factory;
-  auto context = factory.issue();
-  ZC_REQUIRE(context != zc::none);
-  ZC_IF_SOME(value, context) {
-    auto authorities = identity::IdentityInternerSet::create(factory, value);
-    ZC_REQUIRE(authorities != zc::none);
-    ZC_IF_SOME(interner, authorities) {
-      auto result = interner.internModule(value, module());
-      ZC_REQUIRE(result.is<identity::ModuleId>());
-      return result.get<identity::ModuleId>();
-    }
-  }
-  ZC_UNREACHABLE;
-}
-
 }  // namespace
 
 ZC_TEST("BindingDiagnosticAdapter.EmitsZeroArgumentControlTransferFailures") {
@@ -136,51 +119,6 @@ ZC_TEST("BindingDiagnosticAdapter.RejectsUnsupportedControlTransferCodes") {
   ZC_EXPECT(captured.locations.empty());
   ZC_EXPECT(captured.argumentCounts.empty());
   ZC_EXPECT(diagnostics.errorCount() == 0);
-}
-
-ZC_TEST("BindingMetadata.GroupsAndEmitsEveryInvariantKind") {
-  const auto module = moduleIdentity();
-  const BinderInvariantKind kinds[] = {
-      BinderInvariantKind::InvalidEmitterOrdinal,
-      BinderInvariantKind::MissingRequiredResolution,
-      BinderInvariantKind::MalformedScopeGraph,
-      BinderInvariantKind::InvalidBindingFact,
-      BinderInvariantKind::AliasCycle,
-      BinderInvariantKind::MissingRequiredResolution,
-  };
-  const auto invariantKinds = zc::arrayPtr(kinds);
-  zc::Vector<BinderInvariantFact> facts;
-  for (size_t index = 0; index < invariantKinds.size(); ++index) {
-    zc::Maybe<identity::UnbrandedSourceRange> noRange;
-    facts.add(BinderInvariantFact{invariantKinds[index], module, zc::mv(noRange),
-                                  BinderEmitterSite::ModuleSkeleton,
-                                  static_cast<uint32_t>(invariantKinds.size() - index)});
-  }
-
-  auto groups = groupBinderInvariants(facts.asPtr());
-  ZC_REQUIRE(groups != zc::none);
-  ZC_IF_SOME(values, groups) {
-    ZC_REQUIRE(values.size() == 5);
-    ZC_EXPECT(values[0].diagnosticId() == diagnostics::DiagID::BinderMalformedScopeGraph);
-    ZC_EXPECT(values[1].diagnosticId() == diagnostics::DiagID::BinderMissingRequiredResolution);
-    ZC_EXPECT(values[1].occurrenceCount() == 2);
-    ZC_EXPECT(values[2].diagnosticId() == diagnostics::DiagID::BinderAliasCycle);
-    ZC_EXPECT(values[3].diagnosticId() == diagnostics::DiagID::BinderInvalidFact);
-    ZC_EXPECT(values[4].diagnosticId() == diagnostics::DiagID::BinderInvalidEmitterOrdinal);
-    for (const auto& group : values) { ZC_EXPECT(group.diagnosticRange() == zc::none); }
-
-    source::SourceManager sources;
-    diagnostics::DiagnosticEngine diagnostics(sources);
-    auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-    const auto& captured = *consumer;
-    diagnostics.addConsumer(zc::mv(consumer));
-    emitBinderInvariantGroups(diagnostics, values.asPtr());
-    ZC_REQUIRE(captured.ids.size() == values.size());
-    for (size_t index = 0; index < values.size(); ++index) {
-      ZC_EXPECT(captured.ids[index] == values[index].diagnosticId());
-      ZC_EXPECT(captured.argumentCounts[index] == 1);
-    }
-  }
 }
 
 }  // namespace zomlang::compiler::binder
