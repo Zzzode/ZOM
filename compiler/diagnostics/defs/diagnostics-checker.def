@@ -153,33 +153,3 @@ DIAG(4098, ExpressionStatementSemanticsUnavailable, kError,
      "Expression statement syntax has no admitted semantic contract", 0)
 DIAG(4099, FunctionBodySemanticsUnavailable, kError,
      "Function body syntax has no admitted semantic contract", 0)
-
-DIAG(9927, CheckerInputReceiptMismatch, kFatal,
-     "Internal checker input receipt is inconsistent ({0} occurrence(s))", 1)
-DIAG(9928, CheckerMissingRequiredFact, kFatal,
-     "Internal checker required fact is missing ({0} occurrence(s))", 1)
-DIAG(9929, CheckerInvalidFact, kFatal, "Internal checker fact is invalid ({0} occurrence(s))", 1)
-DIAG(9930, CheckerStaleRevision, kFatal, "Internal checker revision is stale ({0} occurrence(s))",
-     1)
-DIAG(9931, CheckerViewMismatch, kFatal,
-     "Internal checker semantic view is inconsistent ({0} occurrence(s))", 1)
-DIAG(9932, CheckerInferenceLifecycle, kFatal,
-     "Internal checker inference lifecycle is invalid ({0} occurrence(s))", 1)
-DIAG(9933, CheckerSolverInvariant, kFatal,
-     "Internal checker solver state is invalid ({0} occurrence(s))", 1)
-DIAG(9934, CheckerInvalidEmitterOrdinal, kFatal,
-     "Internal checker diagnostic ordinal is invalid ({0} occurrence(s))", 1)
-DIAG(9935, CheckerCanonicalCodecMismatch, kFatal,
-     "Internal checker canonical encoding is invalid ({0} occurrence(s))", 1)
-DIAG(9936, CheckerAdditionalFact, kFatal,
-     "Internal checker fact is not authorized ({0} occurrence(s))", 1)
-DIAG(9937, DispatchInputMismatch, kFatal,
-     "Internal dispatch input is inconsistent ({0} occurrence(s))", 1)
-DIAG(9938, DispatchMissingFact, kFatal,
-     "Internal dispatch fact is missing ({0} occurrence(s))", 1)
-DIAG(9939, DispatchAdditionalFact, kFatal,
-     "Internal dispatch fact is not authorized ({0} occurrence(s))", 1)
-DIAG(9940, DispatchInvalidFact, kFatal,
-     "Internal dispatch fact is invalid ({0} occurrence(s))", 1)
-DIAG(9941, DispatchCanonicalCodecMismatch, kFatal,
-     "Internal dispatch canonical encoding is invalid ({0} occurrence(s))", 1)

@@ -34,6 +34,7 @@
 #include "compiler/checker/checker-identity-authority.h"
 #include "compiler/checker/diagnostics/borrow-interface-diagnostic-adapter.h"
 #include "compiler/checker/diagnostics/checker-diagnostic-adapter.h"
+#include "compiler/checker/diagnostics/checker-diagnostic-projector.h"
 #include "compiler/checker/facts/checked-facts-repository.h"
 #include "compiler/checker/facts/coherence-facts.h"
 #include "compiler/checker/facts/cross-module-facts.h"
@@ -2616,10 +2617,10 @@ bool CompilerSession::checkSources() {
       [&](identity::ModuleId module,
           zc::Vector<checker::signature::CheckerVerificationFailure>&& failures) {
         for (auto& failure : failures) { impl->checkerFailures.add(zc::mv(failure)); }
-        ZC_IF_SOME(parsed, parsedFor(module)) {
-          checker::emitCheckerVerificationFailures(*impl->diagnosticEngine, parsed,
-                                                   impl->checkerFailures.asPtr(), impl->incidents);
-        }
+        auto projected =
+            checker::CheckerDiagnosticProjector::projectAll(impl->checkerFailures.asPtr());
+        ZC_REQUIRE(projected != zc::none && impl->incidents.merge(ZC_ASSERT_NONNULL(projected)),
+                   "checker incident projection must fit the registered inventory");
         return false;
       };
   const auto rejectOne = [&](identity::ModuleId module,
@@ -2634,10 +2635,9 @@ bool CompilerSession::checkSources() {
   };
   const auto rejectDispatch = [&](identity::ModuleId module,
                                   checker::dispatch::DispatchFactsInvariantRejected&& rejected) {
-    ZC_IF_SOME(parsed, parsedFor(module)) {
-      checker::emitDispatchVerificationFailures(*impl->diagnosticEngine, parsed,
-                                                rejected.failures.asPtr(), impl->incidents);
-    }
+    auto projected = checker::CheckerDiagnosticProjector::projectAll(rejected.failures.asPtr());
+    ZC_REQUIRE(projected != zc::none && impl->incidents.merge(ZC_ASSERT_NONNULL(projected)),
+               "dispatch incident projection must fit the registered inventory");
     return false;
   };
   const auto emitSignatureSource = [&](const binder::VerifiedParsedModule& parsed,

@@ -39,7 +39,6 @@ ZC_TEST("CheckerDiagnosticId.ExcludesDiagnosticsOwnedByOtherCheckerStages") {
   ZC_EXPECT(CheckerNoteId::fromDiagnosticId(diagnostics::DiagID::ValueMovedHere) == zc::none);
   ZC_EXPECT(CheckerErrorId::fromDiagnosticId(
                 diagnostics::DiagID::MarkerInterfaceRequiresBodylessImpl) == zc::none);
-  ZC_EXPECT(CheckerErrorId::fromDiagnosticId(diagnostics::DiagID::CheckerInvalidFact) == zc::none);
 }
 
 }  // namespace zomlang::compiler::checker::checked

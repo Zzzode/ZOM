@@ -431,7 +431,7 @@ ZC_TEST("CompilerSessionTest.PublishesRetainedMissingLookupDiagnosticDuringBindi
   ZC_REQUIRE(session->parseSources());
   ZC_EXPECT(!session->bindSources());
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UndefinedIdentifier) == 1);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::CheckerMissingRequiredFact) == 0);
+  ZC_EXPECT(session->getIncidents().empty());
 }
 
 ZC_TEST("CompilerSessionTest.RejectsPackageParsingWithoutCoreDistribution") {
@@ -631,7 +631,7 @@ ZC_TEST("CompilerSessionTest.ErrorPropagateOrdinaryUnionUsesCheckerDiagnostic") 
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(!session->checkSources());
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ErrorPropagateNonUnion) == 1);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::CheckerMissingRequiredFact) == 0);
+  ZC_EXPECT(session->getIncidents().empty());
 }
 
 ZC_TEST("CompilerSessionTest.ArrayIndexReturnUsesFunctionBodyUnavailableDiagnostic") {
@@ -1307,11 +1307,11 @@ ZC_TEST("CompilerSessionTest.AcceptsBinaryInitializerInSequentialLocalBody") {
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
-ZC_TEST("CompilerSessionTest.RejectsLogicalInitializerInSequentialLocalBody") {
+ZC_TEST("CompilerSessionTest.LogicalInitializerProducesCheckerIncident") {
   // A logical short-circuit `&&` is not a primitive binary operation. Its
   // operand structure is admitted at the surface, but the checker leaves the
   // BinaryExpr production unsupported and fails closed with a missing-required-
-  // fact invariant. This preserves negative coverage after the arithmetic and
+  // fact incident. This preserves negative coverage after the arithmetic and
   // bitwise binary initializers became supported.
   auto session = packageSession(
       "fun entry(a: bool, b: bool) -> bool { let x: bool = a && b; let y: bool = x; return y; }\n"_zc);
@@ -1321,7 +1321,12 @@ ZC_TEST("CompilerSessionTest.RejectsLogicalInitializerInSequentialLocalBody") {
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(!session->checkSources());
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::CheckerMissingRequiredFact) == 1);
+  ZC_EXPECT(captured.ids.size() == 0);
+  const auto incidents = session->getIncidents().descriptors();
+  ZC_REQUIRE(incidents.size() == 1);
+  ZC_EXPECT(incidents[0].domain() == basic::CompilerIncidentDomain::Checker);
+  ZC_EXPECT(incidents[0].kind().tag() ==
+            static_cast<uint32_t>(checker::signature::CheckerInvariantKind::MissingRequiredFact));
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
 }
 

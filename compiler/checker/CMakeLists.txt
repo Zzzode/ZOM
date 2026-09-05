@@ -7,6 +7,7 @@ set(CHECKER_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/borrow/borrow-interface.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/borrow-interface-diagnostic-adapter.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/checker-diagnostic-adapter.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/checker-diagnostic-projector.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/checker-diagnostic-id.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/checked-facts-repository.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/coherence-facts.cc

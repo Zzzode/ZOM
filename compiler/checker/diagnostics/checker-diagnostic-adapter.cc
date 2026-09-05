@@ -10,84 +10,11 @@
 #include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/diagnostics/core/diagnostic.h"
 #include "compiler/diagnostics/text/diagnostic-text.h"
-#include "compiler/identity/diagnostics/identity-diagnostic-projector.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 
 namespace zomlang::compiler::checker {
 namespace {
-
-diagnostics::DiagID diagnosticId(signature::CheckerInvariantKind kind) {
-  using diagnostics::DiagID;
-  using signature::CheckerInvariantKind;
-  switch (kind) {
-    case CheckerInvariantKind::InputReceiptMismatch:
-      return DiagID::CheckerInputReceiptMismatch;
-    case CheckerInvariantKind::MissingRequiredFact:
-      return DiagID::CheckerMissingRequiredFact;
-    case CheckerInvariantKind::AdditionalFact:
-      return DiagID::CheckerAdditionalFact;
-    case CheckerInvariantKind::InvalidFact:
-      return DiagID::CheckerInvalidFact;
-    case CheckerInvariantKind::StaleRevision:
-      return DiagID::CheckerStaleRevision;
-    case CheckerInvariantKind::ViewMismatch:
-      return DiagID::CheckerViewMismatch;
-    case CheckerInvariantKind::InferenceLifecycle:
-      return DiagID::CheckerInferenceLifecycle;
-    case CheckerInvariantKind::SolverStateInvalid:
-      return DiagID::CheckerSolverInvariant;
-    case CheckerInvariantKind::InvalidEmitterOrdinal:
-      return DiagID::CheckerInvalidEmitterOrdinal;
-    case CheckerInvariantKind::CanonicalCodecMismatch:
-      return DiagID::CheckerCanonicalCodecMismatch;
-  }
-  ZC_UNREACHABLE
-}
-
-source::SourceLoc diagnosticLocation(const binder::VerifiedParsedModule& parsedModule,
-                                     const signature::CheckerInvariantFact& fact) {
-  ZC_IF_SOME(span, fact.sourceSpan) {
-    ZC_IF_SOME(location, parsedModule.sourceLocFor(span)) { return location; }
-  }
-  return source::SourceLoc();
-}
-
-source::SourceLoc diagnosticLocation(const binder::VerifiedParsedModule& parsedModule,
-                                     const dispatch::DispatchInvariantFact& fact) {
-  ZC_IF_SOME(span, fact.sourceSpan) {
-    ZC_IF_SOME(location, parsedModule.sourceLocFor(span)) { return location; }
-  }
-  return source::SourceLoc();
-}
-
-diagnostics::DiagID diagnosticId(dispatch::DispatchInvariantKind kind) {
-  using dispatch::DispatchInvariantKind;
-  switch (kind) {
-    case DispatchInvariantKind::InputMismatch:
-      return diagnostics::DiagID::DispatchInputMismatch;
-    case DispatchInvariantKind::MissingFact:
-      return diagnostics::DiagID::DispatchMissingFact;
-    case DispatchInvariantKind::AdditionalFact:
-      return diagnostics::DiagID::DispatchAdditionalFact;
-    case DispatchInvariantKind::InvalidFact:
-      return diagnostics::DiagID::DispatchInvalidFact;
-    case DispatchInvariantKind::CanonicalCodecMismatch:
-      return diagnostics::DiagID::DispatchCanonicalCodecMismatch;
-  }
-  ZC_UNREACHABLE
-}
-
-void emitCheckerGroup(diagnostics::DiagnosticEngine& diagnostics, diagnostics::DiagID id,
-                      source::SourceLoc location, uint64_t count) {
-  diagnostics.emit(diagnostics::Diagnostic(id, location, zc::str(count)));
-}
-
-void recordIdentityFailure(basic::BoundedIncidentSet& incidents,
-                           const identity::IdentityInvariant& failure) {
-  ZC_REQUIRE(incidents.add(identity::IdentityDiagnosticProjector::project(failure)),
-             "identity incident set capacity must cover the registered inventory");
-}
 
 zc::String renderPrimitive(type::semantic::PrimitiveKind kind) {
   using type::semantic::PrimitiveKind;
@@ -666,80 +593,6 @@ zc::String renderDisplayArgument(const checked::CheckerDisplayArgument& argument
 }
 
 }  // namespace
-
-void emitCheckerVerificationFailures(
-    diagnostics::DiagnosticEngine& diagnostics, const binder::VerifiedParsedModule& parsedModule,
-    zc::ArrayPtr<const signature::CheckerVerificationFailure> failures,
-    basic::BoundedIncidentSet& incidents) {
-  bool hasIdentityIncident = false;
-  for (const auto& failure : failures) {
-    const auto& value = failure.variant();
-    if (!value.is<identity::IdentityInvariant>()) { continue; }
-    recordIdentityFailure(incidents, value.get<identity::IdentityInvariant>());
-    hasIdentityIncident = true;
-  }
-  if (hasIdentityIncident) { return; }
-
-  auto currentId = diagnostics::DiagID::CheckerInputReceiptMismatch;
-  source::SourceLoc currentLocation;
-  uint64_t currentCount = 0;
-
-  const auto flush = [&]() {
-    if (currentCount == 0) { return; }
-    emitCheckerGroup(diagnostics, currentId, currentLocation, currentCount);
-    currentCount = 0;
-  };
-
-  for (const auto& failure : failures) {
-    const auto& value = failure.variant();
-    const auto& fact = value.get<signature::CheckerInvariantFact>();
-    const auto id = diagnosticId(fact.kind);
-    const auto location = diagnosticLocation(parsedModule, fact);
-    if (currentCount != 0 && (currentId != id || currentLocation != location)) { flush(); }
-    if (currentCount == 0) {
-      currentId = id;
-      currentLocation = location;
-    }
-    ++currentCount;
-  }
-  flush();
-}
-
-void emitDispatchVerificationFailures(
-    diagnostics::DiagnosticEngine& diagnostics, const binder::VerifiedParsedModule& parsedModule,
-    zc::ArrayPtr<const dispatch::DispatchVerificationFailure> failures,
-    basic::BoundedIncidentSet& incidents) {
-  bool hasIdentityIncident = false;
-  for (const auto& failure : failures) {
-    const auto& value = failure.variant();
-    if (!value.is<identity::IdentityInvariant>()) { continue; }
-    recordIdentityFailure(incidents, value.get<identity::IdentityInvariant>());
-    hasIdentityIncident = true;
-  }
-  if (hasIdentityIncident) { return; }
-
-  auto currentId = diagnostics::DiagID::DispatchInputMismatch;
-  source::SourceLoc currentLocation;
-  uint64_t currentCount = 0;
-  const auto flush = [&]() {
-    if (currentCount == 0) return;
-    emitCheckerGroup(diagnostics, currentId, currentLocation, currentCount);
-    currentCount = 0;
-  };
-  for (const auto& failure : failures) {
-    const auto& value = failure.variant();
-    const auto& fact = value.get<dispatch::DispatchInvariantFact>();
-    const auto id = diagnosticId(fact.kind);
-    const auto location = diagnosticLocation(parsedModule, fact);
-    if (currentCount != 0 && (currentId != id || currentLocation != location)) flush();
-    if (currentCount == 0) {
-      currentId = id;
-      currentLocation = location;
-    }
-    ++currentCount;
-  }
-  flush();
-}
 
 void emitCheckedFactsSourceFailures(diagnostics::DiagnosticEngine& diagnostics,
                                     const binder::VerifiedParsedModule& parsedModule,

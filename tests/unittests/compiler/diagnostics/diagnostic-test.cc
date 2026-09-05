@@ -218,25 +218,6 @@ ZC_TEST("DiagnosticTest.ActiveBinderAndBorrowDiagnosticIdsAreStable") {
   }
 }
 
-ZC_TEST("DiagnosticTest.DispatchDiagnosticContractsAreStable") {
-  struct Expected final {
-    DiagID id;
-    uint32_t code;
-  };
-  const Expected expected[] = {
-      {DiagID::DispatchInputMismatch, 9937},          {DiagID::DispatchMissingFact, 9938},
-      {DiagID::DispatchAdditionalFact, 9939},         {DiagID::DispatchInvalidFact, 9940},
-      {DiagID::DispatchCanonicalCodecMismatch, 9941},
-  };
-  for (const auto& entry : expected) {
-    const auto info = getDiagnosticInfo(entry.id);
-    ZC_EXPECT(static_cast<uint32_t>(entry.id) == entry.code);
-    ZC_EXPECT(info.id == entry.id);
-    ZC_EXPECT(info.severity == DiagSeverity::kFatal);
-    ZC_EXPECT(info.argCount == 1);
-  }
-}
-
 ZC_TEST("DiagnosticTest.ModuleInterfaceDiagnosticContractsAreStable") {
   struct Expected final {
     DiagID id;
@@ -327,42 +308,6 @@ ZC_TEST("DiagnosticTest.BackendDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::TargetCapabilityUnavailable) == 6009);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::LirInvariant) == 9947);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::IrCanonicalCodecMismatch) == 9949);
-}
-
-ZC_TEST("DiagnosticTest.CheckerInvariantDiagnosticContractsAreStable") {
-  struct Expected final {
-    DiagID id;
-    uint32_t code;
-    zc::StringPtr message;
-  };
-  const Expected expected[] = {
-      {DiagID::CheckerInputReceiptMismatch, 9927,
-       "Internal checker input receipt is inconsistent ({0} occurrence(s))"_zc},
-      {DiagID::CheckerMissingRequiredFact, 9928,
-       "Internal checker required fact is missing ({0} occurrence(s))"_zc},
-      {DiagID::CheckerInvalidFact, 9929, "Internal checker fact is invalid ({0} occurrence(s))"_zc},
-      {DiagID::CheckerStaleRevision, 9930,
-       "Internal checker revision is stale ({0} occurrence(s))"_zc},
-      {DiagID::CheckerViewMismatch, 9931,
-       "Internal checker semantic view is inconsistent ({0} occurrence(s))"_zc},
-      {DiagID::CheckerInferenceLifecycle, 9932,
-       "Internal checker inference lifecycle is invalid ({0} occurrence(s))"_zc},
-      {DiagID::CheckerSolverInvariant, 9933,
-       "Internal checker solver state is invalid ({0} occurrence(s))"_zc},
-      {DiagID::CheckerInvalidEmitterOrdinal, 9934,
-       "Internal checker diagnostic ordinal is invalid ({0} occurrence(s))"_zc},
-      {DiagID::CheckerCanonicalCodecMismatch, 9935,
-       "Internal checker canonical encoding is invalid ({0} occurrence(s))"_zc},
-      {DiagID::CheckerAdditionalFact, 9936,
-       "Internal checker fact is not authorized ({0} occurrence(s))"_zc},
-  };
-  for (const auto& entry : expected) {
-    const auto info = getDiagnosticInfo(entry.id);
-    ZC_EXPECT(static_cast<uint32_t>(entry.id) == entry.code);
-    ZC_EXPECT(info.severity == DiagSeverity::kFatal);
-    ZC_EXPECT(info.message == entry.message);
-    ZC_EXPECT(info.argCount == 1);
-  }
 }
 
 ZC_TEST("DiagnosticTest.MultipleDiagnostics") {
