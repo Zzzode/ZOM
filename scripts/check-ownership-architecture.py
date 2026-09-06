@@ -56,6 +56,9 @@ MIR_HEADER = Path("compiler/mir/built-mir.h")
 BUILT_MIR_TEST = Path("tests/unittests/compiler/mir/built-mir-test.cc")
 OWNERSHIP_CMAKE = Path("compiler/ownership/CMakeLists.txt")
 SESSION = Path("compiler/driver/session/compiler-session.cc")
+SOURCE_PROJECTOR = Path(
+    "compiler/ownership/diagnostics/ownership-source-diagnostic-projector.cc"
+)
 TEST = Path("tests/unittests/compiler/ownership/overlay/ownership-event-overlay-test.cc")
 HIR_TEST = Path("tests/unittests/compiler/hir/hir-module-test.cc")
 SESSION_TEST = Path(
@@ -108,6 +111,7 @@ REQUIRED = (
     BUILT_MIR_TEST,
     OWNERSHIP_CMAKE,
     SESSION,
+    SOURCE_PROJECTOR,
     TEST,
     HIR_TEST,
     SESSION_TEST,
@@ -707,8 +711,6 @@ def check(values: dict[Path, str]) -> list[str]:
         "zc::Vector<ownership::AdmittedBoundModule> checkerModules(",
         "ownership::SurfaceAdmissionBuilder::admit(boundModule.retain())",
         "admission.is<ownership::SurfaceSourceRejected>()",
-        "diagnostics::DiagID::ConcurrencySemanticsUnavailable",
-        "diagnostics::DiagID::ControlFlowSemanticsUnavailable",
         "stagedOwnershipEventOverlays.add(zc::mv(verifiedOwnership).takeVerified());",
         "ownership::ProofValidation::validate(",
         "zc::mv(verifiedOwnershipInputs).takeVerified(),",
@@ -740,6 +742,16 @@ def check(values: dict[Path, str]) -> list[str]:
     ):
         if marker not in session:
             errors.append(f"{SESSION}: missing ownership publication contract: {marker}")
+
+    source_projector = values.get(SOURCE_PROJECTOR, "")
+    for marker in (
+        "DiagID::ConcurrencySemanticsUnavailable",
+        "DiagID::ControlFlowSemanticsUnavailable",
+    ):
+        if marker not in source_projector:
+            errors.append(
+                f"{SOURCE_PROJECTOR}: missing ownership surface diagnostic projection: {marker}"
+            )
     finalize_call = session.find("ownership::Finalizer::finalizeOwnership(")
     checked_commit = session.find("impl->ownershipCheckedMirModules = zc::mv(stagedOwnershipCheckedMir);")
     if (
@@ -895,6 +907,13 @@ def main() -> int:
         )
         if not check(admission_mutation):
             print("ownership admission architecture self-test escaped")
+            return 1
+        surface_projection_mutation = dict(values)
+        surface_projection_mutation[SOURCE_PROJECTOR] = surface_projection_mutation.get(
+            SOURCE_PROJECTOR, ""
+        ).replace("DiagID::ControlFlowSemanticsUnavailable", "DiagID::Removed", 1)
+        if not check(surface_projection_mutation):
+            print("ownership surface diagnostic projection self-test escaped")
             return 1
         admitted_publication_mutation = dict(values)
         admitted_publication_mutation[SESSION] = admitted_publication_mutation.get(SESSION, "").replace(

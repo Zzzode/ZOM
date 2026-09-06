@@ -12,12 +12,11 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zc/ztest/test.h"
-#include "compiler/diagnostics/consumer/diagnostic-consumer.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
+#include "compiler/diagnostics/fact/source-diagnostic-sink.h"
 #include "compiler/lexer/lexer.h"
 #include "compiler/source/manager.h"
 #include "tests/unittests/compiler/lexer/utils.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang {
 namespace compiler {
@@ -34,8 +33,7 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
 
   // Case 2: Empty single-quoted literal is recoverable but invalid
   {
-    auto& sourceManager = getSourceManager();
-    auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
+    auto diagnosticEngine = zc::heap<CapturedLexerDiagnostics>();
 
     auto tokens = tokenize("''"_zc, *diagnosticEngine);
     ZC_EXPECT(tokens.size() == 2);
@@ -129,8 +127,7 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
 
   // Case 12: Empty single-quoted literal (invalid - empty)
   {
-    auto& sm = getSourceManager();
-    auto diags = zc::heap<diagnostics::DiagnosticEngine>(sm);
+    auto diags = zc::heap<CapturedLexerDiagnostics>();
     auto tokens = tokenize("''"_zc, *diags);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
@@ -140,8 +137,7 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
 
   // Case 13: Multi-scalar single-quoted literal (invalid - multiple code points)
   {
-    auto& sm = getSourceManager();
-    auto diags = zc::heap<diagnostics::DiagnosticEngine>(sm);
+    auto diags = zc::heap<CapturedLexerDiagnostics>();
     auto tokens = tokenize("'ab'"_zc, *diags);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
@@ -150,8 +146,7 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
 }
 
 ZC_TEST("LexerLiteralTest.MultiCharacterSingleQuotedLiteralReportsError") {
-  auto& sourceManager = getSourceManager();
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
+  auto diagnosticEngine = zc::heap<CapturedLexerDiagnostics>();
 
   auto tokens = tokenize("'world'"_zc, *diagnosticEngine);
 
@@ -161,27 +156,15 @@ ZC_TEST("LexerLiteralTest.MultiCharacterSingleQuotedLiteralReportsError") {
 }
 
 ZC_TEST("LexerLiteralTest.RejectsUnknownStringEscape") {
-  class CaptureConsumer final : public diagnostics::DiagnosticConsumer {
-  public:
-    void handleDiagnostic(const source::SourceManager&,
-                          const diagnostics::Diagnostic& diagnostic) override {
-      if (diagnostic.getId() == diagnostics::DiagID::EscapeSequenceNotAllowed) { observed = true; }
-    }
-
-    bool observed = false;
-  };
-
-  auto& sourceManager = getSourceManager();
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
-  auto consumer = zc::heap<CaptureConsumer>();
-  const auto& retainedConsumer = *consumer;
-  diagnosticEngine->addConsumer(zc::mv(consumer));
+  auto diagnosticEngine = zc::heap<CapturedLexerDiagnostics>();
 
   auto tokens = tokenize("\"\\q\""_zc, *diagnosticEngine);
   ZC_REQUIRE(tokens.size() == 2);
   ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
   ZC_EXPECT(tokens[0].hasFlag(TokenFlags::ContainsInvalidEscape));
-  ZC_EXPECT(retainedConsumer.observed);
+  ZC_REQUIRE(diagnosticEngine->diagnostics().size() == 1);
+  ZC_EXPECT(diagnosticEngine->diagnostics()[0].code ==
+            diagnostics::DiagID::EscapeSequenceNotAllowed);
 }
 
 ZC_TEST("LexerLiteralTest.AcceptsEveryLineContinuation") {
@@ -199,8 +182,7 @@ ZC_TEST("LexerLiteralTest.AcceptsEveryLineContinuation") {
 }
 
 ZC_TEST("LexerLiteralTest.OctalEscapeSequence") {
-  auto& sourceManager = getSourceManager();
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
+  auto diagnosticEngine = zc::heap<CapturedLexerDiagnostics>();
 
   // Test case from user query: \47
   // In TypeScript:
@@ -211,31 +193,6 @@ ZC_TEST("LexerLiteralTest.OctalEscapeSequence") {
   // First run to check for errors
   tokenize("\"\\47\"", *diagnosticEngine);
   ZC_EXPECT(diagnosticEngine->hasErrors());
-
-  // Create a custom consumer to capture the error message
-  class CaptureConsumer : public diagnostics::DiagnosticConsumer {
-  public:
-    void handleDiagnostic(const source::SourceManager& sm,
-                          const diagnostics::Diagnostic& diagnostic) override {
-      if (diagnostic.getId() == diagnostics::DiagID::OctalEscapeSequencesNotAllowed) {
-        // Capture the argument
-        if (diagnostic.getArgs().size() > 0) {
-          auto& arg = diagnostic.getArgs()[0];
-          if (arg.is<zc::String>()) {
-            capturedHex = zc::heapString(arg.get<zc::String>());
-          } else if (arg.is<zc::StringPtr>()) {
-            capturedHex = zc::heapString(arg.get<zc::StringPtr>());
-          }
-        }
-      }
-    }
-
-    zc::String capturedHex;
-  };
-
-  auto consumer = zc::heap<CaptureConsumer>();
-  const auto& consumerPtr = *consumer;
-  diagnosticEngine->addConsumer(zc::mv(consumer));
 
   // Re-lex to trigger diagnostic again
   tokenize("\"\\47\"", *diagnosticEngine);
@@ -248,7 +205,11 @@ ZC_TEST("LexerLiteralTest.OctalEscapeSequence") {
   // If the current implementation is incorrect, it might be parsing "47" as decimal or doing
   // something else. TypeScript does `parseInt("47", 8)` which is 39. 39 in hex is 27.
 
-  ZC_EXPECT(consumerPtr.capturedHex == "27");
+  ZC_REQUIRE(diagnosticEngine->diagnostics().size() == 2);
+  const auto& captured = diagnosticEngine->diagnostics()[1];
+  ZC_REQUIRE(captured.code == diagnostics::DiagID::OctalEscapeSequencesNotAllowed);
+  ZC_REQUIRE(captured.arguments.size() == 1);
+  ZC_EXPECT(captured.arguments[0] == "27");
 }
 
 ZC_TEST("LexerLiteralTest.TemplateLiterals") {
@@ -335,8 +296,7 @@ ZC_TEST("LexerLiteralTest.TemplateLiterals") {
 
   // UnterminatedTemplateLiteral
   {
-    auto& sm = getSourceManager();
-    auto diags = zc::heap<diagnostics::DiagnosticEngine>(sm);
+    auto diags = zc::heap<CapturedLexerDiagnostics>();
     auto tokens = tokenize("`hello"_zc, diags.get());
 
     ZC_EXPECT(tokens.size() == 2);

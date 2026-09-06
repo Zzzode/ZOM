@@ -1065,7 +1065,8 @@ Stable-identity admission is the sole owner of
 `ZOM3017 PreviousDeclarationHere` secondary at the first declaration. Missing
 site resolution, producer/verifier disagreement, malformed canonical facts, or
 witness disagreement is runtime rejection. The descriptor publishes canonical
-`DiagnosticFact` records and never emits through `DiagnosticEngine`.
+`DiagnosticFact` records and has no presentation-consumer dependency or side
+effect.
 
 `NamedDefinitionInventoryQuery` and `NamedImplementationInventoryQuery` remain
 semantic. Capability providers demand stable admission before either semantic

@@ -6,16 +6,13 @@
 #include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 
 #include "compiler/diagnostics/core/diagnostic-info.h"
-#include "compiler/diagnostics/core/diagnostic.h"
 #include "compiler/identity/key/source-key.h"
 #include "compiler/source/manager.h"
 #include "zc/core/debug.h"
-#include "zc/core/one-of.h"
 
 namespace zomlang::compiler::diagnostics {
 namespace {
 
-constexpr size_t kSourceErrorBudget = 100;
 constexpr uint64_t kMaximumSourceFacts = 4096;
 constexpr uint64_t kMaximumEncodedBytes = 64 * 1024 * 1024;
 constexpr uint64_t kMaximumProvenanceEntries = 528384;
@@ -36,6 +33,7 @@ struct DraftNote final {
 };
 
 struct SourceDiagnosticDraft final {
+  uint64_t handleToken;
   SourceDiagnosticPhase phase;
   uint64_t primaryByteOffset;
   DiagID code;
@@ -43,17 +41,6 @@ struct SourceDiagnosticDraft final {
   zc::Vector<DraftRange> ranges;
   zc::Vector<DraftNote> notes;
 };
-
-zc::Vector<zc::String> retainArguments(zc::ArrayPtr<const DiagnosticArgument> arguments) {
-  zc::Vector<zc::String> retained(arguments.size());
-  for (const auto& argument : arguments) {
-    ZC_SWITCH_ONEOF(argument) {
-      ZC_CASE_ONEOF(text, zc::StringPtr) { retained.add(zc::str(text)); }
-      ZC_CASE_ONEOF(text, zc::String) { retained.add(zc::str(text)); }
-    }
-  }
-  return retained;
-}
 
 template <typename T>
 int compareScalar(const T& left, const T& right) {
@@ -112,17 +99,30 @@ int compareDrafts(const SourceDiagnosticDraft& left, const SourceDiagnosticDraft
   return compareNotes(left.notes.asPtr(), right.notes.asPtr());
 }
 
+void swapDrafts(SourceDiagnosticDraft& left, SourceDiagnosticDraft& right) {
+  SourceDiagnosticDraft retained = zc::mv(left);
+  left = zc::mv(right);
+  right = zc::mv(retained);
+}
+
+void siftDownDrafts(zc::Vector<SourceDiagnosticDraft>& drafts, size_t root, size_t count) {
+  while (root < count / 2) {
+    size_t child = root * 2 + 1;
+    if (child + 1 < count && compareDrafts(drafts[child], drafts[child + 1]) < 0) { ++child; }
+    if (compareDrafts(drafts[root], drafts[child]) >= 0) { return; }
+    swapDrafts(drafts[root], drafts[child]);
+    root = child;
+  }
+}
+
 void sortDrafts(zc::Vector<SourceDiagnosticDraft>& drafts) {
-  for (size_t index = 0; index < drafts.size(); ++index) {
-    size_t smallest = index;
-    for (size_t candidate = index + 1; candidate < drafts.size(); ++candidate) {
-      if (compareDrafts(drafts[candidate], drafts[smallest]) < 0) { smallest = candidate; }
-    }
-    if (smallest != index) {
-      SourceDiagnosticDraft retained = zc::mv(drafts[index]);
-      drafts[index] = zc::mv(drafts[smallest]);
-      drafts[smallest] = zc::mv(retained);
-    }
+  if (drafts.size() < 2) { return; }
+  for (size_t root = drafts.size() / 2; root != 0; --root) {
+    siftDownDrafts(drafts, root - 1, drafts.size());
+  }
+  for (size_t remaining = drafts.size(); remaining > 1; --remaining) {
+    swapDrafts(drafts[0], drafts[remaining - 1]);
+    siftDownDrafts(drafts, 0, remaining - 1);
   }
 }
 
@@ -182,14 +182,32 @@ SourceDiagnosticProvenanceMap PublishedSourceDiagnostics::takeProvenance() {
 }
 
 struct SourceDiagnosticDraftBuffer::Impl final {
-  class LaneEmitter final : public DiagnosticEmitter {
+  class LaneSink final : public SourceDiagnosticSink {
   public:
-    LaneEmitter(Impl& owner, SourceDiagnosticPhase phase) : owner(owner), phase(phase) {}
-    void emitDiagnostic(const Diagnostic& diagnostic, zc::SourceLocation) override {
-      owner.append(phase, diagnostic);
+    LaneSink(Impl& owner, SourceDiagnosticPhase phase) : owner(owner), phase(phase) {}
+    ZC_NODISCARD static SourceDiagnosticDraftHandle createHandle(uint64_t token) noexcept {
+      return makeHandle(token);
+    }
+    ZC_NODISCARD static uint64_t token(SourceDiagnosticDraftHandle handle) noexcept {
+      return handleToken(handle);
+    }
+
+    void addHighlight(SourceDiagnosticDraftHandle draft,
+                      const source::CharSourceRange& range) override {
+      owner.addHighlight(phase, draft, range);
     }
 
   private:
+    SourceDiagnosticDraftHandle append(DiagID code, source::SourceLoc primary,
+                                       zc::Vector<zc::String>&& arguments) override {
+      return owner.append(phase, code, primary, zc::mv(arguments));
+    }
+
+    void appendNote(SourceDiagnosticDraftHandle draft, DiagID code, source::SourceLoc primary,
+                    zc::Vector<zc::String>&& arguments) override {
+      owner.addNote(phase, draft, code, primary, zc::mv(arguments));
+    }
+
     Impl& owner;
     SourceDiagnosticPhase phase;
   };
@@ -203,8 +221,8 @@ struct SourceDiagnosticDraftBuffer::Impl final {
   Impl(const source::SourceManager& sources, const source::BufferId& buffer)
       : sources(sources),
         buffer(buffer),
-        lexerEmitter(*this, SourceDiagnosticPhase::Lex),
-        parserEmitter(*this, SourceDiagnosticPhase::Parse) {}
+        lexerSink(*this, SourceDiagnosticPhase::Lex),
+        parserSink(*this, SourceDiagnosticPhase::Parse) {}
 
   zc::Maybe<uint64_t> offsetFor(source::SourceLoc location) const {
     if (location.isInvalid()) { return zc::none; }
@@ -222,56 +240,88 @@ struct SourceDiagnosticDraftBuffer::Impl final {
     return DraftRange{ZC_ASSERT_NONNULL(start), ZC_ASSERT_NONNULL(end), range.getIsTokenRange()};
   }
 
-  zc::Maybe<DraftNote> retainNote(const Diagnostic& diagnostic) const {
-    if (diagnostic.getChildDiagnostics().size() != 0 || diagnostic.getRanges().size() != 0 ||
-        !isSourceSyntaxDiagnostic(diagnostic.getId())) {
-      return zc::none;
-    }
-    auto primary = offsetFor(diagnostic.getLoc());
-    if (primary == zc::none) { return zc::none; }
-    return DraftNote{diagnostic.getId(), ZC_ASSERT_NONNULL(primary),
-                     retainArguments(diagnostic.getArgs())};
+  zc::Vector<SourceDiagnosticDraft>& lane(SourceDiagnosticPhase phase) {
+    return phase == SourceDiagnosticPhase::Lex ? lexDrafts : parserDrafts;
   }
 
-  zc::Maybe<SourceDiagnosticDraft> retainDraft(SourceDiagnosticPhase phase,
-                                               const Diagnostic& diagnostic) const {
-    auto primary = offsetFor(diagnostic.getLoc());
-    if (primary == zc::none || !isSourceSyntaxDiagnostic(diagnostic.getId())) { return zc::none; }
-    zc::Vector<DraftRange> ranges(diagnostic.getRanges().size());
-    for (const auto& range : diagnostic.getRanges()) {
-      auto retained = rangeFor(range);
-      if (retained == zc::none) { return zc::none; }
-      ranges.add(ZC_ASSERT_NONNULL(retained));
-    }
-    zc::Vector<DraftNote> notes(diagnostic.getChildDiagnostics().size());
-    for (const auto& child : diagnostic.getChildDiagnostics()) {
-      auto retained = retainNote(*child);
-      if (retained == zc::none) { return zc::none; }
-      notes.add(zc::mv(ZC_ASSERT_NONNULL(retained)));
-    }
-    return SourceDiagnosticDraft{phase,
-                                 ZC_ASSERT_NONNULL(primary),
-                                 diagnostic.getId(),
-                                 retainArguments(diagnostic.getArgs()),
-                                 zc::mv(ranges),
-                                 zc::mv(notes)};
+  static constexpr uint64_t kParserLaneBit = uint64_t{1} << 63;
+  static constexpr uint64_t kGenerationMask = (uint64_t{1} << 31) - 1;
+  static constexpr uint64_t kIndexMask = (uint64_t{1} << 32) - 1;
+
+  SourceDiagnosticDraftHandle handleFor(SourceDiagnosticPhase phase, size_t index) {
+    if (index >= kIndexMask || nextHandleGeneration > kGenerationMask) { return {}; }
+    const uint64_t laneBit = phase == SourceDiagnosticPhase::Parse ? kParserLaneBit : 0;
+    const uint64_t generation = nextHandleGeneration++;
+    return LaneSink::createHandle(laneBit | (generation << 32) | static_cast<uint64_t>(index + 1));
   }
 
-  void append(SourceDiagnosticPhase phase, const Diagnostic& diagnostic) {
-    const bool isError = getDiagnosticInfo(diagnostic.getId()).severity >= DiagSeverity::kError;
-    if (isError && errorCount() >= kSourceErrorBudget) { return; }
-    auto retained = retainDraft(phase, diagnostic);
-    if (retained == zc::none) {
+  zc::Maybe<size_t> indexFor(SourceDiagnosticPhase phase, SourceDiagnosticDraftHandle handle) {
+    if (!handle.isValid()) { return zc::none; }
+    const uint64_t token = LaneSink::token(handle);
+    const bool parserLane = (token & kParserLaneBit) != 0;
+    if (parserLane != (phase == SourceDiagnosticPhase::Parse)) { return zc::none; }
+    const uint64_t encodedIndex = token & kIndexMask;
+    if (encodedIndex == 0 || encodedIndex - 1 >= lane(phase).size()) { return zc::none; }
+    const size_t index = static_cast<size_t>(encodedIndex - 1);
+    if (lane(phase)[index].handleToken != token) { return zc::none; }
+    return index;
+  }
+
+  SourceDiagnosticDraftHandle append(SourceDiagnosticPhase phase, DiagID code,
+                                     source::SourceLoc location,
+                                     zc::Vector<zc::String>&& arguments) {
+    const bool validCode = isSourceSyntaxDiagnostic(code) && isKnownDiagnostic(code);
+    if (!validCode || getDiagnosticInfo(code).argCount != arguments.size()) {
       reportInvariant(zc::str("source diagnostic draft escaped its admitted topology"));
+      return {};
+    }
+    const bool isError = getDiagnosticInfo(code).severity >= DiagSeverity::kError;
+    auto primary = offsetFor(location);
+    if (primary == zc::none) {
+      reportInvariant(zc::str("source diagnostic primary is outside the source buffer"));
+      return {};
+    }
+    auto& drafts = lane(phase);
+    const auto handle = handleFor(phase, drafts.size());
+    if (!handle.isValid()) {
+      reportInvariant(zc::str("source diagnostic draft capacity is exhausted"));
+      return {};
+    }
+    drafts.add(SourceDiagnosticDraft{LaneSink::token(handle), phase, ZC_ASSERT_NONNULL(primary),
+                                     code, zc::mv(arguments), zc::Vector<DraftRange>(),
+                                     zc::Vector<DraftNote>()});
+    if (isError) {
+      if (phase == SourceDiagnosticPhase::Lex) {
+        ++lexErrorCount;
+      } else {
+        ++parserErrorCount;
+      }
+    }
+    return handle;
+  }
+
+  void addHighlight(SourceDiagnosticPhase phase, SourceDiagnosticDraftHandle handle,
+                    const source::CharSourceRange& range) {
+    auto index = indexFor(phase, handle);
+    auto retained = rangeFor(range);
+    if (index == zc::none || retained == zc::none) {
+      reportInvariant(zc::str("source diagnostic highlight is invalid"));
       return;
     }
-    if (phase == SourceDiagnosticPhase::Lex) {
-      lexDrafts.add(zc::mv(ZC_ASSERT_NONNULL(retained)));
-      if (isError) { ++lexErrorCount; }
-    } else {
-      parserDrafts.add(zc::mv(ZC_ASSERT_NONNULL(retained)));
-      if (isError) { ++parserErrorCount; }
+    lane(phase)[ZC_ASSERT_NONNULL(index)].ranges.add(ZC_ASSERT_NONNULL(retained));
+  }
+
+  void addNote(SourceDiagnosticPhase phase, SourceDiagnosticDraftHandle handle, DiagID code,
+               source::SourceLoc location, zc::Vector<zc::String>&& arguments) {
+    auto index = indexFor(phase, handle);
+    auto primary = offsetFor(location);
+    if (index == zc::none || primary == zc::none || !isSourceSyntaxDiagnostic(code) ||
+        !isKnownDiagnostic(code) || getDiagnosticInfo(code).argCount != arguments.size()) {
+      reportInvariant(zc::str("source diagnostic note is invalid"));
+      return;
     }
+    lane(phase)[ZC_ASSERT_NONNULL(index)].notes.add(
+        DraftNote{code, ZC_ASSERT_NONNULL(primary), zc::mv(arguments)});
   }
 
   size_t errorCount() const noexcept { return lexErrorCount + parserErrorCount; }
@@ -281,14 +331,15 @@ struct SourceDiagnosticDraftBuffer::Impl final {
 
   const source::SourceManager& sources;
   source::BufferId buffer;
-  LaneEmitter lexerEmitter;
-  LaneEmitter parserEmitter;
+  LaneSink lexerSink;
+  LaneSink parserSink;
   zc::Vector<SourceDiagnosticDraft> lexDrafts;
   zc::Vector<SourceDiagnosticDraft> parserDrafts;
   zc::Vector<ParserCheckpoint> checkpoints;
   size_t lexErrorCount = 0;
   size_t parserErrorCount = 0;
   uint64_t nextCheckpointId = 1;
+  uint64_t nextHandleGeneration = 1;
   zc::String invariantMessage;
 };
 
@@ -300,8 +351,8 @@ SourceDiagnosticDraftBuffer::SourceDiagnosticDraftBuffer(SourceDiagnosticDraftBu
     default;
 SourceDiagnosticDraftBuffer& SourceDiagnosticDraftBuffer::operator=(
     SourceDiagnosticDraftBuffer&&) noexcept = default;
-DiagnosticEmitter& SourceDiagnosticDraftBuffer::lexerEmitter() { return impl->lexerEmitter; }
-DiagnosticEmitter& SourceDiagnosticDraftBuffer::parserEmitter() { return impl->parserEmitter; }
+SourceDiagnosticSink& SourceDiagnosticDraftBuffer::lexerSink() { return impl->lexerSink; }
+SourceDiagnosticSink& SourceDiagnosticDraftBuffer::parserSink() { return impl->parserSink; }
 
 SourceDiagnosticDraftBuffer::Checkpoint SourceDiagnosticDraftBuffer::checkpoint() {
   const uint64_t id = impl->nextCheckpointId++;

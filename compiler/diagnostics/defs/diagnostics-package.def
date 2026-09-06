@@ -24,15 +24,11 @@ DIAG(7006, PackageVersionConflict, kError, "No version of {0} satisfies all requ
 DIAG(7007, PackageFeatureInvalid, kError, "Package feature selection is invalid ({0})", 1)
 DIAG(7008, PackageDependencyCycle, kError, "Package dependency graph contains a cycle", 0)
 DIAG(7009, PackageLockInvalid, kError, "Package lock graph is invalid ({0})", 1)
-DIAG(7010, PackageMaterializationInvalid, kError, "Package source cannot be materialized ({0})", 1)
-DIAG(7011, PackageBuildScriptFailed, kError, "Package build script failed ({0})", 1)
 DIAG(7012, PackageDependencyLibraryMissing, kError, "Dependency package {0} has no library target",
      1)
 DIAG(7013, PackageLockUpdateFailed, kError, "Package lock update failed ({0})", 1)
 DIAG(7014, PackageTrustConfigurationInvalid, kError,
      "Package registry trust configuration is invalid ({0})", 1)
-DIAG(7015, PackageTargetSelectionInvalid, kError, "Package target selection is invalid ({0})", 1)
-DIAG(7016, PackageInvocationInvalid, kError, "Package invocation is invalid ({0})", 1)
 DIAG(7017, PackageVcsSelectorEquivocation, kError, "VCS selector resolved to conflicting revisions",
      0)
 // Reserved by RFC 0012 until dependency-graph diagnostics attach secondary requirement facts.

@@ -18,13 +18,13 @@
 #include <string>
 #include <vector>
 
-#include "zc/core/string.h"
 #include "compiler/basic/string-pool.h"
 #include "compiler/basic/zomlang-opts.h"
 #include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "compiler/lexer/lexer.h"
 #include "compiler/parser/parser.h"
 #include "compiler/source/manager.h"
+#include "zc/core/string.h"
 
 using namespace zomlang::compiler;
 using Clock = std::chrono::high_resolution_clock;
@@ -136,7 +136,7 @@ static BenchmarkResult runLexerBenchmark(source::SourceManager& sourceMgr,
 
   for (int iter = 0; iter < 100; ++iter) {
     diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(sourceMgr, bufferId);
-    lexer::Lexer sourceLexer(sourceMgr, diagnosticFacts.lexerEmitter(), opts, stringPool, bufferId);
+    lexer::Lexer sourceLexer(sourceMgr, diagnosticFacts.lexerSink(), opts, stringPool, bufferId);
     lexer::Token token;
     do {
       sourceLexer.lex(token);

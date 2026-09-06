@@ -34,18 +34,24 @@
 namespace zomlang::compiler::ide {
 namespace {
 
+SnapshotDiagnosticLocation location(SnapshotRange range) {
+  const uint8_t identity[] = {0x01};
+  return SnapshotDiagnosticLocation::source(zc::heapArray<uint8_t>(identity), range);
+}
+
 zc::Array<SnapshotDiagnostic> oneWarning() {
   zc::Vector<SnapshotDiagnostic> facts(1);
-  facts.add(SnapshotDiagnostic::projectRanged(diagnostics::DiagID::CheckerUnreachableMatchArm,
-                                              SnapshotRange{4, 9, true},
-                                              zc::heapArray<zc::String>(0).asPtr()));
+  facts.add(SnapshotDiagnostic::project(
+      diagnostics::DiagID::CheckerUnreachableMatchArm, location(SnapshotRange{4, 9, true}),
+      zc::heapArray<zc::String>(0).asPtr(), zc::Array<SnapshotDiagnosticRelated>()));
   return facts.releaseAsArray();
 }
 
-zc::Array<SnapshotDiagnostic> oneRangelessError() {
+zc::Array<SnapshotDiagnostic> oneError() {
   zc::Vector<SnapshotDiagnostic> facts(1);
-  facts.add(SnapshotDiagnostic::projectRangeless(diagnostics::DiagID::InvalidCharacter,
-                                                 zc::heapArray<zc::String>(0).asPtr()));
+  facts.add(SnapshotDiagnostic::project(
+      diagnostics::DiagID::InvalidCharacter, location(SnapshotRange{2, 3, true}),
+      zc::heapArray<zc::String>(0).asPtr(), zc::Array<SnapshotDiagnosticRelated>()));
   return facts.releaseAsArray();
 }
 
@@ -79,15 +85,15 @@ ZC_TEST("SemanticSnapshot published arm owns a copy of the source key bytes") {
   ZC_EXPECT(snapshot.sourceKeyBytes()[0] == 0x0a);
 }
 
-ZC_TEST("SemanticSnapshot source-rejected arm carries error diagnostics without a range") {
-  auto snapshot =
-      SemanticSnapshot::sourceRejected(DocumentVersion::initial(-3), oneRangelessError());
+ZC_TEST("SemanticSnapshot source-rejected arm carries resolved error diagnostics") {
+  auto snapshot = SemanticSnapshot::sourceRejected(DocumentVersion::initial(-3), oneError());
   ZC_EXPECT(snapshot.kind() == SemanticSnapshot::Kind::SourceRejected);
   ZC_EXPECT(snapshot.isSourceRejected());
   ZC_EXPECT(snapshot.documentVersion() == DocumentVersion::initial(-3));
   ZC_EXPECT(snapshot.diagnostics().size() == 1);
   ZC_EXPECT(snapshot.diagnostics()[0].severity() == diagnostics::DiagSeverity::kError);
-  ZC_EXPECT(snapshot.diagnostics()[0].range() == zc::none);
+  const SnapshotRange expected{2, 3, true};
+  ZC_EXPECT(snapshot.diagnostics()[0].primary().range() == expected);
 }
 
 ZC_TEST("SemanticSnapshot unavailable arm carries a closed reason and no diagnostics") {

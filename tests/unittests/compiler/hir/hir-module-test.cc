@@ -6,7 +6,6 @@
 #include "compiler/hir/hir-module.h"
 
 #include "compiler/checker/checker-identity-authority.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/driver/package/manifest-parser.h"
 #include "compiler/driver/package/source-record.h"
 #include "compiler/driver/session/compiler-session.h"
@@ -219,7 +218,7 @@ public:
     ZC_REQUIRE(session.parseSources());
     ZC_REQUIRE(session.bindSources());
     ZC_REQUIRE(session.checkSources());
-    ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+    ZC_REQUIRE(!session.hasDiagnosticErrors());
     auto identities = session.materializeCheckerIdentityAuthority();
     ZC_REQUIRE(identities != zc::none);
     ZC_REQUIRE(driver::core_library_test::userBoundModuleCount(ZC_REQUIRE_NONNULL(identities)) ==

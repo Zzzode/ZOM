@@ -12,43 +12,13 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "compiler/diagnostics/consumer/consoling-diagnostic-consumer.h"
-#include "compiler/diagnostics/consumer/diagnostic-consumer.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
-#include "compiler/source/manager.h"
-#include "zc/core/io.h"
+#include "compiler/diagnostics/core/diagnostic-info.h"
 #include "zc/core/string.h"
 #include "zc/ztest/test.h"
 
 namespace zomlang {
 namespace compiler {
 namespace diagnostics {
-
-namespace {
-
-class CountingDiagnosticConsumer final : public DiagnosticConsumer {
-public:
-  size_t diagnosticCount = 0;
-
-  void handleDiagnostic(const source::SourceManager&, const Diagnostic&) override {
-    ++diagnosticCount;
-  }
-};
-
-}  // namespace
-
-ZC_TEST("DiagnosticTest.BasicDiagnosticReporting") {
-  auto sourceManager = zc::heap<source::SourceManager>();
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
-  auto consumer = zc::heap<ConsolingDiagnosticConsumer>();
-  diagnosticEngine->addConsumer(zc::mv(consumer));
-
-  auto bufferId = sourceManager->addMemBufferCopy(zc::StringPtr("let x = ;").asBytes(), "test.zom");
-  auto loc = sourceManager->getLocForOffset(bufferId, 0);
-
-  diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
-  ZC_EXPECT(diagnosticEngine->hasErrors());
-}
 
 ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DynGenericMethod) == 4001);
@@ -222,7 +192,6 @@ ZC_TEST("DiagnosticTest.ActivePackageDiagnosticContractsAreStable") {
   };
   const Expected expected[] = {
       {DiagID::PackageManifestInvalid, 7001, DiagSeverity::kError, 1},
-      {DiagID::PackageTargetSelectionInvalid, 7015, DiagSeverity::kError, 1},
       {DiagID::PreviousWorkspacePackageHere, 7093, DiagSeverity::kNote, 0},
   };
   for (const auto& entry : expected) {
@@ -260,116 +229,10 @@ ZC_TEST("DiagnosticTest.ModuleGraphAmbiguityDiagnosticContractsAreStable") {
   ZC_EXPECT(reexportInfo.severity == DiagSeverity::kError);
   ZC_EXPECT(reexportInfo.message == "Re-export path resolves to multiple modules"_zc);
   ZC_EXPECT(reexportInfo.argCount == 0);
-
-  auto sourceManager = zc::heap<source::SourceManager>();
-  zc::VectorOutputStream output;
-
-  DiagnosticEngine::formatDiagnosticMessage(*sourceManager, output, importInfo.message,
-                                            zc::ArrayPtr<const DiagnosticArgument>());
-  ZC_EXPECT(output.getArray() == importInfo.message.asBytes());
-
-  output.clear();
-  DiagnosticEngine::formatDiagnosticMessage(*sourceManager, output, reexportInfo.message,
-                                            zc::ArrayPtr<const DiagnosticArgument>());
-  ZC_EXPECT(output.getArray() == reexportInfo.message.asBytes());
 }
 
 ZC_TEST("DiagnosticTest.BackendDiagnosticIdsAreStable") {
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::PanicUnwindUnsupported) == 6006);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::BinaryEmissionUnavailable) == 6007);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::TargetCapabilityUnavailable) == 6009);
-}
-
-ZC_TEST("DiagnosticTest.MultipleDiagnostics") {
-  auto sourceManager = zc::heap<source::SourceManager>();
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
-  auto consumer = zc::heap<ConsolingDiagnosticConsumer>();
-  diagnosticEngine->addConsumer(zc::mv(consumer));
-
-  auto bufferId =
-      sourceManager->addMemBufferCopy(zc::StringPtr("invalid code").asBytes(), "test.zom");
-  auto loc = sourceManager->getLocForOffset(bufferId, 0);
-
-  diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
-  diagnosticEngine->diagnose<DiagID::UnterminatedString>(loc);
-  ZC_EXPECT(diagnosticEngine->hasErrors());
-}
-
-ZC_TEST("DiagnosticTest.DeduplicatesSameIdAtSameLocation") {
-  auto sourceManager = zc::heap<source::SourceManager>();
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
-  auto consumer = zc::heap<CountingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  diagnosticEngine->addConsumer(zc::mv(consumer));
-
-  auto bufferId = sourceManager->addMemBufferCopy(zc::StringPtr("x").asBytes(), "test.zom");
-  auto loc = sourceManager->getLocForOffset(bufferId, 0);
-
-  diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
-  diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
-
-  ZC_EXPECT(consumerPtr->diagnosticCount == 1);
-  ZC_EXPECT(diagnosticEngine->errorCount() == 1);
-}
-
-ZC_TEST("DiagnosticTest.DefaultErrorBudgetStopsAfterOneHundredErrors") {
-  auto sourceManager = zc::heap<source::SourceManager>();
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
-  auto consumer = zc::heap<CountingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  diagnosticEngine->addConsumer(zc::mv(consumer));
-
-  auto bufferId = sourceManager->addMemBufferCopy(
-      zc::StringPtr("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    "xxxxxxxxxxxxxxxxxxxxxxxxxx")
-          .asBytes(),
-      "test.zom");
-  auto loc = sourceManager->getLocForOffset(bufferId, 0);
-
-  for (size_t i = 0; i < 105; ++i) {
-    diagnosticEngine->diagnose<DiagID::InvalidCharacter>(
-        loc.getAdvancedLoc(static_cast<unsigned>(i)));
-  }
-
-  ZC_EXPECT(consumerPtr->diagnosticCount == 100);
-  ZC_EXPECT(diagnosticEngine->errorCount() == 100);
-}
-
-ZC_TEST("DiagnosticTest.DiagnosticConsumer") {
-  auto sourceManager = zc::heap<source::SourceManager>();
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
-  auto consumer = zc::heap<ConsolingDiagnosticConsumer>();
-  diagnosticEngine->addConsumer(zc::mv(consumer));
-
-  auto bufferId =
-      sourceManager->addMemBufferCopy(zc::StringPtr("code with error").asBytes(), "test.zom");
-  auto loc = sourceManager->getLocForOffset(bufferId, 0);
-
-  diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
-  ZC_EXPECT(diagnosticEngine->hasErrors());
-}
-
-ZC_TEST("DiagnosticTest.SourceLocationReporting") {
-  auto sourceManager = zc::heap<source::SourceManager>();
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
-  auto consumer = zc::heap<ConsolingDiagnosticConsumer>();
-  diagnosticEngine->addConsumer(zc::mv(consumer));
-
-  auto bufferId =
-      sourceManager->addMemBufferCopy(zc::StringPtr("line1\nline2\nline3").asBytes(), "test.zom");
-  auto loc = sourceManager->getLocForOffset(bufferId, 0);
-
-  diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
-  ZC_EXPECT(diagnosticEngine->hasErrors());
-}
-
-ZC_TEST("DiagnosticTest.NoErrors") {
-  auto sourceManager = zc::heap<source::SourceManager>();
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
-  auto consumer = zc::heap<ConsolingDiagnosticConsumer>();
-  diagnosticEngine->addConsumer(zc::mv(consumer));
-
-  ZC_EXPECT(!diagnosticEngine->hasErrors());
 }
 
 }  // namespace diagnostics

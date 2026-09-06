@@ -5,17 +5,18 @@
 
 #include "compiler/binder/graph/module-dependency-requests.h"
 
-#include "parsed-module-query-test-fixture.h"
-#include "zc/core/vector.h"
-#include "zc/ztest/test.h"
 #include "compiler/basic/string-pool.h"
 #include "compiler/basic/zomlang-opts.h"
+#include "compiler/binder/diagnostics/module-graph-source-diagnostic-projector.h"
 #include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/canonical/identity-interner-set.h"
 #include "compiler/parser/parser.h"
 #include "compiler/source/manager.h"
+#include "parsed-module-query-test-fixture.h"
+#include "zc/core/vector.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -589,6 +590,62 @@ ZC_TEST("StructuralModuleResolver.RejectsAncestryEndingAtInactiveRoot") {
     ZC_EXPECT(result.get<ModuleResolutionInvariantFact>().kind ==
               ModuleResolutionInvariantKind::InvalidEnvironment);
     return;
+  }
+  ZC_EXPECT(false);
+}
+
+ZC_TEST("ModuleGraphSourceDiagnosticProjector.ValidatesAndProjectsReservedRoot") {
+  ParsedSource sourceFixture("module core;\n"_zc);
+  DerivationFixture fixture(sourceFixture);
+  ZC_REQUIRE(fixture.parsedModule != zc::none);
+  ZC_IF_SOME(parsed, fixture.parsedModule) {
+    ModuleGraphModule module(moduleKey(), fixture.module);
+    auto failure = ModuleGraphSourceFailureBuilder::buildToolchainModuleRootReserved(
+        module, ParsedModuleGraphInput{fixture.module, parsed});
+    ZC_REQUIRE(failure != zc::none);
+    ZC_IF_SOME(value, failure) {
+      auto projected = projectModuleGraphSourceFailure(parsed, value);
+      ZC_REQUIRE(projected.is<diagnostics::SemanticDiagnosticFactBatch>());
+      const auto& batch = projected.get<diagnostics::SemanticDiagnosticFactBatch>();
+      ZC_REQUIRE(batch.facts.size() == 1);
+      ZC_REQUIRE(batch.provenance.size() == 2);
+      ZC_EXPECT(batch.facts[0].code() == diagnostics::DiagID::ToolchainModuleRootReserved);
+      ZC_REQUIRE(batch.facts[0].arguments().size() == 1);
+      ZC_EXPECT(batch.facts[0].arguments()[0] == "core"_zc);
+      ZC_EXPECT(batch.facts[0].occurrence().semanticDomain() ==
+                diagnostics::SemanticDiagnosticDomain::ModuleGraph);
+      ZC_EXPECT(batch.provenance[0].range.byteStart == 7);
+      ZC_EXPECT(batch.provenance[0].range.byteEnd == 7);
+      ZC_EXPECT(batch.provenance[1].range.byteStart == 7);
+      ZC_EXPECT(batch.provenance[1].range.byteEnd == 11);
+      ZC_EXPECT(batch.provenance[1].range.isTokenRange);
+      return;
+    }
+  }
+  ZC_EXPECT(false);
+}
+
+ZC_TEST("ModuleGraphSourceDiagnosticProjector.RejectsMismatchedSourceRevision") {
+  ParsedSource failureSource("module core;\n"_zc);
+  DerivationFixture failureFixture(failureSource);
+  ParsedSource currentSource("module other;\n"_zc);
+  DerivationFixture currentFixture(currentSource);
+  ZC_REQUIRE(failureFixture.parsedModule != zc::none);
+  ZC_REQUIRE(currentFixture.parsedModule != zc::none);
+  ZC_IF_SOME(failureParsed, failureFixture.parsedModule) {
+    ModuleGraphModule module(moduleKey(), failureFixture.module);
+    auto failure = ModuleGraphSourceFailureBuilder::buildToolchainModuleRootReserved(
+        module, ParsedModuleGraphInput{failureFixture.module, failureParsed});
+    ZC_REQUIRE(failure != zc::none);
+    ZC_IF_SOME(currentParsed, currentFixture.parsedModule) {
+      ZC_IF_SOME(value, failure) {
+        auto projected = projectModuleGraphSourceFailure(currentParsed, value);
+        ZC_REQUIRE(projected.is<diagnostics::SemanticDiagnosticBatchProjectionFailure>());
+        ZC_EXPECT(projected.get<diagnostics::SemanticDiagnosticBatchProjectionFailure>() ==
+                  diagnostics::SemanticDiagnosticBatchProjectionFailure::InvalidFactProjection);
+        return;
+      }
+    }
   }
   ZC_EXPECT(false);
 }

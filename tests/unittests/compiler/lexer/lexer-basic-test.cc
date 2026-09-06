@@ -12,11 +12,11 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zc/ztest/test.h"
 #include "compiler/lexer/lexer.h"
 #include "compiler/lexer/unicode-data.h"
 #include "compiler/source/manager.h"
 #include "tests/unittests/compiler/lexer/utils.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang {
 namespace compiler {
@@ -207,8 +207,7 @@ ZC_TEST("LexerBasicTest.UnicodeIdentifierDataProvenance") {
 }
 
 ZC_TEST("LexerBasicTest.NumericLikeUnderscoreIdentifierReportsError") {
-  auto& sourceManager = getSourceManager();
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
+  auto diagnosticEngine = zc::heap<CapturedLexerDiagnostics>();
 
   auto tokens = tokenize("_123"_zc, *diagnosticEngine);
 

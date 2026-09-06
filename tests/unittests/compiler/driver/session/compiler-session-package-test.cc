@@ -14,8 +14,6 @@
 
 #include "compiler/checker/body/body-checker.h"
 #include "compiler/checker/checker-identity-authority.h"
-#include "compiler/diagnostics/consumer/diagnostic-consumer.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/driver/interface/coherence-builder.h"
 #include "compiler/driver/interface/imported-signature-view-projector.h"
 #include "compiler/driver/package/manifest-parser.h"
@@ -33,27 +31,25 @@
 namespace zomlang::compiler::driver {
 namespace {
 
-struct CapturedDiagnostics final {
-  zc::Vector<diagnostics::DiagID> ids;
-  size_t unmanagedPrimaryLocations = 0;
-};
+const diagnostics::DiagnosticPolicyResult& finalizedDiagnostics(CompilerSession& session) {
+  ZC_REQUIRE(session.finalizeDiagnostics());
+  return ZC_REQUIRE_NONNULL(session.getDiagnostics());
+}
 
-class CaptureDiagnosticConsumer final : public diagnostics::DiagnosticConsumer {
-public:
-  explicit CaptureDiagnosticConsumer(CapturedDiagnostics& capture) noexcept : capture(capture) {}
-
-  void handleDiagnostic(const source::SourceManager& sourceManager,
-                        const diagnostics::Diagnostic& diagnostic) override {
-    capture.ids.add(diagnostic.getId());
-    if (diagnostic.getLoc().isValid() &&
-        sourceManager.findBufferContainingLoc(diagnostic.getLoc()) == zc::none) {
-      ++capture.unmanagedPrimaryLocations;
-    }
+size_t diagnosticCount(CompilerSession& session, diagnostics::DiagID id) {
+  size_t count = 0;
+  for (const auto& diagnostic : finalizedDiagnostics(session).authoritative().diagnostics()) {
+    if (diagnostic.code() == id) { ++count; }
   }
+  return count;
+}
 
-private:
-  CapturedDiagnostics& capture;
-};
+bool allPrimaryLocationsResolve(CompilerSession& session) {
+  for (const auto& diagnostic : finalizedDiagnostics(session).authoritative().diagnostics()) {
+    if (session.resolve(diagnostic.primary()) == zc::none) { return false; }
+  }
+  return true;
+}
 
 template <typename Scalar>
 Scalar scalar(zc::StringPtr text) {
@@ -1252,7 +1248,7 @@ ZC_TEST("CompilerSession fixes crate identity before required build outputs exis
 
   ZC_EXPECT(session->getFinalizedCompilationRoots().size() == 1);
   ZC_EXPECT(!session->parseSources());
-  ZC_EXPECT(session->getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
 }
 
 ZC_TEST("CompilerSession does not execute an unselected build-only dependency") {
@@ -1348,7 +1344,7 @@ ZC_TEST("CompilerSession admits contextual callable names into the frozen bindin
   ZC_REQUIRE(roots.size() == 1);
   ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
   ZC_REQUIRE(session.parseSources());
-  ZC_EXPECT(!session.getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(!session.hasDiagnosticErrors());
   ZC_REQUIRE(session.bindSources());
   auto authority = checkerIdentityAuthority(session);
   size_t userDefinitions = 0;
@@ -1423,7 +1419,7 @@ ZC_TEST("CompilerSession materializes imported behavior implementations before c
   ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
-  ZC_EXPECT(!session.getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(!session.hasDiagnosticErrors());
   auto authority = checkerIdentityAuthority(session);
   ZC_EXPECT(userBoundModuleCount(authority) == 2);
 }
@@ -1447,7 +1443,7 @@ ZC_TEST("CompilerSession projects module aliases through retained dependency sur
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
   ZC_REQUIRE(session.checkSources());
-  ZC_EXPECT(!session.getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(!session.hasDiagnosticErrors());
   auto authority = checkerIdentityAuthority(session);
   ZC_EXPECT(userBoundModuleCount(authority) == 3);
 }
@@ -1457,8 +1453,6 @@ ZC_TEST("CompilerSession projects cross-module coherence failures") {
   basic::CompilerOptions compilerOptions;
   identity::SemanticContextFactory contextFactory;
   CompilerSession session(contextFactory, languageOptions, compilerOptions);
-  CapturedDiagnostics captured;
-  session.getDiagnosticEngine().addConsumer(zc::heap<CaptureDiagnosticConsumer>(captured));
   auto registry = targetRegistry();
   auto input = VerifiedPackageSessionInput::from(
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
@@ -1474,16 +1468,10 @@ ZC_TEST("CompilerSession projects cross-module coherence failures") {
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
   ZC_EXPECT(!session.checkSources());
-  ZC_EXPECT(session.getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(session.hasDiagnosticErrors());
   ZC_EXPECT(session.getCheckerInvariantFailures().size() == 0);
-  size_t orphanFailures = 0;
-  size_t conflictingFailures = 0;
-  for (const auto diagnostic : captured.ids) {
-    if (diagnostic == diagnostics::DiagID::OrphanImpl) { ++orphanFailures; }
-    if (diagnostic == diagnostics::DiagID::ConflictingImpl) { ++conflictingFailures; }
-  }
-  ZC_EXPECT(orphanFailures == 2);
-  ZC_EXPECT(conflictingFailures == 1);
+  ZC_EXPECT(diagnosticCount(session, diagnostics::DiagID::OrphanImpl) == 2);
+  ZC_EXPECT(diagnosticCount(session, diagnostics::DiagID::ConflictingImpl) == 1);
   ZC_EXPECT(session.getFrozenCoherenceView() == zc::none);
   ZC_EXPECT(session.getCheckedEvidenceLeases().size() == 0);
 }
@@ -1680,7 +1668,7 @@ ZC_TEST("CompilerSession stages the complete source snapshot root with module to
   ZC_EXPECT(userGraphSourceCount(graph) == 2);
   ZC_EXPECT(coreGraphSourceCount(graph) == 3);
   ZC_EXPECT(identities.modules().size() == graph.modules().size());
-  ZC_EXPECT(!session.getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(!session.hasDiagnosticErrors());
 }
 
 ZC_TEST("CompilerSession publishes the complete canonical Checker rail for an empty module") {
@@ -1703,7 +1691,7 @@ ZC_TEST("CompilerSession publishes the complete canonical Checker rail for an em
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
   ZC_REQUIRE(session.checkSources());
-  ZC_EXPECT(!session.getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(!session.hasDiagnosticErrors());
   auto identities = checkerIdentityAuthority(session);
   const auto boundModules = identities.modules();
   ZC_REQUIRE(identities.modules().size() == boundModules.size());
@@ -1846,7 +1834,7 @@ ZC_TEST("CompilerSession retains empty prelude signature lineage after local sha
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
   ZC_REQUIRE(session.checkSources());
-  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+  ZC_REQUIRE(!session.hasDiagnosticErrors());
   {
     auto identities = checkerIdentityAuthority(session);
     const auto& bound = soleUserBoundModule(identities);
@@ -1971,7 +1959,7 @@ ZC_TEST("CompilerSession projects core prelude re-exports through the prelude su
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
   ZC_REQUIRE(session.checkSources());
-  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+  ZC_REQUIRE(!session.hasDiagnosticErrors());
 
   auto identities = checkerIdentityAuthority(session);
   const auto& bound = soleUserBoundModule(identities);
@@ -2024,7 +2012,7 @@ ZC_TEST("MarkerProofEngine resolves explicit builtin and structural evidence") {
   ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
-  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+  ZC_REQUIRE(!session.hasDiagnosticErrors());
   auto identities = checkerIdentityAuthority(session);
   {
     ZC_REQUIRE(userBoundModuleCount(identities) == 1);
@@ -2307,7 +2295,7 @@ ZC_TEST("CompilerSession publishes scalar initializer definition and pattern fac
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
   ZC_REQUIRE(session.checkSources());
-  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+  ZC_REQUIRE(!session.hasDiagnosticErrors());
   const auto leases = session.getCheckedEvidenceLeases();
   ZC_REQUIRE(leases.size() == 1);
   ZC_REQUIRE(session.getVerifiedDispatchFacts().size() == 1);
@@ -2408,7 +2396,7 @@ ZC_TEST("CompilerSession rejects goto and switch-int terminators in scalar initi
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
   ZC_REQUIRE(session.checkSources());
-  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+  ZC_REQUIRE(!session.hasDiagnosticErrors());
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   auto overlayInput =
       session.getOwnershipEventOverlayInput(session.getVerifiedHirModules()[0].module());
@@ -2474,7 +2462,7 @@ ZC_TEST("CompilerSession publishes a checked scalar-return function through HIR 
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
   ZC_REQUIRE(session.checkSources());
-  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+  ZC_REQUIRE(!session.hasDiagnosticErrors());
   ZC_REQUIRE(session.getVerifiedSignatureFacts().size() == 1);
   const auto signatures = session.getVerifiedSignatureFacts()[0].signatures();
   ZC_REQUIRE(signatures.size() == 1);
@@ -2538,7 +2526,7 @@ ZC_TEST("CompilerSession lowers a sequential local copy through HIR and Built MI
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
   ZC_REQUIRE(session.checkSources());
-  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+  ZC_REQUIRE(!session.hasDiagnosticErrors());
 
   ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
   const auto& hirModule = session.getVerifiedHirModules()[0];
@@ -2622,7 +2610,7 @@ ZC_TEST("CompilerSession lowers a two-module package through HIR and Built MIR")
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
   ZC_REQUIRE(session.checkSources());
-  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+  ZC_REQUIRE(!session.hasDiagnosticErrors());
 
   // Two ordinary app modules (main + child) each carry one scalar-return
   // function, so the session lowers two HIR modules and two Built MIR modules.
@@ -2683,7 +2671,7 @@ ZC_TEST("CompilerSession lowers a conditional return through HIR") {
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
   ZC_REQUIRE(session.checkSources());
-  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+  ZC_REQUIRE(!session.hasDiagnosticErrors());
 
   ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
   const auto& hirModule = session.getVerifiedHirModules()[0];
@@ -2743,8 +2731,6 @@ ZC_TEST("CompilerSession rejects a scalar return whose type differs from the sig
   basic::CompilerOptions compilerOptions;
   identity::SemanticContextFactory contextFactory;
   CompilerSession session(contextFactory, languageOptions, compilerOptions);
-  CapturedDiagnostics captured;
-  session.getDiagnosticEngine().addConsumer(zc::heap<CaptureDiagnosticConsumer>(captured));
   auto registry = targetRegistry();
   auto input = VerifiedPackageSessionInput::from(
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
@@ -2761,8 +2747,7 @@ ZC_TEST("CompilerSession rejects a scalar return whose type differs from the sig
   ZC_REQUIRE(session.bindSources());
   ZC_EXPECT(!session.checkSources());
   ZC_EXPECT(session.getCheckerInvariantFailures().size() == 0);
-  ZC_REQUIRE(captured.ids.size() == 1);
-  ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::TypeCheckerTypeMismatch);
+  ZC_EXPECT(diagnosticCount(session, diagnostics::DiagID::TypeCheckerTypeMismatch) == 1);
   ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
   ZC_EXPECT(session.getOwnershipCheckedMirModules().size() == 0);
 }
@@ -2774,8 +2759,6 @@ ZC_TEST("CompilerSession rejects unadmitted frontend syntax before Checker publi
     basic::CompilerOptions compilerOptions;
     identity::SemanticContextFactory contextFactory;
     CompilerSession session(contextFactory, languageOptions, compilerOptions);
-    CapturedDiagnostics captured;
-    session.getDiagnosticEngine().addConsumer(zc::heap<CaptureDiagnosticConsumer>(captured));
     auto registry = targetRegistry();
     auto input = VerifiedPackageSessionInput::from(
         request(registry), verifiedSelection(registry), verifiedSelection(registry),
@@ -2792,9 +2775,12 @@ ZC_TEST("CompilerSession rejects unadmitted frontend syntax before Checker publi
     ZC_REQUIRE(session.bindSources());
     ZC_EXPECT(!session.checkSources());
     ZC_EXPECT(session.getCheckerInvariantFailures().size() == 0);
-    ZC_REQUIRE(captured.ids.size() == expectedDiagnosticCount);
-    for (const auto id : captured.ids) { ZC_EXPECT(id == expectedDiagnostic); }
-    ZC_EXPECT(captured.unmanagedPrimaryLocations == 0);
+    const auto& batch = finalizedDiagnostics(session).authoritative();
+    ZC_REQUIRE(batch.size() == expectedDiagnosticCount);
+    for (const auto& diagnostic : batch.diagnostics()) {
+      ZC_EXPECT(diagnostic.code() == expectedDiagnostic);
+    }
+    ZC_EXPECT(allPrimaryLocationsResolve(session));
     ZC_EXPECT(session.getVerifiedSignatureFacts().size() == 0);
     ZC_EXPECT(session.getImportedSignatureViews().size() == 0);
     ZC_EXPECT(session.getVerifiedModuleInterfaces().size() == 0);
@@ -2850,7 +2836,7 @@ ZC_TEST("CompilerSession publishes canonical constant facts for scalar const ini
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
   ZC_REQUIRE(session.checkSources());
-  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+  ZC_REQUIRE(!session.hasDiagnosticErrors());
   const auto leases = session.getCheckedEvidenceLeases();
   ZC_REQUIRE(leases.size() == 1);
   ZC_REQUIRE(session.getVerifiedDispatchFacts().size() == 1);
@@ -2894,7 +2880,7 @@ ZC_TEST("CompilerSession verifies recovered literal failures without publishing 
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
   ZC_EXPECT(!session.checkSources());
-  ZC_EXPECT(session.getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(session.hasDiagnosticErrors());
   ZC_EXPECT(session.getCheckerInvariantFailures().size() == 0);
   ZC_EXPECT(session.getVerifiedSignatureFacts().size() == 0);
   ZC_EXPECT(session.getImportedSignatureViews().size() == 0);
@@ -2919,8 +2905,6 @@ ZC_TEST("CompilerSession routes short and qualified safe marker candidates to ZO
     basic::CompilerOptions compilerOptions;
     identity::SemanticContextFactory contextFactory;
     CompilerSession session(contextFactory, languageOptions, compilerOptions);
-    CapturedDiagnostics captured;
-    session.getDiagnosticEngine().addConsumer(zc::heap<CaptureDiagnosticConsumer>(captured));
     auto registry = targetRegistry();
     auto input = VerifiedPackageSessionInput::from(
         request(registry), verifiedSelection(registry), verifiedSelection(registry),
@@ -2937,8 +2921,7 @@ ZC_TEST("CompilerSession routes short and qualified safe marker candidates to ZO
     ZC_REQUIRE(session.bindSources());
     ZC_EXPECT(!session.checkSources());
     ZC_EXPECT(session.getCheckerInvariantFailures().size() == 0);
-    ZC_REQUIRE(captured.ids.size() == 1);
-    ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::PositiveMarkerImplRequiresUnsafe);
+    ZC_EXPECT(diagnosticCount(session, diagnostics::DiagID::PositiveMarkerImplRequiresUnsafe) == 1);
   }
 }
 
@@ -2947,8 +2930,6 @@ ZC_TEST("CompilerSession gives behavior body diagnostics precedence over marker 
   basic::CompilerOptions compilerOptions;
   identity::SemanticContextFactory contextFactory;
   CompilerSession session(contextFactory, languageOptions, compilerOptions);
-  CapturedDiagnostics captured;
-  session.getDiagnosticEngine().addConsumer(zc::heap<CaptureDiagnosticConsumer>(captured));
   auto registry = targetRegistry();
   auto input = VerifiedPackageSessionInput::from(
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
@@ -2966,8 +2947,7 @@ ZC_TEST("CompilerSession gives behavior body diagnostics precedence over marker 
   ZC_REQUIRE(session.bindSources());
   ZC_EXPECT(!session.checkSources());
   ZC_EXPECT(session.getCheckerInvariantFailures().size() == 0);
-  ZC_REQUIRE(captured.ids.size() == 1);
-  ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::BehaviorInterfaceRequiresImplBody);
+  ZC_EXPECT(diagnosticCount(session, diagnostics::DiagID::BehaviorInterfaceRequiresImplBody) == 1);
 }
 
 ZC_TEST("CompilerSession publishes no partial Checker rail when a later module is rejected") {
@@ -3038,8 +3018,6 @@ ZC_TEST("CompilerSession rejects a source declaration that differs from its sele
   basic::CompilerOptions compilerOptions;
   identity::SemanticContextFactory contextFactory;
   CompilerSession session(contextFactory, languageOptions, compilerOptions);
-  CapturedDiagnostics captured;
-  session.getDiagnosticEngine().addConsumer(zc::heap<CaptureDiagnosticConsumer>(captured));
   auto registry = targetRegistry();
   auto input = VerifiedPackageSessionInput::from(
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
@@ -3055,9 +3033,8 @@ ZC_TEST("CompilerSession rejects a source declaration that differs from its sele
   ZC_EXPECT(!session.parseSources());
   ZC_EXPECT(session.hasVerifiedParsedSyntax());
   ZC_EXPECT(session.materializeParsedModules() == zc::none);
-  ZC_REQUIRE(captured.ids.size() == 1);
-  ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::ModuleDeclarationNameMismatch);
-  ZC_EXPECT(captured.unmanagedPrimaryLocations == 0);
+  ZC_EXPECT(diagnosticCount(session, diagnostics::DiagID::ModuleDeclarationNameMismatch) == 1);
+  ZC_EXPECT(allPrimaryLocationsResolve(session));
 }
 
 ZC_TEST("CompilerSession retains verified syntax when a structural module is missing") {
@@ -3065,8 +3042,6 @@ ZC_TEST("CompilerSession retains verified syntax when a structural module is mis
   basic::CompilerOptions compilerOptions;
   identity::SemanticContextFactory contextFactory;
   CompilerSession session(contextFactory, languageOptions, compilerOptions);
-  CapturedDiagnostics captured;
-  session.getDiagnosticEngine().addConsumer(zc::heap<CaptureDiagnosticConsumer>(captured));
   auto registry = targetRegistry();
   auto input = VerifiedPackageSessionInput::from(
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
@@ -3081,8 +3056,7 @@ ZC_TEST("CompilerSession retains verified syntax when a structural module is mis
   ZC_EXPECT(!session.parseSources());
   ZC_EXPECT(session.hasVerifiedParsedSyntax());
   ZC_EXPECT(session.materializeParsedModules() == zc::none);
-  ZC_REQUIRE(captured.ids.size() == 1);
-  ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::ImportModuleNotFound);
+  ZC_EXPECT(diagnosticCount(session, diagnostics::DiagID::ImportModuleNotFound) == 1);
 }
 
 ZC_TEST("CompilerSession expands final dependency crates and publishes semantic fingerprint") {
@@ -3224,8 +3198,6 @@ ZC_TEST("CompilerSession rejects duplicate stable definitions before registry mu
   basic::CompilerOptions compilerOptions;
   identity::SemanticContextFactory contextFactory;
   CompilerSession session(contextFactory, languageOptions, compilerOptions);
-  CapturedDiagnostics captured;
-  session.getDiagnosticEngine().addConsumer(zc::heap<CaptureDiagnosticConsumer>(captured));
   auto registry = targetRegistry();
   auto input = VerifiedPackageSessionInput::from(
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
@@ -3239,8 +3211,7 @@ ZC_TEST("CompilerSession rejects duplicate stable definitions before registry mu
   ZC_REQUIRE(roots.size() == 1);
   ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
   ZC_EXPECT(!session.parseSources());
-  ZC_REQUIRE(captured.ids.size() == 1);
-  ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::RedeclareFunction);
+  ZC_EXPECT(diagnosticCount(session, diagnostics::DiagID::RedeclareFunction) == 1);
 }
 
 ZC_TEST("CompilerSession rejects duplicate generic binders before registry mutation") {
@@ -3248,8 +3219,6 @@ ZC_TEST("CompilerSession rejects duplicate generic binders before registry mutat
   basic::CompilerOptions compilerOptions;
   identity::SemanticContextFactory contextFactory;
   CompilerSession session(contextFactory, languageOptions, compilerOptions);
-  CapturedDiagnostics captured;
-  session.getDiagnosticEngine().addConsumer(zc::heap<CaptureDiagnosticConsumer>(captured));
   auto registry = targetRegistry();
   auto input = VerifiedPackageSessionInput::from(
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
@@ -3263,8 +3232,7 @@ ZC_TEST("CompilerSession rejects duplicate generic binders before registry mutat
   ZC_REQUIRE(roots.size() == 1);
   ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
   ZC_EXPECT(!session.parseSources());
-  ZC_REQUIRE(captured.ids.size() == 1);
-  ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::DuplicateIdentifier);
+  ZC_EXPECT(diagnosticCount(session, diagnostics::DiagID::DuplicateIdentifier) == 1);
 }
 
 ZC_TEST("CompilerSession reports non-literal stable array lengths as source failures") {
@@ -3272,8 +3240,6 @@ ZC_TEST("CompilerSession reports non-literal stable array lengths as source fail
   basic::CompilerOptions compilerOptions;
   identity::SemanticContextFactory contextFactory;
   CompilerSession session(contextFactory, languageOptions, compilerOptions);
-  CapturedDiagnostics captured;
-  session.getDiagnosticEngine().addConsumer(zc::heap<CaptureDiagnosticConsumer>(captured));
   auto registry = targetRegistry();
   auto input = VerifiedPackageSessionInput::from(
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
@@ -3287,8 +3253,7 @@ ZC_TEST("CompilerSession reports non-literal stable array lengths as source fail
   ZC_REQUIRE(roots.size() == 1);
   ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
   ZC_EXPECT(!session.parseSources());
-  ZC_REQUIRE(captured.ids.size() == 1);
-  ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::ConstantExpressionNotAllowed);
+  ZC_EXPECT(diagnosticCount(session, diagnostics::DiagID::ConstantExpressionNotAllowed) == 1);
 }
 
 // A parameter reborrow compiles through the full pipeline and publishes escape
@@ -3318,7 +3283,7 @@ ZC_TEST("CompilerSession publishes escape facts and region memberships for a par
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
   ZC_REQUIRE(session.checkSources());
-  ZC_EXPECT(!session.getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(!session.hasDiagnosticErrors());
 
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& checkedMir = session.getOwnershipCheckedMirModules()[0];

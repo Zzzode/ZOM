@@ -19,6 +19,7 @@ DIAG(3001, UndefinedIdentifier, kError, "Undefined identifier: '{0}'", 1)
 DIAG(3002, SymbolNamespaceMismatch, kError,
              "Symbol '{0}' cannot be used in {1} context", 2)
 DIAG(3003, RedeclareVariable, kError, "Cannot redeclare variable '{0}'", 1)
+// Tracking: docs/rfc/tracking/0004-review-and-implementation.md
 DIAG(3004, RedeclareParameter, kError, "Cannot redeclare parameter '{0}'", 1)
 DIAG(3005, RedeclareFunction, kError, "Cannot redeclare function '{0}'", 1)
 DIAG(3006, RedeclareClass, kError, "Cannot redeclare class '{0}'", 1)
@@ -27,11 +28,13 @@ DIAG(3008, RedeclareEnum, kError, "Cannot redeclare enum '{0}'", 1)
 DIAG(3009, RedeclareTypeAlias, kError, "Cannot redeclare type alias '{0}'", 1)
 DIAG(3010, DuplicateIdentifier, kError, "Duplicate identifier: '{0}'", 1)
 DIAG(3017, PreviousDeclarationHere, kNote, "Previous declaration is here", 0)
+// Tracking: docs/rfc/tracking/0004-review-and-implementation.md
 DIAG(3020, BreakTargetNotFound, kError,
      "break requires an enclosing loop, match, or label", 0)
 DIAG(3021, ContinueTargetNotFound, kError,
      "continue requires an enclosing loop or loop label", 0)
 DIAG(3022, ContinueTargetNotLoop, kError, "continue label must name a loop", 0)
+// Tracking: docs/rfc/tracking/0014-review-and-implementation.md
 DIAG(3025, ContextualSelfOutsideType, kError,
      "Self is only available in a nominal, interface, or impl context", 0)
 DIAG(3028, AmbiguousIdentifier, kError, "Identifier '{0}' is ambiguous", 1)

@@ -25,6 +25,7 @@
 #include "compiler/identity/key/source-key.h"
 #include "compiler/identity/source/source-query-input.h"
 #include "compiler/parser/query/canonical-parsed-source.h"
+#include "compiler/parser/query/effective-source-query.h"
 #include "compiler/parser/query/parse-source-query.h"
 #include "compiler/source/manager.h"
 #include "zc/core/vector.h"
@@ -56,71 +57,51 @@ SnapshotUnavailableReason mapRuntimeFailure(query::QueryRuntimeFailure failure) 
   return SnapshotUnavailableReason::EvaluationRejected;
 }
 
-// Projects the source-rejected fact sequence. The rejection channel carries no
-// provenance map, so every diagnostic is rangeless.
-zc::Array<SnapshotDiagnostic> projectRejectedFacts(
-    zc::ArrayPtr<const diagnostics::DiagnosticFact> facts) {
-  zc::Vector<SnapshotDiagnostic> projected(facts.size());
-  for (const auto& fact : facts) {
-    projected.add(SnapshotDiagnostic::projectRangeless(fact.code(), fact.arguments()));
-  }
-  return projected.releaseAsArray();
-}
+zc::Array<SnapshotDiagnostic> projectResolvedDiagnostics(
+    const diagnostics::ResolvedDiagnosticBatch& batch) {
+  zc::Vector<SnapshotDiagnostic> projected(batch.size());
+  for (const auto& diagnostic : batch.diagnostics()) {
+    const auto projectLocation = [](const diagnostics::ResolvedDiagnosticLocation& location) {
+      const auto& range = location.range();
+      const SnapshotRange snapshotRange{range.byteStart, range.byteEnd, range.isTokenRange};
+      if (location.origin() == diagnostics::DiagnosticFactOrigin::Document) {
+        return SnapshotDiagnosticLocation::document(
+            zc::heapArray<uint8_t>(location.documentIdentityBytes()), snapshotRange);
+      }
+      return SnapshotDiagnosticLocation::source(location.source().encode(), snapshotRange);
+    };
 
-// Projects the published fact sequence, resolving each diagnostic's range from
-// the parse provenance map. A fact whose provenance does not resolve is projected
-// without a range rather than with a sentinel.
-zc::Array<SnapshotDiagnostic> projectPublishedFacts(
-    zc::ArrayPtr<const diagnostics::DiagnosticFact> facts,
-    const diagnostics::SourceDiagnosticProvenanceResolver& resolver) {
-  zc::Vector<SnapshotDiagnostic> projected(facts.size());
-  for (const auto& fact : facts) {
-    auto resolved = resolver.resolve(fact.primary());
-    ZC_IF_SOME(range, resolved) {
-      projected.add(SnapshotDiagnostic::projectRanged(
-          fact.code(), SnapshotRange{range.byteStart, range.byteEnd, range.isTokenRange},
-          fact.arguments()));
-    } else {
-      projected.add(SnapshotDiagnostic::projectRangeless(fact.code(), fact.arguments()));
-    }
-  }
-  return projected.releaseAsArray();
-}
-
-// Whether a resolved range is a usable span inside the source. A parse-error
-// diagnostic is legitimately a zero-width point (byteStart == byteEnd marks a
-// caret position at the error), so an empty range is accepted; an inverted or
-// past-the-end range is treated as unresolved, so a malformed provenance record
-// degrades to a rangeless diagnostic rather than surfacing an out-of-bounds range.
-bool rangeIsWithinSource(const diagnostics::DiagnosticSourceRange& range,
-                         uint64_t sourceByteLength) {
-  return range.byteStart <= range.byteEnd && range.byteEnd <= sourceByteLength;
-}
-
-// Projects one reconstructed rejected parse. The ParseRejected facts and their
-// provenance map are built together by reconstructParseRejection, so each fact is
-// resolved against that same map with no cross-list correlation against the
-// demand's diagnostics. A fact whose provenance is absent or out of bounds is
-// projected without a range.
-zc::Array<SnapshotDiagnostic> projectReconstructedRejectedFacts(
-    const parser::ParseRejected& rejected) {
-  const auto facts = rejected.facts();
-  const auto& provenance = rejected.provenance();
-  const uint64_t sourceByteLength = rejected.sourceByteLength();
-  zc::Vector<SnapshotDiagnostic> projected(facts.size());
-  for (const auto& fact : facts) {
-    auto resolved = provenance.find(fact.primary());
-    ZC_IF_SOME(range, resolved) {
-      if (rangeIsWithinSource(range, sourceByteLength)) {
-        projected.add(SnapshotDiagnostic::projectRanged(
-            fact.code(), SnapshotRange{range.byteStart, range.byteEnd, range.isTokenRange},
-            fact.arguments()));
-        continue;
+    zc::Vector<SnapshotDiagnosticRelated> related(diagnostic.related().size());
+    for (const auto& item : diagnostic.related()) {
+      auto location = projectLocation(item.location);
+      switch (item.role) {
+        case diagnostics::DiagnosticSecondaryRole::Highlight:
+          related.add(SnapshotDiagnosticRelated::highlight(zc::mv(location)));
+          break;
+        case diagnostics::DiagnosticSecondaryRole::Note:
+          related.add(SnapshotDiagnosticRelated::note(ZC_ASSERT_NONNULL(item.code),
+                                                      zc::mv(location), item.arguments.asPtr()));
+          break;
+        case diagnostics::DiagnosticSecondaryRole::PreviousDeclaration:
+          related.add(SnapshotDiagnosticRelated::previousDeclaration(zc::mv(location)));
+          break;
       }
     }
-    projected.add(SnapshotDiagnostic::projectRangeless(fact.code(), fact.arguments()));
+    projected.add(SnapshotDiagnostic::project(diagnostic.code(),
+                                              projectLocation(diagnostic.primary()),
+                                              diagnostic.arguments(), related.releaseAsArray()));
   }
   return projected.releaseAsArray();
+}
+
+zc::Maybe<zc::Array<SnapshotDiagnostic>> projectReconstructedRejectedFacts(
+    const parser::ParseRejected& rejected) {
+  if (rejected.facts().size() == 0) { return zc::Array<SnapshotDiagnostic>(); }
+  const auto& source = rejected.facts()[0].occurrence().source();
+  diagnostics::SourceDiagnosticProvenanceResolver resolver(source, rejected.provenance());
+  auto materialized = diagnostics::materializeDiagnosticFacts(rejected.facts(), resolver);
+  if (!materialized.is<diagnostics::ResolvedDiagnosticBatch>()) { return zc::none; }
+  return projectResolvedDiagnostics(materialized.get<diagnostics::ResolvedDiagnosticBatch>());
 }
 
 // Reads a query input value from the snapshot, or none when it is not a committed
@@ -135,11 +116,14 @@ zc::Maybe<typename Input::Value> probeInputValue(const query::QuerySnapshot& sna
   return result.value().clone();
 }
 
-// Best-effort projection of a source-rejected parse with resolved ranges. The
-// rejection channel carries no provenance, so this re-derives it by replaying the
-// parse through reconstructParseRejection over the two committed inputs the parse
-// read directly. Any missing input or reconstruction failure yields none, and the
-// caller keeps the rangeless projection; the source-rejected arm is never lost.
+// Projects a source-rejected parse with resolved ranges. The rejection channel
+// carries no provenance, so this re-derives it by replaying the parse through
+// reconstructParseRejection over the two committed inputs the parse read
+// directly. Any missing input or reconstruction failure yields none, and the
+// caller fails closed instead of publishing an unresolved diagnostic. Reading
+// EffectiveSourceSnapshot is essential here: a rejected editor overlay must be
+// reconstructed from the overlay bytes selected for the parse, never from the
+// workspace fallback.
 zc::Maybe<zc::Array<SnapshotDiagnostic>> projectRejectedFactsWithRanges(
     const query::QuerySnapshot& snapshot, const SemanticSnapshotKey& key,
     zc::ArrayPtr<const diagnostics::DiagnosticFact> expectedFacts) {
@@ -148,18 +132,15 @@ zc::Maybe<zc::Array<SnapshotDiagnostic>> projectRejectedFactsWithRanges(
   if (sourceFile == zc::none || !decoder.finished()) { return zc::none; }
   auto crate = ZC_ASSERT_NONNULL(sourceFile).crate().clone();
 
-  // Migration-phase note: this reconstructs rejected-parse ranges against the
-  // workspace source bytes. When an editor overlay is active the parse ran over
-  // the overlay bytes (via EffectiveSourceSnapshot), so overlay-aware range
-  // reconstruction is a later tightening; today an overlay rejection keeps its
-  // ranges best-effort against the workspace bytes.
-  auto source =
-      probeInputValue<identity::source_query::SourceSnapshotInput>(snapshot, key.sourceKey());
+  auto source = snapshot.get<parser::EffectiveSourceSnapshot>(key.sourceKey());
   auto options = probeInputValue<identity::source_query::CompilationOptionsInput>(snapshot, crate);
-  if (source == zc::none || options == zc::none) { return zc::none; }
+  if (source.isRuntimeFailure() || source.kind() != query::QueryValueKind::Value ||
+      options == zc::none) {
+    return zc::none;
+  }
 
   auto rejected = parser::reconstructParseRejection(key.sourceKey(), ZC_ASSERT_NONNULL(options),
-                                                    ZC_ASSERT_NONNULL(source), expectedFacts);
+                                                    source.value(), expectedFacts);
   ZC_IF_SOME(value, rejected) { return projectReconstructedRejectedFacts(value); }
   return zc::none;
 }
@@ -241,12 +222,10 @@ SemanticSnapshot projectParseDemand(
   }
   if (demand.isSourceRejected()) {
     auto facts = demand.diagnostics().values();
-    // Best effort: recover source ranges by replaying the parse. On any failure,
-    // keep the rangeless projection so the source-rejected arm is never lost.
     ZC_IF_SOME(ranged, projectRejectedFactsWithRanges(snapshot, key, facts)) {
       return SemanticSnapshot::sourceRejected(key.documentVersion(), zc::mv(ranged));
     }
-    return SemanticSnapshot::sourceRejected(key.documentVersion(), projectRejectedFacts(facts));
+    return SemanticSnapshot::unavailable(SnapshotUnavailableReason::EvaluationRejected);
   }
   if (!demand.isPublished()) {
     // A parse query has no key-rejection arm, so no other outcome is reachable;
@@ -267,10 +246,14 @@ SemanticSnapshot projectParseDemand(
 
   diagnostics::SourceDiagnosticProvenanceResolver resolver(ZC_ASSERT_NONNULL(sourceFile),
                                                            parsed.provenance());
+  auto materialized = diagnostics::materializeDiagnosticFacts(parsed.facts(), resolver);
+  if (!materialized.is<diagnostics::ResolvedDiagnosticBatch>()) {
+    return SemanticSnapshot::unavailable(SnapshotUnavailableReason::EvaluationRejected);
+  }
   return SemanticSnapshot::published(
       parsed.canonicalSourceKey(), parsed.sourceBytes().size(), key.documentVersion(),
       projectTokens(parsed.tokens(), parsed.sourceBytes().size()), projectOutline(parsed),
-      projectPublishedFacts(parsed.facts(), resolver));
+      projectResolvedDiagnostics(materialized.get<diagnostics::ResolvedDiagnosticBatch>()));
 }
 
 }  // namespace

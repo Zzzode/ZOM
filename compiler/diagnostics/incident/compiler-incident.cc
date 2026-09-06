@@ -33,7 +33,8 @@ identity::Sha256Digest schemaDigest() {
   zc::Vector<uint8_t> schema;
   appendText(schema, kSchemaDomain);
   schema.add(0);
-  appendUint32(schema, 12 * 13 * 14 + 4 * 10 + 4 * 5 + 5 * 3 + 5 * 8 * 5 + 4 * 5 + 19 * 19 * 6);
+  appendUint32(schema, 12 * 13 * 14 + 4 * 10 + 4 * 5 + 5 * 3 + 5 * 8 * 5 + 4 * 5 + 19 * 19 * 6 + 3 +
+                           3 + 19 + 17 + 12 + 11 + 21);
   for (uint32_t phase = 1; phase <= 12; ++phase) {
     for (uint32_t kind = 1; kind <= 13; ++kind) {
       for (uint32_t producer = 1; producer <= 14; ++producer) {
@@ -98,6 +99,48 @@ identity::Sha256Digest schemaDigest() {
       appendUint32(schema, kind);
       appendUint32(schema, 0x101U);
     }
+  }
+  for (uint32_t kind = 1; kind <= 3; ++kind) {
+    appendUint16(schema, static_cast<uint16_t>(basic::CompilerIncidentDomain::Driver));
+    appendUint32(schema, 0x201U);
+    appendUint32(schema, 0x100U + kind);
+    appendUint32(schema, 0x201U);
+  }
+  for (uint32_t kind = 1; kind <= 3; ++kind) {
+    appendUint16(schema, static_cast<uint16_t>(basic::CompilerIncidentDomain::Driver));
+    appendUint32(schema, 0x202U);
+    appendUint32(schema, 0x100U + kind);
+    appendUint32(schema, 0x202U);
+  }
+  for (uint32_t kind = 1; kind <= 19; ++kind) {
+    appendUint16(schema, static_cast<uint16_t>(basic::CompilerIncidentDomain::Driver));
+    appendUint32(schema, 0x202U);
+    appendUint32(schema, 0x200U + kind);
+    appendUint32(schema, 0x203U);
+  }
+  for (uint32_t kind = 1; kind <= 17; ++kind) {
+    appendUint16(schema, static_cast<uint16_t>(basic::CompilerIncidentDomain::Driver));
+    appendUint32(schema, 0x203U);
+    appendUint32(schema, 0x300U + kind);
+    appendUint32(schema, 0x203U);
+  }
+  for (uint32_t kind = 1; kind <= 12; ++kind) {
+    appendUint16(schema, static_cast<uint16_t>(basic::CompilerIncidentDomain::Driver));
+    appendUint32(schema, 0x204U);
+    appendUint32(schema, 0x400U + kind);
+    appendUint32(schema, 0x204U);
+  }
+  for (uint32_t kind = 1; kind <= 11; ++kind) {
+    appendUint16(schema, static_cast<uint16_t>(basic::CompilerIncidentDomain::Driver));
+    appendUint32(schema, 0x204U);
+    appendUint32(schema, 0x500U + kind);
+    appendUint32(schema, 0x204U);
+  }
+  for (uint32_t kind = 1; kind <= 21; ++kind) {
+    appendUint16(schema, static_cast<uint16_t>(basic::CompilerIncidentDomain::Driver));
+    appendUint32(schema, 0x205U);
+    appendUint32(schema, 0x600U + kind);
+    appendUint32(schema, 0x205U);
   }
   return ZC_REQUIRE_NONNULL(identity::sha256(schema.asPtr()));
 }

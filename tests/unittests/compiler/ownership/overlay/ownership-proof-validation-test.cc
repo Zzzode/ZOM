@@ -228,7 +228,7 @@ public:
     ZC_REQUIRE(session.parseSources());
     ZC_REQUIRE(session.bindSources());
     ZC_REQUIRE(session.checkSources());
-    ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+    ZC_REQUIRE(!session.hasDiagnosticErrors());
     ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   }
 

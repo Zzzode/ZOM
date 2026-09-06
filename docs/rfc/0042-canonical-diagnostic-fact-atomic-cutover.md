@@ -147,7 +147,7 @@ flowchart LR
     F --> Q["Query or Binder result codec"]
     F --> R["Materializer"]
     M --> R
-    R --> O["DiagnosticEngine outside query evaluation"]
+    R --> O["Immutable batch consumer"]
 ```
 
 There is no route from a draft into a query value except the publication
@@ -382,18 +382,18 @@ DiagnosticMaterializationFailure =
   ArgumentMismatch
 ```
 
-`ResolvedDiagnosticBatch` owns every reconstructed `Diagnostic` and exposes no
-mutation. Materialization first resolves and validates the entire batch,
+`ResolvedDiagnosticBatch` owns every reconstructed resolved diagnostic and exposes
+no mutation. Materialization first resolves and validates the entire batch,
 including primary locations, token-versus-character highlights, and child
-notes. It does not demand a query, touch `DiagnosticEngine`, or emit a partial
-prefix. Only a complete `Resolved` batch can be moved into the one-shot
-diagnostic-engine publication adapter.
+notes. It does not demand a query, touch a presentation consumer, or emit a
+partial prefix. Only a complete resolved batch can enter immutable policy and
+consumer projection.
 
 For parse rejection, `CompilerSession` publishes the complete resolved source
 batch and returns failure. For a successfully parsed source, it publishes the
 complete warning batch and continues. Any materialization failure publishes no
-source diagnostic, emits exactly one existing `ZOM9956 ModuleGraphInvariant`
-with count `1`, and returns failure before parsed-module verification. This
+source diagnostic, adds exactly one diagnostics-pipeline incident descriptor,
+and returns failure before parsed-module verification. This
 precedence is identical for missing, foreign, out-of-range, role, and argument
 failures.
 
@@ -613,17 +613,16 @@ scripts/check-stable-binding-schema.py
 
 The two `diagnostic-fact-buffer.*` paths are deleted and the two
 `source-diagnostic-draft-buffer.*` paths are added in the same transaction.
-The unused FixIt declarations and methods are deleted from `Diagnostic` and
-`InFlightDiagnostic`; no replacement type remains. No diagnostic registry
-changes: this source cutover adds no diagnostic code.
+The unused FixIt declarations and methods are deleted with the mutable
+presentation types; no replacement type remains. This source cutover adds no
+diagnostic code.
 `stable-binding-schema.def` and its gate delete only unimplemented diagnostic
 inventory; the live `BinderQueryResult<DiagnosticFact>` payload contract
 remains.
 
 The live-use census also finds generic or text-only references in
 `stable-binding-codec.cc`, `stable-binding-facts.h`,
-`checker-diagnostic-adapter.cc`, `signature-facts.{h,cc}`,
-`diagnostic-engine.h`, `query-types.h`, `diagnostic-test.cc`,
+`signature-facts.{h,cc}`, `query-types.h`, `diagnostic-test.cc`,
 `check-binder-architecture.py`, `check-diagnostic-coverage.py`, and
 `check-impl-source-architecture.py`. They are intentionally outside the
 landing set: their function signatures, generic containers, forward

@@ -14,15 +14,14 @@
 
 #include "compiler/driver/graph/module-discovery.h"
 
-#include "zc/core/memory.h"
-#include "zc/ztest/test.h"
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/basic/string-pool.h"
 #include "compiler/basic/zomlang-opts.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "compiler/parser/parser.h"
 #include "compiler/source/manager.h"
+#include "zc/core/memory.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::driver {
 namespace {

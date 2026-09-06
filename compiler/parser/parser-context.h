@@ -26,8 +26,8 @@ namespace zomlang {
 namespace compiler {
 
 namespace diagnostics {
-class DiagnosticEmitter;
 class SourceDiagnosticDraftBuffer;
+class SourceDiagnosticSink;
 }  // namespace diagnostics
 
 namespace basic {
@@ -74,8 +74,8 @@ public:
   /// \brief Return the current source file identifier.
   ZC_NODISCARD zc::StringPtr fileIdentifier() const;
 
-  /// \brief Return the parser diagnostic emitter.
-  ZC_NODISCARD diagnostics::DiagnosticEmitter& diagnostics() const;
+  /// \brief Return the parser diagnostic sink.
+  ZC_NODISCARD diagnostics::SourceDiagnosticSink& diagnostics() const;
 
   /// \brief Return the shared source manager.
   ZC_NODISCARD const source::SourceManager& sourceManager() const;

@@ -27,11 +27,11 @@ IMPORTED_VIEW_PROJECTOR_SOURCE = Path(
 )
 MODULE_INTERFACE_HEADER = Path("compiler/driver/interface/module-interface.h")
 MODULE_INTERFACE_SOURCE = Path("compiler/driver/interface/module-interface.cc")
-MODULE_INTERFACE_DIAGNOSTIC_HEADER = Path(
-    "compiler/driver/diagnostics/module-interface-diagnostic-adapter.h"
+MODULE_INTERFACE_DIAGNOSTIC_PROJECTOR_HEADER = Path(
+    "compiler/driver/diagnostics/module-interface-diagnostic-projector.h"
 )
-MODULE_INTERFACE_DIAGNOSTIC_SOURCE = Path(
-    "compiler/driver/diagnostics/module-interface-diagnostic-adapter.cc"
+MODULE_INTERFACE_DIAGNOSTIC_PROJECTOR_SOURCE = Path(
+    "compiler/driver/diagnostics/module-interface-diagnostic-projector.cc"
 )
 BORROW_EVIDENCE_HEADER = Path("compiler/driver/interface/borrow-evidence.h")
 BORROW_EVIDENCE_SOURCE = Path("compiler/driver/interface/borrow-evidence.cc")
@@ -106,6 +106,8 @@ CORE_FILES = frozenset(
         CORE_QUERY_SOURCE,
         CORE_VERIFIER_HEADER,
         CORE_VERIFIER_SOURCE,
+        Path("compiler/driver/core/diagnostic-projector.h"),
+        Path("compiler/driver/core/diagnostic-projector.cc"),
         Path("compiler/driver/core/library.h"),
         Path("compiler/driver/core/library.cc"),
         Path("compiler/driver/core/marker-authority.h"),
@@ -170,8 +172,8 @@ EXPECTED_DRIVER_FILES = {
     IMPORTED_VIEW_PROJECTOR_SOURCE,
     MODULE_INTERFACE_HEADER,
     MODULE_INTERFACE_SOURCE,
-    MODULE_INTERFACE_DIAGNOSTIC_HEADER,
-    MODULE_INTERFACE_DIAGNOSTIC_SOURCE,
+    MODULE_INTERFACE_DIAGNOSTIC_PROJECTOR_HEADER,
+    MODULE_INTERFACE_DIAGNOSTIC_PROJECTOR_SOURCE,
     BORROW_EVIDENCE_HEADER,
     BORROW_EVIDENCE_SOURCE,
     INTERFACE_SOURCE_HEADER,
@@ -209,7 +211,7 @@ EXPECTED_DRIVER_FILES = {
 DRIVER_BUILD_MARKER = (
     "set(DRIVER_SRC\n"
     "  session/compiler-session.cc\n"
-    "  diagnostics/module-interface-diagnostic-adapter.cc\n"
+    "  diagnostics/module-interface-diagnostic-projector.cc\n"
     "  graph/crate-graph.cc\n"
     "  graph/module-discovery.cc\n"
     "  interface/borrow-evidence.cc\n"
@@ -230,6 +232,7 @@ DRIVER_BUILD_MARKER = (
     "  query/module-graph/module-dependency-provenance-query.cc\n"
     "  query/module-graph/module-graph-query.cc\n"
     "  query/module-graph/module-graph-query-input.cc\n"
+    "  core/diagnostic-projector.cc\n"
     "  core/role-seed-failure.cc\n"
     "  core/library.cc\n"
     "  core/marker-authority.cc\n"
@@ -257,7 +260,6 @@ SESSION_HEADER_MARKERS = (
     "getVerifiedDispatchFacts() const noexcept;",
     "getBorrowEvidenceRepository() const noexcept;",
     "getVerifiedHirModules() const noexcept;",
-    "getIrFailureGroups() const noexcept;",
     "getIrIdentityInvariantFailures() const noexcept;",
 )
 
@@ -281,7 +283,6 @@ SESSION_SOURCE_MARKERS = (
     "semanticContextCapabilityArena.addRef())",
     "zc::Own<basic::StringPool> stringPool;",
     "zc::Own<source::SourceManager> sourceManager;",
-    "zc::Own<diagnostics::DiagnosticEngine> diagnosticEngine;",
     "zc::Vector<ParsedModuleRecord> parsedModules;",
     "struct ModuleKeyBinding final",
     "zc::Vector<ModuleKeyBinding> moduleKeys;",
@@ -296,8 +297,6 @@ SESSION_SOURCE_MARKERS = (
     "const auto& roots = finalSnapshot.contextRoots();",
     "incremental_binding_query::ContextualIdentityAuthorityInputTransaction::prepare(",
     "binder::DefinitionInventory::collect(tree);",
-    "diagnostics::DiagID::IdentityBrandExhausted",
-    "diagnostics::DiagID::IdentityDuplicateSingletonStore",
     "while (true) {",
     "zc::Maybe<VerifiedCrateGraph> crateGraph;",
     "zc::Vector<VerifiedPreparatoryCrateGraph> preparatoryCrateGraphs;",
@@ -319,7 +318,6 @@ SESSION_SOURCE_MARKERS = (
     "zc::Vector<checker::checked::CheckedEvidenceLease> checkedEvidence;",
     "zc::Vector<checker::dispatch::VerifiedDispatchFacts> dispatchFacts;",
     "zc::Vector<hir::VerifiedHirModule> hirModules;",
-    "zc::Vector<ir::IrDiagnosticGroup> irFailureGroups;",
     "zc::Vector<identity::IdentityInvariant> irIdentityInvariantFailures;",
     "checker::dispatch::DispatchSiteInventoryBuilder::build(boundView.boundModule(), inventory)",
     "checker::dispatch::DispatchFactsBuilder::build(",
@@ -569,7 +567,6 @@ def check_session_ownership(
     if source.count("FinalizeCoreModuleInterface") != 2:
         errors.append(f"{SESSION_SOURCE}: source-backed final core-interface demand is missing")
     for forbidden in (
-        "MaterializeCoreRoleSeed",
         "MaterializeCoreBootstrapModuleInterface",
         "CoreExportSurface",
     ):

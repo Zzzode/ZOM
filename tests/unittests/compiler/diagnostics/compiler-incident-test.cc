@@ -6,6 +6,7 @@
 #include "compiler/basic/incident/compiler-incident.h"
 
 #include "compiler/diagnostics/incident/compiler-incident.h"
+#include "compiler/driver/core/diagnostic-projector.h"
 #include "compiler/identity/diagnostics/identity-diagnostic-projector.h"
 #include "zc/ztest/test.h"
 
@@ -138,6 +139,47 @@ ZC_TEST("Compiler incident rendering is stable and omits occurrence counts") {
 ZC_TEST("Compiler incident rendering rejects an empty set") {
   basic::BoundedIncidentSet incidents;
   ZC_EXPECT(diagnostics::renderCompilerIncident("ZomLang Version test"_zc, incidents) == zc::none);
+}
+
+ZC_TEST("CoreDiagnosticProjector preserves registered three-rail failure identities") {
+  using namespace driver::core_library_query;
+
+  const auto admission = CoreDiagnosticProjector::project(
+      source::core::CoreDistributionAdmissionInvariantKind::VerifierDisagreement,
+      CoreIncidentPhase::DistributionAdmission, CoreIncidentProducer::SourceAdmission);
+  ZC_EXPECT(admission.domain() == basic::CompilerIncidentDomain::Driver);
+  ZC_EXPECT(admission.phase().tag() ==
+            static_cast<uint32_t>(CoreIncidentPhase::DistributionAdmission));
+  ZC_EXPECT(admission.kind().tag() ==
+            0x0100U +
+                static_cast<uint32_t>(
+                    source::core::CoreDistributionAdmissionInvariantKind::VerifierDisagreement));
+  ZC_EXPECT(admission.producer().tag() ==
+            static_cast<uint32_t>(CoreIncidentProducer::SourceAdmission));
+
+  const auto preparation = CoreDiagnosticProjector::project(
+      CoreDistributionInputPreparationInvariantKind::PayloadVerificationFailed);
+  ZC_EXPECT(preparation.phase().tag() ==
+            static_cast<uint32_t>(CoreIncidentPhase::InputPreparation));
+  ZC_EXPECT(preparation.kind().tag() ==
+            0x0200U +
+                static_cast<uint32_t>(
+                    CoreDistributionInputPreparationInvariantKind::PayloadVerificationFailed));
+
+  const auto roleSeed =
+      CoreDiagnosticProjector::project(CoreRoleSeedFailureKind::MissingRequiredRole);
+  ZC_EXPECT(roleSeed.phase().tag() == static_cast<uint32_t>(CoreIncidentPhase::QueryEvaluation));
+  ZC_EXPECT(roleSeed.kind().tag() ==
+            0x0500U + static_cast<uint32_t>(CoreRoleSeedFailureKind::MissingRequiredRole));
+  ZC_EXPECT(roleSeed.producer().tag() == static_cast<uint32_t>(CoreIncidentProducer::QueryRuntime));
+
+  auto allocation = coreOperationalFailure(query::QueryRuntimeFailure::AllocationFailure);
+  auto cancellation = coreOperationalFailure(query::QueryRuntimeFailure::Cancelled);
+  ZC_REQUIRE(allocation != zc::none);
+  ZC_REQUIRE(cancellation != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(allocation) == CoreOperationalFailureKind::AllocationFailed);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(cancellation) == CoreOperationalFailureKind::Cancelled);
+  ZC_EXPECT(coreOperationalFailure(query::QueryRuntimeFailure::ProviderRejected) == zc::none);
 }
 
 }  // namespace zomlang::compiler

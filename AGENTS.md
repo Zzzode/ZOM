@@ -71,7 +71,7 @@ ZOM is a modern systems programming language.
 | `compiler/binder/` | Module dependency requests, scope construction, name resolution, and verified bound-module publication |
 | `compiler/checker/` | Signature, inference, dispatch, coherence, borrow-surface, and checked-fact validation |
 | `compiler/type/` | Canonical immutable semantic type data and the session-owned semantic type store |
-| `compiler/diagnostics/` | Generated diagnostic catalog, canonical facts, collection, materialization, policy, rendering, and consumers |
+| `compiler/diagnostics/` | Compile-time diagnostic catalog, canonical facts, collection, materialization, policy, rendering, and consumers |
 | `compiler/basic/incident/` | Dependency-minimal compiler incident descriptors and bounded aggregation |
 | `compiler/driver/` | Cross-module `CompilerSession`, module discovery, interface publication, and package orchestration |
 | `compiler/identity/` | Branded canonical package, crate, module, definition, source, and revision identities |
@@ -261,13 +261,13 @@ the trigger matrix in `.codex/subagents/README.md`.
 | `lexer-parser` | Tokenization, grammar, AST, CST, operator precedence | lexer/**, parser/**, ast/**, cst/**, spec grammar |
 | `binder-checker` | Scopes, canonical definitions, traits, generics, type rules | binder/**, checker/**, type/**, traits, ADT |
 | `module-system` | Query database, incident transport, identity, import/export, packages, visibility, dependency topology | basic/incident/**, query/**, identity/**, driver module graph and interfaces, `docs/package-system.md`, `docs/spec/chapters/13-*` |
-| `error-system` | Result/Option, ?! / !! / ?: , raises clauses, panic boundaries | Generated diagnostic catalog, canonical facts, collection, materialization, policy, rendering, consumers, and error chapters |
+| `error-system` | Result/Option, ?! / !! / ?: , raises clauses, panic boundaries | Compile-time diagnostic catalog, canonical facts, collection, materialization, policy, rendering, consumers, and error chapters |
 | `concurrency` | async/await, Future, nursery, cancel, Sendable, memory model, primitives | runtime concurrency, spec 15-concurrency, channel/mutex, `Send/Sync`/`Sendable` |
 | `ir-backend` | HIR, MIR, LIR, lowering, target ABI, LLVM, native artifacts | compiler IR/backend and CLI, top-level/compiler/basic/trace CMake, CMake presets |
 | `tooling-lsp` | IDE semantic facade, LSP transport, document versions, cancellation, stale-response suppression | `compiler/ide/**`, `compiler/lsp/**`, `tools/ide/**`, `tools/lsp/**`, `editors/**`, `docs/design/tooling/**` |
 | `spec-audit` | Spec ↔ implementation 1:1 alignment | `docs/spec/**`, `docs/design/**`, `docs/plan/**`, and compiler/spec drift |
 | `runtime-memory` | Ownership, zc types, RAII, memory model, unsafe boundaries | libraries/zc/**, compiler/ownership/**, runtime/**, FFI |
-| `verification` | Build + sanitizer + tests + format, evidence-gating | tests, CI workflows, README build contract, RFC 0016/0047 coverage, diagnostics generation/fuzz/performance/exact-scope gates, incremental-query gates and benchmarks, English/spec alignment, and identity/IR architecture gates; runs last |
+| `verification` | Build + sanitizer + tests + format, evidence-gating | tests, CI workflows, README build contract, RFC 0047 native diagnostics verification, incremental-query gates and benchmarks, English/spec alignment, and identity/IR architecture gates; runs last |
 
 ---
 

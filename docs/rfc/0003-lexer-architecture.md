@@ -148,7 +148,7 @@ flowchart TD
   Lex --> Stream["Lazy TokenStream buffer"]
   Stream --> Cursor["TokenCursor"]
   Cursor --> Parser["Grammar-shaped parser"]
-  Scanner --> Diags["DiagnosticEngine"]
+  Scanner --> Diags["SourceDiagnosticSink"]
   Lex --> Oracle["Lexer and grammar oracle checks"]
 ```
 

@@ -33,7 +33,7 @@ ParserContext::ParserContext(const source::SourceManager& sourceMgr,
     : sourceMgr(sourceMgr),
       diagnosticFacts(diagnosticFacts),
       bufferId(bufferId),
-      stream(sourceMgr, diagnosticFacts.lexerEmitter(), langOpts, stringPool, bufferId) {}
+      stream(sourceMgr, diagnosticFacts.lexerSink(), langOpts, stringPool, bufferId) {}
 
 void ParserContext::resetTokens(zc::ArrayPtr<const lexer::Token> tokens) { stream.reset(tokens); }
 
@@ -69,8 +69,8 @@ zc::StringPtr ParserContext::fileIdentifier() const {
   return sourceMgr.getIdentifierForBuffer(bufferId);
 }
 
-diagnostics::DiagnosticEmitter& ParserContext::diagnostics() const {
-  return diagnosticFacts.parserEmitter();
+diagnostics::SourceDiagnosticSink& ParserContext::diagnostics() const {
+  return diagnosticFacts.parserSink();
 }
 
 const source::SourceManager& ParserContext::sourceManager() const { return sourceMgr; }

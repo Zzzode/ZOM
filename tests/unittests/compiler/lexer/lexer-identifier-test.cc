@@ -12,10 +12,10 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zc/ztest/test.h"
 #include "compiler/lexer/lexer.h"
 #include "compiler/lexer/unicode-data.h"
 #include "tests/unittests/compiler/lexer/utils.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang {
 namespace compiler {
@@ -71,8 +71,7 @@ ZC_TEST("LexerIdentifierTest.UnderscoreAloneIsUnderscoreToken") {
 
 ZC_TEST("LexerIdentifierTest.NumericLikeUnderscoreReportsError") {
   // '_' followed by digits is treated as identifier but flagged as error
-  auto& sm = getSourceManager();
-  auto diags = zc::heap<diagnostics::DiagnosticEngine>(sm);
+  auto diags = zc::heap<CapturedLexerDiagnostics>();
   auto tokens = tokenize("_123"_zc, *diags);
   ZC_EXPECT(tokens.size() == 2);
   ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Identifier));

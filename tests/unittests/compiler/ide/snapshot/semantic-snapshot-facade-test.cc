@@ -477,30 +477,90 @@ ZC_TEST("resolveSemanticSnapshot resolves ranges for a malformed source rejectio
   ZC_REQUIRE(snapshot.isSourceRejected());
   ZC_EXPECT(snapshot.documentVersion() == DocumentVersion::initial(-7));
   ZC_REQUIRE(snapshot.diagnostics().size() != 0);
-  // The rejection is reconstructed so at least one diagnostic carries a bounded
-  // range inside the source. A parse-error range may be zero-width (a caret at
-  // the error point), so byteStart == byteEnd is valid; any unresolved fact stays
-  // rangeless.
-  size_t rangedCount = 0;
+  // Every diagnostic is reconstructed with a bounded range inside the source. A
+  // parse-error range may be zero-width (a caret at the error point), so
+  // byteStart == byteEnd is valid.
   for (const auto& diagnostic : snapshot.diagnostics()) {
     ZC_EXPECT(diagnostic.severity() >= diagnostics::DiagSeverity::kError);
-    ZC_IF_SOME(range, diagnostic.range()) {
-      ZC_EXPECT(range.byteStart <= range.byteEnd);
-      ZC_EXPECT(range.byteEnd <= sourceLength);
-      ++rangedCount;
-    }
+    ZC_EXPECT(diagnostic.primary().range().byteStart <= diagnostic.primary().range().byteEnd);
+    ZC_EXPECT(diagnostic.primary().range().byteEnd <= sourceLength);
   }
-  ZC_EXPECT(rangedCount != 0);
 }
 
-ZC_TEST("resolveSemanticSnapshot keeps a malformed rejection rangeless when options are absent") {
+ZC_TEST("resolveSemanticSnapshot resolves rejected overlay ranges against the overlay bytes") {
+  auto database = facadeTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto sourceKey = sourceQueryKey("facade-malformed-overlay.zom"_zc);
+  auto registry = targetRegistry();
+  auto options =
+      compilationOptionsValue(registry, package::SelectedLanguageOptions{false, true, false});
+  auto workspace = sourceSnapshotValue("facade-malformed-overlay.zom"_zc,
+                                       zc::heapArray("let workspace = 1;"_zcb));
+  auto overlay =
+      sourceSnapshotValue("facade-malformed-overlay.zom"_zc, zc::heapArray("let overlay = ;"_zcb));
+  const uint64_t overlayLength = overlay.bytes().size();
+  auto selection = IdeSourceSelection::openOverlay(overlay.contentDigest());
+  auto write = transaction(database);
+  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, workspace).isApplied());
+  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+  ZC_REQUIRE(write.set<EditorDocumentInput>(sourceKey, overlay).isApplied());
+  ZC_REQUIRE(write.set<IdeSourceSelectionInput>(sourceKey, selection).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
+
+  auto key = SemanticSnapshotKey::bind(sourceKey.clone(), DocumentVersion::initial(13));
+  auto snapshot = resolveSemanticSnapshot(database, key);
+
+  ZC_REQUIRE(snapshot.isSourceRejected());
+  ZC_REQUIRE(snapshot.diagnostics().size() != 0);
+  for (const auto& diagnostic : snapshot.diagnostics()) {
+    ZC_EXPECT(diagnostic.primary().range().byteStart <= diagnostic.primary().range().byteEnd);
+    ZC_EXPECT(diagnostic.primary().range().byteEnd <= overlayLength);
+  }
+}
+
+ZC_TEST("resolveSemanticSnapshot preserves related information from the resolved batch") {
+  auto database = facadeTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  auto sourceKey = sourceQueryKey("facade-related.zom"_zc);
+  auto sourceValue = sourceSnapshotValue("facade-related.zom"_zc, zc::heapArray("#"_zcb));
+  auto registry = targetRegistry();
+  auto options =
+      compilationOptionsValue(registry, package::SelectedLanguageOptions{false, true, false});
+  auto write = transaction(database);
+  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue).isApplied());
+  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
+
+  auto key = SemanticSnapshotKey::bind(sourceKey.clone(), DocumentVersion::initial(12));
+  auto snapshot = resolveSemanticSnapshot(database, key);
+
+  ZC_REQUIRE(snapshot.isSourceRejected());
+  ZC_REQUIRE(snapshot.diagnostics().size() != 0);
+  bool found = false;
+  for (const auto& diagnostic : snapshot.diagnostics()) {
+    if (diagnostic.code() != diagnostics::DiagID::DanglingHash) { continue; }
+    found = true;
+    ZC_REQUIRE(diagnostic.related().size() == 1);
+    const auto& related = diagnostic.related()[0];
+    ZC_EXPECT(related.role() == SnapshotDiagnosticRelatedRole::Note);
+    ZC_EXPECT(related.code() == diagnostics::DiagID::DanglingHashHelp);
+    ZC_EXPECT(related.location().resourceKind() == SnapshotDiagnosticResourceKind::Source);
+    ZC_EXPECT(related.location().resourceIdentityBytes() == sourceKey.canonicalSourceBytes());
+    ZC_EXPECT(related.location().range().byteStart == 0);
+    ZC_EXPECT(related.location().range().byteEnd == 0);
+    ZC_EXPECT(related.arguments().size() == 0);
+  }
+  ZC_EXPECT(found);
+}
+
+ZC_TEST("resolveSemanticSnapshot fails closed when rejection provenance cannot be reconstructed") {
   auto database = facadeTestDatabase();
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
   auto sourceKey = sourceQueryKey("facade-malformed-norange.zom"_zc);
   auto sourceValue =
       sourceSnapshotValue("facade-malformed-norange.zom"_zc, zc::heapArray("let value = ;"_zcb));
-  // Commit only the source input; without the compilation options the parse
-  // still rejects, but reconstruction cannot run, so ranges stay unresolved.
+  // Commit only the source input. Without compilation options the parse cannot
+  // run, so the facade must not publish diagnostics with unresolved ranges.
   auto write = transaction(database);
   ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue).isApplied());
   ZC_REQUIRE(write.commit().isCommitted());
@@ -508,15 +568,8 @@ ZC_TEST("resolveSemanticSnapshot keeps a malformed rejection rangeless when opti
   auto key = SemanticSnapshotKey::bind(sourceKey.clone(), DocumentVersion::initial(2));
   auto snapshot = resolveSemanticSnapshot(database, key);
 
-  // The parse cannot even run without options, so the demand is a runtime
-  // rejection and the arm is Unavailable rather than SourceRejected. Either way
-  // the facade never fabricates a range or throws.
-  ZC_EXPECT(!snapshot.isPublished());
-  if (snapshot.isSourceRejected()) {
-    for (const auto& diagnostic : snapshot.diagnostics()) {
-      ZC_EXPECT(diagnostic.range() == zc::none);
-    }
-  }
+  ZC_EXPECT(snapshot.isUnavailable());
+  ZC_EXPECT(snapshot.diagnostics().size() == 0);
 }
 
 ZC_TEST("resolveSemanticSnapshot reports unavailable when the source inputs are not committed") {

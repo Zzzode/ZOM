@@ -1246,7 +1246,7 @@ shape outside the flow subset.
 - Borrow-source production wiring is exercised by the unit tests `Check pipeline
   rejects a returned local borrow` and `Check pipeline rejects a returned mutable
   local borrow` (`ownership-borrow-source-test.cc`), which assert
-  `!checkSources()` and `getDiagnosticEngine().hasErrors()`; the accept path is
+  `!checkSources()` and `hasDiagnosticErrors()`; the accept path is
   held by `Borrow source verifier accepts a parameter reborrow` and its mutable
   variant. Conformance case
   `05-statements/return_initialized_local_reference_escape_neg_52` (corpus plus

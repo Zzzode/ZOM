@@ -748,7 +748,11 @@ ZOM_STABLE_BINDING_ENUM_VALUE(IdentityDiagnosticEmitter, ConstantExpressionNotAl
 ZOM_STABLE_BINDING_ENUM_VALUE(IdentityDiagnosticEmitter, DuplicateGenericParameter, 0x04, S6, S6,
                               S6, "tag",
                               "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_ENUM_VALUE(DiagnosticSecondaryRole, PreviousDeclaration, 0x01, S6, S6, S6, "tag",
+ZOM_STABLE_BINDING_ENUM_VALUE(DiagnosticSecondaryRole, Highlight, 0x01, S6, S6, S6, "tag",
+                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(DiagnosticSecondaryRole, Note, 0x02, S6, S6, S6, "tag",
+                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(DiagnosticSecondaryRole, PreviousDeclaration, 0x03, S6, S6, S6, "tag",
                               "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
 
 ZOM_STABLE_BINDING_SUM(StableHeaderSite, S2B, S3, S2B, "tag|field|identity",
@@ -771,10 +775,6 @@ ZOM_STABLE_BINDING_SUM(BinderQueryResult, S2B, S3, S2B, "tag|field|diagnostics|p
                        "StableBindingQueryTest.ResultsRejectAlternativeAndDiagnosticMutations")
 ZOM_STABLE_BINDING_SUM(BinderQueryOwner, S2B, S3, S2B, "tag|field|identity|ownership",
                        "StableBindingQueryTest.ResultsRejectAlternativeAndDiagnosticMutations")
-ZOM_STABLE_BINDING_SUM(DiagnosticPhaseOrQueryKind, S6, S6, S6, "tag|field",
-                       "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_SUM(DiagnosticEmitterSite, S6, S6, S6, "tag|field",
-                       "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
 ZOM_STABLE_BINDING_SUM(ActiveMembershipResult, I2, I2, I2, "tag|field|authority|readiness",
                        "StableBindingMembershipTest.ResultsRejectAlternativeAndReadinessMutations")
 ZOM_STABLE_BINDING_RUNTIME_SUM(CapabilityDemandResult, R29_13A, R29_13C,
@@ -816,20 +816,6 @@ ZOM_STABLE_BINDING_SUM_VARIANT(BinderQueryOwner, Module, 0x01)
 ZOM_STABLE_BINDING_SUM_VARIANT(BinderQueryOwner, DefinitionHeader, 0x02)
 ZOM_STABLE_BINDING_SUM_VARIANT(BinderQueryOwner, ImplementationHeader, 0x03)
 ZOM_STABLE_BINDING_SUM_VARIANT(BinderQueryOwner, Body, 0x04)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, Source, 0x01)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, Package, 0x02)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, BuildScript, 0x03)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, Module, 0x04)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, ToolchainModuleRootReservation, 0x05)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, CoreFailureProducer, 0x06)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, Binder, 0x07)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, Source, 0x01)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, Package, 0x02)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, BuildScript, 0x03)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, Module, 0x04)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, ToolchainModuleRootReservation, 0x05)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, CoreLibrary, 0x06)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, Binder, 0x07)
 ZOM_STABLE_BINDING_SUM_VARIANT(ActiveMembershipResult, Active, 0x01)
 ZOM_STABLE_BINDING_SUM_VARIANT(ActiveMembershipResult, Inactive, 0x02)
 
@@ -909,17 +895,6 @@ ZOM_STABLE_BINDING_VARIANT_FIELD(BinderQueryOwner, DefinitionHeader, 0, definiti
 ZOM_STABLE_BINDING_VARIANT_FIELD(BinderQueryOwner, ImplementationHeader, 0, implementation,
                                  StableImplementationOccurrenceQueryKey)
 ZOM_STABLE_BINDING_VARIANT_FIELD(BinderQueryOwner, Body, 0, body, StableOwnerBodyQueryKey)
-ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticPhaseOrQueryKind, ToolchainModuleRootReservation, 0,
-                                 producer, ToolchainModuleRootReservationProducer)
-ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticPhaseOrQueryKind, CoreFailureProducer, 0, producer,
-                                 CoreFailureProducer)
-ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticPhaseOrQueryKind, Binder, 0, producer,
-                                 BinderDiagnosticProducer)
-ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticEmitterSite, ToolchainModuleRootReservation, 0, emitter,
-                                 ToolchainModuleRootReservationEmitter)
-ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticEmitterSite, CoreLibrary, 0, emitter,
-                                 CoreLibraryDiagnosticEmitter)
-ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticEmitterSite, Binder, 0, emitter, BinderDiagnosticEmitter)
 ZOM_STABLE_BINDING_VARIANT_FIELD(ActiveMembershipResult, Active, 0, record, Record)
 
 ZOM_STABLE_BINDING_INLINE_SUM_VARIANT_FIELD(ActiveGenericParameterMembership, owner,

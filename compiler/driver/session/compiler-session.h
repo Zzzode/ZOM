@@ -24,6 +24,9 @@
 #include "compiler/checker/facts/cross-module-facts.h"
 #include "compiler/checker/facts/dispatch-facts.h"
 #include "compiler/checker/facts/signature-facts.h"
+#include "compiler/diagnostics/consumer/diagnostic-policy.h"
+#include "compiler/diagnostics/consumer/diagnostic-presentation.h"
+#include "compiler/driver/core/diagnostic-projector.h"
 #include "compiler/driver/core/library.h"
 #include "compiler/driver/core/query.h"
 #include "compiler/driver/graph/crate-graph.h"
@@ -32,13 +35,14 @@
 #include "compiler/driver/package/build-script-plan.h"
 #include "compiler/driver/package/build-script-runtime.h"
 #include "compiler/driver/package/package-compilation-request.h"
+#include "compiler/driver/package/package-diagnostic.h"
 #include "compiler/driver/package/package-input-installer.h"
 #include "compiler/driver/package/package-resolver.h"
 #include "compiler/driver/package/source-snapshot.h"
 #include "compiler/driver/query/module-graph/materialized-module-graph-query.h"
 #include "compiler/hir/hir-module.h"
 #include "compiler/identity/brand.h"
-#include "compiler/ir/diagnostics/ir-diagnostic-adapter.h"
+#include "compiler/ir/diagnostics/ir-capability-failure-projector.h"
 #include "compiler/ir/target/target-registry.h"
 #include "compiler/mir/built-mir.h"
 #include "compiler/ownership/facts/inputs.h"
@@ -60,10 +64,6 @@ namespace core {
 class VerifiedCoreDistribution;
 }
 }  // namespace source
-
-namespace diagnostics {
-class DiagnosticEngine;
-}  // namespace diagnostics
 
 namespace checker {
 class CheckerIdentityAuthority;
@@ -134,7 +134,7 @@ private:
   friend class CompilerSession;
 };
 
-class CompilerSession {
+class CompilerSession : public diagnostics::DiagnosticPresentationResolver {
 public:
   CompilerSession(identity::SemanticContextFactory& contextFactory,
                   const basic::LangOptions& langOpts, const basic::CompilerOptions& compilerOpts);
@@ -145,10 +145,20 @@ public:
   ZC_NODISCARD zc::Maybe<source::BufferId> addVerifiedPackageRoot(
       const package::FinalizedCompilationRoot& root);
 
-  /// Get the diagnostic engine used by the compiler.
-  /// \return A reference to the diagnostic engine
-  const diagnostics::DiagnosticEngine& getDiagnosticEngine() const;
-  diagnostics::DiagnosticEngine& getDiagnosticEngine();
+  /// \brief Returns whether the active or sealed request contains user-facing errors.
+  ZC_NODISCARD bool hasDiagnosticErrors() const noexcept;
+  /// \brief Seals and materializes the request diagnostics exactly once.
+  ZC_NODISCARD bool finalizeDiagnostics();
+  /// \brief Returns the immutable policy result after terminal request publication.
+  ZC_NODISCARD zc::Maybe<const diagnostics::DiagnosticPolicyResult&> getDiagnostics()
+      const noexcept;
+  /// \brief Atomically admits one package diagnostic projection and its presentation authority.
+  ZC_NODISCARD bool addPackageDiagnostics(
+      package::PackageDiagnosticProjectionResult&& projection,
+      zc::ArrayPtr<const package::PackageDiagnosticDocument> documents);
+  /// \brief Resolves a sealed diagnostic location against request-owned presentation inputs.
+  ZC_NODISCARD zc::Maybe<diagnostics::DiagnosticPresentationLocation> resolve(
+      const diagnostics::ResolvedDiagnosticLocation& location) const noexcept override;
 
   /// Parses all added source files into ASTs.
   /// \return True if parsing succeeded without fatal errors, false otherwise.
@@ -175,7 +185,7 @@ public:
   ZC_NODISCARD zc::Maybe<MaterializedModuleGraphLease> materializeModuleGraph() const;
   /// \brief Assembles one source-backed core library from final interface and authority leases.
   ZC_NODISCARD zc::Maybe<core::VerifiedCoreLibrary> materializeCoreLibrary(
-      const identity::CrateKey& coreCrate) const;
+      const identity::CrateKey& coreCrate);
   /// \brief Materializes retained Checker identity authority from the sealed binding snapshot.
   ZC_NODISCARD zc::Maybe<checker::CheckerIdentityAuthority> materializeCheckerIdentityAuthority()
       const;
@@ -246,13 +256,16 @@ public:
   ZC_NODISCARD zc::Maybe<StagedOwnershipMirForTesting> firstStagedBorrowSourceRejectionForTesting()
       const noexcept;
   /// \brief Returns grouped actionable IR capability failures retained after rejection.
-  ZC_NODISCARD zc::ArrayPtr<const ir::IrCapabilityDiagnosticGroup> getIrCapabilityFailureGroups()
+  ZC_NODISCARD zc::ArrayPtr<const ir::IrCapabilityFailureGroup> getIrCapabilityFailureGroups()
       const noexcept;
   /// \brief Returns complete identity failures retained from rejected IR operations.
   ZC_NODISCARD zc::ArrayPtr<const identity::IdentityInvariant> getIrIdentityInvariantFailures()
       const noexcept;
   /// \brief Returns request-local internal incidents; never exposed as ZOM diagnostics.
   ZC_NODISCARD const basic::BoundedIncidentSet& getIncidents() const noexcept;
+  /// \brief Returns an operational core-query failure retained by this request.
+  ZC_NODISCARD zc::Maybe<core_library_query::CoreOperationalFailureKind> getCoreOperationalFailure()
+      const noexcept;
 
   /// Get the string pool used by the compiler.
   /// \return A reference to the string pool

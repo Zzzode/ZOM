@@ -212,17 +212,17 @@ module_graph_query::CompleteCompilationContextAuthority contextAuthority(
   return zc::mv(ZC_REQUIRE_NONNULL(authority));
 }
 
-zc::Maybe<VerifiedCoreDistributionInputTransaction> prepareCoreTransaction(
+CoreDistributionInputPreparationResult prepareCoreTransaction(
     query::DatabaseRevision expectedPreviousRevision,
     const source::core::VerifiedCoreDistribution& distribution,
     const identity::source_query::CanonicalCompilationOptions& options,
     zc::ArrayPtr<const identity::CrateKey> consumers) {
   auto request = packageRequest();
   auto accepted = source::core::initialCoreDistributionInput();
-  if (accepted == zc::none) { return zc::none; }
+  ZC_REQUIRE(accepted != zc::none);
   auto authorityOptions =
       identity::source_query::CanonicalCompilationOptions::fromVerified(request);
-  if (authorityOptions == zc::none) { return zc::none; }
+  ZC_REQUIRE(authorityOptions != zc::none);
   auto authority =
       contextAuthority(request, ZC_ASSERT_NONNULL(authorityOptions), ZC_ASSERT_NONNULL(accepted));
   return VerifiedCoreDistributionInputTransaction::prepare(
@@ -947,8 +947,8 @@ ZC_TEST("Verified core distribution input transaction commits the complete pre-p
   const auto expectedPreviousRevision = database.snapshot().revision();
   auto prepared =
       prepareCoreTransaction(expectedPreviousRevision, distribution, options, consumers.asPtr());
-  ZC_REQUIRE(prepared != zc::none);
-  auto input = zc::mv(ZC_REQUIRE_NONNULL(prepared));
+  ZC_REQUIRE(prepared.is<VerifiedCoreDistributionInputTransaction>());
+  auto input = zc::mv(prepared.get<VerifiedCoreDistributionInputTransaction>());
   ZC_REQUIRE(input.projections().size() == 1);
   const auto& projection = input.projections()[0];
   ZC_REQUIRE(projection.catalog().entries().size() == 3);
@@ -994,8 +994,8 @@ ZC_TEST("SessionInputTransactionTest.CorePayloadRejectsAuthorityAndProjectionMut
   consumers.add(tests::test_identity_detail::crate());
   auto prepared =
       prepareCoreTransaction(query::DatabaseRevision(), distribution, options, consumers.asPtr());
-  ZC_REQUIRE(prepared != zc::none);
-  const auto& payload = ZC_REQUIRE_NONNULL(prepared).payload();
+  ZC_REQUIRE(prepared.is<VerifiedCoreDistributionInputTransaction>());
+  const auto& payload = prepared.get<VerifiedCoreDistributionInputTransaction>().payload();
   ZC_EXPECT(VerifiedCoreDistributionInputVerifier::verify(payload, distribution, request, options,
                                                           consumers.asPtr()));
 
@@ -1073,14 +1073,20 @@ ZC_TEST(
   auto options = compilationOptions(false);
   zc::Vector<identity::CrateKey> mismatchedConsumers;
   mismatchedConsumers.add(tests::test_identity_detail::crate());
-  ZC_EXPECT(prepareCoreTransaction(query::DatabaseRevision(), distribution, options,
-                                   mismatchedConsumers.asPtr()) == zc::none);
+  auto mismatchedOptions = prepareCoreTransaction(query::DatabaseRevision(), distribution, options,
+                                                  mismatchedConsumers.asPtr());
+  ZC_REQUIRE(mismatchedOptions.is<CoreDistributionInputPreparationInvariantKind>());
+  ZC_EXPECT(mismatchedOptions.get<CoreDistributionInputPreparationInvariantKind>() ==
+            CoreDistributionInputPreparationInvariantKind::CompilationOptionsMismatch);
 
   auto matchingOptions = verifiedCompilationOptions();
   zc::Vector<identity::CrateKey> invalidConsumers;
   invalidConsumers.add(tests::test_identity_detail::coreCrate());
-  ZC_EXPECT(prepareCoreTransaction(query::DatabaseRevision(), distribution, matchingOptions,
-                                   invalidConsumers.asPtr()) == zc::none);
+  auto invalidProjection = prepareCoreTransaction(query::DatabaseRevision(), distribution,
+                                                  matchingOptions, invalidConsumers.asPtr());
+  ZC_REQUIRE(invalidProjection.is<CoreDistributionInputPreparationInvariantKind>());
+  ZC_EXPECT(invalidProjection.get<CoreDistributionInputPreparationInvariantKind>() ==
+            CoreDistributionInputPreparationInvariantKind::CoreProjectionRejected);
 
   auto database = queryDatabase();
   ZC_REQUIRE(incremental_binding_query::registerIncrementalBindingQueryAdapter(database));
@@ -1099,8 +1105,8 @@ ZC_TEST(
   consumers.add(tests::test_identity_detail::crate());
   auto prepared = prepareCoreTransaction(query::DatabaseRevision(), distribution, matchingOptions,
                                          consumers.asPtr());
-  ZC_REQUIRE(prepared != zc::none);
-  auto input = zc::mv(ZC_REQUIRE_NONNULL(prepared));
+  ZC_REQUIRE(prepared.is<VerifiedCoreDistributionInputTransaction>());
+  auto input = zc::mv(prepared.get<VerifiedCoreDistributionInputTransaction>());
   const auto projected = input.projections()[0].crate().clone();
   ZC_EXPECT(!input.commit(database).isCommitted());
   auto absentOptions =

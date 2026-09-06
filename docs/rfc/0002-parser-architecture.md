@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, lexer-parser, error-system, binder-checker, module-system, spec-audit, verification]
 approvers: [rfc, lexer-parser, error-system, binder-checker, module-system, spec-audit, verification]
 created: 2026-06-30
-updated: 2026-07-05
+updated: 2026-09-06
 area: compiler
 requires: [1, 3]
 supersedes: []
@@ -191,7 +191,7 @@ flowchart TD
   Patterns --> Builder
   Builder --> Verify["AST schema verifier"]
   Verify --> Tree["ast::Tree"]
-  Parser --> Diags["DiagnosticEngine"]
+  Parser --> Diags["SourceDiagnosticSink"]
 ```
 
 ## Reference-Level Design
@@ -227,7 +227,7 @@ remains `zc::Maybe<ast::Tree>`:
 |---|---|---|
 | `Complete` | The source matched the grammar, no syntax error was emitted, and the AST verifier passed. | `ast::Tree` |
 | `RecoveredWithErrors` | Recovery found additional diagnostics after a syntax error. The tree is internal only. | `zc::none` |
-| `Aborted` | EOF, error-budget exhaustion, or an invariant failure stopped parsing. | `zc::none` |
+| `Aborted` | EOF or an invariant failure stopped parsing. | `zc::none` |
 
 Callers must not infer syntax success from a non-empty partially built
 `TreeBuilder`. The only publication gate is the final parser result after
@@ -856,11 +856,12 @@ parser state used to suppress cascaded diagnostics and to decide whether a
 partial subtree may be published. If a required child is missing after
 recovery, the enclosing production fails and the parser returns `zc::none`.
 
-Diagnostics must be deduplicated by diagnostic ID, source location, and
-recovery context. The parser must stop after EOF or after the configured parse
-error budget is exhausted. The initial budget is defined in the parser context,
-with `100` syntax errors as the default unless implementation evidence supports
-a smaller value.
+Diagnostics carry a distinct occurrence identity, and the request collector
+rejects conflicting payloads for one occurrence. The parser must stop after EOF.
+Diagnostic production is not bounded by a display budget: every fact the parser
+produces reaches the request root, bounded only by the fail-closed source fact
+ceiling. Limiting how many errors a consumer shows is explicit presentation
+policy owned by RFC 0047 and never suppresses a retained fact.
 
 Every recovery path has a progress invariant: it must either consume at least
 one token, return to a caller that consumed at least one token, or abort the
@@ -1387,3 +1388,4 @@ decision record in the status history below.
 | 2026-07-05 | ACCEPTED | All acceptance criteria verified: fail-closed `parse()`, no public lookahead API, `TokenCursor`-only token consumption, no range-scanning production selection, typed `AstFactory` helpers, AST schema verifier, `parser-coverage.yml` (215 syntactic + 35 lexical productions), zero AST verdict mismatches (667 corpus inputs), 37 unit tests (recovery + schema-verifier + token-cursor + parser), 742/742 ctest passing, `check-rfc.py` passing, `check-format.py` passing, `check-parser-coverage.py` passing, `check-ast-coverage.py` passing, `check-lexer-architecture.py` passing. Trivia boundary documented in `docs/design/trivia-boundary.md`. |
 | 2026-07-05 | IMPLEMENTING | Parser implementation complete and verified across all gates. |
 | 2026-07-05 | LANDED | Implementation, tests, and documentation complete. Parser architecture fully landed with 742/742 ctest passing, all verification gates green. |
+| 2026-09-06 | LANDED | Amended for RFC 0047. Removed the parse error budget as a production stop condition and the deduplication-by-ID-and-location rule. Diagnostic production is now bounded only by the fail-closed source fact ceiling, occurrence identity replaces location deduplication, and limiting displayed errors is explicit consumer policy that never suppresses a retained fact. `recovery-test.cc` asserts the retention contract and the fail-closed ceiling instead of a production cap. |

@@ -1,6 +1,6 @@
 {
   "baseRevision": "109947943519ec2d380a3e8d71813b40bc68bde5",
-  "headRevision": "900a50d1212546afd4e09cc1bd2f2677259fb01c",
+  "headRevision": "ece45e052cb42af581093c1172f90da2ab82796b",
   "inputs": [
     "05-statements/uninitialized_local_return_neg_01.zom",
     "05-statements/uninitialized_aggregate_field_return_neg_01.zom",
@@ -9,15 +9,15 @@
   "outputs": {
     "05-statements/uninitialized_aggregate_field_return_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b69cbbe8b4d88521af64876e0656c1eecf6a331b1c55d2d5f320f7295779842d"
+      "sha256": "5bc273ce882f9b56e9d0fc628900188139fb6cb6f617548400903899486bc830"
     },
     "05-statements/uninitialized_aggregate_sibling_field_return_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "8f99d407104a0d06e5001739b7b57680add96b6de9524ce0b2c7bfe88e0b2471"
+      "sha256": "e5e937b9e5706e5990abe54a9cb85c10ddeacc67fe132308e7966697fb379d67"
     },
     "05-statements/uninitialized_local_return_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "3602ce5467e5e90ca7129597d76f85182b1688c7b0fb445d1b1f3c9ef7efd4d8"
+      "sha256": "bbd450787401ba84b1924b32a56c85552003b1bab0cb6a55f4b7c6ca475ef049"
     }
   },
   "repeats": 3,

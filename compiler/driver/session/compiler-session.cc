@@ -21,9 +21,9 @@
 #include "compiler/basic/string-pool.h"
 #include "compiler/basic/thread-pool.h"
 #include "compiler/basic/zomlang-opts.h"
-#include "compiler/binder/diagnostics/binding-diagnostic-adapter.h"
-#include "compiler/binder/diagnostics/module-graph-diagnostic-adapter.h"
+#include "compiler/binder/diagnostics/binding-source-diagnostic-projector.h"
 #include "compiler/binder/diagnostics/module-graph-diagnostic-projector.h"
+#include "compiler/binder/diagnostics/module-graph-source-diagnostic-projector.h"
 #include "compiler/binder/graph/module-dependency-requests.h"
 #include "compiler/binder/graph/module-graph-source-failure.h"
 #include "compiler/binder/graph/parsed-module-graph-input.h"
@@ -33,18 +33,19 @@
 #include "compiler/binder/stable/candidate/verifier.h"
 #include "compiler/checker/body/body-checker.h"
 #include "compiler/checker/checker-identity-authority.h"
-#include "compiler/checker/diagnostics/borrow-interface-diagnostic-adapter.h"
-#include "compiler/checker/diagnostics/checker-diagnostic-adapter.h"
+#include "compiler/checker/diagnostics/borrow-interface-diagnostic-projector.h"
 #include "compiler/checker/diagnostics/checker-diagnostic-projector.h"
+#include "compiler/checker/diagnostics/checker-source-diagnostic-projector.h"
 #include "compiler/checker/facts/checked-facts-repository.h"
 #include "compiler/checker/facts/coherence-facts.h"
 #include "compiler/checker/facts/cross-module-facts.h"
 #include "compiler/checker/facts/signature-facts.h"
-#include "compiler/diagnostics/consumer/consoling-diagnostic-consumer.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
+#include "compiler/diagnostics/consumer/diagnostic-policy.h"
 #include "compiler/diagnostics/core/diagnostic-ids.h"
-#include "compiler/diagnostics/core/diagnostic.h"
 #include "compiler/diagnostics/fact/diagnostic-materializer.h"
+#include "compiler/diagnostics/fact/semantic-diagnostic-fact.h"
+#include "compiler/diagnostics/incident/diagnostic-incident-projector.h"
+#include "compiler/driver/core/diagnostic-projector.h"
 #include "compiler/driver/core/query.h"
 #include "compiler/driver/diagnostics/module-interface-diagnostic-projector.h"
 #include "compiler/driver/graph/module-discovery.h"
@@ -69,7 +70,7 @@
 #include "compiler/identity/diagnostics/identity-diagnostic-projector.h"
 #include "compiler/ir/diagnostics/ir-diagnostic-projector.h"
 #include "compiler/ownership/admission/surface-admission.h"
-#include "compiler/ownership/diagnostics/ownership-diagnostic-adapter.h"
+#include "compiler/ownership/diagnostics/ownership-source-diagnostic-projector.h"
 #include "compiler/ownership/overlay/drop-elaborated-mir.h"
 #include "compiler/ownership/overlay/ownership-checked-mir.h"
 #include "compiler/ownership/overlay/ownership-proof-validation.h"
@@ -88,27 +89,6 @@ namespace source_query = identity::source_query;
 
 bool sameBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) {
   return left == right;
-}
-
-bool publishSourceDiagnostics(zc::ArrayPtr<const diagnostics::DiagnosticFact> facts,
-                              const diagnostics::SourceDiagnosticProvenanceMap& provenance,
-                              const identity::SourceFileKey& sourceKey,
-                              source::SourceManager& sources, const source::BufferId& buffer,
-                              diagnostics::DiagnosticEngine& engine,
-                              basic::BoundedIncidentSet& incidents) {
-  diagnostics::SourceDiagnosticProvenanceResolver resolver(sourceKey, provenance);
-  auto materialized = diagnostics::materializeDiagnosticFacts(facts, resolver, sources, buffer);
-  if (materialized.is<diagnostics::DiagnosticMaterializationFailure>()) {
-    ZC_REQUIRE(incidents.add(binder::ModuleGraphDiagnosticProjector::project(
-                   binder::ModuleGraphIncidentPhase::SourceParsing,
-                   binder::ModuleGraphIncidentKind::MaterializationFailed,
-                   binder::ModuleGraphIncidentProducer::DiagnosticMaterializer)),
-               "module graph incident set capacity must cover the registered inventory");
-    return false;
-  }
-  diagnostics::publishResolvedDiagnosticBatch(
-      zc::mv(materialized.get<diagnostics::ResolvedDiagnosticBatch>()), engine);
-  return true;
 }
 
 bool sameModulePath(zc::ArrayPtr<const identity::ModulePathSegment> left,
@@ -436,9 +416,7 @@ struct CompilerSession::Impl {
         semanticTypeStore(semanticContextResources.semanticTypeStore),
         factStoreBrands(semanticContextResources.factStoreBrands),
         stringPool(zc::heap<basic::StringPool>()),
-        sourceManager(zc::heap<source::SourceManager>(*stringPool)),
-        diagnosticEngine(zc::heap<diagnostics::DiagnosticEngine>(*sourceManager)) {
-    diagnosticEngine->addConsumer(zc::heap<diagnostics::ConsolingDiagnosticConsumer>());
+        sourceManager(zc::heap<source::SourceManager>(*stringPool)) {
     if (!incremental_binding_query::registerIncrementalBindingQueryAdapter(queryDatabase) ||
         !module_graph_query::registerModuleGraphQueries(queryDatabase) ||
         !module_graph_query::registerStableModuleGraphQueries(queryDatabase)) {
@@ -549,8 +527,14 @@ struct CompilerSession::Impl {
   zc::Own<basic::StringPool> stringPool;
   /// Source manager to manage source files.
   zc::Own<source::SourceManager> sourceManager;
-  /// Diagnostic engine to report diagnostics.
-  zc::Own<diagnostics::DiagnosticEngine> diagnosticEngine;
+  /// Sole request-local owner for canonical facts and revision-local provenance.
+  diagnostics::CompilationDiagnosticCollector diagnosticCollector;
+  /// Exact non-source documents retained only for terminal presentation.
+  zc::Vector<package::PackageDiagnosticDocument> diagnosticDocuments;
+  /// Sealed authoritative diagnostics retained after terminal request publication.
+  zc::Maybe<diagnostics::CompilationDiagnosticFacts> diagnosticFacts;
+  zc::Maybe<diagnostics::DiagnosticPolicyResult> diagnosticPolicyResult;
+  bool diagnosticsFinalized = false;
   /// Parser results retained only while constructing the final sealed snapshot.
   zc::Vector<ParsedModuleRecord> parsedModules;
   /// True only after every discovered source publishes a promoted immutable parser result.
@@ -571,8 +555,9 @@ struct CompilerSession::Impl {
   zc::Vector<hir::VerifiedHirModule> hirModules;
   zc::Vector<ownership::CheckedMir> ownershipCheckedMirModules;
   zc::Vector<ownership::VerifiedExecutableMir> verifiedExecutableMirModules;
-  zc::Vector<ir::IrCapabilityDiagnosticGroup> irCapabilityFailureGroups;
+  zc::Vector<ir::IrCapabilityFailureGroup> irCapabilityFailureGroups;
   zc::Vector<identity::IdentityInvariant> irIdentityInvariantFailures;
+  zc::Maybe<core_library_query::CoreOperationalFailureKind> coreOperationalFailure;
   basic::BoundedIncidentSet incidents;
   bool verifiedCheckedSources = false;
   /// Closed Checker invariant rejection retained when no complete publication exists.
@@ -598,6 +583,196 @@ struct CompilerSession::Impl {
                                                                              occurrences)),
                "module graph incident set capacity must cover the registered inventory");
     return false;
+  }
+
+  bool recordDiagnosticIncident(diagnostics::DiagnosticIncidentPhase phase,
+                                diagnostics::DiagnosticIncidentKind kind,
+                                diagnostics::DiagnosticIncidentProducer producer) {
+    ZC_REQUIRE(
+        incidents.add(diagnostics::DiagnosticIncidentProjector::project(phase, kind, producer)),
+        "diagnostics incident set capacity must cover the registered inventory");
+    return false;
+  }
+
+  bool recordCoreIncident(basic::CompilerIncidentDescriptor incident) {
+    ZC_REQUIRE(incidents.add(incident),
+               "core incident set capacity must cover the registered inventory");
+    return false;
+  }
+
+  bool rejectCoreQueryRuntime(query::QueryRuntimeFailure failure) {
+    auto operational = core_library_query::coreOperationalFailure(failure);
+    if (operational != zc::none) {
+      if (coreOperationalFailure == zc::none) {
+        coreOperationalFailure = ZC_ASSERT_NONNULL(operational);
+      }
+      return false;
+    }
+    return recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(failure));
+  }
+
+  template <typename Demand>
+  bool rejectCoreDemand(const Demand& demand,
+                        core_library_query::CoreSessionInvariantKind fallback) {
+    if (demand.isRuntimeRejected()) { return rejectCoreQueryRuntime(demand.runtimeFailure()); }
+    if constexpr (requires {
+                    demand.isKeyRejected();
+                    demand.keyFailure();
+                  }) {
+      if (demand.isKeyRejected()) {
+        return recordCoreIncident(
+            core_library_query::CoreDiagnosticProjector::project(demand.keyFailure().kind));
+      }
+    }
+    return recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(fallback));
+  }
+
+  bool collectSourceDiagnostics(const identity::SourceFileKey& source,
+                                zc::ArrayPtr<const diagnostics::DiagnosticFact> facts,
+                                const diagnostics::SourceDiagnosticProvenanceMap& provenance,
+                                diagnostics::DiagnosticIncidentProducer producer) {
+    if (diagnosticsFinalized) {
+      return recordDiagnosticIncident(diagnostics::DiagnosticIncidentPhase::Publication,
+                                      diagnostics::DiagnosticIncidentKind::ProjectionRejected,
+                                      producer);
+    }
+    if (!diagnosticCollector.addSourceRoot(source, facts, provenance)) {
+      const auto failure = diagnosticCollector.failure();
+      return recordDiagnosticIncident(
+          diagnostics::DiagnosticIncidentPhase::Collection,
+          failure == zc::none ? diagnostics::DiagnosticIncidentKind::InvalidProvenance
+                              : diagnostics::DiagnosticIncidentProjector::collectionFailureKind(
+                                    ZC_ASSERT_NONNULL(failure)),
+          producer);
+    }
+    return true;
+  }
+
+  bool collectSemanticDiagnostics(diagnostics::SemanticDiagnosticBatchProjectionResult&& projection,
+                                  diagnostics::DiagnosticIncidentProducer producer) {
+    if (!projection.is<diagnostics::SemanticDiagnosticFactBatch>()) {
+      return recordDiagnosticIncident(diagnostics::DiagnosticIncidentPhase::Projection,
+                                      diagnostics::DiagnosticIncidentKind::ProjectionRejected,
+                                      producer);
+    }
+    auto batch = zc::mv(projection).get<diagnostics::SemanticDiagnosticFactBatch>();
+    if (diagnosticsFinalized) {
+      return recordDiagnosticIncident(diagnostics::DiagnosticIncidentPhase::Publication,
+                                      diagnostics::DiagnosticIncidentKind::ProjectionRejected,
+                                      producer);
+    }
+    if (!diagnosticCollector.addRoot(batch.facts.asPtr(), batch.provenance.asPtr())) {
+      const auto failure = diagnosticCollector.failure();
+      return recordDiagnosticIncident(
+          diagnostics::DiagnosticIncidentPhase::Collection,
+          failure == zc::none ? diagnostics::DiagnosticIncidentKind::InvalidProvenance
+                              : diagnostics::DiagnosticIncidentProjector::collectionFailureKind(
+                                    ZC_ASSERT_NONNULL(failure)),
+          producer);
+    }
+    return true;
+  }
+
+  bool collectPackageDiagnostics(package::PackageDiagnosticProjectionResult&& projection,
+                                 zc::ArrayPtr<const package::PackageDiagnosticDocument> documents) {
+    if (!projection.is<package::PackageDiagnosticFactProjection>()) {
+      return recordDiagnosticIncident(diagnostics::DiagnosticIncidentPhase::Projection,
+                                      diagnostics::DiagnosticIncidentKind::ProjectionRejected,
+                                      diagnostics::DiagnosticIncidentProducer::Package);
+    }
+    if (diagnosticsFinalized) {
+      return recordDiagnosticIncident(diagnostics::DiagnosticIncidentPhase::Publication,
+                                      diagnostics::DiagnosticIncidentKind::ProjectionRejected,
+                                      diagnostics::DiagnosticIncidentProducer::Package);
+    }
+    auto batch = zc::mv(projection).get<package::PackageDiagnosticFactProjection>();
+    zc::Vector<package::PackageDiagnosticDocument> additions;
+    for (const auto& authority : batch.documents) {
+      const package::PackageDiagnosticDocument* matching = nullptr;
+      for (const auto& document : documents) {
+        const auto identity = document.key().encode();
+        if (identity.asPtr() != authority.identity.asPtr()) continue;
+        if (matching != nullptr || document.sourceView().originalSize() != authority.byteLength) {
+          return recordDiagnosticIncident(diagnostics::DiagnosticIncidentPhase::Projection,
+                                          diagnostics::DiagnosticIncidentKind::InvalidProvenance,
+                                          diagnostics::DiagnosticIncidentProducer::Package);
+        }
+        matching = &document;
+      }
+      if (matching == nullptr) {
+        return recordDiagnosticIncident(diagnostics::DiagnosticIncidentPhase::Projection,
+                                        diagnostics::DiagnosticIncidentKind::MissingAuthority,
+                                        diagnostics::DiagnosticIncidentProducer::Package);
+      }
+      bool retained = false;
+      for (const auto& document : diagnosticDocuments) {
+        if (document.key().encode().asPtr() != authority.identity.asPtr()) continue;
+        if (document.displayName() != matching->displayName() ||
+            document.sourceView().escapedSource() != matching->sourceView().escapedSource()) {
+          return recordDiagnosticIncident(diagnostics::DiagnosticIncidentPhase::Projection,
+                                          diagnostics::DiagnosticIncidentKind::ConflictingAuthority,
+                                          diagnostics::DiagnosticIncidentProducer::Package);
+        }
+        retained = true;
+        break;
+      }
+      if (!retained) additions.add(matching->clone());
+    }
+    for (const auto& authority : batch.documents) {
+      if (!diagnosticCollector.addDocumentAuthority(authority.identity.asPtr(),
+                                                    authority.byteLength)) {
+        const auto failure = diagnosticCollector.failure();
+        return recordDiagnosticIncident(
+            diagnostics::DiagnosticIncidentPhase::Collection,
+            failure == zc::none ? diagnostics::DiagnosticIncidentKind::InvalidProvenance
+                                : diagnostics::DiagnosticIncidentProjector::collectionFailureKind(
+                                      ZC_ASSERT_NONNULL(failure)),
+            diagnostics::DiagnosticIncidentProducer::Package);
+      }
+    }
+    if (!diagnosticCollector.addRoot(batch.facts.asPtr(), batch.provenance.asPtr())) {
+      const auto failure = diagnosticCollector.failure();
+      return recordDiagnosticIncident(
+          diagnostics::DiagnosticIncidentPhase::Collection,
+          failure == zc::none ? diagnostics::DiagnosticIncidentKind::InvalidProvenance
+                              : diagnostics::DiagnosticIncidentProjector::collectionFailureKind(
+                                    ZC_ASSERT_NONNULL(failure)),
+          diagnostics::DiagnosticIncidentProducer::Package);
+    }
+    for (auto& document : additions) diagnosticDocuments.add(zc::mv(document));
+    return true;
+  }
+
+  bool finishDiagnostics(diagnostics::DiagnosticIncidentProducer producer) {
+    if (diagnosticsFinalized) { return diagnosticPolicyResult != zc::none; }
+    diagnosticsFinalized = true;
+    auto collected = zc::mv(diagnosticCollector).seal();
+    if (!collected.is<diagnostics::CompilationDiagnosticFacts>()) {
+      return recordDiagnosticIncident(
+          diagnostics::DiagnosticIncidentPhase::Collection,
+          diagnostics::DiagnosticIncidentProjector::collectionFailureKind(
+              collected.get<diagnostics::DiagnosticCollectionFailure>()),
+          producer);
+    }
+    diagnosticFacts = zc::mv(collected).get<diagnostics::CompilationDiagnosticFacts>();
+    auto resolver = diagnostics::CompilationDiagnosticProvenanceResolver::from(
+        ZC_ASSERT_NONNULL(diagnosticFacts));
+    if (resolver == zc::none) {
+      return recordDiagnosticIncident(diagnostics::DiagnosticIncidentPhase::Materialization,
+                                      diagnostics::DiagnosticIncidentKind::InvalidProvenance,
+                                      producer);
+    }
+    auto materialized = diagnostics::materializeDiagnosticFacts(ZC_ASSERT_NONNULL(diagnosticFacts),
+                                                                ZC_ASSERT_NONNULL(resolver));
+    if (!materialized.is<diagnostics::ResolvedDiagnosticBatch>()) {
+      return recordDiagnosticIncident(diagnostics::DiagnosticIncidentPhase::Materialization,
+                                      diagnostics::DiagnosticIncidentKind::MaterializationFailed,
+                                      producer);
+    }
+    diagnosticPolicyResult = diagnostics::applyDiagnosticPolicy(
+        zc::mv(materialized).get<diagnostics::ResolvedDiagnosticBatch>(),
+        diagnostics::DiagnosticPolicy());
+    return true;
   }
 
   /// Test-only Built MIR, overlay, and borrow-evidence repository retained when
@@ -1084,9 +1259,9 @@ struct CompilerSession::Impl {
   bool internPackageAndCrateIdentities() {
     if (packageRequest == zc::none) { return true; }
     if (crateGraph == zc::none) {
-      package::PackageDiagnosticAdapter::emitBuildScriptIssue(
-          *diagnosticEngine, package::BuildScriptIssue::BuildResultIntegrityViolation);
-      return false;
+      return rejectModuleGraph(binder::ModuleGraphIncidentPhase::InputStaging,
+                               binder::ModuleGraphIncidentKind::MissingRequiredState,
+                               binder::ModuleGraphIncidentProducer::Session);
     }
 
     zc::TreeMap<zc::String, identity::CompilationUnitIdentity> compilationUnits;
@@ -1198,6 +1373,10 @@ struct CompilerSession::Impl {
         }
         ZC_IF_SOME(pathValue, selectedPath) {
           if (pathValue.size() == 0) { return false; }
+          zc::Vector<identity::ModulePathSegment> keyPath(pathValue.size());
+          for (const auto& segment : pathValue) { keyPath.add(segment.clone()); }
+          auto key = identity::ModuleKey::from(sourceValue.crate().clone(), zc::mv(keyPath));
+          if (key == zc::none) { return false; }
           ast::NodeId moduleNode;
           if (inventoryValue.modules().size() == 1) {
             const auto& module = inventoryValue.modules()[0];
@@ -1214,27 +1393,16 @@ struct CompilerSession::Impl {
                                                 zc::mv(declaredPath)) != zc::none;
             }
             if (!nameMatches && !declaresToolchainModuleRoot) {
-              auto declarationSpan = parsedRecord.parsedModule().spanFor(module.source);
-              if (declarationSpan == zc::none) { return false; }
-              auto declarationStart =
-                  parsedRecord.parsedModule().sourceLocFor(ZC_ASSERT_NONNULL(declarationSpan));
-              if (declarationStart == zc::none) { return false; }
-              ZC_IF_SOME(value, declaredName) {
-                const auto start = ZC_ASSERT_NONNULL(declarationStart);
-                auto diagnostic =
-                    diagnosticEngine->diagnose<diagnostics::DiagID::ModuleDeclarationNameMismatch>(
-                        start, zc::str(value.text()), zc::str(pathValue.back().text()));
-                diagnostic.addRange(source::CharSourceRange::getCharRange(
-                    start, start.getAdvancedLoc(module.source.getLength())));
-                diagnostic.emit();
+              if (!collectSemanticDiagnostics(
+                      binder::projectModuleDeclarationNameMismatch(parsedRecord.parsedModule(),
+                                                                   ZC_ASSERT_NONNULL(key)),
+                      diagnostics::DiagnosticIncidentProducer::Binder)) {
+                return false;
               }
               return false;
             }
             moduleNode = module.node;
           }
-          zc::Vector<identity::ModulePathSegment> keyPath(pathValue.size());
-          for (const auto& segment : pathValue) { keyPath.add(segment.clone()); }
-          auto key = identity::ModuleKey::from(sourceValue.crate().clone(), zc::mv(keyPath));
           ZC_IF_SOME(value, key) {
             auto retained = value.clone();
             if (!semanticContextResources.identityInterners()
@@ -1243,8 +1411,6 @@ struct CompilerSession::Impl {
               return false;
             }
             pending.add(PendingModule(buffer, moduleNode, zc::mv(retained)));
-          } else {
-            return false;
           }
         }
       }
@@ -1551,10 +1717,12 @@ struct CompilerSession::Impl {
               syntax.modules().size() == 1 ? syntax.modules()[0].node : ast::NodeId();
           auto module = moduleIdentity(parsed.buffer(), moduleNode);
           if (module == zc::none || ZC_ASSERT_NONNULL(module) != request.requester()) { continue; }
-          if (!binder::emitModuleDependencyResolutionFailure(
-                  *diagnosticEngine, parsed.parsedModule(), request,
-                  ZC_ASSERT_NONNULL(dependencyFailure).kind() ==
-                      graph_query::ModuleDependencyFailureKind::Ambiguous)) {
+          if (!collectSemanticDiagnostics(
+                  binder::projectModuleDependencyResolutionFailure(
+                      parsed.parsedModule(), request,
+                      ZC_ASSERT_NONNULL(dependencyFailure).kind() ==
+                          graph_query::ModuleDependencyFailureKind::Ambiguous),
+                  diagnostics::DiagnosticIncidentProducer::Binder)) {
             return false;
           }
           return false;
@@ -1768,8 +1936,9 @@ struct CompilerSession::Impl {
       auto failure = binder::ModuleGraphSourceFailureBuilder::buildToolchainModuleRootReserved(
           modules[index], parsedInputs[index]);
       ZC_IF_SOME(value, failure) {
-        if (!binder::emitModuleGraphSourceFailure(*diagnosticEngine,
-                                                  parsedInputs[index].parsedModule, value)) {
+        if (!collectSemanticDiagnostics(
+                binder::projectModuleGraphSourceFailure(parsedInputs[index].parsedModule, value),
+                diagnostics::DiagnosticIncidentProducer::Binder)) {
           return rejectInvariant(binder::ModuleGraphIncidentKind::MaterializationFailed);
         }
         sourceRejected = true;
@@ -1878,7 +2047,7 @@ struct CompilerSession::Impl {
       for (auto& request : derivedRequests) { requests.add(zc::mv(request)); }
     }
     if (!stageVerifiedModuleGraphInputs(resolver, requests.asPtr(), parsedInputs.asPtr())) {
-      if (diagnosticEngine->hasErrors()) { return false; }
+      if (diagnosticCollector.hasErrors()) { return false; }
       return rejectInvariant(binder::ModuleGraphIncidentKind::QueryContractViolation);
     }
     if (sourceRejected) { return false; }
@@ -1983,12 +2152,27 @@ zc::Maybe<CompilerSession::MaterializedModuleGraphLease> CompilerSession::materi
 }
 
 zc::Maybe<core::VerifiedCoreLibrary> CompilerSession::materializeCoreLibrary(
-    const identity::CrateKey& coreCrate) const {
-  if (impl->finalSealedSnapshot == zc::none) { return zc::none; }
+    const identity::CrateKey& coreCrate) {
+  const auto reject = [&](core_library_query::CoreSessionInvariantKind kind) {
+    impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(kind));
+    return zc::Maybe<core::VerifiedCoreLibrary>();
+  };
+  if (impl->finalSealedSnapshot == zc::none) {
+    return reject(core_library_query::CoreSessionInvariantKind::InvalidInstallationState);
+  }
   const auto& snapshot = ZC_ASSERT_NONNULL(impl->finalSealedSnapshot);
   auto coreKey = core_library_query::ContextualCoreCrateKey::from(snapshot.contextRoots().clone(),
                                                                   coreCrate.clone());
-  if (coreKey == zc::none) { return zc::none; }
+  if (coreKey == zc::none) {
+    return reject(core_library_query::CoreSessionInvariantKind::CoreCrateProjectionRejected);
+  }
+  auto roleSeed = snapshot.getCapability<core_library_query::MaterializeCoreRoleSeed>(
+      ZC_ASSERT_NONNULL(coreKey).clone());
+  if (!roleSeed.isPublished()) {
+    impl->rejectCoreDemand(roleSeed,
+                           core_library_query::CoreSessionInvariantKind::CoreRoleAuthorityRejected);
+    return zc::none;
+  }
   auto graph =
       snapshot.get<core_library_query::CoreModuleGraph>(ZC_ASSERT_NONNULL(coreKey).clone());
   auto distribution =
@@ -1997,31 +2181,59 @@ zc::Maybe<core::VerifiedCoreLibrary> CompilerSession::materializeCoreLibrary(
       snapshot.get<core_library_query::CorePreludeSurface>(ZC_ASSERT_NONNULL(coreKey).clone());
   auto authority = snapshot.getCapability<core_library_query::MaterializeCoreAuthority>(
       zc::mv(ZC_ASSERT_NONNULL(coreKey)));
-  if (graph.isRuntimeFailure() || distribution.isRuntimeFailure() || prelude.isRuntimeFailure() ||
-      graph.kind() != query::QueryValueKind::Value ||
+  if (graph.isRuntimeFailure()) {
+    impl->rejectCoreQueryRuntime(graph.runtimeFailure());
+    return zc::none;
+  }
+  if (distribution.isRuntimeFailure()) {
+    impl->rejectCoreQueryRuntime(distribution.runtimeFailure());
+    return zc::none;
+  }
+  if (prelude.isRuntimeFailure()) {
+    impl->rejectCoreQueryRuntime(prelude.runtimeFailure());
+    return zc::none;
+  }
+  if (!authority.isPublished()) {
+    impl->rejectCoreDemand(authority,
+                           core_library_query::CoreSessionInvariantKind::CoreAuthorityRejected);
+    return zc::none;
+  }
+  if (graph.kind() != query::QueryValueKind::Value ||
       distribution.kind() != query::QueryValueKind::Value ||
-      prelude.kind() != query::QueryValueKind::Value || !authority.isPublished() ||
+      prelude.kind() != query::QueryValueKind::Value ||
       graph.value().core().encode().asPtr() != coreCrate.encode().asPtr() ||
       prelude.value().core().encode().asPtr() != coreCrate.encode().asPtr()) {
-    return zc::none;
+    return reject(core_library_query::CoreSessionInvariantKind::CoreLibraryRejected);
   }
   zc::Vector<core::VerifiedCoreModule> modules(graph.value().modules().size());
   for (const auto& module : graph.value().modules()) {
     auto moduleKey = core_library_query::ContextualCoreModuleKey::from(
         snapshot.contextRoots().clone(), module.clone());
-    if (moduleKey == zc::none) { return zc::none; }
+    if (moduleKey == zc::none) {
+      return reject(core_library_query::CoreSessionInvariantKind::CoreInterfaceRejected);
+    }
     auto interface = snapshot.getCapability<core_library_query::FinalizeCoreModuleInterface>(
         zc::mv(ZC_ASSERT_NONNULL(moduleKey)));
-    if (!interface.isPublished()) { return zc::none; }
+    if (!interface.isPublished()) {
+      impl->rejectCoreDemand(interface,
+                             core_library_query::CoreSessionInvariantKind::CoreInterfaceRejected);
+      return zc::none;
+    }
     auto published = core::VerifiedCoreModule::from(module.clone(), zc::mv(interface).takeLease());
-    if (published == zc::none) { return zc::none; }
+    if (published == zc::none) {
+      return reject(core_library_query::CoreSessionInvariantKind::CoreLibraryRejected);
+    }
     modules.add(zc::mv(ZC_ASSERT_NONNULL(published)));
   }
-  return core::VerifiedCoreLibrary::from(
+  auto library = core::VerifiedCoreLibrary::from(
       authority.lease().capability().context(),
       authority.lease().capability().fingerprint().clone(), snapshot.contextRoots().clone(),
       snapshot.revision(), distribution.value().digest(), graph.value().clone(), zc::mv(modules),
       prelude.value().preludeModule().clone(), zc::mv(authority).takeLease());
+  if (library == zc::none) {
+    return reject(core_library_query::CoreSessionInvariantKind::CoreLibraryRejected);
+  }
+  return library;
 }
 
 zc::Maybe<checker::CheckerIdentityAuthority> CompilerSession::materializeCheckerIdentityAuthority()
@@ -2216,7 +2428,7 @@ CompilerSession::firstStagedBorrowSourceRejectionForTesting() const noexcept {
                                       *impl->stagedBorrowSourceRejectedBorrowEvidence};
 }
 
-zc::ArrayPtr<const ir::IrCapabilityDiagnosticGroup> CompilerSession::getIrCapabilityFailureGroups()
+zc::ArrayPtr<const ir::IrCapabilityFailureGroup> CompilerSession::getIrCapabilityFailureGroups()
     const noexcept {
   return impl->irCapabilityFailureGroups;
 }
@@ -2230,17 +2442,67 @@ const basic::BoundedIncidentSet& CompilerSession::getIncidents() const noexcept 
   return impl->incidents;
 }
 
-const diagnostics::DiagnosticEngine& CompilerSession::getDiagnosticEngine() const {
-  return *impl->diagnosticEngine;
+zc::Maybe<core_library_query::CoreOperationalFailureKind>
+CompilerSession::getCoreOperationalFailure() const noexcept {
+  return impl->coreOperationalFailure;
 }
 
-diagnostics::DiagnosticEngine& CompilerSession::getDiagnosticEngine() {
-  return *impl->diagnosticEngine;
+bool CompilerSession::hasDiagnosticErrors() const noexcept {
+  if (impl->diagnosticPolicyResult != zc::none) {
+    return ZC_ASSERT_NONNULL(impl->diagnosticPolicyResult).hasErrors();
+  }
+  return impl->diagnosticCollector.hasErrors();
+}
+
+bool CompilerSession::finalizeDiagnostics() {
+  return impl->finishDiagnostics(diagnostics::DiagnosticIncidentProducer::Driver);
+}
+
+zc::Maybe<const diagnostics::DiagnosticPolicyResult&> CompilerSession::getDiagnostics()
+    const noexcept {
+  ZC_IF_SOME(result, impl->diagnosticPolicyResult) { return result; }
+  return zc::none;
+}
+
+bool CompilerSession::addPackageDiagnostics(
+    package::PackageDiagnosticProjectionResult&& projection,
+    zc::ArrayPtr<const package::PackageDiagnosticDocument> documents) {
+  return impl->collectPackageDiagnostics(zc::mv(projection), documents);
+}
+
+zc::Maybe<diagnostics::DiagnosticPresentationLocation> CompilerSession::resolve(
+    const diagnostics::ResolvedDiagnosticLocation& location) const noexcept {
+  if (location.origin() == diagnostics::DiagnosticFactOrigin::Document) {
+    for (const auto& document : impl->diagnosticDocuments) {
+      if (document.key().encode().asPtr() != location.documentIdentityBytes()) continue;
+      const auto& range = location.range();
+      if (range.byteStart > range.byteEnd || range.byteEnd > document.sourceView().originalSize()) {
+        return zc::none;
+      }
+      return diagnostics::DiagnosticPresentationLocation{
+          document.displayName(), document.sourceView().escapedSource().asBytes(),
+          diagnostics::DiagnosticSourceRange{document.sourceView().escapedOffset(range.byteStart),
+                                             document.sourceView().escapedOffset(range.byteEnd),
+                                             range.isTokenRange}};
+    }
+    return zc::none;
+  }
+  for (const auto& entry : impl->pendingSourceIdentities) {
+    if (!entry.value.sameAs(location.source())) continue;
+    const auto source = impl->sourceManager->getEntireTextForBuffer(entry.key);
+    if (location.range().byteStart > location.range().byteEnd ||
+        location.range().byteEnd > source.size()) {
+      return zc::none;
+    }
+    return diagnostics::DiagnosticPresentationLocation{
+        impl->sourceManager->getIdentifierForBuffer(entry.key), source, location.range()};
+  }
+  return zc::none;
 }
 
 bool CompilerSession::parseSources() {
-  if (!impl->incidents.empty() || impl->diagnosticEngine->hasErrors() ||
-      impl->verifiedParsedSyntax) {
+  if (!impl->incidents.empty() || impl->diagnosticsFinalized ||
+      impl->diagnosticCollector.hasErrors() || impl->verifiedParsedSyntax) {
     return false;
   }
   if (impl->packageRequest == zc::none) { return true; }
@@ -2341,10 +2603,11 @@ bool CompilerSession::parseSources() {
             return reject(binder::ModuleGraphIncidentKind::MaterializationFailed,
                           binder::ModuleGraphIncidentProducer::DiagnosticMaterializer);
           }
-          static_cast<void>(publishSourceDiagnostics(ZC_ASSERT_NONNULL(rejected).facts(),
-                                                     ZC_ASSERT_NONNULL(rejected).provenance(),
-                                                     sourceValue, *impl->sourceManager, entry.value,
-                                                     *impl->diagnosticEngine, impl->incidents));
+          if (!impl->collectSourceDiagnostics(sourceValue, ZC_ASSERT_NONNULL(rejected).facts(),
+                                              ZC_ASSERT_NONNULL(rejected).provenance(),
+                                              diagnostics::DiagnosticIncidentProducer::Source)) {
+            return false;
+          }
           return false;
         }
         if (!parsed.isPublished()) {
@@ -2373,7 +2636,7 @@ bool CompilerSession::parseSources() {
   }
 
   if (processed.size() != impl->pendingSourceIdentities.size() || !impl->internSourceIdentities()) {
-    if (!impl->diagnosticEngine->hasErrors()) {
+    if (!impl->diagnosticCollector.hasErrors()) {
       return reject(binder::ModuleGraphIncidentKind::InvalidDependencyGraph,
                     binder::ModuleGraphIncidentProducer::Session);
     }
@@ -2398,10 +2661,10 @@ bool CompilerSession::parseSources() {
       return reject(binder::ModuleGraphIncidentKind::QueryContractViolation,
                     binder::ModuleGraphIncidentProducer::QueryRuntime);
     }
-    if (!publishSourceDiagnostics(parsed.lease().capability().facts(),
-                                  parsed.lease().capability().provenance(),
-                                  ZC_ASSERT_NONNULL(sourceKey), *impl->sourceManager, entry.value,
-                                  *impl->diagnosticEngine, impl->incidents)) {
+    if (!impl->collectSourceDiagnostics(ZC_ASSERT_NONNULL(sourceKey),
+                                        parsed.lease().capability().facts(),
+                                        parsed.lease().capability().provenance(),
+                                        diagnostics::DiagnosticIncidentProducer::Source)) {
       return false;
     }
     auto materializedSnapshot = identity::ImmutableSourceSnapshot::from(
@@ -2422,10 +2685,10 @@ bool CompilerSession::parseSources() {
 
   if (impl->compilerOpts.emission.outputType ==
       basic::CompilerOptions::EmissionOptions::OutputType::AST) {
-    return !impl->diagnosticEngine->hasErrors();
+    return !impl->diagnosticCollector.hasErrors();
   }
 
-  if (impl->diagnosticEngine->hasErrors() || !impl->internModuleIdentities() ||
+  if (impl->diagnosticCollector.hasErrors() || !impl->internModuleIdentities() ||
       !impl->stageMaterializedModuleGraphInputs()) {
     return false;
   }
@@ -2440,11 +2703,31 @@ bool CompilerSession::parseSources() {
                          .getCapability<incremental_binding_query::StableIdentityAdmissionQuery>(
                              zc::mv(ZC_ASSERT_NONNULL(moduleKey)));
     if (admission.isSourceRejected()) {
-      for (const auto& diagnostic : admission.diagnostics().values()) {
-        zc::Vector<diagnostics::DiagnosticArgument> arguments(diagnostic.arguments().size());
-        for (const auto& argument : diagnostic.arguments()) { arguments.add(zc::str(argument)); }
-        impl->diagnosticEngine->emit(
-            diagnostics::Diagnostic(diagnostic.code(), source::SourceLoc(), zc::mv(arguments)));
+      auto siteKey = incremental_binding_query::StableModuleQueryKey::fromVerified(binding.key);
+      if (siteKey == zc::none) {
+        return reject(binder::ModuleGraphIncidentKind::VerificationFailed,
+                      binder::ModuleGraphIncidentProducer::Session);
+      }
+      auto sites = identityAdmissionSnapshot
+                       .getCapability<incremental_binding_query::IdentitySyntaxSiteInventoryQuery>(
+                           zc::mv(ZC_ASSERT_NONNULL(siteKey)));
+      zc::Maybe<const binder::VerifiedParsedModule&> parsed;
+      for (const auto& candidate : impl->parsedModules) {
+        if (candidate.buffer() != binding.buffer) { continue; }
+        if (parsed != zc::none) {
+          return reject(binder::ModuleGraphIncidentKind::DuplicateCanonicalIdentity,
+                        binder::ModuleGraphIncidentProducer::Session);
+        }
+        parsed = candidate.parsedModule();
+      }
+      if (!sites.isPublished() || parsed == zc::none ||
+          !impl->collectSemanticDiagnostics(
+              binder::projectIdentityAdmissionSourceDiagnostics(admission.diagnostics().values(),
+                                                                sites.lease().capability(),
+                                                                ZC_ASSERT_NONNULL(parsed).syntax()),
+              diagnostics::DiagnosticIncidentProducer::Binder)) {
+        return reject(binder::ModuleGraphIncidentKind::MaterializationFailed,
+                      binder::ModuleGraphIncidentProducer::DiagnosticMaterializer);
       }
       return false;
     }
@@ -2466,11 +2749,11 @@ bool CompilerSession::parseSources() {
   if (!authorityCommit.isCommitted()) { return false; }
   if (!impl->sealFinalSnapshot()) { return false; }
   impl->parsedModules.clear();
-  return !impl->diagnosticEngine->hasErrors();
+  return !impl->diagnosticCollector.hasErrors();
 }
 
 bool CompilerSession::bindSources() {
-  if (!impl->incidents.empty() || impl->diagnosticEngine->hasErrors()) { return false; }
+  if (!impl->incidents.empty() || impl->diagnosticCollector.hasErrors()) { return false; }
   if (impl->packageRequest == zc::none) { return true; }
   const auto reject = [&](binder::ModuleGraphIncidentKind kind) {
     return impl->rejectModuleGraph(binder::ModuleGraphIncidentPhase::Binding, kind,
@@ -2484,44 +2767,16 @@ bool CompilerSession::bindSources() {
     return reject(binder::ModuleGraphIncidentKind::InvalidBindingHandoff);
   }
   for (const auto& module : ZC_REQUIRE_NONNULL(authority).modules()) {
-    for (const auto& lookup : module.bindings().failedLookups()) {
-      if (!module.tree().contains(lookup.node)) {
-        return reject(binder::ModuleGraphIncidentKind::InvalidBindingHandoff);
-      }
-      auto span = module.parsedModule().spanFor(module.tree().node(lookup.node).range);
-      if (span == zc::none) {
-        return reject(binder::ModuleGraphIncidentKind::MaterializationFailed);
-      }
-      zc::Maybe<source::BufferId> buffer;
-      for (const auto& candidate : impl->pendingSourceIdentities) {
-        if (candidate.value.encode().asPtr() != module.parsedModule().source().encode().asPtr()) {
-          continue;
-        }
-        if (buffer != zc::none) {
-          return reject(binder::ModuleGraphIncidentKind::DuplicateCanonicalIdentity);
-        }
-        buffer = candidate.key;
-      }
-      if (buffer == zc::none) {
-        return reject(binder::ModuleGraphIncidentKind::MissingRequiredState);
-      }
-      const auto location =
-          impl->sourceManager->getLocForBufferStart(ZC_ASSERT_NONNULL(buffer))
-              .getAdvancedLoc(static_cast<unsigned>(ZC_ASSERT_NONNULL(span).byteStart()));
-      const auto& outcome = lookup.outcome.value();
-      if (outcome.is<binder::StableMissingLookupOutcome>()) {
-        if (!binder::BindingDiagnosticAdapter::emitLookupFailure(
-                *impl->diagnosticEngine, binder::BinderErrorId::UndefinedIdentifier(), location,
-                binder::VerifiedIdentifierArgument::from(lookup.name), lookup.nameSpace)) {
-          return false;
-        }
-      }
+    if (!impl->collectSemanticDiagnostics(
+            binder::projectBindingSourceDiagnostics(module.bindings(), module.parsedModule()),
+            diagnostics::DiagnosticIncidentProducer::Binder)) {
+      return false;
     }
   }
-  return !impl->diagnosticEngine->hasErrors();
+  return !impl->diagnosticCollector.hasErrors();
 }
 bool CompilerSession::checkSources() {
-  if (!impl->incidents.empty() || impl->diagnosticEngine->hasErrors() ||
+  if (!impl->incidents.empty() || impl->diagnosticCollector.hasErrors() ||
       !impl->checkerFailures.empty() || !impl->irCapabilityFailureGroups.empty() ||
       !impl->irIdentityInvariantFailures.empty()) {
     return false;
@@ -2552,51 +2807,79 @@ bool CompilerSession::checkSources() {
     }
     auto coreKey = core_library_query::ContextualCoreCrateKey::from(
         finalSnapshot.contextRoots().clone(), crate.key().clone());
-    if (coreKey == zc::none) { return false; }
+    if (coreKey == zc::none) {
+      return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
+          core_library_query::CoreSessionInvariantKind::CoreCrateProjectionRejected));
+    }
+    auto roleSeed = finalSnapshot.getCapability<core_library_query::MaterializeCoreRoleSeed>(
+        ZC_ASSERT_NONNULL(coreKey).clone());
+    if (!roleSeed.isPublished()) {
+      return impl->rejectCoreDemand(
+          roleSeed, core_library_query::CoreSessionInvariantKind::CoreRoleAuthorityRejected);
+    }
     auto preludeSurface = finalSnapshot.get<core_library_query::CorePreludeSurface>(
         ZC_ASSERT_NONNULL(coreKey).clone());
-    if (preludeSurface.isRuntimeFailure() ||
-        preludeSurface.kind() != query::QueryValueKind::Value ||
+    if (preludeSurface.isRuntimeFailure()) {
+      return impl->rejectCoreQueryRuntime(preludeSurface.runtimeFailure());
+    }
+    if (preludeSurface.kind() != query::QueryValueKind::Value ||
         preludeSurface.value().core().encode().asPtr() != crate.key().encode().asPtr()) {
-      return false;
+      return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
+          core_library_query::CoreSessionInvariantKind::CorePreludeRejected));
     }
     auto roleAuthority = finalSnapshot.get<core_library_query::CoreRoleAuthority>(
         ZC_ASSERT_NONNULL(coreKey).clone());
-    if (roleAuthority.isRuntimeFailure() || roleAuthority.kind() != query::QueryValueKind::Value ||
+    if (roleAuthority.isRuntimeFailure()) {
+      return impl->rejectCoreQueryRuntime(roleAuthority.runtimeFailure());
+    }
+    if (roleAuthority.kind() != query::QueryValueKind::Value ||
         roleAuthority.value().core().encode().asPtr() != crate.key().encode().asPtr() ||
         roleAuthority.value().preludeRevision().digest() !=
             preludeSurface.value().revision().digest() ||
         roleAuthority.value().roles().size() != preludeSurface.value().roles().size()) {
-      return false;
+      return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
+          core_library_query::CoreSessionInvariantKind::CoreRoleAuthorityRejected));
     }
     auto materializedAuthority =
         finalSnapshot.getCapability<core_library_query::MaterializeCoreAuthority>(
             zc::mv(ZC_ASSERT_NONNULL(coreKey)));
-    if (!materializedAuthority.isPublished() ||
-        materializedAuthority.lease().capability().record().revision().digest() !=
+    if (!materializedAuthority.isPublished()) {
+      return impl->rejectCoreDemand(
+          materializedAuthority,
+          core_library_query::CoreSessionInvariantKind::CoreAuthorityRejected);
+    }
+    if (materializedAuthority.lease().capability().record().revision().digest() !=
             roleAuthority.value().revision().digest() ||
         materializedAuthority.lease().capability().record().roleSeedRevision().digest() !=
             roleAuthority.value().roleSeedRevision().digest() ||
         materializedAuthority.lease().capability().authority().prelude().encode().asPtr() !=
             preludeSurface.value().preludeModule().encode().asPtr()) {
-      return false;
+      return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
+          core_library_query::CoreSessionInvariantKind::CoreAuthorityRejected));
     }
     for (const auto& module : graphDemand.lease().capability().modules()) {
       if (module.key().crate().encode().asPtr() != crate.key().encode().asPtr()) { continue; }
       auto finalInterfaceKey = core_library_query::ContextualCoreModuleKey::from(
           finalSnapshot.contextRoots().clone(), module.key().clone());
-      if (finalInterfaceKey == zc::none) { return false; }
+      if (finalInterfaceKey == zc::none) {
+        return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
+            core_library_query::CoreSessionInvariantKind::CoreInterfaceRejected));
+      }
       auto finalInterface =
           finalSnapshot.getCapability<core_library_query::FinalizeCoreModuleInterface>(
               zc::mv(ZC_ASSERT_NONNULL(finalInterfaceKey)));
-      if (!finalInterface.isPublished() ||
-          finalInterface.lease().capability().record().module().encode().asPtr() !=
+      if (!finalInterface.isPublished()) {
+        return impl->rejectCoreDemand(
+            finalInterface, core_library_query::CoreSessionInvariantKind::CoreInterfaceRejected);
+      }
+      if (finalInterface.lease().capability().record().module().encode().asPtr() !=
               module.key().encode().asPtr() ||
           finalInterface.lease().capability().record().coreContext().digest() !=
               materializedAuthority.lease().capability().record().coreContext().digest() ||
           finalInterface.lease().capability().record().authorityRevision().digest() !=
               materializedAuthority.lease().capability().authority().revision().digest()) {
-        return false;
+        return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
+            core_library_query::CoreSessionInvariantKind::CoreInterfaceRejected));
       }
     }
   }
@@ -2610,41 +2893,6 @@ bool CompilerSession::checkSources() {
     return true;
   }
 
-  const auto parsedFor = [&](identity::ModuleId module) -> zc::Maybe<binder::VerifiedParsedModule> {
-    auto boundModule = retainedCheckerAuthority.boundModule(module);
-    if (boundModule == zc::none || impl->finalSealedSnapshot == zc::none) { return zc::none; }
-    const auto& source = ZC_ASSERT_NONNULL(boundModule).boundModuleLease().capability().source();
-    zc::Maybe<source::BufferId> selectedBuffer;
-    zc::Maybe<identity::SourceFileKey> selectedSource;
-    for (const auto& candidate : impl->pendingSourceIdentities) {
-      if (candidate.value.encode().asPtr() != source.encode().asPtr()) { continue; }
-      if (selectedBuffer != zc::none || selectedSource != zc::none) { return zc::none; }
-      selectedBuffer = candidate.key;
-      selectedSource = candidate.value.clone();
-    }
-    if (selectedBuffer == zc::none || selectedSource == zc::none) { return zc::none; }
-    auto queryKey =
-        source_query::StableSourceQueryKey::fromVerified(ZC_ASSERT_NONNULL(selectedSource));
-    auto materializedSnapshot = identity::ImmutableSourceSnapshot::from(
-        ZC_ASSERT_NONNULL(selectedSource).clone(),
-        zc::heapArray(
-            impl->sourceManager->getEntireTextForBuffer(ZC_ASSERT_NONNULL(selectedBuffer))));
-    if (queryKey == zc::none || materializedSnapshot == zc::none) { return zc::none; }
-    auto parsed = ZC_ASSERT_NONNULL(impl->finalSealedSnapshot)
-                      .getCapability<parser::ParseSourceQuery>(ZC_ASSERT_NONNULL(queryKey));
-    if (!parsed.isPublished()) { return zc::none; }
-    auto verified = binder::ParsedModuleVerifier::verifyQueryResult(
-        impl->contextBrand, ZC_ASSERT_NONNULL(materializedSnapshot),
-        ZC_ASSERT_NONNULL(selectedSource), *impl->sourceManager, ZC_ASSERT_NONNULL(selectedBuffer),
-        parsed.lease().capability().clone());
-    if (!verified.is<binder::VerifiedParsedModule>()) { return zc::none; }
-    return zc::mv(verified.get<binder::VerifiedParsedModule>());
-  };
-  const auto locationFor = [&](const binder::VerifiedParsedModule& parsed,
-                               const identity::SourceSpan& span) {
-    ZC_IF_SOME(location, parsed.sourceLocFor(span)) { return location; }
-    return source::SourceLoc();
-  };
   const auto rejectChecker =
       [&](identity::ModuleId module,
           zc::Vector<checker::signature::CheckerVerificationFailure>&& failures) {
@@ -2672,53 +2920,6 @@ bool CompilerSession::checkSources() {
                "dispatch incident projection must fit the registered inventory");
     return false;
   };
-  const auto emitSignatureSource = [&](const binder::VerifiedParsedModule& parsed,
-                                       const checker::signature::SignatureFactsSourceRejected&
-                                           rejected,
-                                       const checker::CheckerIdentityAuthority& identities) {
-    for (const auto& failure : rejected.failures) {
-      const auto id = static_cast<diagnostics::DiagID>(failure.diagnostic);
-      const auto location = locationFor(parsed, failure.primarySpan);
-      if (failure.diagnostic ==
-          checker::signature::SignatureSourceDiagnostic::BodyLiteralOutOfRange) {
-        if (failure.arguments.size() != 2 ||
-            !failure.arguments[0].variant().is<checker::signature::SignatureLiteralDisplayArg>() ||
-            !failure.arguments[1]
-                 .variant()
-                 .is<checker::signature::SignaturePrimitiveTypeDisplayArg>()) {
-          return false;
-        }
-        auto literal = checker::checked::CheckerDisplayArgument(checker::checked::LiteralDisplayArg{
-            failure.arguments[0]
-                .variant()
-                .get<checker::signature::SignatureLiteralDisplayArg>()
-                .literal.clone()});
-        auto primitive =
-            checker::checked::CheckerDisplayArgument(checker::checked::PrimitiveTypeDisplayArg{
-                failure.arguments[1]
-                    .variant()
-                    .get<checker::signature::SignaturePrimitiveTypeDisplayArg>()
-                    .kind});
-        impl->diagnosticEngine->emit(diagnostics::Diagnostic(
-            id, location,
-            checker::renderCheckerDisplayArgument(literal, identities, *impl->semanticTypeStore),
-            checker::renderCheckerDisplayArgument(primitive, identities,
-                                                  *impl->semanticTypeStore)));
-      } else if (failure.diagnostic ==
-                     checker::signature::SignatureSourceDiagnostic::ConflictingImpl ||
-                 failure.diagnostic == checker::signature::SignatureSourceDiagnostic::OrphanImpl) {
-        impl->diagnosticEngine->emit(
-            diagnostics::Diagnostic(id, location, "interface"_zc, "type"_zc));
-      } else {
-        impl->diagnosticEngine->emit(diagnostics::Diagnostic(id, location));
-      }
-    }
-    for (const auto& advisory : rejected.advisories) {
-      impl->diagnosticEngine->emit(
-          diagnostics::Diagnostic(advisory.diagnostic, locationFor(parsed, advisory.primarySpan)));
-    }
-    return true;
-  };
   const auto rejectIrIdentity = [&](const ir::SortedIdentityInvariantFacts& failures) {
     auto projected = identity::IdentityDiagnosticProjector::projectAll(failures.facts());
     ZC_REQUIRE(projected != zc::none && impl->incidents.merge(ZC_ASSERT_NONNULL(projected)),
@@ -2729,9 +2930,18 @@ bool CompilerSession::checkSources() {
     return false;
   };
   const auto rejectIrCapability = [&](const ir::SortedCapabilityFailureFacts& failures) {
-    auto groups = ir::groupIrCapabilityFailures(failures);
-    ir::emitIrCapabilityDiagnosticGroups(*impl->diagnosticEngine, groups.asPtr());
-    impl->irCapabilityFailureGroups = zc::mv(groups);
+    auto projection = ir::projectIrCapabilityFailures(failures, retainedCheckerAuthority);
+    if (!projection.is<ir::IrCapabilityFailureProjection>()) {
+      return impl->recordDiagnosticIncident(diagnostics::DiagnosticIncidentPhase::Projection,
+                                            diagnostics::DiagnosticIncidentKind::ProjectionRejected,
+                                            diagnostics::DiagnosticIncidentProducer::Ir);
+    }
+    auto projected = zc::mv(projection).get<ir::IrCapabilityFailureProjection>();
+    impl->irCapabilityFailureGroups = zc::mv(projected.operationalFailures);
+    if (!impl->collectSemanticDiagnostics(zc::mv(projected.sourceDiagnostics),
+                                          diagnostics::DiagnosticIncidentProducer::Ir)) {
+      return false;
+    }
     return false;
   };
   const auto rejectIrInvariant = [&](const ir::SortedIrInvariantFailureFacts& failures) {
@@ -2746,29 +2956,12 @@ bool CompilerSession::checkSources() {
     const auto module = boundModule.module();
     auto admission = ownership::SurfaceAdmissionBuilder::admit(boundModule.retain());
     if (admission.is<ownership::SurfaceSourceRejected>()) {
-      auto parsed = parsedFor(module);
-      if (parsed == zc::none) {
-        return rejectOne(module, checker::signature::CheckerInvariantKind::InputReceiptMismatch,
-                         checker::signature::CheckerInvariantStage::Signature, 0);
-      }
-      ZC_IF_SOME(parsedModule, parsed) {
-        // Surface admission failures are mapped inline until they migrate to the
-        // closed SourceFailure union and emitOwnershipSourceFailures.
-        for (const auto& failure : admission.get<ownership::SurfaceSourceRejected>().failures()) {
-          diagnostics::DiagID diagnostic = diagnostics::DiagID::ControlFlowSemanticsUnavailable;
-          if (failure.kind == ownership::SurfaceSyntaxKind::Spawn ||
-              failure.kind == ownership::SurfaceSyntaxKind::Suspend) {
-            diagnostic = diagnostics::DiagID::ConcurrencySemanticsUnavailable;
-          } else if (failure.kind == ownership::SurfaceSyntaxKind::VoidReturn) {
-            diagnostic = diagnostics::DiagID::VoidReturnSemanticsUnavailable;
-          } else if (failure.kind == ownership::SurfaceSyntaxKind::ExpressionStatement) {
-            diagnostic = diagnostics::DiagID::ExpressionStatementSemanticsUnavailable;
-          } else if (failure.kind == ownership::SurfaceSyntaxKind::FunctionBody) {
-            diagnostic = diagnostics::DiagID::FunctionBodySemanticsUnavailable;
-          }
-          impl->diagnosticEngine->emit(
-              diagnostics::Diagnostic(diagnostic, locationFor(parsedModule, failure.primarySpan)));
-        }
+      if (!impl->collectSemanticDiagnostics(
+              ownership::projectSurfaceSourceFailures(
+                  module, retainedCheckerAuthority,
+                  admission.get<ownership::SurfaceSourceRejected>().failures()),
+              diagnostics::DiagnosticIncidentProducer::Ownership)) {
+        return false;
       }
       return false;
     }
@@ -2940,25 +3133,12 @@ bool CompilerSession::checkSources() {
               checker::signature::SignatureFactsBuildInput{boundView, *impl->semanticTypeStore,
                                                            shapes, policies, checkerAuthority});
           if (signatureResult.is<checker::signature::SignatureFactsSourceRejected>()) {
-            auto parsed = parsedFor(boundView.module());
-            if (parsed == zc::none) {
-              for (const auto& failure :
-                   signatureResult.get<checker::signature::SignatureFactsSourceRejected>()
-                       .failures) {
-                impl->diagnosticEngine->emit(diagnostics::Diagnostic(
-                    static_cast<diagnostics::DiagID>(failure.diagnostic), source::SourceLoc()));
-              }
+            if (!impl->collectSemanticDiagnostics(
+                    checker::projectSignatureSourceDiagnostics(
+                        boundView, retainedCheckerAuthority, *impl->semanticTypeStore,
+                        signatureResult.get<checker::signature::SignatureFactsSourceRejected>()),
+                    diagnostics::DiagnosticIncidentProducer::Checker)) {
               return false;
-            }
-            ZC_IF_SOME(parsedModule, parsed) {
-              if (!emitSignatureSource(
-                      parsedModule,
-                      signatureResult.get<checker::signature::SignatureFactsSourceRejected>(),
-                      retainedCheckerAuthority)) {
-                return rejectOne(boundView.module(),
-                                 checker::signature::CheckerInvariantKind::InvalidFact,
-                                 checker::signature::CheckerInvariantStage::Signature, 0);
-              }
             }
             return false;
           }
@@ -3011,17 +3191,13 @@ bool CompilerSession::checkSources() {
                   zc::ArrayPtr<const checker::signature::SemanticSignature>(),
                   retainedCheckerAuthority, *impl->semanticTypeStore});
           if (borrowResult.is<checker::borrow::BorrowInterfaceSourceRejected>()) {
-            auto parsed = parsedFor(boundView.module());
-            if (parsed == zc::none) {
-              return rejectOne(boundView.module(),
-                               checker::signature::CheckerInvariantKind::InputReceiptMismatch,
-                               checker::signature::CheckerInvariantStage::Signature, 0);
-            }
-            ZC_IF_SOME(parsedModule, parsed) {
-              checker::borrow::emitBorrowSignatureFailures(
-                  *impl->diagnosticEngine, parsedModule,
-                  borrowResult.get<checker::borrow::BorrowInterfaceSourceRejected>()
-                      .failures.asPtr());
+            if (!impl->collectSemanticDiagnostics(
+                    checker::borrow::projectBorrowSignatureFailures(
+                        retainedCheckerAuthority,
+                        borrowResult.get<checker::borrow::BorrowInterfaceSourceRejected>()
+                            .failures.asPtr()),
+                    diagnostics::DiagnosticIncidentProducer::Checker)) {
+              return false;
             }
             return false;
           }
@@ -3080,12 +3256,11 @@ bool CompilerSession::checkSources() {
                              checker::signature::CheckerInvariantKind::InvalidFact,
                              checker::signature::CheckerInvariantStage::Coherence, 0);
           }
-          ZC_IF_SOME(moduleEntry, module) {
-            ZC_IF_SOME(parsed, parsedFor(moduleEntry.handle())) {
-              checker::emitCoherenceSourceFailure(*impl->diagnosticEngine, parsed,
-                                                  retainedCheckerAuthority,
-                                                  *impl->semanticTypeStore, failure);
-            }
+          if (!impl->collectSemanticDiagnostics(
+                  checker::projectCoherenceSourceFailure(retainedCheckerAuthority,
+                                                         *impl->semanticTypeStore, failure),
+                  diagnostics::DiagnosticIncidentProducer::Checker)) {
+            return false;
           }
         }
       }
@@ -3096,11 +3271,11 @@ bool CompilerSession::checkSources() {
       return rejectChecker(ordinaryDiagnosticModule, zc::mv(rejected.failures));
     }
     auto frozenCoherence = zc::mv(coherenceResult).get<checker::coherence::CoherenceFrozen>();
-    for (const auto& advisory : frozenCoherence.advisories) {
-      ZC_IF_SOME(parsed, parsedFor(ordinaryDiagnosticModule)) {
-        impl->diagnosticEngine->emit(diagnostics::Diagnostic(
-            advisory.diagnostic, locationFor(parsed, advisory.primarySpan)));
-      }
+    if (!impl->collectSemanticDiagnostics(
+            checker::projectSignatureAdvisories(ordinaryDiagnosticModule, retainedCheckerAuthority,
+                                                frozenCoherence.advisories.asPtr()),
+            diagnostics::DiagnosticIncidentProducer::Checker)) {
+      return false;
     }
     stagedCoherenceView = zc::mv(frozenCoherence.view);
 
@@ -3196,16 +3371,12 @@ bool CompilerSession::checkSources() {
               }
               const auto& verified =
                   verifiedRejection.get<checker::checked::CheckedFactsSourceRejected>();
-              auto parsed = parsedFor(boundView.module());
-              if (parsed == zc::none) {
-                return rejectOne(boundView.module(),
-                                 checker::signature::CheckerInvariantKind::InputReceiptMismatch,
-                                 checker::signature::CheckerInvariantStage::Verification, 0);
-              }
-              ZC_IF_SOME(parsedModule, parsed) {
-                checker::emitCheckedFactsSourceFailures(
-                    *impl->diagnosticEngine, parsedModule, retainedCheckerAuthority,
-                    *impl->semanticTypeStore, verified.failures.asPtr());
+              if (!impl->collectSemanticDiagnostics(
+                      checker::projectCheckedFactsSourceFailures(
+                          boundView, retainedCheckerAuthority, *impl->semanticTypeStore,
+                          verified.failures.asPtr()),
+                      diagnostics::DiagnosticIncidentProducer::Checker)) {
+                return false;
               }
               return false;
             }
@@ -3257,16 +3428,12 @@ bool CompilerSession::checkSources() {
                                                                            verificationInput);
             if (verified.is<checker::checked::CheckedFactsSourceRejected>()) {
               const auto& rejected = verified.get<checker::checked::CheckedFactsSourceRejected>();
-              auto parsed = parsedFor(boundView.module());
-              if (parsed == zc::none) {
-                return rejectOne(boundView.module(),
-                                 checker::signature::CheckerInvariantKind::InputReceiptMismatch,
-                                 checker::signature::CheckerInvariantStage::Verification, 0);
-              }
-              ZC_IF_SOME(parsedModule, parsed) {
-                checker::emitCheckedFactsSourceFailures(
-                    *impl->diagnosticEngine, parsedModule, retainedCheckerAuthority,
-                    *impl->semanticTypeStore, rejected.failures.asPtr());
+              if (!impl->collectSemanticDiagnostics(
+                      checker::projectCheckedFactsSourceFailures(
+                          boundView, retainedCheckerAuthority, *impl->semanticTypeStore,
+                          rejected.failures.asPtr()),
+                      diagnostics::DiagnosticIncidentProducer::Checker)) {
+                return false;
               }
               return false;
             }
@@ -3322,7 +3489,7 @@ bool CompilerSession::checkSources() {
   if (stagedCheckedEvidence.size() != checkerModules.size() ||
       stagedDispatchFacts.size() != checkerModules.size() ||
       stagedBodyRequirements.size() != checkerModules.size() ||
-      impl->diagnosticEngine->hasErrors()) {
+      impl->diagnosticCollector.hasErrors()) {
     return false;
   }
   if (checkerModules.size() > UINT32_MAX) {
@@ -3580,16 +3747,11 @@ bool CompilerSession::checkSources() {
         stagedOwnershipEventOverlays[stagedOwnershipEventOverlays.size() - 1],
         verifiedInitialization.verifiedValue());
     if (initializationSource.isSourceRejected()) {
-      auto parsed = parsedFor(checkerBound.module());
-      if (parsed == zc::none) {
-        return rejectOne(checkerBound.module(),
-                         checker::signature::CheckerInvariantKind::InvalidFact,
-                         checker::signature::CheckerInvariantStage::Verification, 0);
-      }
-      ZC_IF_SOME(parsedModule, parsed) {
-        auto failures = zc::mv(initializationSource).takeSourceFailures();
-        ownership::emitOwnershipSourceFailures(*impl->diagnosticEngine, parsedModule,
-                                               failures.facts());
+      auto failures = zc::mv(initializationSource).takeSourceFailures();
+      if (!impl->collectSemanticDiagnostics(
+              ownership::projectOwnershipSourceFailures(retainedCheckerAuthority, failures.facts()),
+              diagnostics::DiagnosticIncidentProducer::Ownership)) {
+        return false;
       }
       return false;
     }
@@ -3671,16 +3833,11 @@ bool CompilerSession::checkSources() {
       impl->stagedBorrowSourceRejectedBuiltMir = zc::mv(stagedBuiltMirModules);
       impl->stagedBorrowSourceRejectedOverlays = zc::mv(stagedOwnershipEventOverlays);
       impl->stagedBorrowSourceRejectedBorrowEvidence = zc::mv(stagedBorrowEvidenceRepository);
-      auto parsed = parsedFor(checkerBound.module());
-      if (parsed == zc::none) {
-        return rejectOne(checkerBound.module(),
-                         checker::signature::CheckerInvariantKind::InvalidFact,
-                         checker::signature::CheckerInvariantStage::Verification, 0);
-      }
-      ZC_IF_SOME(parsedModule, parsed) {
-        auto failures = zc::mv(borrowSource).takeSourceFailures();
-        ownership::emitOwnershipSourceFailures(*impl->diagnosticEngine, parsedModule,
-                                               failures.facts());
+      auto failures = zc::mv(borrowSource).takeSourceFailures();
+      if (!impl->collectSemanticDiagnostics(
+              ownership::projectOwnershipSourceFailures(retainedCheckerAuthority, failures.facts()),
+              diagnostics::DiagnosticIncidentProducer::Ownership)) {
+        return false;
       }
       return false;
     }
@@ -3972,7 +4129,7 @@ bool CompilerSession::checkSources() {
       stagedOwnershipCheckedMir.size() != ordinaryBoundModuleIndices.size() ||
       stagedVerifiedExecutableMir.size() != ordinaryBoundModuleIndices.size() ||
       stagedOwnershipAdmittedModules.size() != ordinaryBoundModuleIndices.size() ||
-      impl->diagnosticEngine->hasErrors()) {
+      impl->diagnosticCollector.hasErrors()) {
     return false;
   }
   impl->markerShapes = zc::mv(stagedMarkerShapes);
@@ -4039,16 +4196,21 @@ bool CompilerSession::installVerifiedPackageInput(package::InstalledPackageInput
 
 bool CompilerSession::installVerifiedCoreDistribution(
     const source::core::VerifiedCoreDistribution& distribution) {
+  const auto reject = [&](core_library_query::CoreSessionInvariantKind kind) {
+    return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(kind));
+  };
   if (impl->packageRequest == zc::none || impl->crateGraph == zc::none ||
       impl->coreDistributionInputs != zc::none ||
       impl->sourceManager->getManagedBufferIds().size() != 0) {
-    return false;
+    return reject(core_library_query::CoreSessionInvariantKind::InvalidInstallationState);
   }
   zc::Maybe<source_query::CanonicalCompilationOptions> compilationOptions;
   ZC_IF_SOME(request, impl->packageRequest) {
     compilationOptions = source_query::CanonicalCompilationOptions::fromVerified(request);
   }
-  if (compilationOptions == zc::none) { return false; }
+  if (compilationOptions == zc::none) {
+    return reject(core_library_query::CoreSessionInvariantKind::CompilationOptionsRejected);
+  }
 
   zc::Maybe<incremental_binding_query::PackageRootSetKey> packageRoots;
   zc::Maybe<incremental_binding_query::CanonicalPackageGraph> packageGraphInput;
@@ -4073,13 +4235,17 @@ bool CompilerSession::installVerifiedCoreDistribution(
               ++matchingRequests;
             }
           }
-          if (matchingRequests > 1) { return false; }
+          if (matchingRequests > 1) {
+            return reject(core_library_query::CoreSessionInvariantKind::AmbiguousPackageRoot);
+          }
           if (matchingRequests == 1) { userRootCrates.add(root.crateKey().clone()); }
         }
       }
       for (const auto& consumer : graph.crates()) {
         auto projected = identity::projectToolchainCoreCrate(consumer);
-        if (projected == zc::none) { return false; }
+        if (projected == zc::none) {
+          return reject(core_library_query::CoreSessionInvariantKind::CoreCrateProjectionRejected);
+        }
         bool retained = false;
         for (const auto& candidate : projectedCoreCrates) {
           if (candidate.encode().asPtr() == ZC_ASSERT_NONNULL(projected).encode().asPtr()) {
@@ -4093,7 +4259,9 @@ bool CompilerSession::installVerifiedCoreDistribution(
             consumer.clone(), ZC_ASSERT_NONNULL(compilationOptions).clone()));
         zc::Vector<binder::ModuleSearchRoot> environment;
         auto root = impl->compilationRoot(consumer);
-        if (root == zc::none) { return false; }
+        if (root == zc::none) {
+          return reject(core_library_query::CoreSessionInvariantKind::CompilationRootUnavailable);
+        }
         ZC_IF_SOME(rootValue, root) {
           const auto relativeRoot = parentDirectory(rootValue.sourcePath());
           const auto& package = consumer.unit().userPackage();
@@ -4128,7 +4296,9 @@ bool CompilerSession::installVerifiedCoreDistribution(
         }
         auto roots = incremental_module_resolution_query::CanonicalModuleSearchRoots::fromVerified(
             consumer, environment.asPtr());
-        if (roots == zc::none) { return false; }
+        if (roots == zc::none) {
+          return reject(core_library_query::CoreSessionInvariantKind::ConsumerSearchRootsRejected);
+        }
         searchRootEntries.add(module_graph_query::ModuleSearchRootsEntry::from(
             consumer.clone(), zc::mv(ZC_ASSERT_NONNULL(roots))));
       }
@@ -4139,22 +4309,35 @@ bool CompilerSession::installVerifiedCoreDistribution(
         core.clone(), ZC_ASSERT_NONNULL(compilationOptions).clone()));
     auto root =
         binder::ModuleSearchRoot::toolchainCore(core.clone(), distribution.distributionDigest());
-    if (root == zc::none) { return false; }
+    if (root == zc::none) {
+      return reject(core_library_query::CoreSessionInvariantKind::CoreSearchRootRejected);
+    }
     zc::Vector<binder::ModuleSearchRoot> environment;
     environment.add(zc::mv(ZC_ASSERT_NONNULL(root)));
     auto roots = incremental_module_resolution_query::CanonicalModuleSearchRoots::fromVerified(
         core, environment.asPtr());
-    if (roots == zc::none) { return false; }
+    if (roots == zc::none) {
+      return reject(core_library_query::CoreSessionInvariantKind::CoreSearchRootsRejected);
+    }
     searchRootEntries.add(module_graph_query::ModuleSearchRootsEntry::from(
         core.clone(), zc::mv(ZC_ASSERT_NONNULL(roots))));
   }
   if (packageRoots == zc::none || packageGraphInput == zc::none || projectedCoreCrates.empty()) {
-    return false;
+    return reject(packageRoots == zc::none
+                      ? core_library_query::CoreSessionInvariantKind::PackageRootProjectionRejected
+                  : packageGraphInput == zc::none
+                      ? core_library_query::CoreSessionInvariantKind::PackageGraphProjectionRejected
+                      : core_library_query::CoreSessionInvariantKind::CoreCrateProjectionRejected);
   }
 
   zc::Maybe<module_graph_query::CompleteCompilationContextAuthority> contextAuthority;
   auto acceptedDistribution = source::core::initialCoreDistributionInput();
-  if (acceptedDistribution == zc::none) { return false; }
+  if (acceptedDistribution == zc::none) {
+    return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
+        source::core::CoreDistributionAdmissionInvariantKind::VerifiedStateMismatch,
+        core_library_query::CoreIncidentPhase::InputPreparation,
+        core_library_query::CoreIncidentProducer::Session));
+  }
   ZC_IF_SOME(request, impl->packageRequest) {
     const module_graph_query::CompleteCompilationContextSources sources{
         request,
@@ -4169,10 +4352,12 @@ bool CompilerSession::installVerifiedCoreDistribution(
     contextAuthority =
         module_graph_query::CompleteCompilationContextAuthority::fromVerified(sources);
   }
-  if (contextAuthority == zc::none) { return false; }
+  if (contextAuthority == zc::none) {
+    return reject(core_library_query::CoreSessionInvariantKind::ContextAuthorityRejected);
+  }
 
   const auto previousRevision = impl->queryDatabase.snapshot().revision();
-  zc::Maybe<core_library_query::VerifiedCoreDistributionInputTransaction> prepared;
+  zc::Maybe<core_library_query::CoreDistributionInputPreparationResult> prepared;
   ZC_IF_SOME(graph, impl->crateGraph) {
     ZC_IF_SOME(request, impl->packageRequest) {
       prepared = core_library_query::VerifiedCoreDistributionInputTransaction::prepare(
@@ -4180,23 +4365,47 @@ bool CompilerSession::installVerifiedCoreDistribution(
           ZC_ASSERT_NONNULL(compilationOptions), graph.crates());
     }
   }
-  if (prepared == zc::none) { return false; }
-  auto commit = ZC_ASSERT_NONNULL(prepared).commit(impl->queryDatabase);
-  if (!commit.isCommitted()) { return false; }
-  for (const auto& projection : ZC_ASSERT_NONNULL(prepared).projections()) {
-    if (projection.catalog().entries().size() != distribution.snapshots().size()) { return false; }
+  if (prepared == zc::none) {
+    return reject(core_library_query::CoreSessionInvariantKind::TransactionPreparationRejected);
+  }
+  auto preparation = zc::mv(ZC_ASSERT_NONNULL(prepared));
+  if (preparation.is<core_library_query::CoreDistributionInputPreparationInvariantKind>()) {
+    return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
+        preparation.get<core_library_query::CoreDistributionInputPreparationInvariantKind>()));
+  }
+  if (preparation.is<source::core::CoreDistributionAdmissionInvariantKind>()) {
+    return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
+        preparation.get<source::core::CoreDistributionAdmissionInvariantKind>(),
+        core_library_query::CoreIncidentPhase::InputPreparation,
+        core_library_query::CoreIncidentProducer::SourceCatalog));
+  }
+  auto transaction =
+      zc::mv(preparation).get<core_library_query::VerifiedCoreDistributionInputTransaction>();
+  auto commit = transaction.commit(impl->queryDatabase);
+  if (!commit.isCommitted()) {
+    return impl->recordCoreIncident(
+        core_library_query::CoreDiagnosticProjector::project(commit.failure()));
+  }
+  for (const auto& projection : transaction.projections()) {
+    if (projection.catalog().entries().size() != distribution.snapshots().size()) {
+      return reject(core_library_query::CoreSessionInvariantKind::ProjectionCatalogMismatch);
+    }
     for (size_t index = 0; index < distribution.snapshots().size(); ++index) {
       const auto& entry = projection.catalog().entries()[index];
       const auto& snapshot = distribution.snapshots()[index];
-      if (entry.contentDigest() != snapshot.contentDigest()) { return false; }
+      if (entry.contentDigest() != snapshot.contentDigest()) {
+        return reject(core_library_query::CoreSessionInvariantKind::ProjectionSnapshotMismatch);
+      }
       bool added = false;
       auto registered = impl->registerSource(entry.source().clone(), entry.module(),
                                              zc::heapArray<zc::byte>(snapshot.bytes()),
                                              coreSourceIdentifier(snapshot.path()), added);
-      if (registered == zc::none || !added) { return false; }
+      if (registered == zc::none || !added) {
+        return reject(core_library_query::CoreSessionInvariantKind::SourceRegistrationRejected);
+      }
     }
   }
-  impl->coreDistributionInputs = zc::mv(ZC_ASSERT_NONNULL(prepared));
+  impl->coreDistributionInputs = zc::mv(transaction);
   return true;
 }
 

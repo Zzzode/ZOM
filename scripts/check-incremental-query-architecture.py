@@ -237,7 +237,7 @@ def check_routing(files: dict[Path, str], errors: list[str]) -> None:
     require_marker(
         files,
         AGENTS,
-        "Query database, identity, import/export",
+        "Query database, incident transport, identity, import/export",
         "repository query owner summary",
         errors,
     )

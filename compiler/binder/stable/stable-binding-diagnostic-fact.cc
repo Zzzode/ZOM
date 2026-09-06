@@ -72,9 +72,8 @@ zc::Vector<uint32_t> clonePath(zc::ArrayPtr<const uint32_t> path) {
   return result;
 }
 
-bool sameModuleAndSource(const IdentitySyntaxSiteKey& left, const IdentitySyntaxSiteKey& right) {
-  return left.module().encode().asPtr() == right.module().encode().asPtr() &&
-         left.source().sameAs(right.source());
+bool sameModule(const IdentitySyntaxSiteKey& left, const IdentitySyntaxSiteKey& right) {
+  return left.module().encode().asPtr() == right.module().encode().asPtr();
 }
 
 zc::Maybe<diagnostics::DiagnosticOccurrenceKey> occurrence(
@@ -324,7 +323,7 @@ zc::Maybe<diagnostics::DiagnosticFact>
 StableBindingDiagnosticFactFactory::duplicateGenericParameter(
     const IdentitySyntaxSiteKey& duplicate, const IdentitySyntaxSiteKey& previous,
     const BinderIdentifierDiagnosticArguments& arguments) {
-  if (!sameModuleAndSource(duplicate, previous) ||
+  if (!sameModule(duplicate, previous) ||
       comparePath(previous.moduleSyntaxPath(), duplicate.moduleSyntaxPath()) >= 0) {
     return zc::none;
   }
@@ -350,7 +349,7 @@ StableBindingDiagnosticFactFactory::duplicateGenericParameter(
 zc::Maybe<diagnostics::DiagnosticFact> StableBindingDiagnosticFactFactory::definitionRedeclaration(
     const IdentitySyntaxSiteKey& duplicate, const IdentitySyntaxSiteKey& previous,
     diagnostics::DiagID diagnostic, zc::StringPtr name) {
-  if (!sameModuleAndSource(duplicate, previous) ||
+  if (!sameModule(duplicate, previous) ||
       comparePath(previous.moduleSyntaxPath(), duplicate.moduleSyntaxPath()) >= 0) {
     return zc::none;
   }

@@ -16,8 +16,6 @@
 
 #include "compiler/basic/compiler-opts.h"
 #include "compiler/binder/diagnostics/module-graph-diagnostic-projector.h"
-#include "compiler/diagnostics/consumer/diagnostic-consumer.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/driver/core/marker-authority.h"
 #include "compiler/driver/package/manifest-parser.h"
 #include "compiler/driver/package/source-record.h"
@@ -48,27 +46,6 @@ zc::Own<CompilerSession> makeSession(const basic::LangOptions& langOpts,
   identity::SemanticContextFactory contextFactory;
   return zc::heap<CompilerSession>(contextFactory, langOpts, compilerOpts);
 }
-
-struct SessionDiagnostics final {
-  zc::Vector<diagnostics::DiagID> ids;
-  zc::Vector<diagnostics::DiagID> childIds;
-};
-
-class SessionDiagnosticConsumer final : public diagnostics::DiagnosticConsumer {
-public:
-  explicit SessionDiagnosticConsumer(SessionDiagnostics& capture) noexcept : capture(capture) {}
-
-  void handleDiagnostic(const source::SourceManager&,
-                        const diagnostics::Diagnostic& diagnostic) override {
-    capture.ids.add(diagnostic.getId());
-    for (const auto& child : diagnostic.getChildDiagnostics()) {
-      capture.childIds.add(child->getId());
-    }
-  }
-
-private:
-  SessionDiagnostics& capture;
-};
 
 template <typename Scalar>
 Scalar sessionScalar(zc::StringPtr text) {
@@ -244,6 +221,7 @@ public:
   ZC_DISALLOW_COPY(RetainedPackageSession);
 
   zc::Own<CompilerSession>& operator->() { return sessionValue; }
+  CompilerSession& operator*() { return *sessionValue; }
 
 private:
   static zc::Own<CompilerSession> createSession(const basic::LangOptions& languageOptions,
@@ -280,20 +258,31 @@ RetainedPackageSession packageSession(zc::StringPtr mainSource, zc::StringPtr ch
   return session;
 }
 
-size_t diagnosticCount(const SessionDiagnostics& diagnostics, diagnostics::DiagID id) {
+const diagnostics::DiagnosticPolicyResult& finalizedDiagnostics(CompilerSession& session) {
+  ZC_REQUIRE(session.finalizeDiagnostics());
+  return ZC_REQUIRE_NONNULL(session.getDiagnostics());
+}
+
+size_t diagnosticCount(CompilerSession& session, diagnostics::DiagID id) {
   size_t count = 0;
-  for (const auto candidate : diagnostics.ids) {
-    if (candidate == id) { ++count; }
+  for (const auto& candidate : finalizedDiagnostics(session).authoritative().diagnostics()) {
+    if (candidate.code() == id) { ++count; }
   }
   return count;
 }
 
-size_t childDiagnosticCount(const SessionDiagnostics& diagnostics, diagnostics::DiagID id) {
+size_t relatedDiagnosticCount(CompilerSession& session, diagnostics::DiagID id) {
   size_t count = 0;
-  for (const auto candidate : diagnostics.childIds) {
-    if (candidate == id) { ++count; }
+  for (const auto& diagnostic : finalizedDiagnostics(session).authoritative().diagnostics()) {
+    for (const auto& related : diagnostic.related()) {
+      if (related.code == id) { ++count; }
+    }
   }
   return count;
+}
+
+size_t diagnosticSize(CompilerSession& session) {
+  return finalizedDiagnostics(session).authoritative().size();
 }
 
 }  // namespace
@@ -345,7 +334,7 @@ ZC_TEST("CompilerSessionTest.BrandExhaustionUsesInternalIncident") {
   auto session = zc::heap<CompilerSession>(contextFactory, langOpts, compilerOpts);
   ZC_EXPECT(!session->getSemanticContextBrand().isValid());
   ZC_EXPECT(session->getSemanticTypeStore() == zc::none);
-  ZC_EXPECT(!session->getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   const auto incidents = session->getIncidents().descriptors();
   ZC_REQUIRE(incidents.size() == 1);
   ZC_EXPECT(incidents[0].domain() == basic::CompilerIncidentDomain::Identity);
@@ -354,13 +343,15 @@ ZC_TEST("CompilerSessionTest.BrandExhaustionUsesInternalIncident") {
   ZC_EXPECT(!session->parseSources());
 }
 
-ZC_TEST("CompilerSessionTest.GetDiagnosticEngine") {
+ZC_TEST("CompilerSessionTest.FinalizesEmptyDiagnosticBatch") {
   auto langOpts = basic::LangOptions();
   auto compilerOpts = basic::CompilerOptions();
   auto session = makeSession(langOpts, compilerOpts);
 
-  const auto& diagnosticEngine = session->getDiagnosticEngine();
-  ZC_EXPECT(&diagnosticEngine != nullptr);
+  ZC_EXPECT(session->getDiagnostics() == zc::none);
+  ZC_REQUIRE(session->finalizeDiagnostics());
+  ZC_REQUIRE(session->getDiagnostics() != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(session->getDiagnostics()).authoritative().size() == 0);
 }
 
 ZC_TEST("CompilerSessionTest.HasVerifiedParsedSyntaxInitiallyFalse") {
@@ -400,11 +391,9 @@ ZC_TEST("CompilerSessionTest.ParseSourcesEmpty") {
 
 ZC_TEST("CompilerSessionTest.PublishesOrdinaryPackageModuleGraph") {
   auto session = packageSession("let main = 0;\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
-  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   auto graphLease = session->materializeModuleGraph();
   ZC_REQUIRE(graphLease != zc::none);
   const auto& graph = ZC_REQUIRE_NONNULL(graphLease).capability();
@@ -414,36 +403,30 @@ ZC_TEST("CompilerSessionTest.PublishesOrdinaryPackageModuleGraph") {
 
 ZC_TEST("CompilerSessionTest.PublishesCanonicalParseRejectionAtomically") {
   auto session = packageSession("let main = ;\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_EXPECT(!session->parseSources());
   ZC_EXPECT(!session->hasVerifiedParsedSyntax());
-  ZC_EXPECT(captured.ids.size() == 1);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ExpressionExpected) == 1);
+  ZC_EXPECT(diagnosticSize(*session) == 1);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::ExpressionExpected) == 1);
   ZC_EXPECT(session->getIncidents().empty());
 }
 
 ZC_TEST("CompilerSessionTest.PublishesRetainedMissingLookupDiagnosticDuringBinding") {
   auto session = packageSession("missing_value;\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_EXPECT(!session->bindSources());
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UndefinedIdentifier) == 1);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::UndefinedIdentifier) == 1);
   ZC_EXPECT(session->getIncidents().empty());
 }
 
 ZC_TEST("CompilerSessionTest.RejectsPackageParsingWithoutCoreDistribution") {
   auto session = packageSession("let main = 0;\n"_zc, {}, false);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_EXPECT(!session->parseSources());
   ZC_EXPECT(!session->hasVerifiedParsedSyntax());
   ZC_EXPECT(session->materializeModuleGraph() == zc::none);
-  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   const auto incidents = session->getIncidents().descriptors();
   ZC_REQUIRE(incidents.size() == 1);
   ZC_EXPECT(incidents[0].domain() == basic::CompilerIncidentDomain::Driver);
@@ -453,11 +436,9 @@ ZC_TEST("CompilerSessionTest.RejectsPackageParsingWithoutCoreDistribution") {
 
 ZC_TEST("CompilerSessionTest.PublishesSourceBackedCoreModulesInCompleteSemanticGraph") {
   auto session = packageSession("let main = 0;\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
-  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   auto parsedModules = session->materializeParsedModules();
   ZC_REQUIRE(parsedModules != zc::none);
   ZC_EXPECT(ZC_ASSERT_NONNULL(parsedModules).size() == 4);
@@ -584,94 +565,78 @@ ZC_TEST("CompilerSessionTest.PublishesSourceBackedCoreModulesInCompleteSemanticG
 
 ZC_TEST("CompilerSessionTest.CheckerPreflightMaterializesSourceBackedCoreBootstrapInterfaces") {
   auto session = packageSession("let main = 0;\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
 }
 
 ZC_TEST("CompilerSessionTest.CheckerPreflightPublishesAnnotatedConstantFacts") {
   auto session = packageSession("const value: i32 = 1;\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
 }
 
 ZC_TEST("CompilerSessionTest.ErrorPropagateNonUnionUsesCheckerDiagnostic") {
   auto session = packageSession("fun entry(value: i32) -> i32 { return value?!; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(!session->checkSources());
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ErrorPropagateNonUnion) == 1);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 0);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::ErrorPropagateNonUnion) == 1);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 0);
 }
 
 ZC_TEST("CompilerSessionTest.ErrorUnwrapNonUnionUsesCheckerDiagnostic") {
   auto session = packageSession("fun entry(value: i32) -> i32 { return value!!; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(!session->checkSources());
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ErrorUnwrapNonUnion) == 1);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 0);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::ErrorUnwrapNonUnion) == 1);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 0);
 }
 
 ZC_TEST("CompilerSessionTest.ErrorPropagateOrdinaryUnionUsesCheckerDiagnostic") {
   auto session = packageSession("fun entry(value: i32 | bool) -> i32 { return value?!; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(!session->checkSources());
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ErrorPropagateNonUnion) == 1);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::ErrorPropagateNonUnion) == 1);
   ZC_EXPECT(session->getIncidents().empty());
 }
 
 ZC_TEST("CompilerSessionTest.ArrayIndexReturnUsesFunctionBodyUnavailableDiagnostic") {
   auto session = packageSession("fun entry(values: i32[]) -> i32 { return values[0]; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(!session->checkSources());
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
 }
 
 ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForInitializedParameterReturn") {
   auto session = packageSession("fun identity(value: i32) -> i32 { return value; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
 ZC_TEST("CompilerSessionTest.PublishesGenericFunctionSignature") {
   auto session = packageSession("fun identity<T>(value: i32) -> i32 { return value; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   const auto facts = session->getVerifiedSignatureFacts();
   ZC_REQUIRE(facts.size() == 1);
   ZC_EXPECT(facts[0].signatures().size() == 1);
@@ -683,13 +648,11 @@ ZC_TEST("CompilerSessionTest.PublishesGenericFunctionSignature") {
 
 ZC_TEST("CompilerSessionTest.PublishesGenericDirectBorrowSignature") {
   auto session = packageSession("fun borrow<T>(value: &T) -> &T { return value; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   const auto facts = session->getVerifiedSignatureFacts();
   ZC_REQUIRE(facts.size() == 1);
   ZC_REQUIRE(facts[0].signatures().size() == 1);
@@ -701,13 +664,11 @@ ZC_TEST("CompilerSessionTest.PublishesGenericDirectBorrowSignature") {
 
 ZC_TEST("CompilerSessionTest.PublishesGenericMutableBorrowSignature") {
   auto session = packageSession("fun borrow<T>(value: &mut T) -> &mut T { return value; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   const auto facts = session->getVerifiedSignatureFacts();
   ZC_REQUIRE(facts.size() == 1);
   ZC_REQUIRE(facts[0].signatures().size() == 1);
@@ -721,13 +682,11 @@ ZC_TEST("CompilerSessionTest.PublishesGenericMutableBorrowSignature") {
 
 ZC_TEST("CompilerSessionTest.PublishesSharedParameterReborrow") {
   auto session = packageSession("fun reborrow(value: &i32) -> &i32 { return &*value; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_REQUIRE(session->checkSources());
-  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   const auto& hir = session->getVerifiedHirModules()[0];
   ZC_REQUIRE(hir.parameterReborrows().size() == 1);
   const auto& mir = session->getOwnershipCheckedMirModules()[0].builtMir();
@@ -856,13 +815,11 @@ ZC_TEST("CompilerSessionTest.PublishesSharedParameterReborrow") {
 ZC_TEST("CompilerSessionTest.PublishesMutableParameterReborrow") {
   auto session =
       packageSession("fun reborrow(value: &mut i32) -> &mut i32 { return &mut *value; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
   const auto& reborrows = session->getVerifiedHirModules()[0].parameterReborrows();
   ZC_REQUIRE(reborrows.size() == 1);
@@ -1029,13 +986,11 @@ ZC_TEST("CompilerSessionTest.PublishesMutableParameterReborrow") {
 ZC_TEST("CompilerSessionTest.PublishesGenericMutableParameterReborrow") {
   auto session =
       packageSession("fun reborrow<T>(value: &mut T) -> &mut T { return &mut *value; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
   const auto& functions = session->getOwnershipCheckedMirModules()[0].builtMir().functions();
   ZC_REQUIRE(functions.size() == 1);
@@ -1057,39 +1012,33 @@ ZC_TEST("CompilerSessionTest.PublishesGenericMutableParameterReborrow") {
 
 ZC_TEST("CompilerSessionTest.RejectsGenericParameterReturnWithoutBorrowContract") {
   auto session = packageSession("fun identity<T>(value: T) -> T { return value; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(!session->checkSources());
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::BorrowOutputRegionUnexpressible) == 1);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::BorrowOutputRegionUnexpressible) == 1);
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
 }
 
 ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForParameterInitializedLocalReturn") {
   auto session = packageSession(
       "fun identity(value: i32) -> i32 { let copy: i32 = value; return copy; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
 ZC_TEST("CompilerSessionTest.PublishesOwnershipInputsForLocalAliasReborrow") {
   auto session = packageSession(
       "fun reborrow(value: &i32) -> &i32 { let local = value; return &*local; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_REQUIRE(session->checkSources());
-  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
 
   const auto& hir = session->getVerifiedHirModules()[0];
   ZC_REQUIRE(hir.parameterReborrows().size() == 1);
@@ -1136,13 +1085,11 @@ ZC_TEST("CompilerSessionTest.PublishesOwnershipInputsForLocalAliasReborrow") {
 ZC_TEST("CompilerSessionTest.PublishesOwnershipInputsForMutableLocalAliasReborrow") {
   auto session = packageSession(
       "fun reborrow(value: &mut i32) -> &mut i32 { let local = value; return &mut *local; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_REQUIRE(session->checkSources());
-  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
 
   const auto& hir = session->getVerifiedHirModules()[0];
   ZC_REQUIRE(hir.parameterReborrows().size() == 1);
@@ -1188,13 +1135,11 @@ ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForInitializedAggre
   auto session = packageSession(
       "struct Cell { value: i32, }\n"
       "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
@@ -1202,13 +1147,11 @@ ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForAggregateFieldOv
   auto session = packageSession(
       "struct Cell { mut value: i32, }\n"
       "fun entry() -> i32 { mut cell = Cell { value: 0 }; cell.value = 1; return cell.value; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(captured.ids.empty());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
   const auto& builtMir = session->getOwnershipCheckedMirModules()[0].builtMir();
   ZC_REQUIRE(builtMir.functions().size() == 1);
@@ -1232,16 +1175,14 @@ ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForAggregateFieldOv
 
 ZC_TEST("CompilerSessionTest.RejectsUninitializedLocalUseWithoutPublishingOwnershipInputs") {
   auto session = packageSession("fun entry() -> i32 { let value: i32; return value; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(!session->checkSources());
   const auto failures = session->getIrCapabilityFailureGroups();
   ZC_EXPECT(failures.size() == 0);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UninitializedPlaceUse) == 1);
-  ZC_EXPECT(childDiagnosticCount(captured, diagnostics::DiagID::PlaceBecameUnavailableHere) == 1);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::UninitializedPlaceUse) == 1);
+  ZC_EXPECT(relatedDiagnosticCount(*session, diagnostics::DiagID::PlaceBecameUnavailableHere) == 1);
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
 }
 
@@ -1251,15 +1192,13 @@ ZC_TEST("CompilerSessionTest.RejectsUseAfterMoveWithoutPublishingOwnershipInputs
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
       "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return first; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(!session->checkSources());
   ZC_EXPECT(session->getIrCapabilityFailureGroups().size() == 0);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UseAfterMove) == 1);
-  ZC_EXPECT(childDiagnosticCount(captured, diagnostics::DiagID::ValueMovedHere) == 1);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::UseAfterMove) == 1);
+  ZC_EXPECT(relatedDiagnosticCount(*session, diagnostics::DiagID::ValueMovedHere) == 1);
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
 }
 
@@ -1270,7 +1209,7 @@ ZC_TEST("CompilerSessionTest.AcceptsCopyAfterLocalTransfer") {
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(!session->getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
@@ -1281,7 +1220,7 @@ ZC_TEST("CompilerSessionTest.AcceptsThreeSequentialScalarLocals") {
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(!session->getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
@@ -1293,7 +1232,7 @@ ZC_TEST("CompilerSessionTest.AcceptsFourSequentialLocalsReturningParameter") {
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(!session->getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
@@ -1307,7 +1246,7 @@ ZC_TEST("CompilerSessionTest.AcceptsBinaryInitializerInSequentialLocalBody") {
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(!session->getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
@@ -1319,13 +1258,11 @@ ZC_TEST("CompilerSessionTest.LogicalInitializerProducesCheckerIncident") {
   // bitwise binary initializers became supported.
   auto session = packageSession(
       "fun entry(a: bool, b: bool) -> bool { let x: bool = a && b; let y: bool = x; return y; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(!session->checkSources());
-  ZC_EXPECT(captured.ids.size() == 0);
+  ZC_EXPECT(diagnosticSize(*session) == 0);
   const auto incidents = session->getIncidents().descriptors();
   ZC_REQUIRE(incidents.size() == 1);
   ZC_EXPECT(incidents[0].domain() == basic::CompilerIncidentDomain::Checker);
@@ -1339,14 +1276,12 @@ ZC_TEST(
   auto session = packageSession(
       "struct Cell { value: i32, }\n"
       "fun entry() -> i32 { let cell: Cell; return cell.value; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(!session->checkSources());
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UninitializedPlaceUse) == 1);
-  ZC_EXPECT(childDiagnosticCount(captured, diagnostics::DiagID::PlaceBecameUnavailableHere) == 1);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::UninitializedPlaceUse) == 1);
+  ZC_EXPECT(relatedDiagnosticCount(*session, diagnostics::DiagID::PlaceBecameUnavailableHere) == 1);
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
 }
 
@@ -1356,28 +1291,24 @@ ZC_TEST(
   auto session = packageSession(
       "struct Pair { mut left: i32, mut right: bool, }\n"
       "fun entry() -> bool { mut pair: Pair; pair.left = 0; return pair.right; }\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(!session->checkSources());
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UninitializedPlaceUse) == 1);
-  ZC_EXPECT(childDiagnosticCount(captured, diagnostics::DiagID::PlaceBecameUnavailableHere) == 1);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::UninitializedPlaceUse) == 1);
+  ZC_EXPECT(relatedDiagnosticCount(*session, diagnostics::DiagID::PlaceBecameUnavailableHere) == 1);
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
 }
 
 ZC_TEST("CompilerSessionTest.RejectsReservedCoreRootWithoutPublishingModuleGraph") {
   auto session = packageSession("module core;\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_EXPECT(!session->parseSources());
   ZC_EXPECT(session->hasVerifiedParsedSyntax());
   ZC_EXPECT(session->materializeModuleGraph() == zc::none);
-  ZC_EXPECT(captured.ids.size() == 1);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ToolchainModuleRootReserved) == 1);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ModuleDeclarationNameMismatch) == 0);
+  ZC_EXPECT(diagnosticSize(*session) == 1);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::ToolchainModuleRootReserved) == 1);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::ModuleDeclarationNameMismatch) == 0);
   ZC_EXPECT(session->getIncidents().empty());
 }
 
@@ -1388,17 +1319,15 @@ ZC_TEST("CompilerSessionTest.SuppressesReservedRootCycleAndRetainsIndependentFai
       "module child;\n"
       "export app::{member};\n"
       "import missing::{member};\n"_zc);
-  SessionDiagnostics captured;
-  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
 
   ZC_EXPECT(!session->parseSources());
   ZC_EXPECT(session->hasVerifiedParsedSyntax());
   ZC_EXPECT(session->materializeModuleGraph() == zc::none);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ToolchainModuleRootReserved) == 1);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ImportModuleNotFound) == 1);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::CircularImport) == 0);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::CircularReexport) == 0);
-  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ModuleDeclarationNameMismatch) == 0);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::ToolchainModuleRootReserved) == 1);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::ImportModuleNotFound) == 1);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::CircularImport) == 0);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::CircularReexport) == 0);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::ModuleDeclarationNameMismatch) == 0);
   ZC_EXPECT(session->getIncidents().empty());
 }
 

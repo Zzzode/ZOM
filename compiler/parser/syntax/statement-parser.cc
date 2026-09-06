@@ -106,8 +106,8 @@ size_t Parser::Impl::consumeSimpleStatementEnd(size_t start, size_t limit) const
     const ast::SyntaxKind kind = kindAt(index);
     if (kind == ast::SyntaxKind::EndOfFile) {
       if (sawBrace && braceDepth > 0 && !shouldSuppressDiagnostic(index)) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(tokenAt(index).getLocation(),
-                                                                      "}"_zc);
+        diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(tokenAt(index).getLocation(),
+                                                                    "}"_zc);
       }
       return recoveryFrame.finish(index);
     }
@@ -148,8 +148,8 @@ size_t Parser::Impl::consumeSimpleStatementEnd(size_t start, size_t limit) const
   }
 
   if (sawBrace && braceDepth > 0 && !shouldSuppressDiagnostic(limit - 1)) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(tokenAt(limit - 1).getLocation(),
-                                                                  "}"_zc);
+    diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(tokenAt(limit - 1).getLocation(),
+                                                                "}"_zc);
   }
   return recoveryFrame.finish(limit);
 }
@@ -388,7 +388,7 @@ ast::NodeId Parser::Impl::parseBlock(ParserSyntaxFactory& builder, size_t openBr
           itemResult.boundary.start < itemResult.boundary.nodeStart &&
           itemResult.boundary.kind == ast::SyntaxKind::ExpressionStatement;
       if (invalidAttributedExpression) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+        diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
             tokenAt(itemResult.boundary.start).getLocation());
       }
 
@@ -484,7 +484,7 @@ ast::NodeId Parser::Impl::parseSuspendStatement(ParserSyntaxFactory& builder, si
                                         parseRequiredExpression(builder, cursor + 1, valueEnd), 0);
   }
 
-  diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+  diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
       tokenAt(cursor).getLocation());
   return ast::NodeId();
 }
@@ -511,8 +511,7 @@ ast::NodeId Parser::Impl::parseIfStatement(ParserSyntaxFactory& builder, size_t 
                                            size_t end) const {
   if (start + 1 >= end || kindAt(start + 1) != ast::SyntaxKind::LeftParen) {
     if (!shouldSuppressDiagnostic(start + 1)) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1),
-                                                                    "("_zc);
+      diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1), "("_zc);
     }
     return ast::NodeId();
   }
@@ -530,8 +529,7 @@ ast::NodeId Parser::Impl::parseWhileStatement(ParserSyntaxFactory& builder, size
                                               size_t end) const {
   if (start + 1 >= end || kindAt(start + 1) != ast::SyntaxKind::LeftParen) {
     if (!shouldSuppressDiagnostic(start + 1)) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1),
-                                                                    "("_zc);
+      diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1), "("_zc);
     }
     return ast::NodeId();
   }
@@ -581,12 +579,11 @@ ast::NodeId Parser::Impl::parseContinueStatement(ParserSyntaxFactory& builder, s
 ast::NodeId Parser::Impl::parseLabeledStatement(ParserSyntaxFactory& builder, size_t start,
                                                 size_t end) const {
   if (start + 2 >= end) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-        diagnosticLoc(start + 2));
+    diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(diagnosticLoc(start + 2));
     return ast::NodeId();
   }
   if (isOuterAttributeStart(start + 2, end)) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+    diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
         tokenAt(start + 2).getLocation());
     return ast::NodeId();
   }
@@ -594,7 +591,7 @@ ast::NodeId Parser::Impl::parseLabeledStatement(ParserSyntaxFactory& builder, si
   const ast::SyntaxKind targetNext =
       start + 3 < end ? kindAt(start + 3) : ast::SyntaxKind::EndOfFile;
   if (!isLabelTargetStart(targetStart, targetNext)) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+    diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
         tokenAt(start + 2).getLocation());
     return ast::NodeId();
   }
@@ -608,8 +605,7 @@ ast::NodeId Parser::Impl::parseForStatement(ParserSyntaxFactory& builder, size_t
                                             size_t end) const {
   if (start + 1 >= end || kindAt(start + 1) != ast::SyntaxKind::LeftParen) {
     if (!shouldSuppressDiagnostic(start + 1)) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1),
-                                                                    "("_zc);
+      diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1), "("_zc);
     }
     return ast::NodeId();
   }
@@ -617,8 +613,8 @@ ast::NodeId Parser::Impl::parseForStatement(ParserSyntaxFactory& builder, size_t
   const ForStatementParts parts = parseForStatementParts(start, end);
   if (parts.firstSemi >= parts.headerEnd || parts.secondSemi >= parts.headerEnd) {
     if (!shouldSuppressDiagnostic(parts.headerEnd)) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(parts.headerEnd),
-                                                                    ";"_zc);
+      diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(parts.headerEnd),
+                                                                  ";"_zc);
     }
     return ast::NodeId();
   }
@@ -680,8 +676,8 @@ ast::NodeId Parser::Impl::parseMatchStatement(ParserSyntaxFactory& builder, size
             consumeBalancedUntil(armCursor, bodyEnd, ast::SyntaxKind::EqualsGreaterThan);
         if (arrow >= bodyEnd) {
           if (!shouldSuppressDiagnostic(cursor + 1)) {
-            diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor + 1),
-                                                                          "=>"_zc);
+            diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor + 1),
+                                                                        "=>"_zc);
           }
           return ast::NodeId();
         }
@@ -707,8 +703,8 @@ ast::NodeId Parser::Impl::parseMatchStatement(ParserSyntaxFactory& builder, size
             consumeBalancedUntil(armCursor, bodyEnd, ast::SyntaxKind::EqualsGreaterThan);
         if (arrow >= bodyEnd) {
           if (!shouldSuppressDiagnostic(cursor + 1)) {
-            diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor + 1),
-                                                                          "=>"_zc);
+            diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor + 1),
+                                                                        "=>"_zc);
           }
           return ast::NodeId();
         }
@@ -725,8 +721,8 @@ ast::NodeId Parser::Impl::parseMatchStatement(ParserSyntaxFactory& builder, size
       }
 
       if (!shouldSuppressDiagnostic(cursor)) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(tokenAt(cursor).getLocation(),
-                                                                      "when"_zc);
+        diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(tokenAt(cursor).getLocation(),
+                                                                    "when"_zc);
       }
       return ast::NodeId();
     }
@@ -742,8 +738,7 @@ ast::NodeId Parser::Impl::parseExternBlockDeclaration(ParserSyntaxFactory& build
   size_t cursor = start;
   if (cursor >= end || !isSoftKeyword(cursor, "extern"_zc)) {
     if (!shouldSuppressDiagnostic(cursor)) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-          diagnosticLoc(cursor));
+      diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(diagnosticLoc(cursor));
     }
     return ast::NodeId();
   }
@@ -757,7 +752,7 @@ ast::NodeId Parser::Impl::parseExternBlockDeclaration(ParserSyntaxFactory& build
 
   if (cursor >= end || kindAt(cursor) != ast::SyntaxKind::LeftBrace) {
     if (!shouldSuppressDiagnostic(cursor)) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor), "{"_zc);
+      diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor), "{"_zc);
     }
     return ast::NodeId();
   }
@@ -786,7 +781,7 @@ ast::NodeId Parser::Impl::parseExternBlockDeclaration(ParserSyntaxFactory& build
       cursor = itemEnd > itemStart ? itemEnd : itemStart + 1;
       continue;
     }
-    diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+    diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
         tokenAt(itemStart).getLocation());
     ++cursor;
   }
@@ -803,7 +798,7 @@ ast::NodeId Parser::Impl::makeImplIfaceList(ParserSyntaxFactory& builder, size_t
     const size_t plus = consumeBalancedTypeUntil(ifaceCursor, end, ast::SyntaxKind::Plus);
     const size_t itemEnd = plus < end ? plus : end;
     if (cursor >= itemEnd) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(cursor));
+      diagnosticEngine.report<diagnostics::DiagID::TypeExpected>(diagnosticLoc(cursor));
       return ast::NodeId();
     }
     const ast::NodeId iface = parseImplInterfaceBound(builder, cursor, itemEnd);
@@ -812,7 +807,7 @@ ast::NodeId Parser::Impl::makeImplIfaceList(ParserSyntaxFactory& builder, size_t
     cursor = plus < end ? plus + 1 : end;
   }
   if (ifaces.size() == 0) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(start));
+    diagnosticEngine.report<diagnostics::DiagID::TypeExpected>(diagnosticLoc(start));
     return ast::NodeId();
   }
 
@@ -826,13 +821,12 @@ ast::NodeId Parser::Impl::parseInterfaceHeritage(ParserSyntaxFactory& builder, s
   TokenCursor colonCursor = tokenCursorAt(headerStart);
   const size_t colon = consumeBalancedTypeUntil(colonCursor, headerEnd, ast::SyntaxKind::Colon);
   if (colon >= headerEnd) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(headerStart),
-                                                                  ":"_zc);
+    diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(headerStart), ":"_zc);
     return ast::NodeId();
   }
 
   if (colon + 1 >= headerEnd) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(colon + 1));
+    diagnosticEngine.report<diagnostics::DiagID::TypeExpected>(diagnosticLoc(colon + 1));
     return ast::NodeId();
   }
 

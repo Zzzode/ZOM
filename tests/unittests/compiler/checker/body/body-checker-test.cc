@@ -5,14 +5,14 @@
 
 #include "compiler/checker/body/body-checker.h"
 
-#include "zc/ztest/test.h"
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/ast/tree.h"
-#include "compiler/checker/diagnostics/checker-diagnostic-adapter.h"
+#include "compiler/checker/diagnostics/checker-source-diagnostic-projector.h"
 #include "compiler/checker/facts/scalar-literal-facts.h"
 #include "compiler/type/semantic-type-data.h"
 #include "tests/unittests/compiler/checker/checker-authority-test-fixture.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::checker::body {
 namespace {

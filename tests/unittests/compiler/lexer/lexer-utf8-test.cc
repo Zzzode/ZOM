@@ -12,9 +12,9 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zc/ztest/test.h"
 #include "compiler/lexer/lexer.h"
 #include "tests/unittests/compiler/lexer/utils.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang {
 namespace compiler {
@@ -269,8 +269,7 @@ ZC_TEST("LexerUtf8Test.ValidFourByteSequence") {
 // ================================================================================
 
 ZC_TEST("LexerUtf8Test.InvalidUtf8EmitsDiagnostics") {
-  auto& sm = getSourceManager();
-  auto diags = zc::heap<diagnostics::DiagnosticEngine>(sm);
+  auto diags = zc::heap<CapturedLexerDiagnostics>();
 
   char invalidBytes[] = {'\xFF', ' ', 'a', 0};
   auto tokens = tokenize(zc::StringPtr(invalidBytes, 3), *diags);

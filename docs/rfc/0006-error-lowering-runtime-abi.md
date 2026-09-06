@@ -299,10 +299,9 @@ Target-artifact manifest failures use RFC 0010's `ObjectEmission` phase with
 input is `InputRevisionMismatch`; a present descriptor with an invalid role,
 endpoint, or field is `InvalidFact`; and a descriptor/revision recomputation
 mismatch, non-canonical order, direct concatenation, ordinary RFC 0011 sequence
-framing, or sorting by local handles is `CanonicalCodecMismatch`. The first
-three kinds map to `ZOM9948`; canonical mismatch maps to `ZOM9949`. Every
-failure is rejected before manifest revision construction and publishes no
-manifest or artifact.
+framing, or sorting by local handles is `CanonicalCodecMismatch`. Every such
+invariant projects to the registered IR incident rail, is rejected before
+manifest revision construction, and publishes no manifest or artifact.
 
 The independent framing oracle uses module bytes `a1`, interface-revision bytes
 `11`, target-spec bytes `22`, one already-encoded descriptor `b2`, and layout-
@@ -542,20 +541,20 @@ pre-LIR FFI source-eligibility verifier specializes RFC 0010's sole
 `FeatureBoundaryVerificationResult` seam. This RFC adds no parallel result
 algebra and no display-string error path.
 
-| Condition | Result fact | Registered diagnostic |
+| Condition | Result fact | Public projection |
 |---|---|---|
-| Checked or dispatch revision does not match the verified MIR module | `IrInvariantRejected(InputRevisionMismatch, LirLowering, Instance, Lir site)` | `ZOM9947 LirInvariant` |
-| Required error-union shape is absent | `IrInvariantRejected(MissingRequiredFact, LirLowering, Instance, Lir site)` | `ZOM9947 LirInvariant` |
-| Shape roles, keys, tags, or layout fields are inconsistent | `IrInvariantRejected(InvalidFact, LirVerification, Instance, Lir site)` | `ZOM9947 LirInvariant` |
-| Descriptor bytes or revision are non-canonical | `IrInvariantRejected(CanonicalCodecMismatch, LirVerification, Instance, Lir site)` | `ZOM9949 IrCanonicalCodecMismatch` |
-| A verified semantic type has no target layout | `IrInvariantRejected(MissingTargetLayout, LirLowering, Instance, Lir site)` | `ZOM9947 LirInvariant` |
+| Checked or dispatch revision does not match the verified MIR module | `IrInvariantRejected(InputRevisionMismatch, LirLowering, Instance, Lir site)` | Registered IR incident |
+| Required error-union shape is absent | `IrInvariantRejected(MissingRequiredFact, LirLowering, Instance, Lir site)` | Registered IR incident |
+| Shape roles, keys, tags, or layout fields are inconsistent | `IrInvariantRejected(InvalidFact, LirVerification, Instance, Lir site)` | Registered IR incident |
+| Descriptor bytes or revision are non-canonical | `IrInvariantRejected(CanonicalCodecMismatch, LirVerification, Instance, Lir site)` | Registered IR incident |
+| A verified semantic type has no target layout | `IrInvariantRejected(MissingTargetLayout, LirLowering, Instance, Lir site)` | Registered IR incident |
 | Target/runtime profile lacks requested unwind support | `CapabilityRejected(UnsupportedTargetCapability, TargetSelection, Session)` | `ZOM6009 TargetCapabilityUnavailable` |
-| Requested output cannot be created | `CapabilityRejected(OutputCreationFailed, ObjectEmission, Session)` | `ZOM6008 IrOutputCreationFailed` |
-| A total backend cannot translate verified LIR | `IrInvariantRejected(BackendTranslationRejected, LlvmTranslation, Instance, Backend site)` | `ZOM9948 BackendInvariant` |
-| FFI gate input revision does not match its checked module, executable MIR, or selected target | `IrInvariantRejected(InputRevisionMismatch, FeatureBoundaryVerification, Module, no site)` | `ZOM9955 FeatureBoundaryInvariant` |
-| Required FFI gate inventory is absent or additional | `IrInvariantRejected(MissingRequiredFact or AdditionalFact, FeatureBoundaryVerification, Module, no site)` | `ZOM9955 FeatureBoundaryInvariant` |
-| FFI gate facts are structurally invalid | `IrInvariantRejected(InvalidFact, FeatureBoundaryVerification, Module or Definition, optional FrontendHandoff site)` | `ZOM9955 FeatureBoundaryInvariant` |
-| FFI gate proof bytes are non-canonical | `IrInvariantRejected(CanonicalCodecMismatch, FeatureBoundaryVerification, Module, no site)` | `ZOM9949 IrCanonicalCodecMismatch` |
+| Requested output cannot be created | `CapabilityRejected(OutputCreationFailed, ObjectEmission, Session)` | Typed operational failure with no `ZOMxxxx` code |
+| A total backend cannot translate verified LIR | `IrInvariantRejected(BackendTranslationRejected, LlvmTranslation, Instance, Backend site)` | Registered IR incident |
+| FFI gate input revision does not match its checked module, executable MIR, or selected target | `IrInvariantRejected(InputRevisionMismatch, FeatureBoundaryVerification, Module, no site)` | Registered IR incident |
+| Required FFI gate inventory is absent or additional | `IrInvariantRejected(MissingRequiredFact or AdditionalFact, FeatureBoundaryVerification, Module, no site)` | Registered IR incident |
+| FFI gate facts are structurally invalid | `IrInvariantRejected(InvalidFact, FeatureBoundaryVerification, Module or Definition, optional FrontendHandoff site)` | Registered IR incident |
+| FFI gate proof bytes are non-canonical | `IrInvariantRejected(CanonicalCodecMismatch, FeatureBoundaryVerification, Module, no site)` | Registered IR incident |
 
 FFI boundary eligibility is a separate post-checker semantic verifier and does
 not extend RFC 0005's closed checker registry:
@@ -603,13 +602,12 @@ branch before sorting.
 `diagnostics-ffi.def` registers `ZOM6101 FfiPanicBoundaryRequired`, Error,
 `C ABI export requires an explicit panic containment policy`, arity 0;
 `ZOM6102 FfiErrorUnionRequiresWrapper`, Error,
-`C ABI cannot expose a compiler error-union layout directly`, arity 0. RFC
-0010's lowering registry owns `ZOM9955 FeatureBoundaryInvariant`, Fatal,
-`Internal feature-boundary invariant violated ({0} occurrence(s))`, arity 1.
-The adapter groups only adjacent invariant facts with the same validated
-location, passes the exact count, and retains all complete facts in the bug
-bundle. No source or invariant rejection publishes `VerifiedFfiBoundaryFacts`
-or an RFC 0010 feature-boundary proof.
+`C ABI cannot expose a compiler error-union layout directly`, arity 0. The
+owner-local projector maps the two verified source failures to those diagnostics
+and maps feature-boundary invariants to registered compiler incidents. Incident
+aggregation retains only the bounded registered shape; complete internal facts
+remain in the bug context. No source or invariant rejection publishes
+`VerifiedFfiBoundaryFacts` or an RFC 0010 feature-boundary proof.
 
 The FFI facts revision is SHA-256 over this exact stream:
 
@@ -632,9 +630,9 @@ FFI inventory failures use RFC 0010's exact `FeatureBoundaryVerification`
 classification: duplicate expanded definition keys are `AdditionalFact`; an
 embedded definition that does not match its inventory entry is `InvalidFact`;
 and reverse order, direct concatenation, ordinary RFC 0011 sequence framing, or
-any malformed encoded length is `CanonicalCodecMismatch`. The first two map to
-`ZOM9955`; canonical mismatch maps to `ZOM9949`. Every rejected case publishes
-no facts or proof. The independent oracle uses a zero fingerprint, module bytes
+any malformed encoded length is `CanonicalCodecMismatch`. Each invariant
+projects to the registered IR incident rail. Every rejected case publishes no
+facts or proof. The independent oracle uses a zero fingerprint, module bytes
 `a1`, checked revision bytes `22`, executable
 `MirRevisionId { phase: 0x04, digest: 0x33 * 32 }`, target-spec bytes `44`, and
 one definition record `b3`. Its complete 178-byte preimage is:
@@ -646,12 +644,11 @@ one definition record `b3`. Its complete 178-byte preimage is:
 Its SHA-256 is
 `d3185bbb040dd55891ee20be06e9e6128a5a054e4984ae0382a1c364adf57954`.
 
-The direct replacement deletes prototype diagnostics `ZOM6001-ZOM6007` and
-`ZOM9901-ZOM9903`. Unsupported unwind migrates from `ZOM6006` to RFC 0010's
-`ZOM6009`; lowering and dump invariants migrate to `ZOM9942-ZOM9949`. Generated
-mapping tests cover every condition above, every owner/site/no-location form,
-and prove that no rejected branch publishes a descriptor, LIR module, LLVM
-module, or object.
+Unsupported unwind uses RFC 0010's `ZOM6009`; lowering and dump invariants use
+the registered incident rail, and output creation uses the operational rail.
+Native mapping tests cover every condition above, every owner/site/no-location
+form, and prove that no rejected branch publishes a descriptor, LIR module,
+LLVM module, or object.
 
 ### Mermaid Lowering Diagram
 
@@ -884,17 +881,17 @@ enough output for tests after stripping absolute paths and backtrace addresses.
     interface and target mutations, direct concatenation, and ordinary sequence
     framing. Each mutation asserts its exact `InputRevisionMismatch`,
     `AdditionalFact`, `InvalidFact`, or `CanonicalCodecMismatch` classification,
-    `ZOM9948` or `ZOM9949`, stable sort position, and absence of a manifest and
-    artifact.
+    registered incident projection, stable sort position, and absence of a
+    manifest and artifact.
 22. The FFI boundary verifier reproduces the 178-byte facts oracle, binds the
     exact executable MIR revision and `TargetSpecId`, emits exactly `ZOM6101`
-    or `ZOM6102` for its two source failures, maps every invariant to RFC 0011
-    identity diagnostics, `ZOM9949`, or `ZOM9955`, and publishes no verified
-    facts or feature-boundary proof from a rejected branch. Zero/one/two-
+    or `ZOM6102` for its two source failures, maps every invariant to the
+    identity or IR incident rail, and publishes no verified facts or
+    feature-boundary proof from a rejected branch. Zero/one/two-
     definition fixtures cover canonical order, duplicate keys, reverse order,
     key/inventory disagreement, direct concatenation, and ordinary sequence
     framing. Each mutation asserts exact `AdditionalFact`, `InvalidFact`, or
-    `CanonicalCodecMismatch`, exact `ZOM9955` or `ZOM9949`, stable sort position,
+    `CanonicalCodecMismatch`, exact incident descriptor, stable sort position,
     and absence of verified facts and a feature proof.
 
 ### Pre-Acceptance Experiment Evidence
@@ -913,7 +910,7 @@ evidence.
 | 6 | Partial | `panic.cc` implements abort reporting and reports unwind unsupported. Compiler options default to abort; `zomc --panic unwind` is rejected after checking and before final emission, so no function IR or ABI snapshot is produced. | Connect the compiler gate to explicit runtime and target capability objects before any target may enable unwind. |
 | 7 | Partial | `__zom_catch_unwind` invokes its thunk and returns `false` when the thunk returns under abort mode; a panic in the thunk aborts the process. | Prove the compiler selects this behavior for abort. Add unwind catch behavior only when a runtime/target pair advertises unwind. |
 | 11 | Partial | Layout unit tests cover source permutations, interner insertion history, ILP32/LP64 pointer-dependent layouts, fixed-width scalars, char, tuples, structural objects, raw/reference pointers, zero-sized values, direct success, unknown named/any payloads, and wide tags. The first IR snapshot fixes the LP64 `i32 | str` ABI. | Add broader ILP32/LP64 IR snapshots, error-alternative construction, aggregate combinations, and target profiles beyond the two initial ZOM profiles. |
-| 13 | Complete for the abort-only capability gate | Runtime unit tests prove abort supported and unwind unsupported. `panic_unwind_capability_pos_17.check` invokes the real CLI, expects `ZOM6006`, and proves no IR header is emitted. | Every future enabled unwind target must add the full unwind, cleanup, catch, and FFI matrix in the same change. |
+| 13 | Complete for the abort-only capability gate | Runtime unit tests prove abort supported and unwind unsupported. The CLI rejects `--panic=unwind` after checking and before final emission with the source-less operational failure `error: operational failure [target]: panic-unwind-unsupported`, and no IR header is emitted. | Every future enabled unwind target must add the full unwind, cleanup, catch, and FFI matrix in the same change. |
 | 14 | Complete for the current slices | `conformance/runners/ir/` is registered with CTest, rejects an empty expectation set and orphan expectations at configure time, and runs `zomc --emit ir` plus FileCheck. Five tests cover deterministic LP64 success construction, one-residual propagation with tag remapping, forced-unwrap panic metadata, structured unsupported-source diagnostics, and pre-lowering unwind rejection. | Extend this executable runner with real cleanup actions, multi-residual switches, main, and FFI snapshots as those slices land. |
 | 15 | Complete | `python3 scripts/check-rfc.py` passes for this 2026-07-10 review revision. | None. |
 | 16 | Complete for this slice | `python3 scripts/check-format.py` passes after the target-layout, typed-IR, CLI, unit-test, and lit-runner changes. | Rerun after every later implementation slice and before `LANDED`. |

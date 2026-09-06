@@ -404,7 +404,7 @@ and joins and transfers their issuer into one read-only ledger owned first by
 the rejected candidate and then by the `SourceRejected` result. Ledgers sort by
 the complete canonical `InferenceOwner` key. A `CheckerFailureRef.recovery`
 handle remains valid only while its owning `SourceRejected` result is alive;
-the diagnostic adapter and IDE query API borrow that result and cannot retain
+the source diagnostic projector and IDE query API borrow that result and cannot retain
 the handle. The result destroys ledgers only after those consumers return. A
 successful or invariant-rejected result owns no recovery handle or ledger.
 
@@ -423,8 +423,8 @@ The final RFC 0008 `CompilerSession` obtains exactly one move-only
 Consuming the token constructs one pinned `SemanticTypeStore`. The token cannot
 be copied and cannot be issued again. The store is non-copyable and non-movable,
 and the session outlives every checker operation and semantic type reference. A
-second construction attempt returns RFC 0011 `DuplicateSingletonStore` and maps
-to fatal `ZOM9920`.
+second construction attempt returns RFC 0011 `DuplicateSingletonStore` and
+projects to an identity incident.
 
 ```text
 SemanticTypeId = ContextHandle<SemanticTypeTag>
@@ -2223,25 +2223,25 @@ wrong-module, or wrong-variant view data is `ViewMismatch` or `StaleRevision`,
 never a source diagnostic.
 
 Recovery candidates remain available only through a borrow of the complete
-`SourceRejected` result by the diagnostics adapter and IDE queries. Neither
+`SourceRejected` result by the source diagnostic projector and IDE queries. Neither
 rejection path publishes signature facts, checked facts, a module interface, or
 an RFC 0010 checked module.
 
 The verifier rejection mapping is exhaustive:
 
-| Rejected condition | Exact failure and diagnostic |
+| Rejected condition | Exact failure rail |
 |---|---|
-| Invalid, foreign, wrong-tag, or out-of-range identity/store handle | Exact RFC 0011 `IdentityInvariant` and `ZOM9910-ZOM9921` |
-| Swapped tree, source, parsed receipt, binding metadata, surface, module, or semantic options | `InputReceiptMismatch` / `ZOM9927` |
-| Required signature, type, map entry, substitution, witness, view record, or generated fact is absent | `MissingRequiredFact` / `ZOM9928` |
-| Additional or duplicate record | `AdditionalFact` / `ZOM9936` |
-| Wrong syntax-kind fact, wrong definition kind, invalid endpoint, invalid source ownership, or forbidden inference/AST/ABI payload | `InvalidFact` / `ZOM9929` |
-| Signature, imported-view, coherence-view, binding-surface, interface, parsed, or checked revision differs from its recomputation | `StaleRevision` / `ZOM9930` |
-| Imported view has the wrong requester/module set/visibility, or coherence omits or exposes an impl incorrectly | `ViewMismatch` / `ZOM9931` |
-| Unclosed context, dangling recovery, unresolved variable, or a valid inference handle attached to the wrong ledger, owner, root, join, or lifetime | `InferenceLifecycle` / `ZOM9932` |
-| Multiple impl matches in a verified view, pending obligation, invalid union-find representative, or non-deterministic work item | `SolverStateInvalid` / `ZOM9933` |
-| Unknown producer, wrong owner preorder, local-ordinal overflow, or duplicate primary ordinal | `InvalidEmitterOrdinal` / `ZOM9934` |
-| Unknown tag, wrong field order, unsorted/duplicate canonical sequence, byte-oracle mismatch, or non-canonical record input | `CanonicalCodecMismatch` / `ZOM9935` |
+| Invalid, foreign, wrong-tag, or out-of-range identity/store handle | Exact RFC 0011 identity incident |
+| Swapped tree, source, parsed receipt, binding metadata, surface, module, or semantic options | `InputReceiptMismatch` Checker incident |
+| Required signature, type, map entry, substitution, witness, view record, or generated fact is absent | `MissingRequiredFact` Checker incident |
+| Additional or duplicate record | `AdditionalFact` Checker incident |
+| Wrong syntax-kind fact, wrong definition kind, invalid endpoint, invalid source ownership, or forbidden inference/AST/ABI payload | `InvalidFact` Checker incident |
+| Signature, imported-view, coherence-view, binding-surface, interface, parsed, or checked revision differs from its recomputation | `StaleRevision` Checker incident |
+| Imported view has the wrong requester/module set/visibility, or coherence omits or exposes an impl incorrectly | `ViewMismatch` Checker incident |
+| Unclosed context, dangling recovery, unresolved variable, or a valid inference handle attached to the wrong ledger, owner, root, join, or lifetime | `InferenceLifecycle` Checker incident |
+| Multiple impl matches in a verified view, pending obligation, invalid union-find representative, or non-deterministic work item | `SolverStateInvalid` Checker incident |
+| Unknown producer, wrong owner preorder, local-ordinal overflow, or duplicate primary ordinal | `InvalidEmitterOrdinal` Checker incident |
+| Unknown tag, wrong field order, unsorted/duplicate canonical sequence, byte-oracle mismatch, or non-canonical record input | `CanonicalCodecMismatch` Checker incident |
 
 Every negative test starts from one complete valid candidate, mutates exactly
 one row condition, and asserts the exact failure variant, diagnostic, anchor,
@@ -2308,7 +2308,7 @@ condition first.
 
 ### Diagnostics
 
-The checker returns diagnostic facts and never depends on `DiagnosticEngine`:
+The checker returns diagnostic facts and never emits to an output consumer:
 
 ```text
 CheckerDiagnosticStage = Signature | Coherence | Body | Exhaustiveness
@@ -2585,28 +2585,14 @@ referenced definition when one exists; a syntax-only duplicate binding uses
 `none` plus its validated span. Multi-note sequences follow the canonical
 candidate, binding, cycle, or method order stated by the primary producer.
 
-The checker-specific invariant mapping is exact:
-
-| Kind | Diagnostic | Severity and exact headline | Location |
-|---|---|---|---|
-| `InputReceiptMismatch` | `ZOM9927 CheckerInputReceiptMismatch` | Fatal, `Internal checker input receipt is inconsistent ({0} occurrence(s))` | validated range or none |
-| `MissingRequiredFact` | `ZOM9928 CheckerMissingRequiredFact` | Fatal, `Internal checker required fact is missing ({0} occurrence(s))` | validated range or none |
-| `InvalidFact` | `ZOM9929 CheckerInvalidFact` | Fatal, `Internal checker fact is invalid ({0} occurrence(s))` | validated range or none |
-| `StaleRevision` | `ZOM9930 CheckerStaleRevision` | Fatal, `Internal checker revision is stale ({0} occurrence(s))` | validated range or none |
-| `ViewMismatch` | `ZOM9931 CheckerViewMismatch` | Fatal, `Internal checker semantic view is inconsistent ({0} occurrence(s))` | validated range or none |
-| `InferenceLifecycle` | `ZOM9932 CheckerInferenceLifecycle` | Fatal, `Internal checker inference lifecycle is invalid ({0} occurrence(s))` | validated range or none |
-| `SolverStateInvalid` | `ZOM9933 CheckerSolverInvariant` | Fatal, `Internal checker solver state is invalid ({0} occurrence(s))` | validated range or none |
-| `InvalidEmitterOrdinal` | `ZOM9934 CheckerInvalidEmitterOrdinal` | Fatal, `Internal checker diagnostic ordinal is invalid ({0} occurrence(s))` | validated range or none |
-| `CanonicalCodecMismatch` | `ZOM9935 CheckerCanonicalCodecMismatch` | Fatal, `Internal checker canonical encoding is invalid ({0} occurrence(s))` | validated range or none |
-| `AdditionalFact` | `ZOM9936 CheckerAdditionalFact` | Fatal, `Internal checker fact is not authorized ({0} occurrence(s))` | validated range or none |
-
-Every invariant diagnostic has one `Count` argument. RFC 0011 identity failures
-remain their exact `ZOM9910-ZOM9921` facts and are never wrapped in a checker
-code. Identity and checker facts use `VerificationFailureSortKey` defined above;
-checker ties then compare stage tag, expected and actual revision bytes with
-none first, and traversal ordinal. The adapter groups only adjacent facts with
-the same diagnostic and validated location and preserves every full fact in the
-compiler bug bundle.
+The Checker-specific incident mapping is exact. Every
+`CheckerInvariantKind` retains its numeric tag as the registered incident kind;
+`CheckerInvariantStage` is the incident phase, and signature checking is the
+registered producer. RFC 0011 identity failures remain identity incidents and
+are never wrapped in a Checker kind. `BoundedIncidentSet` groups only equal
+domain, phase, kind, and producer shapes. Full failure facts, optional source
+ranges, revisions, and traversal ordinals remain in the internal bug context
+and never become public diagnostic payload.
 
 Source diagnostics sort by RFC 0011 package, crate, module, primary source span,
 diagnostic ID, and `CheckerEmitterOrdinal`. Solver worklist order is fixed as
@@ -2657,11 +2643,12 @@ the core-scoped bootstrap projection. Every downstream consumer switches
 exhaustively on `VerifiedInterfaceSource`,
 `ImportedInterfaceRevision`, and `ImportedBindingSurfaceRevision`.
 
-A same-alternative revision mismatch is `StaleRevision` and emits `ZOM9930`.
+A same-alternative revision mismatch is `StaleRevision` and projects to the
+corresponding Checker incident.
 A canonically valid source-incompatible alternative is `ViewMismatch` and
-emits `ZOM9931`. An illegal or non-canonical tag, payload, field order, or
+projects as `ViewMismatch`. An illegal or non-canonical tag, payload, field order, or
 bootstrap schema at an ordinary boundary is `CanonicalCodecMismatch` and emits
-`ZOM9935`. All affected revisions and fixed vectors include the alternative
+`CanonicalCodecMismatch` incident. All affected revisions and fixed vectors include the alternative
 tag and complete revision. The untagged field types, constructors, accessors,
 overloads, fixtures, and decoders do not coexist with this contract.
 
@@ -2762,7 +2749,8 @@ unmeasured thresholds.
 
 1. RFC 0011 and RFC 0004 are accepted.
 2. `CompilerSession` consumes one construction token for one pinned,
-   non-copyable, non-movable `SemanticTypeStore`; a second store is `ZOM9920`.
+   non-copyable, non-movable `SemanticTypeStore`; a second store is an exact
+   `DuplicateSingletonStore` identity incident.
 3. Concurrent interning of one canonical key returns one ID, and concurrent
    reads retain stable immutable payload and key references during growth.
 4. Every `TypeData` variant, payload, tag, field order, normalization rule, and
@@ -2851,8 +2839,9 @@ unmeasured thresholds.
     ordinal and recovery policy specified here; `ZOM4027`, `ZOM4034`,
     `ZOM4042`, `ZOM4043`, and `ZOM4053` are absent and RFC 0007 exclusively
     owns `ZOM4056-ZOM4070`.
-24. Every checker invariant maps exactly to RFC 0011 `ZOM9910-ZOM9921` or RFC
-    0005 `ZOM9927-ZOM9936`, with no raw user-visible error string or assertion.
+24. Every checker invariant maps exactly to a registered RFC 0011 identity or
+    RFC 0005 Checker incident, with no public diagnostic identifier, raw
+    user-visible error string, or assertion.
 25. Same-name definitions and same-slot handles in distinct modules, packages,
     contexts, or inference issuers never compare or resolve as equal.
 26. Architecture gates prove the checker consumes only RFC 0004 verified
@@ -2948,7 +2937,7 @@ unmeasured thresholds.
   single-evaluation order, and no repeated access dispatch.
 - Verifier unit tests: start from one complete valid signature or body candidate,
   mutate exactly one required field, and assert the exact failure kind,
-  `ZOM99xx`, anchor, sorted position, and absence of verified output. Pairwise
+  incident descriptor, sorted position, and absence of verified output. Pairwise
   cases cover invariant/source precedence, stale views plus recovery, and
   missing/additional wrong-variant facts.
 - Diagnostic unit tests: every source, warning, and note ID; typed argument
@@ -2957,7 +2946,7 @@ unmeasured thresholds.
   worker permutations.
 - Lit diagnostics: every retained `ZOM4001-ZOM4055` and `ZOM4077-ZOM4081`
   source branches, all six
-  RFC 0005 notes, `ZOM9927-ZOM9936` injected invariant branches, and proof that
+  RFC 0005 notes, injected Checker incident branches, and proof that
   deleted codes and raw checker messages never appear.
 - `.zom` conformance: every accepted type form, generic and associated-type
   boundary, nullable-union normalization, explicit cast mode, dyn erasure and

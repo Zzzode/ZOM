@@ -267,21 +267,21 @@ services directly through their verified compiler APIs and tests.
 
 ## Diagnostic Safety
 
-Package diagnostics use registered IDs in the `ZOM7001-ZOM7017`,
-`ZOM7091-ZOM7093`, and `ZOM9905-ZOM9906` families. The typed package diagnostic
-adapter accepts only digest-matched diagnostic documents. It renders canonical,
-host-path-free document identities and escapes invalid or non-printable source
-bytes before mapping validated spans onto the displayed buffer.
+Package diagnostics use registered IDs in the `ZOM7001-ZOM7017` and
+`ZOM7091-ZOM7093` allocations only when a verified user-correctable package
+document or source location exists. The typed package projector accepts only
+digest-matched diagnostic documents. It preserves canonical, host-path-free
+document identities and validated spans until the shared diagnostic consumer
+resolves the retained document bytes.
 
-Invocation failures are source-less `ZOM7016` diagnostics. Rejected command-line
-arguments and host paths are not diagnostic arguments. Package diagnostic
-records carry closed enums and safe canonical scalars; raw credentials, registry
-secrets, environment values, sandbox output, and library error strings are not
-renderer inputs.
-
-Some orchestration failures that do not yet have a complete typed producer stop
-with a generic CLI failure message. Such a failure does not authorize rendering
-untrusted package data.
+Invocation, I/O, allocation, materialization-service, and unavailable external
+resource failures use the source-less operational rail. The CLI renders only a
+closed domain and reason, for example
+`error: operational failure [package-invocation]: missing-package-selection`.
+Rejected command-line arguments, host paths, raw credentials, registry secrets,
+environment values, sandbox output, and library error strings are not diagnostic
+or operational-record arguments. Compiler contract failures use the internal
+incident rail and never receive a `ZOMxxxx` identifier.
 
 ## Determinism Contract
 

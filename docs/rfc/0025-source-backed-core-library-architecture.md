@@ -1338,13 +1338,13 @@ adapter survives the cutover.
 Ordinary RFC 0005 projection, signature, body, and coherence validation uses
 one exact existing outcome:
 
-- the expected alternative with different revision bytes is
-  `StaleRevision` and emits `ZOM9930`;
+- the expected alternative with different revision bytes is the
+  `StaleRevision` Checker incident;
 - a canonically valid but source-incompatible interface or binding-surface
-  alternative is `ViewMismatch` and emits `ZOM9931`; and
+  alternative is the `ViewMismatch` Checker incident; and
 - an unknown, illegal, or non-canonical tag, payload, field order, or
-  bootstrap-only schema at an ordinary boundary is
-  `CanonicalCodecMismatch` and emits `ZOM9935`.
+  bootstrap-only schema at an ordinary boundary is the
+  `CanonicalCodecMismatch` Checker incident.
 
 Checked-module and borrow-evidence invariant paths do not translate those
 checker failures. At either RFC 0010 boundary, the expected alternative with
@@ -1739,11 +1739,12 @@ RFC0004::ModuleGraphSourceFailure +=
 `ModuleRootArgument.path` must contain exactly the one canonical
 segment `core`. It can be constructed only from the matching normalized
 `TargetManifest`, dependency-alias record, or parser-produced immutable
-`ModuleDeclaration`; the package and module adapters accept this type and have
+`ModuleDeclaration`; the package and module projectors accept this type and have
 no raw-string overload. The package rail projects its failure through the
-existing typed package diagnostic adapter. The source rail projects its new
-`ModuleGraphSourceFailure` alternative through the existing module-graph
-diagnostic adapter. `module-interface-diagnostic-adapter` does not participate.
+existing typed package diagnostic projector. The source rail projects its new
+`ModuleGraphSourceFailure` alternative through the existing module-graph source
+diagnostic projector. The module-interface incident projector does not
+participate.
 Both the builder and an independent verifier reconstruct the producer,
 provenance, field or syntax path, schema ordinal, and typed argument from the
 admitted input.
@@ -1770,12 +1771,12 @@ reserved package occurrence becomes the single
 materialization, or build-script work.
 
 For the same target, alias, or declared-name occurrence, `ZOM3027` suppresses
-`ZOM3026`, `ZOM7015`, and every import or re-export not-found, ambiguity,
+`ZOM3026` and every import or re-export not-found, ambiguity,
 member, visibility, or cycle diagnostic that would otherwise derive from the
 reserved root. Independent duplicate declarations retain their ordinary
 diagnostics. `ZOM3027` uses the existing package or module diagnostic
-provenance and occurrence ordering for its producer; it is never wrapped as a
-`CoreLibraryFailure`, projected under the core-library diagnostic root, or
+provenance and occurrence ordering for its producer; it is never wrapped in
+the core failure rail, projected under a core-specific diagnostic root, or
 replaced by a generic resolver error.
 
 Every non-core consumer crate, including a host `BuildScript` root and every
@@ -1953,69 +1954,35 @@ package names, manifests, release policy, or API inventories.
 
 ### Diagnostics And Failure Semantics
 
-Core admission, bootstrap, and publication failures use this closed algebra:
+Core distribution admission separates operational failures from invariant
+failures in its result type:
 
 ```text
-CoreLibraryIssue =
+CoreDistributionAdmissionFailureKind =
     ReadFailed                 // 0x01
   | InvalidPath                // 0x02
   | InvalidSourceBytes         // 0x03
-  | DistributionMismatch       // 0x04
-  | EditionMismatch            // 0x05
-  | InputContextMismatch       // 0x06
-  | ParseRejected              // 0x07
-  | ModuleGraphRejected        // 0x08
-  | RoleSeedRejected           // 0x09
-  | SignatureRejected          // 0x0a
-  | RoleRejected               // 0x0b
-  | VerifiedStateMismatch      // 0x0c
-  | VerifierDisagreement       // 0x0d
+  | ResourceLimitExceeded      // 0x04
+  | SourceChangedDuringAdmission // 0x05
+  | SourceIntegrityMismatch    // 0x06
+  | DistributionMismatch       // 0x07
+  | EditionMismatch            // 0x08
 
-CoreLibraryDiagnosticRoot {
-  expectedDistributionDigest: Sha256Digest,
-  context: Maybe<ContextFingerprint>,
+CoreDistributionAdmissionFailure {
+  kind: CoreDistributionAdmissionFailureKind,
+  inventoryOrdinal: Maybe<uint64>,
+  path: Maybe<CanonicalRelativePath>,
 }
 
-CoreFailureProducer =
-    DistributionAdmission  // 0x01
-  | SourcePipeline         // 0x02
-  | ModuleInputTransaction // 0x03
-  | ModuleGraph            // 0x04
-  | RoleSeed               // 0x05
-  | BootstrapInterface     // 0x06
-  | Authority              // 0x07
-  | FinalInterface         // 0x08
-  | SessionPublication     // 0x09
+CoreDistributionAdmissionInvariantKind =
+    InputContextMismatch       // 0x01
+  | VerifiedStateMismatch      // 0x02
+  | VerifierDisagreement       // 0x03
 
-CoreFailureCoordinate =
-    None
-  | InventoryEntry { ordinal: uint64 }
-  | File { path: CanonicalRelativePath }
-  | Module { module: ModuleKey }
-  | Role { role: CoreSemanticRole }
-  | Distribution { expectedDigest: Sha256Digest }
-  | Context { fingerprint: ContextFingerprint }
-
-CoreFailureCauseDomain =
-    Lex
-  | Parse
-  | Module
-  | RoleSeed
-  | Signature
-  | Role
-
-CoreFailureCauseKey {
-  domain: CoreFailureCauseDomain,
-  digest: Sha256Digest,
-}
-
-CoreLibraryFailure {
-  root: CoreLibraryDiagnosticRoot,
-  producer: CoreFailureProducer,
-  issue: CoreLibraryIssue,
-  coordinate: CoreFailureCoordinate,
-  causes: SortedSequence<CoreFailureCauseKey>,
-}
+CoreDistributionAdmissionResult =
+    VerifiedCoreDistribution
+  | CoreDistributionAdmissionFailure
+  | CoreDistributionAdmissionInvariantKind
 
 CoreRoleSeedFailureKind =
     InputReceiptMismatch   // 0x01
@@ -2036,303 +2003,82 @@ CoreRoleSeedFailure {
 }
 ```
 
+`CoreDistributionAdmissionFailure` is a closed operational failure value. Its
+coordinate is either absent, an inventory ordinal, or a canonical relative
+path according to the failure kind. It never stores a host path,
+operating-system error string, source text, or public diagnostic identifier.
+`CoreDistributionAdmissionInvariantKind` is projected immediately to a
+registered compiler incident and is never exposed as an operational reason.
+
 `CoreRoleSeedFailure` encodes its kind tag followed by the canonical optional
 role. `InputReceiptMismatch`, `ForeignContext`, `StaleRevision`, and
-`CanonicalCodecMismatch` require no role;
-the remaining kinds require exactly one role. The declaration order is also
-the single-valued precedence order. An earlier RFC 0011 identity invariant
-precedes this complete list. Equal failure records are deduplicated and the
-remaining sequence sorts by complete canonical bytes. Builder and verifier
-derive the sequence independently. A disagreement maps to
-`VerifierDisagreement`, not `RoleSeedRejected`.
+`CanonicalCodecMismatch` require no role; the remaining kinds require exactly
+one role. The declaration order is the single-valued precedence order. Builder
+and verifier derive the result independently.
 
-Issue and producer tags are the hexadecimal values shown. Coordinate tags are
-`None = 0x01` through `Context = 0x07` in declaration order. Cause-domain tags
-are `Lex = 0x01` through `Role = 0x06` in declaration order. A cause digest is
-SHA-256 over the complete existing typed failure's canonical encoding.
+The public boundary follows RFC 0047's three failure rails:
 
-`expectedDistributionDigest` is always the compiler-embedded accepted
-distribution digest. It is never a recomputed, observed, candidate-carried, or
-verifier-produced digest. A `Distribution` coordinate must repeat that exact
-root field. A `Context` coordinate must equal `root.context`, which must be
-present. Once the projected semantic context is admitted, every subsequent
-failure root carries its exact fingerprint; pre-context distribution admission
-uses `context = None`. The builder and independent verifier reconstruct the
-root and producer from admitted inputs and the executing stage, never from a
-candidate failure.
-
-The only permitted issue-to-producer sets are:
-
-| Issue | Producers |
-|---|---|
-| `ReadFailed`, `InvalidPath`, `InvalidSourceBytes`, `DistributionMismatch`, `EditionMismatch` | `DistributionAdmission` |
-| `ParseRejected` | `SourcePipeline` |
-| `ModuleGraphRejected` | `ModuleGraph` |
-| `RoleSeedRejected` | `RoleSeed` |
-| `SignatureRejected` | `BootstrapInterface` |
-| `RoleRejected` | `Authority` |
-| `InputContextMismatch`, `VerifiedStateMismatch` | The first detecting stage from `SourcePipeline` through `SessionPublication` |
-| `VerifierDisagreement` | The exact builder/verifier pair from `DistributionAdmission` or `ModuleInputTransaction` through `SessionPublication` |
-
-Any other issue, producer, root-context, or coordinate combination rejects
-canonical construction. The only permitted issue-to-coordinate combinations
-are:
-
-| Issue | Coordinate |
-|---|---|
-| `ReadFailed` | `None` or `File` |
-| `InvalidPath` | `InventoryEntry` |
-| `InvalidSourceBytes` | `File` |
-| `DistributionMismatch` | `Distribution` |
-| `EditionMismatch` | `Distribution` |
-| `InputContextMismatch` | `Context` |
-| `ParseRejected` | `File` |
-| `ModuleGraphRejected` | `File` or `Module` |
-| `RoleSeedRejected` | `Context` or `Role` |
-| `SignatureRejected` | `Module` |
-| `RoleRejected` | `Role` |
-| `VerifiedStateMismatch` | `Context` |
-| `VerifierDisagreement` | `Distribution` or `Context` |
-
-`causes` identifies the complete existing lexer, parser, module, signature, or
-role failure facts. `ParseRejected` permits `Lex` and `Parse`,
-`ModuleGraphRejected` permits `Module`, `RoleSeedRejected` permits
-`RoleSeed`, `SignatureRejected` permits `Signature`, `RoleRejected` permits
-`Role`. Every other issue requires an empty cause sequence. Duplicate causes,
-a disallowed cause domain, or an issue/coordinate pair outside this table
-rejects construction.
-
-Every producer condition maps exactly as follows:
-
-| Producer Condition | Producer | Issue | Coordinate | Causes |
-|---|---|---|---|---|
-| Source root cannot be opened or an admitted file cannot be read | `DistributionAdmission` | `ReadFailed` | `None` or `File` | empty |
-| Inventory path, canonicalization, symlink, collision, or root-escape rejection | `DistributionAdmission` | `InvalidPath` | `InventoryEntry` | empty |
-| UTF-8, BOM, line-ending, trailing-space, or final-LF rejection | `DistributionAdmission` | `InvalidSourceBytes` | `File` | empty |
-| Embedded inventory, source digest, source count, or catalog distribution digest mismatch | `DistributionAdmission` | `DistributionMismatch` | `Distribution(expectedDistributionDigest)` | empty |
-| Embedded accepted policy-template canonical decode fails, any accepted template field differs, or its recomputed revision differs | `DistributionAdmission` | `DistributionMismatch` | `Distribution(expectedDistributionDigest)` | empty |
-| Distribution edition differs from projected core edition | `DistributionAdmission` | `EditionMismatch` | `Distribution(expectedDistributionDigest)` | empty |
-| Committed `CoreDistributionInputRecord.policyTemplate` is not byte-equal to `VerifiedCoreDistribution.policyTemplate` or carries another revision | `ModuleInputTransaction` | `InputContextMismatch` | `Context` | empty |
-| Core edge, search root, structural catalog, snapshot, crate, target, semantic option, source origin, or semantic context does not match the admitted projection | Exact first detecting stage | `InputContextMismatch` | `Context` | empty |
-| Lexer or parser rejects an admitted core file | `SourcePipeline` | `ParseRejected` | `File` | `Lex` or `Parse` |
-| Discovery, declaration-name validation, duplicate selection, dependency construction, or module-graph verification rejects input | `ModuleGraph` | `ModuleGraphRejected` | `File` before a valid `ModuleKey`, otherwise `Module` | `Module` |
-| Role-seed construction finds `InputReceiptMismatch`, `ForeignContext`, `StaleRevision`, or `CanonicalCodecMismatch` | `RoleSeed` | `RoleSeedRejected` | `Context` | One role-less `RoleSeed` cause |
-| Role-seed construction finds `MissingRequiredRole`, `DuplicateRole`, `WrongRoleModule`, `WrongRoleKind`, `WrongRoleNamespace`, `WrongRoleName`, or `WrongRoleVisibility` | `RoleSeed` | `RoleSeedRejected` | `Role` | One role-bearing `RoleSeed` cause |
-| Signature or bootstrap-interface construction rejects a module | `BootstrapInterface` | `SignatureRejected` | `Module` | `Signature` |
-| Standard marker authority construction rejects a configured role | `Authority` | `RoleRejected` | `Role` | `Role` |
-| Canonical query decode, frozen-registry lookup, or already verified cross-lineage input is impossible in the active context | Exact first detecting stage | `VerifiedStateMismatch` | `Context` | empty |
-| A previously verified policy-template query value or revision cannot canonical-decode in the active context | Exact first detecting stage | `VerifiedStateMismatch` | `Context` | empty |
-| Independent accepted policy-template reconstruction disagrees with the distribution builder candidate | `DistributionAdmission` | `VerifierDisagreement` | `Distribution(expectedDistributionDigest)` | empty |
-| Independent input-transaction reconstruction disagrees with the committed policy template | `ModuleInputTransaction` | `VerifierDisagreement` | `Context` | empty |
-| Independent distribution verifier disagrees with its builder | `DistributionAdmission` | `VerifierDisagreement` | `Distribution(expectedDistributionDigest)` | empty |
-| Independent module-input transaction, contextual definition-authority installation, module-graph, role-seed, bootstrap-interface, authority, final-interface, session, or publication verifier disagrees with its builder | Exact builder/verifier stage | `VerifierDisagreement` | `Context` | empty |
-
-A policy-template field or revision mutation is therefore never
-`RoleRejected` and never falls through to a generic compiler error.
-Distribution admission first applies `ReadFailed`, `InvalidPath`, and
-`InvalidSourceBytes` in issue declaration order, then classifies any accepted
-distribution or policy-template byte mismatch as the one
-`DistributionMismatch`; no later stage executes. After successful admission,
-the module-input transaction selects `InputContextMismatch` before publishing
-any query input. `VerifierDisagreement` is legal only when the corresponding
-builder candidate was otherwise valid and the independent reconstruction
-differs. `VerifiedStateMismatch` is legal only for impossible corruption of an
-already verified active-context value. These mutually exclusive stage guards
-are reconstructed independently and their ordering is asserted by native
-mutation tests.
-
-A search-root tag or payload that fails canonical decode in an active query
-context is `VerifiedStateMismatch`; a canonically decoded root that names a
-foreign crate, distribution, or compilation projection is
-`InputContextMismatch`.
-
-For `RoleSeedRejected`, the coordinate is derived from the enclosed
-`CoreRoleSeedFailure`, never selected independently. The first four failure
-kinds require `role = None` and `Context`; the remaining seven require
-`role = Some(exactRole)` and `Role(exactRole)`. Every other combination fails
-canonical construction. A raw invalid or foreign identity handle remains the
-earlier RFC 0011 identity invariant; `ForeignContext` here applies only to
-valid identities whose retained context does not equal the seed input.
-
-RFC 0011 identity invariant results remain in their existing typed algebra and
-retain their registered fatal diagnostics. They are not converted into
-`CoreLibraryFailure` or wrapped in a core-specific diagnostic. The
-declaration-only initial core never enters body checking, checked-module
-assembly, HIR, MIR, ownership-overlay, or backend production, so this RFC
-defines no issue, coordinate, cause domain, framing, or diagnostic mapping for
-those unreachable stages.
-
-Native source-pipeline diagnostics remain the emitted diagnostics for
-`ParseRejected`, `ModuleGraphRejected`, `SignatureRejected`, and
-`RoleRejected`. Distribution and core-specific invariant failures use the
-registry defined below. No verified core library, prelude edge, checked user
-module, or cache entry is published after a core failure.
-
-`ZOM3027` is the ordinary module diagnostic defined by the prelude contract.
-Its target, alias, and source producers use their existing package or module
-diagnostic facts. It is not part of the core-specific failure algebra below.
-
-The core-specific registry file is
-`compiler/diagnostics/diagnostics-core.def` and contains:
-
-| Code | Name | Severity | Message |
-|---|---|---|---|
-| `ZOM7101` | `CoreDistributionUnavailable` | Error | `Compiler core library is unavailable ({0})` |
-| `ZOM7102` | `CoreDistributionMismatch` | Error | `Compiler core library does not match this compiler ({0})` |
-| `ZOM9907` | `CoreLibraryInvariantViolation` | Fatal | `Internal core library invariant is invalid ({0})` |
-
-The single argument is one stable English identifier from this exhaustive
-mapping, not a filesystem error string:
-
-| Issue | Reason Identifier | Diagnostic |
+| Condition | Rail | Public Result |
 |---|---|---|
-| `ReadFailed` | `read-failed` | `ZOM7101` |
-| `InvalidPath` | `invalid-path` | `ZOM7102` |
-| `InvalidSourceBytes` | `invalid-source-bytes` | `ZOM7102` |
-| `DistributionMismatch` | `distribution-mismatch` | `ZOM7102` |
-| `EditionMismatch` | `edition-mismatch` | `ZOM7102` |
-| `InputContextMismatch` | `input-context-mismatch` | `ZOM7102` |
-| `ParseRejected` | `parse-rejected` | Existing cause diagnostics only |
-| `ModuleGraphRejected` | `module-graph-rejected` | Existing cause diagnostics only |
-| `RoleSeedRejected` | `role-seed-rejected` | `ZOM9907` |
-| `SignatureRejected` | `signature-rejected` | Existing cause diagnostics only |
-| `RoleRejected` | `role-rejected` | RFC 0024 cause diagnostics only |
-| `VerifiedStateMismatch` | `verified-state-mismatch` | `ZOM9907` |
-| `VerifierDisagreement` | `verifier-disagreement` | `ZOM9907` |
+| A source or manifest occurrence that the author can correct | Canonical diagnostic fact | The owning source or document diagnostic, including `ZOM3027` |
+| Core source-tree read, path, byte-admission, resource-limit, concurrent-change, integrity, distribution, edition, or external availability failure | Operational failure | `error: operational failure [core-distribution]: <closed-reason>` and exit status `1` |
+| Role-seed contract failure, verified-state mismatch, canonical-codec failure, or builder/verifier disagreement | Compiler incident | A registered, privacy-preserving `CompilerIncidentDescriptor` and exit status `1` |
 
-Source-pipeline and identity-invariant failures are not wrapped in another core
-diagnostic.
-`ZOM9907` is emitted only for role-seed failure, builder/verifier disagreement,
-or an impossible mismatch involving an already verified object. The initial
-core has no runtime capability failure case because it declares no runtime
-calls; an RFC adding one must extend this closed algebra and its diagnostic
-mapping atomically.
+Parse, module-graph, signature, and role failures retain the diagnostics already
+owned by those source-backed producers. The core boundary does not wrap them in
+a second diagnostic. Operational and incident failures publish no diagnostic
+fact and therefore cannot participate in diagnostic occurrence identity,
+provenance materialization, policy, or rendering.
 
-RFC 0017 diagnostic facts receive these exact extensions:
+The exact classification is:
 
-```text
-DiagnosticRoot +=
-  CoreLibrary { root: CoreLibraryDiagnosticRoot } // 0x05
+| Producer Condition | Result |
+|---|---|
+| Source root cannot be opened or an admitted file cannot be read | `CoreDistributionAdmissionFailure(ReadFailed)` on the operational rail |
+| Inventory path, canonicalization, symlink, collision, or root-escape rejection | `CoreDistributionAdmissionFailure(InvalidPath)` on the operational rail |
+| UTF-8, BOM, line-ending, trailing-space, or final-LF rejection | `CoreDistributionAdmissionFailure(InvalidSourceBytes)` on the operational rail |
+| Admission exceeds the bounded source count or byte budget | `CoreDistributionAdmissionFailure(ResourceLimitExceeded)` on the operational rail |
+| A source changes while its immutable snapshot is being admitted | `CoreDistributionAdmissionFailure(SourceChangedDuringAdmission)` on the operational rail |
+| An admitted source does not match its expected integrity digest | `CoreDistributionAdmissionFailure(SourceIntegrityMismatch)` on the operational rail |
+| Embedded inventory, source count, policy template, or distribution digest mismatch | `CoreDistributionAdmissionFailure(DistributionMismatch)` on the operational rail |
+| Projected core edition differs from the admitted distribution edition | `CoreDistributionAdmissionFailure(EditionMismatch)` on the operational rail |
+| Lexer, parser, module graph, signature checking, or marker-role checking rejects source-backed input | Existing diagnostic facts from the owning producer |
+| Role-seed shape or lineage is impossible after its prerequisites were verified | Registered core/query compiler incident |
+| Canonical query decode, frozen-registry lookup, or already verified cross-lineage input is impossible in the active context | Registered core/query compiler incident |
+| Independent reconstruction disagrees with a valid builder candidate | Registered core/query compiler incident |
 
-DiagnosticPhaseOrQueryKind +=
-  ToolchainModuleRootReservation(ToolchainModuleRootReservationProducer) // 0x05
-  CoreFailureProducer(CoreFailureProducer)                               // 0x06
+Distribution admission applies the operational failure kinds in declaration
+order before any verified distribution is published. One failure stops
+publication of the core library, prelude edge, checked user module, and cache
+entry. The operational renderer exposes the `core-distribution` domain and the
+exact closed reason `read-failed`, `invalid-path`, `invalid-source-bytes`,
+`resource-limit-exceeded`, `source-changed-during-admission`,
+`source-integrity-mismatch`, `distribution-mismatch`, or `edition-mismatch`;
+the typed admission value remains available to native tests and internal control
+flow without leaking paths.
 
-DiagnosticEmitterSite +=
-  ToolchainModuleRootReservation(ToolchainModuleRootReservationEmitter) // 0x05
-  CoreLibrary(CoreLibraryDiagnosticEmitter)                             // 0x06
+`CoreRoleSeedFailureKind`, `CoreDistributionAdmissionInvariantKind`, input
+preparation and commit invariant kinds, non-operational query runtime failures,
+and session integration invariants are never assigned a `ZOMxxxx` code. The core
+incident projector registers the owning domain, phase, kind, producer, and
+occurrence count without retaining user-controlled payloads. Query allocation
+failure and cancellation remain the closed `allocation-failed` and `cancelled`
+operational reasons. A raw invalid or foreign identity handle remains an RFC
+0011 identity incident.
 
-ToolchainModuleRootReservationEmitter =
-  FailureProjection // 0x01
+`ZOM3027` is the ordinary actionable diagnostic defined by the prelude
+contract. Its package occurrence uses a document-backed
+`DiagnosticOccurrenceKey`; its source declaration occurrence uses a semantic
+source-backed key. Both carry exact primary and highlight provenance and the
+single canonical module-path argument `core`. The package and module projectors
+publish those facts to the request collector. No core-specific diagnostic root,
+locationless fact, or diagnostic catalog partition is introduced.
 
-CoreLibraryDiagnosticEmitter =
-  FailureProjection // 0x01
-```
-
-Tags `0x01` through `0x04` of each outer diagnostic-root,
-phase-or-query-kind, and emitter-site sum retain RFC 0017 `Source`, `Package`,
-`BuildScript`, and `Module`. The reservation domain is exactly `0x05` in the
-phase and emitter sums. Core is exactly `0x05` in the root sum and `0x06` in
-the phase and emitter sums.
-`ToolchainModuleRootReservationEmitter::FailureProjection` and
-`CoreLibraryDiagnosticEmitter::FailureProjection` are each exactly `0x01` in
-their distinct producer-local emitter domains. The acceptance transaction
-regenerates the complete root, phase, emitter, occurrence, and fact wire
-oracles. No local enum or parallel diagnostic record is permitted.
-
-Each `ZOM3027` occurrence projects through
-`ToolchainModuleRootReservationEmitter::FailureProjection` and has no semantic
-owner or secondary record.
-
-For `UserTargetRoot`, the `DiagnosticOccurrenceKey` contains the existing
-`Package` root with the request's structurally admitted RFC 0017
-`PackageRootSetKey` and exact `PackageKey`, phase
-`ToolchainModuleRootReservation(UserTargetRoot)`, emitter
-`ToolchainModuleRootReservation(FailureProjection)`, and the target's
-zero-based index in the sequence sorted by complete canonical target record.
-Its primary `PackageSite` repeats that package-root set and package, carries
-the retained target-origin field path, repeats the same emitter, and uses the
-same index as its independent provenance occurrence.
-
-For `DependencyAlias`, the occurrence key uses the same complete `Package`
-root fields with the same pre-resolution `PackageRootSetKey`, phase
-`ToolchainModuleRootReservation(DependencyAlias)`, the same emitter, and the
-alias's zero-based index after sorting by complete canonical alias record then
-retained provenance. Its primary `PackageSite` repeats the package roots and
-package, carries the exact alias-key field path, repeats the emitter, and uses
-that same index as its independent provenance occurrence.
-
-For `SourceRootDeclaration`, the occurrence key contains the existing
-`Module` root with the exact `ModuleKey`, phase
-`ToolchainModuleRootReservation(SourceRootDeclaration)`, no owner, the same
-emitter, and phase-defined occurrence `0` because one selected source has at
-most one root declaration after parsing. Its primary `ModuleSite` contains the
-same module, `owner = none`,
-`localPath = some(declaredNamePath)`, the same emitter, and an independent
-provenance occurrence `0`. `declaredNamePath` is not stored in the diagnostic
-occurrence field.
-
-All three facts carry the single canonical argument record
-`ModuleRootArgument { path = core }`. The acceptance transaction adds
-exact fact, provenance, occurrence, and rendered-diagnostic wire oracles and
-mutates every outer and inner tag, root field, package root, package or module,
-field path, local path, emitter, diagnostic occurrence, provenance occurrence,
-argument path, owner presence, secondary record, and sequence framing. Package
-reservation facts are built before dependency resolution and therefore never
-contain a `CompilationRootSetQueryKey`. Once the complete compilation context
-exists, `ResolveDiagnosticProvenance` is demanded through
-`ContextualDiagnosticProvenanceKey`; that outer query key supplies the complete
-`CompilationRootSetQueryKey` without changing the retained RFC 0017
-`PackageSite` wire record. Mutation tests independently replace the outer
-context roots and the inner package roots and reject both substitutions.
-
-Each canonical `CoreLibraryFailure` whose reason-table row names `ZOM7101`,
-`ZOM7102`, or `ZOM9907` projects to one RFC 0017 `DiagnosticFact` as follows:
-
-- diagnostic root is the failure's exact `CoreLibraryDiagnosticRoot`;
-- phase/query kind is its exact `CoreFailureProducer`;
-- semantic owner is absent;
-- emitter site is
-  `CoreLibraryDiagnosticEmitter::FailureProjection`;
-- emitter occurrence is the zero-based canonical index of the failure within
-  the sorted, deduplicated failures of the first surviving issue;
-- the diagnostic code and sole canonical string argument come from the closed
-  reason table above;
-- the primary location is `Locationless(Invocation)` for `ZOM7101` and
-  `ZOM7102`, or `Locationless(CompilerInvariant)` for `ZOM9907`; and
-- secondary locations, notes, and fix-its are empty.
-
-These locationless variants are the existing RFC 0017 invocation and compiler
-invariant origins. They never construct a `DiagnosticProvenanceKey`, demand
-`ResolveDiagnosticProvenance`, or fabricate a source span. Native
-`ParseRejected`, `ModuleGraphRejected`, `SignatureRejected`, and
-`RoleRejected` cause diagnostics retain their own exact RFC 0017 source or
-module provenance and do not also project a core wrapper fact.
-
-Failure precedence is read failure, invalid path, invalid source bytes,
-distribution mismatch, edition mismatch, input-context mismatch, parse
-rejection, module-graph rejection, role-seed rejection, signature rejection,
-final-role rejection, verified-state mismatch, then verifier disagreement.
-This is the issue-tag order above. One earlier category suppresses every later
-category, and one core failure suppresses all downstream publication.
-
-`zomc` exits `0` only after the requested compilation action succeeds. The
-silent `compile --check` action defined below succeeds only after the complete
-production frontend, checked-module, HIR, Built MIR, and ownership-overlay
-verification chain succeeds for every ordinary consumer module. Every failure
-defined by this RFC, including `ZOM9907`, returns exactly `1` through the
-existing `zc::MainBuilder::Validity` failure path. Diagnostic severity, not a
-second process status, distinguishes a compiler invariant. This RFC introduces
-no unsupported typed exit channel and no alternate CLI entry point.
-
-Failure occurrence identity is
-`Encode(root) || Encode(producer) || Encode(issue) || Encode(coordinate) ||
-Encode(causes)`. Producers deduplicate complete equal failures, sort by issue
-tag and then occurrence identity, retain every occurrence in the first issue
-category, and suppress later categories. The independent verifier reconstructs
-the same set and ordering from admitted input rather than trusting
-candidate-carried roots, producers, coordinates, causes, indices, or reason
-text.
+`zomc` exits `0` only after the requested compilation action succeeds. A core
+diagnostic, incident, or operational failure returns status `1` through the
+existing `zc::MainBuilder::Validity` failure path. The initial core has no
+runtime capability failure because it declares no runtime calls; an RFC adding
+one must extend the corresponding closed owner algebra atomically.
 
 ### Accepted-RFC Replacement Transaction
 
@@ -2388,9 +2134,9 @@ The RFC 0004 synchronization is mechanical:
 | Reserved toolchain root | Add `ZOM3027 ToolchainModuleRootReserved` to `diagnostics-module.def` with severity `Error`, one `ModulePath` argument, and the exact headline defined above |
 | Source failure algebra | Add the `ToolchainModuleRootReserved` alternative to `ModuleGraphSourceFailure` with exact module, source, declared-name local path, schema ordinal, and typed argument fields |
 | Producers and anchors | Reject a non-core source root at its complete declared-name span before module-graph publication; package-owned target and alias producers remain in RFC 0012 |
-| Typed module adapter | Extend only `module-graph-diagnostic-adapter` to accept the verified `ModuleRootArgument`; do not route the failure through `module-interface-diagnostic-adapter` or a raw string |
+| Typed module projector | Extend only the module-graph source diagnostic projector to accept the verified `ModuleRootArgument`; do not route the failure through the module-interface incident projector or a raw string |
 | Precedence and suppression | Diagnose malformed manifest or source syntax first; for the same occurrence, make `ZOM3027` suppress `ZOM3026` and every derived import or re-export resolution diagnostic without suppressing independent duplicate-declaration facts |
-| Diagnostic publication | Reuse the existing package or module diagnostic root, provenance, canonical occurrence ordering, renderer, and CLI failure path; never wrap the occurrence in `CoreLibraryFailure` |
+| Diagnostic publication | Reuse the canonical document or semantic source occurrence, provenance, ordering, renderer, and CLI failure path; never wrap the occurrence in a core-specific diagnostic |
 | Tests and cutover | Add target, alias, source-root, legal registry-package-name, ordering, suppression, no-publication, exact code, severity, arity, headline, argument, and anchor cases in the same change |
 
 The RFC 0005 synchronization is mechanical:
@@ -2403,7 +2149,7 @@ The RFC 0005 synchronization is mechanical:
 | Signature projection | Make `ImportedSignatureViewProjector` switch on `VerifiedInterfaceSource` and emit the byte-equal revision alternative matching that source |
 | Final core projection | Build a flat final record with no bootstrap schema or revision, preserve canonical root semantics, replace every bootstrap-only origin with the direct finalized source's `ToolchainCore(CoreModuleInterfaceRevision)`, and use `ToolchainCore(CoreBindingSurfaceRevision)` for binding and module-target surfaces |
 | Downstream consumers | Switch every signature, body, coherence candidate/view, borrow, checked-module, diagnostic, dump, and trace consumer exhaustively; reject a mismatched source/revision alternative or any bootstrap revision before semantic use |
-| Failure and diagnostic mapping | Map same-alternative revision mismatch to `StaleRevision`/`ZOM9930`, a valid but source-incompatible alternative to `ViewMismatch`/`ZOM9931`, and an illegal or non-canonical tag, payload, or bootstrap schema to `CanonicalCodecMismatch`/`ZOM9935` |
+| Failure and incident mapping | Map same-alternative revision mismatch to the `StaleRevision` Checker incident, a valid but source-incompatible alternative to the `ViewMismatch` Checker incident, and an illegal or non-canonical tag, payload, or bootstrap schema to the `CanonicalCodecMismatch` Checker incident |
 | Codec and revisions | Encode each alternative tag before its complete revision, regenerate `SignatureFactsRevision`, `ImportedSignatureViewRevision`, `CoherenceViewRevision`, and all transitive interface, checked-fact, evidence, query, and diagnostic vectors, and retain no untagged digest |
 | One-step cutover | Delete the old field type, constructors, accessors, overloads, fixtures, and decoder in the same change; provide no alias, adapter, wrapper, or dual-key lookup |
 
@@ -2442,7 +2188,7 @@ The RFC 0017 synchronization is mechanical:
 | Explicit input ownership | Permit only `VerifiedCoreDistributionInputTransaction` to commit the distribution, verified source snapshots, compilation options, search roots, and accepted role-keyed policy template; use the existing `VerifiedModuleGraphInputTransaction` only for selected structural module records, configured consumer preludes, and narrow graph prerequisites; then use the RFC 0020 installation transaction only for the complete contextual authority map and readiness, never for derived graph or named-item results |
 | Derived provider graph | Track the exact graph, role-seed, core-signature, export, prelude, and aggregate-authority provider and independent-verifier read sets defined here |
 | Final interface witness | Make `FinalizeCoreModuleInterface` project a flat final canonical record and stable witness with no bootstrap record, bootstrap-interface revision, or imported-view revision; bootstrap memos remain private tracked dependencies |
-| Diagnostic facts | Add diagnostic-root tag `0x05` `CoreLibrary`, producer-local emitter `CoreLibraryDiagnosticEmitter::FailureProjection = 0x01`, exact `CoreFailureProducer` phase tags, locationless invocation or compiler-invariant origins, canonical first-category occurrence indices, and complete fact/occurrence wire oracles; add the exact `ToolchainModuleRootReservationProducer` and emitter alternatives while keeping `ZOM3027` on the existing package or module diagnostic roots and provenance variants, keeping `PackageSite.roots` and package-root occurrence fields as the pre-resolution `PackageRootSetKey`, and supplying complete compilation context only through the outer `ContextualDiagnosticProvenanceKey` query |
+| Diagnostic and failure publication | Keep `ZOM3027` on canonical document-backed or semantic source-backed facts; keep core admission failures on the closed operational rail and core/query invariants on the incident rail; add no locationless diagnostic origin, core diagnostic root, or public invariant code |
 | Reuse, ownership, and equality | Use handle-free Semantic values for the six projections; make the four new core-specific materializers retained revision-local capability memos with sole ownership, transitive dependency retention, and snapshot-bound leases; retain RFC 0017's existing revision-local materializer allowlist and prohibit capability eviction, cloning, equality, backdating, and persistence |
 | Retention and persistence | Retain the small mandatory projections in memory and disable persistence until the RFC 0017 cache gate |
 | Readiness and missing values | Permit only graph, semantic skeleton, and named-definition inventory reads from the authority-staging snapshot; reject every named-item, owner-body, core-bootstrap, or materialization demand before contextual authority readiness; map a post-readiness missing required value to `VerifiedStateMismatch` |
@@ -2473,7 +2219,7 @@ The RFC 0012 synchronization is mechanical:
 | Package boundary | Keep release, resolver, lock, feature, manifest, and source-materialization contracts user-package-only; no toolchain-core identity or source enters `PackageKey`, a package graph, or a lockfile |
 | Reservation failure algebra | Add `PackageToolchainModuleRootFailure` to `PackagePipelineFailure` after invocation, compiler-invariant, and manifest failures but before registry, resolver, lock, materialization, and build-script failures |
 | Producer selection | Construct `UserTargetRoot` only from one normalized selected target and `DependencyAlias` only from a normalized alias; target precedes aliases and aliases sort by complete canonical record and provenance |
-| Typed package adapter | Extend the existing package diagnostic adapter to accept only `ModuleRootArgument` reconstructed from the retained manifest record; prohibit raw strings and prohibit `module-interface-diagnostic-adapter` |
+| Typed package projector | Extend the existing package diagnostic projector to accept only `ModuleRootArgument` reconstructed from the retained manifest record; prohibit raw strings and prohibit the module-interface incident projector |
 | Priority | A compiler invariant, invalid invocation selection, invalid manifest, or `TargetSelectionInvalid` remains the single earlier failure; after package, feature, and requested-target selection constructs the complete selected `PackageKey`, `ZOM3027` precedes and suppresses every downstream registry-graph, lock, materialization, or build-script failure derived from the reserved target or alias |
 | Legal package name | Permit a registry package named `core` when its selected target and dependency alias are not `core`; package name alone never constructs the reservation failure |
 | Tests and cutover | Add exact target, alias, priority, legal-package-name, anchor, typed-argument, renderer, no-publication, and mutation cases to the package diagnostic and pipeline suites without a compatibility branch |
@@ -2488,7 +2234,7 @@ The RFC 0018 synchronization is likewise mechanical:
 | Contextual named-item and body roots | Encode the complete context `CompilationRootSetQueryKey` before the stable definition, module, or body-owner key in every RFC 0019/0020 contextual query key; retain stable semantic identities inside values and regenerate all nested provider roots. |
 | Root-set and graph keys | Use the exhaustive `CompilationRootSetQueryKey` defined here for `ActiveCrates`, `ModuleGraph`, and `ModuleGraphScc`. A `UserPackage` root uses tag `0x01` and its complete package payload; a `ToolchainCore` root uses tag `0x02` and its complete projected core crate. Package resolver queries use `PackageRootSetKey`. |
 | Dependency projections | Permit `ToolchainCore` only in the semantic crate graph. Dependency-alias, lockfile, release, and package-resolution queries continue to accept only user-package edges. `ConfiguredPrelude`, module dependencies, path buckets, and resolution queries consume the exact projected core keys without package fallback. |
-| Core diagnostic identity | Encode `CoreLibraryDiagnosticRoot` as diagnostic-root tag `0x05` followed by the embedded expected distribution digest and canonical optional context fingerprint; encode exact producer, issue, coordinate, causes, emitter, and sorted occurrence index with no observed digest, host path, span, handle, or candidate-carried field. |
+| Core failure identity | Keep admission failures in the closed `CoreDistributionAdmissionFailure` algebra and project verified-state or verifier failures to registered incident shapes; neither rail carries host paths, source text, handles, or a public diagnostic code. |
 | Stable wire dumps and traces | Regenerate canonical query-key dumps, dependency records, collision fixtures, query traces, and fixed vectors for both user-package and toolchain-core branches. Ordering uses complete replacement bytes; a trace never prints a local handle or accepts both old and new encodings. |
 | Mutation and architecture gates | Add independent producer/verifier mutations for both compilation-unit tags, missing or extra payloads, crate parent substitution, source-origin substitution, dependency-origin substitution, root-set branch substitution, and every transitive query key. Reject any package-only crate accessor, old root-set key, stale golden digest, decoder fallback, or dual-key lookup. |
 
@@ -2525,7 +2271,7 @@ The RFC 0024 synchronization is mechanical:
 
 | RFC 0024 Surface | Replacement |
 |---|---|
-| `Distribution Bootstrap` and `StandardPreludeDistribution` | `VerifiedCoreDistribution`, exact three-source record, unversioned toolchain unit, executable-relative source root, and `ZOM7101`/`ZOM7102` |
+| `Distribution Bootstrap` and `StandardPreludeDistribution` | `VerifiedCoreDistribution`, exact three-source record, unversioned toolchain unit, executable-relative source root, and closed operational admission failure |
 | Fixed `Zom.toml` and `src/prelude.zom` bytes and digests | Exact `core.zom`, `core/marker.zom`, and `core/prelude.zom` bytes plus `CoreDistributionRecord` and its accepted golden digest |
 | Resolver release, root, snapshot, feature, and lockfile injection | Separate mandatory toolchain distribution input; no RFC 0012 release or lock graph entry |
 | `Verified Compiler Marker Configuration` distribution fields | Hashed `CoreRoleIdentityTemplate` records expanded to exact `DefinitionKey` values after core identity freeze |
@@ -2534,7 +2280,7 @@ The RFC 0024 synchronization is mechanical:
 | `Verified Authority` owner and context lineage | Preserve `VerifiedStandardMarkerAuthority` with `CoreSemanticContextFingerprint` plus core-scoped shape and policy revision types; consume the aggregate authority query, role seed, frozen core identities, and exact prelude re-exports without reading whole-session inventories or an ordinary consumer graph |
 | RFC 0015 inventory relationship | Build whole-session marker inventories after ordinary binding and require their core-role projection to equal the core-scoped authority entries |
 | `Session Publication` distribution capability | `VerifiedCoreLibrarySet` stores only the verified distribution digest and is published before ordinary module checking |
-| Distribution-related `Failure Mapping` | Closed `CoreLibraryFailure`, `CoreRoleSeedFailure`, and `diagnostics-core.def`; marker-policy failures remain unchanged |
+| Distribution-related `Failure Mapping` | Closed `CoreDistributionAdmissionFailure`, `CoreRoleSeedFailure`, operational output, and registered compiler incidents; marker-policy source diagnostics remain unchanged |
 | Qualified-name, policy inference, and compiler-only alternatives | Retain rejection of spelling discovery, source-less declarations, and separate policy paths |
 | Acceptance, implementation, test, and tracker file lists | Replace manifest/two-file/three-install-file assumptions with the source inventory, identity oracles, installed consumer, mutation matrix, and core architecture gate in this RFC |
 
@@ -3331,8 +3077,8 @@ detached capability copy.
 `ModuleDiagnosticFacts(ContextualModuleKey)` is the sole Binder diagnostic
 collector. Stable Binder query failures carry RFC 0017 `DiagnosticFact`
 records; materialized owner bodies and immutable binding metadata carry no
-diagnostic reference. Core failure facts continue through their registered
-diagnostic rail and do not become IR failures.
+diagnostic reference. Core admission failures remain operational, and core
+invariants remain incidents; neither becomes an IR failure.
 
 Production contains one sealed query root. The implementation transaction
 deletes batch Binder publication, frozen identity or definition ownership,
@@ -3484,7 +3230,7 @@ implementing the core compiler contract.
 | Removal of the unused intrinsic token and parser-facing inventory alignment | `compiler/lexer/**`, `compiler/parser/**`, `compiler/ast/**`, `docs/spec/ZomLexer.g4`, `docs/spec/ZomParser.g4` | `lexer-parser` |
 | Core signatures, role authority, final interface publication, and non-module binder inputs | `compiler/checker/**` excluding `checker-source-diagnostics.def`, `compiler/type/**`, `compiler/binder/**` excluding `binder/module-*` | `binder-checker` |
 | Toolchain identity, source admission, package target and dependency-alias reservation, module graph, module binder paths, queries, borrow-evidence driver files, driver build registration, and session publication | `compiler/identity/**`, `compiler/source/**`, `compiler/query/**`, `compiler/binder/module-*`, `compiler/driver/**`, `core/Zom.toml` | `module-system` |
-| `ZOM3027`, core diagnostics, diagnostic fact and provenance codecs, core failure projection, and invariant diagnostics | `compiler/diagnostics/**`, `compiler/checker/checker-source-diagnostics.def` | `error-system` |
+| `ZOM3027`, diagnostic fact and provenance codecs, core failure classification, and incident projection | `compiler/diagnostics/**`, `compiler/checker/checker-source-diagnostics.def` | `error-system` |
 | Removal of unsupported standard-library, runtime, and marker claims from concurrency documentation and the specification index | `docs/concurrency/**`, `docs/spec/specification.md`, `docs/spec/chapters/15-concurrency.md` | `concurrency` |
 | Checked-module imported-interface handoff, declaration-only HIR/MIR exclusion, build, install, generated-inventory inclusion, and CLI layout | `compiler/hir/**`, `compiler/mir/**`, `compiler/basic/compiler-opts.h`, `CMakeLists.txt`, `compiler/CMakeLists.txt`, `core/CMakeLists.txt`, `utils/CMakeLists.txt`, `utils/zomc/**` | `ir-backend` |
 | Borrow-evidence ownership-contract review, ZOM core source, contributor guidance, and memory-model alignment | `core/src/**`, `core/README.md`, `docs/spec/chapters/14-memory-management.md`; mandatory contract review for module-system-owned `compiler/driver/borrow-evidence.{h,cc}` | `runtime-memory` |
@@ -3753,10 +3499,9 @@ updated only with the production slice they describe:
   contain no callable, contributes no imported borrow surface, and rejects a
   synthetic surface or wrapper; every user branch retains the complete RFC
   0013 borrow contract.
-- Core diagnostic facts use exact root tag `0x05`, exact producer and emitter
-  tags, the embedded expected distribution digest, deterministic first-category
-  occurrence indices, locationless invocation or compiler-invariant origins,
-  no semantic owner or secondary record, and CLI status `1` for every failure.
+- Core admission failures use the closed operational rail, and core/query
+  invariants use registered compiler incidents. Neither creates a locationless
+  diagnostic fact or public code, and both return CLI status `1`.
 - Missing, mutated, redirected, cyclic, or wrong-role core input publishes no
   downstream verified artifact.
 - Build-tree and installed-tree CLI tests exercise the real core loader.
@@ -3880,21 +3625,16 @@ updated only with the production slice they describe:
   user wrapper, synthetic empty borrow surface, injected callable definition,
   missing or additional core interface, wrong context, module, revision,
   lookup/support set, retained visible source, and stale invalidation lineage.
-  Every case asserts the exact RFC 0005 `StaleRevision`/`ZOM9930`,
-  `ViewMismatch`/`ZOM9931`, or
-  `CanonicalCodecMismatch`/`ZOM9935` result and the exact RFC 0010
+  Every case asserts the exact RFC 0005 `StaleRevision`, `ViewMismatch`, or
+  `CanonicalCodecMismatch` incident and the exact RFC 0010
   `InputRevisionMismatch`, `InvalidFact`, `CanonicalCodecMismatch`,
-  `MissingRequiredFact`, or `AdditionalFact` result selected above.
-- Failure-algebra unit tests exhaust every legal and illegal
-  root/producer/issue/coordinate/cause combination. Diagnostic tests cover the
-  three core-specific codes, every stable reason identifier, root tag `0x05`,
-  expected versus observed digest mutations, all producer tags, emitter tag
-  `0x01`, every policy-template failure classification, locationless
-  invocation and compiler-invariant origins, absent owner and secondary
-  records, canonical occurrence indices, suppression order,
-  verifier-disagreement boundary, exact fact and occurrence encodings, success
-  status `0`, and every failure status `1`.
-- Module-diagnostic unit and lit tests cover the fourth new code, `ZOM3027`,
+  `MissingRequiredFact`, or `AdditionalFact` incident selected above.
+- Failure-algebra unit tests exhaust every legal and illegal admission and
+  role-seed combination. Operational and incident tests cover every closed
+  admission issue, every role-seed kind, policy-template classification,
+  verifier disagreement, sanitized output, success status `0`, and failure
+  status `1`, while proving that neither rail emits a diagnostic fact.
+- Module-diagnostic unit and lit tests cover `ZOM3027`
   for explicit and implicit user target roots, dependency aliases, and source
   root declarations. They assert its unique registry entry, `Error` severity,
   exact headline, one `ModulePath` argument equal to `core`, retained manifest

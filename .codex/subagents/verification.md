@@ -72,13 +72,6 @@ scripts/generate-query-descriptor-schema.py
 scripts/check-query-descriptor-architecture.py
 scripts/run-incremental-query-benchmarks.py
 scripts/check-diagnostic-coverage.py
-scripts/check-diagnostics-architecture.py
-scripts/check-rfc0047-landing-scope.py
-scripts/check-rfc0047-coverage.py
-scripts/run-rfc0047-coverage.py
-scripts/run-diagnostics-architecture-benchmarks.py
-scripts/run-diagnostics-fuzz.py
-scripts/codegen/gen-diagnostic-catalog.py
 scripts/codegen/gen-compiler-incidents.py
 scripts/check-lit-exec-root.py
 scripts/check-core-library-architecture.py
@@ -122,9 +115,10 @@ cmake/utils/unittests.cmake
       tracker, every production emission is defined, and every emitted
       diagnostic is asserted by a test; both diagnostic coverage gate modes
       pass.
-- [ ] RFC 0047 diagnostics changes match the frozen exact-path routing DAG;
-      catalog, incident, projector, root, provenance, consumer, fuzz,
-      performance, and coverage inventories are complete and mutation-tested.
+- [ ] RFC 0047 diagnostics changes preserve one compiled data path per
+      occurrence; catalog validation, fact collection, provenance, policy,
+      incidents, and terminal/IDE consumers have native tests and real product
+      workflow evidence. Source-text scanners are not architecture proof.
 - [ ] No `Thread.sleep`-style wall-clock waits. Use explicit sync
       primitives or bounded poll loops.
 - [ ] Lit execution roots are stable build-local paths. No runner creates

@@ -236,11 +236,11 @@ EXPECTED_COUNTS = {
     "Record": 94,
     "NestedRecord": 1,
     "NestedField": 2,
-    "Sum": 13,
+    "Sum": 11,
     "RuntimeSum": 1,
-    "EnumValue": 31,
-    "SumVariant": 51,
-    "VariantField": 47,
+    "EnumValue": 33,
+    "SumVariant": 37,
+    "VariantField": 41,
     "InlineSumVariant": 2,
     "InlineSumVariantField": 3,
     "RuntimeSumVariant": 4,
@@ -523,8 +523,6 @@ SUM_TASKS = {
     "StableControlTarget": ("S2D", "S3", "S2D"),
     "BinderQueryResult": ("S2B", "S3", "S2B"),
     "BinderQueryOwner": ("S2B", "S3", "S2B"),
-    "DiagnosticPhaseOrQueryKind": ("S6", "S6", "S6"),
-    "DiagnosticEmitterSite": ("S6", "S6", "S6"),
     "ActiveMembershipResult": ("I2", "I2", "I2"),
 }
 SUM_VARIANTS = {
@@ -552,24 +550,6 @@ SUM_VARIANTS = {
     "StableControlTarget": ("ExplicitLabel", "Loop", "Match"),
     "BinderQueryResult": ("Value", "SourceRejected", "KeyRejected"),
     "BinderQueryOwner": ("Module", "DefinitionHeader", "ImplementationHeader", "Body"),
-    "DiagnosticPhaseOrQueryKind": (
-        "Source",
-        "Package",
-        "BuildScript",
-        "Module",
-        "ToolchainModuleRootReservation",
-        "CoreFailureProducer",
-        "Binder",
-    ),
-    "DiagnosticEmitterSite": (
-        "Source",
-        "Package",
-        "BuildScript",
-        "Module",
-        "ToolchainModuleRootReservation",
-        "CoreLibrary",
-        "Binder",
-    ),
     "ActiveMembershipResult": ("Active", "Inactive"),
 }
 ENUMS = {
@@ -607,7 +587,10 @@ ENUMS = {
         ),
         ("S6", "S6", "S6"),
     ),
-    "DiagnosticSecondaryRole": (("PreviousDeclaration",), ("S6", "S6", "S6")),
+    "DiagnosticSecondaryRole": (
+        ("Highlight", "Note", "PreviousDeclaration"),
+        ("S6", "S6", "S6"),
+    ),
 }
 QUERY_TASKS = {
     **{name: ("B1",) * 4 for name in (
@@ -781,20 +764,6 @@ DIAGNOSTICS = {
         "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations",
     ),
 }
-DIAGNOSTIC_SUM_FIELDS = {
-    ("DiagnosticPhaseOrQueryKind", "ToolchainModuleRootReservation", "producer"): (
-        "ToolchainModuleRootReservationProducer"
-    ),
-    ("DiagnosticPhaseOrQueryKind", "CoreFailureProducer", "producer"): "CoreFailureProducer",
-    ("DiagnosticPhaseOrQueryKind", "Binder", "producer"): "BinderDiagnosticProducer",
-    ("DiagnosticEmitterSite", "ToolchainModuleRootReservation", "emitter"): (
-        "ToolchainModuleRootReservationEmitter"
-    ),
-    ("DiagnosticEmitterSite", "CoreLibrary", "emitter"): "CoreLibraryDiagnosticEmitter",
-    ("DiagnosticEmitterSite", "Binder", "emitter"): "BinderDiagnosticEmitter",
-}
-
-
 @dataclass(frozen=True)
 class Row:
     kind: str
@@ -1417,14 +1386,6 @@ def validate(text: str) -> list[str]:
     for name, expected in SUM_VARIANTS.items():
         if actual_variants[name] != expected:
             errors.append(f"Sum {name}: variants do not match the accepted inventory")
-    diagnostic_sum_fields = {
-        (atom(row.args[0]), atom(row.args[1]), atom(row.args[3])): atom(row.args[4])
-        for row in grouped["VariantField"]
-        if atom(row.args[0]) in {"DiagnosticPhaseOrQueryKind", "DiagnosticEmitterSite"}
-    }
-    if diagnostic_sum_fields != DIAGNOSTIC_SUM_FIELDS:
-        errors.append("diagnostic sum payload fields do not match the accepted inventory")
-
     exact_names("Enum", grouped["EnumValue"], set(ENUMS), errors)
     for name, (values, tasks) in ENUMS.items():
         matches = sorted(

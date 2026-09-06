@@ -14,7 +14,7 @@
 
 #include "compiler/ownership/facts/region-outlives.h"
 
-#include "compiler/ir/diagnostics/ir-diagnostic-adapter.h"
+#include "compiler/ir/diagnostics/ir-failure.h"
 
 namespace zomlang::compiler::ownership::facts {
 namespace {

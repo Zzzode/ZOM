@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check every RFC 0012 pre-request invocation diagnostic through the real CLI."""
+"""Check every RFC 0012 pre-request operational failure through the real CLI."""
 
 from __future__ import annotations
 
@@ -98,7 +98,7 @@ def main() -> int:
                 check=False,
             )
             output = ANSI.sub("", result.stdout)
-            expected = f"[ZOM7016]: Package invocation is invalid ({issue})"
+            expected = f"error: operational failure [package-invocation]: {issue}"
             if result.returncode == 0 or expected not in output:
                 raise RuntimeError(
                     f"{issue}: expected failing {expected!r}, got rc={result.returncode}:\n{output}"
@@ -151,7 +151,7 @@ def main() -> int:
         if any(cwd.glob(".zc-tmp.*")):
             raise RuntimeError("source snapshot staging was not cleaned after compilation")
 
-    print("all package invocation diagnostics passed")
+    print("all package invocation operational failures passed")
     return 0
 
 

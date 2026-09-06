@@ -466,17 +466,18 @@ Diagnostic allocation authority is the set of `.def` files included by
 | Parse | sparse `ZOM2001-ZOM2105` |
 | Binder and module | sparse `ZOM3001-ZOM3028` |
 | Checker | sparse `ZOM4001-ZOM4092` |
-| IR and backend capability | `ZOM6006`, `ZOM6007`, `ZOM6009` |
-| Package | `ZOM7001-ZOM7017`, `ZOM7091-ZOM7093` |
-| Invariants | sparse `ZOM9905-ZOM9956` |
+| IR and backend capability | sparse `ZOM6009-ZOM6011` |
+| Package | sparse user-actionable entries in `ZOM7000-ZOM7999` |
+| Compiler incidents | no public diagnostic allocation; `ZOM9900-ZOM9999` is unassigned |
 
 Registration establishes code, severity, format string, and argument count. A
-source diagnostic requires a verified source anchor and typed adapter. An
-invariant diagnostic consumes a closed invariant fact or deterministic group
-and never formats unverified source text as an internal payload. The diagnostic
-coverage gate additionally enforces that every definition is emitted or bound
-to an active RFC tracker, every production emission is defined, and every
-emitted diagnostic is asserted by a test.
+source or document diagnostic requires verified provenance and an owner-local
+typed projector. Compiler invariants use registered
+`CompilerIncidentDescriptor` values, and allocation, I/O, external-process, or
+unavailable-resource failures use typed operational failures. Neither receives
+a public diagnostic identifier. One sealed request fact set is materialized
+atomically before terminal or IDE projection; see [Diagnostics
+Architecture](diagnostics.md).
 
 ## 12. CLI Reachability Contract
 

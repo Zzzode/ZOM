@@ -65,9 +65,10 @@ owner declared by `manifest.yaml`.
       `compiler/lsp/**` route to `tooling-lsp`; `.codex/rules/**` routes to
       `task-router`; `docs/package-system.md` routes to `module-system`; and
       `docs/plan/**` routes to `spec-audit`.
-- [ ] RFC 0047 implementation work uses its accepted exact-path routing DAG.
-      Every task has one primary owner, no changed file is added outside the
-      allowlist, and every branch reaches the single atomic publication node.
+- [ ] RFC 0047 implementation work follows its subsystem ownership and staged
+      dependency plan. Architecture evidence comes from compiled boundaries,
+      native tests, sanitizer builds, and real CLI/IDE behavior rather than an
+      exact-path allowlist or source-text scanner.
 - [ ] RFC 0027 `S1`, `S2`, and `S3` may be reviewed as bounded sequential
       tasks but have only the exact RFC 0030 `R29-12AB` atomic landing.
       `S6` remains the separate `R29-12D` transaction.

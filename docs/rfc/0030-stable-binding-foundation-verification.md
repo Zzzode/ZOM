@@ -52,7 +52,7 @@ one. It omits three tags already fixed by RFCs 0027 and 0029:
 
 - `IdentityDiagnosticEmitter::ConstantExpressionNotAllowed = 0x03`;
 - `IdentityDiagnosticEmitter::DuplicateGenericParameter = 0x04`; and
-- `DiagnosticSecondaryRole::PreviousDeclaration = 0x01`.
+- `DiagnosticSecondaryRole::PreviousDeclaration = 0x03`.
 
 Implementation cannot proceed from a file inventory that permits an
 uncompiled facts source, an unregistered test, or an unowned schema row.
@@ -285,7 +285,7 @@ The inventory includes these fixed diagnostic tags:
 ```text
 IdentityDiagnosticEmitter.ConstantExpressionNotAllowed = 0x03
 IdentityDiagnosticEmitter.DuplicateGenericParameter = 0x04
-DiagnosticSecondaryRole.PreviousDeclaration = 0x01
+DiagnosticSecondaryRole.PreviousDeclaration = 0x03
 ```
 
 It also includes the exact identity-admission mappings:

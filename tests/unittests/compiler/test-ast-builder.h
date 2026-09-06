@@ -14,13 +14,12 @@
 
 #pragma once
 
+#include "compiler/ast/generated/node-payload.h"
+#include "compiler/ast/tree.h"
+#include "compiler/source/manager.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "compiler/ast/generated/node-payload.h"
-#include "compiler/ast/tree.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
-#include "compiler/source/manager.h"
 
 namespace zomlang {
 namespace compiler {
@@ -29,19 +28,15 @@ namespace tests {
 /// \brief Test fixture helper for building AST trees.
 ///
 /// Provides convenient factory methods for constructing AST nodes and source-backed
-/// diagnostics used by parser and Binder tests.
 class TestFixture {
 public:
-  TestFixture()
-      : sourceManager_(zc::heap<source::SourceManager>()),
-        diagnostics_(zc::heap<diagnostics::DiagnosticEngine>(*sourceManager_)) {}
+  TestFixture() : sourceManager_(zc::heap<source::SourceManager>()) {}
 
   // ==========================================================================
   // Infrastructure accessors
   // ==========================================================================
 
   source::SourceManager& sourceManager() { return *sourceManager_; }
-  diagnostics::DiagnosticEngine& diagnostics() { return *diagnostics_; }
 
   // ==========================================================================
   // Tree builder helpers
@@ -1067,7 +1062,6 @@ public:
 
 private:
   zc::Own<source::SourceManager> sourceManager_;
-  zc::Own<diagnostics::DiagnosticEngine> diagnostics_;
   zc::Maybe<ast::Tree> retainedTree_;
   ast::TreeBuilder builder_;
 };

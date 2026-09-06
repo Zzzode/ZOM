@@ -64,9 +64,9 @@ the existing batch call:
 - `ContextFingerprint` includes every source snapshot in the semantic
   context. `ExportSurfaceRevision` includes that global fingerprint, so a
   private or unrelated source change can change a public surface revision.
-- Binder construction writes diagnostics through `DiagnosticEngine`. A query
-  provider with such an ambient side effect can produce different externally
-  visible behavior on a cache hit and a cache miss.
+- Binder construction returns canonical diagnostic facts. A query provider may
+  not create ambient presentation side effects because cache hits and misses
+  must produce the same externally visible result.
 - `VerifiedBindingOutput` combines many fact domains, canonical provenance,
   diagnostics, scopes, closures, imports, exports, and labels. Treating it as
   one dependency makes any change to the aggregate visible to every consumer.
@@ -269,9 +269,9 @@ by requesting another query through that context.
 
 A provider may allocate temporary local state, but it may not read mutable
 `CompilerSession` collections, `SourceManager`, the filesystem, environment
-variables, wall-clock time, random state, target configuration, or
-`DiagnosticEngine` through a side channel. Such state must be an explicit input
-query. Deterministic semantic failures and diagnostic facts are values;
+variables, wall-clock time, random state, target configuration, or an output
+consumer through a side channel. Such state must be an explicit input query.
+Deterministic semantic failures and diagnostic facts are values;
 cancellation, allocation failure, and transient cache I/O failure are not
 successful semantic values.
 
@@ -615,9 +615,9 @@ type for deterministic failure, but it must preserve these rules:
    unpublished execution failure append no reusable edge;
 3. filesystem, environment, source, package, target, feature, prelude, and
    compiler-option state is represented by explicit input queries;
-4. a provider cannot call `DiagnosticEngine`, publish to a session vector,
-   mutate a registry, or observe wall-clock, random, worker, or allocation
-   order;
+4. a provider cannot write to a diagnostic consumer, publish to a session
+   vector, mutate a registry, or observe wall-clock, random, worker, or
+   allocation order;
 5. returned values and deterministic semantic failures are immutable; and
 6. a provider may construct candidates, but only an independent verifier may
    publish a verified value; and
@@ -877,9 +877,8 @@ nodes and source spans. `BindDefinitionBody` reads `NamedItemSyntax`, not
 `ParseSource` or a revision-local identity map, so an unrelated edit in the same
 source does not execute an unchanged body provider.
 
-The parse provider may execute the whole-source parser, but it does so with a
-query-local `SourceDiagnosticDraftBuffer` rather than the global
-`DiagnosticEngine`. Parser alternatives take buffer checkpoints and explicitly
+The parse provider may execute the whole-source parser with a query-local
+`SourceDiagnosticDraftBuffer`. Parser alternatives take buffer checkpoints and explicitly
 commit or roll back speculative drafts; a rolled-back branch publishes no
 fact. The parse query combines the stable source key with the sorted drafts and
 publishes canonical facts plus their revision-local provenance map. Syntax
@@ -1040,95 +1039,34 @@ edge, and one shared semantic-helper call and must observe all three failures.
 
 ### Diagnostic Query Contract
 
-Semantic diagnostic facts are immutable query values. `DiagnosticOccurrenceKey`
-encodes, in order, diagnostic-root kind and stable root key, compiler phase or
-query-kind tag, optional semantic owner key, closed emitter-site enum, and a
-deterministic emitter occurrence. The occurrence is a `LocalSyntaxPath` when an
-item owns the event, or a phase-defined canonical index derived from sorted
-semantic inputs. It is never a source span, worker order, traversal counter, or
-allocation identity.
+Semantic diagnostic facts are immutable query-safe values. Each
+`DiagnosticOccurrenceKey` identifies one source, module-owned source, or
+admitted document occurrence. Each `DiagnosticProvenanceKey` identifies the
+primary or related site within the same immutable authority. Keys contain no
+resolved byte range, `NodeId`, process-local handle, rendered text, or output
+consumer state.
 
-`DiagnosticProvenanceKey` is the following closed canonical sum with variant
-tags `0x01` through `0x04`; fields encode in the shown order and every sequence
-uses the RFC 0011 count framing:
+Each `DiagnosticFact` owns one occurrence key, one catalog `DiagID`, the exact
+argument sequence, one primary provenance key, and an ordered sequence of
+`Highlight`, `Note`, or `PreviousDeclaration` records. A diagnostic fact always
+has source or document provenance. Source-less operational failures and
+compiler invariants use their own closed rails and never enter this value.
 
-- `SourceSite { source: SourceFileKey, phase: LexOrParsePhase,
-  emitter: DiagnosticEmitterSite, occurrencePath: Sequence<uint32> }` for lexer
-  and parser events before module identity exists;
-- `PackageSite { roots: PackageRootSetKey, package: Maybe<PackageKey>,
-  fieldPath: Sequence<NfcName>, emitter: DiagnosticEmitterSite,
-  occurrence: uint32 }` for source-backed manifest or package discovery sites;
-- `BuildScriptSite { producer: BuildScriptProducerKey,
-  logicalPath: Maybe<CanonicalRelativePath>,
-  emitter: DiagnosticEmitterSite, occurrence: uint32 }` for source-backed build
-  script or generated-source sites; and
-- `ModuleSite { module: ModuleKey, owner: Maybe<DefinitionKey>,
-  localPath: Maybe<LocalSyntaxPath>, emitter: DiagnosticEmitterSite,
-  occurrence: uint32 }` for module, Binder, and Checker sites.
+Providers do not render or emit. Source, package, Binder, Checker, ownership,
+and IR capability projectors publish complete facts and provenance to the
+request-local `CompilationDiagnosticCollector`. Sealing collapses only
+byte-equal payloads for one occurrence, rejects conflicting payloads, and orders
+the full fact set canonically. Distinct occurrence keys remain distinct even
+when their code, arguments, and resolved ranges are equal.
 
-The key contains no byte range, source digest, `NodeId`, handle, or revision.
-`ResolveDiagnosticProvenance(key)` demands the current `RevisionLocal` lexer,
-parser, package, build-script, definition-site, or named-item provenance map
-selected by the variant and returns exactly one current source range. Missing,
-ambiguous, or mismatched resolution is a deterministic invariant failure.
-
-`DiagnosticLocation` is the closed sum
-`Source(DiagnosticProvenanceKey) | Locationless(LocationlessOrigin)`. The
-locationless origin is a closed enum for invocation, package or manifest, build
-script, materialization, resource limit, bootstrap, and compiler invariant
-boundaries; it carries no fabricated source key or empty range.
-
-Each `DiagnosticFact` contains the occurrence key, diagnostic code, canonical
-argument record, primary `DiagnosticLocation`, and an ordered sequence of
-secondary records. A secondary record contains a role tag, optional diagnostic
-code, `DiagnosticLocation`, optional canonical note arguments, and optional
-canonical fix-it replacement. A fix-it is legal only for a source location. The
-schema-defined sequence order is semantic; when the producer receives an
-unordered set it sorts by role, canonical location encoding, and argument
-bytes. Source variants resolve spans only through revision-local provenance
-queries at the demanded snapshot; locationless variants render without a path,
-line, column, or range.
-
-RFC 0042 lands the first executable contract as a direct source-only
-replacement: concrete source occurrence and provenance keys, text arguments,
-primary locations, highlights, and child notes. It declares no diagnostic-root
-sum, location sum, fix-it, Package, BuildScript, Module, Binder, CoreLibrary,
-toolchain, or locationless alternative. RFC 0029 `R29-13B` directly replaces
-that contract with the live Source-and-Module contract. RFC 0025 `R25-09C`
-later directly replaces it with the executable five-origin contract described
-above. No transaction reserves a variant before its producer and verifier land.
-
-Providers do not emit. `SourceDiagnosticFacts`, `PackageDiagnosticFacts`,
-`BuildScriptDiagnosticFacts`, and `ModuleDiagnosticFacts` cover the closed set
-of origins before and after module identity exists. Semantic
-`CompilationDiagnosticFacts` demands those roots and removes a record only when
-both occurrence key and complete unresolved payload are equal.
-
-Revision-local `MaterializeCompilationDiagnostics` demands that semantic
-collection, resolves every source location through
-`ResolveDiagnosticProvenance`, retains locationless values without resolution,
-and returns immutable resolved records in deterministic order. Only after that
-query succeeds does the driver call the diagnostic rendering and emission
-adapter outside query evaluation. The adapter cannot demand queries or mutate a
-memo.
-
-Two emitter occurrences with otherwise identical code, arguments, and location
-remain two diagnostics. Located primary records sort first by stable source key,
-primary range, diagnostic code, semantic owner key, emitter-site tag, and
-occurrence. Locationless records follow and sort by locationless-origin tag,
-diagnostic root key, phase, code, semantic owner, emitter-site tag, and
-occurrence. Secondary records sort by role, location variant and resolved range
-or locationless-origin tag, then canonical arguments.
-
-Failure to resolve a present source provenance key in the same snapshot is an
-invariant failure and publishes no diagnostic aggregate. A locationless value
-requires no resolution. A source location is never repaired by a stale span and
-no fact is silently dropped. Cache hits and misses therefore cannot change
-diagnostic multiplicity, order, text arguments, or locations.
-
-An invariant failure in the query engine is not converted into an ordinary
-source diagnostic. It terminates the affected compilation request through the
-existing compiler invariant failure boundary and publishes no semantic result.
+`materializeDiagnostics` resolves every primary and related provenance key
+against the sealed source and document authorities. It publishes one immutable
+`ResolvedDiagnosticBatch` only after the entire set succeeds. Missing, foreign,
+stale, role-mismatched, or out-of-range provenance becomes a registered
+diagnostics incident and exposes no partial batch. Terminal and IDE consumers
+receive only the sealed result and cannot demand queries or mutate semantic
+state. Cache hits, misses, and worker ordering therefore cannot change
+diagnostic multiplicity, ordering, arguments, or locations.
 
 ### In-Memory Retention
 
@@ -1237,7 +1175,7 @@ correctness substitute.
 | Explicit input ownership | `VerifiedCoreDistributionInputTransaction` commits the distribution, verified source snapshots, compilation options, search roots, and role-keyed policy template. `VerifiedModuleGraphInputTransaction` commits selected structural module records, configured consumer preludes, and narrow graph prerequisites. `ContextualIdentityAuthorityInputTransaction` commits the complete contextual authority maps and readiness. |
 | Derived provider graph | Track the exact graph, role-seed, core-signature, export, prelude, and aggregate-authority provider and independent-verifier read sets defined by RFC 0025 |
 | Final interface witness | `FinalizeCoreModuleInterface` projects a flat final canonical record and stable witness; bootstrap memos remain private tracked dependencies |
-| Diagnostic facts | Diagnostic-root tag `0x05` `CoreLibrary`, producer-local emitter `CoreLibraryDiagnosticEmitter::FailureProjection = 0x01`, exact `CoreFailureProducer` phase tags, locationless invocation or compiler-invariant origins, canonical first-category occurrence indices, complete fact/occurrence wire oracles, and exact `ToolchainModuleRootReservationProducer` and emitter alternatives |
+| Diagnostic facts | Source-backed and document-backed `ZOM3027` facts use canonical occurrence and provenance keys; core admission failures remain operational and core/query invariants remain registered compiler incidents |
 | Reuse, ownership, and equality | Handle-free `Semantic` values for the six projections; four core-specific materializers are retained revision-local capability memos with sole ownership, transitive dependency retention, and snapshot-bound leases |
 | Retention and persistence | Retain the small mandatory projections in memory and disable persistence until this RFC's cache gate |
 | Readiness and missing values | Permit only graph, semantic skeleton, and named-definition inventory reads from the authority-staging snapshot; reject every named-item, owner-body, core-bootstrap, or materialization demand before contextual authority readiness; map a post-readiness missing required value to `VerifiedStateMismatch` |
@@ -1618,9 +1556,9 @@ and does not depend on wall-clock noise.
 - Export, exported-binding, definition-header, signature, visibility,
   scope-name-bucket, import-target, closure-environment, and diagnostic
   projections exist and have equality mutation tests.
-- Source-backed and locationless diagnostic facts retain distinct occurrences,
-  deterministic ordering, and identical rendered output across cache and worker
-  permutations.
+- Source-backed and document-backed diagnostic facts retain distinct
+  occurrences, deterministic ordering, and identical terminal or IDE projection
+  across cache and worker permutations.
 - A private body edit leaves unrelated export/signature projections green and
   executes no Binder or Checker provider in dependent modules.
 - A public signature or export edit invalidates exactly the consumers that read
@@ -1725,12 +1663,10 @@ and does not depend on wall-clock noise.
     provider-owned registry mutation, and no demand-order dependence;
   - extend Binder, driver, Checker, and diagnostic tests for pure providers,
     independent verification, projection equality, semantic skeleton and body
-    reuse, revision-local materialization, current provenance, and locationless
-    diagnostic rendering and ordering.
-  - cover a build-script failure before any output exists, output changes under
-    the same producer, mixed source and locationless ordering, distinct equal
-    occurrences, locationless rendering without path or range, locationless
-    fix-it rejection, and cache and worker-count permutations;
+    reuse, atomic materialization, and current source or document provenance.
+  - cover a build-script operational failure before any output exists, output
+    changes under the same producer, mixed source and document ordering,
+    distinct equal occurrences, and cache and worker-count permutations;
   - prove cache corruption, inactive stable keys, and verifier rejection do not
     change any interner size, and reject handle materialization links from every
     `Semantic` or `Persisted` target.

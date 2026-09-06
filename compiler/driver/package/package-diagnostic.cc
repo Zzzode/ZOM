@@ -14,11 +14,7 @@
 
 #include "compiler/driver/package/package-diagnostic.h"
 
-#include <climits>
-
-#include "compiler/diagnostics/core/diagnostic-engine.h"
-#include "compiler/diagnostics/core/diagnostic.h"
-#include "compiler/source/manager.h"
+#include "compiler/identity/canonical/canonical-encoder.h"
 #include "zc/core/encoding.h"
 #include "zc/core/memory.h"
 
@@ -48,31 +44,77 @@ zc::String documentDisplayName(const DiagnosticDocumentPath& path) {
                  escapePath(path.packageRelativePath().segments(), 0));
 }
 
-bool sameDocument(const InputDocumentKey& left, const InputDocumentKey& right) {
-  return left.encode().asPtr() == right.encode().asPtr();
+zc::Array<uint8_t> manifestOccurrence(const ManifestFailure& failure) {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString("zom.package-manifest-diagnostic"_zc.asBytes());
+  failure.encode(encoder);
+  return encoder.finish();
 }
 
-struct ResolvedSpan final {
-  source::SourceLoc start;
-  source::SourceLoc end;
-};
+zc::Array<uint8_t> toolchainRootOccurrence(const PackageToolchainModuleRootFailure& failure) {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString("zom.package-toolchain-root-diagnostic"_zc.asBytes());
+  encoder.encodeUint8(static_cast<uint8_t>(failure.producer()));
+  failure.package().encode(encoder);
+  failure.fieldPath().encode(encoder);
+  failure.argument().encode(encoder);
+  return encoder.finish();
+}
 
-zc::Maybe<ResolvedSpan> resolveSpan(source::SourceManager& sourceManager,
-                                    zc::ArrayPtr<const PackageDiagnosticDocument> documents,
-                                    const ManifestSpan& span) {
+zc::Maybe<uint64_t> documentLength(zc::ArrayPtr<const PackageDiagnosticDocument> documents,
+                                   const InputDocumentKey& key) {
+  const auto encoded = key.encode();
   for (const auto& document : documents) {
-    if (!sameDocument(document.key(), span.document())) { continue; }
-    const auto& view = document.sourceView();
-    if (span.byteEnd() > view.originalSize()) { return zc::none; }
-    const auto start = view.escapedOffset(span.byteStart());
-    const auto end = view.escapedOffset(span.byteEnd());
-    if (start > UINT_MAX || end > UINT_MAX) { return zc::none; }
-    const auto buffer =
-        sourceManager.addMemBufferCopy(view.escapedSource().asBytes(), document.displayName());
-    return ResolvedSpan{sourceManager.getLocForOffset(buffer, static_cast<unsigned>(start)),
-                        sourceManager.getLocForOffset(buffer, static_cast<unsigned>(end))};
+    if (document.key().encode().asPtr() == encoded.asPtr()) {
+      return document.sourceView().originalSize();
+    }
   }
   return zc::none;
+}
+
+bool addDocumentAuthority(PackageDiagnosticFactProjection& projection,
+                          zc::ArrayPtr<const PackageDiagnosticDocument> documents,
+                          const InputDocumentKey& key) {
+  const auto encoded = key.encode();
+  auto length = documentLength(documents, key);
+  if (length == zc::none) { return false; }
+  for (const auto& authority : projection.documents) {
+    if (authority.identity.asPtr() == encoded.asPtr()) {
+      return authority.byteLength == ZC_ASSERT_NONNULL(length);
+    }
+  }
+  projection.documents.add(diagnostics::DiagnosticDocumentAuthority{
+      zc::heapArray<uint8_t>(encoded.asPtr()), ZC_ASSERT_NONNULL(length)});
+  return true;
+}
+
+zc::Maybe<diagnostics::DiagnosticProvenanceKey> documentSite(
+    const InputDocumentKey& document, zc::ArrayPtr<const uint8_t> occurrence,
+    diagnostics::DocumentDiagnosticSiteRole role, uint32_t ordinal) {
+  return diagnostics::DiagnosticProvenanceKey::documentSite(
+      document.encode(), zc::heapArray<uint8_t>(occurrence), role, ordinal);
+}
+
+zc::Maybe<diagnostics::DiagnosticProvenanceKey> addSpan(
+    PackageDiagnosticFactProjection& projection,
+    zc::ArrayPtr<const PackageDiagnosticDocument> documents, const ManifestSpan& span,
+    zc::ArrayPtr<const uint8_t> occurrence, diagnostics::DocumentDiagnosticSiteRole role,
+    uint32_t ordinal) {
+  auto length = documentLength(documents, span.document());
+  if (length == zc::none || span.byteStart() > span.byteEnd() ||
+      span.byteEnd() > ZC_ASSERT_NONNULL(length) ||
+      !addDocumentAuthority(projection, documents, span.document())) {
+    return zc::none;
+  }
+  auto key = documentSite(span.document(), occurrence, role, ordinal);
+  if (key == zc::none) { return zc::none; }
+  auto output = ZC_ASSERT_NONNULL(key).clone();
+  const bool ranged = role == diagnostics::DocumentDiagnosticSiteRole::Highlight;
+  projection.provenance.add(diagnostics::SourceDiagnosticProvenanceEntry{
+      zc::mv(ZC_ASSERT_NONNULL(key)),
+      diagnostics::DiagnosticSourceRange{span.byteStart(),
+                                         ranged ? span.byteEnd() : span.byteStart(), ranged}});
+  return zc::mv(output);
 }
 
 }  // namespace
@@ -110,6 +152,11 @@ uint64_t SanitizedSourceView::escapedOffset(uint64_t originalOffset) const {
 }
 
 uint64_t SanitizedSourceView::originalSize() const noexcept { return escapedOffsets.size() - 1; }
+SanitizedSourceView SanitizedSourceView::clone() const {
+  zc::Vector<uint64_t> offsets(escapedOffsets.size());
+  for (const auto offset : escapedOffsets) offsets.add(offset);
+  return SanitizedSourceView(zc::str(sourceValue), zc::mv(offsets));
+}
 
 PackageDiagnosticDocument::PackageDiagnosticDocument(InputDocumentKey&& key,
                                                      SanitizedSourceView&& source,
@@ -133,6 +180,10 @@ const SanitizedSourceView& PackageDiagnosticDocument::sourceView() const noexcep
   return sourceValue;
 }
 zc::StringPtr PackageDiagnosticDocument::displayName() const noexcept { return displayNameValue; }
+PackageDiagnosticDocument PackageDiagnosticDocument::clone() const {
+  return PackageDiagnosticDocument(keyValue.clone(), sourceValue.clone(),
+                                   zc::str(displayNameValue));
+}
 
 zc::StringPtr manifestIssueDisplay(ManifestIssue issue) noexcept {
   switch (issue) {
@@ -186,6 +237,18 @@ zc::StringPtr manifestIssueDisplay(ManifestIssue issue) noexcept {
       return "feature-cycle"_zc;
   }
   ZC_UNREACHABLE
+}
+
+zc::StringPtr targetSelectionIssueDisplay(TargetSelectionIssue issue) noexcept {
+  switch (issue) {
+    case TargetSelectionIssue::UnknownWorkspacePackage:
+      return "unknown-workspace-package"_zc;
+    case TargetSelectionIssue::UnknownTarget:
+      return "unknown-target"_zc;
+    case TargetSelectionIssue::UnknownRootFeature:
+      return "unknown-root-feature"_zc;
+  }
+  ZC_UNREACHABLE;
 }
 
 zc::StringPtr buildScriptIssueDisplay(BuildScriptIssue issue) noexcept {
@@ -352,82 +415,91 @@ zc::StringPtr verifyFailureDisplay(const VerifyFailure& failure) noexcept {
   ZC_UNREACHABLE;
 }
 
-void PackageDiagnosticAdapter::emitInvocationIssue(diagnostics::DiagnosticEngine& diagnostics,
-                                                   InvocationIssue issue) {
-  diagnostics.diagnose<diagnostics::DiagID::PackageInvocationInvalid>(
-      source::SourceLoc(), invocationIssueDisplay(issue));
-}
-
-void PackageDiagnosticAdapter::emitMaterializationIssue(diagnostics::DiagnosticEngine& diagnostics,
-                                                        MaterializationIssue issue) {
-  diagnostics.diagnose<diagnostics::DiagID::PackageMaterializationInvalid>(
-      source::SourceLoc(), materializationIssueDisplay(issue));
-}
-
-void PackageDiagnosticAdapter::emitBuildScriptIssue(diagnostics::DiagnosticEngine& diagnostics,
-                                                    BuildScriptIssue issue) {
-  diagnostics.diagnose<diagnostics::DiagID::PackageBuildScriptFailed>(
-      source::SourceLoc(), buildScriptIssueDisplay(issue));
-}
-
-void PackageDiagnosticAdapter::emitVerifyFailure(diagnostics::DiagnosticEngine& diagnostics,
-                                                 const VerifyFailure& failure) {
-  diagnostics.diagnose<diagnostics::DiagID::PackageInvocationInvalid>(
-      source::SourceLoc(), verifyFailureDisplay(failure));
-}
-
-bool PackageDiagnosticAdapter::emitManifestFailure(
-    diagnostics::DiagnosticEngine& diagnostics,
+PackageDiagnosticProjectionResult projectManifestFailure(
     zc::ArrayPtr<const PackageDiagnosticDocument> documents, const ManifestFailure& failure) {
   const auto& primaryAnchor = failure.provenance().primary();
-  if (primaryAnchor.kind() != DiagnosticAnchorKind::Manifest) { return false; }
+  if (primaryAnchor.kind() != DiagnosticAnchorKind::Manifest) {
+    return PackageDiagnosticProjectionFailure::InvalidProvenance;
+  }
+  const auto occurrenceBytes = manifestOccurrence(failure);
+  PackageDiagnosticFactProjection projection;
   auto primary =
-      resolveSpan(diagnostics.getSourceManager(), documents, primaryAnchor.manifestSpan());
-  zc::Maybe<ResolvedSpan> related;
+      addSpan(projection, documents, primaryAnchor.manifestSpan(), occurrenceBytes.asPtr(),
+              diagnostics::DocumentDiagnosticSiteRole::Primary, 0);
+  if (primary == zc::none) { return PackageDiagnosticProjectionFailure::MissingDocument; }
+  zc::Vector<diagnostics::DiagnosticSecondary> secondary;
+  auto primaryHighlight =
+      addSpan(projection, documents, primaryAnchor.manifestSpan(), occurrenceBytes.asPtr(),
+              diagnostics::DocumentDiagnosticSiteRole::Highlight, 0);
+  if (primaryHighlight == zc::none) { return PackageDiagnosticProjectionFailure::MissingDocument; }
+  auto highlight =
+      diagnostics::DiagnosticSecondary::highlight(zc::mv(ZC_ASSERT_NONNULL(primaryHighlight)));
+  if (highlight == zc::none) { return PackageDiagnosticProjectionFailure::InvalidFact; }
+  secondary.add(zc::mv(ZC_ASSERT_NONNULL(highlight)));
   if (failure.issue() == ManifestIssue::DuplicateWorkspacePackageName &&
       failure.provenance().related().size() == 1) {
     const auto& relatedAnchor = failure.provenance().related()[0];
-    if (relatedAnchor.kind() != DiagnosticAnchorKind::Manifest) { return false; }
-    related = resolveSpan(diagnostics.getSourceManager(), documents, relatedAnchor.manifestSpan());
-    if (related == zc::none) { return false; }
-  }
-  ZC_IF_SOME(primaryValue, primary) {
-    auto diagnostic = diagnostics.diagnose<diagnostics::DiagID::PackageManifestInvalid>(
-        primaryValue.start, manifestIssueDisplay(failure.issue()));
-    diagnostic.addRange(
-        source::CharSourceRange::getCharRange(primaryValue.start, primaryValue.end));
-    ZC_IF_SOME(relatedValue, related) {
-      auto child = zc::heap<diagnostics::Diagnostic>(
-          diagnostics::DiagID::PreviousWorkspacePackageHere, relatedValue.start);
-      child->addRange(source::CharSourceRange::getCharRange(relatedValue.start, relatedValue.end));
-      diagnostic.addChild(zc::mv(child));
+    if (relatedAnchor.kind() != DiagnosticAnchorKind::Manifest) {
+      return PackageDiagnosticProjectionFailure::InvalidProvenance;
     }
-    diagnostic.emit();
-    return true;
+    auto related =
+        addSpan(projection, documents, relatedAnchor.manifestSpan(), occurrenceBytes.asPtr(),
+                diagnostics::DocumentDiagnosticSiteRole::Note, 0);
+    if (related == zc::none) { return PackageDiagnosticProjectionFailure::MissingDocument; }
+    auto note = diagnostics::DiagnosticSecondary::note(
+        diagnostics::DiagID::PreviousWorkspacePackageHere, zc::mv(ZC_ASSERT_NONNULL(related)), {});
+    if (note == zc::none) { return PackageDiagnosticProjectionFailure::InvalidFact; }
+    secondary.add(zc::mv(ZC_ASSERT_NONNULL(note)));
+  } else if (failure.provenance().related().size() != 0) {
+    return PackageDiagnosticProjectionFailure::InvalidProvenance;
   }
-  return false;
+  auto occurrence = diagnostics::DiagnosticOccurrenceKey::document(
+      primaryAnchor.manifestSpan().document().encode(),
+      zc::heapArray<uint8_t>(occurrenceBytes.asPtr()));
+  zc::Vector<zc::String> arguments;
+  arguments.add(zc::str(manifestIssueDisplay(failure.issue())));
+  auto fact = diagnostics::DiagnosticFact::from(
+      zc::mv(ZC_ASSERT_NONNULL(occurrence)), diagnostics::DiagID::PackageManifestInvalid,
+      zc::mv(arguments), zc::mv(ZC_ASSERT_NONNULL(primary)), zc::mv(secondary));
+  if (fact == zc::none) { return PackageDiagnosticProjectionFailure::InvalidFact; }
+  projection.facts.add(zc::mv(ZC_ASSERT_NONNULL(fact)));
+  return zc::mv(projection);
 }
 
-bool PackageDiagnosticAdapter::emitToolchainModuleRootFailure(
-    diagnostics::DiagnosticEngine& diagnostics,
+PackageDiagnosticProjectionResult projectToolchainModuleRootFailure(
     zc::ArrayPtr<const PackageDiagnosticDocument> documents,
     const PackageToolchainModuleRootFailure& failure) {
   const auto& primaryAnchor = failure.provenance().primary();
   if (primaryAnchor.kind() != DiagnosticAnchorKind::Manifest ||
       failure.provenance().related().size() != 0 || failure.argument().path().size() != 1) {
-    return false;
+    return PackageDiagnosticProjectionFailure::InvalidProvenance;
   }
+  const auto occurrenceBytes = toolchainRootOccurrence(failure);
+  PackageDiagnosticFactProjection projection;
   auto primary =
-      resolveSpan(diagnostics.getSourceManager(), documents, primaryAnchor.manifestSpan());
-  ZC_IF_SOME(primaryValue, primary) {
-    auto diagnostic = diagnostics.diagnose<diagnostics::DiagID::ToolchainModuleRootReserved>(
-        primaryValue.start, zc::str(failure.argument().path()[0].text()));
-    diagnostic.addRange(
-        source::CharSourceRange::getCharRange(primaryValue.start, primaryValue.end));
-    diagnostic.emit();
-    return true;
-  }
-  return false;
+      addSpan(projection, documents, primaryAnchor.manifestSpan(), occurrenceBytes.asPtr(),
+              diagnostics::DocumentDiagnosticSiteRole::Primary, 0);
+  if (primary == zc::none) { return PackageDiagnosticProjectionFailure::MissingDocument; }
+  auto primaryHighlight =
+      addSpan(projection, documents, primaryAnchor.manifestSpan(), occurrenceBytes.asPtr(),
+              diagnostics::DocumentDiagnosticSiteRole::Highlight, 0);
+  if (primaryHighlight == zc::none) { return PackageDiagnosticProjectionFailure::MissingDocument; }
+  auto occurrence = diagnostics::DiagnosticOccurrenceKey::document(
+      primaryAnchor.manifestSpan().document().encode(),
+      zc::heapArray<uint8_t>(occurrenceBytes.asPtr()));
+  zc::Vector<zc::String> arguments;
+  arguments.add(zc::str(failure.argument().path()[0].text()));
+  zc::Vector<diagnostics::DiagnosticSecondary> secondary;
+  auto highlight =
+      diagnostics::DiagnosticSecondary::highlight(zc::mv(ZC_ASSERT_NONNULL(primaryHighlight)));
+  if (highlight == zc::none) { return PackageDiagnosticProjectionFailure::InvalidFact; }
+  secondary.add(zc::mv(ZC_ASSERT_NONNULL(highlight)));
+  auto fact = diagnostics::DiagnosticFact::from(
+      zc::mv(ZC_ASSERT_NONNULL(occurrence)), diagnostics::DiagID::ToolchainModuleRootReserved,
+      zc::mv(arguments), zc::mv(ZC_ASSERT_NONNULL(primary)), zc::mv(secondary));
+  if (fact == zc::none) { return PackageDiagnosticProjectionFailure::InvalidFact; }
+  projection.facts.add(zc::mv(ZC_ASSERT_NONNULL(fact)));
+  return zc::mv(projection);
 }
 
 }  // namespace zomlang::compiler::driver::package

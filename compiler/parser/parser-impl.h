@@ -175,7 +175,7 @@ struct Parser::Impl {
 
   const source::SourceManager& sourceMgr;
   diagnostics::SourceDiagnosticDraftBuffer& diagnosticFacts;
-  diagnostics::DiagnosticEmitter& diagnosticEngine;
+  diagnostics::SourceDiagnosticSink& diagnosticEngine;
   source::BufferId bufferId;
   ParserContext context;
   bool parseAttempted = false;

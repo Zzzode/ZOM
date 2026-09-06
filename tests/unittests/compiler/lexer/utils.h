@@ -12,17 +12,54 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zc/core/common.h"
-#include "zc/core/memory.h"
 #include "compiler/basic/string-pool.h"
 #include "compiler/basic/zomlang-opts.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
+#include "compiler/diagnostics/fact/source-diagnostic-sink.h"
 #include "compiler/lexer/lexer.h"
 #include "compiler/source/manager.h"
+#include "zc/core/common.h"
+#include "zc/core/memory.h"
 
 namespace zomlang {
 namespace compiler {
 namespace lexer {
+
+struct CapturedLexerDiagnostic final {
+  diagnostics::DiagID code;
+  zc::Vector<zc::String> arguments;
+};
+
+class CapturedLexerDiagnostics final : public diagnostics::SourceDiagnosticSink {
+public:
+  void addHighlight(diagnostics::SourceDiagnosticDraftHandle,
+                    const source::CharSourceRange&) override {}
+
+  ZC_NODISCARD bool hasErrors() const {
+    for (const auto& diagnostic : values) {
+      if (diagnostics::getDiagnosticInfo(diagnostic.code).severity >=
+          diagnostics::DiagSeverity::kError) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  ZC_NODISCARD zc::ArrayPtr<const CapturedLexerDiagnostic> diagnostics() const {
+    return values.asPtr();
+  }
+
+private:
+  diagnostics::SourceDiagnosticDraftHandle append(diagnostics::DiagID code, source::SourceLoc,
+                                                  zc::Vector<zc::String>&& arguments) override {
+    values.add(CapturedLexerDiagnostic{code, zc::mv(arguments)});
+    return makeHandle(values.size());
+  }
+
+  void appendNote(diagnostics::SourceDiagnosticDraftHandle, diagnostics::DiagID, source::SourceLoc,
+                  zc::Vector<zc::String>&&) override {}
+
+  zc::Vector<CapturedLexerDiagnostic> values;
+};
 
 struct TokenizeResult {
   zc::Own<basic::StringPool> stringPool;
@@ -46,22 +83,23 @@ inline source::SourceManager& getSourceManager() {
 
 inline zc::Vector<Token> tokenizeWithStringPool(
     zc::StringPtr source, basic::StringPool& stringPool,
-    zc::Maybe<diagnostics::DiagnosticEngine&> diagEng = zc::none) {
+    zc::Maybe<CapturedLexerDiagnostics&> diagnostics = zc::none) {
   auto& sourceManager = getSourceManager();
   auto langOpts = basic::LangOptions();
 
   auto bufferId = sourceManager.addMemBufferCopy(source.asBytes(), "test.zom");
 
-  zc::Own<diagnostics::DiagnosticEngine> ownedDiagEng;
-  diagnostics::DiagnosticEngine* pDiagEng = nullptr;
+  zc::Own<CapturedLexerDiagnostics> ownedDiagnostics;
+  CapturedLexerDiagnostics* diagnosticSink = nullptr;
 
-  ZC_IF_SOME(DE, diagEng) { pDiagEng = &DE; }
-  else {
-    ownedDiagEng = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
-    pDiagEng = ownedDiagEng.get();
+  ZC_IF_SOME(value, diagnostics) {
+    diagnosticSink = &value;
+  } else {
+    ownedDiagnostics = zc::heap<CapturedLexerDiagnostics>();
+    diagnosticSink = ownedDiagnostics.get();
   }
 
-  Lexer lexer(sourceManager, *pDiagEng, langOpts, stringPool, bufferId);
+  Lexer lexer(sourceManager, *diagnosticSink, langOpts, stringPool, bufferId);
 
   zc::Vector<Token> tokens;
   Token token;
@@ -80,16 +118,16 @@ inline TokenizeResult tokenize(zc::StringPtr source) {
   return result;
 }
 
-inline TokenizeResult tokenize(zc::StringPtr source, diagnostics::DiagnosticEngine& diagEng) {
+inline TokenizeResult tokenize(zc::StringPtr source, CapturedLexerDiagnostics& diagnostics) {
   TokenizeResult result;
   result.stringPool = zc::heap<basic::StringPool>();
-  result.tokens = tokenizeWithStringPool(source, *result.stringPool, diagEng);
+  result.tokens = tokenizeWithStringPool(source, *result.stringPool, diagnostics);
   return result;
 }
 
-inline TokenizeResult tokenize(zc::StringPtr source, diagnostics::DiagnosticEngine* diagEng) {
-  if (diagEng == nullptr) { return tokenize(source); }
-  return tokenize(source, *diagEng);
+inline TokenizeResult tokenize(zc::StringPtr source, CapturedLexerDiagnostics* diagnostics) {
+  if (diagnostics == nullptr) { return tokenize(source); }
+  return tokenize(source, *diagnostics);
 }
 
 inline zc::Vector<CommentDirective> tokenizeAndGetDirectives(zc::StringPtr source) {
@@ -98,9 +136,9 @@ inline zc::Vector<CommentDirective> tokenizeAndGetDirectives(zc::StringPtr sourc
 
   auto bufferId = sourceManager.addMemBufferCopy(source.asBytes(), "test_directives.zom");
 
-  auto ownedDiagEng = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
+  CapturedLexerDiagnostics diagnostics;
   basic::StringPool stringPool;
-  Lexer lexer(sourceManager, *ownedDiagEng, langOpts, stringPool, bufferId);
+  Lexer lexer(sourceManager, diagnostics, langOpts, stringPool, bufferId);
 
   Token token;
   do { lexer.lex(token); } while (token.getKind() != ast::SyntaxKind::EndOfFile);

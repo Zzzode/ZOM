@@ -16,10 +16,10 @@
 
 #include <cstddef>
 
-#include "zc/core/vector.h"
 #include "compiler/basic/string-pool.h"
 #include "compiler/lexer/token.h"
 #include "compiler/source/location.h"
+#include "zc/core/vector.h"
 
 namespace zomlang {
 namespace compiler {
@@ -30,8 +30,7 @@ class SourceManager;
 }  // namespace source
 
 namespace diagnostics {
-class DiagnosticEmitter;
-class InFlightDiagnostic;
+class SourceDiagnosticSink;
 }  // namespace diagnostics
 
 namespace basic {
@@ -55,7 +54,7 @@ struct CommentDirective {
 
 class Lexer {
 public:
-  Lexer(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEmitter& diagnosticEmitter,
+  Lexer(const source::SourceManager& sourceMgr, diagnostics::SourceDiagnosticSink& diagnosticSink,
         const basic::LangOptions& options, basic::StringPool& stringPool,
         const source::BufferId& bufferId);
   ~Lexer();

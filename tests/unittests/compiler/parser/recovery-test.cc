@@ -15,7 +15,7 @@
 // Recovery contract tests per RFC 0002.
 //
 // These tests verify the parser's error-recovery guarantees:
-//   1. Bounded diagnostics (errorBudget = 100)
+//   1. Bounded diagnostics (retained facts stay within the fail-closed ceiling)
 //   2. EOF termination (parser always terminates at EOF)
 //   3. Progress invariants (recovery always advances the token cursor)
 //   4. Fail closed on error (parse() returns zc::none)
@@ -23,15 +23,15 @@
 #include <cstddef>
 #include <cstring>
 
-#include "zc/core/common.h"
-#include "zc/core/string.h"
-#include "zc/ztest/test.h"
 #include "compiler/ast/tree.h"
 #include "compiler/basic/string-pool.h"
 #include "compiler/basic/zomlang-opts.h"
 #include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "compiler/parser/parser.h"
 #include "compiler/source/manager.h"
+#include "zc/core/common.h"
+#include "zc/core/string.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang {
 namespace compiler {
@@ -39,7 +39,14 @@ namespace parser {
 
 namespace {
 
-constexpr size_t kErrorBudget = 100;
+/// \brief Display budget applied by `DiagnosticPolicy` at the consumer boundary.
+///
+/// Production is deliberately not bounded by this value: RFC 0047 keeps display
+/// budgeting a consumer policy that never suppresses a retained fact.
+constexpr size_t kDisplayErrorBudget = 100;
+
+/// \brief Fail-closed ceiling on retained source diagnostic facts.
+constexpr size_t kMaximumSourceFacts = 4096;
 
 zc::String repeatSource(zc::StringPtr source, size_t count) {
   zc::String result = zc::heapString(source.size() * count);
@@ -78,34 +85,35 @@ ParseOutcome parseSource(zc::StringPtr source) {
 }  // namespace
 
 // ============================================================================
-// 1. Bounded diagnostics -- errorBudget = 100
+// 1. Bounded diagnostics -- production is bounded by the fail-closed fact
+//    ceiling, not by a display budget
 // ============================================================================
 
 ZC_TEST("RecoveryTest.BoundedDiagnostics") {
-  // Generate enough distinct errors to exceed the error budget.
-  // Each "let = ;" on its own line produces one error at a unique location,
-  // so deduplication does not apply.  With 200 lines we expect the count
-  // to be capped at the budget (100).
+  // Each "let = ;" on its own line produces errors at unique locations. Every
+  // produced fact is retained: per RFC 0047 display budgeting is a consumer
+  // policy and never suppresses a fact that reached the request root. The only
+  // production bound is the fail-closed source fact ceiling.
   zc::String source = repeatSource("let = ;\n"_zc, 200);
   auto outcome = parseSource(source.asPtr());
 
   ZC_EXPECT(outcome.hadErrors, "Invalid source should produce errors");
   ZC_EXPECT(outcome.result == zc::none, "Parser must fail closed on invalid input");
-  ZC_EXPECT(outcome.errorCount <= kErrorBudget,
-            "Diagnostic count must be capped by errorBudget (100)");
-  ZC_EXPECT(outcome.errorCount == kErrorBudget,
-            "With 200 distinct errors, count should reach the budget cap");
+  ZC_EXPECT(outcome.errorCount > kDisplayErrorBudget,
+            "Production retains every fact rather than stopping at the display budget");
+  ZC_EXPECT(outcome.errorCount <= kMaximumSourceFacts,
+            "Retained facts must stay within the fail-closed source fact ceiling");
 }
 
 ZC_TEST("RecoveryTest.BoundedDiagnosticsManyInvalidStatements") {
-  // Alternative path: many malformed expression-statement-like tokens,
-  // each on its own line, ensuring different source locations so
-  // EmittedDiagnosticKey deduplication does not collapse them.
+  // Alternative path: many malformed expression-statement-like tokens, each on
+  // its own line, so every fact carries a distinct occurrence.
   zc::String source = repeatSource("} } } } } } } } } }\n"_zc, 25);
   auto outcome = parseSource(source.asPtr());
 
   ZC_EXPECT(outcome.hadErrors, "Unbalanced braces should produce errors");
-  ZC_EXPECT(outcome.errorCount <= kErrorBudget, "Diagnostic count must never exceed errorBudget");
+  ZC_EXPECT(outcome.errorCount <= kMaximumSourceFacts,
+            "Retained facts must stay within the fail-closed source fact ceiling");
 }
 
 // ============================================================================
@@ -178,8 +186,8 @@ ZC_TEST("RecoveryTest.ProgressInvariantRepeatedMalformedLets") {
 
   // Parser returned -- each recovery step advanced the cursor.
   ZC_EXPECT(outcome.hadErrors, "Malformed let statements should produce errors");
-  ZC_EXPECT(outcome.errorCount <= kErrorBudget,
-            "Even with 500 malformed statements, error count stays within budget");
+  ZC_EXPECT(outcome.errorCount <= kMaximumSourceFacts,
+            "Retained facts must stay within the fail-closed source fact ceiling");
 }
 
 ZC_TEST("RecoveryTest.ProgressInvariantMixedGarbage") {
@@ -191,8 +199,8 @@ ZC_TEST("RecoveryTest.ProgressInvariantMixedGarbage") {
   // Parser returned -- progress holds across mixed garbage.
   ZC_EXPECT(outcome.hadErrors, "Mixed garbage should produce errors");
   ZC_EXPECT(outcome.result == zc::none, "Parser must fail closed");
-  ZC_EXPECT(outcome.errorCount <= kErrorBudget,
-            "Error count stays within budget even with mixed garbage");
+  ZC_EXPECT(outcome.errorCount <= kMaximumSourceFacts,
+            "Retained facts must stay within the fail-closed source fact ceiling");
 }
 
 // ============================================================================

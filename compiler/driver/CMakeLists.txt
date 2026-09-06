@@ -21,6 +21,7 @@ set(DRIVER_SRC
   query/module-graph/module-dependency-provenance-query.cc
   query/module-graph/module-graph-query.cc
   query/module-graph/module-graph-query-input.cc
+  core/diagnostic-projector.cc
   core/role-seed-failure.cc
   core/library.cc
   core/marker-authority.cc

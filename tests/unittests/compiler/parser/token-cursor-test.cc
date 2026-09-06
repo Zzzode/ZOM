@@ -14,13 +14,14 @@
 
 #include "compiler/parser/token-cursor.h"
 
+#include "compiler/basic/string-pool.h"
+#include "compiler/basic/zomlang-opts.h"
+#include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
+#include "compiler/diagnostics/fact/source-diagnostic-sink.h"
+#include "compiler/source/manager.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
-#include "compiler/basic/string-pool.h"
-#include "compiler/basic/zomlang-opts.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
-#include "compiler/source/manager.h"
 
 namespace zomlang {
 namespace compiler {
@@ -49,6 +50,26 @@ zc::Vector<lexer::Token> makeRightShiftTokenStream(ast::SyntaxKind shiftKind, zc
   return tokens;
 }
 
+class CapturedSourceDiagnostics final : public diagnostics::SourceDiagnosticSink {
+public:
+  ZC_NODISCARD zc::ArrayPtr<const diagnostics::DiagID> diagnostics() const { return codes.asPtr(); }
+
+  void addHighlight(diagnostics::SourceDiagnosticDraftHandle,
+                    const source::CharSourceRange&) override {}
+
+private:
+  diagnostics::SourceDiagnosticDraftHandle append(diagnostics::DiagID code, source::SourceLoc,
+                                                  zc::Vector<zc::String>&&) override {
+    codes.add(code);
+    return makeHandle(codes.size());
+  }
+
+  void appendNote(diagnostics::SourceDiagnosticDraftHandle, diagnostics::DiagID, source::SourceLoc,
+                  zc::Vector<zc::String>&&) override {}
+
+  zc::Vector<diagnostics::DiagID> codes;
+};
+
 }  // namespace
 
 ZC_TEST("TokenCursorTest.PeekAndTokenClampToEof") {
@@ -68,10 +89,10 @@ ZC_TEST("TokenCursorTest.PeekAndTokenClampToEof") {
 ZC_TEST("TokenStreamTest.LexesOnDemand") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto bufferId = sourceManager->addMemBufferCopy("let value = 1;"_zc.asBytes(), "lazy-stream.zom");
-  diagnostics::DiagnosticEngine diagnosticEngine(*sourceManager);
+  diagnostics::SourceDiagnosticDraftBuffer diagnosticBuffer(*sourceManager, bufferId);
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
-  TokenStream stream(*sourceManager, diagnosticEngine, langOpts, stringPool, bufferId);
+  TokenStream stream(*sourceManager, diagnosticBuffer.lexerSink(), langOpts, stringPool, bufferId);
   TokenCursor cursor(stream);
 
   ZC_EXPECT(stream.bufferedSize() == 0);
@@ -134,16 +155,16 @@ ZC_TEST("TokenCursorTest.ExpectConsumesOrDiagnoses") {
   TokenStream stream;
   stream.reset(tokens.asPtr());
   TokenCursor cursor(stream);
-  auto sourceManager = zc::heap<source::SourceManager>();
-  diagnostics::DiagnosticEngine diagnosticEngine(*sourceManager);
+  CapturedSourceDiagnostics diagnosticSink;
 
-  ZC_EXPECT(cursor.expect(ast::SyntaxKind::LetKeyword, diagnosticEngine, "let"_zc));
+  ZC_EXPECT(cursor.expect(ast::SyntaxKind::LetKeyword, diagnosticSink, "let"_zc));
   ZC_EXPECT(cursor.position() == 1);
-  ZC_EXPECT(!diagnosticEngine.hasErrors());
+  ZC_EXPECT(diagnosticSink.diagnostics().size() == 0);
 
-  ZC_EXPECT(!cursor.expect(ast::SyntaxKind::Semicolon, diagnosticEngine, ";"_zc));
+  ZC_EXPECT(!cursor.expect(ast::SyntaxKind::Semicolon, diagnosticSink, ";"_zc));
   ZC_EXPECT(cursor.position() == 1);
-  ZC_EXPECT(diagnosticEngine.hasErrors());
+  ZC_REQUIRE(diagnosticSink.diagnostics().size() == 1);
+  ZC_EXPECT(diagnosticSink.diagnostics()[0] == diagnostics::DiagID::ExpectedToken);
 }
 
 ZC_TEST("TokenCursorTest.EofDoesNotAdvancePastEnd") {

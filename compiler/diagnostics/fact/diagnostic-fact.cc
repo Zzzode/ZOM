@@ -42,7 +42,11 @@ constexpr uint64_t kMinimumProvenanceEntryBytes = 51;
 constexpr uint64_t kMinimumStringBytes = 8;
 constexpr uint64_t kMinimumSecondaryBytes = 20;
 
-enum class ModuleDiagnosticKind : uint8_t { IdentityAdmission = 0x01, Binder = 0x02 };
+enum class ModuleDiagnosticKind : uint8_t {
+  IdentityAdmission = 0x01,
+  Binder = 0x02,
+  Semantic = 0x03,
+};
 
 bool validPhaseEmitter(SourceDiagnosticPhase phase, SourceDiagnosticEmitter emitter) {
   return (phase == SourceDiagnosticPhase::Lex && emitter == SourceDiagnosticEmitter::Lexer) ||
@@ -52,6 +56,20 @@ bool validPhaseEmitter(SourceDiagnosticPhase phase, SourceDiagnosticEmitter emit
 bool validPath(zc::ArrayPtr<const uint32_t> path) {
   if (path.size() == 2) { return path[1] == 0; }
   return path.size() == 3 && (path[1] == 1 || path[1] == 2);
+}
+
+bool validSemanticDomain(SemanticDiagnosticDomain domain) {
+  return domain >= SemanticDiagnosticDomain::Signature &&
+         domain <= SemanticDiagnosticDomain::ModuleGraph;
+}
+
+bool validSemanticSiteRole(SemanticDiagnosticSiteRole role) {
+  return role >= SemanticDiagnosticSiteRole::Primary &&
+         role <= SemanticDiagnosticSiteRole::PreviousDeclaration;
+}
+
+bool validDocumentSiteRole(DocumentDiagnosticSiteRole role) {
+  return role >= DocumentDiagnosticSiteRole::Primary && role <= DocumentDiagnosticSiteRole::Note;
 }
 
 int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) {
@@ -89,15 +107,24 @@ int compareOccurrence(const DiagnosticOccurrenceKey& left, const DiagnosticOccur
     if (comparison != 0) { return comparison; }
     return compareScalar(left.occurrence(), right.occurrence());
   }
+  if (left.origin() == DiagnosticFactOrigin::Document) {
+    comparison = compareBytes(left.documentIdentityBytes(), right.documentIdentityBytes());
+    if (comparison != 0) { return comparison; }
+    return compareBytes(left.documentOccurrenceBytes(), right.documentOccurrenceBytes());
+  }
   const auto leftModule = left.module().encode();
   const auto rightModule = right.module().encode();
   comparison = compareBytes(leftModule.asPtr(), rightModule.asPtr());
   if (comparison != 0) { return comparison; }
-  comparison = compareScalar(
-      static_cast<uint8_t>(left.isIdentityAdmission() ? ModuleDiagnosticKind::IdentityAdmission
-                                                      : ModuleDiagnosticKind::Binder),
-      static_cast<uint8_t>(right.isIdentityAdmission() ? ModuleDiagnosticKind::IdentityAdmission
-                                                       : ModuleDiagnosticKind::Binder));
+  const auto leftKind =
+      left.isIdentityAdmission()
+          ? ModuleDiagnosticKind::IdentityAdmission
+          : (left.isBinder() ? ModuleDiagnosticKind::Binder : ModuleDiagnosticKind::Semantic);
+  const auto rightKind =
+      right.isIdentityAdmission()
+          ? ModuleDiagnosticKind::IdentityAdmission
+          : (right.isBinder() ? ModuleDiagnosticKind::Binder : ModuleDiagnosticKind::Semantic);
+  comparison = compareScalar(static_cast<uint8_t>(leftKind), static_cast<uint8_t>(rightKind));
   if (comparison != 0) { return comparison; }
   if (left.isBinder()) {
     comparison = compareScalar(static_cast<uint8_t>(left.binderProducer()),
@@ -114,6 +141,21 @@ int compareOccurrence(const DiagnosticOccurrenceKey& left, const DiagnosticOccur
     if (comparison != 0) { return comparison; }
     const auto leftPath = left.binderSyntaxPath();
     const auto rightPath = right.binderSyntaxPath();
+    const size_t common = leftPath.size() < rightPath.size() ? leftPath.size() : rightPath.size();
+    for (size_t index = 0; index < common; ++index) {
+      comparison = compareScalar(leftPath[index], rightPath[index]);
+      if (comparison != 0) { return comparison; }
+    }
+    return compareScalar(leftPath.size(), rightPath.size());
+  }
+  if (left.isSemantic()) {
+    comparison = compareScalar(static_cast<uint8_t>(left.semanticDomain()),
+                               static_cast<uint8_t>(right.semanticDomain()));
+    if (comparison != 0) { return comparison; }
+    comparison = compareBytes(left.semanticOwnerBytes(), right.semanticOwnerBytes());
+    if (comparison != 0) { return comparison; }
+    const auto leftPath = left.semanticEventPath();
+    const auto rightPath = right.semanticEventPath();
     const size_t common = leftPath.size() < rightPath.size() ? leftPath.size() : rightPath.size();
     for (size_t index = 0; index < common; ++index) {
       comparison = compareScalar(leftPath[index], rightPath[index]);
@@ -145,6 +187,16 @@ int compareProvenance(const DiagnosticProvenanceKey& left, const DiagnosticProve
   int comparison =
       compareScalar(static_cast<uint8_t>(left.origin()), static_cast<uint8_t>(right.origin()));
   if (comparison != 0) { return comparison; }
+  if (left.origin() == DiagnosticFactOrigin::Document) {
+    comparison = compareBytes(left.documentIdentityBytes(), right.documentIdentityBytes());
+    if (comparison != 0) { return comparison; }
+    comparison = compareBytes(left.documentOccurrenceBytes(), right.documentOccurrenceBytes());
+    if (comparison != 0) { return comparison; }
+    comparison = compareScalar(static_cast<uint8_t>(left.documentRole()),
+                               static_cast<uint8_t>(right.documentRole()));
+    if (comparison != 0) { return comparison; }
+    return compareScalar(left.documentRoleOrdinal(), right.documentRoleOrdinal());
+  }
   const auto leftSource = left.source().encode();
   const auto rightSource = right.source().encode();
   comparison = compareBytes(leftSource.asPtr(), rightSource.asPtr());
@@ -161,11 +213,15 @@ int compareProvenance(const DiagnosticProvenanceKey& left, const DiagnosticProve
     const auto rightModule = right.module().encode();
     comparison = compareBytes(leftModule.asPtr(), rightModule.asPtr());
     if (comparison != 0) { return comparison; }
-    comparison = compareScalar(
-        static_cast<uint8_t>(left.isIdentitySyntaxSite() ? ModuleDiagnosticKind::IdentityAdmission
-                                                         : ModuleDiagnosticKind::Binder),
-        static_cast<uint8_t>(right.isIdentitySyntaxSite() ? ModuleDiagnosticKind::IdentityAdmission
-                                                          : ModuleDiagnosticKind::Binder));
+    const auto leftKind = left.isIdentitySyntaxSite()
+                              ? ModuleDiagnosticKind::IdentityAdmission
+                              : (left.isBinderModuleSite() ? ModuleDiagnosticKind::Binder
+                                                           : ModuleDiagnosticKind::Semantic);
+    const auto rightKind = right.isIdentitySyntaxSite()
+                               ? ModuleDiagnosticKind::IdentityAdmission
+                               : (right.isBinderModuleSite() ? ModuleDiagnosticKind::Binder
+                                                             : ModuleDiagnosticKind::Semantic);
+    comparison = compareScalar(static_cast<uint8_t>(leftKind), static_cast<uint8_t>(rightKind));
     if (comparison != 0) { return comparison; }
     if (left.isBinderModuleSite()) {
       comparison = compareBytes(left.binderSemanticOwnerBytes(), right.binderSemanticOwnerBytes());
@@ -173,22 +229,37 @@ int compareProvenance(const DiagnosticProvenanceKey& left, const DiagnosticProve
       comparison = compareScalar(static_cast<uint8_t>(left.binderEmitter()),
                                  static_cast<uint8_t>(right.binderEmitter()));
       if (comparison != 0) { return comparison; }
+    } else if (left.isSemanticSite()) {
+      comparison = compareScalar(static_cast<uint8_t>(left.semanticDomain()),
+                                 static_cast<uint8_t>(right.semanticDomain()));
+      if (comparison != 0) { return comparison; }
+      comparison = compareBytes(left.semanticOwnerBytes(), right.semanticOwnerBytes());
+      if (comparison != 0) { return comparison; }
     }
   }
   const auto leftPath =
       left.origin() == DiagnosticFactOrigin::Source
           ? left.occurrencePath()
-          : (left.isIdentitySyntaxSite() ? left.identitySyntaxPath() : left.binderSyntaxPath());
-  const auto rightPath =
-      right.origin() == DiagnosticFactOrigin::Source
-          ? right.occurrencePath()
-          : (right.isIdentitySyntaxSite() ? right.identitySyntaxPath() : right.binderSyntaxPath());
+          : (left.isIdentitySyntaxSite() ? left.identitySyntaxPath()
+                                         : (left.isBinderModuleSite() ? left.binderSyntaxPath()
+                                                                      : left.semanticEventPath()));
+  const auto rightPath = right.origin() == DiagnosticFactOrigin::Source
+                             ? right.occurrencePath()
+                             : (right.isIdentitySyntaxSite()
+                                    ? right.identitySyntaxPath()
+                                    : (right.isBinderModuleSite() ? right.binderSyntaxPath()
+                                                                  : right.semanticEventPath()));
   const size_t common = leftPath.size() < rightPath.size() ? leftPath.size() : rightPath.size();
   for (size_t index = 0; index < common; ++index) {
     comparison = compareScalar(leftPath[index], rightPath[index]);
     if (comparison != 0) { return comparison; }
   }
-  return compareScalar(leftPath.size(), rightPath.size());
+  comparison = compareScalar(leftPath.size(), rightPath.size());
+  if (comparison != 0 || !left.isSemanticSite()) { return comparison; }
+  comparison = compareScalar(static_cast<uint8_t>(left.semanticRole()),
+                             static_cast<uint8_t>(right.semanticRole()));
+  if (comparison != 0) { return comparison; }
+  return compareScalar(left.semanticRoleOrdinal(), right.semanticRoleOrdinal());
 }
 
 zc::Vector<zc::String> cloneStrings(zc::ArrayPtr<const zc::String> strings) {
@@ -227,28 +298,39 @@ bool argumentsFit(zc::ArrayPtr<const zc::String> arguments, uint64_t maximumByte
 }
 
 size_t provenanceComponentCount(const DiagnosticProvenanceKey& provenance) {
+  if (provenance.origin() == DiagnosticFactOrigin::Document) { return 2; }
   return provenance.origin() == DiagnosticFactOrigin::Source
              ? provenance.occurrencePath().size()
-             : (provenance.isIdentitySyntaxSite() ? provenance.identitySyntaxPath().size()
-                                                  : provenance.binderSyntaxPath().size());
+             : (provenance.isIdentitySyntaxSite()
+                    ? provenance.identitySyntaxPath().size()
+                    : (provenance.isBinderModuleSite() ? provenance.binderSyntaxPath().size()
+                                                       : provenance.semanticEventPath().size()));
 }
 
 bool sameOccurrence(const DiagnosticOccurrenceKey& occurrence,
                     const DiagnosticProvenanceKey& provenance) {
   if (occurrence.origin() != provenance.origin()) { return false; }
+  if (occurrence.origin() == DiagnosticFactOrigin::Document) {
+    return occurrence.documentOccurrenceBytes() == provenance.documentOccurrenceBytes();
+  }
   if (occurrence.origin() == DiagnosticFactOrigin::Module) {
-    if (occurrence.module().encode().asPtr() != provenance.module().encode().asPtr() ||
-        !occurrence.source().sameAs(provenance.source())) {
+    if (occurrence.module().encode().asPtr() != provenance.module().encode().asPtr()) {
       return false;
     }
     if (occurrence.isIdentityAdmission()) {
-      return provenance.isIdentitySyntaxSite() &&
+      return occurrence.source().sameAs(provenance.source()) && provenance.isIdentitySyntaxSite() &&
              occurrence.identitySyntaxPath() == provenance.identitySyntaxPath();
     }
-    return provenance.isBinderModuleSite() &&
-           occurrence.binderSemanticOwnerBytes() == provenance.binderSemanticOwnerBytes() &&
-           occurrence.binderEmitter() == provenance.binderEmitter() &&
-           occurrence.binderSyntaxPath() == provenance.binderSyntaxPath();
+    if (occurrence.isBinder()) {
+      return occurrence.source().sameAs(provenance.source()) && provenance.isBinderModuleSite() &&
+             occurrence.binderSemanticOwnerBytes() == provenance.binderSemanticOwnerBytes() &&
+             occurrence.binderEmitter() == provenance.binderEmitter() &&
+             occurrence.binderSyntaxPath() == provenance.binderSyntaxPath();
+    }
+    return provenance.isSemanticSite() &&
+           occurrence.semanticDomain() == provenance.semanticDomain() &&
+           occurrence.semanticOwnerBytes() == provenance.semanticOwnerBytes() &&
+           occurrence.semanticEventPath() == provenance.semanticEventPath();
   }
   const auto path = provenance.occurrencePath();
   return path.size() >= 2 && occurrence.source().sameAs(provenance.source()) &&
@@ -259,10 +341,17 @@ bool sameOccurrence(const DiagnosticOccurrenceKey& occurrence,
 void encodeOccurrence(identity::CanonicalEncoder& encoder,
                       const DiagnosticOccurrenceKey& occurrence) {
   encoder.encodeUint8(static_cast<uint8_t>(occurrence.origin()));
+  if (occurrence.origin() == DiagnosticFactOrigin::Document) {
+    encoder.encodeByteString(occurrence.documentIdentityBytes());
+    encoder.encodeByteString(occurrence.documentOccurrenceBytes());
+    return;
+  }
   if (occurrence.origin() == DiagnosticFactOrigin::Module) {
-    encoder.encodeUint8(static_cast<uint8_t>(occurrence.isIdentityAdmission()
-                                                 ? ModuleDiagnosticKind::IdentityAdmission
-                                                 : ModuleDiagnosticKind::Binder));
+    const auto kind = occurrence.isIdentityAdmission()
+                          ? ModuleDiagnosticKind::IdentityAdmission
+                          : (occurrence.isBinder() ? ModuleDiagnosticKind::Binder
+                                                   : ModuleDiagnosticKind::Semantic);
+    encoder.encodeUint8(static_cast<uint8_t>(kind));
     occurrence.module().encode(encoder);
     occurrence.source().encode(encoder);
     if (occurrence.isBinder()) {
@@ -279,6 +368,15 @@ void encodeOccurrence(identity::CanonicalEncoder& encoder,
         encoder.encodeUint32(component);
       }
       encoder.encodeUint32(0);
+      return;
+    }
+    if (occurrence.isSemantic()) {
+      encoder.encodeUint8(static_cast<uint8_t>(occurrence.semanticDomain()));
+      encoder.encodeByteString(occurrence.semanticOwnerBytes());
+      encoder.encodeSequenceSize(occurrence.semanticEventPath().size());
+      for (const auto component : occurrence.semanticEventPath()) {
+        encoder.encodeUint32(component);
+      }
       return;
     }
     encoder.encodeUint8(static_cast<uint8_t>(occurrence.identityPhase()));
@@ -298,6 +396,15 @@ void encodeOccurrence(identity::CanonicalEncoder& encoder,
 zc::Maybe<DiagnosticOccurrenceKey> decodeOccurrence(identity::CanonicalDecoder& decoder) {
   auto origin = decoder.decodeUint8();
   if (origin == zc::none) { return zc::none; }
+  if (static_cast<DiagnosticFactOrigin>(ZC_ASSERT_NONNULL(origin)) ==
+      DiagnosticFactOrigin::Document) {
+    auto document = decoder.decodeByteString(64 * 1024 * 1024);
+    auto occurrence = decoder.decodeByteString(64 * 1024 * 1024);
+    if (document == zc::none || occurrence == zc::none) { return zc::none; }
+    return DiagnosticOccurrenceKey::document(
+        zc::heapArray<uint8_t>(ZC_ASSERT_NONNULL(document).asPtr()),
+        zc::heapArray<uint8_t>(ZC_ASSERT_NONNULL(occurrence).asPtr()));
+  }
   if (static_cast<DiagnosticFactOrigin>(ZC_ASSERT_NONNULL(origin)) ==
       DiagnosticFactOrigin::Module) {
     auto kind = decoder.decodeUint8();
@@ -332,6 +439,26 @@ zc::Maybe<DiagnosticOccurrenceKey> decodeOccurrence(identity::CanonicalDecoder& 
           zc::mv(ZC_ASSERT_NONNULL(module)), zc::mv(ZC_ASSERT_NONNULL(source)),
           static_cast<BinderDiagnosticProducer>(ZC_ASSERT_NONNULL(producer)), zc::mv(owner),
           static_cast<BinderDiagnosticEmitter>(ZC_ASSERT_NONNULL(emitter)), zc::mv(path));
+    }
+    if (static_cast<ModuleDiagnosticKind>(ZC_ASSERT_NONNULL(kind)) ==
+        ModuleDiagnosticKind::Semantic) {
+      auto domain = decoder.decodeUint8();
+      auto owner = decoder.decodeByteString(64 * 1024 * 1024);
+      auto count = decoder.decodeSequenceSize(64);
+      if (domain == zc::none || owner == zc::none || count == zc::none ||
+          ZC_ASSERT_NONNULL(owner).size() == 0) {
+        return zc::none;
+      }
+      zc::Vector<uint32_t> path;
+      for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(count); ++index) {
+        auto component = decoder.decodeUint32();
+        if (component == zc::none) { return zc::none; }
+        path.add(ZC_ASSERT_NONNULL(component));
+      }
+      return DiagnosticOccurrenceKey::semantic(
+          zc::mv(ZC_ASSERT_NONNULL(module)), zc::mv(ZC_ASSERT_NONNULL(source)),
+          static_cast<SemanticDiagnosticDomain>(ZC_ASSERT_NONNULL(domain)),
+          zc::heapArray<uint8_t>(ZC_ASSERT_NONNULL(owner).asPtr()), zc::mv(path));
     }
     if (static_cast<ModuleDiagnosticKind>(ZC_ASSERT_NONNULL(kind)) !=
         ModuleDiagnosticKind::IdentityAdmission) {
@@ -376,10 +503,19 @@ zc::Maybe<DiagnosticOccurrenceKey> decodeOccurrence(identity::CanonicalDecoder& 
 void encodeProvenance(identity::CanonicalEncoder& encoder,
                       const DiagnosticProvenanceKey& provenance) {
   encoder.encodeUint8(static_cast<uint8_t>(provenance.origin()));
+  if (provenance.origin() == DiagnosticFactOrigin::Document) {
+    encoder.encodeByteString(provenance.documentIdentityBytes());
+    encoder.encodeByteString(provenance.documentOccurrenceBytes());
+    encoder.encodeUint8(static_cast<uint8_t>(provenance.documentRole()));
+    encoder.encodeUint32(provenance.documentRoleOrdinal());
+    return;
+  }
   if (provenance.origin() == DiagnosticFactOrigin::Module) {
-    encoder.encodeUint8(static_cast<uint8_t>(provenance.isIdentitySyntaxSite()
-                                                 ? ModuleDiagnosticKind::IdentityAdmission
-                                                 : ModuleDiagnosticKind::Binder));
+    const auto kind = provenance.isIdentitySyntaxSite()
+                          ? ModuleDiagnosticKind::IdentityAdmission
+                          : (provenance.isBinderModuleSite() ? ModuleDiagnosticKind::Binder
+                                                             : ModuleDiagnosticKind::Semantic);
+    encoder.encodeUint8(static_cast<uint8_t>(kind));
     provenance.module().encode(encoder);
     provenance.source().encode(encoder);
     if (provenance.isBinderModuleSite()) {
@@ -395,6 +531,17 @@ void encodeProvenance(identity::CanonicalEncoder& encoder,
         encoder.encodeUint32(component);
       }
       encoder.encodeUint32(0);
+      return;
+    }
+    if (provenance.isSemanticSite()) {
+      encoder.encodeUint8(static_cast<uint8_t>(provenance.semanticDomain()));
+      encoder.encodeByteString(provenance.semanticOwnerBytes());
+      encoder.encodeSequenceSize(provenance.semanticEventPath().size());
+      for (const auto component : provenance.semanticEventPath()) {
+        encoder.encodeUint32(component);
+      }
+      encoder.encodeUint8(static_cast<uint8_t>(provenance.semanticRole()));
+      encoder.encodeUint32(provenance.semanticRoleOrdinal());
       return;
     }
     encoder.encodeSequenceSize(provenance.identitySyntaxPath().size());
@@ -414,6 +561,21 @@ zc::Maybe<DiagnosticProvenanceKey> decodeProvenance(identity::CanonicalDecoder& 
                                                     uint64_t maximumComponents) {
   auto origin = decoder.decodeUint8();
   if (origin == zc::none) { return zc::none; }
+  if (static_cast<DiagnosticFactOrigin>(ZC_ASSERT_NONNULL(origin)) ==
+      DiagnosticFactOrigin::Document) {
+    auto document = decoder.decodeByteString(64 * 1024 * 1024);
+    auto occurrence = decoder.decodeByteString(64 * 1024 * 1024);
+    auto role = decoder.decodeUint8();
+    auto ordinal = decoder.decodeUint32();
+    if (document == zc::none || occurrence == zc::none || role == zc::none || ordinal == zc::none) {
+      return zc::none;
+    }
+    return DiagnosticProvenanceKey::documentSite(
+        zc::heapArray<uint8_t>(ZC_ASSERT_NONNULL(document).asPtr()),
+        zc::heapArray<uint8_t>(ZC_ASSERT_NONNULL(occurrence).asPtr()),
+        static_cast<DocumentDiagnosticSiteRole>(ZC_ASSERT_NONNULL(role)),
+        ZC_ASSERT_NONNULL(ordinal));
+  }
   if (static_cast<DiagnosticFactOrigin>(ZC_ASSERT_NONNULL(origin)) ==
       DiagnosticFactOrigin::Module) {
     auto kind = decoder.decodeUint8();
@@ -444,6 +606,31 @@ zc::Maybe<DiagnosticProvenanceKey> decodeProvenance(identity::CanonicalDecoder& 
       return DiagnosticFactCodecAccess::binderProvenance(
           zc::mv(ZC_ASSERT_NONNULL(module)), zc::mv(ZC_ASSERT_NONNULL(source)), zc::mv(owner),
           static_cast<BinderDiagnosticEmitter>(ZC_ASSERT_NONNULL(emitter)), zc::mv(path));
+    }
+    if (static_cast<ModuleDiagnosticKind>(ZC_ASSERT_NONNULL(kind)) ==
+        ModuleDiagnosticKind::Semantic) {
+      auto domain = decoder.decodeUint8();
+      auto owner = decoder.decodeByteString(64 * 1024 * 1024);
+      auto count = decoder.decodeSequenceSize(maximumComponents);
+      if (domain == zc::none || owner == zc::none || count == zc::none ||
+          ZC_ASSERT_NONNULL(owner).size() == 0) {
+        return zc::none;
+      }
+      zc::Vector<uint32_t> path;
+      for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(count); ++index) {
+        auto component = decoder.decodeUint32();
+        if (component == zc::none) { return zc::none; }
+        path.add(ZC_ASSERT_NONNULL(component));
+      }
+      auto role = decoder.decodeUint8();
+      auto roleOrdinal = decoder.decodeUint32();
+      if (role == zc::none || roleOrdinal == zc::none) { return zc::none; }
+      return DiagnosticProvenanceKey::semanticSite(
+          zc::mv(ZC_ASSERT_NONNULL(module)), zc::mv(ZC_ASSERT_NONNULL(source)),
+          static_cast<SemanticDiagnosticDomain>(ZC_ASSERT_NONNULL(domain)),
+          zc::heapArray<uint8_t>(ZC_ASSERT_NONNULL(owner).asPtr()), zc::mv(path),
+          static_cast<SemanticDiagnosticSiteRole>(ZC_ASSERT_NONNULL(role)),
+          ZC_ASSERT_NONNULL(roleOrdinal));
     }
     if (static_cast<ModuleDiagnosticKind>(ZC_ASSERT_NONNULL(kind)) !=
         ModuleDiagnosticKind::IdentityAdmission) {
@@ -546,12 +733,20 @@ zc::Maybe<DiagnosticSecondary> decodeSecondary(identity::CanonicalDecoder& decod
                                                     zc::mv(ZC_ASSERT_NONNULL(provenance)));
   }
   if (decodedRole == DiagnosticSecondaryRole::Highlight &&
-      ZC_ASSERT_NONNULL(provenance).origin() == DiagnosticFactOrigin::Source) {
+      (ZC_ASSERT_NONNULL(provenance).origin() == DiagnosticFactOrigin::Source ||
+       (ZC_ASSERT_NONNULL(provenance).isDocumentSite() &&
+        ZC_ASSERT_NONNULL(provenance).documentRole() == DocumentDiagnosticSiteRole::Highlight) ||
+       (ZC_ASSERT_NONNULL(provenance).isSemanticSite() &&
+        ZC_ASSERT_NONNULL(provenance).semanticRole() == SemanticDiagnosticSiteRole::Highlight))) {
     if (code != zc::none || ZC_ASSERT_NONNULL(arguments).size() != 0) { return zc::none; }
     return DiagnosticSecondary::highlight(zc::mv(ZC_ASSERT_NONNULL(provenance)));
   }
-  if (decodedRole != DiagnosticSecondaryRole::Note ||
-      ZC_ASSERT_NONNULL(provenance).origin() != DiagnosticFactOrigin::Source || code == zc::none) {
+  if (decodedRole != DiagnosticSecondaryRole::Note || code == zc::none ||
+      (ZC_ASSERT_NONNULL(provenance).origin() != DiagnosticFactOrigin::Source &&
+       (!ZC_ASSERT_NONNULL(provenance).isDocumentSite() ||
+        ZC_ASSERT_NONNULL(provenance).documentRole() != DocumentDiagnosticSiteRole::Note) &&
+       (!ZC_ASSERT_NONNULL(provenance).isSemanticSite() ||
+        ZC_ASSERT_NONNULL(provenance).semanticRole() != SemanticDiagnosticSiteRole::Note))) {
     return zc::none;
   }
   return DiagnosticSecondary::note(ZC_ASSERT_NONNULL(code), zc::mv(ZC_ASSERT_NONNULL(provenance)),
@@ -597,10 +792,24 @@ struct BinderDiagnosticOccurrence final {
   zc::Vector<uint32_t> syntaxPath;
 };
 
+struct SemanticDiagnosticOccurrence final {
+  identity::ModuleKey module;
+  identity::SourceFileKey source;
+  SemanticDiagnosticDomain domain;
+  zc::Array<uint8_t> canonicalOwner;
+  zc::Vector<uint32_t> eventPath;
+};
+
+struct DocumentDiagnosticOccurrence final {
+  zc::Array<uint8_t> document;
+  zc::Array<uint8_t> occurrence;
+};
+
 struct DiagnosticOccurrenceKey::Impl final {
   template <typename Value>
   explicit Impl(Value&& value) : value(zc::fwd<Value>(value)) {}
-  zc::OneOf<SourceDiagnosticOccurrence, IdentityDiagnosticOccurrence, BinderDiagnosticOccurrence>
+  zc::OneOf<SourceDiagnosticOccurrence, IdentityDiagnosticOccurrence, BinderDiagnosticOccurrence,
+            SemanticDiagnosticOccurrence, DocumentDiagnosticOccurrence>
       value;
 };
 
@@ -633,6 +842,24 @@ zc::Maybe<DiagnosticOccurrenceKey> DiagnosticOccurrenceKey::identityAdmission(
       zc::mv(syntaxPath)}));
 }
 
+zc::Maybe<DiagnosticOccurrenceKey> DiagnosticOccurrenceKey::semantic(
+    identity::ModuleKey&& module, identity::SourceFileKey&& source, SemanticDiagnosticDomain domain,
+    zc::Array<uint8_t>&& canonicalOwner, zc::Vector<uint32_t>&& eventPath) {
+  if (!source.belongsTo(module.crate()) || !validSemanticDomain(domain) ||
+      canonicalOwner.size() == 0 || eventPath.size() == 0) {
+    return zc::none;
+  }
+  return DiagnosticOccurrenceKey(zc::heap<Impl>(SemanticDiagnosticOccurrence{
+      zc::mv(module), zc::mv(source), domain, zc::mv(canonicalOwner), zc::mv(eventPath)}));
+}
+
+zc::Maybe<DiagnosticOccurrenceKey> DiagnosticOccurrenceKey::document(
+    zc::Array<uint8_t>&& canonicalDocument, zc::Array<uint8_t>&& canonicalOccurrence) {
+  if (canonicalDocument.size() == 0 || canonicalOccurrence.size() == 0) { return zc::none; }
+  return DiagnosticOccurrenceKey(zc::heap<Impl>(
+      DocumentDiagnosticOccurrence{zc::mv(canonicalDocument), zc::mv(canonicalOccurrence)}));
+}
+
 zc::Maybe<DiagnosticOccurrenceKey> DiagnosticOccurrenceKey::binder(
     identity::ModuleKey&& module, identity::SourceFileKey&& source,
     BinderDiagnosticProducer producer, zc::Maybe<zc::Array<uint8_t>>&& semanticOwner,
@@ -652,6 +879,11 @@ zc::Maybe<DiagnosticOccurrenceKey> DiagnosticOccurrenceKey::binder(
 }
 
 DiagnosticOccurrenceKey DiagnosticOccurrenceKey::clone() const {
+  if (origin() == DiagnosticFactOrigin::Document) {
+    const auto& value = impl->value.get<DocumentDiagnosticOccurrence>();
+    return ZC_ASSERT_NONNULL(document(zc::heapArray<uint8_t>(value.document.asPtr()),
+                                      zc::heapArray<uint8_t>(value.occurrence.asPtr())));
+  }
   if (origin() == DiagnosticFactOrigin::Source) {
     const auto& value = impl->value.get<SourceDiagnosticOccurrence>();
     return ZC_ASSERT_NONNULL(
@@ -664,6 +896,14 @@ DiagnosticOccurrenceKey DiagnosticOccurrenceKey::clone() const {
     return ZC_ASSERT_NONNULL(
         identityAdmission(value.module.clone(), value.source.clone(), zc::mv(path), value.emitter));
   }
+  if (isSemantic()) {
+    const auto& value = impl->value.get<SemanticDiagnosticOccurrence>();
+    zc::Vector<uint32_t> path(value.eventPath.size());
+    path.addAll(value.eventPath.asPtr());
+    return ZC_ASSERT_NONNULL(semantic(value.module.clone(), value.source.clone(), value.domain,
+                                      zc::heapArray<uint8_t>(value.canonicalOwner.asPtr()),
+                                      zc::mv(path)));
+  }
   const auto& value = impl->value.get<BinderDiagnosticOccurrence>();
   zc::Maybe<zc::Array<uint8_t>> owner;
   ZC_IF_SOME(bytes, value.semanticOwner) { owner = zc::heapArray<uint8_t>(bytes.asPtr()); }
@@ -673,15 +913,19 @@ DiagnosticOccurrenceKey DiagnosticOccurrenceKey::clone() const {
                                   zc::mv(owner), value.emitter, zc::mv(path)));
 }
 DiagnosticFactOrigin DiagnosticOccurrenceKey::origin() const noexcept {
-  return impl->value.is<SourceDiagnosticOccurrence>() ? DiagnosticFactOrigin::Source
-                                                      : DiagnosticFactOrigin::Module;
+  if (impl->value.is<SourceDiagnosticOccurrence>()) { return DiagnosticFactOrigin::Source; }
+  if (impl->value.is<DocumentDiagnosticOccurrence>()) { return DiagnosticFactOrigin::Document; }
+  return DiagnosticFactOrigin::Module;
 }
 const identity::SourceFileKey& DiagnosticOccurrenceKey::source() const noexcept {
+  ZC_IREQUIRE(origin() != DiagnosticFactOrigin::Document,
+              "document diagnostic occurrence has no source identity");
   if (origin() == DiagnosticFactOrigin::Source) {
     return impl->value.get<SourceDiagnosticOccurrence>().source;
   }
   if (isIdentityAdmission()) { return impl->value.get<IdentityDiagnosticOccurrence>().source; }
-  return impl->value.get<BinderDiagnosticOccurrence>().source;
+  if (isBinder()) { return impl->value.get<BinderDiagnosticOccurrence>().source; }
+  return impl->value.get<SemanticDiagnosticOccurrence>().source;
 }
 SourceDiagnosticPhase DiagnosticOccurrenceKey::phase() const noexcept {
   ZC_IREQUIRE(origin() == DiagnosticFactOrigin::Source,
@@ -702,7 +946,8 @@ const identity::ModuleKey& DiagnosticOccurrenceKey::module() const noexcept {
   ZC_IREQUIRE(origin() == DiagnosticFactOrigin::Module,
               "source diagnostic occurrence has no module root");
   if (isIdentityAdmission()) { return impl->value.get<IdentityDiagnosticOccurrence>().module; }
-  return impl->value.get<BinderDiagnosticOccurrence>().module;
+  if (isBinder()) { return impl->value.get<BinderDiagnosticOccurrence>().module; }
+  return impl->value.get<SemanticDiagnosticOccurrence>().module;
 }
 bool DiagnosticOccurrenceKey::isIdentityAdmission() const noexcept {
   return impl->value.is<IdentityDiagnosticOccurrence>();
@@ -745,8 +990,37 @@ zc::ArrayPtr<const uint32_t> DiagnosticOccurrenceKey::binderSyntaxPath() const {
   ZC_IREQUIRE(isBinder(), "diagnostic occurrence has no Binder syntax path");
   return impl->value.get<BinderDiagnosticOccurrence>().syntaxPath.asPtr();
 }
+bool DiagnosticOccurrenceKey::isSemantic() const noexcept {
+  return impl->value.is<SemanticDiagnosticOccurrence>();
+}
+SemanticDiagnosticDomain DiagnosticOccurrenceKey::semanticDomain() const noexcept {
+  ZC_IREQUIRE(isSemantic(), "diagnostic occurrence has no semantic domain");
+  return impl->value.get<SemanticDiagnosticOccurrence>().domain;
+}
+zc::ArrayPtr<const uint8_t> DiagnosticOccurrenceKey::semanticOwnerBytes() const {
+  ZC_IREQUIRE(isSemantic(), "diagnostic occurrence has no semantic owner");
+  return impl->value.get<SemanticDiagnosticOccurrence>().canonicalOwner.asPtr();
+}
+zc::ArrayPtr<const uint32_t> DiagnosticOccurrenceKey::semanticEventPath() const {
+  ZC_IREQUIRE(isSemantic(), "diagnostic occurrence has no semantic event path");
+  return impl->value.get<SemanticDiagnosticOccurrence>().eventPath.asPtr();
+}
+bool DiagnosticOccurrenceKey::isDocument() const noexcept {
+  return impl->value.is<DocumentDiagnosticOccurrence>();
+}
+zc::ArrayPtr<const uint8_t> DiagnosticOccurrenceKey::documentIdentityBytes() const {
+  ZC_IREQUIRE(isDocument(), "diagnostic occurrence has no document identity");
+  return impl->value.get<DocumentDiagnosticOccurrence>().document.asPtr();
+}
+zc::ArrayPtr<const uint8_t> DiagnosticOccurrenceKey::documentOccurrenceBytes() const {
+  ZC_IREQUIRE(isDocument(), "diagnostic occurrence has no document event identity");
+  return impl->value.get<DocumentDiagnosticOccurrence>().occurrence.asPtr();
+}
 bool DiagnosticOccurrenceKey::operator==(const DiagnosticOccurrenceKey& other) const noexcept {
   return compareOccurrence(*this, other) == 0;
+}
+bool DiagnosticOccurrenceKey::operator<(const DiagnosticOccurrenceKey& other) const noexcept {
+  return compareOccurrence(*this, other) < 0;
 }
 
 struct SourceDiagnosticProvenance final {
@@ -770,10 +1044,28 @@ struct BinderDiagnosticProvenance final {
   zc::Vector<uint32_t> syntaxPath;
 };
 
+struct SemanticDiagnosticProvenance final {
+  identity::ModuleKey module;
+  identity::SourceFileKey source;
+  SemanticDiagnosticDomain domain;
+  zc::Array<uint8_t> canonicalOwner;
+  zc::Vector<uint32_t> eventPath;
+  SemanticDiagnosticSiteRole role;
+  uint32_t roleOrdinal;
+};
+
+struct DocumentDiagnosticProvenance final {
+  zc::Array<uint8_t> document;
+  zc::Array<uint8_t> occurrence;
+  DocumentDiagnosticSiteRole role;
+  uint32_t roleOrdinal;
+};
+
 struct DiagnosticProvenanceKey::Impl final {
   template <typename Value>
   explicit Impl(Value&& value) : value(zc::fwd<Value>(value)) {}
-  zc::OneOf<SourceDiagnosticProvenance, IdentityDiagnosticProvenance, BinderDiagnosticProvenance>
+  zc::OneOf<SourceDiagnosticProvenance, IdentityDiagnosticProvenance, BinderDiagnosticProvenance,
+            SemanticDiagnosticProvenance, DocumentDiagnosticProvenance>
       value;
 };
 
@@ -798,6 +1090,30 @@ zc::Maybe<DiagnosticProvenanceKey> DiagnosticProvenanceKey::identitySyntaxSite(
   return DiagnosticProvenanceKey(zc::heap<Impl>(
       IdentityDiagnosticProvenance{zc::mv(module), zc::mv(source), zc::mv(syntaxPath)}));
 }
+zc::Maybe<DiagnosticProvenanceKey> DiagnosticProvenanceKey::semanticSite(
+    identity::ModuleKey&& module, identity::SourceFileKey&& source, SemanticDiagnosticDomain domain,
+    zc::Array<uint8_t>&& canonicalOwner, zc::Vector<uint32_t>&& eventPath,
+    SemanticDiagnosticSiteRole role, uint32_t roleOrdinal) {
+  if (!source.belongsTo(module.crate()) || !validSemanticDomain(domain) ||
+      canonicalOwner.size() == 0 || eventPath.size() == 0 || !validSemanticSiteRole(role) ||
+      (role == SemanticDiagnosticSiteRole::Primary && roleOrdinal != 0)) {
+    return zc::none;
+  }
+  return DiagnosticProvenanceKey(zc::heap<Impl>(
+      SemanticDiagnosticProvenance{zc::mv(module), zc::mv(source), domain, zc::mv(canonicalOwner),
+                                   zc::mv(eventPath), role, roleOrdinal}));
+}
+zc::Maybe<DiagnosticProvenanceKey> DiagnosticProvenanceKey::documentSite(
+    zc::Array<uint8_t>&& canonicalDocument, zc::Array<uint8_t>&& canonicalOccurrence,
+    DocumentDiagnosticSiteRole role, uint32_t roleOrdinal) {
+  if (canonicalDocument.size() == 0 || canonicalOccurrence.size() == 0 ||
+      !validDocumentSiteRole(role) ||
+      (role == DocumentDiagnosticSiteRole::Primary && roleOrdinal != 0)) {
+    return zc::none;
+  }
+  return DiagnosticProvenanceKey(zc::heap<Impl>(DocumentDiagnosticProvenance{
+      zc::mv(canonicalDocument), zc::mv(canonicalOccurrence), role, roleOrdinal}));
+}
 zc::Maybe<DiagnosticProvenanceKey> DiagnosticProvenanceKey::binderModuleSite(
     identity::ModuleKey&& module, identity::SourceFileKey&& source,
     zc::Maybe<zc::Array<uint8_t>>&& semanticOwner, BinderDiagnosticEmitter emitter,
@@ -811,6 +1127,12 @@ zc::Maybe<DiagnosticProvenanceKey> DiagnosticProvenanceKey::binderModuleSite(
       zc::mv(module), zc::mv(source), zc::mv(semanticOwner), emitter, zc::mv(syntaxPath)}));
 }
 DiagnosticProvenanceKey DiagnosticProvenanceKey::clone() const {
+  if (origin() == DiagnosticFactOrigin::Document) {
+    const auto& value = impl->value.get<DocumentDiagnosticProvenance>();
+    return ZC_ASSERT_NONNULL(documentSite(zc::heapArray<uint8_t>(value.document.asPtr()),
+                                          zc::heapArray<uint8_t>(value.occurrence.asPtr()),
+                                          value.role, value.roleOrdinal));
+  }
   if (origin() == DiagnosticFactOrigin::Source) {
     const auto& value = impl->value.get<SourceDiagnosticProvenance>();
     zc::Vector<uint32_t> path(value.path.size());
@@ -824,6 +1146,14 @@ DiagnosticProvenanceKey DiagnosticProvenanceKey::clone() const {
     return ZC_ASSERT_NONNULL(
         identitySyntaxSite(value.module.clone(), value.source.clone(), zc::mv(path)));
   }
+  if (isSemanticSite()) {
+    const auto& value = impl->value.get<SemanticDiagnosticProvenance>();
+    zc::Vector<uint32_t> path(value.eventPath.size());
+    path.addAll(value.eventPath.asPtr());
+    return ZC_ASSERT_NONNULL(semanticSite(value.module.clone(), value.source.clone(), value.domain,
+                                          zc::heapArray<uint8_t>(value.canonicalOwner.asPtr()),
+                                          zc::mv(path), value.role, value.roleOrdinal));
+  }
   const auto& value = impl->value.get<BinderDiagnosticProvenance>();
   zc::Maybe<zc::Array<uint8_t>> owner;
   ZC_IF_SOME(bytes, value.semanticOwner) { owner = zc::heapArray<uint8_t>(bytes.asPtr()); }
@@ -833,15 +1163,19 @@ DiagnosticProvenanceKey DiagnosticProvenanceKey::clone() const {
                                             zc::mv(owner), value.emitter, zc::mv(path)));
 }
 DiagnosticFactOrigin DiagnosticProvenanceKey::origin() const noexcept {
-  return impl->value.is<SourceDiagnosticProvenance>() ? DiagnosticFactOrigin::Source
-                                                      : DiagnosticFactOrigin::Module;
+  if (impl->value.is<SourceDiagnosticProvenance>()) { return DiagnosticFactOrigin::Source; }
+  if (impl->value.is<DocumentDiagnosticProvenance>()) { return DiagnosticFactOrigin::Document; }
+  return DiagnosticFactOrigin::Module;
 }
 const identity::SourceFileKey& DiagnosticProvenanceKey::source() const noexcept {
+  ZC_IREQUIRE(origin() != DiagnosticFactOrigin::Document,
+              "document diagnostic provenance has no source identity");
   if (origin() == DiagnosticFactOrigin::Source) {
     return impl->value.get<SourceDiagnosticProvenance>().source;
   }
   if (isIdentitySyntaxSite()) { return impl->value.get<IdentityDiagnosticProvenance>().source; }
-  return impl->value.get<BinderDiagnosticProvenance>().source;
+  if (isBinderModuleSite()) { return impl->value.get<BinderDiagnosticProvenance>().source; }
+  return impl->value.get<SemanticDiagnosticProvenance>().source;
 }
 SourceDiagnosticPhase DiagnosticProvenanceKey::phase() const noexcept {
   ZC_IREQUIRE(origin() == DiagnosticFactOrigin::Source,
@@ -862,7 +1196,8 @@ const identity::ModuleKey& DiagnosticProvenanceKey::module() const noexcept {
   ZC_IREQUIRE(origin() == DiagnosticFactOrigin::Module,
               "source diagnostic provenance has no module root");
   if (isIdentitySyntaxSite()) { return impl->value.get<IdentityDiagnosticProvenance>().module; }
-  return impl->value.get<BinderDiagnosticProvenance>().module;
+  if (isBinderModuleSite()) { return impl->value.get<BinderDiagnosticProvenance>().module; }
+  return impl->value.get<SemanticDiagnosticProvenance>().module;
 }
 zc::ArrayPtr<const uint32_t> DiagnosticProvenanceKey::identitySyntaxPath() const {
   ZC_IREQUIRE(isIdentitySyntaxSite(), "diagnostic provenance has no identity syntax path");
@@ -893,8 +1228,53 @@ zc::ArrayPtr<const uint32_t> DiagnosticProvenanceKey::binderSyntaxPath() const {
   ZC_IREQUIRE(isBinderModuleSite(), "diagnostic provenance has no Binder syntax path");
   return impl->value.get<BinderDiagnosticProvenance>().syntaxPath.asPtr();
 }
+bool DiagnosticProvenanceKey::isSemanticSite() const noexcept {
+  return impl->value.is<SemanticDiagnosticProvenance>();
+}
+SemanticDiagnosticDomain DiagnosticProvenanceKey::semanticDomain() const noexcept {
+  ZC_IREQUIRE(isSemanticSite(), "diagnostic provenance has no semantic domain");
+  return impl->value.get<SemanticDiagnosticProvenance>().domain;
+}
+zc::ArrayPtr<const uint8_t> DiagnosticProvenanceKey::semanticOwnerBytes() const {
+  ZC_IREQUIRE(isSemanticSite(), "diagnostic provenance has no semantic owner");
+  return impl->value.get<SemanticDiagnosticProvenance>().canonicalOwner.asPtr();
+}
+zc::ArrayPtr<const uint32_t> DiagnosticProvenanceKey::semanticEventPath() const {
+  ZC_IREQUIRE(isSemanticSite(), "diagnostic provenance has no semantic event path");
+  return impl->value.get<SemanticDiagnosticProvenance>().eventPath.asPtr();
+}
+SemanticDiagnosticSiteRole DiagnosticProvenanceKey::semanticRole() const noexcept {
+  ZC_IREQUIRE(isSemanticSite(), "diagnostic provenance has no semantic role");
+  return impl->value.get<SemanticDiagnosticProvenance>().role;
+}
+uint32_t DiagnosticProvenanceKey::semanticRoleOrdinal() const noexcept {
+  ZC_IREQUIRE(isSemanticSite(), "diagnostic provenance has no semantic role ordinal");
+  return impl->value.get<SemanticDiagnosticProvenance>().roleOrdinal;
+}
+bool DiagnosticProvenanceKey::isDocumentSite() const noexcept {
+  return impl->value.is<DocumentDiagnosticProvenance>();
+}
+zc::ArrayPtr<const uint8_t> DiagnosticProvenanceKey::documentIdentityBytes() const {
+  ZC_IREQUIRE(isDocumentSite(), "diagnostic provenance has no document identity");
+  return impl->value.get<DocumentDiagnosticProvenance>().document.asPtr();
+}
+zc::ArrayPtr<const uint8_t> DiagnosticProvenanceKey::documentOccurrenceBytes() const {
+  ZC_IREQUIRE(isDocumentSite(), "diagnostic provenance has no document event identity");
+  return impl->value.get<DocumentDiagnosticProvenance>().occurrence.asPtr();
+}
+DocumentDiagnosticSiteRole DiagnosticProvenanceKey::documentRole() const noexcept {
+  ZC_IREQUIRE(isDocumentSite(), "diagnostic provenance has no document role");
+  return impl->value.get<DocumentDiagnosticProvenance>().role;
+}
+uint32_t DiagnosticProvenanceKey::documentRoleOrdinal() const noexcept {
+  ZC_IREQUIRE(isDocumentSite(), "diagnostic provenance has no document role ordinal");
+  return impl->value.get<DocumentDiagnosticProvenance>().roleOrdinal;
+}
 bool DiagnosticProvenanceKey::operator==(const DiagnosticProvenanceKey& other) const noexcept {
   return compareProvenance(*this, other) == 0;
+}
+bool DiagnosticProvenanceKey::operator<(const DiagnosticProvenanceKey& other) const noexcept {
+  return compareProvenance(*this, other) < 0;
 }
 
 struct DiagnosticSecondary::Impl final {
@@ -914,18 +1294,35 @@ DiagnosticSecondary& DiagnosticSecondary::operator=(DiagnosticSecondary&&) noexc
 
 zc::Maybe<DiagnosticSecondary> DiagnosticSecondary::highlight(
     DiagnosticProvenanceKey&& provenance) {
-  if (provenance.origin() != DiagnosticFactOrigin::Source) { return zc::none; }
-  const auto path = provenance.occurrencePath();
-  if (path.size() != 3 || path[1] != 1) { return zc::none; }
+  if (provenance.origin() == DiagnosticFactOrigin::Source) {
+    const auto path = provenance.occurrencePath();
+    if (path.size() != 3 || path[1] != 1) { return zc::none; }
+  } else if (provenance.origin() == DiagnosticFactOrigin::Document) {
+    if (!provenance.isDocumentSite() ||
+        provenance.documentRole() != DocumentDiagnosticSiteRole::Highlight) {
+      return zc::none;
+    }
+  } else if (!provenance.isSemanticSite() ||
+             provenance.semanticRole() != SemanticDiagnosticSiteRole::Highlight) {
+    return zc::none;
+  }
   return DiagnosticSecondary(zc::heap<Impl>(DiagnosticSecondaryRole::Highlight, zc::none,
                                             zc::mv(provenance), zc::Vector<zc::String>()));
 }
 zc::Maybe<DiagnosticSecondary> DiagnosticSecondary::note(DiagID code,
                                                          DiagnosticProvenanceKey&& provenance,
                                                          zc::Vector<zc::String>&& arguments) {
-  if (provenance.origin() != DiagnosticFactOrigin::Source) { return zc::none; }
-  const auto path = provenance.occurrencePath();
-  if (path.size() != 3 || path[1] != 2 || !validSourceArguments(code, arguments.asPtr())) {
+  if (!validArguments(code, arguments.asPtr())) { return zc::none; }
+  if (provenance.origin() == DiagnosticFactOrigin::Source) {
+    const auto path = provenance.occurrencePath();
+    if (path.size() != 3 || path[1] != 2 || !isSourceSyntaxDiagnostic(code)) { return zc::none; }
+  } else if (provenance.origin() == DiagnosticFactOrigin::Document) {
+    if (!provenance.isDocumentSite() ||
+        provenance.documentRole() != DocumentDiagnosticSiteRole::Note) {
+      return zc::none;
+    }
+  } else if (!provenance.isSemanticSite() ||
+             provenance.semanticRole() != SemanticDiagnosticSiteRole::Note) {
     return zc::none;
   }
   return DiagnosticSecondary(
@@ -934,7 +1331,9 @@ zc::Maybe<DiagnosticSecondary> DiagnosticSecondary::note(DiagID code,
 zc::Maybe<DiagnosticSecondary> DiagnosticSecondary::previousDeclaration(
     DiagID code, DiagnosticProvenanceKey&& provenance) {
   if (provenance.origin() != DiagnosticFactOrigin::Module ||
-      code != DiagID::PreviousDeclarationHere) {
+      code != DiagID::PreviousDeclarationHere ||
+      (provenance.isSemanticSite() &&
+       provenance.semanticRole() != SemanticDiagnosticSiteRole::PreviousDeclaration)) {
     return zc::none;
   }
   return DiagnosticSecondary(zc::heap<Impl>(DiagnosticSecondaryRole::PreviousDeclaration, code,
@@ -981,16 +1380,82 @@ zc::Maybe<DiagnosticFact> DiagnosticFact::from(DiagnosticOccurrenceKey&& occurre
                                                zc::Vector<zc::String>&& arguments,
                                                DiagnosticProvenanceKey&& primary,
                                                zc::Vector<DiagnosticSecondary>&& secondary) {
-  if (occurrence.origin() == DiagnosticFactOrigin::Module) {
+  if (occurrence.origin() == DiagnosticFactOrigin::Document) {
     if (!validArguments(code, arguments.asPtr()) || !sameOccurrence(occurrence, primary) ||
-        primary.origin() != DiagnosticFactOrigin::Module) {
+        !primary.isDocumentSite() ||
+        occurrence.documentIdentityBytes() != primary.documentIdentityBytes() ||
+        primary.documentRole() != DocumentDiagnosticSiteRole::Primary ||
+        primary.documentRoleOrdinal() != 0) {
       return zc::none;
     }
-    if (occurrence.isBinder() &&
-        (occurrence.binderEmitter() != BinderDiagnosticEmitter::Lookup ||
-         (code != DiagID::UndefinedIdentifier && code != DiagID::SymbolNamespaceMismatch &&
-          code != DiagID::AmbiguousIdentifier) ||
-         secondary.size() != 0)) {
+    uint32_t expectedHighlight = 0;
+    uint32_t expectedNote = 0;
+    bool sawNote = false;
+    for (const auto& item : secondary) {
+      if (!sameOccurrence(occurrence, item.provenance()) || !item.provenance().isDocumentSite()) {
+        return zc::none;
+      }
+      if (item.role() == DiagnosticSecondaryRole::Highlight) {
+        if (sawNote || item.provenance().documentRole() != DocumentDiagnosticSiteRole::Highlight ||
+            item.provenance().documentRoleOrdinal() != expectedHighlight++) {
+          return zc::none;
+        }
+      } else if (item.role() == DiagnosticSecondaryRole::Note) {
+        sawNote = true;
+        if (item.provenance().documentRole() != DocumentDiagnosticSiteRole::Note ||
+            item.provenance().documentRoleOrdinal() != expectedNote++) {
+          return zc::none;
+        }
+      } else {
+        return zc::none;
+      }
+    }
+    return DiagnosticFact(zc::heap<Impl>(zc::mv(occurrence), code, zc::mv(arguments),
+                                         zc::mv(primary), zc::mv(secondary)));
+  }
+  if (occurrence.origin() == DiagnosticFactOrigin::Module) {
+    if (!validArguments(code, arguments.asPtr()) || !sameOccurrence(occurrence, primary) ||
+        primary.origin() != DiagnosticFactOrigin::Module ||
+        !occurrence.source().sameAs(primary.source())) {
+      return zc::none;
+    }
+    if (occurrence.isSemantic()) {
+      if (!primary.isSemanticSite() ||
+          primary.semanticRole() != SemanticDiagnosticSiteRole::Primary ||
+          primary.semanticRoleOrdinal() != 0) {
+        return zc::none;
+      }
+      uint32_t expectedHighlight = 0;
+      uint32_t expectedNote = 0;
+      uint32_t expectedPrevious = 0;
+      for (const auto& item : secondary) {
+        if (!sameOccurrence(occurrence, item.provenance()) || !item.provenance().isSemanticSite()) {
+          return zc::none;
+        }
+        if (item.role() == DiagnosticSecondaryRole::Highlight) {
+          if (item.provenance().semanticRole() != SemanticDiagnosticSiteRole::Highlight ||
+              item.provenance().semanticRoleOrdinal() != expectedHighlight++) {
+            return zc::none;
+          }
+        } else if (item.role() == DiagnosticSecondaryRole::Note) {
+          if (item.provenance().semanticRole() != SemanticDiagnosticSiteRole::Note ||
+              item.provenance().semanticRoleOrdinal() != expectedNote++) {
+            return zc::none;
+          }
+        } else if (item.role() == DiagnosticSecondaryRole::PreviousDeclaration) {
+          if (item.provenance().semanticRole() != SemanticDiagnosticSiteRole::PreviousDeclaration ||
+              item.provenance().semanticRoleOrdinal() != expectedPrevious++) {
+            return zc::none;
+          }
+        } else {
+          return zc::none;
+        }
+      }
+    } else if (occurrence.isBinder() &&
+               (occurrence.binderEmitter() != BinderDiagnosticEmitter::Lookup ||
+                (code != DiagID::UndefinedIdentifier && code != DiagID::SymbolNamespaceMismatch &&
+                 code != DiagID::AmbiguousIdentifier) ||
+                secondary.size() != 0)) {
       return zc::none;
     }
     if (occurrence.isIdentityAdmission()) {
@@ -1004,12 +1469,14 @@ zc::Maybe<DiagnosticFact> DiagnosticFact::from(DiagnosticOccurrenceKey&& occurre
         return zc::none;
       }
     }
-    for (const auto& item : secondary) {
-      if (item.role() != DiagnosticSecondaryRole::PreviousDeclaration ||
-          item.provenance().origin() != DiagnosticFactOrigin::Module ||
-          item.code() != DiagID::PreviousDeclarationHere || item.arguments().size() != 0 ||
-          item.provenance().module().encode().asPtr() != occurrence.module().encode().asPtr()) {
-        return zc::none;
+    if (!occurrence.isSemantic()) {
+      for (const auto& item : secondary) {
+        if (item.role() != DiagnosticSecondaryRole::PreviousDeclaration ||
+            item.provenance().origin() != DiagnosticFactOrigin::Module ||
+            item.code() != DiagID::PreviousDeclarationHere || item.arguments().size() != 0 ||
+            item.provenance().module().encode().asPtr() != occurrence.module().encode().asPtr()) {
+          return zc::none;
+        }
       }
     }
     return DiagnosticFact(zc::heap<Impl>(zc::mv(occurrence), code, zc::mv(arguments),
@@ -1087,8 +1554,7 @@ zc::Maybe<SourceDiagnosticProvenanceMap> SourceDiagnosticProvenanceMap::from(
     zc::Vector<SourceDiagnosticProvenanceEntry>&& entries, uint64_t sourceByteLength) {
   for (size_t index = 0; index < entries.size(); ++index) {
     const auto& entry = entries[index];
-    if (entry.key.origin() != DiagnosticFactOrigin::Source ||
-        entry.range.byteStart > entry.range.byteEnd || entry.range.byteEnd > sourceByteLength ||
+    if (entry.range.byteStart > entry.range.byteEnd || entry.range.byteEnd > sourceByteLength ||
         (index != 0 && !entries[0].key.source().sameAs(entry.key.source())) ||
         (index != 0 && compareProvenance(entries[index - 1].key, entry.key) >= 0)) {
       return zc::none;
@@ -1235,8 +1701,7 @@ zc::Maybe<zc::Array<uint8_t>> encodeSourceDiagnosticProvenance(
   encoder.encodeByteString(kSourceProvenanceDomain.asBytes());
   encoder.encodeSequenceSize(provenance.entries().size());
   for (const auto& entry : provenance.entries()) {
-    if (entry.key.origin() != DiagnosticFactOrigin::Source ||
-        entry.key.occurrencePath().size() > limits.maximumProvenanceComponentsPerKey) {
+    if (provenanceComponentCount(entry.key) > limits.maximumProvenanceComponentsPerKey) {
       return zc::none;
     }
     encodeProvenance(encoder, entry.key);
@@ -1269,7 +1734,6 @@ zc::Maybe<SourceDiagnosticProvenanceMap> decodeSourceDiagnosticProvenance(
     auto end = decoder.decodeUint64();
     auto isTokenRange = decoder.decodeBool();
     if (key == zc::none || start == zc::none || end == zc::none || isTokenRange == zc::none ||
-        ZC_ASSERT_NONNULL(key).origin() != DiagnosticFactOrigin::Source ||
         ZC_ASSERT_NONNULL(start) > ZC_ASSERT_NONNULL(end) ||
         ZC_ASSERT_NONNULL(end) > sourceByteLength) {
       return zc::none;

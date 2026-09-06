@@ -20,7 +20,6 @@
 #include "compiler/ast/tree.h"
 #include "compiler/basic/string-pool.h"
 #include "compiler/basic/zomlang-opts.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "compiler/parser/parser.h"
 #include "compiler/source/manager.h"

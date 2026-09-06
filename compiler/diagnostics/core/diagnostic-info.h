@@ -23,6 +23,7 @@ namespace diagnostics {
 
 struct DiagnosticInfo {
   DiagID id;
+  zc::StringPtr symbolicName;
   DiagSeverity severity;
   zc::StringPtr message;
   size_t argCount;
@@ -49,54 +50,87 @@ struct DiagnosticTraits;
 
 namespace detail {
 
-template <DiagID Id>
-constexpr DiagnosticInfo getDiagnosticInfoImpl() {
-  return DiagnosticInfo{
-      Id,
-      DiagnosticTraits<Id>::severity,
-      DiagnosticTraits<Id>::message,
-      DiagnosticTraits<Id>::argCount,
-  };
+inline constexpr DiagnosticInfo diagnosticCatalog[] = {
+#define DIAG(Code, Name, Severity, Message, Args)                                                \
+  {DiagID::Name, zc::StringPtr(#Name, sizeof(#Name) - 1), DiagSeverity::Severity, Message##_zcc, \
+   Args},
+#include "compiler/diagnostics/defs/diagnostics-binder.def"
+#include "compiler/diagnostics/defs/diagnostics-checker.def"
+#include "compiler/diagnostics/defs/diagnostics-common.def"
+#include "compiler/diagnostics/defs/diagnostics-lowering.def"
+#include "compiler/diagnostics/defs/diagnostics-module.def"
+#include "compiler/diagnostics/defs/diagnostics-package.def"
+#include "compiler/diagnostics/defs/diagnostics-parse.def"
+#undef DIAG
+};
+
+constexpr bool isAllocatedCode(uint32_t code) {
+  return (code >= 2000 && code <= 4999) || (code >= 6000 && code <= 7999);
 }
+
+constexpr bool hasValidTemplate(const DiagnosticInfo& entry) {
+  if (entry.argCount > 3) { return false; }
+  bool seen[3] = {false, false, false};
+  for (size_t index = 0; index < entry.message.size(); ++index) {
+    const unsigned char byte = static_cast<unsigned char>(entry.message[index]);
+    if (byte < 0x20 || byte == 0x7f) { return false; }
+    if (entry.message[index] == '}') { return false; }
+    if (entry.message[index] != '{') { continue; }
+    if (index + 2 >= entry.message.size() || entry.message[index + 2] != '}' ||
+        entry.message[index + 1] < '0' || entry.message[index + 1] > '9') {
+      return false;
+    }
+    const size_t argument = static_cast<size_t>(entry.message[index + 1] - '0');
+    if (argument >= entry.argCount || seen[argument]) { return false; }
+    seen[argument] = true;
+    index += 2;
+  }
+  for (size_t argument = 0; argument < entry.argCount; ++argument) {
+    if (!seen[argument]) { return false; }
+  }
+  return true;
+}
+
+constexpr bool isValidCatalog() {
+  for (size_t index = 0; index < sizeof(diagnosticCatalog) / sizeof(diagnosticCatalog[0]);
+       ++index) {
+    const auto& entry = diagnosticCatalog[index];
+    const uint32_t code = static_cast<uint32_t>(entry.id);
+    if (!isAllocatedCode(code) || (code >= 9900 && code <= 9999) ||
+        entry.symbolicName.size() == 0 || entry.message.size() == 0 || !hasValidTemplate(entry)) {
+      return false;
+    }
+    for (size_t other = 0; other < index; ++other) {
+      if (diagnosticCatalog[other].id == entry.id ||
+          diagnosticCatalog[other].symbolicName == entry.symbolicName) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+static_assert(isValidCatalog(), "diagnostic catalog contract violation");
 
 }  // namespace detail
 
-constexpr DiagnosticInfo getDiagnosticInfo(const DiagID id) {
-  switch (id) {
-#define DIAG(Code, Name, ...) \
-  case DiagID::Name:          \
-    return detail::getDiagnosticInfoImpl<DiagID::Name>();
-#include "compiler/diagnostics/defs/diagnostics-binder.def"
-#include "compiler/diagnostics/defs/diagnostics-checker.def"
-#include "compiler/diagnostics/defs/diagnostics-common.def"
-#include "compiler/diagnostics/defs/diagnostics-lowering.def"
-#include "compiler/diagnostics/defs/diagnostics-module.def"
-#include "compiler/diagnostics/defs/diagnostics-package.def"
-#include "compiler/diagnostics/defs/diagnostics-parse.def"
+constexpr zc::ArrayPtr<const DiagnosticInfo> getDiagnosticCatalog() noexcept {
+  return zc::arrayPtr(detail::diagnosticCatalog);
+}
 
-#undef DIAG
-    default:
-      // Handle unknown DiagID
-      return DiagnosticInfo{id, DiagSeverity::kError, "Unknown diagnostic"_zcc, 0};
+inline const DiagnosticInfo& getDiagnosticInfo(const DiagID id) {
+  for (const auto& entry : detail::diagnosticCatalog) {
+    if (entry.id == id) { return entry; }
   }
+  ZC_IREQUIRE(false, "unknown diagnostic identifier");
+  ZC_UNREACHABLE;
 }
 
 constexpr bool isKnownDiagnostic(const DiagID id) {
-  switch (id) {
-#define DIAG(Code, Name, ...) \
-  case DiagID::Name:          \
-    return true;
-#include "compiler/diagnostics/defs/diagnostics-binder.def"
-#include "compiler/diagnostics/defs/diagnostics-checker.def"
-#include "compiler/diagnostics/defs/diagnostics-common.def"
-#include "compiler/diagnostics/defs/diagnostics-lowering.def"
-#include "compiler/diagnostics/defs/diagnostics-module.def"
-#include "compiler/diagnostics/defs/diagnostics-package.def"
-#include "compiler/diagnostics/defs/diagnostics-parse.def"
-#undef DIAG
-    default:
-      return false;
+  for (const auto& entry : detail::diagnosticCatalog) {
+    if (entry.id == id) { return true; }
   }
+  return false;
 }
 
 }  // namespace diagnostics

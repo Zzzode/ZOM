@@ -89,42 +89,40 @@ void Parser::Impl::diagnoseTokenPatterns() {
     if (kind == ast::SyntaxKind::InterfaceKeyword) { waitingForInterfaceBody = true; }
 
     if (kind == ast::SyntaxKind::ExportKeyword && next == ast::SyntaxKind::DefaultKeyword) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::DeclarationExpected>(current.getLocation());
+      diagnosticEngine.report<diagnostics::DiagID::DeclarationExpected>(current.getLocation());
     }
 
     if (kind == ast::SyntaxKind::LetKeyword && next == ast::SyntaxKind::Equals) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::VariableDeclarationExpected>(
+      diagnosticEngine.report<diagnostics::DiagID::VariableDeclarationExpected>(
           tokenAt(i + 1).getLocation());
     }
 
     if (kind == ast::SyntaxKind::AsKeyword && current.hasPrecedingLineBreak()) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::MissingSemicolon>(current.getLocation(),
-                                                                       tokenLabel(current));
+      diagnosticEngine.report<diagnostics::DiagID::MissingSemicolon>(current.getLocation(),
+                                                                     tokenLabel(current));
     }
 
     if (kind == ast::SyntaxKind::SuperKeyword && next != ast::SyntaxKind::Period &&
         next != ast::SyntaxKind::LeftParen && next != ast::SyntaxKind::LeftBracket) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-          current.getLocation());
+      diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(current.getLocation());
     }
 
     if (kind == ast::SyntaxKind::Comma && next == ast::SyntaxKind::Comma) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+      diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
           tokenAt(i + 1).getLocation());
     }
 
     if (kind == ast::SyntaxKind::Question && next == ast::SyntaxKind::Colon) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpressionExpected>(
+      diagnosticEngine.report<diagnostics::DiagID::ExpressionExpected>(
           tokenAt(i + 1).getLocation());
     }
 
     if (kind == ast::SyntaxKind::Bar && next == ast::SyntaxKind::Semicolon) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(tokenAt(i + 1).getLocation());
+      diagnosticEngine.report<diagnostics::DiagID::TypeExpected>(tokenAt(i + 1).getLocation());
     }
 
     if (isTemplateLiteralToken(kind) && i > 0 && canPrecedeTaggedTemplate(kindAt(i - 1))) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-          current.getLocation());
+      diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(current.getLocation());
     }
 
     if (kind == ast::SyntaxKind::WhenKeyword && matchArmPatternBraceDepth < 0) {
@@ -155,12 +153,12 @@ void Parser::Impl::diagnoseTokenPatterns() {
     if (kind == ast::SyntaxKind::QuestionDot) {
       if (next == ast::SyntaxKind::Semicolon || next == ast::SyntaxKind::RightBracket ||
           next == ast::SyntaxKind::EndOfFile) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(current.getLocation(),
-                                                                      "member"_zc);
+        diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(current.getLocation(),
+                                                                    "member"_zc);
       }
       if (next == ast::SyntaxKind::LeftBracket && i + 2 < count &&
           kindAt(i + 2) == ast::SyntaxKind::RightBracket) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::ExpressionExpected>(
+        diagnosticEngine.report<diagnostics::DiagID::ExpressionExpected>(
             tokenAt(i + 2).getLocation());
       }
     }
@@ -172,7 +170,7 @@ void Parser::Impl::diagnoseTokenPatterns() {
           break;
         }
         if (nested == ast::SyntaxKind::QuestionDot) {
-          diagnosticEngine.diagnose<diagnostics::DiagID::InvalidOptionalChainFromNewExpression>(
+          diagnosticEngine.report<diagnostics::DiagID::InvalidOptionalChainFromNewExpression>(
               tokenAt(j).getLocation());
           break;
         }
@@ -180,12 +178,11 @@ void Parser::Impl::diagnoseTokenPatterns() {
     }
 
     if (kind == ast::SyntaxKind::OfKeyword) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-          current.getLocation());
+      diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(current.getLocation());
     }
 
     if (braceDepth > 0 && kind == ast::SyntaxKind::ModuleKeyword) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ModuleDeclarationMustBeFirst>(
+      diagnosticEngine.report<diagnostics::DiagID::ModuleDeclarationMustBeFirst>(
           current.getLocation());
     }
 
@@ -193,7 +190,7 @@ void Parser::Impl::diagnoseTokenPatterns() {
       if (kind == ast::SyntaxKind::StringLiteral || kind == ast::SyntaxKind::IntegerLiteral ||
           kind == ast::SyntaxKind::FloatLiteral || kind == ast::SyntaxKind::CharacterLiteral) {
         if (next == ast::SyntaxKind::Colon) {
-          diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(current.getLocation());
+          diagnosticEngine.report<diagnostics::DiagID::IdentifierExpected>(current.getLocation());
         }
       }
 
@@ -201,8 +198,7 @@ void Parser::Impl::diagnoseTokenPatterns() {
         for (size_t j = i + 1; j < count; ++j) {
           const ast::SyntaxKind nested = kindAt(j);
           if (nested == ast::SyntaxKind::Colon) {
-            diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(
-                current.getLocation());
+            diagnosticEngine.report<diagnostics::DiagID::IdentifierExpected>(current.getLocation());
             break;
           }
           if (nested == ast::SyntaxKind::Semicolon || nested == ast::SyntaxKind::RightBrace) {
@@ -213,18 +209,18 @@ void Parser::Impl::diagnoseTokenPatterns() {
 
       if (atInterfaceElementHead && kind == ast::SyntaxKind::Identifier &&
           next == ast::SyntaxKind::LeftParen) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::PropertyOrSignatureExpected>(
+        diagnosticEngine.report<diagnostics::DiagID::PropertyOrSignatureExpected>(
             current.getLocation());
       }
 
       if (atInterfaceElementHead && kind == ast::SyntaxKind::ClassKeyword) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::PropertyOrSignatureExpected>(
+        diagnosticEngine.report<diagnostics::DiagID::PropertyOrSignatureExpected>(
             current.getLocation());
       }
 
       if (insideInterfaceTopLevel && kind == ast::SyntaxKind::LetKeyword &&
           next == ast::SyntaxKind::Colon) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(
+        diagnosticEngine.report<diagnostics::DiagID::IdentifierExpected>(
             tokenAt(i + 1).getLocation());
       }
 
@@ -236,8 +232,8 @@ void Parser::Impl::diagnoseTokenPatterns() {
             break;
           }
           if (nested == ast::SyntaxKind::Arrow) {
-            diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(tokenAt(j).getLocation(),
-                                                                          "("_zc);
+            diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(tokenAt(j).getLocation(),
+                                                                        "("_zc);
             break;
           }
         }
@@ -245,22 +241,21 @@ void Parser::Impl::diagnoseTokenPatterns() {
 
       if (insideInterfaceTopLevel && kind == ast::SyntaxKind::LetKeyword && i + 2 < count &&
           next == ast::SyntaxKind::Identifier && kindAt(i + 2) == ast::SyntaxKind::Arrow) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(tokenAt(i + 2).getLocation(),
-                                                                      ":"_zc);
+        diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(tokenAt(i + 2).getLocation(),
+                                                                    ":"_zc);
       }
 
       if (insideInterfaceTopLevel && kind == ast::SyntaxKind::Equals &&
           sawFunSinceLastInterfaceBoundary) {
-        diagnosticEngine
-            .diagnose<diagnostics::DiagID::InterfaceMethodSignatureInitializerNotAllowed>(
-                current.getLocation());
+        diagnosticEngine.report<diagnostics::DiagID::InterfaceMethodSignatureInitializerNotAllowed>(
+            current.getLocation());
       }
     }
 
     if (braceDepth > 0 && isInvalidObjectLiteralPropertyName(kind) &&
         next == ast::SyntaxKind::Colon) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExceptedIdentifier>(current.getLocation(),
-                                                                         tokenLabel(current));
+      diagnosticEngine.report<diagnostics::DiagID::ExceptedIdentifier>(current.getLocation(),
+                                                                       tokenLabel(current));
     }
 
     if (kind == ast::SyntaxKind::LeftBrace && braceDepth == 0) {
@@ -282,7 +277,7 @@ void Parser::Impl::diagnoseTokenPatterns() {
     }
     if (kind == ast::SyntaxKind::RightBrace) {
       if (braceDepth == 0) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+        diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
             current.getLocation());
       } else {
         const bool closesTypeLiteral = braceDepth == typeLiteralBraceDepth;
@@ -293,7 +288,7 @@ void Parser::Impl::diagnoseTokenPatterns() {
         --braceDepth;
         if (sawTopLevelBlock && braceDepth == 0 && next == ast::SyntaxKind::Equals &&
             !closesTypeLiteral && !closesBindingPattern) {
-          diagnosticEngine.diagnose<diagnostics::DiagID::DeclarationOrStatementExpectedAfterBlock>(
+          diagnosticEngine.report<diagnostics::DiagID::DeclarationOrStatementExpectedAfterBlock>(
               tokenAt(i + 1).getLocation());
         }
       }
@@ -305,18 +300,18 @@ void Parser::Impl::diagnoseTokenPatterns() {
         kindAt(i + 2) != ast::SyntaxKind::RightBrace &&
         !followsFieldTypeColonWithoutSemicolon(i + 2) &&
         kindAt(i + 3) == ast::SyntaxKind::Identifier) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::MissingSemicolon>(tokenAt(i + 3).getLocation(),
-                                                                       tokenLabel(tokenAt(i + 3)));
+      diagnosticEngine.report<diagnostics::DiagID::MissingSemicolon>(tokenAt(i + 3).getLocation(),
+                                                                     tokenLabel(tokenAt(i + 3)));
     }
   }
 
   if (braceDepth > 0 && count > 0) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(tokenAt(count - 1).getLocation(),
-                                                                  "}"_zc);
+    diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(tokenAt(count - 1).getLocation(),
+                                                                "}"_zc);
   }
   if (waitingForInterfaceBody && count > 0) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(tokenAt(count - 1).getLocation(),
-                                                                  "{"_zc);
+    diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(tokenAt(count - 1).getLocation(),
+                                                                "{"_zc);
   }
 }
 
@@ -341,14 +336,14 @@ ast::NodeId Parser::Impl::parsePatternRange(ParserSyntaxFactory& builder, size_t
       }
       if (at == start || hasDuplicateAt) {
         if (!shouldSuppressDiagnostic(at)) {
-          diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
               tokenAt(at).getLocation());
         }
         return ast::NodeId();
       }
       if (tokenAt(start).getValue() == "_"_zc) {
         if (!shouldSuppressDiagnostic(start)) {
-          diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
               tokenAt(start).getLocation());
         }
         return ast::NodeId();
@@ -361,14 +356,14 @@ ast::NodeId Parser::Impl::parsePatternRange(ParserSyntaxFactory& builder, size_t
   if (kindAt(start) == ast::SyntaxKind::IsKeyword) {
     if (start + 1 >= end) {
       if (!shouldSuppressDiagnostic(end)) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(end));
+        diagnosticEngine.report<diagnostics::DiagID::TypeExpected>(diagnosticLoc(end));
       }
       return ast::NodeId();
     }
     const ast::NodeId ty = parseTypeRange(builder, start + 1, end);
     if (!ty) {
       if (!shouldSuppressDiagnostic(start + 1)) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(start + 1));
+        diagnosticEngine.report<diagnostics::DiagID::TypeExpected>(diagnosticLoc(start + 1));
       }
       return ast::NodeId();
     }
@@ -400,7 +395,7 @@ ast::NodeId Parser::Impl::parsePatternRange(ParserSyntaxFactory& builder, size_t
         if (kindAt(itemStart) == ast::SyntaxKind::DotDotDot) {
           if (cursor.position() < listEnd) {
             if (!shouldSuppressDiagnostic(itemStart)) {
-              diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+              diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
                   tokenAt(itemStart).getLocation());
             }
             return ast::NodeId();
@@ -433,7 +428,7 @@ ast::NodeId Parser::Impl::parsePatternRange(ParserSyntaxFactory& builder, size_t
         if (kindAt(itemStart) == ast::SyntaxKind::DotDotDot) {
           if (cursor.position() < listEnd) {
             if (!shouldSuppressDiagnostic(itemStart)) {
-              diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+              diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
                   tokenAt(itemStart).getLocation());
             }
             return ast::NodeId();
@@ -504,7 +499,7 @@ ast::NodeId Parser::Impl::parsePatternRange(ParserSyntaxFactory& builder, size_t
         if (kindAt(itemStart) == ast::SyntaxKind::DotDotDot) {
           if (cursor.position() < listEnd) {
             if (!shouldSuppressDiagnostic(itemStart)) {
-              diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+              diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
                   tokenAt(itemStart).getLocation());
             }
             return ast::NodeId();
@@ -527,7 +522,7 @@ ast::NodeId Parser::Impl::parsePatternRange(ParserSyntaxFactory& builder, size_t
                                    : itemEnd;
           if (kindAt(itemStart) != ast::SyntaxKind::Identifier) {
             if (!shouldSuppressDiagnostic(itemStart)) {
-              diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(
+              diagnosticEngine.report<diagnostics::DiagID::IdentifierExpected>(
                   diagnosticLoc(itemStart));
             }
             return ast::NodeId();

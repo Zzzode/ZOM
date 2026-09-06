@@ -5,8 +5,8 @@ set(CHECKER_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/body/body-checker.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/body/marker-proof.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/borrow/borrow-interface.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/borrow-interface-diagnostic-adapter.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/checker-diagnostic-adapter.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/borrow-interface-diagnostic-projector.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/checker-source-diagnostic-projector.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/checker-diagnostic-projector.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/checker-diagnostic-id.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/facts/checked-facts-repository.cc

@@ -14,9 +14,9 @@
 
 #include "compiler/source/core-source-admission.h"
 
+#include "compiler/identity/canonical/canonical-encoder.h"
 #include "zc/core/debug.h"
 #include "zc/core/encoding.h"
-#include "compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::source::core {
 namespace {
@@ -85,15 +85,55 @@ bool isReadIssue(MaterializationIssue issue) {
 CoreDistributionAdmissionFailure mapMaterializationIssue(MaterializationIssue issue) {
   if (isPathIssue(issue)) { return CoreDistributionAdmissionFailure::inventoryEntry(0); }
   if (isReadIssue(issue)) {
-    return CoreDistributionAdmissionFailure::withoutCoordinate(CoreLibraryIssue::ReadFailed);
-  }
-  if (issue == MaterializationIssue::SourceChangedDuringSnapshot ||
-      issue == MaterializationIssue::SourceTreeDigestMismatch) {
     return CoreDistributionAdmissionFailure::withoutCoordinate(
-        CoreLibraryIssue::VerifierDisagreement);
+        CoreDistributionAdmissionFailureKind::ReadFailed);
   }
-  return CoreDistributionAdmissionFailure::withoutCoordinate(
-      CoreLibraryIssue::DistributionMismatch);
+  switch (issue) {
+    case MaterializationIssue::UnsupportedArchiveFormat:
+    case MaterializationIssue::ArchiveDecodeFailed:
+    case MaterializationIssue::TrailingArchiveData:
+      return CoreDistributionAdmissionFailure::withoutCoordinate(
+          CoreDistributionAdmissionFailureKind::InvalidSourceBytes);
+    case MaterializationIssue::FileTooLarge:
+    case MaterializationIssue::CompressedSizeLimit:
+    case MaterializationIssue::DecoderWindowLimit:
+    case MaterializationIssue::DecoderMemoryLimit:
+    case MaterializationIssue::ArchiveHeaderLimit:
+    case MaterializationIssue::ArchiveMetadataLimit:
+    case MaterializationIssue::FileCountLimit:
+    case MaterializationIssue::TotalSizeLimit:
+    case MaterializationIssue::LengthOverflow:
+      return CoreDistributionAdmissionFailure::withoutCoordinate(
+          CoreDistributionAdmissionFailureKind::ResourceLimitExceeded);
+    case MaterializationIssue::SourceChangedDuringSnapshot:
+      return CoreDistributionAdmissionFailure::withoutCoordinate(
+          CoreDistributionAdmissionFailureKind::SourceChangedDuringAdmission);
+    case MaterializationIssue::SourceTreeDigestMismatch:
+      return CoreDistributionAdmissionFailure::withoutCoordinate(
+          CoreDistributionAdmissionFailureKind::SourceIntegrityMismatch);
+    case MaterializationIssue::FreshDirectoryCreateFailed:
+    case MaterializationIssue::SourceReadFailed:
+    case MaterializationIssue::DestinationCreateFailed:
+    case MaterializationIssue::DestinationWriteFailed:
+    case MaterializationIssue::DestinationSyncFailed:
+    case MaterializationIssue::InvalidEntryEncoding:
+    case MaterializationIssue::AbsolutePath:
+    case MaterializationIssue::ParentPath:
+    case MaterializationIssue::DotPath:
+    case MaterializationIssue::BackslashPath:
+    case MaterializationIssue::EmptySegment:
+    case MaterializationIssue::PathTooDeep:
+    case MaterializationIssue::PathTooLong:
+    case MaterializationIssue::Symlink:
+    case MaterializationIssue::HardLink:
+    case MaterializationIssue::SpecialFile:
+    case MaterializationIssue::DuplicatePath:
+    case MaterializationIssue::UnicodeCollision:
+    case MaterializationIssue::CaseFoldCollision:
+    case MaterializationIssue::SnapshotCleanupFailed:
+      ZC_UNREACHABLE
+  }
+  ZC_UNREACHABLE
 }
 
 bool isZomSourcePath(const identity::CanonicalRelativePath& path) {
@@ -136,19 +176,19 @@ SnapshotBuildResult buildSnapshots(const driver::package::DigestVerifiedSourceSn
   for (const auto& file : source.record().files()) {
     auto read = source.readVerifiedFile(file.path());
     if (read.is<MaterializationIssue>()) {
-      return CoreDistributionAdmissionFailure::file(CoreLibraryIssue::ReadFailed,
-                                                    file.path().clone());
+      return CoreDistributionAdmissionFailure::file(
+          CoreDistributionAdmissionFailureKind::ReadFailed, file.path().clone());
     }
     auto bytes = zc::mv(read.get<zc::Array<zc::byte>>());
     if (!validSourceBytes(bytes.asPtr())) {
-      return CoreDistributionAdmissionFailure::file(CoreLibraryIssue::InvalidSourceBytes,
-                                                    file.path().clone());
+      return CoreDistributionAdmissionFailure::file(
+          CoreDistributionAdmissionFailureKind::InvalidSourceBytes, file.path().clone());
     }
     auto snapshot = VerifiedCoreSourceSnapshot::from(file.path().clone(),
                                                      zc::heapArray<uint8_t>(bytes.asPtr()));
     if (snapshot == zc::none) {
-      return CoreDistributionAdmissionFailure::file(CoreLibraryIssue::InvalidSourceBytes,
-                                                    file.path().clone());
+      return CoreDistributionAdmissionFailure::file(
+          CoreDistributionAdmissionFailureKind::InvalidSourceBytes, file.path().clone());
     }
     ZC_IF_SOME(value, snapshot) { snapshots.add(zc::mv(value)); }
   }
@@ -205,28 +245,31 @@ bool expectedAuthorityMatchesInitial(const CoreDistributionInputRecord& expected
 }  // namespace
 
 CoreDistributionAdmissionFailure::CoreDistributionAdmissionFailure(
-    CoreLibraryIssue issue, zc::Maybe<uint64_t> inventoryOrdinal,
+    CoreDistributionAdmissionFailureKind kind, zc::Maybe<uint64_t> inventoryOrdinal,
     zc::Maybe<identity::CanonicalRelativePath>&& path) noexcept
-    : issueValue(issue), inventoryOrdinalValue(inventoryOrdinal), pathValue(zc::mv(path)) {}
+    : kindValue(kind), inventoryOrdinalValue(inventoryOrdinal), pathValue(zc::mv(path)) {}
 
 CoreDistributionAdmissionFailure CoreDistributionAdmissionFailure::withoutCoordinate(
-    CoreLibraryIssue issue) {
+    CoreDistributionAdmissionFailureKind kind) {
   zc::Maybe<identity::CanonicalRelativePath> path;
-  return CoreDistributionAdmissionFailure(issue, zc::none, zc::mv(path));
+  return CoreDistributionAdmissionFailure(kind, zc::none, zc::mv(path));
 }
 
 CoreDistributionAdmissionFailure CoreDistributionAdmissionFailure::inventoryEntry(
     uint64_t ordinal) {
   zc::Maybe<identity::CanonicalRelativePath> path;
-  return CoreDistributionAdmissionFailure(CoreLibraryIssue::InvalidPath, ordinal, zc::mv(path));
+  return CoreDistributionAdmissionFailure(CoreDistributionAdmissionFailureKind::InvalidPath,
+                                          ordinal, zc::mv(path));
 }
 
 CoreDistributionAdmissionFailure CoreDistributionAdmissionFailure::file(
-    CoreLibraryIssue issue, identity::CanonicalRelativePath&& path) {
-  return CoreDistributionAdmissionFailure(issue, zc::none, zc::mv(path));
+    CoreDistributionAdmissionFailureKind kind, identity::CanonicalRelativePath&& path) {
+  return CoreDistributionAdmissionFailure(kind, zc::none, zc::mv(path));
 }
 
-CoreLibraryIssue CoreDistributionAdmissionFailure::issue() const noexcept { return issueValue; }
+CoreDistributionAdmissionFailureKind CoreDistributionAdmissionFailure::kind() const noexcept {
+  return kindValue;
+}
 zc::Maybe<uint64_t> CoreDistributionAdmissionFailure::inventoryOrdinal() const noexcept {
   return inventoryOrdinalValue;
 }
@@ -234,6 +277,29 @@ zc::Maybe<const identity::CanonicalRelativePath&> CoreDistributionAdmissionFailu
     const noexcept {
   ZC_IF_SOME(value, pathValue) { return value; }
   return zc::none;
+}
+
+zc::StringPtr coreDistributionAdmissionFailureDisplay(
+    CoreDistributionAdmissionFailureKind kind) noexcept {
+  switch (kind) {
+    case CoreDistributionAdmissionFailureKind::ReadFailed:
+      return "read-failed"_zc;
+    case CoreDistributionAdmissionFailureKind::InvalidPath:
+      return "invalid-path"_zc;
+    case CoreDistributionAdmissionFailureKind::InvalidSourceBytes:
+      return "invalid-source-bytes"_zc;
+    case CoreDistributionAdmissionFailureKind::ResourceLimitExceeded:
+      return "resource-limit-exceeded"_zc;
+    case CoreDistributionAdmissionFailureKind::SourceChangedDuringAdmission:
+      return "source-changed-during-admission"_zc;
+    case CoreDistributionAdmissionFailureKind::SourceIntegrityMismatch:
+      return "source-integrity-mismatch"_zc;
+    case CoreDistributionAdmissionFailureKind::DistributionMismatch:
+      return "distribution-mismatch"_zc;
+    case CoreDistributionAdmissionFailureKind::EditionMismatch:
+      return "edition-mismatch"_zc;
+  }
+  ZC_UNREACHABLE
 }
 
 struct VerifiedCoreSourceRoot::Impl final {};
@@ -337,8 +403,7 @@ CoreDistributionAdmissionResult CoreDistributionAdmission::admit(
   auto builderTree = zc::mv(builderInventory.get<SourceTreeRecord>());
   auto verifierTree = zc::mv(verifierInventory.get<SourceTreeRecord>());
   if (!sameSourceTree(builderTree, verifierTree)) {
-    return CoreDistributionAdmissionFailure::withoutCoordinate(
-        CoreLibraryIssue::VerifierDisagreement);
+    return CoreDistributionAdmissionInvariantKind::VerifierDisagreement;
   }
   ZC_IF_SOME(failure, validateInventoryPaths(builderTree)) { return zc::mv(failure); }
 
@@ -349,8 +414,7 @@ CoreDistributionAdmissionResult CoreDistributionAdmission::admit(
   }
   auto snapshot = zc::mv(materialized.get<driver::package::DigestVerifiedSourceSnapshot>());
   if (!sameSourceTree(builderTree, snapshot.record())) {
-    return CoreDistributionAdmissionFailure::withoutCoordinate(
-        CoreLibraryIssue::VerifierDisagreement);
+    return CoreDistributionAdmissionInvariantKind::VerifiedStateMismatch;
   }
 
   auto builderSnapshots = buildSnapshots(snapshot);
@@ -365,17 +429,17 @@ CoreDistributionAdmissionResult CoreDistributionAdmission::admit(
   auto independentlyVerifiedSnapshots =
       zc::mv(verifierSnapshots.get<zc::Vector<VerifiedCoreSourceSnapshot>>());
   if (!sameSnapshots(admittedSnapshots.asPtr(), independentlyVerifiedSnapshots.asPtr())) {
-    return CoreDistributionAdmissionFailure::withoutCoordinate(
-        CoreLibraryIssue::VerifierDisagreement);
+    return CoreDistributionAdmissionInvariantKind::VerifierDisagreement;
   }
 
   if (!inventoryMatches(builderTree, expected.record()) ||
       !expectedAuthorityMatchesInitial(expected)) {
     return CoreDistributionAdmissionFailure::withoutCoordinate(
-        CoreLibraryIssue::DistributionMismatch);
+        CoreDistributionAdmissionFailureKind::DistributionMismatch);
   }
   if (expected.record().editionYear() != projectedEditionYear) {
-    return CoreDistributionAdmissionFailure::withoutCoordinate(CoreLibraryIssue::EditionMismatch);
+    return CoreDistributionAdmissionFailure::withoutCoordinate(
+        CoreDistributionAdmissionFailureKind::EditionMismatch);
   }
   ZC_IF_SOME(issue, snapshot.finish()) { return mapMaterializationIssue(issue); }
 

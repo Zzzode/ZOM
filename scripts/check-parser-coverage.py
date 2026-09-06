@@ -29,7 +29,12 @@ CURSOR_BOUNDARY_SOURCES = set(PARSER_SOURCES)
 COVERAGE = ROOT / "compiler" / "parser" / "parser-coverage.yml"
 SCHEMA = ROOT / "compiler" / "ast" / "schema.yml"
 NODE_FACTORY = ROOT / "compiler" / "ast" / "generated" / "node-factory.h"
-DIAGNOSTIC_ENGINE = ROOT / "compiler" / "diagnostics" / "core" / "diagnostic-engine.cc"
+DIAGNOSTIC_DRAFT_BUFFER = (
+    ROOT / "compiler" / "diagnostics" / "fact" / "source-diagnostic-draft-buffer.cc"
+)
+DIAGNOSTIC_COLLECTOR = (
+    ROOT / "compiler" / "diagnostics" / "fact" / "compilation-diagnostic-facts.h"
+)
 DESIGN_DIR = ROOT / "docs" / "design"
 DESIGN_DOC_MARKERS = {
     DESIGN_DIR / "architecture.md": [
@@ -374,10 +379,25 @@ def validate_parser_architecture() -> None:
         if "RecoveryFrameScope" not in path.read_text(encoding="utf-8"):
             fail(f"{rel(path)} does not install an explicit parser recovery frame")
 
-    diagnostic_text = DIAGNOSTIC_ENGINE.read_text(encoding="utf-8")
-    for required in ["errorBudget = 100", "hasEmitted", "EmittedDiagnosticKey"]:
-        if required not in diagnostic_text:
-            fail(f"{rel(DIAGNOSTIC_ENGINE)} is missing bounded diagnostic recovery gate: {required}")
+    # RFC 0002 bounds retained source diagnostics with a fail-closed ceiling
+    # rather than a production budget; RFC 0047 replaced engine-local
+    # (id, location) deduplication with occurrence-identity conflict detection
+    # in the request collector, and keeps display budgeting a consumer policy.
+    draft_text = DIAGNOSTIC_DRAFT_BUFFER.read_text(encoding="utf-8")
+    for required in ["kMaximumSourceFacts = 4096", "maximumFacts = kMaximumSourceFacts"]:
+        if required not in draft_text:
+            fail(
+                f"{rel(DIAGNOSTIC_DRAFT_BUFFER)} is missing bounded diagnostic "
+                f"recovery gate: {required}"
+            )
+
+    collector_text = DIAGNOSTIC_COLLECTOR.read_text(encoding="utf-8")
+    for required in ["ConflictingOccurrence"]:
+        if required not in collector_text:
+            fail(
+                f"{rel(DIAGNOSTIC_COLLECTOR)} is missing occurrence conflict "
+                f"detection: {required}"
+            )
 
 
 def validate_parser_design_docs() -> None:

@@ -1,4 +1,3 @@
-add_ztest_unit_test("binding-diagnostic-adapter-test" "diagnostics/binding-diagnostic-adapter-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
 add_ztest_unit_test("binding-diagnostic-projector-test" "diagnostics/binding-diagnostic-projector-test.cc" LIBRARIES binder identity basic)
 add_ztest_unit_test("canonical-definition-header-producer-test" "canonical/canonical-definition-header-producer-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
 add_ztest_unit_test("canonical-header-type-producer-test" "canonical/canonical-header-type-producer-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)

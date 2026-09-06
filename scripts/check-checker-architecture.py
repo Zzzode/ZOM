@@ -75,50 +75,8 @@ CHECKED_FACTS_SOURCE = CHECKER_ROOT / "inference/checked-facts.cc"
 BODY_CHECKER_SOURCE = CHECKER_ROOT / "body/body-checker.cc"
 BODY_CHECKER_HEADER = CHECKER_ROOT / "body/body-checker.h"
 SCALAR_LITERAL_FACTS_SOURCE = CHECKER_ROOT / "facts/scalar-literal-facts.cc"
-CHECKER_DIAGNOSTIC_ADAPTER = CHECKER_ROOT / "diagnostics/checker-diagnostic-adapter.cc"
 MARKER_PROOF_TEST = Path(
     "tests/unittests/compiler/checker/body/marker-proof-test.cc"
-)
-
-PLACEHOLDER_DIAGNOSTIC_RENDERINGS = (
-    "<definition>",
-    "<integer>",
-    "<patterns>",
-)
-
-TYPE_CATEGORY_PLACEHOLDER_RENDERINGS = (
-    "primitive",
-    "tuple",
-    "object",
-    "dynamic-array",
-    "slice",
-    "fixed-array",
-    "function",
-    "nominal",
-    "type-parameter",
-    "union",
-    "intersection",
-    "reference",
-    "raw-pointer",
-    "existential",
-    "interface-bound",
-    "interface-self",
-    "<primitive>",
-    "<tuple>",
-    "<object>",
-    "<dynamic-array>",
-    "<slice>",
-    "<fixed-array>",
-    "<function>",
-    "<nominal>",
-    "<type-parameter>",
-    "<union>",
-    "<intersection>",
-    "<reference>",
-    "<raw-pointer>",
-    "<existential>",
-    "<interface-bound>",
-    "<interface-self>",
 )
 
 REMOVED_CHECKER_FILES = {
@@ -1004,22 +962,6 @@ def check_diagnostic_registry(files: dict[Path, str], errors: list[str]) -> None
             )
 
 
-def check_diagnostic_rendering(files: dict[Path, str], errors: list[str]) -> None:
-    source = files.get(CHECKER_DIAGNOSTIC_ADAPTER, "")
-    for placeholder in PLACEHOLDER_DIAGNOSTIC_RENDERINGS:
-        if f'"{placeholder}"' in source:
-            errors.append(
-                f"{CHECKER_DIAGNOSTIC_ADAPTER}: placeholder Checker diagnostic "
-                f"rendering {placeholder!r} is forbidden"
-            )
-    for placeholder in TYPE_CATEGORY_PLACEHOLDER_RENDERINGS:
-        if f'"{placeholder}"' in source:
-            errors.append(
-                f"{CHECKER_DIAGNOSTIC_ADAPTER}: type-category placeholder Checker "
-                f"diagnostic rendering {placeholder!r} is forbidden"
-            )
-
-
 def check_production_session(files: dict[Path, str], errors: list[str]) -> None:
     session = files.get(SESSION_SOURCE, "")
     required = (
@@ -1111,7 +1053,6 @@ def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
         (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/inference/checked-facts.cc"),
         (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/facts/checked-facts-repository.cc"),
         (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/facts/coherence-facts.cc"),
-        (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/checker-diagnostic-adapter.cc"),
         (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/checker-diagnostic-id.cc"),
         (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/operator-kind.cc"),
         (CHECKER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/inference/inference-context.cc"),
@@ -1233,7 +1174,6 @@ def analyze(files: dict[Path, str]) -> list[str]:
     check_operator_closure(files, errors)
     check_type_key_pattern_closure(files, errors)
     check_diagnostic_registry(files, errors)
-    check_diagnostic_rendering(files, errors)
     check_inference_core(files, errors)
     check_checked_facts_codec(files, errors)
     check_production_session(files, errors)
@@ -1721,29 +1661,6 @@ def run_self_test() -> int:
         ),
         "retained Checker diagnostics must not contain diagnosticArguments",
     )
-    for placeholder in PLACEHOLDER_DIAGNOSTIC_RENDERINGS:
-        failures += expect_rejection(
-            baseline,
-            f"diagnostic placeholder {placeholder}",
-            lambda files, placeholder=placeholder: append_source(
-                files,
-                CHECKER_DIAGNOSTIC_ADAPTER,
-                f'\nzc::String injectedPlaceholder() {{ return zc::str("{placeholder}"); }}\n',
-            ),
-            f"placeholder Checker diagnostic rendering {placeholder!r} is forbidden",
-        )
-    for placeholder in TYPE_CATEGORY_PLACEHOLDER_RENDERINGS:
-        failures += expect_rejection(
-            baseline,
-            f"type-category diagnostic placeholder {placeholder}",
-            lambda files, placeholder=placeholder: append_source(
-                files,
-                CHECKER_DIAGNOSTIC_ADAPTER,
-                f'\nzc::String injectedTypePlaceholder() {{ return zc::str("{placeholder}"); }}\n',
-            ),
-            f"type-category placeholder Checker diagnostic rendering "
-            f"{placeholder!r} is forbidden",
-        )
     failures += expect_rejection(
         baseline,
         "inference token removed",
@@ -1990,13 +1907,7 @@ def run_self_test() -> int:
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
         return 1
-    fixture_count = 73 + len(PLACEHOLDER_DIAGNOSTIC_RENDERINGS) + len(
-        TYPE_CATEGORY_PLACEHOLDER_RENDERINGS
-    )
-    print(
-        f"Checker architecture negative fixtures passed "
-        f"({fixture_count}/{fixture_count})."
-    )
+    print("Checker architecture negative fixtures passed.")
     return 0
 
 

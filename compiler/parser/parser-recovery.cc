@@ -546,7 +546,7 @@ size_t Parser::Impl::consumeBracedBodyEnd(size_t bodyOpen, size_t limit) const {
   }
   const size_t diagnosticIndex = unboundedLimit || recoveryEnd == 0 ? recoveryEnd : recoveryEnd - 1;
   if (!shouldSuppressDiagnostic(diagnosticIndex)) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+    diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(
         tokenAt(diagnosticIndex).getLocation(), "}"_zc);
   }
   return recoveryFrame.finish(recoveryEnd);
@@ -598,9 +598,10 @@ Parser::Impl::SourceElementBoundary Parser::Impl::consumeSourceElement(TokenCurs
   // reported as a generic "Expression expected".
   if (kindAt(start) == ast::SyntaxKind::Hash && start == nodeStart) {
     if (!shouldSuppressDiagnostic(start)) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::DanglingHash>(diagnosticLoc(start))
-          .addChild(zc::heap<diagnostics::Diagnostic>(diagnostics::DiagID::DanglingHashHelp,
-                                                      diagnosticLoc(start)));
+      const auto diagnostic =
+          diagnosticEngine.report<diagnostics::DiagID::DanglingHash>(diagnosticLoc(start));
+      diagnosticEngine.addNote<diagnostics::DiagID::DanglingHashHelp>(diagnostic,
+                                                                      diagnosticLoc(start));
     }
     const size_t afterHash = start + 1;
     boundary.nodeStart = afterHash;
@@ -783,21 +784,21 @@ Parser::Impl::SourceElementParseResult Parser::Impl::parseSourceElement(
 
   result.attrs = parseOuterAttributeList(builder, result.boundary.start, result.boundary.end);
   if (result.attrs && result.boundary.kind == ast::SyntaxKind::ModuleDeclaration) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::AttributeRequiresSupportedTarget>(
+    diagnosticEngine.report<diagnostics::DiagID::AttributeRequiresSupportedTarget>(
         tokenAt(result.boundary.start).getLocation());
   }
   for (size_t index = result.boundary.nodeStart; index < result.boundary.head; ++index) {
     const ast::SyntaxKind modifier = kindAt(index);
     if (modifier == ast::SyntaxKind::PublicKeyword || modifier == ast::SyntaxKind::PrivateKeyword ||
         modifier == ast::SyntaxKind::ProtectedKeyword) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::VisibilityModifierRequiresMemberContext>(
+      diagnosticEngine.report<diagnostics::DiagID::VisibilityModifierRequiresMemberContext>(
           tokenAt(index).getLocation(), tokenLabel(tokenAt(index)));
       break;
     }
   }
   if (result.boundary.start < result.boundary.nodeStart &&
       result.boundary.kind == ast::SyntaxKind::ExpressionStatement) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+    diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
         tokenAt(result.boundary.start).getLocation());
     return result;
   }
@@ -834,7 +835,7 @@ ast::NodeId Parser::Impl::parseSourceElementOfKind(ParserSyntaxFactory& builder,
   const bool moduleItemOnly =
       kind == ast::SyntaxKind::ImportDeclaration || kind == ast::SyntaxKind::ExportDeclaration;
   if (moduleItemOnly && elementContext != SourceElementContext::ModuleItem) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ImportOrExportDeclarationRequiresModuleScope>(
+    diagnosticEngine.report<diagnostics::DiagID::ImportOrExportDeclarationRequiresModuleScope>(
         diagnosticLoc(start));
     return ast::NodeId();
   }

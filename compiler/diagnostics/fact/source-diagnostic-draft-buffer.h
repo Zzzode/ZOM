@@ -8,8 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "compiler/diagnostics/consumer/diagnostic-emitter.h"
 #include "compiler/diagnostics/fact/diagnostic-fact.h"
+#include "compiler/diagnostics/fact/source-diagnostic-sink.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
@@ -64,8 +64,8 @@ public:
   SourceDiagnosticDraftBuffer& operator=(SourceDiagnosticDraftBuffer&&) noexcept;
   ZC_DISALLOW_COPY(SourceDiagnosticDraftBuffer);
 
-  ZC_NODISCARD DiagnosticEmitter& lexerEmitter();
-  ZC_NODISCARD DiagnosticEmitter& parserEmitter();
+  ZC_NODISCARD SourceDiagnosticSink& lexerSink();
+  ZC_NODISCARD SourceDiagnosticSink& parserSink();
   ZC_NODISCARD Checkpoint checkpoint();
   void commit(Checkpoint checkpoint);
   void rollback(Checkpoint checkpoint);

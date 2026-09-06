@@ -14,10 +14,7 @@
 
 #include "compiler/driver/package/package-diagnostic.h"
 
-#include "compiler/diagnostics/consumer/diagnostic-consumer.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
-#include "compiler/diagnostics/core/diagnostic.h"
-#include "compiler/source/manager.h"
+#include "compiler/diagnostics/fact/diagnostic-materializer.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
 
@@ -82,6 +79,13 @@ DiagnosticAnchor anchor(const PackageDiagnosticDocument& document, uint64_t star
   ZC_FAIL_REQUIRE("invalid package diagnostic span fixture");
 }
 
+DiagnosticAnchor forgedAnchor(const PackageDiagnosticDocument& document, uint64_t declaredLength,
+                              uint64_t start, uint64_t end) {
+  auto span = ManifestSpan::from(document.key().clone(), declaredLength, start, end);
+  ZC_IF_SOME(admitted, span) { return DiagnosticAnchor::manifest(zc::mv(admitted)); }
+  ZC_FAIL_REQUIRE("invalid forged package diagnostic span fixture");
+}
+
 ManifestFailure failure(const PackageDiagnosticDocument& document, ManifestIssue issue,
                         zc::Vector<DiagnosticAnchor>&& related = {}) {
   auto provenance = DiagnosticProvenance::from(anchor(document, 0, 1), zc::mv(related));
@@ -139,36 +143,16 @@ identity::PackageKey reservationPackageKey() {
   ZC_UNREACHABLE;
 }
 
-struct CaptureState final {
-  zc::Vector<uint32_t> primaryIds;
-  zc::Vector<uint32_t> childIds;
-  zc::Vector<zc::String> displayNames;
-  zc::Vector<zc::String> toolchainRootArguments;
-};
-
-class CaptureConsumer final : public diagnostics::DiagnosticConsumer {
-public:
-  explicit CaptureConsumer(CaptureState& state) noexcept : state(state) {}
-
-  void handleDiagnostic(const source::SourceManager& sourceManager,
-                        const diagnostics::Diagnostic& diagnostic) override {
-    state.primaryIds.add(static_cast<uint32_t>(diagnostic.getId()));
-    if (diagnostic.getLoc().isValid()) {
-      state.displayNames.add(zc::str(sourceManager.getDisplayNameForLoc(diagnostic.getLoc())));
-    }
-    if (diagnostic.getId() == diagnostics::DiagID::ToolchainModuleRootReserved &&
-        diagnostic.getArgs().size() == 1 && diagnostic.getArgs()[0].is<zc::String>()) {
-      state.toolchainRootArguments.add(zc::heapString(diagnostic.getArgs()[0].get<zc::String>()));
-    }
-    for (const auto& child : diagnostic.getChildDiagnostics()) {
-      state.childIds.add(static_cast<uint32_t>(child->getId()));
-      state.displayNames.add(zc::str(sourceManager.getDisplayNameForLoc(child->getLoc())));
-    }
+diagnostics::CompilationDiagnosticFacts seal(PackageDiagnosticFactProjection&& projection) {
+  diagnostics::CompilationDiagnosticCollector collector;
+  for (const auto& authority : projection.documents) {
+    ZC_REQUIRE(collector.addDocumentAuthority(authority.identity.asPtr(), authority.byteLength));
   }
-
-private:
-  CaptureState& state;
-};
+  ZC_REQUIRE(collector.addRoot(projection.facts.asPtr(), projection.provenance.asPtr()));
+  auto result = zc::mv(collector).seal();
+  ZC_REQUIRE(result.is<diagnostics::CompilationDiagnosticFacts>());
+  return zc::mv(result).get<diagnostics::CompilationDiagnosticFacts>();
+}
 
 }  // namespace
 
@@ -200,27 +184,30 @@ ZC_TEST("PackageDiagnosticTest.VerifiesDigestAndUsesHostPathFreeDisplayName") {
   ZC_EXPECT(PackageDiagnosticDocument::from(zc::mv(wrongKey), source) == zc::none);
 }
 
-ZC_TEST("PackageDiagnosticTest.EmitsEveryManifestIssueThroughClosedDiagnostic") {
+ZC_TEST("PackageDiagnosticTest.ProjectsEveryManifestIssueThroughClosedFact") {
   const auto source = "x"_zc.asBytes();
   zc::Vector<PackageDiagnosticDocument> documents;
   documents.add(document("Zom.toml"_zc, source));
-  CaptureState capture;
-  source::SourceManager sourceManager;
-  diagnostics::DiagnosticEngine engine(sourceManager);
-  engine.addConsumer(zc::heap<CaptureConsumer>(capture));
 
   for (const auto& issueCase : ISSUE_CASES) {
     ZC_EXPECT(manifestIssueDisplay(issueCase.issue) == issueCase.display);
     auto manifestFailure = failure(documents[0], issueCase.issue);
-    ZC_EXPECT(PackageDiagnosticAdapter::emitManifestFailure(engine, documents, manifestFailure));
+    auto result = projectManifestFailure(documents.asPtr(), manifestFailure);
+    ZC_REQUIRE(result.is<PackageDiagnosticFactProjection>());
+    const auto& projection = result.get<PackageDiagnosticFactProjection>();
+    ZC_REQUIRE(projection.facts.size() == 1);
+    ZC_EXPECT(projection.facts[0].code() == diagnostics::DiagID::PackageManifestInvalid);
+    ZC_REQUIRE(projection.facts[0].arguments().size() == 1);
+    ZC_EXPECT(projection.facts[0].arguments()[0] == issueCase.display);
+    ZC_REQUIRE(projection.facts[0].secondary().size() == 1);
+    ZC_EXPECT(projection.facts[0].secondary()[0].role() ==
+              diagnostics::DiagnosticSecondaryRole::Highlight);
+    ZC_REQUIRE(projection.documents.size() == 1);
+    ZC_EXPECT(projection.documents[0].byteLength == source.size());
   }
-
-  ZC_EXPECT(capture.primaryIds.size() == zc::size(ISSUE_CASES));
-  for (const auto id : capture.primaryIds) { ZC_EXPECT(id == 7001); }
-  for (const auto& displayName : capture.displayNames) { ZC_EXPECT(displayName == "Zom.toml"_zc); }
 }
 
-ZC_TEST("PackageDiagnosticTest.EmitsPreviousWorkspacePackageAsRelatedNote") {
+ZC_TEST("PackageDiagnosticTest.MaterializesCrossDocumentRelatedNote") {
   const auto source = "x"_zc.asBytes();
   zc::Vector<PackageDiagnosticDocument> documents;
   documents.add(document("first.toml"_zc, source));
@@ -229,21 +216,28 @@ ZC_TEST("PackageDiagnosticTest.EmitsPreviousWorkspacePackageAsRelatedNote") {
   related.add(anchor(documents[0], 0, 1));
   auto manifestFailure =
       failure(documents[1], ManifestIssue::DuplicateWorkspacePackageName, zc::mv(related));
-  CaptureState capture;
-  source::SourceManager sourceManager;
-  diagnostics::DiagnosticEngine engine(sourceManager);
-  engine.addConsumer(zc::heap<CaptureConsumer>(capture));
-
-  ZC_EXPECT(PackageDiagnosticAdapter::emitManifestFailure(engine, documents, manifestFailure));
-  ZC_REQUIRE(capture.primaryIds.size() == 1);
-  ZC_REQUIRE(capture.childIds.size() == 1);
-  ZC_EXPECT(capture.primaryIds[0] == 7001);
-  ZC_EXPECT(capture.childIds[0] == 7093);
-  ZC_EXPECT(capture.displayNames[0] == "second.toml"_zc);
-  ZC_EXPECT(capture.displayNames[1] == "first.toml"_zc);
+  auto projected = projectManifestFailure(documents.asPtr(), manifestFailure);
+  ZC_REQUIRE(projected.is<PackageDiagnosticFactProjection>());
+  auto sealed = seal(zc::mv(projected).get<PackageDiagnosticFactProjection>());
+  auto resolver =
+      ZC_REQUIRE_NONNULL(diagnostics::CompilationDiagnosticProvenanceResolver::from(sealed));
+  auto materialized = diagnostics::materializeDiagnosticFacts(sealed, resolver);
+  ZC_REQUIRE(materialized.is<diagnostics::ResolvedDiagnosticBatch>());
+  const auto resolved = materialized.get<diagnostics::ResolvedDiagnosticBatch>().diagnostics();
+  ZC_REQUIRE(resolved.size() == 1);
+  ZC_EXPECT(resolved[0].code() == diagnostics::DiagID::PackageManifestInvalid);
+  ZC_EXPECT(resolved[0].primary().origin() == diagnostics::DiagnosticFactOrigin::Document);
+  ZC_EXPECT(resolved[0].primary().documentIdentityBytes() == documents[1].key().encode().asPtr());
+  ZC_REQUIRE(resolved[0].related().size() == 2);
+  ZC_EXPECT(resolved[0].related()[0].role == diagnostics::DiagnosticSecondaryRole::Highlight);
+  const diagnostics::DiagnosticSourceRange expectedHighlight{0, 1, true};
+  ZC_EXPECT(resolved[0].related()[0].location.range() == expectedHighlight);
+  ZC_EXPECT(resolved[0].related()[1].code == diagnostics::DiagID::PreviousWorkspacePackageHere);
+  ZC_EXPECT(resolved[0].related()[1].location.documentIdentityBytes() ==
+            documents[0].key().encode().asPtr());
 }
 
-ZC_TEST("PackageDiagnosticTest.EmitsTypedToolchainRootAndRejectsWrongDocuments") {
+ZC_TEST("PackageDiagnosticTest.ProjectsTypedToolchainRootAndRejectsWrongDocuments") {
   const auto source = R"toml([package]
 name = "app"
 version = "1.0.0"
@@ -261,70 +255,60 @@ path = "src/bin/core.zom"
 
   zc::Vector<PackageDiagnosticDocument> documents;
   documents.add(document("Zom.toml"_zc, source.asBytes()));
-  CaptureState capture;
-  source::SourceManager sourceManager;
-  diagnostics::DiagnosticEngine engine(sourceManager);
-  engine.addConsumer(zc::heap<CaptureConsumer>(capture));
   ZC_IF_SOME(value, failure) {
-    ZC_EXPECT(PackageDiagnosticAdapter::emitToolchainModuleRootFailure(engine, documents, value));
-    ZC_REQUIRE(capture.primaryIds.size() == 1);
-    ZC_EXPECT(capture.primaryIds[0] == 3027);
-    ZC_REQUIRE(capture.toolchainRootArguments.size() == 1);
-    ZC_EXPECT(capture.toolchainRootArguments[0] == "core"_zc);
-    ZC_REQUIRE(capture.displayNames.size() == 1);
-    ZC_EXPECT(capture.displayNames[0] == "Zom.toml"_zc);
+    auto projected = projectToolchainModuleRootFailure(documents.asPtr(), value);
+    ZC_REQUIRE(projected.is<PackageDiagnosticFactProjection>());
+    const auto& projection = projected.get<PackageDiagnosticFactProjection>();
+    ZC_REQUIRE(projection.facts.size() == 1);
+    ZC_EXPECT(projection.facts[0].code() == diagnostics::DiagID::ToolchainModuleRootReserved);
+    ZC_REQUIRE(projection.facts[0].arguments().size() == 1);
+    ZC_EXPECT(projection.facts[0].arguments()[0] == "core"_zc);
+    ZC_REQUIRE(projection.facts[0].secondary().size() == 1);
+    ZC_EXPECT(projection.facts[0].secondary()[0].role() ==
+              diagnostics::DiagnosticSecondaryRole::Highlight);
 
     zc::Vector<PackageDiagnosticDocument> noDocuments;
-    ZC_EXPECT(
-        !PackageDiagnosticAdapter::emitToolchainModuleRootFailure(engine, noDocuments, value));
+    auto missing = projectToolchainModuleRootFailure(noDocuments.asPtr(), value);
+    ZC_REQUIRE(missing.is<PackageDiagnosticProjectionFailure>());
+    ZC_EXPECT(missing.get<PackageDiagnosticProjectionFailure>() ==
+              PackageDiagnosticProjectionFailure::MissingDocument);
     zc::Vector<PackageDiagnosticDocument> wrongDocuments;
     wrongDocuments.add(document("other.toml"_zc, source.asBytes()));
-    ZC_EXPECT(
-        !PackageDiagnosticAdapter::emitToolchainModuleRootFailure(engine, wrongDocuments, value));
-    ZC_EXPECT(capture.primaryIds.size() == 1);
+    auto wrong = projectToolchainModuleRootFailure(wrongDocuments.asPtr(), value);
+    ZC_REQUIRE(wrong.is<PackageDiagnosticProjectionFailure>());
+    ZC_EXPECT(wrong.get<PackageDiagnosticProjectionFailure>() ==
+              PackageDiagnosticProjectionFailure::MissingDocument);
   }
 }
 
-ZC_TEST("PackageDiagnosticTest.EmitsEveryInvocationIssueThroughZOM7016") {
-  for (uint8_t value = static_cast<uint8_t>(InvocationIssue::ManifestNotFound);
-       value <= static_cast<uint8_t>(InvocationIssue::InvalidPanicStrategy); ++value) {
-    CaptureState capture;
-    source::SourceManager sourceManager;
-    diagnostics::DiagnosticEngine engine(sourceManager);
-    engine.addConsumer(zc::heap<CaptureConsumer>(capture));
-    PackageDiagnosticAdapter::emitInvocationIssue(engine, static_cast<InvocationIssue>(value));
-    ZC_REQUIRE(capture.primaryIds.size() == 1);
-    ZC_EXPECT(capture.primaryIds[0] == 7016);
-  }
+ZC_TEST("PackageDiagnosticTest.RejectsManifestSpanBeyondAdmittedDocument") {
+  const auto source = "x"_zc.asBytes();
+  zc::Vector<PackageDiagnosticDocument> documents;
+  documents.add(document("Zom.toml"_zc, source));
+  auto provenance = DiagnosticProvenance::from(forgedAnchor(documents[0], 2, 0, 2),
+                                               zc::Vector<DiagnosticAnchor>());
+  ZC_REQUIRE(provenance != zc::none);
+  auto manifestFailure =
+      ManifestFailure::invalid(zc::mv(ZC_ASSERT_NONNULL(provenance)), ManifestIssue::TomlSyntax);
+  auto projected = projectManifestFailure(documents.asPtr(), manifestFailure);
+  ZC_REQUIRE(projected.is<PackageDiagnosticProjectionFailure>());
+  ZC_EXPECT(projected.get<PackageDiagnosticProjectionFailure>() ==
+            PackageDiagnosticProjectionFailure::MissingDocument);
 }
 
-ZC_TEST("PackageDiagnosticTest.EmitsEveryBuildScriptIssueThroughZOM7011") {
+ZC_TEST("PackageDiagnosticTest.ClassifiesBuildScriptIssuesAsOperationalTokens") {
   for (uint8_t value = static_cast<uint8_t>(BuildScriptIssue::SandboxUnavailable);
        value <= static_cast<uint8_t>(BuildScriptIssue::BuildResultIntegrityViolation); ++value) {
     const auto issue = static_cast<BuildScriptIssue>(value);
     ZC_EXPECT(buildScriptIssueDisplay(issue).size() != 0);
-    CaptureState capture;
-    source::SourceManager sourceManager;
-    diagnostics::DiagnosticEngine engine(sourceManager);
-    engine.addConsumer(zc::heap<CaptureConsumer>(capture));
-    PackageDiagnosticAdapter::emitBuildScriptIssue(engine, issue);
-    ZC_REQUIRE(capture.primaryIds.size() == 1);
-    ZC_EXPECT(capture.primaryIds[0] == 7011);
   }
 }
 
-ZC_TEST("PackageDiagnosticTest.EmitsEveryMaterializationIssueThroughZOM7010") {
+ZC_TEST("PackageDiagnosticTest.ClassifiesMaterializationIssuesAsOperationalTokens") {
   for (uint8_t value = static_cast<uint8_t>(MaterializationIssue::UnsupportedArchiveFormat);
        value <= static_cast<uint8_t>(MaterializationIssue::SnapshotCleanupFailed); ++value) {
     const auto issue = static_cast<MaterializationIssue>(value);
     ZC_EXPECT(materializationIssueDisplay(issue).size() != 0);
-    CaptureState capture;
-    source::SourceManager sourceManager;
-    diagnostics::DiagnosticEngine engine(sourceManager);
-    engine.addConsumer(zc::heap<CaptureConsumer>(capture));
-    PackageDiagnosticAdapter::emitMaterializationIssue(engine, issue);
-    ZC_REQUIRE(capture.primaryIds.size() == 1);
-    ZC_EXPECT(capture.primaryIds[0] == 7010);
   }
 }
 

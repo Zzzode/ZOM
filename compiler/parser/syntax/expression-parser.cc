@@ -33,7 +33,7 @@ bool Parser::Impl::containsUnmodeledRangeOperator(size_t start, size_t end) cons
 
 void Parser::Impl::diagnoseExpressionExpected(size_t index) const {
   if (shouldSuppressDiagnostic(index)) { return; }
-  diagnosticEngine.diagnose<diagnostics::DiagID::ExpressionExpected>(diagnosticLoc(index));
+  diagnosticEngine.report<diagnostics::DiagID::ExpressionExpected>(diagnosticLoc(index));
 }
 
 ast::NodeId Parser::Impl::parseRequiredExpression(ParserSyntaxFactory& builder, size_t start,
@@ -46,7 +46,7 @@ ast::NodeId Parser::Impl::parseRequiredExpression(ParserSyntaxFactory& builder, 
 bool Parser::Impl::requireTrailingSemicolon(size_t start, size_t end) const {
   if (start < end && kindAt(end - 1) == ast::SyntaxKind::Semicolon) { return true; }
   if (!shouldSuppressDiagnostic(end)) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(end), ";"_zc);
+    diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(end), ";"_zc);
   }
   return false;
 }
@@ -118,7 +118,7 @@ ast::NodeId Parser::Impl::parseExpressionList(ParserSyntaxFactory& builder, size
       TokenCursor restCursor = tokenCursorAt(itemStart);
       const size_t rest = consumeBalancedUntil(restCursor, itemEnd, ast::SyntaxKind::DotDotDot);
       if (rest < itemEnd) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+        diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
             tokenAt(rest).getLocation());
       } else {
         addNodeIfPresent(expressions, parseExpressionRange(builder, itemStart, itemEnd));
@@ -185,7 +185,7 @@ ast::NodeId Parser::Impl::parseNewExpression(ParserSyntaxFactory& builder, size_
 ast::NodeId Parser::Impl::parseUnsafeBlockExpression(ParserSyntaxFactory& builder, size_t start,
                                                      size_t end) const {
   if (start + 1 >= end || kindAt(start + 1) != ast::SyntaxKind::LeftBrace) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1), "{"_zc);
+    diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1), "{"_zc);
     return ast::NodeId();
   }
 
@@ -213,17 +213,17 @@ ast::NodeId Parser::Impl::parseSpawnExpression(ParserSyntaxFactory& builder, siz
     }
     if (modifier == "priority"_zc) {
       if (cursor + 1 >= end || kindAt(cursor + 1) != ast::SyntaxKind::LeftParen) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor + 1),
-                                                                      "("_zc);
+        diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor + 1),
+                                                                    "("_zc);
         return ast::NodeId();
       }
       const size_t closeParen = findMatchingRightParen(cursor + 1, end);
       if (closeParen >= end) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(end), ")"_zc);
+        diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(end), ")"_zc);
         return ast::NodeId();
       }
       if (closeParen != cursor + 3 || kindAt(cursor + 2) != ast::SyntaxKind::Identifier) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+        diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
             diagnosticLoc(cursor + 2));
         return ast::NodeId();
       }
@@ -233,7 +233,7 @@ ast::NodeId Parser::Impl::parseSpawnExpression(ParserSyntaxFactory& builder, siz
       } else if (value == "low"_zc) {
         priority = 2;
       } else {
-        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+        diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
             tokenAt(cursor + 2).getLocation());
         return ast::NodeId();
       }
@@ -244,7 +244,7 @@ ast::NodeId Parser::Impl::parseSpawnExpression(ParserSyntaxFactory& builder, siz
   }
 
   if (cursor >= end) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpressionExpected>(diagnosticLoc(cursor));
+    diagnosticEngine.report<diagnostics::DiagID::ExpressionExpected>(diagnosticLoc(cursor));
     return ast::NodeId();
   }
 
@@ -274,7 +274,7 @@ ast::NodeId Parser::Impl::parseCastExpression(ParserSyntaxFactory& builder, size
 
   const ast::NodeId expr = parseExpressionRange(builder, start, asIndex);
   if (isStandaloneDynTypeRange(typeStart, end)) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+    diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
         tokenAt(typeStart).getLocation());
     return ast::NodeId();
   }
@@ -303,16 +303,16 @@ ast::NodeId Parser::Impl::parseCaptureItem(ParserSyntaxFactory& builder, size_t 
   }
 
   if (nameIndex >= end) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(end),
-                                                                  "identifier"_zc);
+    diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(end),
+                                                                "identifier"_zc);
     return ast::NodeId();
   }
 
   if (kindAt(nameIndex) == ast::SyntaxKind::ThisKeyword && mode == ast::CaptureMode::ByValue) {
     mode = ast::CaptureMode::This;
   } else if (kindAt(nameIndex) != ast::SyntaxKind::Identifier) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(nameIndex),
-                                                                  "identifier"_zc);
+    diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(nameIndex),
+                                                                "identifier"_zc);
     return ast::NodeId();
   }
 
@@ -359,7 +359,7 @@ ast::NodeId Parser::Impl::parseFunctionExpression(ParserSyntaxFactory& builder, 
   TokenCursor bodyCursor = tokenCursorAt(closeParen + 1);
   const size_t bodyOpen = consumeBalancedUntil(bodyCursor, end, ast::SyntaxKind::LeftBrace);
   if (openParen >= end || closeParen >= end || bodyOpen >= end) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(end), "{"_zc);
+    diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(end), "{"_zc);
     return ast::NodeId();
   }
 
@@ -395,7 +395,7 @@ ast::NodeId Parser::Impl::parseFunctionExpression(ParserSyntaxFactory& builder, 
     const size_t retEnd = raises < signatureEnd ? raises : signatureEnd;
     retTy = parseTypeRange(builder, arrow + 1, retEnd);
     if (!retTy) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(arrow + 1));
+      diagnosticEngine.report<diagnostics::DiagID::TypeExpected>(diagnosticLoc(arrow + 1));
       return ast::NodeId();
     }
   }
@@ -403,7 +403,7 @@ ast::NodeId Parser::Impl::parseFunctionExpression(ParserSyntaxFactory& builder, 
   if (raises < signatureEnd) {
     raisesTy = parseTypeRange(builder, raises + 1, signatureEnd);
     if (!raisesTy) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(raises + 1));
+      diagnosticEngine.report<diagnostics::DiagID::TypeExpected>(diagnosticLoc(raises + 1));
       return ast::NodeId();
     }
   }
@@ -446,14 +446,14 @@ ast::NodeId Parser::Impl::parseLambdaExpression(ParserSyntaxFactory& builder, si
     const size_t retEnd = raises < fatArrow ? raises : fatArrow;
     retTy = parseTypeRange(builder, arrow + 1, retEnd);
     if (!retTy) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(arrow + 1));
+      diagnosticEngine.report<diagnostics::DiagID::TypeExpected>(diagnosticLoc(arrow + 1));
       return ast::NodeId();
     }
 
     if (raises < fatArrow) {
       raisesTy = parseTypeRange(builder, raises + 1, fatArrow);
       if (!raisesTy) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(raises + 1));
+        diagnosticEngine.report<diagnostics::DiagID::TypeExpected>(diagnosticLoc(raises + 1));
         return ast::NodeId();
       }
     }
@@ -461,8 +461,8 @@ ast::NodeId Parser::Impl::parseLambdaExpression(ParserSyntaxFactory& builder, si
 
   const size_t bodyStart = fatArrow + 1;
   if (bodyStart >= end) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(bodyStart),
-                                                                  "lambda body"_zc);
+    diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(bodyStart),
+                                                                "lambda body"_zc);
     return ast::NodeId();
   }
 
@@ -524,7 +524,7 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(ParserSyntaxFactory& bu
           // Computed key: invalid syntax in ZOM object literals.
           // PropertyName ::= Identifier per the grammar reference.
           if (!shouldSuppressDiagnostic(itemStart)) {
-            diagnosticEngine.diagnose<diagnostics::DiagID::ObjectLiteralPropertyNameExpected>(
+            diagnosticEngine.report<diagnostics::DiagID::ObjectLiteralPropertyNameExpected>(
                 diagnosticLoc(itemStart));
           }
           skipProperty = true;
@@ -543,7 +543,7 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(ParserSyntaxFactory& bu
           } else {
             // Method syntax: invalid in object literals per ZOM grammar.
             if (!shouldSuppressDiagnostic(itemStart)) {
-              diagnosticEngine.diagnose<diagnostics::DiagID::ObjectLiteralMethodSyntax>(
+              diagnosticEngine.report<diagnostics::DiagID::ObjectLiteralMethodSyntax>(
                   diagnosticLoc(itemStart));
             }
             skipProperty = true;
@@ -705,8 +705,8 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parseConditionalExpressionAt(
     return ExpressionParseResult();
   }
   if (thenExpr.next >= limit || kindAt(thenExpr.next) != ast::SyntaxKind::Colon) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(thenExpr.next),
-                                                                  ":"_zc);
+    diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(thenExpr.next),
+                                                                ":"_zc);
     return ExpressionParseResult();
   }
 
@@ -781,11 +781,11 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parseBinaryExpressionAt(
 
       TypeParseResult ty = parseTypeExpressionAt(builder, typeStart, limit);
       if (!ty.node) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(typeStart));
+        diagnosticEngine.report<diagnostics::DiagID::TypeExpected>(diagnosticLoc(typeStart));
         return ExpressionParseResult();
       }
       if (isStandaloneDynTypeRange(typeStart, ty.next)) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+        diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
             tokenAt(typeStart).getLocation());
         return ExpressionParseResult();
       }
@@ -799,7 +799,7 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parseBinaryExpressionAt(
     if (kind == ast::SyntaxKind::IsKeyword) {
       TypeParseResult ty = parseTypeExpressionAt(builder, cursor + 1, limit);
       if (!ty.node) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(cursor + 1));
+        diagnosticEngine.report<diagnostics::DiagID::TypeExpected>(diagnosticLoc(cursor + 1));
         return ExpressionParseResult();
       }
 
@@ -873,7 +873,7 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePostfixExpressionAt(
     if (isPostfixOperator(kind)) {
       if ((kind == ast::SyntaxKind::PlusPlus || kind == ast::SyntaxKind::MinusMinus) &&
           isDefinitelyNonLValueOperand(start, cursor)) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+        diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
             tokenAt(cursor).getLocation());
         return ExpressionParseResult();
       }
@@ -892,8 +892,8 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePostfixExpressionAt(
           kindAt(closeAngle + 1) == ast::SyntaxKind::LeftParen) {
         const size_t closeParen = findMatchingRightParen(closeAngle + 1, limit);
         if (closeParen >= limit) {
-          diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
-              diagnosticLoc(closeAngle + 1), ")"_zc);
+          diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(closeAngle + 1),
+                                                                      ")"_zc);
           return ExpressionParseResult();
         }
 
@@ -915,8 +915,8 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePostfixExpressionAt(
     if (kind == ast::SyntaxKind::LeftParen || callOpen != cursor) {
       const size_t closeParen = findMatchingRightParen(callOpen, limit);
       if (closeParen >= limit) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(callOpen),
-                                                                      ")"_zc);
+        diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(callOpen),
+                                                                    ")"_zc);
         return ExpressionParseResult();
       }
 
@@ -936,8 +936,8 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePostfixExpressionAt(
     if (kind == ast::SyntaxKind::LeftBracket || indexOpen != cursor) {
       const size_t closeBracket = findMatchingRightBracket(indexOpen, limit);
       if (closeBracket >= limit) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(indexOpen),
-                                                                      "]"_zc);
+        diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(indexOpen),
+                                                                    "]"_zc);
         return ExpressionParseResult();
       }
       const ast::NodeId index = parseExpressionRange(builder, indexOpen + 1, closeBracket);
@@ -954,8 +954,7 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePostfixExpressionAt(
         (kind == ast::SyntaxKind::QuestionDot && cursor + 1 < limit &&
          isPropertyNameLike(kindAt(cursor + 1)))) {
       if (cursor + 1 >= limit || !isPropertyNameLike(kindAt(cursor + 1))) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(
-            diagnosticLoc(cursor + 1));
+        diagnosticEngine.report<diagnostics::DiagID::IdentifierExpected>(diagnosticLoc(cursor + 1));
         return ExpressionParseResult();
       }
 
@@ -986,8 +985,7 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(
       kindAt(start + 1) == ast::SyntaxKind::LeftBrace) {
     const size_t closeBrace = findMatchingRightBrace(start + 1, limit);
     if (closeBrace >= limit) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1),
-                                                                    "}"_zc);
+      diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1), "}"_zc);
       return ExpressionParseResult();
     }
     return {parseUnsafeBlockExpression(builder, start, closeBrace + 1), closeBrace + 1};
@@ -1002,8 +1000,8 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(
       isStructLiteralTypeReference(start, structBrace)) {
     const size_t closeBrace = findMatchingRightBrace(structBrace, limit);
     if (closeBrace >= limit) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(structBrace),
-                                                                    "}"_zc);
+      diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(structBrace),
+                                                                  "}"_zc);
       return ExpressionParseResult();
     }
     return {parseStructLiteralExpression(builder, start, structBrace, closeBrace + 1),
@@ -1018,7 +1016,7 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(
     const size_t closeParen = consumeBalancedGroupEnd(
         closeParenCursor, limit, ast::SyntaxKind::LeftParen, ast::SyntaxKind::RightParen);
     if (closeParen >= limit) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start), ")"_zc);
+      diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start), ")"_zc);
       return ExpressionParseResult();
     }
 
@@ -1038,7 +1036,7 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(
     ExpressionParseResult inner = parseExpressionAt(builder, start + 1, closeParen);
     if (!inner.node) { return inner; }
     if (inner.next != closeParen) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+      diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
           diagnosticLoc(inner.next));
       return ExpressionParseResult();
     }
@@ -1048,7 +1046,7 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(
   if (kindAt(start) == ast::SyntaxKind::LeftBracket) {
     const size_t closeBracket = findMatchingRightBracket(start, limit);
     if (closeBracket >= limit) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start), "]"_zc);
+      diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start), "]"_zc);
       return ExpressionParseResult();
     }
     return {parseExpressionList(builder, start + 1, closeBracket, ast::SyntaxKind::ArrayLiteral),
@@ -1058,7 +1056,7 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(
   if (kindAt(start) == ast::SyntaxKind::LeftBrace) {
     const size_t closeBrace = findMatchingRightBrace(start, limit);
     if (closeBrace >= limit) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start), "}"_zc);
+      diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start), "}"_zc);
       return ExpressionParseResult();
     }
     return {parseObjectLiteralExpression(builder, start, closeBrace + 1), closeBrace + 1};
@@ -1157,9 +1155,10 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(
                 start + 1};
       case ast::SyntaxKind::Hash:
         if (!shouldSuppressDiagnostic(start)) {
-          diagnosticEngine.diagnose<diagnostics::DiagID::DanglingHash>(diagnosticLoc(start))
-              .addChild(zc::heap<diagnostics::Diagnostic>(diagnostics::DiagID::DanglingHashHelp,
-                                                          diagnosticLoc(start)));
+          const auto diagnostic =
+              diagnosticEngine.report<diagnostics::DiagID::DanglingHash>(diagnosticLoc(start));
+          diagnosticEngine.addNote<diagnostics::DiagID::DanglingHashHelp>(diagnostic,
+                                                                          diagnosticLoc(start));
         }
         return ExpressionParseResult();
       default:
@@ -1186,7 +1185,7 @@ ast::NodeId Parser::Impl::parseExpressionRange(ParserSyntaxFactory& builder, siz
   if (!parsed.node) { return ast::NodeId(); }
   if (parsed.next != end) {
     if (!shouldSuppressDiagnostic(parsed.next)) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+      diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
           diagnosticLoc(parsed.next));
     }
     return ast::NodeId();

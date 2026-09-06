@@ -876,8 +876,8 @@ demanded stable-body syntax projection re-execute. Exact-equal
 Recovery bodies intentionally receive new `IdeBodyKey` values and recompute.
 
 The query database owns all memos and flights. IDE providers cannot access
-mutable server state, an LSP connection, the filesystem, or
-`DiagnosticEngine`.
+mutable server state, an LSP connection, the filesystem, or a diagnostic
+presentation consumer.
 
 Cancellation, invariant failure, allocation failure, and transient transport
 failure publish no query value or reusable dependency edge. Deterministic

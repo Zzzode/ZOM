@@ -14,14 +14,14 @@
 
 #pragma once
 
+#include "compiler/identity/key/crate-key.h"
+#include "compiler/identity/key/source-key.h"
+#include "compiler/source/core-source-admission.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "compiler/identity/key/crate-key.h"
-#include "compiler/identity/key/source-key.h"
-#include "compiler/source/core-source-admission.h"
 
 namespace zomlang::compiler::source::core {
 
@@ -70,7 +70,7 @@ private:
 };
 
 using CoreSourceCatalogAdmissionResult =
-    zc::OneOf<AdmittedCoreSourceCatalog, CoreDistributionAdmissionFailure>;
+    zc::OneOf<AdmittedCoreSourceCatalog, CoreDistributionAdmissionInvariantKind>;
 
 /// \brief Constructs and independently verifies one handle-free structural core catalog.
 class CoreSourceCatalogAdmission final {

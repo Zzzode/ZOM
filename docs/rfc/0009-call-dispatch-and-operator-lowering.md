@@ -440,30 +440,22 @@ Its SHA-256 is
 ### Diagnostics
 
 RFC 0005 owns all user-correctable call-selection diagnostics. RFC 0009 emits
-only typed invariant facts. The driver maps them exhaustively to registered
-fatal diagnostics in `diagnostics-lowering.def`:
-
-| Invariant | Registered diagnostic |
-|---|---|
-| `InputMismatch` | `ZOM9937 DispatchInputMismatch`, fatal, `Internal dispatch input is inconsistent ({0} occurrence(s))`, arity 1 |
-| `MissingFact` | `ZOM9938 DispatchMissingFact`, fatal, `Internal dispatch fact is missing ({0} occurrence(s))`, arity 1 |
-| `InvalidFact` | `ZOM9939 DispatchInvalidFact`, fatal, `Internal dispatch fact is invalid ({0} occurrence(s))`, arity 1 |
-| `CanonicalCodecMismatch` | `ZOM9940 DispatchCanonicalCodecMismatch`, fatal, `Internal dispatch canonical encoding is invalid ({0} occurrence(s))`, arity 1 |
-| `AdditionalFact` | `ZOM9941 DispatchAdditionalFact`, fatal, `Internal dispatch fact is not authorized ({0} occurrence(s))`, arity 1 |
+only typed invariant facts. The driver maps every `DispatchInvariantKind`
+exhaustively to a registered Checker-domain incident. The dispatch stage is the
+incident phase and dispatch verification is the producer.
 
 Failure facts carry module, checked revision, owner `DefId`, checked node key,
 target tag, and structural field path. Display strings are not failure values.
-Every code must exist in the `.def` registry before implementation and must
-have an injected invariant conformance fixture. The location is the validated
-source span or none; invalid or foreign ranges are retained only in the bug
-bundle and are never passed to the diagnostic engine.
+Every incident kind must have a native invariant fixture. Optional source spans,
+invalid or foreign ranges, and structural detail are retained only in the bug
+bundle and never enter the public diagnostic pipeline.
 
-After sorting `DispatchVerificationFailure`, the adapter groups only adjacent
-dispatch facts with the same mapped diagnostic and validated location, passes
-their exact count as the sole argument, and retains every complete fact in the
-compiler bug bundle. Identity facts retain RFC 0011's own mapping and grouping.
+After sorting `DispatchVerificationFailure`, the incident projector groups
+only equal registered shapes, adds their occurrence counts, and retains every
+complete fact in the compiler bug bundle. Identity facts retain RFC 0011's own
+incident mapping and grouping.
 No worker-local count, hash iteration order, or first-arrival fact affects the
-number or contents of emitted diagnostics.
+number or contents of reported incident descriptors.
 
 ```text
 DispatchInvariantInjection {
@@ -478,7 +470,7 @@ The test-only `verifyDispatchWithInjection(CompleteDispatchCandidate,
 DispatchInvariantInjection)` API uses a generated candidate field path, one
 closed invariant kind, and an occurrence index. It is absent from production
 libraries. Each fixture mutates one valid candidate field and asserts the exact
-failure variant, code, location, sort key, and absence of verified facts.
+failure variant, incident shape, sort key, and absence of verified facts.
 
 ## Repository Impact
 
@@ -558,7 +550,7 @@ landing is a source-control revert of the complete cutover.
   call semantics and `dyn` vtable call semantics.
 - Document the RFC 0005 semantic-selection versus RFC 0009 dispatch-plan
   boundary and the RFC 0010 LIR slot-assignment boundary.
-- Add injected invariant snapshots for `ZOM9937-ZOM9941`; user-correctable call
+- Add injected incident fixtures for every dispatch kind; user-correctable call
   selection remains in the RFC 0005 diagnostic matrix.
 
 ## Operational Readiness
@@ -600,7 +592,7 @@ landing is a source-control revert of the complete cutover.
    only `Verified` or `InvariantRejected`.
 10. `DispatchFactsRevision` uses the exact codec, group ordering, non-empty
     framing oracle, and canonical identity expansion in this RFC.
-11. `ZOM9937-ZOM9941` are registered before use and injected conformance tests
+11. Every dispatch incident kind is registered before use and native tests
     cover every invariant kind without raw display-string failures.
 12. RFC 0010 checked-module construction consumes matching
     `VerifiedCheckedFacts` and `VerifiedDispatchFacts` revisions and never
@@ -630,7 +622,7 @@ consumer to verified dispatch facts; no adapter or compatibility target remains.
 4. Implement total selection-to-target mapping and receiver-plan copying with
    no checker, binder, coherence, or normalization dependency.
 5. Implement `DispatchFactsVerifier`, immutable
-   `VerifiedDispatchFacts`, and `ZOM9937-ZOM9941` adapter mapping.
+   `VerifiedDispatchFacts`, and exhaustive dispatch incident projection.
 6. Update RFC 0010 checked-module assembly and HIR construction to consume the
    matching checked and dispatch revisions.
 7. Replace the debug dump with canonical identities and logical dyn targets.
@@ -650,7 +642,7 @@ consumer to verified dispatch facts; no adapter or compatibility target remains.
   and raising success/result/error-shape records, result transforms that leave
   residuals unchanged, and store-lifetime validation.
 - Verifier tests: exact missing/additional/wrong-kind/stale/foreign/duplicate
-  mutations from a complete candidate and exact `ZOM9937-ZOM9941` results.
+  mutations from a complete candidate and exact incident descriptors.
 - Codec tests: every tag and field order, numeric-slot independence, the
   118-byte non-empty oracle, zero/one/two-record framing, record-order reversal,
   duplicate expanded keys, duplicate complete records, direct concatenation,

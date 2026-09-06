@@ -15,7 +15,7 @@
 #include "compiler/ownership/facts/loans.h"
 
 #include "compiler/driver/interface/borrow-evidence.h"
-#include "compiler/ir/diagnostics/ir-diagnostic-adapter.h"
+#include "compiler/ir/diagnostics/ir-failure.h"
 
 namespace zomlang::compiler::ownership::facts {
 namespace {

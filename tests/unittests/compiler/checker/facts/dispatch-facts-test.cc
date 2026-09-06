@@ -5,11 +5,11 @@
 
 #include "compiler/checker/facts/dispatch-facts.h"
 
-#include "zc/core/encoding.h"
-#include "zc/ztest/test.h"
 #include "compiler/type/semantic-type-data.h"
 #include "tests/unittests/compiler/checker/checker-authority-test-fixture.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
+#include "zc/core/encoding.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::checker::dispatch {
 namespace {
@@ -55,8 +55,8 @@ public:
     ZC_REQUIRE(interned.is<type::SemanticTypeInterned>());
     i32 = interned.get<type::SemanticTypeInterned>().id;
 
-    contextFingerprint = zc::heap<identity::ContextFingerprint>(
-        session.identityAuthority().fingerprint().clone());
+    contextFingerprint =
+        zc::heap<identity::ContextFingerprint>(session.identityAuthority().fingerprint().clone());
     const auto moduleBytes = moduleKey().encode();
     const zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> emptyRecords;
     auto signature = signature::SignatureFactsRevision::computeFramed(
@@ -852,14 +852,16 @@ ZC_TEST("DispatchSiteInventoryBuilder.ProjectsCallAndOperatorRequirements") {
       "class RecoveryOwner {}\n"
       "class Holder { fun act() {} }\n"
       "fun helper() {}\n"
-      "fun calculate() { helper(); let holder = Holder(); holder.act(); let value = 1 + 2; let negated = -value; let indexed = value[0]; let fallback = value ?? 4; value += 3; }\n"_zc);
+      "fun calculate() { helper(); let holder = Holder {}; holder.act(); let value = 1 + 2; let negated = -value; let indexed = value[0]; let fallback = value ?? 4; value += 3; }\n"_zc);
   auto requirements = body::BodyFactRequirementInventoryBuilder::build(session.boundModule());
   ZC_REQUIRE(requirements.is<body::VerifiedBodyFactRequirementInventory>());
   auto inventory = DispatchSiteInventoryBuilder::build(
       session.boundModule(), requirements.get<body::VerifiedBodyFactRequirementInventory>());
   ZC_REQUIRE(inventory.is<VerifiedDispatchSiteInventory>());
   const auto& verified = inventory.get<VerifiedDispatchSiteInventory>();
-  ZC_REQUIRE(verified.requirements().size() == 8);
+  // A struct literal is not a dispatch site, so the seven requirements are the
+  // free call, the member call, and the five operator forms.
+  ZC_REQUIRE(verified.requirements().size() == 7);
   ZC_REQUIRE(verified.nodeProjections().size() >= 8);
   bool call = false;
   bool memberCall = false;

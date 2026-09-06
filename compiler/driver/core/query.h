@@ -8,6 +8,7 @@
 #include "compiler/binder/stable/stable-binding-facts.h"
 #include "compiler/driver/core/marker-authority.h"
 #include "compiler/driver/core/revision.h"
+#include "compiler/driver/core/role-seed-failure.h"
 #include "compiler/driver/core/signature.h"
 #include "compiler/driver/query/binding/incremental-binding-query-adapter.h"
 #include "compiler/driver/query/module-graph/incremental-module-resolution-query.h"
@@ -295,13 +296,14 @@ private:
 struct MaterializeCoreRoleSeed final {
   using Key = ContextualCoreCrateKey;
   using Capability = VerifiedCoreRoleSeed;
-  using FailureAlternatives = query::CapabilityFailureList<>;
+  using FailureAlternatives =
+      query::CapabilityFailureList<query::KeyRejection<CoreRoleSeedFailure>>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "MaterializeCoreRoleSeed"_zcc,      "zom.query.materialize-core-role-seed"_zcc,
-      query::RetentionClass::Retained,    query::QueryCyclePolicy::Reject,
-      query::QueryCostClass::Linear,      query::CapabilityAdmission::FinalSealedSnapshot,
-      query::FinalFailureProjection::None};
+      "MaterializeCoreRoleSeed"_zcc,     "zom.query.materialize-core-role-seed"_zcc,
+      query::RetentionClass::Retained,   query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear,     query::CapabilityAdmission::FinalSealedSnapshot,
+      query::FinalFailureProjection::Key};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static query::CapabilityProviderResult<MaterializeCoreRoleSeed> provide(
@@ -920,10 +922,40 @@ public:
       zc::ArrayPtr<const identity::CrateKey> completeConsumerInventory);
 };
 
+/// \brief Closed invariant failures detected before a core input transaction is opened.
+enum class CoreDistributionInputPreparationInvariantKind : uint8_t {
+  MissingDistributionAuthority = 0x01,
+  EmptyConsumerInventory = 0x02,
+  PackageContextMismatch = 0x03,
+  DistributionAuthorityMismatch = 0x04,
+  ContextDistributionMismatch = 0x05,
+  EditionMismatch = 0x06,
+  SnapshotInventoryMismatch = 0x07,
+  CompilationOptionsMismatch = 0x08,
+  CoreProjectionRejected = 0x09,
+  SearchRootRejected = 0x0a,
+  CanonicalSearchRootsRejected = 0x0b,
+  SnapshotRecordMismatch = 0x0c,
+  ImmutableSnapshotRejected = 0x0d,
+  StableSourceKeyRejected = 0x0e,
+  CanonicalSourceSnapshotRejected = 0x0f,
+  EmptyProjectionInventory = 0x10,
+  PayloadRejected = 0x11,
+  PayloadVerificationFailed = 0x12,
+  PayloadDigestRejected = 0x13,
+};
+
+class VerifiedCoreDistributionInputTransaction;
+
+using CoreDistributionInputPreparationResult =
+    zc::OneOf<VerifiedCoreDistributionInputTransaction,
+              CoreDistributionInputPreparationInvariantKind,
+              source::core::CoreDistributionAdmissionInvariantKind>;
+
 /// \brief Sole atomic writer for one session's complete pre-parse core input root.
 class VerifiedCoreDistributionInputTransaction final {
 public:
-  ZC_NODISCARD static zc::Maybe<VerifiedCoreDistributionInputTransaction> prepare(
+  ZC_NODISCARD static CoreDistributionInputPreparationResult prepare(
       query::DatabaseRevision expectedPreviousRevision,
       const source::core::VerifiedCoreDistribution& distribution,
       const package::VerifiedPackageCompilationRequest& packageRequest,
@@ -962,6 +994,20 @@ public:
   ZC_NODISCARD static StableWitnessBytes encode(const Descriptor::Capability& candidate);
   ZC_NODISCARD static zc::Maybe<zc::Own<Descriptor::Capability>> decode(
       zc::ArrayPtr<const uint8_t> bytes);
+};
+
+template <>
+class CapabilityFailureContract<driver::core_library_query::MaterializeCoreRoleSeed,
+                                KeyRejection<driver::core_library_query::CoreRoleSeedFailure>>
+    final {
+public:
+  using Descriptor = driver::core_library_query::MaterializeCoreRoleSeed;
+  using Failure = driver::core_library_query::CoreRoleSeedFailure;
+  ZC_NODISCARD static zc::Array<uint8_t> encode(const Failure& failure);
+  ZC_NODISCARD static zc::Maybe<Failure> decode(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static CapabilityRejectionCheck verify(CapabilityQueryContext<Descriptor>& context,
+                                                      const Descriptor::Key& key,
+                                                      const Failure& failure);
 };
 
 template <>

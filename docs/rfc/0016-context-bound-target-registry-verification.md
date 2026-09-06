@@ -918,7 +918,7 @@ convert, reset, or reuse a brand. The factory uses the same serialized monotonic
 `RuntimeCapabilityFactory`, including final-two-issuance and concurrent
 uniqueness tests. Exhaustion returns
 `TargetAuthorityConstructionIssue::InvalidFact`, publishes no target-bound
-preparation wrapper, and maps to `ZOM9957`.
+preparation wrapper, and projects to the target-authority incident rail.
 
 The target-bound package-session implementation issues exactly one brand only
 after complete preparation input, registry, and runtime-snapshot association
@@ -966,7 +966,7 @@ factory reference. Test-only process-root injection sets
 and permanent non-reuse. Brand issuance occurs only
 after manifest and codec verification; exhaustion returns
 `TargetAuthorityConstructionIssue::InvalidFact`, publishes no snapshot, and
-maps to `ZOM9957`.
+maps to the target-authority incident rail.
 `RuntimeCapabilityRevision` is the SHA-256 digest of the complete canonical
 capability manifest defined below. `RuntimeCapability` tags begin with
 `PanicAbort = 0x01` and `PanicUnwind = 0x02` in declaration order.
@@ -1016,7 +1016,7 @@ registries and requires exact equality before bundle publication. Missing,
 additional, duplicate, swapped, wrong-target, wrong-profile, wrong-baseline,
 or wrong-revision rows are
 `TargetAuthorityConstructionIssue::InvalidFact`, publish no snapshot, and map
-to `ZOM9957`.
+to the target-authority incident rail.
 
 An admitted specification may contain a panic strategy that the runtime does
 not support. That unsupported pair remains a valid target codec and is rejected
@@ -1273,13 +1273,10 @@ TargetAuthorityBundleConstructionResult =
 `InvalidFact` covers malformed or contradictory target profile or runtime
 capability contents, an unrecognized runtime ABI, and disagreement between the
 capability registry and the private `RuntimeCapabilityManifestOracle`. It maps through
-the target-authority diagnostic adapter to `ZOM9957
-TargetAuthorityInvariant`, fatal, `Internal target authority invariant violated`,
-arity zero. `CanonicalCodecMismatch` covers disagreement between the production
-and independent runtime-capability, target, profile, or registry encoders or a
-recomputed revision and
-maps to `ZOM9958 TargetAuthorityCanonicalCodecMismatch`, fatal, `Canonical
-target authority codec verification failed`, arity zero.
+the target-authority incident projector to the exact registered incident kind.
+`CanonicalCodecMismatch` covers disagreement between the production and
+independent runtime-capability, target, profile, or registry encoders or a
+recomputed revision and projects to its distinct target-authority incident kind.
 `TargetRegistryConstructionResult` and
 `RuntimeCapabilityConstructionResult` are factory-private intermediate
 results and cannot escape the process-root transaction. Its only public result
@@ -1290,7 +1287,7 @@ snapshot and no package target service.
 
 Once a context exists, target selection returns RFC 0010's existing
 `IrOperationResult<VerifiedTargetSelection>` directly. No second selection
-failure enum or diagnostic adapter exists. The exact mapping is:
+failure enum or projector exists. The exact mapping is:
 
 | Failed check | RFC 0010 result |
 |---|---|
@@ -1338,9 +1335,10 @@ below. Move-only typing makes ordinary source-level use-after-consume
 unrepresentable; private transition negative fixtures nevertheless exercise
 each stale-state edge directly and require the same closed failure mapping.
 
-The `InputRevisionMismatch`, `MissingRequiredFact`, and `InvalidFact` rows map
-to `ZOM9947`; canonical mismatch maps to `ZOM9949`; unsupported capability maps
-to `ZOM6009`. The verifier retains the context and runtime capability brands in
+The `InputRevisionMismatch`, `MissingRequiredFact`, `InvalidFact`, and
+canonical-mismatch rows project to the IR incident rail. A verified
+source-backed unsupported capability maps to `ZOM6009`; a source-less one is
+operational. The verifier retains the context and runtime capability brands in
 private bug context but does not serialize or render them. No rejected branch
 publishes a target token.
 

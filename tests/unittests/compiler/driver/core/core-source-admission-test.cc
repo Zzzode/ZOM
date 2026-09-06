@@ -5,10 +5,10 @@
 
 #include "compiler/source/core-source-admission.h"
 
-#include "zc/core/time.h"
-#include "zc/ztest/test.h"
 #include "compiler/source/core-source-catalog.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
+#include "zc/core/time.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::source::core {
 namespace {
@@ -84,8 +84,8 @@ ZC_TEST("Core source admission rejects source drift without fallback") {
   auto result =
       admit("module marker;\n\nexport interface Copy {}\nexport interface Changed {}\n"_zc);
   ZC_REQUIRE(result.is<CoreDistributionAdmissionFailure>());
-  ZC_EXPECT(result.get<CoreDistributionAdmissionFailure>().issue() ==
-            CoreLibraryIssue::DistributionMismatch);
+  ZC_EXPECT(result.get<CoreDistributionAdmissionFailure>().kind() ==
+            CoreDistributionAdmissionFailureKind::DistributionMismatch);
 }
 
 }  // namespace zomlang::compiler::source::core

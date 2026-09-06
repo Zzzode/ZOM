@@ -228,7 +228,7 @@ public:
     ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
     ZC_REQUIRE(session.parseSources());
     ZC_REQUIRE(session.bindSources());
-    ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+    ZC_REQUIRE(!session.hasDiagnosticErrors());
     identityAuthority = session.materializeCheckerIdentityAuthority();
     ZC_REQUIRE(identityAuthority != zc::none);
     const auto& identities = ZC_REQUIRE_NONNULL(identityAuthority);
@@ -1013,7 +1013,7 @@ ZC_TEST("LocalWrite.RejectsCallValueWriteAtSurfaceAdmission") {
   ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
-  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+  ZC_REQUIRE(!session.hasDiagnosticErrors());
   auto identityAuthority = session.materializeCheckerIdentityAuthority();
   ZC_REQUIRE(identityAuthority != zc::none);
   const auto& identities = ZC_REQUIRE_NONNULL(identityAuthority);

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/driver/interface/borrow-evidence.h"
 #include "compiler/driver/package/manifest-parser.h"
 #include "compiler/driver/package/source-record.h"
@@ -236,7 +235,7 @@ public:
     ZC_REQUIRE(session.parseSources());
     ZC_REQUIRE(session.bindSources());
     ZC_REQUIRE(session.checkSources());
-    ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+    ZC_REQUIRE(!session.hasDiagnosticErrors());
     ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   }
 
@@ -321,14 +320,14 @@ ZC_TEST("Borrow source verifier accepts a mutable parameter reborrow") {
 ZC_TEST("Check pipeline rejects a returned local borrow") {
   BorrowSourceCheckFixture fixture("fun entry() -> &i32 { let value: i32 = 0; return &value; }"_zc);
   ZC_EXPECT(!fixture.compilerSession().checkSources());
-  ZC_EXPECT(fixture.compilerSession().getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(fixture.compilerSession().hasDiagnosticErrors());
 }
 
 ZC_TEST("Check pipeline rejects a returned mutable local borrow") {
   BorrowSourceCheckFixture fixture(
       "fun entry() -> &mut i32 { mut value: i32 = 0; return &mut value; }"_zc);
   ZC_EXPECT(!fixture.compilerSession().checkSources());
-  ZC_EXPECT(fixture.compilerSession().getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(fixture.compilerSession().hasDiagnosticErrors());
 }
 
 }  // namespace zomlang::compiler::ownership

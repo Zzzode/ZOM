@@ -87,7 +87,7 @@ surface; `↗` means it escalates to another subagent after doing its part.
 | RFC 0016 coverage CMake plumbing, runner, checker, inputs, and reports | ✅ route → | ↗ if contract changes | | | | | | ↗ supplies compiler path census | | | ✅ primary owner | |
 | RFC 0017 incremental-query gate, corpus, runner, and baseline | ✅ route → | ↗ if contract changes | | ↗ supplies Binder facts | ↗ supplies query contracts | ↗ supplies diagnostic facts | ↗ stress interaction | ↗ supplies CMake DAG | ↗ design audit | | ✅ primary owner | ↗ snapshot consumers |
 | LSP or IDE feature | ✅ route → | ↗ if contract changes | ↗ recovery syntax | ↗ semantic facts | ↗ query snapshots | ↗ diagnostics | ↗ cancellation semantics | | ↗ tooling design | | ↗ protocol and fixture gates | ✅ |
-| Diagnostics architecture or compiler incident | ✅ exact RFC 0047 routing | ✅ governance | ↗ source sink | ↗ typed projectors | ✅ query incident transport | ✅ catalog and consumers | | ↗ IR projector | ↗ design drift | ↗ ownership projector | ✅ gates and evidence | ↗ IDE/LSP projection |
+| Diagnostics architecture or compiler incident | ✅ staged RFC 0047 routing | ✅ governance | ↗ source facts | ↗ typed projectors | ✅ query incident transport | ✅ catalog and consumers | | ↗ IR projector | ↗ design drift | ↗ ownership projector | ✅ native verification | ↗ IDE/LSP projection |
 
 Path ownership and contract review are distinct where the table names a
 mandatory reviewer. `module-system` owns files under `compiler/driver`,
@@ -108,8 +108,9 @@ query-runtime private test-access and race-test files named in the manifest.
 `module-system` owns the dependency-minimal `compiler/basic/incident/**`
 transport and `docs/package-system.md`. `lexer-parser` owns `compiler/cst/**`.
 `tooling-lsp` owns `compiler/ide/**` and `compiler/lsp/**`. `spec-audit` owns
-`docs/plan/**`. Diagnostics implementation follows RFC 0047's accepted
-exact-path routing DAG and uses one atomic publication cutover.
+`docs/plan/**`. Diagnostics implementation follows RFC 0047's subsystem
+ownership and staged dependency plan. Each migrated slice keeps one compiled
+data path and removes its obsolete path when the last caller is migrated.
 
 ---
 

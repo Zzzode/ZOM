@@ -27,7 +27,7 @@ namespace zomlang {
 namespace compiler {
 
 namespace diagnostics {
-class DiagnosticEmitter;
+class SourceDiagnosticSink;
 }
 
 namespace basic {
@@ -51,7 +51,7 @@ class TokenStream {
 public:
   TokenStream();
   TokenStream(const source::SourceManager& sourceMgr,
-              diagnostics::DiagnosticEmitter& diagnosticEmitter, const basic::LangOptions& langOpts,
+              diagnostics::SourceDiagnosticSink& diagnosticSink, const basic::LangOptions& langOpts,
               basic::StringPool& stringPool, const source::BufferId& bufferId);
   ~TokenStream() noexcept(false);
 
@@ -149,7 +149,7 @@ public:
   void moveTo(size_t index);
 
   /// \brief Consume the expected token or report a parser diagnostic.
-  bool expect(ast::SyntaxKind kind, diagnostics::DiagnosticEmitter& diagnosticEmitter,
+  bool expect(ast::SyntaxKind kind, diagnostics::SourceDiagnosticSink& diagnosticSink,
               zc::StringPtr expected);
 
   /// \brief Save the current token position.

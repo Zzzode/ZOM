@@ -107,9 +107,11 @@ branches:
 | `IdentityInvariantRejected` | Context-bound identity or lineage was invalid |
 | `IrInvariantRejected` | Candidate structure, order, codec, or revision violated the stage contract |
 
-Failure sequences are non-empty, canonical, and sorted. The diagnostic adapter
-projects live HIR and MIR failures into deterministic fatal compiler
-diagnostics.
+Failure sequences are non-empty, canonical, and sorted. User-actionable
+source-backed capability failures project to canonical diagnostic facts. IR
+identity, lineage, verifier, structure, order, codec, and revision failures
+project to bounded compiler incidents. Output creation, external-process, and
+other source-less resource failures remain typed operational failures.
 
 The algebra also contains coordinates for successor phases and LIR. Those
 coordinates provide a closed vocabulary for RFC work; they do not establish a

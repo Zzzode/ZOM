@@ -3180,9 +3180,8 @@ The validation order is exact:
 
 Every IR failure is legal only at RFC 0010 `ProofValidation`, has a
 `Definition` owner and `None` or `Mir` site, and has `IrFailureDetail::None`.
-All non-codec IR failures map to `ZOM9945 OwnershipProofInvariant`.
-`CanonicalCodecMismatch` maps to `ZOM9949 IrCanonicalCodecMismatch`. Identity
-failures retain RFC 0011 `ZOM9910-ZOM9921` mappings.
+All IR failures project to registered IR incidents. Identity failures retain
+RFC 0011 identity incident kinds.
 
 ### CheckedMir Construction
 
@@ -3579,7 +3578,7 @@ After that transaction, the implementation is one direct ownership rail:
 
 1. complete Built MIR ownership vocabulary and `zom.mir-revision`
    verification;
-2. implement source failures, canonical ordering, and the diagnostic adapter;
+2. implement source failures, canonical ordering, and the source diagnostic projector;
 3. implement move paths, place conflicts, initialization, and move dataflow;
 4. implement loans, activation, regions, reborrow restoration, and evidence-
    backed call/return conformance;
@@ -3842,7 +3841,7 @@ RFC 0010 or RFC 0011 invariant facts.
    scope boundary projection with the sole outer `0x07` tag, pre-checker
    Chapter 15 rejection, source map, verifier, dump, and malformed-input tests
    without changing the MIR domain, framing, or lineage fields.
-3. Add the closed source-failure types and exhaustive diagnostic adapter for
+3. Add the closed source-failure types and exhaustive diagnostic projector for
    `ZOM4056-ZOM4066`, `ZOM4069-ZOM4070`, and `ZOM4093-ZOM4094`; add fresh
    pre-checker `ZOM4095`, and delete `ZOM4067-ZOM4068` plus every scoped-task
    producer or reservation without reassigning either numeric code.

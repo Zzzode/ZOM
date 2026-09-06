@@ -3,9 +3,9 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zc/ztest/test.h"
 #include "compiler/diagnostics/fact/diagnostic-fact.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::diagnostics {
 namespace {
@@ -79,6 +79,42 @@ zc::Array<uint8_t> encodeOne(bool populated = false) {
   return ZC_REQUIRE_NONNULL(encodeDiagnosticFacts(zc::none, facts.asPtr(), kFactLimits));
 }
 
+zc::Array<uint8_t> documentIdentity(uint8_t discriminator) {
+  const uint8_t bytes[] = {0x44, 0x4f, 0x43, discriminator};
+  return zc::heapArray<uint8_t>(bytes);
+}
+
+zc::Array<uint8_t> documentOccurrence(uint8_t discriminator) {
+  const uint8_t bytes[] = {0x4f, 0x43, 0x43, discriminator};
+  return zc::heapArray<uint8_t>(bytes);
+}
+
+DiagnosticFact documentFact() {
+  auto document = documentIdentity(1);
+  auto occurrenceBytes = documentOccurrence(7);
+  auto occurrence = ZC_REQUIRE_NONNULL(DiagnosticOccurrenceKey::document(
+      zc::heapArray<uint8_t>(document.asPtr()), zc::heapArray<uint8_t>(occurrenceBytes.asPtr())));
+  auto primary = ZC_REQUIRE_NONNULL(DiagnosticProvenanceKey::documentSite(
+      zc::heapArray<uint8_t>(document.asPtr()), zc::heapArray<uint8_t>(occurrenceBytes.asPtr()),
+      DocumentDiagnosticSiteRole::Primary, 0));
+  auto highlight = ZC_REQUIRE_NONNULL(DiagnosticProvenanceKey::documentSite(
+      zc::heapArray<uint8_t>(document.asPtr()), zc::heapArray<uint8_t>(occurrenceBytes.asPtr()),
+      DocumentDiagnosticSiteRole::Highlight, 0));
+  auto relatedDocument = documentIdentity(2);
+  auto note = ZC_REQUIRE_NONNULL(DiagnosticProvenanceKey::documentSite(
+      zc::mv(relatedDocument), zc::heapArray<uint8_t>(occurrenceBytes.asPtr()),
+      DocumentDiagnosticSiteRole::Note, 0));
+  zc::Vector<zc::String> arguments;
+  arguments.add(zc::str("toml-syntax"_zc));
+  zc::Vector<DiagnosticSecondary> secondary;
+  secondary.add(ZC_REQUIRE_NONNULL(DiagnosticSecondary::highlight(zc::mv(highlight))));
+  secondary.add(ZC_REQUIRE_NONNULL(
+      DiagnosticSecondary::note(DiagID::PreviousWorkspacePackageHere, zc::mv(note), {})));
+  return ZC_REQUIRE_NONNULL(DiagnosticFact::from(zc::mv(occurrence), DiagID::PackageManifestInvalid,
+                                                 zc::mv(arguments), zc::mv(primary),
+                                                 zc::mv(secondary)));
+}
+
 }  // namespace
 
 ZC_TEST("DiagnosticFactCodec round-trips the closed source fact model") {
@@ -90,6 +126,25 @@ ZC_TEST("DiagnosticFactCodec round-trips the closed source fact model") {
   auto reencoded =
       ZC_REQUIRE_NONNULL(encodeDiagnosticFacts(zc::none, decoded.asPtr(), kFactLimits));
   ZC_EXPECT(reencoded.asPtr() == encoded.asPtr());
+}
+
+ZC_TEST("DiagnosticFactCodec round-trips document facts with cross-document related sites") {
+  zc::Vector<DiagnosticFact> expected;
+  expected.add(documentFact());
+  auto encoded = ZC_REQUIRE_NONNULL(encodeDiagnosticFacts(zc::none, expected.asPtr(), kFactLimits));
+  auto decoded = ZC_REQUIRE_NONNULL(decodeDiagnosticFacts(zc::none, encoded.asPtr(), kFactLimits));
+  ZC_REQUIRE(decoded.size() == 1);
+  ZC_EXPECT(decoded[0] == expected[0]);
+  ZC_EXPECT(decoded[0].occurrence().origin() == DiagnosticFactOrigin::Document);
+  ZC_EXPECT(decoded[0].secondary()[1].provenance().documentIdentityBytes() ==
+            documentIdentity(2).asPtr());
+  auto reencoded =
+      ZC_REQUIRE_NONNULL(encodeDiagnosticFacts(zc::none, decoded.asPtr(), kFactLimits));
+  ZC_EXPECT(reencoded.asPtr() == encoded.asPtr());
+
+  for (size_t size = 0; size < encoded.size(); ++size) {
+    ZC_EXPECT(decodeDiagnosticFacts(zc::none, encoded.first(size), kFactLimits) == zc::none);
+  }
 }
 
 ZC_TEST("DiagnosticFactCodec enforces complete sequence and record limits") {
@@ -186,6 +241,40 @@ ZC_TEST("DiagnosticFact factories reject foreign topology and ordinal gaps") {
   ZC_EXPECT(DiagnosticProvenanceKey::from(tests::test_identity_detail::source(),
                                           SourceDiagnosticPhase::Lex,
                                           SourceDiagnosticEmitter::Lexer, path(0, 3)) == zc::none);
+}
+
+ZC_TEST("DiagnosticFact factories reject foreign document primaries and role gaps") {
+  auto document = documentIdentity(1);
+  auto foreignDocument = documentIdentity(2);
+  auto occurrenceBytes = documentOccurrence(1);
+  auto occurrence = ZC_REQUIRE_NONNULL(DiagnosticOccurrenceKey::document(
+      zc::heapArray<uint8_t>(document.asPtr()), zc::heapArray<uint8_t>(occurrenceBytes.asPtr())));
+  auto foreignPrimary = ZC_REQUIRE_NONNULL(DiagnosticProvenanceKey::documentSite(
+      zc::mv(foreignDocument), zc::heapArray<uint8_t>(occurrenceBytes.asPtr()),
+      DocumentDiagnosticSiteRole::Primary, 0));
+  zc::Vector<zc::String> arguments;
+  arguments.add(zc::str("toml-syntax"_zc));
+  zc::Vector<DiagnosticSecondary> secondary;
+  ZC_EXPECT(DiagnosticFact::from(zc::mv(occurrence), DiagID::PackageManifestInvalid,
+                                 zc::mv(arguments), zc::mv(foreignPrimary),
+                                 zc::mv(secondary)) == zc::none);
+
+  auto validOccurrence = ZC_REQUIRE_NONNULL(DiagnosticOccurrenceKey::document(
+      zc::heapArray<uint8_t>(document.asPtr()), zc::heapArray<uint8_t>(occurrenceBytes.asPtr())));
+  auto primary = ZC_REQUIRE_NONNULL(DiagnosticProvenanceKey::documentSite(
+      zc::heapArray<uint8_t>(document.asPtr()), zc::heapArray<uint8_t>(occurrenceBytes.asPtr()),
+      DocumentDiagnosticSiteRole::Primary, 0));
+  auto skippedHighlight = ZC_REQUIRE_NONNULL(DiagnosticProvenanceKey::documentSite(
+      zc::heapArray<uint8_t>(document.asPtr()), zc::mv(occurrenceBytes),
+      DocumentDiagnosticSiteRole::Highlight, 1));
+  zc::Vector<zc::String> validArguments;
+  validArguments.add(zc::str("toml-syntax"_zc));
+  zc::Vector<DiagnosticSecondary> invalidSecondary;
+  invalidSecondary.add(
+      ZC_REQUIRE_NONNULL(DiagnosticSecondary::highlight(zc::mv(skippedHighlight))));
+  ZC_EXPECT(DiagnosticFact::from(zc::mv(validOccurrence), DiagID::PackageManifestInvalid,
+                                 zc::mv(validArguments), zc::mv(primary),
+                                 zc::mv(invalidSecondary)) == zc::none);
 }
 
 }  // namespace zomlang::compiler::diagnostics

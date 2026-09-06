@@ -1,7 +1,7 @@
 <!-- @dsCard group="Design Documents" name="ARCHITECTURE" -->
 # ZOM Compiler Architecture - Current Implementation
 
-Updated: 2026-08-30
+Updated: 2026-09-06
 
 This document describes executable code in the repository. RFC status and
 future contracts are tracked under `docs/rfc`; a contract is listed here only
@@ -31,7 +31,7 @@ The compiler currently provides:
   borrow-evidence publication for the supported source subset;
 - checked-module assembly, semantic HIR, and evidence-bound Built MIR,
   committed atomically by `CompilerSession`; and
-- deterministic structured diagnostics and architecture gates.
+- deterministic canonical diagnostics with terminal and IDE projections.
 
 The production path remains partial in these areas:
 
@@ -68,7 +68,7 @@ fact or any source, identity, codec, or IR invariant rejects the entire stage.
 | `compiler/hir` | Assemble checked modules and lower semantic declarations and scalar facts | `VerifiedCheckedModule`, `VerifiedHirModule` |
 | `compiler/mir` | Lower and independently verify evidence-bound Built MIR | `VerifiedBuiltMir` |
 | `compiler/ir` | Own target selections, canonical IR identity, and the shared closed IR failure algebra | `VerifiedTargetSelection`, typed IR failures and diagnostics |
-| `compiler/diagnostics` | Register, sort, and render source and invariant diagnostics | `DiagnosticEngine` output |
+| `compiler/diagnostics` | Validate the catalog, collect and materialize canonical user diagnostics, apply display policy, render terminal output, and project diagnostics-pipeline incidents | sealed `CompilationDiagnosticFacts`, immutable `ResolvedDiagnosticBatch`, `DiagnosticPolicyResult`, and registered incident descriptors; see [Diagnostics Architecture](diagnostics.md) |
 | `utils/zomc` | Admit a workspace and invoke the production session | `compile`, frontend-only `build`, `fmt`, and the Linux x86-64 scalar `run` candidate |
 | `runtime` | Provide runtime support symbols and the admitted host entry object | runtime libraries and Linux x86-64 `_start` for the scalar run slice |
 
@@ -173,9 +173,9 @@ flowchart LR
     E --> O
 ```
 
-Source rejection publishes diagnostics but no output. An identity or binder
-invariant publishes a closed invariant group and no partial metadata or export
-surface.
+Source rejection publishes canonical diagnostic facts but no semantic output.
+An identity or Binder invariant publishes a bounded incident descriptor and no
+partial metadata or export surface.
 
 ### Checking and emission
 
@@ -184,8 +184,8 @@ canonical signature facts, coherence, module interfaces, checked facts,
 dispatch facts, and borrow evidence. It then assembles `VerifiedCheckedModule`,
 lowers `VerifiedHirModule`, builds and independently verifies Built MIR, and
 commits all staged repositories and vectors together. Unsupported or incomplete
-source facts fail closed with typed source or invariant diagnostics and publish
-nothing from the stage.
+source facts fail closed with typed source diagnostics, operational failures, or
+compiler incidents as appropriate and publish nothing from the stage.
 
 AST emission is available after verified parsing. `compile --check` and
 `zomc build` complete after the frontend reaches verified Built MIR without
@@ -253,14 +253,15 @@ publications.
 ## 6. IR And Backend Boundary
 
 `compiler/ir` owns the immutable target registry plus common IR identity,
-failure, and diagnostic contracts:
+failure, and diagnostic-fact projection contracts:
 
 - canonical target features;
 - canonical target specifications and target-spec digests;
 - registered target profiles and registry revisions; and
 - verified host and target selections used by package-session admission;
 - closed source, identity, capability, and invariant failure branches; and
-- deterministic registered-diagnostic projection.
+- deterministic projection to source-backed diagnostics, compiler incidents, or
+  operational failures according to failure class.
 
 `zomc` currently constructs one host/abort profile. A
 `VerifiedTargetSelection` is bound to the registry revision and semantic
@@ -280,14 +281,16 @@ The `.def` registries are authoritative. The registered families are:
 | Parse | sparse `ZOM2001-ZOM2105` | lexer, parser, grammar, modifier, and module-scope syntax |
 | Binder and module | sparse `ZOM3001-ZOM3028` | names, scopes, imports, exports, visibility, and module paths |
 | Checker | sparse `ZOM4001-ZOM4092` | semantic, constant, borrow-surface, and marker-interface diagnostics |
-| IR and backend capability | `ZOM6006`, `ZOM6007`, `ZOM6009` | panic, binary, and target capability failures |
-| Package | `ZOM7001-ZOM7017`, `ZOM7091-ZOM7093` | manifests, resolution, materialization, build scripts, and notes |
-| Compiler invariants | sparse `ZOM9905-ZOM9956` | package, identity, binder, checker, dispatch, IR, interface, and module-graph invariants |
+| IR and backend capability | sparse `ZOM6009-ZOM6011` | source-backed target capability and generic-instantiation failures |
+| Package | sparse user-actionable entries in `ZOM7000-ZOM7999` | manifests, resolution, materialization, build scripts, and notes |
+| Compiler incidents | no public diagnostic allocation | registered internal package, identity, Binder, Checker, dispatch, IR, interface, module-graph, and diagnostics-pipeline failures |
 
-The executable diagnostic coverage gate currently proves 251 definitions, 212
-production emissions with test assertions, and 39 non-emitted definitions
-bound to active RFC trackers. It rejects undefined emissions, untracked dead
-definitions, stale reservations, and unasserted production emissions.
+`ZOM9900-ZOM9999` is unassigned. The request-local collector seals canonical
+facts and exact source or document provenance before atomic materialization. An
+immutable policy view feeds terminal and IDE consumers. Compiler invariants use
+the bounded incident rail, while allocation, I/O, external-process, and
+unavailable-resource failures remain operational failures. See [Diagnostics
+Architecture](diagnostics.md).
 
 ## 8. Verification
 

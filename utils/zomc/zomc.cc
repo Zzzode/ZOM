@@ -28,8 +28,10 @@
 #include "compiler/basic/string-pool.h"
 #include "compiler/basic/zomlang-opts.h"
 #include "compiler/cst/lexeme-stream-builder.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
+#include "compiler/diagnostics/consumer/terminal-diagnostic-renderer.h"
+#include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "compiler/diagnostics/incident/compiler-incident.h"
+#include "compiler/driver/core/diagnostic-projector.h"
 #include "compiler/driver/package/lockfile.h"
 #include "compiler/driver/package/package-compilation-request.h"
 #include "compiler/driver/package/package-diagnostic.h"
@@ -41,7 +43,7 @@
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/crypto/sha256.h"
 #include "compiler/identity/diagnostics/identity-diagnostic-projector.h"
-#include "compiler/ir/diagnostics/ir-diagnostic-adapter.h"
+#include "compiler/ir/diagnostics/ir-capability-failure-projector.h"
 #include "compiler/ir/diagnostics/ir-diagnostic-projector.h"
 #include "compiler/ir/link/link-plan-codec.h"
 #include "compiler/ir/publication/executable-publication.h"
@@ -314,10 +316,10 @@ public:
     ZC_IF_SOME(source, sourceBytes) {
       source::SourceManager sourceManager;
       basic::StringPool stringPool;
-      diagnostics::DiagnosticEngine diagnosticEngine(sourceManager);
       basic::LangOptions options;
       auto bufferId = sourceManager.addMemBufferCopy(source.asBytes(), sourcePath);
-      lexer::Lexer lexer(sourceManager, diagnosticEngine, options, stringPool, bufferId);
+      diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(sourceManager, bufferId);
+      lexer::Lexer lexer(sourceManager, diagnosticFacts.lexerSink(), options, stringPool, bufferId);
       zc::Vector<lexer::Token> tokens;
       lexer::Token token;
       do {
@@ -466,11 +468,7 @@ public:
 
   zc::MainBuilder::Validity addNamedTarget(identity::CrateTargetKind kind, zc::StringPtr value) {
     auto name = identity::TargetName::fromSource(value);
-    if (name == zc::none) {
-      package::PackageDiagnosticAdapter::emitInvocationIssue(
-          session->getDiagnosticEngine(), package::InvocationIssue::DuplicateTargetSelection);
-      return zc::str("Invalid target name.");
-    }
+    if (name == zc::none) { return zc::str("Invalid target name."); }
     ZC_IF_SOME(admitted, name) {
       zc::Maybe<identity::TargetName> selected = zc::mv(admitted);
       packageRequest.targetSelections.add(
@@ -691,10 +689,9 @@ public:
       package::PackagePanicStrategy requestedPanicStrategy) {
     if (issue == ir::TargetSelectionVerificationIssue::CapabilityUnavailable) {
       if (requestedPanicStrategy == package::PackagePanicStrategy::Unwind) {
-        return diagnoseEmission<diagnostics::DiagID::PanicUnwindUnsupported>(source::SourceLoc());
+        return operationalFailure("target"_zc, "panic-unwind-unsupported"_zc);
       }
-      return diagnoseEmission<diagnostics::DiagID::TargetCapabilityUnavailable>(
-          source::SourceLoc());
+      return operationalFailure("target"_zc, "capability-unavailable"_zc);
     }
     ZC_REQUIRE(commandIncidents.add(ir::IrDiagnosticProjector::project(issue)),
                "target-selection incident must fit the registered inventory");
@@ -702,30 +699,37 @@ public:
     return true;
   }
 
-  zc::Maybe<source::core::VerifiedCoreDistribution> admitCoreDistribution(
+  source::core::CoreDistributionAdmissionResult admitCoreDistribution(
       const zc::Filesystem& filesystem) const {
     try {
       auto executable = currentExecutablePath(filesystem);
-      if (executable == zc::none) { return zc::none; }
+      if (executable == zc::none) {
+        return source::core::CoreDistributionAdmissionFailure::withoutCoordinate(
+            source::core::CoreDistributionAdmissionFailureKind::ReadFailed);
+      }
       const auto coreRoot = ZC_ASSERT_NONNULL(executable)
                                 .parent()
                                 .parent()
                                 .append(zc::Path({"share"_zc, "zom"_zc, "core"_zc, "src"_zc}));
       auto directory = filesystem.getRoot().tryOpenSubdir(coreRoot);
       auto expected = source::core::initialCoreDistributionInput();
-      if (directory == zc::none || expected == zc::none) { return zc::none; }
+      if (directory == zc::none) {
+        return source::core::CoreDistributionAdmissionFailure::withoutCoordinate(
+            source::core::CoreDistributionAdmissionFailureKind::ReadFailed);
+      }
+      if (expected == zc::none) {
+        return source::core::CoreDistributionAdmissionInvariantKind::VerifiedStateMismatch;
+      }
       TransientCoreSourceDirectoryFactory factory;
       source::core::CoreDistributionAdmission admission;
       ZC_IF_SOME(root, directory) {
-        ZC_IF_SOME(authority, expected) {
-          auto admitted = admission.admit(*root, factory, authority, 2026);
-          if (admitted.is<source::core::VerifiedCoreDistribution>()) {
-            return zc::mv(admitted.get<source::core::VerifiedCoreDistribution>());
-          }
-        }
+        ZC_IF_SOME(authority, expected) { return admission.admit(*root, factory, authority, 2026); }
       }
-      return zc::none;
-    } catch (const zc::Exception&) { return zc::none; }
+      return source::core::CoreDistributionAdmissionInvariantKind::VerifiedStateMismatch;
+    } catch (const zc::Exception&) {
+      return source::core::CoreDistributionAdmissionFailure::withoutCoordinate(
+          source::core::CoreDistributionAdmissionFailureKind::ReadFailed);
+    }
   }
 
   zc::Maybe<package::InstalledPackageInputs> resolvePackageInput(
@@ -738,9 +742,7 @@ public:
     auto snapshotParent =
         filesystem.getRoot().tryOpenSubdir(workspaceRoot.parent(), zc::WriteMode::MODIFY);
     if (snapshotParent == zc::none) {
-      package::PackageDiagnosticAdapter::emitMaterializationIssue(
-          session->getDiagnosticEngine(),
-          package::MaterializationIssue::FreshDirectoryCreateFailed);
+      reportOperationalFailure("package-materialization"_zc, "fresh-directory-create-failed"_zc);
       return zc::none;
     }
     zc::Own<const zc::Directory> snapshotParentDirectory;
@@ -757,49 +759,40 @@ public:
         return zc::none;
       }
       ZC_CASE_ONEOF(failure, package::VerifyFailure) {
-        package::PackageDiagnosticAdapter::emitVerifyFailure(session->getDiagnosticEngine(),
-                                                             failure);
+        reportOperationalFailure("package-verification"_zc, package::verifyFailureDisplay(failure));
         return zc::none;
       }
     }
     ZC_UNREACHABLE;
   }
 
-  // Renders a locatable diagnostic for each typed workspace-resolution failure.
+  // Reports each source-less workspace-resolution failure on the operational rail.
   void emitResolveFailure(const package::ResolveFailure& failure) {
     ZC_SWITCH_ONEOF(failure) {
       ZC_CASE_ONEOF(materialization, package::SourceMaterializationFailed) {
-        package::PackageDiagnosticAdapter::emitMaterializationIssue(session->getDiagnosticEngine(),
-                                                                    materialization.issue);
+        reportOperationalFailure("package-materialization"_zc,
+                                 package::materializationIssueDisplay(materialization.issue));
       }
       ZC_CASE_ONEOF(_, package::SnapshotParentUnavailable) {
-        package::PackageDiagnosticAdapter::emitMaterializationIssue(
-            session->getDiagnosticEngine(),
-            package::MaterializationIssue::FreshDirectoryCreateFailed);
+        reportOperationalFailure("package-materialization"_zc, "fresh-directory-create-failed"_zc);
       }
       ZC_CASE_ONEOF(_, package::PackageNameOrVersionInvalid) {
-        session->getDiagnosticEngine().diagnose<diagnostics::DiagID::PackageInvocationInvalid>(
-            source::SourceLoc(), "package-name-or-version-invalid"_zc);
+        reportOperationalFailure("package-resolution"_zc, "package-name-or-version-invalid"_zc);
       }
       ZC_CASE_ONEOF(_, package::LocalRecordRejected) {
-        session->getDiagnosticEngine().diagnose<diagnostics::DiagID::PackageInvocationInvalid>(
-            source::SourceLoc(), "local-record-rejected"_zc);
+        reportOperationalFailure("package-resolution"_zc, "local-record-rejected"_zc);
       }
       ZC_CASE_ONEOF(_, package::LockReadFailed) {
-        session->getDiagnosticEngine().diagnose<diagnostics::DiagID::PackageInvocationInvalid>(
-            source::SourceLoc(), "lock-read-failed"_zc);
+        reportOperationalFailure("package-resolution"_zc, "lock-read-failed"_zc);
       }
       ZC_CASE_ONEOF(_, package::LockedResolveFailed) {
-        session->getDiagnosticEngine().diagnose<diagnostics::DiagID::PackageInvocationInvalid>(
-            source::SourceLoc(), "locked-resolve-failed"_zc);
+        reportOperationalFailure("package-resolution"_zc, "locked-resolve-failed"_zc);
       }
       ZC_CASE_ONEOF(_, package::LockWriteFailed) {
-        session->getDiagnosticEngine().diagnose<diagnostics::DiagID::PackageInvocationInvalid>(
-            source::SourceLoc(), "lock-write-failed"_zc);
+        reportOperationalFailure("package-resolution"_zc, "lock-write-failed"_zc);
       }
       ZC_CASE_ONEOF(_, package::ResolveFailed) {
-        session->getDiagnosticEngine().diagnose<diagnostics::DiagID::PackageInvocationInvalid>(
-            source::SourceLoc(), "resolve-failed"_zc);
+        reportOperationalFailure("package-resolution"_zc, "resolve-failed"_zc);
       }
     }
   }
@@ -807,10 +800,19 @@ public:
   zc::MainBuilder::Validity emitOutput() {
     auto result = emitOutputImpl();
     ZC_IF_SOME(issue, session->finishResolvedPackageSnapshots()) {
-      package::PackageDiagnosticAdapter::emitMaterializationIssue(session->getDiagnosticEngine(),
-                                                                  issue);
-      context.error(zc::StringPtr());
-      return true;
+      reportOperationalFailure("package-materialization"_zc,
+                               package::materializationIssueDisplay(issue));
+      result = true;
+    }
+    if (reportSessionIncident()) return true;
+    if (!diagnosticsPublished) {
+      if (!session->finalizeDiagnostics()) {
+        reportSessionIncident();
+        return true;
+      }
+      ZC_IF_SOME(diagnostics, session->getDiagnostics()) {
+        if (diagnostics.displayedCount() != 0) return publishDiagnostics();
+      }
     }
     return result;
   }
@@ -818,19 +820,15 @@ public:
   zc::MainBuilder::Validity emitOutputImpl() {
     if (reportSessionIncident()) { return true; }
     if (manifestPaths.size() > 1) {
-      package::PackageDiagnosticAdapter::emitInvocationIssue(
-          session->getDiagnosticEngine(), package::InvocationIssue::InvalidManifestPath);
-      context.error(zc::StringPtr());
-      return true;
+      return operationalFailure("package-invocation"_zc, "invalid-manifest-path"_zc);
     }
     auto registry = targetRegistry();
     auto targets = packageTargetService(registry);
     auto normalized = package::normalizePackageCompilationRequest(zc::mv(packageRequest), targets);
     if (normalized.is<package::InvocationIssue>()) {
-      package::PackageDiagnosticAdapter::emitInvocationIssue(
-          session->getDiagnosticEngine(), normalized.get<package::InvocationIssue>());
-      context.error(zc::StringPtr());
-      return true;
+      return operationalFailure(
+          "package-invocation"_zc,
+          package::invocationIssueDisplay(normalized.get<package::InvocationIssue>()));
     }
     const auto& normalizedRequest = normalized.get<package::NormalizedPackageCompilationRequest>();
     auto verifiedHostTarget = registry.verify(normalizedRequest.hostTarget());
@@ -848,60 +846,60 @@ public:
     auto filesystem = zc::newDiskFilesystem();
     auto manifest = package::discoverManifestPath(*filesystem, manifestPaths.asPtr());
     if (manifest.is<package::InvocationIssue>()) {
-      package::PackageDiagnosticAdapter::emitInvocationIssue(
-          session->getDiagnosticEngine(), manifest.get<package::InvocationIssue>());
-      context.error(zc::StringPtr());
-      return true;
+      return operationalFailure(
+          "package-invocation"_zc,
+          package::invocationIssueDisplay(manifest.get<package::InvocationIssue>()));
     }
     auto loadResult = package::loadWorkspace(*filesystem, zc::mv(manifest.get<zc::Path>()));
     if (loadResult.is<package::WorkspaceLoadFailure>()) {
       auto& failure = loadResult.get<package::WorkspaceLoadFailure>();
       ZC_SWITCH_ONEOF(failure) {
         ZC_CASE_ONEOF(parseFailure, package::ManifestParseFailed) {
-          ZC_REQUIRE(package::PackageDiagnosticAdapter::emitManifestFailure(
-                         session->getDiagnosticEngine(), parseFailure.diagnosticDocuments.asPtr(),
-                         parseFailure.failure),
+          ZC_REQUIRE(session->addPackageDiagnostics(
+                         package::projectManifestFailure(parseFailure.diagnosticDocuments.asPtr(),
+                                                         parseFailure.failure),
+                         parseFailure.diagnosticDocuments.asPtr()),
                      "manifest parse failure must resolve its retained provenance");
-          context.error(zc::StringPtr());
+          return publishDiagnostics();
         }
         ZC_CASE_ONEOF(normalizeFailure, package::WorkspaceNormalizeFailed) {
-          ZC_REQUIRE(package::PackageDiagnosticAdapter::emitManifestFailure(
-                         session->getDiagnosticEngine(),
-                         normalizeFailure.diagnosticDocuments.asPtr(), normalizeFailure.failure),
-                     "workspace normalize failure must resolve its retained provenance");
-          context.error(zc::StringPtr());
+          ZC_REQUIRE(
+              session->addPackageDiagnostics(
+                  package::projectManifestFailure(normalizeFailure.diagnosticDocuments.asPtr(),
+                                                  normalizeFailure.failure),
+                  normalizeFailure.diagnosticDocuments.asPtr()),
+              "workspace normalize failure must resolve its retained provenance");
+          return publishDiagnostics();
         }
         ZC_CASE_ONEOF(_, package::ManifestReadFailed) {
-          context.error("Failed to read the workspace manifest."_zc);
+          return operationalFailure("package-manifest"_zc, "manifest-read-failed"_zc);
         }
         ZC_CASE_ONEOF(_, package::InventoryRejected) {
-          context.error("Failed to admit the package source inventory."_zc);
+          return operationalFailure("package-input"_zc, "source-inventory-rejected"_zc);
         }
         ZC_CASE_ONEOF(_, package::DiagnosticDocumentRejected) {
-          context.error("Failed to construct a manifest diagnostic document."_zc);
+          return operationalFailure("package-diagnostics"_zc, "diagnostic-document-rejected"_zc);
         }
       }
-      return true;
+      ZC_UNREACHABLE
     }
     {
       auto& workspace = loadResult.get<package::LoadedWorkspace>();
       auto verified = package::verifyPackageCompilationRequest(
           normalized.get<package::NormalizedPackageCompilationRequest>(), workspace.workspace);
       if (verified.is<package::TargetSelectionIssue>()) {
-        session->getDiagnosticEngine().diagnose<diagnostics::DiagID::PackageTargetSelectionInvalid>(
-            source::SourceLoc(),
-            zc::str(static_cast<uint64_t>(verified.get<package::TargetSelectionIssue>())));
-        context.error(zc::StringPtr());
-        return true;
+        return operationalFailure(
+            "package-target-selection"_zc,
+            package::targetSelectionIssueDisplay(verified.get<package::TargetSelectionIssue>()));
       }
       if (verified.is<package::PackageToolchainModuleRootFailure>()) {
         const auto& failure = verified.get<package::PackageToolchainModuleRootFailure>();
         ZC_REQUIRE(
-            package::PackageDiagnosticAdapter::emitToolchainModuleRootFailure(
-                session->getDiagnosticEngine(), workspace.diagnosticDocuments.asPtr(), failure),
+            session->addPackageDiagnostics(package::projectToolchainModuleRootFailure(
+                                               workspace.diagnosticDocuments.asPtr(), failure),
+                                           workspace.diagnosticDocuments.asPtr()),
             "verified package reservation failure must resolve its retained manifest");
-        context.error(zc::StringPtr());
-        return true;
+        return publishDiagnostics();
       }
       auto& verifiedRequest = verified.get<package::VerifiedPackageCompilationRequest>();
       auto packageInput = resolvePackageInput(
@@ -909,23 +907,34 @@ public:
           zc::mv(verifiedHostTarget.get<ir::VerifiedTargetSelection>()),
           zc::mv(verifiedTarget.get<ir::VerifiedTargetSelection>()), workspace.workspace);
       if (packageInput == zc::none) {
-        context.error("Failed to resolve and verify the atomic package session input."_zc);
-        return true;
+        return operationalFailure("package-session"_zc, "input-verification-failed"_zc);
       }
       ZC_IF_SOME(input, packageInput) {
         if (!session->installVerifiedPackageInput(zc::mv(input))) {
-          context.error("Failed to install the atomic package session input."_zc);
-          return true;
+          return operationalFailure("package-session"_zc, "input-installation-failed"_zc);
         }
       }
-      coreDistribution = admitCoreDistribution(*filesystem);
-      bool coreInstalled = false;
-      ZC_IF_SOME(distribution, coreDistribution) {
-        coreInstalled = session->installVerifiedCoreDistribution(distribution);
+      auto coreAdmission = admitCoreDistribution(*filesystem);
+      if (coreAdmission.is<source::core::CoreDistributionAdmissionFailure>()) {
+        return operationalFailure(
+            "core-distribution"_zc,
+            source::core::coreDistributionAdmissionFailureDisplay(
+                coreAdmission.get<source::core::CoreDistributionAdmissionFailure>().kind()));
       }
-      if (!coreInstalled) {
-        context.error("Failed to admit and install the source-backed core distribution."_zc);
+      if (coreAdmission.is<source::core::CoreDistributionAdmissionInvariantKind>()) {
+        ZC_REQUIRE(
+            commandIncidents.add(driver::core_library_query::CoreDiagnosticProjector::project(
+                coreAdmission.get<source::core::CoreDistributionAdmissionInvariantKind>(),
+                driver::core_library_query::CoreIncidentPhase::DistributionAdmission,
+                driver::core_library_query::CoreIncidentProducer::SourceAdmission)),
+            "core admission incident must fit the registered inventory");
+        reportSessionIncident();
         return true;
+      }
+      auto distribution = zc::mv(coreAdmission).get<source::core::VerifiedCoreDistribution>();
+      if (!session->installVerifiedCoreDistribution(distribution)) {
+        if (reportSessionIncident()) return true;
+        return operationalFailure("core-distribution"_zc, "installation-unavailable"_zc);
       }
       auto finalizedRoots = session->getFinalizedCompilationRoots();
       bool rootsAdmitted = finalizedRoots.size() != 0;
@@ -933,11 +942,7 @@ public:
         rootsAdmitted = session->addVerifiedPackageRoot(root) != zc::none && rootsAdmitted;
       }
       if (!rootsAdmitted) {
-        package::PackageDiagnosticAdapter::emitBuildScriptIssue(
-            session->getDiagnosticEngine(),
-            package::BuildScriptIssue::BuildResultIntegrityViolation);
-        context.error(zc::StringPtr());
-        return true;
+        return operationalFailure("package-build"_zc, "build-result-integrity-violation"_zc);
       }
     }
 
@@ -951,20 +956,25 @@ public:
         session->hasVerifiedParsedSyntax()) {
       return emitAST();
     }
-    if (!frontendReady || session->getDiagnosticEngine().hasErrors()) {
+    if (!frontendReady || session->hasDiagnosticErrors()) {
       if (reportSessionIncident()) { return true; }
+      if (session->hasDiagnosticErrors()) return publishDiagnostics();
       return zc::str("Compilation failed during parsing or module discovery.");
     }
 
     // 3. Binding
-    if (!session->bindSources() || session->getDiagnosticEngine().hasErrors()) {
+    if (!session->bindSources() || session->hasDiagnosticErrors()) {
       if (reportSessionIncident()) { return true; }
+      if (session->hasDiagnosticErrors()) return publishDiagnostics();
       return zc::str("Compilation failed due to binding errors.");
     }
 
     // 4. Type checking
-    if (!session->checkSources() || session->getDiagnosticEngine().hasErrors()) {
+    if (!session->checkSources() || session->hasDiagnosticErrors()) {
       if (reportSessionIncident()) { return true; }
+      if (session->hasDiagnosticErrors()) return publishDiagnostics();
+      if (reportCoreOperationalFailure()) return true;
+      if (reportIrOperationalFailures()) return true;
       return zc::str("Compilation failed due to type checking errors.");
     }
 
@@ -985,7 +995,7 @@ public:
 
     // 6. Final Emission
     if (options.panicStrategy == basic::CompilerOptions::PanicStrategy::Unwind) {
-      return diagnoseEmission<diagnostics::DiagID::PanicUnwindUnsupported>(emissionLocation());
+      return operationalFailure("target"_zc, "panic-unwind-unsupported"_zc);
     }
     switch (options.emission.outputType) {
       case basic::CompilerOptions::EmissionOptions::OutputType::Binary:
@@ -1152,30 +1162,11 @@ private:
     return "Verified checked dispatch facts are unavailable.";
   }
 
-  source::SourceLoc emissionLocation() const {
-    auto modules = session->materializeParsedModules();
-    if (modules == zc::none || ZC_ASSERT_NONNULL(modules).size() == 0) {
-      return source::SourceLoc();
-    }
-
-    const auto& parsedModule = ZC_ASSERT_NONNULL(modules)[0].parsedModule();
-    auto location = parsedModule.sourceLocFor(parsedModule.rootSpan());
-    ZC_IF_SOME(value, location) { return value; }
-    return source::SourceLoc();
-  }
-
-  template <diagnostics::DiagID Id>
-  zc::MainBuilder::Validity diagnoseEmission(source::SourceLoc loc) {
-    session->getDiagnosticEngine().diagnose<Id>(loc);
-    context.error(zc::StringPtr());
-    return true;
-  }
-
   zc::MainBuilder::Validity emitBinary() {
 #if ZOM_ENABLE_LLVM_BACKEND
     return emitNativeObject();
 #else
-    return diagnoseEmission<diagnostics::DiagID::BinaryEmissionUnavailable>(emissionLocation());
+    return operationalFailure("backend"_zc, "binary-emission-unavailable"_zc);
 #endif
   }
 
@@ -1411,10 +1402,11 @@ private:
   // Routes an RFC 0010 operation rejection to its public capability or internal incident rail.
   template <typename VerifiedValue>
   void materializeIrRejection(const ir::IrOperationResult<VerifiedValue>& result) {
-    diagnostics::DiagnosticEngine& engine = session->getDiagnosticEngine();
     if (result.isCapabilityRejected()) {
       auto groups = ir::groupIrCapabilityFailures(result.capabilityFailures());
-      ir::emitIrCapabilityDiagnosticGroups(engine, groups.asPtr());
+      for (const auto& group : groups) {
+        reportOperationalFailure("ir"_zc, ir::irOperationalFailureDisplay(group.facts()[0].kind()));
+      }
     } else if (result.isIrInvariantRejected()) {
       auto projected = ir::IrDiagnosticProjector::projectAll(result.invariantFailures());
       ZC_REQUIRE(projected != zc::none && commandIncidents.merge(ZC_ASSERT_NONNULL(projected)),
@@ -1516,7 +1508,7 @@ private:
       // A recovery-required outcome still carries the failure algebra that forced
       // recovery: the snapshot arm always carries a primary rejection, and the
       // publication arm carries one when a primary cause was recorded. Route it
-      // through the diagnostic engine before returning the neutral recovery
+      // through the request failure rails before returning the neutral recovery
       // message, so the RFC 0010 facts are not discarded.
       ir::LinkRecoveryRequired recovery = zc::mv(publication).takeRecoveryRequired();
       if (recovery.isSnapshotRecoveryRequired()) {
@@ -1593,6 +1585,56 @@ private:
 #endif
 
 private:
+  void reportOperationalFailure(zc::StringPtr domain, zc::StringPtr reason) {
+    context.error(zc::str("error: operational failure [", domain, "]: ", reason));
+  }
+
+  zc::MainBuilder::Validity operationalFailure(zc::StringPtr domain, zc::StringPtr reason) {
+    reportOperationalFailure(domain, reason);
+    return true;
+  }
+
+  bool reportIrOperationalFailures() {
+    const auto groups = session->getIrCapabilityFailureGroups();
+    if (groups.size() == 0) return false;
+    for (const auto& group : groups) {
+      reportOperationalFailure("ir"_zc, ir::irOperationalFailureDisplay(group.facts()[0].kind()));
+    }
+    return true;
+  }
+
+  bool reportCoreOperationalFailure() {
+    auto failure = session->getCoreOperationalFailure();
+    if (failure == zc::none) return false;
+    reportOperationalFailure(
+        "core-query"_zc,
+        driver::core_library_query::coreOperationalFailureDisplay(ZC_ASSERT_NONNULL(failure)));
+    return true;
+  }
+
+  zc::MainBuilder::Validity publishDiagnostics() {
+    if (diagnosticsPublished) return true;
+    if (!session->finalizeDiagnostics()) {
+      reportSessionIncident();
+      return true;
+    }
+    auto diagnostics = session->getDiagnostics();
+    if (diagnostics == zc::none) {
+      context.error("error: operational failure [diagnostics]: publication-unavailable"_zc);
+      return true;
+    }
+    zc::FdOutputStream output(STDERR_FILENO);
+    auto failure = diagnostics::renderTerminalDiagnostics(ZC_ASSERT_NONNULL(diagnostics), *session,
+                                                          output, false);
+    if (failure != zc::none) {
+      context.error("error: operational failure [diagnostics]: terminal-render-failed"_zc);
+      return true;
+    }
+    diagnosticsPublished = true;
+    context.error(zc::StringPtr());
+    return true;
+  }
+
   bool reportSessionIncident() {
     basic::BoundedIncidentSet incidents;
     ZC_REQUIRE(incidents.merge(session->getIncidents()) && incidents.merge(commandIncidents),
@@ -1614,8 +1656,8 @@ private:
   bool outputActionRequested = false;
   package::RawPackageCompilationRequest packageRequest;
   zc::Vector<zc::String> manifestPaths;
-  zc::Maybe<source::core::VerifiedCoreDistribution> coreDistribution;
   basic::BoundedIncidentSet commandIncidents;
+  bool diagnosticsPublished = false;
   bool fmtCheckOnly = false;
   zc::Vector<zc::String> fmtSources;
 };

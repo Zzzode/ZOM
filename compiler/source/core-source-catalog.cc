@@ -14,8 +14,8 @@
 
 #include "compiler/source/core-source-catalog.h"
 
-#include "zc/core/debug.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
+#include "zc/core/debug.h"
 
 namespace zomlang::compiler::source::core {
 namespace {
@@ -109,7 +109,7 @@ zc::Maybe<AdmittedCoreSourceCatalogEntry> makeEntry(const identity::CrateKey& cr
 }
 
 using EntryBuildResult =
-    zc::OneOf<zc::Vector<AdmittedCoreSourceCatalogEntry>, CoreDistributionAdmissionFailure>;
+    zc::OneOf<zc::Vector<AdmittedCoreSourceCatalogEntry>, CoreDistributionAdmissionInvariantKind>;
 
 void sortEntries(zc::Vector<AdmittedCoreSourceCatalogEntry>& entries) {
   for (size_t index = 1; index < entries.size(); ++index) {
@@ -130,20 +130,15 @@ EntryBuildResult buildEntries(const VerifiedCoreDistribution& distribution,
   for (const auto& file : distribution.record().files()) {
     auto snapshot = findSnapshot(distribution, file.path());
     if (snapshot == zc::none) {
-      return CoreDistributionAdmissionFailure::withoutCoordinate(
-          CoreLibraryIssue::InputContextMismatch);
+      return CoreDistributionAdmissionInvariantKind::InputContextMismatch;
     }
     ZC_IF_SOME(value, snapshot) {
       if (value.contentDigest() != file.digest()) {
-        return CoreDistributionAdmissionFailure::withoutCoordinate(
-            CoreLibraryIssue::InputContextMismatch);
+        return CoreDistributionAdmissionInvariantKind::InputContextMismatch;
       }
     }
     auto entry = makeEntry(crate, file.path(), file.digest());
-    if (entry == zc::none) {
-      return CoreDistributionAdmissionFailure::withoutCoordinate(
-          CoreLibraryIssue::InputContextMismatch);
-    }
+    if (entry == zc::none) { return CoreDistributionAdmissionInvariantKind::InputContextMismatch; }
     ZC_IF_SOME(value, entry) { entries.add(zc::mv(value)); }
   }
   sortEntries(entries);
@@ -155,21 +150,14 @@ EntryBuildResult independentlyVerifyEntries(const VerifiedCoreDistribution& dist
   zc::Vector<AdmittedCoreSourceCatalogEntry> entries(distribution.snapshots().size());
   for (const auto& snapshot : distribution.snapshots()) {
     auto file = findFile(distribution, snapshot.path());
-    if (file == zc::none) {
-      return CoreDistributionAdmissionFailure::withoutCoordinate(
-          CoreLibraryIssue::InputContextMismatch);
-    }
+    if (file == zc::none) { return CoreDistributionAdmissionInvariantKind::InputContextMismatch; }
     ZC_IF_SOME(value, file) {
       if (value.digest() != snapshot.contentDigest()) {
-        return CoreDistributionAdmissionFailure::withoutCoordinate(
-            CoreLibraryIssue::InputContextMismatch);
+        return CoreDistributionAdmissionInvariantKind::InputContextMismatch;
       }
     }
     auto entry = makeEntry(crate, snapshot.path(), snapshot.contentDigest());
-    if (entry == zc::none) {
-      return CoreDistributionAdmissionFailure::withoutCoordinate(
-          CoreLibraryIssue::InputContextMismatch);
-    }
+    if (entry == zc::none) { return CoreDistributionAdmissionInvariantKind::InputContextMismatch; }
     ZC_IF_SOME(value, entry) { entries.add(zc::mv(value)); }
   }
   sortEntries(entries);
@@ -292,23 +280,21 @@ zc::Maybe<const AdmittedCoreSourceCatalogEntry&> AdmittedCoreSourceCatalog::find
 CoreSourceCatalogAdmissionResult CoreSourceCatalogAdmission::admit(
     const VerifiedCoreDistribution& distribution, const identity::CrateKey& crate) {
   if (!isProjectedCoreCrate(crate, distribution)) {
-    return CoreDistributionAdmissionFailure::withoutCoordinate(
-        CoreLibraryIssue::InputContextMismatch);
+    return CoreDistributionAdmissionInvariantKind::InputContextMismatch;
   }
   auto builder = buildEntries(distribution, crate);
-  if (builder.is<CoreDistributionAdmissionFailure>()) {
-    return zc::mv(builder.get<CoreDistributionAdmissionFailure>());
+  if (builder.is<CoreDistributionAdmissionInvariantKind>()) {
+    return builder.get<CoreDistributionAdmissionInvariantKind>();
   }
   auto verifier = independentlyVerifyEntries(distribution, crate);
-  if (verifier.is<CoreDistributionAdmissionFailure>()) {
-    return zc::mv(verifier.get<CoreDistributionAdmissionFailure>());
+  if (verifier.is<CoreDistributionAdmissionInvariantKind>()) {
+    return verifier.get<CoreDistributionAdmissionInvariantKind>();
   }
   auto entries = zc::mv(builder.get<zc::Vector<AdmittedCoreSourceCatalogEntry>>());
   auto verifiedEntries = zc::mv(verifier.get<zc::Vector<AdmittedCoreSourceCatalogEntry>>());
   if (!sameEntries(entries.asPtr(), verifiedEntries.asPtr()) ||
       !isInitialCatalog(entries.asPtr())) {
-    return CoreDistributionAdmissionFailure::withoutCoordinate(
-        CoreLibraryIssue::VerifierDisagreement);
+    return CoreDistributionAdmissionInvariantKind::VerifierDisagreement;
   }
   return AdmittedCoreSourceCatalog(zc::heap<AdmittedCoreSourceCatalog::Impl>(
       crate.clone(), distribution.distributionDigest(), zc::mv(entries)));

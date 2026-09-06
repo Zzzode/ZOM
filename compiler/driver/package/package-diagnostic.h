@@ -16,6 +16,7 @@
 
 #include <cstdint>
 
+#include "compiler/diagnostics/fact/compilation-diagnostic-facts.h"
 #include "compiler/diagnostics/text/diagnostic-text.h"
 #include "compiler/driver/package/build-script-runtime.h"
 #include "compiler/driver/package/manifest-parser.h"
@@ -26,10 +27,6 @@
 #include "zc/core/common.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-
-namespace zomlang::compiler::diagnostics {
-class DiagnosticEngine;
-}
 
 namespace zomlang::compiler::driver::package {
 
@@ -46,6 +43,7 @@ public:
   /// \pre `originalOffset <= originalSize()`.
   ZC_NODISCARD uint64_t escapedOffset(uint64_t originalOffset) const;
   ZC_NODISCARD uint64_t originalSize() const noexcept;
+  ZC_NODISCARD SanitizedSourceView clone() const;
 
 private:
   SanitizedSourceView(zc::String&& source, zc::Vector<uint64_t>&& offsets) noexcept;
@@ -67,6 +65,7 @@ public:
   ZC_NODISCARD const InputDocumentKey& key() const noexcept;
   ZC_NODISCARD const SanitizedSourceView& sourceView() const noexcept;
   ZC_NODISCARD zc::StringPtr displayName() const noexcept;
+  ZC_NODISCARD PackageDiagnosticDocument clone() const;
 
 private:
   PackageDiagnosticDocument(InputDocumentKey&& key, SanitizedSourceView&& source,
@@ -79,30 +78,36 @@ private:
 
 /// \brief Returns the closed, non-secret display token for one manifest issue.
 ZC_NODISCARD zc::StringPtr manifestIssueDisplay(ManifestIssue issue) noexcept;
+ZC_NODISCARD zc::StringPtr targetSelectionIssueDisplay(TargetSelectionIssue issue) noexcept;
 ZC_NODISCARD zc::StringPtr materializationIssueDisplay(MaterializationIssue issue) noexcept;
 ZC_NODISCARD zc::StringPtr buildScriptIssueDisplay(BuildScriptIssue issue) noexcept;
 /// \brief Returns the closed, non-secret display token that locates one
 /// package-input verification failure.
 ZC_NODISCARD zc::StringPtr verifyFailureDisplay(const VerifyFailure& failure) noexcept;
 
-/// \brief Translates typed package failures into the compiler diagnostic engine.
-class PackageDiagnosticAdapter final {
-public:
-  static void emitInvocationIssue(diagnostics::DiagnosticEngine& diagnostics,
-                                  InvocationIssue issue);
-  static void emitMaterializationIssue(diagnostics::DiagnosticEngine& diagnostics,
-                                       MaterializationIssue issue);
-  static void emitBuildScriptIssue(diagnostics::DiagnosticEngine& diagnostics,
-                                   BuildScriptIssue issue);
-  static void emitVerifyFailure(diagnostics::DiagnosticEngine& diagnostics,
-                                const VerifyFailure& failure);
-  static bool emitManifestFailure(diagnostics::DiagnosticEngine& diagnostics,
-                                  zc::ArrayPtr<const PackageDiagnosticDocument> documents,
-                                  const ManifestFailure& failure);
-  static bool emitToolchainModuleRootFailure(
-      diagnostics::DiagnosticEngine& diagnostics,
-      zc::ArrayPtr<const PackageDiagnosticDocument> documents,
-      const PackageToolchainModuleRootFailure& failure);
+/// \brief Canonical document-backed facts produced by one package failure.
+struct PackageDiagnosticFactProjection final {
+  zc::Vector<diagnostics::DiagnosticFact> facts;
+  zc::Vector<diagnostics::SourceDiagnosticProvenanceEntry> provenance;
+  zc::Vector<diagnostics::DiagnosticDocumentAuthority> documents;
 };
+
+enum class PackageDiagnosticProjectionFailure : uint8_t {
+  InvalidProvenance = 0x01,
+  MissingDocument = 0x02,
+  InvalidFact = 0x03,
+};
+
+using PackageDiagnosticProjectionResult =
+    zc::OneOf<PackageDiagnosticFactProjection, PackageDiagnosticProjectionFailure>;
+
+/// \brief Projects one manifest failure without presentation side effects.
+ZC_NODISCARD PackageDiagnosticProjectionResult projectManifestFailure(
+    zc::ArrayPtr<const PackageDiagnosticDocument> documents, const ManifestFailure& failure);
+
+/// \brief Projects one reserved toolchain-root failure without presentation side effects.
+ZC_NODISCARD PackageDiagnosticProjectionResult
+projectToolchainModuleRootFailure(zc::ArrayPtr<const PackageDiagnosticDocument> documents,
+                                  const PackageToolchainModuleRootFailure& failure);
 
 }  // namespace zomlang::compiler::driver::package

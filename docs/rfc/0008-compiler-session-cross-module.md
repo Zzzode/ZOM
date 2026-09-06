@@ -34,9 +34,9 @@ metadata, and builds the global coherence index needed by the checker.
 
 ## Motivation
 
-The current `CompilerDriver` owns a `SourceManager`, a `DiagnosticEngine`, one
-`SymbolTable`, and maps from buffer IDs to ASTs, binder metadata, and type
-environments. That shape works for single-compilation-unit tests, but it is not
+The compilation root must own one `SourceManager`, one request diagnostic
+collector, one semantic context, and the maps from source identities to parsed,
+bound, and checked publications. A set of independent per-file drivers is not
 enough for the module, package, and coherence model proposed by RFC 0011 and
 RFC 0012 and for the source-language rules in Chapters 13, 22, and 23.
 
@@ -150,7 +150,7 @@ CompilerSession {
   semantic_context_fingerprint: ContextFingerprint,
   options: CompilerOptions,
   source_manager: SourceManager,
-  diagnostics: DiagnosticEngine,
+  diagnostic_facts: CompilationDiagnosticCollector,
   package_graph: PackageGraph,
   crate_graph: CrateGraph,
   module_graph: ModuleGraph,
@@ -280,8 +280,8 @@ rejects every cycle before binding. After the final snapshot barrier,
 records. Semantic edge kinds are exactly
 `Import`, `ForeignReexport`, `ModuleAlias`, and `Prelude`. Every SCC with more
 than one module and every self-edge is rejected before any per-module binding
-input exists. Any SCC containing a prelude edge produces only RFC 0004
-`ModuleGraphInvariant` and `ZOM9956`. Among prelude-free SCCs, a foreign re-export produces `ZOM3014` at
+input exists. Any SCC containing a prelude edge produces only the RFC 0004
+`ModuleGraphInvariant` incident. Among prelude-free SCCs, a foreign re-export produces `ZOM3014` at
 the least canonically encoded foreign-re-export witness request; otherwise the
 SCC produces `ZOM3011` at its least encoded witness request. This covers mixed
 import/re-export and import/module-alias cycles without a second source
@@ -695,19 +695,12 @@ with none first, structural field path, expected and actual revisions with none
 first, then traversal ordinal. Invalid identities are never dereferenced for
 sorting.
 
-The interface-specific invariant mapping in `diagnostics-module.def` is exact:
-
-| Kind | Registered diagnostic |
-|---|---|
-| `InputMismatch` | `ZOM9950 ModuleInterfaceInputMismatch`, fatal, `Internal module interface input is inconsistent ({0} occurrence(s))`, arity 1 |
-| `MissingProjection` | `ZOM9951 ModuleInterfaceMissingProjection`, fatal, `Internal module interface projection is missing ({0} occurrence(s))`, arity 1 |
-| `AdditionalProjection` | `ZOM9952 ModuleInterfaceAdditionalProjection`, fatal, `Internal module interface projection is not authorized ({0} occurrence(s))`, arity 1 |
-| `InvalidProjection` | `ZOM9953 ModuleInterfaceInvalidProjection`, fatal, `Internal module interface projection is invalid ({0} occurrence(s))`, arity 1 |
-| `CanonicalCodecMismatch` | `ZOM9954 ModuleInterfaceCanonicalCodecMismatch`, fatal, `Internal module interface canonical encoding is invalid ({0} occurrence(s))`, arity 1 |
-
-The adapter groups only adjacent sorted interface facts with the same mapped
-diagnostic and validated location, passes their exact count, and retains every
-full fact in the compiler bug bundle. A test-only
+The interface-specific invariant mapping is exact: every
+`ModuleInterfaceInvariantKind` is a registered Driver-domain incident kind,
+the verification stage is the incident phase, and the interface producer is
+retained. `BoundedIncidentSet` groups only equal registered shapes and adds
+their occurrence counts. Full facts, ranges, revisions, and field paths remain
+in the compiler bug bundle. A test-only
 `verifyModuleInterfaceWithInjection(CompleteValidInterfaceCandidate,
 ModuleInterfaceInvariantInjection)` uses a generated field path, closed stage
 and kind, and occurrence index; no production interface accepts injection or a
@@ -927,7 +920,7 @@ after receiving complete verified target surfaces. These rows live in
 `diagnostics-module.def` before their producers land; neither component emits a
 second source diagnostic for the same syntax. RFC 0004 lexical binding and RFC
 0005 type-dependent diagnostics remain in their owning families. RFC 0008 owns
-only the `ZOM9950-ZOM9954` interface invariants defined above.
+only the interface incident family defined above.
 
 ### Mermaid Architecture
 
@@ -1065,7 +1058,7 @@ that runs the same crate repeatedly with different worker counts.
    250-byte framing oracle and SHA-256 in this RFC are executable golden data.
 6. Interface publication returns only `Verified`, `SourceRejected`, or
    `InvariantRejected`; it forwards exact RFC 0004/RFC 0005 rejections, uses
-   the closed interface invariant algebra and `ZOM9950-ZOM9954` mapping, and
+   the closed interface invariant algebra and registered incident mapping, and
    never publishes a partial interface.
 7. Cross-module lookup reads only explicitly exported bindings and frozen
    signatures; module-private bindings never cross a `ModuleId` boundary even
@@ -1089,8 +1082,8 @@ that runs the same crate repeatedly with different worker counts.
 13. Diagnostic ordering and invariant occurrence aggregation are deterministic
     under parallel scheduling and retain every complete failure fact.
 14. Every semantic dependency SCC with more than one module and every self-edge
-    is rejected before binding input publication; a prelude edge selects
-    `ZOM9956`, otherwise mixed foreign-re-export cycles select `ZOM3014` and
+    is rejected before binding input publication; a prelude edge selects the
+    module-graph incident rail, otherwise mixed foreign-re-export cycles select `ZOM3014` and
     every other source cycle selects `ZOM3011`; no signature-only cycle
     exception exists.
 15. Multi-module conformance tests cover import, export, re-export,
@@ -1127,7 +1120,7 @@ that runs the same crate repeatedly with different worker counts.
    blocks, and manifest search paths.
 4. Reject import SCCs and self-imports before binding dependent bodies.
 5. Verify RFC 0005 signature facts, then implement the closed module-interface
-   publication result, invariant verifier, `ZOM9950-ZOM9954` adapter, generated
+   publication result, invariant verifier, incident projector, generated
    injection, and verified module interfaces.
 6. Route cross-module lookup through `SignatureStore` and requester-filtered
    verified visibility surfaces.
@@ -1152,7 +1145,7 @@ that runs the same crate repeatedly with different worker counts.
   permutations.
 - Interface verifier tests: upstream binding/signature source and invariant
   forwarding; every missing/additional/invalid projection; identity and codec
-  precedence; exact `ZOM9950-ZOM9954` grouping, location, sort key, retained
+  precedence; exact interface incident grouping, sort key, retained
   bug facts, generated injection, and absence of partial verified output.
 - Revision codec tests: reproduce the exact 250-byte empty-sequence preimage and
   `c01992f0270c24786e3fe06e953e91053299d731cac573f2e6688971aa3dc73f`;

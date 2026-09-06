@@ -11,11 +11,6 @@
       "lineCount": 124,
       "linePercent": 54.84
     },
-    "compiler/identity/diagnostics/identity-diagnostic-adapter.cc": {
-      "coveredLines": 45,
-      "lineCount": 77,
-      "linePercent": 58.44
-    },
     "compiler/identity/source/source-snapshot.cc": {
       "coveredLines": 24,
       "lineCount": 46,

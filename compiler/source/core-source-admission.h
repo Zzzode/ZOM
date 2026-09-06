@@ -16,56 +16,60 @@
 
 #include <cstdint>
 
+#include "compiler/driver/package/source-snapshot.h"
+#include "compiler/source/core-distribution.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/filesystem.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "compiler/driver/package/source-snapshot.h"
-#include "compiler/source/core-distribution.h"
 
 namespace zomlang::compiler::source::core {
 
-/// \brief Closed core-library issue tags shared by admission and later publication stages.
-enum class CoreLibraryIssue : uint8_t {
+/// \brief Closed operational failures that can prevent core distribution admission.
+enum class CoreDistributionAdmissionFailureKind : uint8_t {
   ReadFailed = 0x01,
   InvalidPath = 0x02,
   InvalidSourceBytes = 0x03,
-  DistributionMismatch = 0x04,
-  EditionMismatch = 0x05,
-  InputContextMismatch = 0x06,
-  ParseRejected = 0x07,
-  ModuleGraphRejected = 0x08,
-  RoleSeedRejected = 0x09,
-  SignatureRejected = 0x0a,
-  RoleRejected = 0x0b,
-  VerifiedStateMismatch = 0x0c,
-  VerifierDisagreement = 0x0d
+  ResourceLimitExceeded = 0x04,
+  SourceChangedDuringAdmission = 0x05,
+  SourceIntegrityMismatch = 0x06,
+  DistributionMismatch = 0x07,
+  EditionMismatch = 0x08,
+};
+
+/// \brief Closed invariant failures detected while admitting a core distribution.
+enum class CoreDistributionAdmissionInvariantKind : uint8_t {
+  InputContextMismatch = 0x01,
+  VerifiedStateMismatch = 0x02,
+  VerifierDisagreement = 0x03,
 };
 
 /// \brief Source-distribution failure before one semantic context is published.
 class CoreDistributionAdmissionFailure final {
 public:
-  ZC_NODISCARD static CoreDistributionAdmissionFailure withoutCoordinate(CoreLibraryIssue issue);
+  ZC_NODISCARD static CoreDistributionAdmissionFailure withoutCoordinate(
+      CoreDistributionAdmissionFailureKind kind);
   ZC_NODISCARD static CoreDistributionAdmissionFailure inventoryEntry(uint64_t ordinal);
-  ZC_NODISCARD static CoreDistributionAdmissionFailure file(CoreLibraryIssue issue,
-                                                            identity::CanonicalRelativePath&& path);
+  ZC_NODISCARD static CoreDistributionAdmissionFailure file(
+      CoreDistributionAdmissionFailureKind kind, identity::CanonicalRelativePath&& path);
 
   CoreDistributionAdmissionFailure(CoreDistributionAdmissionFailure&&) noexcept = default;
   CoreDistributionAdmissionFailure& operator=(CoreDistributionAdmissionFailure&&) noexcept =
       default;
   ZC_DISALLOW_COPY(CoreDistributionAdmissionFailure);
 
-  ZC_NODISCARD CoreLibraryIssue issue() const noexcept;
+  ZC_NODISCARD CoreDistributionAdmissionFailureKind kind() const noexcept;
   ZC_NODISCARD zc::Maybe<uint64_t> inventoryOrdinal() const noexcept;
   ZC_NODISCARD zc::Maybe<const identity::CanonicalRelativePath&> path() const noexcept;
 
 private:
-  CoreDistributionAdmissionFailure(CoreLibraryIssue issue, zc::Maybe<uint64_t> inventoryOrdinal,
+  CoreDistributionAdmissionFailure(CoreDistributionAdmissionFailureKind kind,
+                                   zc::Maybe<uint64_t> inventoryOrdinal,
                                    zc::Maybe<identity::CanonicalRelativePath>&& path) noexcept;
 
-  CoreLibraryIssue issueValue;
+  CoreDistributionAdmissionFailureKind kindValue;
   zc::Maybe<uint64_t> inventoryOrdinalValue;
   zc::Maybe<identity::CanonicalRelativePath> pathValue;
 };
@@ -129,7 +133,12 @@ private:
 };
 
 using CoreDistributionAdmissionResult =
-    zc::OneOf<VerifiedCoreDistribution, CoreDistributionAdmissionFailure>;
+    zc::OneOf<VerifiedCoreDistribution, CoreDistributionAdmissionFailure,
+              CoreDistributionAdmissionInvariantKind>;
+
+/// \brief Returns the stable CLI reason for one operational admission failure.
+ZC_NODISCARD zc::StringPtr coreDistributionAdmissionFailureDisplay(
+    CoreDistributionAdmissionFailureKind kind) noexcept;
 
 /// \brief Admits a fixed source tree against compiler-embedded distribution authority.
 class CoreDistributionAdmission final {

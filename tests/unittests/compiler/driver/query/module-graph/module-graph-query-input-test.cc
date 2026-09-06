@@ -480,8 +480,9 @@ zc::Maybe<VerifiedModuleGraphInputTransaction> preparedTransaction(
   auto preparedCore = core_library_query::VerifiedCoreDistributionInputTransaction::prepare(
       query::DatabaseRevision(), distribution, request, zc::mv(contextAuthority), options,
       consumers.asPtr());
-  ZC_REQUIRE(preparedCore != zc::none);
-  auto coreInputs = zc::mv(ZC_REQUIRE_NONNULL(preparedCore));
+  ZC_REQUIRE(preparedCore.is<core_library_query::VerifiedCoreDistributionInputTransaction>());
+  auto coreInputs =
+      zc::mv(preparedCore.get<core_library_query::VerifiedCoreDistributionInputTransaction>());
   ZC_REQUIRE(coreInputs.projections().size() == 1);
   ZC_REQUIRE(coreInputs.projections()[0].crate().encode().asPtr() == core.encode().asPtr());
 
@@ -1375,8 +1376,9 @@ ZC_TEST("Complete context authority rejects malformed and unequal canonical inpu
   auto preparedCore = core_library_query::VerifiedCoreDistributionInputTransaction::prepare(
       query::DatabaseRevision(), distribution, request, ZC_REQUIRE_NONNULL(authority).clone(),
       options, consumers.asPtr());
-  ZC_REQUIRE(preparedCore != zc::none);
-  auto coreInputs = zc::mv(ZC_REQUIRE_NONNULL(preparedCore));
+  ZC_REQUIRE(preparedCore.is<core_library_query::VerifiedCoreDistributionInputTransaction>());
+  auto coreInputs =
+      zc::mv(preparedCore.get<core_library_query::VerifiedCoreDistributionInputTransaction>());
   ZC_EXPECT(CompleteCompilationContextAuthorityInputVerifier::verify(ZC_REQUIRE_NONNULL(authority),
                                                                      sources));
 

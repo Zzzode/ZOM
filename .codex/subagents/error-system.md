@@ -2,7 +2,7 @@
 
 ## Mission
 
-Own the end-to-end diagnostics architecture for ZOM: the generated public
+Own the end-to-end diagnostics architecture for ZOM: the compile-time public
 catalog, typed arguments and factories, canonical facts, collection,
 materialization, policy, rendering, and request-level compiler-incident
 presentation. Producer subsystems own their typed issue algebras and projectors.
@@ -40,9 +40,9 @@ docs/spec/chapters/11-error-handling.md
 
 ## Review Checklist (applies to every PR this subagent touches)
 
-- [ ] Every `ZOMxxxx` code lives in exactly one generated catalog partition and
-      has a typed argument schema, message key, English template, owner,
-      producer disposition, and structured test.
+- [ ] Every `ZOMxxxx` code lives in exactly one `.def` catalog partition and
+      has compile-time-validated metadata, an owning producer, and native test
+      coverage.
 - [ ] No code is repurposed; removed codes are deleted and never reassigned.
 - [ ] `ZOM9900-ZOM9999` contains no live or reserved entry. Compiler invariants
       project to dependency-minimal incident descriptors, never `DiagID`.

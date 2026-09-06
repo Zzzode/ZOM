@@ -292,8 +292,7 @@ slice must update the lexical specification, interning path, and normalization
 tests atomically before identity registries replace the current symbol table.
 
 An NFC-equivalent spelling collision is a source-program redeclaration, never
-`ZOM9921 IdentityNonCanonicalEncoding` or
-`ZOM9916 IdentityDuplicateCanonicalKey`. The binder emits the declaration-kind
+an identity incident. The Binder emits the declaration-kind
 specific `ZOM3003` through `ZOM3009`, or `ZOM3010 DuplicateIdentifier` for a
 kind without a more specific code, at the later declaration's original source
 range. It attaches `ZOM3017 PreviousDeclarationHere` as a `Note` at the first
@@ -995,7 +994,8 @@ non-canonical encoder input are also invariants. User errors such as duplicate
 definitions are diagnosed by the owning semantic phase; they may still receive
 distinct deterministic definition keys so recovery facts remain unambiguous.
 
-Registries and verifiers return facts and never depend on `DiagnosticEngine`:
+Registries and verifiers return facts and never depend on a presentation
+consumer:
 
 ```text
 IdentityAllocationPhase =
@@ -1032,38 +1032,20 @@ IdentityInvariant {
 }
 ```
 
-Phase tags are `0x01` through `0x0a`; invariant-kind tags are `0x01` through
-`0x0c`; API-site tags are `0x01` through `0x0c`, all in declaration order. The
-diagnostic mapping is exact:
-
-| Kind | Diagnostic | Severity | Registered headline | Location policy |
-|---|---|---|---|---|
-| `InvalidHandle` | `ZOM9910 IdentityInvalidHandle` | fatal | `Internal semantic identity handle is invalid` | validated range or none |
-| `ForeignContext` | `ZOM9911 IdentityForeignContext` | fatal | `Semantic identity handle belongs to another context` | validated range or none |
-| `ForeignRegistry` | `ZOM9912 IdentityForeignRegistry` | fatal | `Semantic identity handle belongs to another registry` | validated range or none |
-| `SlotOutOfRange` | `ZOM9913 IdentitySlotOutOfRange` | fatal | `Semantic identity handle slot is out of range` | validated range or none |
-| `AncestorMismatch` | `ZOM9914 IdentityAncestorMismatch` | fatal | `Semantic identity ancestry is inconsistent` | validated range or none |
-| `InvalidSourceRange` | `ZOM9915 IdentityInvalidSourceRange` | fatal | `Semantic identity source range is invalid` | validated range or none |
-| `DuplicateCanonicalKey` | `ZOM9916 IdentityDuplicateCanonicalKey` | fatal | `Semantic identity registry contains a duplicate canonical key` | validated range or none |
-| `InvalidClosedValue` | `ZOM9917 IdentityInvalidClosedValue` | fatal | `Semantic identity input contains an invalid closed value` | validated range or none |
-| `PostFreezeMutation` | `ZOM9918 IdentityPostFreezeMutation` | fatal | `Semantic identity registry was mutated after freeze` | validated range or none |
-| `BrandExhausted` | `ZOM9919 IdentityBrandExhausted` | fatal | `Semantic identity brand space is exhausted` | none |
-| `DuplicateSingletonStore` | `ZOM9920 IdentityDuplicateSingletonStore` | fatal | `Semantic context contains a duplicate singleton store` | none |
-| `NonCanonicalEncoding` | `ZOM9921 IdentityNonCanonicalEncoding` | fatal | `Semantic identity encoder received non-canonical input` | validated range or none |
-
-Every `.def` entry has arity one and its complete message is exactly the table
-headline followed by ` ({0} occurrence(s))`. The identity
+Phase tags, invariant-kind tags, and API-site tags retain their declaration
+order. Every identity invariant projects to a registered Identity-domain
+incident whose phase, kind, and producer fields preserve those exact tags. The identity
 collector retains every full fact for the compiler bug bundle, sorts facts by
 phase tag, kind tag, optional structural bytes with `none` first, optional
 diagnostic range with `none` first and then expanded `SourceFileKey`, content
 digest, `byteStart`, and `byteEnd`, API-site tag, and traversal ordinal. A
 foreign or invalid handle is never dereferenced for sorting.
 
-The diagnostics adapter groups adjacent facts only when diagnostic ID and the
-validated optional location are equal. It emits one registered diagnostic with
-the group count; grouping never discards the underlying facts. A range is used
-only after its source key, digest, and bounds validate against the immutable
-snapshot. A source-less fact emits no fabricated file or zero location.
+The incident projector groups facts only when registered domain, phase, kind,
+and producer are equal and adds their occurrence counts; grouping never
+discards the underlying facts. Optional locations remain internal bug context
+only after their source key, digest, and bounds validate against the immutable
+snapshot. An incident carries no fabricated file or zero location.
 
 Any identity invariant invalidates the current semantic context and terminates
 that compilation before a downstream phase consumes its registries. An
@@ -1298,10 +1280,11 @@ is accepted.
 30. `CanonicalUrl` accepts only the closed `https`/`ssh` model, rejects user
     information, query, and fragment input, and passes every normalization and
     rejection vector in this RFC.
-31. Identity invariant facts map exactly to fatal `ZOM9910-ZOM9921`, have
-    deterministic pre-freeze ordering through explicit API-site and canonical
-    input-traversal ordinals, use source-qualified unbranded ranges, and never
-    expose brands, slots, credentials, or unsanitized URLs.
+31. Identity invariant facts map exactly to registered Identity-domain incident
+    descriptors, have deterministic pre-freeze ordering through explicit API-site
+    and canonical input-traversal ordinals, use source-qualified unbranded ranges
+    only in internal bug context, and never expose brands, slots, credentials, or
+    unsanitized URLs.
 32. The final semantic context owns one `SemanticTypeStore`; all dependent RFCs
     use the same context-global `SemanticTypeId` safety contract without
     observing its online slot order.
@@ -1329,7 +1312,7 @@ is accepted.
 6. Add the schema-and-live-producer declaration inventory gate and deterministic
    `zom.identity` dump.
 7. Add validation facts, bug-bundle retention, deterministic grouping, fatal
-   context termination, and the exact `ZOM9910-ZOM9921` diagnostic mapping.
+   context termination, and exact Identity-domain incident projection.
 8. Migrate source and module ownership, then binder definitions and impl
    identities.
 9. Require the one RFC 0005 semantic type store to use the context-global brand.
@@ -1354,7 +1337,7 @@ is accepted.
   `06-declarations/unicode_normalized_redeclaration_neg_03.zom` declares one
   identifier in NFC and one canonically equivalent decomposed spelling and
   asserts the kind-specific `ZOM30xx` primary at the latter spelling plus
-  `ZOM3017` at the first; it asserts no `ZOM9916` or `ZOM9921`.
+  `ZOM3017` at the first; it asserts no identity incident.
 - Conformance: same package with multiple target categories and names, multiple
   packages with the same display name from distinct sources, same-name modules
   and definitions, and impl members with identical local spelling. Same-slot

@@ -5,11 +5,11 @@
 
 #pragma once
 
+#include "compiler/driver/query/module-graph/materialized-module-graph-query.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
-#include "compiler/driver/query/module-graph/materialized-module-graph-query.h"
 
 namespace zomlang::compiler::checker {
 
@@ -58,7 +58,7 @@ public:
       identity::DefId handle) const noexcept;
   ZC_NODISCARD zc::Maybe<const binder::MaterializedDefinitionIdentityEntry&> definition(
       const identity::DefinitionKey& key) const noexcept;
-  /// rief Returns the retained complete callable-header authority for one definition.
+  /// \brief Returns the retained complete callable-header authority for one definition.
   ZC_NODISCARD zc::Maybe<const identity::DefinitionIdentityAuthority&> definitionAuthority(
       identity::DefId handle) const noexcept;
   ZC_NODISCARD zc::Maybe<const binder::MaterializedImplementationIdentityEntry&> implementation(

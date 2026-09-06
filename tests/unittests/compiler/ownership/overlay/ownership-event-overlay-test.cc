@@ -5,8 +5,6 @@
 
 #include "compiler/ownership/overlay/ownership-event-overlay.h"
 
-#include "compiler/diagnostics/consumer/diagnostic-consumer.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/driver/interface/borrow-evidence.h"
 #include "compiler/driver/package/manifest-parser.h"
 #include "compiler/driver/package/source-record.h"
@@ -15,7 +13,7 @@
 #include "compiler/identity/crypto/sha256.h"
 #include "compiler/ir/target/target-registry.h"
 #include "compiler/mir/built-mir.h"
-#include "compiler/ownership/diagnostics/ownership-diagnostic-adapter.h"
+#include "compiler/ownership/diagnostics/ownership-source-diagnostic-projector.h"
 #include "compiler/ownership/diagnostics/source-suppression.h"
 #include "compiler/ownership/facts/flow.h"
 #include "compiler/ownership/facts/init.h"
@@ -235,7 +233,7 @@ public:
     ZC_REQUIRE(session.parseSources());
     ZC_REQUIRE(session.bindSources());
     ZC_REQUIRE(session.checkSources());
-    ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+    ZC_REQUIRE(!session.hasDiagnosticErrors());
     ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   }
 
@@ -315,7 +313,7 @@ public:
     ZC_REQUIRE(session.parseSources());
     ZC_REQUIRE(session.bindSources());
     ZC_REQUIRE(!session.checkSources());
-    ZC_REQUIRE(session.getDiagnosticEngine().hasErrors());
+    ZC_REQUIRE(session.hasDiagnosticErrors());
     ZC_REQUIRE(session.firstStagedBorrowSourceRejectionForTesting() != zc::none);
   }
 
@@ -5651,27 +5649,6 @@ ZC_TEST("Differential oracle matches production facts for a linear-logical aggre
 
 namespace {
 
-struct AdapterCapture final {
-  zc::Vector<diagnostics::DiagID> primaryIds;
-  zc::Vector<zc::Vector<diagnostics::DiagID>> childIds;
-};
-
-class AdapterDiagnosticConsumer final : public diagnostics::DiagnosticConsumer {
-public:
-  explicit AdapterDiagnosticConsumer(AdapterCapture& capture) noexcept : capture(capture) {}
-
-  void handleDiagnostic(const source::SourceManager&,
-                        const diagnostics::Diagnostic& diagnostic) override {
-    capture.primaryIds.add(diagnostic.getId());
-    zc::Vector<diagnostics::DiagID> children;
-    for (const auto& child : diagnostic.getChildDiagnostics()) { children.add(child->getId()); }
-    capture.childIds.add(zc::mv(children));
-  }
-
-private:
-  AdapterCapture& capture;
-};
-
 struct SyntheticIdentity final {
   identity::DefId owner;
   MirEventKey event;
@@ -5708,18 +5685,13 @@ zc::Maybe<zc::Vector<driver::ParsedModuleRecord>> materializeParsedModules(
 
 }  // namespace
 
-ZC_TEST("Ownership diagnostic adapter maps every closed failure variant") {
+ZC_TEST("Ownership source diagnostic projector maps every closed failure variant") {
   OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
   auto parsedModules = materializeParsedModules(fixture);
   ZC_REQUIRE(parsedModules != zc::none);
   ZC_IF_SOME(modules, parsedModules) {
     ZC_REQUIRE(modules.size() >= 1);
-    const auto& parsed = modules[0].parsedModule();
     auto identity = syntheticIdentity(fixture);
-
-    AdapterCapture capture;
-    fixture.compilerSession().getDiagnosticEngine().addConsumer(
-        zc::heap<AdapterDiagnosticConsumer>(capture));
 
     zc::Vector<SourceFailure> failures;
     failures.add(UseAfterMoveFailure{
@@ -5755,55 +5727,50 @@ ZC_TEST("Ownership diagnostic adapter maps every closed failure variant") {
         causeVector(LoanFailureCause{LoanKey{identity.event}, syntheticPlace(identity),
                                      identity.event, identity.span.clone()})});
 
-    emitOwnershipSourceFailures(fixture.compilerSession().getDiagnosticEngine(), parsed,
-                                failures.asPtr());
+    auto identities = fixture.identities();
+    auto projected = projectOwnershipSourceFailures(identities, failures.asPtr());
+    ZC_REQUIRE(projected.is<diagnostics::SemanticDiagnosticFactBatch>());
+    const auto& facts = projected.get<diagnostics::SemanticDiagnosticFactBatch>().facts;
+    ZC_REQUIRE(facts.size() == 9);
+    ZC_EXPECT(facts[0].code() == diagnostics::DiagID::UseAfterMove);
+    ZC_EXPECT(facts[1].code() == diagnostics::DiagID::MutableBorrowConflicts);
+    ZC_EXPECT(facts[2].code() == diagnostics::DiagID::UninitializedPlaceUse);
+    ZC_EXPECT(facts[3].code() == diagnostics::DiagID::SharedBorrowConflicts);
+    ZC_EXPECT(facts[4].code() == diagnostics::DiagID::BorrowDoesNotLiveLongEnough);
+    ZC_EXPECT(facts[5].code() == diagnostics::DiagID::LinearNotConsumed);
+    ZC_EXPECT(facts[6].code() == diagnostics::DiagID::LinearConsumedTwice);
+    ZC_EXPECT(facts[7].code() == diagnostics::DiagID::RawPointerBoundaryRequiresUnsafe);
+    ZC_EXPECT(facts[8].code() == diagnostics::DiagID::MoveOutOfBorrow);
 
-    ZC_REQUIRE(capture.primaryIds.size() == 9);
-    ZC_EXPECT(capture.primaryIds[0] == diagnostics::DiagID::UseAfterMove);
-    ZC_EXPECT(capture.primaryIds[1] == diagnostics::DiagID::MutableBorrowConflicts);
-    ZC_EXPECT(capture.primaryIds[2] == diagnostics::DiagID::UninitializedPlaceUse);
-    ZC_EXPECT(capture.primaryIds[3] == diagnostics::DiagID::SharedBorrowConflicts);
-    ZC_EXPECT(capture.primaryIds[4] == diagnostics::DiagID::BorrowDoesNotLiveLongEnough);
-    ZC_EXPECT(capture.primaryIds[5] == diagnostics::DiagID::LinearNotConsumed);
-    ZC_EXPECT(capture.primaryIds[6] == diagnostics::DiagID::LinearConsumedTwice);
-    ZC_EXPECT(capture.primaryIds[7] == diagnostics::DiagID::RawPointerBoundaryRequiresUnsafe);
-    ZC_EXPECT(capture.primaryIds[8] == diagnostics::DiagID::MoveOutOfBorrow);
-
-    ZC_REQUIRE(capture.childIds.size() == 9);
-    ZC_REQUIRE(capture.childIds[0].size() == 1);
-    ZC_EXPECT(capture.childIds[0][0] == diagnostics::DiagID::ValueMovedHere);
-    ZC_REQUIRE(capture.childIds[1].size() == 1);
-    ZC_EXPECT(capture.childIds[1][0] == diagnostics::DiagID::BorrowOriginHere);
-    ZC_REQUIRE(capture.childIds[2].size() == 1);
-    ZC_EXPECT(capture.childIds[2][0] == diagnostics::DiagID::PlaceBecameUnavailableHere);
-    ZC_REQUIRE(capture.childIds[3].size() == 1);
-    ZC_EXPECT(capture.childIds[3][0] == diagnostics::DiagID::BorrowOriginHere);
-    ZC_REQUIRE(capture.childIds[4].size() == 1);
-    ZC_EXPECT(capture.childIds[4][0] == diagnostics::DiagID::BorrowReferentHere);
-    ZC_REQUIRE(capture.childIds[5].size() == 1);
-    ZC_EXPECT(capture.childIds[5][0] == diagnostics::DiagID::LinearInitializedHere);
-    ZC_REQUIRE(capture.childIds[6].size() == 1);
-    ZC_EXPECT(capture.childIds[6][0] == diagnostics::DiagID::LinearFirstConsumedHere);
-    ZC_EXPECT(capture.childIds[7].size() == 0);
-    ZC_REQUIRE(capture.childIds[8].size() == 1);
-    ZC_EXPECT(capture.childIds[8][0] == diagnostics::DiagID::BorrowOriginHere);
+    ZC_REQUIRE(facts[0].secondary().size() == 1);
+    ZC_EXPECT(facts[0].secondary()[0].code() == diagnostics::DiagID::ValueMovedHere);
+    ZC_REQUIRE(facts[1].secondary().size() == 1);
+    ZC_EXPECT(facts[1].secondary()[0].code() == diagnostics::DiagID::BorrowOriginHere);
+    ZC_REQUIRE(facts[2].secondary().size() == 1);
+    ZC_EXPECT(facts[2].secondary()[0].code() == diagnostics::DiagID::PlaceBecameUnavailableHere);
+    ZC_REQUIRE(facts[3].secondary().size() == 1);
+    ZC_EXPECT(facts[3].secondary()[0].code() == diagnostics::DiagID::BorrowOriginHere);
+    ZC_REQUIRE(facts[4].secondary().size() == 1);
+    ZC_EXPECT(facts[4].secondary()[0].code() == diagnostics::DiagID::BorrowReferentHere);
+    ZC_REQUIRE(facts[5].secondary().size() == 1);
+    ZC_EXPECT(facts[5].secondary()[0].code() == diagnostics::DiagID::LinearInitializedHere);
+    ZC_REQUIRE(facts[6].secondary().size() == 1);
+    ZC_EXPECT(facts[6].secondary()[0].code() == diagnostics::DiagID::LinearFirstConsumedHere);
+    ZC_EXPECT(facts[7].secondary().size() == 0);
+    ZC_REQUIRE(facts[8].secondary().size() == 1);
+    ZC_EXPECT(facts[8].secondary()[0].code() == diagnostics::DiagID::BorrowOriginHere);
   }
 }
 
-ZC_TEST("Ownership diagnostic adapter emits notes in cause order") {
+ZC_TEST("Ownership source diagnostic projector emits notes in cause order") {
   OwnershipPipelineFixture fixture("let a = 0; let b = 1;"_zc);
   auto parsedModules = materializeParsedModules(fixture);
   ZC_REQUIRE(parsedModules != zc::none);
   ZC_IF_SOME(modules, parsedModules) {
     ZC_REQUIRE(modules.size() >= 1);
-    const auto& parsed = modules[0].parsedModule();
     auto identity = syntheticIdentity(fixture);
     const auto& function = fixture.builtMir().functions()[0];
     const auto functionSpan = function.sourceSpan.clone();
-
-    AdapterCapture capture;
-    fixture.compilerSession().getDiagnosticEngine().addConsumer(
-        zc::heap<AdapterDiagnosticConsumer>(capture));
 
     zc::Vector<InitializationFailureCause> causes;
     causes.add(InitializationFailureCause{facts::InitializationLossKind::Moved, identity.event,
@@ -5817,16 +5784,16 @@ ZC_TEST("Ownership diagnostic adapter emits notes in cause order") {
     failures.add(UseAfterMoveFailure{identity.owner, identity.event, identity.span.clone(),
                                      syntheticPlace(identity), 0, zc::mv(causes)});
 
-    emitOwnershipSourceFailures(fixture.compilerSession().getDiagnosticEngine(), parsed,
-                                failures.asPtr());
-
-    ZC_REQUIRE(capture.primaryIds.size() == 1);
-    ZC_EXPECT(capture.primaryIds[0] == diagnostics::DiagID::UseAfterMove);
-    ZC_REQUIRE(capture.childIds.size() == 1);
-    ZC_REQUIRE(capture.childIds[0].size() == 3);
-    ZC_EXPECT(capture.childIds[0][0] == diagnostics::DiagID::ValueMovedHere);
-    ZC_EXPECT(capture.childIds[0][1] == diagnostics::DiagID::ValueMovedHere);
-    ZC_EXPECT(capture.childIds[0][2] == diagnostics::DiagID::ValueMovedHere);
+    auto identities = fixture.identities();
+    auto projected = projectOwnershipSourceFailures(identities, failures.asPtr());
+    ZC_REQUIRE(projected.is<diagnostics::SemanticDiagnosticFactBatch>());
+    const auto& facts = projected.get<diagnostics::SemanticDiagnosticFactBatch>().facts;
+    ZC_REQUIRE(facts.size() == 1);
+    ZC_EXPECT(facts[0].code() == diagnostics::DiagID::UseAfterMove);
+    ZC_REQUIRE(facts[0].secondary().size() == 3);
+    ZC_EXPECT(facts[0].secondary()[0].code() == diagnostics::DiagID::ValueMovedHere);
+    ZC_EXPECT(facts[0].secondary()[1].code() == diagnostics::DiagID::ValueMovedHere);
+    ZC_EXPECT(facts[0].secondary()[2].code() == diagnostics::DiagID::ValueMovedHere);
   }
 }
 

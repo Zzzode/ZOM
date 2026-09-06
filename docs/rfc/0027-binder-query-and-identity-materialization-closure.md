@@ -1198,14 +1198,12 @@ collision, foreign brand, allocation failure, cancellation, cycle, or
 verifier disagreement is `QueryRuntimeFailure` and publishes neither a
 semantic result nor an ordinary diagnostic.
 
-The RFC 0017 closed diagnostic enums receive these exact additions:
+The RFC 0017 canonical module-occurrence contract receives these exact Binder
+fields:
 
 ```text
-DiagnosticPhaseOrQueryKind +=
-  Binder(BinderDiagnosticProducer) // 0x07
-
-DiagnosticEmitterSite +=
-  Binder(BinderDiagnosticEmitter) // 0x07
+ModuleDiagnosticKind +=
+  Binder // 0x02
 
 BinderDiagnosticProducer =
     BindModuleSkeleton // 0x01
@@ -1227,8 +1225,7 @@ BinderNamespaceDiagnosticArguments {
 }
 ```
 
-Outer tags `0x01` through `0x06` retain the synchronized RFC 0017 and RFC
-0025 meanings. `BinderIdentifierDiagnosticArguments` uses domain
+`BinderIdentifierDiagnosticArguments` uses domain
 `zom.diagnostic.arguments.binder-identifier`; the namespace form uses
 `zom.diagnostic.arguments.binder-namespace`. They encode the domain, one zero
 byte, then their complete fields in declaration order and occupy the existing
@@ -2951,12 +2948,12 @@ Stable identity admission owns two source diagnostics:
   `BinderIdentifierDiagnosticArguments`, the duplicate identity site as
   primary location, exactly one `ZOM3017 PreviousDeclarationHere` secondary
   at the earlier declaration using
-  `DiagnosticSecondaryRole::PreviousDeclaration = 0x01`, and no replacement.
+  `DiagnosticSecondaryRole::PreviousDeclaration = 0x03`, and no replacement.
 
 `IdentityDiagnosticEmitter` adds
 `ConstantExpressionNotAllowed = 0x03` and
 `DuplicateGenericParameter = 0x04`. Both facts use
-`ModuleDiagnosticRoot(key.module)`,
+the source-backed module occurrence for `key.module`,
 `IdentityDiagnosticPhase::IdentityAdmission`, no semantic owner, the matching
 emitter, and the complete primary identity-site key as the stable occurrence.
 The provider maps every verifier `NodeId` and `SourceSpan` to exactly one
@@ -3133,13 +3130,13 @@ descriptor, or replace the hand-authored inventory with generated schema.
 | `D2` | `binder-checker` | `T2C` | `compiler/binder/frozen-definition-inventory.h`; `compiler/binder/frozen-definition-inventory.cc` | delete frozen inventory and its lookup view |
 | `D3` | `module-system` | `T2C` | `compiler/driver/query/binding/incremental-binding-query-adapter.h`; `compiler/driver/query/binding/incremental-binding-query-adapter.cc`; `compiler/driver/query/module-graph/module-graph-query.h`; `compiler/driver/query/module-graph/module-graph-query.cc` | delete session ledgers and handleful graph root |
 | `D4` | `binder-checker` | `T2C` | `compiler/binder/binding-run.h`; `compiler/binder/binding-run.cc`; `compiler/binder/verified-bound-module-input.h`; `compiler/binder/verified-bound-module-input.cc` | delete production batch root and non-owning input |
-| `D5` | `ir-backend` | `L3` | `compiler/ir/diagnostics/ir-failure.h`; `compiler/ir/diagnostics/ir-failure.cc`; `compiler/ir/diagnostics/ir-diagnostic-adapter.h`; `compiler/ir/diagnostics/ir-diagnostic-adapter.cc` | delete Binder-to-IR failure conversion and non-owning IR lineage |
+| `D5` | `ir-backend` | `L3` | `compiler/ir/diagnostics/ir-failure.h`; `compiler/ir/diagnostics/ir-failure.cc`; `compiler/ir/diagnostics/ir-capability-failure-projector.h`; `compiler/ir/diagnostics/ir-capability-failure-projector.cc` | delete Binder-to-IR failure conversion and non-owning IR lineage |
 | `W1` | `binder-checker` | `C1`; `D4`; `M5` | `compiler/binder/CMakeLists.txt`; `compiler/checker/CMakeLists.txt` | Binder and Checker source wiring |
 | `W2` | `module-system` | `D1`; `D3`; `T2C` | `compiler/identity/CMakeLists.txt`; `compiler/query/CMakeLists.txt`; `compiler/driver/CMakeLists.txt` | post-T2C identity, query, graph, and session deletion/final wiring without changing the two T1-owned additive source rows |
 | `W3` | `ir-backend` | `D5`; `L3` | `CMakeLists.txt`; `CMakePresets.json`; `compiler/CMakeLists.txt`; `compiler/hir/CMakeLists.txt`; `compiler/mir/CMakeLists.txt`; `compiler/ir/CMakeLists.txt` | compiler and IR build wiring |
 | `W4` | `runtime-memory` | `L4` | `compiler/ownership/CMakeLists.txt` | ownership-overlay source wiring |
 | `E1` | `verification` | `W1`; `W2`; `W3`; `W4` | `tests/unittests/compiler/binder/stable-binding-query-test.cc`; `tests/unittests/compiler/binder/materialized-binding-capability-test.cc`; `tests/unittests/compiler/query/query-capability-test.cc`; `tests/unittests/compiler/driver/compiler-session-test.cc`; `tests/CMakeLists.txt` | stable, materialized, seal, teardown, and cross-owner lineage tests |
-| `E2` | `verification` | `E1` | `tests/unittests/compiler/hir/hir-module-test.cc`; `tests/unittests/compiler/mir/built-mir-test.cc`; `tests/unittests/compiler/ownership/overlay/ownership-event-overlay-test.cc`; `tests/unittests/compiler/ir/diagnostics/ir-failure-test.cc`; `tests/unittests/compiler/ir/diagnostics/ir-diagnostic-adapter-test.cc`; `tests/unittests/compiler/driver/incremental-binding-query-adapter-test.cc` | Checked/HIR/MIR/ownership joint lineage and deletion regressions |
+| `E2` | `verification` | `E1` | `tests/unittests/compiler/hir/hir-module-test.cc`; `tests/unittests/compiler/mir/built-mir-test.cc`; `tests/unittests/compiler/ownership/overlay/ownership-event-overlay-test.cc`; `tests/unittests/compiler/ir/diagnostics/ir-failure-test.cc`; `tests/unittests/compiler/ir/diagnostics/ir-capability-failure-projector-test.cc` | Checked/HIR/MIR/ownership joint lineage and deletion regressions |
 | `E3` | `verification` | `E2` | `scripts/check-identity-architecture.py`; `scripts/check-incremental-query-architecture.py`; `scripts/check-binder-architecture.py`; `scripts/check-checker-architecture.py`; `scripts/check-compiler-session-architecture.py`; `scripts/check-ir-architecture.py`; `scripts/check-ownership-architecture.py` | exact architecture allowlists and adversarial self-tests |
 | `E4` | `verification` | `E2` | `scripts/check-core-library-architecture.py`; `scripts/check-core-library-spec-alignment.py`; `scripts/check-spec-alignment.py`; `scripts/check-package-architecture.py`; `scripts/check-impl-source-architecture.py`; `scripts/check-lexer-architecture.py`; `scripts/check-parser-coverage.py`; `scripts/check-diagnostic-coverage.py`; `scripts/check-lit-exec-root.py` | core, source, five-way spec, lexer, parser, diagnostic, and lit-root gates; the core alignment gate has a spec-audit-owned `--check --report` publication mode and a write-free `--verify-report` byte-comparison mode |
 | `E4A` | `verification` | `G4` | `scripts/check-english-only.py` | implement changed-text English-only enforcement, require an exact forty-lowercase-hex-plus-newline base file naming a commit that is an ancestor of `HEAD`, and provide adversarial self-tests for malformed, moving, non-ancestor, and CJK mutations |

@@ -2949,9 +2949,9 @@ remain exactly RFC 0010's existing definitions.
 
 Failures retain exact session, module, definition, instance, LIR block,
 instruction ordinal, structural field path, source span when valid, target ID,
-LIR revision, and backend operation. Source capability failures are emitted
-before candidate publication. Invariant failures use the existing registered
-`ZOM9947-ZOM9949` families.
+LIR revision, and backend operation. Source capability failures are projected
+before candidate publication. Invariant failures use the registered IR incident
+rail.
 
 ### Debug Dump And CLI
 

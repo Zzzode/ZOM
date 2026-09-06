@@ -1086,8 +1086,8 @@ when the two source headers have different `ImplKey` values that resolve to one
 `MarkerFactKey` and when an identity-collision group shares one `ImplKey`.
 
 Only malformed records, an unequal outer or overload-header SHA-256 collision,
-an impossible owner prefix, or verifier disagreement uses `ZOM9916` or another
-compiler-invariant path.
+an impossible owner prefix, or verifier disagreement uses the registered
+identity incident path.
 
 RFC 0017 `DiagnosticProvenanceKey` gains
 `IdentitySyntaxSite = 0x05 { key: IdentitySyntaxSiteKey }`.
@@ -1132,7 +1132,7 @@ different `SourceFileKey` values.
 | Contextual named-item and body roots | Encode the complete context `CompilationRootSetQueryKey` before the stable definition, module, or body-owner key in every RFC 0019/0020 contextual query key; retain stable semantic identities inside values and regenerate all nested provider roots. |
 | Root-set and graph keys | `ActiveCrates`, `ModuleGraph`, and `ModuleGraphScc` use exhaustive `CompilationRootSetQueryKey`. A `UserPackage` root uses tag `0x01` and its complete package payload; a `ToolchainCore` root uses tag `0x02` and its complete projected core crate. Package resolver queries remain package-keyed. |
 | Dependency projections | `ToolchainCore` participates only in the semantic crate graph. Dependency-alias, lockfile, release, and package-resolution queries accept only user-package edges. `ConfiguredPrelude`, module dependencies, path buckets, and resolution queries consume exact projected-core keys without package fallback. |
-| Core diagnostic identity | Encode `CoreLibraryDiagnosticRoot` as diagnostic-root tag `0x05` followed by the embedded expected distribution digest and canonical optional context fingerprint; encode exact producer, issue, coordinate, causes, emitter, and sorted occurrence index with no observed digest, host path, span, handle, or candidate-carried field. |
+| Core failure identity | Keep source-less core admission failures in the closed operational algebra and core/query invariants in registered incident shapes; neither is part of diagnostic identity or carries host paths, source text, handles, or public codes. |
 | Stable wire dumps and traces | Canonical query-key dumps, dependency records, collision fixtures, query traces, and fixed vectors cover both user-package and toolchain-core branches. Ordering uses complete current bytes, and traces never print local handles. |
 | Mutation and architecture gates | Independent producer/verifier mutations cover both compilation-unit tags, missing or extra payloads, crate-parent substitution, source-origin substitution, dependency-origin substitution, root-set branch substitution, and every transitive query key. |
 

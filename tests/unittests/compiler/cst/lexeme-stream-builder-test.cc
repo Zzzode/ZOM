@@ -23,7 +23,7 @@
 
 #include "compiler/basic/string-pool.h"
 #include "compiler/basic/zomlang-opts.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
+#include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "compiler/lexer/lexer.h"
 #include "compiler/source/manager.h"
 #include "zc/core/vector.h"
@@ -36,7 +36,7 @@ namespace {
 // and verify the lexeme stream against the real source.
 struct LexedBuffer final {
   zc::Own<basic::StringPool> stringPool;
-  zc::Own<diagnostics::DiagnosticEngine> diagnostics;
+  zc::Own<diagnostics::SourceDiagnosticDraftBuffer> diagnostics;
   zc::Vector<lexer::Token> tokens;
   zc::ArrayPtr<const zc::byte> bufferBytes;
 };
@@ -44,10 +44,11 @@ struct LexedBuffer final {
 LexedBuffer lexSource(source::SourceManager& sourceManager, zc::StringPtr source) {
   LexedBuffer result;
   result.stringPool = zc::heap<basic::StringPool>();
-  result.diagnostics = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
   auto langOpts = basic::LangOptions();
   auto bufferId = sourceManager.addMemBufferCopy(source.asBytes(), "bridge-test.zom");
-  lexer::Lexer lexer(sourceManager, *result.diagnostics, langOpts, *result.stringPool, bufferId);
+  result.diagnostics = zc::heap<diagnostics::SourceDiagnosticDraftBuffer>(sourceManager, bufferId);
+  lexer::Lexer lexer(sourceManager, result.diagnostics->lexerSink(), langOpts, *result.stringPool,
+                     bufferId);
   lexer::Token token;
   do {
     lexer.lex(token);

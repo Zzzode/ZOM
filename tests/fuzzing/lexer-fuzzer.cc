@@ -26,13 +26,13 @@
 #include <cstring>
 #include <string_view>
 
-#include "zc/core/string.h"
 #include "compiler/basic/string-pool.h"
 #include "compiler/basic/zomlang-opts.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
+#include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "compiler/lexer/lexer.h"
 #include "compiler/lexer/token.h"
 #include "compiler/source/manager.h"
+#include "zc/core/string.h"
 
 using namespace zomlang::compiler;
 
@@ -43,14 +43,14 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   basic::LangOptions opts;
   source::SourceManager sourceMgr;
-  diagnostics::DiagnosticEngine diagEngine(sourceMgr);
   basic::StringPool stringPool;
 
   // Create a string from the fuzz input.
   zc::String source(reinterpret_cast<const char*>(data), size);
   auto bufferId = sourceMgr.addMemBuffer(zc::Str("fuzz.zom"), source.asStringPtr());
+  diagnostics::SourceDiagnosticDraftBuffer diagnostics(sourceMgr, bufferId);
 
-  Lexer lexer(sourceMgr, diagEngine, opts, stringPool, bufferId);
+  Lexer lexer(sourceMgr, diagnostics.lexerSink(), opts, stringPool, bufferId);
   Token token;
   int tokenCount = 0;
   do {

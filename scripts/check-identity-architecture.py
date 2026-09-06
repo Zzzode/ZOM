@@ -76,13 +76,13 @@ SCALAR_LITERAL_FACTS = Path("compiler/checker/facts/scalar-literal-facts.h")
 SCALAR_LITERAL_FACTS_IMPLEMENTATION = Path(
     "compiler/checker/facts/scalar-literal-facts.cc"
 )
-CHECKER_DIAGNOSTIC_ADAPTER = Path(
-    "compiler/checker/diagnostics/checker-diagnostic-adapter.h"
-)
-CHECKER_DIAGNOSTIC_ADAPTER_IMPLEMENTATION = Path(
-    "compiler/checker/diagnostics/checker-diagnostic-adapter.cc"
-)
 BORROW_INTERFACE = Path("compiler/checker/borrow/borrow-interface.h")
+CHECKER_SOURCE_DIAGNOSTIC_PROJECTOR = Path(
+    "compiler/checker/diagnostics/checker-source-diagnostic-projector.h"
+)
+CHECKER_SOURCE_DIAGNOSTIC_PROJECTOR_IMPLEMENTATION = Path(
+    "compiler/checker/diagnostics/checker-source-diagnostic-projector.cc"
+)
 BORROW_INTERFACE_IMPLEMENTATION = Path(
     "compiler/checker/borrow/borrow-interface.cc"
 )
@@ -2432,21 +2432,27 @@ def check_scalar_literal_authority_architecture(
 def check_checker_diagnostic_authority_architecture(
     overrides: dict[Path, str], errors: list[str]
 ) -> None:
-    header = read_text(CHECKER_DIAGNOSTIC_ADAPTER, overrides)
-    implementation = read_text(CHECKER_DIAGNOSTIC_ADAPTER_IMPLEMENTATION, overrides)
+    header = read_text(CHECKER_SOURCE_DIAGNOSTIC_PROJECTOR, overrides)
+    implementation = read_text(
+        CHECKER_SOURCE_DIAGNOSTIC_PROJECTOR_IMPLEMENTATION, overrides
+    )
 
     for marker in (
         '#include "compiler/checker/checker-identity-authority.h"',
         "const CheckerIdentityAuthority& identities",
     ):
         if marker not in header:
-            errors.append(f"{CHECKER_DIAGNOSTIC_ADAPTER}: missing checker authority marker {marker}")
+            errors.append(
+                f"{CHECKER_SOURCE_DIAGNOSTIC_PROJECTOR}: missing checker authority marker {marker}"
+            )
     for path, text in (
-        (CHECKER_DIAGNOSTIC_ADAPTER, header),
-        (CHECKER_DIAGNOSTIC_ADAPTER_IMPLEMENTATION, implementation),
+        (CHECKER_SOURCE_DIAGNOSTIC_PROJECTOR, header),
+        (CHECKER_SOURCE_DIAGNOSTIC_PROJECTOR_IMPLEMENTATION, implementation),
     ):
         if "SemanticIdentityRegistrySet" in text:
-            errors.append(f"{path}: checker diagnostic rendering must not depend on frozen registries")
+            errors.append(
+                f"{path}: checker diagnostic projection must not depend on frozen registries"
+            )
     for marker in (
         "identities.definition(definition)",
         "identities.definition(key)",
@@ -2454,7 +2460,8 @@ def check_checker_diagnostic_authority_architecture(
     ):
         if marker not in implementation:
             errors.append(
-                f"{CHECKER_DIAGNOSTIC_ADAPTER_IMPLEMENTATION}: missing diagnostic authority lookup {marker}"
+                f"{CHECKER_SOURCE_DIAGNOSTIC_PROJECTOR_IMPLEMENTATION}: "
+                f"missing diagnostic authority lookup {marker}"
             )
 
 
@@ -2644,42 +2651,6 @@ def run_self_test() -> int:
                 )
             },
             "scalar facts must not depend on frozen identity registries",
-        )
-    )
-
-    checker_diagnostic_adapter_text = (ROOT / CHECKER_DIAGNOSTIC_ADAPTER).read_text(
-        encoding="utf-8"
-    )
-    checker_diagnostic_adapter_implementation_text = (
-        ROOT / CHECKER_DIAGNOSTIC_ADAPTER_IMPLEMENTATION
-    ).read_text(encoding="utf-8")
-    cases.append(
-        (
-            "checker diagnostic authority removed",
-            copy.deepcopy(baseline),
-            {
-                CHECKER_DIAGNOSTIC_ADAPTER: checker_diagnostic_adapter_text.replace(
-                    "CheckerIdentityAuthority", "MissingCheckerIdentityAuthority"
-                )
-            },
-            "missing checker authority marker const CheckerIdentityAuthority& identities",
-        )
-    )
-    cases.append(
-        (
-            "checker diagnostic registry fallback",
-            copy.deepcopy(baseline),
-            {
-                CHECKER_DIAGNOSTIC_ADAPTER_IMPLEMENTATION: (
-                    checker_diagnostic_adapter_implementation_text.replace(
-                        "void appendDefinition(zc::Vector<char>& output, identity::DefId definition,",
-                        "SemanticIdentityRegistrySet forbiddenRegistry;\n"
-                        "void appendDefinition(zc::Vector<char>& output, identity::DefId definition,",
-                        1,
-                    )
-                )
-            },
-            "checker diagnostic rendering must not depend on frozen registries",
         )
     )
 

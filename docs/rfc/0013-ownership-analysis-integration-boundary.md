@@ -467,8 +467,9 @@ VerifiedModuleInterface {
 
 All context, module, signature, imported-view, and foreign source revisions must
 match before summary validation. Missing, additional, invalid, and
-non-canonical summaries use RFC 0008 `ZOM9951-ZOM9954`; input lineage mismatch
-uses `ZOM9950`. No partial interface is published.
+non-canonical summaries use the exact RFC 0008 module-interface incident kinds;
+input lineage mismatch uses its exact module-interface incident. No partial
+interface is published.
 
 `ModuleInterfaceRevision` is SHA-256 over:
 
@@ -764,8 +765,8 @@ The operation and ownership proof verifier are one
 
 `SourceRejected` is legal only at `ProofValidation`. Identity failures
 use RFC 0011. IR failures use only the accepted RFC 0010
-`ProofValidation` kind/owner/site row and map to `ZOM9945`, except
-`CanonicalCodecMismatch`, which maps to `ZOM9949`.
+`ProofValidation` kind/owner/site row and project to the registered IR
+incident rail.
 
 Generated phase-specific constructors expose the fixed operation above only.
 HIR, MIR construction, cleanup, coroutine, LIR, and backend phases cannot name

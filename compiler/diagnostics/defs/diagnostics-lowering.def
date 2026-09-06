@@ -14,10 +14,6 @@
 
 // User-facing IR emission and backend capability diagnostics.
 
-DIAG(6006, PanicUnwindUnsupported, kError,
-     "The selected runtime and target do not support panic unwinding", 0)
-DIAG(6007, BinaryEmissionUnavailable, kError, "Binary emission is not implemented", 0)
-DIAG(6008, IrOutputCreationFailed, kError, "IR emission could not create its output stream", 0)
 DIAG(6009, TargetCapabilityUnavailable, kError,
      "The selected target does not support the required compiler operation", 0)
 DIAG(6010, RecursiveInstantiation, kError,

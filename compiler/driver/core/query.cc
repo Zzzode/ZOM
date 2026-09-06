@@ -628,7 +628,8 @@ query::TypedQueryResult<CoreRoleSeedRecord> provideCoreRoleSeed(query::QueryCont
   return query::TypedQueryResult<CoreRoleSeedRecord>::value(zc::mv(ZC_ASSERT_NONNULL(seed)));
 }
 
-using CoreRoleSeedMaterialization = zc::OneOf<VerifiedCoreRoleSeed, query::QueryRuntimeFailure>;
+using CoreRoleSeedMaterialization =
+    zc::OneOf<VerifiedCoreRoleSeed, CoreRoleSeedFailure, query::QueryRuntimeFailure>;
 
 CoreRoleSeedMaterialization materializeCoreRoleSeed(
     query::CapabilityQueryContext<MaterializeCoreRoleSeed>& context,
@@ -636,8 +637,17 @@ CoreRoleSeedMaterialization materializeCoreRoleSeed(
   auto distribution = context.get<CoreDistributionInput>(identity::ToolchainUnitKey::core());
   auto graph = context.get<CoreModuleGraph>(key.clone());
   auto seed = context.get<CoreRoleSeed>(key.clone());
-  if (distribution.isRuntimeFailure() || graph.isRuntimeFailure() || seed.isRuntimeFailure() ||
-      distribution.kind() != query::QueryValueKind::Value ||
+  if (distribution.isRuntimeFailure() || graph.isRuntimeFailure() || seed.isRuntimeFailure()) {
+    return distribution.isRuntimeFailure() ? distribution.runtimeFailure()
+           : graph.isRuntimeFailure()      ? graph.runtimeFailure()
+                                           : seed.runtimeFailure();
+  }
+  if (seed.kind() == query::QueryValueKind::SemanticFailure) {
+    auto failure = CoreRoleSeedFailure::decodeCanonical(seed.semanticFailureBytes());
+    if (failure == zc::none) { return query::QueryRuntimeFailure::VerifierRejected; }
+    return zc::mv(ZC_ASSERT_NONNULL(failure));
+  }
+  if (distribution.kind() != query::QueryValueKind::Value ||
       graph.kind() != query::QueryValueKind::Value || seed.kind() != query::QueryValueKind::Value ||
       graph.value().core().encode().asPtr() != key.crate().encode().asPtr() ||
       seed.value().core().encode().asPtr() != key.crate().encode().asPtr() ||
@@ -1388,6 +1398,10 @@ zc::Maybe<MaterializeCoreRoleSeed::Key> MaterializeCoreRoleSeed::decodeKey(
 query::CapabilityProviderResult<MaterializeCoreRoleSeed> MaterializeCoreRoleSeed::provide(
     query::CapabilityQueryContext<MaterializeCoreRoleSeed>& context, const Key& key) {
   auto materialized = materializeCoreRoleSeed(context, key);
+  if (materialized.is<CoreRoleSeedFailure>()) {
+    return query::CapabilityProviderResult<MaterializeCoreRoleSeed>::keyRejected<
+        CoreRoleSeedFailure>(zc::mv(materialized).get<CoreRoleSeedFailure>());
+  }
   if (materialized.is<query::QueryRuntimeFailure>()) {
     return query::CapabilityProviderResult<MaterializeCoreRoleSeed>::runtimeRejected(
         materialized.get<query::QueryRuntimeFailure>());
@@ -4377,8 +4391,7 @@ VerifiedCoreDistributionInputTransaction::VerifiedCoreDistributionInputTransacti
 VerifiedCoreDistributionInputTransaction& VerifiedCoreDistributionInputTransaction::operator=(
     VerifiedCoreDistributionInputTransaction&&) noexcept = default;
 
-zc::Maybe<VerifiedCoreDistributionInputTransaction>
-VerifiedCoreDistributionInputTransaction::prepare(
+CoreDistributionInputPreparationResult VerifiedCoreDistributionInputTransaction::prepare(
     query::DatabaseRevision expectedPreviousRevision,
     const source::core::VerifiedCoreDistribution& distribution,
     const package::VerifiedPackageCompilationRequest& packageRequest,
@@ -4386,23 +4399,40 @@ VerifiedCoreDistributionInputTransaction::prepare(
     const identity::source_query::CanonicalCompilationOptions& compilationOptions,
     zc::ArrayPtr<const identity::CrateKey> completeConsumerInventory) {
   auto accepted = source::core::initialCoreDistributionInput();
-  if (accepted == zc::none || completeConsumerInventory.size() == 0 ||
-      !package::CanonicalPackageCompilationRequestProjectionVerifier::verify(
-          contextAuthority.packageRequest(), packageRequest) ||
-      !verifiedDistributionMatchesAccepted(distribution, ZC_ASSERT_NONNULL(accepted)) ||
-      contextAuthority.coreDistributionRecord().encode().asPtr() !=
+  if (accepted == zc::none) {
+    return CoreDistributionInputPreparationInvariantKind::MissingDistributionAuthority;
+  }
+  if (completeConsumerInventory.size() == 0) {
+    return CoreDistributionInputPreparationInvariantKind::EmptyConsumerInventory;
+  }
+  if (!package::CanonicalPackageCompilationRequestProjectionVerifier::verify(
+          contextAuthority.packageRequest(), packageRequest)) {
+    return CoreDistributionInputPreparationInvariantKind::PackageContextMismatch;
+  }
+  if (!verifiedDistributionMatchesAccepted(distribution, ZC_ASSERT_NONNULL(accepted))) {
+    return CoreDistributionInputPreparationInvariantKind::DistributionAuthorityMismatch;
+  }
+  if (contextAuthority.coreDistributionRecord().encode().asPtr() !=
           distribution.record().encode().asPtr() ||
-      contextAuthority.coreDistributionDigest() != distribution.distributionDigest() ||
-      distribution.record().editionYear() != 2026 ||
-      distribution.snapshots().size() != distribution.record().files().size()) {
-    return zc::none;
+      contextAuthority.coreDistributionDigest() != distribution.distributionDigest()) {
+    return CoreDistributionInputPreparationInvariantKind::ContextDistributionMismatch;
+  }
+  if (distribution.record().editionYear() != 2026) {
+    return CoreDistributionInputPreparationInvariantKind::EditionMismatch;
+  }
+  if (distribution.snapshots().size() != distribution.record().files().size()) {
+    return CoreDistributionInputPreparationInvariantKind::SnapshotInventoryMismatch;
   }
 
   zc::TreeMap<zc::String, identity::CrateKey> uniqueProjections;
   for (const auto& consumer : completeConsumerInventory) {
-    if (!compilationOptions.matchesCrate(consumer)) { return zc::none; }
+    if (!compilationOptions.matchesCrate(consumer)) {
+      return CoreDistributionInputPreparationInvariantKind::CompilationOptionsMismatch;
+    }
     auto projected = identity::projectToolchainCoreCrate(consumer);
-    if (projected == zc::none) { return zc::none; }
+    if (projected == zc::none) {
+      return CoreDistributionInputPreparationInvariantKind::CoreProjectionRejected;
+    }
     auto sortKey = zc::encodeHex(ZC_ASSERT_NONNULL(projected).encode().asPtr());
     if (uniqueProjections.find(sortKey) == zc::none) {
       uniqueProjections.insert(zc::mv(sortKey), zc::mv(ZC_ASSERT_NONNULL(projected)));
@@ -4413,18 +4443,24 @@ VerifiedCoreDistributionInputTransaction::prepare(
   for (const auto& projection : uniqueProjections) {
     auto catalogResult =
         source::core::CoreSourceCatalogAdmission::admit(distribution, projection.value);
-    if (!catalogResult.is<source::core::AdmittedCoreSourceCatalog>()) { return zc::none; }
+    if (catalogResult.is<source::core::CoreDistributionAdmissionInvariantKind>()) {
+      return catalogResult.get<source::core::CoreDistributionAdmissionInvariantKind>();
+    }
     auto catalog = zc::mv(catalogResult.get<source::core::AdmittedCoreSourceCatalog>());
 
     auto root = binder::ModuleSearchRoot::toolchainCore(projection.value.clone(),
                                                         distribution.distributionDigest());
-    if (root == zc::none) { return zc::none; }
+    if (root == zc::none) {
+      return CoreDistributionInputPreparationInvariantKind::SearchRootRejected;
+    }
     zc::Vector<binder::ModuleSearchRoot> environment;
     environment.add(zc::mv(ZC_ASSERT_NONNULL(root)));
     auto searchRoots =
         incremental_module_resolution_query::CanonicalModuleSearchRoots::fromVerified(
             projection.value, environment.asPtr());
-    if (searchRoots == zc::none) { return zc::none; }
+    if (searchRoots == zc::none) {
+      return CoreDistributionInputPreparationInvariantKind::CanonicalSearchRootsRejected;
+    }
 
     zc::Vector<VerifiedCoreProjectionInput::Impl::StagedSource> sources(
         distribution.snapshots().size());
@@ -4433,7 +4469,7 @@ VerifiedCoreDistributionInputTransaction::prepare(
       const auto& declared = distribution.record().files()[index];
       if (!samePath(admitted.path(), declared.path()) ||
           admitted.contentDigest() != declared.digest()) {
-        return zc::none;
+        return CoreDistributionInputPreparationInvariantKind::SnapshotRecordMismatch;
       }
       auto sourceKey = identity::SourceFileKey::from(
           projection.value.clone(),
@@ -4443,12 +4479,17 @@ VerifiedCoreDistributionInputTransaction::prepare(
           sourceKey.clone(), zc::heapArray<uint8_t>(admitted.bytes()));
       if (immutable == zc::none ||
           ZC_ASSERT_NONNULL(immutable).contentDigest() != admitted.contentDigest()) {
-        return zc::none;
+        return CoreDistributionInputPreparationInvariantKind::ImmutableSnapshotRejected;
       }
       auto stable = identity::source_query::StableSourceQueryKey::fromVerified(sourceKey);
       auto snapshot = identity::source_query::CanonicalSourceSnapshot::fromVerified(
           ZC_ASSERT_NONNULL(immutable));
-      if (stable == zc::none || snapshot == zc::none) { return zc::none; }
+      if (stable == zc::none) {
+        return CoreDistributionInputPreparationInvariantKind::StableSourceKeyRejected;
+      }
+      if (snapshot == zc::none) {
+        return CoreDistributionInputPreparationInvariantKind::CanonicalSourceSnapshotRejected;
+      }
       sources.add(VerifiedCoreProjectionInput::Impl::StagedSource(
           zc::mv(ZC_ASSERT_NONNULL(stable)), zc::mv(ZC_ASSERT_NONNULL(snapshot))));
     }
@@ -4456,7 +4497,9 @@ VerifiedCoreDistributionInputTransaction::prepare(
         projection.value.clone(), zc::mv(catalog), zc::mv(ZC_ASSERT_NONNULL(searchRoots)),
         zc::mv(sources))));
   }
-  if (projections.empty()) { return zc::none; }
+  if (projections.empty()) {
+    return CoreDistributionInputPreparationInvariantKind::EmptyProjectionInventory;
+  }
 
   zc::Vector<ProjectedCoreSourceEntry> projectedSources(projections.size() *
                                                         distribution.snapshots().size());
@@ -4481,15 +4524,20 @@ VerifiedCoreDistributionInputTransaction::prepare(
       distribution.distributionDigest(), distribution.policyTemplate().clone(),
       zc::mv(projectedSources), zc::mv(options), zc::mv(roots), zc::mv(projectedInventory),
       zc::mv(contextAuthority));
-  if (payload == zc::none || !VerifiedCoreDistributionInputVerifier::verify(
-                                 ZC_ASSERT_NONNULL(payload), distribution, packageRequest,
-                                 compilationOptions, completeConsumerInventory)) {
-    return zc::none;
+  if (payload == zc::none) {
+    return CoreDistributionInputPreparationInvariantKind::PayloadRejected;
+  }
+  if (!VerifiedCoreDistributionInputVerifier::verify(ZC_ASSERT_NONNULL(payload), distribution,
+                                                     packageRequest, compilationOptions,
+                                                     completeConsumerInventory)) {
+    return CoreDistributionInputPreparationInvariantKind::PayloadVerificationFailed;
   }
   auto payloadBytes = ZC_ASSERT_NONNULL(payload).encodeCanonical();
   auto payloadDigest = module_graph_query::computeCanonicalInputPayloadDigest(
       kCoreDistributionTransactionDomain, payloadBytes.asPtr());
-  if (payloadDigest == zc::none) { return zc::none; }
+  if (payloadDigest == zc::none) {
+    return CoreDistributionInputPreparationInvariantKind::PayloadDigestRejected;
+  }
   return VerifiedCoreDistributionInputTransaction(
       zc::heap<Impl>(expectedPreviousRevision, zc::mv(ZC_ASSERT_NONNULL(accepted)),
                      zc::mv(ZC_ASSERT_NONNULL(payload)), zc::mv(ZC_ASSERT_NONNULL(payloadDigest)),
@@ -4605,6 +4653,35 @@ zc::Maybe<zc::Own<CapabilityCandidateContract<
 CapabilityCandidateContract<driver::core_library_query::MaterializeCoreRoleSeed>::decode(
     zc::ArrayPtr<const uint8_t>) {
   return zc::none;
+}
+
+zc::Array<uint8_t> CapabilityFailureContract<
+    driver::core_library_query::MaterializeCoreRoleSeed,
+    KeyRejection<driver::core_library_query::CoreRoleSeedFailure>>::encode(const Failure& failure) {
+  return failure.encodeCanonical();
+}
+
+zc::Maybe<driver::core_library_query::CoreRoleSeedFailure>
+CapabilityFailureContract<driver::core_library_query::MaterializeCoreRoleSeed,
+                          KeyRejection<driver::core_library_query::CoreRoleSeedFailure>>::
+    decode(zc::ArrayPtr<const uint8_t> bytes) {
+  return driver::core_library_query::CoreRoleSeedFailure::decodeCanonical(bytes);
+}
+
+CapabilityRejectionCheck
+CapabilityFailureContract<driver::core_library_query::MaterializeCoreRoleSeed,
+                          KeyRejection<driver::core_library_query::CoreRoleSeedFailure>>::
+    verify(CapabilityQueryContext<Descriptor>& context, const Descriptor::Key& key,
+           const Failure& failure) {
+  auto seed = context.get<driver::core_library_query::CoreRoleSeed>(key.clone());
+  if (seed.isRuntimeFailure() || seed.kind() != QueryValueKind::SemanticFailure) {
+    return CapabilityRejectionCheck::Rejected;
+  }
+  auto decoded =
+      driver::core_library_query::CoreRoleSeedFailure::decodeCanonical(seed.semanticFailureBytes());
+  return decoded != zc::none && ZC_ASSERT_NONNULL(decoded) == failure
+             ? CapabilityRejectionCheck::Verified
+             : CapabilityRejectionCheck::Rejected;
 }
 
 StableWitnessBytes

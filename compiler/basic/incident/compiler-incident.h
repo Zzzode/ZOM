@@ -26,10 +26,17 @@ class ModuleGraphDiagnosticProjector;
 
 namespace zomlang::compiler::driver {
 class ModuleInterfaceDiagnosticProjector;
+namespace core_library_query {
+class CoreDiagnosticProjector;
 }
+}  // namespace zomlang::compiler::driver
 
 namespace zomlang::compiler::ir {
 class IrDiagnosticProjector;
+}
+
+namespace zomlang::compiler::diagnostics {
+class DiagnosticIncidentProjector;
 }
 
 namespace zomlang::compiler::basic {
@@ -67,7 +74,9 @@ private:
   friend class binder::BinderDiagnosticProjector;
   friend class binder::ModuleGraphDiagnosticProjector;
   friend class driver::ModuleInterfaceDiagnosticProjector;
+  friend class driver::core_library_query::CoreDiagnosticProjector;
   friend class ir::IrDiagnosticProjector;
+  friend class diagnostics::DiagnosticIncidentProjector;
 };
 
 /// \brief Registry-assigned incident kind key within one domain.
@@ -89,7 +98,9 @@ private:
   friend class binder::BinderDiagnosticProjector;
   friend class binder::ModuleGraphDiagnosticProjector;
   friend class driver::ModuleInterfaceDiagnosticProjector;
+  friend class driver::core_library_query::CoreDiagnosticProjector;
   friend class ir::IrDiagnosticProjector;
+  friend class diagnostics::DiagnosticIncidentProjector;
 };
 
 /// \brief Registry-assigned producer key within one domain.
@@ -111,7 +122,9 @@ private:
   friend class binder::BinderDiagnosticProjector;
   friend class binder::ModuleGraphDiagnosticProjector;
   friend class driver::ModuleInterfaceDiagnosticProjector;
+  friend class driver::core_library_query::CoreDiagnosticProjector;
   friend class ir::IrDiagnosticProjector;
+  friend class diagnostics::DiagnosticIncidentProjector;
 };
 
 /// \brief Privacy-preserving shape of one internal compiler failure.
@@ -156,14 +169,16 @@ private:
   friend class binder::BinderDiagnosticProjector;
   friend class binder::ModuleGraphDiagnosticProjector;
   friend class driver::ModuleInterfaceDiagnosticProjector;
+  friend class driver::core_library_query::CoreDiagnosticProjector;
   friend class ir::IrDiagnosticProjector;
+  friend class diagnostics::DiagnosticIncidentProjector;
 };
 
 /// \brief Allocation-free deterministic aggregation of registered incident shapes.
 class BoundedIncidentSet final {
 public:
-  static constexpr size_t maximumDescriptors =
-      12 * 13 * 14 + 4 * 10 + 4 * 5 + 5 * 3 + 5 * 8 * 5 + 4 * 5 + 19 * 19 * 6;
+  static constexpr size_t maximumDescriptors = 12 * 13 * 14 + 4 * 10 + 4 * 5 + 5 * 3 + 5 * 8 * 5 +
+                                               4 * 5 + 19 * 19 * 6 + 3 + 3 + 19 + 17 + 12 + 11 + 21;
 
   ZC_NODISCARD bool add(CompilerIncidentDescriptor descriptor) noexcept;
   ZC_NODISCARD bool merge(const BoundedIncidentSet& other) noexcept;

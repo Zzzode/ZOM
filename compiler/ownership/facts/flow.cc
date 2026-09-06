@@ -14,7 +14,7 @@
 
 #include "compiler/ownership/facts/flow.h"
 
-#include "compiler/ir/diagnostics/ir-diagnostic-adapter.h"
+#include "compiler/ir/diagnostics/ir-failure.h"
 #include "compiler/ownership/facts/flow-subset.h"
 
 namespace zomlang::compiler::ownership::facts {

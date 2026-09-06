@@ -14,8 +14,8 @@
 
 #include "compiler/parser/token-cursor.h"
 
-#include "compiler/diagnostics/consumer/diagnostic-emitter.h"
 #include "compiler/diagnostics/core/diagnostic-ids.h"
+#include "compiler/diagnostics/fact/source-diagnostic-sink.h"
 #include "compiler/lexer/lexer.h"
 #include "zc/core/debug.h"
 
@@ -26,7 +26,7 @@ namespace parser {
 TokenStream::TokenStream() = default;
 
 TokenStream::TokenStream(const source::SourceManager& sourceMgr,
-                         diagnostics::DiagnosticEmitter& diagnosticEngine,
+                         diagnostics::SourceDiagnosticSink& diagnosticEngine,
                          const basic::LangOptions& langOpts, basic::StringPool& stringPool,
                          const source::BufferId& bufferId)
     : lexer(zc::heap<lexer::Lexer>(sourceMgr, diagnosticEngine, langOpts, stringPool, bufferId)) {}
@@ -208,10 +208,10 @@ void TokenCursor::moveTo(size_t index) {
   splitOriginalKind_ = ast::SyntaxKind::Unknown;
 }
 
-bool TokenCursor::expect(ast::SyntaxKind kind, diagnostics::DiagnosticEmitter& diagnosticEngine,
+bool TokenCursor::expect(ast::SyntaxKind kind, diagnostics::SourceDiagnosticSink& diagnosticEngine,
                          zc::StringPtr expected) {
   if (eat(kind)) { return true; }
-  diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(token().getLocation(), expected);
+  diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(token().getLocation(), expected);
   return false;
 }
 

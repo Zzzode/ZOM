@@ -116,28 +116,31 @@ IPC/resource/teardown boundary.
 ### 2026-07-11 Diagnostic And Verification Response
 
 `PackageInvocationKey.requestDigest` is now optional and absent for every
-pre-request failure. Unsupported unwind is exactly `ZOM6006`; compiler-owned
-target profile failures use registered fatal `ZOM9904` and a closed invariant
-enum. Closed runtime response tags, materialization and build-script
-variant-to-producer tables, explicit snapshot-finish forwarding, and mutually
-exclusive raw/NFC/case-fold collision rules eliminate producer ambiguity. The
-test plan now enumerates all invocation variants, handoff mismatches, path
-presence rules and filesystem faults, every vendored-manifest mutation, and the
-full IPC, status, CPU, priority, replay, publication, and teardown matrices.
+pre-request failure. Unsupported unwind is a source-less operational failure
+reported as `error: operational failure [target]: panic-unwind-unsupported`;
+compiler-owned target profile failures are registered compiler incidents with a
+closed invariant enum. Closed runtime response tags, materialization and
+build-script variant-to-producer tables, explicit snapshot-finish forwarding,
+and mutually exclusive raw/NFC/case-fold collision rules eliminate producer
+ambiguity. The test plan now enumerates all invocation variants, handoff
+mismatches, path presence rules and filesystem faults, every vendored-manifest
+mutation, and the full IPC, status, CPU, priority, replay, publication, and
+teardown matrices.
 
 Error-system and verification must re-review the current revision; this record
 does not promote their states.
 
 ### 2026-07-11 Diagnostic And Verification Approval
 
-Error-system approved the optional invocation digest, exact `ZOM6006` and
-`ZOM9904` projections, closed runtime status tags, exhaustive disjoint producer
-tables, snapshot forwarding, collision priority, and safe renderer boundary.
+Error-system approved the optional invocation digest, the operational-failure
+unwind rejection and compiler-incident target profile projections, closed
+runtime status tags, exhaustive disjoint producer tables, snapshot forwarding,
+collision priority, and safe renderer boundary.
 Verification requested one final declared-output matrix, then approved after the
 test plan distinguished `MissingOutput`, every `InvalidGeneratedSource` input,
-and `OutputTreePolicyViolation` with exact `ZOM7011` and no materialization-family
-leakage. Spec-audit separately approved the proposal-only boundary and current
-normative-spec state.
+and `OutputTreePolicyViolation` as distinct closed build-script reasons with no
+materialization-family leakage. Spec-audit separately approved the proposal-only
+boundary and current normative-spec state.
 
 ### 2026-07-11 Formal Acceptance Review Return
 

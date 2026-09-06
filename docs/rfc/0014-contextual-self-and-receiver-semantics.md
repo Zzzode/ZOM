@@ -530,8 +530,10 @@ cannot occur in both maps. The receiver parameter retains its special
 `DefId(Parameter)` and `DefinitionFact`, but no `ThisExpr` publishes an ordinary
 `BoundName`. On a successful binder run, every lexical contextual root has
 exactly one `selfTypes` row and every `ThisExpr` has exactly one `thisBindings`
-row. Missing required rows map to `ZOM9923`; additional, duplicate, wrong-owner,
-wrong-callable-kind, cross-context, or cross-map rows map to `ZOM9925`.
+row. Missing required rows project as `MissingRequiredResolution` Binder
+incidents; additional, duplicate, wrong-owner, wrong-callable-kind,
+cross-context, or cross-map rows project as `InvalidBindingFact` Binder
+incidents.
 
 An ordinary method `ThisExpr` resolves to its receiver parameter through
 closure scopes and stops at a named callable or module boundary, preserving

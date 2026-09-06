@@ -29,7 +29,7 @@ Parser::Impl::Impl(const source::SourceManager& sourceMgr,
                    const source::BufferId& bufferId)
     : sourceMgr(sourceMgr),
       diagnosticFacts(diagnosticFacts),
-      diagnosticEngine(diagnosticFacts.parserEmitter()),
+      diagnosticEngine(diagnosticFacts.parserSink()),
       bufferId(bufferId),
       context(sourceMgr, diagnosticFacts, langOpts, stringPool, bufferId) {}
 
@@ -97,7 +97,7 @@ ast::NodeId Parser::Impl::makeStatementListItem(ParserSyntaxFactory& builder, as
 }
 
 void Parser::Impl::emitUnexpected(const lexer::Token& where) const {
-  diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(where.getLocation());
+  diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(where.getLocation());
 }
 
 source::SourceLoc Parser::Impl::diagnosticLoc(size_t index) const {
@@ -125,7 +125,7 @@ cst::ParserEventStreamRequest Parser::Impl::buildEventStream() {
       moduleNode = elementResult.node;
     } else {
       if (isModuleDeclaration) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::ModuleDeclarationMustBeFirst>(
+        diagnosticEngine.report<diagnostics::DiagID::ModuleDeclarationMustBeFirst>(
             tokenAt(elementStart).getLocation());
       }
       if (elementResult.node) {

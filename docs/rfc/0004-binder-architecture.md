@@ -696,10 +696,8 @@ Stable missing, ambiguous, and cycle failures are projected to source
 diagnostics before the final Binder bridge. `ModuleGraphSourceFailure` is
 reserved for the selected-source root reservation check and carries its exact
 verified syntax anchor. Any identity or graph invariant suppresses publication
-and produces fatal `ZOM9956
-ModuleGraphInvariant`, headline `Internal module graph invariant violated ({0}
-occurrence(s))`, with one unsigned count argument. No rejected materialization
-publishes a graph, view, or partial binding input.
+and projects to a registered identity or module-graph incident descriptor. No
+rejected materialization publishes a graph, view, or partial binding input.
 
 The RFC 0011 canonical tags are fixed here: `Namespace` uses `Value = 0x01`,
 `Type = 0x02`, `Module = 0x03`, `Label = 0x04`, and `Attribute = 0x05`;
@@ -809,8 +807,8 @@ LabelId { owner: LabelOwner, index: uint32 }
 
 `ScopeIndex` and `LabelIndex` are unsigned 32-bit values. Allocation starts at
 the fixed zero values described here and uses checked increment only. Attempting
-to allocate after `UINT32_MAX` is an `InvalidBindingFact` and emits source-less
-`ZOM9925`; no wrapped or truncated handle is constructed.
+to allocate after `UINT32_MAX` is an `InvalidBindingFact` and projects to a
+Binder incident; no wrapped or truncated handle is constructed.
 
 Only the RFC 0011 registries issue `DefId` and `ImplId`. The frozen per-module
 inventory issues `ImplOccurrenceId` values only after implementation identity
@@ -1620,26 +1618,26 @@ candidate with no invariant and an empty `sourceFailures` can return `Verified`.
 
 The rejection mapping is exhaustive:
 
-| Rejected condition | Exact failure and diagnostic |
+| Rejected condition | Exact failure rail |
 |---|---|
-| Foreign semantic context or registry | RFC 0011 `ForeignContext` / `ZOM9911` or `ForeignRegistry` / `ZOM9912` |
-| Invalid, additional, duplicate, non-canonical, or post-freeze identity inventory entry | The exact applicable RFC 0011 identity invariant in `ZOM9910-ZOM9921` |
-| Expected schema producer has no frozen identity entry | `MissingRequiredResolution` / `ZOM9923` |
-| Parser receipt, content digest, byte length, parser-schema digest, AST dump component, tree identity, or dependency revision is stale or substituted | `InvalidBindingFact` / `ZOM9925` |
-| Required resolution or output fact is missing | `MissingRequiredResolution` / `ZOM9923` |
-| Additional resolution/fact, wrong definition kind/name/namespace/activation, wrong semantic owner, wrong alias target, or forbidden type/inference/ABI payload | `InvalidBindingFact` / `ZOM9925` |
-| Cross-source, out-of-bounds, reversed, or otherwise invalid source range | RFC 0011 `InvalidSourceRange` / `ZOM9915` |
-| Same-source span is valid globally but does not equal or lie inside its owning AST node, or a dependency span has wrong module ancestry | `InvalidBindingFact` / `ZOM9925` |
-| Missing parent, parent cycle, wrong nearest parent, wrong inherited owner, duplicate scope index, or scope-kind/source mismatch | `MalformedScopeGraph` / `ZOM9922` |
-| Re-export pair repeats, canonical target changes, terminal alias/module/export span is wrong, or alias graph cycles | `AliasCycle` / `ZOM9924` |
-| Scope/label allocation overflows or a label/control target violates its closed algebra | `InvalidBindingFact` / `ZOM9925` |
-| Emitter site, schema ordinal, local ordinal, or packed ordinal is invalid or overflows | `InvalidEmitterOrdinal` / `ZOM9926` |
+| Foreign semantic context or registry | RFC 0011 `ForeignContext` or `ForeignRegistry` identity incident |
+| Invalid, additional, duplicate, non-canonical, or post-freeze identity inventory entry | Exact applicable RFC 0011 identity incident |
+| Expected schema producer has no frozen identity entry | `MissingRequiredResolution` Binder incident |
+| Parser receipt, content digest, byte length, parser-schema digest, AST dump component, tree identity, or dependency revision is stale or substituted | `InvalidBindingFact` Binder incident |
+| Required resolution or output fact is missing | `MissingRequiredResolution` Binder incident |
+| Additional resolution/fact, wrong definition kind/name/namespace/activation, wrong semantic owner, wrong alias target, or forbidden type/inference/ABI payload | `InvalidBindingFact` Binder incident |
+| Cross-source, out-of-bounds, reversed, or otherwise invalid source range | RFC 0011 `InvalidSourceRange` identity incident |
+| Same-source span is valid globally but does not equal or lie inside its owning AST node, or a dependency span has wrong module ancestry | `InvalidBindingFact` Binder incident |
+| Missing parent, parent cycle, wrong nearest parent, wrong inherited owner, duplicate scope index, or scope-kind/source mismatch | `MalformedScopeGraph` Binder incident |
+| Re-export pair repeats, canonical target changes, terminal alias/module/export span is wrong, or alias graph cycles | `AliasCycle` Binder incident |
+| Scope/label allocation overflows or a label/control target violates its closed algebra | `InvalidBindingFact` Binder incident |
+| Emitter site, schema ordinal, local ordinal, or packed ordinal is invalid or overflows | `InvalidEmitterOrdinal` Binder incident |
 
 Each structural-verifier negative test mutates one closed publication invariant.
 The fact schema maps every sequence to missing, additional, reordered, and
 domain-specific mutation obligations. Each semantic mutation test passes one
 mutation through the test-only differential harness. Both matrices assert the exact failure variant,
-invariant kind, registered diagnostic ID and anchor, deterministic sorted
+invariant kind, registered incident descriptor, deterministic sorted
 position, and absence of both verified outputs. Pairwise tests cover conditions whose
 suppression or grouping can interact. No rejection branch may return a boolean,
 free-form text, or an unclassified error.
@@ -1758,21 +1756,13 @@ BinderInvariantFact {
 }
 ```
 
-| Kind | Diagnostic | Severity | Registered headline | Anchor |
-|---|---|---|---|---|
-| `MalformedScopeGraph` | `ZOM9922 BinderMalformedScopeGraph` | fatal | `Internal binder scope graph is invalid ({0} occurrence(s))` | validated range or none |
-| `MissingRequiredResolution` | `ZOM9923 BinderMissingRequiredResolution` | fatal | `Internal binder required resolution is missing ({0} occurrence(s))` | validated range or none |
-| `AliasCycle` | `ZOM9924 BinderAliasCycle` | fatal | `Internal binder alias graph contains a cycle ({0} occurrence(s))` | validated range or none |
-| `InvalidBindingFact` | `ZOM9925 BinderInvalidFact` | fatal | `Internal binder fact is invalid ({0} occurrence(s))` | validated range or none |
-| `InvalidEmitterOrdinal` | `ZOM9926 BinderInvalidEmitterOrdinal` | fatal | `Internal binder diagnostic ordinal is invalid ({0} occurrence(s))` | validated range or none |
-
-Each invariant entry has arity one and accepts only an unsigned occurrence
-count. Identity registry and handle failures remain RFC 0011
-`IdentityInvariant` facts and map unchanged to exact `ZOM9910-ZOM9921`; a
-foreign context is `ZOM9911`, not a binder-specific code. The binder adapter
-sorts facts by expanded module key, kind tag, validated optional range with
-`none` first, emitter-site tag, and schema preorder, then groups only equal ID
-and anchor. Invalid ranges become source-less and are never dereferenced.
+Each Binder invariant kind projects to a distinct registered Binder incident
+kind. Identity registry and handle failures remain RFC 0011
+`IdentityInvariant` facts and project to identity incidents without being
+wrapped in a Binder kind. `BinderDiagnosticProjector` preserves the registered
+emitter site as the incident producer and `BoundedIncidentSet` groups equal
+domain, phase, kind, and producer shapes by occurrence count. Source ranges and
+user payloads never enter an incident descriptor.
 
 `BinderEmitterSite` tags are `BindingInput = 0x01`, `ModuleSkeleton = 0x02`,
 `ImportBinding = 0x03`, `BodyBinding = 0x04`, `LabelAndClosure = 0x05`, and
@@ -1789,12 +1779,12 @@ RFC 0011 emitter ordinal is exactly:
 uint64(localOrdinal)
 ```
 
-`schemaOrdinal` is `uint32`; `localOrdinal` is `uint16`; overflow is
-`ZOM9926`. `ZOM3017` is attached to and immediately follows its primary and does
+`schemaOrdinal` is `uint32`; `localOrdinal` is `uint16`; overflow is an
+`InvalidEmitterOrdinal` Binder incident. `ZOM3017` is attached to and immediately follows its primary and does
 not consume a separate ordinal. No global, worker, traversal-completion, or
 wall-clock counter participates.
 
-The binder diagnostic adapter accepts only `VerifiedIdentifierArgument`,
+The Binder source diagnostic projector accepts only `VerifiedIdentifierArgument`,
 `VerifiedModulePathArgument`, the closed `NamespaceDiagnosticArgument`, and
 unsigned occurrence counts. `VerifiedIdentifierArgument` can be constructed
 only from one lexer-validated identifier token, its immutable source snapshot,
@@ -1824,10 +1814,10 @@ A selected non-core source root whose declared leading module segment is
 typed `ModulePath` argument. The complete declared-name span is the primary
 anchor. User-target and dependency-alias producers are owned by RFC 0012.
 
-Only `module-graph-diagnostic-adapter` projects this source failure. It accepts
-the verified typed argument and has no raw-string overload; the module-interface
-adapter and `CoreLibraryFailure` rail do not participate. Malformed source
-syntax has precedence. For the same occurrence, `ZOM3027` suppresses
+Only the module-graph source diagnostic projector projects this source failure.
+It accepts the verified typed argument and has no raw-string overload; core
+operational failures and compiler incidents do not participate. Malformed
+source syntax has precedence. For the same occurrence, `ZOM3027` suppresses
 `ZOM3026` and every derived import or re-export diagnostic, while independent
 duplicate-declaration diagnostics remain.
 
@@ -2060,8 +2050,8 @@ temporary immutable verified inputs.
 27. Source receipts and verifier checks reject a swapped tree, stale digest,
     out-of-bounds range, cross-source range, dependency-span ancestry mismatch,
     or re-export-chain discontinuity.
-28. Every `ZOM3001-ZOM3024` producer, redeclaration-kind mapping,
-    `ZOM9922-ZOM9926` and `ZOM9956` invariant, typed diagnostic argument, and deterministic
+28. Every `ZOM3001-ZOM3024` producer, redeclaration-kind mapping, Binder and
+    module-graph incident kind, typed diagnostic argument, and deterministic
     emitter ordinal has executable positive and negative coverage.
 29. Checker, checked-module, HIR, MIR, LIR, backend, and disposable `irgen` code
     obey the exact dependency matrix. No downstream layer gains binding or
@@ -2112,7 +2102,7 @@ temporary immutable verified inputs.
 - Build: `cmake --preset sanitizer` and
   `cmake --build --preset sanitizer`.
 - Focused unit command:
-  `ctest --preset default --no-tests=error --output-on-failure -R '^(binding-input-test|binding-diagnostic-adapter-test|definition-inventory-test|frozen-definition-inventory-test|parser-test|compiler-session-test|compiler-session-package-test)$'`.
+  `ctest --preset default --no-tests=error --output-on-failure -R '^(binding-input-test|binding-diagnostic-projector-test|definition-inventory-test|frozen-definition-inventory-test|parser-test|compiler-session-test|compiler-session-package-test)$'`.
   It covers every RFC 0011 identity-producing and no-identity schema row,
   multi-binding pattern paths, context-global freeze under reversed module
   order, every scope and label producer, source-root module scope, every
@@ -2185,7 +2175,7 @@ temporary immutable verified inputs.
   exports, local versus foreign re-exports, missing and ambiguous module paths,
   import/alias/re-export/prelude edges, every pure and mixed SCC classification,
   including prelude self-cycles and prelude mixed with import, alias, or
-  re-export edges selecting only `ZOM9956`,
+  re-export edges selecting only the module-graph incident rail,
   implicit prelude provenance without AST identity, chain cycles and discontinuities,
   reverse source registration, and worker-count permutations.
 - Module graph oracle: recompute the 43-byte resolution-environment, 68-byte
@@ -2205,13 +2195,13 @@ temporary immutable verified inputs.
   or target modules and requester/target key-to-handle mismatches must fail as
   `InvalidEdge` before revision or SCC construction;
   stale, partial, additional, foreign-context, or revision-mismatched views must
-  produce exact `ZOM9956` and no source diagnostic.
+  produce the exact module-graph incident and no source diagnostic.
 - Source proof: swapped tree/source, stale receipt, out-of-bounds and
   cross-source ranges, dependency-span ancestry, re-export-step ancestry, and
   synthetic source-zero rejection.
 - Diagnostics: every `ZOM3001-ZOM3024` producer and suppression rule, every
-  redeclaration-kind mapping and `ZOM3017` note, every `ZOM9922-ZOM9926`
-  binder invariant, every `ZOM9956` graph invariant, and emitter-ordinal
+  redeclaration-kind mapping and `ZOM3017` note, every Binder and module-graph
+  incident kind, and emitter-ordinal
   overflow/order. Typed-argument tests preserve
   every valid Unicode scalar, escape backslash, controls, bidi controls, and
   invalid bytes, reject an empty module path, prove literal `::` joining, render

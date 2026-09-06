@@ -61,11 +61,33 @@ enum class BinderDiagnosticEmitter : uint8_t {
   ControlTransfer = 0x03,
   ContextualSelf = 0x04
 };
-enum class DiagnosticFactOrigin : uint8_t { Source = 0x01, Module = 0x02 };
+/// \brief Closed owner domains for source-backed semantic diagnostics.
+enum class SemanticDiagnosticDomain : uint8_t {
+  Signature = 0x01,
+  Checker = 0x02,
+  Coherence = 0x03,
+  BorrowInterface = 0x04,
+  Ownership = 0x05,
+  OwnershipSurface = 0x06,
+  IrCapability = 0x07,
+  ModuleGraph = 0x08,
+};
+enum class DiagnosticFactOrigin : uint8_t { Source = 0x01, Module = 0x02, Document = 0x03 };
 enum class DiagnosticSecondaryRole : uint8_t {
   Highlight = 0x01,
-  PreviousDeclaration = 0x01,
   Note = 0x02,
+  PreviousDeclaration = 0x03,
+};
+enum class SemanticDiagnosticSiteRole : uint8_t {
+  Primary = 0x01,
+  Highlight = 0x02,
+  Note = 0x03,
+  PreviousDeclaration = 0x04,
+};
+enum class DocumentDiagnosticSiteRole : uint8_t {
+  Primary = 0x01,
+  Highlight = 0x02,
+  Note = 0x03,
 };
 
 /// \brief Stable identity of one deterministic source diagnostic occurrence.
@@ -84,6 +106,14 @@ public:
   ZC_NODISCARD static zc::Maybe<DiagnosticOccurrenceKey> identityAdmission(
       identity::ModuleKey&& module, identity::SourceFileKey&& source,
       zc::Vector<uint32_t>&& syntaxPath, IdentityDiagnosticEmitter emitter);
+  /// \brief Admits one semantic occurrence identified by a canonical owner and event path.
+  ZC_NODISCARD static zc::Maybe<DiagnosticOccurrenceKey> semantic(
+      identity::ModuleKey&& module, identity::SourceFileKey&& source,
+      SemanticDiagnosticDomain domain, zc::Array<uint8_t>&& canonicalOwner,
+      zc::Vector<uint32_t>&& eventPath);
+  /// \brief Admits one occurrence owned by an exact non-source input document.
+  ZC_NODISCARD static zc::Maybe<DiagnosticOccurrenceKey> document(
+      zc::Array<uint8_t>&& canonicalDocument, zc::Array<uint8_t>&& canonicalOccurrence);
   ZC_NODISCARD DiagnosticOccurrenceKey clone() const;
   ZC_NODISCARD DiagnosticFactOrigin origin() const noexcept;
   ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
@@ -101,7 +131,15 @@ public:
   ZC_NODISCARD bool hasBinderSemanticOwner() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const uint8_t> binderSemanticOwnerBytes() const ZC_LIFETIMEBOUND;
   ZC_NODISCARD zc::ArrayPtr<const uint32_t> binderSyntaxPath() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD bool isSemantic() const noexcept;
+  ZC_NODISCARD SemanticDiagnosticDomain semanticDomain() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const uint8_t> semanticOwnerBytes() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD zc::ArrayPtr<const uint32_t> semanticEventPath() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD bool isDocument() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const uint8_t> documentIdentityBytes() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD zc::ArrayPtr<const uint8_t> documentOccurrenceBytes() const ZC_LIFETIMEBOUND;
   bool operator==(const DiagnosticOccurrenceKey& other) const noexcept;
+  bool operator<(const DiagnosticOccurrenceKey& other) const noexcept;
 
 private:
   ZC_NODISCARD static zc::Maybe<DiagnosticOccurrenceKey> binder(
@@ -132,6 +170,15 @@ public:
   ZC_NODISCARD static zc::Maybe<DiagnosticProvenanceKey> identitySyntaxSite(
       identity::ModuleKey&& module, identity::SourceFileKey&& source,
       zc::Vector<uint32_t>&& syntaxPath);
+  /// \brief Admits one source site owned by a semantic occurrence.
+  ZC_NODISCARD static zc::Maybe<DiagnosticProvenanceKey> semanticSite(
+      identity::ModuleKey&& module, identity::SourceFileKey&& source,
+      SemanticDiagnosticDomain domain, zc::Array<uint8_t>&& canonicalOwner,
+      zc::Vector<uint32_t>&& eventPath, SemanticDiagnosticSiteRole role, uint32_t roleOrdinal);
+  /// \brief Admits one site owned by an exact non-source input document occurrence.
+  ZC_NODISCARD static zc::Maybe<DiagnosticProvenanceKey> documentSite(
+      zc::Array<uint8_t>&& canonicalDocument, zc::Array<uint8_t>&& canonicalOccurrence,
+      DocumentDiagnosticSiteRole role, uint32_t roleOrdinal);
   ZC_NODISCARD DiagnosticProvenanceKey clone() const;
   ZC_NODISCARD DiagnosticFactOrigin origin() const noexcept;
   ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
@@ -146,7 +193,19 @@ public:
   ZC_NODISCARD bool hasBinderSemanticOwner() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const uint8_t> binderSemanticOwnerBytes() const ZC_LIFETIMEBOUND;
   ZC_NODISCARD zc::ArrayPtr<const uint32_t> binderSyntaxPath() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD bool isSemanticSite() const noexcept;
+  ZC_NODISCARD SemanticDiagnosticDomain semanticDomain() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const uint8_t> semanticOwnerBytes() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD zc::ArrayPtr<const uint32_t> semanticEventPath() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD SemanticDiagnosticSiteRole semanticRole() const noexcept;
+  ZC_NODISCARD uint32_t semanticRoleOrdinal() const noexcept;
+  ZC_NODISCARD bool isDocumentSite() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const uint8_t> documentIdentityBytes() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD zc::ArrayPtr<const uint8_t> documentOccurrenceBytes() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD DocumentDiagnosticSiteRole documentRole() const noexcept;
+  ZC_NODISCARD uint32_t documentRoleOrdinal() const noexcept;
   bool operator==(const DiagnosticProvenanceKey& other) const noexcept;
+  bool operator<(const DiagnosticProvenanceKey& other) const noexcept;
 
 private:
   ZC_NODISCARD static zc::Maybe<DiagnosticProvenanceKey> binderModuleSite(

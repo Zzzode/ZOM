@@ -20,7 +20,7 @@ RESERVATIONS = ROOT / "tests/coverage/diagnostic-reservations.json"
 DEFINITION_PATTERN = re.compile(r"DIAG\(\s*(\d+)\s*,\s*([A-Za-z][A-Za-z0-9_]*)")
 REFERENCE_PATTERN = re.compile(
     r"(?:DiagID|[A-Za-z][A-Za-z0-9_]*SourceDiagnostic|CheckerErrorId|"
-    r"CheckerWarningId|CheckerNoteId)::([A-Za-z][A-Za-z0-9_]*)"
+    r"CheckerWarningId|CheckerNoteId|BinderErrorId)::([A-Za-z][A-Za-z0-9_]*)"
 )
 CODE_PATTERN = re.compile(r"ZOM(\d{4})")
 

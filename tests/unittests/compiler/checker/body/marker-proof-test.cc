@@ -7,7 +7,6 @@
 
 #include "compiler/checker/body/body-checker.h"
 #include "compiler/checker/checker-identity-authority.h"
-#include "compiler/diagnostics/core/diagnostic-engine.h"
 #include "compiler/driver/interface/coherence-builder.h"
 #include "compiler/driver/interface/imported-signature-view-projector.h"
 #include "compiler/driver/interface/module-interface.h"
@@ -248,7 +247,7 @@ public:
     ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
     ZC_REQUIRE(session.parseSources());
     ZC_REQUIRE(session.bindSources());
-    ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+    ZC_REQUIRE(!session.hasDiagnosticErrors());
     identityAuthority = session.materializeCheckerIdentityAuthority();
     ZC_REQUIRE(identityAuthority != zc::none);
     const auto& identities = ZC_REQUIRE_NONNULL(identityAuthority);

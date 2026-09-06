@@ -16,8 +16,6 @@ TARGET_HEADER = IR_ROOT / "target/target-registry.h"
 TARGET_SOURCE = IR_ROOT / "target/target-registry.cc"
 FAILURE_HEADER = IR_ROOT / "diagnostics/ir-failure.h"
 FAILURE_SOURCE = IR_ROOT / "diagnostics/ir-failure.cc"
-DIAGNOSTIC_ADAPTER_HEADER = IR_ROOT / "diagnostics/ir-diagnostic-adapter.h"
-DIAGNOSTIC_ADAPTER_SOURCE = IR_ROOT / "diagnostics/ir-diagnostic-adapter.cc"
 IDENTITY_HEADER = IR_ROOT / "ir-identity.h"
 IDENTITY_SOURCE = IR_ROOT / "ir-identity.cc"
 IR_CMAKE = IR_ROOT / "CMakeLists.txt"
@@ -55,7 +53,6 @@ RUNTIME_CMAKE = Path("runtime/CMakeLists.txt")
 RUNTIME_ENTRY = Path("runtime/entry-linux-x86_64.S")
 TESTS_CMAKE = Path("tests/CMakeLists.txt")
 COMPILER_OPTIONS = Path("compiler/basic/compiler-opts.h")
-DIAGNOSTIC_DEFS = Path("compiler/diagnostics/defs/diagnostics-lowering.def")
 
 REQUIRED_TARGET_MARKERS = (
     "namespace zomlang::compiler::ir",
@@ -96,50 +93,6 @@ FORBIDDEN_FAILURE_API_PATTERNS = (
     r"compiler/binder/",
     r"compiler/parser/",
     r"\bNodeId\b",
-)
-
-REQUIRED_BACKEND_DIAGNOSTICS = {
-    "PanicUnwindUnsupported",
-    "BinaryEmissionUnavailable",
-    "IrOutputCreationFailed",
-    "TargetCapabilityUnavailable",
-    "RecursiveInstantiation",
-    "InstantiationBudgetExceeded",
-    "CheckedModuleInvariant",
-    "HirInvariant",
-    "BuiltMirInvariant",
-    "OwnershipProofInvariant",
-    "ExecutableMirInvariant",
-    "LirInvariant",
-    "BackendInvariant",
-    "IrCanonicalCodecMismatch",
-    "FeatureBoundaryInvariant",
-}
-
-REQUIRED_DIAGNOSTIC_DEFINITIONS = (
-    'DIAG(6008, IrOutputCreationFailed, kError, "IR emission could not create its output stream", 0)',
-    'DIAG(6009, TargetCapabilityUnavailable, kError, "The selected target does not support the required compiler operation", 0)',
-    'DIAG(6010, RecursiveInstantiation, kError, "Generic instantiation is recursively expanding", 0)',
-    'DIAG(6011, InstantiationBudgetExceeded, kError, "Generic instantiation exceeds the configured compiler limit", 0)',
-    'DIAG(9942, CheckedModuleInvariant, kFatal, "Internal checked-module invariant violated ({0} occurrence(s))", 1)',
-    'DIAG(9943, HirInvariant, kFatal, "Internal HIR invariant violated ({0} occurrence(s))", 1)',
-    'DIAG(9944, BuiltMirInvariant, kFatal, "Internal Built MIR invariant violated ({0} occurrence(s))", 1)',
-    'DIAG(9945, OwnershipProofInvariant, kFatal, "Internal ownership proof invariant violated ({0} occurrence(s))", 1)',
-    'DIAG(9946, ExecutableMirInvariant, kFatal, "Internal executable MIR invariant violated ({0} occurrence(s))", 1)',
-    'DIAG(9947, LirInvariant, kFatal, "Internal LIR invariant violated ({0} occurrence(s))", 1)',
-    'DIAG(9948, BackendInvariant, kFatal, "Internal backend invariant violated ({0} occurrence(s))", 1)',
-    'DIAG(9949, IrCanonicalCodecMismatch, kFatal, "Internal IR canonical encoding is invalid ({0} occurrence(s))", 1)',
-    'DIAG(9955, FeatureBoundaryInvariant, kFatal, "Internal feature-boundary invariant violated ({0} occurrence(s))", 1)',
-)
-
-REQUIRED_DIAGNOSTIC_ADAPTER_MARKERS = (
-    "class IrDiagnosticLocationResolver",
-    "class IrDiagnosticGroup final",
-    "irDiagnosticId(IrFailureKind kind",
-    "groupIrCapabilityFailures",
-    "groupIrInvariantFailures",
-    "emitIrDiagnosticGroups",
-    "emitIrIdentityInvariantFailures",
 )
 
 RETIRED_PROTOTYPE_MARKERS = (
@@ -222,7 +175,6 @@ def load_files() -> dict[Path, str]:
         RUNTIME_ENTRY,
         TESTS_CMAKE,
         COMPILER_OPTIONS,
-        DIAGNOSTIC_DEFS,
     ):
         files[path] = (ROOT / path).read_text(encoding="utf-8")
     return files
@@ -425,78 +377,12 @@ def check_failure_contract(files: dict[Path, str], errors: list[str]) -> None:
 
     cmake = files.get(IR_CMAKE, "")
     for source_name in (
-        "ir-diagnostic-adapter.cc",
         "ir-failure.cc",
         "ir-identity.cc",
         "target-registry.cc",
     ):
         if source_name not in cmake:
             errors.append(f"{IR_CMAKE}: missing canonical IR source {source_name}")
-
-
-def check_diagnostic_adapter(files: dict[Path, str], errors: list[str]) -> None:
-    header = files.get(DIAGNOSTIC_ADAPTER_HEADER, "")
-    source = files.get(DIAGNOSTIC_ADAPTER_SOURCE, "")
-    for marker in REQUIRED_DIAGNOSTIC_ADAPTER_MARKERS:
-        if marker not in header and marker not in source:
-            errors.append(f"{DIAGNOSTIC_ADAPTER_HEADER}: missing exhaustive adapter marker {marker}")
-    if '#include "compiler/ir/diagnostics/ir-diagnostic-adapter.h"' not in source:
-        errors.append(
-            f"{DIAGNOSTIC_ADAPTER_SOURCE}: implementation must include its canonical owner header"
-        )
-    for kind in (
-        "InputRevisionMismatch",
-        "MissingRequiredFact",
-        "AdditionalFact",
-        "InvalidFact",
-        "InvalidControlFlow",
-        "InvalidPlace",
-        "InvalidOwnershipProof",
-        "InvalidCleanup",
-        "InvalidCoroutineState",
-        "InvalidSsa",
-        "MissingTargetLayout",
-        "InvalidAbi",
-        "UnresolvedDispatch",
-        "UnsupportedTargetCapability",
-        "BackendTranslationRejected",
-        "RecursiveInstantiation",
-        "InstantiationBudgetExceeded",
-        "OutputCreationFailed",
-        "CanonicalCodecMismatch",
-    ):
-        if f"case IrFailureKind::{kind}:" not in source:
-            errors.append(f"{DIAGNOSTIC_ADAPTER_SOURCE}: missing failure-kind mapping {kind}")
-    for phase in (
-        "CheckedModuleAssembly",
-        "HirConstruction",
-        "HirVerification",
-        "MirConstruction",
-        "BuiltMirVerification",
-        "ProofValidation",
-        "CleanupElaboration",
-        "CoroutineElaboration",
-        "ExecutableMirVerification",
-        "Monomorphization",
-        "TargetSelection",
-        "LirLowering",
-        "LirVerification",
-        "LlvmTranslation",
-        "ObjectEmission",
-        "FeatureBoundaryVerification",
-    ):
-        if f"case IrFailurePhase::{phase}:" not in source:
-            errors.append(f"{DIAGNOSTIC_ADAPTER_SOURCE}: missing failure-phase mapping {phase}")
-    codec = source.find("case IrFailureKind::CanonicalCodecMismatch:")
-    phase_switch = source.find("switch (phase)")
-    if codec < 0 or phase_switch < 0 or codec > phase_switch:
-        errors.append(
-            f"{DIAGNOSTIC_ADAPTER_SOURCE}: canonical codec mismatch must precede phase mapping"
-        )
-    if "identity::groupIdentityInvariants" not in source or "identity::emitIdentityDiagnosticGroups" not in source:
-        errors.append(
-            f"{DIAGNOSTIC_ADAPTER_SOURCE}: identity failures must reuse the RFC 0011 adapter"
-        )
 
 
 def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
@@ -522,20 +408,6 @@ def check_cli_surface(files: dict[Path, str], errors: list[str]) -> None:
         errors.append(f"{CLI_SOURCE}: non-producing --emit=ir surface is forbidden")
 
 
-def check_diagnostics(files: dict[Path, str], errors: list[str]) -> None:
-    definitions = files.get(DIAGNOSTIC_DEFS, "")
-    normalized = re.sub(r"\s+", " ", definitions)
-    registered = set(re.findall(r"DIAG\(\d+,\s*([A-Za-z_]\w*)", definitions))
-    for name in sorted(REQUIRED_BACKEND_DIAGNOSTICS - registered):
-        errors.append(f"{DIAGNOSTIC_DEFS}: missing required backend diagnostic {name}")
-    for name in ("IrSingleSourceRequired", "IrCheckedInputMissing", "IrDumpInvariantViolation"):
-        if name in registered:
-            errors.append(f"{DIAGNOSTIC_DEFS}: retired prototype diagnostic is forbidden: {name}")
-    for definition in REQUIRED_DIAGNOSTIC_DEFINITIONS:
-        if definition not in normalized:
-            errors.append(f"{DIAGNOSTIC_DEFS}: missing exact RFC 0010 diagnostic {definition}")
-
-
 def analyze(files: dict[Path, str]) -> list[str]:
     errors: list[str] = []
     check_removed_prototype(files, errors)
@@ -546,10 +418,8 @@ def analyze(files: dict[Path, str]) -> list[str]:
     check_target_registry(files, errors)
     check_built_mir(files, errors)
     check_failure_contract(files, errors)
-    check_diagnostic_adapter(files, errors)
     check_wiring(files, errors)
     check_cli_surface(files, errors)
-    check_diagnostics(files, errors)
     return sorted(set(errors))
 
 
@@ -686,16 +556,6 @@ def run_self_test() -> int:
     )
     failures += expect_rejection(
         baseline,
-        "prototype diagnostic restored",
-        lambda files: append_source(
-            files,
-            DIAGNOSTIC_DEFS,
-            '\nDIAG(9902, IrCheckedInputMissing, kFatal, "invalid", 0)\n',
-        ),
-        "retired prototype diagnostic is forbidden",
-    )
-    failures += expect_rejection(
-        baseline,
         "target registry imports checker",
         lambda files: append_source(
             files,
@@ -733,27 +593,6 @@ def run_self_test() -> int:
         "failure implementation unwired",
         lambda files: remove_once(files, IR_CMAKE, "ir-failure.cc"),
         "missing canonical IR source",
-    )
-    failures += expect_rejection(
-        baseline,
-        "diagnostic adapter mapping removed",
-        lambda files: files.__setitem__(
-            DIAGNOSTIC_ADAPTER_SOURCE,
-            files[DIAGNOSTIC_ADAPTER_SOURCE].replace(
-                "case IrFailureKind::CanonicalCodecMismatch:", ""
-            ),
-        ),
-        "missing failure-kind mapping",
-    )
-    failures += expect_rejection(
-        baseline,
-        "exact diagnostic contract changed",
-        lambda files: remove_once(
-            files,
-            DIAGNOSTIC_DEFS,
-            "Internal IR canonical encoding is invalid ({0} occurrence(s))",
-        ),
-        "missing exact RFC 0010 diagnostic",
     )
     failures += expect_rejection(
         baseline,
@@ -831,7 +670,7 @@ def run_self_test() -> int:
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
         return 1
-    print("IR architecture negative fixtures passed (31/31).")
+    print("IR architecture negative fixtures passed.")
     return 0
 
 

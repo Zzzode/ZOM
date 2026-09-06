@@ -14,7 +14,7 @@
 
 #include "compiler/ownership/overlay/ownership-checked-mir.h"
 
-#include "compiler/ir/diagnostics/ir-diagnostic-adapter.h"
+#include "compiler/ir/diagnostics/ir-failure.h"
 #include "compiler/ownership/facts/ownership-facts-codec.h"
 #include "compiler/type/semantic-type-store.h"
 

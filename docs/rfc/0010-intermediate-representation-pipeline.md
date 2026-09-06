@@ -392,8 +392,9 @@ exist.
    `semanticProjection`.
 
 Failure in steps 1-5 is `IrInvariantRejected(InvalidFact, TargetSelection,
-Session)` and maps to `ZOM9947`; a non-canonical encoded registry or target
-record is `CanonicalCodecMismatch` and maps to `ZOM9949`. The independent
+Session)`; a non-canonical encoded registry or target record is
+`CanonicalCodecMismatch`. Both project to registered compiler incidents and
+publish no user diagnostic. The independent
 positive projection vector uses the 105-byte target oracle: architecture
 `x86_64`, vendor `zom`, OS `none`, environment `unknown`, ABI `zom`, pointer
 width `64`, little endian, and semantic feature set `{sse2}`. Negative vectors
@@ -1041,8 +1042,8 @@ instantiation's checked source span.
 Target legalization rejects unsupported operations and capabilities before a
 `VerifiedLirModule` is published. Translation from `VerifiedLirModule` to LLVM
 IR is total: every legal LIR operation has exactly one defined translation. An
-unsupported operation observed by the translator is a structured `ZOM99xx`
-compiler invariant failure. The translator may not:
+unsupported operation observed by the translator is a structured compiler
+incident. The translator may not:
 
 - run binder, checker, trait, borrow, or coherence queries;
 - choose a ZOM overload or interface implementation;
@@ -1206,21 +1207,21 @@ verifier invariant, so no function-local failure is emitted as an ownerless
 node or raw string.
 
 Missing verified semantic facts, invalid identities, stale MIR revisions,
-malformed CFG/SSA, and impossible lowering states are compiler invariant
-failures in the `ZOM99xx` range. Internal failure kinds and phase tags are a
-closed domain model and do not require one `.def` entry per enumerator. The
-driver exhaustively maps each fact to a registered diagnostic and preserves the
-original kind, phase, structural identity, and verifier site in the compiler
-bug context. It never formats those fields as an ad hoc user message or prefixes
-a raw `LoweringFailure` display string. Assertion text used by `ZC_IREQUIRE`
-may explain a programmer invariant in development builds but is not a substitute
-for the structured user-visible diagnostic path.
+malformed CFG/SSA, and impossible lowering states are compiler invariants.
+Internal failure kinds and phase tags form a closed domain model. The driver
+exhaustively projects each invariant to a registered
+`CompilerIncidentDescriptor` and preserves the detailed structural facts only
+in the internal bug context. It never exposes those fields as an ad hoc user
+message or prefixes a raw `LoweringFailure` display string. Assertion text used
+by `ZC_IREQUIRE` may explain a programmer invariant in development builds but
+is not a substitute for the incident rail.
 
-The `.def` registry is the only owner of numeric code, severity, headline,
-placeholder count, and public rendering. Layer failure enums remain internal
-typed facts and do not duplicate numeric diagnostic IDs. Generated exhaustive
-mapping tests fail when a failure variant has no registered destination, a
-`.def` row has no producer, or a driver switch falls back to an unknown string.
+The `.def` registry is the only owner of public diagnostic code, severity,
+headline, and placeholder count. Layer failure enums remain internal typed
+facts and do not duplicate numeric diagnostic IDs. Native exhaustive tests fail
+when a source-backed capability variant has no diagnostic projection, an
+invariant has no incident projection, or an operational branch has no closed
+reason.
 
 Classification is single-valued. Invalid context, registry, tag, or slot is an
 RFC 0011 identity invariant. A mismatched verified wrapper or revision is
@@ -1277,8 +1278,8 @@ operation phase. Generated tests prove that this fallback itself is a legal
 row in the matrix and that no rejected descriptor is sorted or aggregated as
 a failure fact.
 
-For `TargetSelection`, `InputRevisionMismatch`, `MissingRequiredFact`, and
-`InvalidFact` map to `ZOM9947`; `CanonicalCodecMismatch` maps to `ZOM9949`.
+For `TargetSelection`, `InputRevisionMismatch`, `MissingRequiredFact`,
+`InvalidFact`, and `CanonicalCodecMismatch` project to the IR incident rail.
 
 Invariant facts sort by phase, kind, expanded owner, site tag and structural
 site fields, detail tag and complete canonical detail, validated source span
@@ -1289,28 +1290,19 @@ owner, kind, complete detail, validated source span, structural field path, and
 traversal ordinal after the normal package/crate/module prefix. Invalid
 identities are never dereferenced for sorting.
 
-The exact registered mapping is:
+The exact public and non-public projection is:
 
-| Condition | Diagnostic, severity, exact headline, arity |
+| Condition | Projection |
 |---|---|
-| Target profile lacks a required supported feature | `ZOM6009 TargetCapabilityUnavailable`, Error, `The selected target does not support the required compiler operation`, 0 |
-| Generic instance expands recursively | `ZOM6010 RecursiveInstantiation`, Error, `Generic instantiation is recursively expanding`, 0 |
-| Deterministic monomorphization budget is exceeded | `ZOM6011 InstantiationBudgetExceeded`, Error, `Generic instantiation exceeds the configured compiler limit`, 0 |
-| Requested output cannot be created | `ZOM6008 IrOutputCreationFailed`, Error, `IR emission could not create its output stream`, 0 |
-| Checked-module assembly invariant | `ZOM9942 CheckedModuleInvariant`, Fatal, `Internal checked-module invariant violated ({0} occurrence(s))`, 1 |
-| HIR construction or verification invariant | `ZOM9943 HirInvariant`, Fatal, `Internal HIR invariant violated ({0} occurrence(s))`, 1 |
-| Built MIR construction or verification invariant | `ZOM9944 BuiltMirInvariant`, Fatal, `Internal Built MIR invariant violated ({0} occurrence(s))`, 1 |
-| Ownership proof mismatch | `ZOM9945 OwnershipProofInvariant`, Fatal, `Internal ownership proof invariant violated ({0} occurrence(s))`, 1 |
-| Cleanup, coroutine, or executable MIR invariant | `ZOM9946 ExecutableMirInvariant`, Fatal, `Internal executable MIR invariant violated ({0} occurrence(s))`, 1 |
-| Target selection, monomorphization, LIR lowering, or LIR verification invariant | `ZOM9947 LirInvariant`, Fatal, `Internal LIR invariant violated ({0} occurrence(s))`, 1 |
-| LLVM translation or object-emission invariant | `ZOM9948 BackendInvariant`, Fatal, `Internal backend invariant violated ({0} occurrence(s))`, 1 |
-| Any IR canonical codec mismatch | `ZOM9949 IrCanonicalCodecMismatch`, Fatal, `Internal IR canonical encoding is invalid ({0} occurrence(s))`, 1 |
-| Registered feature-boundary invariant | `ZOM9955 FeatureBoundaryInvariant`, Fatal, `Internal feature-boundary invariant violated ({0} occurrence(s))`, 1 |
+| Target profile lacks a required supported feature and has a verified source span | `ZOM6009 TargetCapabilityUnavailable`, Error, `The selected target does not support the required compiler operation`, arity 0 |
+| Generic instance expands recursively and has a verified source span | `ZOM6010 RecursiveInstantiation`, Error, `Generic instantiation is recursively expanding`, arity 0 |
+| Deterministic monomorphization budget is exceeded and has a verified source span | `ZOM6011 InstantiationBudgetExceeded`, Error, `Generic instantiation exceeds the configured compiler limit`, arity 0 |
+| Any capability failure without a verified source span | Typed operational failure with a closed reason and no `ZOMxxxx` code |
+| Requested output cannot be created | Typed operational failure `output-creation-failed` with no `ZOMxxxx` code |
+| Any identity, checked-module, HIR, MIR, ownership-proof, cleanup, coroutine, target, LIR, backend, codec, or feature-boundary invariant | Registered compiler incident with no `ZOMxxxx` code |
 
-RFC 0011 identity invariants keep `ZOM9910-ZOM9921`; RFC 0005 checker
-invariants keep `ZOM9927-ZOM9936`; RFC 0009 dispatch invariants keep
-`ZOM9937-ZOM9941`. `CanonicalCodecMismatch` always selects `ZOM9949` before a
-phase group. `FeatureBoundaryVerification` otherwise selects `ZOM9955`. The
+`ZOM9900-ZOM9999` is unassigned. `CanonicalCodecMismatch` selects the exact
+IR incident kind before a phase group. The
 test-only `verifyIrWithInjection(CompleteValidLayer,
 IrInvariantInjection)` API uses a generated layer field path, closed phase and
 kind, and occurrence index. Production libraries expose no injection API.
@@ -1649,11 +1641,12 @@ and reproducible builds.
     `git diff --check` pass before `LANDED`.
 21. All IR and backend user diagnostics are registered in a diagnostics `.def`
     file. Internal failures use the closed `IrFailureKind`, `IrFailurePhase`,
-    `IrFailureOwner`, `IrFailureSite`, and `BackendOperation` algebras; their
-    exhaustive adapter maps capability failures to `ZOM6008-ZOM6011` and
-    invariants to `ZOM9942-ZOM9949` or the registered feature-boundary
-    `ZOM9955`, retains full bug context, and exposes no raw lowering error
-    string on any CLI path.
+    `IrFailureOwner`, `IrFailureSite`, and `BackendOperation` algebras. The
+    exhaustive projector maps verified source-backed capability failures to
+    `ZOM6009-ZOM6011`, source-less and output-creation failures to the
+    operational rail, and invariants to registered compiler incidents. It
+    retains full bug context and exposes no raw lowering error string on a CLI
+    path.
 22. Built MIR and every later verified artifact use revision-checked typestate,
     and ownership sees every semantic exit edge. Each verifier recomputes its
     complete artifact revision and rejects stale, foreign, swapped,
@@ -1732,9 +1725,9 @@ and reproducible builds.
    layout, SSA verification, and dumps.
 10. Implement `compiler/backend/llvm`, LLVM verification, object emission, and
     link-driver smoke tests.
-11. Register `ZOM6008-ZOM6011` and `ZOM9942-ZOM9949`, implement the exhaustive
-    typed-failure adapter and generated test-only invariant injection, and
-    remove every raw lowering/backend error-string path.
+11. Register the source-backed `ZOM6009-ZOM6011` diagnostics, implement the
+    exhaustive diagnostic, incident, and operational projections with native
+    invariant fixtures, and remove every raw lowering/backend error-string path.
 12. Replace CLI emissions and conformance runners with layer-specific commands.
 13. Delete `compiler/irgen` and every mixed-IR reference without a compatibility
     layer.
@@ -1779,10 +1772,11 @@ and reproducible builds.
   module/function input order and worker counts `1, 2, 4, 8`; require identical
   canonical HIR/MIR/LIR ordering, revisions, dumps, diagnostics, and native
   behavior without identity collisions.
-- Diagnostic conformance: every `ZOM6008-ZOM6011` capability branch and every
-  injected `ZOM9942-ZOM9949` invariant group, including exact severity,
-  headline arity, location policy, stable ordering, retained typed bug context,
-  and proof that no raw failure string reaches the CLI.
+- Diagnostic conformance: every source-backed `ZOM6009-ZOM6011` capability
+  branch, every source-less operational branch, and every injected invariant
+  group, including exact severity or closed reason, location policy, stable
+  ordering, retained typed bug context, and proof that no raw failure string
+  reaches the CLI.
 - Failure-algebra unit tests: every legal phase/kind/owner/site/detail
   combination, every individual `IrFailureKind`, `IrFailurePhase`, and
   `BackendOperation`, and every rejected illegal combination; every

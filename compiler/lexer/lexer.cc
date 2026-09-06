@@ -18,20 +18,19 @@
 #include <cstdint>
 #include <cstdlib>
 
-#include "zc/core/common.h"
-#include "zc/core/debug.h"
-#include "zc/core/string.h"
-#include "zc/core/vector.h"
 #include "compiler/ast/kinds.h"
 #include "compiler/basic/zomlang-opts.h"
-#include "compiler/diagnostics/consumer/diagnostic-emitter.h"
 #include "compiler/diagnostics/core/diagnostic-ids.h"
-#include "compiler/diagnostics/consumer/in-flight-diagnostic.h"
+#include "compiler/diagnostics/fact/source-diagnostic-sink.h"
 #include "compiler/lexer/bigint.h"
 #include "compiler/lexer/token.h"
 #include "compiler/lexer/utils.h"
 #include "compiler/source/location.h"
 #include "compiler/source/manager.h"
+#include "zc/core/common.h"
+#include "zc/core/debug.h"
+#include "zc/core/string.h"
+#include "zc/core/vector.h"
 
 namespace zomlang {
 namespace compiler {
@@ -120,7 +119,7 @@ struct Lexer::Impl {
   /// Reference members
   const source::SourceManager& sourceMgr;
   /// Query-local diagnostic emitter for reporting lexical facts.
-  diagnostics::DiagnosticEmitter& diagnosticEngine;
+  diagnostics::SourceDiagnosticSink& diagnosticEngine;
   /// Language options
   const basic::LangOptions& langOpts;
   /// String pool for interning strings
@@ -143,7 +142,7 @@ struct Lexer::Impl {
   /// Collected comment directives
   zc::Vector<CommentDirective> commentDirectives;
 
-  Impl(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEmitter& diagnosticEngine,
+  Impl(const source::SourceManager& sourceMgr, diagnostics::SourceDiagnosticSink& diagnosticEngine,
        const basic::LangOptions& options, basic::StringPool& stringPool,
        const source::BufferId& bufferId);
 
@@ -279,7 +278,7 @@ struct Lexer::Impl {
 };
 
 Lexer::Impl::Impl(const source::SourceManager& sourceMgr,
-                  diagnostics::DiagnosticEmitter& diagnosticEngine,
+                  diagnostics::SourceDiagnosticSink& diagnosticEngine,
                   const basic::LangOptions& options, basic::StringPool& stringPool,
                   const source::BufferId& bufferId)
     : sourceMgr(sourceMgr),
@@ -872,7 +871,7 @@ void Lexer::Impl::lex() {
       default:
         if (c < 0) {
           if (inTemplateSubstitution()) {
-            diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+            diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(
                 source::SourceLoc(state.curPtr), "}"_zc);
             templateSubstitutionBraceDepths.clear();
             modeStack.clear();
@@ -1496,17 +1495,18 @@ template <diagnostics::DiagID ID, typename... Args>
 void Lexer::Impl::errorAt(const zc::byte* pos, uint32_t length, Args&&... args) {
   source::SourceLoc loc(pos);
   source::CharSourceRange range(loc, length);
-  diagnosticEngine.diagnose<ID>(loc, zc::fwd<Args>(args)...).addRange(range);
+  const auto diagnostic = diagnosticEngine.report<ID>(loc, zc::fwd<Args>(args)...);
+  diagnosticEngine.addHighlight(diagnostic, range);
 }
 
 template <diagnostics::DiagID ID, typename... Args>
 void Lexer::Impl::error(Args&&... args) {
   source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, state.tokenStartPtr - bufferStart);
-  diagnosticEngine.diagnose<ID>(loc, zc::fwd<Args>(args)...);
+  diagnosticEngine.report<ID>(loc, zc::fwd<Args>(args)...);
 }
 
 Lexer::Lexer(const source::SourceManager& sourceMgr,
-             diagnostics::DiagnosticEmitter& diagnosticEngine, const basic::LangOptions& options,
+             diagnostics::SourceDiagnosticSink& diagnosticEngine, const basic::LangOptions& options,
              basic::StringPool& stringPool, const source::BufferId& bufferId)
     : impl(zc::heap<Impl>(sourceMgr, diagnosticEngine, options, stringPool, bufferId)) {}
 

@@ -534,7 +534,7 @@ Both facts use:
 The primary location is
 `DiagnosticLocation::Source(DiagnosticProvenanceKey::IdentitySyntaxSite(primary))`.
 The duplicate-generic secondary uses
-`DiagnosticSecondaryRole::PreviousDeclaration = 0x01`,
+`DiagnosticSecondaryRole::PreviousDeclaration = 0x03`,
 diagnostic code `ZOM3017`, empty note arguments,
 `DiagnosticLocation::Source(DiagnosticProvenanceKey::IdentitySyntaxSite(previous))`,
 and no replacement. The constant-expression fact has no secondary records.
@@ -548,8 +548,9 @@ reversed, or cross-module site matches are runtime invariants. Thus neither
 
 Missing source locations, a missing duplicate identifier or previous site,
 producer/reconstructor disagreement, malformed diagnostic payload, or
-candidate codec disagreement is runtime rejection. The descriptor never emits
-through `DiagnosticEngine`; it publishes canonical `DiagnosticFact` records.
+candidate codec disagreement is runtime rejection. The descriptor publishes
+canonical `DiagnosticFact` records and never writes to a presentation
+consumer.
 
 The source-rejection verifier reconstructs the exact first source failure in
 the declared read order and compares the complete canonical diagnostic

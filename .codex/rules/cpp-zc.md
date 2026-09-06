@@ -120,7 +120,7 @@ produces a collision or destroys a distinction:
 | Type | Why the prefix stays |
 |---|---|
 | `ir::{FrontendHandoff,Hir,Mir,Lir,Backend,Ir}FailureSite` | A deliberate parallel family in one namespace; stripping yields three identical `FailureSite` |
-| `diagnostics::{Identity,Binder}DiagnosticEmitter` | Both would strip onto the real `diagnostics::DiagnosticEmitter` |
+| `diagnostics::{Source,Identity,Binder}DiagnosticEmitter` | A deliberate parallel family in one namespace; stripping yields three identical `Emitter` |
 | `binder::IdentitySyntaxSite*` | `Identity` names the analysed domain, not the owning namespace |
 | `ir::IdentityInvariant*` | Same |
 | `checker::checked::CheckerRecoveryClass` | Would collide with `checker::inference::RecoveryClass` |
@@ -181,15 +181,17 @@ transactions and recovery-action admission remain explicit and bounded. No
 producer, query provider, or compiler session may own presentation policy or
 emit directly to an output consumer.
 
-`scripts/check-diagnostics-architecture.py` enforces the generated inventory,
-layering, projector, root, provenance, consumer, suppression, and exemption
-contracts. The cutover accepts no compatibility exception.
+All `ZOMxxxx` codes live in exactly one `.def` partition under
+`compiler/diagnostics/defs/`. The same X-macro catalog instantiates `DiagID`,
+metadata, typed construction checks, and compile-time validation; a subsystem
+must never declare a parallel numeric enum or metadata registry.
+`ZOM9900-ZOM9999` is unassigned: compiler invariants use registered internal
+incident descriptors under `compiler/basic/incident/`.
 
-All `ZOMxxxx` codes live in the partitioned YAML catalog under
-`compiler/diagnostics/catalog/`. Generated IDs and code-specific factories are
-the only public construction path. A subsystem must never declare a parallel
-numeric enum. `ZOM9900-ZOM9999` is unassigned: compiler invariants use generated
-internal incident descriptors under `compiler/basic/incident/`.
+Diagnostics architecture is enforced by C++ visibility and ownership, build
+target dependencies, exhaustive projectors, native ztests, sanitizer builds,
+and real CLI/IDE behavior. Source-text scans are useful review aids but are not
+architecture proof and are not RFC 0047 completion gates.
 
 ---
 

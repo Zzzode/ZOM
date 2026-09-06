@@ -5,13 +5,13 @@
 
 #pragma once
 
-#include "zc/core/time.h"
-#include "zc/ztest/test.h"
 #include "compiler/checker/checker-identity-authority.h"
-#include "compiler/driver/session/compiler-session.h"
 #include "compiler/driver/package/manifest-parser.h"
 #include "compiler/driver/package/source-record.h"
+#include "compiler/driver/session/compiler-session.h"
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
+#include "zc/core/time.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::tests::checker_fixture {
 namespace package = driver::package;
@@ -215,7 +215,7 @@ public:
     ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
     ZC_REQUIRE(session.parseSources());
     ZC_REQUIRE(session.bindSources());
-    ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+    ZC_REQUIRE(!session.hasDiagnosticErrors());
 
     authority = session.materializeCheckerIdentityAuthority();
     ZC_REQUIRE(authority != zc::none);

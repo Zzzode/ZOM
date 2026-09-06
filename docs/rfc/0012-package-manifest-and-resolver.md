@@ -593,13 +593,14 @@ direct-source compilation path.
 
 Every failure to normalize this command into
 `NormalizedPackageCompilationRequest` is an
-`InvocationFailure` and uses source-less `ZOM7016` at the canonical invocation
-anchor with `requestDigest = none`. After package validation succeeds, RFC
-0010's target-selection verifier owns all backend outcomes: unsupported target
-or panic capability is `ZOM6009 TargetCapabilityUnavailable`; malformed target
-facts are the matching `ZOM9947 LirInvariant`; and non-canonical target bytes are
-`ZOM9949 IrCanonicalCodecMismatch`. The package diagnostic adapter does not
-translate, renumber, or wrap those downstream typed facts.
+`InvocationFailure` and remains a source-less operational failure with a closed
+reason and `requestDigest = none`. After package validation succeeds, RFC
+0010's target-selection verifier owns all backend outcomes: a verified
+source-backed unsupported capability may use `ZOM6009
+TargetCapabilityUnavailable`; source-less target selection remains operational;
+and malformed or non-canonical target facts use the IR incident rail. The
+package projector does not translate, renumber, or wrap those downstream typed
+facts.
 
 ### Dependency Requirements
 
@@ -1830,10 +1831,10 @@ cumulative exported environment bytes.
 
 Every subtraction and comparison is overflow-checked. Trusted configuration may
 only choose a value inside these ranges and relations. An invalid key produces
-one closed `BuildScriptLimitInvariantIssue` before resource acquisition, maps to
-fatal `ZOM9905 BuildScriptLimitInvariantViolation`, retains the rejected
-structural key in the compiler bug bundle, and never becomes a package or child
-failure. `LinuxNativeSandbox` accepts a positive
+one closed `BuildScriptLimitInvariantIssue` before resource acquisition,
+projects to a registered package incident, retains the rejected structural key
+in the compiler bug bundle, and never becomes a package or child failure.
+`LinuxNativeSandbox` accepts a positive
 CPU limit only when it is an exact multiple of 1000. Before exec it divides by
 1000 without rounding, sets `RLIMIT_CPU.rlim_cur` to that second count, and sets
 `rlim_max` to the overflow-checked value `rlim_cur + 1`. Verified build-script
@@ -2105,8 +2106,8 @@ Compiler-owned configuration validates before any package-controlled build
 operation. `BuildScriptLimitInvariant` has precedence over
 `TrustedRuntimeInvariant`; within a family, issue declaration order is the
 deterministic priority. The rejected complete structural key and all detected
-facts remain in the bug bundle even though the CLI emits one fatal primary. No
-compiler invariant is converted to `ZOM7011`, `ForbiddenBuildCapability`, or a
+facts remain in the bug bundle even though the CLI reports one sanitized
+internal failure. No compiler invariant is converted to an operational or
 source failure.
 
 Within materialization, each issue has one producing stage:
@@ -2166,27 +2167,20 @@ diagnostics before a producer can return its failure type:
 | `ZOM7007 PackageFeatureInvalid` | Error | `Package feature selection is invalid ({0})`, `FeatureIssue` | feature or requirement span |
 | `ZOM7008 PackageDependencyCycle` | Error | `Package dependency graph contains a cycle`, no arguments | canonical closing edge origin |
 | `ZOM7009 PackageLockInvalid` | Error | `Package lock graph is invalid ({0})`, `LockIssue` | lock span or file start |
-| `ZOM7010 PackageMaterializationInvalid` | Error | `Package source cannot be materialized ({0})`, `MaterializationIssue` | introducing requirement |
-| `ZOM7011 PackageBuildScriptFailed` | Error | `Package build script failed ({0})`, `BuildScriptIssue` | build target declaration |
 | `ZOM7012 PackageDependencyLibraryMissing` | Error | `Dependency package {0} has no library target`, `PackageName` | dependency declaration |
 | `ZOM7013 PackageLockUpdateFailed` | Error | `Package lock update failed ({0})`, `LockWriteStage` | lock file start or invocation |
 | `ZOM7014 PackageTrustConfigurationInvalid` | Error | `Package registry trust configuration is invalid ({0})`, `RegistryTrustIssue` | registry requirement or source-less root |
-| `ZOM7015 PackageTargetSelectionInvalid` | Error | `Package target selection is invalid ({0})`, `TargetSelectionIssue` | target declaration or source-less root |
-| `ZOM7016 PackageInvocationInvalid` | Error | `Package invocation is invalid ({0})`, `InvocationIssue` | invocation |
 | `ZOM7017 PackageVcsSelectorEquivocation` | Error | `VCS selector resolved to conflicting revisions`, no arguments | introducing VCS requirement |
 | `ZOM7018 PackageLockStale` | Error | `Package lock graph no longer matches {0} ({1}); run zomc build --update-lock {0}`, `PackageName`, `LockStalenessKind` | stale requirement or lock entry |
-| `ZOM9905 BuildScriptLimitInvariantViolation` | Fatal | `Internal build-script limit configuration is invalid ({0})`, `BuildScriptLimitInvariantIssue` | invocation |
-| `ZOM9906 TrustedBuildRuntimeInvariantViolation` | Fatal | `Internal trusted build runtime is invalid ({0})`, `TrustedRuntimeInvariantIssue` | invocation |
 | `ZOM7091 PackageRequirementIntroducedHere` | Note | `Dependency requirement introduced here`, no arguments | additional root requirement |
 | `ZOM7092 PackageDependencyEdgeHere` | Note | `Dependency edge participates in this failure`, no arguments | graph edge origin |
 | `ZOM7093 PreviousWorkspacePackageHere` | Note | `Previous workspace package with this name is here`, no arguments | first package-name span |
 
-The typed package diagnostic adapter is the only code allowed to translate a
-`PackagePipelineFailure`. Its argument API accepts only `PackageName`,
+The typed package diagnostic projector is the only code allowed to translate a
+source-backed `PackagePipelineFailure`. Its argument API accepts only `PackageName`,
 `ResolvedVersion`, every closed display enum listed in this RFC including
 `SourceKind`, `ArtifactKind`, `LockWriteStage`, `RegistryTrustIssue`, and
-`TargetSelectionIssue`, `InvocationIssue`, `BuildScriptLimitInvariantIssue`,
-`TrustedRuntimeInvariantIssue`,
+`TargetSelectionIssue`,
 `Sha256Digest`, `DependencyAlias`, and `DiagnosticEscapedText`; it has no
 overload accepting `zc::StringPtr`, raw
 paths, or arbitrary bytes. Enum display tokens are fixed by this RFC
@@ -2195,7 +2189,11 @@ hyphen inserted at every lower-to-upper word boundary. They are tested as part
 of the `.def` contract. Graph and conflict notes use only `ZOM7091` or
 `ZOM7092`, sorted by the canonical encoded span or edge. A duplicate workspace
 package name uses exactly one attached `ZOM7093` at the first canonical member
-path and no graph note.
+path and no graph note. Materialization, build-script execution, target
+selection, and invocation failures without an admitted source or document
+anchor use closed operational failure records. `BuildScriptLimitInvariantIssue`
+and `TrustedRuntimeInvariantIssue` use registered package incidents. None of
+those branches receives a public diagnostic identifier.
 
 `DiagnosticEscapedText` has one constructor. It preserves ASCII bytes `0x20`
 through `0x7e` except that backslash becomes `\\`; every other valid Unicode
@@ -2314,7 +2312,7 @@ The replacement is atomic:
 | Package boundary | Keep release, resolver, lock, feature, manifest, and source-materialization contracts user-package-only. No toolchain-core identity or source enters `PackageKey`, a package graph, or a lockfile. |
 | Reservation failure algebra | Add `PackageToolchainModuleRootFailure` to `PackagePipelineFailure` after invocation, compiler-invariant, and manifest failures but before registry, resolver, lock, materialization, and build-script failures. |
 | Producer selection | Construct `UserTargetRoot` only from one normalized selected target and `DependencyAlias` only from a normalized alias. The target precedes aliases; aliases sort by complete canonical record and provenance. |
-| Typed package adapter | Extend the package diagnostic adapter only with `ModuleRootArgument` reconstructed from the retained manifest record. Raw strings and the module-interface diagnostic adapter are prohibited. |
+| Typed package projector | Extend the package diagnostic projector only with `ModuleRootArgument` reconstructed from the retained manifest record. Raw strings and the module-interface projector are prohibited. |
 | Priority and suppression | A compiler invariant, invalid invocation selection, invalid manifest, or `TargetSelectionInvalid` remains the single earlier failure. After package, feature, and requested-target selection constructs the complete selected `PackageKey`, `ZOM3027` precedes and suppresses every downstream registry-graph, lock, materialization, or build-script failure derived from the reserved target or alias. |
 | Legal package name | Permit a registry package named `core` when neither its selected target nor a dependency alias is `core`. A package name alone never constructs the reservation failure. |
 | Tests and cutover | Add exact target, alias, priority, legal-package-name, anchor, typed-argument, renderer, no-publication, and mutation cases to the native package diagnostic and pipeline suites. Retain no compatibility branch. |
@@ -2499,7 +2497,7 @@ ctest --test-dir build-release -R '^performance-package-resolver$' --output-on-f
    execution, output verification, and the frozen node-to-result map.
 9. Feed the immutable graph, target specifications, snapshots, and build results
    into RFC 0008 `CompilerSession` and RFC 0010 LIR target verification.
-10. Add the typed package diagnostic adapter and all registered primary and note
+10. Add the typed package diagnostic projector and all registered primary and note
    definitions in the same change as the first failure producer.
 11. Add conformance, permutation, security, sandbox, atomicity, and performance
     tests, including the enabled performance CTest path.
@@ -2535,12 +2533,13 @@ ctest --test-dir build-release -R '^performance-package-resolver$' --output-on-f
   `MissingTargetSelection`, `DuplicateTargetSelection`,
   `PositionalSourceArgument`, `InvalidFeatureList`, `ConflictingLockMode`,
   `UnknownTargetProfile`, `InvalidPanicStrategy`, and
-  `UnknownUpdateLockPackage`). Each asserts exact
-  `ZOM7016`, an `Invocation` anchor with `requestDigest = none`, no raw argv or
-  path bytes, and deterministic output. Separate integration fixtures pass the
-  verified package request to RFC 0010 and assert unsupported capability is
-  exactly `ZOM6009`, malformed target facts are `ZOM9947`, and non-canonical
-  target bytes are `ZOM9949`; none is wrapped as `ZOM7016` or a package failure.
+  `UnknownUpdateLockPackage`). Each asserts an exact closed
+  `package-invocation` operational reason, `requestDigest = none`, no raw argv
+  or path bytes, and deterministic output. Separate integration fixtures pass
+  the verified package request to RFC 0010 and assert verified source-backed
+  unsupported capability is exactly `ZOM6009`, source-less target rejection is
+  operational, and malformed or non-canonical target facts are IR incidents;
+  none is wrapped as a package diagnostic.
 - Session handoff: reject a missing result node, extra result node, mismatched
   `output.preparatoryKey`, incorrect computed output key, generated path-set
   mismatch, generated digest mismatch, and exported environment assigned to a
@@ -2585,7 +2584,8 @@ ctest --test-dir build-release -R '^performance-package-resolver$' --output-on-f
   and explicit cleanup. Archive-, snapshot-, resource-, and cleanup-level facts
   must carry `path = none`; entry-level facts must carry `some` with only the
   rejected-path digest/length and optional validated canonical path. Every case
-  asserts exact `ZOM7010`, canonical provenance, and no fabricated path. Raw-byte
+  asserts the exact closed `package-materialization` operational reason and no
+  fabricated path. Raw-byte
   duplicate, distinct-raw NFC collapse, and distinct-NFC case-fold collision
   fixtures assert the three mutually exclusive variants and their priority.
 - Vendored dependency checker: self-tests independently corrupt URL, tag,
@@ -2618,8 +2618,9 @@ ctest --test-dir build-release -R '^performance-package-resolver$' --output-on-f
   relocations to local and section symbols. Operation fixtures include every
   public composite entry point, `Fail`, every non-inlined primitive helper, one
   inlined-helper case with no helper symbol, one unclassified entry point, one
-  missing required tag, and one multiply classified symbol. Runtime-key corruption produces exact fatal
-  `ZOM9906`, never `ZOM7011` or a capability rejection.
+  missing required tag, and one multiply classified symbol. Runtime-key
+  corruption produces the exact package incident descriptor, never a diagnostic
+  or capability rejection.
 - Sandbox boundary matrix: separately test unavailable preflight versus failed
   post-preflight setup; nonzero correlation, missing frame, second frame,
   unknown status tag, and trailing bytes; every build-runtime status tag;
@@ -2627,7 +2628,7 @@ ctest --test-dir build-release -R '^performance-package-resolver$' --output-on-f
   over-limit environment value; cumulative exported-environment overflow;
   decode-allocation instrumentation proving no unchecked child length reaches
   allocation; zero, minimum-minus-one, maximum-plus-one, and every cross-field
-  violation for `BuildScriptLimitKey`, each producing exact fatal `ZOM9905`
+  violation for `BuildScriptLimitKey`, each producing the exact package incident
   before preflight; a
   non-integral-second CPU limit; `SIGXCPU` and hard-limit `SIGKILL`
   classification; simultaneous pidfd/timerfd readiness choosing `WallLimit`;
@@ -2647,8 +2648,9 @@ ctest --test-dir build-release -R '^performance-package-resolver$' --output-on-f
   must be `MissingOutput`; an output with an invalid filesystem type, canonical
   path, collision, content digest, or `.zom` source bytes must be
   `InvalidGeneratedSource`; and an extra physical output that bypasses
-  `WriteOutput` must be `OutputTreePolicyViolation`. Each fixture asserts exact
-  `ZOM7011` and must not leak a `MaterializationIssue` classification.
+  `WriteOutput` must be `OutputTreePolicyViolation`. Each fixture asserts the
+  exact closed `package-build` operational reason and must not leak a
+  `MaterializationIssue` classification.
 - Atomicity: inject termination before temporary-file creation, after write,
   after temporary-file fsync, after rename, and after directory fsync; recovery
   must expose either the complete prior graph or complete new graph, never a

@@ -5,13 +5,16 @@ This check owns only the rejection, artifact-leak, and exit-code semantics of th
 native operations; the end-to-end real-execution positive (an entry-compatible
 program exits with its value) is covered independently by check-native-run.py.
 
-Two structured diagnostic codes are the stable anchors, never English prose:
+Two closed operational reasons are the stable anchors, never open-ended external
+prose:
 
-- `ZOM7016` (package invocation invalid): an underspecified `zomc run` with no
-  package selection is rejected before any native work, in every build.
-- `ZOM6007` (binary emission not implemented): with the LLVM backend off,
-  `zomc compile --emit=binary` is rejected. With the backend on this path
-  succeeds, so the emit rejection is asserted only in the backend-off build.
+- `error: operational failure [package-invocation]: missing-package-selection`:
+  an underspecified `zomc run` with no package selection is rejected before any
+  native work, in every build.
+- `error: operational failure [backend]: binary-emission-unavailable`: with the
+  LLVM backend off, `zomc compile --emit=binary` is rejected. With the backend
+  on this path succeeds, so the emit rejection is asserted only in the
+  backend-off build.
 
 Every asserted rejection must exit non-zero, carry its code, and leave no
 artifact in the working directory.
@@ -28,8 +31,10 @@ from pathlib import Path
 
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
-RUN_REJECTION_CODE = "ZOM7016"
-EMIT_REJECTION_CODE = "ZOM6007"
+RUN_REJECTION_RECORD = (
+    "error: operational failure [package-invocation]: missing-package-selection"
+)
+EMIT_REJECTION_RECORD = "error: operational failure [backend]: binary-emission-unavailable"
 
 
 def run_command(command: list[str], cwd: Path, profile_path: Path) -> tuple[int, str]:
@@ -47,12 +52,12 @@ def run_command(command: list[str], cwd: Path, profile_path: Path) -> tuple[int,
     return result.returncode, ANSI.sub("", result.stdout)
 
 
-def require_rejection(command: list[str], cwd: Path, profile_path: Path, code: str) -> None:
+def require_rejection(command: list[str], cwd: Path, profile_path: Path, marker: str) -> None:
     exit_code, output = run_command(command, cwd, profile_path)
-    if exit_code == 0 or code not in output:
+    if exit_code == 0 or marker not in output:
         raise RuntimeError(
-            "native operation did not reject with the expected structured code:"
-            f"\nexpected={code}\nrc={exit_code}\n{output}"
+            "native operation did not reject with the expected closed marker:"
+            f"\nexpected={marker}\nrc={exit_code}\n{output}"
         )
 
 
@@ -61,8 +66,8 @@ def main() -> int:
     parser.add_argument("--zomc", required=True)
     parser.add_argument("--manifest", required=True)
     # Set when the LLVM backend is built: binary emission is then available, so
-    # the ZOM6007 emit rejection no longer holds. The underspecified-run
-    # rejection (ZOM7016) holds in every build. Default (backend off) also
+    # the binary-emission rejection no longer holds. The underspecified-run
+    # package-invocation rejection holds in every build. Default (backend off) also
     # asserts the emit rejection.
     parser.add_argument("--binary-available", action="store_true")
     arguments = parser.parse_args()
@@ -76,7 +81,9 @@ def main() -> int:
 
             # Underspecified `run` (no package selection) is rejected in every
             # build before any native work.
-            require_rejection([zomc, "run"], work_directory, profile_path, RUN_REJECTION_CODE)
+            require_rejection(
+                [zomc, "run"], work_directory, profile_path, RUN_REJECTION_RECORD
+            )
 
             # Backend off: binary emission is rejected. installed-consumer is used
             # only as the emit target; its exit value is irrelevant here.
@@ -96,7 +103,7 @@ def main() -> int:
                     ],
                     work_directory,
                     profile_path,
-                    EMIT_REJECTION_CODE,
+                    EMIT_REJECTION_RECORD,
                 )
 
             # A rejected native operation never leaves an artifact behind, in
