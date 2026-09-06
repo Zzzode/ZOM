@@ -641,11 +641,11 @@ def check_provenance_owned_aliases(
     expected_owned_assertions = (
         "static_assert("
         "zc::isSameType<"
-        "zomlang::compiler::driver::module_graph_query::name##Query::Capability,"
+        "zomlang::compiler::driver::module_graph_query::name::Capability,"
         "zomlang::compiler::driver::module_graph_query::capabilityType>());"
         "static_assert("
         "zc::isSameType<"
-        "zomlang::compiler::driver::module_graph_query::name##Query::FailureAlternatives,"
+        "zomlang::compiler::driver::module_graph_query::name::FailureAlternatives,"
         "zomlang::compiler::query::CapabilityFailureList<"
         "zomlang::compiler::query::SourceRejection<"
         "zomlang::compiler::diagnostics::DiagnosticFact>,"
@@ -1004,10 +1004,10 @@ def run_self_test() -> None:
     owned_macro = (
         "#define ZOM_R28_16A_SELECT_R28_16A(name, capabilityType) \\\n"
         "  static_assert(zc::isSameType<"
-        "zomlang::compiler::driver::module_graph_query::name##Query::Capability, "
+        "zomlang::compiler::driver::module_graph_query::name::Capability, "
         "zomlang::compiler::driver::module_graph_query::capabilityType>()); \\\n"
         "  static_assert(zc::isSameType<"
-        "zomlang::compiler::driver::module_graph_query::name##Query::FailureAlternatives, "
+        "zomlang::compiler::driver::module_graph_query::name::FailureAlternatives, "
         "zomlang::compiler::query::CapabilityFailureList<"
         "zomlang::compiler::query::SourceRejection<"
         "zomlang::compiler::diagnostics::DiagnosticFact>, "
@@ -1190,7 +1190,7 @@ def run_self_test() -> None:
         (
             "owned assertion",
             provenance_implementation.replace(
-                "name##Query::Capability", "name##Query::OtherCapability", 1
+                "name::Capability", "name::OtherCapability", 1
             ),
             provenance_schema,
             "provenance owned assertions drift",
@@ -1198,8 +1198,8 @@ def run_self_test() -> None:
         (
             "owned assertion comment decoy",
             provenance_implementation.replace(
-                "name##Query::FailureAlternatives",
-                "name##Query::OtherFailureAlternatives",
+                "name::FailureAlternatives",
+                "name::OtherFailureAlternatives",
                 1,
             )
             + "\n/* "

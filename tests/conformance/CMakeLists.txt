@@ -380,6 +380,28 @@ set_tests_properties(incremental-query-architecture-negative PROPERTIES
 )
 
 add_test(
+  NAME query-descriptor-architecture
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-query-descriptor-architecture.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(query-descriptor-architecture PROPERTIES
+  LABELS "conformance;query;descriptor;architecture"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME query-descriptor-architecture-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-query-descriptor-architecture.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(query-descriptor-architecture-negative PROPERTIES
+  LABELS "conformance;query;descriptor;architecture;negative"
+  TIMEOUT 120
+)
+
+add_test(
   NAME incremental-query-benchmark-runner
   COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/run-incremental-query-benchmarks.py --self-test
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
