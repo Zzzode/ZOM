@@ -449,8 +449,8 @@ and detects duplicate package names with the first canonical member retained as
 related provenance. Member-order permutations produce identical normalized
 workspace bytes. The P1 normalization boundary is complete.
 
-P2 now registers the complete `ZOM7001-ZOM7017`, `ZOM7091-ZOM7093`, and
-`ZOM9905-ZOM9906` package diagnostic family. Manifest and workspace failures
+P2 now registers the `ZOM7001-ZOM7009`, `ZOM7012-ZOM7014`, `ZOM7017`, and
+`ZOM7091-ZOM7093` package diagnostic family. Manifest and workspace failures
 carry a complete `ManifestFailure` with canonical primary and related anchors.
 The typed package diagnostic adapter admits only digest-verified documents,
 renders host-path-free identifiers, escapes all source bytes through
@@ -542,8 +542,9 @@ the complete RFC 0011 `PackageKey` and `CrateKey`, and hands selected roots to
 are rejected, manifest discovery walks parent directories, explicit manifests
 must be regular `Zom.toml` files, and the package, target, feature, lock,
 target-profile, language, and panic flags enter the typed request. The real CLI
-has an 11-case process test for every `InvocationIssue`, all emitted as
-source-less `ZOM7016` without rejected argv or host-path disclosure. Corpus
+has an 11-case process test for every `InvocationIssue`, all reported as
+source-less operational failures in the `package-invocation` domain without
+rejected argv or host-path disclosure. Corpus
 tests use a package fixture adapter rather than a compiler compatibility path.
 The RFC 0010 target registry now reproduces the fixed target-specification hash,
 validates semantic projection against backend facts, binds package selections

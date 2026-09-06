@@ -363,7 +363,8 @@ Remaining restrictions are owned by their current Checker, query, ownership,
 and IR RFCs rather than an RFC 0015 boundary.
 
 The completed slice publishes the full accepted invariant fact shape and an
-actual fatal `ZOM9956` producer. Six focused unit cases cover successful frozen
+actual fatal invariant producer on the compiler incident rail. Six focused unit
+cases cover successful frozen
 input, missing, additional, and foreign definitions, unresolved module syntax,
 impl rejection, invalid requesters, stale fingerprints, fixed revision bytes,
 and diagnostic projection. `scripts/check-binder-architecture.py --check`, its
@@ -442,8 +443,9 @@ production export-surface revision
 `1764a287bf612ee8a648563f8f525b36ef5e7de5f8238a8c97194bd99796722b`.
 It rejects foreign context handles, cross-source and same-source out-of-bounds
 spans, missing and additional facts, malformed scope ancestry, stale surfaces,
-and unsupported fact families. `ZOM9922-ZOM9926` are registered and mapped by the
-closed invariant diagnostic adapter; alias-cycle and invalid-emitter producers
+and unsupported fact families. Those invariant families are registered on the
+`CompilerIncidentDomain::Binder` incident rail and carry no public diagnostic
+identifier; alias-cycle and invalid-emitter producers
 remain part of the pending complete binding-facts slice.
 
 The sanitizer build completed all 222 targets. The focused Binder executable

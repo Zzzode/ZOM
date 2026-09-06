@@ -540,8 +540,8 @@ changes:
 - focused session tests prove distinct contexts and registry families for two
   sessions created by one process-root factory;
 - context-brand exhaustion and duplicate singleton registry construction map
-  to registered `ZOM9919` and `ZOM9920` fatal diagnostics; no raw session
-  assertion remains;
+  to registered fatal compiler incidents on the identity incident rail; no raw
+  session assertion remains;
 - `scripts/check-compiler-session-architecture.py --check` proves the direct
   cutover, exact driver surface, unique process-root context factory, sole
   registry-family claim path, and single frontend scheduler;

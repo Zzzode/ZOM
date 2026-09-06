@@ -47,6 +47,15 @@ The final architecture still requires typed verifier failures at every IR
 boundary. The current assertion count is evidence about this disposable
 prototype, not an accepted allowance for unstructured release failures.
 
+The `ZOM6001-ZOM6008` and `ZOM9901-ZOM9903` codes named in the audit above
+describe the catalog as it stood when the audit ran. RFC 0047 landed on
+2026-09-06 and none of them is allocated now: `ZOM9900-ZOM9999` is permanently
+unallocated because compiler invariants moved to the bounded incident rail in
+`compiler/basic/incident/`, and the lowering capability family was replaced by
+IR capability projection plus source-less operational failures. The audit's
+classification of who can trigger each failure site still holds; only the code
+spellings are historical.
+
 ### 2026-07-11 Role-Bearing Error-Union Response
 
 Semantic review returned RFCs 0005 and 0010 because this proposal still treated

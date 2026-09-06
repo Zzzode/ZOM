@@ -386,8 +386,9 @@ and `20d2a8ab26a6a17066de900f472dab2e6222c949c6b01da507753822bc116eac`.
 Identity failures now retain complete structured facts with the accepted phase,
 kind, API-site, structural-key, optional validated range, and traversal-ordinal
 fields. Sorting and adjacent diagnostic grouping follow the RFC order. The
-registered fatal diagnostics `ZOM9910` through `ZOM9921` live in
-`diagnostics-identity.def`; the adapter emits their occurrence counts without
+identity invariant families are registered fatal compiler incidents on
+`CompilerIncidentDomain::Identity` and carry no public diagnostic identifier;
+the projector emits their occurrence counts without
 inventing a source location. The exact `zom.identity` dump grammar is
 implemented with canonical key order, all six always-present sections,
 lowercase hex, and one final LF. The sanitizer build, format, RFC, and diff gates
@@ -422,7 +423,7 @@ and session cutover in
 diagnostic architecture tests were registered afterward and pass in the
 focused four-architecture-test run; the configured inventory is now 1,202.
 The subsequent session-construction repair replaces raw brand/singleton
-assertions with registered `ZOM9919` and `ZOM9920` fatal diagnostics. All 70
+assertions with registered fatal compiler incidents. All 70
 unit targets and all four architecture targets pass after that repair; a new
 full 1,202-test run remains required before RFC completion.
 
