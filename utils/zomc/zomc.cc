@@ -50,6 +50,10 @@
 #include "compiler/ir/target/host-execution-profile.h"
 #include "compiler/ir/target/target-registry.h"
 #include "compiler/lexer/lexer.h"
+#include "compiler/lsp/frame.h"
+#include "compiler/lsp/json-parse.h"
+#include "compiler/lsp/json-serialize.h"
+#include "compiler/lsp/lifecycle.h"
 #include "compiler/source/core-distribution.h"
 #include "compiler/source/core-source-admission.h"
 #include "compiler/source/manager.h"
@@ -219,6 +223,8 @@ public:
                        "Run a zomlang program with project configuration.")
         .addSubCommand("fmt", ZC_BIND_METHOD(*this, getFmtMain),
                        "Format Zomlang sources in place, or check for drift with --check.")
+        .addSubCommand("lsp", ZC_BIND_METHOD(*this, getLspMain),
+                       "Serve the Language Server Protocol over stdio.")
         .build();
   }
 
@@ -300,6 +306,96 @@ public:
       return zc::str(driftedFiles, " file(s) are not formatted; run `zomc fmt` to fix.");
     }
     return true;
+  }
+
+  // =====================================================================================
+  // "lsp" command
+  //
+  // RFC 0023: the Language Server Protocol entry point. This slice serves the
+  // lifecycle only -- initialize, initialized, shutdown, exit -- and answers
+  // every other request with MethodNotFound. Document synchronization is
+  // deliberately absent: `ide::EditorDocumentAdapter` requires a resolved
+  // `identity::CrateKey`, which needs workspace resolution that this slice does
+  // not perform, and accepting didOpen without it would publish snapshots
+  // scoped to a fabricated crate.
+
+  ZC_NODISCARD zc::MainFunc getLspMain() {
+    zc::MainBuilder builder(context, VERSION_STRING,
+                            "Serves the Language Server Protocol over stdio.");
+    return builder.callAfterParsing(ZC_BIND_METHOD(*this, runLsp)).build();
+  }
+
+  zc::MainBuilder::Validity runLsp() {
+    lsp::LifecycleHandler handler;
+    zc::FdInputStream input(STDIN_FILENO);
+    zc::FdOutputStream output(STDOUT_FILENO);
+
+    // One growing buffer holds whatever has been read but not yet consumed, so a
+    // frame split across reads is reassembled rather than dropped.
+    zc::Vector<uint8_t> pending;
+    auto chunk = zc::heapArray<uint8_t>(16384);
+
+    for (;;) {
+      size_t consumed = 0;
+      bool exhausted = false;
+
+      // Drain every complete frame the buffer already holds before reading more.
+      while (!exhausted) {
+        auto decoded = lsp::decodeFrame(pending.asPtr().slice(consumed, pending.size()));
+        if (decoded.is<lsp::FrameDecodeFailure>()) {
+          const auto failure = decoded.get<lsp::FrameDecodeFailure>();
+          if (failure == lsp::FrameDecodeFailure::Incomplete) {
+            exhausted = true;
+            break;
+          }
+          // A malformed header leaves the next frame boundary unknowable, so the
+          // connection cannot be resynchronized.
+          return operationalFailure("lsp"_zc, "malformed-frame"_zc);
+        }
+
+        const auto& frame = decoded.get<lsp::DecodedFrame>();
+        const size_t frameEnd = consumed + frame.consumed;
+        auto message = lsp::parseJson(frame.payload);
+
+        lsp::LifecycleOutcome outcome =
+            message == zc::none ? lsp::LifecycleOutcome(lsp::LifecycleAction::Respond,
+                                                        lsp::LifecycleHandler::parseErrorResponse())
+                                : handler.handle(ZC_ASSERT_NONNULL(message));
+        consumed = frameEnd;
+
+        switch (outcome.action) {
+          case lsp::LifecycleAction::Respond: {
+            auto body = lsp::serializeJson(outcome.response);
+            auto encoded = lsp::encodeFrame(body.asPtr());
+            output.write(encoded.asPtr());
+            break;
+          }
+          case lsp::LifecycleAction::Silent:
+            break;
+          case lsp::LifecycleAction::ExitSuccess:
+            return true;
+          case lsp::LifecycleAction::ExitFailure:
+            return operationalFailure("lsp"_zc, "exit-without-shutdown"_zc);
+        }
+      }
+
+      // Drop the consumed prefix so the buffer tracks the unparsed tail only.
+      if (consumed > 0) {
+        zc::Vector<uint8_t> remainder(pending.size() - consumed);
+        for (size_t index = consumed; index < pending.size(); ++index) {
+          remainder.add(pending[index]);
+        }
+        pending = zc::mv(remainder);
+      }
+
+      const size_t read = input.tryRead(chunk.asPtr(), 1);
+      if (read == 0) {
+        // The client closed the stream. A clean shutdown already returned above,
+        // so reaching EOF here means the session ended without one.
+        return operationalFailure("lsp"_zc, "unexpected-end-of-input"_zc);
+      }
+      for (size_t index = 0; index < read; ++index) { pending.add(chunk[index]); }
+    }
   }
 
   // The canonical bytes for one formatted source plus whether they differ from
