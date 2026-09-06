@@ -1570,3 +1570,16 @@ blocked by `R25-12G`.
   and verification evidence.
 - `R25-12G` remains externally blocked by RFC 0023 acceptance and its named
   production foundation.
+- `R25-09C` is stale as written and cannot be executed against the current tree.
+  RFC 0047 landed on 2026-09-06 and deleted three artifacts the stage plans
+  against: `compiler/diagnostics/diagnostics-core.def`,
+  `compiler/diagnostics/core-library-diagnostic-adapter.{h,cc}`, and
+  `compiler/driver/incremental-diagnostic-query.{h,cc}`. Core diagnostic
+  projection now lives in `compiler/driver/core/diagnostic-projector.{h,cc}`.
+  The stage also plans to register `ZOM9907`, but `ZOM9900-ZOM9999` is now
+  permanently unallocated: compiler invariants use the bounded incident rail in
+  `compiler/basic/incident/`, and the catalog enforces that exclusion in a
+  `static_assert`. `ZOM7101` and `ZOM7102` are likewise unallocated. This entry
+  records the drift only. Rewriting the stage's plan is the RFC 0025 owner's
+  decision and is deliberately not made here. The stage is not on the critical
+  path today because `R25-09A` and `R25-05` are themselves blocked.
