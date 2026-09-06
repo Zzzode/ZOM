@@ -169,10 +169,6 @@ Each was reproduced independently before being fixed.
 
 ### Outstanding
 
-- The ownership determinism baseline records `headRevision ece45e05`, which does
-  not yet contain the cutover that produces the recorded bytes. It must be
-  re-recorded once the change set is committed so the named revision is the tree
-  that produces that output.
 - RFC 0025 stage `R25-09C` is still `pending` and plans against artifacts this
   cutover deleted, including `compiler/diagnostics/diagnostics-core.def`,
   `core-library-diagnostic-adapter.*`, and `incremental-diagnostic-query.*`. It
@@ -184,8 +180,14 @@ Each was reproduced independently before being fixed.
   are untouched by this change set, and the gate is not registered with CTest,
   so the failure is pre-existing and unrelated to this RFC. It is recorded here
   for its owner rather than fixed under this authorization.
-- The complete `ctest --preset default --output-on-failure` run passed with
-  328 of 328 tests and exit code zero against the final tree, in 4636 seconds.
+
+### Final Result
+
+The complete `ctest --preset default --output-on-failure` run passed with 328 of
+328 tests and exit code zero against the final tree, in 4636 seconds. The
+ownership determinism baseline was re-recorded against commit `2c07ca3a`, the
+tree that produces the recorded bytes; all three output hashes were unchanged,
+confirming the earlier drift was presentation-only.
 
 ## Completion Rule
 
