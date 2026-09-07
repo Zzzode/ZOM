@@ -148,11 +148,26 @@ commits added the recovery sequence, live lexer bridge, precise trivia
 classification, and parse-eligibility gate without changing the accepted RFC
 contract.
 
-No `tools/ide` or `tools/lsp` product directory exists yet, and the IDE
-semantic-snapshot facade in `compiler/ide/` has no production (non-test) consumer
-yet. The next production-boundary work is the editor input/overlay layer plus a
-canonical codec that lets the recoverable syntax be published as an IDE query
-value.
+No `tools/ide` or `tools/lsp` product directory exists yet; the IDE and LSP code
+live under `compiler/ide/` and `compiler/lsp/`.
+
+Updated 2026-09-07. The facade does have production consumers: the freshness
+wrapper in `compiler/ide/snapshot/semantic-snapshot-freshness.cc` calls it, and
+`EditorDocumentAdapter` owns document-version ordering through
+`DocumentVersion::succeeds`. The transport also exists now. The base-protocol
+frame codec (`compiler/lsp/frame.{h,cc}`), the JSON-RPC lifecycle handler
+(`compiler/lsp/lifecycle.{h,cc}`), and a `zomc lsp` subcommand serve a real
+stdio session: initialize returns capabilities, an unsupported request returns
+`-32601`, shutdown returns null, and exit terminates cleanly.
+
+The remaining production boundary is semantic, not transport. `zomc lsp`
+answers only the lifecycle and returns `MethodNotFound` for document
+synchronization, because `EditorDocumentAdapter` requires a resolved
+`identity::CrateKey` and the server performs no workspace resolution. Accepting
+`didOpen` before that exists would publish snapshots scoped to a fabricated
+crate. The next production-boundary work is therefore workspace resolution, then
+the editor input/overlay layer plus a canonical codec that lets the recoverable
+syntax be published as an IDE query value.
 
 ## Implementation Tracker
 
@@ -175,7 +190,7 @@ value.
 | Partial semantics | Pending IDE query family | Verified/recovered authority, recovery-local keys, RFC 0019 binding equality, binding/type states, conservative flow, local degradation, no fabricated stable identity |
 | RFC 0022 integration | Pending verified tooling projection | Valid-source differential equality and complete-body preference |
 | IDE facade | Pending semantic queries | File/range/symbol/type values, sanitization, no compiler handles |
-| LSP adapter | Pending facade | Framing, lifecycle, capabilities, signed versions, text sync, cancellation, terminal stale errors |
+| LSP adapter | Lifecycle landed, features pending crate resolution | Framing and lifecycle are implemented and served by `zomc lsp`; capabilities are advertised empty; text sync, cancellation, and terminal stale errors remain |
 | Initial language features | Pending adapter | Hover, completion, navigation, verified rename, push diagnostics, close clearing |
 | Production gates and docs | Pending all prior slices | Sanitizer, CTest, integration, performance, security, architecture docs, packaging |
 
