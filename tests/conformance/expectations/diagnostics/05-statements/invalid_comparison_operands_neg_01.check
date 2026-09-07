@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/invalid_comparison_operands_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A comparison whose operands are not two same-typed primitive scalars is a user
+// error, not a compiler-invariant violation. Before ZOM4029 was produced here the
+// checker reported an internal compiler error for this source.
+
+// CHECK-LITERAL: Error [ZOM4029]: Comparison != is not defined for i32 | null and null
+// CHECK-LITERAL:   --> conformance/05-statements/invalid_comparison_operands_neg_01.zom:1:33

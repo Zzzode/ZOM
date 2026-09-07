@@ -1,0 +1,1 @@
+fun entry(x: i32?) -> i32 { if (x != null) { return 1; } else { return 0; } }

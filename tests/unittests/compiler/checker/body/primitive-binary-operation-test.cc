@@ -7,6 +7,7 @@
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/checker/body/body-checker.h"
 #include "compiler/checker/checker-identity-authority.h"
+#include "compiler/checker/diagnostics/checker-diagnostic-id.h"
 #include "compiler/checker/facts/checked-facts-repository.h"
 #include "compiler/checker/facts/dispatch-facts.h"
 #include "compiler/checker/inference/checked-facts.h"
@@ -609,11 +610,17 @@ ZC_TEST("PrimitiveBinaryOperation.RejectsNonComparisonScalarBinaryOperation") {
   ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
 }
 
-ZC_TEST("PrimitiveBinaryOperation.RejectsMismatchedScalarOperandTypes") {
+ZC_TEST("PrimitiveBinaryOperation.ReportsMismatchedScalarOperandTypes") {
+  // i32 and i64 are both scalars but not the same scalar. The comparison is not
+  // defined for them, which is a user error rather than a compiler invariant.
   PrimitiveBinaryFixture fixture(
       "fun eq(a: i32, b: i64) -> bool { if (a == b) { return true; } else { return false; } }\n"_zc);
   auto result = fixture.runBodyChecker();
-  ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::InvalidComparisonOperands());
 }
 
 ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveEqualityCallFactForParameterAndLiteral") {
@@ -682,13 +689,18 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveOrderingCallFactForParameterAndL
   ZC_EXPECT(selected.get<checked::PrimitiveCallable>().operation == PrimitiveOperation::Lt);
 }
 
-ZC_TEST("PrimitiveBinaryOperation.RejectsMismatchedLiteralOperandType") {
-  // The parameter is i32 while the literal is a float; the operand types differ
-  // so the comparison fails closed.
+ZC_TEST("PrimitiveBinaryOperation.ReportsMismatchedLiteralOperandType") {
+  // The parameter is i32 while the literal is a float. Operands the comparison
+  // is not defined for are a user error, so this reports ZOM4029 rather than a
+  // compiler invariant.
   PrimitiveBinaryFixture fixture(
       "fun eq(a: i32) -> bool { if (a == 1.0) { return true; } else { return false; } }\n"_zc);
   auto result = fixture.runBodyChecker();
-  ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::InvalidComparisonOperands());
 }
 
 ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveComparisonCallFactForReturnPositionComparison") {

@@ -1,0 +1,5 @@
+section: "05-statements if syntax"
+covers_rule: "ifStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks the ZOM4029 comparison-operand rejection."

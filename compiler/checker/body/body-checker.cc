@@ -157,6 +157,32 @@ bool isOwnerLocalPattern(const driver::module_graph_query::CheckerBoundModuleVie
   return false;
 }
 
+/// \brief Returns the innermost function definition whose subtree contains `node`.
+///
+/// Depth is the definition's owner-chain length, so the deepest match wins. Two
+/// distinct definitions at the same depth would make the owner ambiguous, which
+/// fails closed with none rather than guessing.
+zc::Maybe<identity::DefId> enclosingFunctionOwner(
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule, ast::NodeId node) {
+  const auto& tree = boundModule.tree();
+  zc::Maybe<identity::DefId> result;
+  size_t bestDepth = 0;
+  for (const auto& definition : boundModule.definitions().definitions()) {
+    if (definition.record.kind() != identity::DefinitionKind::Function ||
+        !subtreeContains(tree, definition.node, node)) {
+      continue;
+    }
+    const size_t depth = definition.record.owners().size();
+    if (result == zc::none || depth > bestDepth) {
+      result = definition.definition;
+      bestDepth = depth;
+    } else if (depth == bestDepth) {
+      return zc::none;
+    }
+  }
+  return result;
+}
+
 zc::Maybe<identity::DefId> returnValueOwner(
     const driver::module_graph_query::CheckerBoundModuleView& boundModule, ast::NodeId value) {
   const auto& tree = boundModule.tree();
@@ -169,22 +195,7 @@ zc::Maybe<identity::DefId> returnValueOwner(
   });
   if (!isReturnValue) return zc::none;
 
-  zc::Maybe<identity::DefId> result;
-  size_t bestDepth = 0;
-  for (const auto& definition : boundModule.definitions().definitions()) {
-    if (definition.record.kind() != identity::DefinitionKind::Function ||
-        !subtreeContains(tree, definition.node, value)) {
-      continue;
-    }
-    const size_t depth = definition.record.owners().size();
-    if (result == zc::none || depth > bestDepth) {
-      result = definition.definition;
-      bestDepth = depth;
-    } else if (depth == bestDepth) {
-      return zc::none;
-    }
-  }
-  return result;
+  return enclosingFunctionOwner(boundModule, value);
 }
 
 zc::Maybe<identity::SemanticTypeId> callableSuccess(const signature::VerifiedSignatureFacts& facts,
@@ -439,6 +450,8 @@ bool isMutableOwnerLocal(const driver::module_graph_query::CheckerBoundModuleVie
 bool isScalarLiteral(ast::SyntaxKind kind) noexcept;
 zc::Maybe<PrimitiveOperation> scalarComparisonOperation(ast::BinaryOperatorKind syntax);
 zc::Maybe<PrimitiveOperation> scalarArithmeticOperation(ast::BinaryOperatorKind syntax);
+template <typename Entry, typename Key>
+zc::Maybe<const Entry&> factEntry(zc::ArrayPtr<Entry> entries, const Key& key);
 
 bool isSimpleLocalWrite(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
                         ast::NodeId assignment) {
@@ -931,6 +944,55 @@ bool isPrimitiveScalarType(const type::SemanticTypeStore& semanticTypes,
     default:
       return false;
   }
+}
+
+/// \brief Operand types of a comparison the shape validator refused.
+struct InvalidComparisonOperandTypes final {
+  identity::SemanticTypeId leftType;
+  identity::SemanticTypeId rightType;
+  PrimitiveOperation operation;
+};
+
+/// \brief Classifies a refused comparison as ill-typed rather than unsupported.
+///
+/// `primitiveBinaryOperationShape` returns none for two very different reasons:
+/// a form this slice does not lower yet (nested operands, literal-vs-literal,
+/// short-circuit operators), and operands whose types the operator is simply not
+/// defined for. The first is a compiler-capability boundary and stays on the
+/// invariant rail; the second is a user error and must reach the source rail as
+/// `ZOM4029`. Both operands must resolve to a type for the answer to be
+/// trustworthy, so this returns none when either type is unknown, leaving the
+/// existing fail-closed rejection in place.
+///
+/// A comparison is ill-typed when the operand types differ, or when they agree
+/// on a type the operator is not defined for (any non-scalar, including `Null`
+/// and every nominal type).
+zc::Maybe<InvalidComparisonOperandTypes> invalidComparisonOperandTypes(
+    const BodyCheckingInput& input, ast::NodeId node,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::BinaryExpr) return zc::none;
+  const auto& syntax = tree.node(node);
+  auto comparison = scalarComparisonOperation(
+      static_cast<ast::BinaryOperatorKind>(syntax.payload.words[ast::kBinaryExprOpWord]));
+  if (comparison == zc::none) return zc::none;
+  const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
+  if (!tree.contains(left) || !tree.contains(right)) return zc::none;
+  // Resolve each operand's type from the node-type facts already produced for
+  // this body. A nested binary has no node-type fact yet at this point in schema
+  // preorder, so an unresolved operand yields none and the caller keeps its
+  // existing rejection.
+  auto leftType = factEntry(nodeTypes, left);
+  auto rightType = factEntry(nodeTypes, right);
+  if (leftType == zc::none || rightType == zc::none) return zc::none;
+  identity::SemanticTypeId leftValue;
+  identity::SemanticTypeId rightValue;
+  ZC_IF_SOME(entry, leftType) { leftValue = entry.value; }
+  ZC_IF_SOME(entry, rightType) { rightValue = entry.value; }
+  const bool sameType = leftValue == rightValue;
+  if (sameType && isPrimitiveScalarType(input.semanticTypes, leftValue)) return zc::none;
+  return InvalidComparisonOperandTypes{leftValue, rightValue, ZC_ASSERT_NONNULL(comparison)};
 }
 
 zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
@@ -1513,6 +1575,35 @@ checked::CheckedFactsSourceRejected rejectTypeMismatch(const BodyProductionSite&
                                              zc::Vector<checked::FrozenRecoveryLedger>()};
 }
 
+checked::CheckedFactsSourceRejected rejectInvalidComparisonOperands(
+    const BodyProductionSite& site, uint32_t ownerPreorder,
+    const InvalidComparisonOperandTypes& operands) {
+  zc::Maybe<identity::SemanticIdentifier> noLeftAlias;
+  zc::Maybe<identity::SemanticIdentifier> noRightAlias;
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(checked::CheckerDisplayArgument(
+      checked::OperatorDisplayArg{OperatorKind(operands.operation)}));
+  arguments.add(checked::CheckerDisplayArgument(
+      checked::TypeDisplayArg{operands.leftType, zc::mv(noLeftAlias)}));
+  arguments.add(checked::CheckerDisplayArgument(
+      checked::TypeDisplayArg{operands.rightType, zc::mv(noRightAlias)}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::InvalidComparisonOperands(), checked::CheckerDiagnosticStage::Body,
+      site.node, site.key.sourceSpan.clone(), zc::mv(arguments), zc::mv(notes),
+      checked::CheckerDiagnosticProducer::Operator,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
 checked::CheckedFactsSourceRejected rejectNonUnionErrorOperator(
     const BodyProductionSite& site, uint32_t ownerPreorder, identity::SemanticTypeId operandType,
     ast::PostfixOperatorKind operation) {
@@ -1567,7 +1658,15 @@ attachRecoveryLedger(checked::CheckedFactsSourceRejected&& rejection,
   }
   auto& failure = rejection.failures[0];
   auto initializer = initializerOwner(input.boundModule, failure.primaryNode);
+  // A failing node is owned by an initializer, or by a callable body. The two
+  // recognized body positions are a return value and a condition expression;
+  // both recover against the enclosing callable, so fall back to the enclosing
+  // function when the node is neither an initializer nor a return value. An
+  // ambiguous or absent owner still fails closed below.
   auto callable = returnValueOwner(input.boundModule, failure.primaryNode);
+  if (initializer == zc::none && callable == zc::none) {
+    callable = enclosingFunctionOwner(input.boundModule, failure.primaryNode);
+  }
   if ((initializer == zc::none) == (callable == zc::none) ||
       !failure.recoveryPolicy.variant().is<checked::CreateRootRecoveryPolicy>()) {
     return rejectInvariant(signature::CheckerInvariantKind::InferenceLifecycle,
@@ -2611,6 +2710,20 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         auto shape =
             primitiveBinaryOperationShape(input, site.node, nodeTypes.asPtr(), literals.asPtr());
         if (shape == zc::none) {
+          // The shape validator refuses both forms this slice cannot lower yet
+          // and comparisons the operator is not defined for. Only the second is
+          // a user error; report it as ZOM4029 instead of a compiler invariant.
+          // Everything else keeps the existing fail-closed rejection.
+          auto invalidOperands = invalidComparisonOperandTypes(input, site.node, nodeTypes.asPtr());
+          ZC_IF_SOME(operands, invalidOperands) {
+            ZC_IF_SOME(owner, enclosingFunctionOwner(input.boundModule, site.node)) {
+              ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                return attachRecoveryLedger(
+                    rejectInvalidComparisonOperands(site, ownerOrdinal, operands), input,
+                    factStoreBrands);
+              }
+            }
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
