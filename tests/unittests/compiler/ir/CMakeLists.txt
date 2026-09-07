@@ -41,4 +41,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   zom_add_fake_linker_variant(zom-fake-linker-directory 5 ZOM_FAKE_LINKER_DIRECTORY)
   zom_add_fake_linker_variant(zom-fake-linker-hardlink 6 ZOM_FAKE_LINKER_HARDLINK)
   zom_add_fake_linker_variant(zom-fake-linker-invalid-image 7 ZOM_FAKE_LINKER_INVALID_IMAGE)
+
+  # The concurrent-recovery cases fork a child and block on a readiness pipe
+  # before releasing it. Under the default eight-way parallel sanitizer run the
+  # child can be starved long enough that the parent's read returns zero instead
+  # of the ready byte, failing at invoke-linker-test.cc:2337. The test passes
+  # deterministically on its own. Run it serially, matching the ownership tests
+  # that are serialized for the same reason.
+  if(TARGET link-invoke-linker-test)
+    set_tests_properties(link-invoke-linker-test PROPERTIES RUN_SERIAL TRUE TIMEOUT 300)
+  endif()
 endif()
