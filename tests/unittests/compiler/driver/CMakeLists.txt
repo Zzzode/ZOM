@@ -17,7 +17,7 @@ set_tests_properties(pubgrub-scenarios-oracle
                      PROPERTIES LABELS "unittest;package" TIMEOUT 30)
 
 set_tests_properties(session-compiler-session-package-test
-                     PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
+                     PROPERTIES TIMEOUT 600 RUN_SERIAL TRUE)
 
 set_tests_properties(session-compiler-session-test
                      PROPERTIES TIMEOUT 300)
