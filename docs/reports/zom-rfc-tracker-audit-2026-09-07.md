@@ -67,22 +67,19 @@ neither row reads as contradicting the other.
 ### Test-directory reorganization fallout
 
 Twenty-eight cited paths named files that only moved during the source-grouping
-refactors. All twenty-eight were corrected in place on 2026-09-07, and
-`scripts/check-rfc-tracker-citations.py` now guards the class: a citation fails
-when its path is absent but a file of the same basename exists elsewhere, which
-is exactly the "did not follow the move" signature. Deletion stays legal, so a
-tracker may still record work whose artifacts a later RFC removed.
+refactors, and twenty-three cited CTest targets were pure directory-prefix
+renames, so `compiler-session-test` became `session-compiler-session-test` and
+`ir-failure-test` became `diagnostics-ir-failure-test`. All were corrected in
+place on 2026-09-07.
 
-The gate is registered as `rfc-tracker-citations` with a negative counterpart,
-and it found a twenty-eighth relocation that the manual sweep had missed. Its
-`STALE_BACKLOG` is empty: the thirty-seven deleted-artifact citations pass
-without an exemption, because the rule targets relocation rather than absence.
+No checker guards this class. One was written and then removed: documentation
+consistency is not something this repository gates on, and a checker that scans
+prose is the kind of source-text scan RFC 0047 already rejected as architecture
+evidence. The correction stands on its own; a future reorganization will need
+the same manual pass.
 
-Roughly twenty-two cited CTest target names also changed when tests were grouped
-into subdirectories, so targets now carry a directory prefix:
-`compiler-session-test` is `session-compiler-session-test`, `ir-failure-test` is
-`diagnostics-ir-failure-test`, and so on. Each stale name is a verification
-command that fails if replayed verbatim. These are not yet guarded.
+The remaining thirty-seven citations name genuinely deleted artifacts and are
+left alone, since a tracker may record work whose files a later RFC removed.
 
 ### Missing verification scripts
 
