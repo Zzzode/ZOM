@@ -946,36 +946,41 @@ bool isPrimitiveScalarType(const type::SemanticTypeStore& semanticTypes,
   }
 }
 
-/// \brief Operand types of a comparison the shape validator refused.
-struct InvalidComparisonOperandTypes final {
+/// \brief Operand types of a binary operation the shape validator refused.
+struct InvalidBinaryOperandTypes final {
   identity::SemanticTypeId leftType;
   identity::SemanticTypeId rightType;
   PrimitiveOperation operation;
+  bool isComparison;
 };
 
-/// \brief Classifies a refused comparison as ill-typed rather than unsupported.
+/// \brief Classifies a refused binary operation as ill-typed, not unsupported.
 ///
 /// `primitiveBinaryOperationShape` returns none for two very different reasons:
 /// a form this slice does not lower yet (nested operands, literal-vs-literal,
 /// short-circuit operators), and operands whose types the operator is simply not
 /// defined for. The first is a compiler-capability boundary and stays on the
 /// invariant rail; the second is a user error and must reach the source rail as
-/// `ZOM4029`. Both operands must resolve to a type for the answer to be
+/// `ZOM4029` for a comparison or `ZOM4028` for an arithmetic or bitwise
+/// operation. Both operands must resolve to a type for the answer to be
 /// trustworthy, so this returns none when either type is unknown, leaving the
 /// existing fail-closed rejection in place.
 ///
-/// A comparison is ill-typed when the operand types differ, or when they agree
+/// An operation is ill-typed when the operand types differ, or when they agree
 /// on a type the operator is not defined for (any non-scalar, including `Null`
 /// and every nominal type).
-zc::Maybe<InvalidComparisonOperandTypes> invalidComparisonOperandTypes(
+zc::Maybe<InvalidBinaryOperandTypes> invalidBinaryOperandTypes(
     const BodyCheckingInput& input, ast::NodeId node,
     zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
   const auto& tree = input.boundModule.tree();
   if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::BinaryExpr) return zc::none;
   const auto& syntax = tree.node(node);
-  auto comparison = scalarComparisonOperation(
-      static_cast<ast::BinaryOperatorKind>(syntax.payload.words[ast::kBinaryExprOpWord]));
-  if (comparison == zc::none) return zc::none;
+  const auto binaryOperator =
+      static_cast<ast::BinaryOperatorKind>(syntax.payload.words[ast::kBinaryExprOpWord]);
+  auto comparison = scalarComparisonOperation(binaryOperator);
+  auto arithmetic = scalarArithmeticOperation(binaryOperator);
+  auto operation = comparison != zc::none ? comparison : arithmetic;
+  if (operation == zc::none) return zc::none;
   const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
   const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
   if (!tree.contains(left) || !tree.contains(right)) return zc::none;
@@ -992,7 +997,8 @@ zc::Maybe<InvalidComparisonOperandTypes> invalidComparisonOperandTypes(
   ZC_IF_SOME(entry, rightType) { rightValue = entry.value; }
   const bool sameType = leftValue == rightValue;
   if (sameType && isPrimitiveScalarType(input.semanticTypes, leftValue)) return zc::none;
-  return InvalidComparisonOperandTypes{leftValue, rightValue, ZC_ASSERT_NONNULL(comparison)};
+  return InvalidBinaryOperandTypes{leftValue, rightValue, ZC_ASSERT_NONNULL(operation),
+                                   comparison != zc::none};
 }
 
 zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
@@ -1575,9 +1581,9 @@ checked::CheckedFactsSourceRejected rejectTypeMismatch(const BodyProductionSite&
                                              zc::Vector<checked::FrozenRecoveryLedger>()};
 }
 
-checked::CheckedFactsSourceRejected rejectInvalidComparisonOperands(
+checked::CheckedFactsSourceRejected rejectInvalidBinaryOperands(
     const BodyProductionSite& site, uint32_t ownerPreorder,
-    const InvalidComparisonOperandTypes& operands) {
+    const InvalidBinaryOperandTypes& operands) {
   zc::Maybe<identity::SemanticIdentifier> noLeftAlias;
   zc::Maybe<identity::SemanticIdentifier> noRightAlias;
   zc::Vector<checked::CheckerDisplayArgument> arguments;
@@ -1590,10 +1596,12 @@ checked::CheckedFactsSourceRejected rejectInvalidComparisonOperands(
   zc::Vector<checked::CheckerNoteRef> notes;
   zc::Maybe<checked::TypeErrorId> noRecovery;
   zc::Vector<checked::CheckerFailureRef> failures;
+  const auto diagnostic = operands.isComparison
+                              ? checked::CheckerErrorId::InvalidComparisonOperands()
+                              : checked::CheckerErrorId::InvalidBinaryOperands();
   failures.add(checked::CheckerFailureRef{
-      checked::CheckerErrorId::InvalidComparisonOperands(), checked::CheckerDiagnosticStage::Body,
-      site.node, site.key.sourceSpan.clone(), zc::mv(arguments), zc::mv(notes),
-      checked::CheckerDiagnosticProducer::Operator,
+      diagnostic, checked::CheckerDiagnosticStage::Body, site.node, site.key.sourceSpan.clone(),
+      zc::mv(arguments), zc::mv(notes), checked::CheckerDiagnosticProducer::Operator,
       checked::CheckerRecoveryPolicy(
           checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
       checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
@@ -2711,15 +2719,16 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             primitiveBinaryOperationShape(input, site.node, nodeTypes.asPtr(), literals.asPtr());
         if (shape == zc::none) {
           // The shape validator refuses both forms this slice cannot lower yet
-          // and comparisons the operator is not defined for. Only the second is
-          // a user error; report it as ZOM4029 instead of a compiler invariant.
-          // Everything else keeps the existing fail-closed rejection.
-          auto invalidOperands = invalidComparisonOperandTypes(input, site.node, nodeTypes.asPtr());
+          // and operations the operator is not defined for. Only the second is
+          // a user error; report it as ZOM4029 for a comparison or ZOM4028 for
+          // an arithmetic operation instead of a compiler invariant. Everything
+          // else keeps the existing fail-closed rejection.
+          auto invalidOperands = invalidBinaryOperandTypes(input, site.node, nodeTypes.asPtr());
           ZC_IF_SOME(operands, invalidOperands) {
             ZC_IF_SOME(owner, enclosingFunctionOwner(input.boundModule, site.node)) {
               ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
                 return attachRecoveryLedger(
-                    rejectInvalidComparisonOperands(site, ownerOrdinal, operands), input,
+                    rejectInvalidBinaryOperands(site, ownerOrdinal, operands), input,
                     factStoreBrands);
               }
             }

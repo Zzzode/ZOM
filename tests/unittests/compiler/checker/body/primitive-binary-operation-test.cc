@@ -860,6 +860,19 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsBoolComparisonBinaryLocalInitializer") {
   ZC_EXPECT(call.invocation.resultType == boolType);
 }
 
+ZC_TEST("PrimitiveBinaryOperation.ReportsMismatchedArithmeticOperandTypes") {
+  // The arithmetic sibling of ReportsMismatchedScalarOperandTypes: i32 and i64
+  // are both scalars but not the same scalar, so `+` is not defined for them.
+  // This is a user error and reports ZOM4028, not a compiler invariant.
+  PrimitiveBinaryFixture fixture(
+      "fun f(a: i32, b: i64) -> i32 { let x: i32 = a + b; let y: i32 = a; return y; }\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic == checked::CheckerErrorId::InvalidBinaryOperands());
+}
+
 ZC_TEST("PrimitiveBinaryOperation.RejectsTypeMismatchedBinaryLocalInitializer") {
   // `let x: bool = a + b` declares a bool local but the arithmetic result is i32;
   // the declared type must match the result type, so the body fails closed.

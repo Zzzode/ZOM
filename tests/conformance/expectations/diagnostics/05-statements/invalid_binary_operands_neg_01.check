@@ -1,0 +1,10 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/invalid_binary_operands_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// The arithmetic sibling of invalid_comparison_operands_neg_01: operands the
+// operator is not defined for are a user error, not a compiler-invariant
+// violation. Before ZOM4028 was produced here the checker reported an internal
+// compiler error for this source.
+
+// CHECK-LITERAL: Error [ZOM4028]: Operator + is not defined for i32 and i64
+// CHECK-LITERAL:   --> conformance/05-statements/invalid_binary_operands_neg_01.zom:1:45
