@@ -1368,8 +1368,8 @@ and verification cutover remain pending in their recorded dependency order.
 The module-graph staging boundary now demands `CoreModuleGraph` for every
 projected core crate before it can seal the final snapshot. The demand rejects
 runtime failure, non-value results, a mismatched crate, and an empty module
-set. Sanitizer build, `compiler-session-test`,
-`compiler-session-package-test`, `core-library-query-provider-test`, and the
+set. Sanitizer build, `session-compiler-session-test`,
+`session-compiler-session-package-test`, `core-library-query-provider-test`, and the
 CompilerSession, incremental-query, and identity architecture checks passed.
 This is production use of the independently verified core graph, not completion
 of the remaining core query graph or bootstrap pipeline.

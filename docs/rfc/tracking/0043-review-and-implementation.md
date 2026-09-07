@@ -253,7 +253,7 @@ Landed in this slice:
    `BackendOperation::InvokeLinker` (`0x0b`) past `EmitObject` (`0x0a`), exactly
    as the "Linker And Publication Failure Algebra" section specifies. The
    `legalKind`/`legalOwnerSite` validators and the closed-tag/matrix tests in
-   `ir-failure-test` and `ir-diagnostic-adapter-test` were extended to cover the
+   `diagnostics-ir-failure-test` and `ir-diagnostic-adapter-test` were extended to cover the
    new coordinates; the extension is append-only, so every prior tag encoding is
    byte-identical.
 2. **Link-plan codec and independent verifier.** `compiler/ir/link/link-plan-codec.h`
@@ -489,7 +489,7 @@ in commit messages, and none blocks the current re-approval of the RFC text.
 - **Snapshot-recovery integration assertion.** `zomc`'s recovery-required routing
   (`ab15c079`) is covered by the adapter emit tests plus the route logic, but no
   end-to-end test injects a filesystem crash window to reach the snapshot arm of
-  `LinkRecoveryRequired`; `invoke-linker-test` exercises only the publication arm.
+  `LinkRecoveryRequired`; `link-invoke-linker-test` exercises only the publication arm.
 - **`splitTriple` field-count bound.** `compiler/ir/target/host-execution-profile.cc`
   accepts a triple with three or more fields and no upper bound, diverging from
   the target-registry parser's exact 3-4 field acceptance. Non-blocking today

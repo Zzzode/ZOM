@@ -261,7 +261,7 @@ authorizes implementation but no implementation slice has begun.
 blocking objections were resolved: the `.agents/subagents` -> `.codex/subagents`
 routing correction (task-router) and the repository-wide `zom-v1` -> `zom`
 codec-fixture regeneration across RFC 0016 and RFC 0010 (ir-backend), each
-verified against the live encoder and the live `target-registry-test`. The
+verified against the live encoder and the live `target-target-registry-test`. The
 acceptance edit produced the final ACCEPTED snapshot
 `ec27f6d3015ed5f91d903671f225141832ef165eec8fd799845ae8913743baee`.
 Implementation remains unstarted; the Implementation Tracker slices stay blocked

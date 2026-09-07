@@ -287,7 +287,7 @@ The encoding slice passes the standard empty and `abc` SHA-256 vectors and the
 standard 56-byte padding-boundary vector, plus the RFC-fixed `A` byte
 representation, empty sequence, and empty fingerprint-domain oracles. The
 implementation uses `zc::ArrayPtr` at every byte and state boundary rather than
-raw pointers. `brand-test`, `canonical-encoder-test`, and `handle-test` pass
+raw pointers. `brand-test`, `canonical-canonical-encoder-test`, and `handle-test` pass
 3/3, all 58 sanitizer unit-test targets pass, and the exact-current-byte default
 suite passes 1,186/1,186 in 1,273.13 seconds. This does not claim canonical
 Unicode text, URL, scalar, map, closed-value, or composite-key encoding.
@@ -496,14 +496,14 @@ evidence rather than the implementation narrative:
 
 | Criteria | Completion evidence |
 |---|---|
-| 1-2, 17-18, 24 | `brand-test`, `handle-test`, `identity-invariant-test`, and `frozen-registry-test` prove private construction, process-wide issuer uniqueness, context and registry branding, foreign-handle rejection, exhaustion, and structured invariant facts. |
-| 3-8, 19, 33 | `package-key-test`, `crate-key-test`, `build-script-key-test`, `build-script-execution-key-test`, and `compiler-session-package-test` prove canonical package and target categories, host/target separation, preparatory build-script keys, post-build final crate keys, configuration identity, and dependency-edge fingerprint inputs. |
-| 9-14, 25-27, 34 | `definition-inventory-test`, `compiler-session-test`, `compiler-session-package-test`, `definition-key-test`, and both architecture gates prove source-before-module freezing, the complete global module registry, exhaustive live definition producers, structural definition and impl ancestry, re-export identity, and the exact package, crate, source, module, definition, impl schedule. |
-| 15-16, 21, 28, 31, 35 | `canonical-encoder-test`, `canonical-values-test`, `semantic-context-fingerprint-test`, `identity-dump-test`, and `identity-invariant-test` prove fixed encodings and hashes, canonical ordering, explicit traversal ordinals, registered fatal diagnostics, deterministic dumps, and exact line grammar. |
-| 20 | Same-slot and same-name tests in `handle-test`, `frozen-registry-test`, `package-key-test`, `crate-key-test`, and `definition-key-test` cover distinct contexts, packages, targets, modules, definitions, and impls. |
+| 1-2, 17-18, 24 | `brand-test`, `handle-test`, `diagnostics-identity-invariant-test`, and `frozen-registry-test` prove private construction, process-wide issuer uniqueness, context and registry branding, foreign-handle rejection, exhaustion, and structured invariant facts. |
+| 3-8, 19, 33 | `key-package-key-test`, `key-crate-key-test`, `key-build-script-key-test`, `package-build-script-execution-key-test`, and `session-compiler-session-package-test` prove canonical package and target categories, host/target separation, preparatory build-script keys, post-build final crate keys, configuration identity, and dependency-edge fingerprint inputs. |
+| 9-14, 25-27, 34 | `definition-inventory-test`, `session-compiler-session-test`, `session-compiler-session-package-test`, `key-definition-key-test`, and both architecture gates prove source-before-module freezing, the complete global module registry, exhaustive live definition producers, structural definition and impl ancestry, re-export identity, and the exact package, crate, source, module, definition, impl schedule. |
+| 15-16, 21, 28, 31, 35 | `canonical-canonical-encoder-test`, `canonical-canonical-values-test`, `semantic-context-fingerprint-test`, `identity-dump-test`, and `diagnostics-identity-invariant-test` prove fixed encodings and hashes, canonical ordering, explicit traversal ordinals, registered fatal diagnostics, deterministic dumps, and exact line grammar. |
+| 20 | Same-slot and same-name tests in `handle-test`, `frozen-registry-test`, `key-package-key-test`, `key-crate-key-test`, and `key-definition-key-test` cover distinct contexts, packages, targets, modules, definitions, and impls. |
 | 22 | `check-identity-architecture.py --check` and all ten negative fixtures prove that identity construction uses only the canonical key and registry contracts. |
 | 23 | The sanitizer build passes; all 102 unit targets pass; the final default matrix passes 1,238/1,238 in 707.45 seconds; RFC, format, diff, compiler-session, IR diagnostic, identity, vendored-dependency, and repository hygiene gates pass. |
-| 29-30 | `canonical-scalar-test`, `canonical-url-test`, `unicode-normalization-test`, and the pinned Unicode generator checks prove every scalar domain, duplicate and normalization policy, and the closed credential-free URL model. |
+| 29-30 | `canonical-canonical-scalar-test`, `canonical-canonical-url-test`, `text-unicode-normalization-test`, and the pinned Unicode generator checks prove every scalar domain, duplicate and normalization policy, and the closed credential-free URL model. |
 | 32 | `semantic-type-store-test`, `semantic-type-canonicalization-test`, type-environment, checker, borrow, dispatch, and IR tests prove one session-owned store and context-branded `SemanticTypeId` use across all consumers. |
 
 The architecture audit confirms that all three identity allowlists are empty.

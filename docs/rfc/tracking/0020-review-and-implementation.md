@@ -297,10 +297,10 @@ closed before complete authority publication.
 
 Evidence recorded for this slice:
 
-- sanitizer `active-definition-authority-query-test`,
-  `active-definition-authority-session-test`,
-  `incremental-binding-query-adapter-test`, and
-  `compiler-session-package-test` pass;
+- sanitizer `query-binding-active-definition-authority-query-test`,
+  `query-binding-active-definition-authority-session-test`,
+  `query-binding-incremental-binding-query-adapter-test`, and
+  `session-compiler-session-package-test` pass;
 - the focused differential test repeats the edit sequence with worker counts
   1, 2, and 8 and byte-compares reused and clean values and dependency groups;
 - active-set shrink erases removed keys, definition moves erase the prior key
