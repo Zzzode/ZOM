@@ -98,7 +98,7 @@ transaction. The canonical replacement and final audit are published through
 
 - `compiler/identity/canonical/canonical-encoder.h`
 - `compiler/identity/canonical/canonical-encoder.cc`
-- `tests/unittests/compiler/identity/canonical-encoder-test.cc`
+- `tests/unittests/compiler/identity/canonical/canonical-encoder-test.cc`
 - `compiler/diagnostics/fact/diagnostic-fact.h`
 - `compiler/diagnostics/fact/diagnostic-fact.cc`
 - `tests/unittests/compiler/diagnostics/diagnostic-fact-codec-test.cc`

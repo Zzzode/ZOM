@@ -66,15 +66,23 @@ neither row reads as contradicting the other.
 
 ### Test-directory reorganization fallout
 
-Roughly 22 cited CTest target names and a comparable number of cited test paths
-changed when tests were grouped into subdirectories. Targets are now prefixed by
-their directory, so `compiler-session-test` is `session-compiler-session-test`,
-`ir-failure-test` is `diagnostics-ir-failure-test`, and so on. Each stale name
-is a verification command that fails if replayed verbatim.
+Twenty-eight cited paths named files that only moved during the source-grouping
+refactors. All twenty-eight were corrected in place on 2026-09-07, and
+`scripts/check-rfc-tracker-citations.py` now guards the class: a citation fails
+when its path is absent but a file of the same basename exists elsewhere, which
+is exactly the "did not follow the move" signature. Deletion stays legal, so a
+tracker may still record work whose artifacts a later RFC removed.
 
-Recommended disposition: a scripted pass, plus a gate that validates cited paths
-and CTest names so this class cannot silently regress. This is the highest-value
-structural fix because it is mechanical and currently unguarded.
+The gate is registered as `rfc-tracker-citations` with a negative counterpart,
+and it found a twenty-eighth relocation that the manual sweep had missed. Its
+`STALE_BACKLOG` is empty: the thirty-seven deleted-artifact citations pass
+without an exemption, because the rule targets relocation rather than absence.
+
+Roughly twenty-two cited CTest target names also changed when tests were grouped
+into subdirectories, so targets now carry a directory prefix:
+`compiler-session-test` is `session-compiler-session-test`, `ir-failure-test` is
+`diagnostics-ir-failure-test`, and so on. Each stale name is a verification
+command that fails if replayed verbatim. These are not yet guarded.
 
 ### Missing verification scripts
 

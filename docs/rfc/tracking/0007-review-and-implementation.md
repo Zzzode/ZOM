@@ -710,7 +710,7 @@ entering its target block. Production lowering now emits `Goto` (0x04) and
 `SwitchInt` (0x05) terminators and a `Comparison` (0x03) rvalue, lowering
 four-block diamond conditional returns and reducible four-block while-loop CFGs;
 the flow-subset verifier reconstructs and validates these shapes through
-dominator-based retreating-edge admission (`facts/flow-subset.cc`). Unwind edges,
+dominator-based retreating-edge admission (`compiler/ownership/facts/flow-subset.cc`). Unwind edges,
 escape propagation, general (non-current-subset) region liveness, and
 closure/capture boundaries remain unavailable until they are lowered and
 independently verified.
@@ -1166,7 +1166,7 @@ production, nor the capture-boundary contract; the row above remains
 
 Production lowering now emits branch, join, and reducible loop control flow
 through the `Goto` (0x04) and `SwitchInt` (0x05) terminators and the
-`Comparison` (0x03) rvalue defined in `mir/built-mir.h` (terminator kinds at
+`Comparison` (0x03) rvalue defined in `compiler/mir/built-mir.h` (terminator kinds at
 `built-mir.h:390-391`, rvalue kind at `built-mir.h:230`, and the six-value
 `MirComparisonOperator` Eq/Ne/Lt/Le/Gt/Ge tags 0x01-0x06 at
 `built-mir.h:239-246`). The HIR module recognizes the admitted shapes: the

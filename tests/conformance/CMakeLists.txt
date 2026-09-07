@@ -402,6 +402,28 @@ set_tests_properties(query-descriptor-architecture-negative PROPERTIES
 )
 
 add_test(
+  NAME rfc-tracker-citations
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-rfc-tracker-citations.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(rfc-tracker-citations PROPERTIES
+  LABELS "conformance;rfc;documentation"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME rfc-tracker-citations-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-rfc-tracker-citations.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(rfc-tracker-citations-negative PROPERTIES
+  LABELS "conformance;rfc;documentation;negative"
+  TIMEOUT 120
+)
+
+add_test(
   NAME incremental-query-benchmark-runner
   COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/run-incremental-query-benchmarks.py --self-test
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

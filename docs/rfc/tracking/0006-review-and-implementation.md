@@ -383,7 +383,7 @@ Confirmed present (front end, already landed):
   `tests/conformance/corpus/11-error/` and `.../04-expressions/`.
 - Checker type model for `raises` (`type::FunctionTypeData.raises`, signature
   and dispatch facts), error-union shape/operator fact types
-  (`checker/inference/checked-facts.h`), and all four diagnostic codes
+  (`compiler/checker/inference/checked-facts.h`), and all four diagnostic codes
   (`ErrorPropagateOutsideRaises`, `ErrorUnwrapNonUnion`, `ErrorPropagateNonUnion`,
   `ErrorUnionEmpty`).
 - The RFC 0005 error-union layout descriptor, codec, and revision
@@ -394,7 +394,7 @@ Confirmed blocking (each gates the next):
 1. The checker's `BodyProductionKind::ErrorOperator` production stage currently
    emits no success-path `ErrorOperatorFact`/`ErrorUnionShapeFact`: the single
    handler unconditionally calls `rejectNonUnionErrorOperator`
-   (`checker/body/body-checker.cc`), so a well-formed `?!`/`!!` produces no
+   (`compiler/checker/body/body-checker.cc`), so a well-formed `?!`/`!!` produces no
    positive facts. Positive fact emission is unbuilt.
 2. Semantic HIR fails closed on any error-union fact and on any `raises`
    function or call: `noUnsupportedFacts` requires zero `errorOperators`,
