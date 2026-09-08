@@ -53,9 +53,17 @@ function(add_ztest_unit_test TEST_NAME TEST_SOURCE)
   endif()
 
   # Set test properties
+  #
+  # The default timeout covers every ztest that does not set its own. Sanitizer
+  # builds are slow and the suite runs eight-way parallel, so a cap sized to an
+  # unloaded host turns any external load into a spurious failure -- and because
+  # the preset stops on first failure, one such timeout aborts the whole run.
+  # Several suites measured 20-30s unloaded and still timed out at 60s under
+  # contention, so the default is sized for the loaded case. A test that is
+  # genuinely slow enough to need more sets TIMEOUT explicitly at its call site.
   set_tests_properties(${TEST_NAME} PROPERTIES
     LABELS "${SPECIFIC_LABELS}"
-    TIMEOUT 60
+    TIMEOUT 300
   )
 
   # Add coverage if enabled
