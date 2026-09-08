@@ -55,6 +55,7 @@ CHECKER_ERROR(ConstantValueOutOfRange)
 CHECKER_ERROR(ConstantExpressionNotAllowed)
 CHECKER_ERROR(ConstantDependencyCycle)
 CHECKER_ERROR(ConstantArithmeticFailure)
+CHECKER_ERROR(BinaryOperatorSemanticsUnavailable)
 
 CHECKER_WARNING(CheckerUnreachableMatchArm)
 

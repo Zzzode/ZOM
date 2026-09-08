@@ -1,0 +1,1 @@
+fun f(a: bool, b: bool) -> bool { let x: bool = a && b; let y: bool = x; return y; }

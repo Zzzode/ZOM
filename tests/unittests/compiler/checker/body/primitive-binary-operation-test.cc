@@ -790,12 +790,17 @@ ZC_TEST("PrimitiveBinaryOperation.RejectsArithmeticConditionAsNonBool") {
   ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
 }
 
-ZC_TEST("PrimitiveBinaryOperation.RejectsLogicalShortCircuitBinaryOperation") {
-  // Logical `&&` has short-circuit semantics and is not a primitive binary
-  // operation; it stays rejected in this slice.
+ZC_TEST("PrimitiveBinaryOperation.ReportsLogicalShortCircuitBinaryOperation") {
+  // Logical `&&` has short-circuit semantics and the checker does not implement
+  // it yet. It is specified language syntax, so the refusal reports ZOM4103
+  // rather than a compiler invariant.
   PrimitiveBinaryFixture fixture("fun conj(a: bool, b: bool) -> bool { return a && b; }\n"_zc);
   auto result = fixture.runBodyChecker();
-  ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::BinaryOperatorSemanticsUnavailable());
 }
 
 ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveArithmeticCallFactForBinaryLocalInitializer") {
@@ -887,22 +892,42 @@ ZC_TEST("PrimitiveBinaryOperation.ReportsTypeMismatchedIdentifierLocalInitialize
   ZC_EXPECT(rejection.failures[0].diagnostic == checked::CheckerErrorId::TypeCheckerTypeMismatch());
 }
 
-ZC_TEST("PrimitiveBinaryOperation.RejectsTypeMismatchedBinaryLocalInitializer") {
-  // `let x: bool = a + b` declares a bool local but the arithmetic result is i32;
-  // the declared type must match the result type, so the body fails closed.
+ZC_TEST("PrimitiveBinaryOperation.ReportsTypeMismatchedBinaryLocalInitializer") {
+  // `let x: bool = a + b` declares a bool local but the arithmetic result is i32.
+  // The annotation is authoritative, so this is a user error and reports ZOM4009,
+  // the same as the bare-identifier form `let x: bool = a`.
   PrimitiveBinaryFixture fixture(
       "fun f(a: i32, b: i32) -> i32 { let x: bool = a + b; let y: i32 = b; return y; }\n"_zc);
   auto result = fixture.runBodyChecker();
-  ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic == checked::CheckerErrorId::TypeCheckerTypeMismatch());
 }
 
-ZC_TEST("PrimitiveBinaryOperation.RejectsLogicalBinaryLocalInitializer") {
-  // A logical `&&` local initializer is not a primitive binary operation and
-  // stays rejected in this slice.
+ZC_TEST("PrimitiveBinaryOperation.ReportsTypeMismatchedComparisonLocalInitializer") {
+  // The other direction: `let x: i32 = a < b` declares an i32 local but a
+  // comparison produces bool.
+  PrimitiveBinaryFixture fixture(
+      "fun f(a: i32, b: i32) -> i32 { let x: i32 = a < b; let y: i32 = b; return y; }\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic == checked::CheckerErrorId::TypeCheckerTypeMismatch());
+}
+
+ZC_TEST("PrimitiveBinaryOperation.ReportsLogicalBinaryLocalInitializer") {
+  // A logical `&&` local initializer names an operator the checker does not
+  // implement yet, so it reports ZOM4103.
   PrimitiveBinaryFixture fixture(
       "fun f(a: bool, b: bool) -> bool { let x: bool = a && b; let y: bool = x; return y; }\n"_zc);
   auto result = fixture.runBodyChecker();
-  ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::BinaryOperatorSemanticsUnavailable());
 }
 
 ZC_TEST("PrimitiveBinaryOperation.EmitsTwoArithmeticCallFactsForNestedOperand") {
@@ -930,15 +955,19 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsTwoArithmeticCallFactsForNestedOperand") 
   ZC_EXPECT(sawMul);
 }
 
-ZC_TEST("PrimitiveBinaryOperation.RejectsLogicalOuterWithNestedArithmeticOperand") {
+ZC_TEST("PrimitiveBinaryOperation.ReportsLogicalOuterWithNestedArithmeticOperand") {
   // `a && b * c` admits structurally (one nested operand), but the outer `&&`
-  // has no primitive operation, so the checker rejects it in this slice. This
-  // keeps the operator-support decision on the single checker rail.
+  // is an operator the checker does not implement yet, so it reports ZOM4103.
+  // This keeps the operator-support decision on the single checker rail.
   PrimitiveBinaryFixture fixture(
       "fun f(a: bool, b: bool, c: bool) -> bool { let z: bool = a && b * c; let w: bool = z; "
       "return w; }\n"_zc);
   auto result = fixture.runBodyChecker();
-  ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::BinaryOperatorSemanticsUnavailable());
 }
 
 ZC_TEST("PrimitiveBinaryOperation.RejectsTypeMismatchedNestedOperandInitializer") {

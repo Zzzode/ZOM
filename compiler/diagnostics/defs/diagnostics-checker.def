@@ -153,3 +153,7 @@ DIAG(4098, ExpressionStatementSemanticsUnavailable, kError,
      "Expression statement syntax has no admitted semantic contract", 0)
 DIAG(4099, FunctionBodySemanticsUnavailable, kError,
      "Function body syntax has no admitted semantic contract", 0)
+// ZOM4100-ZOM4102 are allocated to RFC 0022 (flow-sensitive refinement and null
+// safety) and must not be reused here.
+DIAG(4103, BinaryOperatorSemanticsUnavailable, kError,
+     "Operator {0} has no admitted semantic contract", 1)

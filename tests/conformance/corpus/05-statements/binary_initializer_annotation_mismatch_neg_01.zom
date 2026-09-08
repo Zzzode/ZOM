@@ -1,0 +1,1 @@
+fun f(a: i32, b: i32) -> i32 { let x: bool = a + b; let y: i32 = b; return y; }

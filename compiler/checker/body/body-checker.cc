@@ -1001,6 +1001,101 @@ zc::Maybe<InvalidBinaryOperandTypes> invalidBinaryOperandTypes(
                                    comparison != zc::none};
 }
 
+/// \brief Declared and produced types of a binary local initializer that disagree.
+struct BinaryInitializerTypeMismatch final {
+  identity::SemanticTypeId declaredType;
+  identity::SemanticTypeId producedType;
+};
+
+/// \brief Classifies a refused binary as an initializer annotation mismatch.
+///
+/// `primitiveBinaryOperationShape` refuses a binary whose result type differs
+/// from the annotation of the owner local it initializes (`let x: bool = a + b`)
+/// by returning none, which the caller reports as a compiler invariant. That is
+/// a user error and belongs on the source rail as `ZOM4009`, exactly as the
+/// bare-identifier form `let x: bool = a` does.
+///
+/// This only answers for a binary whose operands are otherwise well-typed: same
+/// primitive scalar type on both sides, so `invalidBinaryOperandTypes` has
+/// already declined it. The result type is then the operand type for an
+/// arithmetic operation and bool for a comparison, mirroring the shape
+/// validator. Returns none when there is no annotation, when it agrees, or when
+/// either operand type is unresolved, leaving the existing rejection in place.
+zc::Maybe<BinaryInitializerTypeMismatch> binaryInitializerTypeMismatch(
+    const BodyCheckingInput& input, ast::NodeId node,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::BinaryExpr) return zc::none;
+  const auto& syntax = tree.node(node);
+  const auto binaryOperator =
+      static_cast<ast::BinaryOperatorKind>(syntax.payload.words[ast::kBinaryExprOpWord]);
+  auto comparison = scalarComparisonOperation(binaryOperator);
+  auto arithmetic = scalarArithmeticOperation(binaryOperator);
+  if (comparison == zc::none && arithmetic == zc::none) return zc::none;
+  auto declaredType = ownerLocalInitializerDeclaredType(input, node);
+  if (declaredType == zc::none) return zc::none;
+  const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
+  if (!tree.contains(left) || !tree.contains(right)) return zc::none;
+  auto leftType = factEntry(nodeTypes, left);
+  auto rightType = factEntry(nodeTypes, right);
+  if (leftType == zc::none || rightType == zc::none) return zc::none;
+  identity::SemanticTypeId leftValue;
+  identity::SemanticTypeId rightValue;
+  ZC_IF_SOME(entry, leftType) { leftValue = entry.value; }
+  ZC_IF_SOME(entry, rightType) { rightValue = entry.value; }
+  // Ill-typed operands are the other diagnostic's business; only a
+  // well-typed operand pair can have a meaningful result type to compare.
+  if (leftValue != rightValue || !isPrimitiveScalarType(input.semanticTypes, leftValue)) {
+    return zc::none;
+  }
+  identity::SemanticTypeId resultType = leftValue;
+  if (comparison != zc::none) {
+    auto canonical = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+        type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::Bool}));
+    if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
+    auto interned =
+        input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+    if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
+    resultType = interned.get<type::SemanticTypeInterned>().id;
+  }
+  identity::SemanticTypeId declared;
+  ZC_IF_SOME(value, declaredType) { declared = value; }
+  if (declared == resultType) return zc::none;
+  return BinaryInitializerTypeMismatch{declared, resultType};
+}
+
+/// \brief Returns the binary operator the checker does not yet implement.
+///
+/// Surface admission is deliberately operator-agnostic: it admits every
+/// relational, arithmetic, and bitwise `BinaryExpr` of the supported shape and
+/// leaves operator support to the checker, keeping that contract in one place.
+/// The checker supports the six relational and the twelve arithmetic and bitwise
+/// operations. `&&`, `||`, `===`, and `!==` are specified language syntax that it
+/// does not implement yet, and reporting a compiler invariant for spec'd syntax
+/// is wrong -- `ZOM4103` says so honestly, mirroring the `ZOM4095`-`ZOM4099`
+/// family that covers unadmitted body syntax.
+///
+/// Returns none for a supported operator, and for a syntax that maps to no
+/// primitive operation at all, so those keep their existing rejection.
+zc::Maybe<PrimitiveOperation> unsupportedBinaryOperator(const BodyCheckingInput& input,
+                                                        ast::NodeId node) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::BinaryExpr) return zc::none;
+  const auto binaryOperator =
+      static_cast<ast::BinaryOperatorKind>(tree.node(node).payload.words[ast::kBinaryExprOpWord]);
+  if (scalarComparisonOperation(binaryOperator) != zc::none ||
+      scalarArithmeticOperation(binaryOperator) != zc::none) {
+    return zc::none;
+  }
+  ZC_IF_SOME(kind, OperatorKind::fromBinary(binaryOperator)) {
+    const auto& variant = kind.variant();
+    if (!variant.is<PrimitiveOperation>()) return zc::none;
+    return variant.get<PrimitiveOperation>();
+  }
+  return zc::none;
+}
+
 zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
     const BodyCheckingInput& input, ast::NodeId node,
     zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
@@ -1601,6 +1696,29 @@ checked::CheckedFactsSourceRejected rejectInvalidBinaryOperands(
                               : checked::CheckerErrorId::InvalidBinaryOperands();
   failures.add(checked::CheckerFailureRef{
       diagnostic, checked::CheckerDiagnosticStage::Body, site.node, site.key.sourceSpan.clone(),
+      zc::mv(arguments), zc::mv(notes), checked::CheckerDiagnosticProducer::Operator,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
+checked::CheckedFactsSourceRejected rejectUnsupportedBinaryOperator(const BodyProductionSite& site,
+                                                                    uint32_t ownerPreorder,
+                                                                    PrimitiveOperation operation) {
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(
+      checked::CheckerDisplayArgument(checked::OperatorDisplayArg{OperatorKind(operation)}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::BinaryOperatorSemanticsUnavailable(),
+      checked::CheckerDiagnosticStage::Body, site.node, site.key.sourceSpan.clone(),
       zc::mv(arguments), zc::mv(notes), checked::CheckerDiagnosticProducer::Operator,
       checked::CheckerRecoveryPolicy(
           checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
@@ -2434,6 +2552,20 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         if (input.boundModule.tree().node(site.node).kind == ast::SyntaxKind::IdentifierPattern) {
           continue;
         }
+        // A binary operator the checker does not implement yet reaches here as
+        // Unsupported, because body admission classifies only the six relational
+        // and twelve arithmetic operators. `&&`, `||`, `===`, and `!==` are
+        // specified language syntax, so report ZOM4103 rather than a compiler
+        // invariant. Every other unsupported node keeps its existing rejection.
+        ZC_IF_SOME(operation, unsupportedBinaryOperator(input, site.node)) {
+          ZC_IF_SOME(owner, enclosingFunctionOwner(input.boundModule, site.node)) {
+            ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+              return attachRecoveryLedger(
+                  rejectUnsupportedBinaryOperator(site, ownerOrdinal, operation), input,
+                  factStoreBrands);
+            }
+          }
+        }
         return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                site.key.schemaPreorder, zc::none, site.node,
                                site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -2749,6 +2881,33 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
               ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
                 return attachRecoveryLedger(
                     rejectInvalidBinaryOperands(site, ownerOrdinal, operands), input,
+                    factStoreBrands);
+              }
+            }
+          }
+          // A binary whose operands are well-typed but whose result disagrees
+          // with the annotation of the local it initializes (`let x: bool = a + b`)
+          // is likewise a user error, and the same mismatch as the
+          // bare-identifier form, so it reports ZOM4009.
+          auto initializerMismatch =
+              binaryInitializerTypeMismatch(input, site.node, nodeTypes.asPtr());
+          ZC_IF_SOME(mismatch, initializerMismatch) {
+            ZC_IF_SOME(owner, enclosingFunctionOwner(input.boundModule, site.node)) {
+              ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                return attachRecoveryLedger(
+                    rejectTypeMismatch(site, ownerOrdinal, mismatch.declaredType,
+                                       mismatch.producedType),
+                    input, factStoreBrands);
+              }
+            }
+          }
+          // An operator the checker does not implement yet is specified language
+          // syntax, not a compiler invariant, so it reports ZOM4103.
+          ZC_IF_SOME(operation, unsupportedBinaryOperator(input, site.node)) {
+            ZC_IF_SOME(owner, enclosingFunctionOwner(input.boundModule, site.node)) {
+              ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                return attachRecoveryLedger(
+                    rejectUnsupportedBinaryOperator(site, ownerOrdinal, operation), input,
                     factStoreBrands);
               }
             }

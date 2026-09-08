@@ -1,0 +1,10 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/binary_initializer_annotation_mismatch_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A binary initializer must agree with the annotation of the local it
+// initializes. This previously reported an internal compiler error rather than a
+// diagnostic, because the shape validator refused the binary and the refusal had
+// no user-facing path.
+
+// CHECK-LITERAL: Error [ZOM4009]: Type mismatch: expected bool, got i32
+// CHECK-LITERAL:   --> conformance/05-statements/binary_initializer_annotation_mismatch_neg_01.zom:1:46

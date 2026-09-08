@@ -2801,6 +2801,8 @@ bool validArgumentSchema(const CheckerFailureRef& failure) {
     case DiagID::InvalidBinaryOperands:
     case DiagID::InvalidComparisonOperands:
       return argumentKinds(arguments, Kind::Operator, Kind::Type, Kind::Type);
+    case DiagID::BinaryOperatorSemanticsUnavailable:
+      return argumentKinds(arguments, Kind::Operator);
     case DiagID::UnknownStructField:
       return argumentKinds(arguments, Kind::Identifier);
     case DiagID::BodyLiteralOutOfRange:
@@ -2927,6 +2929,8 @@ bool validDiagnosticProduction(const CheckerFailureRef& failure) {
     case DiagID::InvalidBinaryOperands:
     case DiagID::InvalidComparisonOperands:
     case DiagID::PostfixUpdateRequiresNumeric:
+      return matches(Stage::Body, Producer::Operator, Class::InvalidOperation, true);
+    case DiagID::BinaryOperatorSemanticsUnavailable:
       return matches(Stage::Body, Producer::Operator, Class::InvalidOperation, true);
     case DiagID::CannotDereferenceType:
       return matches(Stage::Body, Producer::Dereference, Class::InvalidOperation, true);

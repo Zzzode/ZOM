@@ -1,0 +1,70 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/logical_operator_unsupported_neg_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #29 @1:1..2:1 file_name="logical_operator_unsupported_neg_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #28 @1:1..1:85
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #27 @1:1..1:85 name="f"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #5 @1:6..1:24 nparams=2
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #2 @1:7..1:14 name="a"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:10..1:14 kind=Bool
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 FunctionParameterDecl #4 @1:16..1:23 name="b"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #3 @1:19..1:23 kind=Bool
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #6 @1:28..1:32 kind=Bool
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #26 @1:33..1:85
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #15 @1:35..1:56
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #14 @1:35..1:56 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #13 @1:39..1:55 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #12 @1:39..1:55
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #7 @1:39..1:40 name="x"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 PredefinedTypeExpr #8 @1:42..1:46 kind=Bool
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 BinaryExpr #11 @1:49..1:55 op=LogAnd
+// CHECK-NEXT:                                   lhs:
+// CHECK-NEXT:                                     IdentExpr #9 @1:49..1:50 name="a"
+// CHECK-NEXT:                                   rhs:
+// CHECK-NEXT:                                     IdentExpr #10 @1:54..1:55 name="b"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #22 @1:57..1:73
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #21 @1:57..1:73 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #20 @1:61..1:72 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #19 @1:61..1:72
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #16 @1:61..1:62 name="y"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 PredefinedTypeExpr #17 @1:64..1:68 kind=Bool
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 IdentExpr #18 @1:71..1:72 name="x"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #25 @1:74..1:83
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #24 @1:74..1:83
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         IdentExpr #23 @1:81..1:82 name="y"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

@@ -1,0 +1,10 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/logical_operator_unsupported_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// `&&` is specified language syntax (chapter 04 precedence level 13) that the
+// checker does not implement yet. Reporting an internal compiler error for
+// spec'd syntax was wrong; ZOM4103 says so honestly, mirroring the
+// ZOM4095-ZOM4099 family for unadmitted body syntax.
+
+// CHECK-LITERAL: Error [ZOM4103]: Operator && has no admitted semantic contract
+// CHECK-LITERAL:   --> conformance/05-statements/logical_operator_unsupported_neg_01.zom:1:49

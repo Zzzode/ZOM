@@ -1,0 +1,5 @@
+section: "05-statements let declaration syntax"
+covers_rule: "letDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks the ZOM4009 annotation mismatch."

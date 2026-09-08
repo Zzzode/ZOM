@@ -314,6 +314,7 @@ ACCEPTED_CHECKER_DIAGNOSTICS = (
     (4090, "GenericMarkerInterfaceNotAllowed", "kError", "Marker interfaces cannot declare generic parameters", 0),
     (4091, "PositiveMarkerImplRequiresUnsafe", "kError", "A positive marker implementation requires unsafe", 0),
     (4092, "ExplicitImplConflictsWithBuiltinMarker", "kError", "Builtin marker evidence cannot be replaced by an explicit implementation", 0),
+    (4103, "BinaryOperatorSemanticsUnavailable", "kError", "Operator {0} has no admitted semantic contract", 1),
 )
 
 REMOVED_CHECKER_DIAGNOSTIC_CODES = (4027, 4034, 4042, 4043, 4053)
@@ -928,7 +929,9 @@ def check_diagnostic_registry(files: dict[Path, str], errors: list[str]) -> None
     expected_warnings: list[tuple[str, str]] = []
     expected_notes: list[tuple[str, str]] = []
     for code, name, severity, _message, _arity in ACCEPTED_CHECKER_DIAGNOSTICS:
-        if severity == "kError" and (4001 <= code <= 4055 or 4077 <= code <= 4081):
+        if severity == "kError" and (
+            4001 <= code <= 4055 or 4077 <= code <= 4081 or code == 4103
+        ):
             expected_errors.append(("ERROR", name))
         elif code == 4023:
             expected_warnings.append(("WARNING", name))
