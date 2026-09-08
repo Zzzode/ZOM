@@ -48,6 +48,8 @@
 #include <stdio.h>
 #include <sys/stat.h>  // fstat/chmod, used only by the Linux fixture-driven cases
 #include <sys/wait.h>
+
+#include <cerrno>  // EINTR, used only by the checkpoint readiness handshake
 #endif
 
 #include "compiler/identity/crypto/sha256.h"
@@ -2334,7 +2336,18 @@ ZC_TEST("concurrent recovery cannot sweep a claimed but unverified competitor ex
   (void)::close(readyPipe[1]);
   (void)::close(releasePipe[0]);
   char ready = 0;
-  ZC_REQUIRE(::read(readyPipe[0], &ready, 1) == 1);
+  // The child writes one byte once it is blocked at the checkpoint. A short read
+  // means it died before reaching it, and EINTR means a signal arrived mid-wait
+  // (both observed when the parallel suite starves the child), so retry on EINTR
+  // and report the child's exit status on EOF instead of failing on a bare
+  // count mismatch that hides the real cause.
+  ssize_t readCount = 0;
+  do { readCount = ::read(readyPipe[0], &ready, 1); } while (readCount < 0 && errno == EINTR);
+  if (readCount != 1) {
+    int childStatus = 0;
+    (void)::waitpid(recoveryA, &childStatus, 0);
+    ZC_FAIL_REQUIRE("checkpoint child never signalled readiness", readCount, childStatus);
+  }
   ZC_REQUIRE(ready == 'r');
   (void)::close(readyPipe[0]);
 
