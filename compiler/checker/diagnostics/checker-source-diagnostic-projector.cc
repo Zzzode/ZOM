@@ -669,6 +669,11 @@ zc::Maybe<zc::String> renderSignatureArgument(const signature::SignatureSourceAr
         argument.variant().get<signature::SignaturePrimitiveTypeDisplayArg>().kind});
     return renderDisplayArgument(converted, identities, semanticTypes);
   }
+  if (argument.variant().is<signature::SignatureOperatorDisplayArg>()) {
+    checked::CheckerDisplayArgument converted(checked::OperatorDisplayArg{checker::OperatorKind(
+        argument.variant().get<signature::SignatureOperatorDisplayArg>().operation)});
+    return renderDisplayArgument(converted, identities, semanticTypes);
+  }
   return zc::none;
 }
 

@@ -623,6 +623,32 @@ ZC_TEST("PrimitiveBinaryOperation.ReportsMismatchedScalarOperandTypes") {
             checked::CheckerErrorId::InvalidComparisonOperands());
 }
 
+ZC_TEST("PrimitiveBinaryOperation.ReportsArithmeticOperatorOnBoolOperands") {
+  // Arithmetic is not defined for bool (bool combines with the logical
+  // operators), so `a + b` on bool parameters is a type error, not an
+  // unimplemented form or a compiler invariant.
+  PrimitiveBinaryFixture fixture(
+      "fun add(a: bool, b: bool) -> i32 { let y: i32 = 0; let x: bool = a + b; return y; }\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic == checked::CheckerErrorId::InvalidBinaryOperands());
+}
+
+ZC_TEST("PrimitiveBinaryOperation.ReportsOrderingComparisonOnBoolOperands") {
+  // Ordering comparisons are not defined for bool (bool supports equality but
+  // not ordering), so `a < b` on bool parameters reports ZOM4029.
+  PrimitiveBinaryFixture fixture(
+      "fun lt(a: bool, b: bool) -> bool { if (a < b) { return true; } else { return false; } }\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::InvalidComparisonOperands());
+}
+
 ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveEqualityCallFactForParameterAndLiteral") {
   PrimitiveBinaryFixture fixture(
       "fun eq(a: i32) -> bool { if (a == 0) { return true; } else { return false; } }\n"_zc);

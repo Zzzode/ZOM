@@ -42,6 +42,17 @@ using FactEmissionResult = zc::OneOf<EmittedFacts, checked::CheckedFactsSourceRe
 /// checker simply has no semantic contract for yet.
 ZC_NODISCARD bool isEmittableScalarLiteral(ast::SyntaxKind kind) noexcept;
 
+/// \brief The primitive kind a scalar literal contributes as a binary operand,
+/// or none for literals that do not name a primitive operand type (string,
+/// unit, null).
+///
+/// Integer literals default to `i32` when no annotation context narrows them;
+/// that default is the sound choice for an ill-typed-operator classification,
+/// since `true + 1` and friends are ill-typed regardless of the exact integer
+/// width.
+ZC_NODISCARD zc::Maybe<type::semantic::PrimitiveKind> scalarLiteralPrimitiveKind(
+    ast::SyntaxKind kind) noexcept;
+
 /// \brief Produces canonical scalar-literal facts for signature and body checking.
 class FactEmitter final {
 public:

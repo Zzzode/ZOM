@@ -1,1 +1,1 @@
-let total = true + false;
+let total = typeof 123;

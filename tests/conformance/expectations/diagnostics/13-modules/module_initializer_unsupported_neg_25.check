@@ -3,9 +3,9 @@
 
 // A module-scope initializer whose expression the checker has no semantic
 // contract for is ordinary unsupported source, not a compiler invariant.
-// The signature stage emits ZOM4104 on the user rail; before the gate the
-// scalar-literal fact emitter treated the unknown kind as an invariant and
-// produced an internal compiler error.
+// `typeof` is a well-typed expression form with no constant-folding producer,
+// so it reports ZOM4104. A genuine type error (e.g. `true + false`) is a
+// separate case covered by module_initializer_bad_operands_neg_26.
 
 // CHECK-LITERAL: Error [ZOM4104]: Module-scope initializer syntax has no admitted semantic contract
 // CHECK-LITERAL:   --> conformance/13-modules/module_initializer_unsupported_neg_25.zom:1:13

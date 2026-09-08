@@ -19,6 +19,7 @@
 #include "compiler/ast/node-id.h"
 #include "compiler/binder/graph/parsed-module.h"
 #include "compiler/binder/metadata/binding-metadata.h"
+#include "compiler/checker/operator-kind.h"
 #include "compiler/diagnostics/core/diagnostic-ids.h"
 #include "compiler/identity/diagnostics/identity-invariant.h"
 #include "compiler/identity/semantic/context-fingerprint.h"
@@ -1008,6 +1009,8 @@ struct SignatureFactsInvariantRejected final {
 
 enum class SignatureSourceDiagnostic : uint16_t {
   ConflictingImpl = 4017,
+  InvalidBinaryOperands = 4028,
+  InvalidComparisonOperands = 4029,
   OrphanImpl = 4054,
   BodyLiteralOutOfRange = 4077,
   MarkerInterfaceRequiresBodylessImpl = 4088,
@@ -1015,6 +1018,7 @@ enum class SignatureSourceDiagnostic : uint16_t {
   GenericMarkerInterfaceNotAllowed = 4090,
   PositiveMarkerImplRequiresUnsafe = 4091,
   ExplicitImplConflictsWithBuiltinMarker = 4092,
+  BinaryOperatorSemanticsUnavailable = 4103,
   ModuleInitializerSemanticsUnavailable = 4104
 };
 
@@ -1026,19 +1030,26 @@ struct SignaturePrimitiveTypeDisplayArg final {
   PrimitiveKind kind;
 };
 
+struct SignatureOperatorDisplayArg final {
+  PrimitiveOperation operation;
+};
+
 /// \brief Closed typed argument algebra for signature-stage source diagnostics.
 class SignatureSourceArgument final {
 public:
   explicit SignatureSourceArgument(SignatureLiteralDisplayArg&& value) : value(zc::mv(value)) {}
   explicit SignatureSourceArgument(SignaturePrimitiveTypeDisplayArg value) noexcept
       : value(value) {}
+  explicit SignatureSourceArgument(SignatureOperatorDisplayArg&& value) : value(zc::mv(value)) {}
   SignatureSourceArgument(SignatureSourceArgument&&) noexcept = default;
   SignatureSourceArgument& operator=(SignatureSourceArgument&&) noexcept = default;
   ZC_DISALLOW_COPY(SignatureSourceArgument);
   ZC_NODISCARD const auto& variant() const noexcept { return value; }
 
 private:
-  zc::OneOf<SignatureLiteralDisplayArg, SignaturePrimitiveTypeDisplayArg> value;
+  zc::OneOf<SignatureLiteralDisplayArg, SignaturePrimitiveTypeDisplayArg,
+            SignatureOperatorDisplayArg>
+      value;
 };
 
 struct SignatureEmitterOrdinal final {

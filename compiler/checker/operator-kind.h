@@ -16,11 +16,12 @@
 
 #include <cstdint>
 
+#include "compiler/ast/generated/node-payload.h"
+#include "compiler/type/semantic-type-data.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/one-of.h"
 #include "zc/core/string.h"
-#include "compiler/ast/generated/node-payload.h"
 
 namespace zomlang::compiler::checker {
 
@@ -63,6 +64,26 @@ enum class PrimitiveOperation : uint8_t {
   Contains = 0x24,
   NullCoalesce = 0x25
 };
+
+/// \brief Whether a primitive binary operator is defined for operands of the
+/// given primitive type.
+///
+/// This is the type rule for same-typed primitive operands (ZOM has no numeric
+/// widening, so operands of different types are rejected before this is asked).
+/// It mirrors Rust's operator traits:
+/// - Equality (`==`, `!=`) is defined for every primitive scalar, including
+///   `bool`.
+/// - Ordering comparisons (`<`, `<=`, `>`, `>=`) are defined for numeric types
+///   and `char`, never for `bool`.
+/// - Arithmetic operators (`+` `-` `*` `/` `%` `**`) are defined for numeric
+///   types only; `bool` combines with the logical operators instead.
+/// - Bitwise operators (`&` `|` `^`) are defined for integers and `bool`.
+/// - Shifts (`<<` `>>` `>>>`) are defined for integers only.
+///
+/// Returns false for any unrelated operation, so callers can use it as the
+/// single "is this a type error, not an unimplemented form" test.
+ZC_NODISCARD bool primitiveBinaryOperationAdmits(PrimitiveOperation operation,
+                                                 type::semantic::PrimitiveKind kind) noexcept;
 
 enum class CompoundAssignmentOperation : uint8_t {
   AddAssign = 0x01,

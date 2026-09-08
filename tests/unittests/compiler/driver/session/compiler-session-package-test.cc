@@ -2970,7 +2970,13 @@ ZC_TEST("CompilerSession publishes no partial Checker rail when a later module i
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
   ZC_EXPECT(!session.checkSources());
-  ZC_EXPECT(session.getCheckerInvariantFailures().size() != 0);
+  // `let value = 0 + 1;` is a module-scope initializer the checker has no
+  // constant-folding producer for yet, so it is refused with the ZOM4104
+  // source diagnostic rather than reported as a compiler invariant. The
+  // rejection still blocks every downstream rail asserted below.
+  ZC_EXPECT(session.getCheckerInvariantFailures().size() == 0);
+  ZC_EXPECT(diagnosticCount(session, diagnostics::DiagID::ModuleInitializerSemanticsUnavailable) ==
+            1);
   ZC_EXPECT(session.getVerifiedSignatureFacts().size() == 0);
   ZC_EXPECT(session.getImportedSignatureViews().size() == 0);
   ZC_EXPECT(session.getVerifiedModuleInterfaces().size() == 0);

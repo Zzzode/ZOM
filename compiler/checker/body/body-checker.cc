@@ -937,33 +937,15 @@ bool isConditionPosition(const driver::module_graph_query::CheckerBoundModuleVie
   return isCondition;
 }
 
-/// \brief Returns true only for primitive scalar types eligible for `Eq`.
-bool isPrimitiveScalarType(const type::SemanticTypeStore& semanticTypes,
-                           identity::SemanticTypeId type) {
-  auto lookup = semanticTypes.get(type);
-  if (!lookup.is<type::SemanticTypeLookup>()) return false;
+/// \brief Resolves a semantic type id to its primitive kind, or none for a
+/// non-primitive (nominal, structural, or unknown) type.
+zc::Maybe<type::semantic::PrimitiveKind> primitiveKindOf(
+    const type::SemanticTypeStore& semanticTypes, identity::SemanticTypeId id) {
+  auto lookup = semanticTypes.get(id);
+  if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
   const auto& data = lookup.get<type::SemanticTypeLookup>().data();
-  if (!data.is<type::semantic::PrimitiveTypeData>()) return false;
-  const auto kind = data.get<type::semantic::PrimitiveTypeData>().kind;
-  switch (kind) {
-    case type::semantic::PrimitiveKind::I8:
-    case type::semantic::PrimitiveKind::I16:
-    case type::semantic::PrimitiveKind::I32:
-    case type::semantic::PrimitiveKind::I64:
-    case type::semantic::PrimitiveKind::U8:
-    case type::semantic::PrimitiveKind::U16:
-    case type::semantic::PrimitiveKind::U32:
-    case type::semantic::PrimitiveKind::U64:
-    case type::semantic::PrimitiveKind::Isize:
-    case type::semantic::PrimitiveKind::Usize:
-    case type::semantic::PrimitiveKind::F32:
-    case type::semantic::PrimitiveKind::F64:
-    case type::semantic::PrimitiveKind::Bool:
-    case type::semantic::PrimitiveKind::Char:
-      return true;
-    default:
-      return false;
-  }
+  if (!data.is<type::semantic::PrimitiveTypeData>()) return zc::none;
+  return data.get<type::semantic::PrimitiveTypeData>().kind;
 }
 
 /// \brief Operand types of a binary operation the shape validator refused.
@@ -1015,10 +997,19 @@ zc::Maybe<InvalidBinaryOperandTypes> invalidBinaryOperandTypes(
   identity::SemanticTypeId rightValue;
   ZC_IF_SOME(entry, leftType) { leftValue = entry.value; }
   ZC_IF_SOME(entry, rightType) { rightValue = entry.value; }
-  const bool sameType = leftValue == rightValue;
-  if (sameType && isPrimitiveScalarType(input.semanticTypes, leftValue)) return zc::none;
-  return InvalidBinaryOperandTypes{leftValue, rightValue, ZC_ASSERT_NONNULL(operation),
-                                   comparison != zc::none};
+  const PrimitiveOperation op = ZC_ASSERT_NONNULL(operation);
+  // Operands of different types are ill-typed (ZOM has no numeric widening).
+  // Same-typed operands are well-typed only when the operator is defined for
+  // that primitive type; `bool + bool` or `bool < bool` are type errors even
+  // though both operands agree, because arithmetic and ordering are not defined
+  // for bool. A non-primitive (nominal/structural) operand is likewise ill-typed.
+  if (leftValue == rightValue) {
+    auto kind = primitiveKindOf(input.semanticTypes, leftValue);
+    ZC_IF_SOME(value, kind) {
+      if (primitiveBinaryOperationAdmits(op, value)) return zc::none;
+    }
+  }
+  return InvalidBinaryOperandTypes{leftValue, rightValue, op, comparison != zc::none};
 }
 
 /// \brief Declared and produced types of a binary local initializer that disagree.
@@ -1064,10 +1055,18 @@ zc::Maybe<BinaryInitializerTypeMismatch> binaryInitializerTypeMismatch(
   identity::SemanticTypeId rightValue;
   ZC_IF_SOME(entry, leftType) { leftValue = entry.value; }
   ZC_IF_SOME(entry, rightType) { rightValue = entry.value; }
-  // Ill-typed operands are the other diagnostic's business; only a
+  // Ill-typed operands (different types, a type the operator is not defined
+  // for, or a non-primitive) are the other diagnostic's business; only a
   // well-typed operand pair can have a meaningful result type to compare.
-  if (leftValue != rightValue || !isPrimitiveScalarType(input.semanticTypes, leftValue)) {
-    return zc::none;
+  if (leftValue != rightValue) { return zc::none; }
+  {
+    auto operandKind = primitiveKindOf(input.semanticTypes, leftValue);
+    if (operandKind == zc::none) { return zc::none; }
+    auto operationKind = comparison != zc::none ? comparison : arithmetic;
+    if (!primitiveBinaryOperationAdmits(ZC_ASSERT_NONNULL(operationKind),
+                                        ZC_ASSERT_NONNULL(operandKind))) {
+      return zc::none;
+    }
   }
   identity::SemanticTypeId resultType = leftValue;
   if (comparison != zc::none) {
@@ -1198,7 +1197,14 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
     if (innerOperandType == zc::none) return zc::none;
     identity::SemanticTypeId innerOperand;
     ZC_IF_SOME(value, innerOperandType) { innerOperand = value; }
-    if (!isPrimitiveScalarType(input.semanticTypes, innerOperand)) return zc::none;
+    auto innerOp = innerComparison != zc::none ? innerComparison : innerArithmetic;
+    {
+      auto kind = primitiveKindOf(input.semanticTypes, innerOperand);
+      if (kind == zc::none ||
+          !primitiveBinaryOperationAdmits(ZC_ASSERT_NONNULL(innerOp), ZC_ASSERT_NONNULL(kind))) {
+        return zc::none;
+      }
+    }
     if (!innerIsArithmetic) {
       auto canonical = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
           type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::Bool}));
@@ -1246,7 +1252,14 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   if (operandType == zc::none) return zc::none;
   identity::SemanticTypeId operand;
   ZC_IF_SOME(value, operandType) { operand = value; }
-  if (!isPrimitiveScalarType(input.semanticTypes, operand)) return zc::none;
+  {
+    auto operandKind = primitiveKindOf(input.semanticTypes, operand);
+    if (operandKind == zc::none ||
+        !primitiveBinaryOperationAdmits(ZC_ASSERT_NONNULL(operation),
+                                        ZC_ASSERT_NONNULL(operandKind))) {
+      return zc::none;
+    }
+  }
   // A nested operand's result type must equal the shared operand type; a
   // comparison-under-arithmetic form (a bool inner feeding a non-bool parent) is
   // rejected here.

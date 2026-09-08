@@ -1,0 +1,11 @@
+// RUN: cd %corpus && ! %zomc compile --check 13-modules/module_initializer_bad_operands_neg_26.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A module-scope initializer that is a genuine type error must report the type
+// error, not a "no semantic contract" refusal. `true + false` is ill-typed
+// because arithmetic operators are not defined for bool (bool combines with
+// the logical operators), so it reports ZOM4028 exactly as the same
+// expression does inside a function body.
+
+// CHECK-LITERAL: Error [ZOM4028]: Operator + is not defined for bool and bool
+// CHECK-LITERAL:   --> conformance/13-modules/module_initializer_bad_operands_neg_26.zom:1:13

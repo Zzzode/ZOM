@@ -296,6 +296,22 @@ bool isEmittableScalarLiteral(ast::SyntaxKind kind) noexcept {
   }
 }
 
+zc::Maybe<type::semantic::PrimitiveKind> scalarLiteralPrimitiveKind(ast::SyntaxKind kind) noexcept {
+  switch (kind) {
+    case ast::SyntaxKind::BoolLiteral:
+      return type::semantic::PrimitiveKind::Bool;
+    case ast::SyntaxKind::IntLiteral:
+    case ast::SyntaxKind::BigIntLiteral:
+      return type::semantic::PrimitiveKind::I32;
+    case ast::SyntaxKind::FloatLiteralExpr:
+      return type::semantic::PrimitiveKind::F64;
+    case ast::SyntaxKind::CharacterLiteralExpr:
+      return type::semantic::PrimitiveKind::Char;
+    default:
+      return zc::none;
+  }
+}
+
 FactEmissionResult FactEmitter::emit(const FactEmissionInput& input) {
   if (!input.semanticContext.isValid() ||
       input.identities.semanticContext() != input.semanticContext ||

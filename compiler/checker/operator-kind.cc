@@ -178,6 +178,55 @@ bool allowedComparisonOperation(PrimitiveOperation operation) {
 
 }  // namespace
 
+bool primitiveBinaryOperationAdmits(PrimitiveOperation operation,
+                                    type::semantic::PrimitiveKind kind) noexcept {
+  const bool isInteger =
+      kind == type::semantic::PrimitiveKind::I8 || kind == type::semantic::PrimitiveKind::I16 ||
+      kind == type::semantic::PrimitiveKind::I32 || kind == type::semantic::PrimitiveKind::I64 ||
+      kind == type::semantic::PrimitiveKind::U8 || kind == type::semantic::PrimitiveKind::U16 ||
+      kind == type::semantic::PrimitiveKind::U32 || kind == type::semantic::PrimitiveKind::U64 ||
+      kind == type::semantic::PrimitiveKind::Isize || kind == type::semantic::PrimitiveKind::Usize;
+  const bool isFloat =
+      kind == type::semantic::PrimitiveKind::F32 || kind == type::semantic::PrimitiveKind::F64;
+  const bool isNumeric = isInteger || isFloat;
+  const bool isBool = kind == type::semantic::PrimitiveKind::Bool;
+  const bool isChar = kind == type::semantic::PrimitiveKind::Char;
+  switch (operation) {
+    // Equality is defined for every primitive scalar.
+    case PrimitiveOperation::Eq:
+    case PrimitiveOperation::Ne:
+      return isNumeric || isBool || isChar;
+    // Ordering is defined for numeric types and char, never for bool.
+    case PrimitiveOperation::Lt:
+    case PrimitiveOperation::Le:
+    case PrimitiveOperation::Gt:
+    case PrimitiveOperation::Ge:
+      return isNumeric || isChar;
+    // Arithmetic is defined for numeric types only; bool uses the logical
+    // operators, and char has no arithmetic.
+    case PrimitiveOperation::Add:
+    case PrimitiveOperation::Sub:
+    case PrimitiveOperation::Mul:
+    case PrimitiveOperation::Div:
+    case PrimitiveOperation::Rem:
+    case PrimitiveOperation::Pow:
+      return isNumeric;
+    // Bitwise combining operators are defined for integers and for bool (where
+    // they act as the non-short-circuit logical operators).
+    case PrimitiveOperation::BitAnd:
+    case PrimitiveOperation::BitOr:
+    case PrimitiveOperation::BitXor:
+      return isInteger || isBool;
+    // Shifts are defined for integer operands only.
+    case PrimitiveOperation::Shl:
+    case PrimitiveOperation::Shr:
+    case PrimitiveOperation::UShr:
+      return isInteger;
+    default:
+      return false;
+  }
+}
+
 zc::Maybe<OperatorKind> OperatorKind::fromUnary(ast::UnaryOperatorKind syntax) {
   switch (syntax) {
     case ast::UnaryOperatorKind::Plus:

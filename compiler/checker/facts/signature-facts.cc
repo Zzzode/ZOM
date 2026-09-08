@@ -6416,21 +6416,97 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
                                                 initializer.value));
           }
           ZC_IF_SOME(checkedNode, key) {
-            // The scalar-literal emitter is the only initializer fact producer the
-            // signature stage has, and it treats any other kind as a compiler
-            // invariant. A module-scope initializer the checker cannot type yet is
-            // ordinary unsupported source, so refuse it on the user rail instead of
-            // reporting a compiler bug. Body-scope initializers already reach
-            // ZOM4099 through surface admission.
-            if (!scalar_literal::isEmittableScalarLiteral(tree.node(initializer).kind)) {
-              auto failure = signatureSourceFailure(
-                  SignatureSourceDiagnostic::ModuleInitializerSemanticsUnavailable,
-                  input.boundModule, definition.node, initializer);
+            // Classify a module-scope initializer the signature stage cannot
+            // evaluate. It obeys the same expression contract as a function
+            // body, so a binary of two scalar literals follows the body's type
+            // rule first:
+            //   - an operator with no admitted semantic contract (the logical
+            //     `&&` / `||`, strict identity, `??`) reports ZOM4103;
+            //   - operands the operator is not defined for (different types, or
+            //     a type the operator rejects, such as `bool + bool` or
+            //     `bool < bool`) report ZOM4028/ZOM4029;
+            //   - a well-typed form with no constant-folding producer, or any
+            //     other expression shape the checker has no contract for, falls
+            //     through to ZOM4104.
+            const auto& initializerSyntax = tree.node(initializer);
+            zc::Maybe<SignatureSourceDiagnostic> initializerDiagnostic;
+            zc::Vector<SignatureSourceArgument> initializerArguments;
+            if (initializerSyntax.kind == ast::SyntaxKind::BinaryExpr) {
+              const ast::NodeId binLeft(initializerSyntax.payload.words[ast::kBinaryExprLhsWord]);
+              const ast::NodeId binRight(initializerSyntax.payload.words[ast::kBinaryExprRhsWord]);
+              auto leftKind =
+                  tree.contains(binLeft)
+                      ? scalar_literal::scalarLiteralPrimitiveKind(tree.node(binLeft).kind)
+                      : zc::none;
+              auto rightKind =
+                  tree.contains(binRight)
+                      ? scalar_literal::scalarLiteralPrimitiveKind(tree.node(binRight).kind)
+                      : zc::none;
+              if (leftKind != zc::none && rightKind != zc::none) {
+                const auto binaryOperator = static_cast<ast::BinaryOperatorKind>(
+                    initializerSyntax.payload.words[ast::kBinaryExprOpWord]);
+                ZC_IF_SOME(operatorKind, checker::OperatorKind::fromBinary(binaryOperator)) {
+                  if (operatorKind.variant().is<checker::PrimitiveOperation>()) {
+                    const auto operation =
+                        operatorKind.variant().get<checker::PrimitiveOperation>();
+                    const bool isComparison = operation == PrimitiveOperation::Eq ||
+                                              operation == PrimitiveOperation::Ne ||
+                                              operation == PrimitiveOperation::Lt ||
+                                              operation == PrimitiveOperation::Le ||
+                                              operation == PrimitiveOperation::Gt ||
+                                              operation == PrimitiveOperation::Ge;
+                    // Every comparison and arithmetic/bitwise/shift operator is
+                    // admitted for integers, while the logical, strict-identity,
+                    // and null-coalescing operators admit no primitive type, so
+                    // this is the precise "has a scalar type rule" test.
+                    const bool hasScalarTypeRule =
+                        primitiveBinaryOperationAdmits(operation, PrimitiveKind::I32);
+                    const PrimitiveKind leftValue = ZC_ASSERT_NONNULL(leftKind);
+                    const PrimitiveKind rightValue = ZC_ASSERT_NONNULL(rightKind);
+                    if (!isComparison && !hasScalarTypeRule) {
+                      // `&&`, `||`, `===`, `!==`, `??` are specified syntax the
+                      // checker has no semantic contract for yet.
+                      initializerDiagnostic =
+                          SignatureSourceDiagnostic::BinaryOperatorSemanticsUnavailable;
+                      initializerArguments.add(
+                          SignatureSourceArgument(SignatureOperatorDisplayArg{operation}));
+                    } else {
+                      const bool illTyped = leftValue != rightValue ||
+                                            !primitiveBinaryOperationAdmits(operation, leftValue);
+                      if (illTyped) {
+                        initializerDiagnostic =
+                            isComparison ? SignatureSourceDiagnostic::InvalidComparisonOperands
+                                         : SignatureSourceDiagnostic::InvalidBinaryOperands;
+                        initializerArguments.add(
+                            SignatureSourceArgument(SignatureOperatorDisplayArg{operation}));
+                        initializerArguments.add(
+                            SignatureSourceArgument(SignaturePrimitiveTypeDisplayArg{leftValue}));
+                        initializerArguments.add(
+                            SignatureSourceArgument(SignaturePrimitiveTypeDisplayArg{rightValue}));
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            if (initializerDiagnostic == zc::none &&
+                !scalar_literal::isEmittableScalarLiteral(initializerSyntax.kind)) {
+              initializerDiagnostic =
+                  SignatureSourceDiagnostic::ModuleInitializerSemanticsUnavailable;
+            }
+            ZC_IF_SOME(diagnostic, initializerDiagnostic) {
+              auto failure = signatureSourceFailure(diagnostic, input.boundModule, definition.node,
+                                                    initializer);
               if (failure == zc::none) {
                 return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch,
                                                     module, initializer.value));
               }
-              ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
+              ZC_IF_SOME(value, failure) {
+                for (auto& argument : initializerArguments) {
+                  value.arguments.add(zc::mv(argument));
+                }
+                sourceFailures.add(zc::mv(value));
+              }
               continue;
             }
             auto emitted = scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{
