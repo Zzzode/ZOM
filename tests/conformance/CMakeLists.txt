@@ -376,7 +376,12 @@ add_test(
 
 set_tests_properties(incremental-query-architecture-negative PROPERTIES
   LABELS "conformance;query;incremental;architecture;negative"
-  TIMEOUT 120
+  # The self-test replays every mutation case against the full source set, which
+  # costs ~104s single-threaded on an unloaded host -- only a 13% margin under
+  # the previous 120s cap, so it timed out whenever the parallel suite competed
+  # for cores. Raise the cap rather than shrink the mutation matrix, which is the
+  # gate's actual value.
+  TIMEOUT 600
 )
 
 add_test(
