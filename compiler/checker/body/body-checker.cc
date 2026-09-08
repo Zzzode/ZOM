@@ -2490,6 +2490,26 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         if (producedType == zc::none) {
           producedType = callableParameterReferenceType(input, site.node);
         }
+        // When this reference is itself an owner local's initializer, the local's
+        // declared annotation is authoritative and the initializer must match it.
+        // `ownerLocalReferenceType` reports a local's type as its initializer's
+        // type, so without this check `let x: bool = a` with an i32 `a` binds a
+        // bool local to an i32 and the mismatch is never reported. The
+        // primitive-binary path already performs the same comparison for
+        // `let x: bool = a + b`; this extends it to a bare reference.
+        ZC_IF_SOME(produced, producedType) {
+          ZC_IF_SOME(declared, ownerLocalInitializerDeclaredType(input, site.node)) {
+            if (declared != produced) {
+              ZC_IF_SOME(owner, enclosingFunctionOwner(input.boundModule, site.node)) {
+                ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                  return attachRecoveryLedger(
+                      rejectTypeMismatch(site, ownerOrdinal, declared, produced), input,
+                      factStoreBrands);
+                }
+              }
+            }
+          }
+        }
         if (producedType == zc::none) {
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,

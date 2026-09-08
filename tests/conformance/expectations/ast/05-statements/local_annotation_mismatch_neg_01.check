@@ -1,0 +1,46 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/local_annotation_mismatch_neg_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #18 @1:1..2:1 file_name="local_annotation_mismatch_neg_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #17 @1:1..1:52
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #16 @1:1..1:52 name="f"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #3 @1:6..1:14 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #2 @1:7..1:13 name="a"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:10..1:13 kind=I32
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #4 @1:18..1:21 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #15 @1:22..1:52
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #11 @1:24..1:40
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #10 @1:24..1:40 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #9 @1:28..1:39 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #8 @1:28..1:39
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #5 @1:28..1:29 name="x"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 PredefinedTypeExpr #6 @1:31..1:35 kind=Bool
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 IdentExpr #7 @1:38..1:39 name="a"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #14 @1:41..1:50
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #13 @1:41..1:50
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         IdentExpr #12 @1:48..1:49 name="x"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

@@ -873,6 +873,20 @@ ZC_TEST("PrimitiveBinaryOperation.ReportsMismatchedArithmeticOperandTypes") {
   ZC_EXPECT(rejection.failures[0].diagnostic == checked::CheckerErrorId::InvalidBinaryOperands());
 }
 
+ZC_TEST("PrimitiveBinaryOperation.ReportsTypeMismatchedIdentifierLocalInitializer") {
+  // `let x: bool = a` declares a bool local from an i32 parameter. The
+  // annotation is authoritative, so the mismatch must be reported. This was
+  // previously accepted silently: ownerLocalReferenceType reports a local's type
+  // as its initializer's type, so the bool local bound an i32 with no
+  // diagnostic at all.
+  PrimitiveBinaryFixture fixture("fun f(a: i32) -> i32 { let x: bool = a; return x; }\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic == checked::CheckerErrorId::TypeCheckerTypeMismatch());
+}
+
 ZC_TEST("PrimitiveBinaryOperation.RejectsTypeMismatchedBinaryLocalInitializer") {
   // `let x: bool = a + b` declares a bool local but the arithmetic result is i32;
   // the declared type must match the result type, so the body fails closed.

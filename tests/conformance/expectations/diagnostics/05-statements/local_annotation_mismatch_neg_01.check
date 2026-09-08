@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/local_annotation_mismatch_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A local's declared annotation is authoritative, so an initializer of a
+// different type must be reported. This source was previously accepted with exit
+// 0 and no diagnostic at all, binding a bool local to an i32 value.
+
+// CHECK-LITERAL: Error [ZOM4009]: Type mismatch: expected bool, got i32
+// CHECK-LITERAL:   --> conformance/05-statements/local_annotation_mismatch_neg_01.zom:1:38
