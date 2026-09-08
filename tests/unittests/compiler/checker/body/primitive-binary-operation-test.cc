@@ -865,6 +865,24 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsBoolComparisonBinaryLocalInitializer") {
   ZC_EXPECT(call.invocation.resultType == boolType);
 }
 
+ZC_TEST("PrimitiveBinaryOperation.ReportsMismatchedOperandTypesInsideAMethodBody") {
+  // The same refusal inside a method body. A diagnostic needs an owner to build
+  // its recovery root, and the owner lookup once admitted only
+  // DefinitionKind::Function, so every owner-scoped checker diagnostic silently
+  // fell through to the invariant rail inside a method, constructor, or
+  // destructor.
+  PrimitiveBinaryFixture fixture(
+      "class C {\n"
+      "    fun m(a: i32, b: i64) -> i32 { if (a != b) { return 1; } else { return 0; } }\n"
+      "}\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::InvalidComparisonOperands());
+}
+
 ZC_TEST("PrimitiveBinaryOperation.ReportsMismatchedArithmeticOperandTypes") {
   // The arithmetic sibling of ReportsMismatchedScalarOperandTypes: i32 and i64
   // are both scalars but not the same scalar, so `+` is not defined for them.

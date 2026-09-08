@@ -1,0 +1,5 @@
+section: "05-statements class member syntax"
+covers_rule: "classDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks the ZOM4029 rejection inside a method body."

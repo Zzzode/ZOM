@@ -1,0 +1,3 @@
+class C {
+    fun m(a: i32, b: i64) -> i32 { if (a != b) { return 1; } else { return 0; } }
+}

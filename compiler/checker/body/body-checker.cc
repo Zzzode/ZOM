@@ -157,18 +157,38 @@ bool isOwnerLocalPattern(const driver::module_graph_query::CheckerBoundModuleVie
   return false;
 }
 
-/// \brief Returns the innermost function definition whose subtree contains `node`.
+/// \brief True for a definition kind that owns an executable body.
+bool ownsExecutableBody(identity::DefinitionKind kind) noexcept {
+  switch (kind) {
+    case identity::DefinitionKind::Function:
+    case identity::DefinitionKind::Method:
+    case identity::DefinitionKind::Constructor:
+    case identity::DefinitionKind::Destructor:
+      return true;
+    default:
+      return false;
+  }
+}
+
+/// \brief Returns the innermost body-owning definition whose subtree contains
+/// `node`.
 ///
 /// Depth is the definition's owner-chain length, so the deepest match wins. Two
 /// distinct definitions at the same depth would make the owner ambiguous, which
 /// fails closed with none rather than guessing.
-zc::Maybe<identity::DefId> enclosingFunctionOwner(
+///
+/// This admits every kind that owns a body, not just `Function`. A source
+/// diagnostic needs an owner to build its recovery root, so restricting this to
+/// `Function` silently disabled every owner-scoped diagnostic inside a method,
+/// constructor, or destructor -- the refusal fell through to the invariant rail
+/// with a fully diagnosed user error already in hand.
+zc::Maybe<identity::DefId> enclosingBodyOwner(
     const driver::module_graph_query::CheckerBoundModuleView& boundModule, ast::NodeId node) {
   const auto& tree = boundModule.tree();
   zc::Maybe<identity::DefId> result;
   size_t bestDepth = 0;
   for (const auto& definition : boundModule.definitions().definitions()) {
-    if (definition.record.kind() != identity::DefinitionKind::Function ||
+    if (!ownsExecutableBody(definition.record.kind()) ||
         !subtreeContains(tree, definition.node, node)) {
       continue;
     }
@@ -195,7 +215,7 @@ zc::Maybe<identity::DefId> returnValueOwner(
   });
   if (!isReturnValue) return zc::none;
 
-  return enclosingFunctionOwner(boundModule, value);
+  return enclosingBodyOwner(boundModule, value);
 }
 
 zc::Maybe<identity::SemanticTypeId> callableSuccess(const signature::VerifiedSignatureFacts& facts,
@@ -1791,7 +1811,7 @@ attachRecoveryLedger(checked::CheckedFactsSourceRejected&& rejection,
   // ambiguous or absent owner still fails closed below.
   auto callable = returnValueOwner(input.boundModule, failure.primaryNode);
   if (initializer == zc::none && callable == zc::none) {
-    callable = enclosingFunctionOwner(input.boundModule, failure.primaryNode);
+    callable = enclosingBodyOwner(input.boundModule, failure.primaryNode);
   }
   if ((initializer == zc::none) == (callable == zc::none) ||
       !failure.recoveryPolicy.variant().is<checked::CreateRootRecoveryPolicy>()) {
@@ -2558,7 +2578,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         // specified language syntax, so report ZOM4103 rather than a compiler
         // invariant. Every other unsupported node keeps its existing rejection.
         ZC_IF_SOME(operation, unsupportedBinaryOperator(input, site.node)) {
-          ZC_IF_SOME(owner, enclosingFunctionOwner(input.boundModule, site.node)) {
+          ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
             ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
               return attachRecoveryLedger(
                   rejectUnsupportedBinaryOperator(site, ownerOrdinal, operation), input,
@@ -2632,7 +2652,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         ZC_IF_SOME(produced, producedType) {
           ZC_IF_SOME(declared, ownerLocalInitializerDeclaredType(input, site.node)) {
             if (declared != produced) {
-              ZC_IF_SOME(owner, enclosingFunctionOwner(input.boundModule, site.node)) {
+              ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
                 ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
                   return attachRecoveryLedger(
                       rejectTypeMismatch(site, ownerOrdinal, declared, produced), input,
@@ -2877,7 +2897,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           // else keeps the existing fail-closed rejection.
           auto invalidOperands = invalidBinaryOperandTypes(input, site.node, nodeTypes.asPtr());
           ZC_IF_SOME(operands, invalidOperands) {
-            ZC_IF_SOME(owner, enclosingFunctionOwner(input.boundModule, site.node)) {
+            ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
               ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
                 return attachRecoveryLedger(
                     rejectInvalidBinaryOperands(site, ownerOrdinal, operands), input,
@@ -2892,7 +2912,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           auto initializerMismatch =
               binaryInitializerTypeMismatch(input, site.node, nodeTypes.asPtr());
           ZC_IF_SOME(mismatch, initializerMismatch) {
-            ZC_IF_SOME(owner, enclosingFunctionOwner(input.boundModule, site.node)) {
+            ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
               ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
                 return attachRecoveryLedger(
                     rejectTypeMismatch(site, ownerOrdinal, mismatch.declaredType,
@@ -2904,7 +2924,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           // An operator the checker does not implement yet is specified language
           // syntax, not a compiler invariant, so it reports ZOM4103.
           ZC_IF_SOME(operation, unsupportedBinaryOperator(input, site.node)) {
-            ZC_IF_SOME(owner, enclosingFunctionOwner(input.boundModule, site.node)) {
+            ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
               ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
                 return attachRecoveryLedger(
                     rejectUnsupportedBinaryOperator(site, ownerOrdinal, operation), input,

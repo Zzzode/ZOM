@@ -1,0 +1,10 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/method_body_invalid_comparison_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// The same refusal inside a method body rather than a free function. An owner is
+// required to build a diagnostic's recovery root, and the owner lookup once
+// admitted only DefinitionKind::Function, so every owner-scoped checker
+// diagnostic fell through to a compiler incident inside a method.
+
+// CHECK-LITERAL: Error [ZOM4029]: Comparison != is not defined for i32 and i64
+// CHECK-LITERAL:   --> conformance/05-statements/method_body_invalid_comparison_neg_01.zom:2:40
