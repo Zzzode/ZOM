@@ -184,7 +184,11 @@ set_tests_properties(impl-source-architecture-negative PROPERTIES
 
 set_tests_properties(checker-architecture-negative PROPERTIES
   LABELS "conformance;checker;architecture;negative"
-  TIMEOUT 600
+  # The self-test replays a mutation per accepted diagnostic and costs ~270s
+  # single-threaded on an unloaded host. That left only a 2.2x margin under the
+  # previous 600s cap, which external load on a shared machine erased. Raise the
+  # cap rather than thin the mutation matrix, which is the gate's value.
+  TIMEOUT 1800
 )
 
 add_test(

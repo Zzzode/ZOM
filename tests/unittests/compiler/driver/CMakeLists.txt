@@ -19,11 +19,14 @@ set_tests_properties(pubgrub-scenarios-oracle
 set_tests_properties(session-compiler-session-package-test
                      PROPERTIES TIMEOUT 600 RUN_SERIAL TRUE)
 
+# Both suites cost most of their previous cap even on an unloaded host
+# (session-compiler-session-test measures ~197s against 300s), so external load
+# on a shared machine pushed them over. Give each a real margin.
 set_tests_properties(session-compiler-session-test
-                     PROPERTIES TIMEOUT 300)
+                     PROPERTIES TIMEOUT 900)
 
 set_tests_properties(query-binding-active-definition-authority-session-test
-                     PROPERTIES TIMEOUT 180)
+                     PROPERTIES TIMEOUT 600)
 
 set_tests_properties(interface-borrow-evidence-test
                      PROPERTIES TIMEOUT 180)
