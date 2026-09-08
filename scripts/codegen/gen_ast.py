@@ -317,6 +317,110 @@ def validate_payload_layouts(schema: dict[str, Any]) -> None:
             )
 
 
+BODY_CHECKER_SOURCE = os.path.join(
+    REPO_ROOT, "compiler", "checker", "body", "body-checker.cc"
+)
+
+# Expression kinds the body checker has no production for. RFC 0005 requires the
+# requirements table to be compared against the checker's producers and to fail on
+# an unclassified kind, so every expression kind must appear either in the
+# checker's production switch or in this list. Registering a fact requirement for
+# a kind absent from both makes CheckedFactsVerifier report MissingRequiredFact,
+# which reaches the user as "internal compiler error" for ordinary source.
+#
+# Removing an entry here is the correct way to land support for that kind: the
+# entry and the production arrive in the same change, and this gate fails if they
+# disagree.
+CHECKER_UNSUPPORTED_EXPRESSIONS = frozenset({
+    "ArrayLiteral",
+    "CastExpression",
+    "CommaExpr",
+    "ConditionalExpr",
+    "ErrorDefaultExpr",
+    "FunctionExpression",
+    "ImportCallExpression",
+    "IsExpression",
+    "LambdaExpression",
+    "NewExpression",
+    "NullCoalesceExpr",
+    "ObjectLiteralExpr",
+    "SpawnExpression",
+    "SuperExpr",
+    "TemplateLiteralExpr",
+    "ThisExpr",
+    "TupleLiteral",
+    "TypeOfExpression",
+})
+
+
+def checker_expression_productions() -> set[str]:
+    """Kinds the body checker's production switch assigns a production to."""
+    with open(BODY_CHECKER_SOURCE, "r", encoding="utf-8") as handle:
+        text = handle.read()
+    start = text.index("BodyProductionKind production = BodyProductionKind::Unsupported;")
+    end = text.index("productionSites.add(BodyProductionSite{", start)
+    return set(re.findall(r"case ast::SyntaxKind::(\w+)", text[start:end]))
+
+
+def checker_expression_kinds() -> set[str]:
+    """Kinds the body checker treats as expressions, i.e. `isExpression`.
+
+    That predicate, not the schema's category range, is what gates requirement
+    registration, so it is the correct set to compare against the producers. The
+    range additionally contains sub-nodes (object properties, capture items, where
+    predicates) that never register a requirement.
+    """
+    with open(BODY_CHECKER_SOURCE, "r", encoding="utf-8") as handle:
+        text = handle.read()
+    start = text.index("bool isExpression(ast::SyntaxKind kind) noexcept {")
+    end = text.index("return true;", start)
+    return set(re.findall(r"case ast::SyntaxKind::(\w+)", text[start:end]))
+
+
+def validate_checker_producer_coverage(schema: dict[str, Any]) -> None:
+    """Fails when an expression kind is neither produced nor listed unsupported.
+
+    This is the RFC 0005 requirement that the table generator compare every
+    concrete AST kind with the checker's producers. Enforcing it here makes the
+    divergence a build failure rather than a runtime incident.
+    """
+    schema_kinds = {str(item["name"]) for item in variants(schema)}
+
+    try:
+        expression_kinds = checker_expression_kinds()
+        produced = checker_expression_productions()
+    except (OSError, ValueError) as exc:
+        raise SchemaError(f"cannot read checker productions: {exc}") from exc
+
+    unknown_kinds = sorted(expression_kinds - schema_kinds)
+    if unknown_kinds:
+        raise SchemaError(
+            "the checker's isExpression names kinds absent from the AST schema: "
+            + ", ".join(unknown_kinds)
+        )
+
+    unclassified = sorted(expression_kinds - produced - CHECKER_UNSUPPORTED_EXPRESSIONS)
+    if unclassified:
+        raise SchemaError(
+            "expression kinds are neither produced by the body checker nor listed in "
+            "CHECKER_UNSUPPORTED_EXPRESSIONS: " + ", ".join(unclassified)
+        )
+
+    stale = sorted(CHECKER_UNSUPPORTED_EXPRESSIONS & produced)
+    if stale:
+        raise SchemaError(
+            "CHECKER_UNSUPPORTED_EXPRESSIONS lists kinds the body checker now produces; "
+            "remove them: " + ", ".join(stale)
+        )
+
+    unknown = sorted(CHECKER_UNSUPPORTED_EXPRESSIONS - expression_kinds)
+    if unknown:
+        raise SchemaError(
+            "CHECKER_UNSUPPORTED_EXPRESSIONS names kinds the checker does not treat as "
+            "expressions: " + ", ".join(unknown)
+        )
+
+
 def validate_schema(schema: dict[str, Any]) -> None:
     node_variants = variants(schema)
     ids: dict[int, str] = {}
@@ -339,6 +443,8 @@ def validate_schema(schema: dict[str, Any]) -> None:
         for right_name, (right_first, right_last) in ordered_ranges[index + 1:]:
             if left_first <= right_last and right_first <= left_last:
                 raise SchemaError(f"category ranges overlap: {left_name} and {right_name}")
+
+    validate_checker_producer_coverage(schema)
 
     allowed_types = field_types(schema)
     allowed_casts = set(names) | set(ranges) | set(schema.get("union_predicates", []))
