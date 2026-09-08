@@ -5,12 +5,12 @@
 
 #pragma once
 
+#include "compiler/ast/tree.h"
+#include "compiler/checker/checker-identity-authority.h"
+#include "compiler/checker/inference/checked-facts.h"
+#include "compiler/type/semantic-type-store.h"
 #include "zc/core/common.h"
 #include "zc/core/one-of.h"
-#include "compiler/ast/tree.h"
-#include "compiler/checker/inference/checked-facts.h"
-#include "compiler/checker/checker-identity-authority.h"
-#include "compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::checker::scalar_literal {
 
@@ -34,6 +34,13 @@ struct EmittedFacts final {
 
 using FactEmissionResult = zc::OneOf<EmittedFacts, checked::CheckedFactsSourceRejected,
                                      checked::CheckedFactsInvariantRejected>;
+
+/// \brief Whether `kind` is a scalar literal the emitter below can produce facts for.
+///
+/// Callers must gate on this before calling `FactEmitter::emit`: the emitter treats an
+/// unaccepted kind as a compiler invariant, which is the wrong rail for source the
+/// checker simply has no semantic contract for yet.
+ZC_NODISCARD bool isEmittableScalarLiteral(ast::SyntaxKind kind) noexcept;
 
 /// \brief Produces canonical scalar-literal facts for signature and body checking.
 class FactEmitter final {

@@ -129,6 +129,7 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ExpressionStatementSemanticsUnavailable) == 4098);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::FunctionBodySemanticsUnavailable) == 4099);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::BinaryOperatorSemanticsUnavailable) == 4103);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ModuleInitializerSemanticsUnavailable) == 4104);
 }
 
 ZC_TEST("DiagnosticTest.ReceiverParserDiagnosticIdsAreStable") {

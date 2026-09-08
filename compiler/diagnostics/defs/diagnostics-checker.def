@@ -157,3 +157,5 @@ DIAG(4099, FunctionBodySemanticsUnavailable, kError,
 // safety) and must not be reused here.
 DIAG(4103, BinaryOperatorSemanticsUnavailable, kError,
      "Operator {0} has no admitted semantic contract", 1)
+DIAG(4104, ModuleInitializerSemanticsUnavailable, kError,
+     "Module-scope initializer syntax has no admitted semantic contract", 0)

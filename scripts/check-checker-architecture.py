@@ -315,6 +315,8 @@ ACCEPTED_CHECKER_DIAGNOSTICS = (
     (4091, "PositiveMarkerImplRequiresUnsafe", "kError", "A positive marker implementation requires unsafe", 0),
     (4092, "ExplicitImplConflictsWithBuiltinMarker", "kError", "Builtin marker evidence cannot be replaced by an explicit implementation", 0),
     (4103, "BinaryOperatorSemanticsUnavailable", "kError", "Operator {0} has no admitted semantic contract", 1),
+    (4104, "ModuleInitializerSemanticsUnavailable", "kError",
+     "Module-scope initializer syntax has no admitted semantic contract", 0),
 )
 
 REMOVED_CHECKER_DIAGNOSTIC_CODES = (4027, 4034, 4042, 4043, 4053)

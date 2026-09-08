@@ -1,0 +1,11 @@
+// RUN: cd %corpus && ! %zomc compile --check 13-modules/module_initializer_unsupported_neg_25.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A module-scope initializer whose expression the checker has no semantic
+// contract for is ordinary unsupported source, not a compiler invariant.
+// The signature stage emits ZOM4104 on the user rail; before the gate the
+// scalar-literal fact emitter treated the unknown kind as an invariant and
+// produced an internal compiler error.
+
+// CHECK-LITERAL: Error [ZOM4104]: Module-scope initializer syntax has no admitted semantic contract
+// CHECK-LITERAL:   --> conformance/13-modules/module_initializer_unsupported_neg_25.zom:1:13

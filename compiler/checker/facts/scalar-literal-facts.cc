@@ -8,10 +8,10 @@
 #include <cstdint>
 #include <cstring>
 
-#include "zc/core/exception.h"
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/type/semantic-type-data.h"
+#include "zc/core/exception.h"
 
 namespace zomlang::compiler::checker::scalar_literal {
 namespace {
@@ -278,6 +278,23 @@ zc::Maybe<uint32_t> singleUtf8Scalar(zc::StringPtr text) noexcept {
 }
 
 }  // namespace
+
+bool isEmittableScalarLiteral(ast::SyntaxKind kind) noexcept {
+  switch (kind) {
+    case ast::SyntaxKind::NullLiteral:
+    case ast::SyntaxKind::BoolLiteral:
+    case ast::SyntaxKind::IntLiteral:
+    case ast::SyntaxKind::BigIntLiteral:
+    case ast::SyntaxKind::FloatLiteralExpr:
+    case ast::SyntaxKind::StringLiteralExpr:
+    case ast::SyntaxKind::NoSubstitutionTemplateLiteralExpr:
+    case ast::SyntaxKind::CharacterLiteralExpr:
+    case ast::SyntaxKind::UnitLiteral:
+      return true;
+    default:
+      return false;
+  }
+}
 
 FactEmissionResult FactEmitter::emit(const FactEmissionInput& input) {
   if (!input.semanticContext.isValid() ||

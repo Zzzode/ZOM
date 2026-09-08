@@ -6416,6 +6416,23 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
                                                 initializer.value));
           }
           ZC_IF_SOME(checkedNode, key) {
+            // The scalar-literal emitter is the only initializer fact producer the
+            // signature stage has, and it treats any other kind as a compiler
+            // invariant. A module-scope initializer the checker cannot type yet is
+            // ordinary unsupported source, so refuse it on the user rail instead of
+            // reporting a compiler bug. Body-scope initializers already reach
+            // ZOM4099 through surface admission.
+            if (!scalar_literal::isEmittableScalarLiteral(tree.node(initializer).kind)) {
+              auto failure = signatureSourceFailure(
+                  SignatureSourceDiagnostic::ModuleInitializerSemanticsUnavailable,
+                  input.boundModule, definition.node, initializer);
+              if (failure == zc::none) {
+                return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch,
+                                                    module, initializer.value));
+              }
+              ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
+              continue;
+            }
             auto emitted = scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{
                 context, module, tree, initializer, checkedNode,
                 input.boundModule.parsedModule().source(), input.identities, input.semanticTypes});

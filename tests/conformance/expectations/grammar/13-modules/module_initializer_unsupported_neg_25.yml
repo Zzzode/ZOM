@@ -1,0 +1,5 @@
+section: "13-modules module item statement syntax"
+covers_rule: "ModuleItem (Statement)"
+expected: "ACCEPT"
+notes:
+  - "Module-scope statements are valid grammar; diagnostics runner checks the ZOM4104 unsupported-initializer rejection."
