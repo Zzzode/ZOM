@@ -5,12 +5,10 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
-  # Manual trigger against any ref. The automatic triggers above are unchanged:
-  # this adds no new automatic runs. It exists because the backend job
-  # (check-backend-llvm) is the only job that enables ZOM_ENABLE_LLVM_BACKEND,
-  # and its evidence requirement is a passing *remote* run -- unreachable from a
-  # development branch while the automatic triggers cover main alone. Note a
-  # manual run starts every job in this file, not the backend job alone.
+  # Manual trigger against any ref, for the occasional case where someone wants
+  # to run this workflow on a development branch on demand. The automatic
+  # triggers above are unchanged, so this adds no new automatic runs. Note a
+  # manual run starts every job in this file, not one job alone.
   workflow_dispatch:
 
 env:
