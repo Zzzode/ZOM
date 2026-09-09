@@ -806,7 +806,7 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
   const auto& block = tree.node(body);
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
-  if (!tree.contains(statements) || statements.size < 3) return zc::none;
+  if (!tree.contains(statements) || statements.size < 2) return zc::none;
   const size_t bindingCount = statements.size - 1;
   SequentialLocalShape shape{};
   shape.body = body;
@@ -1269,16 +1269,30 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   }
   {
     auto sequential = sequentialLocalShape(tree, body);
+    // The N>=2 sequential shape is claimed for every leading-`let` body. A body
+    // with exactly one leading `let` is normally handled by the single-local
+    // path; only when that single binding is a primitive binary does it route
+    // here, reusing the complete sequential binary lowering instead of a
+    // separate single-local binary rail.
     if (sequential != zc::none) {
-      FunctionReturnShape shape{};
-      shape.body = body;
-      shape.returnStatement = returnNode;
-      shape.value = value;
-      shape.returnsLocal = true;
-      shape.localReference = value;
-      shape.isSequentialLocalReturn = true;
-      shape.unsafeBlock = zc::mv(unsafeBlock);
-      return shape;
+      bool routeToSequential = false;
+      ZC_IF_SOME(shape, sequential) {
+        routeToSequential =
+            shape.bindings.size() >= 2 ||
+            (shape.bindings.size() == 1 &&
+             shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveBinary);
+      }
+      if (routeToSequential) {
+        FunctionReturnShape shape{};
+        shape.body = body;
+        shape.returnStatement = returnNode;
+        shape.value = value;
+        shape.returnsLocal = true;
+        shape.localReference = value;
+        shape.isSequentialLocalReturn = true;
+        shape.unsafeBlock = zc::mv(unsafeBlock);
+        return shape;
+      }
     }
   }
   auto localStatement = statementItem(tree, tree.list(statements)[0]);

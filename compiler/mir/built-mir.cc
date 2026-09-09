@@ -1180,6 +1180,31 @@ zc::Maybe<const hir::HirPrimitiveBinaryExpression&> primitiveBinaryFor(
   return result;
 }
 
+// True when a HIR block is a leading-`let`-then-`return` body lowered by the
+// sequential N-local rail: N leading local bindings followed by a single return.
+// N>=2 bodies always qualify. An N==1 (two-statement) body qualifies only when
+// its single binding's initializer is a primitive binary, which is the only
+// single-local initializer owned by the sequential rail; a literal, aggregate,
+// or reference single-local keeps the dedicated single-local shape.
+bool isSequentialLocalReturnBlock(const hir::VerifiedHirModule& module,
+                                  const hir::HirBlockStatement& block) {
+  if (block.statements.size() < 2) return false;
+  const size_t bindingCount = block.statements.size() - 1;
+  for (size_t i = 0; i < bindingCount; ++i) {
+    if (localFor(module, block.statements[i]) == zc::none) return false;
+  }
+  if (returnFor(module, block.statements[bindingCount]) == zc::none) return false;
+  if (bindingCount >= 2) return true;
+  auto localBinding = localFor(module, block.statements[0]);
+  bool binaryInitializer = false;
+  ZC_IF_SOME(local, localBinding) {
+    ZC_IF_SOME(initializer, local.initializer) {
+      binaryInitializer = primitiveBinaryFor(module, initializer) != zc::none;
+    }
+  }
+  return binaryInitializer;
+}
+
 // Maps the HIR-carried relational operator to its Built MIR comparison operator.
 // Only the six relational comparisons of same-typed scalars are lowerable.
 zc::Maybe<MirComparisonOperator> mirComparisonOperatorFor(checker::PrimitiveOperation operation) {
@@ -3568,7 +3593,7 @@ bool validSequentialLocalReturnFunction(
   (void)module;
   (void)identities;
   (void)semanticTypes;
-  if (sourceBlock.statements.size() < 3) return false;
+  if (!isSequentialLocalReturnBlock(hirModule, sourceBlock)) return false;
   const size_t bindingCount = sourceBlock.statements.size() - 1;
   const uint32_t parameterCount = static_cast<uint32_t>(declaration.parameters.size());
   zc::Maybe<const hir::HirUnsafeBlockExpression&> unsafeBlock;
@@ -4787,7 +4812,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
   for (const auto& sequentialFunction : hirModule.functions()) {
     auto sequentialBlock = blockFor(hirModule, sequentialFunction.body);
     ZC_IF_SOME(block, sequentialBlock) {
-      if (block.statements.size() < 3) continue;
+      if (!isSequentialLocalReturnBlock(hirModule, block)) continue;
       bool allLeadingLocals = true;
       for (size_t i = 0; i + 1 < block.statements.size(); ++i) {
         if (localFor(hirModule, block.statements[i]) == zc::none) {
@@ -5438,16 +5463,15 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
           }
         }
       }
-      // Sequential N-local body: N (>= 2) leading `let` bindings followed by a
-      // single `return <local-or-parameter>`. Parameters occupy localId(1..P);
-      // user local i occupies localId(P + i + 1). Each binding lowers to
-      // StorageLive + Assign of a constant (literal), nominal aggregate, or a
-      // copy/move place-use of the referenced parameter or earlier local.
+      // Sequential N-local body: N leading `let` bindings followed by a single
+      // `return <local-or-parameter>`. Parameters occupy localId(1..P); user
+      // local i occupies localId(P + i + 1). Each binding lowers to StorageLive +
+      // Assign of a constant (literal), nominal aggregate, a primitive binary
+      // (arithmetic/comparison) rvalue, or a copy/move place-use of the
+      // referenced parameter or earlier local. N>=2 always qualifies; an N==1
+      // body qualifies only when its binding is a primitive binary.
       {
-        bool allLeadingLocals = block.statements.size() >= 3;
-        for (size_t i = 0; allLeadingLocals && i + 1 < block.statements.size(); ++i) {
-          if (localFor(hirModule, block.statements[i]) == zc::none) allLeadingLocals = false;
-        }
+        bool allLeadingLocals = isSequentialLocalReturnBlock(hirModule, block);
         auto sequentialReturn =
             allLeadingLocals ? returnFor(hirModule, block.statements[block.statements.size() - 1])
                              : zc::Maybe<const hir::HirReturnStatement&>();
@@ -8630,7 +8654,8 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
           returnsRootLocal = localFieldProjectionFor(hirModule, returnStatement.value) == zc::none;
         }
       }
-      if (sourceBlock != zc::none && ZC_ASSERT_NONNULL(sourceBlock).statements.size() >= 3) {
+      if (sourceBlock != zc::none &&
+          isSequentialLocalReturnBlock(hirModule, ZC_ASSERT_NONNULL(sourceBlock))) {
         ZC_IF_SOME(block, sourceBlock) {
           bool allLeadingLocals = true;
           for (size_t i = 0; i + 1 < block.statements.size(); ++i) {

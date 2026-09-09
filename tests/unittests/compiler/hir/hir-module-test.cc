@@ -840,6 +840,90 @@ ZC_TEST("HIR pipeline lowers a binary-initializer sequential local body") {
   }
 }
 
+ZC_TEST("HIR pipeline lowers a single binary-initializer local body") {
+  // A single `let` whose initializer is a primitive comparison routes through the
+  // sequential binary rail (N=1): the bool result local is returned directly.
+  HirPipelineFixture fixture(
+      "fun f(a: i32, b: i32) -> bool { let x: bool = a == b; return x; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  // One binding local with a primitive-binary initializer.
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  // The comparison's two operands are the parameters a and b; the return of x is
+  // a single local reference.
+  ZC_REQUIRE(module.parameterReferences().size() == 2);
+  ZC_REQUIRE(module.localReferences().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 0);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& returned = module.returns()[0];
+  // Fixed-id layout for one binary binding (width 4): F+0 function, F+1 block;
+  // local=3, init(binary)=4, leftOp=5, rightOp=6; return=7, value=8.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_REQUIRE(block.statements.size() == 2);
+  const auto& xLocal = module.locals()[0];
+  ZC_EXPECT(xLocal.node.ordinal() == 3);
+  ZC_EXPECT(xLocal.local.ordinal() == 1);
+  ZC_EXPECT(block.statements[0] == xLocal.node);
+  ZC_EXPECT(block.statements[1] == returned.node);
+  ZC_EXPECT(returned.node.ordinal() == 7);
+  ZC_EXPECT(returned.value.ordinal() == 8);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  const auto& comparison = module.primitiveBinaryOperations()[0];
+  ZC_EXPECT(comparison.operation == checker::PrimitiveOperation::Eq);
+  ZC_EXPECT(comparison.node == xLocal.initializer);
+  // The comparison result type is bool (the local type), distinct from the i32
+  // operand type.
+  ZC_EXPECT(comparison.type == function.resultType);
+  ZC_EXPECT(comparison.type != comparison.operandType);
+  ZC_EXPECT(comparison.left.ordinal() == 5);
+  ZC_EXPECT(comparison.right.ordinal() == 6);
+  zc::Maybe<const HirLocalReferenceExpression&> returnReference;
+  for (const auto& reference : module.localReferences()) {
+    if (reference.node == returned.value) returnReference = reference;
+  }
+  ZC_REQUIRE(returnReference != zc::none);
+  ZC_IF_SOME(reference, returnReference) { ZC_EXPECT(reference.local == xLocal.local); }
+
+  // The body lowers to a single block: StorageLive + Assign of a Comparison
+  // rvalue, then Return of x.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    // Two parameters (locals 0,1) plus one bool user local (local 2).
+    ZC_REQUIRE(mirFunction.locals.size() == 3);
+    const auto parameterA = mirFunction.locals[0].id;
+    const auto parameterB = mirFunction.locals[1].id;
+    const auto localX = mirFunction.locals[2].id;
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    const auto& mirBlock = mirFunction.blocks[0];
+    // StorageLive + Assign for the single binding.
+    ZC_REQUIRE(mirBlock.statements.size() == 2);
+    ZC_EXPECT(mirBlock.statements[0].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirBlock.statements[1].kind() == mir::MirStatementKind::Assign);
+    const auto& xAssign = mirBlock.statements[1].assignmentValue();
+    // x = a == b: Comparison Eq of the two parameter locals into bool local x.
+    ZC_REQUIRE(xAssign.value.kind() == mir::MirRvalueKind::Comparison);
+    ZC_EXPECT(xAssign.value.comparisonValue().op == mir::MirComparisonOperator::Eq);
+    ZC_EXPECT(xAssign.destination.local() == localX);
+    ZC_EXPECT(xAssign.value.comparisonValue().left.place().local() == parameterA);
+    ZC_EXPECT(xAssign.value.comparisonValue().right.place().local() == parameterB);
+    ZC_REQUIRE(mirBlock.terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_IF_SOME(returnValue, mirBlock.terminator.returnValue().value) {
+      ZC_EXPECT(returnValue.place().local() == localX);
+    }
+  }
+}
+
 ZC_TEST("HIR pipeline lowers a nested-operand binary sequential local body") {
   HirPipelineFixture fixture(
       "fun f(a: i32, b: i32, c: i32) -> i32 { let z: i32 = a + b * c; let w: i32 = z; return w; }"_zc);

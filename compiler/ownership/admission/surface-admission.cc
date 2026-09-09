@@ -321,7 +321,8 @@ bool isAdmittedLocalInitializer(const ast::Tree& tree, ast::NodeId initializer) 
   return isScalarLiteral(tree.node(initializer).kind) ||
          tree.node(initializer).kind == ast::SyntaxKind::IdentExpr ||
          isAdmittedDirectCall(tree, initializer) ||
-         isAdmittedAggregateInitializer(tree, initializer);
+         isAdmittedAggregateInitializer(tree, initializer) ||
+         isAdmittedPrimitiveBinary(tree, initializer);
 }
 
 bool matchesLocalReference(const ast::Tree& tree, ast::NodeId pattern, ast::NodeId reference) {
@@ -579,15 +580,27 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
     }
   }
 
-  // Sequential local shape: two or more leading `let <ident>: T = <initializer>;`
+  // Sequential local shape: N leading `let <ident>: T = <initializer>;`
   // statements followed by a single `return <ident>;`. Each initializer is a
-  // scalar literal, a closed nominal aggregate, or an identifier reference (a
-  // parameter or an earlier local, resolved downstream). The returned value is
-  // an identifier (a parameter or one of the declared locals). This is the sole
-  // admitted shape whose leading statements are all `let` declarations, so it is
-  // detected structurally and either admitted or rejected here; every other
-  // multi-statement shape has a non-`let` leading statement and falls through.
-  if (statements.size >= 3) {
+  // scalar literal, a closed nominal aggregate, an identifier reference (a
+  // parameter or an earlier local), or a primitive binary operation. The
+  // returned value is an identifier (a parameter or one of the declared
+  // locals). N>=2 is always this shape; an N==1 (two-statement) body is claimed
+  // here only when its single binding is a primitive binary, so that a binary
+  // result followed by a parameter return admits through the same rail. Any
+  // other single-`let` body falls through to the dedicated single-local shape.
+  bool sequentialLocalShape = statements.size >= 3;
+  if (!sequentialLocalShape && statements.size == 2) {
+    auto soleDeclarator = localDeclarator(tree, tree.list(statements)[0]);
+    ZC_IF_SOME(declarator, soleDeclarator) {
+      const ast::NodeId soleInitializer(
+          tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+      if (tree.contains(soleInitializer) && isAdmittedPrimitiveBinary(tree, soleInitializer)) {
+        sequentialLocalShape = true;
+      }
+    }
+  }
+  if (sequentialLocalShape) {
     bool allLeadingLets = true;
     for (size_t index = 0; index + 1 < statements.size; ++index) {
       if (localDeclarator(tree, tree.list(statements)[index]) == zc::none) {
