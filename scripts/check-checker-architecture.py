@@ -317,6 +317,9 @@ ACCEPTED_CHECKER_DIAGNOSTICS = (
     (4103, "BinaryOperatorSemanticsUnavailable", "kError", "Operator {0} has no admitted semantic contract", 1),
     (4104, "ModuleInitializerSemanticsUnavailable", "kError",
      "Module-scope initializer syntax has no admitted semantic contract", 0),
+    (4105, "ModuleStatementSemanticsUnavailable", "kError",
+     "Module scope only admits declarations; executable statements have no admitted semantic contract",
+     0),
 )
 
 REMOVED_CHECKER_DIAGNOSTIC_CODES = (4027, 4034, 4042, 4043, 4053)

@@ -1,0 +1,19 @@
+// RUN: %zomc compile --dump-ast %corpus/13-modules/module_executable_statement_neg_27.zom | %FileCheck %s
+
+// A module-level bare executable statement (a reassignment) is grammatically
+// a StatementListItem holding an ExpressionStatement; the checker rejects it
+// (ZOM4105), but its AST shape is stable.
+// CHECK: SourceFile
+// CHECK-NEXT:   module: null
+// CHECK:     StatementListItem
+// CHECK:       item:
+// CHECK-NEXT:        LetStmt
+// CHECK:     StatementListItem
+// CHECK:       item:
+// CHECK-NEXT:        ExpressionStatement
+// CHECK-NEXT:          expression:
+// CHECK-NEXT:            AssignmentExpr {{.*}} op=Assign
+// CHECK:              lhs:
+// CHECK-NEXT:                IdentExpr {{.*}} name="x"
+// CHECK:              rhs:
+// CHECK-NEXT:                IntLiteral {{.*}} value="2"

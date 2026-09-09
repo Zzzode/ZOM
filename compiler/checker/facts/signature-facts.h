@@ -1019,7 +1019,8 @@ enum class SignatureSourceDiagnostic : uint16_t {
   PositiveMarkerImplRequiresUnsafe = 4091,
   ExplicitImplConflictsWithBuiltinMarker = 4092,
   BinaryOperatorSemanticsUnavailable = 4103,
-  ModuleInitializerSemanticsUnavailable = 4104
+  ModuleInitializerSemanticsUnavailable = 4104,
+  ModuleStatementSemanticsUnavailable = 4105
 };
 
 struct SignatureLiteralDisplayArg final {

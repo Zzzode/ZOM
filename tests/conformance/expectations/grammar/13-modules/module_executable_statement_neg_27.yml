@@ -1,0 +1,5 @@
+section: "13-modules module item syntax"
+covers_rule: "ModuleItem (Statement)"
+expected: "ACCEPT"
+notes:
+  - "Grammar accepts a module-level executable statement; the checker rejects it because module scope only admits declarations, which is ZOM4105 semantics rather than grammar."

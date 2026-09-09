@@ -14,6 +14,7 @@
 
 #include "compiler/checker/facts/signature-facts.h"
 
+#include "compiler/ast/generated/node-accessors.h"
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/binder/metadata/definition-inventory.h"
@@ -6252,6 +6253,47 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
   };
   zc::Vector<BuiltSignature> built;
   const auto& tree = input.boundModule.tree();
+  // Module scope admits declarations, import/export/module items, and
+  // `let`/`const` binding statements, all of which have a producer. An
+  // executable statement kind (an assignment, `if`/`while`/`return`, a bare
+  // call, ...) has no constant-evaluation producer, so the body fact inventory
+  // would register requirements nothing satisfies and report an internal
+  // compiler error. Walk the module's top-level items and refuse any executable
+  // statement on the source rail.
+  {
+    const ast::NodeId root = tree.root();
+    if (tree.contains(root) && tree.node(root).kind == ast::SyntaxKind::SourceFile) {
+      const auto& rootNode = tree.node(root);
+      const ast::NodeList moduleStatements{
+          rootNode.payload.words[ast::kSourceFileStatementsFirstWord],
+          rootNode.payload.words[ast::kSourceFileStatementsSizeWord]};
+      if (tree.contains(moduleStatements)) {
+        for (const ast::NodeId item : tree.list(moduleStatements)) {
+          if (!tree.contains(item) || tree.node(item).kind != ast::SyntaxKind::StatementListItem) {
+            continue;
+          }
+          const ast::NodeId entry(tree.node(item).payload.words[ast::kStatementListItemItemWord]);
+          // A module item is a declaration, an import/export/module node, or a
+          // `let`/`const` binding statement; those all have a producer. An
+          // executable statement kind (an assignment, `if`/`while`/`return`, a
+          // bare call, ...) -- anything in the statement range other than a
+          // binding `let` -- has none.
+          if (!tree.contains(entry) || tree.node(entry).kind == ast::SyntaxKind::LetStmt ||
+              !ast::isStatementKind(tree.node(entry).kind)) {
+            continue;
+          }
+          auto failure =
+              signatureSourceFailure(SignatureSourceDiagnostic::ModuleStatementSemanticsUnavailable,
+                                     input.boundModule, root, entry);
+          if (failure == zc::none) {
+            return buildReject(
+                checkerInvariant(CheckerInvariantKind::InputReceiptMismatch, module, entry.value));
+          }
+          ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
+        }
+      }
+    }
+  }
   struct BuiltSignatureCensusEntry final {
     SignatureDefinitionCensusEntry entry;
     zc::Array<uint8_t> key;
