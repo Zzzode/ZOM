@@ -615,7 +615,7 @@ ZC_TEST("ModuleGraphSourceDiagnosticProjector.ValidatesAndProjectsReservedRoot")
       ZC_EXPECT(batch.facts[0].occurrence().semanticDomain() ==
                 diagnostics::SemanticDiagnosticDomain::ModuleGraph);
       ZC_EXPECT(batch.provenance[0].range.byteStart == 7);
-      ZC_EXPECT(batch.provenance[0].range.byteEnd == 7);
+      ZC_EXPECT(batch.provenance[0].range.byteEnd == 11);
       ZC_EXPECT(batch.provenance[1].range.byteStart == 7);
       ZC_EXPECT(batch.provenance[1].range.byteEnd == 11);
       ZC_EXPECT(batch.provenance[1].range.isTokenRange);
