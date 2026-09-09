@@ -3586,9 +3586,11 @@ bool validSequentialLocalReturnFunction(
     auto localBinding = localFor(hirModule, sourceBlock.statements[i]);
     if (localBinding == zc::none) return false;
     ZC_IF_SOME(local, localBinding) {
+      // A leading local carries its own binding's type; mixed-type locals
+      // (e.g. a bool local in an i32 function) are legal. The returned local
+      // is separately checked against the function result type at the return.
       if (local.node != sourceBlock.statements[i] ||
-          local.local.ordinal() != static_cast<uint32_t>(i + 1) || local.initializer == zc::none ||
-          local.type != declaration.resultType) {
+          local.local.ordinal() != static_cast<uint32_t>(i + 1) || local.initializer == zc::none) {
         return false;
       }
       bindings.add(&local);
@@ -5463,8 +5465,11 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
               break;
             }
             ZC_IF_SOME(local, localBinding) {
+              // Each leading local keeps its own binding's type; only the
+              // returned local must match the function result type, and that
+              // is checked at the return. Mixed-type leading locals are legal.
               if (local.local.ordinal() != static_cast<uint32_t>(i + 1) ||
-                  local.initializer == zc::none || local.type != declaration.resultType) {
+                  local.initializer == zc::none) {
                 valid = false;
               }
               bindings.add(&local);

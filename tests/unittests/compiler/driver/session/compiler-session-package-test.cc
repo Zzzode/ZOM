@@ -2950,6 +2950,35 @@ ZC_TEST("CompilerSession gives behavior body diagnostics precedence over marker 
   ZC_EXPECT(diagnosticCount(session, diagnostics::DiagID::BehaviorInterfaceRequiresImplBody) == 1);
 }
 
+ZC_TEST("CompilerSession lowers a function with mixed-type integer literal locals") {
+  // A leading local keeps its own binding's type; an integer-returning function
+  // may bind a literal-initialized local of a different integer width (here a
+  // dead i64 local) and return a different local. The sequential-local lowering
+  // must not force every local to the function result type.
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+      resolvedSourceSnapshots(
+          "app"_zc, "fun pick() -> i32 { let y: i32 = 5; let x: i64 = 9; return y; }\n"_zc));
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+  installCore(session);
+
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  ZC_EXPECT(session.checkSources());
+  ZC_EXPECT(session.getCheckerInvariantFailures().size() == 0);
+  ZC_EXPECT(!session.hasDiagnosticErrors());
+}
+
 ZC_TEST("CompilerSession publishes no partial Checker rail when a later module is rejected") {
   basic::LangOptions languageOptions;
   basic::CompilerOptions compilerOptions;
