@@ -219,7 +219,10 @@ DiagnosticMaterializationResult materializeDiagnosticFacts(
     if (primarySourceByteLength == zc::none) {
       return DiagnosticMaterializationFailure::ForeignSource;
     }
-    if (primaryRange.byteStart != primaryRange.byteEnd || primaryRange.isTokenRange) {
+    // The primary site may be a single caret (a point) or a token range the
+    // renderer underlines with ^~~. Only the ordering invariant (start <= end)
+    // is required.
+    if (primaryRange.byteStart > primaryRange.byteEnd) {
       return DiagnosticMaterializationFailure::RoleMismatch;
     }
     if (primaryRange.byteEnd > ZC_ASSERT_NONNULL(primarySourceByteLength) ||

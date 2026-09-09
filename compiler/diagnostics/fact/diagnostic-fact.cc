@@ -1764,10 +1764,8 @@ bool validateDiagnosticProvenance(zc::ArrayPtr<const DiagnosticFact> facts,
     }
     const auto& primaryEntry = provenance.entries()[entryIndex++];
     const auto& primary = primaryEntry.range;
-    if (primaryEntry.key != fact.primary() || primary.byteStart != primary.byteEnd ||
-        primary.isTokenRange) {
-      return false;
-    }
+    // The primary site may be a point caret or a token range (^~~ underline).
+    if (primaryEntry.key != fact.primary() || primary.byteStart > primary.byteEnd) { return false; }
     for (const auto& secondary : fact.secondary()) {
       if (secondary.provenance().origin() != DiagnosticFactOrigin::Source) { return false; }
       const auto& secondaryEntry = provenance.entries()[entryIndex++];

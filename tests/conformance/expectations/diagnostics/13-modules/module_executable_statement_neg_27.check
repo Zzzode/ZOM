@@ -4,5 +4,5 @@
 // Module scope admits declarations, not bare executable statements such as a
 // reassignment; the checker refuses with ZOM4105 rather than raising an
 // internal compiler error.
-// CHECK-LITERAL: Error [ZOM4105]: Module scope only admits declarations; executable statements have no admitted semantic contract
+// CHECK-LITERAL: Error [ZOM4105]: executable statements are not allowed at module scope; only declarations are supported
 // CHECK-LITERAL:   --> conformance/13-modules/module_executable_statement_neg_27.zom:2:1

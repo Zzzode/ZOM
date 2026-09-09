@@ -6,5 +6,5 @@
 // admitted only DefinitionKind::Function, so every owner-scoped checker
 // diagnostic fell through to a compiler incident inside a method.
 
-// CHECK-LITERAL: Error [ZOM4029]: Comparison != is not defined for i32 and i64
+// CHECK-LITERAL: Error [ZOM4029]: Comparison operator `!=` is not defined for types `i32` and `i64`
 // CHECK-LITERAL:   --> conformance/05-statements/method_body_invalid_comparison_neg_01.zom:2:40

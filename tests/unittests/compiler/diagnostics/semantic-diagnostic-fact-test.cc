@@ -59,7 +59,9 @@ ZC_TEST("SemanticDiagnosticFact projects stable source-qualified facts") {
   ZC_EXPECT(value.fact.secondary()[0].provenance().semanticRole() ==
             SemanticDiagnosticSiteRole::Note);
   ZC_REQUIRE(value.provenance.size() == 2);
-  const DiagnosticSourceRange expectedPrimary{2, 2, false};
+  // The primary range spans the flagged node's full source span so the renderer
+  // underlines it with ^~~; note sites remain single-carete points.
+  const DiagnosticSourceRange expectedPrimary{2, 5, true};
   const DiagnosticSourceRange expectedNote{8, 8, false};
   ZC_EXPECT(value.provenance[0].range == expectedPrimary);
   ZC_EXPECT(value.provenance[1].range == expectedNote);

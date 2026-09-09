@@ -1,6 +1,6 @@
 {
   "baseRevision": "109947943519ec2d380a3e8d71813b40bc68bde5",
-  "headRevision": "2c07ca3a1a131aaa71e7d93ad44e9b0920bf3557",
+  "headRevision": "d911980a6e4e025317e7a55324938eca75ea282f",
   "inputs": [
     "05-statements/uninitialized_local_return_neg_01.zom",
     "05-statements/uninitialized_aggregate_field_return_neg_01.zom",
@@ -9,15 +9,15 @@
   "outputs": {
     "05-statements/uninitialized_aggregate_field_return_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "5bc273ce882f9b56e9d0fc628900188139fb6cb6f617548400903899486bc830"
+      "sha256": "48fc9e2849bbdaa21ee0ec6221dde6f5791de09f4f95e868f70787da5e2948b1"
     },
     "05-statements/uninitialized_aggregate_sibling_field_return_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "e5e937b9e5706e5990abe54a9cb85c10ddeacc67fe132308e7966697fb379d67"
+      "sha256": "7876af9bc31c6c8ead0a285f8a4a6b505354022263f44bac6fe83df77727fef7"
     },
     "05-statements/uninitialized_local_return_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "bbd450787401ba84b1924b32a56c85552003b1bab0cb6a55f4b7c6ca475ef049"
+      "sha256": "3d20cfab0a0f6c08b66e01f6dd55a14ed102b1e8b5d23a31d5305e6dee45ee69"
     }
   },
   "repeats": 3,

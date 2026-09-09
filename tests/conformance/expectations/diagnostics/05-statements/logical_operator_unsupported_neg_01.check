@@ -6,5 +6,5 @@
 // spec'd syntax was wrong; ZOM4103 says so honestly, mirroring the
 // ZOM4095-ZOM4099 family for unadmitted body syntax.
 
-// CHECK-LITERAL: Error [ZOM4103]: Operator && has no admitted semantic contract
+// CHECK-LITERAL: Error [ZOM4103]: operator `&&` is not supported yet
 // CHECK-LITERAL:   --> conformance/05-statements/logical_operator_unsupported_neg_01.zom:1:49

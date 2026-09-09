@@ -143,8 +143,8 @@ bool rootProvenanceIsComplete(zc::ArrayPtr<const DiagnosticFact> facts,
   size_t index = 0;
   for (const auto& fact : facts) {
     const auto& primary = provenance[index++];
-    if (primary.key != fact.primary() || primary.range.byteStart != primary.range.byteEnd ||
-        primary.range.isTokenRange) {
+    // The primary site may be a point caret or a token range (^~~ underline).
+    if (primary.key != fact.primary() || primary.range.byteStart > primary.range.byteEnd) {
       return false;
     }
     for (const auto& secondary : fact.secondary()) {

@@ -1,8 +1,8 @@
 // RUN: cd %corpus && ! %zomc compile --check 05-statements/return_pos_01.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM4097]: Void return syntax has no admitted semantic contract
+// CHECK-LITERAL: Error [ZOM4097]: this void-return construct is not supported yet
 // CHECK-LITERAL:   --> conformance/05-statements/return_pos_01.zom:2:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     return;
-// CHECK-LITERAL:   |     ^
+// CHECK-LITERAL:   |     ^~~~~~~

@@ -5,7 +5,7 @@
 // CHECK:   --> {{.*}}05-statements/uninitialized_local_return_neg_01.zom:3:3
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 |   return value;
-// CHECK-LITERAL:   |   ^
+// CHECK-LITERAL:   |   ^~~~~~~~~~~~~
 // CHECK-LITERAL: Note [ZOM4094]: Place became unavailable here
 // CHECK:   --> {{.*}}05-statements/uninitialized_local_return_neg_01.zom:2:7
 // CHECK-LITERAL:   |

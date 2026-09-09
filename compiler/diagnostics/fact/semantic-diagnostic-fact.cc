@@ -57,7 +57,10 @@ SemanticDiagnosticProjectionResult projectSemanticDiagnosticFact(
   zc::Vector<SourceDiagnosticProvenanceEntry> provenance(1 + related.size());
   provenance.add(SourceDiagnosticProvenanceEntry{
       ZC_ASSERT_NONNULL(primaryKey).clone(),
-      DiagnosticSourceRange{primary.byteStart(), primary.byteStart(), false}});
+      // The primary range spans the flagged node's full source span so the
+      // renderer underlines the whole token (^ followed by ~) rather than a
+      // single caret.
+      DiagnosticSourceRange{primary.byteStart(), primary.byteEnd(), true}});
   uint32_t highlightOrdinal = 0;
   uint32_t noteOrdinal = 0;
   uint32_t previousOrdinal = 0;
