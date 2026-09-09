@@ -2950,11 +2950,12 @@ ZC_TEST("CompilerSession gives behavior body diagnostics precedence over marker 
   ZC_EXPECT(diagnosticCount(session, diagnostics::DiagID::BehaviorInterfaceRequiresImplBody) == 1);
 }
 
-ZC_TEST("CompilerSession lowers a function with mixed-type integer literal locals") {
-  // A leading local keeps its own binding's type; an integer-returning function
-  // may bind a literal-initialized local of a different integer width (here a
-  // dead i64 local) and return a different local. The sequential-local lowering
-  // must not force every local to the function result type.
+ZC_TEST("CompilerSession lowers a function with mixed-type scalar locals") {
+  // Each leading local keeps its own binding's type; a function may bind locals
+  // of a different scalar carrier than its result -- an integer literal local,
+  // a parameter-copied local of a different integer width, and a bool local
+  // holding a comparison result -- and return a different local. The sequential
+  // lowering must not force every local to the function result type.
   basic::LangOptions languageOptions;
   basic::CompilerOptions compilerOptions;
   identity::SemanticContextFactory contextFactory;
@@ -2963,8 +2964,14 @@ ZC_TEST("CompilerSession lowers a function with mixed-type integer literal local
   auto input = VerifiedPackageSessionInput::from(
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
       resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
-      resolvedSourceSnapshots(
-          "app"_zc, "fun pick() -> i32 { let y: i32 = 5; let x: i64 = 9; return y; }\n"_zc));
+      resolvedSourceSnapshots("app"_zc,
+                              "fun pick(a: i32, b: i64, c: i32) -> i32 {\n"
+                              "  let y: i32 = a;\n"
+                              "  let wide: i64 = b;\n"
+                              "  let flag: bool = a == c;\n"
+                              "  let truth: bool = true;\n"
+                              "  return y;\n"
+                              "}\n"_zc));
   ZC_REQUIRE(input != zc::none);
   ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
   installCore(session);

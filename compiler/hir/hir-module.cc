@@ -3189,7 +3189,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
           // Every binding shares the function result type in this slice.
           size_t initializerTypeSlot = 0;
           ZC_IF_SOME(index, initializerTypeIndex) { initializerTypeSlot = index; }
-          if (facts.nodeTypes().entries()[initializerTypeSlot].value != sequentialType) {
+          // Each leading local keeps its own declared type (the initializer's
+          // node-type fact, which the checker has already verified matches the
+          // binding pattern's annotation); only the returned local must match
+          // the function result type, checked separately above.
+          const identity::SemanticTypeId bindingType =
+              facts.nodeTypes().entries()[initializerTypeSlot].value;
+          if (!typeExists(bindingType, checkedModule.semanticTypes())) {
             rejected = true;
             break;
           }
@@ -3203,7 +3209,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
           zc::Maybe<HirNominalAggregateExpression> bindingAggregate;
           zc::Maybe<identity::CallableParameterKey> bindingParameter;
           zc::Maybe<checker::PrimitiveOperation> bindingOperation;
-          identity::SemanticTypeId bindingOperandType = sequentialType;
+          identity::SemanticTypeId bindingOperandType = bindingType;
           zc::Maybe<PendingSequentialBinaryOperand> bindingLeftOperand;
           zc::Maybe<PendingSequentialBinaryOperand> bindingRightOperand;
           if (binding.initializerKind == SequentialInitializerKind::Literal) {
@@ -3215,7 +3221,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
             size_t literalSlot = 0;
             ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
             const auto& literalFact = facts.literals().entries()[literalSlot].value;
-            if (literalFact.type != sequentialType ||
+            if (literalFact.type != bindingType ||
                 !sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
               rejected = true;
               break;
@@ -3232,7 +3238,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
             const auto& sourceAggregate = facts.aggregates().entries()[aggregateSlot].value;
             if (sourceAggregate.node != binding.initializer ||
                 !sourceAggregate.kind.variant().is<checker::checked::NominalAggregate>() ||
-                sourceAggregate.resultType != sequentialType ||
+                sourceAggregate.resultType != bindingType ||
                 !sameSpan(sourceAggregate.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
               rejected = true;
               break;
@@ -3270,7 +3276,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
             bindingAggregate = HirNominalAggregateExpression{
                 HirNodeId(),
                 sourceAggregate.kind.variant().get<checker::checked::NominalAggregate>().definition,
-                sequentialType,
+                bindingType,
                 zc::mv(elements),
                 HirValueCategory::Value,
                 ZC_ASSERT_NONNULL(initializerSpan).clone()};
@@ -3304,12 +3310,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
             const bool comparison = isScalarComparisonOperation(operation);
             const bool arithmetic = isScalarArithmeticOperation(operation);
             // The operand type is the shared argument type; a comparison yields
-            // the (bool) result while an arithmetic operator yields the operand
-            // type. The binding type is always the function result type.
+            // a bool result while an arithmetic operator yields its operand
+            // type. The binding (result) type is the local's own declared type.
             const auto binaryOperandType =
-                call.arguments.size() == 2 ? call.arguments[0].sourceType : sequentialType;
+                call.arguments.size() == 2 ? call.arguments[0].sourceType : bindingType;
             const bool operationSupported =
-                comparison || (arithmetic && sequentialType == binaryOperandType);
+                comparison || (arithmetic && bindingType == binaryOperandType);
             const ast::NodeId binaryLeft(
                 tree.node(binding.initializer).payload.words[ast::kBinaryExprLhsWord]);
             const ast::NodeId binaryRight(
@@ -3321,7 +3327,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                 call.arguments[0].sourceType != binaryOperandType ||
                 call.arguments[1].sourceNode != binaryRight ||
                 call.arguments[1].sourceType != binaryOperandType ||
-                call.successType != sequentialType || call.resultType != sequentialType ||
+                call.successType != bindingType || call.resultType != bindingType ||
                 call.substitutions != zc::none || call.witnesses != zc::none ||
                 call.raises != zc::none) {
               rejected = true;
@@ -3560,7 +3566,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
               auto authority = registries.callableParameter(handle);
               ZC_IF_SOME(entry, authority) {
                 for (const auto& parameter : parameters) {
-                  if (parameter.key == entry.key() && parameter.type == sequentialType) {
+                  if (parameter.key == entry.key() && parameter.type == bindingType) {
                     resolvedKey = entry.key().clone();
                   }
                 }
@@ -3573,7 +3579,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
             bindingParameter = zc::mv(resolvedKey);
           }
           pendingBindings.add(PendingSequentialBinding{
-              sequentialType, ZC_ASSERT_NONNULL(patternSpan).clone(),
+              bindingType, ZC_ASSERT_NONNULL(patternSpan).clone(),
               ZC_ASSERT_NONNULL(initializerSpan).clone(), binding.initializerKind,
               zc::mv(bindingLiteral), zc::mv(bindingAggregate), zc::mv(bindingParameter),
               binding.referencedLocal, zc::mv(bindingOperation), bindingOperandType,
@@ -6753,7 +6759,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         if (patternSpan == zc::none || initializerSpan == zc::none || ownerBinding == zc::none ||
             localValue.local != hirLocalId(static_cast<uint32_t>(bindingIndex + 1)) ||
             localValue.initializer != hirId(initializerNodeOrdinal) ||
-            localValue.type != sequentialType ||
             !sameSpan(localValue.sourceSpan, ZC_ASSERT_NONNULL(patternSpan)) ||
             localValue.initializerSpan == zc::none ||
             !sameSpan(ZC_ASSERT_NONNULL(localValue.initializerSpan),
@@ -6768,7 +6773,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         if (!bindingsValid) break;
         localBindingIds.add(ZC_ASSERT_NONNULL(ownerBinding));
-        // Every binding initializer node carries the function result type.
+        // Each binding initializer carries the local's own declared type (the
+        // checker verifies it matches the binding pattern); only the returned
+        // local shares the function result type, checked separately above.
         auto initializerTypeIndex = factIndex(facts.nodeTypes(), binding.initializer);
         if (initializerTypeIndex == zc::none) {
           bindingsValid = false;
@@ -6776,7 +6783,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         size_t initializerTypeSlot = 0;
         ZC_IF_SOME(value, initializerTypeIndex) { initializerTypeSlot = value; }
-        if (facts.nodeTypes().entries()[initializerTypeSlot].value != sequentialType) {
+        const identity::SemanticTypeId bindingType =
+            facts.nodeTypes().entries()[initializerTypeSlot].value;
+        if (!typeExists(bindingType, semanticTypes) || localValue.type != bindingType) {
           bindingsValid = false;
           break;
         }
@@ -6796,9 +6805,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
           const auto& literalFact = facts.literals().entries()[literalSlot].value;
           const auto& literalValue = ZC_ASSERT_NONNULL(literal);
-          if (literalValue.type != sequentialType ||
-              literalValue.category != HirValueCategory::Value ||
-              literalFact.type != sequentialType ||
+          if (literalValue.type != bindingType ||
+              literalValue.category != HirValueCategory::Value || literalFact.type != bindingType ||
               !sameConstant(literalValue.value, literalFact.literal, module, registries,
                             semanticTypes) ||
               !sameSpan(literalValue.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
@@ -6821,7 +6829,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           ZC_IF_SOME(value, aggregateIndex) { aggregateSlot = value; }
           const auto& checkedAggregate = facts.aggregates().entries()[aggregateSlot].value;
           const auto& aggregateValue = ZC_ASSERT_NONNULL(aggregate);
-          if (aggregateValue.type != sequentialType ||
+          if (aggregateValue.type != bindingType ||
               aggregateValue.category != HirValueCategory::Value ||
               checkedAggregate.node != binding.initializer ||
               !checkedAggregate.kind.variant().is<checker::checked::NominalAggregate>() ||
@@ -6871,7 +6879,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               ZC_ASSERT_NONNULL(referenceBinding) != localBindingIds[binding.referencedLocal] ||
               ZC_ASSERT_NONNULL(reference).local !=
                   hirLocalId(static_cast<uint32_t>(binding.referencedLocal + 1)) ||
-              ZC_ASSERT_NONNULL(reference).type != sequentialType ||
+              ZC_ASSERT_NONNULL(reference).type != bindingType ||
               ZC_ASSERT_NONNULL(reference).category != HirValueCategory::Place ||
               !sameSpan(ZC_ASSERT_NONNULL(reference).sourceSpan,
                         ZC_ASSERT_NONNULL(initializerSpan))) {
@@ -6897,7 +6905,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               parameterMatches = ZC_ASSERT_NONNULL(reference).parameter == entry.key();
             }
           }
-          if (!parameterMatches || ZC_ASSERT_NONNULL(reference).type != sequentialType ||
+          if (!parameterMatches || ZC_ASSERT_NONNULL(reference).type != bindingType ||
               ZC_ASSERT_NONNULL(reference).category != HirValueCategory::Place ||
               !sameSpan(ZC_ASSERT_NONNULL(reference).sourceSpan,
                         ZC_ASSERT_NONNULL(initializerSpan))) {
@@ -6940,18 +6948,17 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           const auto binaryOperandType = binaryValue.operandType;
           if ((!comparison && !arithmetic) || binaryValue.node != hirId(initializerNodeOrdinal) ||
               binaryValue.left != hirId(leftOperandOrdinal) ||
-              binaryValue.right != hirId(rightOperandOrdinal) ||
-              binaryValue.type != sequentialType ||
+              binaryValue.right != hirId(rightOperandOrdinal) || binaryValue.type != bindingType ||
               binaryValue.category != HirValueCategory::Value ||
               binaryValue.operation != operation ||
               !sameSpan(binaryValue.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan)) ||
-              (arithmetic && sequentialType != binaryOperandType) ||
+              (arithmetic && bindingType != binaryOperandType) ||
               callFact.node != binding.initializer || call.calleeType != binaryOperandType ||
               call.receiver != zc::none || call.receiverMode != zc::none ||
               call.receiverAdjustment != zc::none || call.arguments.size() != 2 ||
               call.arguments[0].sourceType != binaryOperandType ||
               call.arguments[1].sourceType != binaryOperandType ||
-              call.successType != sequentialType || call.resultType != sequentialType ||
+              call.successType != bindingType || call.resultType != bindingType ||
               call.substitutions != zc::none || call.witnesses != zc::none ||
               call.raises != zc::none) {
             bindingsValid = false;
