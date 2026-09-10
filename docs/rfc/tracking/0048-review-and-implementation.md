@@ -41,18 +41,18 @@ required owner approves the frozen snapshot.
 
 Frozen proposal snapshot (SHA-256 of the RFC document at REVIEW entry):
 
-| Proposal SHA-256 | `2b54f6c323180f9618d184a2378829b8d46ad0d16da46a6b9e53ae08d7456192` |
+| Proposal SHA-256 | `ff5d5a2d922f22f1b77686daafab42f6f2729ee52858da24cddf0fbfae97422e` |
 |---|---|
 
 ## Owner Review Matrix
 
-| Owner | Surface | Round 1 |
-|---|---|---|
-| `ir-backend` | HIR/Built MIR recursive construction, structural verifiers, canonical byte allocation, LIR structural admission | REQUEST-CHANGES |
-| `binder-checker` | Checker body fact-production gates, fact resolver/node-key contracts, copy/move evidence | REQUEST-CHANGES |
-| `error-system` | IR failure matrix source-construct capability row, ZOM4095-4103 projection, residual function-anchor | REQUEST-CHANGES |
-| `verification` | Corpus parity tool, architecture-gate markers, in-memory mutation tests, oracle regeneration | REQUEST-CHANGES |
-| `rfc` | Process, template conformance, required-owner completeness | Pending |
+| Owner | Surface | Round 1 | Round 2 | Round 3 |
+|---|---|---|---|---|
+| `ir-backend` | HIR/Built MIR recursive construction, structural verifiers, canonical byte allocation, LIR structural admission | REQUEST-CHANGES | APPROVED | APPROVED |
+| `binder-checker` | Checker body fact-production gates, fact resolver/node-key contracts, copy/move evidence | REQUEST-CHANGES | APPROVED (editorial) | APPROVED |
+| `error-system` | IR failure matrix source-construct capability row, ZOM4095-4103 projection, residual function-anchor | REQUEST-CHANGES | REQUEST-CHANGES (one taxonomy gap) | APPROVED |
+| `verification` | Corpus parity tool, architecture-gate markers, in-memory mutation tests, oracle regeneration | REQUEST-CHANGES | REQUEST-CHANGES (IR-byte channel) | APPROVED (one wording fix applied) |
+| `rfc` | Process, template conformance, required-owner completeness | Pending | Pending | Pending |
 
 ### 2026-09-10 Four-Owner Review Round 1 - All REQUEST-CHANGES, Revised
 
@@ -91,6 +91,70 @@ Agreed blocking findings, all addressed in the revised REVIEW snapshot:
 The proposal is updated and re-frozen (snapshot hash updated above). It returns
 to REVIEW for a second round; no owner approval is recorded and the RFC does not
 advance to ACCEPTED.
+
+### 2026-09-10 Four-Owner Review Round 2 - Two APPROVED, Two REQUEST-CHANGES, Revised
+
+The four owners re-reviewed the revised snapshot against live code.
+
+- `ir-backend`: APPROVED. All nine round-1 findings resolved at the design level;
+  every load-bearing claim checked against code. Three non-blocking notes: the
+  structural MIR verifier should not assert exact per-block statement counts
+  (reworded to ordering/termination invariants), per-construct local placement
+  remains in the "general" builder (a deliberate, documented scoping choice), and
+  the capability-tag choice is deferred to Phase 0.
+- `binder-checker`: APPROVED. B1/B2 and M1/M2 plus minors resolved. Editorial
+  notes folded in: name the error-postfix pre-HIR refusal, mark the capture arm a
+  future slice, and keep the MIR body-input/marker-engine carve-out prominent.
+- `verification`: REQUEST-CHANGES. F1-F4/F6/F7 resolved; F5 remained blocking -
+  `compile --check` stops after checking and there is no HIR/MIR dump mode, so an
+  exit/diagnostic parity tool cannot see IR byte drift for accepted programs.
+  Resolved in this revision by adding a deterministic debug HIR/MIR canonical dump
+  surface (`utils/zomc/**` added to impact) and a two-channel parity tool
+  (process channel + IR channel), plus per-file invocation/include-exclude rules
+  and codec-framing oracle guidance.
+- `error-system`: REQUEST-CHANGES. Findings 1/3/4 resolved; Finding 2's mechanism
+  is correct but the residual taxonomy omitted a live third function-anchored
+  ZOM4099 case: `class_literal_body_shape_neg_03` (a class aggregate) is rejected
+  today only by the surface gate's struct-only scan while checker/HIR/MIR/LIR are
+  class-agnostic and the struct twin links. Resolved in this revision by keying
+  legality on node kind plus resolved definition kind (class versus struct),
+  allowing construct-bearing bodies without a dedicated code to map to ZOM4099 at
+  the function-declaration anchor, and pinning the projector discriminator and
+  per-code producer split (no-HIR-record codes stay surface-produced; only ZOM4103
+  and ZOM4099 reach the construction rail).
+
+The proposal is re-frozen with these changes (snapshot hash updated) and returns
+to REVIEW for a third round on the two revised surfaces. No approval is recorded.
+
+### 2026-09-10 Four-Owner Review Round 3 - All Technical Owners APPROVED
+
+The two remaining owners re-reviewed the re-frozen snapshot against live code.
+
+- `error-system`: APPROVE. New Issue 1 resolved - legality keyed on node kind plus
+  resolved definition kind (`DefinitionKind::Class` vs `Struct`, available on the
+  HIR aggregate DefId), construct-bearing bodies without a dedicated code (the
+  class aggregate) map to ZOM4099 at the function-declaration anchor, verified
+  byte-identical against `class_literal_body_shape_neg_03.check` (4099 at 2:1)
+  by a live run. New Issue 2 resolved - a construct discriminator feeds total
+  `capabilityDiagnosticId`/`sameCapabilityRoot`/`irOperationalFailureDisplay`
+  arms; no-HIR-record codes (4095/4096/4097/4098) stay OwnershipSurface and only
+  ZOM4103/ZOM4099 gain the construction-rail arm; no dual production. A nit to
+  list ZOM4097 in the surface-side parenthetical was applied.
+- `verification`: APPROVE after one wording fix. F5 resolved - a deterministic
+  debug `--dump-hir`/`--dump-mir` surface (buildable from `VerifiedHirModule::dump()`
+  and the `MirRevisionCodec` framed bytes) plus a two-channel parity tool
+  (process + IR) makes accepted-program IR byte drift observable; per-file
+  invocation and include/exclude classes pinned. Minors 2/4 resolved. Minor 3
+  flagged a self-contradiction: the Compatibility section said both ztest files'
+  hex digests are regenerated while the Test Plan (correctly) keeps the
+  hand-assembled codec-framing oracles in `built-mir-test.cc` byte-identical; the
+  contradiction was fixed so only production-builder witnesses in
+  `hir-module-test.cc` are regenerable under the audited exception list.
+
+All four technical required owners (`ir-backend`, `binder-checker`,
+`error-system`, `verification`) now APPROVE the frozen snapshot. The `rfc` process
+review remains open; the RFC stays `REVIEW` and is not advanced to ACCEPTED until
+the process owner signs off.
 
 ## Decision Record
 

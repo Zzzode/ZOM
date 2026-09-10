@@ -372,37 +372,81 @@ digests).
 
 ### Capability legality and the RFC 0010 failure-algebra extension
 
-A `LoweringLegality` inventory enumerates the HIR node kinds the current MIR
-slice emits (initially exactly those emitted today). Legality and structural
-validity are distinct outcomes:
+A `LoweringLegality` inventory enumerates what the current slice lowers. It is
+keyed on more than the HIR node kind: a legality predicate may inspect the node
+kind together with the semantic facts it carries, in particular the resolved
+definition kind of a nominal (class versus struct). This finer granularity is
+required because the current slice lowers a value-typed `struct` aggregate but
+does not yet lower a reference-typed `class` aggregate, even though both produce
+the same `HirNominalAggregateExpression`; a node-kind-only inventory could not
+distinguish them and would silently lower a class aggregate as a value aggregate.
+The initial inventory is derived so that its accept/reject partition is exactly
+today's, including the class-aggregate refusal.
 
-- A well-formed node outside the inventory is a *source-construct capability
-  failure*. Because RFC 0010's closed matrix currently permits
-  `CapabilityRejected` only at monomorphization/target/object/link phases, this
-  RFC extends the matrix: a new source-construct capability kind (or an explicit
-  legalized reuse of a capability kind) is made legal at `HirConstruction` and
-  `MirConstruction` with a definition-owned site that carries a source span (the
-  MIR site gains a construct source span, or the failure references the HIR node
-  whose span is retained). The capability projector gains arms mapping it to the
-  existing ZOM4095-4099/4103 `DiagID`s by construct kind, in the IR-capability
-  semantic domain. The IR failure kind tag, phase/kind legality table
-  (`isCapabilityKind`, `legalKind`, owner/site legality), branch derivation, and
-  capability projector are all updated together. No new user `ZOMxxxx` code is
-  introduced and no code changes meaning.
+Legality and structural validity are distinct outcomes:
+
+- An unadmitted construct is a *source-construct capability failure*. Because
+  RFC 0010's closed matrix currently permits `CapabilityRejected` only at
+  monomorphization/target/object/link phases, this RFC extends the matrix: a new
+  source-construct capability kind (or an explicit legalized reuse of a
+  capability kind) is made legal at `HirConstruction` and `MirConstruction` with
+  a definition-owned site that carries a source span (the MIR site gains a
+  construct source span, or the failure references the HIR node whose span is
+  retained). The IR failure kind tag, phase/kind legality table
+  (`isCapabilityKind`, `legalKind`, owner/site legality), and branch derivation
+  are updated together. No new user `ZOMxxxx` code is introduced and no code
+  changes meaning.
 - Structural corruption of an admitted node (dangling edge, type mismatch,
   unterminated block, unresolved dispatch on an otherwise-admitted shape)
   remains an `IrInvariantRejected` compiler failure. The builder never emits a
   capability failure for corruption, and never emits an invariant for
   source-present unadmitted syntax.
 
-Residual whole-body cases (empty function body; admitted statements with no
-terminal return) have no offending node and are reported against the owning
-function declaration, preserving today's ZOM4099 declaration-anchored span and
-anchor (`fun`). They are detected as a function-level capability outcome, not by
-re-introducing a whole-body classifier: the recursive walk completes and the
-function-level closure check reports the declaration span. Specific-construct
-codes (ZOM4095-4098, ZOM4103) anchor at the construct/operator node as they do
-today. This keeps current `.check` byte output identical.
+Capability projection and anchoring. A capability failure carries both the
+owning function declaration span and (when there is one) the offending construct
+node span; the projector chooses the `DiagID` and anchor from a total mapping
+over the constructs the inventory refuses:
+
+- Specific-construct codes anchor at the construct/operator node: the control
+  family (ZOM4095/4096), void return (ZOM4097), expression statement (ZOM4098),
+  binary operator (ZOM4103).
+- ZOM4099 anchors at the owning function declaration (`fun`) for every body the
+  current slice reports there. This covers not only the two no-offending-node
+  residuals (empty body; admitted statements with no terminal return) but also
+  construct-bearing bodies whose construct has no dedicated code and that today
+  report ZOM4099 at the declaration - proven against the corpus by
+  `class_literal_body_shape_neg_03` (a class aggregate reports ZOM4099 at the
+  `fun`, 2:1). The projector maps such a construct (including a
+  reference-typed class aggregate) to ZOM4099 with the declaration anchor, not a
+  node anchor, so the `.check` bytes stay identical. The construct-to-`DiagID`
+  mapping is exhaustive over the initial inventory's refusals; the projector has
+  no `ZC_UNREACHABLE` fallthrough for a reachable construct.
+- The migrated codes remain defined in `diagnostics-checker.def`; occurrences
+  emitted through the new IR rail project in the existing
+  `SemanticDiagnosticDomain::IrCapability` domain. The pre-HIR rail (no-HIR-record
+  constructs) and the construction rail (HIR-record constructs) are disjoint by
+  HIR-record presence, so a construct is emitted by exactly one rail and no
+  diagnostic is duplicated.
+- Projector mechanics. A single new `IrFailureKind` cannot select among six
+  `DiagID`s through the exhaustive `capabilityDiagnosticId(kind)` switch, so the
+  failure carries a construct discriminator (a source-construct detail kind, or a
+  per-construct failure kind mapped 1:1 to a `DiagID`) alongside the
+  definition/site span. Phase 0 adds the matching companion arms for the
+  discriminator in the capability projector, `sameCapabilityRoot`, and
+  `irOperationalFailureDisplay`, and the mapping is total. Producer split: the
+  no-HIR-record constructs (`match`, `spawn`/`suspend`, loop-control, expression
+  statements, void return) stay refused pre-HIR by the retained surface node-local
+  checks and remain `OwnershipSurface`-produced (ZOM4095/4096/4097/4098); Phase 5
+  deletes only the surface whole-function `FunctionBody` arm (ZOM4099), not the
+  node-local construct arms. The codes that reach construction (binary operator ZOM4103,
+  residual and construct-bearing ZOM4099) gain the IR-projector arm; no code is
+  dual-produced.
+
+Function-level residuals (empty body; missing terminal return) are detected by
+the recursive walk's function-level closure check, not by re-introducing a
+whole-body classifier. Every current ZOM4095-4105 `.check` file stays byte-green,
+verified by the parity tool.
+
 
 ### Checker body-fact production change
 
@@ -440,11 +484,13 @@ terminator destination/normal-target wiring and argument count/types; switch-int
 arms and default targets; receiver borrow/effect and unsafe-boundary placement;
 complete source scopes; parameter locals first in source order. It ports every
 invariant the per-shape verifiers and the LIR detectors currently re-check (local
-kind contiguity and placement, block order, per-block statement counts,
-terminator kinds and targets, rvalue kinds). The `valid*ReturnFunction`
-functions are deleted; their guarantees live in this verifier, which is the
-stated basis LIR now relies on (replacing the `validLoopReturnFunction`-style
-re-check comments in `mir-to-lir.h`).
+kind contiguity and placement, block creation/termination order, the required
+terminator for each block and its kinds/targets, statement ordering such as
+StorageLive-before-use and boundary pairing, and rvalue kinds) - expressed as
+structural well-formedness and ordering rules, not exact per-shape statement
+counts. The `valid*ReturnFunction` functions are deleted; their guarantees live
+in this verifier, which is the stated basis LIR now relies on (replacing the
+`validLoopReturnFunction`-style re-check comments in `mir-to-lir.h`).
 
 `compiler/lir/mir-to-lir.cc` no longer matches fixed positional shapes
 (`locals[parameterCount]` kind, exact statement counts, hard-coded block ids 1-4).
@@ -467,7 +513,7 @@ integration fixtures (`tests/integration/core-library/*`).
 | Surface admission (body-shape classification removed; node-local checks kept) | `compiler/ownership/admission/**` | `error-system`, `ir-backend` |
 | Ownership overlay consumers (parameter ordering invariant; contracts unchanged) | `compiler/ownership/**` | `ir-backend`, `verification` |
 | Architecture gates pinning deleted rails | `scripts/check-ownership-architecture.py`, `scripts/check-ir-architecture.py` | `verification` |
-| Corpus parity tool (new), unit/lit/conformance/byte-oracle tests | `scripts/**`, `tests/**` | `verification` |
+| Corpus parity tool (new) and debug HIR/MIR dump surface, unit/lit/conformance/byte-oracle tests | `scripts/**`, `tests/**`, `utils/zomc/**` | `verification` |
 | RFC process conformance | `docs/rfc/**` | `rfc` |
 
 ## Security And Safety Impact
@@ -525,11 +571,14 @@ Each phase is gated on corpus parity and lands independently revertible.
 
 - Phase 0 - Failure algebra and capability seam. Add the source-construct
   capability kind legal at HIR/MIR construction with a source-span site; extend
-  the capability projector to the ZOM4095-4103 family; add the function-declaration
-  anchor for residual whole-body cases. Add the corpus parity tool first.
+  the capability projector with a total construct-to-code mapping and the
+  function-declaration anchor; add the debug HIR/MIR canonical dump surface; add
+  the corpus parity tool (process and IR channels) first.
 - Phase 1 - Checker fact-production audit and move. Reclassify body-checker
   invariant sites; publish facts for type-valid unlowered forms; move shape/stage
-  gates behind the capability seam with identical diagnostics.
+  gates behind the capability seam with identical diagnostics. The audit also
+  enumerates constructs surface admission alone rejects today (such as class
+  aggregates) so their refusal is expressed in the legality inventory.
 - Phase 2 - Recursive HIR construction and structural HIR verifier, including the
   candidate mutation seam and fact-completeness post-pass; corpus parity.
 - Phase 3 - Recursive MIR `FunctionBuilder` (multi-block calls/control flow,
@@ -540,10 +589,12 @@ Each phase is gated on corpus parity and lands independently revertible.
   shape markers in the architecture gates, replacing them with structural-verifier
   markers and self-tests in the same commits.
 
-Generated byte oracles (the hardcoded hex digests and fixed-ordinal assertions in
-`hir-module-test.cc` and `built-mir-test.cc`) and coverage baselines are
-regenerated in the phase that changes ordering; the codec format itself is
-unchanged.
+The codec format is unchanged, so the hand-assembled codec-framing hex oracles in
+`built-mir-test.cc` stay byte-identical. Only the end-to-end production-builder
+fixed-ordinal/byte witnesses in `hir-module-test.cc` are regenerated, and only in
+the phase whose ordering change demonstrably alters them, with each change listed
+in the audited byte-parity exception list; coverage baselines are refreshed as
+needed.
 
 ## Documentation And Teaching Plan
 
@@ -578,9 +629,12 @@ classification, but no new performance gate is required.
 - In-memory candidate/CFG mutation tests make both structural verifiers reject
   injected edge, type, scope, and terminator mutations with the right
   `IrFailureKind`; the HIR candidate mutation seam exists.
-- A corpus parity tool captures and diffs per-file exit code and normalized
-  output between two builds and reports parity across the whole corpus; the full
-  corpus is byte-parallel at each phase, and all current call/conditional/loop
+- A corpus parity tool captures and diffs per-file exit code, normalized
+  diagnostic output, and canonical HIR/MIR dumps between two builds and reports
+  parity across the whole corpus (process and IR channels); the full corpus is
+  byte-parallel at each phase, including all current ZOM4095-4105 `.check` files
+  (with `class_literal_body_shape_neg_03` still reporting ZOM4099 at the
+  declaration anchor), and all current call/conditional/loop/aggregate
   object-emission integration fixtures still link.
 - `sanitizer` build and `ctest --preset default` pass; `check-format.py` and the
   updated architecture gates pass; artifacts satisfy the unchanged RFC 0010 codec.
@@ -608,12 +662,34 @@ classification, but no new performance gate is required.
 - Lit tests: `ctest --preset default -L lit`; AST and diagnostics expectations
   remain byte-green, including the ZOM4095-4105 family and type-error codes.
 - Conformance: the new corpus parity tool diffs two builds over all
-  `tests/conformance/corpus/**` `.zom` inputs (exit code plus normalized
-  stdout/stderr, stripping the build prefix as
-  `scripts/check-ownership-determinism.py` already does).
-- Generated files: regenerate the canonical byte digests and fixed-ordinal
-  assertions in the two IR ztest files (there are no MIR byte fixtures under
-  `tests/coverage/**`); keep the ownership determinism baseline green.
+  `tests/conformance/corpus/**` `.zom` inputs, invoked per file through
+  `tests/tools/run-zomc-package.py` (the same model
+  `scripts/check-ownership-determinism.py` uses), with an explicit
+  include/exclude classification for multi-file module packages, parse-recovery
+  negatives, and cfg-gated inputs. The tool has two observation channels:
+  (1) process channel - per-file exit code plus normalized stdout/stderr,
+  stripping the build prefix (the determinism-script normalization), which covers
+  accept/reject and all diagnostics; and (2) IR channel - a deterministic
+  canonical HIR/MIR dump emitted by a new debug surface (see below), which makes
+  accepted-program IR byte drift visible because `compile --check` currently stops
+  after checking and no HIR/MIR dump mode exists.
+- IR dump surface for parity: add a debug-only canonical dump of the verified HIR
+  and Built MIR for a module (for example `--dump-hir` / `--dump-mir`, reusing the
+  existing `VerifiedHirModule::dump()` and an equivalent canonical MIR rendering,
+  or an emit target). It is deterministic, build-path independent, and print-only
+  (not an artifact). `utils/zomc/**` is in scope. The parity tool diffs these
+  dumps for every accepted file that reaches each layer; together with the
+  unchanged codec-framing ztests (the hand-assembled hex oracles in
+  `built-mir-test.cc`, which must stay byte-identical because the codec is
+  unchanged) and the end-to-end fixed-ordinal witnesses in `hir-module-test.cc`,
+  this gives IR-byte parity for accepted programs rather than only process parity.
+- Generated files: codec-framing hex oracles in `built-mir-test.cc` must stay
+  byte-identical (the codec is an unchanged Non-Goal); the end-to-end
+  fixed-ordinal assertions in `hir-module-test.cc` and any production-builder
+  byte witnesses are regenerated only where an ordering change demonstrably
+  alters them, with each such change listed in the audited byte-parity exception
+  list (there are no MIR byte fixtures under `tests/coverage/**`); keep the
+  ownership determinism baseline green.
 - Integration: the `tests/integration/core-library/{call,conditional,loop,...}`
   object-emission fixtures must continue to lower and link after LIR admission is
   generalized.
