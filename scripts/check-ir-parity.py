@@ -67,14 +67,14 @@ def normalize(zomc: Path, output: bytes) -> bytes:
     return "\n".join(lines).encode("utf-8")
 
 
-def run_once(zomc: Path, source: Path) -> tuple[int, bytes]:
+def run_once(zomc: Path, source: Path, emit: str = "check") -> tuple[int, bytes]:
     command = [
         sys.executable,
         str(PACKAGE_RUNNER),
         "--zomc",
         str(zomc),
         "compile",
-        "--check",
+        f"--{emit}",
         str(source),
     ]
     completed = subprocess.run(command, cwd=ROOT, check=False, capture_output=True)
@@ -89,14 +89,27 @@ def hash_output(exit_code: int, output: bytes) -> str:
     return digest.hexdigest()
 
 
-def collect(zomc: Path, corpus: Path, sources: list[str]) -> dict[str, dict[str, int | str]]:
+def collect(zomc: Path, corpus: Path, sources: list[str], ir_channel: bool) -> dict[str, dict[str, int | str]]:
     results: dict[str, dict[str, int | str]] = {}
     for relative in sources:
         source = corpus / relative
         if not source.is_file():
             raise ParityError("missing-input", f"corpus source does not exist: {relative}")
         exit_code, output = run_once(zomc, source)
-        results[relative] = {"exitCode": exit_code, "sha256": hash_output(exit_code, output)}
+        entry: dict[str, int | str] = {
+            "exitCode": exit_code,
+            "sha256": hash_output(exit_code, output),
+        }
+        # IR channel: for sources that check clean, capture deterministic HIR and
+        # canonical MIR dumps so accepted-program IR byte drift is visible.
+        if ir_channel and exit_code == 0:
+            hir_exit, hir_output = run_once(zomc, source, "dump-hir")
+            mir_exit, mir_output = run_once(zomc, source, "dump-mir")
+            if hir_exit == 0:
+                entry["hirSha256"] = hash_output(hir_exit, hir_output)
+            if mir_exit == 0:
+                entry["mirSha256"] = hash_output(mir_exit, mir_output)
+        results[relative] = entry
     return results
 
 
@@ -112,23 +125,25 @@ def make_fake(directory: Path, name: str, body: str) -> Path:
     return write_file(directory / name, body, executable=True)
 
 
-def run_record(zomc: Path, corpus: Path, snapshot: Path) -> int:
+def run_record(zomc: Path, corpus: Path, snapshot: Path, ir_channel: bool) -> int:
     sources = corpus_sources(corpus)
     try:
-        results = collect(zomc, corpus, sources)
+        results = collect(zomc, corpus, sources, ir_channel)
     except ParityError as error:
         print(f"corpus parity record failed [{error.category}]: {error}", file=sys.stderr)
         return 1
     payload = {
         "schema": SNAPSHOT_SCHEMA,
         "corpusRoot": str(corpus.relative_to(ROOT)) if corpus.is_relative_to(ROOT) else str(corpus),
+        "irChannel": ir_channel,
         "count": len(results),
         "outputs": results,
     }
+    ir_note = " with IR channel" if ir_channel else ""
     snapshot.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    print(f"corpus parity snapshot recorded: {snapshot} ({len(results)} sources)")
+    print(f"corpus parity snapshot recorded{ir_note}: {snapshot} ({len(results)} sources)")
     return 0
 
 
@@ -148,12 +163,16 @@ def diff_snapshots(current: dict[str, dict[str, int | str]],
             differences.append(
                 f"{relative}: exit {before['exitCode']} -> {after['exitCode']}"
             )
-        elif before["sha256"] != after["sha256"]:
+            continue
+        if before["sha256"] != after["sha256"]:
             differences.append(f"{relative}: output changed (same exit {after['exitCode']})")
+        for channel in ("hirSha256", "mirSha256"):
+            if before.get(channel) != after.get(channel):
+                differences.append(f"{relative}: {channel} changed")
     return differences[:limit]
 
 
-def run_check(zomc: Path, corpus: Path, snapshot: Path, limit: int) -> int:
+def run_check(zomc: Path, corpus: Path, snapshot: Path, limit: int, ir_channel: bool) -> int:
     if not snapshot.is_file():
         print(
             f"corpus parity check failed [no-snapshot]: {snapshot} (record it first)",
@@ -167,8 +186,12 @@ def run_check(zomc: Path, corpus: Path, snapshot: Path, limit: int) -> int:
         recorded = value.get("outputs")
         if not isinstance(recorded, dict):
             raise ValueError("snapshot missing outputs object")
+        if bool(value.get("irChannel")) != ir_channel:
+            raise ValueError(
+                f"snapshot irChannel={value.get('irChannel')} does not match --ir={ir_channel}"
+            )
         sources = corpus_sources(corpus)
-        current = collect(zomc, corpus, sources)
+        current = collect(zomc, corpus, sources, ir_channel)
         differences = diff_snapshots(current, recorded, limit)
     except (ParityError, ValueError, OSError) as error:
         category = getattr(error, "category", "snapshot-error")
@@ -252,6 +275,27 @@ def run_self_test() -> int:
         if not any("added in new build" in line for line in diffs):
             print("self-test: added source not detected", file=sys.stderr)
             return 1
+        # IR channel: same process result but a changed MIR dump must be detected.
+        ir_before = {
+            "pkg/c.zom": {
+                "exitCode": 0,
+                "sha256": hash_output(0, b""),
+                "hirSha256": "aa",
+                "mirSha256": "bb",
+            }
+        }
+        ir_after = {
+            "pkg/c.zom": {
+                "exitCode": 0,
+                "sha256": hash_output(0, b""),
+                "hirSha256": "aa",
+                "mirSha256": "cc",
+            }
+        }
+        diffs = diff_snapshots(ir_after, ir_before, 10)
+        if diffs != ["pkg/c.zom: mirSha256 changed"]:
+            print(f"self-test: IR channel drift not detected, got {diffs}", file=sys.stderr)
+            return 1
         # The fake compilers are only asserted to exist and be executable.
         for binary in (compiler_a, compiler_b, compiler_c, source):
             if not binary.exists():
@@ -271,6 +315,11 @@ def main() -> int:
     parser.add_argument("--snapshot", type=Path, default=ROOT / "tests/coverage/corpus-process-parity.json")
     parser.add_argument("--corpus", type=Path, default=CORPUS)
     parser.add_argument("--limit", type=int, default=20, help="differences to print")
+    parser.add_argument(
+        "--ir",
+        action="store_true",
+        help="also capture/diff deterministic --dump-hir/--dump-mir output for clean sources",
+    )
     arguments = parser.parse_args()
 
     if arguments.self_test:
@@ -278,8 +327,10 @@ def main() -> int:
     if arguments.zomc is None:
         parser.error("--record and --check require --zomc")
     if arguments.record:
-        return run_record(arguments.zomc, arguments.corpus, arguments.snapshot)
-    return run_check(arguments.zomc, arguments.corpus, arguments.snapshot, arguments.limit)
+        return run_record(arguments.zomc, arguments.corpus, arguments.snapshot, arguments.ir)
+    return run_check(
+        arguments.zomc, arguments.corpus, arguments.snapshot, arguments.limit, arguments.ir
+    )
 
 
 if __name__ == "__main__":
