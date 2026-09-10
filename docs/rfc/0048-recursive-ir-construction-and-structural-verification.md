@@ -5,12 +5,12 @@ type: compiler
 status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
-required-owners: [ir-backend, binder-checker, error-system, verification]
+required-owners: [rfc, ir-backend, binder-checker, error-system, verification]
 approvers: []
 created: 2026-09-10
 updated: 2026-09-10
 area: compiler
-requires: [10, 9, 13]
+requires: [10, 9, 13, 47]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0048-review-and-implementation.md#discussion-record
@@ -23,188 +23,203 @@ tracking-issue: docs/rfc/tracking/0048-review-and-implementation.md#implementati
 
 ## Summary
 
-Replace the function-body "shape rail" scaffolding in HIR and Built MIR
-construction with general recursive lowerers driven by expression and statement
+Replace the function-body "shape rail" construction and verification in HIR and
+Built MIR with general recursive lowerers driven by expression/statement
 visitors, and replace the hand-written count-equation and per-shape verifiers
-with general structural verifiers that walk the IR graph. HIR construction
-becomes a recursive `lowerExpr` / `lowerStmt` over the bound AST plus checked
-facts; Built MIR construction becomes a recursive `FunctionBuilder` that lowers
-HIR into a place-based CFG, materializing temporaries and terminators the way
-rustc's THIR-to-MIR builder and Cranelift's `FunctionBuilder` do. A single
-lowering-legality inventory decides which node kinds the current slice can emit;
-every other node fails closed through the recursive walk into the existing
-capability diagnostic (ZOM4099 family) instead of being rejected by a
-whole-function template match. The HIR and MIR artifact contracts of RFC 0010
-are unchanged; only their construction and verification algorithms change.
+with structural verifiers that walk the IR graph. To make fail-closed
+capability behavior correct at the same time, this RFC also (1) extends the
+RFC 0010 IR failure algebra with a *source-construct* capability failure that is
+legal at the HIR/MIR construction phases and projects to the existing ZOM4095 -
+ZOM4099 / ZOM4103 diagnostic family, (2) moves lowering-shape and staging gates
+out of checker body-fact production so type-valid constructs always publish
+facts, and (3) generalizes the positional per-shape admission in the LIR
+lowering layer so it consumes structural MIR rather than re-matching shapes.
+
+This is therefore a coordinated change across the checker body rail, the IR
+failure algebra and capability projector, HIR construction/verification, Built
+MIR construction/verification, and the LIR admission/lowering layer. The HIR/MIR
+*vocabulary*, codec framing, and revision-identity scheme of RFC 0010 are
+unchanged; the IR failure matrix gains one new capability row, and absolute node
+and local ordinals are allowed to change to a single deterministic convention
+(with all canonical oracles regenerated and full corpus parity proven by a new
+parity tool).
 
 ## Motivation
 
 RFC 0010 specifies a source-shaped, expression-bearing HIR and a general
-place-based, CFG MIR. The IR types already model the full target language. The
-construction path does not: `HirBuilder` and `BuiltMirBuilder` accept a function
-body only when it matches one of a hand-enumerated set of whole-function
-templates. Each template is:
+place-based CFG MIR. The IR types already model the target language, but three
+construction-time mechanisms are shape-template scaffolding rather than general
+lowering, and they are duplicated across layers:
 
-1. Detected by a shape classifier that is written three times
-   (`surface-admission.cc`, `hir-module.cc::functionReturnShape`,
-   `built-mir.cc::isSequentialLocalReturnBlock` and friends), each independently
-   re-deriving the classification from the tree because no layer trusts the
-   previous one.
-2. Assigned a fixed ordinal node layout (for example one binary binding occupies
-   four hard-coded ids: local, initializer, left operand, right operand).
-3. Validated by global count equations (`facts.nodeTypes().size() == pending.size()
-   + ... + sequentialBinaryCount * 2 + ...`) plus a separate per-shape verifier
-   (`validSequentialLocalReturnFunction`, `validLoopReturnFunction`,
-   `validReceiverCallReturnFunction`, and so on).
+1. **Whole-function shape classification.** `HirBuilder` accepts a body only when
+   it matches an enumerated template (`functionReturnShape`,
+   `sequentialLocalShape`, plus conditional, loop, comparison, single-local,
+   field, reborrow, borrow, receiver-call, mut-write, and loop-body arms). The
+   same classification is independently re-derived in surface admission
+   (`surface-admission.cc`) and in checker body fact production
+   (`primitiveBinaryOperationShape`, `directCallShape`, the stage-0..4 schedule
+   in `body-checker.cc`) and again in MIR (`isSequentialLocalReturnBlock` and the
+   `valid*ReturnFunction` verifier dispatch).
+2. **Fixed-ordinal node/local layouts and global count equations.** HIR reserves
+   hard-coded id strides per shape (one binary binding = local, initializer,
+   left, right), and both HIR and MIR validate with global fact-count equations
+   and per-shape verifier functions. Count equations detect a missing or
+   duplicated node but not a mis-wired edge or a type error.
+3. **Capability rejection split across the wrong layers.** A well-typed,
+   surface-admitted construct that lowering cannot yet emit is today sometimes
+   rejected as a checker *invariant* (`rejectInvariant(... MissingRequiredFact)`
+   in `body-checker.cc`, 58 sites) or as an HIR/MIR invariant
+   (`rejectHir`/`rejectMir` always decode `IrInvariantRejected`), which surfaces
+   as an internal compiler error rather than a user capability diagnostic.
+   Meanwhile the user-facing ZOM4095-4103 family is produced only by ownership
+   surface admission and the checker source rail, and the RFC 0010 closed failure
+   matrix has no legal `(CapabilityRejected, HirConstruction/MirConstruction, *)`
+   row at all.
 
 Consequences observed in practice:
 
 - Adding one expression form (`let x: bool = a == b; return x;`) required editing
-  three classifiers, re-balancing the count equations, introducing a parallel
-  single-local binary rail, and choosing which rail routes the body. The correct
-  fix was to recognize the form as an already-supported sequential shape with one
-  binding; nothing about the IR itself was missing.
-- Count equations are weak invariants. They detect a missing or duplicated node
-  but cannot detect a mis-wired edge, a wrong operand type, or a use before
-  definition. The strong checks are duplicated per shape rather than expressed
-  once over the graph.
-- The mechanism does not generalize. Control flow, nested calls, closures, and
-  aggregate construction each need a new whole-body template and a third copy of
-  the classifier, which is precisely the complexity that mature lowerers avoid.
+  three classifiers, re-balancing count equations, and routing between rails; the
+  IR already supported the form.
+- A well-typed but currently unlowered placement (arithmetic in `if`-condition
+  position) reaches a checker invariant rejection because
+  `primitiveBinaryOperationShape` refuses to publish a fact, instead of a clean
+  capability diagnostic.
+- The LIR lowering layer (`compiler/lir/mir-to-lir.cc`) re-admits MIR
+  positionally per shape (`locals[parameterCount]` must be `FunctionResult`,
+  exact block/statement counts), so it is a fourth shape matcher and would fail
+  closed silently if a uniform recursive builder changed local conventions.
 
-The project requires the world-class target design, not a temporary scaffold.
 Mature production compilers lower every syntax form uniformly by recursive
-descent into a general IR and verify the result structurally; they do not match
-whole-function AST templates. This RFC replaces the scaffold with that design.
+descent into a general IR, verify the result structurally, and report "cannot
+lower this construct" as a typed capability error from the lowering phase - never
+as an internal invariant. This RFC replaces the scaffolding with that design and
+fixes the failure-algebra and fact-production gaps that make it possible.
 
 ## Goals
 
-- HIR construction is a single recursive walk over the verified bound module and
-  checked facts. There is no whole-function shape classifier on the construction
-  path.
-- Built MIR construction is a single recursive walk over HIR using an append-only
-  block/statement builder. There is no per-shape MIR emitter.
-- Verification is structural: the HIR verifier walks the HIR graph and the MIR
-  verifier walks the CFG, validating every node, edge, type, and terminator
-  locally. The global count equations and per-shape verifier functions are
+- HIR construction is one recursive walk (`lowerModule` / `lowerStmt` /
+  `lowerExpr`) over the bound AST plus checked facts, with a per-function context
+  and a fact resolver. Whole-function shape classifiers are deleted from the
+  construction path.
+- Built MIR construction is one recursive, destination-driven `FunctionBuilder`
+  over HIR (`exprIntoDest` / `asTemp` / `asOperand`, an append-only block cursor,
+  and terminator-aware call/control-flow lowering). Per-shape MIR emitters are
   deleted.
-- Fail-closed capability behavior is preserved through a lowering-legality
-  inventory. Every program the current slice accepts still compiles; every
-  program it rejects still receives the same capability diagnostic. Unsupported
-  constructs are rejected at the exact node that cannot be lowered, never as an
-  internal compiler error.
-- Adding a new emittable expression kind is a localized change: one visitor arm
-  plus, when needed, the legality inventory and tests. It must not require
-  editing three classifiers or re-balancing count equations.
-- The verified `HirModuleCandidate` / `VerifiedHirModule` / Built MIR /
-  `VerifiedBuiltMir` artifact contracts and their revision identities from
-  RFC 0010 are unchanged so downstream ownership overlays and LIR/LLVM consumers
-  are unaffected.
+- Verification is structural and independent of construction: the HIR verifier
+  walks the HIR graph and the MIR verifier walks the CFG, validating nodes,
+  edges, types, scopes, and terminators locally plus a whole-body fact
+  completeness post-pass. Count equations and per-shape verifier functions are
+  deleted.
+- Fail-closed capability behavior is correct and stays user-facing: a
+  type-checked construct the current slice cannot lower is reported at the
+  owning declaration or construct node with the existing ZOM4095-4099/4103
+  diagnostic, through a new RFC 0010 source-construct capability failure that is
+  legal at construction phases. It is never an internal compiler error;
+  structural corruption of an admitted node remains an invariant.
+- The checker body rail publishes complete facts for every type-valid construct
+  it accepts and makes only type/trait/operator decisions; lowering-shape and
+  staging gates move to the lowering layer.
+- The LIR layer consumes structural MIR through generalized admission rather
+  than per-shape positional matching, so a uniform builder convention cannot
+  silently drop LIR coverage.
+- Adding a new emittable expression kind is a localized change (a visitor arm,
+  the legality inventory, and tests), not a three-classifier plus count-equation
+  edit.
 
 ## Non-Goals
 
-- Expanding the set of emittable language constructs. The legality inventory
-  initially admits exactly the node kinds admitted today; supporting new forms is
-  follow-on work that this design makes cheap.
-- Changing the HIR or MIR node vocabulary, codec, revision scheme, or canonical
-  encoding defined in RFC 0010.
-- Replacing ownership, drop, or borrow analysis (RFC 0007 / RFC 0013). Those
-  consume Built MIR; this RFC changes how Built MIR is built, not what it means.
-- SSA form for MIR. RFC 0010 deliberately specifies a place-based MIR because
-  ownership applies to storage locations; the structural verifier validates a
-  place-based CFG, not SSA dominance. (The later LIR layer owns SSA.)
-- Adopting an external IR framework. RFC 0010 evaluated and rejected adopting
-  MLIR as the implementation framework; this RFC reaffirms that decision.
+- Expanding the set of emittable language constructs. The initial lowering
+  legality inventory admits exactly the node kinds emitted today; expanding
+  coverage is follow-on work that this design makes compositional.
+- Changing the HIR or MIR node vocabulary, the canonical codec framing, or the
+  revision-identity scheme of RFC 0010. Absolute id/local ordinals may change to
+  one deterministic convention; the codec and digest mechanism do not.
+- Replacing ownership, drop, borrow, or marker analysis (RFC 0007 / RFC 0013).
+  Those consume Built MIR; this RFC changes how Built MIR is built and how its
+  local ordering is consumed, not what ownership means. Parameter locals remain
+  ordered first, ordinals `1..P` in source order, because borrow evidence numbers
+  parameters by source index.
+- Introducing SSA in MIR. MIR stays place-based per RFC 0010; SSA belongs to LIR.
+- Changing any diagnostic wording or code meaning. The ZOM4095-4103 family is
+  reused with one code per meaning; no new `ZOMxxxx` user code is added.
+- Adopting an external IR framework. RFC 0010 rejected adopting MLIR; this RFC
+  adopts MLIR/Cranelift legality and verification *patterns*, not the framework.
 
 ## Prior Art
 
 ### Rust `rustc` THIR-to-MIR builder
 
-`rustc` lowers the typed HIR (via THIR) into MIR with a single recursive builder
-(`rustc_mir_build::build`). A lowering context walks statements and expressions;
-expressions are lowered into a destination place (`expr_into_dest`), into a fresh
-temporary (`as_temp`), or as an operand (`as_operand` returning a constant, copy,
-or move). Value-typed sub-expressions that are not directly placeable are
-materialized into synthesized temporaries; statements and terminators are
-appended to the current basic block; control flow creates blocks and links them
-with terminators. There is no enumeration of whole-function shapes.
+`rustc` lowers typed HIR (via THIR) to MIR with one recursive builder
+(`rustc_mir_build::build`) using a lowering context, destination-driven
+expressions (`expr_into_dest`, `as_temp`, `as_operand` returning a constant,
+copy, or move), synthesized temporaries, an append-only block cursor, and
+terminators that create and link blocks. Calls are terminators with a
+destination place and a normal continuation block (and unwind), not rvalues;
+conditional and loop constructs create multi-block CFGs. There is no
+whole-function shape enumeration. The return place (`_0`) is declared for every
+function.
 
-ZOM should copy the destination-driven recursion: `exprIntoDest(place, expr)`,
-`asTemp(expr)` for rvalue results, `asOperand(expr)` for constant/copy/move
-operands, and an append-only block cursor. This directly subsumes the sequential,
-single-local, and comparison rails, including nested-operand materialization
-(`a + b * c` lowers the inner binary into a temporary naturally rather than via a
-reserved fixed id).
+ZOM copies destination-driven recursion and the block cursor. It must reproduce
+the multi-block forms that already exist today (direct and receiver calls emit a
+call block plus a continuation; conditionals and reducible loops emit four-block
+diamonds), including call terminators with continuation blocks, the receiver
+borrow-creation statement and mutable-receiver call effect, and
+`StorageDead`/unsafe-scope boundary statements. ZOM does not add a universal
+`_0` return place, because several current place-returning shapes (sequential,
+loop-body, zero-argument direct call) deliberately return a user local with no
+function-result local and LIR admits them; the local-ordering contract that keeps
+all current shapes byte-stable is given in the Reference-Level Design.
 
 ### Cranelift `FunctionBuilder` and `Verifier`
 
-Cranelift constructs CLIF with a `FunctionBuilder` / `BlockBuilderCursor`: blocks
-and instructions are appended in program order, block arguments are declared up
-front, and blocks are sealed once all predecessors are known. A separate
-`Verifier` then checks every instruction's type signature, SSA legality, block
-termination, and value definition-before-use purely from the constructed function,
-independent of the construction path.
+Cranelift constructs CLIF with an append-only `FunctionBuilder`/block cursor,
+declares block arguments up front, and seals blocks when predecessors are known.
+A separate `Verifier` checks every instruction's types, legality, block
+termination, and definition-before-use purely from the finished function.
 
-ZOM should copy two things: the append-only builder/cursor split (construction is
-local and order-driven, never shape-driven) and the principle that verification is
-an independent structural pass over the finished artifact, expressed per
-instruction rather than as global counts.
+ZOM copies the builder/verifier separation and per-instruction structural
+verification, replacing global counts.
 
-### MLIR operation verification and conversion legality
+### MLIR per-op verification and conversion legality
 
-MLIR defines operations generically; each op supplies a `verify()` that checks
-its operands, results, attributes, and regions, and `mlir::verify()` walks the
-whole IR. Dialect conversion separates what an op means from whether it is legal
-on the target: a legality/illegal-op inventory drives lowering, and an op that
-cannot be converted is a hard, reported failure rather than a crash or a silently
-missing node.
+MLIR ops each supply `verify()`; `mlir::verify()` walks the IR. Dialect conversion
+separates what an op means from whether it is legal for the target via a
+legality inventory, and an op that cannot be converted is a hard reported
+failure, not a crash.
 
-ZOM should copy the legality-inventory seam: the recursive builder always knows
-how to walk every node, but a separate `LoweringLegality` table decides which node
-kinds the current MIR slice emits. Walking an illegal node produces a typed
-capability failure that surfaces as the existing capability diagnostic. This is
-how ZOM keeps fail-closed slices without whole-function templates.
+ZOM copies the legality seam but places it correctly for its pipeline: lowering
+legality is a *source-construct* capability failure emitted at HIR/MIR
+construction and projected to the existing ZOM4095-4103 family. MLIR also
+demonstrates that legality and verification are distinct: an admitted node that
+is malformed is an invariant; a well-formed node that the target slice cannot
+emit is a capability failure.
 
 ### Swift SILGen
 
-SILGen walks the AST with a visitor and a lowering context, materializing cleanups
-and managed values as it goes. The visitor/context split is a sound model for
-threading per-function lowering state (local id allocation, scope table, block
-cursor) without global mutable tables. ZOM should copy the explicit per-function
-context object. The failure to avoid is SILGen's long accumulation of special-case
-prologues; the legality inventory keeps unadmitted forms out of the builder
-rather than accumulating partial cases.
-
-### Common failure modes avoided
-
-- Count-equation invariants (weak: they miss mis-wired edges and type errors) are
-  replaced by per-node edge and type validation.
-- Fixed-ordinal layouts (a serialization/snapshot convenience mistaken for a
-  semantic requirement) are replaced by deterministic append-order allocation;
-  byte stability becomes a consequence of a deterministic traversal, asserted by
-  edge/type oracles rather than absolute id arithmetic.
-- Whole-function template matching (non-compositional) is replaced by compositional
-  recursion, so nested and future constructs lower without new top-level shapes.
+SILGen walks the AST with a visitor and a per-function lowering context that
+materializes cleanups and managed values. ZOM copies the explicit per-function
+context object (id allocator, scope/binding table, block cursor) and avoids
+SILGen's accumulation of special-case prologues by keeping unadmitted forms out
+of the builder through the legality inventory.
 
 ## Guide-Level Explanation
 
-A contributor adding support for a new expression, say a binary operator or a
-call, adds one arm to the expression lowerer. They do not describe the shape of a
-function body. The lowerer walks the AST (for HIR) or HIR (for MIR), allocates
-nodes or locals as it descends, wires child results to parents, and either emits
-the node or, if the node kind is not in the current legality inventory, reports
-that the construct is not yet code-generated.
+A contributor adding an expression kind adds one `lowerExpr` arm (HIR) and, when
+it reaches MIR, one MIR lowering arm plus a legality-inventory entry. They never
+describe the shape of an enclosing function or edit a count equation. The
+lowerer walks and wires children; if a type-checked node is outside the current
+legality inventory, lowering reports the existing "this construct is not
+supported yet" diagnostic for that construct, and if an admitted node is
+malformed the structural verifier reports a compiler invariant naming the node
+and violated local rule.
 
-A contributor debugging a miscompile reads a structural verifier failure that
-names the node and the violated local invariant ("operand type i32 does not match
-rvalue operand type bool", "terminator references undefined local", "block is not
-terminated") instead of a global count mismatch ("expected 11 node-type facts,
-found 12") that must be re-derived by hand.
-
-The set of programs that compile and the diagnostics they produce do not change
-when this RFC lands; the change is internal architecture. After it lands, the
-roadmap to support more language is to move node kinds into the legality inventory
-and implement their lowering arm, one compositional piece at a time.
+A contributor debugging reads a structural failure such as "comparison rvalue
+operand type i32 does not match declared operand type bool" or "terminator target
+block 3 is not defined" instead of a global fact-count mismatch. The set of
+programs that compile, and the diagnostics rendered, do not change; canonical IR
+byte oracles are regenerated for the one deterministic id/local convention and
+proven identical by a corpus parity tool.
 
 ## Reference-Level Design
 
@@ -212,150 +227,232 @@ and implement their lowering arm, one compositional piece at a time.
 
 ```mermaid
 flowchart TD
-  AST[Verified bound AST + checked facts] --> HB[HirBuilder: recursive lowerStmt/lowerExpr]
-  HB -->|lowering-legality gate on admitted surface| HIRC[HirModuleCandidate]
-  HIRC --> HV[HirVerifier: structural graph walk]
+  VBM[VerifiedBoundModule + VerifiedCheckedModule] --> HB[Recursive HirBuilder lowerStmt/lowerExpr]
+  HB --> HIRC[HirModuleCandidate]
+  HIRC --> HV[Structural HirVerifier: graph walk + fact-completeness post-pass]
   HV --> HIR[VerifiedHirModule]
-  HIR --> MB[MirBuilder: recursive FunctionBuilder over HIR]
-  MB -->|MIR lowering-legality inventory; illegal node -> capability failure| MIRC[BuiltMirCandidate]
-  MIRC --> MV[MirVerifier: structural CFG walk]
+  HIR --> MB[Recursive Mir FunctionBuilder exprIntoDest/asTemp/asOperand + block cursor]
+  MB -->|unadmitted well-formed node: source-construct capability failure| CAP[ZOM4095-4103 capability diagnostic]
+  MB --> MIRC[BuiltMirCandidate]
+  MIRC --> MV[Structural MirVerifier: CFG walk]
   MV --> MIR[VerifiedBuiltMir]
-  MIR --> OW[Ownership overlays, LIR, LLVM - unchanged contracts]
+  MIR --> LIR[Generalized structural MIR-to-LIR admission]
+  LIR --> LLVM[LLVM - unchanged downstream contract]
 ```
 
-The artifact boundaries and revision identities are exactly those of RFC 0010.
-This RFC replaces only the four boxes `HB`, `HV`, `MB`, `MV`.
+### Deterministic node and local ordering contract
+
+Deterministic traversal gives run-to-run reproducibility; it does **not** by
+itself give byte parity with today's canonical records. Byte parity is an
+explicit replication requirement, enforced by the parity tool, because five
+current rails use distinct local conventions that downstream consumers read
+positionally. The recursive builder must reproduce these conventions per
+construct. These are explicit, verified invariants of the new builder, not
+accidental shape behavior:
+
+- HIR node ids are allocated in a specified source preorder (which also brings
+  HIR into line with RFC 0010's stated preorder rule). Edges are the sole
+  relationship between nodes; there are no fixed strides or trailing id regions.
+- `HirLocalId` is 1-based in binding order within the enclosing block. MIR
+  lowers user locals from this ordinal arithmetically (`userLocalId(ordinal-1)`),
+  so this is a preserved cross-layer convention even though HIR has no canonical
+  codec or revision id (only a debug `dump()`); "revision identity unchanged"
+  applies to MIR.
+- MIR locals, scopes, and blocks have dense, contiguous, 1-based ordinals equal
+  to their vector position, and the canonical codec serializes vectors in id
+  order. The structural verifier checks vector-order == id-order.
+- MIR parameter locals are declared first, `localId(1)..localId(P)` in source
+  parameter order. This is mandatory because the borrow-source overlay derives a
+  parameter origin as the parameter's vector index and cross-checks it against
+  checker borrow evidence, which numbers parameters by source index
+  (`refs.cc`, `region-membership.cc`).
+- Exactly one `StorageLive` precedes the first use of each user local or
+  temporary; a nested-operand temporary's `StorageLive`+`Assign` precedes its
+  owning binding's `StorageLive`, matching today's emission order.
+- Per-construct local *kind* placement is replicated: place-returning shapes
+  (sequential, loop-body, zero-argument direct call) declare no `FunctionResult`
+  local and return a user local; arm/result shapes place `FunctionResult`
+  immediately after parameters; argument-bearing calls place a call-destination
+  `Temporary` then `FunctionResult`; receiver calls use `[UserLocal, receiver
+  Temporary, result Temporary]`; temporaries are declared after all user locals
+  in the sequential rail. Block append order (entry, then/else/loop, join/
+  continuation), scope id order, and statement order (including call-continuation
+  `StorageDead`, receiver `BorrowCreation` + `ActivateMutableReceiver`, and
+  unsafe Enter/Exit on scope 2) match current emission.
+
+Byte-identical parity is the default for every phase. Any construct deliberately
+re-oracled needs an explicit, consumer-audited exception list covering the LIR
+positional detectors, the ownership overlay codec, the evidence ordinal
+cross-check, and the determinism baseline. A future change that normalizes all
+functions onto one rustc-style `_0` return place is out of scope here and would
+be a separate accepted change.
+
+### Two legality coverage boundaries
+
+There are two distinct "can lower this" boundaries, and failing either must be a
+capability diagnostic, never an invariant:
+
+1. HIR record vocabulary. The HIR builder has records only for constructs the HIR
+   slice represents. Constructs with no HIR record in the current slice (for
+   example `match`, `spawn`/`suspend`, loop-control, and expression statements)
+   are refused pre-HIR with their source capability diagnostic (ZOM4095/4096/
+   4098 family); the recursive builder never reaches them and never reports a
+   missing-fact invariant for them. The surface gate retains the node-local
+   structural checks needed to keep such constructs out; the body-checker fact
+   requirement inventory is proven to cover every node that passes the gate.
+2. MIR emission. A node that has a well-formed HIR record but is outside the MIR
+   legality inventory is the source-construct capability failure described below.
 
 ### HIR construction
 
-`HirBuilder` holds a per-function `HirFnCtx` with an append-only node id counter,
-a local-binding table, and a fact resolver. It exposes:
+`HirBuilder` holds a per-function `HirFnCtx`: an append-only node id counter, a
+scope/binding table, a parameter table, and a `FactResolver`. It exposes
+`lowerModule`, `lowerStmt`, and `lowerExpr(node, hint)`. `lowerExpr` allocates
+one HIR node, recursively lowers children and records their ids as edges, and
+resolves the facts attributable to that node.
 
-- `lowerModule(ctx)`: walks declarations; constants and functions.
-- `lowerStmt(ctx, stmt)`: emits HIR statements; a `let` declares a binding and
-  lowers its initializer expression; `return` lowers its value expression and
-  emits a return node.
-- `lowerExpr(ctx, node, hint)`: the single recursive expression entry point. It
-  allocates one HIR node for `node`, recursively lowers child expressions and
-  records their node ids as explicit edges, resolves and consumes exactly the
-  checked facts attributable to `node` (node type, literal, call/dispatch,
-  aggregate, member, place, and so on), and returns the node id.
+Fact resolution:
 
-Invariant properties:
+- Most fact families are keyed by AST `NodeId` and are consumed at their node:
+  node types, literals, calls, aggregates, members, places, indexes, marker
+  obligations.
+- Dispatch facts are keyed by canonical `CheckedNodeKey`, not `NodeId`. The
+  resolver maps a node to its `CheckedNodeKey` through the retained parsed module
+  (the existing `checkedNodeKey` projection) and matches the dispatch fact at the
+  call node.
+- Place roots bind at the enclosing owner/parameter; reference resolution uses
+  the per-function scope table, producing a scope/dominance relation rather than
+  a per-node fact.
+- Capture facts key on a closure entity (`CaptureKey`), consumed at the closure
+  lowering arm.
+- Completeness and uniqueness are not local. After the walk, a structural
+  post-pass over the whole body/module asserts every published fact that the HIR
+  vocabulary must consume was consumed exactly once (including call-to-dispatch
+  1:1) and that the fact families with no HIR node in the current slice
+  (coercions, casts, compound assignments, observed operations, captures,
+  exhaustiveness, unsafe operations, projections, obligations, error-union
+  shapes, error operators) remain empty. This post-pass replaces the count
+  equations and the `noUnsupportedFacts` gate.
 
-- Node ids are allocated in deterministic traversal order. There are no fixed
-  strides and no reserved trailing id regions; edges (`left`, `right`,
-  `initializer`, `value`, condition arms) are the sole identity of node
-  relationships.
-- Each checked fact is consumed at exactly the node it is keyed to, asserted by
-  the fact resolver. There is no per-shape tally.
-- The builder never invents a fact; a missing fact for an admitted node is a
-  compiler invariant failure. An unsupported node kind for the current surface
-  slice is refused before HIR construction by the surface capability gate (see
-  below), so HIR construction sees only admitted nodes.
-
-The shape classifier (`functionReturnShape`, `sequentialLocalShape`, and the
-shape dispatch) and the per-shape `PendingFunctionDeclaration` arms
-(`conditionalReturn`, `loopReturn`, `comparisonReturn`, `sequentialLocalReturn`,
-and the single-local/field/reborrow/borrow/receiver/write arms) are deleted.
-`PendingFunctionDeclaration` collapses to a context-driven builder state.
+The shape classifier and all `Pending*Return` arms are deleted;
+`PendingFunctionDeclaration` collapses into builder context state.
 
 ### Built MIR construction
 
-`MirBuilder` owns a per-function `MirFnCtx`:
+`MirFnCtx` owns parameter and user-local declarations (canonical
+`MirLocalId`s), a `BlockCursor`, a source-scope table, and the marker-proof
+engine. Construction reads HIR only; it never reads checker fact maps (MIR today
+consumes only `VerifiedHirModule` plus body-checking inputs and revision
+digests).
 
-- the parameter and user-local declarations with canonical `MirLocalId`s;
-- a `BlockCursor` over the current basic block;
-- a source-scope table.
+- `lowerStmt` emits `StorageLive`/`StorageDead`, assignments, unsafe-scope
+  boundary pairs, borrow creation, and control-flow statements.
+- `exprIntoDest(place, expr)` lowers into an existing place; `asTemp(expr)`
+  materializes a value into a fresh `Temporary` local (this subsumes the
+  reserved nested-operand temp for `a + b * c`); `asOperand(expr)` returns a
+  constant for a literal or a copy/move place-use. Copy versus move is decided
+  from HIR value category, `CheckedPlaceFact.movable`, and marker proofs against
+  the `Copy` marker - there is no separate "move fact".
+- Primitive binaries map to `MirRvalue::arithmetic`/`comparison`.
+- Calls are terminators: the builder emits the receiver evaluation and borrow
+  creation (for mutable receiver calls), a call terminator with destination
+  place and normal continuation block (and the receiver call effect), and a
+  continuation that returns. Direct and receiver calls and the four-block
+  conditional/reducible-loop forms are first-class multi-block outputs, not
+  future work.
+- Blocks are created and sealed in deterministic source order; the admitted slice
+  emits one block for straight-line bodies, two for direct/receiver calls (entry +
+  continuation), and four for conditional diamonds and reducible loops.
+- The Phase-3 builder emits the full statement vocabulary the slice produces
+  today: `StorageLive`/`StorageDead`, `Assign`, `BorrowCreation` (with
+  `ActivateMutableReceiver` on the receiver call), `UnsafeScopeBoundary`
+  Enter/Exit on a second source scope, plus `Call`, `Goto`, `SwitchInt`, and
+  `Return` terminators. `SetDiscriminant` and `Deinitialize` are not emitted
+  today and stay out of the initial legality inventory.
 
-It exposes the destination-driven recursion adapted from rustc/Cranelift:
+### Capability legality and the RFC 0010 failure-algebra extension
 
-- `lowerStmt(ctx, hirStmt)`: a local declaration emits `StorageLive` and lowers
-  its initializer into the local's place; an assignment lowers the rvalue into
-  the destination place; a return lowers its value to an operand and emits a
-  `Return` terminator; control-flow constructs create blocks and terminators.
-- `exprIntoDest(ctx, place, hirExpr)`: lowers an expression directly into a place.
-- `asTemp(ctx, hirExpr)`: materializes a value-typed expression into a fresh
-  `Temporary` local (`StorageLive` + `Assign`) and returns its place. Nested
-  operands (for example `a + b * c`) are handled by `asTemp` on the inner
-  expression, eliminating the reserved-temp fixed id.
-- `asOperand(ctx, hirExpr)`: returns a constant operand for a literal, a `copy`
-  of a parameter or local place for an identifier, or `move` per the checked
-  move fact.
-- Rvalue construction maps a HIR primitive binary to `MirRvalue::arithmetic` or
-  `MirRvalue::comparison` with operand places from `asOperand`/`asTemp`; calls,
-  aggregates, and future forms follow the same recursion.
+A `LoweringLegality` inventory enumerates the HIR node kinds the current MIR
+slice emits (initially exactly those emitted today). Legality and structural
+validity are distinct outcomes:
 
-Blocks are appended and terminated in traversal order. The current admitted slice
-produces one block per function body; the builder is block-general so future
-conditionals and loops add arms without restructuring.
+- A well-formed node outside the inventory is a *source-construct capability
+  failure*. Because RFC 0010's closed matrix currently permits
+  `CapabilityRejected` only at monomorphization/target/object/link phases, this
+  RFC extends the matrix: a new source-construct capability kind (or an explicit
+  legalized reuse of a capability kind) is made legal at `HirConstruction` and
+  `MirConstruction` with a definition-owned site that carries a source span (the
+  MIR site gains a construct source span, or the failure references the HIR node
+  whose span is retained). The capability projector gains arms mapping it to the
+  existing ZOM4095-4099/4103 `DiagID`s by construct kind, in the IR-capability
+  semantic domain. The IR failure kind tag, phase/kind legality table
+  (`isCapabilityKind`, `legalKind`, owner/site legality), branch derivation, and
+  capability projector are all updated together. No new user `ZOMxxxx` code is
+  introduced and no code changes meaning.
+- Structural corruption of an admitted node (dangling edge, type mismatch,
+  unterminated block, unresolved dispatch on an otherwise-admitted shape)
+  remains an `IrInvariantRejected` compiler failure. The builder never emits a
+  capability failure for corruption, and never emits an invariant for
+  source-present unadmitted syntax.
 
-### Lowering legality and fail-closed capability behavior
+Residual whole-body cases (empty function body; admitted statements with no
+terminal return) have no offending node and are reported against the owning
+function declaration, preserving today's ZOM4099 declaration-anchored span and
+anchor (`fun`). They are detected as a function-level capability outcome, not by
+re-introducing a whole-body classifier: the recursive walk completes and the
+function-level closure check reports the declaration span. Specific-construct
+codes (ZOM4095-4098, ZOM4103) anchor at the construct/operator node as they do
+today. This keeps current `.check` byte output identical.
 
-A `LoweringLegality` inventory enumerates the HIR node kinds the current MIR slice
-emits. It is derived as the set of node kinds for which `MirBuilder` has an
-emitting arm and that the ownership overlay contracts accept.
+### Checker body-fact production change
 
-- During MIR construction, encountering a node kind outside the inventory returns
-  a typed `CapabilityUnavailable` failure keyed to that node's source span. The
-  diagnostic layer renders it as the existing capability diagnostic (the ZOM4099
-  family and its per-construct siblings).
-- HIR is constructed for every surface-admitted construct; the recursive HIR
-  builder does not gate on legality. The capability decision lives at the emit
-  boundary (MIR), matching RFC 0010's statement that missing lowering capability
-  is a capability error rather than a malformed IR.
-- Surface admission (`surface-admission.cc`) stops classifying whole-function
-  shapes. It retains only the node-local structural checks that protect parser and
-  binder invariants (no recovery nodes, well-formed declarators); body-shape
-  admission is removed because legality is enforced node-by-node during lowering.
-  The initial inventory is chosen so the accept/reject partition over the
-  conformance corpus is byte-identical to today.
+For the MIR legality walk to see a construct, the checker must publish facts for
+it. Today `body-checker.cc` refuses fact production for well-typed shapes its
+shape/stage validators reject (for example arithmetic in condition position),
+routing them to an invariant. This RFC moves those lowering-shape and staging
+predicates out of fact production: the body checker type-checks and publishes the
+standard fact set for any type-valid construct and confines itself to
+type/trait/operator legality. The moved predicates become part of the lowering
+legality inventory. `compiler/checker/**` is therefore in scope (not read-only):
+the fact *schema* is unchanged, but the production gate is. A precondition audit
+lists every `rejectInvariant` site in `body-checker.cc` and classifies each as a
+genuine type error (stays) versus a lowering-shape refusal (moves to legality).
 
-### HIR structural verification
+### Structural HIR verification
 
-The HIR verifier walks the produced HIR graph once and validates, per node:
+The HIR verifier walks the graph once and, per node, checks existence, one
+canonical result type, source span, no parser-recovery node, edge resolution to
+the expected kind, operand/result type agreement (shared operand types; a
+comparison yields bool), identity/dispatch/coercion completeness, and in-scope
+local references. A body/module post-pass enforces fact completeness and
+uniqueness and the empty-set families. Count equations and per-shape HIR
+branches are deleted. A candidate mutation test seam (friend/helper to build and
+mutate a `HirModuleCandidate`) is added because none exists today.
 
-- the node exists, has a canonical result type, a source span, and no parser
-  recovery node;
-- every edge id resolves to an existing node of the expected kind and that
-  operand/result types match (for example a primitive binary's operand type is
-  shared by both operands and its result type is the binary's result type; a
-  comparison's result type is bool);
-- each HIR expression is backed by exactly the checked facts it requires,
-  identities resolve, and visibility/dispatch/coercion fields are present;
-- the block/statement graph is closed (every block's statements and return
-  resolve); local references resolve to declared locals in scope.
+### Structural MIR verification and generalized LIR admission
 
-This is a graph structural validation, expressed locally per node. The global
-count equations and every per-shape HIR validation branch are deleted.
+The MIR verifier walks the CFG independently and validates, per function: closed
+reachable CFG; every block terminated with a resolving target; dense contiguous
+local/scope/block ordinals equal to vector position; locals declared with types
+and one `StorageLive` before first use; rvalue operand/result type agreement;
+typed terminator operands with return type matching the function; call
+terminator destination/normal-target wiring and argument count/types; switch-int
+arms and default targets; receiver borrow/effect and unsafe-boundary placement;
+complete source scopes; parameter locals first in source order. It ports every
+invariant the per-shape verifiers and the LIR detectors currently re-check (local
+kind contiguity and placement, block order, per-block statement counts,
+terminator kinds and targets, rvalue kinds). The `valid*ReturnFunction`
+functions are deleted; their guarantees live in this verifier, which is the
+stated basis LIR now relies on (replacing the `validLoopReturnFunction`-style
+re-check comments in `mir-to-lir.h`).
 
-### Built MIR structural verification
-
-The MIR verifier walks the CFG and validates, independent of construction:
-
-- every function has a closed CFG: reachable blocks exist, every block ends in a
-  terminator, terminator targets resolve;
-- every local is declared with a type; `StorageLive` precedes use of a place;
-- every rvalue's operands are in scope and their types match the rvalue
-  (arithmetic/comparison operand types are equal scalars; result type matches the
-  destination place);
-- every operand use (`copy`/`move`/constant) is well-typed against its place;
-- terminator operands are typed and match the terminator; return value type
-  matches the function result;
-- ownership inputs and source scopes are complete per RFC 0010's Built MIR
-  verifier contract.
-
-This subsumes `validSequentialLocalReturnFunction`, `validLoopReturnFunction`,
-`validReceiverCallReturnFunction`, and the other per-shape verifier functions,
-which are deleted.
-
-### Determinism and byte stability
-
-Node and local ids remain deterministic because they are allocated in a fixed
-traversal order. The fixed-ordinal per-shape layouts are removed; oracle tests
-assert on edges, types, and opcode sequences rather than absolute id arithmetic,
-while serialized artifacts remain reproducible for the same input because the
-traversal is deterministic.
+`compiler/lir/mir-to-lir.cc` no longer matches fixed positional shapes
+(`locals[parameterCount]` kind, exact statement counts, hard-coded block ids 1-4).
+It admits structural patterns over the verified CFG (a call terminator with a
+destination and continuation; a switch-int diamond; a straight-line returning
+block), relying on the MIR structural verifier for invariants. Every currently-emitted
+construct that reaches LIR must still lower, proven by the existing object-emission
+integration fixtures (`tests/integration/core-library/*`).
 
 ## Repository Impact
 
@@ -363,155 +460,174 @@ traversal is deterministic.
 |---|---|---|
 | HIR construction and verification | `compiler/hir/**` | `ir-backend` |
 | Built MIR construction and verification | `compiler/mir/**` | `ir-backend` |
-| Surface capability admission | `compiler/ownership/admission/**` | `error-system`, `ir-backend` |
-| Checked facts consumed by lowerers | `compiler/checker/**` (read-only contracts) | `binder-checker` |
-| Ownership overlay inputs (Built MIR consumers, contracts unchanged) | `compiler/ownership/**` | `verification` |
-| Unit, lit, conformance, and oracle tests | `tests/**` | `verification` |
-| Canonical codec / byte-oracle baselines | `compiler/mir/**`, `tests/coverage/**` | `ir-backend`, `verification` |
+| LIR structural admission/lowering | `compiler/lir/**` | `ir-backend` |
+| IR failure algebra and capability projector (new source-construct capability row and arms) | `compiler/ir/**` | `ir-backend`, `error-system` |
+| Capability diagnostic codes (reused, meaning unchanged) | `compiler/diagnostics/defs/**` | `error-system` |
+| Checker body-fact production gates moved to lowering | `compiler/checker/body/**` | `binder-checker` |
+| Surface admission (body-shape classification removed; node-local checks kept) | `compiler/ownership/admission/**` | `error-system`, `ir-backend` |
+| Ownership overlay consumers (parameter ordering invariant; contracts unchanged) | `compiler/ownership/**` | `ir-backend`, `verification` |
+| Architecture gates pinning deleted rails | `scripts/check-ownership-architecture.py`, `scripts/check-ir-architecture.py` | `verification` |
+| Corpus parity tool (new), unit/lit/conformance/byte-oracle tests | `scripts/**`, `tests/**` | `verification` |
+| RFC process conformance | `docs/rfc/**` | `rfc` |
 
 ## Security And Safety Impact
 
-No new memory-safety, concurrency, sandbox, or data-exposure surface is
-introduced: this is an internal construction/verification refactor with unchanged
-IR semantics. The safety posture improves: fail-closed behavior moves from
-whole-shape matching (which can silently fail open if a template is missed) to an
-explicit legality inventory plus per-node structural verification, so an
-un-lowered or ill-formed node is always detected and reported as a capability
-diagnostic or a compiler invariant rather than producing an invalid artifact.
+No new memory-safety, concurrency, sandbox, or data-exposure surface; IR
+semantics are unchanged. The safety posture improves in two ways: capability
+failures are typed and user-facing at the construction phase instead of leaking
+as internal incidents for well-typed source, and structural verification is
+expressed per node over the graph. The new failure-algebra row is capability-only
+for source-present nodes and cannot be used to swallow an invariant; the
+distinction is enforced by the closed kind/phase matrix.
 
 ## Drawbacks And Risks
 
-- Refactor size. Replacing four components (HIR build/verify, MIR build/verify)
-  is a large change. Risk is limited by keeping artifact contracts fixed and by
-  requiring corpus-wide accept/reject and diagnostic byte-parity at each phase.
-- Verifier coverage regression. The structural verifier must be at least as
-  strong as the union of the per-shape verifiers it replaces. This is mitigated by
-  mutation tests (the existing oracle mutation harness is extended to mutate edges
-  and types, not just opcode tags) and by porting every concrete invariant the
-  shape verifiers check into a local graph check before deleting each shape
-  verifier.
-- Legality inventory drift. If the inventory admits a node the builder cannot
-  emit, construction fails; if it omits a node that used to compile, a valid
-  program spuriously reports a capability diagnostic. The parity gate over the
-  full conformance corpus catches both before landing.
-- Oracle rewrite. Fixed-id byte oracles are rewritten to edge/type oracles. This
-  is intended but is test-maintenance work and must not reduce the strength of the
-  byte-level canonical-codec checks.
+- Breadth. This is a cross-layer change (checker fact production, IR failure
+  matrix, HIR, MIR, LIR, gates, tooling), not a local refactor. Blast radius is
+  limited by unchanged vocabulary/codec and by a per-phase parity gate.
+- Canonical byte drift. Moving to one traversal convention can change ordinals
+  and `MirRevisionId`s for some constructs even though meaning is unchanged.
+  Mitigation: the ordering contract preserves per-construct local kinds; oracles
+  are regenerated and accepted only after the corpus parity tool proves identical
+  accept/reject and diagnostics and the object-emission fixtures still link.
+- Verifier coverage regression. Mitigated by porting every concrete invariant
+  from the shape verifiers into local graph checks before deletion, and by
+  in-memory mutation tests (not byte-hash tests) for edges, types, scopes, and
+  terminators.
+- Legality inventory drift. Mitigated by deriving the initial inventory from
+  today's emitting arms and enforcing corpus parity; the precondition audit in
+  the checker prevents a capability decision from silently staying an invariant.
+- LIR coverage loss. Mitigated by making structural LIR admission part of this
+  RFC and gating on the existing call/conditional/loop object-emission fixtures.
 
 ## Alternatives Considered
 
-- Keep and extend the shape rails. Rejected. It does not compose (every new form
-  needs a third classifier copy and count-equation rebalancing), accumulates
-  overlapping rails, and contradicts the design principle of radical refactoring
-  over incremental templates.
-- Adopt MLIR/another external IR framework. Reaffirms RFC 0010's rejection; the
-  cost and dependency outweigh the benefit, and MLIR's legality/verification
-  *patterns* are adopted conceptually without the framework.
-- Recursive construction but keep count-equation verification. Rejected. Counts
-  cannot validate edges or types and would continue to demand per-shape tally
-  maintenance, defeating the purpose of the recursive builder.
-- SSA MIR from construction. Rejected for this layer. RFC 0010 mandates a
-  place-based MIR for ownership; SSA is introduced at LIR where dominance is
-  already required.
+- Keep and extend the shape rails. Rejected: non-compositional, duplicated across
+  four layers, and already producing invariant-routed capability failures.
+- Recursive builders but keep count-equation and positional LIR verification.
+  Rejected: counts miss edge/type errors and positional LIR would fail closed on
+  a normalized builder.
+- Put the capability decision only at MIR without touching the failure matrix or
+  checker. Rejected as specified: it is illegal in the closed matrix (would become
+  an ICE or ZOM6009), and checker-refused facts never reach MIR. The required
+  matrix and fact-production changes are therefore in scope.
+- Add a universal rustc-style `_0` return place to every function. Deferred: it
+  changes local conventions for current place-returning shapes and their LIR
+  admission; it is a separate accepted change, not required for recursive
+  construction.
+- SSA MIR from construction. Rejected for this layer per RFC 0010.
+- Adopt MLIR. Reaffirms RFC 0010.
 
 ## Compatibility And Rollout
 
-This is a same-repository radical refactor with no compatibility shims and no
-dual builders. The invariant that keeps it safe is parity: at every phase the
-full conformance corpus and unit tests must produce identical accept/reject
-decisions and diagnostics, and identical (or deliberately re-oracled) IR bytes.
+Same-repository radical refactor, no dual builders and no compatibility shims.
+Each phase is gated on corpus parity and lands independently revertible.
 
-1. Phase 1 - Recursive HIR construction. Implement `lowerStmt`/`lowerExpr` and
-   the per-function context; delete the shape classifier and per-shape pending
-   arms. Build HIR for all currently surface-admitted constructs. Acceptance:
-   verified-HIR parity for every corpus program.
-2. Phase 2 - Structural HIR verifier. Port every local invariant from the count
-   equations and shape validators into per-node graph checks; delete the counts
-   and shape validation branches. Extend HIR mutation tests.
-3. Phase 3 - Recursive MIR construction. Implement `MirFnCtx`, the block cursor,
-   `exprIntoDest`/`asTemp`/`asOperand`, and rvalue/terminator emission; delete
-   the per-shape MIR emitters. Introduce the MIR `LoweringLegality` inventory set
-   to today's emitted set.
-4. Phase 4 - Structural MIR verifier. Replace per-shape verifier functions with
-   the CFG walk; port each invariant; extend MIR mutation tests to edges/types.
-5. Phase 5 - Legality seam. Reduce surface admission to node-local structural
-   checks; route unsupported constructs through the MIR legality failure to the
-   capability diagnostic. Delete the body-shape classifiers in surface admission.
-   Confirm corpus diagnostics are byte-identical.
+- Phase 0 - Failure algebra and capability seam. Add the source-construct
+  capability kind legal at HIR/MIR construction with a source-span site; extend
+  the capability projector to the ZOM4095-4103 family; add the function-declaration
+  anchor for residual whole-body cases. Add the corpus parity tool first.
+- Phase 1 - Checker fact-production audit and move. Reclassify body-checker
+  invariant sites; publish facts for type-valid unlowered forms; move shape/stage
+  gates behind the capability seam with identical diagnostics.
+- Phase 2 - Recursive HIR construction and structural HIR verifier, including the
+  candidate mutation seam and fact-completeness post-pass; corpus parity.
+- Phase 3 - Recursive MIR `FunctionBuilder` (multi-block calls/control flow,
+  unsafe/borrow statements) plus the legality inventory; corpus parity.
+- Phase 4 - Structural MIR verifier and generalized structural LIR admission;
+  regenerate canonical oracles; object-emission fixture parity.
+- Phase 5 - Remove surface body-shape classification and delete the remaining
+  shape markers in the architecture gates, replacing them with structural-verifier
+  markers and self-tests in the same commits.
 
-Generated files and byte-oracle baselines (`tests/coverage/**`, MIR canonical
-encoding fixtures) are regenerated or re-oracled in the phase that changes them.
-Rollback cost per phase is a single revert because artifact contracts are stable.
+Generated byte oracles (the hardcoded hex digests and fixed-ordinal assertions in
+`hir-module-test.cc` and `built-mir-test.cc`) and coverage baselines are
+regenerated in the phase that changes ordering; the codec format itself is
+unchanged.
 
 ## Documentation And Teaching Plan
 
-- Update the compiler IR design notes under `docs/design/ir/` to describe the
-  recursive builder and structural verifier as the current production mechanism,
-  identifying the builder, independent verifier, session publisher, consumers,
-  and tests per the existing design-note contract.
-- Update any RFC 0010 implementation-tracker language that describes construction
-  as shape-based; RFC 0010's normative IR contract is unchanged and needs no
-  edit.
-- Add a short contributor note showing how to add an expression kind via one
-  visitor arm plus the legality inventory.
+- Update `docs/design/ir/**` to describe the recursive builders, structural
+  verifiers, capability legality seam, and ordering contract, naming builder,
+  independent verifier, session publisher, consumers, and tests.
+- Note in the RFC 0010 implementation tracker that the construction algorithm and
+  one failure-matrix row change while the normative IR vocabulary is unchanged.
+- Add a contributor note on adding an expression kind via one visitor arm plus a
+  legality entry.
 
 ## Operational Readiness
 
-None beyond normal CI. No CLI, runtime, release, or performance contract changes
-are intended; compile-time cost is expected to improve (one walk instead of three
-classifiers), but no performance gate is required beyond existing build times.
+None beyond CI. No CLI, runtime, release, or performance contract is intended to
+change; a single recursive walk is expected to be no slower than repeated shape
+classification, but no new performance gate is required.
 
 ## Acceptance Criteria
 
-- No whole-function shape classifier remains in HIR construction, MIR construction,
-  or surface admission: `functionReturnShape`, `sequentialLocalShape`,
-  `isSequentialLocalReturnBlock`, the `Pending*Return` arms, the fixed-id layout
-  blocks, and the global count equations are deleted.
-- Adding a new emittable expression kind requires at most one `lowerExpr`/MIR
-  arm, one legality-inventory entry, and tests; no third classifier and no count
-  rebalance (demonstrated by a pilot node kind added in the implementation
-  phase).
-- The structural HIR and MIR verifiers reject injected edge, type, scope, and
-  terminator mutations via mutation tests.
-- Over the full conformance corpus and unit suites, every program has the same
-  accept/reject outcome and the same rendered diagnostic before and after; IR
-  artifacts satisfy the unchanged RFC 0010 codec.
-- Full `sanitizer` preset build and `ctest --preset default` pass;
-  `scripts/check-format.py` and the architecture gates pass.
+- Whole-function shape classifiers are gone from HIR construction, MIR
+  construction, surface body admission, and LIR admission; the checker body rail
+  makes only type/trait/operator decisions; count equations and
+  `valid*ReturnFunction` verifiers are deleted.
+- The IR failure matrix legally routes a well-formed unadmitted construct at
+  construction to the existing ZOM4095-4103 capability diagnostic (never an ICE,
+  never ZOM6009), and structural corruption still routes to an invariant. The
+  arithmetic-in-condition and empty/missing-return cases demonstrate the two
+  outcomes with byte-identical diagnostics.
+- Adding a demonstrated new emittable node after Phase 5 needs one visitor arm,
+  one legality entry, and tests (no classifier or count edit), shown as a
+  post-parity follow-up so it does not break the parity gate.
+- In-memory candidate/CFG mutation tests make both structural verifiers reject
+  injected edge, type, scope, and terminator mutations with the right
+  `IrFailureKind`; the HIR candidate mutation seam exists.
+- A corpus parity tool captures and diffs per-file exit code and normalized
+  output between two builds and reports parity across the whole corpus; the full
+  corpus is byte-parallel at each phase, and all current call/conditional/loop
+  object-emission integration fixtures still link.
+- `sanitizer` build and `ctest --preset default` pass; `check-format.py` and the
+  updated architecture gates pass; artifacts satisfy the unchanged RFC 0010 codec.
 
 ## Implementation Plan
 
 1. Land this RFC (REVIEW -> ACCEPTED).
-2. Phase 1 recursive HIR builder behind the existing `HirModuleCandidate`
-   contract; corpus parity.
-3. Phase 2 structural HIR verifier with mutation coverage.
-4. Phase 3 recursive MIR `FunctionBuilder` and `LoweringLegality` inventory;
-   corpus parity.
-5. Phase 4 structural MIR verifier with edge/type/terminator mutation coverage.
-6. Phase 5 move capability gating to the MIR legality seam; delete surface
-   body-shape classifiers; byte-parity confirmation.
-7. Refresh IR design notes and contributor documentation.
+2. Phase 0 failure-algebra/capability seam plus the corpus parity tool.
+3. Phase 1 checker fact-production audit and gate move.
+4. Phase 2 recursive HIR build + structural verifier with mutation seam.
+5. Phase 3 recursive MIR builder + legality inventory.
+6. Phase 4 structural MIR verifier + generalized LIR admission; oracle regen.
+7. Phase 5 remove surface shape classifiers and update architecture gates.
+8. Refresh IR design notes and contributor documentation.
 
 ## Test Plan
 
 - Build: `cmake --preset sanitizer && cmake --build --preset sanitizer`.
 - Unit tests: recursive builder per-node-kind tests; structural verifier tests
-  including edge/type/terminator/scope mutation cases; HIR and MIR module tests.
-- Lit tests: full `ctest --preset default -L lit`; AST and diagnostics
-  expectations remain green.
-- Conformance: before/after parity run over the entire corpus asserting identical
-  exit codes and rendered diagnostics (especially the ZOM4095-4105 capability
-  family and type-error codes).
-- Generated files: regenerate MIR canonical-encoding and coverage baselines under
-  `tests/coverage/**`; run the ownership determinism baseline check.
-- Format and gates: `python3 scripts/check-format.py`, the IR architecture and
-  diagnostics-layering gates, and `python3 scripts/check-rfc.py` for this
-  document.
+  that mutate in-memory `HirModuleCandidate` and `MirFunction`/`MirBlock` fields
+  (dangling terminator target, undeclared-local operand, StorageLive-after-use,
+  rvalue operand/result mismatch, unterminated block, HIR edge to missing node,
+  non-bool comparison result, scope failure) and assert the specific
+  `IrFailureKind`; failure-algebra legality tests.
+- Lit tests: `ctest --preset default -L lit`; AST and diagnostics expectations
+  remain byte-green, including the ZOM4095-4105 family and type-error codes.
+- Conformance: the new corpus parity tool diffs two builds over all
+  `tests/conformance/corpus/**` `.zom` inputs (exit code plus normalized
+  stdout/stderr, stripping the build prefix as
+  `scripts/check-ownership-determinism.py` already does).
+- Generated files: regenerate the canonical byte digests and fixed-ordinal
+  assertions in the two IR ztest files (there are no MIR byte fixtures under
+  `tests/coverage/**`); keep the ownership determinism baseline green.
+- Integration: the `tests/integration/core-library/{call,conditional,loop,...}`
+  object-emission fixtures must continue to lower and link after LIR admission is
+  generalized.
+- Format and gates: `python3 scripts/check-format.py`,
+  `scripts/check-ir-architecture.py`, `scripts/check-ownership-architecture.py`
+  (markers updated in Phase 5), `python3 scripts/check-diagnostic-coverage.py`,
+  and `python3 scripts/check-rfc.py`.
 
 ## Open Questions
 
-- None. The legality inventory initially mirrors today's emitted set; expanding
-  coverage is tracked by the existing implementation plan rather than this RFC.
+- None. The capability kind is implemented by extending the closed RFC 0010
+  matrix in Phase 0; whether it reuses an existing capability tag or adds a
+  source-construct tag is settled there against the legality table, with the
+  projector mapping by construct to existing ZOM codes.
 
 ## Status History
 
@@ -519,3 +635,4 @@ classifiers), but no performance gate is required beyond existing build times.
 |---|---|---|
 | 2026-09-10 | DRAFT | Initial draft. |
 | 2026-09-10 | REVIEW | Opened for owner review; proposal snapshot recorded in the tracker. |
+| 2026-09-10 | REVIEW | Revised after rfc/ir-backend/binder-checker/error-system/verification review: added the RFC 0010 failure-algebra extension, checker fact-production move, generalized LIR admission, ordering contract, in-memory mutation testing, and the corpus parity tool. |

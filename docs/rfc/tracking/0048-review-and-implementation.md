@@ -41,17 +41,56 @@ required owner approves the frozen snapshot.
 
 Frozen proposal snapshot (SHA-256 of the RFC document at REVIEW entry):
 
-| Proposal SHA-256 | `02ae255ca00333327a1fe97a6eb14fe642581fcc601443e6ee57d91340567c1f` |
+| Proposal SHA-256 | `2b54f6c323180f9618d184a2378829b8d46ad0d16da46a6b9e53ae08d7456192` |
 |---|---|
 
 ## Owner Review Matrix
 
-| Owner | Surface | Status |
+| Owner | Surface | Round 1 |
 |---|---|---|
-| `ir-backend` | HIR and Built MIR recursive construction, structural verifiers, canonical codec/byte oracles | Pending |
-| `binder-checker` | Checked-fact consumption contracts read by the recursive lowerers | Pending |
-| `error-system` | Capability-failure projection and the ZOM4099-family fail-closed diagnostic seam | Pending |
-| `verification` | Corpus accept/reject and diagnostic byte-parity gates, sanitizer and mutation coverage | Pending |
+| `ir-backend` | HIR/Built MIR recursive construction, structural verifiers, canonical byte allocation, LIR structural admission | REQUEST-CHANGES |
+| `binder-checker` | Checker body fact-production gates, fact resolver/node-key contracts, copy/move evidence | REQUEST-CHANGES |
+| `error-system` | IR failure matrix source-construct capability row, ZOM4095-4103 projection, residual function-anchor | REQUEST-CHANGES |
+| `verification` | Corpus parity tool, architecture-gate markers, in-memory mutation tests, oracle regeneration | REQUEST-CHANGES |
+| `rfc` | Process, template conformance, required-owner completeness | Pending |
+
+### 2026-09-10 Four-Owner Review Round 1 - All REQUEST-CHANGES, Revised
+
+All four technical owners reviewed the frozen snapshot against live code. The
+direction (recursive destination-driven construction plus structural
+verification) was confirmed sound, but the original draft under-scoped the work.
+Agreed blocking findings, all addressed in the revised REVIEW snapshot:
+
+- No legal `(CapabilityRejected, Hir/MirConstruction, *)` row exists; IR
+  capability maps to ZOM6009 and ZOM4095-4103 is produced only by ownership
+  surface/checker source rails. Addressed by a Phase 0 RFC 0010 failure-algebra
+  extension plus capability projector arms to the existing ZOM codes.
+- The checker body rail refuses to publish facts for well-typed unlowered
+  shapes (58 `rejectInvariant` sites), so they never reach a MIR legality walk.
+  Addressed by moving lowering-shape/staging gates out of checker fact
+  production (Phase 1); `compiler/checker/body/**` is now in scope.
+- `compiler/lir/mir-to-lir.cc` and the ownership overlay read locals/blocks
+  positionally and cross-check parameter ordinals against borrow evidence; five
+  current rails use distinct local conventions. Addressed by adding `compiler/lir/**`
+  and `compiler/ownership/**` to Repository Impact, a deterministic ordering
+  contract (dense contiguous ordinals, parameters first, per-construct local-kind
+  placement, one StorageLive), generalized structural LIR admission, and byte
+  parity as an explicit replication requirement.
+- The draft factually said "one block per function" and treated calls as rvalues;
+  admitted slice already emits two- and four-block CFGs with call terminators,
+  continuation blocks, receiver borrow/effect, unsafe boundaries, and
+  StorageDead. Addressed by specifying terminator-driven call lowering and the
+  full emitted statement vocabulary.
+- Verification gaps: no corpus parity tool exists; architecture gates pin the
+  deleted markers; "mutation" tests hash bytes rather than run the verifier; HIR
+  has no candidate mutation seam; byte oracles live in the two ztests, not
+  `tests/coverage/**`. Addressed by adding the parity tool, gate-marker
+  migration in scope, in-memory candidate/CFG mutation tests with a new HIR seam,
+  corrected paths, and a post-parity pilot node.
+
+The proposal is updated and re-frozen (snapshot hash updated above). It returns
+to REVIEW for a second round; no owner approval is recorded and the RFC does not
+advance to ACCEPTED.
 
 ## Decision Record
 
@@ -61,11 +100,12 @@ until every required owner approves the frozen snapshot.
 ## Implementation Tracker
 
 No implementation authorized. RFC 0048 is not `ACCEPTED` and not `IMPLEMENTING`;
-the implementation pointer stays TBD. On acceptance the ordered work is the five
-phases in the RFC (recursive HIR construction, structural HIR verifier, recursive
-MIR construction plus the legality inventory, structural MIR verifier, then
-capability-gate convergence), each gated on corpus parity.
+the implementation pointer stays TBD. On acceptance the ordered work is
+Phase 0 (failure algebra + capability seam + parity tool), Phase 1 (checker
+fact-production move), Phases 2-4 (recursive HIR, recursive MIR, structural
+verifiers + generalized LIR), Phase 5 (remove surface body-shape classifiers and
+update architecture gates), each gated on corpus byte parity.
 
 ## Verification Evidence
 
-- `python3 scripts/check-rfc.py` passes for this transition.
+- `python3 scripts/check-rfc.py` passes for the revised REVIEW snapshot.
