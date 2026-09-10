@@ -58,6 +58,7 @@
 #include "compiler/source/core-source-admission.h"
 #include "compiler/source/manager.h"
 #include "zc/core/common.h"
+#include "zc/core/encoding.h"
 #include "zc/core/exception.h"
 #include "zc/core/filesystem.h"
 #include "zc/core/io.h"
@@ -527,6 +528,10 @@ public:
                    "Dump AST to stdout (shorthand for --emit=ast)")
         .addOption({"dump-dispatch"}, ZC_BIND_METHOD(*this, enableDispatchDump),
                    "Dump checked call dispatch records to stdout (shorthand for --emit=dispatch)")
+        .addOption({"dump-hir"}, ZC_BIND_METHOD(*this, enableHirDump),
+                   "Dump the verified semantic HIR to stdout (shorthand for --emit=hir)")
+        .addOption({"dump-mir"}, ZC_BIND_METHOD(*this, enableMirDump),
+                   "Dump canonical Built MIR function records to stdout (shorthand for --emit=mir)")
         .addOption({"check"}, ZC_BIND_METHOD(*this, enableCheck),
                    "Check sources without emitting an artifact");
     addCompilationPolicyOptions(builder);
@@ -626,11 +631,16 @@ public:
     } else if (type == "dispatch") {
       compilerOpts.emission.outputType =
           basic::CompilerOptions::EmissionOptions::OutputType::Dispatch;
+    } else if (type == "hir") {
+      compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::OutputType::Hir;
+    } else if (type == "mir") {
+      compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::OutputType::Mir;
     } else if (type == "binary") {
       compilerOpts.emission.outputType =
           basic::CompilerOptions::EmissionOptions::OutputType::Binary;
     } else {
-      return zc::str("Invalid output type: ", type, ". Valid types are: ast, dispatch, binary");
+      return zc::str("Invalid output type: ", type,
+                     ". Valid types are: ast, dispatch, hir, mir, binary");
     }
     return true;
   }
@@ -667,6 +677,24 @@ public:
     outputActionRequested = true;
     compilerOpts.emission.outputType =
         basic::CompilerOptions::EmissionOptions::OutputType::Dispatch;
+    return true;
+  }
+
+  zc::MainBuilder::Validity enableHirDump() {
+    if (action == CompilationAction::FrontendOnly) {
+      return "Cannot combine --check with an output selector.";
+    }
+    outputActionRequested = true;
+    compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::OutputType::Hir;
+    return true;
+  }
+
+  zc::MainBuilder::Validity enableMirDump() {
+    if (action == CompilationAction::FrontendOnly) {
+      return "Cannot combine --check with an output selector.";
+    }
+    outputActionRequested = true;
+    compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::OutputType::Mir;
     return true;
   }
 
@@ -1065,13 +1093,22 @@ public:
       return zc::str("Compilation failed due to binding errors.");
     }
 
-    // 4. Type checking
+    // 4. Type checking (this also constructs and verifies HIR, Built MIR, and the
+    // ownership overlays for every ordinary module).
     if (!session->checkSources() || session->hasDiagnosticErrors()) {
       if (reportSessionIncident()) { return true; }
       if (session->hasDiagnosticErrors()) return publishDiagnostics();
       if (reportCoreOperationalFailure()) return true;
       if (reportIrOperationalFailures()) return true;
       return zc::str("Compilation failed due to type checking errors.");
+    }
+
+    // 4b. IR dumps run after the full HIR/MIR pipeline succeeds and stop here.
+    if (options.emission.outputType == basic::CompilerOptions::EmissionOptions::OutputType::Hir) {
+      return emitHir();
+    }
+    if (options.emission.outputType == basic::CompilerOptions::EmissionOptions::OutputType::Mir) {
+      return emitMir();
     }
 
     if (action == CompilationAction::Run) {
@@ -1124,6 +1161,52 @@ public:
     return "Failed to create output stream.";
   }
 
+  // RFC 0048 deterministic IR dumps. HIR uses its canonical textual dump; MIR uses
+  // the canonical per-function framed records rendered as hex. Both are
+  // build-path independent and stable across processes, so the corpus parity
+  // tool can diff them across builds for accepted programs.
+  zc::MainBuilder::Validity emitHir() {
+    zc::Maybe<zc::Own<zc::OutputStream>> outputStream = createOutputStream(
+        compilerOpts.emission.outputPath, ASTDumpFormat::Tree, DumpOutputKind::Hir);
+    ZC_IF_SOME(stream, outputStream) {
+      const auto modules = session->getVerifiedHirModules();
+      for (size_t index = 0; index < modules.size(); ++index) {
+        stream->write(zc::str("=== module ", index, " ===\n").asBytes());
+        auto text = modules[index].dump();
+        if (text == zc::none) { return "HIR dump is unavailable."; }
+        ZC_IF_SOME(value, text) { stream->write(value.asBytes()); }
+        stream->write("\n"_zcb);
+      }
+      return true;
+    }
+    return "Failed to create output stream.";
+  }
+
+  zc::MainBuilder::Validity emitMir() {
+    zc::Maybe<zc::Own<zc::OutputStream>> outputStream = createOutputStream(
+        compilerOpts.emission.outputPath, ASTDumpFormat::Tree, DumpOutputKind::Mir);
+    ZC_IF_SOME(stream, outputStream) {
+      const auto modules = session->getOwnershipCheckedMirModules();
+      for (size_t moduleIndex = 0; moduleIndex < modules.size(); ++moduleIndex) {
+        const auto& built = modules[moduleIndex].builtMir();
+        const auto records = built.canonicalFunctionRecords();
+        stream->write(zc::str("=== module ", moduleIndex, " revision ",
+                              zc::encodeHex(built.revision().digest().bytes()), " functions ",
+                              records.size(), " ===\n")
+                          .asBytes());
+        for (size_t functionIndex = 0; functionIndex < records.size(); ++functionIndex) {
+          stream->write(zc::str("--- function ", functionIndex, " bytes ",
+                                records[functionIndex].size(), " ---\n")
+                            .asBytes());
+          stream->write(zc::encodeHex(records[functionIndex].asPtr()).asBytes());
+          stream->write("\n"_zcb);
+        }
+      }
+      return true;
+    }
+    return "Failed to create output stream.";
+  }
+
 private:
   enum class CompilationAction : uint8_t { Emit, FrontendOnly, Run };
 
@@ -1132,6 +1215,8 @@ private:
   enum class DumpOutputKind {
     Ast,
     Dispatch,
+    Hir,
+    Mir,
   };
 
   static ast::AstDumpFormat toAstDumpFormat(ASTDumpFormat format) {
@@ -1209,6 +1294,12 @@ private:
         break;
       case DumpOutputKind::Dispatch:
         extension = ".dispatch.txt"_zc;
+        break;
+      case DumpOutputKind::Hir:
+        extension = ".hir.txt"_zc;
+        break;
+      case DumpOutputKind::Mir:
+        extension = ".mir.txt"_zc;
         break;
     }
 

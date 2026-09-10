@@ -35,6 +35,8 @@ struct CompilerOptions {
     enum class OutputType {
       AST,
       Dispatch,
+      Hir,
+      Mir,
       Binary,
     };
 
