@@ -52,7 +52,7 @@ Frozen proposal snapshot (SHA-256 of the RFC document at REVIEW entry):
 | `binder-checker` | Checker body fact-production gates, fact resolver/node-key contracts, copy/move evidence | REQUEST-CHANGES | APPROVED (editorial) | APPROVED |
 | `error-system` | IR failure matrix source-construct capability row, ZOM4095-4103 projection, residual function-anchor | REQUEST-CHANGES | REQUEST-CHANGES (one taxonomy gap) | APPROVED |
 | `verification` | Corpus parity tool, architecture-gate markers, in-memory mutation tests, oracle regeneration | REQUEST-CHANGES | REQUEST-CHANGES (IR-byte channel) | APPROVED (one wording fix applied) |
-| `rfc` | Process, template conformance, required-owner completeness | Pending | Pending | Pending |
+| `rfc` | Process, template conformance, required-owner completeness | Pending | Pending | APPROVED |
 
 ### 2026-09-10 Four-Owner Review Round 1 - All REQUEST-CHANGES, Revised
 
@@ -158,8 +158,13 @@ the process owner signs off.
 
 ## Decision Record
 
-No decision yet. RFC 0048 is `REVIEW`, not `ACCEPTED`; `decision` stays TBD
-until every required owner approves the frozen snapshot.
+Decision: Accepted 2026-09-10. All five required owners - `rfc`, `ir-backend`,
+`binder-checker`, `error-system`, and `verification` - approved the frozen
+proposal snapshot `ff5d5a2d922f22f1b77686daafab42f6f2729ee52858da24cddf0fbfae97422e`
+after three code-verified review rounds. The process review confirmed frontmatter,
+template, required-owner completeness, snapshot integrity, prior-art depth, and
+`scripts/check-rfc.py` all pass. `decision` is set; `implementation` stays TBD and
+no `ACCEPTED -> IMPLEMENTING` transition is set in this change.
 
 ## Implementation Tracker
 

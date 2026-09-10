@@ -2,11 +2,11 @@
 rfc: 48
 title: Recursive IR Construction And Structural Verification
 type: compiler
-status: REVIEW
+status: ACCEPTED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, ir-backend, binder-checker, error-system, verification]
-approvers: []
+approvers: [rfc, ir-backend, binder-checker, error-system, verification]
 created: 2026-09-10
 updated: 2026-09-10
 area: compiler
@@ -14,7 +14,7 @@ requires: [10, 9, 13, 47]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0048-review-and-implementation.md#discussion-record
-decision: TBD
+decision: docs/rfc/tracking/0048-review-and-implementation.md#decision-record
 implementation: TBD
 tracking-issue: docs/rfc/tracking/0048-review-and-implementation.md#implementation-tracker
 ---
@@ -700,10 +700,9 @@ classification, but no new performance gate is required.
 
 ## Open Questions
 
-- None. The capability kind is implemented by extending the closed RFC 0010
-  matrix in Phase 0; whether it reuses an existing capability tag or adds a
-  source-construct tag is settled there against the legality table, with the
-  projector mapping by construct to existing ZOM codes.
+None
+
+
 
 ## Status History
 
@@ -712,3 +711,4 @@ classification, but no new performance gate is required.
 | 2026-09-10 | DRAFT | Initial draft. |
 | 2026-09-10 | REVIEW | Opened for owner review; proposal snapshot recorded in the tracker. |
 | 2026-09-10 | REVIEW | Revised after rfc/ir-backend/binder-checker/error-system/verification review: added the RFC 0010 failure-algebra extension, checker fact-production move, generalized LIR admission, ordering contract, in-memory mutation testing, and the corpus parity tool. |
+| 2026-09-10 | ACCEPTED | All five required owners (`rfc`, `ir-backend`, `binder-checker`, `error-system`, `verification`) approved the frozen snapshot after three code-verified review rounds. |
