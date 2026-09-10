@@ -2,9 +2,9 @@
 rfc: 48
 title: Recursive IR Construction And Structural Verification
 type: compiler
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
-review-manager: ZOM Compiler Team
+review-manager: rfc
 required-owners: [ir-backend, binder-checker, error-system, verification]
 approvers: []
 created: 2026-09-10
@@ -13,10 +13,10 @@ area: compiler
 requires: [10, 9, 13]
 supersedes: []
 superseded-by: []
-discussion: TBD
+discussion: docs/rfc/tracking/0048-review-and-implementation.md#discussion-record
 decision: TBD
 implementation: TBD
-tracking-issue: TBD
+tracking-issue: docs/rfc/tracking/0048-review-and-implementation.md#implementation-tracker
 ---
 
 # RFC 0048: Recursive IR Construction And Structural Verification
@@ -518,3 +518,4 @@ classifiers), but no performance gate is required beyond existing build times.
 | Date | Status | Notes |
 |---|---|---|
 | 2026-09-10 | DRAFT | Initial draft. |
+| 2026-09-10 | REVIEW | Opened for owner review; proposal snapshot recorded in the tracker. |
