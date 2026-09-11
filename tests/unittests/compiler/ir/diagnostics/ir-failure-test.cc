@@ -59,6 +59,10 @@ identity::ContextFingerprint emptyContextFingerprint() {
 
 bool expectedKind(IrRejectedBranch branch, IrFailurePhase phase, IrFailureKind kind) {
   if (branch == IrRejectedBranch::CapabilityRejected) {
+    // RFC 0048: source-construct lowering capability at construction phases.
+    if (phase == IrFailurePhase::HirConstruction || phase == IrFailurePhase::MirConstruction) {
+      return kind == IrFailureKind::UnsupportedSourceConstruct;
+    }
     if (phase == IrFailurePhase::Monomorphization) {
       return kind == IrFailureKind::RecursiveInstantiation ||
              kind == IrFailureKind::InstantiationBudgetExceeded;
@@ -276,7 +280,7 @@ ZC_TEST("IR failure matrix accepts every legal coordinate and rejects every ille
   uint32_t legalCount = 0;
   for (uint8_t branchTag = 0x01; branchTag <= 0x02; ++branchTag) {
     for (uint8_t phaseTag = 0x01; phaseTag <= 0x13; ++phaseTag) {
-      for (uint8_t kindTag = 0x01; kindTag <= 0x13; ++kindTag) {
+      for (uint8_t kindTag = 0x01; kindTag <= 0x14; ++kindTag) {
         for (uint8_t ownerTag = 0x01; ownerTag <= 0x04; ++ownerTag) {
           for (uint8_t siteTag = 0x00; siteTag <= 0x05; ++siteTag) {
             for (uint8_t detailTag = 0x01; detailTag <= 0x03; ++detailTag) {
@@ -306,6 +310,56 @@ ZC_TEST("IR failure matrix accepts every legal coordinate and rejects every ille
                                               zc::none,
                                               IrFailureDetailKind::None};
   ZC_EXPECT(!isLegalIrFailureShape(invalidPhase));
+}
+
+ZC_TEST("RFC 0048 source-construct capability is legal only at construction phases") {
+  // A definition-owned source-construct capability rejection with no detail is
+  // legal at HIR and MIR construction and illegal everywhere else and on the
+  // invariant branch.
+  const IrFailurePhase constructionPhases[] = {IrFailurePhase::HirConstruction,
+                                               IrFailurePhase::MirConstruction};
+  for (const auto phase : constructionPhases) {
+    const IrFailureDescriptorShape legal{
+        IrRejectedBranch::CapabilityRejected, phase,    IrFailureKind::UnsupportedSourceConstruct,
+        IrFailureOwnerKind::Definition,       zc::none, IrFailureDetailKind::None};
+    ZC_EXPECT(isLegalIrFailureShape(legal));
+    const IrFailureDescriptorShape invariant{
+        IrRejectedBranch::IrInvariantRejected, phase,    IrFailureKind::UnsupportedSourceConstruct,
+        IrFailureOwnerKind::Definition,        zc::none, IrFailureDetailKind::None};
+    ZC_EXPECT(!isLegalIrFailureShape(invariant));
+  }
+  // HIR construction permits a module- or definition-owned construct failure;
+  // MIR construction requires a definition owner.
+  const IrFailureDescriptorShape hirModule{IrRejectedBranch::CapabilityRejected,
+                                           IrFailurePhase::HirConstruction,
+                                           IrFailureKind::UnsupportedSourceConstruct,
+                                           IrFailureOwnerKind::Module,
+                                           zc::none,
+                                           IrFailureDetailKind::None};
+  ZC_EXPECT(isLegalIrFailureShape(hirModule));
+  const IrFailureDescriptorShape mirModule{IrRejectedBranch::CapabilityRejected,
+                                           IrFailurePhase::MirConstruction,
+                                           IrFailureKind::UnsupportedSourceConstruct,
+                                           IrFailureOwnerKind::Module,
+                                           zc::none,
+                                           IrFailureDetailKind::None};
+  ZC_EXPECT(!isLegalIrFailureShape(mirModule));
+  // Instance and session owners are never legal at construction.
+  const IrFailureDescriptorShape hirInstance{IrRejectedBranch::CapabilityRejected,
+                                             IrFailurePhase::HirConstruction,
+                                             IrFailureKind::UnsupportedSourceConstruct,
+                                             IrFailureOwnerKind::Instance,
+                                             zc::none,
+                                             IrFailureDetailKind::None};
+  ZC_EXPECT(!isLegalIrFailureShape(hirInstance));
+  // The source-construct kind is not a capability at any non-construction phase.
+  const IrFailureDescriptorShape atVerification{IrRejectedBranch::CapabilityRejected,
+                                                IrFailurePhase::BuiltMirVerification,
+                                                IrFailureKind::UnsupportedSourceConstruct,
+                                                IrFailureOwnerKind::Definition,
+                                                zc::none,
+                                                IrFailureDetailKind::None};
+  ZC_EXPECT(!isLegalIrFailureShape(atVerification));
 }
 
 ZC_TEST("Invalid descriptor takes one legal no-location fallback without recursive admission") {

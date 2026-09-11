@@ -17,6 +17,7 @@ constexpr bool enumInRange(Enum value, Enum first, Enum last) noexcept {
 
 bool isCapabilityKind(IrFailureKind kind) noexcept {
   return kind == IrFailureKind::UnsupportedTargetCapability ||
+         kind == IrFailureKind::UnsupportedSourceConstruct ||
          kind == IrFailureKind::RecursiveInstantiation ||
          kind == IrFailureKind::InstantiationBudgetExceeded ||
          kind == IrFailureKind::OutputCreationFailed;
@@ -32,6 +33,11 @@ bool isOneOf(IrFailureKind kind, zc::ArrayPtr<const IrFailureKind> allowed) noex
 bool legalKind(IrRejectedBranch branch, IrFailurePhase phase, IrFailureKind kind) noexcept {
   if (branch == IrRejectedBranch::CapabilityRejected) {
     switch (phase) {
+      // RFC 0048: a type-checked source construct the current lowering slice
+      // cannot emit is a user-facing capability failure at construction.
+      case IrFailurePhase::HirConstruction:
+      case IrFailurePhase::MirConstruction:
+        return kind == IrFailureKind::UnsupportedSourceConstruct;
       case IrFailurePhase::Monomorphization:
         return kind == IrFailureKind::RecursiveInstantiation ||
                kind == IrFailureKind::InstantiationBudgetExceeded;
@@ -714,7 +720,7 @@ bool isLegalIrFailureShape(const IrFailureDescriptorShape& shape) noexcept {
       !enumInRange(shape.phase, IrFailurePhase::CheckedModuleAssembly,
                    IrFailurePhase::ExecutablePublication) ||
       !enumInRange(shape.kind, IrFailureKind::InputRevisionMismatch,
-                   IrFailureKind::CanonicalCodecMismatch) ||
+                   IrFailureKind::UnsupportedSourceConstruct) ||
       !enumInRange(shape.owner, IrFailureOwnerKind::Session, IrFailureOwnerKind::Instance) ||
       !enumInRange(shape.detail, IrFailureDetailKind::None,
                    IrFailureDetailKind::InstantiationBudget)) {

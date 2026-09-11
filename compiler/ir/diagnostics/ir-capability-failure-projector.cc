@@ -67,6 +67,7 @@ bool sameCapabilityRoot(const IrFailureFact& left, const IrFailureFact& right) {
     case IrFailureKind::InstantiationBudgetExceeded:
       return left.detail().budgetValue().root == right.detail().budgetValue().root;
     case IrFailureKind::UnsupportedTargetCapability:
+    case IrFailureKind::UnsupportedSourceConstruct:
     case IrFailureKind::OutputCreationFailed:
       return sameOwner(left.owner(), right.owner());
     case IrFailureKind::InputRevisionMismatch:
@@ -169,6 +170,12 @@ diagnostics::DiagID capabilityDiagnosticId(IrFailureKind kind) noexcept {
   switch (kind) {
     case IrFailureKind::UnsupportedTargetCapability:
       return DiagID::TargetCapabilityUnavailable;
+    // RFC 0048: generic source-construct lowering rejection at HIR/MIR
+    // construction maps to the function-body construct code. The Phase 3
+    // producer refines this to the specific construct/operator code via a
+    // failure detail.
+    case IrFailureKind::UnsupportedSourceConstruct:
+      return DiagID::FunctionBodySemanticsUnavailable;
     case IrFailureKind::RecursiveInstantiation:
       return DiagID::RecursiveInstantiation;
     case IrFailureKind::InstantiationBudgetExceeded:
@@ -198,6 +205,8 @@ zc::StringPtr irOperationalFailureDisplay(IrFailureKind kind) noexcept {
   switch (kind) {
     case IrFailureKind::UnsupportedTargetCapability:
       return "unsupported-target-capability"_zc;
+    case IrFailureKind::UnsupportedSourceConstruct:
+      return "unsupported-source-construct"_zc;
     case IrFailureKind::OutputCreationFailed:
       return "output-creation-failed"_zc;
     case IrFailureKind::RecursiveInstantiation:

@@ -79,6 +79,13 @@ enum class IrFailureKind : uint8_t {
   InstantiationBudgetExceeded = 0x11,
   OutputCreationFailed = 0x12,
   CanonicalCodecMismatch = 0x13,
+  // RFC 0048: a type-checked source construct the current lowering slice cannot
+  // emit. Unlike UnsupportedTargetCapability (a backend/target-selection
+  // failure), this source-construct capability rejection is legal at the HIR and
+  // MIR construction phases and projects to the existing ZOM4095-4103 source
+  // capability family. The owning definition carries the construct/declaration
+  // span; per-construct code selection is supplied with the Phase 3 producer.
+  UnsupportedSourceConstruct = 0x14,
 };
 
 enum class IrFailureDetailKind : uint8_t {
