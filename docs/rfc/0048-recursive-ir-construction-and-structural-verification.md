@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, ir-backend, binder-checker, error-system, verification]
 approvers: [rfc, ir-backend, binder-checker, error-system, verification]
 created: 2026-09-10
-updated: 2026-09-10
+updated: 2026-09-11
 area: compiler
 requires: [10, 9, 13, 47]
 supersedes: []
@@ -239,6 +239,67 @@ flowchart TD
   MIR --> LIR[Generalized structural MIR-to-LIR admission]
   LIR --> LLVM[LLVM - unchanged downstream contract]
 ```
+
+### Target module layout
+
+The rewrite also decomposes the current monoliths (`hir-module.cc` ~11k lines,
+`built-mir.cc` ~9k lines, `checker/body/body-checker.cc` ~3.5k lines) into small,
+single-responsibility files. This is part of Phases 1-4, not a later mechanical
+move: a recursive per-node builder and a per-node structural verifier map
+naturally onto one translation unit per node family and one per concern. Each
+file stays small enough to hold in one review; the public headers expose only the
+types each layer needs.
+
+`compiler/hir/` (construction and the immutable artifact):
+
+- `hir-node-id.h` - node/local ordinal and edge vocabulary (unchanged role).
+- `hir-nodes.h` / one `nodes/*.h` per record family - `HirScalarLiteral`,
+  `HirParameterReference`/`HirParameterIndex`/`HirParameterReborrow`,
+  `HirLocalReference`/`HirLocalFieldProjection`/`HirLocalBorrow`,
+  `HirPrimitiveBinary`, `HirConditional`/`HirLoop`, `HirReturn`,
+  `HirDirectCall`/`HirReceiverCall`, `HirNominalAggregate`, `HirLocalWrite`,
+  `HirUnsafeBlock`, and the declaration records.
+- `hir-module.h` - only the `HirModuleCandidate`/`VerifiedHirModule` containers
+  and accessors; the record definitions move to `nodes/`.
+- `build/hir-builder.{h,cc}` - the per-function context, id allocator, fact
+  resolver, and the `lowerStmt`/`lowerExpr` driver.
+- `build/lower-expr-<family>.cc` and `build/lower-stmt-<family>.cc` - one file
+  per node family (literal, reference, binary, control, call, aggregate, write,
+  unsafe) plus `build/fact-resolver.{h,cc}` (NodeId facts, CheckedNodeKey
+  dispatch, capture-by-entity and scope tables) and `build/fact-completeness.cc`
+  (the body/module post-pass that replaces the count equations).
+- `verify/hir-verifier.{h,cc}` plus `verify/verify-<family>.cc` - one structural
+  checker per node family and the graph/fact-completeness walk.
+- `hir-codec.{h,cc}` - canonical encoding (a HIR codec exists only as debug text
+  today; this stays print-only).
+
+`compiler/mir/`:
+
+- `mir-nodes.h` / `nodes/*.h` - `MirFunction`/`MirBasicBlock`, locals/scopes,
+  statements (`storage`, `borrow`, `call-effect`, aggregate/discriminant,
+  deinitialize), rvalues (`use`, `arithmetic-comparison`, `aggregate`),
+  terminators (`goto`, `switch-int`, `call`, `return`), operands and
+  projections.
+- `build/mir-builder.{h,cc}` - `MirFnCtx`, block cursor, and the
+  `exprIntoDest`/`asTemp`/`asOperand` driver.
+- `build/lower-<family>.cc` - one file per rvalue/statement/terminator family.
+- `verify/mir-verifier.{h,cc}` plus `verify/verify-<family>.cc`.
+- `mir-codec.{h,cc}` - the unchanged canonical framed codec.
+- Candidate/Verified containers and revision plumbing stay in their own headers.
+
+`compiler/checker/body/`: split `body-checker.cc` into the requirement inventory,
+the five-stage production driver, and one file per producer family
+(`produce-literal.cc`, `produce-reference.cc`, `produce-binary.cc`,
+`produce-call.cc`, `produce-aggregate.cc`, `produce-place.cc`,
+`produce-borrow.cc`, `produce-error-operator.cc`). Phase 1 removes the
+lowering-shape predicates from these producers; the genuinely type-level checks
+live alongside the corresponding signature/type helpers.
+
+CMake lists each new source explicitly, as today; no umbrella "include
+everything" header. The exact file cut is refined during implementation, but no
+production translation unit in `compiler/hir`, `compiler/mir`, or
+`compiler/checker/body` should remain a multi-thousand-line monolith after
+Phase 4.
 
 ### Deterministic node and local ordering contract
 
@@ -638,17 +699,34 @@ classification, but no new performance gate is required.
   object-emission integration fixtures still link.
 - `sanitizer` build and `ctest --preset default` pass; `check-format.py` and the
   updated architecture gates pass; artifacts satisfy the unchanged RFC 0010 codec.
+- Module decomposition is real by Phase 4: no production translation unit in
+  `compiler/hir`, `compiler/mir`, or `compiler/checker/body` remains a
+  multi-thousand-line monolith. Construction, per-node-family lowering/verifier
+  arms, fact resolution/completeness, and the codecs live in separate files as
+  described in the target module layout, each listed explicitly in CMake with no
+  umbrella include header.
 
 ## Implementation Plan
 
 1. Land this RFC (REVIEW -> ACCEPTED).
-2. Phase 0 failure-algebra/capability seam plus the corpus parity tool.
-3. Phase 1 checker fact-production audit and gate move.
-4. Phase 2 recursive HIR build + structural verifier with mutation seam.
-5. Phase 3 recursive MIR builder + legality inventory.
-6. Phase 4 structural MIR verifier + generalized LIR admission; oracle regen.
-7. Phase 5 remove surface shape classifiers and update architecture gates.
-8. Refresh IR design notes and contributor documentation.
+2. Phase 0 failure-algebra/capability seam plus the corpus parity tool and HIR/MIR
+   dump surface (done 2026-09-11).
+3. Phase 1+2 as one vertical slice per construct family: split genuine type
+   decisions out of the checker body shape gates into source diagnostics and move
+   the lowering-shape refusals to the capability inventory only as the recursive
+   HIR builder gains the per-family arm that consumes the published facts.
+   Publishing facts before the HIR arm exists is forbidden (it would create an
+   intermediate ICE). Land the families in order, each behind corpus parity:
+   literal/reference, binary/operator, aggregate (incl. class-vs-struct
+   legality), direct/receiver call, control (conditional/loop), unsafe/borrow,
+   and the empty-family constructs. The module/body files are decomposed per the
+   target module layout as each family lands.
+4. Phase 3 recursive MIR builder (`MirFnCtx`, block cursor, per-family lowering
+   files) plus the full lowering-legality inventory.
+5. Phase 4 structural MIR verifier (per-family files) + generalized LIR
+   admission; regenerate only the audited production-builder oracles.
+6. Phase 5 remove surface shape classifiers and update architecture gates.
+7. Refresh IR design notes and contributor documentation.
 
 ## Test Plan
 
@@ -712,3 +790,4 @@ None
 | 2026-09-10 | REVIEW | Opened for owner review; proposal snapshot recorded in the tracker. |
 | 2026-09-10 | REVIEW | Revised after rfc/ir-backend/binder-checker/error-system/verification review: added the RFC 0010 failure-algebra extension, checker fact-production move, generalized LIR admission, ordering contract, in-memory mutation testing, and the corpus parity tool. |
 | 2026-09-10 | ACCEPTED | All five required owners (`rfc`, `ir-backend`, `binder-checker`, `error-system`, `verification`) approved the frozen snapshot after three code-verified review rounds. |
+| 2026-09-11 | ACCEPTED | Implementation amendment after Phase 0: added the target module layout that decomposes the HIR/MIR/body-checker monoliths into per-node-family files, made module decomposition an acceptance criterion, and refined the plan so Phases 1+2 land as coupled per-family vertical slices (facts are published only when the recursive HIR arm can consume them). No normative IR contract change. |
