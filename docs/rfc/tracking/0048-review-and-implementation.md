@@ -279,11 +279,25 @@ full lit suite; both corpus parity channels byte-parallel over all 923 sources
 markers moved to the builder TU), IR, English-only, internal-versioning,
 include, and format gates green.
 
-Remaining families, in RFC order: binary/operator, aggregate (class vs struct
-legality), direct/receiver call, control (conditional/loop), unsafe/borrow, and
-the empty-family constructs. The Phase 1 checker TYPE/SHAPE split is still
-deferred to land coupled with the per-family arm that consumes its published
-facts.
+Remaining families, in RFC order: binary/operator (sequential local
+initializers including the one-level nested `a + b * c` form), aggregate (class
+vs struct legality), direct/receiver call, control (conditional/loop),
+unsafe/borrow, and the empty-family constructs. The Phase 1 checker TYPE/SHAPE
+split is still deferred to land coupled with the per-family arm that consumes
+its published facts.
+
+### 2026-09-12 Phase 2 - Family 2 first arm (return-position primitive binary)
+
+Commit `4a7a31ab` on `develop`. Adds `build/lower-expr-binary.{h,cc}` with
+`lowerComparisonReturnFunction`, lowering a bare `return <a OP b>` (the six
+relational and twelve arithmetic/bitwise operators; operands a literal or
+parameter reference, at least one parameter) through the destination driver:
+function, body, left, right, binary, return; the return takes the binary node
+directly with no result temporary. `HirFnCtx` gains the primitive-binary pool
+and a shared `lowerArmLeaf`. HIR and the comparison rvalue MIR oracle are
+byte-identical. Same full verification bar as family 1 (sanitizer build, full
+hir-module ztest, lit, both parity channels over 923 sources and the 64 clean
+dumps, gates green, fail-closed firing probe).
 
 ## Verification Evidence
 
