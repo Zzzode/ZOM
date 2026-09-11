@@ -175,6 +175,71 @@ fact-production move), Phases 2-4 (recursive HIR, recursive MIR, structural
 verifiers + generalized LIR), Phase 5 (remove surface body-shape classifiers and
 update architecture gates), each gated on corpus byte parity.
 
+### 2026-09-11 Phase 0 - Complete (5 commits)
+
+Commits `f5c45192..6128f750` on develop, each behavior-preserving:
+
+- `scripts/check-ir-parity.py` with record/check/self-test and two channels:
+  process (per-file exit code + normalized diagnostics over all 923 corpus
+  sources) and, under `--ir`, deterministic `--dump-hir`/`--dump-mir` hashes for
+  the clean-compiling sources.
+- Baselines `tests/coverage/corpus-process-parity.json` (923 sources;
+  859 reject / 64 clean) and `tests/coverage/corpus-ir-parity.json` (HIR + MIR
+  hashes for the 64 clean sources). Both verified byte-parallel after the matrix
+  change.
+- `zomc --dump-hir`/`--dump-mir` (`--emit=hir|mir`): HIR via the canonical
+  textual dump; MIR renders each `VerifiedBuiltMir::canonicalFunctionRecords()`
+  framed record as hex plus the revision digest. Deterministic and build-path
+  independent.
+- `IrFailureKind::UnsupportedSourceConstruct` (0x14) is a capability kind legal
+  at `HirConstruction` (Module or Definition owner) and `MirConstruction`
+  (Definition owner only), ranged through `isLegalIrFailureShape`, and mapped by
+  the capability projector to the existing ZOM4099 with a dedicated operational
+  display. The descriptor's independent `sourceSpan` is the construct anchor. No
+  producer yet, so behavior is unchanged. The exhaustive matrix test spans kind
+  0x14 and a focused legality test was added.
+
+### 2026-09-11 Phase 1 - Precondition audit findings (implementation not started)
+
+A line-by-line audit of the 58 `rejectInvariant` call sites in
+`compiler/checker/body/body-checker.cc` established that the shape gates
+conflate two concerns and must be split rather than moved wholesale:
+
+- WIRING (stay invariant, internal transport/structural): the
+  `InferenceLifecycle` (1815/1831/1864), `InputReceiptMismatch`
+  (2193/2259/2530), `CanonicalCodecMismatch` (3295/3456) sites; Unknown-node
+  receipt (2249); operator-catalog mismatch (2309); redundant post-shape arity
+  checks (2696/2768); literal-fact plumbing (2804/3196); missing post-loop place
+  (3212); definition/pattern binding inventory plumbing (3235/3242/3252); and
+  the completeness count equation (3356).
+- TYPE (genuine user correctness errors currently routed as invariants; must
+  become source diagnostics, stay in the checker): argument/return type
+  disagreement (2716/2797/3165), assignment target/value type mismatch
+  (3203/3278), immutable field/place writes (3002/3218), dereference of a
+  non-reference (3073), struct-literal field type mismatch (3101 line 712), and
+  the arity/method-not-found sub-reasons currently sharing the call shape
+  `none` exits (2686/2758).
+- SHAPE (type-valid but the lowering slice cannot emit; Phase 1 moves these to
+  the capability inventory): the five-stage production schedule around line
+  2555 and `primitiveBinaryOperationShape` condition/operand placement
+  (2602/2644, line 1137 arithmetic-in-condition), `unsafe` block tail shape
+  (2612/2620/2634/2644), direct/concrete call argument placement - literals/
+  parameters only (2708/2791), receiver placement and generic/raises/abi call
+  restrictions (2686/2758), `readIndexShape` placement (2835/2842), borrow and
+  reborrow operand form (3045/3063/3085/3093), and the catch-all for empty
+  fact families (3328: casts, compound assignment, captures, exhaustiveness,
+  projections, error-union shapes). Closure captures (2539) and destructuring
+  patterns (3242/3252) are kept out by retained surface/pre-HIR checks and stay
+  fail-closed invariants rather than moving.
+
+Important coupling: Phase 1 cannot land before the recursive HIR builder can
+consume the newly published facts (Phase 2); publishing facts for a shape the
+current shape-HIR builder rejects would create intermediate ICEs. Phases 1 and 2
+should therefore be implemented and parity-gated as one vertical slice per
+construct family. The next concrete step is to attach a source diagnostic to one
+TYPE split (assignment/argument type mismatch) and route one SHAPE split through
+`UnsupportedSourceConstruct`, both behind the parity gate.
+
 ## Verification Evidence
 
 - `python3 scripts/check-rfc.py` passes for the revised REVIEW snapshot.
