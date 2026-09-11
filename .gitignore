@@ -18,6 +18,8 @@ venv.bak/
 # Distribution / packaging
 .Python
 build/
+# RFC 0048: compiler construction TUs grouped under source-tree build/ dirs
+!compiler/hir/build/
 develop-eggs/
 dist/
 downloads/

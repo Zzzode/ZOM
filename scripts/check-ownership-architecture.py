@@ -48,6 +48,7 @@ OWNERSHIP_CHECKED_MIR_HEADER = Path(
 BORROW_EVIDENCE_HEADER = Path("compiler/driver/interface/borrow-evidence.h")
 BORROW_EVIDENCE_SOURCE = Path("compiler/driver/interface/borrow-evidence.cc")
 HIR = Path("compiler/hir/hir-module.cc")
+HIR_BUILDER = Path("compiler/hir/build/hir-builder.cc")
 HIR_HEADER = Path("compiler/hir/hir-module.h")
 CHECKED_MODULE = Path("compiler/hir/checked-module.cc")
 CHECKED_MODULE_HEADER = Path("compiler/hir/checked-module.h")
@@ -103,6 +104,7 @@ REQUIRED = (
     BORROW_EVIDENCE_HEADER,
     BORROW_EVIDENCE_SOURCE,
     HIR,
+    HIR_BUILDER,
     HIR_HEADER,
     CHECKED_MODULE,
     CHECKED_MODULE_HEADER,
@@ -672,14 +674,17 @@ def check(values: dict[Path, str]) -> list[str]:
             errors.append(f"{BORROW_EVIDENCE_SOURCE}: missing evidence capability enforcement: {marker}")
 
     hir = values.get(HIR, "")
+    hir_builder = values.get(HIR_BUILDER, "")
     for marker in (
         "checkedModule.borrowEvidenceCapability();",
         "borrowCapability.lookup(checkedModule.borrowEvidenceLease());",
-        "impl->borrowEvidenceCapability.clone();",
     ):
-        if marker not in hir:
-            errors.append(f"{HIR}: missing explicit evidence capability use: {marker}")
-    if "borrowEvidenceRepository()" in hir:
+        if marker not in hir_builder:
+            errors.append(f"{HIR_BUILDER}: missing explicit evidence capability use: {marker}")
+    if "impl->borrowEvidenceCapability.clone();" not in hir:
+        errors.append(f"{HIR}: missing explicit evidence capability use: "
+                      "impl->borrowEvidenceCapability.clone();")
+    if "borrowEvidenceRepository()" in hir or "borrowEvidenceRepository()" in hir_builder:
         errors.append(f"{HIR}: must not recover the evidence repository")
 
     hir_header = values.get(HIR_HEADER, "")
@@ -884,7 +889,7 @@ def main() -> int:
             print("ownership admitted-input architecture self-test escaped")
             return 1
         capability_mutation = dict(values)
-        capability_mutation[HIR] = capability_mutation.get(HIR, "").replace(
+        capability_mutation[HIR_BUILDER] = capability_mutation.get(HIR_BUILDER, "").replace(
             "checkedModule.borrowEvidenceCapability()",
             "checkedModule.leaseOnlyCapability()",
         )

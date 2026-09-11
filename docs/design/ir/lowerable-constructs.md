@@ -25,9 +25,10 @@ MIR.
   (`SurfaceAdmissionBuilder::admit`). Each `isAdmitted*` predicate is a
   construct boundary; a shape that no predicate admits fails closed with an
   `SurfaceFailure` before any HIR is built.
-- **Live HIR builder / verifier / capability:** `hir::HirBuilder::build` ->
-  `hir::HirVerifier::verify` -> `hir::VerifiedHirModule`
-  (`compiler/hir/hir-module.{h,cc}`).
+- **Live HIR builder / verifier / capability:** `hir::HirBuilder::build`
+  (`compiler/hir/build/hir-builder.cc`) -> `hir::HirVerifier::verify` ->
+  `hir::VerifiedHirModule` (`compiler/hir/hir-module.cc`; shared fact/shape
+  support in `compiler/hir/hir-internal.{h,cc}` and `hir-shape.{h,cc}`).
 - **Live MIR builder / verifier / capability:** `mir::BuiltMirBuilder::build` ->
   `mir::BuiltMirVerifier::verify` -> `mir::VerifiedBuiltMir`
   (`compiler/mir/built-mir.{h,cc}`).
