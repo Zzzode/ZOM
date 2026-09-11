@@ -240,6 +240,51 @@ construct family. The next concrete step is to attach a source diagnostic to one
 TYPE split (assignment/argument type mismatch) and route one SHAPE split through
 `UnsupportedSourceConstruct`, both behind the parity gate.
 
+## Phase 2 Implementation
+
+### 2026-09-12 Phase 2 - HIR module decomposition and family 1 landed
+
+Two commits on `develop`, each behavior-preserving and parity-gated:
+
+- `ad608ae8 refactor(hir): extract construction into per-concern translation
+  units`. The 11k-line `hir-module.cc` monolith is split into the target build
+  structure with no construction or verification behavior change:
+  `build/hir-builder.cc` (HirBuilder::build and pending records),
+  `build/hir-pending.h`, `hir-internal.{h,cc}` (shared fact resolution,
+  identity, linkage/visibility, IR failure support), `hir-shape.{h,cc}`
+  (source-derived body shape classifiers shared by construction and the
+  verifier), `hir-candidate-impl.h` (the mutable candidate definition shared by
+  the builder and verifier TUs). `hir-module.cc` retains the candidate/verified
+  containers, canonical dump, and HirVerifier::verify (~5.5k lines).
+- `9f848824 feat(hir): lower the literal/reference family through the recursive
+  builder`. Adds `build/hir-fn-builder.{h,cc}` with `HirFnCtx` (monotonic
+  source-preorder node-id allocator plus the record pools) and two
+  destination-driven arms: `lowerScalarReturnFunction` (bare
+  `return <literal>` / `return <parameter>`: function, body, return, value) and
+  `lowerLocalReturnFunction` (one initialized
+  `let x: T = <literal | parameter>; return x;`: function, body, local,
+  initializer, return, value). The initializer lowers into the binding
+  destination and the returned place into the return destination. Every other
+  shape keeps the generic pending path until its family arm lands.
+
+Each arm allocates the exact id stride of the generic materializer it replaces
+for its shape, so node ids, pool contents, canonical HIR text, and downstream
+MIR are byte-identical. Arm execution was confirmed with temporary
+fail-closed probes (both arms abort the matching ztests when instrumented).
+
+Verification for both commits: sanitizer build; full `hir-module-test` ztest
+(including a new parameter-initialized single-local test pinning ids 1..6);
+full lit suite; both corpus parity channels byte-parallel over all 923 sources
+(HIR/MIR dumps for the 64 clean sources); checker, ownership (with the evidence
+markers moved to the builder TU), IR, English-only, internal-versioning,
+include, and format gates green.
+
+Remaining families, in RFC order: binary/operator, aggregate (class vs struct
+legality), direct/receiver call, control (conditional/loop), unsafe/borrow, and
+the empty-family constructs. The Phase 1 checker TYPE/SHAPE split is still
+deferred to land coupled with the per-family arm that consumes its published
+facts.
+
 ## Verification Evidence
 
 - `python3 scripts/check-rfc.py` passes for the revised REVIEW snapshot.
