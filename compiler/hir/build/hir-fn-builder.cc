@@ -15,7 +15,8 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
                    zc::Vector<HirScalarLiteralExpression>& expressions,
                    zc::Vector<HirParameterReferenceExpression>& parameterReferences,
                    zc::Vector<HirLocalBinding>& locals,
-                   zc::Vector<HirLocalReferenceExpression>& localReferences) noexcept
+                   zc::Vector<HirLocalReferenceExpression>& localReferences,
+                   zc::Vector<HirPrimitiveBinaryExpression>& primitiveBinaryOperations) noexcept
     : nextNode(&nextNode),
       functions(&functions),
       blocks(&blocks),
@@ -23,7 +24,8 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
       expressions(&expressions),
       parameterReferences(&parameterReferences),
       locals(&locals),
-      localReferences(&localReferences) {}
+      localReferences(&localReferences),
+      primitiveBinaryOperations(&primitiveBinaryOperations) {}
 
 HirNodeId HirFnCtx::allocNode() {
   HirNodeId id = hirId(*nextNode);
@@ -53,30 +55,42 @@ void HirFnCtx::addLocalReference(HirLocalReferenceExpression reference) {
   localReferences->add(zc::mv(reference));
 }
 
+void HirFnCtx::addPrimitiveBinary(HirPrimitiveBinaryExpression operation) {
+  primitiveBinaryOperations->add(zc::mv(operation));
+}
+
+void HirFnCtx::lowerArmLeaf(HirNodeId destination, const PendingConditionalArm& leaf) {
+  ZC_IF_SOME(reference, leaf.parameter) {
+    addParameterReference(HirParameterReferenceExpression{destination, reference.parameter.clone(),
+                                                          leaf.type, HirValueCategory::Place,
+                                                          leaf.sourceSpan.clone()});
+    return;
+  }
+  ZC_IF_SOME(literal, leaf.literal) {
+    addExpression(HirScalarLiteralExpression{destination, leaf.type, literal.clone(),
+                                             HirValueCategory::Value, leaf.sourceSpan.clone()});
+  }
+}
+
 namespace {
 
-/// \brief Lowers one scalar leaf into the supplied destination node id.
-///
-/// Destination-driven arm dispatch over the admitted scalar leaf family
-/// (RFC 0048 family 1): a scalar literal constant or a function-parameter place
-/// reference. The destination id is allocated by the enclosing arm, so the leaf
-/// lowers "into" that destination like a rustc `intoDest` lowering. The literal
-/// branch uses the caller-supplied type and span (the initializer's), while the
-/// parameter branch carries its own resolved type and span in the pending
-/// reference. Exactly one payload is populated; the builder validated the tag.
+/// \brief Lowers the family-1 scalar leaf (literal or resolved parameter) into
+/// its destination. The scalar-return path carries the two alternatives in the
+/// pending function's top-level fields rather than an arm struct, so this
+/// adapter builds the same records as HirFnCtx::lowerArmLeaf.
 void lowerScalarLeaf(HirNodeId destination, identity::SemanticTypeId literalType,
                      const identity::SourceSpan& literalSpan,
                      const zc::Maybe<checker::checked::CanonicalConstValue>& literal,
                      const zc::Maybe<HirParameterReferenceExpression>& parameter, HirFnCtx& ctx) {
-  ZC_IF_SOME(value, literal) {
-    ctx.addExpression(HirScalarLiteralExpression{destination, literalType, value.clone(),
-                                                 HirValueCategory::Value, literalSpan.clone()});
-    return;
-  }
   ZC_IF_SOME(reference, parameter) {
     ctx.addParameterReference(
         HirParameterReferenceExpression{destination, reference.parameter.clone(), reference.type,
                                         reference.category, reference.sourceSpan.clone()});
+    return;
+  }
+  ZC_IF_SOME(value, literal) {
+    ctx.addExpression(HirScalarLiteralExpression{destination, literalType, value.clone(),
+                                                 HirValueCategory::Value, literalSpan.clone()});
   }
 }
 

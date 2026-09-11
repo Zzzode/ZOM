@@ -22,8 +22,8 @@ namespace detail {
 /// allocator plus the record pools the recursive lowering arms append into.
 /// Each destination-driven lowering arm allocates its node id at entry and
 /// recursively lowers its operands, so node ids follow source preorder without
-/// fixed strides. Pools are extended one family at a time as the recursive
-/// builder gains arms.
+/// fixed strides. Pools are wired in as each family arm needs them; every pool
+/// reference stays non-null for the whole materialization pass.
 class HirFnCtx final {
 public:
   HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& functions,
@@ -31,7 +31,8 @@ public:
            zc::Vector<HirScalarLiteralExpression>& expressions,
            zc::Vector<HirParameterReferenceExpression>& parameterReferences,
            zc::Vector<HirLocalBinding>& locals,
-           zc::Vector<HirLocalReferenceExpression>& localReferences) noexcept;
+           zc::Vector<HirLocalReferenceExpression>& localReferences,
+           zc::Vector<HirPrimitiveBinaryExpression>& primitiveBinaryOperations) noexcept;
 
   /// \brief Allocates the next deterministic source-preorder node id.
   HirNodeId allocNode();
@@ -43,6 +44,11 @@ public:
   void addParameterReference(HirParameterReferenceExpression reference);
   void addLocal(HirLocalBinding local);
   void addLocalReference(HirLocalReferenceExpression reference);
+  void addPrimitiveBinary(HirPrimitiveBinaryExpression operation);
+
+  /// \brief Lowers one scalar literal-or-parameter arm leaf into its
+  /// destination id. Used by every binary operand and condition arm.
+  void lowerArmLeaf(HirNodeId destination, const PendingConditionalArm& leaf);
 
 private:
   uint32_t* nextNode;
@@ -53,6 +59,7 @@ private:
   zc::Vector<HirParameterReferenceExpression>* parameterReferences;
   zc::Vector<HirLocalBinding>* locals;
   zc::Vector<HirLocalReferenceExpression>* localReferences;
+  zc::Vector<HirPrimitiveBinaryExpression>* primitiveBinaryOperations;
 };
 
 /// \brief Lowers one tagged scalar-return function through the recursive
