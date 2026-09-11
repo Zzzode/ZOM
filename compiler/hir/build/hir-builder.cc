@@ -12,6 +12,7 @@
 #include "compiler/binder/metadata/immutable-binding-metadata.h"
 #include "compiler/binder/metadata/immutable-definition-inventory.h"
 #include "compiler/checker/facts/signature-facts.h"
+#include "compiler/hir/build/hir-fn-builder.h"
 #include "compiler/hir/build/hir-pending.h"
 #include "compiler/hir/hir-candidate-impl.h"
 #include "compiler/hir/hir-internal.h"
@@ -3309,6 +3310,45 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                                value.initializerSpan.clone()});
   }
   for (auto& value : pendingFunctions) {
+    // RFC 0048 recursive arms, family 1 (literal/reference). A body lowers
+    // through the destination-driven per-function driver when it is either a
+    // bare `return <literal>` / `return <parameter>` (four node ids: function,
+    // body, return, value) or a single initialized
+    // `let x: T = <literal | parameter>; return x;` (six node ids: function,
+    // body, local, initializer, return, value). Each arm allocates in source
+    // preorder, matching the generic materializer's stride exactly; every other
+    // shape keeps the generic path until its family arm lands.
+    const bool hasScalarLeaf =
+        (value.literal != zc::none) != (value.parameterReference != zc::none);
+    const bool onlyScalarReturn =
+        value.local == zc::none && value.call == zc::none && value.receiverCall == zc::none &&
+        value.aggregate == zc::none && value.localWrites.size() == 0 &&
+        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
+        value.localFieldProjection == zc::none && value.parameterIndex == zc::none &&
+        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
+        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
+        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none;
+    const bool singleInitializedLocal =
+        value.local != zc::none && ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
+        value.localReference != zc::none && value.call == zc::none &&
+        value.receiverCall == zc::none && value.aggregate == zc::none &&
+        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
+        value.localFieldProjection == zc::none && value.parameterIndex == zc::none &&
+        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
+        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
+        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none;
+    if (hasScalarLeaf && (onlyScalarReturn || singleInitializedLocal)) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localReferences);
+      if (onlyScalarReturn) {
+        lowerScalarReturnFunction(zc::mv(value), fnCtx);
+      } else {
+        lowerLocalReturnFunction(zc::mv(value), fnCtx);
+      }
+      continue;
+    }
     const auto functionId = hirId(next++);
     const auto bodyId = hirId(next++);
     ZC_IF_SOME(sequential, value.sequentialLocalReturn) {

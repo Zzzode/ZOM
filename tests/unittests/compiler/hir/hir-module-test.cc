@@ -663,6 +663,41 @@ ZC_TEST("HIR pipeline preserves a returned function local without binder identit
   }
 }
 
+ZC_TEST("HIR pipeline lowers a parameter-initialized single local body") {
+  HirPipelineFixture fixture("fun entry(a: i32) -> i32 { let value: i32 = a; return value; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 0);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.localReferences().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& returned = module.returns()[0];
+  const auto& local = module.locals()[0];
+  const auto& initializer = module.parameterReferences()[0];
+  const auto& reference = module.localReferences()[0];
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(initializer.node.ordinal() == 4);
+  ZC_EXPECT(returned.node.ordinal() == 5);
+  ZC_EXPECT(reference.node.ordinal() == 6);
+  ZC_EXPECT(block.statements.size() == 2);
+  ZC_EXPECT(block.statements[0] == local.node);
+  ZC_EXPECT(block.statements[1] == returned.node);
+  ZC_EXPECT(local.initializer == initializer.node);
+  ZC_EXPECT(returned.value == reference.node);
+  ZC_EXPECT(local.local == reference.local);
+  ZC_EXPECT(local.type == function.resultType);
+  ZC_EXPECT(initializer.type == local.type);
+  ZC_EXPECT(reference.type == local.type);
+  ZC_EXPECT(initializer.category == HirValueCategory::Place);
+  ZC_EXPECT(reference.category == HirValueCategory::Place);
+}
+
 ZC_TEST("HIR pipeline lowers a three-binding sequential local body") {
   HirPipelineFixture fixture(
       "fun entry(a: i32) -> i32 { let x: i32 = a; let y: i32 = x; let z: i32 = 5; return z; }"_zc);

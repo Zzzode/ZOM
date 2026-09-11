@@ -135,9 +135,6 @@ struct PendingEqualityCondition final {
 
 // One conditional condition is either a bare bool parameter reference or an
 // `a == b` equality comparison of two parameter references. Exactly one of the
-
-// One conditional condition is either a bare bool parameter reference or an
-// `a == b` equality comparison of two parameter references. Exactly one of the
 // two Maybe fields is populated; the condition kind is discriminated by which.
 struct PendingConditionalCondition final {
   zc::Maybe<HirParameterReferenceExpression> parameter;
