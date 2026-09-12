@@ -15,6 +15,7 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
                    zc::Vector<HirScalarLiteralExpression>& expressions,
                    zc::Vector<HirParameterReferenceExpression>& parameterReferences,
                    zc::Vector<HirLocalBinding>& locals,
+                   zc::Vector<HirLocalWriteStatement>& localWrites,
                    zc::Vector<HirLocalReferenceExpression>& localReferences,
                    zc::Vector<HirPrimitiveBinaryExpression>& primitiveBinaryOperations,
                    zc::Vector<HirNominalAggregateExpression>& aggregates,
@@ -27,6 +28,7 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
       expressions(&expressions),
       parameterReferences(&parameterReferences),
       locals(&locals),
+      localWrites(&localWrites),
       localReferences(&localReferences),
       primitiveBinaryOperations(&primitiveBinaryOperations),
       aggregates(&aggregates),
@@ -56,6 +58,8 @@ void HirFnCtx::addParameterReference(HirParameterReferenceExpression reference) 
 }
 
 void HirFnCtx::addLocal(HirLocalBinding local) { locals->add(zc::mv(local)); }
+
+void HirFnCtx::addLocalWrite(HirLocalWriteStatement write) { localWrites->add(zc::mv(write)); }
 
 void HirFnCtx::addLocalReference(HirLocalReferenceExpression reference) {
   localReferences->add(zc::mv(reference));

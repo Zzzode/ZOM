@@ -30,7 +30,7 @@ public:
            zc::Vector<HirBlockStatement>& blocks, zc::Vector<HirReturnStatement>& returns,
            zc::Vector<HirScalarLiteralExpression>& expressions,
            zc::Vector<HirParameterReferenceExpression>& parameterReferences,
-           zc::Vector<HirLocalBinding>& locals,
+           zc::Vector<HirLocalBinding>& locals, zc::Vector<HirLocalWriteStatement>& localWrites,
            zc::Vector<HirLocalReferenceExpression>& localReferences,
            zc::Vector<HirPrimitiveBinaryExpression>& primitiveBinaryOperations,
            zc::Vector<HirNominalAggregateExpression>& aggregates,
@@ -46,6 +46,7 @@ public:
   void addExpression(HirScalarLiteralExpression expression);
   void addParameterReference(HirParameterReferenceExpression reference);
   void addLocal(HirLocalBinding local);
+  void addLocalWrite(HirLocalWriteStatement write);
   void addLocalReference(HirLocalReferenceExpression reference);
   void addPrimitiveBinary(HirPrimitiveBinaryExpression operation);
   void addAggregate(HirNominalAggregateExpression aggregate);
@@ -64,6 +65,7 @@ private:
   zc::Vector<HirScalarLiteralExpression>* expressions;
   zc::Vector<HirParameterReferenceExpression>* parameterReferences;
   zc::Vector<HirLocalBinding>* locals;
+  zc::Vector<HirLocalWriteStatement>* localWrites;
   zc::Vector<HirLocalReferenceExpression>* localReferences;
   zc::Vector<HirPrimitiveBinaryExpression>* primitiveBinaryOperations;
   zc::Vector<HirNominalAggregateExpression>* aggregates;
@@ -92,6 +94,11 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
 /// \brief Lowers one local field-projection return whose local is initialized
 /// by a nominal aggregate: `let cell = T {...}; return cell.field;`.
 void lowerAggregateFieldProjectionFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
+/// \brief Lowers one mutable-local write body: one initialized mut local, one
+/// or more non-field scalar/parameter/binary writes, and a local-reference
+/// return (`mut x: T = <leaf>; x = <value>; ..; return x;`).
+void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
 }  // namespace detail
 }  // namespace zomlang::compiler::hir
