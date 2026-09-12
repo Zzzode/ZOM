@@ -304,6 +304,21 @@ direct/receiver call, control (conditional/loop), unsafe/borrow, and the
 empty-family constructs. The Phase 1 checker TYPE/SHAPE split is still deferred
 to land coupled with the per-family arm that consumes its published facts.
 
+### 2026-09-12 Phase 2 - Family 3 entry arm (aggregate field projection)
+
+Commit `a30c8e6b` on `develop` (pushed). Adds `build/lower-expr-aggregate.{h,cc}`
+with `lowerAggregateFieldProjectionFunction` for
+`let cell = T { field: <literal>, .. }; return cell.field;` (function, body,
+local, aggregate initializer, return, projection). Key finding: in the admitted
+grammar aggregate locals only appear with a field projection or a receiver
+method call (no plain aggregate-returned-direct shape), so field projection is
+the aggregate family's entry point. `HirFnCtx` gains the
+local-field-projection pool. Field-write and receiver-method aggregate bodies
+remain on the generic path until the place-write and call arms land.
+Byte-identical over the full hir-module ztest (HIR plus ownership move-path and
+MIR assertions), lit, both parity channels, and gates; fail-closed probe
+confirmed interception.
+
 ### 2026-09-12 Phase 2 - Family 2 first arm (return-position primitive binary)
 
 Commit `4a7a31ab` on `develop`. Adds `build/lower-expr-binary.{h,cc}` with
