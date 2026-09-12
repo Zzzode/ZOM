@@ -3342,12 +3342,21 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         value.loopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none;
     if (hasScalarLeaf && (onlyScalarReturn || singleInitializedLocal)) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localReferences, primitiveBinaryOperations);
+                     localReferences, primitiveBinaryOperations, aggregates, unsafeBlocks);
       if (onlyScalarReturn) {
         lowerScalarReturnFunction(zc::mv(value), fnCtx);
       } else {
         lowerLocalReturnFunction(zc::mv(value), fnCtx);
       }
+      continue;
+    }
+    // Family 2 sequential N-local body: N leading let bindings (literal,
+    // aggregate, parameter/local reference, or primitive binary, including a
+    // one-level nested binary operand) followed by a parameter/local return.
+    if (value.sequentialLocalReturn != zc::none) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localReferences, primitiveBinaryOperations, aggregates, unsafeBlocks);
+      lowerSequentialLocalReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
     // Family 2: a bare `return <a OP b>` primitive binary (relational or
@@ -3359,228 +3368,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         value.localReference == zc::none && value.localFieldProjection == zc::none &&
         value.parameterReference == zc::none && value.parameterIndex == zc::none &&
         value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
-        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
-        value.loopReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.unsafeBlockSpan == zc::none) {
+        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localReferences, primitiveBinaryOperations);
+                     localReferences, primitiveBinaryOperations, aggregates, unsafeBlocks);
       lowerComparisonReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
     const auto functionId = hirId(next++);
     const auto bodyId = hirId(next++);
-    ZC_IF_SOME(sequential, value.sequentialLocalReturn) {
-      // Sequential N-local fixed-id layout, relative to the function id F:
-      //   F+0 function, F+1 body block; then each binding i (0-based) consumes,
-      //   in order, its localNode and initializerNode, plus (only when the
-      //   initializer is a primitive binary) two operand nodes, plus (when an
-      //   operand is itself a nested primitive binary) two inner leaf-operand
-      //   nodes for that operand. So a non-binary binding is width 2, a binary
-      //   binding is width 4, and a binary binding with one nested operand is
-      //   width 6. After the last binding: returnNode, returnValueNode, and an
-      //   optional unsafeBlock. The materializer and the HIR verifier both derive
-      //   this from the same per-binding kinds, so their node counts always agree.
-      const size_t bindingCount = sequential.bindings.size();
-      zc::Vector<HirNodeId> localNodeIds;
-      zc::Vector<HirNodeId> initializerNodeIds;
-      zc::Vector<zc::Maybe<HirNodeId>> leftOperandIds;
-      zc::Vector<zc::Maybe<HirNodeId>> rightOperandIds;
-      zc::Vector<zc::Maybe<HirNodeId>> leftNestedLeafLeftIds;
-      zc::Vector<zc::Maybe<HirNodeId>> leftNestedLeafRightIds;
-      zc::Vector<zc::Maybe<HirNodeId>> rightNestedLeafLeftIds;
-      zc::Vector<zc::Maybe<HirNodeId>> rightNestedLeafRightIds;
-      for (size_t index = 0; index < bindingCount; ++index) {
-        localNodeIds.add(hirId(next++));
-        initializerNodeIds.add(hirId(next++));
-        zc::Maybe<HirNodeId> leftOperandId;
-        zc::Maybe<HirNodeId> rightOperandId;
-        zc::Maybe<HirNodeId> leftNestedLeafLeftId;
-        zc::Maybe<HirNodeId> leftNestedLeafRightId;
-        zc::Maybe<HirNodeId> rightNestedLeafLeftId;
-        zc::Maybe<HirNodeId> rightNestedLeafRightId;
-        if (sequential.bindings[index].kind == SequentialInitializerKind::PrimitiveBinary) {
-          leftOperandId = hirId(next++);
-          rightOperandId = hirId(next++);
-          ZC_IF_SOME(left, sequential.bindings[index].leftOperand) {
-            if (left.kind == SequentialBinaryOperandKind::NestedBinary) {
-              leftNestedLeafLeftId = hirId(next++);
-              leftNestedLeafRightId = hirId(next++);
-            }
-          }
-          ZC_IF_SOME(right, sequential.bindings[index].rightOperand) {
-            if (right.kind == SequentialBinaryOperandKind::NestedBinary) {
-              rightNestedLeafLeftId = hirId(next++);
-              rightNestedLeafRightId = hirId(next++);
-            }
-          }
-        }
-        leftOperandIds.add(zc::mv(leftOperandId));
-        rightOperandIds.add(zc::mv(rightOperandId));
-        leftNestedLeafLeftIds.add(zc::mv(leftNestedLeafLeftId));
-        leftNestedLeafRightIds.add(zc::mv(leftNestedLeafRightId));
-        rightNestedLeafLeftIds.add(zc::mv(rightNestedLeafLeftId));
-        rightNestedLeafRightIds.add(zc::mv(rightNestedLeafRightId));
-      }
-      const auto returnId = hirId(next++);
-      const auto returnValueId = hirId(next++);
-      zc::Maybe<HirNodeId> unsafeBlockId;
-      if (value.unsafeBlockSpan != zc::none) {
-        unsafeBlockId = hirId(next++);
-        unsafeBlocks.add(HirUnsafeBlockExpression{
-            ZC_ASSERT_NONNULL(unsafeBlockId), returnValueId, value.resultType,
-            ZC_ASSERT_NONNULL(value.unsafeBlockSpan).clone()});
-      }
-      functions.add(HirFunctionDeclaration{functionId, value.definition, value.resultType,
-                                           zc::mv(value.parameters), value.visibility.clone(),
-                                           value.linkage, value.declarationSpan.clone(), bodyId,
-                                           zc::mv(unsafeBlockId)});
-      zc::Vector<HirNodeId> statements;
-      for (const auto localNodeId : localNodeIds) { statements.add(localNodeId); }
-      statements.add(returnId);
-      blocks.add(HirBlockStatement{bodyId, zc::mv(statements), value.bodySpan.clone()});
-      returns.add(
-          HirReturnStatement{returnId, value.resultType, returnValueId, value.returnSpan.clone()});
-      // Materializes one binary operand at its node id: a literal into
-      // expressions, a parameter reference into parameterReferences, a reference
-      // to an earlier local into localReferences, or a nested one-level primitive
-      // binary into primitiveBinaryOperations (its own two leaf operands are
-      // materialized at the supplied leaf node ids).
-      auto materializeBinaryLeaf = [&](HirNodeId leafId, PendingSequentialBinaryLeafOperand& leaf) {
-        switch (leaf.kind) {
-          case SequentialBinaryOperandKind::Literal:
-            ZC_IF_SOME(literal, leaf.literal) {
-              expressions.add(HirScalarLiteralExpression{leafId, leaf.type, literal.clone(),
-                                                         HirValueCategory::Value,
-                                                         leaf.sourceSpan.clone()});
-            }
-            break;
-          case SequentialBinaryOperandKind::ParameterReference:
-            ZC_IF_SOME(parameter, leaf.parameter) {
-              parameterReferences.add(HirParameterReferenceExpression{
-                  leafId, parameter.clone(), leaf.type, HirValueCategory::Place,
-                  leaf.sourceSpan.clone()});
-            }
-            break;
-          case SequentialBinaryOperandKind::LocalReference:
-            localReferences.add(HirLocalReferenceExpression{
-                leafId, hirLocalId(static_cast<uint32_t>(leaf.referencedLocal + 1)), leaf.type,
-                HirValueCategory::Place, leaf.sourceSpan.clone()});
-            break;
-          case SequentialBinaryOperandKind::NestedBinary:
-            // A leaf is never a nested binary; two-level nesting is unsupported.
-            break;
-        }
-      };
-      auto materializeBinaryOperand = [&](HirNodeId operandId,
-                                          PendingSequentialBinaryOperand& operand,
-                                          zc::Maybe<HirNodeId> nestedLeafLeftId,
-                                          zc::Maybe<HirNodeId> nestedLeafRightId) {
-        switch (operand.kind) {
-          case SequentialBinaryOperandKind::Literal:
-            ZC_IF_SOME(literal, operand.literal) {
-              expressions.add(HirScalarLiteralExpression{operandId, operand.type, literal.clone(),
-                                                         HirValueCategory::Value,
-                                                         operand.sourceSpan.clone()});
-            }
-            break;
-          case SequentialBinaryOperandKind::ParameterReference:
-            ZC_IF_SOME(parameter, operand.parameter) {
-              parameterReferences.add(HirParameterReferenceExpression{
-                  operandId, parameter.clone(), operand.type, HirValueCategory::Place,
-                  operand.sourceSpan.clone()});
-            }
-            break;
-          case SequentialBinaryOperandKind::LocalReference:
-            localReferences.add(HirLocalReferenceExpression{
-                operandId, hirLocalId(static_cast<uint32_t>(operand.referencedLocal + 1)),
-                operand.type, HirValueCategory::Place, operand.sourceSpan.clone()});
-            break;
-          case SequentialBinaryOperandKind::NestedBinary: {
-            HirNodeId leafLeftId;
-            HirNodeId leafRightId;
-            ZC_IF_SOME(id, nestedLeafLeftId) { leafLeftId = id; }
-            ZC_IF_SOME(id, nestedLeafRightId) { leafRightId = id; }
-            ZC_IF_SOME(leaf, operand.nestedLeft) { materializeBinaryLeaf(leafLeftId, leaf); }
-            ZC_IF_SOME(leaf, operand.nestedRight) { materializeBinaryLeaf(leafRightId, leaf); }
-            ZC_IF_SOME(operation, operand.nestedOperation) {
-              primitiveBinaryOperations.add(HirPrimitiveBinaryExpression{
-                  operandId, leafLeftId, leafRightId, operand.type, operand.type,
-                  HirValueCategory::Value, operation, operand.sourceSpan.clone()});
-            }
-            break;
-          }
-        }
-      };
-      for (size_t index = 0; index < bindingCount; ++index) {
-        auto& binding = sequential.bindings[index];
-        const auto localNodeId = localNodeIds[index];
-        const auto initializerNodeId = initializerNodeIds[index];
-        switch (binding.kind) {
-          case SequentialInitializerKind::Literal:
-            ZC_IF_SOME(literal, binding.literal) {
-              expressions.add(HirScalarLiteralExpression{initializerNodeId, binding.type,
-                                                         literal.clone(), HirValueCategory::Value,
-                                                         binding.initializerSpan.clone()});
-            }
-            break;
-          case SequentialInitializerKind::Aggregate:
-            ZC_IF_SOME(aggregate, binding.aggregate) {
-              aggregates.add(HirNominalAggregateExpression{
-                  initializerNodeId, aggregate.definition, aggregate.type,
-                  zc::mv(aggregate.elements), aggregate.category, aggregate.sourceSpan.clone()});
-            }
-            break;
-          case SequentialInitializerKind::LocalReference:
-            localReferences.add(HirLocalReferenceExpression{
-                initializerNodeId, hirLocalId(static_cast<uint32_t>(binding.referencedLocal + 1)),
-                binding.type, HirValueCategory::Place, binding.initializerSpan.clone()});
-            break;
-          case SequentialInitializerKind::ParameterReference:
-            ZC_IF_SOME(parameter, binding.parameter) {
-              parameterReferences.add(HirParameterReferenceExpression{
-                  initializerNodeId, parameter.clone(), binding.type, HirValueCategory::Place,
-                  binding.initializerSpan.clone()});
-            }
-            break;
-          case SequentialInitializerKind::PrimitiveBinary: {
-            HirNodeId leftOperandId;
-            HirNodeId rightOperandId;
-            ZC_IF_SOME(id, leftOperandIds[index]) { leftOperandId = id; }
-            ZC_IF_SOME(id, rightOperandIds[index]) { rightOperandId = id; }
-            ZC_IF_SOME(left, binding.leftOperand) {
-              materializeBinaryOperand(leftOperandId, left, leftNestedLeafLeftIds[index],
-                                       leftNestedLeafRightIds[index]);
-            }
-            ZC_IF_SOME(right, binding.rightOperand) {
-              materializeBinaryOperand(rightOperandId, right, rightNestedLeafLeftIds[index],
-                                       rightNestedLeafRightIds[index]);
-            }
-            ZC_IF_SOME(operation, binding.operation) {
-              primitiveBinaryOperations.add(HirPrimitiveBinaryExpression{
-                  initializerNodeId, leftOperandId, rightOperandId, binding.operandType,
-                  binding.type, HirValueCategory::Value, operation,
-                  binding.initializerSpan.clone()});
-            }
-            break;
-          }
-        }
-        locals.add(HirLocalBinding{localNodeId, hirLocalId(static_cast<uint32_t>(index + 1)),
-                                   binding.type, initializerNodeId, binding.patternSpan.clone(),
-                                   binding.initializerSpan.clone()});
-      }
-      // The returned value references a parameter or one of the declared locals.
-      ZC_IF_SOME(parameter, sequential.returnParameter) {
-        parameterReferences.add(HirParameterReferenceExpression{
-            returnValueId, parameter.clone(), sequential.type, HirValueCategory::Place,
-            sequential.returnValueSpan.clone()});
-      }
-      if (sequential.returnParameter == zc::none) {
-        localReferences.add(HirLocalReferenceExpression{
-            returnValueId, hirLocalId(static_cast<uint32_t>(sequential.returnLocal + 1)),
-            sequential.type, HirValueCategory::Place, sequential.returnValueSpan.clone()});
-      }
-      continue;
-    }
     ZC_IF_SOME(conditional, value.conditionalReturn) {
       // Conditional materialization fixed-id layout, relative to the function id.
       //

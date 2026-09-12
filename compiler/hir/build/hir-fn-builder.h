@@ -32,7 +32,9 @@ public:
            zc::Vector<HirParameterReferenceExpression>& parameterReferences,
            zc::Vector<HirLocalBinding>& locals,
            zc::Vector<HirLocalReferenceExpression>& localReferences,
-           zc::Vector<HirPrimitiveBinaryExpression>& primitiveBinaryOperations) noexcept;
+           zc::Vector<HirPrimitiveBinaryExpression>& primitiveBinaryOperations,
+           zc::Vector<HirNominalAggregateExpression>& aggregates,
+           zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks) noexcept;
 
   /// \brief Allocates the next deterministic source-preorder node id.
   HirNodeId allocNode();
@@ -45,6 +47,8 @@ public:
   void addLocal(HirLocalBinding local);
   void addLocalReference(HirLocalReferenceExpression reference);
   void addPrimitiveBinary(HirPrimitiveBinaryExpression operation);
+  void addAggregate(HirNominalAggregateExpression aggregate);
+  void addUnsafeBlock(HirUnsafeBlockExpression block);
 
   /// \brief Lowers one scalar literal-or-parameter arm leaf into its
   /// destination id. Used by every binary operand and condition arm.
@@ -60,6 +64,8 @@ private:
   zc::Vector<HirLocalBinding>* locals;
   zc::Vector<HirLocalReferenceExpression>* localReferences;
   zc::Vector<HirPrimitiveBinaryExpression>* primitiveBinaryOperations;
+  zc::Vector<HirNominalAggregateExpression>* aggregates;
+  zc::Vector<HirUnsafeBlockExpression>* unsafeBlocks;
 };
 
 /// \brief Lowers one tagged scalar-return function through the recursive
@@ -73,6 +79,12 @@ void lowerScalarReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& 
 /// into the binding's destination and the returned place lowered into the
 /// return destination.
 void lowerLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
+/// \brief Lowers one sequential N-local body (`N >= 2` leading let bindings
+/// followed by a parameter/local return) through the recursive driver. Covers
+/// literal, aggregate, parameter/local-reference, and primitive-binary
+/// initializers, including a one-level nested binary operand (`a + b * c`).
+void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
 }  // namespace detail
 }  // namespace zomlang::compiler::hir
