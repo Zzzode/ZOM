@@ -34,6 +34,7 @@ public:
            zc::Vector<HirLocalReferenceExpression>& localReferences,
            zc::Vector<HirPrimitiveBinaryExpression>& primitiveBinaryOperations,
            zc::Vector<HirNominalAggregateExpression>& aggregates,
+           zc::Vector<HirLocalFieldProjectionExpression>& localFieldProjections,
            zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks) noexcept;
 
   /// \brief Allocates the next deterministic source-preorder node id.
@@ -48,6 +49,7 @@ public:
   void addLocalReference(HirLocalReferenceExpression reference);
   void addPrimitiveBinary(HirPrimitiveBinaryExpression operation);
   void addAggregate(HirNominalAggregateExpression aggregate);
+  void addLocalFieldProjection(HirLocalFieldProjectionExpression projection);
   void addUnsafeBlock(HirUnsafeBlockExpression block);
 
   /// \brief Lowers one scalar literal-or-parameter arm leaf into its
@@ -65,6 +67,7 @@ private:
   zc::Vector<HirLocalReferenceExpression>* localReferences;
   zc::Vector<HirPrimitiveBinaryExpression>* primitiveBinaryOperations;
   zc::Vector<HirNominalAggregateExpression>* aggregates;
+  zc::Vector<HirLocalFieldProjectionExpression>* localFieldProjections;
   zc::Vector<HirUnsafeBlockExpression>* unsafeBlocks;
 };
 
@@ -85,6 +88,10 @@ void lowerLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& c
 /// literal, aggregate, parameter/local-reference, and primitive-binary
 /// initializers, including a one-level nested binary operand (`a + b * c`).
 void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
+/// \brief Lowers one local field-projection return whose local is initialized
+/// by a nominal aggregate: `let cell = T {...}; return cell.field;`.
+void lowerAggregateFieldProjectionFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

@@ -18,6 +18,7 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
                    zc::Vector<HirLocalReferenceExpression>& localReferences,
                    zc::Vector<HirPrimitiveBinaryExpression>& primitiveBinaryOperations,
                    zc::Vector<HirNominalAggregateExpression>& aggregates,
+                   zc::Vector<HirLocalFieldProjectionExpression>& localFieldProjections,
                    zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks) noexcept
     : nextNode(&nextNode),
       functions(&functions),
@@ -29,6 +30,7 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
       localReferences(&localReferences),
       primitiveBinaryOperations(&primitiveBinaryOperations),
       aggregates(&aggregates),
+      localFieldProjections(&localFieldProjections),
       unsafeBlocks(&unsafeBlocks) {}
 
 HirNodeId HirFnCtx::allocNode() {
@@ -65,6 +67,10 @@ void HirFnCtx::addPrimitiveBinary(HirPrimitiveBinaryExpression operation) {
 
 void HirFnCtx::addAggregate(HirNominalAggregateExpression aggregate) {
   aggregates->add(zc::mv(aggregate));
+}
+
+void HirFnCtx::addLocalFieldProjection(HirLocalFieldProjectionExpression projection) {
+  localFieldProjections->add(zc::mv(projection));
 }
 
 void HirFnCtx::addUnsafeBlock(HirUnsafeBlockExpression block) { unsafeBlocks->add(zc::mv(block)); }

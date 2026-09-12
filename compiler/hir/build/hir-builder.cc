@@ -14,6 +14,7 @@
 #include "compiler/checker/facts/signature-facts.h"
 #include "compiler/hir/build/hir-fn-builder.h"
 #include "compiler/hir/build/hir-pending.h"
+#include "compiler/hir/build/lower-expr-aggregate.h"
 #include "compiler/hir/build/lower-expr-binary.h"
 #include "compiler/hir/hir-candidate-impl.h"
 #include "compiler/hir/hir-internal.h"
@@ -3342,7 +3343,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         value.loopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none;
     if (hasScalarLeaf && (onlyScalarReturn || singleInitializedLocal)) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localReferences, primitiveBinaryOperations, aggregates, unsafeBlocks);
+                     localReferences, primitiveBinaryOperations, aggregates, localFieldProjections,
+                     unsafeBlocks);
       if (onlyScalarReturn) {
         lowerScalarReturnFunction(zc::mv(value), fnCtx);
       } else {
@@ -3355,7 +3357,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     // one-level nested binary operand) followed by a parameter/local return.
     if (value.sequentialLocalReturn != zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localReferences, primitiveBinaryOperations, aggregates, unsafeBlocks);
+                     localReferences, primitiveBinaryOperations, aggregates, localFieldProjections,
+                     unsafeBlocks);
       lowerSequentialLocalReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
@@ -3371,8 +3374,29 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
         value.loopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localReferences, primitiveBinaryOperations, aggregates, unsafeBlocks);
+                     localReferences, primitiveBinaryOperations, aggregates, localFieldProjections,
+                     unsafeBlocks);
       lowerComparisonReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    // Family 3: one aggregate-initialized local returned through a field
+    // projection (`let cell = T {...}; return cell.field;`), with no writes or
+    // borrow/receiver forms. Six node ids: function, body, local, aggregate,
+    // return, projection.
+    if (value.local != zc::none && ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
+        value.aggregate != zc::none && value.localFieldProjection != zc::none &&
+        value.call == zc::none && value.receiverCall == zc::none && value.localWrites.size() == 0 &&
+        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
+        value.literal == zc::none && value.parameterReference == zc::none &&
+        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
+        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
+        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
+        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
+        value.unsafeBlockSpan == zc::none) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localReferences, primitiveBinaryOperations, aggregates, localFieldProjections,
+                     unsafeBlocks);
+      lowerAggregateFieldProjectionFunction(zc::mv(value), fnCtx);
       continue;
     }
     const auto functionId = hirId(next++);
