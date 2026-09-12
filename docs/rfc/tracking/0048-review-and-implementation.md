@@ -279,12 +279,30 @@ full lit suite; both corpus parity channels byte-parallel over all 923 sources
 markers moved to the builder TU), IR, English-only, internal-versioning,
 include, and format gates green.
 
-Remaining families, in RFC order: binary/operator (sequential local
-initializers including the one-level nested `a + b * c` form), aggregate (class
-vs struct legality), direct/receiver call, control (conditional/loop),
-unsafe/borrow, and the empty-family constructs. The Phase 1 checker TYPE/SHAPE
-split is still deferred to land coupled with the per-family arm that consumes
-its published facts.
+byte-identical. Same full verification bar as family 1 (sanitizer build, full
+hir-module ztest, lit, both parity channels over 923 sources and the 64 clean
+dumps, gates green, fail-closed firing probe).
+
+### 2026-09-12 Phase 2 - Family 2 sequential local initializers
+
+Commit `3117c989` on `develop`. Adds `lowerSequentialLocalReturnFunction`,
+lowering the whole sequential N-local body through the destination driver:
+per-binding local/initializer destinations in source preorder, a primitive
+binary binding's two operand destinations plus each nested operand's two leaf
+destinations (one-level `a + b * c`), and the terminal parameter/local return.
+Covers literal, nominal aggregate, parameter and earlier-local reference, and
+primitive binary initializers plus the unsafe-block tail. `HirFnCtx` gains the
+aggregate and unsafe-block pools. The now-unreachable 212-line generic
+sequential materialization block is deleted (net -146 lines in
+hir-builder.cc). All four sequential ztest shapes (three-binding, binary
+initializer, single binary initializer, nested operand) were confirmed to reach
+the recursive arm before the generic block was removed; node strides and
+downstream MIR remain byte-identical over both parity channels.
+
+Remaining families, in RFC order: aggregate legality (class vs struct),
+direct/receiver call, control (conditional/loop), unsafe/borrow, and the
+empty-family constructs. The Phase 1 checker TYPE/SHAPE split is still deferred
+to land coupled with the per-family arm that consumes its published facts.
 
 ### 2026-09-12 Phase 2 - Family 2 first arm (return-position primitive binary)
 
