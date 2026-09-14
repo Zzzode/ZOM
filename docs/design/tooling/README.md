@@ -34,9 +34,9 @@ repository.
 | `core/` | The `.zom` core library, source-backed. Real `src/`. RFC 0025 (IMPLEMENTING). |
 
 `zomc` is one binary (`utils/zomc/zomc.cc`) built on
-`zc::MainBuilder` with `compile` and `run` subcommands already registered. The
-best-practice recommendation grows this one binary into ZOM's `cargo`/`go`
-rather than adding sibling binaries.
+`zc::MainBuilder`; the registered subcommands are `compile`, `build`, `run`,
+`fmt`, and `lsp`. Growing one binary into ZOM's `cargo`/`go` rather than
+adding sibling binaries remains the design direction.
 
 The empty `zomcrate/` and `zomforge/` placeholder directories were **removed**
 on 2026-08-27, the redundant `products/` shell was dropped, and on 2026-08-28

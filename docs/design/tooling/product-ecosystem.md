@@ -21,11 +21,11 @@ Splitting those roles into two commands is rare and, where it exists, is a
 symptom of retrofitting an older compiler, not a design anyone chooses fresh.
 
 ZOM already matches this shape: `zomc` is a single binary built on
-`zc::MainBuilder` with `addSubCommand("compile", ...)` and
-`addSubCommand("run", ...)`. The best-practice path is to **grow `zomc` into
-ZOM's `cargo`/`go`** - add `build`, `test`, `add`, `remove`, `update`, `fmt`,
-and later `publish` as subcommands of the one binary - not to introduce
-additional user-facing binaries.
+`zc::MainBuilder`; `compile`, `build`, `run`, `fmt`, and `lsp` are registered
+subcommands as of 2026-09-14. The best-practice path is to keep growing
+`zomc` into ZOM's `cargo`/`go` - add `test`, `add`, `remove`, `update`, and
+later `publish` as subcommands of the one binary - not to introduce additional
+user-facing binaries.
 
 Consequently there is no `zomcrate` binary and no `zomforge` binary in this
 design. "Crate" survives only as the *ecosystem noun* for a ZOM package (as
@@ -181,8 +181,9 @@ Best-practice choices for ZOM:
   `rust-lldb`/`rust-gdb` wrapper + Python printer model). The existing
   `tools/gdb`/`tools/lldb` scripts follow this shape for compiler internals and
   are to be repointed at ZOM *program* types once native output exists.
-- **Sequencing**: debugging is the most downstream tool, blocked until native
-  output exists (object emission + linking). Appropriate for a later quarter.
+- **Sequencing**: the native-output prerequisite (object emission + linking)
+  now exists for the admitted Linux x86-64 slice; debug-info generation and
+  DAP remain future work (RFC 0045 is accepted but unimplemented).
 
 ## Governance follow-ups
 

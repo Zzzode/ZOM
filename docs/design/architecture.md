@@ -46,8 +46,10 @@ The production path remains partial in these areas:
   and IDE query/snapshot publication remain open.
 
 `CompilerSession::checkSources()` stages every checker, evidence, CheckedModule,
-HIR, and Built MIR publication before mutating session state. A missing required
-fact or any source, identity, codec, or IR invariant rejects the entire stage.
+HIR, Built MIR, ownership overlay and validated proofs, ownership-checked MIR,
+and verified executable MIR publication before mutating session state. A
+missing required fact or any source, identity, codec, or IR invariant rejects
+the entire stage.
 
 ## 2. Live Module Inventory
 
@@ -65,12 +67,19 @@ fact or any source, identity, codec, or IR invariant rejects the entire stage.
 | `compiler/binder` | Admit parsed modules, derive and resolve canonical dependencies, verify graph and binder input, construct scopes, resolve names, and publish export surfaces | `VerifiedParsedModule`, `VerifiedModuleGraph`, `VerifiedBindingOutput` |
 | `compiler/type` | Canonicalize and intern closed semantic type payloads | `SemanticTypeId` and immutable lookup views |
 | `compiler/checker` | Produce and verify signatures, coherence, inference, body facts, dispatch, borrow surfaces, and checked facts | revision-bound verified fact families and repository leases |
-| `compiler/hir` | Assemble checked modules and lower semantic declarations and scalar facts | `VerifiedCheckedModule`, `VerifiedHirModule` |
+| `compiler/hir` | Assemble checked modules and lower admitted source through recursive and legacy HIR construction | `VerifiedCheckedModule`, `VerifiedHirModule` |
 | `compiler/mir` | Lower and independently verify evidence-bound Built MIR | `VerifiedBuiltMir` |
-| `compiler/ir` | Own target selections, canonical IR identity, and the shared closed IR failure algebra | `VerifiedTargetSelection`, typed IR failures and diagnostics |
+| `compiler/ownership` | Admit source shapes, derive move/loan/region/init facts, validate proofs, and elaborate drops/coroutines | `CheckedMir`, `ValidatedOwnershipProofs`, `VerifiedExecutableMir` |
+| `compiler/lir` | Lower admitted MIR shapes into the target-aware LIR slice | unverified `lir::Module` consumed by the backend path |
+| `compiler/backend/llvm` | Translate LIR to verified LLVM IR and emit native objects | `LlvmTranslationResult` (verified textual IR and object bytes) |
+| `compiler/ir` | Own target selections, canonical IR identity, the shared failure algebra, link plans, executable inspection, and recoverable publication | `VerifiedTargetSelection`, `VerifiedLinkPlan`, `PublishedExecutableArtifact`, typed IR failures |
+| `compiler/format` | Format source over the lexeme stream and Doc IR | `zomc fmt` core |
+| `compiler/ide` | Project language services onto published semantic snapshots and adapt editor documents | semantic snapshot facade, editor document adapter |
+| `compiler/lsp` | Serve the lifecycle-only Language Server Protocol over stdio | `zomc lsp` base-protocol transport |
 | `compiler/diagnostics` | Validate the catalog, collect and materialize canonical user diagnostics, apply display policy, render terminal output, and project diagnostics-pipeline incidents | sealed `CompilationDiagnosticFacts`, immutable `ResolvedDiagnosticBatch`, `DiagnosticPolicyResult`, and registered incident descriptors; see [Diagnostics Architecture](diagnostics.md) |
-| `utils/zomc` | Admit a workspace and invoke the production session | `compile`, frontend-only `build`, `fmt`, and the Linux x86-64 scalar `run` candidate |
-| `runtime` | Provide runtime support symbols and the admitted host entry object | runtime libraries and Linux x86-64 `_start` for the scalar run slice |
+| `utils/zomc` | Admit a workspace and invoke the production session | `compile`, `build`, `run`, `fmt`, and `lsp` subcommands; `run` executes the Linux x86-64 admitted slice |
+| `libraries/zc` | Own the core ownership, container, string, sum-type, and exception library | `zc::Own`, `zc::Vector`, `zc::String`, `zc::Maybe`, `zc::OneOf` |
+| `runtime` | Provide runtime support symbols and the admitted host entry object | runtime libraries and Linux x86-64 `_start` for the run slice |
 
 Stable Binder query identities are canonical package, crate, source, module,
 definition, implementation, and owner keys. Active semantic publications use
@@ -155,11 +164,10 @@ Before binding starts, the session stages exact active-crate, active-module,
 dependency, selected-source, and source-snapshot inputs and verifies the
 query-derived module order against the frozen module graph. It then refreshes
 the complete active-definition authority map in one transaction and restores
-readiness only with the complete set fingerprint. The session retains an
-authority-staging snapshot and a new authority-ready snapshot. Semantic
-named-item and owner syntax descriptors are registered, but final-sealed
-named-item and owner provenance capabilities are not yet production Binder
-roots because the session does not yet publish and admit the final input seal.
+readiness only with the complete set fingerprint. The session publishes and
+admits the final input seal on the successful bind path, so final-sealed
+named-item, owner-body, module-graph, and bound-module provenance capabilities
+are production Binder roots (see [Incremental Query Runtime](query-runtime.md)).
 No query provider may scan session registries or other untracked state.
 
 Successful binding publishes one atomic `VerifiedBindingOutput`:
@@ -268,9 +276,13 @@ failure, and diagnostic-fact projection contracts:
 projection but not yet to the session `ContextFingerprint`.
 
 Semantic HIR and Built MIR are production, session-published internal
-representations with independent verifiers and exact codec oracles. Built MIR
-is not executable and has no stable user-facing text format. No target LIR,
-LLVM lowering, or native backend is built.
+representations with independent verifiers and exact codec oracles. The
+ownership rail produces facts, validated proofs, and `VerifiedExecutableMir`
+for admitted shapes; Built MIR in that profile feeds the partial backend. The
+target LIR slice, LLVM translation, object emission, hermetic linking,
+publication, and Linux x86-64 execution are built and run on admitted shapes;
+they are a partial host slice without an independent LIR verifier or verified
+target binding, as detailed in [the IR notes](ir/lir.md).
 
 ## 7. Diagnostics
 
@@ -314,7 +326,9 @@ The merge-ready verification set is:
 - relevant architecture self-tests and negative fixtures; and
 - `git diff --check`.
 
-Passing this set proves the implemented boundaries named above. It does not
-prove ownership analysis, executable MIR, target LIR, LLVM, object emission,
-linking, or native execution until those publications and their executable
-gates exist.
+Passing this set proves the implemented boundaries named above. Ownership
+analysis and executable MIR are covered for the admitted constructor set; the
+LIR, LLVM, object-emission, link, and Linux x86-64 execution gates run under
+the backend-enabled build and prove the admitted slice, not a general ABI or
+full target matrix. General ownership completeness, structural IR
+verification, and non-host targets remain open.

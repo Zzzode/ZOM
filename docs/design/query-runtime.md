@@ -7,8 +7,8 @@ Owner: `module-system`
 Required technical reviewers: `runtime-memory`, `verification`, and the owner
 of every descriptor family changed by a patch.
 
-Last verified: 2026-07-29 at
-`cd94cf6bc220158114125d151658aa88c1db335c`.
+Last verified: 2026-09-14 at
+`4380f5d41377cf629255a3b79b81c1b8defbdff8`.
 
 This is a living reference for the in-process compiler query runtime. The
 language specification is not an authority for this internal subsystem.
@@ -18,11 +18,12 @@ project-native tests establish the implementation claims below.
 The generated descriptor inventory, explicit-input transactions, immutable
 snapshots, semantic red-green evaluation, revision-local capability leases,
 single-flight evaluation, cancellation, final-seal runtime, and deterministic
-telemetry are implemented. `CompilerSession` uses the production inventory,
-semantic queries, and any-snapshot capabilities. It does not yet publish or
-admit a final-sealed production snapshot, so final-sealed Binder capability
-descriptors are implemented and natively tested but are not production Binder
-roots.
+telemetry are implemented. `CompilerSession` uses the production inventory and
+publishes/admits the final-sealed production snapshot on every successful bind
+path: final-sealed materialization and provenance capabilities are production
+Binder roots. The ceremony itself is under open re-review in DRAFT
+[RFC 0051](../rfc/0051-query-final-seal-and-text-scanning-evidence.md), which
+is a proposal, not a change to the current behavior.
 
 ## Audience And Outcome
 
@@ -82,7 +83,8 @@ whose authority was read outside `QueryContext` or
 ### Descriptor inventory and registration
 
 `query-descriptor-schema.def` is the production inventory source. It currently
-contains forty contiguous rows. Each row fixes:
+contains 84 contiguous rows (43 semantic, 17 capability, 23 input, and one
+complete-context input). Each row fixes:
 
 - the inventory ordinal;
 - complete C++ descriptor type;
@@ -178,9 +180,19 @@ source-rejected, key-rejected, or runtime-rejected alternatives. Source and key
 rejections are independently decoded and verified. Runtime failures are not
 semantic values and are not reusable rejection payloads.
 
-`CompilerSession` currently demands `ParseSourceQuery` and
-`StableIdentityAdmissionQuery` through this path. Those descriptors admit any
-snapshot and have real production consumers.
+`CompilerSession` demands capabilities from both admission classes. The
+any-snapshot parse entry (`ParseSourceQuery`) is a production root for the
+compiler and the IDE facade. The final-sealed family is the production root
+for binding and checking: provenance queries
+(`RevisionLocalDefinitionSitesQuery`, `RevisionLocalImplementationSitesQuery`,
+`ModuleBodyProvenanceQuery`, `NamedItemProvenanceQuery`,
+`OwnerBodyProvenanceQuery`, `ModuleDependencyProvenance`), module graph
+materialization (`MaterializeModuleGraph`, `MaterializeModuleSkeleton`,
+`MaterializeOwnerBody`, `VerifyBoundModule`), and the core library family
+(`MaterializeCoreRoleSeed`, `MaterializeCoreBootstrapModuleInterface`,
+`MaterializeCoreAuthority`, `FinalizeCoreModuleInterface`). Fourteen
+capability rows in total require `FinalSealedSnapshot`; the remaining
+capabilities admit any snapshot.
 
 ### Final sealing and admission
 
@@ -201,8 +213,15 @@ against an unadmitted current snapshot and returns a move-only
 A descriptor marked `FinalSealedSnapshot` fails before provider execution
 unless its demand inherits the exact admission. Nested capability demands
 retain that admission. The runtime implementation and race ordering are
-covered by native tests. Production `CompilerSession` final-seal publication
-is a known gap.
+covered by native tests.
+
+Production `CompilerSession` performs the seal on every successful bind path
+(`sealFinalSnapshot` in `compiler-session.cc`), and checking then demands the
+sealed module graph, provenance, bound module, owner body, and core role seed
+capabilities from the admitted snapshot. The IDE edit-reuse loop intentionally
+remains an unsealed any-snapshot consumer; sealing is the batch compilation
+root, not a database lifecycle requirement. The three-phase seal ceremony is
+the subject of the open DRAFT RFC 0051 re-review.
 
 ### Concurrency, cancellation, and ordering
 
@@ -332,16 +351,16 @@ descriptor beside its replacement.
 
 ## Known Gaps
 
-- `CompilerSession` retains an authority-staging snapshot and an ordinary
-  authority-ready snapshot but does not yet seal and admit the complete
-  context.
-- Binder capabilities marked `FinalSealedSnapshot` are registered and covered
-  by native tests but are not yet demanded as production Binder roots.
-- The source-backed core-library program has not yet installed its complete
-  stable and capability query family.
-- There is no persisted or cross-session query cache.
+- The source-backed core-library program installs most of its stable and
+  capability family; completeness is tracked against RFC 0025 rather than this
+  note.
+- There is no persisted or cross-session query cache: `ReuseClass::Persisted`
+  has no descriptor rows and there is no disk cache code.
 - Query telemetry is available through in-process snapshot inspection; there
   is no user-facing query graph dump.
+- Final sealing is a batch compilation root; alternative session shapes for
+  IDE consumption use the unsealed path and do not seal. The ceremony's
+  proportionality is under open re-review (DRAFT RFC 0051).
 
 ## Maintenance Triggers
 

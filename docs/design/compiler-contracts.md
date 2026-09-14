@@ -29,6 +29,10 @@ flowchart LR
     E --> M
     M --> H["VerifiedHirModule"]
     H --> R["VerifiedBuiltMir"]
+    R --> O["Ownership facts and validated proofs"]
+    O --> X["VerifiedExecutableMir"]
+    X -. admitted slice .-> L["LIR and LLVM object"]
+    L -. admitted slice .-> B2["Linked, published, executed artifact"]
 ```
 
 Every materialization capability has an independent verifier and a retained
@@ -404,12 +408,18 @@ views are projected only from verified interfaces.
 
 The session verifies complete `BorrowEvidence`, assembles
 `VerifiedCheckedModule`, lowers `VerifiedHirModule`, builds and independently
-verifies `VerifiedBuiltMir`, then commits every staged repository and module
+verifies `VerifiedBuiltMir`, builds the ownership event overlay and
+independently verified fact sets, validates ownership proofs, finalizes
+ownership-checked MIR, and runs the drop and coroutine elaborators and the
+executable-MIR verifier, then commits every staged repository and module
 vector together. Each stage retains its `CheckerBoundModuleView` lineage;
 ownership overlays retain the Built MIR lineage before teardown. Missing,
 additional, malformed, stale, foreign-context, or non-canonical facts fail
-closed without partial successor publication. No
-second symbol, type, AST-metadata, or borrow representation rail exists.
+closed without partial successor publication. No second symbol, type,
+AST-metadata, or borrow representation rail exists. The later LIR, object,
+link, and execution path runs outside this transaction through the CLI backend
+slice on Linux x86-64; it is shape-gated and does not weaken the atomic
+session boundary above.
 
 ## 9. Target And IR Contract
 
@@ -429,10 +439,13 @@ session retains both selections.
 ### IR-03 Current boundary
 
 `zomc` constructs one host profile with abort panic. Target selections are not
-yet bound to `ContextFingerprint`. Semantic HIR and evidence-bound
-Built MIR are internal verified session publications with exact codec
-oracles. Built MIR is not executable; no target LIR, LLVM, object, or native
-artifact is a compiler output.
+yet bound to `ContextFingerprint` and the LLVM slice uses the host triple.
+Semantic HIR and evidence-bound Built MIR are internal verified session
+publications with exact codec oracles, followed by the partial ownership rail
+and `VerifiedExecutableMir`. For the admitted shape set on Linux x86-64,
+target LIR, LLVM translation, object emission, linking, publication, and
+native execution are compiler outputs of the backend slice; the slice has no
+independent LIR verifier and is not general ABI coverage.
 
 ## 10. Package And Build-Script Contract
 
@@ -487,9 +500,12 @@ final emission.
 
 AST output is reachable after verified parsing. Syntax-only completion is
 reachable after verified binding. Dispatch output requires successful checked
-fact publication. Binary selection is terminally unavailable because target
-LIR and native emission are absent. Empty, unsupported, or invalid package
-state does not authorize a downstream emission.
+fact publication. HIR and MIR dump selections are reachable after their
+publications. Binary and run selections reach object emission, linking, and
+execution for the admitted Linux x86-64 shape set when the LLVM backend is
+enabled; shapes outside the slice and non-host targets fail closed. Empty,
+unsupported, or invalid package state does not authorize a downstream
+emission.
 
 ## 13. Verification Contract
 

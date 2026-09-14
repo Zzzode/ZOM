@@ -6,21 +6,23 @@
 |---|---|
 | Authority | Non-normative language design note |
 | Coverage | Partial |
-| Last verified | 2026-07-24 |
+| Last verified | 2026-09-14 |
 | Normative sources | [Types](../../spec/chapters/03-types.md), [Expressions](../../spec/chapters/04-expressions.md), [Declarations](../../spec/chapters/06-declarations.md), [Ownership, Borrowing, And Cleanup](../../spec/chapters/14-memory-management.md) |
 | Governing decisions | [RFC 0005](../../rfc/0005-type-system-architecture.md), [RFC 0007](../../rfc/0007-borrow-lifetime-ownership-checker.md), [RFC 0009](../../rfc/0009-call-dispatch-and-operator-lowering.md), [RFC 0010](../../rfc/0010-intermediate-representation-pipeline.md), [RFC 0013](../../rfc/0013-ownership-analysis-integration-boundary.md) |
-| Production evidence | [Checked facts](../../../compiler/checker/inference/checked-facts.h), [body checker](../../../compiler/checker/body/body-checker.cc), [HIR interface](../../../compiler/hir/hir-module.h), [HIR lowering](../../../compiler/hir/hir-module.cc), [MIR interface](../../../compiler/mir/built-mir.h), [MIR lowering](../../../compiler/mir/built-mir.cc) |
-| Verification evidence | [Checked-facts tests](../../../tests/unittests/compiler/checker/checked-facts-test.cc), [HIR tests](../../../tests/unittests/compiler/hir/hir-module-test.cc), [MIR tests](../../../tests/unittests/compiler/mir/built-mir-test.cc), [session integration tests](../../../tests/unittests/compiler/driver/compiler-session-package-test.cc) |
+| Production evidence | [Checked facts](../../../compiler/checker/inference/checked-facts.h), [body checker](../../../compiler/checker/body/body-checker.cc), [HIR records](../../../compiler/hir/hir-module.h), [recursive HIR builder](../../../compiler/hir/build/), [MIR interface](../../../compiler/mir/built-mir.h), [ownership rail](../../../compiler/ownership/) |
+| Verification evidence | [Checked-facts tests](../../../tests/unittests/compiler/checker/checked-facts-test.cc), [HIR tests](../../../tests/unittests/compiler/hir/hir-module-test.cc), [MIR tests](../../../tests/unittests/compiler/mir/built-mir-test.cc), [ownership tests](../../../tests/unittests/compiler/ownership/), [session integration tests](../../../tests/unittests/compiler/driver/compiler-session-package-test.cc) |
 
 The specification defines an affine ownership language in which expressions
 produce values and consuming operations copy or move according to verified
 `Copy` evidence. It uses the term *place* in mutation, ownership, and indexing
 rules but does not yet define one complete source-level value/place taxonomy.
-The production compiler does not implement the intended model end to end. It
-currently admits scalar literal initializers and a narrow scalar-return
-function form into HIR and Built MIR. General places, source assignments,
-temporaries, ownership analysis, and cleanup are outside that production
-subset.
+The production compiler implements the model for the admitted constructor set
+documented in [the lowerable constructs inventory](../ir/lowerable-constructs.md):
+scalar and aggregate initializers, parameter/local reads, primitive binary
+expressions with one-level nesting, same-module calls, field projections,
+mutable writes, conditionals, reducible loops, and bounded borrows. General
+place projections, compound assignment, casts, closures, and complete
+ownership typestate remain open gaps.
 
 ## Question
 
@@ -48,8 +50,10 @@ transfer mode:
 
 The normative transfer contexts and reinitialization rules are defined by
 [Chapter 14](../../spec/chapters/14-memory-management.md#142-value-transfer).
-The current production HIR represents only scalar literal values. It does not
-yet represent a general read from a source place.
+The production HIR emits values for scalar literals, parameter and local
+references, aggregate elements, and primitive binary leaves; place-returning
+references and field projections emit the `Place` value category. General
+place reads (arbitrary index chains, dereferences) are not yet lowered.
 
 ### Places
 
@@ -66,10 +70,12 @@ dereference, downcast, or subslice projections. The two forms serve different
 stages. A checked source place carries source semantic authority; a MIR place
 identifies storage after lowering.
 
-These data models are implemented, but the production body checker currently
-publishes no place facts and HIR rejects any non-empty place-fact set. They are
-therefore an accepted compiler contract, not current end-to-end language
-support.
+These data models are implemented for the admitted shapes: the body checker
+publishes place facts for local references and aggregate field projections,
+HIR consumes them through local-reference and field-projection records, and
+the recursive builder emits the `Place` category for those forms. General
+projection chains (dynamic index, dereference, downcast, subslice) remain an
+accepted target without end-to-end support.
 
 ### Mutation And Assignment
 
@@ -79,11 +85,12 @@ not reassigned or mutably borrowed. Assignment to an owning place is also a
 consuming context and reinitializes a completely assigned place.
 
 The parser represents plain and compound assignment, including right-associative
-assignment syntax. The body fact inventory requests semantic facts for these
-forms, but the current producer does not construct the required place and
-compound-assignment facts. It fails closed instead. The `MirStatement::Assign`
-operation emitted for compiler-generated scalar module initialization is not
-evidence that source assignment is implemented.
+assignment syntax. Mutable local writes (`mut x = ...; x = <literal, parameter,
+or primitive binary>`) are implemented end to end, including repeated writes,
+and field writes land on the admitted aggregate shape. Compound assignment
+still has no producer: its fact map is emitted empty and the construct fails
+closed. The `MirStatement::Assign` operation emitted for scalar module
+initialization is not itself evidence of compound assignment.
 
 ### Borrows
 
@@ -94,22 +101,29 @@ outlive its referent. These are normative rules in
 [Chapter 14](../../spec/chapters/14-memory-management.md#143-references-and-borrows).
 
 The frontend publishes a verified borrow-evidence boundary and carries its
-revision through CheckedModule, HIR, and Built MIR. Production ownership
-analysis and ownership-proof publication are not implemented. Borrow-evidence
-lineage proves that the admitted frontend evidence is the evidence consumed by
-later stages; it does not prove the complete ownership rules by itself.
+revision through CheckedModule, HIR, and Built MIR. A bounded ownership rail
+is in production over admitted reducible CFGs: move paths, flow,
+initialization, bounded loans/references/reborrows, conflicting-loan and
+use-after-move rejection on the source rail, proof validation, and
+drop/coroutine elaboration into `VerifiedExecutableMir` (see the
+[ownership note](../ir/ownership-and-executable-mir.md)). General region
+liveness, capture/escape completeness, and full typestate remain gaps;
+borrow-evidence lineage alone never proved the complete rules.
 
 ### Temporaries And Cleanup
 
-The checker and MIR data models can represent temporary roots, temporary locals,
-storage lifetime statements, deinitialization, and overwrite. The current
-production lowering does not create source temporaries, emit general
-deinitialization, or elaborate cleanup paths.
+The checker and MIR data models represent temporary roots, temporary locals,
+storage lifetime statements, deinitialization, and overwrite. Production
+lowering synthesizes temporary locals for one-level nested binary operands
+(`a + b * c`) and emits `StorageLive`/`StorageDead` for the admitted shapes.
+General deinitialization and cleanup for all resources are bounded: drop
+elaboration emits drops only for resources live on every exit of admitted
+bodies.
 
 The deterministic cleanup rules in
 [Chapter 14](../../spec/chapters/14-memory-management.md#145-deinitialization)
-remain normative language requirements. Their MIR realization is an open
-implementation boundary.
+remain normative language requirements; their general MIR realization is an
+open implementation boundary tracked by the ownership and RFC 0006 work.
 
 ## Semantic Invariants
 
@@ -144,13 +158,15 @@ language-wide operand, argument, projection, and assignment evaluation order.
 
 RFC 0005 and RFC 0009 define an exact left-to-right target contract for place
 roots, projections, index acquisition, assignment right-hand sides, and
-compound-assignment writeback. Both RFCs are `IMPLEMENTING`. The current HIR
-rejects the relevant place, call, index, and compound-assignment facts, so this
-target contract has no general production lowering.
+compound-assignment writeback. Both RFCs are `IMPLEMENTING`. The admitted
+place, call, and binary shapes now lower through the recursive HIR builder with
+deterministic destination ordering, while general index, compound-assignment,
+and generic-dispatch shapes still have no production lowering.
 
-Consequently, this note does not present a complete evaluation order as a
-current language guarantee. The authority gap must be closed in the normative
-specification before user code can rely on the full RFC order.
+Consequently, this note presents the exact order only for the admitted shapes;
+the full RFC order is not yet a current language guarantee and the authority
+gap must be closed in the normative specification before user code can rely
+on the remainder.
 
 ## Compiler Realization
 
@@ -158,33 +174,37 @@ specification before user code can rely on the full RFC order.
 |---|---|---|
 | Parser | Preserves assignment shape, operand structure, calls, indexes, and projections in the immutable AST | Syntax acceptance does not establish semantic evaluation |
 | Binder | Resolves definitions and constructs lexical visibility | Traversal order is not runtime evaluation order |
-| Body checker | Publishes verified scalar literal, type, declaration, and related facts for the admitted subset | Place and compound-assignment requirements have no production producer |
-| CheckedModule | Binds checked facts and verified borrow evidence into one handoff | Does not publish ownership results |
-| HIR | Publishes scalar declarations, scalar literals, and a narrow scalar-return function form | Rejects places, calls, indexes, compound assignments, and other unsupported fact families |
-| Built MIR | Publishes verified module initializers and narrow scalar-return bodies; its algebra represents places, operands, storage, and initialization | General executable bodies, ownership analysis, cleanup elaboration, and backend consumption are absent |
+| Body checker | Publishes verified literal, type, declaration, place, binary, call, and borrow facts for the admitted subset | Compound assignment, casts, generic bodies, and the empty fact families fail closed |
+| CheckedModule | Binds checked facts and verified borrow evidence into one handoff | Ownership results are produced by the successor rail |
+| HIR | Lowers admitted literals, references, binaries, aggregates with projection, local writes, calls, control, and bounded borrows through the recursive and legacy construction paths | Casts, compound assignment, closures, and generics are not admitted |
+| Built MIR | Emits single- and multi-block bodies for the inventory, including calls, diamonds, reducible loops, projections, and storage markers | General executable bodies and full ABI lowering are absent |
+| Ownership and backend | Derives bounded ownership facts and executable MIR, then reaches LIR/LLVM/object/link/run for admitted Linux x86-64 shapes | Partial; see the IR design notes |
 
-The currently admitted Built MIR shapes are:
+The admitted Built MIR shapes are enumerated construct-by-construct in
+[the lowerable constructs inventory](../ir/lowerable-constructs.md); they
+include scalar module initializers, parameterized functions with sequential
+locals, calls with continuation blocks, four-block conditionals, reducible
+loops, aggregates, and borrow scopes.
 
-- a scalar module declaration lowered to one local, `StorageLive`, one
-  initializing assignment from a constant, and a return that moves the local;
-  and
-- a parameterless, receiverless, non-raising function whose body is exactly one
-  scalar-literal return, lowered to a constant return operand.
-
-No broader source form should be inferred from the representational capacity of
-the MIR classes.
+No broader source form should be inferred from the representational capacity
+of the MIR classes.
 
 ## Evidence Map
 
 | Claim | Class | Specification or RFC | Implementation | Native verification |
 |---|---|---|---|---|
-| Affine copy-or-move transfer | Normative | [Chapter 14 §14.2](../../spec/chapters/14-memory-management.md#142-value-transfer) | Production ownership analysis absent | Ownership syntax and diagnostic conformance cases do not establish the complete production rail |
-| Mutable-place requirement | Normative | [Chapter 6 value declarations](../../spec/chapters/06-declarations.md#value-declarations) | `CheckedPlaceFact` carries `mutablePlace`; no live producer | Checked-facts tests verify record invariants |
-| Source place algebra | Accepted target | [RFC 0005](../../rfc/0005-type-system-architecture.md) | [Checked-facts representation](../../../compiler/checker/inference/checked-facts.h); HIR rejects non-empty place facts | [Checked-facts tests](../../../tests/unittests/compiler/checker/checked-facts-test.cc) exercise constructed facts |
-| Exact assignment evaluation order | Accepted target and open normative gap | [RFC 0005](../../rfc/0005-type-system-architecture.md), [RFC 0009](../../rfc/0009-call-dispatch-and-operator-lowering.md) | No general HIR or MIR lowering | Parser tests cover shape only |
-| Scalar literal HIR | Implemented | [RFC 0010](../../rfc/0010-intermediate-representation-pipeline.md), [RFC 0013](../../rfc/0013-ownership-analysis-integration-boundary.md) | [HIR lowering](../../../compiler/hir/hir-module.cc) | [HIR tests](../../../tests/unittests/compiler/hir/hir-module-test.cc), [session integration tests](../../../tests/unittests/compiler/driver/compiler-session-package-test.cc) |
-| Scalar module initializer Built MIR | Implemented | [RFC 0010](../../rfc/0010-intermediate-representation-pipeline.md), [RFC 0013](../../rfc/0013-ownership-analysis-integration-boundary.md) | [MIR lowering](../../../compiler/mir/built-mir.cc) | [MIR tests](../../../tests/unittests/compiler/mir/built-mir-test.cc), [session integration tests](../../../tests/unittests/compiler/driver/compiler-session-package-test.cc) |
-| Production ownership checking and cleanup | Open gap | [RFC 0007](../../rfc/0007-borrow-lifetime-ownership-checker.md) | No ownership-result producer or cleanup elaboration | No end-to-end ownership publication test |
+| Affine copy-or-move transfer for admitted bodies | Implemented (partial) | [Chapter 14 §14.2](../../spec/chapters/14-memory-management.md#142-value-transfer) | Ownership move/init facts and use-after-move rejection over admitted reducible CFGs | Ownership fact and overlay suites, lit diagnostics |
+| Complete affine transfer for all source forms | Open gap | [Chapter 14 §14.2](../../spec/chapters/14-memory-management.md#142-value-transfer) | General region/capture/typestate incomplete | Not established by the admitted rail |
+| Mutable-place requirement | Implemented (partial) | [Chapter 6 value declarations](../../spec/chapters/06-declarations.md#value-declaration) | `CheckedPlaceFact` carries `mutablePlace`; mutable local writes and field writes produced | Checked-facts and HIR/MIR write-body tests |
+| Source place algebra for references and field projections | Implemented (partial) | [RFC 0005](../../rfc/0005-type-system-architecture.md) | Checked place facts consumed by recursive HIR place records and MIR projections | HIR module and ownership tests |
+| General source place algebra (index, deref, downcast, subslice) | Accepted target | [RFC 0005](../../rfc/0005-type-system-architecture.md) | No end-to-end producer for general chains | Checked-facts tests exercise constructed records only |
+| Exact assignment evaluation order on admitted shapes | Implemented (partial) | [RFC 0005](../../rfc/0005-type-system-architecture.md), [RFC 0009](../../rfc/0009-call-dispatch-and-operator-lowering.md) | Destination-driven lowering for local and field writes | HIR parity and MIR assertion tests |
+| General assignment order and compound assignment | Accepted target and open normative gap | RFC 0005, RFC 0009 | Compound fact map empty; generic shapes fail closed | Parser tests cover shape only |
+| Literal/reference/binary/aggregate HIR | Implemented | [RFC 0010](../../rfc/0010-intermediate-representation-pipeline.md), [RFC 0048](../../rfc/0048-recursive-ir-construction-and-structural-verification.md) | Recursive HIR builder families 1-4 plus legacy arms | [HIR tests](../../../tests/unittests/compiler/hir/hir-module-test.cc), corpus parity |
+| Multi-block Built MIR for the inventory | Implemented | [RFC 0010](../../rfc/0010-intermediate-representation-pipeline.md) | Calls, conditionals, reducible loops, aggregates, borrow scopes | [MIR tests](../../../tests/unittests/compiler/mir/built-mir-test.cc), session integration tests |
+| Ownership proofs and executable MIR for admitted shapes | Implemented (partial) | [RFC 0007](../../rfc/0007-borrow-lifetime-ownership-checker.md), [RFC 0013](../../rfc/0013-ownership-analysis-integration-boundary.md) | Overlay, validation, drop/coroutine elaboration, `VerifiedExecutableMir` | Ownership overlay and lineage mutation suites |
+| General ownership checking and complete cleanup | Open gap | RFC 0007 | Region/escape/capture/typestate and general drop coverage incomplete | Not established end to end |
+| Native execution of admitted scalar shapes | Implemented (host slice) | [RFC 0043](../../rfc/0043-platform-link-and-executable-publication.md) | LIR/LLVM/link/run on Linux x86-64 | `native-run-cli`, object-emission fixtures |
 
 ## Known Gaps
 
@@ -202,11 +222,12 @@ the MIR classes.
 - The type-system operator table assigns `in` a `Contains` operation, while the
   expression chapter reserves `in` for loop headers and the expression grammar
   has no binary `in` production.
-- The production body checker does not publish general place facts or
-  compound-assignment facts.
-- HIR admits only scalar literals, scalar module declarations, and one narrow
-  scalar-return function form.
-- Built MIR represents more operations than the production builder emits.
-- Production ownership analysis, ownership-proof publication, temporary
-  lifetime lowering, and cleanup elaboration are absent.
-- There is no target LIR or backend that consumes the execution model.
+- The production body checker does not publish general place-projection or
+  compound-assignment facts; compound assignment fails closed.
+- HIR and MIR admit the construct inventory, not general expressions: casts,
+  closures, generics in bodies, destructuring patterns, and exhaustiveness
+  remain unlowered.
+- Complete ownership typestate, general region and capture analysis, and full
+  cleanup elaboration are open; the live rail covers admitted reducible CFGs.
+- The backend consumes the model only for admitted shapes on Linux x86-64;
+  general ABI and target coverage do not exist.

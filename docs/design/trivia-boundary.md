@@ -1,129 +1,121 @@
 # Syntax Tree and Trivia Boundary
 
-## Overview
+Updated: 2026-09-14
 
-The ZOM compiler parser produces a **schema-backed syntax tree** that contains
-language syntax only. Ordinary whitespace, non-doc comments, and formatting
-trivia are **not** stored in AST payloads. This document defines the boundary
-between what the compiler AST retains and what is left to a future lossless
-syntax tree owned by formatter and IDE tooling.
+## Authority And Status
+
+| Field | Value |
+|---|---|
+| Authority | Non-normative compiler implementation guide |
+| Coverage | Current parser-token AST boundary and the landed CST trivia layer |
+| Governing decisions | [RFC 0002](../rfc/0002-parser-architecture.md) (LANDED), RFC 0023 (IDE snapshots, IMPLEMENTING), RFC 0044 (formatter, IMPLEMENTING) |
+| Production implementation | [`compiler/lexer/`](../compiler/lexer/), [`compiler/cst/`](../compiler/cst/), [`compiler/ast/schema.yml`](../compiler/ast/schema.yml) |
+| Tooling consumers | [`compiler/format/`](../compiler/format/), [`compiler/ide/`](../compiler/ide/), `zomc fmt` |
 
 Reference: RFC 0002 (Parser Architecture), D-06.
 
-## Design Rationale
+## Overview
 
-Roslyn (.NET) and SwiftSyntax demonstrate a mature pattern: split the compiler
-semantic tree from a separate lossless syntax tree used by tooling. ZOM follows
-this boundary:
+ZOM follows the Roslyn and SwiftSyntax split between a semantic compiler tree
+and a byte-covering tooling layer:
 
-- **Compiler AST**: schema-backed, typed, fail-closed. Contains syntax nodes,
-  source ranges, and semantically-relevant attributes/doc-comments only.
-- **Lossless syntax tree** (future): a full-fidelity tree that preserves every
-  character of source, including whitespace, comments, and formatting. Owned by
-  formatter, IDE, and refactoring tooling.
+- **Compiler AST**: schema-backed, typed, fail-closed. Contains grammar
+  syntax, source ranges, and explicitly retained directive/attribute
+  metadata. Comments and whitespace never appear as AST nodes.
+- **CST lexeme/recovery layer (landed)**: a byte-covering partition of the
+  source into significant lexemes plus whitespace and comment trivia, with a
+  recoverable syntax result. This is the layer the formatter and IDE services
+  consume.
 
-Forcing trivia into the compiler AST would:
-
-1.  Inflate AST node counts and memory usage for every compilation.
-2.  Complicate schema validation (trivia has no grammar role).
-3.  Tie parser correctness to formatting detail, making both harder to evolve.
+The parser does not build the AST directly: it emits a construction event
+stream and lexeme/recovery streams, and `ParseSyntaxVerifier` independently
+replays the events into a fresh `ast::TreeBuilder` and schema-verifies the
+result before promotion.
 
 ## What the Compiler AST Retains
 
 | Category | Examples | How stored |
 |---|---|---|
-| Syntax nodes | `FunctionDecl`, `LetStmt`, `BinaryExpr`, `CallExpression` | Typed `ast::Node` with `SyntaxKind` |
-| Source ranges | Every node and token carries a `SourceRange` | `rangeFor(start, end)` on nodes; `token.getRange()` on tokens |
-| Token values | Identifier names, literal text, string contents | `token.getValue()` / `builder.internString()` |
+| Syntax nodes | `FunctionDeclaration`, `LetStatement`, `BinaryExpression`, call nodes | Typed `ast::Node` with `SyntaxKind` in fixed-width schema records |
+| Source ranges | Every node and token carries a half-open `SourceRange` | Range accessors on nodes and tokens |
+| Token values | Identifier names, literal text, string contents | Interned string/bigint tables |
 | Token flags | Preceding newline | `TokenFlags::PrecedingLineBreak` |
-| Doc comments | `///` and `/** */` comments attached to declarations | Stored as attribute nodes in the AST (semantic role) |
-| Attributes | `#[...]` and `@[...]` metadata | Parsed as attribute nodes (semantic role) |
-| Delimiter locations | `(`, `)`, `{`, `}`, `[`, `]`, `<`, `>`, `,`, `;`, `:` | Implicit in node source ranges; explicit when needed for diagnostics |
+| Attributes | `#[...]` and `@[...]` metadata | Parsed attribute nodes with registered consumers |
+| Test directives | `@zom-expect-error`, `@zom-ignore` | Extracted from comment text by the lexer directive hook and retained as diagnostic-control metadata |
 
 ## What the Compiler AST Does NOT Retain
 
 | Category | Examples | Notes |
 |---|---|---|
-| Ordinary whitespace | Spaces, tabs, blank lines | Not emitted as tokens by the lexer |
-| Non-doc comments | `// ...` and `/* ... */` | Skipped by the lexer; not in token stream |
-| Formatting trivia | Indentation, alignment, line length | No representation in AST |
-| Comment body text (non-doc) | `// TODO: fix this` | Not retained; use doc comments for semantic metadata |
+| Whitespace | Spaces, tabs, blank lines | Trivia in the CST lexeme stream, never an AST node |
+| Comments of every form | `// ...`, `/// ...`, `/* ... */`, `/** ... */` | Uniformly scanned as comments; trivia in the CST, never an AST node |
+| Formatting trivia | Indentation, alignment, line length | Owned by the formatter through the lexeme stream |
 
-## Token Shape (L2P-04)
+There is no doc-comment AST node. The lexer scans `///` and `//` through the
+same comment path; no special doc-comment token or syntax kind exists, and no
+documentation-generation consumer reads comments. Documentation comments are an
+open language/tooling gap, not a retained feature.
 
-Every token stores:
+## The CST Trivia Layer (landed)
 
-- `SyntaxKind` — the lexical category
-- `SourceRange` — half-open `[start, end)` byte offset in the source buffer
-- `StringPtr value` — canonical text for identifiers and literals
-- `TokenFlags` — bit flags including `PrecedingLineBreak`
+`compiler/cst` owns the lossless byte-covering view:
 
-Newline trivia is represented by `TokenFlags::PrecedingLineBreak` on the
-**following** token. This preserves line-structure information for error
-message formatting and statement boundary detection without storing whitespace
-as first-class tokens.
+- `TriviaKind` partitions non-significant bytes into `Whitespace`,
+  `LineComment`, and `BlockComment`, attached around significant lexemes;
+- the lexeme stream and recovery stream (`RecoverableSyntaxTree`,
+  `MissingToken`, `MissingSubtree`, `SkippedTokens`, retained `Invalid` bytes)
+  are built at parse time and verified as a byte partition;
+- `compiler/format` formats source over the lexeme stream and its Doc IR,
+  shipped as `zomc fmt` and `zomc fmt --check` (RFC 0044);
+- IDE services project tokens and outlines over published semantic snapshots
+  and adapt editor documents over the same parse/cst path (RFC 0023).
 
-Ordinary whitespace and non-doc comments are **not** emitted as tokens. The
-lexer skips them during `lexNext()` and they never appear in the
-`TokenStream`.
+## Token Shape
+
+Every parser token stores its `SyntaxKind`, a half-open `SourceRange`, its
+canonical value where applicable, and `TokenFlags` (including
+`PrecedingLineBreak` on the following token). Significant tokens form the
+parser `TokenStream`; comments and whitespace are consumed into the CST trivia
+partition instead.
 
 ## Source Range as the Bridge
 
-AST nodes and tokens carry `SourceRange` values that point back to the original
-source buffer. This is the bridge between the syntax tree and trivia:
+AST nodes, tokens, and CST lexemes carry byte ranges into the same source
+buffer, which is the bridge between the semantic tree and the lossless layer:
+diagnostics point through ranges, the formatter edits around trivia ranges,
+and nothing stores raw source pointers.
 
-- **Diagnostics** use source ranges to point at relevant source text.
-- **AST dumping** can reconstruct source context from ranges.
-- **Future lossless tree** can use the same source buffer to attach trivia.
+## Attributes and Directives
 
-The parser never stores raw source pointers or string views in AST nodes. All
-text access goes through `token.getValue()` (for identifiers/literals) or the
-source manager (for diagnostics).
+Attributes (`#[...]`, `@[...]`) carry retained metadata for registered
+semantic consumers and are grammar syntax. Test-directive comments
+(`@zom-expect-error`, `@zom-ignore`) are extracted from comment text by the
+lexer directive hook for diagnostic conformance control. Neither mechanism is
+a general doc-comment facility.
 
-## Doc Comments and Attributes
+## Recovery
 
-Doc comments (`///`, `/** */`) and attributes (`#[...]`, `@[...]`) have
-**semantic meaning** in ZOM:
+Recovery frames operate over token kinds and positions; the recovery stream
+records skipped and missing syntax while trivia remains attached to lexemes.
+The independently replayed AST never contains trivia.
 
-- Doc comments feed documentation generation and IDE tooltips.
-- Attributes carry retained metadata for explicitly registered semantic
-  consumers.
+## Known Gaps
 
-These are parsed as first-class AST nodes and retained. They are **not**
-trivia.
-
-## Recovery and Trivia
-
-Error recovery does not need trivia information:
-
-- Recovery frames use token kinds and source positions, not whitespace.
-- Sync sets are defined over grammar tokens, not formatting.
-- Progress invariants are measured in token positions, not character offsets.
-
-The `PrecedingLineBreak` flag is available to recovery heuristics that want to
-prefer statement boundaries, but it is never required for correctness.
-
-## Future: Lossless Syntax Tree
-
-A future RFC will define a lossless syntax tree for formatter and IDE use.
-This tree will:
-
-- Preserve every source character (including whitespace and comments).
-- Be built from the same lexer output but with trivia tokens enabled.
-- Live in a separate library/module from the compiler AST.
-- Share source ranges with the compiler AST for cross-referencing.
-
-The compiler AST is **not** a stepping stone to the lossless tree. They are
-separate artifacts with different design goals: correctness and schema
-validation for the compiler, fidelity and incremental update for the tooling
-tree.
+- No doc-comment syntax, AST node, or documentation-generation consumer
+  exists; adding one is a language/RFC decision.
+- The formatter covers the admitted lexeme/token surface; full IDE
+  text-synchronization is coupled to crate resolution and remains open under
+  RFC 0023.
+- Trivia is retained for the parse of one source snapshot; incremental trivia
+  reuse across edits is part of the editor-document adapter work and is not a
+  persisted trivia store.
 
 ## Verification
 
 | Check | Evidence |
 |---|---|
-| No trivia in AST payloads | `ast::Node` stores `SyntaxKind`, `SourceRange`, and typed child refs only |
-| Whitespace/comments not tokenized | Lexer `lexNext()` skips spaces and non-doc comments; they never appear in `TokenStream` |
-| Newline flag available | `TokenFlags::PrecedingLineBreak` set by lexer on tokens following newlines |
-| Source ranges on all nodes | `rangeFor(start, end)` used in every `make*` factory call |
-| Doc comments retained | Parsed as attribute nodes in declaration and member parsing |
+| No comments or whitespace in AST nodes | No doc/comment syntax kind in `schema.yml`; comments take the uniform lexer comment path |
+| Byte-covering trivia partition | CST lexeme/recovery builders and their partition verification tests |
+| Newline flag available | `TokenFlags::PrecedingLineBreak` set by the lexer |
+| Directives retained separately | Lexer directive hook plus directive conformance tests |
+| Formatter consumes trivia | `zomc fmt` tests over the lexeme stream (RFC 0044) |

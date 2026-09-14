@@ -1,29 +1,35 @@
 ---
 title: ZOM AST Data Structure Design
-status: ACCEPTED
 author: ZOM Compiler Team
-date: 2026-06-28
+date: 2026-09-14
 schema: compiler/ast/schema.yml
 ---
 
 # ZOM AST Data Structure Design
 
-This document defines the canonical AST representation for the ZOM compiler.
-The implementation lives in `compiler/ast/`, is exposed by the
-CMake target named `ast`, and uses the namespace
-`zomlang::compiler::ast`.
+This is a non-normative implementation guide for the current AST
+representation. The governing decision record is
+[RFC 0002](../rfc/0002-parser-architecture.md) (LANDED). The implementation
+lives in `compiler/ast/`, is exposed by the CMake target named `ast`, and
+uses the namespace `zomlang::compiler::ast`.
 
 ## Pipeline Contract
 
-The parser returns an owning immutable `ast::Tree`. The parser-result verifier
-binds that tree to an immutable source snapshot before the binder may consume
-it. Syntax storage is separated from semantic identity and checked facts.
+The parser emits a construction-event stream plus byte-covering lexeme and
+recovery streams; it never appends to an `ast::TreeBuilder` directly. An
+independent `ParseSyntaxVerifier` replays the events into a fresh
+`TreeBuilder`, schema-verifies the result, and promotes it to an immutable
+`ast::Tree`, which the parser-result verifier binds to an immutable source
+snapshot before the binder consumes it. Syntax storage is separated from
+semantic identity and checked facts.
 
 ```mermaid
 flowchart LR
   Source["Source buffer"] --> Lexer["Lexer"]
   Lexer --> Parser["Parser"]
-  Parser --> Tree["ast::Tree"]
+  Parser --> Events["Event and lexeme/recovery streams"]
+  Events --> Replay["ParseSyntaxVerifier replay"]
+  Replay --> Tree["ast::Tree"]
   Tree --> Parsed["VerifiedParsedModule"]
   Parsed --> Binder["Verified Binder"]
   Binder --> Meta["VerifiedBindingMetadata<br/>NodeId to ScopeId / DefId / ModuleId"]
@@ -150,9 +156,12 @@ payload.words[kSourceFileStatementsSizeWord]
 
 Syntax nodes never store definitions, scopes, semantic types, dispatch targets,
 or checker state. During binding, module-local syntax references are projected
-into independently verified fact sequences. `VerifiedBindingMetadata` publishes
-`NodeScopeFact`, `BindingResolution`, `DefinitionFact`, import/export, label,
-control-transfer, and closure facts. Semantic definitions use context-branded
+into independently verified fact sequences defined by
+[`compiler/binder/binding-fact-schema.def`](../compiler/binder/binding-fact-schema.def):
+scope, definition, import binding, module alias, label, shadow-target,
+control-transfer, deferred member, owner-local binding, callable parameter,
+generic parameter, closure free-variable, explicit closure capture, local
+export, and impl binding facts. Semantic definitions use context-branded
 `DefId`; modules use `ModuleId`; scopes use context-checked module-local
 `ScopeId`.
 
@@ -208,13 +217,16 @@ diagnostic changes that affect conformance snapshots.
 
 ## Parser Contract
 
-`Parser::parse()` produces `zc::Maybe<ast::Tree>`. Parser construction appends
-nodes and lists through `TreeBuilder`, records source ranges on every node, and
-sets `Tree::root()` to a `SourceFile` node before returning.
+`Parser::parse()` produces a single-use recoverable result carrying a
+construction event stream and a byte-covering lexeme/recovery record. It does
+not mutate an `ast::Tree`. `ParseSyntaxVerifier` independently replays the
+event stream into a new `TreeBuilder`, appends nodes and lists with source
+ranges, and sets `Tree::root()` to a `SourceFile` node; schema verification
+runs before the finished tree is promoted.
 
-The parser emits `ModuleDeclaration`, `ImportDeclaration`, and
-`ExportDeclaration` nodes directly through the schema. Top-level source
-statements are represented by the `SourceFile.statements` `NodeList`.
+The replayed tree contains `ModuleDeclaration`, `ImportDeclaration`, and
+`ExportDeclaration` nodes through the schema. Top-level source statements are
+represented by the `SourceFile.statements` `NodeList`.
 
 ## Binder Contract
 
