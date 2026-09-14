@@ -2,7 +2,7 @@
 rfc: 51
 title: Query Final-Seal And Text-Scanning Evidence
 type: compiler
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [error-system, ir-backend, module-system, rfc, task-router, verification]
@@ -13,10 +13,10 @@ area: compiler
 requires: [17, 21, 28, 47]
 supersedes: []
 superseded-by: []
-discussion: TBD
+discussion: docs/rfc/tracking/0051-query-final-seal-and-text-scanning-evidence-review.md#discussion-record
 decision: TBD
 implementation: TBD
-tracking-issue: TBD
+tracking-issue: docs/rfc/tracking/0051-query-final-seal-and-text-scanning-evidence-review.md#decision-record
 ---
 
 # RFC 0051: Query Final-Seal And Text-Scanning Evidence
@@ -348,3 +348,4 @@ No release or runtime concern.
 | Date | Status | Notes |
 |---|---|---|
 | 2026-09-14 | DRAFT | Initial draft from the 2026-09-14 architecture audit. |
+| 2026-09-14 | REVIEW | Frozen for required-owner review; tracker and SHA-256 snapshot bound |

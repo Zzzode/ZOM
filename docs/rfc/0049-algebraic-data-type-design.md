@@ -2,7 +2,7 @@
 rfc: 49
 title: Algebraic Data Type Design
 type: language
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [binder-checker, error-system, ir-backend, lexer-parser, module-system, rfc, runtime-memory, spec-audit, verification]
@@ -13,10 +13,10 @@ area: language
 requires: [5, 7, 9, 10]
 supersedes: []
 superseded-by: []
-discussion: TBD
+discussion: docs/rfc/tracking/0049-algebraic-data-type-design-review.md#discussion-record
 decision: TBD
 implementation: TBD
-tracking-issue: TBD
+tracking-issue: docs/rfc/tracking/0049-algebraic-data-type-design-review.md#decision-record
 ---
 
 # RFC 0049: Algebraic Data Type Design
@@ -452,3 +452,4 @@ DRAFT.
 | Date | Status | Notes |
 |---|---|---|
 | 2026-09-14 | DRAFT | Initial draft consolidated from the 2026-06 ADT design note; all diagnostic codes marked proposed. |
+| 2026-09-14 | REVIEW | Frozen for required-owner review; tracker and SHA-256 snapshot bound |

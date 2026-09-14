@@ -2,7 +2,7 @@
 rfc: 50
 title: Cross-Stage IR Revision Identity Scope
 type: compiler
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [ir-backend, module-system, rfc, verification]
@@ -13,10 +13,10 @@ area: compiler
 requires: [10, 13, 15, 17, 21]
 supersedes: []
 superseded-by: []
-discussion: TBD
+discussion: docs/rfc/tracking/0050-cross-stage-ir-revision-identity-scope-review.md#discussion-record
 decision: TBD
 implementation: TBD
-tracking-issue: TBD
+tracking-issue: docs/rfc/tracking/0050-cross-stage-ir-revision-identity-scope-review.md#decision-record
 ---
 
 # RFC 0050: Cross-Stage IR Revision Identity Scope
@@ -321,3 +321,4 @@ time, but that is not a goal and no performance gate is added.
 | Date | Status | Notes |
 |---|---|---|
 | 2026-09-14 | DRAFT | Initial draft from the 2026-09-14 architecture audit. |
+| 2026-09-14 | REVIEW | Frozen for required-owner review; tracker and SHA-256 snapshot bound |
