@@ -117,6 +117,10 @@ not reused.
 | [RFC 0046](0046-forced-error-operator-panic-abort-abi.md) | Forced Error Operator Panic Abort ABI | DRAFT | compiler | compiler | rfc | [Acceptance Criteria](0046-forced-error-operator-panic-abort-abi.md#acceptance-criteria) | TBD |
 | [RFC 0047](0047-diagnostics-architecture.md) | Diagnostics Architecture | LANDED | compiler | compiler | rfc | [Review Tracker](tracking/0047-review-and-implementation.md) | [Implementation Tracker](tracking/0047-review-and-implementation.md#implementation-tracker) |
 | [RFC 0048](0048-recursive-ir-construction-and-structural-verification.md) | Recursive IR Construction And Structural Verification | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0048-review-and-implementation.md) | TBD |
+| [RFC 0049](0049-algebraic-data-type-design.md) | Algebraic Data Type Design | DRAFT | language | language | rfc | [Acceptance Criteria](0049-algebraic-data-type-design.md#acceptance-criteria) | TBD |
+| [RFC 0050](0050-cross-stage-ir-revision-identity-scope.md) | Cross-Stage IR Revision Identity Scope | DRAFT | compiler | compiler | rfc | [Acceptance Criteria](0050-cross-stage-ir-revision-identity-scope.md#acceptance-criteria) | TBD |
+| [RFC 0051](0051-query-final-seal-and-text-scanning-evidence.md) | Query Final-Seal And Text-Scanning Evidence | DRAFT | compiler | compiler | rfc | [Acceptance Criteria](0051-query-final-seal-and-text-scanning-evidence.md#acceptance-criteria) | TBD |
+| [RFC 0052](0052-rfc-granularity-and-internal-change-threshold.md) | RFC Granularity And Internal-Change Threshold | DRAFT | process | process | rfc | [Acceptance Criteria](0052-rfc-granularity-and-internal-change-threshold.md#acceptance-criteria) | TBD |
 
 ## Status Values
 
