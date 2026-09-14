@@ -1,19 +1,21 @@
 # IR Debugging And Dumps
 
-Updated: 2026-07-24
+Updated: 2026-09-14
 
 ## Authority And Status
 
 | Field | Value |
 |---|---|
 | Authority | Non-normative contributor workflow |
-| Coverage | Current HIR inspection, Built MIR record access, tests, and architecture gate |
-| HIR implementation | [`hir-module.cc`](../../../compiler/hir/hir-module.cc) |
+| Coverage | Current HIR and MIR canonical dump surfaces, record access, tests, and architecture gate |
+| HIR implementation | [`compiler/hir/`](../../../compiler/hir/) |
 | Built MIR implementation | [`built-mir.cc`](../../../compiler/mir/built-mir.cc) |
 | CLI implementation | [`zomc.cc`](../../../utils/zomc/zomc.cc) |
 
-The compiler currently has a deterministic HIR diagnostic dump. It does not
-have a MIR text dump, IR pass-dump framework, or CLI HIR/MIR/LIR emission mode.
+The compiler has a deterministic HIR diagnostic dump and a deterministic
+canonical-record MIR emission mode used by the RFC 0048 corpus parity
+channel. It does not have a human-readable MIR text dump, an IR pass-dump
+framework, or CLI LIR/LLVM emission modes.
 
 ## HIR Dump
 
@@ -50,22 +52,30 @@ verifier.
 - the computed `MirRevisionId`.
 
 The byte records exist so the verifier can independently reproduce the revision
-contract. They are not a human-readable dump or stable external codec.
+contract. They are not a stable external codec.
 
-There is no `VerifiedBuiltMir::dump()`, `--emit=mir`, `.zmir` artifact, or
+The CLI `--emit=mir` selection renders each canonical function record as
+framed hex text together with the revision digest, deterministically and
+independent of build path; `--emit=hir` renders the HIR dump. These modes back
+the process and IR channels of `scripts/check-ir-parity.py`. There is no
+human-readable `VerifiedBuiltMir::dump()`, no `.zmir` artifact, and no
 before/after pass-dump mechanism. The absence of those surfaces must remain
 visible in contributor documentation and test expectations.
 
 ## Session Inspection
 
-The compiler session exposes verified HIR and Built MIR collections to native
-integration tests after successful checking. These accessors are useful for
-asserting exact identities, lineages, statements, terminators, records, and
-revisions.
+The compiler session exposes verified HIR, Built MIR, ownership-checked MIR,
+validated ownership proofs, and executable MIR collections to native
+integration tests after successful checking (see
+[ownership-and-executable-mir.md](ownership-and-executable-mir.md)). These
+accessors are useful for asserting exact identities, lineages, statements,
+terminators, records, and revisions.
 
-They are not a user-facing command-line inspection contract. The current CLI
-can emit AST. Its dispatch and binary selections terminate at explicit
-unavailable-capability boundaries, and it has no HIR or MIR selection.
+They are not a user-facing command-line inspection contract. The CLI exposes
+AST, HIR, and MIR dump selections; the binary and run paths additionally
+produce objects and linked executables internally, but there is no explicit
+`--emit=lir`, `--emit=llvm-ir`, or `--emit=obj` selection yet (see
+[llvm-backend-and-object-emission.md](llvm-backend-and-object-emission.md)).
 
 ## Native Debugging Workflow
 
@@ -88,9 +98,12 @@ The most relevant native tests are:
 
 | Test source | What it establishes |
 |---|---|
-| [`hir-module-test.cc`](../../../tests/unittests/compiler/hir/hir-module-test.cc) | HIR lineage, scalar records, constants, deterministic identity, and dump behavior |
-| [`built-mir-test.cc`](../../../tests/unittests/compiler/mir/built-mir-test.cc) | Built MIR empty and non-empty codec oracles |
-| [`compiler-session-package-test.cc`](../../../tests/unittests/compiler/driver/compiler-session-package-test.cc) | End-to-end scalar shapes, selected corruption rejection, and no partial publication |
+| [`hir-module-test.cc`](../../../tests/unittests/compiler/hir/hir-module-test.cc) | HIR lineage, emitted records for the admitted families, deterministic identity, and dump behavior |
+| [`built-mir-test.cc`](../../../tests/unittests/compiler/mir/built-mir-test.cc) | Built MIR empty and non-empty codec oracles and emitted scalar/call/control shapes |
+| [`compiler-session-package-test.cc`](../../../tests/unittests/compiler/driver/compiler-session-package-test.cc) | End-to-end admitted shapes, selected corruption rejection, and no partial publication |
+| [`tests/unittests/compiler/ownership/`](../../../tests/unittests/compiler/ownership/) | Fact, overlay, lineage-mutation, drop, and proof-validation behavior |
+| [`tests/unittests/compiler/lir/`](../../../tests/unittests/compiler/lir/) | Lowered LIR shapes, scalar stores, and the algebra codec oracle |
+| Corpus parity baselines | Process channel over 923 sources and IR-channel HIR/MIR dump hashes over the 64 clean sources |
 
 Use the native debugger for the host platform against the sanitizer or debug
 compiler executable when an invariant failure needs control-flow inspection:
@@ -135,9 +148,10 @@ or inspection mode as implemented.
 ## Known Gaps
 
 - No human-readable Built MIR dump exists.
-- No CLI HIR or MIR emission mode exists.
 - No before/after lowering or pass-pipeline dump mechanism exists.
-- No LIR or LLVM inspection surface exists because those stages are absent.
+- No explicit LIR or LLVM IR CLI inspection surface exists;
+  `LlvmTranslationResult` retains textual IR and object bytes in-process for
+  tests but exposes no user selection.
 - HIR text is incomplete and non-reversible.
 - Built MIR corruption testing covers selected live shapes, not a general CFG
-  verifier.
+  verifier (pending RFC 0048 structural verification phases).

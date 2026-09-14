@@ -1,6 +1,6 @@
 # ZOM Compiler IR Design Notes
 
-Updated: 2026-07-24
+Updated: 2026-09-14
 
 This directory explains the intermediate representations and lowering
 boundaries that exist in the production compiler. It is a contributor guide,
@@ -39,27 +39,30 @@ flowchart LR
     H --> MC["Built MIR candidate"]
     MC --> MV["Built MIR verifier"]
     MV --> R["VerifiedBuiltMir"]
-    R -. "not implemented" .-> O["Ownership proof"]
-    O -. "not implemented" .-> X["Executable MIR"]
-    X -. "not implemented" .-> L["Target LIR"]
-    L -. "not implemented" .-> N["LLVM and native artifacts"]
+    R --> O["Ownership facts and event overlay"]
+    O --> X["VerifiedExecutableMir"]
+    X -. "admitted shapes only" .-> L["Target LIR"]
+    L -. "admitted shapes only" .-> N["LLVM and native artifacts"]
 ```
 
-The session publishes `VerifiedHirModule` and `VerifiedBuiltMir` atomically for
-the currently admitted scalar subset. Production ownership analysis,
-drop/coroutine elaboration, executable MIR, target LIR, LLVM translation,
-object emission, linking, and native execution are absent.
+The session publishes `VerifiedHirModule` and `VerifiedBuiltMir` for the
+currently admitted constructor set, and additionally stages and commits the
+ownership event overlay, validated ownership proofs, ownership-checked MIR,
+and `VerifiedExecutableMir` inside the same atomic transaction. The ownership
+rail is partial (reducible CFGs and a bounded borrow surface). Target LIR,
+LLVM translation, object emission, linking, and native execution exist only as
+the admitted Linux x86-64 backend slice described in their own notes.
 
 ## Status Matrix
 
 | Layer or boundary | Production status | Current live profile |
 |---|---|---|
 | Checked-module handoff | Implemented | Exact checker, dispatch, interface, and borrow-evidence lineage |
-| Semantic HIR | Implemented, partial | Module scalar declarations and zero-parameter functions whose body is one scalar-literal return |
-| Built MIR | Implemented, partial | One-block scalar initializer and scalar-return function shapes |
-| Ownership and executable MIR | Not implemented | Borrow evidence is upstream lineage, not an ownership proof |
-| Target LIR | Not implemented | The design remains in [RFC 0021](../../rfc/0021-target-aware-lir-and-llvm-translation.md), currently `DRAFT` |
-| LLVM and native backend | Not implemented | No LLVM IR, object, link, or binary publication |
+| Semantic HIR | Implemented, partial | Recursive destination-driven builder for the admitted constructor families (literal/reference, binary, aggregate projection, local write); other shapes stay on the legacy materialization path |
+| Built MIR | Implemented, partial | Single- and multi-block bodies: scalar initializers and returns, calls, four-block conditional diamonds, reducible loops, projections, borrow scopes |
+| Ownership and executable MIR | Implemented, partial | Bounded fact derivation, proof validation, drop/coroutine elaboration, and `VerifiedExecutableMir` over admitted reducible CFGs; see [Ownership And Executable MIR](ownership-and-executable-mir.md) |
+| Target LIR | Implemented, partial, unverified as a capability | Integer slot-machine slice with shape-specific lowering; no independent LIR verifier and no session-published LIR capability; see [LIR](lir.md) |
+| LLVM and native backend | Implemented, partial | Mandatory `verifyModule`, object emission, linking, publication, and Linux x86-64 execution for admitted shapes; see [LLVM Backend And Object Emission](llvm-backend-and-object-emission.md) |
 
 ## Cross-Layer Invariants
 
@@ -68,8 +71,10 @@ The live IR pipeline enforces these rules:
 1. **No semantic re-resolution.** Lowering consumes verified semantic facts and
    canonical identities; it does not repeat binding, inference, dispatch, or
    borrow-surface selection.
-2. **Target independence.** Current HIR and Built MIR do not consume target
-   layout, ABI, object-format, or LLVM state.
+2. **Target independence of HIR and Built MIR.** HIR and Built MIR proper do
+   not consume target layout, ABI, object-format, or LLVM state. Successor
+   stages (LIR, layout, target selection, LLVM translation) own those
+   concerns.
 3. **Verifier-owned capability creation.** Builders create candidates. Only the
    corresponding verifier may create a public verified capability;
    `CompilerSession` separately owns atomic session adoption.
@@ -80,8 +85,9 @@ The live IR pipeline enforces these rules:
    declarations and functions use canonical deterministic order; Built MIR
    records and revisions are recomputable.
 6. **Atomic adoption.** `CompilerSession::checkSources()` commits checker
-   repositories, evidence, HIR, and MIR together only after every module
-   succeeds.
+   repositories, evidence, HIR, Built MIR, the ownership overlay and validated
+   proofs, ownership-checked MIR, and verified executable MIR together only
+   after every module succeeds.
 7. **Representation is not reachability.** A representable place projection,
    statement, terminator, phase, or failure site is not production behavior
    unless the live builder emits it and the verifier proves it.
@@ -94,12 +100,22 @@ The live IR pipeline enforces these rules:
 |---|---|
 | [Semantic HIR](hir.md) | Current HIR model, admitted subset, lineage, builder, verifier, and dump |
 | [Built MIR](built-mir.md) | Representation capacity, live producer profile, revision, and verified guarantees |
+| [Ownership And Executable MIR](ownership-and-executable-mir.md) | Ownership fact builders, event overlay, proof validation, drop/coroutine elaboration, and the executable-MIR capability |
+| [LIR](lir.md) | The admitted MIR to LIR lowering slice and the missing independent verification boundary |
+| [LLVM Backend And Object Emission](llvm-backend-and-object-emission.md) | LLVM translation, object emission, link/publication, and Linux x86-64 execution |
+| [Target Registry And Toolchain Discovery](target-registry-and-toolchain-discovery.md) | Verified target selection, target specs, and hermetic toolchain closure |
+| [Error-Union Layout Codec](error-union-layout-codec.md) | RFC 0006 groundwork codec without a production consumer |
 | [Lowering And Verification](lowering-and-verification.md) | Candidate-to-capability pattern, failure algebra, and atomic session publication |
+| [Lowerable Constructs](lowerable-constructs.md) | The construct-by-construct admission inventory from source to native execution |
+| [Link Publication Transaction](link-publication-transaction.md) | Recoverable publication and executable inspection |
 | [Debugging And Dumps](debugging-and-dumps.md) | Available inspection surfaces, native checks, and missing dump support |
 
-There is no `lir.md`. Add one only when the repository contains a production
-LIR builder, independent verifier, session publication or downstream consumer,
-and project-native tests. Until then, LIR belongs in RFC 0021 and its tracker.
+The addition criteria for a new IR note are that the repository contains a
+production builder, an independent capability verifier, a session publication
+or access path, a downstream consumer, and project-native tests. A note may
+describe a partial stage that is missing one leg (for example LIR lacks an
+independent verifier and session capability) only by naming the missing leg
+and the RFC that owns it; it must not present the stage as fully current.
 
 ## Required Shape For New Notes
 

@@ -1,6 +1,6 @@
 # Built MIR
 
-Updated: 2026-07-24
+Updated: 2026-09-14
 
 ## Authority And Status
 
@@ -13,9 +13,15 @@ Updated: 2026-07-24
 | Native verification | [`built-mir-test.cc`](../../../tests/unittests/compiler/mir/built-mir-test.cc), [`compiler-session-package-test.cc`](../../../tests/unittests/compiler/driver/compiler-session-package-test.cc) |
 
 Built MIR is a live, revision-bound, independently verified artifact. Its
-current producer and verifier support only scalar module initialization and
-scalar-literal returns. General CFG lowering, ownership analysis, cleanup, and
-executable MIR are not current capabilities.
+producer covers the admitted constructor inventory: scalar module
+initialization, scalar and parameter/local returns, nominal aggregates and
+field projections, primitive binary and comparison rvalues, mutable local
+writes, same-module direct and one admitted receiver call, four-block
+conditional diamonds, reducible while loops, and bounded borrow/reborrow and
+unsafe-block shapes. The construct-level inventory is
+[lowerable-constructs.md](lowerable-constructs.md). General CFG construction
+and general ownership completeness remain open; see
+[ownership-and-executable-mir.md](ownership-and-executable-mir.md).
 
 ## Role In The Pipeline
 
@@ -24,9 +30,11 @@ borrow-evidence lineage. It creates a mutable `BuiltMirCandidate`.
 `BuiltMirVerifier` independently checks the candidate and is the sole creator
 of `VerifiedBuiltMir`.
 
-The current session retains verified Built MIR for inspection and future
-successor stages. There is no production ownership analyzer, executable-MIR
-consumer, target lowering, or backend consumer.
+The session retains verified Built MIR and feeds it into the production
+ownership rail (event overlay, validated proofs, ownership-checked MIR, and
+`VerifiedExecutableMir`). The admitted backend slice reaches Built MIR through
+the ownership wrapper; that shortcut is recorded in
+[llvm-backend-and-object-emission.md](llvm-backend-and-object-emission.md).
 
 ## Representation
 
@@ -37,11 +45,11 @@ The data model can represent:
 | Body-local identity | One-based `MirLocalId`, `MirSourceScopeId`, and `MirBlockId` |
 | Place | Local plus field, index, dereference, downcast, or subslice projections |
 | Operand | `Copy`, `Move`, or `Constant` |
-| Rvalue | `Use` |
+| Rvalue | `Use`, `NominalAggregate`, `Comparison`, or `Arithmetic` |
 | Initialization | `Initialize` or `Overwrite` |
-| Statement | `Assign`, `StorageLive`, `StorageDead`, `BorrowCreation`, `SetDiscriminant`, or `Deinitialize` |
+| Statement | `Assign`, `StorageLive`, `StorageDead`, `BorrowCreation`, `SetDiscriminant`, `Deinitialize`, or `UnsafeScopeBoundary` |
 | Terminator | `Return`, `Unreachable`, `Call`, `Goto`, or `SwitchInt` |
-| Local kind | `ModuleInitializerResult` or `Temporary` |
+| Local kind | `ModuleInitializerResult`, `Temporary`, `FunctionResult`, `UserLocal`, or `Parameter` |
 | Function kind | `ModuleInitializer` or `Function` |
 
 A `MirPlace` carries its local and projection sequence. It does not carry an
@@ -51,46 +59,29 @@ supports every listed alternative.
 
 ## Production Profile
 
-### Scalar module initializer
-
-Each admitted module scalar declaration becomes one MIR function containing:
-
-- kind `ModuleInitializer`;
-- one source scope;
-- one `ModuleInitializerResult` local;
-- one basic block;
-- `StorageLive(local)`;
-- `Assign(local, Use(Constant), Initialize)`; and
-- `Return(Move(local))`.
-
-### Scalar-return function
-
-Each admitted HIR function becomes one MIR function containing:
-
-- kind `Function`;
-- one source scope;
-- no MIR locals;
-- one basic block;
-- no statements; and
-- `Return(Constant)`.
+The builder emits the admitted shapes inventoried in
+[lowerable-constructs.md](lowerable-constructs.md): single-block scalar
+initializers and returns, sequential scalar locals, nested arithmetic through
+synthesized temporaries, nominal aggregate initialization with field
+projection, mutable local writes, two-block same-module calls with
+continuation blocks, four-block conditional diamonds driven by `SwitchInt` on
+a comparison rvalue, reducible loops with `Goto`, and bounded borrow scopes
+with `StorageLive`/`StorageDead`.
 
 Functions are sorted by complete canonical owner key before their records and
-module revision are computed.
+module revision are computed. The recursive destination-driven HIR builder
+(RFC 0048) changes which source shapes reach this profile but not the emitted
+MIR bytes; the corresponding recursive MIR builder and structural MIR
+verifier remain future RFC 0048 phases, so the current verifier still dispatches
+per emitted shape.
 
 ## Representable But Not Emitted
 
-The production builder does not emit:
-
-- place projections;
-- `Copy` operands;
-- temporary locals;
-- overwrite assignment;
-- `StorageDead`, `BorrowCreation`, `SetDiscriminant`, or `Deinitialize`;
-- `Unreachable`;
-- `Goto` and `SwitchInt` branch terminators, which the algebra represents but
-  no production lowering emits; or
-- drops, assertions, panics, unwind edges, or general multi-block control
-  flow beyond the admitted call shapes.
+The production builder still does not emit general projections beyond the
+admitted aggregate field set, unwind edges, drop/panic terminators, suspend or
+resume, general multi-function call coverage, or irreducible control flow.
+Schema alternatives without a producer remain unreachable and are not
+production behavior.
 
 ## Revision And Canonical Records
 
@@ -115,46 +106,57 @@ The current verifier proves the exact live profile:
 - borrow-evidence lease and revision match;
 - function and canonical-record cardinalities match HIR;
 - every MIR function uniquely maps to one HIR declaration or function;
-- module initializers and scalar-return functions have the exact shapes above;
+- emitted blocks, statements, rvalues, and terminators match the admitted
+  shape inventory including conditional diamonds, reducible loops, and
+  same-module call continuations;
 - owners are in strict canonical order;
 - every canonical function record equals an independent re-encoding;
 - the module revision equals an independent recomputation; and
 - evidence remains resolvable when the immutable capability is published.
 
-This is not a general CFG, projection, type, dominance, ownership, or
-initialization verifier. The exact scalar shapes make the current broader
-schema alternatives unreachable.
+This is not yet a general structural CFG, projection-type, dominance, or
+ownership verifier. RFC 0048 replaces the per-shape validators and global
+count equations with structural graph verification; until that phase lands the
+per-shape verifier dispatch remains the production mechanism, and its admitted
+shapes are exactly the lowering inventory.
 
 ## Ownership Boundary
 
 `VerifiedBuiltMir` binds verified borrow-evidence lineage. Borrow evidence
-describes the admitted frontend borrow surface; it is not ownership-event
-dataflow or a proof that MIR obeys move, loan, region, reborrow, drop, linear,
-unsafe, or concurrency rules.
+describes the admitted frontend borrow surface; by itself it is not
+ownership-event dataflow or a proof that MIR obeys move, loan, region,
+reborrow, drop, linear, unsafe, or concurrency rules.
 
-No `VerifiedOwnershipFacts`, ownership-checked MIR, drop-elaborated MIR,
-coroutine-elaborated MIR, or executable MIR capability is produced. A
-`BorrowCreation` statement alternative does not change that boundary.
+That proof is now produced by the successor rail: the event overlay,
+independent fact builders, `OwnershipProofValidation`, ownership-checked MIR,
+drop/coroutine elaboration, and `VerifiedExecutableMir`, all described in
+[ownership-and-executable-mir.md](ownership-and-executable-mir.md). The
+boundary remains partial: a `BorrowCreation` statement or a fact builder
+existing on disk is not evidence that the general ownership model is complete.
 
 ## Inspection And Native Verification
 
-`VerifiedBuiltMir` exposes its functions and canonical function records. It has
-no human-readable `dump()` API and the CLI has no MIR emission mode.
+`VerifiedBuiltMir` exposes its functions and canonical function records. The
+CLI provides `--emit=mir`, rendering each canonical function record as framed
+hex plus the revision digest deterministically for the RFC 0048 parity
+channel; there is still no human-readable `dump()` API or pass-dump framework.
 
-Native tests cover the canonical empty and non-empty codec oracles, exact scalar
-initializer and scalar-return shapes, selected corruption rejection, evidence
-lineage, and atomic session publication. The IR architecture gate checks direct
-HIR-to-Built-MIR wiring, the single canonical domain, target independence, and
-selected forbidden alternate rails.
+Native tests cover the canonical empty and non-empty codec oracles, the
+emitted scalar/call/conditional/loop/aggregate shapes, selected corruption
+rejection, evidence lineage, and atomic session publication. The IR
+architecture gate checks direct HIR-to-Built-MIR wiring, the single canonical
+domain, target independence, and selected forbidden alternate rails.
 
 ## Known Gaps
 
-- General CFG construction and verification are absent.
-- Calls, drops, cleanup edges, error control flow, assertions, panics, and
-  coroutine control flow are absent.
-- Place/projection typing and validation are not general.
-- Production ownership analysis and ownership-result publication are absent.
-- Drop, coroutine, and executable MIR artifacts are not produced.
-- There is no MIR dump, pass pipeline, target lowering, or backend consumer.
-- MIR-specific unit coverage is currently concentrated on codec oracles; most
-  producer and corruption coverage is in session integration tests.
+- General structural CFG construction and verification are pending the RFC
+  0048 recursive MIR builder and structural verifier phases.
+- General drop, unwind, panic, and coroutine terminators and complete
+  ownership typestate are open (see the ownership note).
+- Place/projection typing is not general.
+- There is no pass pipeline or human-readable MIR dump; `--emit=mir` is the
+  canonical hex surface.
+- Target lowering through a verified LIR capability is absent; the current
+  backend slice is documented separately.
+- MIR-specific unit coverage remains concentrated on codec oracles and the
+  admitted shapes; most corruption coverage is in session integration tests.

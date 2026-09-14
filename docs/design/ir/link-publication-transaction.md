@@ -1,26 +1,24 @@
-# Link Publication Transaction and Capability Shapes (RFC 0043 refinement, PARTIALLY IMPLEMENTED)
+# Link Publication Transaction and Capability Shapes (RFC 0043 refinement)
 
-Status: PARTIALLY IMPLEMENTED
+Status: LANDED on the Linux x86-64 slice
   - Landed: D2 (VerifiedSysroot); the D3 / D3b input-open, exec-by-descriptor,
-    and transaction-root snapshot foundation; and D4 (transaction-owned output
-    candidate).
-  - PROPOSED, pending adversarial review: D1 (publication transaction). A first
-    D1 draft was rejected 2026-08-29 with seven blockers; the section below is the
-    revised proposal and is NOT yet approved.
-  - Proposed, pending implementation: D5.
+    and transaction-root snapshot foundation; D4 (transaction-owned output
+    candidate); D1 (manifest-last recoverable publication transaction); and
+    D5 (`linkAndPublish` with bounded ELF64/Mach-O64 inspection).
+  - The production path compiles, links, inspects, publishes, and executes the
+    admitted Linux x86-64 binary through `zomc run` and `zomc build`.
+  - Remaining work is target breadth (AArch64 entry objects, Mach-O execution,
+    general entry-point selection), not the D1-D5 contract.
 Owner: ir-backend
 Feeds: RFC 0043 "Platform Link And Executable Publication"
 
-> This note is part contract, part landed design. The D2 sysroot capability, the
-> D3/D3b input-snapshot + exec-by-descriptor foundation, and D4 (transaction-owned
-> output candidate) have landed across several reviewed commits; D1 (publication
-> transaction) is a PROPOSED contract under adversarial review (a first draft was
-> rejected 2026-08-29) and D5 (consuming operation) remains proposed; neither is
-> implemented. It closes the design questions a 2026-08-29 adversarial review
-> raised against the first link-driver implementation before the remaining
-> slices land. Per `docs/design/ir/README.md` authority order, an approved shape
-> lands in RFC 0043 first and only then in code; this file is the reviewable
-> proposal, and the "Implementation order" section marks which steps are done.
+> D1 through D5 are landed on the admitted Linux x86-64 slice. The contract
+> text below is retained as the design record; the 2026-08-29 rejection of the
+> first D1 draft is decision history (the seven blockers were fixed in the
+> revised design before landing), not a current status. The "Implementation
+> order" section marks the landing state of each step. Per
+> `docs/design/ir/README.md` authority order, RFC 0043 and its tracker remain
+> the normative home; this note explains the landed transaction design.
 
 ## Problem
 
@@ -45,14 +43,15 @@ shared four unresolved contract gaps that leaf patches cannot close:
 
 ## Decisions
 
-### D1. Publication visibility and atomicity: manifest-last commit marker (PROPOSED, pending adversarial review)
+### D1. Publication visibility and atomicity: manifest-last commit marker (LANDED)
 
-> Status: PROPOSED. A first D1 draft was rejected on 2026-08-29 with seven
+> Status: LANDED. A first D1 draft was rejected on 2026-08-29 with seven
 > blockers (compound rename+fsync crash states, journal-delete ordering, journal
 > established too late, an outcome type that could not express a snapshot-only
 > debt, missing manifest<->candidate live binding, non-exclusive final renames,
-> and an unspecified journal format). This section is the revised proposal and is
-> not yet approved; no D1 code is authorized until it passes review.
+> and an unspecified journal format). The revised design below resolved all
+> seven and is implemented by `publishLinkedOutput`; the rejection is retained
+> as decision history.
 
 **Decision:** the `.zom-artifact` manifest is the sole commit marker of a
 recoverable publication transaction. The executable and manifest remain siblings
@@ -194,9 +193,8 @@ tampering.
 
 #### D1 operation shape, recovery obligations, and journal lifecycle
 
-This subsection pins the D1 contract into an implementable shape so the code
-slice has a fixed target. It is a PROPOSED contract under adversarial review, not
-approved and not landed code.
+This subsection pins the D1 contract into an implementable shape. It is the
+landed contract implemented by the publication transaction code.
 
 **Operation shape.** D1 is one consuming operation that takes the D4
 `LinkedOutputCandidate` by move (so the still-live transaction root and its
@@ -600,7 +598,7 @@ consumed nor transferred. After `discardAndCleanup` (or, from D5 on, the
 verifier/publisher's consumption), the candidate is moved-from: its handle and
 paths can no longer be read and it cannot be consumed again.
 
-### D5. Consuming link -> inspect -> manifest -> publish operation
+### D5. Consuming link -> inspect -> manifest -> publish operation (LANDED)
 
 **Decision:** a single consuming operation chains the steps; intermediate
 value types do not claim "Verified" before their checks run. Its result is an
@@ -753,7 +751,7 @@ RFC 0043 records the outcome type.
    candidate's SAME held handle and re-checks the on-disk entry identity; the
    D4-captured snapshot is not the final proof. The adversarial audit and
    sanitizer/architecture/recovery gates are closed.
-5. **[landed in worktree]** `ExecutableInspectionProfile` is part of
+5. **[landed]** `ExecutableInspectionProfile` is part of
    `VerifiedLinkPlan` and `LinkPlanId`; the 518-byte oracle
    (`54e60703e2ea42b6f0b45f616f41f3b417b298345edf5e8d6a79b5d5817c8dfd`) freezes
    the current profile-bearing plan, including the runtime reference domain. The

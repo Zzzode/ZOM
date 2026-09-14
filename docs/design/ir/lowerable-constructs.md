@@ -1,23 +1,28 @@
-# Lowerable Constructs Inventory (Frontend to Built MIR)
+# Lowerable Constructs Inventory
 
-Updated: 2026-08-27. HEAD at authoring: `a0f894ab`.
+Updated: 2026-09-14. Predicate names are authoritative; the parenthesized
+line numbers were recorded at HEAD `a0f894ab` and are retained as a historical
+lookup aid only (line numbers drift as the files change). Look up a predicate
+by name in `surface-admission.cc` and a test by its `ZC_TEST` label.
 
 This note is the O1/KR1.4 deliverable of `docs/plan/2026-q4.md`: an
 evidence-backed enumeration of every source-language construct that currently
-lowers **end-to-end to verified Built MIR**, with a measurable count against the
-2026-08-25 entry-state baseline. It follows the required shape in
-`docs/design/ir/README.md`.
+lowers **end-to-end through the frontend to Built MIR and the ownership rail**.
+It follows the required shape in `docs/design/ir/README.md`.
 
 ## What "lowers end-to-end" means here
 
-"End-to-end" is the **frontend-to-MIR boundary only**: a construct that is
+The inventory boundary is the frontend-to-Built-MIR path: a construct that is
 admitted by surface admission, checked, assembled into a `VerifiedHirModule`,
-and built into a `VerifiedBuiltMir` published by `CompilerSession`. It does
-**not** mean "compiles to a native binary." There is no backend: no target LIR,
-no ABI lowering, no LLVM IR, no object emission, no linking (see
-`docs/design/ir/README.md` Status Matrix and `docs/plan/2026-q4.md` Entry state
-lines 33-34). The last artifact any construct below reaches is verified Built
-MIR.
+built into a `VerifiedBuiltMir` published by `CompilerSession`, and run through
+the ownership overlay and executable-MIR verification of the same transaction.
+A subset of the rows below additionally reaches a native artifact: the
+admitted scalar initializer, conditional, loop, aggregate-field, and
+same-module call shapes continue through the MIR-to-LIR slice, mandatory LLVM
+verification, object emission, hermetic linking, and Linux x86-64 execution.
+That backend slice is partial and shape-selected; its exact limits are
+[lir.md](lir.md) and [llvm-backend-and-object-emission.md](llvm-backend-and-object-emission.md),
+not this inventory.
 
 ## Role in the pipeline
 
@@ -50,9 +55,16 @@ the rows below are produced by the live builder and proven by the verifier.
 
 ## Inventory: constructs that lower end-to-end to Built MIR
 
-Predicate line numbers are in `surface-admission.cc` at HEAD `a0f894ab`. Test
-names are `ZC_TEST` labels; the file is abbreviated `hir-module-test.cc` unless
-noted.
+Predicate names and test labels are authoritative. The parenthesized line
+numbers were recorded at HEAD `a0f894ab` and are retained as a historical
+lookup aid only; current predicate definitions in `surface-admission.cc`
+(2026-09-14) sit near `isAdmittedExpressionStatement:48`,
+`hasAdmittedArguments:117`, `isAdmittedDirectCall:137`,
+`isAdmittedReceiverCall:147`, `isAdmittedReferenceReborrow:164`,
+`isAdmittedLocalBorrow:189`, `isAdmittedErrorPostfix:205`,
+`isAdmittedPrimitiveBinary:232`, `isAdmittedAggregateInitializer:274`,
+`isAdmittedLoopStatement:413`, `isAdmittedConditionalBody:434`, and
+`isAdmittedFunctionBody:481`.
 
 | # | Construct | Admitting predicate (file:line) | HIR shape | MIR shape | Covering test (end-to-end) |
 |---|---|---|---|---|---|
@@ -162,8 +174,9 @@ with the reason:
 - **Error operators `?!` / `!!`.** `isAdmittedErrorPostfix` (`:207-222`) admits
   the postfix at the surface, but they are **spec-blocked**: no error-union
   value type exists, so a raising call forms no callable shape and
-  `ErrorUnionShapeFact` has zero producers (plan KR3.3 DROP verdict,
-  `body-checker.cc:1233`). Blocked on RFC 0006, not a frontend slice.
+  `ErrorUnionShapeFact` has zero producers (the empty fact map is emitted at
+  `body-checker.cc:3411` at the current HEAD). Blocked on RFC 0006, not a
+  frontend slice.
 - **`spawn`, `suspend`, `match`, `for`/`for-in`/`do-while`, `break`/`continue`,
   labeled statements, void `return`.** All hard-rejected in `admit`
   (`surface-admission.cc:772-808`) as un-admitted surface syntax; no HIR or MIR
@@ -177,6 +190,12 @@ with the reason:
   direct calls. Remaining call gap: general receiver-method dispatch beyond the
   one admitted `cell.read(1)` shape and generic-call dispatch, tracked in the
   RFC 0009 workstream, not here.
-- No ownership proof, executable MIR, LIR, LLVM, or native artifact consumes any
-  construct above (`docs/design/ir/README.md` Status Matrix). "End-to-end" stops
-  at `VerifiedBuiltMir`.
+- The ownership overlay, proof validation, executable-MIR verification, LIR,
+  LLVM translation, object emission, linking, and Linux x86-64 execution exist
+  as the partial successor slices documented in
+  [ownership-and-executable-mir.md](ownership-and-executable-mir.md),
+  [lir.md](lir.md), and
+  [llvm-backend-and-object-emission.md](llvm-backend-and-object-emission.md).
+  They cover the admitted scalar/conditional/loop/aggregate/call shapes, not
+  every row of this inventory; general receiver dispatch and generics stay
+  RFC 0009 work.

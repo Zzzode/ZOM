@@ -1,13 +1,13 @@
 # IR Lowering And Verification
 
-Updated: 2026-07-24
+Updated: 2026-09-14
 
 ## Authority And Status
 
 | Field | Value |
 |---|---|
 | Authority | Non-normative compiler implementation guide |
-| Coverage | Current checked-module, HIR, and Built MIR publication path |
+| Coverage | Current checked-module, HIR, Built MIR, ownership/executable-MIR, and the admitted LIR/backend publication path |
 | Governing decisions | [RFC 0010](../../rfc/0010-intermediate-representation-pipeline.md), [RFC 0013](../../rfc/0013-ownership-analysis-integration-boundary.md) |
 | Production integration | [`compiler-session.cc`](../../../compiler/driver/session/compiler-session.cc) |
 | Shared IR contracts | [`compiler/ir`](../../../compiler/ir/) |
@@ -57,7 +57,22 @@ flowchart TD
     MC --> MV["BuiltMirVerifier"]
     H --> MV
     MV --> M["VerifiedBuiltMir"]
+    M --> OVB["Event overlay builder"]
+    OVB --> OVC["Ownership fact builders and verifiers"]
+    OVC --> OVP["Ownership proof validation"]
+    OVP --> FZ["Ownership finalizer"]
+    FZ --> DRE["Drop and coroutine elaborators"]
+    DRE --> XV["Executable MIR verifier"]
+    XV --> XM["VerifiedExecutableMir"]
+    XM -. admitted slice .-> LI["MIR to LIR lowering"]
+    LI -. admitted slice .-> LT["LLVM translation with verifyModule"]
+    LT -. admitted slice .-> OB["Object, link, publication, execution"]
 ```
+
+The ownership chain and the LIR/backend slice are partial; their exact
+boundaries are [ownership-and-executable-mir.md](ownership-and-executable-mir.md),
+[lir.md](lir.md), and
+[llvm-backend-and-object-emission.md](llvm-backend-and-object-emission.md).
 
 ## Checked-Module Handoff
 
@@ -113,9 +128,11 @@ identity, lineage, verifier, structure, order, codec, and revision failures
 project to bounded compiler incidents. Output creation, external-process, and
 other source-less resource failures remain typed operational failures.
 
-The algebra also contains coordinates for successor phases and LIR. Those
-coordinates provide a closed vocabulary for RFC work; they do not establish a
-builder, verifier, publication, or consumer.
+The failure algebra also contains coordinates for successor phases and LIR.
+Those coordinates define the closed vocabulary used by the partial successor
+stages now on disk; they are not, by themselves, evidence that any phase is
+complete. In particular LIR currently has no independent verifier and no
+session-published capability (see [lir.md](lir.md)).
 
 ## Atomic Session Adoption
 
@@ -125,13 +142,20 @@ builder, verifier, publication, or consumer.
 2. build the checked-module handoff for each module;
 3. build and verify HIR;
 4. build and verify Built MIR;
-5. stop immediately on any source, capability, identity, or IR failure; and
-6. only after all modules succeed, move every staged repository and module
-   vector into session state.
+5. build the ownership event overlay and independently verified fact sets,
+   validate ownership proofs, finalize ownership-checked MIR, and run the drop
+   and coroutine elaborators and the executable-MIR verifier;
+6. stop immediately on any source, capability, identity, or IR failure; and
+7. only after all modules succeed, move every staged repository and module
+   vector (including the ownership and executable-MIR artifacts) into session
+   state.
 
-No checked facts, evidence, HIR, or MIR from that invocation become visible
-when any module fails. This is an all-module publication boundary, not a
-per-module best-effort cache.
+No checked facts, evidence, HIR, MIR, ownership facts, or executable MIR from
+that invocation become visible when any module fails. This is an all-module
+publication boundary, not a per-module best-effort cache. The LIR, object,
+link, and execution path runs outside this transaction through the CLI backend
+slice; its publication transaction is a separate, independently verified
+contract (see [link-publication-transaction.md](link-publication-transaction.md)).
 
 ## Determinism
 
@@ -171,11 +195,15 @@ named by `AGENTS.md`.
 
 ## Known Gaps
 
-- Ownership proof validation and ownership-result publication are absent.
-- General CFG, drop, cleanup, coroutine, and executable MIR stages are absent.
-- Target LIR, LLVM translation, object emission, linking, and native execution
-  are absent.
+- Ownership proof validation and executable-MIR publication run only for the
+  admitted shape set; general region, capture, typestate, drop, and coroutine
+  completeness is open.
+- LIR exists as a shape-specific integer slice without an independent
+  verifier or session capability, and the backend path is wired in the CLI
+  rather than the session and consumes Built MIR rather than executable MIR.
+- LLVM translation, object emission, linking, and native execution exist only
+  for the Linux x86-64 admitted slice with host-target selection.
 - The architecture gate proves selected structural boundaries, not full IR
   semantic correctness.
-- HIR candidate-corruption coverage and MIR general-algebra verification do not
-  yet exist.
+- General structural HIR/MIR candidate-corruption coverage is part of the
+  still-ongoing RFC 0048 work.
