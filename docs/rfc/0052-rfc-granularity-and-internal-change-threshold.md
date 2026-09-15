@@ -2,21 +2,21 @@
 rfc: 52
 title: RFC Granularity And Internal-Change Threshold
 type: process
-status: REVIEW
+status: DRAFT
 author: ZOM Compiler Team
 review-manager: rfc
-required-owners: [rfc, task-router]
+required-owners: [rfc, task-router, verification]
 approvers: []
 created: 2026-09-14
-updated: 2026-09-14
+updated: 2026-09-15
 area: process
 requires: []
 supersedes: []
 superseded-by: []
-discussion: docs/rfc/tracking/0052-rfc-granularity-and-internal-change-threshold-review.md#discussion-record
+discussion: TBD
 decision: TBD
 implementation: TBD
-tracking-issue: docs/rfc/tracking/0052-rfc-granularity-and-internal-change-threshold-review.md#decision-record
+tracking-issue: TBD
 ---
 
 # RFC 0052: RFC Granularity And Internal-Change Threshold
@@ -138,28 +138,45 @@ accepted contract - is always an ordinary commit, never an RFC.
 | User-visible CLI, output, file/lock format, diagnostics meaning | Yes | No | No |
 | Identity domain, canonical codec, verified-boundary schema | Yes | No | No |
 | New normative verification gate or gate semantics | Yes | No | No |
-| Design decision across two or more owners | Yes | Not if one owner suffices | No |
+| Design decision across two or more owners | Yes | No | No |
 | Internal per-family IR/builder/verifier refactor, byte-identical | No | No | Yes |
 | File/module decomposition within an owner surface | No | No | Yes |
 | Test-only seam, fixture, regression aid | No | Yes if cross-owner | Yes otherwise |
 | Drift repair to an existing accepted contract | No | No | Yes |
-| Process/agent/skill wording that changes authority | Yes | Simple clarifications may be a tracked change | No |
+| Process/agent/skill wording that changes authority | Yes | No | No |
+| Process/agent/skill clarification that preserves authority | No | Yes | Yes if wording-only |
 
 A "yes" in any full-RFC row requires the full path regardless of the other
-rows. The review manager may upgrade a lightweight item to a full RFC when
-review reveals a contract change, and may downgrade an RFC that turns out to
-be drift repair to a tracked change with the author's agreement.
+rows; when a cell is disputed the decision defaults up one tier (ordinary
+commit to tracked change, tracked change to full RFC). The `rfc` review
+manager adjudicates tier placement; `task-router` adjudicates when the dispute
+is about owner routing or authority wording. The review manager may upgrade a
+lightweight item to a full RFC when review reveals a contract change. A
+proposal that turns out to be drift repair is not "downgraded" through a new
+state edge: the proposal goes `REVIEW -> WITHDRAWN` (the only legal terminal
+edge), the proposal file is retained with a status-history row pointing at the
+replacement, and the work continues as an ordinary commit or a tracked change
+under the rules below. The proposal number is never reused.
 
 ### Lightweight tracked change format
 
 - no frontmatter proposal file and no status state machine;
-- a dated entry in an existing RFC tracker when one exists, otherwise a short
+- a dated entry in an existing RFC tracker when one exists (an RFC "owns" a
+  change when the change modifies the same contract area), otherwise a short
   file under `docs/rfc/tracking/changes/` with: problem, affected surfaces,
-  contract-preservation statement, verification commands;
-- a fixed short review window with one owning subagent; multi-round owner
-  review is explicitly not used;
-- an entry in a new "Tracked Changes" subsection of the RFC index so it stays
-  discoverable.
+  contract-preservation statement, and verification commands;
+- the single lightweight reviewer is the manifest owner of the changed paths;
+  `rfc` is only the process host and does not run multi-round review;
+- task-router routes a tracked change to that path owner exactly like an
+  ordinary change; no new trigger keyword is needed because routing is by
+  affected paths, not topic;
+- a review window of owner discretion (the review manager may set a short
+  fixed window per item); multi-round owner review is not used;
+- discoverability is a separate "Tracked Changes" subsection of the RFC
+  index. Tracked changes cannot occupy the main proposal table because
+  `check-rfc.py` requires every main-table row to correspond to a
+  frontmatter-bearing proposal; files under `docs/rfc/tracking/` are not
+  globbed as proposals.
 
 ### Disposition of the closure series
 
@@ -168,9 +185,11 @@ History is preserved; nothing is renumbered or deleted. Going forward:
 - closure RFCs that have fully landed keep their current LANDED status and are
   simply not used as precedent for new proposals;
 - ACCEPTED or IMPLEMENTING closure RFCs are reviewed at their next status
-  change and either completed against remaining tracker rows or, if their
-  remaining work is mechanical, finished as ordinary commits with a closing
-  tracker note;
+  change (which legally requires the transition allowed by the current state
+  machine, including setting `implementation` for IMPLEMENTING) and either
+  completed against remaining tracker rows or, if their remaining work is
+  mechanical, finished as ordinary commits in the subsystem with a closing
+  note recorded by `rfc` in the tracker;
 - the index gains a short note that the closure series reflects the earlier
   threshold and the matrix in this RFC governs new work;
 - no new "partition closure" or "cutover" RFC is opened for work whose
@@ -180,9 +199,9 @@ History is preserved; nothing is renumbered or deleted. Going forward:
 
 | Area | Paths | Owner |
 |---|---|---|
-| RFC process text and index | `docs/rfc/README.md`, `docs/rfc/0000-template.md` | rfc |
-| Authoring instructions and routing | `.codex/skills/rfc/SKILL.md`, `.codex/subagents/task-router.md`, `.codex/subagents/manifest.yaml` | task-router |
-| Structural enforcement (if any) | `scripts/check-rfc.py` | rfc |
+| RFC process text, index, and authoring skill | `docs/rfc/README.md`, `docs/rfc/0000-template.md`, `.codex/skills/rfc/SKILL.md` | rfc |
+| Subagent routing and manifests | `.codex/subagents/task-router.md`, `.codex/subagents/manifest.yaml` | task-router |
+| Structural gate changes, if the optional hint is accepted | `scripts/check-rfc.py` | verification |
 | Existing tracker location for lightweight entries | `docs/rfc/tracking/**` | rfc |
 
 ## Security And Safety Impact
@@ -262,21 +281,26 @@ current RFCs valid.
 - Build: none.
 - Unit tests: none.
 - Lit tests: none.
-- Conformance: `python3 scripts/check-rfc.py --check` (or its documented
-  invocation) and its self-test; `scripts/check-english-only.py`.
+- Conformance: `python3 scripts/check-rfc.py` (the script takes no arguments
+  and has no self-test today) and `python3 scripts/check-english-only.py`
+  (Markdown is in scope for the English-only gate even though clang-format is
+  not). If the optional mechanical title hint is accepted, that change adds a
+  real `--self-test` to `scripts/check-rfc.py` under the verification owner in
+  the same change.
 - Generated files: none.
-- Format: N/A for markdown-only changes.
+- Format: `python3 scripts/check-format.py` for any non-markdown change;
+  markdown-only changes are clang-format neutral.
 
 ## Open Questions
 
-- Should lightweight tracked changes get an entry per item in the main RFC
-  table with a distinct marker, or live only in a separate subsection?
-- Is a fixed review window (for example three working days) appropriate given
-  the current single-maintainer reality and delegated owner roles?
+- Is an owner-discretion review window sufficient, or should a fixed default
+  number of working days be stated for lightweight tracked changes?
 
 ## Status History
 
 | Date | Status | Notes |
 |---|---|---|
 | 2026-09-14 | DRAFT | Initial draft from the 2026-09-14 process audit. |
-| 2026-09-14 | REVIEW | Frozen for required-owner review; tracker and SHA-256 snapshot bound |
+| 2026-09-14 | REVIEW | Frozen for owner review. |
+| 2026-09-15 | RETURNED | Round 1: downgrade had no legal state edge; tracked-change owner/trigger and index placement were unresolved; gate ownership and the test command were wrong. |
+| 2026-09-15 | DRAFT | Revised: WITHDRAWN-plus-pointer disposition, path-owner routing and adjudication, separate tracked-changes subsection, verification owner for the optional gate change, correct commands. |

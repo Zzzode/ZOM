@@ -2,21 +2,21 @@
 rfc: 51
 title: Query Final-Seal And Text-Scanning Evidence
 type: compiler
-status: REVIEW
+status: DRAFT
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [error-system, ir-backend, module-system, rfc, task-router, verification]
 approvers: []
 created: 2026-09-14
-updated: 2026-09-14
+updated: 2026-09-15
 area: compiler
 requires: [17, 21, 28, 47]
 supersedes: []
 superseded-by: []
-discussion: docs/rfc/tracking/0051-query-final-seal-and-text-scanning-evidence-review.md#discussion-record
+discussion: TBD
 decision: TBD
 implementation: TBD
-tracking-issue: docs/rfc/tracking/0051-query-final-seal-and-text-scanning-evidence-review.md#decision-record
+tracking-issue: TBD
 ---
 
 # RFC 0051: Query Final-Seal And Text-Scanning Evidence
@@ -33,8 +33,8 @@ landed RFC 0047 proves that source text cannot establish architecture evidence
 and deleted its own comparable gates, leaving a direct normative
 contradiction. This RFC asks reviewers to decide the proportional scope of the
 seal ceremony and to settle one repository-wide rule for what a text scan may
-and may not certify. It changes no code in its DRAFT state and weakens no
-implemented guarantee.
+and may not certify. It weakens no implemented guarantee; the seal
+failure closure and named native evidence are preserved.
 
 ## Motivation
 
@@ -143,85 +143,131 @@ test.
 
 ### Part 1: Final-seal evidence
 
-Current production facts (2026-09-14):
+Current production facts (2026-09-15):
 
-- `sealInputs` / `prepareFinalSeal` / `publishFinalSeal` and
+- `sealInputs` / `prepareFinalSeal` / `publishFinalSeal`, the fail-closed
+  `rejectFinalSeal` and `validateSnapshotAdmission` halves, and
   `admitFinalSnapshot` live in `compiler/query/query-database.{h,cc}`;
 - three frozen witness inputs and the complete-context input occupy fixed
   descriptor ordinals specified by RFC 0028;
-- production `verifyFinalAuthority` is supplied by the module-graph query TU;
+- production `verifyFinalAuthority` is supplied by the module-graph query TU,
+  with separate success and failure witness recomputation paths;
 - fourteen capability descriptors require `FinalSealedSnapshot`; three use
   `AnySnapshot` (parse and IDE-facing entry points);
-- the seal is invoked once per successful bind path and `checkSources` demands
-  sealed module graph, provenance, bound module, owner body, and core role
-  seed capabilities from the admitted snapshot.
+- the seal is invoked once per successful bind path; `checkSources` demands
+  the sealed module graph and core capabilities directly, while provenance
+  and owner-body capabilities are demanded transitively by the sealed
+  materializer providers;
+- the success/failure closure described by DRAFT RFC 0038 is already
+  implemented: `FinalSnapshotClosureKind { Success, Failure }` and the
+  descriptor `FinalFailureProjection { None, Source, Key, SourceOrKey }`
+  column control how a sealed failed compilation projects source/key
+  rejections. RFC 0038's status is stale relative to this landed machinery.
+
+Any retain/simplify decision must preserve BOTH closures, not only the
+success snapshot: a sealed rejected compilation must still authorize exactly
+the source/key projections its descriptors declare, and success/failure
+witnesses must not be interchangeable.
+
+### Seal threat-to-mechanism table (required analysis input)
+
+| Threat | Mechanism that must survive simplification |
+|---|---|
+| Second seal after publication | One-shot seal admission and typed already-published failure |
+| Seal over an open input transaction | Exclusive input transaction plus the open-transaction failure |
+| Foreign or stale snapshot admission | Database identity and snapshot coordinates checked on admission |
+| Phase-2/3 TOCTOU race | Independent witness recomputation under the admission lock, covered by injected-race tests |
+| Incomplete context-root authority | Complete-context input and descriptor-owned final authority verifier |
+| Materializer running before authority | Sealed-descriptor demand fails before provider code, memo lookup, and interner access |
+| Sealed failed compilation projecting wrong rejection | `FinalSnapshotClosureKind::Failure` and the descriptor `FinalFailureProjection` mapping |
 
 Options:
 
-1. **Retain.** The three-phase lock, witness re-derivation, token, and
-   admission stay normative unchanged; this RFC only documents the
-   threat-to-phase table.
+1. **Retain.** The three-phase lock, both success/failure witness paths,
+   token, and admission stay normative unchanged; this RFC documents the
+   table and reconciles RFC 0038's stale status.
 2. **Simplify (audit-recommended direction, to be proven in review).**
    Collapse phases where the database's exclusive input transaction and
    database-identity/snapshot checks already provide the same serializability;
-   retain the irreversibility guarantee and the fourteen descriptors'
-   admission requirement; retain one independent witness recomputation but
-   place it inside the existing transaction rather than a lock-free phase;
-   delete ceremony steps the threat table shows to be redundant, each with an
-   injected-race or foreign-snapshot mutation test proving coverage is kept.
+   retain the irreversibility guarantee, the fourteen descriptors' admission
+   requirement, and both closure kinds; retain one independent witness
+   recomputation but place it inside the existing transaction rather than a
+   lock-free phase; delete ceremony steps the threat table shows to be
+   redundant, each with a surviving injected-race, foreign-snapshot, or
+   sealed-failure projection mutation test proving coverage is kept.
 3. **Remove the seal.** Treat every demand as revision-scoped like Salsa.
-   This conflicts with fourteen live production consumers and with the
-   materializer ordering guarantees; choosing it requires demonstrating that
-   ordinary input revisions and the existing final authority verifier cover
-   every threat, and migrating the sealed descriptors and their tests.
+   This conflicts with fourteen live production consumers, the failure
+   closure, and the materializer ordering guarantees; choosing it requires
+   demonstrating that ordinary input revisions and the existing final
+   authority verifier cover every threat in the table, and migrating the
+   sealed descriptors and their tests.
 
 The selected option must preserve: no materializer can access interner or
 memo state before complete authority; a sealed snapshot rejects later input
 mutation with the typed failure; a foreign database snapshot cannot be
-admitted.
+admitted; and a sealed failure still projects exactly its declared
+source/key rejections.
 
 ### Part 2: Text-scanning evidence
 
-Normative contradiction to resolve:
+Normative contradiction to resolve. The Round-1 review established the
+conflict is repository-wide, not limited to two RFCs: scanner-as-proof text
+also appears in RFCs 0002, 0003, 0004, 0005, 0007, 0008, 0011 (LANDED), 0016,
+0018, 0020, 0024, 0025, 0028, 0030, 0032, and 0042. Acceptance of this RFC
+therefore adopts one generic supersession rule covering every listed RFC
+rather than editing only 0017 and 0021:
 
-- RFC 0017 mandates the two query architecture scanners as completion gates.
-- RFC 0021 mandates the IR architecture scanner and ties acceptance to it.
-- RFC 0047 (LANDED, later) forbids treating source scanners as architecture
-  evidence and deleted its own.
-- Repository rule `.codex/rules/cpp-zc.md` already restates the RFC 0047
-  position, but the earlier RFC text and the scripts remain.
+> For every RFC acceptance criterion that makes a source-text scan the sole
+> proof of an architecture property, RFC 0051 governs: the scan is a
+> regression aid and the property is established by compiled or executed
+> evidence. Each implementing change amends its owning RFC/tracker row and
+> names the replacement evidence; this RFC lists every affected RFC above.
+
+The immediate sharp contradiction remains:
+
+- RFC 0047 (LANDED) forbids treating source scanners as architecture evidence
+  and deleted its own, while LANDED RFC 0011 and the IMPLEMENTING RFCs above
+  still require scanners as proof.
+- The IR scanner asserts literal call-site substrings and missed four live
+  RFC 0010/0021 backend deviations.
+
+### Positive-marker disposition (bound into this RFC)
+
+Every current positive substring assertion is classified so the acceptance
+criterion is executable:
+
+| Assertion class | Examples | Disposition |
+|---|---|---|
+| Runtime call path | `ir::linkAndPublish(`, `runNativeExecutable()`, run compatibility and subprocess call text in `zomc.cc` | Replace with executed evidence: `native-run-cli`, `native-execution-cli`, and a required new negative test for cross-target run rejection |
+| CMake build wiring | `ZOM_RUNTIME_ENTRY_OBJECT`, `ZOM_HOST_LINKER`, `zom-runtime-entry`, `add_library(zom-runtime-entry OBJECT ...)` | Keep as explicitly labeled build-definition tripwires until a CMake-target/link-graph check exists; they are build-graph claims no native unit currently proves |
+| Runtime entry assembly | `.globl _start`, `call zom.module_init`, direct syscall in `entry-linux-x86_64.S` | Keep as a labeled tripwire until an entry-symbol/executable-inspection assertion covers the symbol content (the inspector currently checks for the symbol, not the asm body) |
+| Banned includes / identifiers / domains | internal headers (`invoke-linker-internal.h` and peers), alternate MIR domains, versioned markers | Retain as negative tripwires until a real C++ boundary (restricted link target or private-header visibility) makes the inclusion fail to compile/link; they are the only guard on some internal surfaces today |
+| Descriptor inventory consistency | on-disk schema vs generated inventory | Retain; it cross-checks the native compile-fail fixtures and generated bindings, not a runtime claim |
 
 Options:
 
 1. **Reposition (recommended).** Keep every existing Python scanner in the
-   tree and CTest as a regression/review aid, but:
-   - remove scanner invocation as a normative acceptance criterion from RFCs
-     0017 and 0021 via this RFC's overlay, replacing each claim with the
-     compiled or executed evidence that actually establishes it (private
-     constructors + the `tests/compile-fail/query-runtime/` fixtures; separate
-     verifier TUs and link targets; `native-execution-cli` and the object
-       emission integration tests for the link/run call path);
-   - strip brittle positive substring assertions that require specific call
-     sites (for example the required `ir::linkAndPublish(` call text) and keep
-     only negative tripwires (banned domains, banned identifiers, banned
-     includes) with self-test mutation fixtures;
-   - label the scripts "regression aid" in their headers and in the gate
-     documentation.
+   tree and CTest as a regression/review aid, apply the generic supersession
+   rule, replace runtime call-path assertions with the named executed tests
+   (adding the missing cross-target rejection test), and keep the build/asm/
+   banned-include classes as labeled tripwires pending real compile/link
+   boundaries. Scripts gain a "regression aid, not architecture proof"
+   header; the assertion-to-test table above is the binding map.
 2. **Amend RFC 0047.** If reviewers judge the scanners truly prove the
    enumerated properties, then the later RFC's blanket rejection is wrong and
    RFC 0047 must be superseded on that point with a precise statement of which
    text properties are mechanically checkable and sufficient. The bar is to
    explain why a scanner that missed four live RFC 0010/0021 deviations still
    constitutes proof.
-3. **Delete the scanners.** Keep only compiled and executed evidence. This
-   loses cheap detection of marker/include drift; the self-test fixtures
-   demonstrate that value, so deletion requires showing the drift they catch
-   is caught elsewhere.
+3. **Delete the scanners.** Rejected for the banned-include and build-wiring
+   classes until real boundaries exist, because removing them would leave the
+   internal-header minter and CMake entry wiring unguarded.
 
 ### Relationships
 
-Overlays RFCs 0017, 0021, 0028, and 0047; note relationship to DRAFT RFC 0038
-(final-sealed failure projection). No in-place normative edits before
+Overlays the scanner-related text of all RFCs listed in Part 2 plus RFCs 0028
+and 0038 for the seal; RFC 0038's closure is production-implemented and is
+reconciled here rather than re-designed. No in-place normative edits before
 acceptance; tracker entries bind the accepted text under the repository
 convention.
 
@@ -233,9 +279,9 @@ convention.
 | Session seal production path | `compiler/driver/session/compiler-session.cc`, `compiler/driver/query/**` | module-system |
 | Failure codes for seal and query failures | `compiler/query/query-types.h`, diagnostics projectors | error-system |
 | IR architecture gate and backend evidence | `scripts/check-ir-architecture.py`, `compiler/lir/**`, `compiler/backend/llvm/**`, `utils/zomc/zomc.cc` | ir-backend |
-| RFC text and process rules | `docs/rfc/0017-*`, `docs/rfc/0021-*`, `docs/rfc/0028-*`, `docs/rfc/0047-*`, `.codex/rules/cpp-zc.md`, `docs/rfc/README.md` | rfc |
-| Gate routing and CTest registration | `.codex/subagents/**`, `tests/conformance/CMakeLists.txt` | task-router |
-| Self-tests, compile-fail fixtures, integration tests | `scripts/check-*-architecture.py`, `tests/compile-fail/query-runtime/`, native execution integration tests | verification |
+| RFC text and rfc skill | `docs/rfc/00{02,03,04,05,07,08,11,16,17,18,20,21,24,25,28,30,32,42,47}-*`, `.codex/skills/rfc/SKILL.md`, `.codex/rules/cpp-zc.md`, `docs/rfc/README.md` | rfc |
+| Gate routing and subagent policy | `.codex/subagents/task-router.md`, `.codex/subagents/manifest.yaml`, `tests/conformance/CMakeLists.txt` | task-router |
+| Self-tests, compile-fail fixtures, integration tests | `scripts/check-*-architecture.py`, `tests/compile-fail/query-runtime/`, native execution and cross-target rejection tests | verification |
 
 ## Security And Safety Impact
 
@@ -279,10 +325,12 @@ unnameable; those are compiled evidence and are unaffected.
 Internal infrastructure only; no CLI, language, or diagnostic surface. Under
 Part 1 option 2, ship each ceremony simplification with its race mutation
 tests in one change and keep the typed failure names where possible. Under
-Part 2 option 1, edit the two RFC acceptance sections through the overlay,
-relabel script headers, and migrate positive substring assertions to named
-native tests in the same change; the scripts remain CTest targets throughout.
-Each stage is independently revertible.
+Part 2 option 1, apply the generic supersession rule to every listed RFC via
+its owning tracker, relabel script headers, migrate the runtime call-path
+assertions to named native tests (adding the cross-target run-rejection test),
+and retain the build/asm/banned-include tripwires as explicitly labeled aids
+in the same change; the scripts remain CTest targets throughout. Each stage is
+independently revertible.
 
 ## Documentation And Teaching Plan
 
@@ -302,46 +350,56 @@ No release or runtime concern.
 - One approved option per part, bound into the overlaid RFC trackers.
 - A threat-to-mechanism table for the seal exists and every retained ceremony
   step covers a unique threat; every removed step has a surviving injected
-  failure test.
+  failure test, and sealed Success/Failure closures both remain correct.
 - The fourteen `FinalSealedSnapshot` descriptors still reject unsealed and
-  foreign-snapshot demands under the native query tests.
-- RFC 0047 and RFCs 0017/0021 no longer contradict; every former normative
-  scanner claim cites compiled or executed evidence, and every removed
-  positive substring assertion names the replacing test.
-- All architecture scanner self-tests, compile-fail query fixtures, and the
-  native execution integration tests pass.
+  foreign-snapshot demands under the native query tests, and sealed-failure
+  source/key projection stays descriptor-authorized.
+- No RFC acceptance criterion makes a source scan the sole architecture
+  proof; the generic supersession rule is applied per owning tracker for every
+  RFC listed in Part 2; every migrated runtime call-path assertion names the
+  replacing executed test, including the new cross-target run-rejection test;
+  retained build/asm/banned-include tripwires are labeled as aids and their
+  eventual real-boundary replacement is named.
+- All architecture scanner self-tests that exist, compile-fail query fixtures,
+  and the native execution integration tests pass. The lexer architecture
+  script, which currently has no self-test, is either given one or explicitly
+  excluded from the self-test requirement.
 
 ## Implementation Plan
 
 1. Produce the seal threat-to-phase table from the RFC 0028 test
-   specifications and decide Part 1 in review.
-2. Enumerate every normative scanner reference in RFCs 0017/0021 and map each
-   to replacement evidence; decide Part 2.
+   specifications, including the RFC 0038 failure closure, and decide Part 1.
+2. Enumerate every normative scanner reference across all RFCs listed in Part
+   2 and map each to replacement evidence or its retained-tripwire class;
+   decide Part 2.
 3. Apply seal changes and/or gate repositioning in small gated commits with
-   tracker entries.
+   per-RFC tracker entries.
 4. Consolidate the evidence-class rule in `.codex/rules/cpp-zc.md`.
 
 ## Test Plan
 
 - Build: `cmake --preset sanitizer && cmake --build --preset sanitizer`.
 - Unit tests: full query database suite including one-shot/irreversibility,
-  injected phase-race, and foreign-coordinate cases; module-graph and owner
-  body query tests.
+  injected phase-race, foreign-coordinate, and sealed-failure projection
+  cases; module-graph and owner body query tests.
 - Lit tests: unchanged.
-- Conformance: architecture scanner `--check` and `--self-test`;
-  `tests/compile-fail/query-runtime/`; `native-execution-cli` and object
-  emission integration tests with the LLVM backend enabled.
+- Conformance: architecture scanner `--check` and `--self-test` where
+  implemented; `tests/compile-fail/query-runtime/`; `native-execution-cli`,
+  `native-run-cli`, object-emission tests, and the new cross-target
+  run-rejection negative test with the LLVM backend enabled.
 - Generated files: none.
-- Format: `python3 scripts/check-format.py`; `scripts/check-rfc.py`;
-  `scripts/check-english-only.py`.
+- Format: `python3 scripts/check-format.py`; `python3 scripts/check-rfc.py`;
+  `python3 scripts/check-english-only.py` (relabeled script headers stay
+  ASCII English).
 
 ## Open Questions
 
 - If Part 1 simplifies the ceremony, does the complete-context authority still
   need three separate frozen witness inputs, or can one composite verified
   input carry the same proof?
-- Should scanner relabeling happen repo-wide in one change or per-RFC as the
-  affected trackers close?
+- Scanner relabeling happens per-RFC as affected trackers close, with the
+  generic rule landing first; confirm no implementation work is gated on the
+  relabeling itself.
 
 ## Status History
 
@@ -349,3 +407,5 @@ No release or runtime concern.
 |---|---|---|
 | 2026-09-14 | DRAFT | Initial draft from the 2026-09-14 architecture audit. |
 | 2026-09-14 | REVIEW | Frozen for required-owner review; tracker and SHA-256 snapshot bound |
+| 2026-09-15 | RETURNED | Round 1: Part 1 omitted the landed RFC 0038 Success/Failure closure; Part 2 scope covered only 2 of ~15 affected RFCs and left build/asm markers without replacement disposition. |
+| 2026-09-15 | DRAFT | Revised threat table with failure closure; repository-wide supersession rule; bound positive-marker to native-test map; corrected owner/impact rows and tests. |

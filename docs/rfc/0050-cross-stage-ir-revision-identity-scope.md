@@ -2,21 +2,21 @@
 rfc: 50
 title: Cross-Stage IR Revision Identity Scope
 type: compiler
-status: REVIEW
+status: DRAFT
 author: ZOM Compiler Team
 review-manager: rfc
-required-owners: [ir-backend, module-system, rfc, verification]
+required-owners: [ir-backend, module-system, rfc, runtime-memory, verification]
 approvers: []
 created: 2026-09-14
-updated: 2026-09-14
+updated: 2026-09-15
 area: compiler
 requires: [10, 13, 15, 17, 21]
 supersedes: []
 superseded-by: []
-discussion: docs/rfc/tracking/0050-cross-stage-ir-revision-identity-scope-review.md#discussion-record
+discussion: TBD
 decision: TBD
 implementation: TBD
-tracking-issue: docs/rfc/tracking/0050-cross-stage-ir-revision-identity-scope-review.md#decision-record
+tracking-issue: TBD
 ---
 
 # RFC 0050: Cross-Stage IR Revision Identity Scope
@@ -148,52 +148,72 @@ store's verified publication.
 
 ### Current evidence inventory
 
+Verified against the 2026-09-15 tree. "Serialized artifact" rows are included
+because they define the boundary precedent for the in-memory rule.
+
 | Revision | Specified | Implemented | Production consumers |
 |---|---|---|---|
 | MIR canonical revision (`zom.mir-revision`) | RFC 0010 | Yes, `MirRevisionCodec` | Built MIR verifier recomputation; ownership overlay lineage and borrow-evidence leases; `--emit=mir` display |
-| Target spec / registry revisions (`zom.target-spec`, `zom.target-registry`) | RFC 0010 | Yes, `compiler/ir/target/` | Discovery gate, target registry verifier, lock checks |
-| Feature-boundary registry revision | RFC 0010 | Yes | Feature boundary admission |
+| Target spec / registry revisions (`zom.target-spec`, `zom.target-registry`) | RFC 0010 | Yes, `compiler/ir/target/` | Discovery gate, target registry verifier, verified-package-input cross-checks |
+| Feature-boundary registry revision (`zom.feature-boundary-registry`) | RFC 0010 | **No**; only an unwrapped `FeatureBoundaryVerificationResult` template with zero non-test consumers | None |
 | Borrow module-interface revision (`zom.module-interface-revision`) | RFC 0013 | Yes | Cross-module borrow evidence lineage |
-| Checker marker/config/registry revisions | RFC 0015 (LANDED) | Yes | Checker codec closure admission |
-| Executable-MIR set revision (`zom.executable-mir-set`) | RFC 0021 | Partial (overlay records exist) | In-process overlay lineage |
-| LIR revision (`zom.lir-revision`) | RFC 0021, with 546-byte oracle | No | None |
+| Checker signature/dispatch/checked-facts revisions | RFC 0015 (LANDED) | Yes (`zom.signature-facts-revision`, `zom.dispatch-facts-revision`, `zom.checked-facts-revision`) | Checker codec closure admission |
+| Ownership event-overlay and facts revisions (`zom.ownership-event-overlay`, ownership facts) | RFC 0007/0013 | Yes | Ownership overlay lineage and proof validation |
+| Executable-MIR set revision (`zom.executable-mir-set`) | RFC 0021 | **No**; no type, domain, or digest on `VerifiedExecutableMir`; lineage is carried by the MIR + overlay + facts + borrow-evidence revisions | None |
+| Link-plan and executable-manifest/publication digests (`zom.link-plan`, `zom.executable-manifest`) | RFC 0043 | Yes; serialized cross-process artifacts | Linker invocation, executable inspector, recoverable publication |
+| Error-union layout revision (`zom.error-union-layout`) | RFC 0006 groundwork | Codec + oracle only | None outside its own TUs and oracle test |
+| LIR revision (`zom.lir-revision`, `LirRevisionId`) | RFC 0021, with 546-byte oracle | No | None |
 | LIR algebra revision (`zom.lir-algebra`) | RFC 0021 store step | Codec + oracle only | None outside its own TUs and oracle test |
 | Persisted query reuse | RFC 0017 enum `ReuseClass::Persisted` | Enum only | Zero descriptor rows |
 
+The feature-boundary and executable-MIR-set rows were described as
+implemented/partial in the Round-1 draft; that was incorrect and is corrected
+here. There is also no separately named marker-registry revision distinct
+from the checker revisions listed above.
+
 ### Decision options
 
-The review selects one. The options are presented neutrally; the audit
-evidence favors option B, but consumers exist for the MIR and external-data
-revisions, so option A is defensible and option C must justify each removal
-against the listed consumers.
+The review selects one. The options are presented neutrally; Round-1 owners
+endorsed option B as safe, but consumers exist for the MIR, ownership,
+checker, and external/serialized revisions, so option A is defensible and
+option C must justify each removal against the listed consumers.
 
-1. **Retain and extend.** Keep every specified revision; implement
-   `LirRevisionId` when the independent LIR verifier lands (currently scheduled
-   in RFC 0048 Phase 4) and give `AlgebraRevision` a consumer in the same
-   slice; extend exact-oracle coverage. This maximizes uniformity.
-2. **Re-scope (recommended by the audit).** Adopt the written rule:
+1. **Retain and extend.** Keep every implemented revision; implement
+   `LirRevisionId` only when the independent LIR verifier lands (no such
+   phase exists in RFC 0048, whose Phase 4 is structural MIR verification and
+   generalized LIR admission) and give `AlgebraRevision` a consumer in the
+   same slice; build the feature-boundary registry only if/when feature
+   gates exist. This maximizes uniformity.
+2. **Re-scope (recommended).** Adopt the written rule:
    - content revisions are retained where they back an in-process lease or
-     lineage mismatch check (MIR, borrow interfaces, executable-MIR overlay)
-     or verified external data (target/feature registries);
+     lineage mismatch check (MIR, ownership overlay, borrow interfaces,
+     checker codec closures) or verified external/serialized data (target
+     registry, link plan, executable manifest);
    - no new in-memory content revision is specified without naming its
      consumer in the same RFC section;
+   - the feature-boundary registry and executable-MIR set revision are marked
+     specified-but-unbuilt and are not constructed until a consumer exists;
    - `LirRevisionId` is explicitly deferred until one of: an independent LIR
      verifier, session publication of `VerifiedLirModule`, or a persisted LIR
      artifact exists;
    - `AlgebraRevision` gets one real consumer (LIR store verified publication)
-     or is absorbed into that publication's own integrity record;
-   - exact hex preimages remain normative for external-data and codec framing
-     oracles already tested; proposed future preimages (LIR) are removed from
-     normative tables until the mechanism is built, and reappear when built;
+     or is absorbed into that publication's integrity record, keeping its
+     oracle meaningful;
+   - exact hex preimages remain normative for external/serialized data and
+     codec-framing oracles already tested; proposed future preimages (LIR,
+     feature registry, executable-MIR set) are removed from normative tables
+     until the mechanism is built, and reappear when built;
    - persistence content addressing is reserved to a future RFC that owns an
      on-disk format, at which point Bazel/REAPI-style digest design applies.
 3. **Remove at in-process boundaries.** Replace content hashes between
    in-process stages with monotonic snapshot counters plus the independent
-   verifiers (which already recompute structure), retaining hashes only for
-   external target data and any future serialization. This is closest to
-   rustc/Salsa but touches the implemented MIR lease chain and its mutation
-   tests, and must prove a counter cannot be aliased across databases (the
-   current brand and context-fingerprint machinery would carry that proof).
+   verifiers (which already recompute structure), retaining hashes for
+   external/serialized data and future serialization. This is closest to
+   rustc/Salsa. It must preserve the lease mismatch checks in
+   `compiler/ownership/overlay/drop-elaborated-mir.cc` (revalidating the
+   built/overlay/facts/borrow-evidence revisions) with foreign-database and
+   stale-revision injection tests, and must prove a counter cannot be aliased
+   across databases via the brand and context-fingerprint machinery.
 
 ### Relationships
 
@@ -209,7 +229,8 @@ criteria and oracle inventories change in the implementing changeset.
 |---|---|---|
 | IR architecture and MIR codec | `docs/rfc/0010-*`, `compiler/mir/built-mir.{h,cc}` | ir-backend |
 | LIR store and unbuilt revisions | `docs/rfc/0021-*`, `compiler/lir/lir-algebra-codec.{h,cc}`, future LIR verifier | ir-backend |
-| Borrow and checker lineage revisions | `docs/rfc/0013-*`, `docs/rfc/0015-*`, `compiler/ownership/overlay/**` | module-system |
+| Borrow and checker lineage revisions | `docs/rfc/0013-*`, `docs/rfc/0015-*` | module-system |
+| Overlay and fact revisions for ownership | `compiler/ownership/facts/**`, `compiler/ownership/overlay/**` | runtime-memory |
 | Query persistence boundary | `docs/rfc/0017-*`, `compiler/query/query-types.h` | module-system |
 | RFC governance and gates | `docs/rfc/README.md`, `scripts/check-rfc.py` | rfc |
 | Oracle tests and parity baselines | `tests/unittests/compiler/{mir,lir,ir,ownership}/**`, `tests/coverage/` | verification |
@@ -301,17 +322,24 @@ time, but that is not a goal and no performance gate is added.
 - Unit tests: `ctest --preset default -L unittest` for mir, lir, ir/target,
   ownership overlay lineage mutation, and checker codec suites.
 - Lit tests: unchanged; no diagnostic or surface change.
-- Conformance: `scripts/check-ir-parity.py --check --ir` byte-parity on the
-  923-source process channel and 64 clean dumps.
+- Conformance: `python3 scripts/check-ir-parity.py --check --ir --zomc
+  <built-zomc> --snapshot tests/coverage/corpus-ir-parity.json` for the
+  923-source process channel and 64 clean HIR/MIR dumps; the tool requires an
+  explicit binary and snapshot and is run through the CI parity wrapper
+  rather than as a standalone CTest label.
 - Generated files: oracle regenerations listed explicitly in the implementing
-  change; hand-assembled codec framing oracles stay byte-identical.
-- Format: `python3 scripts/check-format.py`; `scripts/check-rfc.py`.
+  change; hand-assembled codec framing oracles stay byte-identical. Key files:
+  `tests/unittests/compiler/lir/lir-algebra-codec-oracle-test.cc`, MIR codec
+  oracles in `tests/unittests/compiler/mir/`, and the lineage mutation cases
+  in `tests/unittests/compiler/ownership/overlay/`.
+- Format: `python3 scripts/check-format.py`; `python3 scripts/check-rfc.py`;
+  `python3 scripts/check-no-internal-versioning.py`.
 
 ## Open Questions
 
-- Does the executable-MIR set revision need to remain once RFC 0048 lands the
-  recursive MIR builder and structural verifier, or does the verified
-  capability plus MIR lease subsume it?
+- If a feature-boundary registry and an executable-MIR set digest are later
+  built, which concrete consumer requires them, and do they use the existing
+  target/manifest digest domains or a new one?
 - Should future persistence (if accepted) use one global artifact digest
   domain or per-store domains, and who owns the canonical codec stability
   policy then?
@@ -322,3 +350,5 @@ time, but that is not a goal and no performance gate is added.
 |---|---|---|
 | 2026-09-14 | DRAFT | Initial draft from the 2026-09-14 architecture audit. |
 | 2026-09-14 | REVIEW | Frozen for required-owner review; tracker and SHA-256 snapshot bound |
+| 2026-09-15 | RETURNED | Round 1: feature-boundary and executable-MIR-set rows overstated; inventory omitted serialized-artifact domains; runtime-memory owner and machine-enforceable parity command required. |
+| 2026-09-15 | DRAFT | Revised evidence inventory, complete domain list, runtime-memory owner, concrete verification commands. |

@@ -2,36 +2,42 @@
 
 ## Discussion Record
 
-### 2026-09-14 DRAFT Authored And DRAFT -> REVIEW
+### 2026-09-14 DRAFT -> REVIEW
 
-RFC 0052 (RFC Granularity And Internal-Change Threshold) moves to `REVIEW`.
-It is a process RFC responding to the 2026-09-14 audit finding that the
-repository carries a long closure-RFC series for narrow internal refactors
-while `docs/rfc/README.md` says narrow refactors and drift repair require no
-RFC.
+Process RFC for an internal-change threshold.
 
-The proposal defines a decision matrix (full RFC, lightweight tracked change,
-ordinary commit) keyed to user-visible contracts, identity/codec/schema
-changes, new normative gates, cross-owner decisions, byte-identical internal
-refactors, and drift repair, and defines a lazy disposition of the existing
-closure series without rewriting history. Prior art includes Rust RFCs vs
-MCPs, Swift Evolution, Go proposals, and LLVM's large-change RFC convention.
-
-Frontmatter is `status: REVIEW`, `updated: 2026-09-14`, with `discussion` and
-`tracking-issue` bound here. `approvers` is empty; no approval or status
-transition is recorded.
-
-Frozen proposal snapshot (SHA-256 of the RFC document at REVIEW entry):
-
-| Proposal SHA-256 | `aaf8faf591d7aafaa38e78f49ca244b0e7ee729f2960f24855aaa82d5a1bf6e5` |
+| Round-1 proposal SHA-256 (superseded) | `aaf8faf591d7aafaa38e78f49ca244e65f396e6253e7d2db8eaa9d4955d24f63` |
 |---|---|
+
+### 2026-09-15 Round 1 results
+
+- `rfc`: REQUEST-CHANGES. The downgrade clause had no legal state-machine
+  edge; tracked changes cannot join the main index table (check-rfc.py
+  requires a proposal per row); closure disposition must note the
+  implementation-field requirement.
+- `task-router`: REQUEST-CHANGES. Tracked changes had no path-owner
+  selection rule or trigger; the impact table wrongly assigned the rfc skill
+  to task-router; the downgrade edge was missing; two matrix cells needed a
+  tie-break adjudicator.
+- `verification`: REQUEST-CHANGES. The test plan invoked a non-existent
+  `check-rfc.py --check` and self-test; the script is flag-less and owned by
+  verification in the manifest, so any optional gate hint requires that owner.
+
+### 2026-09-15 RETURNED and revised; pending Round 2
+
+The revised DRAFT specifies `REVIEW -> WITHDRAWN` plus retained-file pointer
+as the only disposition, routes tracked changes to manifest path owners with
+rfc as process host, fixes matrix adjudication and defaults, places tracked
+changes in a separate index subsection (not the proposal table), adds
+`verification` owner for the optional gate hint, and corrects the commands.
 
 ## Owner Review Matrix
 
-| Owner | Surface | Round 1 |
+| Owner | Round 1 | Round 2 |
 |---|---|---|
-| `rfc` | RFC process text, index, tracked-change format, `check-rfc.py` implications | Pending |
-| `task-router` | Skill and subagent routing alignment, internal-change thresholds | Pending |
+| `rfc` | REQUEST-CHANGES (illegal downgrade; index; disposition) | Pending |
+| `task-router` | REQUEST-CHANGES (owner/trigger routing; impact rows; tie-break) | Pending |
+| `verification` | Added on revision; Round 1 finding on gate commands | Pending |
 
 ## Decision Record
 
@@ -39,4 +45,4 @@ TBD.
 
 ## Implementation Tracker
 
-Not started; the RFC is not ACCEPTED.
+Not started; the revised RFC is not ACCEPTED.
