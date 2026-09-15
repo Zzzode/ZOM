@@ -2,11 +2,11 @@
 rfc: 51
 title: Query Final-Seal And Text-Scanning Evidence
 type: compiler
-status: REVIEW
+status: ACCEPTED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [error-system, ir-backend, module-system, rfc, task-router, verification]
-approvers: []
+approvers: [error-system, ir-backend, module-system, rfc, task-router, verification]
 created: 2026-09-14
 updated: 2026-09-15
 area: compiler
@@ -14,7 +14,7 @@ requires: [17, 21, 28, 47]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0051-query-final-seal-and-text-scanning-evidence-review.md#discussion-record
-decision: TBD
+decision: docs/rfc/tracking/0051-query-final-seal-and-text-scanning-evidence-review.md#decision-record
 implementation: TBD
 tracking-issue: docs/rfc/tracking/0051-query-final-seal-and-text-scanning-evidence-review.md#decision-record
 ---
@@ -401,13 +401,7 @@ No release or runtime concern.
   ASCII English).
 
 ## Open Questions
-
-- If Part 1 simplifies the ceremony, does the complete-context authority still
-  need three separate frozen witness inputs, or can one composite verified
-  input carry the same proof?
-- Scanner relabeling happens per-RFC as affected trackers close, with the
-  generic rule landing first; confirm no implementation work is gated on the
-  relabeling itself.
+None
 
 ## Status History
 
@@ -419,3 +413,4 @@ No release or runtime concern.
 | 2026-09-15 | DRAFT | Revised threat table with failure closure; repository-wide supersession rule; bound positive-marker to native-test map; corrected owner/impact rows and tests. |
 | 2026-09-15 | REVIEW | Round 2 frozen after Round 1 revision; tracker and new SHA-256 snapshot bound |
 | 2026-09-15 | REVIEW | Round 3 corrections: non-exhaustive self-executing scanner rule with the full known RFC set and schema-only/superseded exclusions, English-only --check flag, repository-wide drawback wording |
+| 2026-09-15 | ACCEPTED | All required owners approved at Round 3; decision recorded in the tracker |

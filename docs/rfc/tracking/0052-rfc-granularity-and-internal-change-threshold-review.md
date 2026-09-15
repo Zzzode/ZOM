@@ -51,7 +51,7 @@ All three required owners approved at Round 3 (rfc, task-router, verification). 
 
 ## Decision Record
 
-TBD.
+ACCEPTED 2026-09-15. Full-RFC / lightweight tracked-change / ordinary-commit matrix with path-owner routing, REVIEW->WITHDRAWN disposition for superseded proposals, separate tracked-changes index subsection, and lazy closure-series disposition. Review window is owner discretion.
 
 ## Implementation Tracker
 

@@ -57,7 +57,7 @@ All six required owners approved at Round 3 (error-system, ir-backend, module-sy
 
 ## Decision Record
 
-TBD.
+ACCEPTED 2026-09-15. Part 1: RETAIN the final-seal ceremony including the RFC 0038 Success/Failure closure. Part 2: REPOSITION source-text scanners as regression/review aids under a self-executing non-exhaustive rule; runtime call-path assertions move to native tests (adding a cross-target run-rejection test), build/asm/banned-include checks stay labeled tripwires until real compile/link boundaries replace them.
 
 ## Implementation Tracker
 

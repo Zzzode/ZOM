@@ -53,7 +53,7 @@ All five required owners approved at Round 3 (ir-backend, module-system, rfc, ru
 
 ## Decision Record
 
-TBD.
+ACCEPTED 2026-09-15 with option B (re-scope): SHA-256 content revisions are retained only where an in-process lease/lineage mismatch check or verified external/serialized data requires them; LirRevisionId, the feature-boundary registry, and the executable-MIR set revision are deferred until a named consumer exists; AlgebraRevision gets a consumer or is absorbed; persistence is reserved to a future RFC.
 
 ## Implementation Tracker
 

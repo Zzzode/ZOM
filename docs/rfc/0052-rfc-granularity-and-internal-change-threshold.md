@@ -2,11 +2,11 @@
 rfc: 52
 title: RFC Granularity And Internal-Change Threshold
 type: process
-status: REVIEW
+status: ACCEPTED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, task-router, verification]
-approvers: []
+approvers: [rfc, task-router, verification]
 created: 2026-09-14
 updated: 2026-09-15
 area: process
@@ -14,7 +14,7 @@ requires: []
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0052-rfc-granularity-and-internal-change-threshold-review.md#discussion-record
-decision: TBD
+decision: docs/rfc/tracking/0052-rfc-granularity-and-internal-change-threshold-review.md#decision-record
 implementation: TBD
 tracking-issue: docs/rfc/tracking/0052-rfc-granularity-and-internal-change-threshold-review.md#decision-record
 ---
@@ -298,9 +298,7 @@ current RFCs valid.
   markdown-only changes are clang-format neutral.
 
 ## Open Questions
-
-- Is an owner-discretion review window sufficient, or should a fixed default
-  number of working days be stated for lightweight tracked changes?
+None
 
 ## Status History
 
@@ -312,3 +310,4 @@ current RFCs valid.
 | 2026-09-15 | DRAFT | Revised: WITHDRAWN-plus-pointer disposition, path-owner routing and adjudication, separate tracked-changes subsection, verification owner for the optional gate change, correct commands. |
 | 2026-09-15 | REVIEW | Round 2 frozen after Round 1 revision; tracker and new SHA-256 snapshot bound |
 | 2026-09-15 | REVIEW | Round 3 corrections: WITHDRAWN vs REJECTED edge wording, cross-owner tracked-change review routing, mandatory english-only --check flag |
+| 2026-09-15 | ACCEPTED | All required owners approved at Round 3; decision recorded in the tracker |

@@ -2,11 +2,11 @@
 rfc: 50
 title: Cross-Stage IR Revision Identity Scope
 type: compiler
-status: REVIEW
+status: ACCEPTED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [ir-backend, module-system, rfc, runtime-memory, verification]
-approvers: []
+approvers: [ir-backend, module-system, rfc, runtime-memory, verification]
 created: 2026-09-14
 updated: 2026-09-15
 area: compiler
@@ -14,7 +14,7 @@ requires: [10, 13, 15, 17, 21, 24, 25]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0050-cross-stage-ir-revision-identity-scope-review.md#discussion-record
-decision: TBD
+decision: docs/rfc/tracking/0050-cross-stage-ir-revision-identity-scope-review.md#decision-record
 implementation: TBD
 tracking-issue: docs/rfc/tracking/0050-cross-stage-ir-revision-identity-scope-review.md#decision-record
 ---
@@ -339,12 +339,9 @@ time, but that is not a goal and no performance gate is added.
 
 ## Open Questions
 
-- If a feature-boundary registry and an executable-MIR set digest are later
-  built, which concrete consumer requires them, and do they use the existing
-  target/manifest digest domains or a new one?
-- Should future persistence (if accepted) use one global artifact digest
-  domain or per-store domains, and who owns the canonical codec stability
-  policy then?
+
+- non-blocking follow-up: if a feature-boundary registry or executable-MIR set digest is later built, that RFC names the concrete consumer and chooses the digest domain.
+- non-blocking follow-up: if query persistence lands, that RFC chooses the digest-domain shape and owns the codec stability policy.
 
 ## Status History
 
@@ -356,3 +353,4 @@ time, but that is not a goal and no performance gate is added.
 | 2026-09-15 | DRAFT | Revised evidence inventory, complete domain list, runtime-memory owner, concrete verification commands. |
 | 2026-09-15 | REVIEW | Round 2 frozen after Round 1 revision; tracker and new SHA-256 snapshot bound |
 | 2026-09-15 | REVIEW | Round 3 corrections: added the implemented RFC 0024/0025 core marker/role revision family, requires/overlay 24 and 25, and corrected the parity gate to a manual, not-yet-CI-wired invocation |
+| 2026-09-15 | ACCEPTED | All required owners approved at Round 3; decision recorded in the tracker |

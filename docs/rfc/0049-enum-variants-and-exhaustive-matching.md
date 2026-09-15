@@ -2,11 +2,11 @@
 rfc: 49
 title: Enum Variants And Exhaustive Matching
 type: language
-status: REVIEW
+status: ACCEPTED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [binder-checker, error-system, ir-backend, lexer-parser, module-system, rfc, spec-audit, verification]
-approvers: []
+approvers: [binder-checker, error-system, ir-backend, lexer-parser, module-system, rfc, spec-audit, verification]
 created: 2026-09-14
 updated: 2026-09-15
 area: language
@@ -14,7 +14,7 @@ requires: [5, 7, 9, 10]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0049-enum-variants-and-exhaustive-matching-review.md#discussion-record
-decision: TBD
+decision: docs/rfc/tracking/0049-enum-variants-and-exhaustive-matching-review.md#decision-record
 implementation: TBD
 tracking-issue: docs/rfc/tracking/0049-enum-variants-and-exhaustive-matching-review.md#decision-record
 ---
@@ -421,13 +421,7 @@ x86-64 CI lanes suffice.
   the spec-alignment skill gates.
 
 ## Open Questions
-
-- Do record-variant field names share the module namespace with enum
-  constructors, or live only under the variant path?
-- Should `if let` without an `else` be a scoped binding statement or desugar
-  to an explicit match?
-- Does `for` destructuring stay limited to irrefutable tuple patterns in this
-  RFC, or take enum patterns with a divergence rule?
+None
 
 ## Status History
 
@@ -439,3 +433,4 @@ x86-64 CI lanes suffice.
 | 2026-09-15 | DRAFT | Revised scope: record variants, exhaustive matching, if-let/let-else, or-patterns, non_exhaustive; products/boxing/layout/variance/derive deferred; existing diagnostics reused. |
 | 2026-09-15 | REVIEW | Round 2 frozen after Round 1 revision; tracker and new SHA-256 snapshot bound |
 | 2026-09-15 | REVIEW | Round 3 editorial and fact corrections (attribute delta location, named-payload carrier, discriminant byte 0x05, abstract tag, manual parity gate) |
+| 2026-09-15 | ACCEPTED | All required owners approved at Round 3; decision recorded in the tracker |
