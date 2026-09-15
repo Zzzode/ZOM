@@ -17,6 +17,7 @@
 #include "compiler/hir/build/lower-expr-aggregate.h"
 #include "compiler/hir/build/lower-expr-binary.h"
 #include "compiler/hir/build/lower-expr-call.h"
+#include "compiler/hir/build/lower-stmt-control.h"
 #include "compiler/hir/build/lower-stmt-write.h"
 #include "compiler/hir/hir-candidate-impl.h"
 #include "compiler/hir/hir-internal.h"
@@ -3346,7 +3347,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     if (hasScalarLeaf && (onlyScalarReturn || singleInitializedLocal)) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks, calls, receiverCalls);
+                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
+                     loops);
       if (onlyScalarReturn) {
         lowerScalarReturnFunction(zc::mv(value), fnCtx);
       } else {
@@ -3360,7 +3362,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     if (value.sequentialLocalReturn != zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks, calls, receiverCalls);
+                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
+                     loops);
       lowerSequentialLocalReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
@@ -3377,7 +3380,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         value.loopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks, calls, receiverCalls);
+                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
+                     loops);
       lowerComparisonReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
@@ -3397,7 +3401,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks, calls, receiverCalls);
+                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
+                     loops);
       lowerAggregateFieldProjectionFunction(zc::mv(value), fnCtx);
       continue;
     }
@@ -3426,7 +3431,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       if (writesArePlain && initializedByLeaf) {
         HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                        localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                       localFieldProjections, unsafeBlocks, calls, receiverCalls);
+                       localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
+                       loops);
         lowerLocalWriteFunction(zc::mv(value), fnCtx);
         continue;
       }
@@ -3451,7 +3457,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         value.literal == zc::none && value.parameterReference == zc::none && callFieldsClear) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks, calls, receiverCalls);
+                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
+                     loops);
       lowerDirectCallReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
@@ -3462,7 +3469,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         value.parameterReference == zc::none && callFieldsClear) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks, calls, receiverCalls);
+                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
+                     loops);
       lowerDirectCallInitializerFunction(zc::mv(value), fnCtx);
       continue;
     }
@@ -3472,136 +3480,79 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         value.literal == zc::none && value.parameterReference == zc::none && callFieldsClear) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks, calls, receiverCalls);
+                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
+                     loops);
       lowerReceiverCallFunction(zc::mv(value), fnCtx);
       continue;
     }
-    const auto functionId = hirId(next++);
-    const auto bodyId = hirId(next++);
-    ZC_IF_SOME(conditional, value.conditionalReturn) {
-      // Conditional materialization fixed-id layout, relative to the function id.
-      //
-      // Parameter condition (7 nodes):
-      //   +0 function, +1 body block, +2 condition parameter reference,
-      //   +3 then value, +4 else value, +5 conditional, +6 return.
-      // Equality condition `a == b` (9 nodes):
-      //   +0 function, +1 body block, +2 left operand reference,
-      //   +3 right operand reference, +4 equality comparison, +5 then value,
-      //   +6 else value, +7 conditional, +8 return.
-      // Each arm value is emitted either as a scalar literal into expressions or,
-      // for a parameter arm, as a parameter reference into parameterReferences;
-      // the arm node ordinal is unchanged either way.
-      auto materializeArm = [&](HirNodeId armId, PendingConditionalArm& arm) {
-        ZC_IF_SOME(reference, arm.parameter) {
-          parameterReferences.add(
-              HirParameterReferenceExpression{armId, reference.parameter.clone(), arm.type,
-                                              HirValueCategory::Place, arm.sourceSpan.clone()});
-        }
-        ZC_IF_SOME(literal, arm.literal) {
-          expressions.add(HirScalarLiteralExpression{
-              armId, arm.type, literal.clone(), HirValueCategory::Value, arm.sourceSpan.clone()});
-        }
-      };
-      // Materialize one comparison operand: a parameter operand becomes a
-      // parameter reference into parameterReferences, a literal operand becomes a
-      // scalar literal into expressions. The node ordinal is fixed either way, so
-      // the equality node's left/right ids remain node-kind-agnostic.
-      auto materializeOperand = [&](HirNodeId operandId, PendingConditionalArm& operand) {
-        ZC_IF_SOME(reference, operand.parameter) {
-          parameterReferences.add(
-              HirParameterReferenceExpression{operandId, reference.parameter.clone(), operand.type,
-                                              HirValueCategory::Place, operand.sourceSpan.clone()});
-        }
-        ZC_IF_SOME(literal, operand.literal) {
-          expressions.add(HirScalarLiteralExpression{operandId, operand.type, literal.clone(),
-                                                     HirValueCategory::Value,
-                                                     operand.sourceSpan.clone()});
-        }
-      };
-      ZC_IF_SOME(equality, conditional.condition.equality) {
-        const auto leftId = hirId(next++);
-        const auto rightId = hirId(next++);
-        const auto equalityId = hirId(next++);
-        const auto thenValueId = hirId(next++);
-        const auto elseValueId = hirId(next++);
-        const auto conditionalId = hirId(next++);
-        const auto returnId = hirId(next++);
-        functions.add(HirFunctionDeclaration{functionId, value.definition, value.resultType,
-                                             zc::mv(value.parameters), value.visibility.clone(),
-                                             value.linkage, value.declarationSpan.clone(), bodyId,
-                                             zc::none});
-        zc::Vector<HirNodeId> statements;
-        statements.add(returnId);
-        blocks.add(HirBlockStatement{bodyId, zc::mv(statements), value.bodySpan.clone()});
-        returns.add(HirReturnStatement{returnId, value.resultType, conditionalId,
-                                       value.returnSpan.clone()});
-        materializeOperand(leftId, equality.left);
-        materializeOperand(rightId, equality.right);
-        primitiveBinaryOperations.add(HirPrimitiveBinaryExpression{
-            equalityId, leftId, rightId, equality.operandType, equality.type,
-            HirValueCategory::Value, equality.operation, equality.sourceSpan.clone()});
-        materializeArm(thenValueId, conditional.thenArm);
-        materializeArm(elseValueId, conditional.elseArm);
-        conditionals.add(HirConditionalExpression{
-            conditionalId, equalityId, thenValueId, elseValueId, value.resultType,
-            HirValueCategory::Value, conditional.conditionalSpan.clone()});
+    // Control family (RFC 0048 family 6): if/else conditional return,
+    // empty-body `while` followed by a scalar return, and the loop-body
+    // composite (one mut local, an admitted loop whose body writes it, and a
+    // local return). Each arm reproduces the generic materializer's exact
+    // source-preorder id layout. The pending records already encode the
+    // admission-predicated shapes (parameter/comparison condition with literal
+    // or parameter arms; scalar loop condition; admitted body writes), so the
+    // arms consume published facts and make no operator or type decisions.
+    const bool controlFieldsClear =
+        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
+        value.local == zc::none && value.call == zc::none && value.receiverCall == zc::none &&
+        value.aggregate == zc::none && value.localReference == zc::none &&
+        value.literal == zc::none && value.parameterReference == zc::none &&
+        value.localFieldProjection == zc::none && value.parameterIndex == zc::none &&
+        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
+        value.sequentialLocalReturn == zc::none && value.loopReturn == zc::none &&
+        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
+        value.unsafeBlockSpan == zc::none;
+    if (value.conditionalReturn != zc::none && controlFieldsClear) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
+                     loops);
+      lowerConditionalReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    if (value.loopReturn != zc::none && value.local == zc::none && value.call == zc::none &&
+        value.receiverCall == zc::none && value.aggregate == zc::none &&
+        value.localReference == zc::none && value.literal == zc::none &&
+        value.parameterReference == zc::none && value.localFieldProjection == zc::none &&
+        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
+        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
+        value.conditionalReturn == zc::none && value.comparisonReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
+                     loops);
+      lowerLoopReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    if (value.loopBodyReturn != zc::none && value.local != zc::none &&
+        ZC_ASSERT_NONNULL(value.local).initializer != zc::none && value.localWrites.size() != 0 &&
+        value.localWrites.size() == value.localWriteValues.size() &&
+        value.localReference != zc::none && value.call == zc::none &&
+        value.receiverCall == zc::none && value.aggregate == zc::none &&
+        value.localFieldProjection == zc::none && value.parameterIndex == zc::none &&
+        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
+        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
+        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
+        value.unsafeBlockSpan == zc::none) {
+      bool loopWritesArePlain = true;
+      for (const auto& write : value.localWrites) {
+        if (write.field != zc::none) loopWritesArePlain = false;
+      }
+      const bool loopInitializedByLeaf =
+          (value.literal != zc::none) != (value.parameterReference != zc::none);
+      if (loopWritesArePlain && loopInitializedByLeaf) {
+        HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                       localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                       localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
+                       loops);
+        lowerLoopBodyReturnFunction(zc::mv(value), fnCtx);
         continue;
       }
-      const auto conditionId = hirId(next++);
-      const auto thenValueId = hirId(next++);
-      const auto elseValueId = hirId(next++);
-      const auto conditionalId = hirId(next++);
-      const auto returnId = hirId(next++);
-      functions.add(HirFunctionDeclaration{functionId, value.definition, value.resultType,
-                                           zc::mv(value.parameters), value.visibility.clone(),
-                                           value.linkage, value.declarationSpan.clone(), bodyId,
-                                           zc::none});
-      zc::Vector<HirNodeId> statements;
-      statements.add(returnId);
-      blocks.add(HirBlockStatement{bodyId, zc::mv(statements), value.bodySpan.clone()});
-      returns.add(
-          HirReturnStatement{returnId, value.resultType, conditionalId, value.returnSpan.clone()});
-      ZC_IF_SOME(parameter, conditional.condition.parameter) {
-        parameterReferences.add(HirParameterReferenceExpression{
-            conditionId, parameter.parameter.clone(), parameter.type, parameter.category,
-            parameter.sourceSpan.clone()});
-      }
-      materializeArm(thenValueId, conditional.thenArm);
-      materializeArm(elseValueId, conditional.elseArm);
-      conditionals.add(HirConditionalExpression{
-          conditionalId, conditionId, thenValueId, elseValueId, value.resultType,
-          HirValueCategory::Value, conditional.conditionalSpan.clone()});
-      continue;
     }
-    ZC_IF_SOME(loop, value.loopReturn) {
-      // Loop materialization fixed-id layout, relative to the function id:
-      //   +0 function, +1 body block, +2 condition parameter reference,
-      //   +3 return value literal, +4 loop statement, +5 return statement.
-      // The body block holds two statements: the loop statement then the return.
-      const auto conditionId = hirId(next++);
-      const auto returnValueId = hirId(next++);
-      const auto loopId = hirId(next++);
-      const auto returnId = hirId(next++);
-      functions.add(HirFunctionDeclaration{functionId, value.definition, value.resultType,
-                                           zc::mv(value.parameters), value.visibility.clone(),
-                                           value.linkage, value.declarationSpan.clone(), bodyId,
-                                           zc::none});
-      zc::Vector<HirNodeId> statements;
-      statements.add(loopId);
-      statements.add(returnId);
-      blocks.add(HirBlockStatement{bodyId, zc::mv(statements), value.bodySpan.clone()});
-      returns.add(
-          HirReturnStatement{returnId, value.resultType, returnValueId, value.returnSpan.clone()});
-      parameterReferences.add(HirParameterReferenceExpression{
-          conditionId, loop.condition.parameter.clone(), loop.condition.type,
-          loop.condition.category, loop.condition.sourceSpan.clone()});
-      expressions.add(
-          HirScalarLiteralExpression{returnValueId, loop.returnType, loop.returnLiteral.clone(),
-                                     HirValueCategory::Value, loop.returnValueSpan.clone()});
-      loops.add(HirLoopStatement{loopId, conditionId, zc::Vector<HirNodeId>{}, loop.condition.type,
-                                 HirValueCategory::Place, loop.loopSpan.clone()});
-      continue;
-    }
+    const auto functionId = hirId(next++);
+    const auto bodyId = hirId(next++);
     ZC_IF_SOME(comparison, value.comparisonReturn) {
       // Comparison-return materialization fixed-id layout, relative to the
       // function id (6 nodes):
@@ -3696,41 +3647,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       writeBinaryLeftIds.add(zc::mv(leftId));
       writeBinaryRightIds.add(zc::mv(rightId));
     }
-    // Loop-body composite shape: the mutable-local writes are the body of a
-    // `while` loop. Allocate the loop's condition parameter reference and the
-    // loop statement node in a trailing region after the return value, any
-    // unsafe block, and any binary-write operands, so the flat mut-local write
-    // ids are byte-identical. The function body block is `[local, loop, return]`
-    // and the loop statement carries the write node ids as its body.
-    HirNodeId loopConditionId;
-    HirNodeId loopId;
-    if (value.loopBodyReturn != zc::none) {
-      loopConditionId = hirId(next++);
-      loopId = hirId(next++);
-    }
     functions.add(HirFunctionDeclaration{functionId, value.definition, value.resultType,
                                          zc::mv(value.parameters), value.visibility.clone(),
                                          value.linkage, value.declarationSpan.clone(), bodyId,
                                          zc::mv(unsafeBlockId)});
     zc::Vector<HirNodeId> statements;
     if (value.local != zc::none) { statements.add(localId); }
-    if (value.loopBodyReturn != zc::none) {
-      statements.add(loopId);
-    } else {
-      for (const auto writeId : writeIds) { statements.add(writeId); }
-    }
+    for (const auto writeId : writeIds) { statements.add(writeId); }
     statements.add(returnId);
     blocks.add(HirBlockStatement{bodyId, zc::mv(statements), value.bodySpan.clone()});
-    ZC_IF_SOME(loopBody, value.loopBodyReturn) {
-      parameterReferences.add(HirParameterReferenceExpression{
-          loopConditionId, loopBody.condition.parameter.clone(), loopBody.condition.type,
-          loopBody.condition.category, loopBody.condition.sourceSpan.clone()});
-      zc::Vector<HirNodeId> loopBodyStatements;
-      for (const auto writeId : writeIds) { loopBodyStatements.add(writeId); }
-      loops.add(HirLoopStatement{loopId, loopConditionId, zc::mv(loopBodyStatements),
-                                 loopBody.condition.type, HirValueCategory::Place,
-                                 loopBody.loopSpan.clone()});
-    }
     returns.add(HirReturnStatement{returnId, value.resultType, valueId, value.returnSpan.clone()});
     ZC_IF_SOME(literal, value.literal) {
       HirNodeId expressionId = valueId;

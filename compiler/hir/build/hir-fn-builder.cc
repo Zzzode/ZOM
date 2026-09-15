@@ -22,7 +22,9 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
                    zc::Vector<HirLocalFieldProjectionExpression>& localFieldProjections,
                    zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks,
                    zc::Vector<HirDirectCallExpression>& calls,
-                   zc::Vector<HirReceiverCallExpression>& receiverCalls) noexcept
+                   zc::Vector<HirReceiverCallExpression>& receiverCalls,
+                   zc::Vector<HirConditionalExpression>& conditionals,
+                   zc::Vector<HirLoopStatement>& loops) noexcept
     : nextNode(&nextNode),
       functions(&functions),
       blocks(&blocks),
@@ -37,7 +39,9 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
       localFieldProjections(&localFieldProjections),
       unsafeBlocks(&unsafeBlocks),
       calls(&calls),
-      receiverCalls(&receiverCalls) {}
+      receiverCalls(&receiverCalls),
+      conditionals(&conditionals),
+      loops(&loops) {}
 
 HirNodeId HirFnCtx::allocNode() {
   HirNodeId id = hirId(*nextNode);
@@ -86,6 +90,12 @@ void HirFnCtx::addUnsafeBlock(HirUnsafeBlockExpression block) { unsafeBlocks->ad
 void HirFnCtx::addDirectCall(HirDirectCallExpression call) { calls->add(zc::mv(call)); }
 
 void HirFnCtx::addReceiverCall(HirReceiverCallExpression call) { receiverCalls->add(zc::mv(call)); }
+
+void HirFnCtx::addConditional(HirConditionalExpression conditional) {
+  conditionals->add(zc::mv(conditional));
+}
+
+void HirFnCtx::addLoop(HirLoopStatement loop) { loops->add(zc::mv(loop)); }
 
 void HirFnCtx::lowerArmLeaf(HirNodeId destination, const PendingConditionalArm& leaf) {
   ZC_IF_SOME(reference, leaf.parameter) {

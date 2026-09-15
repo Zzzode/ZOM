@@ -37,7 +37,9 @@ public:
            zc::Vector<HirLocalFieldProjectionExpression>& localFieldProjections,
            zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks,
            zc::Vector<HirDirectCallExpression>& calls,
-           zc::Vector<HirReceiverCallExpression>& receiverCalls) noexcept;
+           zc::Vector<HirReceiverCallExpression>& receiverCalls,
+           zc::Vector<HirConditionalExpression>& conditionals,
+           zc::Vector<HirLoopStatement>& loops) noexcept;
 
   /// \brief Allocates the next deterministic source-preorder node id.
   HirNodeId allocNode();
@@ -56,6 +58,8 @@ public:
   void addUnsafeBlock(HirUnsafeBlockExpression block);
   void addDirectCall(HirDirectCallExpression call);
   void addReceiverCall(HirReceiverCallExpression call);
+  void addConditional(HirConditionalExpression conditional);
+  void addLoop(HirLoopStatement loop);
 
   /// \brief Lowers one scalar literal-or-parameter arm leaf into its
   /// destination id. Used by every binary operand and condition arm.
@@ -77,6 +81,8 @@ private:
   zc::Vector<HirUnsafeBlockExpression>* unsafeBlocks;
   zc::Vector<HirDirectCallExpression>* calls;
   zc::Vector<HirReceiverCallExpression>* receiverCalls;
+  zc::Vector<HirConditionalExpression>* conditionals;
+  zc::Vector<HirLoopStatement>* loops;
 };
 
 /// \brief Lowers one tagged scalar-return function through the recursive
@@ -105,6 +111,25 @@ void lowerAggregateFieldProjectionFunction(PendingFunctionDeclaration&& function
 /// or more non-field scalar/parameter/binary writes, and a local-reference
 /// return (`mut x: T = <leaf>; x = <value>; ..; return x;`).
 void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
+/// \brief Lowers one if/else conditional return through the recursive driver:
+/// the condition is a bare bool parameter reference or an `a CMP b` comparison
+/// of two literal/parameter operands, and each branch returns a scalar literal
+/// or parameter. Node strides: seven ids for a parameter condition, nine for a
+/// comparison condition.
+void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
+/// \brief Lowers one empty-body `while` loop followed by a scalar return
+/// through the recursive driver. Node stride: function, body, condition
+/// parameter reference, return literal, loop, return (six ids).
+void lowerLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
+/// \brief Lowers one loop-body composite through the recursive driver: one
+/// initialized mut local, an admitted `while` whose body writes that local
+/// (literal/parameter/binary write values), and a local-reference return. The
+/// loop condition and loop statement allocate in a trailing region after the
+/// flat mut-local ids, matching the generic materializer.
+void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

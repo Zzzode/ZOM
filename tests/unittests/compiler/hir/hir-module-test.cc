@@ -2189,6 +2189,190 @@ ZC_TEST("HIR pipeline lowers a less-than relational conditional condition") {
   }
 }
 
+ZC_TEST("HIR control arm lowers a parameter-condition conditional through exact node strides") {
+  HirPipelineFixture fixture(
+      "fun choose(c: bool, a: i32, b: i32) -> i32 { if (c) { return a; } else { return b; } }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.conditionals().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& returnStatement = module.returns()[0];
+  const auto& conditional = module.conditionals()[0];
+  // Seven-node source-preorder stride: function 1, body 2, condition 3, then 4,
+  // else 5, conditional 6, return 7.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(conditional.condition.ordinal() == 3);
+  ZC_EXPECT(conditional.thenReturnValue.ordinal() == 4);
+  ZC_EXPECT(conditional.elseReturnValue.ordinal() == 5);
+  ZC_EXPECT(conditional.node.ordinal() == 6);
+  ZC_EXPECT(returnStatement.node.ordinal() == 7);
+  ZC_EXPECT(function.body == block.node);
+  ZC_EXPECT(block.statements.size() == 1);
+  ZC_EXPECT(block.statements[0] == returnStatement.node);
+  ZC_EXPECT(returnStatement.value == conditional.node);
+  ZC_EXPECT(conditional.type == function.resultType);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::VerifiedBuiltMir&> verified = builtMir[0].builtMir();
+  ZC_IF_SOME(mir, verified) {
+    zc::Maybe<zc::Array<uint8_t>> record = canonicalRecordForOwner(mir, function.definition);
+    ZC_EXPECT(record != zc::none);
+  }
+}
+
+ZC_TEST("HIR control arm lowers a literal-arm parameter conditional through exact node strides") {
+  HirPipelineFixture fixture(
+      "fun pick(c: bool) -> i32 { if (c) { return 1; } else { return 2; } }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.conditionals().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 2);
+  ZC_REQUIRE(module.parameterReferences().size() == 1);
+  const auto& conditional = module.conditionals()[0];
+  // Same seven-node stride; both arm values are scalar-literal expressions.
+  ZC_EXPECT(conditional.condition.ordinal() == 3);
+  ZC_EXPECT(conditional.thenReturnValue.ordinal() == 4);
+  ZC_EXPECT(conditional.elseReturnValue.ordinal() == 5);
+  ZC_EXPECT(conditional.node.ordinal() == 6);
+  ZC_EXPECT(module.expressions()[0].node.ordinal() == 4);
+  ZC_EXPECT(module.expressions()[1].node.ordinal() == 5);
+}
+
+ZC_TEST("HIR control arm lowers a comparison-condition conditional through exact node strides") {
+  HirPipelineFixture fixture(
+      "fun eq(a: i32, b: i32) -> i32 { if (a == b) { return 1; } else { return 2; } }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.conditionals().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& returnStatement = module.returns()[0];
+  const auto& equality = module.primitiveBinaryOperations()[0];
+  const auto& conditional = module.conditionals()[0];
+  // Nine-node source-preorder stride: function 1, body 2, left 3, right 4,
+  // equality 5, then 6, else 7, conditional 8, return 9.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(equality.left.ordinal() == 3);
+  ZC_EXPECT(equality.right.ordinal() == 4);
+  ZC_EXPECT(equality.node.ordinal() == 5);
+  ZC_EXPECT(conditional.thenReturnValue.ordinal() == 6);
+  ZC_EXPECT(conditional.elseReturnValue.ordinal() == 7);
+  ZC_EXPECT(conditional.node.ordinal() == 8);
+  ZC_EXPECT(returnStatement.node.ordinal() == 9);
+  ZC_EXPECT(conditional.condition == equality.node);
+  ZC_EXPECT(returnStatement.value == conditional.node);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::VerifiedBuiltMir&> verified = builtMir[0].builtMir();
+  ZC_IF_SOME(mir, verified) {
+    zc::Maybe<zc::Array<uint8_t>> record = canonicalRecordForOwner(mir, function.definition);
+    ZC_EXPECT(record != zc::none);
+  }
+}
+
+ZC_TEST("HIR control arm lowers a parameter-and-literal comparison conditional exact strides") {
+  HirPipelineFixture fixture(
+      "fun lt(a: i32) -> i32 { if (a < 5) { return 1; } else { return 2; } }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.conditionals().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  const auto& equality = module.primitiveBinaryOperations()[0];
+  const auto& conditional = module.conditionals()[0];
+  // Left operand is a parameter reference (id 3); right operand is the scalar
+  // literal 5 (id 4); both arms are scalar literals (ids 6 and 7).
+  ZC_EXPECT(equality.left.ordinal() == 3);
+  ZC_EXPECT(equality.right.ordinal() == 4);
+  ZC_EXPECT(equality.node.ordinal() == 5);
+  ZC_EXPECT(conditional.node.ordinal() == 8);
+  ZC_EXPECT(equality.operation == checker::PrimitiveOperation::Lt);
+}
+
+ZC_TEST("HIR control arm lowers an empty-body while loop through exact node strides") {
+  HirPipelineFixture fixture("fun spin(cond: bool) -> i32 { while (cond) { } return 0; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.loops().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& condition = module.parameterReferences()[0];
+  const auto& returnValue = module.expressions()[0];
+  const auto& loop = module.loops()[0];
+  const auto& returnStatement = module.returns()[0];
+  // Six-node source-preorder stride: function 1, body 2, condition 3, return
+  // literal 4, loop 5, return 6.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(condition.node.ordinal() == 3);
+  ZC_EXPECT(returnValue.node.ordinal() == 4);
+  ZC_EXPECT(loop.node.ordinal() == 5);
+  ZC_EXPECT(returnStatement.node.ordinal() == 6);
+  ZC_EXPECT(block.statements.size() == 2);
+  ZC_EXPECT(block.statements[0] == loop.node);
+  ZC_EXPECT(block.statements[1] == returnStatement.node);
+  ZC_EXPECT(loop.condition == condition.node);
+  ZC_EXPECT(loop.body.size() == 0);
+  ZC_EXPECT(returnStatement.value == returnValue.node);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::VerifiedBuiltMir&> verified = builtMir[0].builtMir();
+  ZC_IF_SOME(mir, verified) {
+    zc::Maybe<zc::Array<uint8_t>> record = canonicalRecordForOwner(mir, function.definition);
+    ZC_EXPECT(record != zc::none);
+  }
+}
+
+ZC_TEST("HIR control arm lowers a loop-body write composite through exact node strides") {
+  HirPipelineFixture fixture(
+      "fun f(a: i32, cond: bool) -> i32 { mut x: i32 = 0; while (cond) { x = a; } return x; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.loops().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& local = module.locals()[0];
+  const auto& write = module.localWrites()[0];
+  const auto& returnStatement = module.returns()[0];
+  const auto& loop = module.loops()[0];
+  // Ten-node fixed layout: function 1, body 2, local 3, initializer 4, write 5,
+  // write value 6, return 7, returned local reference 8, condition param-ref 9,
+  // loop 10.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(write.node.ordinal() == 5);
+  ZC_EXPECT(returnStatement.node.ordinal() == 7);
+  ZC_EXPECT(loop.condition.ordinal() == 9);
+  ZC_EXPECT(loop.node.ordinal() == 10);
+  ZC_EXPECT(block.statements.size() == 3);
+  ZC_EXPECT(block.statements[0] == local.node);
+  ZC_EXPECT(block.statements[1] == loop.node);
+  ZC_EXPECT(block.statements[2] == returnStatement.node);
+  ZC_REQUIRE(loop.body.size() == 1);
+  ZC_EXPECT(loop.body[0] == write.node);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::VerifiedBuiltMir&> verified = builtMir[0].builtMir();
+  ZC_IF_SOME(mir, verified) {
+    zc::Maybe<zc::Array<uint8_t>> record = canonicalRecordForOwner(mir, function.definition);
+    ZC_EXPECT(record != zc::none);
+  }
+}
+
 ZC_TEST("Built MIR comparison rvalue byte oracle is stable and mutation sensitive") {
   HirPipelineFixture fixture(
       "fun eq(a: i32, b: i32) -> i32 { if (a == b) { return 1; } else { return 2; } }"_zc);
