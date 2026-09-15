@@ -31,6 +31,12 @@ rfc as process host, fixes matrix adjudication and defaults, places tracked
 changes in a separate index subsection (not the proposal table), adds
 `verification` owner for the optional gate hint, and corrects the commands.
 
+### 2026-09-15 Revised DRAFT -> REVIEW Round 2
+
+| Proposal SHA-256 | `5f3b3bdb008a89037ffa0840b1ab57feeb2043cee287c762d7a58d31d2ed7513` |
+|---|---|
+
+
 ## Owner Review Matrix
 
 | Owner | Round 1 | Round 2 |

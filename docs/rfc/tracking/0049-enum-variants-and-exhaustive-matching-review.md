@@ -10,7 +10,7 @@ boxing, variance, derives, layout, niches) was frozen for review as
 
 Frozen Round-1 proposal snapshot (superseded file):
 
-| Proposal SHA-256 | `bae1d2c060767d248c3560453f98a7b9b7397d64b6c2ff208e3e4bee22166ed1` |
+| Round-1 proposal SHA-256 (superseded) | `bae1d2c060767d248c3560453f98a7b9b7397d64b6c2ff208e3e4bee22166ed1` |
 |---|---|
 
 ### 2026-09-15 Round 1 - All owners REQUEST-CHANGES; proposal RETURNED and split
@@ -56,6 +56,12 @@ surface. The revised proposal re-enters DRAFT then REVIEW for Round 2 under
 
 The revised scope is authored and returns to DRAFT. A new frozen snapshot is
 recorded when it re-enters REVIEW.
+
+### 2026-09-15 Revised DRAFT -> REVIEW Round 2
+
+| Proposal SHA-256 | `0aa2be2dcc0112e452820a76d4e70a2af0b75a8e685ec8ae2825dfd8e2238507` |
+|---|---|
+
 
 ## Owner Review Matrix
 

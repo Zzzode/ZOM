@@ -2,7 +2,7 @@
 rfc: 52
 title: RFC Granularity And Internal-Change Threshold
 type: process
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, task-router, verification]
@@ -13,10 +13,10 @@ area: process
 requires: []
 supersedes: []
 superseded-by: []
-discussion: TBD
+discussion: docs/rfc/tracking/0052-rfc-granularity-and-internal-change-threshold-review.md#discussion-record
 decision: TBD
 implementation: TBD
-tracking-issue: TBD
+tracking-issue: docs/rfc/tracking/0052-rfc-granularity-and-internal-change-threshold-review.md#decision-record
 ---
 
 # RFC 0052: RFC Granularity And Internal-Change Threshold
@@ -304,3 +304,4 @@ current RFCs valid.
 | 2026-09-14 | REVIEW | Frozen for owner review. |
 | 2026-09-15 | RETURNED | Round 1: downgrade had no legal state edge; tracked-change owner/trigger and index placement were unresolved; gate ownership and the test command were wrong. |
 | 2026-09-15 | DRAFT | Revised: WITHDRAWN-plus-pointer disposition, path-owner routing and adjudication, separate tracked-changes subsection, verification owner for the optional gate change, correct commands. |
+| 2026-09-15 | REVIEW | Round 2 frozen after Round 1 revision; tracker and new SHA-256 snapshot bound |

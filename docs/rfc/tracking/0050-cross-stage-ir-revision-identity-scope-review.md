@@ -31,6 +31,12 @@ adds the serialized-artifact and ownership rows, adds `runtime-memory`, fixes
 the RFC 0048 cross-reference, and gives machine-enforceable verification
 commands. It awaits a new REVIEW freeze for Round 2.
 
+### 2026-09-15 Revised DRAFT -> REVIEW Round 2
+
+| Proposal SHA-256 | `734b46130a7a277995ff379b8ea857f7aa9583651f61942affd70830850597f4` |
+|---|---|
+
+
 ## Owner Review Matrix
 
 | Owner | Round 1 | Round 2 |

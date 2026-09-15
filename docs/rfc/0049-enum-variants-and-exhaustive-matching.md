@@ -2,7 +2,7 @@
 rfc: 49
 title: Enum Variants And Exhaustive Matching
 type: language
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [binder-checker, error-system, ir-backend, lexer-parser, module-system, rfc, spec-audit, verification]
@@ -13,10 +13,10 @@ area: language
 requires: [5, 7, 9, 10]
 supersedes: []
 superseded-by: []
-discussion: TBD
+discussion: docs/rfc/tracking/0049-enum-variants-and-exhaustive-matching-review.md#discussion-record
 decision: TBD
 implementation: TBD
-tracking-issue: TBD
+tracking-issue: docs/rfc/tracking/0049-enum-variants-and-exhaustive-matching-review.md#decision-record
 ---
 
 # RFC 0049: Enum Variants And Exhaustive Matching
@@ -422,3 +422,4 @@ x86-64 CI lanes suffice. No release readiness is implied by DRAFT.
 | 2026-09-14 | REVIEW | Round 1 owner review. |
 | 2026-09-15 | RETURNED | Round 1 found scope and prerequisite blockers; decision to split to enum and match only. |
 | 2026-09-15 | DRAFT | Revised scope: record variants, exhaustive matching, if-let/let-else, or-patterns, non_exhaustive; products/boxing/layout/variance/derive deferred; existing diagnostics reused. |
+| 2026-09-15 | REVIEW | Round 2 frozen after Round 1 revision; tracker and new SHA-256 snapshot bound |

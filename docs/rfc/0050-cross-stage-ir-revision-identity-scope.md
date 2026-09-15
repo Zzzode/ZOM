@@ -2,7 +2,7 @@
 rfc: 50
 title: Cross-Stage IR Revision Identity Scope
 type: compiler
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [ir-backend, module-system, rfc, runtime-memory, verification]
@@ -13,10 +13,10 @@ area: compiler
 requires: [10, 13, 15, 17, 21]
 supersedes: []
 superseded-by: []
-discussion: TBD
+discussion: docs/rfc/tracking/0050-cross-stage-ir-revision-identity-scope-review.md#discussion-record
 decision: TBD
 implementation: TBD
-tracking-issue: TBD
+tracking-issue: docs/rfc/tracking/0050-cross-stage-ir-revision-identity-scope-review.md#decision-record
 ---
 
 # RFC 0050: Cross-Stage IR Revision Identity Scope
@@ -352,3 +352,4 @@ time, but that is not a goal and no performance gate is added.
 | 2026-09-14 | REVIEW | Frozen for required-owner review; tracker and SHA-256 snapshot bound |
 | 2026-09-15 | RETURNED | Round 1: feature-boundary and executable-MIR-set rows overstated; inventory omitted serialized-artifact domains; runtime-memory owner and machine-enforceable parity command required. |
 | 2026-09-15 | DRAFT | Revised evidence inventory, complete domain list, runtime-memory owner, concrete verification commands. |
+| 2026-09-15 | REVIEW | Round 2 frozen after Round 1 revision; tracker and new SHA-256 snapshot bound |

@@ -34,6 +34,12 @@ by executed tests; build/asm/banned-include checks retained as labeled
 tripwires pending real boundaries), corrected impact ownership (rfc owns the
 rfc skill, task-router owns subagent files), and concrete test commands.
 
+### 2026-09-15 Revised DRAFT -> REVIEW Round 2
+
+| Proposal SHA-256 | `c4be56a6f363660fc6af4d21c2e03609b4544ec70015c1a66806ddb4d56bb511` |
+|---|---|
+
+
 ## Owner Review Matrix
 
 | Owner | Round 1 | Round 2 |
