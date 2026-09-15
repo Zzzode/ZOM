@@ -59,7 +59,7 @@ recorded when it re-enters REVIEW.
 
 ### 2026-09-15 Revised DRAFT -> REVIEW Round 2
 
-| Proposal SHA-256 | `0aa2be2dcc0112e452820a76d4e70a2af0b75a8e685ec8ae2825dfd8e2238507` |
+| Proposal SHA-256 | `8fb950f01ead03a9fd4dafd8f63818353e2ffb60ebcbdb90969b1e2ae2625706` |
 |---|---|
 
 

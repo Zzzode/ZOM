@@ -36,7 +36,7 @@ rfc skill, task-router owns subagent files), and concrete test commands.
 
 ### 2026-09-15 Revised DRAFT -> REVIEW Round 2
 
-| Proposal SHA-256 | `c4be56a6f363660fc6af4d21c2e03609b4544ec70015c1a66806ddb4d56bb511` |
+| Proposal SHA-256 | `83c708c33ae359cceafa3a8f042ee03173db16de14a8d05e02e96ce5cd7b2e27` |
 |---|---|
 
 

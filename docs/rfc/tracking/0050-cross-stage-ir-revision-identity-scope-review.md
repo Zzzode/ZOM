@@ -33,7 +33,7 @@ commands. It awaits a new REVIEW freeze for Round 2.
 
 ### 2026-09-15 Revised DRAFT -> REVIEW Round 2
 
-| Proposal SHA-256 | `734b46130a7a277995ff379b8ea857f7aa9583651f61942affd70830850597f4` |
+| Proposal SHA-256 | `f36572c5437171de49965f768f6eba9dd75758f5635c2c1b09ed8576af2363a7` |
 |---|---|
 
 

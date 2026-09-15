@@ -10,7 +10,7 @@ approvers: []
 created: 2026-09-14
 updated: 2026-09-15
 area: compiler
-requires: [10, 13, 15, 17, 21]
+requires: [10, 13, 15, 17, 21, 24, 25]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0050-cross-stage-ir-revision-identity-scope-review.md#discussion-record
@@ -60,7 +60,7 @@ however, found three drifts between the specification and production:
    category with no descriptor rows using it, so the one use that would
    justify inter-process content addressing does not exist.
 
-Meanwhile every cited mature compiler versions in-memory data with monotonic
+Meanwhile the cited mature compilers version in-memory data with monotonic
 integers, interned handles, or pointers within a session, and reserves hashes
 for serialized metadata and build artifacts. The cost of the current scheme is
 real: SHA-256 over full canonical records at every stage, exact preimage
@@ -158,6 +158,8 @@ because they define the boundary precedent for the in-memory rule.
 | Feature-boundary registry revision (`zom.feature-boundary-registry`) | RFC 0010 | **No**; only an unwrapped `FeatureBoundaryVerificationResult` template with zero non-test consumers | None |
 | Borrow module-interface revision (`zom.module-interface-revision`) | RFC 0013 | Yes | Cross-module borrow evidence lineage |
 | Checker signature/dispatch/checked-facts revisions | RFC 0015 (LANDED) | Yes (`zom.signature-facts-revision`, `zom.dispatch-facts-revision`, `zom.checked-facts-revision`) | Checker codec closure admission |
+| Core marker and role revisions (`zom.core-marker-policy-registry`, `zom.core-marker-shape-inventory`, `zom.standard-marker-authority`, `zom.core-role-seed`, `zom.core-module-graph`) | RFC 0024, RFC 0025 | Yes, `compiler/driver/core/` | Session/core lease and mismatch checks in `compiler-session.cc` and the core query/verifier TUs |
+| Checker marker-policy revision (`zom.marker-policy-registry`) | RFC 0005 signature facts | Yes | Checker codec closure admission |
 | Ownership event-overlay and facts revisions (`zom.ownership-event-overlay`, ownership facts) | RFC 0007/0013 | Yes | Ownership overlay lineage and proof validation |
 | Executable-MIR set revision (`zom.executable-mir-set`) | RFC 0021 | **No**; no type, domain, or digest on `VerifiedExecutableMir`; lineage is carried by the MIR + overlay + facts + borrow-evidence revisions | None |
 | Link-plan and executable-manifest/publication digests (`zom.link-plan`, `zom.executable-manifest`) | RFC 0043 | Yes; serialized cross-process artifacts | Linker invocation, executable inspector, recoverable publication |
@@ -168,8 +170,8 @@ because they define the boundary precedent for the in-memory rule.
 
 The feature-boundary and executable-MIR-set rows were described as
 implemented/partial in the Round-1 draft; that was incorrect and is corrected
-here. There is also no separately named marker-registry revision distinct
-from the checker revisions listed above.
+here. Marker authority is a distinct implemented family (next section), not
+part of the generic checker signature revision.
 
 ### Decision options
 
@@ -217,7 +219,7 @@ option C must justify each removal against the listed consumers.
 
 ### Relationships
 
-This RFC overlays RFCs 0010, 0013, 0015, and 0021. It does not edit their
+This RFC overlays RFCs 0010, 0013, 0015, 0021, 0024, and 0025. It does not edit their
 text before acceptance. If option B or C is accepted, the normative
 replacement follows the repository's supersession/overlay convention, each
 affected tracker records the bound proposal hash, and the affected acceptance
@@ -325,8 +327,8 @@ time, but that is not a goal and no performance gate is added.
 - Conformance: `python3 scripts/check-ir-parity.py --check --ir --zomc
   <built-zomc> --snapshot tests/coverage/corpus-ir-parity.json` for the
   923-source process channel and 64 clean HIR/MIR dumps; the tool requires an
-  explicit binary and snapshot and is run through the CI parity wrapper
-  rather than as a standalone CTest label.
+  explicit binary and snapshot; it is a manual gate today and is not
+  registered as a CTest label or wired into a CI workflow step yet.
 - Generated files: oracle regenerations listed explicitly in the implementing
   change; hand-assembled codec framing oracles stay byte-identical. Key files:
   `tests/unittests/compiler/lir/lir-algebra-codec-oracle-test.cc`, MIR codec
@@ -353,3 +355,4 @@ time, but that is not a goal and no performance gate is added.
 | 2026-09-15 | RETURNED | Round 1: feature-boundary and executable-MIR-set rows overstated; inventory omitted serialized-artifact domains; runtime-memory owner and machine-enforceable parity command required. |
 | 2026-09-15 | DRAFT | Revised evidence inventory, complete domain list, runtime-memory owner, concrete verification commands. |
 | 2026-09-15 | REVIEW | Round 2 frozen after Round 1 revision; tracker and new SHA-256 snapshot bound |
+| 2026-09-15 | REVIEW | Round 3 corrections: added the implemented RFC 0024/0025 core marker/role revision family, requires/overlay 24 and 25, and corrected the parity gate to a manual, not-yet-CI-wired invocation |

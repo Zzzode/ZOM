@@ -33,7 +33,7 @@ changes in a separate index subsection (not the proposal table), adds
 
 ### 2026-09-15 Revised DRAFT -> REVIEW Round 2
 
-| Proposal SHA-256 | `5f3b3bdb008a89037ffa0840b1ab57feeb2043cee287c762d7a58d31d2ed7513` |
+| Proposal SHA-256 | `2b5bf1916a6f9977e2889726366952ede5dfff33b8095a2e8d81b1d0501bc3af` |
 |---|---|
 
 

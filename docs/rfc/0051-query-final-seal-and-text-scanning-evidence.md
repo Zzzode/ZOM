@@ -210,18 +210,25 @@ source/key rejections.
 
 ### Part 2: Text-scanning evidence
 
-Normative contradiction to resolve. The Round-1 review established the
-conflict is repository-wide, not limited to two RFCs: scanner-as-proof text
-also appears in RFCs 0002, 0003, 0004, 0005, 0007, 0008, 0011 (LANDED), 0016,
-0018, 0020, 0024, 0025, 0028, 0030, 0032, and 0042. Acceptance of this RFC
-therefore adopts one generic supersession rule covering every listed RFC
-rather than editing only 0017 and 0021:
+Normative contradiction to resolve. The conflict is repository-wide and the
+set is non-exhaustive. Scanner-as-sole-proof text appears in at least RFCs
+0002, 0003, 0004, 0005, 0007, 0008, 0011 (LANDED), 0016, 0017, 0018, 0020,
+0021, 0023, 0024, 0025, 0027, 0028, 0029 (LANDED), 0030, 0032, 0042, and
+0048. RFCs that reference only `check-stable-binding-schema.py` as an
+inventory/codegen consistency check (for example 0031, 0033, 0034, 0037,
+0039) are not in scope: that is a generated-file consistency check, not an
+architecture-proof claim; SUPERSEDED RFCs are also out of scope. Acceptance
+of this RFC adopts one self-executing generic rule rather than editing every
+RFC at once:
 
-> For every RFC acceptance criterion that makes a source-text scan the sole
-> proof of an architecture property, RFC 0051 governs: the scan is a
-> regression aid and the property is established by compiled or executed
-> evidence. Each implementing change amends its owning RFC/tracker row and
-> names the replacement evidence; this RFC lists every affected RFC above.
+> For every RFC acceptance criterion - in any RFC, including ones not
+> enumerated above - that makes a source-text scan the sole proof of an
+> architecture property, RFC 0051 governs: the scan is a regression aid and
+> the property is established by compiled or executed evidence. The list
+> above is the known set at 2026-09-15 and is not exhaustive; omission of a
+> tracker does not exempt it. Each implementing change amends its owning
+> RFC/tracker row and names the replacement evidence or the retained-tripwire
+> class.
 
 The immediate sharp contradiction remains:
 
@@ -301,8 +308,9 @@ unnameable; those are compiled evidence and are unaffected.
 - Repositioning scanners reduces the cheap, fast signal that catches marker
   deletion before linking; mitigation keeps the scripts in CI as aids and
   strengthens the negative self-tests.
-- Overlaying four RFCs adds process overhead; the alternative (leaving the
-  contradiction) leaves implementers choosing which LANDED rule to follow.
+- Applying the generic rule across many RFCs adds per-tracker process
+  overhead; the alternative (leaving the contradiction) leaves implementers
+  choosing which LANDED rule to follow.
 - Removing positive call-site assertions changes what the IR gate enforces;
   any replaced assertion must list the concrete native test that observes the
   behavior.
@@ -389,7 +397,7 @@ No release or runtime concern.
   run-rejection negative test with the LLVM backend enabled.
 - Generated files: none.
 - Format: `python3 scripts/check-format.py`; `python3 scripts/check-rfc.py`;
-  `python3 scripts/check-english-only.py` (relabeled script headers stay
+  `python3 scripts/check-english-only.py --check` (relabeled script headers stay
   ASCII English).
 
 ## Open Questions
@@ -410,3 +418,4 @@ No release or runtime concern.
 | 2026-09-15 | RETURNED | Round 1: Part 1 omitted the landed RFC 0038 Success/Failure closure; Part 2 scope covered only 2 of ~15 affected RFCs and left build/asm markers without replacement disposition. |
 | 2026-09-15 | DRAFT | Revised threat table with failure closure; repository-wide supersession rule; bound positive-marker to native-test map; corrected owner/impact rows and tests. |
 | 2026-09-15 | REVIEW | Round 2 frozen after Round 1 revision; tracker and new SHA-256 snapshot bound |
+| 2026-09-15 | REVIEW | Round 3 corrections: non-exhaustive self-executing scanner rule with the full known RFC set and schema-only/superseded exclusions, English-only --check flag, repository-wide drawback wording |

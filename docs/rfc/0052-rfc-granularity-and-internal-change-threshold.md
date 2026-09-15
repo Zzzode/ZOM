@@ -122,7 +122,7 @@ An author answers a short list of questions before writing anything:
    a gate relabeling that another owner should see but no external or identity
    contract changes? Lightweight tracked change: a short section appended to
    the owning RFC's tracker, or an MCP-style one-page proposal under
-   `docs/rfc/tracking/` linked from the index, with a short fixed review
+   `docs/rfc/tracking/changes/` linked from the index, with a short review
    window rather than multi-round owner approval.
 
 Drift repair - making documents, specs, and tests agree with an already
@@ -153,10 +153,11 @@ manager adjudicates tier placement; `task-router` adjudicates when the dispute
 is about owner routing or authority wording. The review manager may upgrade a
 lightweight item to a full RFC when review reveals a contract change. A
 proposal that turns out to be drift repair is not "downgraded" through a new
-state edge: the proposal goes `REVIEW -> WITHDRAWN` (the only legal terminal
-edge), the proposal file is retained with a status-history row pointing at the
-replacement, and the work continues as an ordinary commit or a tracked change
-under the rules below. The proposal number is never reused.
+state edge: the proposal goes `REVIEW -> WITHDRAWN` (the legal edge for this
+disposition; `REVIEW -> REJECTED` is the other terminal edge and is reserved
+for an unwanted proposal), the proposal file is retained with a status-history
+row pointing at the replacement, and the work continues as an ordinary commit
+or a tracked change under the rules below. The proposal number is never reused.
 
 ### Lightweight tracked change format
 
@@ -165,9 +166,14 @@ under the rules below. The proposal number is never reused.
   change when the change modifies the same contract area), otherwise a short
   file under `docs/rfc/tracking/changes/` with: problem, affected surfaces,
   contract-preservation statement, and verification commands;
-- the single lightweight reviewer is the manifest owner of the changed paths;
-  `rfc` is only the process host and does not run multi-round review;
-- task-router routes a tracked change to that path owner exactly like an
+- lightweight review is by the manifest owner of the changed paths. A
+  single-owner change has one reviewer; a cross-owner tracked change (the only
+  such case the matrix admits) is either assigned one lead path owner by
+  task-router, with the other affected owner consulted, or reviewed by both
+  path owners; "single reviewer" is therefore the default, not a requirement
+  that hides a second owner;
+- `rfc` is only the process host and does not run multi-round review;
+- task-router routes a tracked change to those path owners exactly like an
   ordinary change; no new trigger keyword is needed because routing is by
   affected paths, not topic;
 - a review window of owner discretion (the review manager may set a short
@@ -282,11 +288,11 @@ current RFCs valid.
 - Unit tests: none.
 - Lit tests: none.
 - Conformance: `python3 scripts/check-rfc.py` (the script takes no arguments
-  and has no self-test today) and `python3 scripts/check-english-only.py`
-  (Markdown is in scope for the English-only gate even though clang-format is
-  not). If the optional mechanical title hint is accepted, that change adds a
-  real `--self-test` to `scripts/check-rfc.py` under the verification owner in
-  the same change.
+  and has no self-test today) and `python3 scripts/check-english-only.py
+  --check` (the flag is mandatory; Markdown is in scope for the English-only
+  gate even though clang-format is not). If the optional mechanical title
+  hint is accepted, that change adds a real `--self-test` to
+  `scripts/check-rfc.py` under the verification owner in the same change.
 - Generated files: none.
 - Format: `python3 scripts/check-format.py` for any non-markdown change;
   markdown-only changes are clang-format neutral.
@@ -305,3 +311,4 @@ current RFCs valid.
 | 2026-09-15 | RETURNED | Round 1: downgrade had no legal state edge; tracked-change owner/trigger and index placement were unresolved; gate ownership and the test command were wrong. |
 | 2026-09-15 | DRAFT | Revised: WITHDRAWN-plus-pointer disposition, path-owner routing and adjudication, separate tracked-changes subsection, verification owner for the optional gate change, correct commands. |
 | 2026-09-15 | REVIEW | Round 2 frozen after Round 1 revision; tracker and new SHA-256 snapshot bound |
+| 2026-09-15 | REVIEW | Round 3 corrections: WITHDRAWN vs REJECTED edge wording, cross-owner tracked-change review routing, mandatory english-only --check flag |

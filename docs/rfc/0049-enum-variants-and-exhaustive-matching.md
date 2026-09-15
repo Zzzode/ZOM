@@ -148,11 +148,10 @@ types. Unit and tuple variants are unchanged. The new record form is
 the three forms; mixed-form enums are allowed. Variant payload types are
 resolved by the binder and checked as nominal signature members.
 
-The default discriminant is a compiler-internal tag with a smallest-width
-rule (one byte minimum); its in-memory representation and width-override
-attributes are layout-RFC work and are not observable in this RFC. The
-checker uses an abstract discriminant for match analysis without promising a
-byte layout.
+The discriminant is an abstract checker-side tag used for variant
+resolution and match analysis. Its in-memory representation, width rules,
+and width-override attributes are layout-RFC work and are not observable or
+promised in this RFC; the checker does not depend on a byte-level encoding.
 
 ### 2. Grammar and AST deltas (complete inventory)
 
@@ -178,9 +177,15 @@ together, with grammar-oracle and corpus parity.
    optional `else`, and a `let ... else` tail on the variable declaration
    production whose block must diverge (`return`, `raise`, `break`/`continue`
    in scope, or diverging call).
-6. `#[zom::non_exhaustive]` added to the closed built-in single-segment
-   attribute set (grammar rule, hand-parser allowlist, chapter 16). Per-
-   variant attributes remain rejected.
+6. `#[zom::non_exhaustive]` already parses today as an inert qualified
+   multi-segment attribute (both the ANTLR grammar and the hand-written parser
+   admit `zom::...` paths; there is no closed multi-segment allowlist). The
+   delta is therefore not a parser or single-segment allowlist change: the
+   checker gains a recognized-attribute consumer and normalization for this
+   path, chapter 16 gains a "recognized attribute" entry alongside the
+   existing `zom::cfg` and `zom::param::move` entries, and per-variant
+   attributes remain rejected. `isBuiltinSingleSegAttr` and
+   `isWhitelistedBareAttribute` are not modified.
 
 ### 3. Exhaustiveness
 
@@ -228,26 +233,36 @@ of scope.
 
 ### 6. Binder and module export surface
 
-- Variant constructors (unit, tuple, record) and record field names become
-  members of the enum's module-visible declaration and are included in
+- Variant constructors (unit, tuple, tuple/record) and record field names
+  become members of the enum's module-visible declaration and are included in
   `VerifiedBindingOutput` resolution.
+- `EnumVariantSignature` currently carries only positional payload
+  `SemanticTypeId`s. Record variants additively extend it with an ordered
+  named-field carrier (field `SemanticIdentifier` plus its `SemanticTypeId`);
+  tuple variants keep the positional vector. The corresponding interface-entry
+  shape publishes the same named/positional payload distinction.
 - `VerifiedModuleInterface` / `VerifiedExportSurface` publishes each enum's
-  variant set, payload field names and types, and the `non_exhaustive` flag,
-  so cross-module matching and construction resolve from the export revision
-  (RFC 0039). This is an additive interface change staged with the semantic
-  implementation; nothing is exported before the checker admits enums.
+  variant set, payload fields (names where named and types), and the
+  `non_exhaustive` flag, so cross-module matching and construction resolve
+  from the export revision (RFC 0039). This is an additive interface change
+  staged with the semantic implementation; nothing is exported before the
+  checker admits enums.
 
 ### 7. HIR and MIR realization
 
 HIR gains match expression/statement, enum-variant construction, and
-record/tuple destructuring records. MIR lowering requires two vocabulary
-additions that this RFC specifies and allocates codec bytes for, rather than
-silently assuming:
+record/tuple destructuring records. MIR lowering requires exactly one
+vocabulary addition, which this RFC names and allocates rather than silently
+assuming:
 
-1. a discriminant-read rvalue (reading the abstract enum tag of a place),
-   complementing the existing write-only `SetDiscriminant`; and
-2. match dispatch lowers through the existing `SwitchInt` terminator with a
-   new discriminant operand; arm joins reuse the current
+1. a discriminant-read rvalue reading the abstract enum tag of a place. It is
+   allocated as `MirRvalueKind` byte `0x05` after the existing
+   `Use=0x01, NominalAggregate=0x02, Comparison=0x03, Arithmetic=0x04`, with
+   the encoder switch in `compiler/mir/built-mir.cc` extended in the same
+   change; it complements the existing write-only `SetDiscriminant`; and
+2. match dispatch evaluates that rvalue into a boolean/integer temporary and
+   feeds it to the **existing** `MirSwitchIntTerminator.discriminant`
+   operand (no new terminator operand is added). Arm joins reuse the current
    temporary/slot-and-branch lowering for the admitted control shapes.
 
 Full multi-arm match with arbitrary joins is an RFC 0048 construct family;
@@ -358,7 +373,7 @@ untouched. A current-state design note records progress per evidence class.
 ## Operational Readiness
 
 No runtime, allocation, or target dependency is introduced; existing Linux
-x86-64 CI lanes suffice. No release readiness is implied by DRAFT.
+x86-64 CI lanes suffice.
 
 ## Acceptance Criteria
 
@@ -398,8 +413,8 @@ x86-64 CI lanes suffice. No release readiness is implied by DRAFT.
 - Conformance: grammar runner matrix; process and IR parity via
   `python3 scripts/check-ir-parity.py --check --ir --zomc <built zomc>
   --snapshot tests/coverage/corpus-ir-parity.json` (the script takes an
-  explicit binary and is also run by the CI wrapper, not registered as a
-  standalone CTest label).
+  explicit binary; it is a manual gate today and is not registered as a
+  CTest label or wired into a CI workflow step yet).
 - Generated files: regenerated AST headers and coverage inventories with
   their generators in the same change.
 - Format: `python3 scripts/check-format.py`; `python3 scripts/check-rfc.py`;
@@ -423,3 +438,4 @@ x86-64 CI lanes suffice. No release readiness is implied by DRAFT.
 | 2026-09-15 | RETURNED | Round 1 found scope and prerequisite blockers; decision to split to enum and match only. |
 | 2026-09-15 | DRAFT | Revised scope: record variants, exhaustive matching, if-let/let-else, or-patterns, non_exhaustive; products/boxing/layout/variance/derive deferred; existing diagnostics reused. |
 | 2026-09-15 | REVIEW | Round 2 frozen after Round 1 revision; tracker and new SHA-256 snapshot bound |
+| 2026-09-15 | REVIEW | Round 3 editorial and fact corrections (attribute delta location, named-payload carrier, discriminant byte 0x05, abstract tag, manual parity gate) |
