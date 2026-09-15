@@ -37,13 +37,17 @@ changes in a separate index subsection (not the proposal table), adds
 |---|---|
 
 
+### 2026-09-15 Round 3 - owner convergence
+
+All three required owners approved at Round 3 (rfc, task-router, verification). No `approvers` entry and no ACCEPTED transition are recorded by the review panel; acceptance is a separate decision.
+
 ## Owner Review Matrix
 
 | Owner | Round 1 | Round 2 |
 |---|---|---|
-| `rfc` | REQUEST-CHANGES (illegal downgrade; index; disposition) | Pending |
-| `task-router` | REQUEST-CHANGES (owner/trigger routing; impact rows; tie-break) | Pending |
-| `verification` | Added on revision; Round 1 finding on gate commands | Pending |
+| `rfc` | REQUEST-CHANGES R1/R2 | APPROVED R3 |
+| `task-router` | REQUEST-CHANGES R2 | APPROVED R3 |
+| `verification` | REQUEST-CHANGES R2 (commands) | APPROVED R3 |
 
 ## Decision Record
 

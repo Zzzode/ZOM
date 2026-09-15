@@ -40,16 +40,20 @@ rfc skill, task-router owns subagent files), and concrete test commands.
 |---|---|
 
 
+### 2026-09-15 Round 3 - owner convergence
+
+All six required owners approved at Round 3 (error-system, ir-backend, module-system, rfc, task-router, verification). The retain/simplify/remove and scanner disposition decisions await the human decision-maker before ACCEPTED. No `approvers` entry and no ACCEPTED transition are recorded by the review panel; acceptance is a separate decision.
+
 ## Owner Review Matrix
 
 | Owner | Round 1 | Round 2 |
 |---|---|---|
 | `module-system` | REQUEST-CHANGES (RFC 0038 failure closure; demand edges) | Pending |
-| `ir-backend` | APPROVED with conditions C1-C3 | Pending confirmation against the bound disposition table |
-| `error-system` | APPROVED (editorial) | Pending confirmation |
-| `verification` | REQUEST-CHANGES (repo-wide scope; build/asm markers; self-tests) | Pending |
-| `task-router` | Pending in Round 1; impact rows corrected in revision | Pending |
-| `rfc` | REQUEST-CHANGES (scope; stale wording) | Pending |
+| `ir-backend` | APPROVED w/ conditions R1 | APPROVED R2/R3 (conditions met) |
+| `error-system` | APPROVED R1 | APPROVED R2/R3 |
+| `verification` | REQUEST-CHANGES R1/R2 (scope; --check) | APPROVED R3 |
+| `task-router` | Impact rows corrected R2 | APPROVED R2/R3 |
+| `rfc` | REQUEST-CHANGES R1/R2 (scope; wording) | APPROVED R3 |
 
 ## Decision Record
 

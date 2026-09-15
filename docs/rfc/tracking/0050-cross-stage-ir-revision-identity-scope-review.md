@@ -37,15 +37,19 @@ commands. It awaits a new REVIEW freeze for Round 2.
 |---|---|
 
 
+### 2026-09-15 Round 3 - owner convergence
+
+All five required owners approved at Round 3 (ir-backend, module-system, rfc, runtime-memory, verification). The recommended option is B (re-scope); the option decision itself awaits the human decision-maker before ACCEPTED. No `approvers` entry and no ACCEPTED transition are recorded by the review panel; acceptance is a separate decision.
+
 ## Owner Review Matrix
 
 | Owner | Round 1 | Round 2 |
 |---|---|---|
-| `ir-backend` | REQUEST-CHANGES (evidence rows; scheduling) | Pending |
-| `module-system` | REQUEST-CHANGES (same rows; lease preservation) | Pending |
-| `runtime-memory` | Surfaced as missing owner; added on revision | Pending |
-| `verification` | REQUEST-CHANGES (parity invocation; oracle files) | Pending |
-| `rfc` | REQUEST-CHANGES (evidence completeness; owners) | Pending |
+| `ir-backend` | REQUEST-CHANGES R1 | APPROVED R2/R3 |
+| `module-system` | REQUEST-CHANGES R1/R2 (core marker family) | APPROVED R3 |
+| `runtime-memory` | Owner added R2 | APPROVED R2/R3 |
+| `verification` | REQUEST-CHANGES R1/R2 (parity wiring wording) | APPROVED R3 |
+| `rfc` | REQUEST-CHANGES R1/R2 (inventory completeness) | APPROVED R3 |
 
 ## Decision Record
 

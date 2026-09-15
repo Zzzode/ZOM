@@ -63,20 +63,24 @@ recorded when it re-enters REVIEW.
 |---|---|
 
 
+### 2026-09-15 Round 3 - owner convergence
+
+All eight required owners approved at Round 3 (lexer-parser, binder-checker, error-system, ir-backend, module-system, spec-audit, verification, rfc). Runtime-memory and concurrency are not required for the revised scope. No `approvers` entry and no ACCEPTED transition are recorded by the review panel; acceptance is a separate decision.
+
 ## Owner Review Matrix
 
 | Owner | Surface | Round 1 (broad draft) | Round 2 (enum/match) |
 |---|---|---|---|
-| `lexer-parser` | Grammar/oracle/AST/recovery deltas | REQUEST-CHANGES (struct-method deletion; shared structMember; new if-let/let-else; or-pattern misparse; full record-variant delta; variance attachment; derive closed-set) | Pending |
-| `binder-checker` | Variants, exhaustiveness, coherence, moves | REQUEST-CHANGES (duplicate codes; variance coercion dependency; terminology) | Pending |
-| `error-system` | Diagnostics reuse and reservations | REQUEST-CHANGES (reuse 4022/4023/4054/4063/4065; allocate real slots) | Pending |
-| `ir-backend` | Match HIR/MIR, discriminant vocabulary | REQUEST-CHANGES (discriminant-read node; boxing/layout prerequisites) | Pending |
-| `runtime-memory` | Boxing and drop prerequisites | REQUEST-CHANGES (no language box/allocator/glue) - out of revised scope | Not required for revised scope |
-| `module-system` | Export surface, visibility, non_exhaustive | REQUEST-CHANGES (variant export; foreign-module rule; ch23 default - removed with products scope) | Pending |
-| `spec-audit` | Chapter and grammar alignment | REQUEST-CHANGES (chapter list; product/layout conflicts - narrowed in revision) | Pending |
-| `verification` | Tests, parity, gates | REQUEST-CHANGES (layout harness; parity flags; diagnostic lit matrix) | Pending |
-| `rfc` | Process and conformance | REQUEST-CHANGES (duplicate codes; deleted surface; Copy conflict; scope) | Pending |
-| `concurrency` | Spawn boundary (advisory) | REQUEST-CHANGES on spawn content; resolved by making spawn a non-goal | Not required for revised scope |
+| `lexer-parser` | Grammar/oracle/AST/recovery deltas | REQUEST-CHANGES R1 | APPROVED R2/R3 (F1 fixed R3) |
+| `binder-checker` | Variants, exhaustiveness, coherence, moves | REQUEST-CHANGES R1 | APPROVED R2/R3 (F2 fixed R3) |
+| `error-system` | Diagnostics reuse and reservations | REQUEST-CHANGES R1 | APPROVED R2/R3 |
+| `ir-backend` | Match HIR/MIR, discriminant vocabulary | REQUEST-CHANGES R1 | APPROVED R2/R3 (F3: byte 0x05 specified) |
+| `runtime-memory` | Boxing and drop prerequisites | REQUEST-CHANGES R1 - out of revised scope | Not required R2/R3 |
+| `module-system` | Export surface, visibility, non_exhaustive | REQUEST-CHANGES R1 | APPROVED R2/R3 |
+| `spec-audit` | Chapter and grammar alignment | REQUEST-CHANGES R1 | APPROVED R2/R3 (F4 fixed R3) |
+| `verification` | Tests, parity, gates | REQUEST-CHANGES R1 | APPROVED R2/R3 (F5 manual parity) |
+| `rfc` | Process and conformance | REQUEST-CHANGES R1 | APPROVED R2/R3 |
+| `concurrency` | Spawn boundary (advisory) | REQUEST-CHANGES R1 - spawn made non-goal | Not required R2/R3 |
 | `task-router` | Routing (not required for 0049) | Not in required owners | N/A |
 
 ## Decision Record
