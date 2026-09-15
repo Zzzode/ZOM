@@ -20,7 +20,9 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
                    zc::Vector<HirPrimitiveBinaryExpression>& primitiveBinaryOperations,
                    zc::Vector<HirNominalAggregateExpression>& aggregates,
                    zc::Vector<HirLocalFieldProjectionExpression>& localFieldProjections,
-                   zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks) noexcept
+                   zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks,
+                   zc::Vector<HirDirectCallExpression>& calls,
+                   zc::Vector<HirReceiverCallExpression>& receiverCalls) noexcept
     : nextNode(&nextNode),
       functions(&functions),
       blocks(&blocks),
@@ -33,7 +35,9 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
       primitiveBinaryOperations(&primitiveBinaryOperations),
       aggregates(&aggregates),
       localFieldProjections(&localFieldProjections),
-      unsafeBlocks(&unsafeBlocks) {}
+      unsafeBlocks(&unsafeBlocks),
+      calls(&calls),
+      receiverCalls(&receiverCalls) {}
 
 HirNodeId HirFnCtx::allocNode() {
   HirNodeId id = hirId(*nextNode);
@@ -78,6 +82,10 @@ void HirFnCtx::addLocalFieldProjection(HirLocalFieldProjectionExpression project
 }
 
 void HirFnCtx::addUnsafeBlock(HirUnsafeBlockExpression block) { unsafeBlocks->add(zc::mv(block)); }
+
+void HirFnCtx::addDirectCall(HirDirectCallExpression call) { calls->add(zc::mv(call)); }
+
+void HirFnCtx::addReceiverCall(HirReceiverCallExpression call) { receiverCalls->add(zc::mv(call)); }
 
 void HirFnCtx::lowerArmLeaf(HirNodeId destination, const PendingConditionalArm& leaf) {
   ZC_IF_SOME(reference, leaf.parameter) {

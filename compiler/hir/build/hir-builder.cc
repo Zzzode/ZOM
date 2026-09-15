@@ -16,6 +16,7 @@
 #include "compiler/hir/build/hir-pending.h"
 #include "compiler/hir/build/lower-expr-aggregate.h"
 #include "compiler/hir/build/lower-expr-binary.h"
+#include "compiler/hir/build/lower-expr-call.h"
 #include "compiler/hir/build/lower-stmt-write.h"
 #include "compiler/hir/hir-candidate-impl.h"
 #include "compiler/hir/hir-internal.h"
@@ -3345,7 +3346,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     if (hasScalarLeaf && (onlyScalarReturn || singleInitializedLocal)) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks);
+                     localFieldProjections, unsafeBlocks, calls, receiverCalls);
       if (onlyScalarReturn) {
         lowerScalarReturnFunction(zc::mv(value), fnCtx);
       } else {
@@ -3359,7 +3360,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     if (value.sequentialLocalReturn != zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks);
+                     localFieldProjections, unsafeBlocks, calls, receiverCalls);
       lowerSequentialLocalReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
@@ -3376,7 +3377,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         value.loopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks);
+                     localFieldProjections, unsafeBlocks, calls, receiverCalls);
       lowerComparisonReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
@@ -3396,7 +3397,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks);
+                     localFieldProjections, unsafeBlocks, calls, receiverCalls);
       lowerAggregateFieldProjectionFunction(zc::mv(value), fnCtx);
       continue;
     }
@@ -3425,10 +3426,55 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       if (writesArePlain && initializedByLeaf) {
         HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                        localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                       localFieldProjections, unsafeBlocks);
+                       localFieldProjections, unsafeBlocks, calls, receiverCalls);
         lowerLocalWriteFunction(zc::mv(value), fnCtx);
         continue;
       }
+    }
+    // Direct/receiver call family. Callee resolution, dispatch targets,
+    // receiver selection, argument kinds, and the generic/raises/arity gates are
+    // already published by the checker and dispatch facts in the pending call
+    // records; these arms only reproduce the node-id layout. A bare direct-call
+    // return has four nodes (function, body, return, call); a direct-call local
+    // initializer has six (plus local, initializer, local reference); a
+    // mutable-receiver call body has seven (plus an aggregate initializer and a
+    // receiver reference). Every unsupported call shape keeps the generic path.
+    const bool callFieldsClear =
+        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
+        value.localFieldProjection == zc::none && value.parameterIndex == zc::none &&
+        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
+        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
+        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none;
+    if (value.call != zc::none && value.local == zc::none && value.receiverCall == zc::none &&
+        value.aggregate == zc::none && value.localReference == zc::none &&
+        value.literal == zc::none && value.parameterReference == zc::none && callFieldsClear) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, unsafeBlocks, calls, receiverCalls);
+      lowerDirectCallReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    if (value.call != zc::none && value.local != zc::none &&
+        ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
+        value.localReference != zc::none && value.receiverCall == zc::none &&
+        value.aggregate == zc::none && value.literal == zc::none &&
+        value.parameterReference == zc::none && callFieldsClear) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, unsafeBlocks, calls, receiverCalls);
+      lowerDirectCallInitializerFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    if (value.receiverCall != zc::none && value.local != zc::none &&
+        ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
+        value.localReference != zc::none && value.aggregate != zc::none && value.call == zc::none &&
+        value.literal == zc::none && value.parameterReference == zc::none && callFieldsClear) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, unsafeBlocks, calls, receiverCalls);
+      lowerReceiverCallFunction(zc::mv(value), fnCtx);
+      continue;
     }
     const auto functionId = hirId(next++);
     const auto bodyId = hirId(next++);
@@ -3625,8 +3671,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       writeValueIds.add(hirId(next++));
     }
     const auto returnId = hirId(next++);
-    HirNodeId receiverId;
-    if (value.receiverCall != zc::none) { receiverId = hirId(next++); }
     const auto valueId = hirId(next++);
     zc::Maybe<HirNodeId> unsafeBlockId;
     if (value.unsafeBlockSpan != zc::none) {
@@ -3770,8 +3814,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                              write.sourceSpan.clone(), write.valueSpan.clone()});
     }
     ZC_IF_SOME(reference, value.localReference) {
-      const auto referenceId = value.receiverCall != zc::none ? receiverId : valueId;
-      localReferences.add(HirLocalReferenceExpression{referenceId, hirLocalId(1), reference.type,
+      localReferences.add(HirLocalReferenceExpression{valueId, hirLocalId(1), reference.type,
                                                       reference.category,
                                                       reference.sourceSpan.clone()});
     }
@@ -3804,50 +3847,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       localBorrows.add(HirLocalBorrowExpression{valueId, hirLocalId(1), borrow.sourceType,
                                                 borrow.type, borrow.mutability,
                                                 borrow.sourceSpan.clone()});
-    }
-    ZC_IF_SOME(call, value.call) {
-      HirNodeId callId = valueId;
-      if (value.local != zc::none) {
-        if (initializerId == zc::none) {
-          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                               ir::IrFailureKind::MissingRequiredFact, module,
-                                               registries, 1);
-        }
-        ZC_IF_SOME(value, initializerId) { callId = value; }
-      }
-      zc::Vector<HirDirectCallArgument> arguments;
-      for (const auto& argument : call.arguments) {
-        zc::Maybe<checker::checked::CanonicalConstValue> value;
-        ZC_IF_SOME(constant, argument.value) { value = constant.clone(); }
-        zc::Maybe<identity::CallableParameterKey> parameter;
-        ZC_IF_SOME(key, argument.parameter) { parameter = key.clone(); }
-        arguments.add(HirDirectCallArgument{argument.type, zc::mv(value), zc::mv(parameter),
-                                            argument.sourceSpan.clone()});
-      }
-      calls.add(HirDirectCallExpression{callId, call.callee, call.calleeType, call.resultType,
-                                        zc::mv(arguments), call.sourceSpan.clone()});
-    }
-    ZC_IF_SOME(call, value.receiverCall) {
-      if (value.local == zc::none || value.localReference == zc::none) {
-        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                             ir::IrFailureKind::MissingRequiredFact, module,
-                                             registries, 1);
-      }
-      zc::Vector<checker::checked::ReceiverAdjustmentStep> adjustments;
-      for (const auto adjustment : call.receiverAdjustments) { adjustments.add(adjustment); }
-      zc::Vector<HirDirectCallArgument> arguments;
-      for (const auto& argument : call.arguments) {
-        zc::Maybe<checker::checked::CanonicalConstValue> value;
-        ZC_IF_SOME(constant, argument.value) { value = constant.clone(); }
-        zc::Maybe<identity::CallableParameterKey> parameter;
-        ZC_IF_SOME(key, argument.parameter) { parameter = key.clone(); }
-        arguments.add(HirDirectCallArgument{argument.type, zc::mv(value), zc::mv(parameter),
-                                            argument.sourceSpan.clone()});
-      }
-      receiverCalls.add(HirReceiverCallExpression{
-          valueId, receiverId, call.callee, call.calleeType, call.receiverSourceType,
-          call.receiverType, call.receiverMode, zc::mv(adjustments), call.resultType,
-          zc::mv(arguments), call.sourceSpan.clone()});
     }
   }
 

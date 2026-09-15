@@ -35,7 +35,9 @@ public:
            zc::Vector<HirPrimitiveBinaryExpression>& primitiveBinaryOperations,
            zc::Vector<HirNominalAggregateExpression>& aggregates,
            zc::Vector<HirLocalFieldProjectionExpression>& localFieldProjections,
-           zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks) noexcept;
+           zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks,
+           zc::Vector<HirDirectCallExpression>& calls,
+           zc::Vector<HirReceiverCallExpression>& receiverCalls) noexcept;
 
   /// \brief Allocates the next deterministic source-preorder node id.
   HirNodeId allocNode();
@@ -52,6 +54,8 @@ public:
   void addAggregate(HirNominalAggregateExpression aggregate);
   void addLocalFieldProjection(HirLocalFieldProjectionExpression projection);
   void addUnsafeBlock(HirUnsafeBlockExpression block);
+  void addDirectCall(HirDirectCallExpression call);
+  void addReceiverCall(HirReceiverCallExpression call);
 
   /// \brief Lowers one scalar literal-or-parameter arm leaf into its
   /// destination id. Used by every binary operand and condition arm.
@@ -71,6 +75,8 @@ private:
   zc::Vector<HirNominalAggregateExpression>* aggregates;
   zc::Vector<HirLocalFieldProjectionExpression>* localFieldProjections;
   zc::Vector<HirUnsafeBlockExpression>* unsafeBlocks;
+  zc::Vector<HirDirectCallExpression>* calls;
+  zc::Vector<HirReceiverCallExpression>* receiverCalls;
 };
 
 /// \brief Lowers one tagged scalar-return function through the recursive

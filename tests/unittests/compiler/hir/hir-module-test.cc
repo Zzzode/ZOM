@@ -247,6 +247,40 @@ const driver::module_graph_query::CheckerBoundModuleView& checkerBoundModule(
   return ZC_REQUIRE_NONNULL(bound);
 }
 
+// Fetches the live canonical MIR function record for one owning definition. The
+// record is produced by the production canonical encoder; no bytes are fabricated.
+zc::Maybe<zc::Array<uint8_t>> canonicalRecordForOwner(const mir::VerifiedBuiltMir& verified,
+                                                      identity::DefId owner) {
+  ZC_REQUIRE(verified.functions().size() == verified.canonicalFunctionRecords().size());
+  for (size_t index = 0; index < verified.functions().size(); ++index) {
+    if (verified.functions()[index].owner == owner) {
+      return zc::heapArray(verified.canonicalFunctionRecords()[index].asPtr());
+    }
+  }
+  return zc::none;
+}
+
+// Re-frames one canonical function record through the live revision codec and
+// derives its digest. Re-framing the same record must reproduce the same digest;
+// this pins call-terminator byte identity without fabricating oracle bytes.
+zc::String framedRecordDigest(zc::ArrayPtr<const uint8_t> record) {
+  uint8_t moduleKey[32];
+  for (auto& value : moduleKey) value = uint8_t{0};
+  ZC_IF_SOME(fingerprint, identity::Sha256Digest::fromBytes(zc::arrayPtr(moduleKey))) {
+    const uint8_t moduleId[] = {0xa1};
+    zc::Vector<zc::Array<uint8_t>> records;
+    records.add(zc::heapArray(record));
+    auto encoded =
+        mir::MirRevisionCodec::encodeBuiltFramed(fingerprint, zc::arrayPtr(moduleId), fingerprint,
+                                                 fingerprint, fingerprint, records.asPtr());
+    ZC_REQUIRE(encoded != zc::none);
+    auto digest = identity::sha256(ZC_REQUIRE_NONNULL(encoded).asPtr());
+    ZC_REQUIRE(digest != zc::none);
+    return zc::encodeHex(ZC_REQUIRE_NONNULL(digest).bytes());
+  }
+  ZC_FAIL_REQUIRE("invalid digest fixture");
+}
+
 ZC_TEST("CheckedModuleBuilder rejects a foreign checker identity authority") {
   HirPipelineFixture sourceFixture(""_zc);
   HirPipelineFixture foreignFixture(""_zc);
@@ -1432,6 +1466,313 @@ ZC_TEST("HIR pipeline lowers a mutable local receiver call") {
   ZC_REQUIRE(call.receiverAdjustments.size() == 1);
   ZC_EXPECT(call.receiverAdjustments[0] == checker::checked::ReceiverAdjustmentStep::BorrowMutable);
   ZC_REQUIRE(call.arguments.size() == 1);
+}
+
+ZC_TEST("HIR pipeline lowers a bare direct call through exact node strides") {
+  // Family 5 direct-call arm, bare-return shape: `return callee(<args>);`.
+  // Asserts the exact four-node source-preorder stride (function, body, return,
+  // call) and the two-block call-continuation MIR with one FunctionResult local.
+  HirPipelineFixture fixture(
+      "fun callee(a: i32, b: i32) -> i32 { return a; }\n"
+      "fun caller(x: i32, y: i32) -> i32 { return callee(x, 7); }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 2);
+  ZC_REQUIRE(module.blocks().size() == 2);
+  ZC_REQUIRE(module.returns().size() == 2);
+  ZC_REQUIRE(module.calls().size() == 1);
+  const auto& callee = module.functions()[0];
+  const auto& caller = module.functions()[1];
+  const auto& callerBlock = module.blocks()[1];
+  const auto& callerReturn = module.returns()[1];
+  const auto& call = module.calls()[0];
+  // Exact four-node stride for the bare-call caller.
+  ZC_EXPECT(caller.node.ordinal() == callerBlock.node.ordinal() - 1);
+  ZC_EXPECT(caller.node.ordinal() == call.node.ordinal() - 3);
+  ZC_EXPECT(callerReturn.node.ordinal() == call.node.ordinal() - 1);
+  ZC_EXPECT(caller.body == callerBlock.node);
+  ZC_EXPECT(callerBlock.statements.size() == 1);
+  ZC_EXPECT(callerBlock.statements[0] == callerReturn.node);
+  ZC_EXPECT(callerReturn.value == call.node);
+  ZC_EXPECT(call.callee == callee.definition);
+  ZC_EXPECT(call.resultType == caller.resultType);
+  ZC_REQUIRE(call.arguments.size() == 2);
+  // First argument is a parameter reference (key, no constant); the second is a
+  // scalar literal constant.
+  ZC_EXPECT(call.arguments[0].value == zc::none);
+  ZC_REQUIRE(call.arguments[0].parameter != zc::none);
+  ZC_REQUIRE(call.arguments[1].value != zc::none);
+  ZC_EXPECT(call.arguments[1].parameter == zc::none);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> callerFunction;
+  for (const auto& function : builtMir[0].builtMir().functions()) {
+    if (function.owner == caller.definition) callerFunction = function;
+  }
+  ZC_REQUIRE(callerFunction != zc::none);
+  ZC_IF_SOME(function, callerFunction) {
+    // Two parameters, then the call-destination Temporary and FunctionResult.
+    ZC_REQUIRE(function.locals.size() == 4);
+    ZC_EXPECT(function.locals[0].kind == mir::MirLocalKind::Parameter);
+    ZC_EXPECT(function.locals[1].kind == mir::MirLocalKind::Parameter);
+    ZC_EXPECT(function.locals[2].kind == mir::MirLocalKind::Temporary);
+    ZC_EXPECT(function.locals[3].kind == mir::MirLocalKind::FunctionResult);
+    ZC_REQUIRE(function.blocks.size() == 2);
+    const auto& entry = function.blocks[0];
+    const auto& continuation = function.blocks[1];
+    ZC_REQUIRE(entry.terminator.kind() == mir::MirTerminatorKind::Call);
+    const auto& mirCall = entry.terminator.callValue();
+    ZC_REQUIRE(mirCall.arguments.size() == 2);
+    ZC_EXPECT(mirCall.arguments[0].kind() == mir::MirOperandKind::Copy);
+    ZC_EXPECT(mirCall.arguments[0].place().local() == function.locals[0].id);
+    ZC_EXPECT(mirCall.arguments[1].kind() == mir::MirOperandKind::Constant);
+    ZC_EXPECT(mirCall.normalTarget == continuation.id);
+    ZC_REQUIRE(continuation.terminator.kind() == mir::MirTerminatorKind::Return);
+  }
+
+  // The caller's canonical MIR record exists and reframes to a stable digest
+  // through the live codec; flipping one byte changes that digest. Cross-build
+  // byte identity is enforced by the corpus --ir parity channel.
+  zc::Maybe<zc::Array<uint8_t>> record;
+  zc::Maybe<const mir::VerifiedBuiltMir&> verified = builtMir[0].builtMir();
+  ZC_IF_SOME(mir, verified) { record = canonicalRecordForOwner(mir, caller.definition); }
+  ZC_REQUIRE(record != zc::none);
+  zc::Array<uint8_t> canonical = zc::mv(ZC_REQUIRE_NONNULL(record));
+  const auto baseline = framedRecordDigest(canonical.asPtr());
+  ZC_EXPECT(framedRecordDigest(canonical.asPtr()) == baseline);
+  {
+    auto mutated = zc::heapArray(canonical.asPtr());
+    mutated[mutated.size() - 1] = uint8_t(mutated[mutated.size() - 1] + 1);
+    ZC_EXPECT(framedRecordDigest(mutated.asPtr()) != baseline);
+  }
+}
+
+ZC_TEST("HIR pipeline lowers a direct-call initializer with a literal argument") {
+  // Family 5 direct-call arm, local-initializer shape:
+  // `let value = callee(7); return value;`. Asserts the exact six-node stride
+  // and the two-block continuation that returns the user local directly (no
+  // FunctionResult local for this place-returning shape). Initializer-call
+  // arguments are scalar constants in this slice (the checker rejects parameter
+  // arguments there); parameter arguments are admitted only for a bare
+  // `return callee(..)` call, covered by the previous test.
+  HirPipelineFixture fixture(
+      "fun callee(value: i32) -> i32 { return value; }\n"
+      "fun entry() -> i32 { let value = callee(7); return value; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 2);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.localReferences().size() == 1);
+  ZC_REQUIRE(module.calls().size() == 1);
+  const auto& entry = module.functions()[1];
+  const auto& block = module.blocks()[1];
+  const auto& local = module.locals()[0];
+  const auto& reference = module.localReferences()[0];
+  const auto& returned = module.returns()[1];
+  const auto& call = module.calls()[0];
+  // Exact six-node stride: function, body, local, call initializer, return,
+  // local reference.
+  ZC_EXPECT(entry.node.ordinal() == block.node.ordinal() - 1);
+  ZC_EXPECT(local.node.ordinal() == block.node.ordinal() + 1);
+  ZC_EXPECT(call.node.ordinal() == local.node.ordinal() + 1);
+  ZC_EXPECT(returned.node.ordinal() == call.node.ordinal() + 1);
+  ZC_EXPECT(reference.node.ordinal() == returned.node.ordinal() + 1);
+  ZC_EXPECT(block.statements.size() == 2);
+  ZC_EXPECT(block.statements[0] == local.node);
+  ZC_EXPECT(block.statements[1] == returned.node);
+  ZC_EXPECT(local.initializer == call.node);
+  ZC_EXPECT(returned.value == reference.node);
+  ZC_EXPECT(local.local == reference.local);
+  ZC_REQUIRE(call.arguments.size() == 1);
+  ZC_REQUIRE(call.arguments[0].value != zc::none);
+  ZC_EXPECT(call.arguments[0].parameter == zc::none);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> entryFunction;
+  for (const auto& function : builtMir[0].builtMir().functions()) {
+    if (function.owner == entry.definition) entryFunction = function;
+  }
+  ZC_REQUIRE(entryFunction != zc::none);
+  ZC_IF_SOME(function, entryFunction) {
+    // No parameter; the single user local is the call destination, so this
+    // place-returning shape declares no FunctionResult local.
+    ZC_REQUIRE(function.locals.size() == 1);
+    ZC_EXPECT(function.locals[0].kind == mir::MirLocalKind::UserLocal);
+    ZC_REQUIRE(function.blocks.size() == 2);
+    const auto& entryBlock = function.blocks[0];
+    const auto& continuation = function.blocks[1];
+    ZC_REQUIRE(entryBlock.terminator.kind() == mir::MirTerminatorKind::Call);
+    const auto& mirCall = entryBlock.terminator.callValue();
+    ZC_REQUIRE(mirCall.arguments.size() == 1);
+    ZC_EXPECT(mirCall.arguments[0].kind() == mir::MirOperandKind::Constant);
+    ZC_EXPECT(mirCall.destination.local() == function.locals[0].id);
+    ZC_EXPECT(mirCall.normalTarget == continuation.id);
+    // The entry block only carries StorageLive before the call terminator.
+    ZC_REQUIRE(entryBlock.statements.size() == 1);
+    ZC_EXPECT(entryBlock.statements[0].kind() == mir::MirStatementKind::StorageLive);
+    ZC_REQUIRE(continuation.terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_IF_SOME(returnValue, continuation.terminator.returnValue().value) {
+      ZC_EXPECT(returnValue.place().local() == function.locals[0].id);
+    }
+  }
+
+  // The caller's canonical MIR record reframes deterministically and is
+  // sensitive to a byte flip; cross-build byte identity is enforced by the
+  // corpus --ir parity channel.
+  zc::Maybe<zc::Array<uint8_t>> record;
+  zc::Maybe<const mir::VerifiedBuiltMir&> verified = builtMir[0].builtMir();
+  ZC_IF_SOME(mir, verified) { record = canonicalRecordForOwner(mir, entry.definition); }
+  ZC_REQUIRE(record != zc::none);
+  zc::Array<uint8_t> canonical = zc::mv(ZC_REQUIRE_NONNULL(record));
+  const auto baseline = framedRecordDigest(canonical.asPtr());
+  ZC_EXPECT(framedRecordDigest(canonical.asPtr()) == baseline);
+  {
+    auto mutated = zc::heapArray(canonical.asPtr());
+    mutated[mutated.size() - 1] = uint8_t(mutated[mutated.size() - 1] + 1);
+    ZC_EXPECT(framedRecordDigest(mutated.asPtr()) != baseline);
+  }
+}
+
+ZC_TEST("HIR pipeline lowers a three-function caller-callee-leaf call chain") {
+  // Family 5 repeated-call/continuation coverage: the 3-function caller +
+  // callee + leaf shape. The caller uses a local-initializer call and the callee
+  // is itself a caller of a standalone leaf. Each call keeps its own exact
+  // node-id region and its canonical MIR record is byte-stable.
+  HirPipelineFixture fixture(
+      "fun leaf() -> i32 { return 9; }\n"
+      "fun callee() -> i32 { let y = leaf(); return y; }\n"
+      "fun caller() -> i32 { let x = callee(); return x; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 3);
+  ZC_REQUIRE(module.calls().size() == 2);
+  ZC_REQUIRE(module.locals().size() == 2);
+  const auto& leaf = module.functions()[0];
+  const auto& callee = module.functions()[1];
+  const auto& caller = module.functions()[2];
+  // Each initializer call wires its local binding to the call node exactly once.
+  ZC_EXPECT(module.calls()[0].callee == leaf.definition);
+  ZC_EXPECT(module.calls()[1].callee == callee.definition);
+  ZC_EXPECT(module.locals()[0].initializer == module.calls()[0].node);
+  ZC_EXPECT(module.locals()[1].initializer == module.calls()[1].node);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  ZC_REQUIRE(builtMir[0].builtMir().functions().size() == 3);
+  for (const auto& function : builtMir[0].builtMir().functions()) {
+    if (function.owner == caller.definition || function.owner == callee.definition) {
+      // Each calling function emits the entry-plus-continuation two-block CFG.
+      ZC_EXPECT(function.blocks.size() == 2);
+      ZC_EXPECT(function.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call);
+      ZC_EXPECT(function.blocks[1].terminator.kind() == mir::MirTerminatorKind::Return);
+    }
+  }
+  // Each calling function's canonical record reframes deterministically and is
+  // sensitive to a byte flip; cross-build byte identity is enforced by the
+  // corpus --ir parity channel.
+  const auto expectByteStable = [&](identity::DefId owner) {
+    zc::Maybe<zc::Array<uint8_t>> record;
+    zc::Maybe<const mir::VerifiedBuiltMir&> verified = builtMir[0].builtMir();
+    ZC_IF_SOME(mir, verified) { record = canonicalRecordForOwner(mir, owner); }
+    ZC_REQUIRE(record != zc::none);
+    zc::Array<uint8_t> canonical = zc::mv(ZC_REQUIRE_NONNULL(record));
+    const auto baseline = framedRecordDigest(canonical.asPtr());
+    ZC_EXPECT(framedRecordDigest(canonical.asPtr()) == baseline);
+    auto mutated = zc::heapArray(canonical.asPtr());
+    mutated[mutated.size() - 1] = uint8_t(mutated[mutated.size() - 1] + 1);
+    ZC_EXPECT(framedRecordDigest(mutated.asPtr()) != baseline);
+  };
+  expectByteStable(callee.definition);
+  expectByteStable(caller.definition);
+}
+
+ZC_TEST("HIR pipeline lowers a mutable-receiver call through exact node strides") {
+  // Family 5 receiver-call arm:
+  // `mut cell = Cell { value: 0 }; return cell.read(1);`. Asserts the exact
+  // seven-node stride (function, body, local, aggregate initializer, return,
+  // receiver reference, receiver call), the receiver borrow/effect MIR shape,
+  // and byte-stable canonical MIR records.
+  HirPipelineFixture fixture(
+      "struct Cell { value: i32, mutating fun read(this, amount: i32) -> i32; }\n"
+      "fun entry() -> i32 { mut cell = Cell { value: 0 }; return cell.read(1); }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.aggregates().size() == 1);
+  ZC_REQUIRE(module.localReferences().size() == 1);
+  ZC_REQUIRE(module.receiverCalls().size() == 1);
+  const auto& entry = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& local = module.locals()[0];
+  const auto& aggregate = module.aggregates()[0];
+  const auto& receiver = module.localReferences()[0];
+  const auto& returned = module.returns()[0];
+  const auto& call = module.receiverCalls()[0];
+  // Exact seven-node stride.
+  ZC_EXPECT(entry.node.ordinal() == block.node.ordinal() - 1);
+  ZC_EXPECT(local.node.ordinal() == block.node.ordinal() + 1);
+  ZC_EXPECT(aggregate.node.ordinal() == local.node.ordinal() + 1);
+  ZC_EXPECT(returned.node.ordinal() == aggregate.node.ordinal() + 1);
+  ZC_EXPECT(receiver.node.ordinal() == returned.node.ordinal() + 1);
+  ZC_EXPECT(call.node.ordinal() == receiver.node.ordinal() + 1);
+  ZC_EXPECT(block.statements.size() == 2);
+  ZC_EXPECT(block.statements[0] == local.node);
+  ZC_EXPECT(block.statements[1] == returned.node);
+  ZC_EXPECT(local.initializer == aggregate.node);
+  ZC_EXPECT(returned.value == call.node);
+  ZC_EXPECT(call.receiver == receiver.node);
+  ZC_EXPECT(receiver.local == local.local);
+  ZC_EXPECT(call.receiverMode == checker::checked::ReceiverMode::Mutable);
+  ZC_REQUIRE(call.receiverAdjustments.size() == 1);
+  ZC_EXPECT(call.receiverAdjustments[0] == checker::checked::ReceiverAdjustmentStep::BorrowMutable);
+  ZC_REQUIRE(call.arguments.size() == 1);
+  ZC_REQUIRE(call.arguments[0].value != zc::none);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> entryFunction;
+  for (const auto& function : builtMir[0].builtMir().functions()) {
+    if (function.owner == entry.definition) entryFunction = function;
+  }
+  ZC_REQUIRE(entryFunction != zc::none);
+  ZC_IF_SOME(function, entryFunction) {
+    // UserLocal, receiver borrow Temporary, call-result Temporary.
+    ZC_REQUIRE(function.locals.size() == 3);
+    ZC_EXPECT(function.locals[0].kind == mir::MirLocalKind::UserLocal);
+    ZC_EXPECT(function.locals[1].kind == mir::MirLocalKind::Temporary);
+    ZC_EXPECT(function.locals[2].kind == mir::MirLocalKind::Temporary);
+    ZC_REQUIRE(function.blocks.size() == 2);
+    const auto& entryBlock = function.blocks[0];
+    const auto& continuation = function.blocks[1];
+    // StorageLive(local), aggregate Assign, StorageLive(receiver),
+    // BorrowCreation, StorageLive(result).
+    ZC_REQUIRE(entryBlock.statements.size() == 5);
+    ZC_EXPECT(entryBlock.statements[3].kind() == mir::MirStatementKind::BorrowCreation);
+    ZC_REQUIRE(entryBlock.terminator.kind() == mir::MirTerminatorKind::Call);
+    const auto& mirCall = entryBlock.terminator.callValue();
+    ZC_EXPECT(mirCall.effect.kind() == mir::MirCallEffectKind::ActivateMutableReceiver);
+    // The receiver operand plus the one explicit scalar argument.
+    ZC_REQUIRE(mirCall.arguments.size() == 2);
+    ZC_EXPECT(mirCall.arguments[0].place().local() == function.locals[1].id);
+    ZC_EXPECT(mirCall.arguments[1].kind() == mir::MirOperandKind::Constant);
+    ZC_EXPECT(mirCall.destination.local() == function.locals[2].id);
+    ZC_EXPECT(mirCall.normalTarget == continuation.id);
+  }
+
+  // The receiver-call canonical MIR record reframes deterministically and is
+  // sensitive to a byte flip; cross-build byte identity is enforced by the
+  // corpus --ir parity channel.
+  zc::Maybe<zc::Array<uint8_t>> record;
+  zc::Maybe<const mir::VerifiedBuiltMir&> verified = builtMir[0].builtMir();
+  ZC_IF_SOME(mir, verified) { record = canonicalRecordForOwner(mir, entry.definition); }
+  ZC_REQUIRE(record != zc::none);
+  zc::Array<uint8_t> canonical = zc::mv(ZC_REQUIRE_NONNULL(record));
+  const auto baseline = framedRecordDigest(canonical.asPtr());
+  ZC_EXPECT(framedRecordDigest(canonical.asPtr()) == baseline);
+  {
+    auto mutated = zc::heapArray(canonical.asPtr());
+    mutated[mutated.size() - 1] = uint8_t(mutated[mutated.size() - 1] + 1);
+    ZC_EXPECT(framedRecordDigest(mutated.asPtr()) != baseline);
+  }
 }
 
 ZC_TEST("HIR pipeline is deterministic across equivalent semantic contexts") {
