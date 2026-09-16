@@ -6,6 +6,7 @@ set(HIR_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/build/hir-fn-builder.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/build/lower-expr-binary.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/build/lower-expr-aggregate.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/build/lower-expr-borrow.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/build/lower-expr-call.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/build/lower-stmt-write.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/build/lower-stmt-control.cc

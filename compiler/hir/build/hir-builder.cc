@@ -16,6 +16,7 @@
 #include "compiler/hir/build/hir-pending.h"
 #include "compiler/hir/build/lower-expr-aggregate.h"
 #include "compiler/hir/build/lower-expr-binary.h"
+#include "compiler/hir/build/lower-expr-borrow.h"
 #include "compiler/hir/build/lower-expr-call.h"
 #include "compiler/hir/build/lower-stmt-control.h"
 #include "compiler/hir/build/lower-stmt-write.h"
@@ -3347,8 +3348,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     if (hasScalarLeaf && (onlyScalarReturn || singleInitializedLocal)) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
-                     loops);
+                     localFieldProjections, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                     receiverCalls, conditionals, loops);
       if (onlyScalarReturn) {
         lowerScalarReturnFunction(zc::mv(value), fnCtx);
       } else {
@@ -3362,8 +3363,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     if (value.sequentialLocalReturn != zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
-                     loops);
+                     localFieldProjections, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                     receiverCalls, conditionals, loops);
       lowerSequentialLocalReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
@@ -3380,8 +3381,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         value.loopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
-                     loops);
+                     localFieldProjections, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                     receiverCalls, conditionals, loops);
       lowerComparisonReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
@@ -3401,8 +3402,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
-                     loops);
+                     localFieldProjections, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                     receiverCalls, conditionals, loops);
       lowerAggregateFieldProjectionFunction(zc::mv(value), fnCtx);
       continue;
     }
@@ -3431,8 +3432,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       if (writesArePlain && initializedByLeaf) {
         HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                        localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                       localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
-                       loops);
+                       localFieldProjections, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                       receiverCalls, conditionals, loops);
         lowerLocalWriteFunction(zc::mv(value), fnCtx);
         continue;
       }
@@ -3457,8 +3458,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         value.literal == zc::none && value.parameterReference == zc::none && callFieldsClear) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
-                     loops);
+                     localFieldProjections, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                     receiverCalls, conditionals, loops);
       lowerDirectCallReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
@@ -3469,8 +3470,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         value.parameterReference == zc::none && callFieldsClear) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
-                     loops);
+                     localFieldProjections, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                     receiverCalls, conditionals, loops);
       lowerDirectCallInitializerFunction(zc::mv(value), fnCtx);
       continue;
     }
@@ -3480,8 +3481,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         value.literal == zc::none && value.parameterReference == zc::none && callFieldsClear) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
-                     loops);
+                     localFieldProjections, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                     receiverCalls, conditionals, loops);
       lowerReceiverCallFunction(zc::mv(value), fnCtx);
       continue;
     }
@@ -3506,8 +3507,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
     if (value.conditionalReturn != zc::none && controlFieldsClear) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
-                     loops);
+                     localFieldProjections, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                     receiverCalls, conditionals, loops);
       lowerConditionalReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
@@ -3521,8 +3522,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         value.loopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
-                     loops);
+                     localFieldProjections, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                     receiverCalls, conditionals, loops);
       lowerLoopReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
@@ -3545,11 +3546,84 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       if (loopWritesArePlain && loopInitializedByLeaf) {
         HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                        localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                       localFieldProjections, unsafeBlocks, calls, receiverCalls, conditionals,
-                       loops);
+                       localFieldProjections, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                       receiverCalls, conditionals, loops);
         lowerLoopBodyReturnFunction(zc::mv(value), fnCtx);
         continue;
       }
+    }
+    // Unsafe/borrow family (RFC 0048 family 7). Four fixed-stride arms, each
+    // gated to exactly the surface-admitted shape:
+    //   A. bare parameter reborrow return `return &*p;` / `&mut *p;`,
+    //      optionally wrapped in one unsafe block;
+    //   B. one unsafe-block-wrapped scalar return `return unsafe { <literal> };`;
+    //   C. a local-alias reborrow `let y = p; return &*y;` (optionally unsafe);
+    //   D. a local borrow `let x: T = <literal | parameter>; return &x;`
+    //      (optionally unsafe).
+    // The pending borrow/reborrow records already carry the checker-verified
+    // parameter, types, and mutability; these arms reproduce only the exact
+    // source-preorder node layout. A borrow combined with writes, a field
+    // projection, a call, or any other carrier keeps the generic path and fails
+    // closed as before.
+    const bool borrowCarriersClear =
+        value.call == zc::none && value.receiverCall == zc::none && value.aggregate == zc::none &&
+        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
+        value.localReference == zc::none && value.localFieldProjection == zc::none &&
+        value.parameterIndex == zc::none && value.sequentialLocalReturn == zc::none &&
+        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
+        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none;
+    // A: bare parameter reborrow (no user local, no initializer reference).
+    if (value.parameterReborrow != zc::none && value.local == zc::none &&
+        value.literal == zc::none && value.parameterReference == zc::none &&
+        value.localBorrow == zc::none && borrowCarriersClear) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                     receiverCalls, conditionals, loops);
+      lowerParameterReborrowReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    // B: unsafe-block-wrapped scalar literal return.
+    if (value.literal != zc::none && value.unsafeBlockSpan != zc::none && value.local == zc::none &&
+        value.parameterReference == zc::none && value.parameterReborrow == zc::none &&
+        value.localBorrow == zc::none && borrowCarriersClear) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                     receiverCalls, conditionals, loops);
+      lowerUnsafeScalarReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    // C: local-alias reborrow (one initialized local plus its parameter
+    // initializer and the alias-sourced reborrow).
+    if (value.local != zc::none && ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
+        value.parameterReference != zc::none && value.parameterReborrow != zc::none &&
+        value.literal == zc::none && value.localBorrow == zc::none && borrowCarriersClear) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                     receiverCalls, conditionals, loops);
+      lowerLocalAliasReborrowReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    // D: local borrow of one initialized scalar/parameter local. The
+    // initializer rides the top-level literal or parameterReference field, so
+    // exactly one of the two must be present.
+    if (value.local != zc::none && ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
+        value.localBorrow != zc::none && value.parameterReborrow == zc::none &&
+        value.call == zc::none && value.receiverCall == zc::none && value.aggregate == zc::none &&
+        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
+        value.localReference == zc::none && value.localFieldProjection == zc::none &&
+        value.parameterIndex == zc::none && value.sequentialLocalReturn == zc::none &&
+        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
+        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
+        ((value.literal != zc::none) != (value.parameterReference != zc::none))) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                     receiverCalls, conditionals, loops);
+      lowerLocalBorrowReturnFunction(zc::mv(value), fnCtx);
+      continue;
     }
     const auto functionId = hirId(next++);
     const auto bodyId = hirId(next++);

@@ -21,6 +21,8 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
                    zc::Vector<HirNominalAggregateExpression>& aggregates,
                    zc::Vector<HirLocalFieldProjectionExpression>& localFieldProjections,
                    zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks,
+                   zc::Vector<HirParameterReborrowExpression>& parameterReborrows,
+                   zc::Vector<HirLocalBorrowExpression>& localBorrows,
                    zc::Vector<HirDirectCallExpression>& calls,
                    zc::Vector<HirReceiverCallExpression>& receiverCalls,
                    zc::Vector<HirConditionalExpression>& conditionals,
@@ -38,6 +40,8 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
       aggregates(&aggregates),
       localFieldProjections(&localFieldProjections),
       unsafeBlocks(&unsafeBlocks),
+      parameterReborrows(&parameterReborrows),
+      localBorrows(&localBorrows),
       calls(&calls),
       receiverCalls(&receiverCalls),
       conditionals(&conditionals),
@@ -86,6 +90,14 @@ void HirFnCtx::addLocalFieldProjection(HirLocalFieldProjectionExpression project
 }
 
 void HirFnCtx::addUnsafeBlock(HirUnsafeBlockExpression block) { unsafeBlocks->add(zc::mv(block)); }
+
+void HirFnCtx::addParameterReborrow(HirParameterReborrowExpression reborrow) {
+  parameterReborrows->add(zc::mv(reborrow));
+}
+
+void HirFnCtx::addLocalBorrow(HirLocalBorrowExpression borrow) {
+  localBorrows->add(zc::mv(borrow));
+}
 
 void HirFnCtx::addDirectCall(HirDirectCallExpression call) { calls->add(zc::mv(call)); }
 

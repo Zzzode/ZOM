@@ -1849,6 +1849,133 @@ ZC_TEST("HIR pipeline lowers an unsafe block wrapping a local-alias reborrow") {
   ZC_EXPECT(reborrow.sourceAlias != zc::none);
 }
 
+ZC_TEST("HIR borrow arm lowers a bare parameter reborrow through exact node strides") {
+  HirPipelineFixture fixture("fun entry(p: &i32) -> &i32 { return &*p; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.parameterReborrows().size() == 1);
+  ZC_EXPECT(module.unsafeBlocks().size() == 0);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& returnStatement = module.returns()[0];
+  const auto& reborrow = module.parameterReborrows()[0];
+  // Four-node source-preorder stride with no unsafe wrapper: function 1,
+  // body 2, return 3, reborrow value 4.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(returnStatement.node.ordinal() == 3);
+  ZC_EXPECT(reborrow.node.ordinal() == 4);
+  ZC_EXPECT(function.unsafeBlock == zc::none);
+  ZC_EXPECT(block.statements.size() == 1);
+  ZC_EXPECT(block.statements[0] == returnStatement.node);
+  ZC_EXPECT(returnStatement.value == reborrow.node);
+  ZC_EXPECT(reborrow.sourceAlias == zc::none);
+  ZC_EXPECT(reborrow.parameter == function.parameters[0].key);
+}
+
+ZC_TEST("HIR borrow arm lowers an unsafe parameter reborrow through exact node strides") {
+  HirPipelineFixture fixture(
+      "fun entry(p: &mut i32) -> &mut i32 { return unsafe { &mut *p }; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.parameterReborrows().size() == 1);
+  ZC_REQUIRE(module.unsafeBlocks().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& returnStatement = module.returns()[0];
+  const auto& reborrow = module.parameterReborrows()[0];
+  const auto& unsafeBlock = module.unsafeBlocks()[0];
+  // Five-node stride: function 1, body 2, return 3, reborrow value 4, trailing
+  // unsafe block 5 whose body is the reborrow node.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(returnStatement.node.ordinal() == 3);
+  ZC_EXPECT(reborrow.node.ordinal() == 4);
+  ZC_EXPECT(unsafeBlock.node.ordinal() == 5);
+  ZC_EXPECT(function.unsafeBlock == unsafeBlock.node);
+  ZC_EXPECT(unsafeBlock.body == reborrow.node);
+  ZC_EXPECT(returnStatement.value == reborrow.node);
+  ZC_EXPECT(reborrow.sourceAlias == zc::none);
+
+  // MIR carries the BorrowCreation statement plus the Enter/Exit unsafe-scope
+  // boundary pair on source scope 2.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    const auto& statements = mirFunction.blocks[0].statements;
+    ZC_REQUIRE(statements.size() == 4);
+    ZC_EXPECT(statements[0].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(statements[1].kind() == mir::MirStatementKind::BorrowCreation);
+    ZC_EXPECT(statements[2].kind() == mir::MirStatementKind::UnsafeScopeBoundary);
+    ZC_EXPECT(statements[3].kind() == mir::MirStatementKind::UnsafeScopeBoundary);
+    ZC_EXPECT(statements[2].unsafeScopeBoundaryValue().kind ==
+              mir::MirUnsafeScopeBoundaryKind::Enter);
+    ZC_EXPECT(statements[3].unsafeScopeBoundaryValue().kind ==
+              mir::MirUnsafeScopeBoundaryKind::Exit);
+    ZC_EXPECT(mirFunction.sourceScopes.size() == 2);
+  }
+}
+
+ZC_TEST("HIR borrow arm lowers an unsafe scalar return through exact node strides") {
+  HirPipelineFixture fixture("fun entry() -> i32 { return unsafe { 1 }; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 1);
+  ZC_REQUIRE(module.unsafeBlocks().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& returnStatement = module.returns()[0];
+  const auto& literal = module.expressions()[0];
+  const auto& unsafeBlock = module.unsafeBlocks()[0];
+  // Five-node stride: function 1, body 2, return 3, scalar value 4, trailing
+  // unsafe block 5 whose body is the scalar value.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(returnStatement.node.ordinal() == 3);
+  ZC_EXPECT(literal.node.ordinal() == 4);
+  ZC_EXPECT(unsafeBlock.node.ordinal() == 5);
+  ZC_EXPECT(function.unsafeBlock == unsafeBlock.node);
+  ZC_EXPECT(unsafeBlock.body == literal.node);
+  ZC_EXPECT(returnStatement.value == literal.node);
+}
+
+ZC_TEST("HIR borrow arm lowers an unsafe local-alias reborrow through exact node strides") {
+  HirPipelineFixture fixture("fun entry(p: &i32) -> &i32 { let y = p; return unsafe { &*y }; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 1);
+  ZC_REQUIRE(module.parameterReborrows().size() == 1);
+  ZC_REQUIRE(module.unsafeBlocks().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& local = module.locals()[0];
+  const auto& initializer = module.parameterReferences()[0];
+  const auto& returnStatement = module.returns()[0];
+  const auto& reborrow = module.parameterReborrows()[0];
+  const auto& unsafeBlock = module.unsafeBlocks()[0];
+  // Seven-node stride: function 1, body 2, local 3, parameter-reference
+  // initializer 4, return 5, reborrow value 6, trailing unsafe block 7.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(initializer.node.ordinal() == 4);
+  ZC_EXPECT(returnStatement.node.ordinal() == 5);
+  ZC_EXPECT(reborrow.node.ordinal() == 6);
+  ZC_EXPECT(unsafeBlock.node.ordinal() == 7);
+  ZC_EXPECT(function.unsafeBlock == unsafeBlock.node);
+  ZC_EXPECT(unsafeBlock.body == reborrow.node);
+  ZC_EXPECT(local.initializer == initializer.node);
+  ZC_EXPECT(returnStatement.value == reborrow.node);
+  ZC_REQUIRE(reborrow.sourceAlias != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(reborrow.sourceAlias) == local.local);
+  ZC_EXPECT(reborrow.parameter == function.parameters[0].key);
+  ZC_EXPECT(block.statements.size() == 2);
+  ZC_EXPECT(block.statements[0] == local.node);
+  ZC_EXPECT(block.statements[1] == returnStatement.node);
+}
+
 ZC_TEST("HIR pipeline lowers an admitted while loop") {
   HirPipelineFixture fixture("fun spin(cond: bool) -> i32 { while (cond) { } return 0; }"_zc);
   const auto& module = fixture.hirModule();

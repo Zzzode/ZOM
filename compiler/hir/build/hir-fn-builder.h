@@ -36,6 +36,8 @@ public:
            zc::Vector<HirNominalAggregateExpression>& aggregates,
            zc::Vector<HirLocalFieldProjectionExpression>& localFieldProjections,
            zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks,
+           zc::Vector<HirParameterReborrowExpression>& parameterReborrows,
+           zc::Vector<HirLocalBorrowExpression>& localBorrows,
            zc::Vector<HirDirectCallExpression>& calls,
            zc::Vector<HirReceiverCallExpression>& receiverCalls,
            zc::Vector<HirConditionalExpression>& conditionals,
@@ -56,6 +58,8 @@ public:
   void addAggregate(HirNominalAggregateExpression aggregate);
   void addLocalFieldProjection(HirLocalFieldProjectionExpression projection);
   void addUnsafeBlock(HirUnsafeBlockExpression block);
+  void addParameterReborrow(HirParameterReborrowExpression reborrow);
+  void addLocalBorrow(HirLocalBorrowExpression borrow);
   void addDirectCall(HirDirectCallExpression call);
   void addReceiverCall(HirReceiverCallExpression call);
   void addConditional(HirConditionalExpression conditional);
@@ -79,6 +83,8 @@ private:
   zc::Vector<HirNominalAggregateExpression>* aggregates;
   zc::Vector<HirLocalFieldProjectionExpression>* localFieldProjections;
   zc::Vector<HirUnsafeBlockExpression>* unsafeBlocks;
+  zc::Vector<HirParameterReborrowExpression>* parameterReborrows;
+  zc::Vector<HirLocalBorrowExpression>* localBorrows;
   zc::Vector<HirDirectCallExpression>* calls;
   zc::Vector<HirReceiverCallExpression>* receiverCalls;
   zc::Vector<HirConditionalExpression>* conditionals;
