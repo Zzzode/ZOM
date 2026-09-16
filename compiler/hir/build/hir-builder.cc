@@ -3438,6 +3438,51 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         continue;
       }
     }
+    // Family 8 aggregate field-write: one mut aggregate local (either
+    // aggregate-initialized or uninitialized), one or more field writes whose
+    // values are scalar literals, and a return of a projected field
+    // (`mut cell = T{..}; cell.f = <literal>; return cell.f;`). Checker
+    // admission makes parameter/binary field-write values and a return of the
+    // whole local unreachable; writes to distinct fields are admitted and each
+    // first write to a field is an Initialize on an uninitialized local and an
+    // Overwrite on an initialized one. Every shape this guard does not claim
+    // keeps the generic materializer and fails closed as before.
+    if (value.local != zc::none && value.localWrites.size() != 0 &&
+        value.localWrites.size() == value.localWriteValues.size() &&
+        value.localFieldProjection != zc::none && value.localReference == zc::none &&
+        value.call == zc::none && value.receiverCall == zc::none &&
+        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
+        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
+        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
+        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
+        value.unsafeBlockSpan == zc::none) {
+      const bool initializedByAggregate =
+          ZC_ASSERT_NONNULL(value.local).initializer != zc::none && value.aggregate != zc::none &&
+          value.literal == zc::none && value.parameterReference == zc::none;
+      const bool uninitializedLocal = ZC_ASSERT_NONNULL(value.local).initializer == zc::none &&
+                                      value.aggregate == zc::none && value.literal == zc::none &&
+                                      value.parameterReference == zc::none;
+      bool writesAreLiteralFields = initializedByAggregate || uninitializedLocal;
+      if (writesAreLiteralFields) {
+        for (size_t index = 0; index < value.localWrites.size(); ++index) {
+          const auto& write = value.localWrites[index];
+          const auto& writeValue = value.localWriteValues[index];
+          if (write.field == zc::none || writeValue.literal == zc::none ||
+              writeValue.parameter != zc::none || writeValue.binary != zc::none) {
+            writesAreLiteralFields = false;
+            break;
+          }
+        }
+      }
+      if (writesAreLiteralFields) {
+        HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                       localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                       localFieldProjections, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                       receiverCalls, conditionals, loops);
+        lowerLocalFieldWriteFunction(zc::mv(value), fnCtx);
+        continue;
+      }
+    }
     // Direct/receiver call family. Callee resolution, dispatch targets,
     // receiver selection, argument kinds, and the generic/raises/arity gates are
     // already published by the checker and dispatch facts in the pending call

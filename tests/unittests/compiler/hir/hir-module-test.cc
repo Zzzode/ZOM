@@ -1443,6 +1443,290 @@ ZC_TEST("HIR pipeline lowers a local nominal aggregate field projection") {
   ZC_EXPECT(fieldStates == 7);
 }
 
+ZC_TEST("HIR field-write arm lowers one aggregate field overwrite through exact strides") {
+  // Family 8, aggregate-initialized local, one literal field write and a return
+  // of the same projected field: `mut cell = Cell{a:1}; cell.a = 7; return
+  // cell.a;`. Pins the exact eight-node source-preorder stride and the Built MIR
+  // aggregate initialize plus field-overwrite statements.
+  HirPipelineFixture fixture(
+      "struct Cell { public mut a: i32, }\n"
+      "fun entry() -> i32 { mut cell = Cell { a: 1 }; cell.a = 7; return cell.a; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.aggregates().size() == 1);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 1);
+  ZC_REQUIRE(module.localFieldProjections().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& local = module.locals()[0];
+  const auto& aggregate = module.aggregates()[0];
+  const auto& write = module.localWrites()[0];
+  const auto& value = module.expressions()[0];
+  const auto& projection = module.localFieldProjections()[0];
+  const auto& returned = module.returns()[0];
+  // Exact eight-node stride: function, body, local, aggregate initializer,
+  // write, write value, return, field projection.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(aggregate.node.ordinal() == 4);
+  ZC_EXPECT(write.node.ordinal() == 5);
+  ZC_EXPECT(value.node.ordinal() == 6);
+  ZC_EXPECT(returned.node.ordinal() == 7);
+  ZC_EXPECT(projection.node.ordinal() == 8);
+  ZC_EXPECT(block.statements.size() == 3);
+  ZC_EXPECT(block.statements[0] == local.node);
+  ZC_EXPECT(block.statements[1] == write.node);
+  ZC_EXPECT(block.statements[2] == returned.node);
+  ZC_EXPECT(local.initializer == aggregate.node);
+  ZC_EXPECT(write.local == local.local);
+  ZC_REQUIRE(write.field != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(write.field) == projection.field);
+  ZC_EXPECT(write.value == value.node);
+  ZC_EXPECT(write.kind == HirLocalWriteKind::Overwrite);
+  ZC_EXPECT(returned.value == projection.node);
+  ZC_EXPECT(projection.local == local.local);
+  ZC_EXPECT(projection.receiverType == local.type);
+  ZC_EXPECT(projection.type == function.resultType);
+  ZC_EXPECT(projection.category == HirValueCategory::Place);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.locals.size() == 1);
+    ZC_EXPECT(mirFunction.locals[0].kind == mir::MirLocalKind::UserLocal);
+    const auto userLocal = mirFunction.locals[0].id;
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    const auto& mirBlock = mirFunction.blocks[0];
+    // StorageLive(cell), Assign(cell = aggregate, Initialize),
+    // Assign(cell.a = 7, Overwrite).
+    ZC_REQUIRE(mirBlock.statements.size() == 3);
+    ZC_EXPECT(mirBlock.statements[0].kind() == mir::MirStatementKind::StorageLive);
+    const auto& initialize = mirBlock.statements[1].assignmentValue();
+    ZC_EXPECT(initialize.initialization == mir::MirInitializationKind::Initialize);
+    ZC_EXPECT(initialize.destination.local() == userLocal);
+    ZC_EXPECT(initialize.destination.projections().size() == 0);
+    ZC_EXPECT(initialize.value.kind() == mir::MirRvalueKind::NominalAggregate);
+    const auto& overwrite = mirBlock.statements[2].assignmentValue();
+    ZC_EXPECT(overwrite.initialization == mir::MirInitializationKind::Overwrite);
+    ZC_EXPECT(overwrite.destination.local() == userLocal);
+    ZC_REQUIRE(overwrite.destination.projections().size() == 1);
+    ZC_EXPECT(overwrite.destination.projections()[0].kind() == mir::MirProjectionKind::Field);
+    ZC_EXPECT(overwrite.destination.projections()[0].fieldValue().field == projection.field);
+    ZC_EXPECT(overwrite.destination.projections()[0].inputType() == local.type);
+    ZC_EXPECT(overwrite.destination.projections()[0].resultType() == function.resultType);
+    ZC_EXPECT(overwrite.value.kind() == mir::MirRvalueKind::Use);
+    ZC_EXPECT(overwrite.value.useValue().operand.kind() == mir::MirOperandKind::Constant);
+    ZC_REQUIRE(mirBlock.terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_IF_SOME(returnValue, mirBlock.terminator.returnValue().value) {
+      ZC_EXPECT(returnValue.place().local() == userLocal);
+      ZC_REQUIRE(returnValue.place().projections().size() == 1);
+      ZC_EXPECT(returnValue.place().projections()[0].kind() == mir::MirProjectionKind::Field);
+      ZC_EXPECT(returnValue.place().projections()[0].fieldValue().field == projection.field);
+    }
+  }
+}
+
+ZC_TEST("HIR field-write arm lowers repeated overwrites of one aggregate field") {
+  // Aggregate-initialized local written twice to the same returned field. Each
+  // write is an Overwrite; the stride grows by two ids per write.
+  HirPipelineFixture fixture(
+      "struct Cell { public mut a: i32, }\n"
+      "fun entry() -> i32 { mut cell = Cell { a: 1 }; cell.a = 7; cell.a = 9; return cell.a; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.localWrites().size() == 2);
+  ZC_REQUIRE(module.expressions().size() == 2);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& local = module.locals()[0];
+  const auto& projection = module.localFieldProjections()[0];
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(module.aggregates()[0].node.ordinal() == 4);
+  ZC_EXPECT(module.localWrites()[0].node.ordinal() == 5);
+  ZC_EXPECT(module.expressions()[0].node.ordinal() == 6);
+  ZC_EXPECT(module.localWrites()[1].node.ordinal() == 7);
+  ZC_EXPECT(module.expressions()[1].node.ordinal() == 8);
+  ZC_EXPECT(module.returns()[0].node.ordinal() == 9);
+  ZC_EXPECT(projection.node.ordinal() == 10);
+  ZC_EXPECT(block.statements.size() == 4);
+  for (const auto& write : module.localWrites()) {
+    ZC_EXPECT(write.kind == HirLocalWriteKind::Overwrite);
+    ZC_REQUIRE(write.field != zc::none);
+    ZC_EXPECT(ZC_ASSERT_NONNULL(write.field) == projection.field);
+  }
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    const auto& mirBlock = mirFunction.blocks[0];
+    // StorageLive, aggregate Initialize, then two field Overwrite statements.
+    ZC_REQUIRE(mirBlock.statements.size() == 4);
+    for (size_t index = 2; index < 4; ++index) {
+      const auto& overwrite = mirBlock.statements[index].assignmentValue();
+      ZC_EXPECT(overwrite.initialization == mir::MirInitializationKind::Overwrite);
+      ZC_REQUIRE(overwrite.destination.projections().size() == 1);
+      ZC_EXPECT(overwrite.destination.projections()[0].fieldValue().field == projection.field);
+      ZC_EXPECT(overwrite.value.kind() == mir::MirRvalueKind::Use);
+      ZC_EXPECT(overwrite.value.useValue().operand.kind() == mir::MirOperandKind::Constant);
+    }
+  }
+}
+
+ZC_TEST("HIR field-write arm initializes one field of an uninitialized local") {
+  // Uninitialized aggregate local whose field is initialized by a literal write
+  // and then returned: `mut cell: Cell; cell.a = 7; return cell.a;`. Seven-node
+  // stride (no aggregate initializer id); the write kind is Initialize.
+  HirPipelineFixture fixture(
+      "struct Cell { public mut a: i32, }\n"
+      "fun entry() -> i32 { mut cell: Cell; cell.a = 7; return cell.a; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.aggregates().size() == 0);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& local = module.locals()[0];
+  const auto& write = module.localWrites()[0];
+  const auto& value = module.expressions()[0];
+  const auto& projection = module.localFieldProjections()[0];
+  // Exact seven-node stride: function, body, local, write, write value, return,
+  // field projection.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(local.initializer == zc::none);
+  ZC_EXPECT(write.node.ordinal() == 4);
+  ZC_EXPECT(value.node.ordinal() == 5);
+  ZC_EXPECT(module.returns()[0].node.ordinal() == 6);
+  ZC_EXPECT(projection.node.ordinal() == 7);
+  ZC_EXPECT(block.statements.size() == 3);
+  ZC_EXPECT(write.kind == HirLocalWriteKind::Initialize);
+  ZC_REQUIRE(write.field != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(write.field) == projection.field);
+  ZC_EXPECT(write.value == value.node);
+  ZC_EXPECT(module.returns()[0].value == projection.node);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    const auto& mirBlock = mirFunction.blocks[0];
+    // StorageLive(cell) then one field Initialize statement.
+    ZC_REQUIRE(mirBlock.statements.size() == 2);
+    ZC_EXPECT(mirBlock.statements[0].kind() == mir::MirStatementKind::StorageLive);
+    const auto& initialize = mirBlock.statements[1].assignmentValue();
+    ZC_EXPECT(initialize.initialization == mir::MirInitializationKind::Initialize);
+    ZC_REQUIRE(initialize.destination.projections().size() == 1);
+    ZC_EXPECT(initialize.destination.projections()[0].kind() == mir::MirProjectionKind::Field);
+    ZC_EXPECT(initialize.destination.projections()[0].fieldValue().field == projection.field);
+    ZC_EXPECT(initialize.destination.projections()[0].inputType() == local.type);
+    ZC_EXPECT(initialize.destination.projections()[0].resultType() == function.resultType);
+    ZC_EXPECT(initialize.value.kind() == mir::MirRvalueKind::Use);
+    ZC_EXPECT(initialize.value.useValue().operand.kind() == mir::MirOperandKind::Constant);
+    ZC_REQUIRE(mirBlock.terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_IF_SOME(returnValue, mirBlock.terminator.returnValue().value) {
+      ZC_REQUIRE(returnValue.place().projections().size() == 1);
+      ZC_EXPECT(returnValue.place().projections()[0].fieldValue().field == projection.field);
+    }
+  }
+}
+
+ZC_TEST("HIR field-write arm initializes multiple fields of an uninitialized local") {
+  // Uninitialized aggregate local whose two distinct fields are each
+  // initialized by a literal write, returning the first written field.
+  HirPipelineFixture fixture(
+      "struct Cell { public mut a: i32, public mut b: i32, }\n"
+      "fun entry() -> i32 { mut cell: Cell; cell.a = 7; cell.b = 8; return cell.a; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.aggregates().size() == 0);
+  ZC_REQUIRE(module.localWrites().size() == 2);
+  ZC_REQUIRE(module.expressions().size() == 2);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& local = module.locals()[0];
+  const auto& firstWrite = module.localWrites()[0];
+  const auto& secondWrite = module.localWrites()[1];
+  const auto& projection = module.localFieldProjections()[0];
+  // Nine-node stride: function, body, local, then (write, value) twice, return,
+  // projection.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(firstWrite.node.ordinal() == 4);
+  ZC_EXPECT(module.expressions()[0].node.ordinal() == 5);
+  ZC_EXPECT(secondWrite.node.ordinal() == 6);
+  ZC_EXPECT(module.expressions()[1].node.ordinal() == 7);
+  ZC_EXPECT(module.returns()[0].node.ordinal() == 8);
+  ZC_EXPECT(projection.node.ordinal() == 9);
+  ZC_EXPECT(block.statements.size() == 4);
+  ZC_EXPECT(firstWrite.kind == HirLocalWriteKind::Initialize);
+  ZC_EXPECT(secondWrite.kind == HirLocalWriteKind::Initialize);
+  ZC_REQUIRE(firstWrite.field != zc::none);
+  ZC_REQUIRE(secondWrite.field != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(firstWrite.field) == projection.field);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(secondWrite.field) != projection.field);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    const auto& mirBlock = mirFunction.blocks[0];
+    // StorageLive plus two distinct-field Initialize statements.
+    ZC_REQUIRE(mirBlock.statements.size() == 3);
+    ZC_EXPECT(mirBlock.statements[0].kind() == mir::MirStatementKind::StorageLive);
+    for (size_t index = 1; index < 3; ++index) {
+      const auto& initialize = mirBlock.statements[index].assignmentValue();
+      ZC_EXPECT(initialize.initialization == mir::MirInitializationKind::Initialize);
+      ZC_REQUIRE(initialize.destination.projections().size() == 1);
+      ZC_EXPECT(initialize.destination.projections()[0].kind() == mir::MirProjectionKind::Field);
+      ZC_EXPECT(initialize.destination.projections()[0].inputType() == local.type);
+      ZC_EXPECT(initialize.value.kind() == mir::MirRvalueKind::Use);
+      ZC_EXPECT(initialize.value.useValue().operand.kind() == mir::MirOperandKind::Constant);
+    }
+    ZC_EXPECT(
+        mirBlock.statements[1].assignmentValue().destination.projections()[0].fieldValue().field ==
+        projection.field);
+    ZC_EXPECT(
+        mirBlock.statements[2].assignmentValue().destination.projections()[0].fieldValue().field !=
+        projection.field);
+    ZC_REQUIRE(mirBlock.terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_IF_SOME(returnValue, mirBlock.terminator.returnValue().value) {
+      ZC_REQUIRE(returnValue.place().projections().size() == 1);
+      ZC_EXPECT(returnValue.place().projections()[0].fieldValue().field == projection.field);
+    }
+  }
+}
+
 ZC_TEST("HIR pipeline lowers a mutable local receiver call") {
   HirPipelineFixture fixture(
       "struct Cell { value: i32, mutating fun read(this, amount: i32) -> i32; }\n"
@@ -2498,6 +2782,211 @@ ZC_TEST("HIR control arm lowers a loop-body write composite through exact node s
     zc::Maybe<zc::Array<uint8_t>> record = canonicalRecordForOwner(mir, function.definition);
     ZC_EXPECT(record != zc::none);
   }
+}
+
+ZC_TEST("HIR composite arm lowers an aggregate field overwrite through exact node strides") {
+  // `mut cell = Cell { value: 0 }; cell.value = 1; return cell.value;` lowers
+  // through the recursive field-write arm: function 1, body 2, local 3,
+  // aggregate initializer 4, field write 5, write literal 6, return 7, field
+  // projection 8. The block lists [local, write, return].
+  HirPipelineFixture fixture(
+      "struct Cell { mut value: i32, }\n"
+      "fun entry() -> i32 { mut cell = Cell { value: 0 }; cell.value = 1; return cell.value; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.aggregates().size() == 1);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  ZC_REQUIRE(module.localFieldProjections().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 1);
+  ZC_EXPECT(module.localReferences().size() == 0);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& local = module.locals()[0];
+  const auto& aggregate = module.aggregates()[0];
+  const auto& write = module.localWrites()[0];
+  const auto& writeLiteral = module.expressions()[0];
+  const auto& projection = module.localFieldProjections()[0];
+  const auto& returnStatement = module.returns()[0];
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(aggregate.node.ordinal() == 4);
+  ZC_EXPECT(write.node.ordinal() == 5);
+  ZC_EXPECT(write.value.ordinal() == 6);
+  ZC_EXPECT(writeLiteral.node.ordinal() == 6);
+  ZC_EXPECT(returnStatement.node.ordinal() == 7);
+  ZC_EXPECT(projection.node.ordinal() == 8);
+  ZC_EXPECT(block.statements.size() == 3);
+  ZC_EXPECT(block.statements[0] == local.node);
+  ZC_EXPECT(block.statements[1] == write.node);
+  ZC_EXPECT(block.statements[2] == returnStatement.node);
+  ZC_EXPECT(local.initializer == aggregate.node);
+  ZC_EXPECT(write.field != zc::none);
+  ZC_EXPECT(write.kind == HirLocalWriteKind::Overwrite);
+  ZC_EXPECT(write.local == local.local);
+  ZC_EXPECT(write.value == writeLiteral.node);
+  ZC_EXPECT(projection.local == local.local);
+  ZC_EXPECT(projection.field == ZC_ASSERT_NONNULL(write.field));
+  ZC_EXPECT(returnStatement.value == projection.node);
+
+  // Built MIR: the field overwrite lowers to a field-projection Overwrite
+  // assignment and the return reads the same field place.
+  const auto overwriteMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(overwriteMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> overwriteFunction;
+  for (const auto& mirFunction : overwriteMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) overwriteFunction = mirFunction;
+  }
+  ZC_REQUIRE(overwriteFunction != zc::none);
+  ZC_IF_SOME(mirFunction, overwriteFunction) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    const auto& mirBlock = mirFunction.blocks[0];
+    ZC_REQUIRE(mirBlock.statements.size() == 3);
+    const auto& overwrite = mirBlock.statements[2].assignmentValue();
+    ZC_EXPECT(overwrite.initialization == mir::MirInitializationKind::Overwrite);
+    ZC_REQUIRE(overwrite.destination.projections().size() == 1);
+    ZC_EXPECT(overwrite.destination.projections()[0].kind() == mir::MirProjectionKind::Field);
+    ZC_REQUIRE(mirBlock.terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_IF_SOME(returnValue, mirBlock.terminator.returnValue().value) {
+      ZC_REQUIRE(returnValue.place().projections().size() == 1);
+      ZC_EXPECT(returnValue.place().projections()[0].kind() == mir::MirProjectionKind::Field);
+    }
+  }
+}
+
+ZC_TEST("HIR composite arm lowers multiple aggregate field overwrites exact strides") {
+  // Two distinct-field literal overwrites and a projection of one of them.
+  // Stride: function 1, body 2, local 3, aggregate 4, writes (5,6) and (7,8),
+  // return 9, projection 10.
+  HirPipelineFixture fixture(
+      "struct Pair { mut left: i32, mut right: bool, }\n"
+      "fun entry() -> i32 { mut pair = Pair { left: 0, right: false }; pair.left = 1; "
+      "pair.right = true; return pair.left; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.localWrites().size() == 2);
+  ZC_REQUIRE(module.localFieldProjections().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 2);
+  const auto& local = module.locals()[0];
+  const auto& firstWrite = module.localWrites()[0];
+  const auto& secondWrite = module.localWrites()[1];
+  const auto& projection = module.localFieldProjections()[0];
+  const auto& returnStatement = module.returns()[0];
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(module.aggregates()[0].node.ordinal() == 4);
+  ZC_EXPECT(firstWrite.node.ordinal() == 5);
+  ZC_EXPECT(firstWrite.value.ordinal() == 6);
+  ZC_EXPECT(secondWrite.node.ordinal() == 7);
+  ZC_EXPECT(secondWrite.value.ordinal() == 8);
+  ZC_EXPECT(returnStatement.node.ordinal() == 9);
+  ZC_EXPECT(projection.node.ordinal() == 10);
+  ZC_EXPECT(module.blocks()[0].statements.size() == 4);
+  ZC_EXPECT(firstWrite.kind == HirLocalWriteKind::Overwrite);
+  ZC_EXPECT(secondWrite.kind == HirLocalWriteKind::Overwrite);
+  ZC_EXPECT(firstWrite.field != secondWrite.field);
+  ZC_EXPECT(projection.field == ZC_ASSERT_NONNULL(firstWrite.field));
+
+  // Built MIR: aggregate init plus two distinct-field Overwrite assignments.
+  const auto multiMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(multiMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> multiFunction;
+  for (const auto& mirFunction : multiMir[0].builtMir().functions()) {
+    if (mirFunction.owner == module.functions()[0].definition) multiFunction = mirFunction;
+  }
+  ZC_REQUIRE(multiFunction != zc::none);
+  ZC_IF_SOME(mirFunction, multiFunction) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    const auto& mirBlock = mirFunction.blocks[0];
+    ZC_REQUIRE(mirBlock.statements.size() == 4);
+    ZC_EXPECT(mirBlock.statements[2].assignmentValue().initialization ==
+              mir::MirInitializationKind::Overwrite);
+    ZC_EXPECT(mirBlock.statements[3].assignmentValue().initialization ==
+              mir::MirInitializationKind::Overwrite);
+  }
+}
+
+ZC_TEST("HIR composite arm lowers an uninitialized field initialization exact node strides") {
+  // `mut cell: Cell; cell.value = 0; return cell.value;` lowers through the
+  // uninitialized field-write arm: function 1, body 2, local 3 (no
+  // initializer), field write 4, write literal 5, return 6, projection 7.
+  HirPipelineFixture fixture(
+      "struct Cell { mut value: i32, }\n"
+      "fun entry() -> i32 { mut cell: Cell; cell.value = 0; return cell.value; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.aggregates().size() == 0);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  ZC_REQUIRE(module.localFieldProjections().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& local = module.locals()[0];
+  const auto& write = module.localWrites()[0];
+  const auto& writeLiteral = module.expressions()[0];
+  const auto& projection = module.localFieldProjections()[0];
+  const auto& returnStatement = module.returns()[0];
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(local.initializer == zc::none);
+  ZC_EXPECT(write.node.ordinal() == 4);
+  ZC_EXPECT(write.value.ordinal() == 5);
+  ZC_EXPECT(writeLiteral.node.ordinal() == 5);
+  ZC_EXPECT(returnStatement.node.ordinal() == 6);
+  ZC_EXPECT(projection.node.ordinal() == 7);
+  ZC_EXPECT(block.statements.size() == 3);
+  ZC_EXPECT(block.statements[0] == local.node);
+  ZC_EXPECT(block.statements[1] == write.node);
+  ZC_EXPECT(block.statements[2] == returnStatement.node);
+  ZC_EXPECT(write.field != zc::none);
+  ZC_EXPECT(write.kind == HirLocalWriteKind::Initialize);
+  ZC_EXPECT(write.local == local.local);
+  ZC_EXPECT(projection.local == local.local);
+  ZC_EXPECT(projection.field == ZC_ASSERT_NONNULL(write.field));
+  ZC_EXPECT(returnStatement.value == projection.node);
+
+  // Built MIR: the write initializes the field place and the return reads it.
+  const auto initMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(initMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> initFunction;
+  for (const auto& mirFunction : initMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) initFunction = mirFunction;
+  }
+  ZC_REQUIRE(initFunction != zc::none);
+  ZC_IF_SOME(mirFunction, initFunction) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    const auto& mirBlock = mirFunction.blocks[0];
+    ZC_REQUIRE(mirBlock.statements.size() == 2);
+    const auto& initialization = mirBlock.statements[1].assignmentValue();
+    ZC_EXPECT(initialization.initialization == mir::MirInitializationKind::Initialize);
+    ZC_REQUIRE(initialization.destination.projections().size() == 1);
+    ZC_EXPECT(initialization.destination.projections()[0].kind() == mir::MirProjectionKind::Field);
+  }
+}
+
+ZC_TEST("HIR composite arm lowers a repeated uninitialized field overwrite exact strides") {
+  // The first write to a field of an uninitialized local initializes it and the
+  // second overwrites it; stride with two writes is 9 nodes.
+  HirPipelineFixture fixture(
+      "struct Cell { mut value: i32, }\n"
+      "fun entry() -> i32 { mut cell: Cell; cell.value = 0; cell.value = 1; return cell.value; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.localWrites().size() == 2);
+  const auto& local = module.locals()[0];
+  const auto& firstWrite = module.localWrites()[0];
+  const auto& secondWrite = module.localWrites()[1];
+  const auto& projection = module.localFieldProjections()[0];
+  const auto& returnStatement = module.returns()[0];
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(firstWrite.node.ordinal() == 4);
+  ZC_EXPECT(secondWrite.node.ordinal() == 6);
+  ZC_EXPECT(returnStatement.node.ordinal() == 8);
+  ZC_EXPECT(projection.node.ordinal() == 9);
+  ZC_EXPECT(firstWrite.kind == HirLocalWriteKind::Initialize);
+  ZC_EXPECT(secondWrite.kind == HirLocalWriteKind::Overwrite);
 }
 
 ZC_TEST("Built MIR comparison rvalue byte oracle is stable and mutation sensitive") {

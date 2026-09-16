@@ -113,5 +113,81 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
                                                     placeCategory, placeSpan.clone()});
 }
 
+void lowerLocalFieldWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  const HirLocalBinding& sourceLocal = ZC_ASSERT_NONNULL(function.local);
+  const identity::SemanticTypeId localType = sourceLocal.type;
+  const identity::SourceSpan localSpan = sourceLocal.sourceSpan.clone();
+  const bool initialized = sourceLocal.initializer != zc::none;
+  zc::Maybe<identity::SourceSpan> initializerSpan;
+  ZC_IF_SOME(span, sourceLocal.initializerSpan) { initializerSpan = span.clone(); }
+  const HirLocalFieldProjectionExpression& projection =
+      ZC_ASSERT_NONNULL(function.localFieldProjection);
+  const identity::DefId projectionField = projection.field;
+  const identity::SemanticTypeId projectionReceiverType = projection.receiverType;
+  const identity::SemanticTypeId projectionType = projection.type;
+  const HirValueCategory projectionCategory = projection.category;
+  const identity::SourceSpan projectionSpan = projection.sourceSpan.clone();
+  const size_t writeCount = function.localWrites.size();
+
+  // Source-preorder stride matching the generic materializer: function, body,
+  // local, then the aggregate initializer id only for an initialized local,
+  // then per write (write node, write value node), then return and the returned
+  // field-projection value. The write values are scalar literals; checker
+  // admission makes parameter or binary field-write values unreachable.
+  const HirNodeId functionId = ctx.allocNode();
+  const HirNodeId bodyId = ctx.allocNode();
+  const HirNodeId localId = ctx.allocNode();
+  zc::Maybe<HirNodeId> initializerId;
+  if (initialized) { initializerId = ctx.allocNode(); }
+  zc::Vector<HirNodeId> writeIds;
+  zc::Vector<HirNodeId> writeValueIds;
+  for (size_t index = 0; index < writeCount; ++index) {
+    writeIds.add(ctx.allocNode());
+    writeValueIds.add(ctx.allocNode());
+  }
+  const HirNodeId returnId = ctx.allocNode();
+  const HirNodeId valueId = ctx.allocNode();
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), function.visibility.clone(),
+                                         function.linkage, function.declarationSpan.clone(), bodyId,
+                                         zc::none});
+  zc::Vector<HirNodeId> statements;
+  statements.add(localId);
+  for (const auto writeId : writeIds) { statements.add(writeId); }
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+  ctx.addReturn(
+      HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
+
+  ZC_IF_SOME(aggregate, function.aggregate) {
+    HirNodeId aggregateId;
+    ZC_IF_SOME(id, initializerId) { aggregateId = id; }
+    zc::Vector<HirNominalAggregateElement> elements = zc::mv(aggregate.elements);
+    ctx.addAggregate(HirNominalAggregateExpression{
+        aggregateId, aggregate.definition, aggregate.type, zc::mv(elements), aggregate.category,
+        aggregate.sourceSpan.clone()});
+  }
+
+  for (size_t index = 0; index < writeCount; ++index) {
+    const HirLocalWriteStatement& write = function.localWrites[index];
+    const PendingLocalWriteValue& writeValue = function.localWriteValues[index];
+    ZC_IF_SOME(literal, writeValue.literal) {
+      ctx.addExpression(HirScalarLiteralExpression{writeValueIds[index], write.type,
+                                                   literal.clone(), HirValueCategory::Value,
+                                                   write.valueSpan.clone()});
+    }
+    ctx.addLocalWrite(HirLocalWriteStatement{writeIds[index], hirLocalId(1), write.field,
+                                             write.type, writeValueIds[index], write.kind,
+                                             write.sourceSpan.clone(), write.valueSpan.clone()});
+  }
+
+  ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), localType, zc::mv(initializerId),
+                               localSpan.clone(), zc::mv(initializerSpan)});
+  ctx.addLocalFieldProjection(HirLocalFieldProjectionExpression{
+      valueId, hirLocalId(1), projectionField, projectionReceiverType, projectionType,
+      projectionCategory, projectionSpan.clone()});
+}
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

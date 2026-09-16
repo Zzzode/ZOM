@@ -17,5 +17,12 @@ namespace detail {
 /// local-reference return (`mut x: T = <leaf>; x = <value>; return x;`).
 void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one aggregate-field-write body through the recursive driver:
+/// one aggregate-initialized or uninitialized mut local, one or more field
+/// writes whose value is a scalar literal, and a return of a projected field
+/// (`mut cell = T{..}; cell.f = <literal>; return cell.f;`). Reproduces the
+/// generic materializer's source-preorder node ids and pool records exactly.
+void lowerLocalFieldWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir
