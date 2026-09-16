@@ -332,6 +332,39 @@ byte-identical. Same full verification bar as family 1 (sanitizer build, full
 hir-module ztest, lit, both parity channels over 923 sources and the 64 clean
 dumps, gates green, fail-closed firing probe).
 
+### 2026-09-16 Phase 2 - Family 8 (field-write composites)
+
+Commit `449c9db6` on `rfc0048-field-write-family` (timeout alignment
+`aeaf395f`). Adds `lowerLocalFieldWriteFunction` to `lower-stmt-write.{h,cc}`,
+one strictly guarded arm for the admitted field-write composites: an
+aggregate-initialized or uninitialized mut local, one or more literal field
+writes, and a return of a projected field of the same local
+(`mut cell = T{..}; cell.f = <literal>; return cell.f;` and
+`mut cell: T; cell.f = <literal>; return cell.f;`). Stride reproduces the
+generic materializer exactly: function, body, local (plus aggregate
+initializer when initialized), two ids per write, return, field projection;
+Initialize/Overwrite kinds follow the first-write-per-field rule.
+
+Investigation proved the other composites out of scope: loop-body field
+writes fail admission (`isAdmittedLoopBodyWrite` requires an Ident target),
+parameter/binary field-write values fail pending construction with ZOM4099
+(binary field values reject in hir-builder.cc), unsafe-tail field returns
+ICE at checker, and mixed local-plus-field writes fail ownership proof.
+Writes to fields distinct from the returned field are admitted and lowered
+by the same arm (each first write is Initialize on an uninitialized local
+and Overwrite on an initialized one); the `public mut` distinct-field
+variant additionally fails ownership proof validation after HIR, so it
+never publishes, while package-visible `mut` fields verify. Eight
+exact-stride ztests (single/repeated overwrite, aggregate and uninitialized
+multiple fields, uninitialized one-field initialize, repeated
+initialize-then-overwrite) pass; 63 hir-module ztests green, full default
+ctest green, and both parity channels byte-parallel over all 923 sources on
+the committed binary. A legacy-field-emission probe recorded zero hits over
+the ztest suite, lit, and both 923-source parity channels, proving every
+admitted field write routes through the new arm. hir-module-test serial TIMEOUT raised 600s to
+1200s following the `ac8edd5b` measured-duration precedent (656s observed
+under machine contention). Gates green.
+
 ## Verification Evidence
 
 - `python3 scripts/check-rfc.py` passes for the revised REVIEW snapshot.
