@@ -365,6 +365,35 @@ admitted field write routes through the new arm. hir-module-test serial TIMEOUT 
 1200s following the `ac8edd5b` measured-duration precedent (656s observed
 under machine contention). Gates green.
 
+### 2026-09-17 Phase 2 - Family 9 (empty family) complete, zero code change
+
+Family 9 covers the constructs the RFC listed with no emitting producer:
+casts, compound assignment, closures/captures, exhaustiveness, error-union
+shapes, error operators, coercions, generalized projections, unsafe
+operations, and obligations. No recursive arm is needed or added.
+
+Evidence the family is empty rather than skipped:
+
+- the body checker publishes every one of these fact families as
+  `emptyFactMap<...>()` at the single publication site
+  (`compiler/checker/body/body-checker.cc:3397-3412`: Coercion, Cast,
+  CompoundAssignment, ObservedOperation, Capture, Exhaustiveness,
+  UnsafeOperation, Projection, Obligation, ErrorUnionShape, ErrorOperator),
+  so the HIR pending analyzer never constructs a record for them;
+- `compiler/hir/build/hir-builder.cc` contains zero references to
+  CastExpression, CompoundAssignment, Capture, Match, or ErrorOperator
+  materialization; there is no generic legacy block for these constructs to
+  migrate;
+- they fail closed before or within the checker/surface-admission rail
+  (typed capability rejection, e.g. ZOM4103 for unsupported operators),
+  which is the required behavior until Phase 1 of this RFC moves the
+  corresponding fact production out of the checker body rail.
+
+No source files, tests, codec bytes, or parity baselines change for family 9;
+it is marked complete by this record. Adding any of these constructs later
+is a new staged vertical slice that publishes its facts first and then
+receives a recursive arm through this same family loop.
+
 ## Verification Evidence
 
 - `python3 scripts/check-rfc.py` passes for the revised REVIEW snapshot.
