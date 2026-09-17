@@ -4960,9 +4960,11 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
     }
     ZC_IF_SOME(block, sourceBlock) {
       // RFC 0048 Phase 3: the recursive destination-driven FunctionBuilder owns
-      // the bare scalar-literal and parameter single-block returns. Its predicate
-      // is strict; every other shape falls through to the legacy construction
-      // below unchanged.
+      // the bare scalar-literal and parameter single-block returns plus the
+      // single scalar-initialized user local and one literal-overwrite returns.
+      // Its predicate is strict; every other shape falls through to the legacy
+      // construction below unchanged (including the unsafe-tail variants of the
+      // local shapes, which share the legacy construction blocks).
       auto recursive =
           tryBuildRecursiveFunction(declaration, block, hirModule, identities, proofs, copy);
       ZC_IF_SOME(product, recursive) {

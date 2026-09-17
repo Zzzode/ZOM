@@ -29,15 +29,18 @@ struct RecursiveFunctionProduct final {
 };
 
 /// \brief Lowers one function through the recursive destination-driven builder
-/// when it matches the first Phase-3 legality set.
+/// when it matches the current Phase-3 legality set.
 ///
 /// The accepted shapes are the bare single-block returns the legacy rail emits:
 /// a scalar literal return (`fun f(...) -> T { return <literal>; }`, no locals,
-/// Return(Constant)) and a parameter return (`fun f(p0..pN-1) -> R { return pK;
-/// }`, leading parameter locals, Return(copy/move place-use)). The predicates
-/// replicate the legacy per-shape gates exactly; unsafe-tail and every other
-/// shape return none so the caller delegates them to the legacy builder
-/// unchanged.
+/// Return(Constant)), a parameter return (`fun f(p0..pN-1) -> R { return pK;
+/// }`, leading parameter locals, Return(copy/move place-use)), a single
+/// scalar-initialized user local returned by place-use (`let x = <literal>;
+/// return x;`, one UserLocal, StorageLive plus an Initialize Assign), and its
+/// one literal-overwrite extension (`mut x = <lit>; x = <lit>; return x;`, an
+/// additional Overwrite Assign). The predicates replicate the legacy per-shape
+/// gates exactly; unsafe-tail and every other shape return none so the caller
+/// delegates them to the legacy builder unchanged.
 ///
 /// \return the lowered function when one strict shape matched and lowered, else
 /// none to delegate back to the legacy construction path.
