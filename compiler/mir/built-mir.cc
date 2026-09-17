@@ -11,6 +11,7 @@
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/crypto/sha256.h"
 #include "compiler/identity/key/definition-key.h"
+#include "compiler/mir/build/mir-builder.h"
 #include "compiler/ownership/admission/surface-admission.h"
 #include "compiler/type/semantic-type-store.h"
 
@@ -4958,6 +4959,16 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
           declaration.definition, identities, static_cast<uint32_t>(pending.size() + 1));
     }
     ZC_IF_SOME(block, sourceBlock) {
+      // RFC 0048 Phase 3: the recursive destination-driven FunctionBuilder owns
+      // the bare scalar-literal and parameter single-block returns. Its predicate
+      // is strict; every other shape falls through to the legacy construction
+      // below unchanged.
+      auto recursive =
+          tryBuildRecursiveFunction(declaration, block, hirModule, identities, proofs, copy);
+      ZC_IF_SOME(product, recursive) {
+        pending.add(PendingMirFunction{zc::mv(product.function), zc::mv(product.ownerKey)});
+        continue;
+      }
       if (block.statements.size() == 2) {
         auto loop = loopFor(hirModule, block.statements[0]);
         ZC_IF_SOME(loopValue, loop) {
@@ -6748,7 +6759,6 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
         auto sourceReturn = returnFor(hirModule, block.statements[0]);
         hir::HirNodeId referenceNode;
         ZC_IF_SOME(returnStatement, sourceReturn) { referenceNode = returnStatement.value; }
-        auto reference = parameterReferenceFor(hirModule, referenceNode);
         auto reborrow = parameterReborrowFor(hirModule, referenceNode);
         auto definition = identities.definition(declaration.definition);
         ZC_IF_SOME(returnStatement, sourceReturn) {
@@ -6815,70 +6825,6 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                 statements.add(MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Exit,
                                                                  scopeId(2), zc::mv(unsafeSpan)));
               }
-            }
-            zc::Vector<MirBasicBlock> blocks;
-            blocks.add(
-                MirBasicBlock{blockId(1), scopeId(1), zc::mv(statements),
-                              MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
-                                                         returnStatement.sourceSpan.clone())});
-            MirFunction function{declaration.definition,
-                                 MirFunctionKind::Function,
-                                 identity::DefinitionKind::Function,
-                                 declaration.resultType,
-                                 declaration.sourceSpan.clone(),
-                                 zc::mv(scopes),
-                                 zc::mv(locals),
-                                 zc::mv(blocks)};
-            zc::Array<uint8_t> ownerKey;
-            ZC_IF_SOME(key, definition) { ownerKey = key.key().encode(); }
-            pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
-            continue;
-          }
-          ZC_IF_SOME(parameterReference, reference) {
-            // A parameter-return function `fun f(p0..pN-1) -> R { return pK; }`
-            // lowers every parameter to a leading parameter local; the returned
-            // parameter is copied/moved as a place-use of its own local. The
-            // single-parameter case (N == 1, K == 0) is the byte-identical
-            // special case this generalization preserves.
-            size_t referencedIndex = 0;
-            bool referencedFound = false;
-            for (size_t i = 0; i < declaration.parameters.size(); ++i) {
-              if (declaration.parameters[i].key == parameterReference.parameter &&
-                  declaration.parameters[i].type == parameterReference.type) {
-                referencedIndex = i;
-                referencedFound = true;
-                break;
-              }
-            }
-            if (!referencedFound || parameterReference.type != declaration.resultType ||
-                parameterReference.category != hir::HirValueCategory::Place ||
-                definition == zc::none) {
-              return rejectMir<BuiltMirCandidate>(
-                  ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact, module,
-                  declaration.definition, identities, static_cast<uint32_t>(pending.size() + 1));
-            }
-            const auto referencedLocal = localId(static_cast<uint32_t>(referencedIndex + 1));
-            zc::Vector<MirSourceScope> scopes;
-            zc::Maybe<MirSourceScopeId> noParent;
-            scopes.add(
-                MirSourceScope{scopeId(1), zc::mv(noParent), declaration.sourceSpan.clone()});
-            zc::Vector<MirLocalDeclaration> locals;
-            for (size_t i = 0; i < declaration.parameters.size(); ++i) {
-              locals.add(MirLocalDeclaration{localId(static_cast<uint32_t>(i + 1)),
-                                             MirLocalKind::Parameter,
-                                             declaration.parameters[i].type, scopeId(1),
-                                             declaration.parameters[i].sourceSpan.clone()});
-            }
-            zc::Vector<MirStatement> statements;
-            zc::Vector<MirProjection> returnProjections;
-            auto returnOperand =
-                placeUse(proofs, copy,
-                         MirPlace(referencedLocal, parameterReference.type,
-                                  zc::mv(returnProjections), parameterReference.type));
-            if (returnOperand == zc::none) {
-              return rejectMir<BuiltMirCandidate>(
-                  ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact, module,
-                  declaration.definition, identities, static_cast<uint32_t>(pending.size() + 1));
             }
             zc::Vector<MirBasicBlock> blocks;
             blocks.add(
