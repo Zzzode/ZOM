@@ -121,6 +121,7 @@ not reused.
 | [RFC 0050](0050-cross-stage-ir-revision-identity-scope.md) | Cross-Stage IR Revision Identity Scope | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0050-cross-stage-ir-revision-identity-scope-review.md) | TBD |
 | [RFC 0051](0051-query-final-seal-and-text-scanning-evidence.md) | Query Final-Seal And Text-Scanning Evidence | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0051-query-final-seal-and-text-scanning-evidence-review.md) | TBD |
 | [RFC 0052](0052-rfc-granularity-and-internal-change-threshold.md) | RFC Granularity And Internal-Change Threshold | ACCEPTED | process | process | rfc | [Review Tracker](tracking/0052-rfc-granularity-and-internal-change-threshold-review.md) | TBD |
+| [RFC 0053](0053-lir-structural-verification-and-translation-validation.md) | LIR Structural Verification And MIR-to-LIR Translation Validation | DRAFT | compiler | compiler | rfc | TBD | TBD |
 
 ## Status Values
 
