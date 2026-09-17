@@ -788,6 +788,101 @@ ZC_TEST("HIR pipeline lowers a three-binding sequential local body") {
   const auto& literal = module.expressions()[0];
   ZC_EXPECT(literal.node == zLocal.initializer);
   ZC_EXPECT(literal.node.ordinal() == 8);
+
+  // The body lowers through the recursive sequential N-local arm: one
+  // parameter local (a), three user locals (x, y, z), StorageLive plus an
+  // Initialize Assign per binding in source order, then Return of z.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.locals.size() == 4);
+    const auto parameterA = mirFunction.locals[0].id;
+    const auto localX = mirFunction.locals[1].id;
+    const auto localY = mirFunction.locals[2].id;
+    const auto localZ = mirFunction.locals[3].id;
+    ZC_EXPECT(mirFunction.locals[0].kind == mir::MirLocalKind::Parameter);
+    ZC_EXPECT(mirFunction.locals[1].kind == mir::MirLocalKind::UserLocal);
+    ZC_EXPECT(mirFunction.locals[2].kind == mir::MirLocalKind::UserLocal);
+    ZC_EXPECT(mirFunction.locals[3].kind == mir::MirLocalKind::UserLocal);
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    const auto& mirBlock = mirFunction.blocks[0];
+    ZC_REQUIRE(mirBlock.statements.size() == 6);
+    ZC_EXPECT(mirBlock.statements[0].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirBlock.statements[0].storageLocal() == localX);
+    const auto& xAssign = mirBlock.statements[1].assignmentValue();
+    ZC_EXPECT(xAssign.initialization == mir::MirInitializationKind::Initialize);
+    ZC_EXPECT(xAssign.destination.local() == localX);
+    ZC_REQUIRE(xAssign.value.kind() == mir::MirRvalueKind::Use);
+    ZC_EXPECT(xAssign.value.useValue().operand.kind() == mir::MirOperandKind::Copy);
+    ZC_EXPECT(xAssign.value.useValue().operand.place().local() == parameterA);
+    ZC_EXPECT(mirBlock.statements[2].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirBlock.statements[2].storageLocal() == localY);
+    const auto& yAssign = mirBlock.statements[3].assignmentValue();
+    ZC_EXPECT(yAssign.initialization == mir::MirInitializationKind::Initialize);
+    ZC_EXPECT(yAssign.destination.local() == localY);
+    ZC_REQUIRE(yAssign.value.kind() == mir::MirRvalueKind::Use);
+    ZC_EXPECT(yAssign.value.useValue().operand.kind() == mir::MirOperandKind::Copy);
+    ZC_EXPECT(yAssign.value.useValue().operand.place().local() == localX);
+    ZC_EXPECT(mirBlock.statements[4].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirBlock.statements[4].storageLocal() == localZ);
+    const auto& zAssign = mirBlock.statements[5].assignmentValue();
+    ZC_EXPECT(zAssign.initialization == mir::MirInitializationKind::Initialize);
+    ZC_EXPECT(zAssign.destination.local() == localZ);
+    ZC_REQUIRE(zAssign.value.kind() == mir::MirRvalueKind::Use);
+    ZC_EXPECT(zAssign.value.useValue().operand.kind() == mir::MirOperandKind::Constant);
+    ZC_REQUIRE(mirBlock.terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_IF_SOME(returnValue, mirBlock.terminator.returnValue().value) {
+      ZC_EXPECT(returnValue.place().local() == localZ);
+    }
+  }
+}
+
+ZC_TEST("HIR pipeline lowers a sequential local body returning a parameter") {
+  HirPipelineFixture fixture(
+      "fun entry(a: i32) -> i32 { let x: i32 = 1; let y: i32 = x; return a; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  const auto& function = module.functions()[0];
+
+  // The recursive sequential arm returns the parameter place after two user
+  // locals: parameter a at localId(1), x at localId(2), y at localId(3), the
+  // literal and earlier-local initializers keep the same per-binding pairs.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.locals.size() == 3);
+    const auto parameterA = mirFunction.locals[0].id;
+    const auto localX = mirFunction.locals[1].id;
+    const auto localY = mirFunction.locals[2].id;
+    ZC_EXPECT(mirFunction.locals[0].kind == mir::MirLocalKind::Parameter);
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    const auto& mirBlock = mirFunction.blocks[0];
+    ZC_REQUIRE(mirBlock.statements.size() == 4);
+    ZC_EXPECT(mirBlock.statements[0].storageLocal() == localX);
+    const auto& xAssign = mirBlock.statements[1].assignmentValue();
+    ZC_REQUIRE(xAssign.value.kind() == mir::MirRvalueKind::Use);
+    ZC_EXPECT(xAssign.value.useValue().operand.kind() == mir::MirOperandKind::Constant);
+    ZC_EXPECT(mirBlock.statements[2].storageLocal() == localY);
+    const auto& yAssign = mirBlock.statements[3].assignmentValue();
+    ZC_REQUIRE(yAssign.value.kind() == mir::MirRvalueKind::Use);
+    ZC_EXPECT(yAssign.value.useValue().operand.kind() == mir::MirOperandKind::Copy);
+    ZC_EXPECT(yAssign.value.useValue().operand.place().local() == localX);
+    ZC_REQUIRE(mirBlock.terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_IF_SOME(returnValue, mirBlock.terminator.returnValue().value) {
+      ZC_EXPECT(returnValue.kind() == mir::MirOperandKind::Copy);
+      ZC_EXPECT(returnValue.place().local() == parameterA);
+    }
+  }
 }
 
 ZC_TEST("HIR pipeline lowers a binary-initializer sequential local body") {

@@ -36,11 +36,15 @@ struct RecursiveFunctionProduct final {
 /// Return(Constant)), a parameter return (`fun f(p0..pN-1) -> R { return pK;
 /// }`, leading parameter locals, Return(copy/move place-use)), a single
 /// scalar-initialized user local returned by place-use (`let x = <literal>;
-/// return x;`, one UserLocal, StorageLive plus an Initialize Assign), and its
+/// return x;`, one UserLocal, StorageLive plus an Initialize Assign), its
 /// one literal-overwrite extension (`mut x = <lit>; x = <lit>; return x;`, an
-/// additional Overwrite Assign). The predicates replicate the legacy per-shape
-/// gates exactly; unsafe-tail and every other shape return none so the caller
-/// delegates them to the legacy builder unchanged.
+/// additional Overwrite Assign), and sequential N-local bodies with N>=2 plain
+/// initializers (`let a = <lit/param/local>; ... return <local-or-param>;`,
+/// parameter locals followed by one UserLocal, StorageLive plus Initialize
+/// Assign per binding). The predicates replicate the legacy per-shape gates
+/// exactly; unsafe-tail, aggregate, primitive-binary, nested-operand, and every
+/// other shape return none so the caller delegates them to the legacy builder
+/// unchanged.
 ///
 /// \return the lowered function when one strict shape matched and lowered, else
 /// none to delegate back to the legacy construction path.
