@@ -75,6 +75,8 @@
 // build never references the isolation-wall shim or LIR lowering.
 #include "compiler/backend/llvm/llvm-translator.h"
 #include "compiler/lir/mir-to-lir.h"
+#include "compiler/lir/verify/lir-verifier.h"
+#include "compiler/lir/verify/translation-validator.h"
 #include "compiler/mir/built-mir.h"
 #endif
 
@@ -1539,6 +1541,28 @@ private:
     }
     backend::llvm::LlvmTranslator translator;
     ZC_IF_SOME(lirModule, lir) {
+      // RFC 0053: independently verify LIR structure and prove the module
+      // preserves the verified MIR it was lowered from before any LLVM
+      // translation. A failure here is a compiler defect, not a user error.
+      auto structural = lir::LirStructuralVerifier::verify(lirModule);
+      if (structural != zc::none) {
+        return NativeObjectResult(
+            zc::str("Internal compiler error: LIR structural verification failed (fault ",
+                    static_cast<unsigned>(ZC_ASSERT_NONNULL(structural).fault), ")."));
+      }
+      auto presentedMir = zc::heapArray<const mir::MirFunction*>(functions.size());
+      for (size_t index = 0; index < functions.size(); ++index) {
+        presentedMir[index] = &functions[index];
+      }
+      ZC_IF_SOME(types, semanticTypes) {
+        auto translation =
+            lir::TranslationValidator::validate(presentedMir.asPtr(), lirModule, types);
+        if (translation != zc::none) {
+          return NativeObjectResult(
+              zc::str("Internal compiler error: MIR-to-LIR translation validation failed (fault ",
+                      static_cast<unsigned>(ZC_ASSERT_NONNULL(translation).fault), ")."));
+        }
+      }
       auto result = translator.translate(lirModule);
       if (!result.verified()) {
         return NativeObjectResult(zc::str("LLVM translation failed: ", result.diagnostic()));
