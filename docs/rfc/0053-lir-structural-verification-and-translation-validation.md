@@ -242,16 +242,17 @@ verifier header beginning at `0x01` in declaration order: structural faults
 `NonDenseBlockOrdinals`, `UnreachableBlock`, `NonDenseLocalSlots`,
 `UndeclaredLocalSlot`, `DanglingBlockTarget`, `TerminatorArity`,
 `CarrierMismatch`, `ConditionNotBit1`, `CalleeIndexOutOfRange`,
-`ReturnCarrierMismatch`) and translation faults
+`ReturnCarrierMismatch`) and translation faults landing in slices
 (`FunctionSetMismatch`, `BlockBijectionMismatch`, `EffectMismatch`,
 `ConstantMismatch`, `PlaceMappingMismatch`, `OperatorMismatch`,
-`EdgeTargetMismatch`, `CallCalleeMismatch`, `SlotSetMismatch`,
-`SymbolMismatch`). Invariants the closed Terminator factories already make
-unrepresentable (empty or over-cap call argument and aggregate bundle
-vectors) deliberately carry no tag; the structural verifier additionally
-checks the aggregate bundle at its own trust boundary. The exact payloads
-land with the canonical encoding in the implementing change; no tag is
-reserved without a producer and a mutation test.
+`EdgeTargetMismatch`, `SlotSetMismatch` for single-function modules;
+`CallCalleeMismatch` arrives with the multi-function slice). Invariants the
+closed Terminator factories already make unrepresentable (empty or over-cap
+call argument and aggregate bundle vectors) deliberately carry no tag; the
+structural verifier additionally checks the aggregate bundle at its own trust
+boundary. The exact payloads land with the canonical encoding in the
+implementing change; no tag is reserved without a producer and a mutation
+test.
 
 ### Structural Verification
 
@@ -604,3 +605,4 @@ detail extension is additive within the closed `LirVerification` phase.
 |---|---|---|
 | 2026-09-18 | DRAFT | Initial draft. |
 | 2026-09-19 | DRAFT | Slice 1 implemented: `LirStructuralVerifier` with the closed structural fault set, positive coverage of every admitted producer shape through `llvm-translation-test`, and one mutation ztest per fault tag; not yet wired into `emitBinary`. |
+| 2026-09-19 | DRAFT | Slice 2 implemented: construct-walked `TranslationValidator` for single-function modules, covering the folded scalar/field/whole-struct returns and the materialized conditional, loop, and comparison-diamond shapes with independent carrier and bit-pattern derivation; one mutation ztest per single-function translation fault tag; all nine single-function producer sites assert validation. Not yet wired into `emitBinary`; multi-function call integrity remains slice 3. |

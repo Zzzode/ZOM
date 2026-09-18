@@ -25,6 +25,7 @@
 #include "compiler/lir/lir-store.h"
 #include "compiler/lir/mir-to-lir.h"
 #include "compiler/lir/verify/lir-verifier.h"
+#include "compiler/lir/verify/translation-validator.h"
 #include "compiler/mir/built-mir.h"
 #include "compiler/type/semantic-type-data.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
@@ -123,6 +124,8 @@ ZC_TEST("Scalar module initializer lowers MIR -> LIR -> verified LLVM ret i32 42
   ZC_REQUIRE(lir != zc::none);
   const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
   ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+  ZC_EXPECT(lir::TranslationValidator::validate(function, lirModule, typeContext.semanticTypes()) ==
+            zc::none);
   ZC_EXPECT(lirModule.functions().size() == 1);
   ZC_EXPECT(lirModule.functions()[0].returnCarrier().integerWidth() == lir::IntegerBitWidth::Bit32);
 
@@ -265,6 +268,8 @@ ZC_TEST("Whole-struct return lowers MIR -> LIR -> verified LLVM literal struct")
   ZC_REQUIRE(lir != zc::none);
   const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
   ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+  ZC_EXPECT(lir::TranslationValidator::validate(function, lirModule, typeContext.semanticTypes()) ==
+            zc::none);
   ZC_REQUIRE(lirModule.functions().size() == 1);
   ZC_REQUIRE(lirModule.functions()[0].blocks().size() == 1);
   const auto& terminator = lirModule.functions()[0].blocks()[0].terminator();
@@ -305,6 +310,8 @@ ZC_TEST("Whole-struct return slots follow source-literal element order, not a so
   auto lir = lir::MirToLirLowering::lowerAggregateReturn(function, typeContext.semanticTypes());
   ZC_REQUIRE(lir != zc::none);
   ZC_EXPECT(lir::LirStructuralVerifier::verify(ZC_REQUIRE_NONNULL(lir)) == zc::none);
+  ZC_EXPECT(lir::TranslationValidator::validate(function, ZC_REQUIRE_NONNULL(lir),
+                                                typeContext.semanticTypes()) == zc::none);
   const auto& terminator = ZC_REQUIRE_NONNULL(lir).functions()[0].blocks()[0].terminator();
   ZC_REQUIRE(terminator.returnAggregateSlots().size() == 2);
   // Slot order is the literal element order: the first element (100) stays first.
@@ -374,6 +381,8 @@ ZC_TEST("Struct-local field return lowers MIR -> LIR -> verified LLVM ret i32 42
   ZC_REQUIRE(lir != zc::none);
   const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
   ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+  ZC_EXPECT(lir::TranslationValidator::validate(function, lirModule, typeContext.semanticTypes()) ==
+            zc::none);
   ZC_EXPECT(lirModule.functions().size() == 1);
   ZC_EXPECT(lirModule.functions()[0].returnCarrier().integerWidth() == lir::IntegerBitWidth::Bit32);
 
@@ -423,6 +432,8 @@ ZC_TEST("Scalar module initializers of non-i32 integer widths lower to a verifie
     ZC_REQUIRE(lir != zc::none);
     const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
     ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+    ZC_EXPECT(lir::TranslationValidator::validate(function, lirModule,
+                                                  typeContext.semanticTypes()) == zc::none);
     ZC_EXPECT(lirModule.functions().size() == 1);
 
     LlvmTranslator translator;
@@ -519,6 +530,8 @@ ZC_TEST("Boolean-conditional diamond lowers to a verified multi-block LLVM funct
   ZC_REQUIRE(lir != zc::none);
   const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
   ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+  ZC_EXPECT(lir::TranslationValidator::validate(function, lirModule, typeContext.semanticTypes()) ==
+            zc::none);
   ZC_EXPECT(lirModule.functions().size() == 1);
   ZC_EXPECT(lirModule.functions()[0].blocks().size() == 4);
   ZC_EXPECT(lirModule.functions()[0].parameters().size() == 1);
@@ -623,6 +636,8 @@ ZC_TEST("Reducible while-loop lowers to a verified multi-block LLVM function") {
   ZC_REQUIRE(lir != zc::none);
   const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
   ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+  ZC_EXPECT(lir::TranslationValidator::validate(function, lirModule, typeContext.semanticTypes()) ==
+            zc::none);
   ZC_EXPECT(lirModule.functions().size() == 1);
   ZC_EXPECT(lirModule.functions()[0].blocks().size() == 4);
 
@@ -739,6 +754,8 @@ ZC_TEST("Comparison-driven conditional lowers to a verified multi-block LLVM fun
   ZC_REQUIRE(lir != zc::none);
   const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
   ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+  ZC_EXPECT(lir::TranslationValidator::validate(function, lirModule, typeContext.semanticTypes()) ==
+            zc::none);
   ZC_EXPECT(lirModule.functions().size() == 1);
   ZC_EXPECT(lirModule.functions()[0].parameters().size() == 2);
 
@@ -845,6 +862,8 @@ ZC_TEST("Conditional with a parameter-returning arm lowers to a verified functio
   ZC_REQUIRE(lir != zc::none);
   const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
   ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+  ZC_EXPECT(lir::TranslationValidator::validate(function, lirModule, typeContext.semanticTypes()) ==
+            zc::none);
   ZC_EXPECT(lirModule.functions().size() == 1);
   ZC_EXPECT(lirModule.functions()[0].parameters().size() == 2);
 
