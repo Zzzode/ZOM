@@ -4,6 +4,7 @@ set(LIR_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/lir-store.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/lir-stores.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/mir-to-lir.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/verify/lir-verifier.cc
 )
 
 add_library(lir STATIC ${LIR_SRC})

@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, ir-backend, verification]
 approvers: []
 created: 2026-09-18
-updated: 2026-09-18
+updated: 2026-09-19
 area: compiler
 requires: [10, 21, 47]
 supersedes: []
@@ -238,17 +238,20 @@ a deterministic visitation order (functions by module order, blocks and
 statements by vector order); the finding is a diagnostic carrier, not an
 aggregate. `LirVerificationFaultKind` is a closed `uint8` enum declared in the
 verifier header beginning at `0x01` in declaration order: structural faults
-(`DanglingBlockTarget`, `MissingEntryBlock`, `DuplicateBlockOrdinal`,
-`UndeclaredLocalSlot`, `NonDenseLocalSlots`, `TerminatorArity`,
+(`EmptyOrDuplicateSymbol`, `MissingEntryBlock`, `DuplicateBlockOrdinal`,
+`NonDenseBlockOrdinals`, `UnreachableBlock`, `NonDenseLocalSlots`,
+`UndeclaredLocalSlot`, `DanglingBlockTarget`, `TerminatorArity`,
 `CarrierMismatch`, `ConditionNotBit1`, `CalleeIndexOutOfRange`,
-`ArgumentVectorOverCap`, `AggregateBundleOverCap`, `UnreachableBlock`,
 `ReturnCarrierMismatch`) and translation faults
 (`FunctionSetMismatch`, `BlockBijectionMismatch`, `EffectMismatch`,
 `ConstantMismatch`, `PlaceMappingMismatch`, `OperatorMismatch`,
 `EdgeTargetMismatch`, `CallCalleeMismatch`, `SlotSetMismatch`,
-`SymbolMismatch`). The exact tags and payloads land in the implementing change
-together with their canonical encoding; no tag is reserved without a producer
-and a mutation test.
+`SymbolMismatch`). Invariants the closed Terminator factories already make
+unrepresentable (empty or over-cap call argument and aggregate bundle
+vectors) deliberately carry no tag; the structural verifier additionally
+checks the aggregate bundle at its own trust boundary. The exact payloads
+land with the canonical encoding in the implementing change; no tag is
+reserved without a producer and a mutation test.
 
 ### Structural Verification
 
@@ -281,9 +284,10 @@ in order:
      0021 transitional placeholder contract; when the placeholder is removed,
      this rule is replaced in the same change, no dual rule kept);
    - a `Call` callee index is within the module function range, its destination
-     carrier matches the callee return carrier, its argument vector is empty or
-     within `kMaxCallArguments`, and every argument carries the corresponding
-     callee parameter carrier in order.
+     carrier matches the callee return carrier, its argument count equals the
+     callee parameter count (the closed Terminator factories already bound the
+     vector at `kMaxCallArguments`), and every argument carries the
+     corresponding callee parameter carrier in order.
 7. Every statement is one of the closed `StatementKind` alternatives and every
    terminator one of the closed `TerminatorKind` alternatives, with the fields
    valid for that alternative.
@@ -599,3 +603,4 @@ detail extension is additive within the closed `LirVerification` phase.
 | Date | Status | Notes |
 |---|---|---|
 | 2026-09-18 | DRAFT | Initial draft. |
+| 2026-09-19 | DRAFT | Slice 1 implemented: `LirStructuralVerifier` with the closed structural fault set, positive coverage of every admitted producer shape through `llvm-translation-test`, and one mutation ztest per fault tag; not yet wired into `emitBinary`. |
