@@ -18,6 +18,8 @@
 // carries the expected `ret i32 42`. This test links LLVM and is built ONLY when
 // ZOM_ENABLE_LLVM_BACKEND is ON.
 
+#include <cstdio>
+
 #include "compiler/backend/llvm/llvm-translator.h"
 #include "compiler/checker/facts/signature-facts.h"
 #include "compiler/identity/source/source-snapshot.h"
@@ -964,6 +966,13 @@ ZC_TEST("Same-module direct call lowers to a verified two-function LLVM module")
   const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
   ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
   ZC_EXPECT(lirModule.functions().size() == 2);
+  {
+    auto functions = zc::heapArray<const mir::MirFunction*>(2);
+    functions[0] = &caller;
+    functions[1] = &callee;
+    ZC_EXPECT(lir::TranslationValidator::validate(functions.asPtr(), lirModule,
+                                                  typeContext.semanticTypes()) == zc::none);
+  }
 
   LlvmTranslator translator;
   auto result = translator.translate(lirModule);
@@ -1060,6 +1069,13 @@ ZC_TEST("Same-module call with one integer argument lowers to a verified LLVM mo
   const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
   ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
   ZC_EXPECT(lirModule.functions().size() == 2);
+  {
+    auto functions = zc::heapArray<const mir::MirFunction*>(2);
+    functions[0] = &caller;
+    functions[1] = &callee;
+    ZC_EXPECT(lir::TranslationValidator::validate(functions.asPtr(), lirModule,
+                                                  typeContext.semanticTypes()) == zc::none);
+  }
 
   LlvmTranslator translator;
   auto result = translator.translate(lirModule);
@@ -1171,7 +1187,8 @@ lir::Module buildAggregateReturnModule(zc::ArrayPtr<const uint64_t> slotValues) 
   blocks.add(lir::BasicBlock(ZC_REQUIRE_NONNULL(blockId), ZC_REQUIRE_NONNULL(zc::mv(terminator))));
 
   zc::Vector<lir::Function> functions;
-  functions.add(lir::Function(zc::heapString("zom.module_init"), carrier, zc::mv(blocks)));
+  functions.add(lir::Function(tests::testDefinition(70), zc::heapString("zom.module_init"), carrier,
+                              zc::mv(blocks)));
   return lir::Module(zc::mv(functions));
 }
 
@@ -1220,7 +1237,8 @@ ZC_TEST("Scalar integer return is unchanged by the aggregate return path") {
   blocks.add(lir::BasicBlock(ZC_REQUIRE_NONNULL(blockId),
                              lir::Terminator::returnInteger(ZC_REQUIRE_NONNULL(constant))));
   zc::Vector<lir::Function> functions;
-  functions.add(lir::Function(zc::heapString("zom.module_init"), carrier, zc::mv(blocks)));
+  functions.add(lir::Function(tests::testDefinition(70), zc::heapString("zom.module_init"), carrier,
+                              zc::mv(blocks)));
   lir::Module module(zc::mv(functions));
 
   LlvmTranslator translator;
@@ -1467,8 +1485,8 @@ lir::Module buildCallWithLeafModule() {
     zc::Vector<lir::Local> parameters;
     zc::Vector<lir::Local> locals;
     locals.add(lir::Local(1, carrier));
-    functions.add(lir::Function(zc::heapString("zom.caller"), carrier, zc::mv(parameters),
-                                zc::mv(locals), zc::mv(callerBlocks)));
+    functions.add(lir::Function(tests::testDefinition(71), zc::heapString("zom.caller"), carrier,
+                                zc::mv(parameters), zc::mv(locals), zc::mv(callerBlocks)));
   }
 
   // Function 1: the callee, a single block returning its integer constant.
@@ -1477,7 +1495,8 @@ lir::Module buildCallWithLeafModule() {
     calleeBlocks.add(
         lir::BasicBlock(ZC_REQUIRE_NONNULL(calleeEntry),
                         lir::Terminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
-    functions.add(lir::Function(zc::heapString("zom.callee"), carrier, zc::mv(calleeBlocks)));
+    functions.add(lir::Function(tests::testDefinition(72), zc::heapString("zom.callee"), carrier,
+                                zc::mv(calleeBlocks)));
   }
 
   // Function 2: the standalone leaf, a single block returning its integer
@@ -1487,7 +1506,8 @@ lir::Module buildCallWithLeafModule() {
     leafBlocks.add(
         lir::BasicBlock(ZC_REQUIRE_NONNULL(leafEntry),
                         lir::Terminator::returnInteger(ZC_REQUIRE_NONNULL(leafConstant))));
-    functions.add(lir::Function(zc::heapString("zom.leaf"), carrier, zc::mv(leafBlocks)));
+    functions.add(lir::Function(tests::testDefinition(73), zc::heapString("zom.leaf"), carrier,
+                                zc::mv(leafBlocks)));
   }
 
   return lir::Module(zc::mv(functions));

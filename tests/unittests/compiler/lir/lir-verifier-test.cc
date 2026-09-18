@@ -22,6 +22,7 @@
 #include "compiler/ir/ir-identity.h"
 #include "compiler/lir/lir-module.h"
 #include "compiler/lir/lir-store.h"
+#include "tests/unittests/compiler/test-semantic-identities.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
@@ -54,8 +55,8 @@ Module validScalarModule() {
   blocks.add(BasicBlock(blockId(1),
                         Terminator::returnInteger(constant(carrier(IntegerBitWidth::Bit32), 0))));
   zc::Vector<Function> functions;
-  functions.add(
-      Function(zc::heapString("zom.module_init"), carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
+  functions.add(Function(tests::testDefinition(0), zc::heapString("zom.module_init"),
+                         carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
   return Module(zc::mv(functions));
 }
 
@@ -76,15 +77,16 @@ Module validCallModule() {
     zc::Vector<Local> parameters;
     zc::Vector<Local> locals;
     locals.add(Local(1, carrier(IntegerBitWidth::Bit32)));
-    functions.add(Function(zc::heapString("zom.caller"), carrier(IntegerBitWidth::Bit32),
-                           zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+    functions.add(Function(tests::testDefinition(0), zc::heapString("zom.caller"),
+                           carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(locals),
+                           zc::mv(blocks)));
   }
   {
     zc::Vector<BasicBlock> blocks;
     blocks.add(BasicBlock(blockId(1),
                           Terminator::returnInteger(constant(carrier(IntegerBitWidth::Bit32), 7))));
-    functions.add(
-        Function(zc::heapString("zom.callee"), carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
+    functions.add(Function(tests::testDefinition(0), zc::heapString("zom.callee"),
+                           carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
   }
   return Module(zc::mv(functions));
 }
@@ -125,8 +127,9 @@ Module validConditionalModule() {
   locals.add(Local(2, carrier(IntegerBitWidth::Bit32)));
   locals.add(Local(3, carrier(IntegerBitWidth::Bit1)));
   zc::Vector<Function> functions;
-  functions.add(Function(zc::heapString("zom.conditional_cmp"), carrier(IntegerBitWidth::Bit32),
-                         zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  functions.add(Function(tests::testDefinition(0), zc::heapString("zom.conditional_cmp"),
+                         carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(locals),
+                         zc::mv(blocks)));
   return Module(zc::mv(functions));
 }
 
@@ -150,7 +153,8 @@ ZC_TEST("LIR structural verifier rejects an empty function symbol") {
   blocks.add(BasicBlock(blockId(1),
                         Terminator::returnInteger(constant(carrier(IntegerBitWidth::Bit32), 0))));
   zc::Vector<Function> functions;
-  functions.add(Function(zc::heapString(""), carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
+  functions.add(Function(tests::testDefinition(0), zc::heapString(""),
+                         carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
   Module module(zc::mv(functions));
   auto finding = LirStructuralVerifier::verify(module);
   ZC_REQUIRE(finding != zc::none);
@@ -173,15 +177,16 @@ ZC_TEST("LIR structural verifier rejects duplicate function symbols") {
     zc::Vector<Local> parameters;
     zc::Vector<Local> locals;
     locals.add(Local(1, carrier(IntegerBitWidth::Bit32)));
-    functions.add(Function(zc::heapString("shared.symbol"), carrier(IntegerBitWidth::Bit32),
-                           zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+    functions.add(Function(tests::testDefinition(0), zc::heapString("shared.symbol"),
+                           carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(locals),
+                           zc::mv(blocks)));
   }
   {
     zc::Vector<BasicBlock> blocks;
     blocks.add(BasicBlock(blockId(1),
                           Terminator::returnInteger(constant(carrier(IntegerBitWidth::Bit32), 7))));
-    functions.add(
-        Function(zc::heapString("shared.symbol"), carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
+    functions.add(Function(tests::testDefinition(0), zc::heapString("shared.symbol"),
+                           carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
   }
   Module module(zc::mv(functions));
   auto finding = LirStructuralVerifier::verify(module);
@@ -193,8 +198,8 @@ ZC_TEST("LIR structural verifier rejects duplicate function symbols") {
 ZC_TEST("LIR structural verifier rejects a function without blocks") {
   zc::Vector<BasicBlock> blocks;
   zc::Vector<Function> functions;
-  functions.add(
-      Function(zc::heapString("empty.body"), carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
+  functions.add(Function(tests::testDefinition(0), zc::heapString("empty.body"),
+                         carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
   Module module(zc::mv(functions));
   auto finding = LirStructuralVerifier::verify(module);
   ZC_REQUIRE(finding != zc::none);
@@ -207,8 +212,8 @@ ZC_TEST("LIR structural verifier rejects duplicate block ordinals") {
                         Terminator::returnInteger(constant(carrier(IntegerBitWidth::Bit32), 0))));
   blocks.add(BasicBlock(blockId(1), Terminator::gotoBlock(blockId(1))));
   zc::Vector<Function> functions;
-  functions.add(
-      Function(zc::heapString("dup.block"), carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
+  functions.add(Function(tests::testDefinition(0), zc::heapString("dup.block"),
+                         carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
   Module module(zc::mv(functions));
   auto finding = LirStructuralVerifier::verify(module);
   ZC_REQUIRE(finding != zc::none);
@@ -224,8 +229,8 @@ ZC_TEST("LIR structural verifier rejects non-dense block ordinals") {
   blocks.add(BasicBlock(blockId(3),
                         Terminator::returnInteger(constant(carrier(IntegerBitWidth::Bit32), 0))));
   zc::Vector<Function> functions;
-  functions.add(
-      Function(zc::heapString("sparse.block"), carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
+  functions.add(Function(tests::testDefinition(0), zc::heapString("sparse.block"),
+                         carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
   Module module(zc::mv(functions));
   auto finding = LirStructuralVerifier::verify(module);
   ZC_REQUIRE(finding != zc::none);
@@ -239,8 +244,8 @@ ZC_TEST("LIR structural verifier rejects an unreachable block") {
   blocks.add(BasicBlock(blockId(2),
                         Terminator::returnInteger(constant(carrier(IntegerBitWidth::Bit32), 1))));
   zc::Vector<Function> functions;
-  functions.add(Function(zc::heapString("unreachable.block"), carrier(IntegerBitWidth::Bit32),
-                         zc::mv(blocks)));
+  functions.add(Function(tests::testDefinition(0), zc::heapString("unreachable.block"),
+                         carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
   Module module(zc::mv(functions));
   auto finding = LirStructuralVerifier::verify(module);
   ZC_REQUIRE(finding != zc::none);
@@ -274,8 +279,9 @@ ZC_TEST("LIR structural verifier rejects non-dense parameter and local slots") {
   zc::Vector<Local> locals;
   locals.add(Local(4, carrier(IntegerBitWidth::Bit32)));
   zc::Vector<Function> functions;
-  functions.add(Function(zc::heapString("sparse.local"), carrier(IntegerBitWidth::Bit32),
-                         zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  functions.add(Function(tests::testDefinition(0), zc::heapString("sparse.local"),
+                         carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(locals),
+                         zc::mv(blocks)));
   Module sparse(zc::mv(functions));
   auto finding = LirStructuralVerifier::verify(sparse);
   ZC_REQUIRE(finding != zc::none);
@@ -289,8 +295,8 @@ ZC_TEST("LIR structural verifier rejects a dangling block target") {
     blocks.add(BasicBlock(blockId(1), zc::mv(statements), Terminator::gotoBlock(blockId(5))));
   }
   zc::Vector<Function> functions;
-  functions.add(
-      Function(zc::heapString("dangling.target"), carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
+  functions.add(Function(tests::testDefinition(0), zc::heapString("dangling.target"),
+                         carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
   Module module(zc::mv(functions));
   auto finding = LirStructuralVerifier::verify(module);
   ZC_REQUIRE(finding != zc::none);
@@ -306,8 +312,8 @@ ZC_TEST("LIR structural verifier rejects a use of an undeclared slot") {
     blocks.add(BasicBlock(blockId(1), zc::mv(statements), Terminator::returnLocal(9)));
   }
   zc::Vector<Function> functions;
-  functions.add(
-      Function(zc::heapString("undeclared.slot"), carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
+  functions.add(Function(tests::testDefinition(0), zc::heapString("undeclared.slot"),
+                         carrier(IntegerBitWidth::Bit32), zc::mv(blocks)));
   Module module(zc::mv(functions));
   auto finding = LirStructuralVerifier::verify(module);
   ZC_REQUIRE(finding != zc::none);
@@ -326,8 +332,9 @@ ZC_TEST("LIR structural verifier rejects an assignment with a mismatched carrier
   zc::Vector<Local> locals;
   locals.add(Local(1, carrier(IntegerBitWidth::Bit8)));
   zc::Vector<Function> functions;
-  functions.add(Function(zc::heapString("carrier.mismatch"), carrier(IntegerBitWidth::Bit8),
-                         zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  functions.add(Function(tests::testDefinition(0), zc::heapString("carrier.mismatch"),
+                         carrier(IntegerBitWidth::Bit8), zc::mv(parameters), zc::mv(locals),
+                         zc::mv(blocks)));
   Module module(zc::mv(functions));
   auto finding = LirStructuralVerifier::verify(module);
   ZC_REQUIRE(finding != zc::none);
@@ -358,8 +365,9 @@ ZC_TEST("LIR structural verifier rejects a branch condition that is not one bit"
   zc::Vector<Local> locals;
   locals.add(Local(2, carrier(IntegerBitWidth::Bit32)));
   zc::Vector<Function> functions;
-  functions.add(Function(zc::heapString("wide.condition"), carrier(IntegerBitWidth::Bit32),
-                         zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  functions.add(Function(tests::testDefinition(0), zc::heapString("wide.condition"),
+                         carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(locals),
+                         zc::mv(blocks)));
   Module module(zc::mv(functions));
   auto finding = LirStructuralVerifier::verify(module);
   ZC_REQUIRE(finding != zc::none);
@@ -381,8 +389,9 @@ ZC_TEST("LIR structural verifier rejects a call index outside the module range")
   zc::Vector<Local> locals;
   locals.add(Local(1, carrier(IntegerBitWidth::Bit32)));
   zc::Vector<Function> functions;
-  functions.add(Function(zc::heapString("bad.callee.index"), carrier(IntegerBitWidth::Bit32),
-                         zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  functions.add(Function(tests::testDefinition(0), zc::heapString("bad.callee.index"),
+                         carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(locals),
+                         zc::mv(blocks)));
   Module module(zc::mv(functions));
   auto finding = LirStructuralVerifier::verify(module);
   ZC_REQUIRE(finding != zc::none);
@@ -405,8 +414,9 @@ ZC_TEST("LIR structural verifier rejects call argument count arity mismatch") {
     zc::Vector<Local> parameters;
     zc::Vector<Local> locals;
     locals.add(Local(1, carrier(IntegerBitWidth::Bit32)));
-    functions.add(Function(zc::heapString("arity.caller"), carrier(IntegerBitWidth::Bit32),
-                           zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+    functions.add(Function(tests::testDefinition(0), zc::heapString("arity.caller"),
+                           carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(locals),
+                           zc::mv(blocks)));
   }
   {
     zc::Vector<BasicBlock> blocks;
@@ -415,8 +425,9 @@ ZC_TEST("LIR structural verifier rejects call argument count arity mismatch") {
     zc::Vector<Local> parameters;
     parameters.add(Local(1, carrier(IntegerBitWidth::Bit32)));
     zc::Vector<Local> locals;
-    functions.add(Function(zc::heapString("arity.callee"), carrier(IntegerBitWidth::Bit32),
-                           zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+    functions.add(Function(tests::testDefinition(0), zc::heapString("arity.callee"),
+                           carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(locals),
+                           zc::mv(blocks)));
   }
   Module module(zc::mv(functions));
   auto finding = LirStructuralVerifier::verify(module);
@@ -429,8 +440,8 @@ ZC_TEST("LIR structural verifier rejects a return constant with the wrong carrie
   blocks.add(BasicBlock(blockId(1),
                         Terminator::returnInteger(constant(carrier(IntegerBitWidth::Bit32), 0))));
   zc::Vector<Function> functions;
-  functions.add(
-      Function(zc::heapString("return.carrier"), carrier(IntegerBitWidth::Bit8), zc::mv(blocks)));
+  functions.add(Function(tests::testDefinition(0), zc::heapString("return.carrier"),
+                         carrier(IntegerBitWidth::Bit8), zc::mv(blocks)));
   Module module(zc::mv(functions));
   auto finding = LirStructuralVerifier::verify(module);
   ZC_REQUIRE(finding != zc::none);
@@ -457,8 +468,9 @@ ZC_TEST("LIR structural verifier rejects a compare whose operands disagree on ca
   locals.add(Local(2, carrier(IntegerBitWidth::Bit32)));
   locals.add(Local(3, carrier(IntegerBitWidth::Bit1)));
   zc::Vector<Function> functions;
-  functions.add(Function(zc::heapString("compare.carrier"), carrier(IntegerBitWidth::Bit32),
-                         zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  functions.add(Function(tests::testDefinition(0), zc::heapString("compare.carrier"),
+                         carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(locals),
+                         zc::mv(blocks)));
   Module module(zc::mv(functions));
   auto finding = LirStructuralVerifier::verify(module);
   ZC_REQUIRE(finding != zc::none);

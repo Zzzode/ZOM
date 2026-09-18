@@ -153,7 +153,7 @@ const ValueType* lirSlotCarrier(const Function& function, uint32_t ordinal) noex
 }
 
 // Describes the one constant/aggregate local a single-block return folds.
-enum class FoldKind { None, ScalarConstant, Aggregate };
+enum class FoldKind { None, ScalarConstant, DirectConstant, Aggregate };
 
 struct ReturnFold final {
   FoldKind kind = FoldKind::None;
@@ -165,19 +165,22 @@ struct ReturnFold final {
 
 }  // namespace
 
-zc::Maybe<TranslationFinding> TranslationValidator::validate(
-    const MirFunction& mir, const Module& module, const type::SemanticTypeStore& types) noexcept {
-  const auto functions = module.functions();
-  if (functions.size() != 1) return fault(TranslationFaultKind::FunctionSetMismatch, 0);
-  const Function& lir = functions[0];
+namespace {
 
+// Validates one matched MIR/LIR function pair. `moduleFunctions` is the whole
+// LIR module so a Call terminator's stored callee index can be resolved to the
+// LIR function whose MIR owner must equal the MIR call target.
+zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunction& mir,
+                                           const Function& lir,
+                                           const type::SemanticTypeStore& types,
+                                           zc::ArrayPtr<const Function> moduleFunctions) noexcept {
   // Block bijection: equal count and dense ordinal order.
   if (mir.blocks.size() != lir.blocks().size()) {
-    return fault(TranslationFaultKind::BlockBijectionMismatch, 0);
+    return fault(TranslationFaultKind::BlockBijectionMismatch, functionIndex);
   }
   for (uint32_t b = 0; b < mir.blocks.size(); ++b) {
     if (mir.blocks[b].id.ordinal() != b + 1 || lir.blocks()[b].id().ordinal() != b + 1) {
-      return fault(TranslationFaultKind::BlockBijectionMismatch, 0, b + 1, b + 1);
+      return fault(TranslationFaultKind::BlockBijectionMismatch, functionIndex, b + 1, b + 1);
     }
   }
 
@@ -193,8 +196,11 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
     if (terminator.kind() == mir::MirTerminatorKind::Return) {
       const auto& returned = terminator.returnValue().value;
       ZC_IF_SOME(operand, returned) {
-        if (operand.kind() != mir::MirOperandKind::Constant &&
-            operand.place().projections().size() <= 1) {
+        // A direct constant return (the scalar callee shape) folds to
+        // ReturnInteger with no source local at all.
+        if (operand.kind() == mir::MirOperandKind::Constant) {
+          fold.kind = FoldKind::DirectConstant;
+        } else if (operand.place().projections().size() <= 1) {
           const mir::MirLocalId root = operand.place().local();
           const mir::MirAssignmentStatement* source = nullptr;
           for (const auto& statement : block.statements) {
@@ -209,7 +215,7 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
             if (operand.place().projections().size() == 1) {
               const auto& projection = operand.place().projections()[0];
               if (projection.kind() != mir::MirProjectionKind::Field) {
-                return fault(TranslationFaultKind::PlaceMappingMismatch, 0, 1, 1);
+                return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, 1, 1);
               }
               fold.hasFieldProjection = true;
               fold.projectedField = projection.fieldValue().field;
@@ -242,7 +248,9 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
   zc::Maybe<ValueType> expectedReturnCarrier;
   if (folded && fold.kind == FoldKind::Aggregate && fold.assignment != nullptr) {
     const auto& aggregate = fold.assignment->value.nominalAggregateValue();
-    if (aggregate.elements.size() == 0) { return fault(TranslationFaultKind::EffectMismatch, 0); }
+    if (aggregate.elements.size() == 0) {
+      return fault(TranslationFaultKind::EffectMismatch, functionIndex);
+    }
     const identity::SemanticTypeId fieldType =
         fold.hasFieldProjection && fold.projectedField != zc::none
             ? [&]() {
@@ -260,7 +268,7 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
   }
   if (expectedReturnCarrier == zc::none ||
       lir.returnCarrier() != ZC_ASSERT_NONNULL(expectedReturnCarrier)) {
-    return fault(TranslationFaultKind::SlotSetMismatch, 0);
+    return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
   }
 
   // Slot set. A folded function declares no slots; a materialized function maps
@@ -268,7 +276,7 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
   // independently derived carrier.
   if (folded) {
     if (lir.parameters().size() != 0 || lir.locals().size() != 0) {
-      return fault(TranslationFaultKind::SlotSetMismatch, 0);
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
     }
   } else {
     uint32_t parameterCount = 0;
@@ -277,14 +285,14 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
     }
     if (lir.parameters().size() != parameterCount ||
         lir.locals().size() != mir.locals.size() - parameterCount) {
-      return fault(TranslationFaultKind::SlotSetMismatch, 0);
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
     }
     for (uint32_t i = 0; i < mir.locals.size(); ++i) {
       const auto& source = mir.locals[i];
       const Local& actual =
           i < parameterCount ? lir.parameters()[i] : lir.locals()[i - parameterCount];
       if (actual.ordinal() != source.id.ordinal()) {
-        return fault(TranslationFaultKind::SlotSetMismatch, 0);
+        return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
       }
       // The comparison temporary carries the bool result of its comparison;
       // every other local carries an integer in the admitted subset. The
@@ -298,7 +306,7 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
         if (carrier == zc::none) carrier = boolCarrier(source.type, types);
       }
       if (carrier == zc::none || actual.carrier() != ZC_ASSERT_NONNULL(carrier)) {
-        return fault(TranslationFaultKind::SlotSetMismatch, 0);
+        return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
       }
     }
   }
@@ -323,44 +331,47 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
           // The folded initializer is consumed by the return terminator.
           if (folded && &assignment == fold.assignment) break;
           if (lirStatement >= lirBlock.statements().size()) {
-            return fault(TranslationFaultKind::EffectMismatch, 0, b + 1, b + 1, statementIndex);
+            return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                         statementIndex);
           }
           const Statement& actual = lirBlock.statements()[lirStatement];
           if (assignment.destination.projections().size() != 0) {
-            return fault(TranslationFaultKind::PlaceMappingMismatch, 0, b + 1, b + 1,
+            return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1,
                          statementIndex);
           }
           const uint32_t destinationOrdinal = assignment.destination.local().ordinal();
           if (actual.destinationOrdinal() != destinationOrdinal) {
-            return fault(TranslationFaultKind::PlaceMappingMismatch, 0, b + 1, b + 1,
+            return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1,
                          statementIndex);
           }
           const ValueType* destinationCarrier = actual.value().isConstant()
                                                     ? &actual.value().constantValue().carrier()
                                                     : lirSlotCarrier(lir, destinationOrdinal);
           if (destinationCarrier == nullptr) {
-            return fault(TranslationFaultKind::SlotSetMismatch, 0, b + 1, b + 1, statementIndex);
+            return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
+                         statementIndex);
           }
           switch (assignment.value.kind()) {
             case mir::MirRvalueKind::Use: {
               if (actual.kind() != StatementKind::Assign) {
-                return fault(TranslationFaultKind::EffectMismatch, 0, b + 1, b + 1, statementIndex);
+                return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                             statementIndex);
               }
               if (!sameConstant(actual.value(), assignment.value.useValue().operand,
                                 *destinationCarrier)) {
-                return fault(TranslationFaultKind::ConstantMismatch, 0, b + 1, b + 1,
+                return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1,
                              statementIndex);
               }
               break;
             }
             case mir::MirRvalueKind::Comparison: {
               if (actual.kind() != StatementKind::Compare) {
-                return fault(TranslationFaultKind::OperatorMismatch, 0, b + 1, b + 1,
+                return fault(TranslationFaultKind::OperatorMismatch, functionIndex, b + 1, b + 1,
                              statementIndex);
               }
               const auto& comparison = assignment.value.comparisonValue();
               if (actual.comparisonOp() != comparisonOp(comparison.op)) {
-                return fault(TranslationFaultKind::OperatorMismatch, 0, b + 1, b + 1,
+                return fault(TranslationFaultKind::OperatorMismatch, functionIndex, b + 1, b + 1,
                              statementIndex);
               }
               // Comparison operands share one operand carrier, resolved from
@@ -376,12 +387,12 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
                 }
               }
               if (leafCarrier == zc::none) {
-                return fault(TranslationFaultKind::SlotSetMismatch, 0, b + 1, b + 1,
+                return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
                              statementIndex);
               }
               if (!sameConstant(actual.left(), comparison.left, ZC_ASSERT_NONNULL(leafCarrier)) ||
                   !sameConstant(actual.right(), comparison.right, ZC_ASSERT_NONNULL(leafCarrier))) {
-                return fault(TranslationFaultKind::ConstantMismatch, 0, b + 1, b + 1,
+                return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1,
                              statementIndex);
               }
               break;
@@ -390,7 +401,8 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
             case mir::MirRvalueKind::Arithmetic:
               // A materialized aggregate or arithmetic assignment has no LIR
               // effect in the admitted single-function subset.
-              return fault(TranslationFaultKind::EffectMismatch, 0, b + 1, b + 1, statementIndex);
+              return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                           statementIndex);
           }
           ++lirStatement;
           break;
@@ -398,11 +410,13 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
         case mir::MirStatementKind::BorrowCreation:
         case mir::MirStatementKind::SetDiscriminant:
         case mir::MirStatementKind::Deinitialize:
-          return fault(TranslationFaultKind::EffectMismatch, 0, b + 1, b + 1, statementIndex);
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                       statementIndex);
       }
     }
     if (lirStatement != lirBlock.statements().size()) {
-      return fault(TranslationFaultKind::EffectMismatch, 0, b + 1, b + 1, lirStatement + 1);
+      return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                   lirStatement + 1);
     }
 
     // Terminator correspondence under the dense block bijection.
@@ -411,27 +425,32 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
       case mir::MirTerminatorKind::Return: {
         const auto& returned = mirBlock.terminator.returnValue().value;
         if (returned == zc::none) {
-          return fault(TranslationFaultKind::EffectMismatch, 0, b + 1, b + 1);
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
         }
         const mir::MirOperand& operand = ZC_ASSERT_NONNULL(returned);
-        if (folded && fold.kind == FoldKind::ScalarConstant) {
+        if (folded &&
+            (fold.kind == FoldKind::ScalarConstant || fold.kind == FoldKind::DirectConstant)) {
           if (lirTerminator.kind() != TerminatorKind::ReturnInteger) {
-            return fault(TranslationFaultKind::EffectMismatch, 0, b + 1, b + 1);
+            return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
           }
-          const auto& wanted = fold.assignment->value.useValue().operand;
+          // The local-fold resolves through the folded initializer; a direct
+          // constant return compares the returned operand itself.
+          const mir::MirOperand& wanted = fold.kind == FoldKind::DirectConstant
+                                              ? operand
+                                              : fold.assignment->value.useValue().operand;
           if (!sameConstant(Operand::constant(lirTerminator.returnIntegerValue()), wanted,
                             ZC_ASSERT_NONNULL(expectedReturnCarrier))) {
-            return fault(TranslationFaultKind::ConstantMismatch, 0, b + 1, b + 1);
+            return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
           }
         } else if (folded && fold.kind == FoldKind::Aggregate) {
           const auto& aggregate = fold.assignment->value.nominalAggregateValue();
           if (!fold.hasFieldProjection) {
             if (lirTerminator.kind() != TerminatorKind::ReturnAggregate) {
-              return fault(TranslationFaultKind::EffectMismatch, 0, b + 1, b + 1);
+              return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
             }
             const auto slots = lirTerminator.returnAggregateSlots();
             if (slots.size() != aggregate.elements.size()) {
-              return fault(TranslationFaultKind::EffectMismatch, 0, b + 1, b + 1);
+              return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
             }
             for (uint32_t e = 0; e < slots.size(); ++e) {
               const auto carrier =
@@ -439,12 +458,12 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
               if (carrier == zc::none ||
                   !sameConstant(Operand::constant(slots[e]), aggregate.elements[e].operand,
                                 ZC_ASSERT_NONNULL(carrier))) {
-                return fault(TranslationFaultKind::ConstantMismatch, 0, b + 1, b + 1);
+                return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
               }
             }
           } else {
             if (lirTerminator.kind() != TerminatorKind::ReturnInteger) {
-              return fault(TranslationFaultKind::EffectMismatch, 0, b + 1, b + 1);
+              return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
             }
             bool found = false;
             for (const auto& element : aggregate.elements) {
@@ -454,72 +473,155 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
                 if (carrier == zc::none ||
                     !sameConstant(Operand::constant(lirTerminator.returnIntegerValue()),
                                   element.operand, ZC_ASSERT_NONNULL(carrier))) {
-                  return fault(TranslationFaultKind::ConstantMismatch, 0, b + 1, b + 1);
+                  return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
                 }
                 found = true;
               }
             }
-            if (!found) return fault(TranslationFaultKind::PlaceMappingMismatch, 0, b + 1, b + 1);
+            if (!found)
+              return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
           }
         } else {
           if (lirTerminator.kind() != TerminatorKind::ReturnLocal) {
-            return fault(TranslationFaultKind::EffectMismatch, 0, b + 1, b + 1);
+            return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
           }
           if (operand.kind() == mir::MirOperandKind::Constant ||
               operand.place().projections().size() != 0) {
-            return fault(TranslationFaultKind::PlaceMappingMismatch, 0, b + 1, b + 1);
+            return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
           }
           if (lirTerminator.returnLocalOrdinal() != operand.place().local().ordinal()) {
-            return fault(TranslationFaultKind::PlaceMappingMismatch, 0, b + 1, b + 1);
+            return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
           }
         }
         break;
       }
       case mir::MirTerminatorKind::Goto: {
         if (lirTerminator.kind() != TerminatorKind::Goto) {
-          return fault(TranslationFaultKind::EdgeTargetMismatch, 0, b + 1, b + 1);
+          return fault(TranslationFaultKind::EdgeTargetMismatch, functionIndex, b + 1, b + 1);
         }
         if (lirTerminator.gotoTarget().ordinal() !=
             mirBlock.terminator.gotoValue().target.ordinal()) {
-          return fault(TranslationFaultKind::EdgeTargetMismatch, 0, b + 1, b + 1);
+          return fault(TranslationFaultKind::EdgeTargetMismatch, functionIndex, b + 1, b + 1);
         }
         break;
       }
       case mir::MirTerminatorKind::SwitchInt: {
         if (lirTerminator.kind() != TerminatorKind::CondBranch) {
-          return fault(TranslationFaultKind::EdgeTargetMismatch, 0, b + 1, b + 1);
+          return fault(TranslationFaultKind::EdgeTargetMismatch, functionIndex, b + 1, b + 1);
         }
         const auto& switchInt = mirBlock.terminator.switchIntValue();
         if (switchInt.arms.size() < 1) {
-          return fault(TranslationFaultKind::EdgeTargetMismatch, 0, b + 1, b + 1);
+          return fault(TranslationFaultKind::EdgeTargetMismatch, functionIndex, b + 1, b + 1);
         }
         if (switchInt.discriminant.kind() == mir::MirOperandKind::Constant ||
             switchInt.discriminant.place().projections().size() != 0) {
-          return fault(TranslationFaultKind::PlaceMappingMismatch, 0, b + 1, b + 1);
+          return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
         }
         if (lirTerminator.conditionOrdinal() != switchInt.discriminant.place().local().ordinal()) {
-          return fault(TranslationFaultKind::PlaceMappingMismatch, 0, b + 1, b + 1);
+          return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
         }
         // The first arm is the true arm and maps to the LIR true target; the
         // default maps to the false target; every later arm must share the
         // default target (a one-true-arm loop or a two-arm true/false diamond).
         if (lirTerminator.condTrueTarget().ordinal() != switchInt.arms[0].target.ordinal() ||
             lirTerminator.condFalseTarget().ordinal() != switchInt.defaultTarget.ordinal()) {
-          return fault(TranslationFaultKind::EdgeTargetMismatch, 0, b + 1, b + 1);
+          return fault(TranslationFaultKind::EdgeTargetMismatch, functionIndex, b + 1, b + 1);
         }
         for (uint32_t a = 1; a < switchInt.arms.size(); ++a) {
           if (switchInt.arms[a].target.ordinal() != switchInt.defaultTarget.ordinal()) {
-            return fault(TranslationFaultKind::EdgeTargetMismatch, 0, b + 1, b + 1);
+            return fault(TranslationFaultKind::EdgeTargetMismatch, functionIndex, b + 1, b + 1);
           }
         }
         break;
       }
-      case mir::MirTerminatorKind::Call:
+      case mir::MirTerminatorKind::Call: {
+        const auto& call = mirBlock.terminator.callValue();
+        if (lirTerminator.kind() != TerminatorKind::Call) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+        }
+        // The stored callee index must resolve to the LIR function whose MIR
+        // owner is the MIR call's callee owner.
+        const uint32_t calleeIndex = lirTerminator.calleeIndex();
+        if (calleeIndex >= moduleFunctions.size()) {
+          return fault(TranslationFaultKind::CallCalleeMismatch, functionIndex, b + 1, b + 1);
+        }
+        if (moduleFunctions[calleeIndex].owner() != call.callee) {
+          return fault(TranslationFaultKind::CallCalleeMismatch, functionIndex, b + 1, b + 1);
+        }
+        // The destination place maps to the call destination slot.
+        if (call.destination.projections().size() != 0 ||
+            lirTerminator.callDestinationOrdinal() != call.destination.local().ordinal()) {
+          return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
+        }
+        // The normal continuation maps under the block bijection.
+        if (lirTerminator.callNormalTarget().ordinal() != call.normalTarget.ordinal()) {
+          return fault(TranslationFaultKind::EdgeTargetMismatch, functionIndex, b + 1, b + 1);
+        }
+        // Argument count and per-argument constant correspondence. The
+        // admitted calls carry integer constants only; the one-argument call
+        // reads its operand through the single-argument accessor.
+        const uint32_t argumentCount =
+            lirTerminator.callHasArgument()
+                ? 1u
+                : static_cast<uint32_t>(lirTerminator.callArguments().size());
+        if (argumentCount != call.arguments.size()) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+        }
+        for (uint32_t a = 0; a < argumentCount; ++a) {
+          const Operand& actual = lirTerminator.callHasArgument()
+                                      ? Operand::constant(lirTerminator.callArgument())
+                                      : Operand::constant(lirTerminator.callArguments()[a]);
+          const auto carrier = integerCarrier(call.arguments[a].constantValue().type, types);
+          if (call.arguments[a].kind() != mir::MirOperandKind::Constant || carrier == zc::none ||
+              !sameConstant(actual, call.arguments[a], ZC_ASSERT_NONNULL(carrier))) {
+            return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
+          }
+        }
+        break;
+      }
       case mir::MirTerminatorKind::Unreachable:
-        return fault(TranslationFaultKind::EffectMismatch, 0, b + 1, b + 1);
+        return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
     }
   }
 
+  return zc::none;
+}
+
+}  // namespace
+
+zc::Maybe<TranslationFinding> TranslationValidator::validate(
+    const MirFunction& mirFunction, const Module& lirModule,
+    const type::SemanticTypeStore& types) noexcept {
+  const auto functions = lirModule.functions();
+  if (functions.size() != 1) return fault(TranslationFaultKind::FunctionSetMismatch, 0);
+  if (functions[0].owner() != mirFunction.owner) {
+    return fault(TranslationFaultKind::FunctionSetMismatch, 0);
+  }
+  return validatePair(0, mirFunction, functions[0], types, functions);
+}
+
+zc::Maybe<TranslationFinding> TranslationValidator::validate(
+    zc::ArrayPtr<const MirFunction* const> mirFunctions, const Module& lirModule,
+    const type::SemanticTypeStore& types) noexcept {
+  const auto functions = lirModule.functions();
+  if (functions.size() != mirFunctions.size()) {
+    return fault(TranslationFaultKind::FunctionSetMismatch, 0);
+  }
+  // Every MIR owner matches exactly one LIR owner.
+  for (uint32_t m = 0; m < mirFunctions.size(); ++m) {
+    const MirFunction& mirFunction = *mirFunctions[m];
+    zc::Maybe<uint32_t> lirIndex;
+    for (uint32_t l = 0; l < functions.size(); ++l) {
+      if (functions[l].owner() == mirFunction.owner) {
+        if (lirIndex != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, l); }
+        lirIndex = l;
+      }
+    }
+    if (lirIndex == zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, m); }
+    auto finding = validatePair(ZC_ASSERT_NONNULL(lirIndex), mirFunction,
+                                functions[ZC_ASSERT_NONNULL(lirIndex)], types, functions);
+    if (finding != zc::none) return finding;
+  }
   return zc::none;
 }
 

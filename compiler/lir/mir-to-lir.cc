@@ -200,7 +200,8 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarInitializer(
   // A module initializer has no user symbol name in this slice; use the stable
   // reserved ASCII runtime symbol for the module initializer entry.
   zc::Vector<Function> functions;
-  functions.add(Function(zc::heapString("zom.module_init"), carrierValue, zc::mv(blocks)));
+  functions.add(
+      Function(function.owner, zc::heapString("zom.module_init"), carrierValue, zc::mv(blocks)));
   return Module(zc::mv(functions));
 }
 
@@ -289,7 +290,8 @@ zc::Maybe<Module> MirToLirLowering::lowerAggregateFieldInitializer(
   // Reuse the stable reserved module-initializer entry symbol so the folded
   // result slots into the existing translate/emit/execute path.
   zc::Vector<Function> functions;
-  functions.add(Function(zc::heapString("zom.module_init"), carrierValue, zc::mv(blocks)));
+  functions.add(
+      Function(function.owner, zc::heapString("zom.module_init"), carrierValue, zc::mv(blocks)));
   return Module(zc::mv(functions));
 }
 
@@ -371,7 +373,8 @@ zc::Maybe<Module> MirToLirLowering::lowerAggregateReturn(
   blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), ZC_REQUIRE_NONNULL(zc::mv(terminator))));
 
   zc::Vector<Function> functions;
-  functions.add(Function(zc::heapString("zom.module_init"), placeholderCarrier, zc::mv(blocks)));
+  functions.add(Function(function.owner, zc::heapString("zom.module_init"), placeholderCarrier,
+                         zc::mv(blocks)));
   return Module(zc::mv(functions));
 }
 
@@ -531,8 +534,8 @@ zc::Maybe<Module> MirToLirLowering::lowerConditionalReturn(
   locals.add(Local(resultOrdinal, resultCarrierValue));
 
   zc::Vector<Function> functions;
-  functions.add(Function(zc::heapString("zom.conditional"), resultCarrierValue, zc::mv(parameters),
-                         zc::mv(locals), zc::mv(blocks)));
+  functions.add(Function(function.owner, zc::heapString("zom.conditional"), resultCarrierValue,
+                         zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
   return Module(zc::mv(functions));
 }
 
@@ -666,8 +669,8 @@ zc::Maybe<Module> MirToLirLowering::lowerLoopReturn(const mir::MirFunction& func
   locals.add(Local(resultOrdinal, resultCarrierValue));
 
   zc::Vector<Function> functions;
-  functions.add(Function(zc::heapString("zom.loop"), resultCarrierValue, zc::mv(parameters),
-                         zc::mv(locals), zc::mv(blocks)));
+  functions.add(Function(function.owner, zc::heapString("zom.loop"), resultCarrierValue,
+                         zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
   return Module(zc::mv(functions));
 }
 
@@ -837,7 +840,7 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
   locals.add(Local(tempOrdinal, tempCarrierValue));
 
   zc::Vector<Function> functions;
-  functions.add(Function(zc::heapString("zom.conditional_cmp"), resultCarrierValue,
+  functions.add(Function(function.owner, zc::heapString("zom.conditional_cmp"), resultCarrierValue,
                          zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
   return Module(zc::mv(functions));
 }
@@ -942,8 +945,8 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModule(const mir::MirFunction& call
     zc::Vector<Local> parameters;
     zc::Vector<Local> locals;
     locals.add(Local(resultOrdinal, callerCarrierValue));
-    functions.add(Function(zc::heapString("zom.caller"), callerCarrierValue, zc::mv(parameters),
-                           zc::mv(locals), zc::mv(callerBlocks)));
+    functions.add(Function(caller.owner, zc::heapString("zom.caller"), callerCarrierValue,
+                           zc::mv(parameters), zc::mv(locals), zc::mv(callerBlocks)));
   }
 
   // Function 1: the callee, a single block returning the integer constant.
@@ -951,7 +954,8 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModule(const mir::MirFunction& call
     zc::Vector<BasicBlock> calleeBlocks;
     calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId),
                                 Terminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
-    functions.add(Function(zc::heapString("zom.callee"), calleeCarrierValue, zc::mv(calleeBlocks)));
+    functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
+                           zc::mv(calleeBlocks)));
   }
 
   return Module(zc::mv(functions));
@@ -1076,8 +1080,8 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
     zc::Vector<Local> parameters;
     zc::Vector<Local> locals;
     locals.add(Local(resultOrdinal, callerCarrierValue));
-    functions.add(Function(zc::heapString("zom.caller"), callerCarrierValue, zc::mv(parameters),
-                           zc::mv(locals), zc::mv(callerBlocks)));
+    functions.add(Function(caller.owner, zc::heapString("zom.caller"), callerCarrierValue,
+                           zc::mv(parameters), zc::mv(locals), zc::mv(callerBlocks)));
   }
 
   // Function 1: the callee, one parameter, a single block returning the
@@ -1090,8 +1094,8 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
     zc::Vector<Local> parameters;
     parameters.add(Local(calleeParamOrdinal, calleeCarrierValue));
     zc::Vector<Local> locals;
-    functions.add(Function(zc::heapString("zom.callee"), calleeCarrierValue, zc::mv(parameters),
-                           zc::mv(locals), zc::mv(calleeBlocks)));
+    functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
+                           zc::mv(parameters), zc::mv(locals), zc::mv(calleeBlocks)));
   }
 
   return Module(zc::mv(functions));
@@ -1230,8 +1234,8 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArguments(
     zc::Vector<Local> parameters;
     zc::Vector<Local> locals;
     locals.add(Local(resultOrdinal, callerCarrierValue));
-    functions.add(Function(zc::heapString("zom.caller"), callerCarrierValue, zc::mv(parameters),
-                           zc::mv(locals), zc::mv(callerBlocks)));
+    functions.add(Function(caller.owner, zc::heapString("zom.caller"), callerCarrierValue,
+                           zc::mv(parameters), zc::mv(locals), zc::mv(callerBlocks)));
   }
 
   // Function 1: the callee, two parameters, a single block returning parameter 0.
@@ -1244,8 +1248,8 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArguments(
     parameters.add(Local(calleeParam0Ordinal, calleeCarrierValue));
     parameters.add(Local(calleeParam1Ordinal, ZC_REQUIRE_NONNULL(calleeParam1Carrier)));
     zc::Vector<Local> locals;
-    functions.add(Function(zc::heapString("zom.callee"), calleeCarrierValue, zc::mv(parameters),
-                           zc::mv(locals), zc::mv(calleeBlocks)));
+    functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
+                           zc::mv(parameters), zc::mv(locals), zc::mv(calleeBlocks)));
   }
 
   return Module(zc::mv(functions));
@@ -1384,8 +1388,8 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithLeaf(
     zc::Vector<Local> parameters;
     zc::Vector<Local> locals;
     locals.add(Local(resultOrdinal, callerCarrierValue));
-    functions.add(Function(zc::heapString("zom.caller"), callerCarrierValue, zc::mv(parameters),
-                           zc::mv(locals), zc::mv(callerBlocks)));
+    functions.add(Function(caller.owner, zc::heapString("zom.caller"), callerCarrierValue,
+                           zc::mv(parameters), zc::mv(locals), zc::mv(callerBlocks)));
   }
 
   // Function 1: the callee, a single block returning its integer constant.
@@ -1393,7 +1397,8 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithLeaf(
     zc::Vector<BasicBlock> calleeBlocks;
     calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId),
                                 Terminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
-    functions.add(Function(zc::heapString("zom.callee"), calleeCarrierValue, zc::mv(calleeBlocks)));
+    functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
+                           zc::mv(calleeBlocks)));
   }
 
   // Function 2: the standalone leaf, a single block returning its integer
@@ -1402,7 +1407,8 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithLeaf(
     zc::Vector<BasicBlock> leafBlocks;
     leafBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(leafEntryId),
                               Terminator::returnInteger(ZC_REQUIRE_NONNULL(leafConstant))));
-    functions.add(Function(zc::heapString("zom.leaf"), leafCarrierValue, zc::mv(leafBlocks)));
+    functions.add(
+        Function(leaf.owner, zc::heapString("zom.leaf"), leafCarrierValue, zc::mv(leafBlocks)));
   }
 
   return Module(zc::mv(functions));

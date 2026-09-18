@@ -310,10 +310,12 @@ expected LIR trace by walking MIR.
 
 **Function correspondence.** The LIR module's function set equals the set of
 MIR functions presented for lowering: same count, same definition owners,
-matched by owner, never by array position. The module-initializer function
-matches the reserved initializer symbol. Every LIR function corresponds to
-exactly one MIR function; a missing or extra function is
-`FunctionSetMismatch`.
+matched by owner, never by array position. Every LIR `Function` therefore
+carries the `identity::DefId owner` of the MIR function it was lowered from as
+its first field; the ASCII symbol remains a separate rendering concern. The
+module-initializer function carries its MIR initializer owner. Every LIR
+function corresponds to exactly one MIR function; a missing, extra, or
+duplicate owner is `FunctionSetMismatch`.
 
 **Block bijection.** For a matched function, MIR block count equals LIR block
 count and the correspondence is the dense ordinal order (MIR block one to LIR
@@ -367,10 +369,12 @@ const encoding already shared through the signature-facts codec, never a
 re-decoded host integer with assumed signedness.
 
 **Module-level call integrity.** Every LIR `Call` callee index resolves
-through the function correspondence to the MIR call's callee owner; emission
-position is derived from the owner match and must equal the stored index. This
-rejects the class of defects where reordering functions silently redirects a
-call.
+through the function correspondence: the LIR function at that index must carry
+the MIR call's callee owner; emission position cannot redirect a call. The
+caller correspondence also checks the destination place maps to the stored
+destination slot, the normal continuation target maps under the block
+bijection, and the argument count and each integer-constant argument's
+zero-extended bits and carrier match the MIR call arguments.
 
 ### Failure Projection
 
@@ -419,6 +423,7 @@ finding, matching RFC 0007 operational-budget semantics.
 | Area | Paths | Owner |
 |---|---|---|
 | LIR verification components | `compiler/lir/verify/lir-verifier.{h,cc}`, `compiler/lir/verify/translation-validator.{h,cc}`, `compiler/lir/CMakeLists.txt` | `ir-backend` |
+| LIR function owner identity | `compiler/lir/lir-module.h` (`Function.owner`) and its producer in `compiler/lir/mir-to-lir.cc` | `ir-backend` |
 | IR failure algebra detail extension | `compiler/ir/diagnostics/ir-failure.h` and its codec consumers | `ir-backend` |
 | Object-emission gate | `utils/zomc/zomc.cc` (`emitBinary`) | `ir-backend` |
 | Verifier and validator ztests | `tests/unittests/compiler/lir/lir-verifier-test.cc`, `tests/unittests/compiler/lir/lir-translation-validator-test.cc` | `verification` |
@@ -606,3 +611,4 @@ detail extension is additive within the closed `LirVerification` phase.
 | 2026-09-18 | DRAFT | Initial draft. |
 | 2026-09-19 | DRAFT | Slice 1 implemented: `LirStructuralVerifier` with the closed structural fault set, positive coverage of every admitted producer shape through `llvm-translation-test`, and one mutation ztest per fault tag; not yet wired into `emitBinary`. |
 | 2026-09-19 | DRAFT | Slice 2 implemented: construct-walked `TranslationValidator` for single-function modules, covering the folded scalar/field/whole-struct returns and the materialized conditional, loop, and comparison-diamond shapes with independent carrier and bit-pattern derivation; one mutation ztest per single-function translation fault tag; all nine single-function producer sites assert validation. Not yet wired into `emitBinary`; multi-function call integrity remains slice 3. |
+| 2026-09-19 | DRAFT | Slice 3 implemented: `lir::Function` carries its MIR definition owner; the multi-function `TranslationValidator` overload matches functions by owner and validates call callee-index resolution, destination slot, continuation edge, and argument constants. The zero- and one-argument call producer shapes assert multi-function validation; mutation ztests cover `CallCalleeMismatch`. Slice 4 (fail-closed `emitBinary` wiring) remains. |

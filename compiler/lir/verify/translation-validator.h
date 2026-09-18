@@ -17,6 +17,7 @@
 #include <cstdint>
 
 #include "compiler/lir/lir-module.h"
+#include "zc/core/array.h"
 #include "zc/core/common.h"
 
 namespace zomlang::compiler::mir {
@@ -54,6 +55,9 @@ enum class TranslationFaultKind : uint8_t {
   EdgeTargetMismatch = 0x07,
   /// The declared slot set or a slot carrier differs from the MIR locals.
   SlotSetMismatch = 0x08,
+  /// A LIR call index does not resolve to the LIR function whose MIR owner is
+  /// the MIR call's callee owner.
+  CallCalleeMismatch = 0x09,
 };
 
 /// \brief One immutable translation-validation finding.
@@ -95,6 +99,23 @@ public:
   /// \return None when the LIR preserves the MIR, else the first finding.
   ZC_NODISCARD static zc::Maybe<TranslationFinding> validate(
       const mir::MirFunction& mirFunction, const Module& lirModule,
+      const type::SemanticTypeStore& semanticTypes) noexcept;
+
+  /// \brief Validates a multi-function lowering by owner correspondence.
+  ///
+  /// Every presented MIR function must match exactly one LIR function by
+  /// definition owner and vice versa; each matched pair passes the
+  /// single-function correspondence, and every LIR `Call` index must resolve
+  /// to the LIR function whose MIR owner is the MIR call's callee owner.
+  ///
+  /// \param mirFunctions The verified MIR functions handed to lowering, in any
+  /// order (matching is by owner, never array position).
+  /// \param lirModule The LIR module the lowering produced.
+  /// \param semanticTypes Session-owned store for the MIR semantic types.
+  /// \return None when the module preserves every MIR function, else the first
+  /// finding in deterministic order.
+  ZC_NODISCARD static zc::Maybe<TranslationFinding> validate(
+      zc::ArrayPtr<const mir::MirFunction* const> mirFunctions, const Module& lirModule,
       const type::SemanticTypeStore& semanticTypes) noexcept;
 };
 

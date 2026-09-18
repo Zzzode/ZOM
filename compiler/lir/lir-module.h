@@ -16,6 +16,7 @@
 
 #include <cstdint>
 
+#include "compiler/identity/handle.h"
 #include "compiler/ir/ir-identity.h"
 #include "compiler/lir/lir-store.h"
 #include "zc/core/string.h"
@@ -329,21 +330,28 @@ private:
   ValueType carrierValue;
 };
 
-/// \brief One immutable LIR function: an ASCII symbol, a return carrier, blocks.
+/// \brief One immutable LIR function: the MIR definition owner it was lowered
+/// from, an ASCII symbol, a return carrier, and blocks.
 ///
-/// The function optionally declares parameter locals (each a one-based ordinal
-/// and carrier) and body locals; the diamond needs a boolean parameter and a
-/// result local. A parameterless single-block function omits both lists.
+/// The owner ties the function back to its verified Built MIR definition so
+/// translation validation can prove a Call targets the function the MIR call
+/// names, independent of emission position. The function optionally declares
+/// parameter locals (each a one-based ordinal and carrier) and body locals;
+/// the diamond needs a boolean parameter and a result local. A parameterless
+/// single-block function omits both lists.
 class Function final {
 public:
-  Function(zc::String&& symbolName, ValueType returnCarrier,
+  Function(identity::DefId owner, zc::String&& symbolName, ValueType returnCarrier,
            zc::Vector<BasicBlock>&& blocks) noexcept
-      : symbolNameValue(zc::mv(symbolName)),
+      : ownerValue(owner),
+        symbolNameValue(zc::mv(symbolName)),
         returnCarrierValue(returnCarrier),
         blocksValue(zc::mv(blocks)) {}
-  Function(zc::String&& symbolName, ValueType returnCarrier, zc::Vector<Local>&& parameters,
-           zc::Vector<Local>&& locals, zc::Vector<BasicBlock>&& blocks) noexcept
-      : symbolNameValue(zc::mv(symbolName)),
+  Function(identity::DefId owner, zc::String&& symbolName, ValueType returnCarrier,
+           zc::Vector<Local>&& parameters, zc::Vector<Local>&& locals,
+           zc::Vector<BasicBlock>&& blocks) noexcept
+      : ownerValue(owner),
+        symbolNameValue(zc::mv(symbolName)),
         returnCarrierValue(returnCarrier),
         parametersValue(zc::mv(parameters)),
         localsValue(zc::mv(locals)),
@@ -352,6 +360,7 @@ public:
   Function(Function&&) = default;
   Function& operator=(Function&&) = default;
 
+  ZC_NODISCARD identity::DefId owner() const noexcept { return ownerValue; }
   ZC_NODISCARD zc::StringPtr symbolName() const noexcept { return symbolNameValue; }
   ZC_NODISCARD const ValueType& returnCarrier() const noexcept { return returnCarrierValue; }
   ZC_NODISCARD zc::ArrayPtr<const Local> parameters() const noexcept {
@@ -363,6 +372,7 @@ public:
   }
 
 private:
+  identity::DefId ownerValue;
   zc::String symbolNameValue;
   ValueType returnCarrierValue;
   zc::Vector<Local> parametersValue;

@@ -108,11 +108,11 @@ mir::MirFunction scalarMir(identity::DefId owner, identity::SemanticTypeId i32) 
 }
 
 // LIR corresponding to scalarMir folded: one block returning an i32 constant.
-Module scalarLir(uint64_t bits) {
+Module scalarLir(identity::DefId owner, uint64_t bits) {
   zc::Vector<BasicBlock> blocks;
   blocks.add(BasicBlock(lirBlock(1), Terminator::returnInteger(i32Const(bits))));
   zc::Vector<Function> functions;
-  functions.add(Function(zc::heapString("zom.module_init"), i32Carrier(), zc::mv(blocks)));
+  functions.add(Function(owner, zc::heapString("zom.module_init"), i32Carrier(), zc::mv(blocks)));
   return Module(zc::mv(functions));
 }
 
@@ -190,7 +190,7 @@ struct DiamondMutation final {
 };
 
 // LIR for diamondMir with each correspondence independently mutable.
-Module diamondLir(const DiamondMutation& mutation) {
+Module diamondLir(identity::DefId owner, const DiamondMutation& mutation) {
   zc::Vector<BasicBlock> blocks;
   {
     zc::Vector<Statement> statements;
@@ -227,16 +227,16 @@ Module diamondLir(const DiamondMutation& mutation) {
   locals.add(Local(3, bit1Carrier()));
   if (mutation.extraLocal) locals.add(Local(4, i32Carrier()));
   zc::Vector<Function> functions;
-  functions.add(Function(zc::heapString("zom.conditional_cmp"), i32Carrier(), zc::mv(parameters),
-                         zc::mv(locals), zc::mv(blocks)));
+  functions.add(Function(owner, zc::heapString("zom.conditional_cmp"), i32Carrier(),
+                         zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
   return Module(zc::mv(functions));
 }
 
 TranslationFaultKind validateDiamond(const Module& module, TestSemanticTypeContext& types,
                                      identity::SemanticTypeId i32,
-                                     identity::SemanticTypeId boolType) {
+                                     identity::SemanticTypeId boolType, identity::DefId owner) {
   auto finding = TranslationValidator::validate(
-      diamondMir(testDefinition(0), i32, boolType, mir::MirComparisonOperator::Eq), module,
+      diamondMir(owner, i32, boolType, mir::MirComparisonOperator::Eq), module,
       types.semanticTypes());
   ZC_REQUIRE(finding != zc::none);
   return ZC_REQUIRE_NONNULL(finding).fault;
@@ -246,17 +246,20 @@ ZC_TEST("Translation validator accepts the folded scalar and comparison diamond"
   TestSemanticTypeContext types;
   const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
   const auto boolType = types.internPrimitive(type::semantic::PrimitiveKind::Bool);
-  ZC_EXPECT(TranslationValidator::validate(scalarMir(testDefinition(0), i32), scalarLir(42),
+  const auto scalarOwner = testDefinition(10);
+  ZC_EXPECT(TranslationValidator::validate(scalarMir(scalarOwner, i32), scalarLir(scalarOwner, 42),
                                            types.semanticTypes()) == zc::none);
+  const auto diamondOwner = testDefinition(11);
   ZC_EXPECT(TranslationValidator::validate(
-                diamondMir(testDefinition(0), i32, boolType, mir::MirComparisonOperator::Eq),
-                diamondLir(DiamondMutation{}), types.semanticTypes()) == zc::none);
+                diamondMir(diamondOwner, i32, boolType, mir::MirComparisonOperator::Eq),
+                diamondLir(diamondOwner, DiamondMutation{}), types.semanticTypes()) == zc::none);
 }
 
 ZC_TEST("Translation validator rejects a folded scalar with the wrong constant") {
   TestSemanticTypeContext types;
   const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
-  auto finding = TranslationValidator::validate(scalarMir(testDefinition(0), i32), scalarLir(43),
+  const auto owner = testDefinition(12);
+  auto finding = TranslationValidator::validate(scalarMir(owner, i32), scalarLir(owner, 43),
                                                 types.semanticTypes());
   ZC_REQUIRE(finding != zc::none);
   ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == TranslationFaultKind::ConstantMismatch);
@@ -269,12 +272,14 @@ ZC_TEST("Translation validator rejects an extra LIR function") {
   {
     zc::Vector<BasicBlock> blocks;
     blocks.add(BasicBlock(lirBlock(1), Terminator::returnInteger(i32Const(42))));
-    functions.add(Function(zc::heapString("zom.module_init"), i32Carrier(), zc::mv(blocks)));
+    functions.add(Function(testDefinition(0), zc::heapString("zom.module_init"), i32Carrier(),
+                           zc::mv(blocks)));
   }
   {
     zc::Vector<BasicBlock> blocks;
     blocks.add(BasicBlock(lirBlock(1), Terminator::returnInteger(i32Const(1))));
-    functions.add(Function(zc::heapString("zom.extra"), i32Carrier(), zc::mv(blocks)));
+    functions.add(
+        Function(testDefinition(1), zc::heapString("zom.extra"), i32Carrier(), zc::mv(blocks)));
   }
   Module module(zc::mv(functions));
   auto finding = TranslationValidator::validate(scalarMir(testDefinition(0), i32), module,
@@ -287,9 +292,10 @@ ZC_TEST("Translation validator rejects a missing join block") {
   TestSemanticTypeContext types;
   const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
   const auto boolType = types.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto owner = testDefinition(20);
   DiamondMutation mutation;
   mutation.blockCount = 3;
-  ZC_EXPECT(validateDiamond(diamondLir(mutation), types, i32, boolType) ==
+  ZC_EXPECT(validateDiamond(diamondLir(owner, mutation), types, i32, boolType, owner) ==
             TranslationFaultKind::BlockBijectionMismatch);
 }
 
@@ -297,9 +303,10 @@ ZC_TEST("Translation validator rejects a dropped arm assignment") {
   TestSemanticTypeContext types;
   const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
   const auto boolType = types.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto owner = testDefinition(21);
   DiamondMutation mutation;
   mutation.dropThenAssign = true;
-  ZC_EXPECT(validateDiamond(diamondLir(mutation), types, i32, boolType) ==
+  ZC_EXPECT(validateDiamond(diamondLir(owner, mutation), types, i32, boolType, owner) ==
             TranslationFaultKind::EffectMismatch);
 }
 
@@ -307,9 +314,10 @@ ZC_TEST("Translation validator rejects an arm with the wrong constant") {
   TestSemanticTypeContext types;
   const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
   const auto boolType = types.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto owner = testDefinition(22);
   DiamondMutation mutation;
   mutation.thenBits = 99;
-  ZC_EXPECT(validateDiamond(diamondLir(mutation), types, i32, boolType) ==
+  ZC_EXPECT(validateDiamond(diamondLir(owner, mutation), types, i32, boolType, owner) ==
             TranslationFaultKind::ConstantMismatch);
 }
 
@@ -317,9 +325,10 @@ ZC_TEST("Translation validator rejects a wrong comparison operator") {
   TestSemanticTypeContext types;
   const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
   const auto boolType = types.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto owner = testDefinition(23);
   DiamondMutation mutation;
   mutation.op = ComparisonOp::Ne;
-  ZC_EXPECT(validateDiamond(diamondLir(mutation), types, i32, boolType) ==
+  ZC_EXPECT(validateDiamond(diamondLir(owner, mutation), types, i32, boolType, owner) ==
             TranslationFaultKind::OperatorMismatch);
 }
 
@@ -327,9 +336,10 @@ ZC_TEST("Translation validator rejects swapped branch polarity") {
   TestSemanticTypeContext types;
   const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
   const auto boolType = types.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto owner = testDefinition(24);
   DiamondMutation mutation;
   mutation.polaritySwap = true;
-  ZC_EXPECT(validateDiamond(diamondLir(mutation), types, i32, boolType) ==
+  ZC_EXPECT(validateDiamond(diamondLir(owner, mutation), types, i32, boolType, owner) ==
             TranslationFaultKind::EdgeTargetMismatch);
 }
 
@@ -337,9 +347,10 @@ ZC_TEST("Translation validator rejects an undeclared-condition branch") {
   TestSemanticTypeContext types;
   const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
   const auto boolType = types.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto owner = testDefinition(25);
   DiamondMutation mutation;
   mutation.conditionOrdinal = 9;
-  ZC_EXPECT(validateDiamond(diamondLir(mutation), types, i32, boolType) ==
+  ZC_EXPECT(validateDiamond(diamondLir(owner, mutation), types, i32, boolType, owner) ==
             TranslationFaultKind::PlaceMappingMismatch);
 }
 
@@ -347,9 +358,10 @@ ZC_TEST("Translation validator rejects an extra declared local slot") {
   TestSemanticTypeContext types;
   const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
   const auto boolType = types.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto owner = testDefinition(26);
   DiamondMutation mutation;
   mutation.extraLocal = true;
-  ZC_EXPECT(validateDiamond(diamondLir(mutation), types, i32, boolType) ==
+  ZC_EXPECT(validateDiamond(diamondLir(owner, mutation), types, i32, boolType, owner) ==
             TranslationFaultKind::SlotSetMismatch);
 }
 
@@ -357,13 +369,191 @@ ZC_TEST("Translation validator rejects a return of the wrong local") {
   TestSemanticTypeContext types;
   const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
   const auto boolType = types.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto owner = testDefinition(27);
   DiamondMutation mutation;
   mutation.returnOrdinal = 1;
   // Returning the boolean parameter slot also changes the return carrier to
   // i1, which the structural verifier catches first; build the LIR and expect
   // the translation correspondence to reject the place mapping itself.
-  ZC_EXPECT(validateDiamond(diamondLir(mutation), types, i32, boolType) ==
+  ZC_EXPECT(validateDiamond(diamondLir(owner, mutation), types, i32, boolType, owner) ==
             TranslationFaultKind::PlaceMappingMismatch);
+}
+
+// MIR caller: local#1 result i32; block#1 Call(calleeOwner)->2, block#2
+// return copy 1. MIR callee: no locals, block#1 return const 5.
+struct CallPair final {
+  mir::MirFunction caller;
+  mir::MirFunction callee;
+};
+
+CallPair callPair(identity::DefId callerOwner, identity::DefId calleeOwner,
+                  identity::SemanticTypeId i32) {
+  zc::Vector<mir::MirSourceScope> callerScopes;
+  zc::Maybe<mir::MirSourceScopeId> noParent;
+  callerScopes.add(mir::MirSourceScope{mirScope(1), zc::mv(noParent), span()});
+
+  zc::Vector<mir::MirLocalDeclaration> callerLocals;
+  callerLocals.add(mir::MirLocalDeclaration{mirLocal(1), mir::MirLocalKind::FunctionResult, i32,
+                                            mirScope(1), span()});
+  zc::Vector<mir::MirBasicBlock> callerBlocks;
+  {
+    zc::Vector<mir::MirStatement> statements;
+    statements.add(mir::MirStatement::storageLive(mirLocal(1), span()));
+    zc::Vector<mir::MirOperand> arguments;
+    auto effect = mir::MirCallEffect::noActivation();
+    auto terminator =
+        mir::MirTerminator::call(calleeOwner, zc::mv(arguments), zc::mv(effect),
+                                 place(mirLocal(1), i32), mirBlock(2), zc::none, span());
+    callerBlocks.add(
+        mir::MirBasicBlock{mirBlock(1), mirScope(1), zc::mv(statements), zc::mv(terminator)});
+  }
+  {
+    zc::Vector<mir::MirStatement> statements;
+    auto terminator =
+        mir::MirTerminator::returnValue(mir::MirOperand::copy(place(mirLocal(1), i32)), span());
+    callerBlocks.add(
+        mir::MirBasicBlock{mirBlock(2), mirScope(1), zc::mv(statements), zc::mv(terminator)});
+  }
+  mir::MirFunction caller{callerOwner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(callerScopes),
+                          zc::mv(callerLocals),
+                          zc::mv(callerBlocks)};
+
+  zc::Vector<mir::MirLocalDeclaration> calleeLocals;
+  zc::Vector<mir::MirBasicBlock> calleeBlocks;
+  {
+    auto terminator =
+        mir::MirTerminator::returnValue(mir::MirOperand::constant(i32, integerConstant(5)), span());
+    calleeBlocks.add(mir::MirBasicBlock{mirBlock(1), mirScope(1), zc::Vector<mir::MirStatement>{},
+                                        zc::mv(terminator)});
+  }
+  zc::Vector<mir::MirSourceScope> calleeScopes;
+  zc::Maybe<mir::MirSourceScopeId> calleeNoParent;
+  calleeScopes.add(mir::MirSourceScope{mirScope(1), zc::mv(calleeNoParent), span()});
+  mir::MirFunction callee{calleeOwner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(calleeScopes),
+                          zc::mv(calleeLocals),
+                          zc::mv(calleeBlocks)};
+  return CallPair{zc::mv(caller), zc::mv(callee)};
+}
+
+// LIR for callPair. `wrongCalleeOwner` makes the stored call index resolve to a
+// function whose MIR owner differs from the MIR call target.
+Module callLir(identity::DefId callerOwner, identity::DefId calleeOwner, bool wrongCalleeOwner) {
+  zc::Vector<Function> functions;
+  {
+    zc::Vector<BasicBlock> blocks;
+    {
+      zc::Vector<Statement> statements;
+      blocks.add(BasicBlock(
+          lirBlock(1), zc::mv(statements),
+          Terminator::callFunction(/*calleeIndex=*/1, /*destinationOrdinal=*/1, lirBlock(2))));
+    }
+    {
+      zc::Vector<Statement> statements;
+      blocks.add(BasicBlock(lirBlock(2), zc::mv(statements), Terminator::returnLocal(1)));
+    }
+    zc::Vector<Local> parameters;
+    zc::Vector<Local> locals;
+    locals.add(Local(1, i32Carrier()));
+    functions.add(Function(callerOwner, zc::heapString("zom.caller"), i32Carrier(),
+                           zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  }
+  {
+    zc::Vector<BasicBlock> blocks;
+    blocks.add(BasicBlock(lirBlock(1), Terminator::returnInteger(i32Const(5))));
+    const identity::DefId storedOwner = wrongCalleeOwner ? testDefinition(99) : calleeOwner;
+    functions.add(
+        Function(storedOwner, zc::heapString("zom.callee"), i32Carrier(), zc::mv(blocks)));
+  }
+  return Module(zc::mv(functions));
+}
+
+ZC_TEST("Translation validator accepts a two-function call module by owner") {
+  TestSemanticTypeContext types;
+  const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto callerOwner = testDefinition(40);
+  const auto calleeOwner = testDefinition(41);
+  auto pair = callPair(callerOwner, calleeOwner, i32);
+  auto module = callLir(callerOwner, calleeOwner, false);
+  auto functions = zc::heapArray<const mir::MirFunction*>(2);
+  functions[0] = &pair.caller;
+  functions[1] = &pair.callee;
+  ZC_EXPECT(TranslationValidator::validate(functions.asPtr(), module, types.semanticTypes()) ==
+            zc::none);
+}
+
+ZC_TEST("Translation validator rejects a call whose index resolves to the wrong owner") {
+  TestSemanticTypeContext types;
+  const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto callerOwner = testDefinition(42);
+  const auto calleeOwner = testDefinition(43);
+  auto pair = callPair(callerOwner, calleeOwner, i32);
+  // The LIR callee carries a foreign owner while the stored index still points
+  // at it. The caller is validated first: its call index resolves to a function
+  // whose owner is neither the MIR callee nor present in the MIR set, so call
+  // target integrity fails before the function-set comparison reaches the
+  // callee. Either way this module cannot preserve the MIR call.
+  auto module = callLir(callerOwner, calleeOwner, true);
+  auto functions = zc::heapArray<const mir::MirFunction*>(2);
+  functions[0] = &pair.caller;
+  functions[1] = &pair.callee;
+  auto finding = TranslationValidator::validate(functions.asPtr(), module, types.semanticTypes());
+  ZC_REQUIRE(finding != zc::none);
+  const auto fault = ZC_ASSERT_NONNULL(finding).fault;
+  ZC_EXPECT(fault == TranslationFaultKind::CallCalleeMismatch ||
+            fault == TranslationFaultKind::FunctionSetMismatch);
+}
+
+ZC_TEST("Translation validator rejects a call index aimed at a sibling with the right set") {
+  TestSemanticTypeContext types;
+  const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto callerOwner = testDefinition(44);
+  const auto calleeOwner = testDefinition(45);
+  auto pair = callPair(callerOwner, calleeOwner, i32);
+  // Keep both owners present (function set matches) but emit the callee at
+  // index 0 and the caller at index 1, so the caller's hard-coded index 1
+  // resolves to itself rather than the named callee.
+  zc::Vector<Function> functions;
+  {
+    zc::Vector<BasicBlock> calleeBlocks;
+    calleeBlocks.add(BasicBlock(lirBlock(1), Terminator::returnInteger(i32Const(5))));
+    functions.add(
+        Function(calleeOwner, zc::heapString("zom.callee"), i32Carrier(), zc::mv(calleeBlocks)));
+  }
+  {
+    zc::Vector<BasicBlock> blocks;
+    {
+      zc::Vector<Statement> statements;
+      blocks.add(
+          BasicBlock(lirBlock(1), zc::mv(statements), Terminator::callFunction(1, 1, lirBlock(2))));
+    }
+    {
+      zc::Vector<Statement> statements;
+      blocks.add(BasicBlock(lirBlock(2), zc::mv(statements), Terminator::returnLocal(1)));
+    }
+    zc::Vector<Local> parameters;
+    zc::Vector<Local> locals;
+    locals.add(Local(1, i32Carrier()));
+    functions.add(Function(callerOwner, zc::heapString("zom.caller"), i32Carrier(),
+                           zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  }
+  Module module(zc::mv(functions));
+  auto mirFunctions = zc::heapArray<const mir::MirFunction*>(2);
+  mirFunctions[0] = &pair.caller;
+  mirFunctions[1] = &pair.callee;
+  auto finding =
+      TranslationValidator::validate(mirFunctions.asPtr(), module, types.semanticTypes());
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == TranslationFaultKind::CallCalleeMismatch);
 }
 
 }  // namespace
