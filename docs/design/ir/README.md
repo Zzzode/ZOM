@@ -1,6 +1,6 @@
 # ZOM Compiler IR Design Notes
 
-Updated: 2026-09-14
+Updated: 2026-09-19
 
 This directory explains the intermediate representations and lowering
 boundaries that exist in the production compiler. It is a contributor guide,
@@ -42,7 +42,8 @@ flowchart LR
     R --> O["Ownership facts and event overlay"]
     O --> X["VerifiedExecutableMir"]
     X -. "admitted shapes only" .-> L["Target LIR"]
-    L -. "admitted shapes only" .-> N["LLVM and native artifacts"]
+    L --> LV["Structural verifier + translation validator"]
+    LV -. "admitted shapes only" .-> N["LLVM and native artifacts"]
 ```
 
 The session publishes `VerifiedHirModule` and `VerifiedBuiltMir` for the
@@ -61,7 +62,7 @@ the admitted Linux x86-64 backend slice described in their own notes.
 | Semantic HIR | Implemented, partial | Recursive destination-driven builder for the admitted constructor families (literal/reference, binary, aggregate projection, local write); other shapes stay on the legacy materialization path |
 | Built MIR | Implemented, partial | Single- and multi-block bodies: scalar initializers and returns, calls, four-block conditional diamonds, reducible loops, projections, borrow scopes |
 | Ownership and executable MIR | Implemented, partial | Bounded fact derivation, proof validation, drop/coroutine elaboration, and `VerifiedExecutableMir` over admitted reducible CFGs; see [Ownership And Executable MIR](ownership-and-executable-mir.md) |
-| Target LIR | Implemented, partial, unverified as a capability | Integer slot-machine slice with shape-specific lowering; no independent LIR verifier and no session-published LIR capability; see [LIR](lir.md) |
+| Target LIR | Implemented, partial, verified on emission, no session capability | Integer slot-machine slice with shape-specific lowering; an independent structural verifier and a MIR-to-LIR translation validator fail closed on the binary-emission path, but no session-published LIR capability exists; see [LIR](lir.md) |
 | LLVM and native backend | Implemented, partial | Mandatory `verifyModule`, object emission, linking, publication, and Linux x86-64 execution for admitted shapes; see [LLVM Backend And Object Emission](llvm-backend-and-object-emission.md) |
 
 ## Cross-Layer Invariants

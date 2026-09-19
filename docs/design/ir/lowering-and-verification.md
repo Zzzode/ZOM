@@ -131,8 +131,11 @@ other source-less resource failures remain typed operational failures.
 The failure algebra also contains coordinates for successor phases and LIR.
 Those coordinates define the closed vocabulary used by the partial successor
 stages now on disk; they are not, by themselves, evidence that any phase is
-complete. In particular LIR currently has no independent verifier and no
-session-published capability (see [lir.md](lir.md)).
+complete. In particular LIR has no session-published capability, but the
+binary-emission path does run two independent stages that project findings at
+the `LirVerification` phase (`0x0d`) as compiler incidents: the structural
+`LirStructuralVerifier` and the MIR-to-LIR `TranslationValidator` (see
+[lir.md](lir.md) and RFC 0053).
 
 ## Atomic Session Adoption
 
