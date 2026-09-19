@@ -1013,8 +1013,10 @@ bool isCallableDeclaration(const ast::Tree& tree, ast::NodeId declaration,
     returnType = ast::NodeId(syntax.payload.words[ast::kFunctionDeclRetTyWord]);
   } else if (definitionKind == identity::DefinitionKind::Method &&
              syntax.kind == ast::SyntaxKind::MethodDecl) {
-    if (tree.contains(ast::NodeId(syntax.payload.words[ast::kMethodDeclTypeParamsIdWord])) ||
-        tree.contains(ast::NodeId(syntax.payload.words[ast::kMethodDeclRaisesTyWord]))) {
+    // A method may declare its own type parameters; object safety decides later
+    // whether such a method is admissible behind `dyn`. Error-union results
+    // remain gated on RFC 0006.
+    if (tree.contains(ast::NodeId(syntax.payload.words[ast::kMethodDeclRaisesTyWord]))) {
       return false;
     }
     parameters = ast::NodeId(syntax.payload.words[ast::kMethodDeclParamsIdWord]);
@@ -1069,11 +1071,13 @@ public:
   SourceTypeBuilder(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
                     const CheckerIdentityAuthority& identities,
                     type::SemanticTypeStore& semanticTypes,
-                    zc::ArrayPtr<const identity::GenericParameterId> genericParameters)
+                    zc::ArrayPtr<const identity::GenericParameterId> genericParameters,
+                    zc::Maybe<identity::DefId> contextualInterface = zc::none)
       : boundModule(boundModule),
         identities(identities),
         semanticTypes(semanticTypes),
-        genericParameters(genericParameters) {}
+        genericParameters(genericParameters),
+        contextualInterface(zc::mv(contextualInterface)) {}
 
   zc::Maybe<BuiltSourceType> build(ast::NodeId node) {
     const auto& tree = boundModule.tree();
@@ -1083,7 +1087,7 @@ public:
       case ast::SyntaxKind::PredefinedTypeExpr:
         return buildPrimitive(syntax.payload.words[ast::kPredefinedTypeExprKindWord]);
       case ast::SyntaxKind::NamedTypeExpr:
-        return buildNamed(syntax);
+        return buildNamed(node);
       case ast::SyntaxKind::TupleTypeExpr:
         return buildTuple(syntax);
       case ast::SyntaxKind::ArrayTypeExpr:
@@ -1177,6 +1181,20 @@ public:
 
   zc::Maybe<identity::DefId> definitionAtPath(ast::NodeId node) const {
     return resolvedDefinition(node);
+  }
+
+  /// \brief True when `path` is a single-segment, relative `Self` module path.
+  static bool isBareSelfPath(const ast::Tree& tree, ast::NodeId path) {
+    if (!tree.contains(path)) return false;
+    const auto& syntax = tree.node(path);
+    if (syntax.kind != ast::SyntaxKind::ModulePath ||
+        syntax.payload.words[ast::kModulePathRootWord] != 0) {
+      return false;
+    }
+    const ast::IdentList segments{syntax.payload.words[ast::kModulePathSegmentsFirstWord],
+                                  syntax.payload.words[ast::kModulePathSegmentsSizeWord]};
+    if (!tree.contains(segments) || segments.size != 1) return false;
+    return tree.ident(tree.identList(segments)[0]) == "Self"_zc;
   }
 
 private:
@@ -1362,12 +1380,24 @@ private:
     return zc::none;
   }
 
-  zc::Maybe<BuiltSourceType> buildNamed(const ast::Node& syntax) {
+  zc::Maybe<BuiltSourceType> buildNamed(ast::NodeId node) {
     const auto& tree = boundModule.tree();
+    const auto& syntax = tree.node(node);
     const ast::NodeList arguments{syntax.payload.words[ast::kNamedTypeExprArgsFirstWord],
                                   syntax.payload.words[ast::kNamedTypeExprArgsSizeWord]};
     if (!tree.contains(arguments)) return zc::none;
     const ast::NodeId path(syntax.payload.words[ast::kNamedTypeExprPathWord]);
+    // Contextual `Self` inside an interface method signature has no ordinary
+    // name resolution (the binder suppresses it for interface bodies, which are
+    // declarations rather than scoped value bodies). A bare single-segment
+    // `Self` path resolves to the interface-Self type; object safety decides
+    // whether a bare-Self return is admissible behind `dyn`.
+    if (arguments.size == 0 && contextualInterface != zc::none && isBareSelfPath(tree, path)) {
+      ZC_IF_SOME(interface, contextualInterface) {
+        return intern(type::semantic::TypeData(type::semantic::InterfaceSelfTypeData{interface}),
+                      TypeKeyPattern::interfaceSelf(interface));
+      }
+    }
     auto resolved = resolvedTarget(path);
     if (resolved == zc::none) {
       ZC_IF_SOME(parameter, resolvedCurrentGenericParameter(path)) {
@@ -1739,6 +1769,7 @@ private:
   const CheckerIdentityAuthority& identities;
   type::SemanticTypeStore& semanticTypes;
   zc::ArrayPtr<const identity::GenericParameterId> genericParameters;
+  zc::Maybe<identity::DefId> contextualInterface;
 };
 
 struct BuiltSourceGenericParameters final {
@@ -1851,7 +1882,8 @@ zc::Maybe<BuiltSourceGenericParameters> buildSourceGenericParameters(
 
 zc::Maybe<zc::Vector<ParameterSignature>> buildCallableParameters(
     const SignatureFactsBuildInput& input, identity::DefId owner, ast::NodeId parameterListNode,
-    zc::ArrayPtr<const identity::GenericParameterId> genericParameters) {
+    zc::ArrayPtr<const identity::GenericParameterId> genericParameters,
+    zc::Maybe<identity::DefId> contextualInterface = zc::none) {
   const auto& tree = input.boundModule.tree();
   if (!tree.contains(parameterListNode) ||
       tree.node(parameterListNode).kind != ast::SyntaxKind::FunctionParameterList) {
@@ -1914,7 +1946,7 @@ zc::Maybe<zc::Vector<ParameterSignature>> buildCallableParameters(
   }
 
   SourceTypeBuilder typeBuilder(input.boundModule, input.identities, input.semanticTypes,
-                                genericParameters);
+                                genericParameters, contextualInterface);
   zc::Vector<ParameterSignature> parameters(entries.size());
   for (const auto& entry : entries) {
     if (!tree.contains(entry.node) ||
@@ -7165,8 +7197,27 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         genericParameterIds = zc::mv(value.identities);
         genericParameterSignatures = zc::mv(value.signatures);
       }
-      auto callableParameters = buildCallableParameters(input, definition.definition, parameters,
-                                                        genericParameterIds.asPtr());
+      // An interface method may mention contextual `Self`; thread the owning
+      // interface into the source type builder so bare `Self` resolves.
+      zc::Maybe<identity::DefId> contextualInterface;
+      if (definitionKind == identity::DefinitionKind::Method) {
+        auto ownerEntry =
+            materializedDefinition(input.boundModule.definitions(), definition.definition);
+        if (ownerEntry != zc::none) {
+          auto owner = enclosingDefinitionOwner(ZC_ASSERT_NONNULL(ownerEntry),
+                                                input.boundModule.definitions(), input.identities);
+          if (owner != zc::none) {
+            auto ownerRecord = input.identities.definition(ZC_ASSERT_NONNULL(owner));
+            if (ownerRecord != zc::none && ZC_ASSERT_NONNULL(ownerRecord).record().kind() ==
+                                               identity::DefinitionKind::Interface) {
+              contextualInterface = owner;
+            }
+          }
+        }
+      }
+      auto callableParameters =
+          buildCallableParameters(input, definition.definition, parameters,
+                                  genericParameterIds.asPtr(), contextualInterface);
       if (callableParameters == zc::none) {
         return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                             definition.node.value));
@@ -7174,7 +7225,7 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
       zc::Maybe<identity::SemanticTypeId> returnSemanticType;
       if (tree.contains(returnType)) {
         SourceTypeBuilder typeBuilder(input.boundModule, input.identities, input.semanticTypes,
-                                      genericParameterIds.asPtr());
+                                      genericParameterIds.asPtr(), contextualInterface);
         auto builtReturn = typeBuilder.build(returnType);
         if (builtReturn == zc::none) {
           return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
