@@ -1066,6 +1066,73 @@ zc::Maybe<identity::CallableParameterKey> materializedCallableParameterKey(
   return zc::none;
 }
 
+/// \brief True when `path` is a single-segment, relative `Self` module path.
+bool isBareSelfModulePath(const ast::Tree& tree, ast::NodeId path) {
+  if (!tree.contains(path)) return false;
+  const auto& syntax = tree.node(path);
+  if (syntax.kind != ast::SyntaxKind::ModulePath ||
+      syntax.payload.words[ast::kModulePathRootWord] != 0) {
+    return false;
+  }
+  const ast::IdentList segments{syntax.payload.words[ast::kModulePathSegmentsFirstWord],
+                                syntax.payload.words[ast::kModulePathSegmentsSizeWord]};
+  if (!tree.contains(segments) || segments.size != 1) return false;
+  return tree.ident(tree.identList(segments)[0]) == "Self"_zc;
+}
+
+/// \brief True when a type expression is a bare contextual `Self` reference.
+bool isBareSelfTypeExpr(const ast::Tree& tree, ast::NodeId type) {
+  if (!tree.contains(type)) return false;
+  const auto& syntax = tree.node(type);
+  if (syntax.kind != ast::SyntaxKind::NamedTypeExpr) return false;
+  return isBareSelfModulePath(tree, ast::NodeId(syntax.payload.words[ast::kNamedTypeExprPathWord]));
+}
+
+/// \brief True when a parameter declaration carries `#[zom::param::move]`.
+bool parameterDeclaresMove(const ast::Tree& tree, ast::NodeId parameterNode) {
+  if (!tree.contains(parameterNode) ||
+      tree.node(parameterNode).kind != ast::SyntaxKind::FunctionParameterDecl) {
+    return false;
+  }
+  const ast::NodeId attrs(
+      tree.node(parameterNode).payload.words[ast::kFunctionParameterDeclAttrsWord]);
+  if (!tree.contains(attrs) || tree.node(attrs).kind != ast::SyntaxKind::AttributeList) {
+    return false;
+  }
+  const ast::NodeList attrNodes{tree.node(attrs).payload.words[ast::kAttributeListAttrsFirstWord],
+                                tree.node(attrs).payload.words[ast::kAttributeListAttrsSizeWord]};
+  if (!tree.contains(attrNodes)) return false;
+  for (const auto attributeNode : tree.list(attrNodes)) {
+    if (!tree.contains(attributeNode) ||
+        tree.node(attributeNode).kind != ast::SyntaxKind::Attribute) {
+      continue;
+    }
+    const ast::NodeId path(tree.node(attributeNode).payload.words[ast::kAttributePathWord]);
+    if (!tree.contains(path) || tree.node(path).kind != ast::SyntaxKind::AttributePath) {
+      continue;
+    }
+    const auto& pathSyntax = tree.node(path);
+    if (pathSyntax.payload.words[ast::kAttributePathLeadingWord] != 0) continue;
+    const ast::IdentList segments{pathSyntax.payload.words[ast::kAttributePathSegmentsFirstWord],
+                                  pathSyntax.payload.words[ast::kAttributePathSegmentsSizeWord]};
+    if (!tree.contains(segments) || segments.size != 3) continue;
+    const auto names = tree.identList(segments);
+    if (tree.ident(names[0]) == "zom"_zc && tree.ident(names[1]) == "param"_zc &&
+        tree.ident(names[2]) == "move"_zc) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// \brief True when a node id names the `this` receiver parameter.
+bool isReceiverName(const ast::Tree& tree, ast::NodeId nameNode) {
+  if (!tree.contains(nameNode) || tree.node(nameNode).kind != ast::SyntaxKind::ThisKeyword) {
+    return false;
+  }
+  return true;
+}
+
 class SourceTypeBuilder final {
 public:
   SourceTypeBuilder(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
@@ -1078,6 +1145,11 @@ public:
         semanticTypes(semanticTypes),
         genericParameters(genericParameters),
         contextualInterface(zc::mv(contextualInterface)) {}
+
+  /// \brief Move out object-safety failures accumulated while building types.
+  zc::Vector<SignatureSourceFailureRef> takeObjectSafetyFailures() {
+    return zc::mv(objectSafetyFailures);
+  }
 
   zc::Maybe<BuiltSourceType> build(ast::NodeId node) {
     const auto& tree = boundModule.tree();
@@ -1120,6 +1192,8 @@ public:
         return buildObject(syntax);
       case ast::SyntaxKind::OptionalTypeExpr:
         return buildOptional(syntax);
+      case ast::SyntaxKind::DynTypeExpr:
+        return buildDyn(node);
       default:
         return zc::none;
     }
@@ -1457,6 +1531,344 @@ private:
                   TypeKeyPattern::nominal(definition, zc::mv(argumentPatterns)));
   }
 
+  /// \brief Resolve a local definition to its declaration node, or none when it
+  /// is not declared in the bound module (an imported definition).
+  zc::Maybe<ast::NodeId> localDefinitionNode(identity::DefId definition) const {
+    for (const auto& candidate : boundModule.definitions().definitions()) {
+      if (candidate.definition == definition) return candidate.node;
+    }
+    return zc::none;
+  }
+
+  /// \brief Read the direct super-interface instantiations of a local interface.
+  zc::Maybe<zc::Vector<InterfaceInstantiation>> directSuperInterfaces(ast::NodeId interfaceNode) {
+    const auto& tree = boundModule.tree();
+    zc::Vector<InterfaceInstantiation> parents;
+    const ast::NodeId parentsNode(
+        tree.node(interfaceNode).payload.words[ast::kInterfaceDeclIfacesIdWord]);
+    if (!tree.contains(parentsNode)) return zc::mv(parents);
+    const auto& parentSyntax = tree.node(parentsNode);
+    if (parentSyntax.kind != ast::SyntaxKind::ImplIfaceList) return zc::none;
+    const ast::NodeList parentList{parentSyntax.payload.words[ast::kImplIfaceListIfacesFirstWord],
+                                   parentSyntax.payload.words[ast::kImplIfaceListIfacesSizeWord]};
+    if (!tree.contains(parentList)) return zc::none;
+    for (const auto parent : tree.list(parentList)) {
+      auto built = buildInterface(parent);
+      if (built == zc::none) return zc::none;
+      ZC_IF_SOME(value, built) { parents.add(zc::mv(value)); }
+    }
+    return zc::mv(parents);
+  }
+
+  /// \brief Enumerate the associated-type definitions declared directly on a
+  /// local interface node (not including inherited types).
+  zc::Maybe<zc::Vector<identity::DefId>> directAssociatedDefinitions(ast::NodeId interfaceNode) {
+    const auto& tree = boundModule.tree();
+    zc::Vector<identity::DefId> result;
+    const ast::NodeId membersNode(
+        tree.node(interfaceNode).payload.words[ast::kInterfaceDeclMembersIdWord]);
+    if (!tree.contains(membersNode)) return zc::mv(result);
+    const auto& memberSyntax = tree.node(membersNode);
+    if (memberSyntax.kind != ast::SyntaxKind::ClassMemberList) return zc::none;
+    const ast::NodeList members{memberSyntax.payload.words[ast::kClassMemberListMembersFirstWord],
+                                memberSyntax.payload.words[ast::kClassMemberListMembersSizeWord]};
+    if (!tree.contains(members)) return zc::none;
+    for (const auto member : tree.list(members)) {
+      if (tree.contains(member) && tree.node(member).kind == ast::SyntaxKind::AssociatedTypeDecl) {
+        auto def = boundModule.definitions().definitionAt(member);
+        if (def == zc::none) return zc::none;
+        result.add(ZC_ASSERT_NONNULL(def));
+      }
+    }
+    return zc::mv(result);
+  }
+
+  /// \brief Emit one object-safety source failure onto the builder sink.
+  void recordObjectSafetyFailure(SignatureSourceDiagnostic diagnostic, ast::NodeId site,
+                                 zc::Vector<SignatureSourceArgument>&& arguments) {
+    auto failure = signatureSourceFailure(diagnostic, boundModule, site, site);
+    if (failure == zc::none) return;
+    ZC_IF_SOME(value, failure) {
+      for (auto& argument : arguments) { value.arguments.add(zc::mv(argument)); }
+      objectSafetyFailures.add(zc::mv(value));
+    }
+  }
+
+  static SignatureSourceArgument definitionArg(identity::DefId definition) {
+    return SignatureSourceArgument(SignatureDefinitionDisplayArg{definition});
+  }
+  static SignatureSourceArgument typeArg(identity::SemanticTypeId type) {
+    return SignatureSourceArgument(SignatureTypeDisplayArg{type});
+  }
+
+  /// \brief Record one two-definition object-safety failure.
+  bool emitDynFailure(SignatureSourceDiagnostic diagnostic, ast::NodeId site, identity::DefId first,
+                      zc::Maybe<identity::DefId> second = zc::none) {
+    zc::Vector<SignatureSourceArgument> arguments;
+    arguments.add(definitionArg(first));
+    ZC_IF_SOME(value, second) { arguments.add(definitionArg(value)); }
+    recordObjectSafetyFailure(diagnostic, site, zc::mv(arguments));
+    return true;
+  }
+
+  /// \brief Select the first intrinsic object-safety cause by RFC 0005 flowchart
+  /// priority (OS-1, OS-2, OS-3, OS-5, OS-6; OS-7 is checked separately).
+  bool selectIntrinsicCause(ast::NodeId site, identity::DefId interface,
+                            zc::ArrayPtr<const ObjectSafetyCause> causes) {
+    for (const auto& cause : causes) {
+      const auto& value = cause.variant();
+      if (value.is<GenericMethodCause>()) {
+        return emitDynFailure(SignatureSourceDiagnostic::DynGenericMethod, site, interface,
+                              value.get<GenericMethodCause>().method);
+      }
+    }
+    for (const auto& cause : causes) {
+      const auto& value = cause.variant();
+      if (value.is<ReturnsSelfCause>()) {
+        return emitDynFailure(SignatureSourceDiagnostic::DynSelfReturn, site, interface,
+                              value.get<ReturnsSelfCause>().method);
+      }
+    }
+    for (const auto& cause : causes) {
+      const auto& value = cause.variant();
+      if (value.is<MovesSelfCause>()) {
+        return emitDynFailure(SignatureSourceDiagnostic::DynMoveSelf, site, interface,
+                              value.get<MovesSelfCause>().method);
+      }
+    }
+    for (const auto& cause : causes) {
+      const auto& value = cause.variant();
+      if (value.is<StaticMethodCause>()) {
+        return emitDynFailure(SignatureSourceDiagnostic::DynStaticMethod, site, interface);
+      }
+    }
+    for (const auto& cause : causes) {
+      const auto& value = cause.variant();
+      if (value.is<GenericAssociatedTypeCause>()) {
+        return emitDynFailure(SignatureSourceDiagnostic::DynGatNotAllowed, site, interface,
+                              value.get<GenericAssociatedTypeCause>().associated);
+      }
+    }
+    for (const auto& cause : causes) {
+      const auto& value = cause.variant();
+      if (value.is<UnsizedParameterCause>()) {
+        const auto& unsized = value.get<UnsizedParameterCause>();
+        zc::Vector<SignatureSourceArgument> arguments;
+        arguments.add(definitionArg(interface));
+        arguments.add(definitionArg(unsized.method));
+        arguments.add(typeArg(unsized.type));
+        recordObjectSafetyFailure(SignatureSourceDiagnostic::DynUnsizedParameter, site,
+                                  zc::mv(arguments));
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// \brief Build an existential `dyn I<...>` type, validating object safety
+  /// (OS-0..OS-7) and the head associated-type bindings. On any object-safety
+  /// failure the failure is recorded on the builder sink and none is returned.
+  zc::Maybe<BuiltSourceType> buildDyn(ast::NodeId node) {
+    const auto& tree = boundModule.tree();
+    const auto& syntax = tree.node(node);
+    const ast::NodeId principalNode(syntax.payload.words[ast::kDynTypeExprPrincipalWord]);
+    auto principalInterface = buildInterface(principalNode);
+    if (principalInterface == zc::none) return zc::none;
+    auto principalPattern = buildPatternInterface(principalNode);
+    if (principalPattern == zc::none) return zc::none;
+    identity::DefId interfaceDef = ZC_ASSERT_NONNULL(principalInterface).interface;
+    zc::Vector<identity::SemanticTypeId> interfaceArgs;
+    ZC_IF_SOME(value, principalInterface) {
+      for (const auto argument : value.arguments) { interfaceArgs.add(argument); }
+    }
+    zc::Vector<TypeKeyPattern> interfaceArgPatterns;
+    ZC_IF_SOME(value, principalPattern) {
+      for (auto& argument : value.arguments) { interfaceArgPatterns.add(zc::mv(argument)); }
+    }
+
+    auto interfaceNode = localDefinitionNode(interfaceDef);
+    if (interfaceNode == zc::none) {
+      // Imported principal: object safety cannot be re-analyzed from local
+      // syntax in this slice.
+      return zc::none;
+    }
+
+    // OS-0: the super-interface closure must itself be object safe.
+    {
+      auto parents = directSuperInterfaces(ZC_ASSERT_NONNULL(interfaceNode));
+      if (parents == zc::none) return zc::none;
+      ZC_IF_SOME(supers, parents) {
+        for (const auto& super : supers) {
+          auto superNode = localDefinitionNode(super.interface);
+          if (superNode == zc::none) continue;
+          auto superCauses =
+              analyzeInterfaceObjectSafety(ZC_ASSERT_NONNULL(superNode), genericParameters);
+          if (superCauses == zc::none) continue;
+          if (ZC_ASSERT_NONNULL(superCauses).size() != 0) {
+            zc::Vector<SignatureSourceArgument> arguments;
+            arguments.add(definitionArg(interfaceDef));
+            arguments.add(definitionArg(super.interface));
+            recordObjectSafetyFailure(SignatureSourceDiagnostic::DynSuperNotObjectSafe, node,
+                                      zc::mv(arguments));
+            return zc::none;
+          }
+        }
+      }
+    }
+
+    auto causes = analyzeInterfaceObjectSafety(ZC_ASSERT_NONNULL(interfaceNode), genericParameters);
+    if (causes == zc::none) { return zc::none; }
+    if (selectIntrinsicCause(node, interfaceDef, ZC_ASSERT_NONNULL(causes).asPtr())) {
+      return zc::none;
+    }
+
+    // Collect the principal's associated-type names and validate head bindings.
+    zc::Vector<AssociatedBinding> bindings =
+        readAssociatedBindings(node, ZC_ASSERT_NONNULL(interfaceNode));
+    if (bindings.size() == 0 && hasAssociatedBindingList(syntax)) {
+      return zc::none;  // malformed binding list (already reported if duplicate)
+    }
+    // OS-4: every non-generic associated type must be bound in the dyn head.
+    {
+      auto ownAssociated = directAssociatedDefinitions(ZC_ASSERT_NONNULL(interfaceNode));
+      if (ownAssociated == zc::none) return zc::none;
+      ZC_IF_SOME(associated, ownAssociated) {
+        for (const auto associatedDef : associated) {
+          if (isGenericAssociatedType(associatedDef)) continue;  // handled as OS-6 above
+          bool bound = false;
+          for (const auto& binding : bindings) {
+            if (binding.associated == associatedDef) { bound = true; }
+          }
+          if (!bound) {
+            zc::Vector<SignatureSourceArgument> arguments;
+            arguments.add(definitionArg(interfaceDef));
+            arguments.add(definitionArg(associatedDef));
+            recordObjectSafetyFailure(SignatureSourceDiagnostic::DynUnassociatedType, node,
+                                      zc::mv(arguments));
+            return zc::none;
+          }
+        }
+      }
+    }
+
+    auto interned = internExistential(interfaceDef, zc::mv(interfaceArgs),
+                                      zc::mv(interfaceArgPatterns), zc::mv(bindings));
+    return interned;
+  }
+
+  bool isGenericAssociatedType(identity::DefId associatedDef) {
+    ZC_IF_SOME(node, localDefinitionNode(associatedDef)) {
+      const auto& tree = boundModule.tree();
+      if (tree.contains(node) && tree.node(node).kind == ast::SyntaxKind::AssociatedTypeDecl) {
+        return tree.contains(
+            ast::NodeId(tree.node(node).payload.words[ast::kAssociatedTypeDeclTypeParamsIdWord]));
+      }
+    }
+    return false;
+  }
+
+  bool hasAssociatedBindingList(const ast::Node& dynSyntax) const {
+    return boundModule.tree().contains(
+        ast::NodeId(dynSyntax.payload.words[ast::kDynTypeExprAssocBindingsIdWord]));
+  }
+
+  struct AssociatedBinding {
+    identity::DefId associated;
+    identity::SemanticTypeId type;
+    TypeKeyPattern pattern;
+  };
+
+  /// \brief Read and resolve the `<Name = T>` bindings of a dyn head, emitting
+  /// ZOM4055 for a duplicate. Names must resolve to associated types declared by
+  /// the principal interface.
+  zc::Vector<AssociatedBinding> readAssociatedBindings(ast::NodeId dynNode,
+                                                       ast::NodeId interfaceNode) {
+    const auto& tree = boundModule.tree();
+    zc::Vector<AssociatedBinding> bindings;
+    const ast::NodeId listNode(
+        tree.node(dynNode).payload.words[ast::kDynTypeExprAssocBindingsIdWord]);
+    if (!tree.contains(listNode)) return bindings;
+    if (tree.node(listNode).kind != ast::SyntaxKind::DynTypeAssocBindingList) return bindings;
+    const ast::NodeList bindingNodes{
+        tree.node(listNode).payload.words[ast::kDynTypeAssocBindingListBindingsFirstWord],
+        tree.node(listNode).payload.words[ast::kDynTypeAssocBindingListBindingsSizeWord]};
+    if (!tree.contains(bindingNodes)) return bindings;
+    auto ownAssociated = directAssociatedDefinitions(interfaceNode);
+    for (const auto bindingNode : tree.list(bindingNodes)) {
+      if (!tree.contains(bindingNode) ||
+          tree.node(bindingNode).kind != ast::SyntaxKind::DynTypeAssocBinding) {
+        bindings.clear();
+        return bindings;
+      }
+      const auto& bindingSyntax = tree.node(bindingNode);
+      const auto nameId =
+          ast::IdentId(bindingSyntax.payload.words[ast::kDynTypeAssocBindingNameWord]);
+      const ast::NodeId bindingType(bindingSyntax.payload.words[ast::kDynTypeAssocBindingTyWord]);
+      identity::DefId associated;
+      bool resolved = false;
+      ZC_IF_SOME(candidates, ownAssociated) {
+        for (const auto candidate : candidates) {
+          auto candidateNode = localDefinitionNode(candidate);
+          if (candidateNode == zc::none) continue;
+          const auto candidateName =
+              ast::IdentId(tree.node(ZC_ASSERT_NONNULL(candidateNode))
+                               .payload.words[ast::kAssociatedTypeDeclNameWord]);
+          if (tree.ident(candidateName) == tree.ident(nameId)) {
+            associated = candidate;
+            resolved = true;
+            break;
+          }
+        }
+      }
+      if (!resolved) {
+        bindings.clear();
+        return bindings;
+      }
+      for (const auto& existing : bindings) {
+        if (existing.associated == associated) {
+          zc::Vector<SignatureSourceArgument> arguments;
+          arguments.add(definitionArg(associated));
+          arguments.add(definitionArg(associated));
+          recordObjectSafetyFailure(SignatureSourceDiagnostic::DynDuplicateAssociatedTypeBinding,
+                                    dynNode, zc::mv(arguments));
+          bindings.clear();
+          return bindings;
+        }
+      }
+      auto builtType = build(bindingType);
+      if (builtType == zc::none) {
+        bindings.clear();
+        return bindings;
+      }
+      ZC_IF_SOME(value, builtType) {
+        bindings.add(AssociatedBinding{associated, value.type, zc::mv(value.pattern)});
+      }
+    }
+    return bindings;
+  }
+
+  /// \brief Intern an existential type with the principal argument patterns.
+  zc::Maybe<BuiltSourceType> internExistential(identity::DefId interfaceDef,
+                                               zc::Vector<identity::SemanticTypeId>&& interfaceArgs,
+                                               zc::Vector<TypeKeyPattern>&& interfaceArgPatterns,
+                                               zc::Vector<AssociatedBinding>&& bindings) {
+    zc::Vector<type::semantic::AssociatedTypeBindingData> dataBindings(bindings.size());
+    zc::Vector<PatternAssociatedTypeBinding> patternBindings(bindings.size());
+    for (auto& binding : bindings) {
+      dataBindings.add(type::semantic::AssociatedTypeBindingData{binding.associated, binding.type});
+      patternBindings.add(
+          PatternAssociatedTypeBinding{binding.associated, zc::mv(binding.pattern)});
+    }
+    return intern(type::semantic::TypeData(type::semantic::ExistentialTypeData{
+                      type::semantic::ExistentialInterfaceData{interfaceDef, zc::mv(interfaceArgs)},
+                      zc::Vector<type::semantic::ExistentialInterfaceData>(),
+                      zc::Vector<identity::DefId>(), zc::mv(dataBindings)}),
+                  TypeKeyPattern::existential(PatternExistentialType{
+                      PatternExistentialInterface{interfaceDef, zc::mv(interfaceArgPatterns)},
+                      zc::Vector<PatternExistentialInterface>(), zc::Vector<identity::DefId>(),
+                      zc::mv(patternBindings)}));
+  }
+
   zc::Maybe<BuiltSourceType> buildTuple(const ast::Node& syntax) {
     const auto& tree = boundModule.tree();
     const ast::NodeList elements{syntax.payload.words[ast::kTupleTypeExprElemsFirstWord],
@@ -1770,6 +2182,139 @@ private:
   type::SemanticTypeStore& semanticTypes;
   zc::ArrayPtr<const identity::GenericParameterId> genericParameters;
   zc::Maybe<identity::DefId> contextualInterface;
+  zc::Vector<SignatureSourceFailureRef> objectSafetyFailures;
+
+  static zc::Maybe<ast::NodeList> methodParameterList(const ast::Tree& tree,
+                                                      ast::NodeId methodNode) {
+    if (!tree.contains(methodNode) || tree.node(methodNode).kind != ast::SyntaxKind::MethodDecl) {
+      return zc::none;
+    }
+    const ast::NodeId list(tree.node(methodNode).payload.words[ast::kMethodDeclParamsIdWord]);
+    if (!tree.contains(list) || tree.node(list).kind != ast::SyntaxKind::FunctionParameterList) {
+      return zc::none;
+    }
+    return ast::NodeList{tree.node(list).payload.words[ast::kFunctionParameterListParamsFirstWord],
+                         tree.node(list).payload.words[ast::kFunctionParameterListParamsSizeWord]};
+  }
+
+  static zc::Maybe<ast::NodeId> receiverParameter(const ast::Tree& tree,
+                                                  const ast::NodeList& parameters) {
+    if (!tree.contains(parameters) || parameters.size == 0) return zc::none;
+    const ast::NodeId first = tree.list(parameters)[0];
+    if (!tree.contains(first) || tree.node(first).kind != ast::SyntaxKind::FunctionParameterDecl) {
+      return zc::none;
+    }
+    const ast::NodeId name(tree.node(first).payload.words[ast::kFunctionParameterDeclNameWord]);
+    if (!isReceiverName(tree, name)) return zc::none;
+    return first;
+  }
+
+  zc::Maybe<identity::CallableParameterKey> parameterKeyForNode(ast::NodeId parameterNode) {
+    for (const auto& entry : boundModule.definitions().callableParameters()) {
+      if (entry.node != parameterNode) continue;
+      return materializedCallableParameterKey(identities, entry);
+    }
+    return zc::none;
+  }
+
+public:
+  /// \brief Collect intrinsic object-safety causes (OS-1/2/3/5/6/7) of one local
+  /// interface from its member declarations.
+  zc::Maybe<zc::Vector<ObjectSafetyCause>> analyzeInterfaceObjectSafety(
+      ast::NodeId interfaceNode,
+      zc::ArrayPtr<const identity::GenericParameterId> interfaceGenerics) {
+    const auto& tree = boundModule.tree();
+    const ast::NodeId membersNode(
+        tree.node(interfaceNode).payload.words[ast::kInterfaceDeclMembersIdWord]);
+    zc::Vector<ObjectSafetyCause> causes;
+    if (!tree.contains(membersNode)) return zc::mv(causes);
+    const auto& memberSyntax = tree.node(membersNode);
+    if (memberSyntax.kind != ast::SyntaxKind::ClassMemberList) return zc::none;
+    const ast::NodeList members{memberSyntax.payload.words[ast::kClassMemberListMembersFirstWord],
+                                memberSyntax.payload.words[ast::kClassMemberListMembersSizeWord]};
+    if (!tree.contains(members)) return zc::none;
+    for (const auto member : tree.list(members)) {
+      if (!tree.contains(member)) return zc::none;
+      if (tree.node(member).kind == ast::SyntaxKind::MethodDecl) {
+        analyzeMethodObjectSafety(member, interfaceGenerics, causes);
+      } else if (tree.node(member).kind == ast::SyntaxKind::AssociatedTypeDecl) {
+        auto def = boundModule.definitions().definitionAt(member);
+        if (def == zc::none) return zc::none;
+        const ast::NodeId typeParams(
+            tree.node(member).payload.words[ast::kAssociatedTypeDeclTypeParamsIdWord]);
+        if (tree.contains(typeParams)) {
+          causes.add(ObjectSafetyCause(GenericAssociatedTypeCause{ZC_ASSERT_NONNULL(def)}));
+        }
+      }
+    }
+    return zc::mv(causes);
+  }
+
+  void analyzeMethodObjectSafety(ast::NodeId methodNode,
+                                 zc::ArrayPtr<const identity::GenericParameterId> interfaceGenerics,
+                                 zc::Vector<ObjectSafetyCause>& causes) {
+    const auto& tree = boundModule.tree();
+    auto methodDef = boundModule.definitions().definitionAt(methodNode);
+    if (methodDef == zc::none) return;
+    identity::DefId method = ZC_ASSERT_NONNULL(methodDef);
+    const auto& syntax = tree.node(methodNode);
+
+    // OS-1: a method that introduces its own type parameters.
+    if (tree.contains(ast::NodeId(syntax.payload.words[ast::kMethodDeclTypeParamsIdWord]))) {
+      causes.add(ObjectSafetyCause(GenericMethodCause{method}));
+      return;
+    }
+
+    const uint8_t mode = syntax.payload.words[ast::kMethodDeclModeWord];
+    auto parameters = methodParameterList(tree, methodNode);
+
+    // OS-5: a static method has no dispatch target in the vtable. Interface
+    // methods carry an implicit receiver, so absence of `this` does not make a
+    // method static; only the declared method mode does.
+    if (mode == 1) {
+      causes.add(ObjectSafetyCause(StaticMethodCause{method}));
+      return;
+    }
+
+    ZC_IF_SOME(params, parameters) {
+      const auto receiverNode = receiverParameter(tree, params);
+      // OS-3: a move-consumed self receiver.
+      ZC_IF_SOME(receiver, receiverNode) {
+        if (parameterDeclaresMove(tree, receiver)) {
+          causes.add(ObjectSafetyCause(MovesSelfCause{method}));
+        }
+      }
+      // OS-7: every explicit ordinary parameter type must be sized.
+      const size_t ordinaryStart = receiverNode == zc::none ? 0 : 1;
+      for (size_t index = ordinaryStart; index < params.size; ++index) {
+        const ast::NodeId parameterNode = tree.list(params)[index];
+        if (!tree.contains(parameterNode) ||
+            tree.node(parameterNode).kind != ast::SyntaxKind::FunctionParameterDecl) {
+          continue;
+        }
+        const ast::NodeId type(
+            tree.node(parameterNode).payload.words[ast::kFunctionParameterDeclTyWord]);
+        if (!tree.contains(type) || tree.node(type).kind != ast::SyntaxKind::SliceArrayTypeExpr) {
+          continue;
+        }
+        auto built = build(type);
+        auto key = parameterKeyForNode(parameterNode);
+        if (built == zc::none || key == zc::none) continue;
+        ZC_IF_SOME(typeValue, built) {
+          ZC_IF_SOME(parameterKey, key) {
+            causes.add(ObjectSafetyCause(
+                UnsizedParameterCause{method, zc::mv(parameterKey), typeValue.type}));
+          }
+        }
+      }
+    }
+
+    // OS-2: an instance method returning bare Self (`Self?` stays admissible).
+    const ast::NodeId returnType(syntax.payload.words[ast::kMethodDeclRetTyWord]);
+    if (tree.contains(returnType) && isBareSelfTypeExpr(tree, returnType)) {
+      causes.add(ObjectSafetyCause(ReturnsSelfCause{method}));
+    }
+  }
 };
 
 struct BuiltSourceGenericParameters final {
@@ -6477,7 +7022,11 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
           SourceTypeBuilder typeBuilder(input.boundModule, input.identities, input.semanticTypes,
                                         noGenerics.asPtr());
           auto builtType = typeBuilder.build(annotation);
+          for (auto& failure : typeBuilder.takeObjectSafetyFailures()) {
+            sourceFailures.add(zc::mv(failure));
+          }
           if (builtType == zc::none) {
+            if (!sourceFailures.empty()) { continue; }
             return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                                 annotation.value));
           }
@@ -6677,11 +7226,24 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
         continue;
       }
-      // Associated type members (`type Item;` inside an interface) are
-      // signature-bearing but the associated-type signature surface is not
-      // implemented. Without a branch they fall through to the callable gate
-      // and surface as an internal invariant; reject on the source rail.
+      // Associated type members (`type Item;`) nested in an interface are
+      // enumerated by the enclosing interface signature and need no standalone
+      // definition signature; skip them. A free-standing associated type outside
+      // an interface is not admitted and is rejected on the source rail.
       if (definitionKind == identity::DefinitionKind::AssociatedType) {
+        bool interfaceOwned = false;
+        auto entry = materializedDefinition(input.boundModule.definitions(), definition.definition);
+        if (entry != zc::none) {
+          auto owner = enclosingDefinitionOwner(ZC_ASSERT_NONNULL(entry),
+                                                input.boundModule.definitions(), input.identities);
+          if (owner != zc::none) {
+            auto ownerRecord = input.identities.definition(ZC_ASSERT_NONNULL(owner));
+            interfaceOwned =
+                ownerRecord != zc::none && ZC_ASSERT_NONNULL(ownerRecord).record().kind() ==
+                                               identity::DefinitionKind::Interface;
+          }
+        }
+        if (interfaceOwned) { continue; }
         auto failure =
             signatureSourceFailure(SignatureSourceDiagnostic::AssociatedTypeMemberUnsupported,
                                    input.boundModule, definition.node, definition.node);
@@ -7034,7 +7596,8 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
           genericParameters = zc::mv(value.signatures);
         }
         SourceTypeBuilder interfaceTypeBuilder(input.boundModule, input.identities,
-                                               input.semanticTypes, genericParameterIds.asPtr());
+                                               input.semanticTypes, genericParameterIds.asPtr(),
+                                               definition.definition);
 
         struct BuiltInterface final {
           InterfaceInstantiation interface;
@@ -7160,6 +7723,14 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         for (const auto& associated : associatedRefs) {
           associatedTypes.add(associated.definition);
         }
+        auto analyzedCauses = interfaceTypeBuilder.analyzeInterfaceObjectSafety(
+            definition.node, genericParameterIds.asPtr());
+        if (analyzedCauses == zc::none) {
+          return buildReject(
+              checkerInvariant(CheckerInvariantKind::InvalidFact, module, definition.node.value));
+        }
+        zc::Vector<ObjectSafetyCause> objectSafetyCauses;
+        ZC_IF_SOME(causes, analyzedCauses) { objectSafetyCauses = zc::mv(causes); }
         ZC_IF_SOME(signatureScopeValue, scope) {
           built.add(BuiltSignature{
               SemanticSignature{
@@ -7168,7 +7739,7 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
                   SemanticSignaturePayload(InterfaceSignature{
                       zc::mv(genericParameters), zc::mv(parents), zc::mv(members),
                       zc::mv(associatedTypes), interfaceShape == InterfaceMarkerShape::ClosedMarker,
-                      zc::Vector<ObjectSafetyCause>()}),
+                      zc::mv(objectSafetyCauses)}),
                   bound.source.clone()},
               SignatureDefinitionRequirement{definition.definition, definitionKind,
                                              zc::Array<uint8_t>()},
