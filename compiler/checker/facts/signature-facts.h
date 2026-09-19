@@ -1021,7 +1021,9 @@ enum class SignatureSourceDiagnostic : uint16_t {
   BinaryOperatorSemanticsUnavailable = 4103,
   ModuleInitializerSemanticsUnavailable = 4104,
   ModuleStatementSemanticsUnavailable = 4105,
-  TypeAliasTargetUnsupported = 4106
+  TypeAliasTargetUnsupported = 4106,
+  AssociatedTypeMemberUnsupported = 4107,
+  TypeExpressionUnsupported = 4108
 };
 
 struct SignatureLiteralDisplayArg final {

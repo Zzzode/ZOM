@@ -57,8 +57,8 @@ DIAG(4024, CannotMutateImmutableVariable, kError, "Cannot mutate immutable defin
 DIAG(4025, ErrorPropagateOutsideRaises, kError,
      "Error propagation produces {0}, which is not accepted by raises {1}", 2)
 DIAG(4026, ErrorUnwrapNonUnion, kError, "Forced unwrap requires an error union, got {0}", 1)
-DIAG(4028, InvalidBinaryOperands, kError,
-     "Operator `{0}` is not defined for types `{1}` and `{2}`", 3)
+DIAG(4028, InvalidBinaryOperands, kError, "Operator `{0}` is not defined for types `{1}` and `{2}`",
+     3)
 DIAG(4029, InvalidComparisonOperands, kError,
      "Comparison operator `{0}` is not defined for types `{1}` and `{2}`", 3)
 DIAG(4030, CannotDereferenceType, kError, "Cannot dereference value of type {0}", 1)
@@ -120,8 +120,7 @@ DIAG(4080, ConstantDependencyCycle, kError,
      "Constant definition {0} participates in a dependency cycle", 1)
 DIAG(4081, ConstantArithmeticFailure, kError, "Constant operation {0} is invalid for its operands",
      1)
-DIAG(4082, BorrowOutputRegionAmbiguous, kError,
-     "Returned reference region cannot be inferred", 0)
+DIAG(4082, BorrowOutputRegionAmbiguous, kError, "Returned reference region cannot be inferred", 0)
 DIAG(4083, BorrowOutputRegionUnexpressible, kError,
      "Returned borrow relation requires an explicit region contract", 0)
 DIAG(4084, BorrowExternContractUnverified, kError, "Extern borrow relation is not verified", 0)
@@ -142,8 +141,7 @@ DIAG(4092, ExplicitImplConflictsWithBuiltinMarker, kError,
 
 // RFC 0007 ownership diagnostics.
 // Tracking: docs/rfc/tracking/0007-review-and-implementation.md
-DIAG(4093, UninitializedPlaceUse, kError,
-     "Use of uninitialized or deinitialized place", 0)
+DIAG(4093, UninitializedPlaceUse, kError, "Use of uninitialized or deinitialized place", 0)
 DIAG(4094, PlaceBecameUnavailableHere, kNote, "Place became unavailable here", 0)
 DIAG(4095, ConcurrencySemanticsUnavailable, kError,
      "this concurrency construct is not supported yet", 0)
@@ -157,12 +155,12 @@ DIAG(4099, FunctionBodySemanticsUnavailable, kError,
      "this function body uses a construct the compiler cannot generate code for yet", 0)
 // ZOM4100-ZOM4102 are allocated to RFC 0022 (flow-sensitive refinement and null
 // safety) and must not be reused here.
-DIAG(4103, BinaryOperatorSemanticsUnavailable, kError,
-     "operator `{0}` is not supported yet", 1)
+DIAG(4103, BinaryOperatorSemanticsUnavailable, kError, "operator `{0}` is not supported yet", 1)
 DIAG(4104, ModuleInitializerSemanticsUnavailable, kError,
      "compile-time evaluation of this module-scope value is not supported yet", 0)
 DIAG(4105, ModuleStatementSemanticsUnavailable, kError,
-     "executable statements are not allowed at module scope; only declarations are supported",
+     "executable statements are not allowed at module scope; only declarations are supported", 0)
+DIAG(4106, TypeAliasTargetUnsupported, kError, "this type alias target is not supported yet", 0)
+DIAG(4107, AssociatedTypeMemberUnsupported, kError, "associated type members are not supported yet",
      0)
-DIAG(4106, TypeAliasTargetUnsupported, kError,
-     "this type alias target is not supported yet", 0)
+DIAG(4108, TypeExpressionUnsupported, kError, "this type expression is not supported yet", 0)

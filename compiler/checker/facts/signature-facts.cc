@@ -6645,6 +6645,21 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
         continue;
       }
+      // Associated type members (`type Item;` inside an interface) are
+      // signature-bearing but the associated-type signature surface is not
+      // implemented. Without a branch they fall through to the callable gate
+      // and surface as an internal invariant; reject on the source rail.
+      if (definitionKind == identity::DefinitionKind::AssociatedType) {
+        auto failure =
+            signatureSourceFailure(SignatureSourceDiagnostic::AssociatedTypeMemberUnsupported,
+                                   input.boundModule, definition.node, definition.node);
+        if (failure == zc::none) {
+          return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch, module,
+                                              definition.node.value));
+        }
+        ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
+        continue;
+      }
       if (isNominalDefinition(definitionKind)) {
         if (!tree.contains(definition.node)) {
           return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
