@@ -163,4 +163,3 @@ DIAG(4105, ModuleStatementSemanticsUnavailable, kError,
 DIAG(4106, TypeAliasTargetUnsupported, kError, "this type alias target is not supported yet", 0)
 DIAG(4107, AssociatedTypeMemberUnsupported, kError, "associated type members are not supported yet",
      0)
-DIAG(4108, TypeExpressionUnsupported, kError, "this type expression is not supported yet", 0)
