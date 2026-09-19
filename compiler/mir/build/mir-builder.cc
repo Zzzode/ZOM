@@ -109,6 +109,98 @@ zc::Maybe<size_t> parameterIndexFor(const hir::HirFunctionDeclaration& declarati
   return zc::none;
 }
 
+/// \brief Maps a primitive operation to its MIR relational operator.
+zc::Maybe<MirComparisonOperator> comparisonOperatorFor(
+    checker::PrimitiveOperation operation) noexcept {
+  switch (operation) {
+    case checker::PrimitiveOperation::Eq:
+      return MirComparisonOperator::Eq;
+    case checker::PrimitiveOperation::Ne:
+      return MirComparisonOperator::Ne;
+    case checker::PrimitiveOperation::Lt:
+      return MirComparisonOperator::Lt;
+    case checker::PrimitiveOperation::Le:
+      return MirComparisonOperator::Le;
+    case checker::PrimitiveOperation::Gt:
+      return MirComparisonOperator::Gt;
+    case checker::PrimitiveOperation::Ge:
+      return MirComparisonOperator::Ge;
+    default:
+      return zc::none;
+  }
+}
+
+/// \brief Maps a primitive operation to its MIR arithmetic operator.
+zc::Maybe<MirArithmeticOperator> arithmeticOperatorFor(
+    checker::PrimitiveOperation operation) noexcept {
+  switch (operation) {
+    case checker::PrimitiveOperation::Add:
+      return MirArithmeticOperator::Add;
+    case checker::PrimitiveOperation::Sub:
+      return MirArithmeticOperator::Sub;
+    case checker::PrimitiveOperation::Mul:
+      return MirArithmeticOperator::Mul;
+    case checker::PrimitiveOperation::Div:
+      return MirArithmeticOperator::Div;
+    case checker::PrimitiveOperation::Rem:
+      return MirArithmeticOperator::Rem;
+    case checker::PrimitiveOperation::Pow:
+      return MirArithmeticOperator::Pow;
+    case checker::PrimitiveOperation::Shl:
+      return MirArithmeticOperator::Shl;
+    case checker::PrimitiveOperation::Shr:
+      return MirArithmeticOperator::Shr;
+    case checker::PrimitiveOperation::UShr:
+      return MirArithmeticOperator::UShr;
+    case checker::PrimitiveOperation::BitAnd:
+      return MirArithmeticOperator::BitAnd;
+    case checker::PrimitiveOperation::BitOr:
+      return MirArithmeticOperator::BitOr;
+    case checker::PrimitiveOperation::BitXor:
+      return MirArithmeticOperator::BitXor;
+    default:
+      return zc::none;
+  }
+}
+
+/// \brief Builds one MIR leaf operand for a primitive-binary initializer: a
+/// scalar constant, a parameter place-use, or an earlier user-local
+/// place-use. Projected and later-local operands return none.
+zc::Maybe<MirOperand> binaryLeafOperand(
+    const hir::VerifiedHirModule& hirModule, const hir::HirFunctionDeclaration& declaration,
+    hir::HirNodeId operandNode, zc::ArrayPtr<MirLocalId> parameterLocals,
+    zc::ArrayPtr<MirLocalId> userLocals, size_t bindingIndex, identity::SemanticTypeId operandType,
+    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+  if (auto literal = expressionFor(hirModule, operandNode); literal != zc::none) {
+    if (ZC_ASSERT_NONNULL(literal).type != operandType) return zc::none;
+    return MirOperand::constant(operandType, ZC_ASSERT_NONNULL(literal).value.clone());
+  }
+  if (auto parameter = parameterReferenceFor(hirModule, operandNode); parameter != zc::none) {
+    const auto& value = ZC_ASSERT_NONNULL(parameter);
+    auto index = parameterIndexFor(declaration, value.parameter);
+    if (index == zc::none || value.type != operandType ||
+        value.category != hir::HirValueCategory::Place) {
+      return zc::none;
+    }
+    zc::Vector<MirProjection> projections;
+    return placeUse(proofs, copyMarker,
+                    MirPlace(parameterLocals[ZC_ASSERT_NONNULL(index)], operandType,
+                             zc::mv(projections), operandType));
+  }
+  if (auto reference = localReferenceFor(hirModule, operandNode); reference != zc::none) {
+    const auto& value = ZC_ASSERT_NONNULL(reference);
+    if (value.type != operandType || value.category != hir::HirValueCategory::Place ||
+        value.local.ordinal() == 0 || value.local.ordinal() > static_cast<uint32_t>(bindingIndex)) {
+      return zc::none;
+    }
+    zc::Vector<MirProjection> projections;
+    return placeUse(proofs, copyMarker,
+                    MirPlace(userLocals[value.local.ordinal() - 1], operandType,
+                             zc::mv(projections), operandType));
+  }
+  return zc::none;
+}
+
 /// \brief Lowers a sequential N-local single-block body
 /// (`let a = <lit/param/local>; ... let z = ...; return <local-or-param>;`,
 /// N>=2): parameter locals occupy localId(1..P), user local i occupies
@@ -178,8 +270,50 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(
     auto localReference = localReferenceFor(hirModule, initializerNode);
     auto parameterReference = parameterReferenceFor(hirModule, initializerNode);
     auto binary = primitiveBinaryFor(hirModule, initializerNode);
-    // Aggregate, binary, and nested-operand initializers stay on the legacy rail.
-    if (aggregate != zc::none || binary != zc::none) return zc::none;
+    // Aggregate and nested-operand initializers stay on the legacy rail.
+    if (aggregate != zc::none) return zc::none;
+    // A primitive-binary initializer (no nested binary operand) lowers to an
+    // Arithmetic or Comparison rvalue over literal/parameter/local leaves.
+    if (binary != zc::none) {
+      const auto& value = ZC_ASSERT_NONNULL(binary);
+      if (value.category != hir::HirValueCategory::Value || value.type != binding.type) {
+        return zc::none;
+      }
+      // Both operands must themselves be leaves (a nested binary operand is
+      // the Temporary family, which stays on the legacy rail).
+      if (primitiveBinaryFor(hirModule, value.left) != zc::none ||
+          primitiveBinaryFor(hirModule, value.right) != zc::none) {
+        return zc::none;
+      }
+      auto comparison = comparisonOperatorFor(value.operation);
+      auto arithmetic = arithmeticOperatorFor(value.operation);
+      if (comparison == zc::none && arithmetic == zc::none) return zc::none;
+      // An arithmetic rvalue has result type equal to its operand type; a
+      // comparison rvalue yields bool with a distinct operand type.
+      if (arithmetic != zc::none && value.type != value.operandType) return zc::none;
+      auto left = binaryLeafOperand(hirModule, declaration, value.left, parameterLocals,
+                                    userLocals.asPtr(), i, value.operandType, proofs, copyMarker);
+      auto right = binaryLeafOperand(hirModule, declaration, value.right, parameterLocals,
+                                     userLocals.asPtr(), i, value.operandType, proofs, copyMarker);
+      if (left == zc::none || right == zc::none) return zc::none;
+      zc::Maybe<MirRvalue> binaryRvalue;
+      if (arithmetic != zc::none) {
+        binaryRvalue =
+            MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmetic), zc::mv(ZC_ASSERT_NONNULL(left)),
+                                  zc::mv(ZC_ASSERT_NONNULL(right)), value.type);
+      } else {
+        binaryRvalue =
+            MirRvalue::comparison(ZC_ASSERT_NONNULL(comparison), zc::mv(ZC_ASSERT_NONNULL(left)),
+                                  zc::mv(ZC_ASSERT_NONNULL(right)), value.type);
+      }
+      ctx.appendStatement(MirStatement::storageLive(userLocals[i], binding.sourceSpan.clone()));
+      zc::Vector<MirProjection> destinationProjections;
+      ctx.appendStatement(MirStatement::assign(
+          MirPlace(userLocals[i], binding.type, zc::mv(destinationProjections), binding.type),
+          zc::mv(ZC_ASSERT_NONNULL(binaryRvalue)), MirInitializationKind::Initialize,
+          value.sourceSpan.clone()));
+      continue;
+    }
     const int present = (literal != zc::none ? 1 : 0) + (localReference != zc::none ? 1 : 0) +
                         (parameterReference != zc::none ? 1 : 0);
     if (present != 1) return zc::none;
