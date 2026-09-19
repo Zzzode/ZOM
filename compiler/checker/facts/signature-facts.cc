@@ -6627,6 +6627,24 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         }
         continue;
       }
+      // Type aliases carry a signature only when their target type resolves to
+      // a semantic type. The alias-target type expressions admitted by the
+      // parser (function, tuple, union/intersection, dyn, container, and
+      // structural object types) are not part of the implemented semantic
+      // type surface yet, so an unresolvable target is a source rejection
+      // ("this type alias target is not supported yet"), never an internal
+      // invariant. The binding is skipped and reported through the source
+      // failure rail rather than producing a signature fact.
+      if (definitionKind == identity::DefinitionKind::TypeAlias) {
+        auto failure = signatureSourceFailure(SignatureSourceDiagnostic::TypeAliasTargetUnsupported,
+                                              input.boundModule, definition.node, definition.node);
+        if (failure == zc::none) {
+          return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch, module,
+                                              definition.node.value));
+        }
+        ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
+        continue;
+      }
       if (isNominalDefinition(definitionKind)) {
         if (!tree.contains(definition.node)) {
           return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,

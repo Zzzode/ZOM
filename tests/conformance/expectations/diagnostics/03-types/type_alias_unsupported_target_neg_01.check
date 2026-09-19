@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/type_alias_unsupported_target_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A type alias whose target is a structural object type is parsed but its
+// target is not part of the implemented semantic type surface. The checker
+// refuses with ZOM4106 instead of raising an internal compiler error.
+// CHECK-LITERAL: Error [ZOM4106]: this type alias target is not supported yet
+// CHECK-LITERAL:   --> conformance/03-types/type_alias_unsupported_target_neg_01.zom:1:1
