@@ -1933,23 +1933,29 @@ ast::NodeId Parser::Impl::parseFunctionDeclaration(ParserSyntaxFactory& builder,
                                                    size_t end, bool isBlockFunction) const {
   const FunctionDeclarationParts parts = parseFunctionDeclarationParts(start, end);
 
-  // Parse type parameters (also runs diagnostics).
-  ast::NodeId typeParams;
-  if (parts.nameIndex < end) {
-    size_t typeParamStart = parts.nameIndex + 1;
-    if (typeParamStart < end && kindAt(typeParamStart) == ast::SyntaxKind::LessThan) {
-      typeParams = parseTypeParameters(builder, typeParamStart, end);
-    } else {
-      diagnoseDeclarationTypeParameterSyntax(parts.nameIndex + 1, end);
-    }
-  }
-
+  // Resolve the optional where clause BEFORE parsing type parameters so the
+  // generic parameter list is parsed exactly once. Parsing it first without the
+  // where clause and then again with it appended orphaned the first pass's
+  // GenericParams/GenericTypeParam nodes, which the binder whole-tree preorder
+  // invariant rejects.
   const size_t whereSearchStart =
       parts.closeParen < parts.headerEnd ? parts.closeParen + 1 : parts.headerEnd;
   TokenCursor whereCursor = tokenCursorAt(whereSearchStart);
   const size_t where = consumeBalancedTypeIdentifierUntil(whereCursor, parts.headerEnd, "where"_zc);
   ast::NodeId whereClause;
   if (where < parts.headerEnd) { whereClause = parseWhereClause(builder, where, parts.headerEnd); }
+
+  // Parse type parameters (also runs diagnostics).
+  ast::NodeId typeParams;
+  if (parts.nameIndex < end) {
+    size_t typeParamStart = parts.nameIndex + 1;
+    if (typeParamStart < end && kindAt(typeParamStart) == ast::SyntaxKind::LessThan) {
+      typeParams = whereClause ? parseTypeParameters(builder, typeParamStart, end, whereClause)
+                               : parseTypeParameters(builder, typeParamStart, end);
+    } else {
+      diagnoseDeclarationTypeParameterSyntax(parts.nameIndex + 1, end);
+    }
+  }
 
   ast::IdentId name;
   if (parts.nameIndex < end) { name = internIdent(builder, parts.nameIndex); }
@@ -1972,9 +1978,9 @@ ast::NodeId Parser::Impl::parseFunctionDeclaration(ParserSyntaxFactory& builder,
     raisesTy = parseTypeRange(builder, parts.raises + 1, signatureEnd);
   }
   if (where < parts.headerEnd && !whereClause) { return ast::NodeId(); }
-  if (typeParams && whereClause) {
-    typeParams = parseTypeParameters(builder, parts.nameIndex + 1, end, whereClause);
-  } else if (whereClause) {
+  // A where clause without a generic parameter list still attaches to an empty
+  // GenericParams node. The non-empty list was parsed exactly once above.
+  if (!typeParams && whereClause) {
     zc::Vector<ast::NodeId> emptyParams;
     typeParams = builder.makeGenericParams(rangeFor(where, parts.headerEnd), 0,
                                            builder.makeList(emptyParams.asPtr()), whereClause);
@@ -2001,11 +2007,13 @@ ast::NodeId Parser::Impl::parseNamedTypeDeclaration(ParserSyntaxFactory& builder
     }
   }
 
-  // Parse type parameters (also runs diagnostics).
-  ast::NodeId typeParams;
+  // Locate the generic parameter list only to advance the header cursor past
+  // it (cursor math; no AST node is built here). The GenericParams node is
+  // built once below, at source-preorder position, with the where clause known.
+  bool hasTypeParameters = false;
   size_t headerCursor = nameIndex < end ? nameIndex + 1 : end;
   if (headerCursor < end && kindAt(headerCursor) == ast::SyntaxKind::LessThan) {
-    typeParams = parseTypeParameters(builder, headerCursor, end);
+    hasTypeParameters = true;
     TokenCursor angleCursor = tokenCursorAt(headerCursor);
     headerCursor = consumeBalancedAngleList(angleCursor, end) ? angleCursor.position() : end;
   } else if (nameIndex < end) {
@@ -2027,6 +2035,39 @@ ast::NodeId Parser::Impl::parseNamedTypeDeclaration(ParserSyntaxFactory& builder
   TokenCursor whereCursor = tokenCursorAt(headerCursor);
   const size_t where = consumeBalancedTypeIdentifierUntil(whereCursor, headerEnd, "where"_zc);
   const size_t heritageEnd = where < headerEnd ? where : headerEnd;
+
+  // Parse the where clause first (cursor-only scan above found its range). The
+  // WhereClause node has a later source position than the parameter list, so a
+  // larger preorder id is correct. Interfaces carry their own heritage-before-
+  // where grammar and do not accept a trailing clause here.
+  ast::NodeId whereClause;
+  if (where < headerEnd && kind != ast::SyntaxKind::InterfaceDecl) {
+    whereClause = parseWhereClause(builder, where, headerEnd);
+    if (!whereClause) { return ast::NodeId(); }
+  } else if (where < headerEnd) {
+    if (!shouldSuppressDiagnostic(where)) {
+      diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
+          tokenAt(where).getLocation());
+    }
+    return ast::NodeId();
+  }
+
+  // Build the GenericParams node exactly once, before heritage and body so its
+  // preorder id matches the source position. The previous code parsed it once
+  // without the where clause and then again with it, orphaning the first node
+  // set and tripping the binder whole-tree preorder invariant.
+  ast::NodeId typeParams;
+  if (hasTypeParameters) {
+    typeParams = whereClause ? parseTypeParameters(builder, nameIndex + 1, end, whereClause)
+                             : parseTypeParameters(builder, nameIndex + 1, end);
+  } else if (whereClause) {
+    zc::Vector<ast::NodeId> emptyParams;
+    typeParams = builder.makeGenericParams(rangeFor(where, headerEnd), 0,
+                                           builder.makeList(emptyParams.asPtr()), whereClause);
+  }
+
+  // Parse the heritage (class base or interface list) after the parameter list
+  // so heritage nodes get their correct later preorder ids.
   ast::NodeId classBase;
   if (kind == ast::SyntaxKind::ClassDecl && headerCursor < heritageEnd) {
     if (kindAt(headerCursor) != ast::SyntaxKind::Colon || headerCursor + 1 >= heritageEnd) {
@@ -2047,24 +2088,6 @@ ast::NodeId Parser::Impl::parseNamedTypeDeclaration(ParserSyntaxFactory& builder
     const size_t errorCountBeforeHeritage = diagnosticFacts.errorCount();
     ifaces = parseInterfaceHeritage(builder, headerCursor, heritageEnd);
     if (diagnosticFacts.errorCount() != errorCountBeforeHeritage) { return ast::NodeId(); }
-  }
-  ast::NodeId whereClause;
-  if (where < headerEnd && kind != ast::SyntaxKind::InterfaceDecl) {
-    whereClause = parseWhereClause(builder, where, headerEnd);
-    if (!whereClause) { return ast::NodeId(); }
-    if (typeParams) {
-      typeParams = parseTypeParameters(builder, nameIndex + 1, end, whereClause);
-    } else {
-      zc::Vector<ast::NodeId> emptyParams;
-      typeParams = builder.makeGenericParams(rangeFor(where, headerEnd), 0,
-                                             builder.makeList(emptyParams.asPtr()), whereClause);
-    }
-  } else if (where < headerEnd) {
-    if (!shouldSuppressDiagnostic(where)) {
-      diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(
-          tokenAt(where).getLocation());
-    }
-    return ast::NodeId();
   }
 
   // Run body diagnostics and build real member AST.
