@@ -430,6 +430,107 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarLocalOverwriteReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers one aggregate-initializer single user-local return body.
+///
+/// Byte-identical to the legacy dedicated single-local aggregate rail: one
+/// root scope, one UserLocal at localId(1) (no parameter locals, even when the
+/// signature has parameters), StorageLive plus an Initialize Assign of a
+/// nominal aggregate with constant elements, and a Return selecting either
+/// that local (whole struct) or one of its fields.
+///
+/// - N==2 leading `let` bindings where the single binding is an aggregate
+///   initializer with constant elements; a literal/parameter/local/binary
+///   initializer keeps the dedicated legacy rail.
+/// - The return is a bare user-local reference (whole struct) or a single
+///   field projection of that local; aggregate composites and field writes
+///   stay on the legacy rail.
+/// - Aggregate elements must all be scalar constants of their element type.
+/// - No unsafe-tail variant joins this arm.
+zc::Maybe<RecursiveFunctionProduct> buildAggregateLocalReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
+    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
+    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  auto sourceReturn = returnFor(hirModule, block.statements[block.statements.size() - 1]);
+  if (sourceReturn == zc::none) return zc::none;
+
+  auto sourceLocal = localFor(hirModule, block.statements[0]);
+  if (sourceLocal == zc::none) return zc::none;
+  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+
+  hir::HirNodeId initializerNode;
+  ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
+  auto aggregate = aggregateFor(hirModule, initializerNode);
+  if (aggregate == zc::none) return zc::none;
+  auto returnLocalReference = localReferenceFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
+  auto returnFieldProjection =
+      localFieldProjectionFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
+  if (returnLocalReference == zc::none && returnFieldProjection == zc::none) return zc::none;
+
+  // Strict gate, self-contained.
+  if (declaration.unsafeBlock != zc::none) return zc::none;
+  if (block.statements.size() != 2) return zc::none;
+  if (binding.local.ordinal() != 1) return zc::none;
+  if (binding.type != declaration.resultType && returnLocalReference != zc::none) return zc::none;
+
+  const auto& sourceAggregate = ZC_ASSERT_NONNULL(aggregate);
+  if (sourceAggregate.type != binding.type) return zc::none;
+
+  // The returned place must read the single aggregate user local.
+  if (returnLocalReference != zc::none &&
+      ZC_ASSERT_NONNULL(returnLocalReference).local != binding.local) {
+    return zc::none;
+  }
+  if (returnFieldProjection != zc::none) {
+    const auto& projection = ZC_ASSERT_NONNULL(returnFieldProjection);
+    if (projection.type != declaration.resultType) return zc::none;
+  }
+
+  // Every aggregate element is a constant of its declared element type.
+  zc::Vector<MirNominalAggregateElement> elements;
+  for (const auto& element : sourceAggregate.elements) {
+    elements.add(MirNominalAggregateElement{
+        element.field, MirOperand::constant(element.type, element.value.clone())});
+  }
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId userLocal =
+      ctx.declareLocal(MirLocalKind::UserLocal, binding.type, scope, binding.sourceSpan.clone());
+
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  ctx.appendStatement(MirStatement::storageLive(userLocal, binding.sourceSpan.clone()));
+  zc::Vector<MirProjection> destinationProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(userLocal, binding.type, zc::mv(destinationProjections), binding.type),
+      MirRvalue::nominalAggregate(sourceAggregate.definition, sourceAggregate.type,
+                                  zc::mv(elements)),
+      MirInitializationKind::Initialize, sourceAggregate.sourceSpan.clone()));
+
+  zc::Vector<MirProjection> returnProjections;
+  identity::SemanticTypeId returnType = binding.type;
+  if (returnFieldProjection != zc::none) {
+    const auto& projection = ZC_ASSERT_NONNULL(returnFieldProjection);
+    returnType = projection.type;
+    returnProjections.add(MirProjection::field(projection.field, binding.type, projection.type));
+  }
+  auto returnOperand = placeUse(
+      proofs, copyMarker, MirPlace(userLocal, binding.type, zc::mv(returnProjections), returnType));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(
+      MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                 ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 }  // namespace
 
 zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
@@ -498,6 +599,17 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
                                       copyMarker);
       }
     }
+  }
+
+  // Single aggregate-initialized user local:
+  // `let p = T{..constants..}; return p;` or `return p.f;`. One UserLocal at
+  // localId(1), no parameter locals, a nominal aggregate rvalue of constant
+  // elements, and a whole-local or one-field return. Aggregate composites and
+  // field writes keep the legacy rail.
+  if (block.statements.size() == 2 && declaration.unsafeBlock == zc::none) {
+    auto aggregateProduct =
+        buildAggregateLocalReturn(declaration, block, hirModule, identities, proofs, copyMarker);
+    if (aggregateProduct != zc::none) return aggregateProduct;
   }
 
   // Single scalar local with one repeated literal write:
