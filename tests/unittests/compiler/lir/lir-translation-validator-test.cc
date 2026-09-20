@@ -120,7 +120,8 @@ Module scalarLir(identity::DefId owner, uint64_t bits) {
 // computes temp = (const 1 Eq const 2) and switches on it, arms assign i32
 // constants 5 and 7, join returns result.
 mir::MirFunction diamondMir(identity::DefId owner, identity::SemanticTypeId i32,
-                            identity::SemanticTypeId boolType, mir::MirComparisonOperator op) {
+                            identity::SemanticTypeId boolType, mir::MirComparisonOperator op,
+                            bool firstArmValue = true) {
   zc::Vector<mir::MirSourceScope> scopes;
   zc::Maybe<mir::MirSourceScopeId> noParent;
   scopes.add(mir::MirSourceScope{mirScope(1), zc::mv(noParent), span()});
@@ -142,8 +143,8 @@ mir::MirFunction diamondMir(identity::DefId owner, identity::SemanticTypeId i32,
                                    mir::MirOperand::constant(i32, integerConstant(2)), boolType),
         mir::MirInitializationKind::Initialize, span()));
     zc::Vector<mir::MirSwitchIntArm> arms;
-    arms.add(
-        mir::MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), mirBlock(2)});
+    arms.add(mir::MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(firstArmValue),
+                                  mirBlock(2)});
     auto terminator = mir::MirTerminator::switchInt(
         mir::MirOperand::copy(place(mirLocal(3), boolType)), zc::mv(arms), mirBlock(3), span());
     blocks.add(
@@ -341,6 +342,23 @@ ZC_TEST("Translation validator rejects swapped branch polarity") {
   mutation.polaritySwap = true;
   ZC_EXPECT(validateDiamond(diamondLir(owner, mutation), types, i32, boolType, owner) ==
             TranslationFaultKind::EdgeTargetMismatch);
+}
+
+ZC_TEST("Translation validator rejects an inverted MIR switch arm value") {
+  // The LIR is faithful (TRUE -> bb2, FALSE -> bb3), but the MIR arm mapped to
+  // bb2 carries the value `false`, so taking bb2 happens when the condition is
+  // false. Polarity is therefore inverted even though every target ordinal
+  // matches; the validator must read the arm value rather than trust its
+  // position.
+  TestSemanticTypeContext types;
+  const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto boolType = types.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto owner = testDefinition(40);
+  auto finding = TranslationValidator::validate(
+      diamondMir(owner, i32, boolType, mir::MirComparisonOperator::Eq, /*firstArmValue=*/false),
+      diamondLir(owner, DiamondMutation{}), types.semanticTypes());
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == TranslationFaultKind::EdgeTargetMismatch);
 }
 
 ZC_TEST("Translation validator rejects an undeclared-condition branch") {
@@ -554,6 +572,96 @@ ZC_TEST("Translation validator rejects a call index aimed at a sibling with the 
       TranslationValidator::validate(mirFunctions.asPtr(), module, types.semanticTypes());
   ZC_REQUIRE(finding != zc::none);
   ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == TranslationFaultKind::CallCalleeMismatch);
+}
+
+ZC_TEST("Translation validator fail-closes on a non-constant call argument") {
+  // A MIR call argument that is a place (not a constant) must produce a
+  // translation finding rather than dereferencing the Constant OneOf variant.
+  // The LIR side carries a constant argument, so without the kind guard the
+  // validator would call MirOperand::constantValue() on a Copy operand and
+  // abort (or read UB under NDEBUG).
+  TestSemanticTypeContext types;
+  const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto callerOwner = testDefinition(46);
+  const auto calleeOwner = testDefinition(47);
+
+  zc::Vector<mir::MirSourceScope> scopes;
+  zc::Maybe<mir::MirSourceScopeId> noParent;
+  scopes.add(mir::MirSourceScope{mirScope(1), zc::mv(noParent), span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(mir::MirLocalDeclaration{mirLocal(1), mir::MirLocalKind::FunctionResult, i32,
+                                      mirScope(1), span()});
+  locals.add(mir::MirLocalDeclaration{mirLocal(2), mir::MirLocalKind::Temporary, i32, mirScope(1),
+                                      span()});
+  zc::Vector<mir::MirBasicBlock> blocks;
+  {
+    zc::Vector<mir::MirOperand> arguments;
+    arguments.add(mir::MirOperand::copy(place(mirLocal(2), i32)));
+    auto effect = mir::MirCallEffect::noActivation();
+    auto terminator =
+        mir::MirTerminator::call(calleeOwner, zc::mv(arguments), zc::mv(effect),
+                                 place(mirLocal(1), i32), mirBlock(2), zc::none, span());
+    blocks.add(mir::MirBasicBlock{mirBlock(1), mirScope(1), zc::Vector<mir::MirStatement>{},
+                                  zc::mv(terminator)});
+  }
+  {
+    auto terminator =
+        mir::MirTerminator::returnValue(mir::MirOperand::copy(place(mirLocal(1), i32)), span());
+    blocks.add(mir::MirBasicBlock{mirBlock(2), mirScope(1), zc::Vector<mir::MirStatement>{},
+                                  zc::mv(terminator)});
+  }
+  mir::MirFunction caller{callerOwner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+  zc::Vector<mir::MirBasicBlock> calleeBlocks;
+  calleeBlocks.add(mir::MirBasicBlock{
+      mirBlock(1), mirScope(1), zc::Vector<mir::MirStatement>{},
+      mir::MirTerminator::returnValue(mir::MirOperand::constant(i32, integerConstant(5)), span())});
+  zc::Vector<mir::MirSourceScope> calleeScopes;
+  zc::Maybe<mir::MirSourceScopeId> calleeNoParent;
+  calleeScopes.add(mir::MirSourceScope{mirScope(1), zc::mv(calleeNoParent), span()});
+  mir::MirFunction callee{calleeOwner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(calleeScopes),
+                          zc::Vector<mir::MirLocalDeclaration>{},
+                          zc::mv(calleeBlocks)};
+
+  zc::Vector<Function> lirFunctions;
+  {
+    zc::Vector<BasicBlock> callerBlocks;
+    callerBlocks.add(BasicBlock(
+        lirBlock(1), Terminator::callFunctionWithArgument(
+                         /*calleeIndex=*/1, /*destinationOrdinal=*/1, i32Const(9), lirBlock(2))));
+    callerBlocks.add(BasicBlock(lirBlock(2), Terminator::returnLocal(1)));
+    zc::Vector<Local> parameters;
+    zc::Vector<Local> lirLocals;
+    lirLocals.add(Local(1, i32Carrier()));
+    lirFunctions.add(Function(callerOwner, zc::heapString("zom.caller"), i32Carrier(),
+                              zc::mv(parameters), zc::mv(lirLocals), zc::mv(callerBlocks)));
+  }
+  {
+    zc::Vector<BasicBlock> calleeLirBlocks;
+    calleeLirBlocks.add(BasicBlock(lirBlock(1), Terminator::returnInteger(i32Const(5))));
+    lirFunctions.add(
+        Function(calleeOwner, zc::heapString("zom.callee"), i32Carrier(), zc::mv(calleeLirBlocks)));
+  }
+
+  auto mirFunctions = zc::heapArray<const mir::MirFunction*>(2);
+  mirFunctions[0] = &caller;
+  mirFunctions[1] = &callee;
+  // The guard guarantees a finding is returned (not an abort); the exact tag is
+  // a constant/call correspondence mismatch.
+  auto finding = TranslationValidator::validate(mirFunctions.asPtr(), Module(zc::mv(lirFunctions)),
+                                                types.semanticTypes());
+  ZC_EXPECT(finding != zc::none);
 }
 
 }  // namespace

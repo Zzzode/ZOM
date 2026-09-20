@@ -98,6 +98,14 @@ zc::Maybe<IntegerConstant> constantFor(const mir::MirOperand& operand, ValueType
   return IntegerConstant::from(carrier, ZC_ASSERT_NONNULL(bits));
 }
 
+/// \brief Read a constant operand's semantic type without an unguarded OneOf
+/// access. Returns none for any non-constant operand so callers fail closed
+/// with a translation finding instead of aborting (or reading UB under NDEBUG).
+zc::Maybe<identity::SemanticTypeId> constantType(const mir::MirOperand& operand) noexcept {
+  if (operand.kind() != mir::MirOperandKind::Constant) return zc::none;
+  return operand.constantValue().type;
+}
+
 ComparisonOp comparisonOp(mir::MirComparisonOperator op) noexcept {
   switch (op) {
     case mir::MirComparisonOperator::Eq:
@@ -251,18 +259,22 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     if (aggregate.elements.size() == 0) {
       return fault(TranslationFaultKind::EffectMismatch, functionIndex);
     }
-    const identity::SemanticTypeId fieldType =
-        fold.hasFieldProjection && fold.projectedField != zc::none
-            ? [&]() {
-                for (const auto& element : aggregate.elements) {
-                  if (element.field == ZC_ASSERT_NONNULL(fold.projectedField)) {
-                    return element.operand.constantValue().type;
-                  }
-                }
-                return aggregate.elements[0].operand.constantValue().type;
-              }()
-            : aggregate.elements[0].operand.constantValue().type;
-    expectedReturnCarrier = integerCarrier(fieldType, types);
+    zc::Maybe<identity::SemanticTypeId> fieldType;
+    if (fold.hasFieldProjection && fold.projectedField != zc::none) {
+      for (const auto& element : aggregate.elements) {
+        if (element.field == ZC_ASSERT_NONNULL(fold.projectedField)) {
+          fieldType = constantType(element.operand);
+          break;
+        }
+      }
+      if (fieldType == zc::none) { fieldType = constantType(aggregate.elements[0].operand); }
+    } else {
+      fieldType = constantType(aggregate.elements[0].operand);
+    }
+    if (fieldType == zc::none) {
+      return fault(TranslationFaultKind::EffectMismatch, functionIndex);
+    }
+    expectedReturnCarrier = integerCarrier(ZC_ASSERT_NONNULL(fieldType), types);
   } else {
     expectedReturnCarrier = integerCarrier(mir.resultType, types);
   }
@@ -453,8 +465,11 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
               return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
             }
             for (uint32_t e = 0; e < slots.size(); ++e) {
-              const auto carrier =
-                  integerCarrier(aggregate.elements[e].operand.constantValue().type, types);
+              const auto elementType = constantType(aggregate.elements[e].operand);
+              if (elementType == zc::none) {
+                return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
+              }
+              const auto carrier = integerCarrier(ZC_ASSERT_NONNULL(elementType), types);
               if (carrier == zc::none ||
                   !sameConstant(Operand::constant(slots[e]), aggregate.elements[e].operand,
                                 ZC_ASSERT_NONNULL(carrier))) {
@@ -469,7 +484,11 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
             for (const auto& element : aggregate.elements) {
               if (fold.projectedField != zc::none &&
                   element.field == ZC_ASSERT_NONNULL(fold.projectedField)) {
-                const auto carrier = integerCarrier(element.operand.constantValue().type, types);
+                const auto elementType = constantType(element.operand);
+                if (elementType == zc::none) {
+                  return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
+                }
+                const auto carrier = integerCarrier(ZC_ASSERT_NONNULL(elementType), types);
                 if (carrier == zc::none ||
                     !sameConstant(Operand::constant(lirTerminator.returnIntegerValue()),
                                   element.operand, ZC_ASSERT_NONNULL(carrier))) {
@@ -520,9 +539,27 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
         if (lirTerminator.conditionOrdinal() != switchInt.discriminant.place().local().ordinal()) {
           return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
         }
-        // The first arm is the true arm and maps to the LIR true target; the
-        // default maps to the false target; every later arm must share the
-        // default target (a one-true-arm loop or a two-arm true/false diamond).
+        // Polarity and edge correspondence. The arm mapped to the LIR true
+        // target must carry the boolean value `true`; the false target is the
+        // MIR default. Reading the arm value (rather than trusting its
+        // position) is what proves polarity is preserved instead of inheriting
+        // it from the MIR producer's shape rail.
+        //
+        // Admitted shapes: a one-true-arm loop (arms[0] -> true target, every
+        // other value falling through to the default), or a two-arm true/false
+        // diamond where arms[1] is the literal false arm sharing the default.
+        {
+          const auto trueValue = switchInt.arms[0].value.booleanValue();
+          if (trueValue == zc::none || !ZC_ASSERT_NONNULL(trueValue)) {
+            return fault(TranslationFaultKind::EdgeTargetMismatch, functionIndex, b + 1, b + 1);
+          }
+          for (uint32_t a = 1; a < switchInt.arms.size(); ++a) {
+            const auto armValue = switchInt.arms[a].value.booleanValue();
+            if (armValue == zc::none || ZC_ASSERT_NONNULL(armValue)) {
+              return fault(TranslationFaultKind::EdgeTargetMismatch, functionIndex, b + 1, b + 1);
+            }
+          }
+        }
         if (lirTerminator.condTrueTarget().ordinal() != switchInt.arms[0].target.ordinal() ||
             lirTerminator.condFalseTarget().ordinal() != switchInt.defaultTarget.ordinal()) {
           return fault(TranslationFaultKind::EdgeTargetMismatch, functionIndex, b + 1, b + 1);
@@ -571,8 +608,11 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
           const Operand& actual = lirTerminator.callHasArgument()
                                       ? Operand::constant(lirTerminator.callArgument())
                                       : Operand::constant(lirTerminator.callArguments()[a]);
+          if (call.arguments[a].kind() != mir::MirOperandKind::Constant) {
+            return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
+          }
           const auto carrier = integerCarrier(call.arguments[a].constantValue().type, types);
-          if (call.arguments[a].kind() != mir::MirOperandKind::Constant || carrier == zc::none ||
+          if (carrier == zc::none ||
               !sameConstant(actual, call.arguments[a], ZC_ASSERT_NONNULL(carrier))) {
             return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
           }
