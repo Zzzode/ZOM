@@ -119,8 +119,16 @@ bool legalKind(IrRejectedBranch branch, IrFailurePhase phase, IrFailureKind kind
       return kind == IrFailureKind::InvalidSsa || kind == IrFailureKind::MissingTargetLayout ||
              kind == IrFailureKind::InvalidAbi || kind == IrFailureKind::UnresolvedDispatch;
     case IrFailurePhase::LirVerification:
+      // Per-instance LIR data faults ...
+      // ... plus the session-owned compiler self-consistency invariants: a
+      // structural or translation verification rejection means lowering broke
+      // its own proof. That is a compiler defect at module granularity pre-
+      // monomorphization (no InstanceId exists yet), so it carries InvalidFact
+      // / CanonicalCodecMismatch under session ownership rather than an
+      // instance-scoped data fault.
       return kind == IrFailureKind::InvalidSsa || kind == IrFailureKind::MissingTargetLayout ||
-             kind == IrFailureKind::InvalidAbi;
+             kind == IrFailureKind::InvalidAbi || kind == IrFailureKind::InvalidFact ||
+             kind == IrFailureKind::CanonicalCodecMismatch;
     case IrFailurePhase::LlvmTranslation:
       return kind == IrFailureKind::InvalidSsa || kind == IrFailureKind::MissingTargetLayout ||
              kind == IrFailureKind::InvalidAbi || kind == IrFailureKind::BackendTranslationRejected;
@@ -193,6 +201,10 @@ bool legalOwnerSite(IrFailurePhase phase, IrFailureOwnerKind owner,
              (siteIsNone(site) || siteIs(site, IrFailureSiteKind::Mir) ||
               siteIs(site, IrFailureSiteKind::Lir));
     case IrFailurePhase::LirVerification:
+      // Per-instance LIR data faults are instance-owned with an optional LIR
+      // site. The structural/translation verifier compiler-defect rail is
+      // session-owned with no structural site before monomorphization.
+      if (owner == IrFailureOwnerKind::Session) { return siteIsNone(site); }
       return owner == IrFailureOwnerKind::Instance &&
              (siteIsNone(site) || siteIs(site, IrFailureSiteKind::Lir));
     case IrFailurePhase::LlvmTranslation:
