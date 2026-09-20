@@ -1570,6 +1570,9 @@ private:
       // RFC 0053: independently verify LIR structure and prove the module
       // preserves the verified MIR it was lowered from before any LLVM
       // translation. A failure here is a compiler defect, not a user error.
+      // zom.lir-verification.structural-stage: this call site is asserted by
+      // scripts/check-lir-verification-gate.py so the structural verifier
+      // cannot be disabled in production without a gate failure.
       auto structural = lir::LirStructuralVerifier::verify(lirModule);
       if (structural != zc::none) {
         // RFC 0053: a structural verification rejection is a compiler self-
@@ -1592,6 +1595,9 @@ private:
         presentedMir[index] = &functions[index];
       }
       ZC_IF_SOME(types, semanticTypes) {
+        // zom.lir-verification.translation-stage: asserted by
+        // scripts/check-lir-verification-gate.py so the MIR-to-LIR translation
+        // validator cannot be disabled in production without a gate failure.
         auto translation =
             lir::TranslationValidator::validate(presentedMir.asPtr(), lirModule, types);
         if (translation != zc::none) {
