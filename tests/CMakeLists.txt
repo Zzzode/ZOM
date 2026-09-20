@@ -162,7 +162,9 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-twocaller-consumer/Zom.toml::reject_twocaller_consumer::reject_twocaller_consumer"
       --reject-case
-      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-nonleaf-consumer/Zom.toml::reject_nonleaf_consumer::reject_nonleaf_consumer")
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-nonleaf-consumer/Zom.toml::reject_nonleaf_consumer::reject_nonleaf_consumer"
+      --incident-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml::installed_consumer::installed_consumer")
   set_tests_properties(object-emission-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)
 endif()
 

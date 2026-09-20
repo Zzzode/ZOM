@@ -129,8 +129,11 @@ bool expectedKind(IrRejectedBranch branch, IrFailurePhase phase, IrFailureKind k
       return kind == IrFailureKind::InvalidSsa || kind == IrFailureKind::MissingTargetLayout ||
              kind == IrFailureKind::InvalidAbi || kind == IrFailureKind::UnresolvedDispatch;
     case IrFailurePhase::LirVerification:
+      // Per-instance LIR data faults, plus the session-owned structural /
+      // translation compiler self-consistency invariants (RFC 0053).
       return kind == IrFailureKind::InvalidSsa || kind == IrFailureKind::MissingTargetLayout ||
-             kind == IrFailureKind::InvalidAbi;
+             kind == IrFailureKind::InvalidAbi || kind == IrFailureKind::InvalidFact ||
+             kind == IrFailureKind::CanonicalCodecMismatch;
     case IrFailurePhase::LlvmTranslation:
       return kind == IrFailureKind::InvalidSsa || kind == IrFailureKind::MissingTargetLayout ||
              kind == IrFailureKind::InvalidAbi || kind == IrFailureKind::BackendTranslationRejected;
@@ -196,6 +199,10 @@ bool expectedOwnerSite(IrFailurePhase phase, IrFailureOwnerKind owner,
              (expectedNone(site) || expectedSite(site, IrFailureSiteKind::Mir) ||
               expectedSite(site, IrFailureSiteKind::Lir));
     case IrFailurePhase::LirVerification:
+      // Per-instance data faults are instance-owned with an optional LIR site;
+      // the structural/translation compiler-defect rail is session-owned with
+      // no site before monomorphization (RFC 0053).
+      if (owner == IrFailureOwnerKind::Session) { return expectedNone(site); }
       return owner == IrFailureOwnerKind::Instance &&
              (expectedNone(site) || expectedSite(site, IrFailureSiteKind::Lir));
     case IrFailurePhase::LlvmTranslation:

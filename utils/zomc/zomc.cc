@@ -16,6 +16,7 @@
 #include <unistd.h>
 
 #include <cstdio>
+#include <cstdlib>
 #elif defined(__APPLE__)
 #include <mach-o/dyld.h>
 #include <stdlib.h>
@@ -75,6 +76,7 @@
 // build never references the isolation-wall shim or LIR lowering.
 #include "compiler/backend/llvm/llvm-translator.h"
 #include "compiler/lir/mir-to-lir.h"
+#include "compiler/lir/verify/lir-verification-failure.h"
 #include "compiler/lir/verify/lir-verifier.h"
 #include "compiler/lir/verify/translation-validator.h"
 #include "compiler/mir/built-mir.h"
@@ -1362,7 +1364,17 @@ private:
 #if ZOM_ENABLE_LLVM_BACKEND
   using NativeObjectResult = zc::OneOf<zc::Array<uint8_t>, zc::String>;
 
+  // Sentinel returned from buildNativeObject when an LIR verification finding
+  // was projected onto commandIncidents; callers detect it and surface the
+  // incident rail instead of treating it as an ordinary operational error.
+  static bool isLirVerificationSentinel(const zc::String& value) {
+    return value == "__zom_lir_verification_incident__"_zc;
+  }
+
+  bool lirVerificationIncident = false;
+
   NativeObjectResult buildNativeObject() {
+    lirVerificationIncident = false;
     const auto mirModules = session->getOwnershipCheckedMirModules();
     if (mirModules.size() != 1) {
       return NativeObjectResult(zc::str(
@@ -1541,14 +1553,39 @@ private:
     }
     backend::llvm::LlvmTranslator translator;
     ZC_IF_SOME(lirModule, lir) {
+      // Test-only fault injection: when ZOM_FORCE_LIR_VERIFICATION_FAULT is set,
+      // force a structural finding through the production fail-closed path so
+      // the CLI e2e test can assert incident + non-zero exit + no output file.
+      if (const char* forced = getenv("ZOM_FORCE_LIR_VERIFICATION_FAULT")) {
+        if (forced[0] != '\0') {
+          auto rejected = lir::projectLirVerificationIncident(lir::LirVerificationFinding{
+              lir::LirVerificationFaultKind::DanglingBlockTarget, 1, 1, 0});
+          ZC_REQUIRE(rejected != zc::none, "forced LIR verification fault must admit");
+          ZC_REQUIRE(commandIncidents.merge(zc::mv(ZC_ASSERT_NONNULL(rejected).incidents)),
+                     "LIR verification incident must fit the registered inventory");
+          lirVerificationIncident = true;
+          return NativeObjectResult(zc::str("__zom_lir_verification_incident__"));
+        }
+      }
       // RFC 0053: independently verify LIR structure and prove the module
       // preserves the verified MIR it was lowered from before any LLVM
       // translation. A failure here is a compiler defect, not a user error.
       auto structural = lir::LirStructuralVerifier::verify(lirModule);
       if (structural != zc::none) {
-        return NativeObjectResult(
-            zc::str("Internal compiler error: LIR structural verification failed (fault ",
-                    static_cast<unsigned>(ZC_ASSERT_NONNULL(structural).fault), ")."));
+        // RFC 0053: a structural verification rejection is a compiler self-
+        // consistency defect, not a source error. Project it through the IR
+        // failure algebra at IrFailurePhase::LirVerification onto the internal
+        // incident rail and abort emission without writing an output file.
+        auto rejected = lir::projectLirVerificationIncident(ZC_ASSERT_NONNULL(structural));
+        if (rejected == zc::none) {
+          return NativeObjectResult(
+              zc::str("Internal compiler error: LIR structural verification failed (fault ",
+                      static_cast<unsigned>(ZC_ASSERT_NONNULL(structural).fault), ")."));
+        }
+        ZC_REQUIRE(commandIncidents.merge(zc::mv(ZC_ASSERT_NONNULL(rejected).incidents)),
+                   "LIR verification incident must fit the registered inventory");
+        lirVerificationIncident = true;
+        return NativeObjectResult(zc::str("__zom_lir_verification_incident__"));
       }
       auto presentedMir = zc::heapArray<const mir::MirFunction*>(functions.size());
       for (size_t index = 0; index < functions.size(); ++index) {
@@ -1558,9 +1595,19 @@ private:
         auto translation =
             lir::TranslationValidator::validate(presentedMir.asPtr(), lirModule, types);
         if (translation != zc::none) {
-          return NativeObjectResult(
-              zc::str("Internal compiler error: MIR-to-LIR translation validation failed (fault ",
-                      static_cast<unsigned>(ZC_ASSERT_NONNULL(translation).fault), ")."));
+          // RFC 0053: route the translation validation finding through the IR
+          // failure algebra at IrFailurePhase::LirVerification to the incident
+          // rail instead of flattening it to an operational error string.
+          auto rejected = lir::projectLirVerificationIncident(ZC_ASSERT_NONNULL(translation));
+          if (rejected == zc::none) {
+            return NativeObjectResult(
+                zc::str("Internal compiler error: MIR-to-LIR translation validation failed (fault ",
+                        static_cast<unsigned>(ZC_ASSERT_NONNULL(translation).fault), ")."));
+          }
+          ZC_REQUIRE(commandIncidents.merge(zc::mv(ZC_ASSERT_NONNULL(rejected).incidents)),
+                     "LIR verification incident must fit the registered inventory");
+          lirVerificationIncident = true;
+          return NativeObjectResult(zc::str("__zom_lir_verification_incident__"));
         }
       }
       auto result = translator.translate(lirModule);
@@ -1577,7 +1624,14 @@ private:
 
   zc::MainBuilder::Validity emitNativeObject() {
     NativeObjectResult result = buildNativeObject();
-    if (result.is<zc::String>()) return zc::mv(result).get<zc::String>();
+    if (result.is<zc::String>()) {
+      auto error = zc::mv(result).get<zc::String>();
+      if (lirVerificationIncident && isLirVerificationSentinel(error)) {
+        reportSessionIncident();
+        return true;
+      }
+      return zc::mv(error);
+    }
     const auto& options = session->getCompilerOptions();
     if (options.emission.outputPath == zc::none) {
       return zc::str("Binary emission requires an output path (-o <file>).");
@@ -1634,7 +1688,14 @@ private:
 #if defined(__linux__) && defined(__x86_64__) && defined(ZOM_RUNTIME_ENTRY_OBJECT) && \
     defined(ZOM_HOST_LINKER)
     NativeObjectResult objectResult = buildNativeObject();
-    if (objectResult.is<zc::String>()) return zc::mv(objectResult).get<zc::String>();
+    if (objectResult.is<zc::String>()) {
+      auto error = zc::mv(objectResult).get<zc::String>();
+      if (lirVerificationIncident && isLirVerificationSentinel(error)) {
+        reportSessionIncident();
+        return zc::String();
+      }
+      return zc::mv(error);
+    }
     zc::Array<uint8_t> moduleObject = zc::mv(objectResult).get<zc::Array<uint8_t>>();
     auto entryBytesMaybe = readAbsoluteBytes(ZOM_RUNTIME_ENTRY_OBJECT ""_zc);
     auto linkerBytesMaybe = readAbsoluteBytes(ZOM_HOST_LINKER ""_zc);

@@ -106,6 +106,54 @@ def reject_case(zomc: str, manifest: str, package: str, binary: str) -> None:
             )
 
 
+def incident_case(zomc: str, manifest: str, package: str, binary: str) -> None:
+    # RFC 0053: a forced LIR verification finding must abort emission through the
+    # internal incident rail (phase ir + fingerprint), non-zero exit, and no
+    # output object -- never an ordinary operational error string.
+    resolved_manifest = str(Path(manifest).resolve(strict=True))
+    with tempfile.TemporaryDirectory(prefix="zom-object-emission-incident-") as temporary:
+        work_directory = Path(temporary)
+        output = work_directory / "out.o"
+        env = dict(os.environ)
+        env["ZOM_FORCE_LIR_VERIFICATION_FAULT"] = "1"
+        result = subprocess.run(
+            [
+                zomc,
+                "compile",
+                "--manifest-path",
+                resolved_manifest,
+                "--package",
+                package,
+                "--bin",
+                binary,
+                "--emit",
+                "binary",
+                "-o",
+                str(output),
+            ],
+            cwd=work_directory,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            raise RuntimeError(
+                f"forced LIR verification fault did not fail emission for {package}\n"
+                f"{result.stdout}"
+            )
+        if output.exists():
+            raise RuntimeError(
+                f"LIR verification failure for {package} left an output artifact on disk"
+            )
+        if "internal compiler error" not in result.stdout or "phase: ir" not in result.stdout:
+            raise RuntimeError(
+                f"LIR verification failure was not routed to the internal incident rail\n"
+                f"{result.stdout}"
+            )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--zomc", required=True)
@@ -115,6 +163,10 @@ def main() -> int:
     # (non-zero exit, no output object) because its shape is outside every
     # lowering slice.
     parser.add_argument("--reject-case", action="append", default=[])
+    # Each incident-case is "manifest::package::bin"; with the LIR verification
+    # fault-injection hook set it must surface an internal incident with no
+    # output object.
+    parser.add_argument("--incident-case", action="append", default=[])
     arguments = parser.parse_args()
     zomc = str(Path(arguments.zomc).resolve(strict=True))
 
@@ -131,6 +183,13 @@ def main() -> int:
             raise RuntimeError(f"malformed --reject-case (want manifest::package::bin): {case}")
         manifest, package, binary = parts
         reject_case(zomc, manifest, package, binary)
+
+    for case in arguments.incident_case:
+        parts = case.split("::")
+        if len(parts) != 3:
+            raise RuntimeError(f"malformed --incident-case (want manifest::package::bin): {case}")
+        manifest, package, binary = parts
+        incident_case(zomc, manifest, package, binary)
 
     print("zomc compile --emit=binary wrote a native ELF object for every case")
     return 0
