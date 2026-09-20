@@ -1,6 +1,6 @@
 # LIR
 
-Updated: 2026-09-19
+Updated: 2026-09-21
 
 ## Authority And Status
 

@@ -1,6 +1,6 @@
 # IR Lowering And Verification
 
-Updated: 2026-09-14
+Updated: 2026-09-21
 
 ## Authority And Status
 
