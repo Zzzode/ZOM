@@ -302,11 +302,25 @@ jobs:
             --gate-module cmake/utils/llvm.cmake \
             --real-llvm-dir "$HOME/toolchains/llvm22/lib/cmake/llvm"
 
-      - name: Build backend translation test
-        run: cmake --build build-llvm --target llvm-translation-test
+      - name: Run RFC 0010 IR and ownership architecture gates
+        run: |
+          python3 scripts/check-ir-architecture.py --check
+          python3 scripts/check-ownership-architecture.py --check
+          python3 scripts/check-lir-verification-gate.py --check
+
+      - name: Build backend translation test and zomc
+        run: cmake --build build-llvm --target llvm-translation-test zomc
 
       - name: Run backend translation test
         run: ctest --test-dir build-llvm --output-on-failure -R llvm-translation-test
+
+      # The llvm-labeled lane also covers object-emission-cli and
+      # native-run-cli, including the RFC 0053 LIR verification fail-closed
+      # incident case (forced finding -> internal incident, non-zero exit, no
+      # output object). Without this lane the verifier stages are removable
+      # without CI noticing.
+      - name: Run native object emission and LIR verification CLI suite
+        run: ctest --test-dir build-llvm --output-on-failure -L llvm
 
   # TODO(O2-KR2.5): add the macos-15 backend lane (RFC 0016 desirable target).
   # Deferred here because a from-source LLVM build on macOS CI is heavy and this
