@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "compiler/checker/body/marker-proof.h"
 #include "compiler/mir/build/mir-fn-builder.h"
 #include "compiler/mir/built-mir.h"
 #include "zc/core/array.h"
@@ -12,9 +13,6 @@
 
 namespace zomlang::compiler::checker {
 class CheckerIdentityAuthority;
-namespace marker {
-class MarkerProofEngine;
-}
 }  // namespace zomlang::compiler::checker
 
 namespace zomlang::compiler::mir {
