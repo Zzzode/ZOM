@@ -64,47 +64,47 @@ constexpr bool kindInRange(SyntaxKind kind, uint32_t first, uint32_t last) noexc
 }
 
 constexpr bool isModuleKind(SyntaxKind kind) noexcept {
-  return kindInRange(kind, 0x170, 0x17f);
+  return kindInRange(kind, 0x370, 0x37f);
 }
 
 constexpr bool isAttributeKind(SyntaxKind kind) noexcept {
-  return kindInRange(kind, 0x000, 0x00f);
+  return kindInRange(kind, 0x200, 0x20f);
 }
 
 constexpr bool isFFIKind(SyntaxKind kind) noexcept {
-  return kindInRange(kind, 0x010, 0x01f);
+  return kindInRange(kind, 0x210, 0x21f);
 }
 
 constexpr bool isEnumVariantKind(SyntaxKind kind) noexcept {
-  return kindInRange(kind, 0x030, 0x03f);
+  return kindInRange(kind, 0x230, 0x23f);
 }
 
 constexpr bool isPatternKind(SyntaxKind kind) noexcept {
-  return kindInRange(kind, 0x040, 0x05f);
+  return kindInRange(kind, 0x240, 0x25f);
 }
 
 constexpr bool isLiteralExprKind(SyntaxKind kind) noexcept {
-  return kindInRange(kind, 0x060, 0x07f);
+  return kindInRange(kind, 0x260, 0x27f);
 }
 
 constexpr bool isExprKind(SyntaxKind kind) noexcept {
-  return kindInRange(kind, 0x080, 0x0bf);
+  return kindInRange(kind, 0x280, 0x2bf);
 }
 
 constexpr bool isTypeKind(SyntaxKind kind) noexcept {
-  return kindInRange(kind, 0x0c0, 0x0df);
+  return kindInRange(kind, 0x2c0, 0x2df);
 }
 
 constexpr bool isStatementKind(SyntaxKind kind) noexcept {
-  return kindInRange(kind, 0x0e0, 0x10f);
+  return kindInRange(kind, 0x2e0, 0x30f);
 }
 
 constexpr bool isDeclarationKind(SyntaxKind kind) noexcept {
-  return kindInRange(kind, 0x110, 0x16f);
+  return kindInRange(kind, 0x310, 0x36f);
 }
 
 constexpr bool isTypeMemberKind(SyntaxKind kind) noexcept {
-  return kindInRange(kind, 0x180, 0x18f);
+  return kindInRange(kind, 0x380, 0x38f);
 }
 
 constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {

@@ -27,6 +27,12 @@ DEFAULT_OUTPUT_DIR = os.path.join(
 )
 NAMESPACE_OPEN = "namespace zomlang {\nnamespace compiler {\nnamespace ast {"
 NAMESPACE_CLOSE = "}  // namespace ast\n}  // namespace compiler\n}  // namespace zomlang"
+
+# AST node SyntaxKind ordinals begin above the contiguous token enumerators.
+# Tokens occupy 0x000..0x0bf; node raw ids in the schema are kept small and
+# readable (0x000..) and get this base added only at emission, so a node never
+# aliases a token (raw id 0 AttributeList otherwise equals SyntaxKind::Unknown).
+kNodeKindBase = 0x200
 HEADER = """// Copyright (c) 2024-2025 Zode.Z. All rights reserved
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -489,7 +495,9 @@ def generate_node_kind_inc(schema: dict[str, Any]) -> str:
         "",
     ]
     for item in variants(schema):
-        lines.append(f"ZOM_AST_NODE({item['name']}, {as_int(item['id']):#05x})")
+        lines.append(
+            f"ZOM_AST_NODE({item['name']}, {as_int(item['id']) + kNodeKindBase:#05x})"
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -612,7 +620,10 @@ def generate_node_accessors_h(schema: dict[str, Any]) -> str:
     ]
     for category_name, (first, last) in categories(schema).items():
         lines.append(f"constexpr bool is{category_name}Kind(SyntaxKind kind) noexcept {{")
-        lines.append(f"  return kindInRange(kind, {first:#05x}, {last:#05x});")
+        lines.append(
+            f"  return kindInRange(kind, {first + kNodeKindBase:#05x},"
+            f" {last + kNodeKindBase:#05x});"
+        )
         lines.append("}")
         lines.append("")
 
