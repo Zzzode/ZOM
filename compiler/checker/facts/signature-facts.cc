@@ -2690,6 +2690,64 @@ zc::Maybe<identity::DefId> resolvedDefinitionAtNode(
   return result;
 }
 
+/// \brief Resolve a bare relative single-segment type path to a unique local
+/// named-type definition.
+///
+/// The binder resolves names only inside detached declaration and member
+/// bodies, so an interface heritage header (`interface Child : Base`) never
+/// gets a node binding for the parent path. This mirrors the fallback the
+/// expression type builder uses: a relative one-segment path names a unique
+/// Class/Struct/Enum/Error/Interface definition in the type namespace. It
+/// returns none on ambiguity, on any qualified/rooted path, or when the node
+/// is not a single-segment ModulePath.
+zc::Maybe<identity::DefId> resolveLocalTypePath(const ast::Tree& tree,
+                                                const binder::ImmutableBindingMetadata& metadata,
+                                                ast::NodeId node) {
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::ModulePath ||
+      tree.node(node).payload.words[ast::kModulePathRootWord] != 0) {
+    return zc::none;
+  }
+  const ast::IdentList segments{tree.node(node).payload.words[ast::kModulePathSegmentsFirstWord],
+                                tree.node(node).payload.words[ast::kModulePathSegmentsSizeWord]};
+  if (!tree.contains(segments) || segments.size != 1) return zc::none;
+  const auto name = tree.ident(tree.identList(segments)[0]);
+  zc::Maybe<identity::DefId> result;
+  for (const auto& definition : metadata.definitions()) {
+    const auto kind = definition.kind;
+    const bool isNamedType =
+        kind == identity::DefinitionKind::Class || kind == identity::DefinitionKind::Struct ||
+        kind == identity::DefinitionKind::Enum || kind == identity::DefinitionKind::Error ||
+        kind == identity::DefinitionKind::Interface;
+    if (!isNamedType || definition.nameSpace != binder::Namespace::Type ||
+        definition.name.text() != name) {
+      continue;
+    }
+    // A name shared by two type definitions is ambiguous; fail closed rather
+    // than silently keeping the first definition in inventory order.
+    if (result != zc::none) { return zc::none; }
+    result = definition.identity;
+  }
+  return result;
+}
+
+/// \brief Resolve a heritage parent type expression to its definition.
+///
+/// Prefer the binder's node binding; fall back to the local type-path scan for
+/// interface heritage headers, which the binder does not resolve. A non-path
+/// principal stays unresolved.
+zc::Maybe<identity::DefId> resolveHeritageParent(const ast::Tree& tree,
+                                                 const binder::ImmutableBindingMetadata& metadata,
+                                                 ast::NodeId parentTypeNode) {
+  if (!tree.contains(parentTypeNode) ||
+      tree.node(parentTypeNode).kind != ast::SyntaxKind::NamedTypeExpr) {
+    return zc::none;
+  }
+  const ast::NodeId path(tree.node(parentTypeNode).payload.words[ast::kNamedTypeExprPathWord]);
+  auto resolved = resolvedDefinitionAtNode(metadata, path);
+  if (resolved != zc::none) return resolved;
+  return resolveLocalTypePath(tree, metadata, path);
+}
+
 struct DirectInterfaceShape final {
   identity::DefId interface;
   identity::ModuleId module;
@@ -2759,8 +2817,7 @@ zc::Maybe<DirectInterfaceShape> inspectDirectInterface(
       if (!tree.contains(parent)) return zc::none;
       const auto& parentType = tree.node(parent);
       if (parentType.kind != ast::SyntaxKind::NamedTypeExpr) return zc::none;
-      auto resolved = resolvedDefinitionAtNode(
-          metadata, ast::NodeId(parentType.payload.words[ast::kNamedTypeExprPathWord]));
+      auto resolved = resolveHeritageParent(tree, metadata, parent);
       if (resolved == zc::none) return zc::none;
       ZC_IF_SOME(value, resolved) {
         auto canonical = authorityDefinitionId(definitions, identities, value);
@@ -6064,6 +6121,63 @@ MarkerShapeInventoryBuildResult MarkerShapeInventoryBuilder::build(
                                             ? CheckerInvariantKind::MissingRequiredFact
                                             : CheckerInvariantKind::AdditionalFact,
                                         diagnosticModule, 0));
+  }
+
+  // Reject an interface-parent cycle before classification. The readiness
+  // fixpoint below only iterates interfaces that still need classification; an
+  // interface that carries a member is pre-classified as Behavior and skipped,
+  // so a cycle containing such an interface would never reach the fixpoint's
+  // progressed==false guard and would be published. Check the parent graph
+  // explicitly for a back edge so self inheritance and behavior-bearing cycles
+  // fail closed exactly like marker-only cycles.
+  auto parentIndex = [&](identity::DefId parent) -> size_t {
+    for (size_t candidate = 0; candidate < directShapes.size(); ++candidate) {
+      if (directShapes[candidate].interface == parent) { return candidate; }
+    }
+    return directShapes.size();
+  };
+  zc::Vector<bool> reached(directShapes.size());
+  zc::Vector<bool> onStack(directShapes.size());
+  for (size_t i = 0; i < directShapes.size(); ++i) {
+    reached.add(false);
+    onStack.add(false);
+  }
+  struct CycleFrame {
+    size_t node;
+    size_t nextParent;
+  };
+  for (size_t root = 0; root < directShapes.size(); ++root) {
+    if (reached[root]) { continue; }
+    zc::Vector<CycleFrame> stack;
+    reached[root] = true;
+    onStack[root] = true;
+    stack.add(CycleFrame{root, 0});
+    while (stack.size() > 0) {
+      CycleFrame& frame = stack[stack.size() - 1];
+      if (frame.nextParent >= directShapes[frame.node].parents.size()) {
+        onStack[frame.node] = false;
+        stack.resize(stack.size() - 1);
+        continue;
+      }
+      const identity::DefId parent = directShapes[frame.node].parents[frame.nextParent];
+      ++frame.nextParent;
+      const size_t next = parentIndex(parent);
+      if (next == directShapes.size()) {
+        return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact,
+                                            directShapes[frame.node].module,
+                                            directShapes[frame.node].declaration.value));
+      }
+      if (onStack[next]) {
+        return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact,
+                                            directShapes[frame.node].module,
+                                            directShapes[frame.node].declaration.value));
+      }
+      if (!reached[next]) {
+        reached[next] = true;
+        onStack[next] = true;
+        stack.add(CycleFrame{next, 0});
+      }
+    }
   }
 
   zc::Vector<zc::Maybe<InterfaceMarkerShape>> classified(directShapes.size());

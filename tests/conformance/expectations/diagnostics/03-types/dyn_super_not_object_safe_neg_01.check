@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/dyn_super_not_object_safe_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A dyn head over an interface that inherits an object-unsafe super interface
+// is itself object-unsafe (RFC 0005 OS-0). The dyn head fails with ZOM4008 at
+// the type-formation site, never an internal compiler error.
+// CHECK: Error [ZOM4008]:

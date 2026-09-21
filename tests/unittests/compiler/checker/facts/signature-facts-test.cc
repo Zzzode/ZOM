@@ -1558,4 +1558,109 @@ ZC_TEST("SignatureFactsVerifier fail-closes on a declared field set that is not 
   }
 }
 
+namespace {
+constexpr zc::StringPtr kSafeInheritanceSource = R"zom(class RecoveryOwner {}
+interface Base {
+    fun ping(this);
+}
+
+interface Child : Base {
+    fun draw(this);
+}
+)zom"_zc;
+
+const InterfaceSignature* findInterfaceSignature(
+    const VerifiedSignatureFacts& facts,
+    const tests::checker_fixture::CheckerAuthoritySession& session, zc::StringPtr name) {
+  for (const auto& entry : session.boundModule().definitions().definitions()) {
+    if (entry.record.kind() != identity::DefinitionKind::Interface || entry.record.name() != name) {
+      continue;
+    }
+    for (const auto& signature : facts.signatures()) {
+      if (signature.definition == entry.definition) {
+        const auto& payload = signature.payload.variant();
+        ZC_REQUIRE(payload.is<InterfaceSignature>());
+        return &payload.get<InterfaceSignature>();
+      }
+    }
+  }
+  return nullptr;
+}
+}  // namespace
+
+// A safe child interface that inherits a locally-defined, object-safe parent
+// publishes a verified InterfaceSignature carrying the parent instantiation.
+// Before the heritage name was resolved outside detached bodies this source
+// failed signature (and marker-shape) publication as a compiler invariant.
+ZC_TEST("SignatureFactsBuilder publishes a safe interface inheriting a local parent") {
+  DeclaredFieldOrderFixture fixture(kSafeInheritanceSource);
+  const auto& facts = fixture.signatureFacts();
+
+  const InterfaceSignature* base = findInterfaceSignature(facts, fixture.session, "Base"_zc);
+  const InterfaceSignature* child = findInterfaceSignature(facts, fixture.session, "Child"_zc);
+  ZC_REQUIRE(base != nullptr);
+  ZC_REQUIRE(child != nullptr);
+
+  // Neither interface is object unsafe.
+  ZC_EXPECT(base->objectSafetyCauses.size() == 0);
+  ZC_EXPECT(child->objectSafetyCauses.size() == 0);
+
+  // The child carries exactly one parent instantiation naming Base.
+  ZC_REQUIRE(child->parents.size() == 1);
+  bool parentIsBase = false;
+  for (const auto& entry : fixture.session.boundModule().definitions().definitions()) {
+    if (entry.record.kind() == identity::DefinitionKind::Interface &&
+        entry.record.name() == "Base"_zc && child->parents[0].interface == entry.definition) {
+      parentIsBase = true;
+    }
+  }
+  ZC_EXPECT(parentIsBase);
+}
+
+namespace {
+constexpr zc::StringPtr kBehaviorCycleSource = R"zom(class RecoveryOwner {}
+interface CycleA : CycleB {
+    fun a(this);
+}
+
+interface CycleB : CycleA {}
+)zom"_zc;
+
+constexpr zc::StringPtr kSelfCycleSource = R"zom(class RecoveryOwner {}
+interface SelfI : SelfI {
+    fun f(this);
+}
+)zom"_zc;
+
+// Drives only the marker-shape inventory over a source and reports whether it
+// published a verified inventory. Acyclic sources publish; a parent cycle must
+// be rejected regardless of whether the cycle carries a behavior member.
+bool markerShapeInventoryPublishes(zc::StringPtr sourceText) {
+  tests::checker_fixture::CheckerAuthoritySession session(sourceText);
+  const auto& identities = session.identityAuthority();
+  zc::Vector<ownership::AdmittedBoundModule> admitted(identities.modules().size());
+  zc::Vector<MarkerShapeModuleInput> shapeInputs(identities.modules().size());
+  for (size_t index = 0; index < identities.modules().size(); ++index) {
+    auto admission =
+        ownership::SurfaceAdmissionBuilder::admit(identities.modules()[index].retain());
+    ZC_REQUIRE(admission.is<ownership::AdmittedBoundModule>());
+    admitted.add(zc::mv(admission).get<ownership::AdmittedBoundModule>());
+    shapeInputs.add(MarkerShapeModuleInput{admitted.back()});
+  }
+  auto result =
+      MarkerShapeInventoryBuilder::build(session.semanticContext(), identities.fingerprint(),
+                                         session.module(), shapeInputs.asPtr(), identities);
+  return result.is<VerifiedMarkerShapeInventory>();
+}
+}  // namespace
+
+// An interface-parent cycle must not be classified and published. The readiness
+// fixpoint pre-classifies member-bearing interfaces as Behavior and skips them,
+// so an explicit back-edge check is required to reject both a two-node cycle
+// that carries a member and a self-inheriting interface.
+ZC_TEST("MarkerShapeInventoryBuilder rejects a behavior-bearing inheritance cycle") {
+  ZC_EXPECT(!markerShapeInventoryPublishes(kBehaviorCycleSource));
+  ZC_EXPECT(!markerShapeInventoryPublishes(kSelfCycleSource));
+}
+
 }  // namespace zomlang::compiler::checker::signature

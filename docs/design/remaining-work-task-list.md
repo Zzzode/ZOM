@@ -60,9 +60,24 @@ in-repo corpus that must become source diagnostics.
   the earlier "buildCallableParameters fails / MissingRequiredFact" diagnosis was
   stale — buildDyn/internExistential already succeed (a mismatched initializer
   reports ZOM4009 with the existential printed).
-- A3. Interface inheritance signature publication (RFC 0005 OS-0, ZOM4008):
-  safe `interface Child : Base` ICEs even without dyn; admit parent interface
-  signatures and verify inherited associated types / methods.
+- [x] A3. Interface inheritance signature publication (RFC 0005 OS-0, ZOM4008).
+  PARTIAL 2026-09-22: the binder only resolves names inside detached declaration
+  and member bodies, so an interface heritage header never got a node binding
+  for its parent path and MarkerShapeInventoryBuilder failed closed with a
+  MissingRequiredFact invariant — a safe locally-defined `interface Child : Base`
+  ICEd even without dyn. Added a checker fallback that resolves a relative
+  single-segment heritage path to a unique locally-defined named type, preferring
+  the binder binding when present. Safe local single/multiple inheritance now
+  publishes (signature-facts ztest) and dyn over a child of an object-unsafe
+  super emits ZOM4008 (lit). An explicit parent-graph back-edge check now
+  rejects self inheritance and behavior-bearing inheritance cycles, which the
+  readiness fixpoint alone let through because member-bearing interfaces are
+  pre-classified (ztest). Still fail-closed invariants, deferred to A3b:
+  undefined/imported parent, a non-interface parent, and duplicate parents
+  (these need the structural marker-shape inventory to carry source failures
+  instead of a bare reject; cycles also deserve a user diagnostic); inherited
+  members/associated types are still reference-only, not added to the child
+  inventory (A10/A11/A12).
 - A4. Pre-monomorphization parametric return: `fun f<T>() -> T` hits the
   borrow-rail ZOM4083; slice `[T]` parameter hits an InvalidFact in
   borrow classification. Decide and implement the parametric region/borrow
