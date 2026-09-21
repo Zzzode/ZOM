@@ -194,7 +194,11 @@ void Parser::Impl::diagnoseTokenPatterns() {
         }
       }
 
-      if (kind == ast::SyntaxKind::LeftBracket) {
+      // A `[` preceded immediately by `#` is an outer attribute (`#[...]`),
+      // not an array type; the parameter type annotation's `:` lives inside
+      // it and must not trigger the array-element identifier heuristic.
+      const bool outerAttributeBracket = i != 0 && kindAt(i - 1) == ast::SyntaxKind::Hash;
+      if (kind == ast::SyntaxKind::LeftBracket && !outerAttributeBracket) {
         for (size_t j = i + 1; j < count; ++j) {
           const ast::SyntaxKind nested = kindAt(j);
           if (nested == ast::SyntaxKind::Colon) {
