@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/dyn_move_self_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A method that moves its self receiver cannot be dispatched through a dyn
+// pointer (RFC 0005 object-safety rule OS-3). The dyn head fails with ZOM4003
+// at the type-formation site, never an internal compiler error.
+// CHECK: Error [ZOM4003]:

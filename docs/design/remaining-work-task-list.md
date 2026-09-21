@@ -48,16 +48,18 @@ in-repo corpus that must become source diagnostics.
   `#[zom::param::move] x: i32` now compiles. Also fixed the interface-body
   bracket heuristic in pattern-parser that misfired ZOM2077 on an attributed
   parameter (outer `#[...]` brackets are not array types).
-- [ ] A2. Move-self receiver (RFC 0005 OS-3, ZOM4003): A1 done, parser now
-  accepts the attributed receiver. DIAGNOSIS 2026-09-21: ZOM4003 is still not reached;
-  the method's own signature publication fails (buildCallableParameters) and,
-  for ANY object-safe interface, the `let x: dyn I` annotation reaches
-  buildDyn/internExistential successfully (type store inserts the existential)
-  but the value-position annotation is later rejected as MissingRequiredFact,
-  so the whole object-safe-dyn path has no positive coverage. This is the A5/A8
-  slice, not a move-only bug: neg fixtures all return early on an object-safety
-  failure and never exercise successful existential interning. Implement the
-  object-safe dyn value-position end to end, and ZOM4003 then flows.
+- [x] A2. Move-self receiver (RFC 0005 OS-3, ZOM4003). DONE 2026-09-22: the OS-3
+  detector was dead because `isReceiverName` read the parameter name word as an
+  ast::NodeId and compared the node kind to the ThisKeyword *token* kind, while
+  that word stores an ast::IdentId; it returned false for every receiver, so
+  MovesSelfCause never fired. Rewrote it to compare the interned identifier
+  text against `this`, matching the canonical header reader. dyn_move_self_neg_01
+  now emits ZOM4003 at the type-formation site; ordinary move parameters are
+  unaffected and the other object-safety diagnostics (ZOM4001/4002/4005/4007)
+  are unchanged. The positive object-safe dyn *value* path remains the A8 slice;
+  the earlier "buildCallableParameters fails / MissingRequiredFact" diagnosis was
+  stale — buildDyn/internExistential already succeed (a mismatched initializer
+  reports ZOM4009 with the existential printed).
 - A3. Interface inheritance signature publication (RFC 0005 OS-0, ZOM4008):
   safe `interface Child : Base` ICEs even without dyn; admit parent interface
   signatures and verify inherited associated types / methods.

@@ -1125,12 +1125,16 @@ bool parameterDeclaresMove(const ast::Tree& tree, ast::NodeId parameterNode) {
   return false;
 }
 
-/// \brief True when a node id names the `this` receiver parameter.
-bool isReceiverName(const ast::Tree& tree, ast::NodeId nameNode) {
-  if (!tree.contains(nameNode) || tree.node(nameNode).kind != ast::SyntaxKind::ThisKeyword) {
-    return false;
-  }
-  return true;
+/// \brief True when a parameter name word names the `this` receiver parameter.
+///
+/// The name word stores an ast::IdentId into the tree identifier table (the
+/// parser interns the receiver token through internIdent), not a syntax
+/// NodeId. Reading it as a NodeId and comparing the node kind against
+/// ThisKeyword never matched: ThisKeyword is a lexical token, while node
+/// payloads only carry node kinds, so the OS-3 move-self detector was dead.
+bool isReceiverName(const ast::Tree& tree, uint32_t nameWord) {
+  const ast::IdentId name(nameWord);
+  return tree.contains(name) && tree.ident(name) == "this"_zc;
 }
 
 class SourceTypeBuilder final {
@@ -2204,8 +2208,8 @@ private:
     if (!tree.contains(first) || tree.node(first).kind != ast::SyntaxKind::FunctionParameterDecl) {
       return zc::none;
     }
-    const ast::NodeId name(tree.node(first).payload.words[ast::kFunctionParameterDeclNameWord]);
-    if (!isReceiverName(tree, name)) return zc::none;
+    const uint32_t nameWord = tree.node(first).payload.words[ast::kFunctionParameterDeclNameWord];
+    if (!isReceiverName(tree, nameWord)) return zc::none;
     return first;
   }
 
