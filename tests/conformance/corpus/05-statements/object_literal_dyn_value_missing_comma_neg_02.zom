@@ -1,0 +1,4 @@
+fun main() {
+    let dyn = 3;
+    let point = { x: dyn y: 1 };
+}

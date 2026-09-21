@@ -1,0 +1,7 @@
+interface Sink {
+    fun write(this);
+}
+
+fun consume(target: dyn Sink) {
+    let local: dyn Sink;
+}

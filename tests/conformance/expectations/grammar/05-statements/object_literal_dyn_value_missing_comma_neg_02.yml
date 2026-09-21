@@ -1,0 +1,5 @@
+section: "§5 Statements"
+covers_rule: "object literal property separator (a value named dyn must not suppress the missing-separator diagnostic)"
+expected: "REJECT"
+notes:
+  - "The dyn type annotation exception in the token scan must not suppress the missing-separator diagnostic when `dyn` is used as a value identifier in an expression/object-literal position."

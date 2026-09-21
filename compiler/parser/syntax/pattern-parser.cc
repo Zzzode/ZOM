@@ -20,6 +20,37 @@ namespace zomlang {
 namespace compiler {
 namespace parser {
 
+bool Parser::Impl::continuesDynType(size_t interfaceIndex) const {
+  const size_t count = context.bufferedTokenLimit();
+  size_t cursor = interfaceIndex + 1;
+  // Skip a balanced generic-argument / associated-binding list `<...>`.
+  if (cursor < count && kindAt(cursor) == ast::SyntaxKind::LessThan) {
+    TokenCursor angleCursor = tokenCursorAt(cursor);
+    if (consumeBalancedAngleList(angleCursor, count)) { cursor = angleCursor.position(); }
+  }
+  // Skip any marker bounds (`+ M [+ N]`).
+  while (cursor < count && kindAt(cursor) == ast::SyntaxKind::Plus) {
+    ++cursor;  // '+'
+    if (cursor < count && kindAt(cursor) == ast::SyntaxKind::Identifier) { ++cursor; }
+  }
+  if (cursor >= count) { return false; }
+  switch (kindAt(cursor)) {
+    case ast::SyntaxKind::Semicolon:
+    case ast::SyntaxKind::Equals:
+    case ast::SyntaxKind::Comma:
+    case ast::SyntaxKind::RightParen:
+    case ast::SyntaxKind::RightBracket:
+    case ast::SyntaxKind::GreaterThan:
+    case ast::SyntaxKind::Bar:
+      return true;
+    // RightBrace is deliberately excluded: a label or expression statement
+    // missing its semicolon ends right before the closing brace (`a: dyn b }`),
+    // so a brace alone must not be read as the end of a dyn type annotation.
+    default:
+      return false;
+  }
+}
+
 void Parser::Impl::diagnoseTokenPatterns() {
   int32_t braceDepth = 0;
   bool sawTopLevelBlock = false;
@@ -298,11 +329,22 @@ void Parser::Impl::diagnoseTokenPatterns() {
       }
     }
 
+    // `ident : statement statement` with no separating semicolon. This must not
+    // fire for a dyn type annotation (`let x: dyn I;`): `dyn` is a contextual
+    // type keyword spelled as a plain Identifier, so a dyn type has the same
+    // raw token shape as the missing-semicolon pattern. Text matching "dyn"
+    // alone is insufficient because `dyn` is also a legal value identifier and
+    // COLON starts an expression in ternary/object/struct/label positions, so
+    // additionally require the dyn interface name to be followed by a type
+    // continuation or terminator, never by another Identifier or COLON (which
+    // would make it the `a: dyn b:` missing-separator statement shape).
     if (!insideMatchArmPattern && braceDepth > 0 && kind == ast::SyntaxKind::Identifier &&
         i + 3 < count && kindAt(i + 1) == ast::SyntaxKind::Colon &&
         kindAt(i + 2) != ast::SyntaxKind::Semicolon &&
         kindAt(i + 2) != ast::SyntaxKind::RightBrace &&
         !followsFieldTypeColonWithoutSemicolon(i + 2) &&
+        !(isIdentifierText(i + 2, "dyn"_zc) && kindAt(i + 3) == ast::SyntaxKind::Identifier &&
+          continuesDynType(i + 3)) &&
         kindAt(i + 3) == ast::SyntaxKind::Identifier) {
       diagnosticEngine.report<diagnostics::DiagID::MissingSemicolon>(tokenAt(i + 3).getLocation(),
                                                                      tokenLabel(tokenAt(i + 3)));

@@ -1,0 +1,14 @@
+// RUN: ! %zomc compile --dump-ast %corpus/05-statements/object_literal_dyn_value_missing_comma_neg_02.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2012]: Missing semicolon before 'y'
+// CHECK-LITERAL:   --> conformance/object_literal_dyn_value_missing_comma_neg_02.zom:3:26
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |     let point = { x: dyn y: 1 };
+// CHECK-LITERAL:   |                          ^
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK-LITERAL:   --> conformance/object_literal_dyn_value_missing_comma_neg_02.zom:3:26
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |     let point = { x: dyn y: 1 };
+// CHECK-LITERAL:   |                          ^
+// CHECK-LITERAL: 2 errors generated.

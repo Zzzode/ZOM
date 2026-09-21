@@ -1,0 +1,5 @@
+section: "03-types dynamic type"
+covers_rule: "dynType (in a parameter and a local binding inside a function body)"
+expected: "ACCEPT"
+notes:
+  - "A dyn type parses in any type position, including inside brace-delimited bodies; the AST-free token scan must not mistake `dyn Interface` for a missing semicolon."

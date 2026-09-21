@@ -414,6 +414,12 @@ struct Parser::Impl {
 
   void diagnoseTokenPatterns();
 
+  /// \brief True when a dyn interface-name token at \p interfaceIndex is
+  /// followed by a token that continues or terminates a dyn type (`<...>`,
+  /// `+ marker`, or a type boundary), as opposed to another identifier or a
+  /// colon, which would be a missing-separator statement shape.
+  bool continuesDynType(size_t interfaceIndex) const;
+
   size_t effectiveStatementStart(size_t start, size_t end) const;
 
   struct TypeParseResult {
