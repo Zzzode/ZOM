@@ -10,12 +10,24 @@ in-repo corpus that must become source diagnostics.
 
 ## Phase A — Close the checker representability cracks (unblocks the middle end)
 
-- A1. AST node/token id space: AttributeList id 0x000 collides with
+- [x] A1. AST node/token id space: AttributeList id 0x000 collides with
   SyntaxKind::Unknown; any attributed parameter is seen as Unknown and ICEs
-  in the body checker. Renumber AST nodes above the token range via
-  gen_ast.py, regenerate, refresh .check expectations. (parser/ast)
-- A2. Move-self receiver (RFC 0005 OS-3, ZOM4003): depends on A1; make
-  `#[zom::param::move] this` representable and produce ZOM4003 at the dyn site.
+  in the body checker. DONE 2026-09-21 (commit on feat/remaining-work):
+  gen_ast.py kNodeKindBase 0x200 offsets emitted node values + category ranges;
+  schema fingerprint and name-keyed node-schema lookup unchanged; attributed
+  `#[zom::param::move] x: i32` now compiles. Also fixed the interface-body
+  bracket heuristic in pattern-parser that misfired ZOM2077 on an attributed
+  parameter (outer `#[...]` brackets are not array types).
+- [ ] A2. Move-self receiver (RFC 0005 OS-3, ZOM4003): A1 done, parser now
+  accepts the attributed receiver. DIAGNOSIS 2026-09-21: ZOM4003 is still not reached;
+  the method's own signature publication fails (buildCallableParameters) and,
+  for ANY object-safe interface, the `let x: dyn I` annotation reaches
+  buildDyn/internExistential successfully (type store inserts the existential)
+  but the value-position annotation is later rejected as MissingRequiredFact,
+  so the whole object-safe-dyn path has no positive coverage. This is the A5/A8
+  slice, not a move-only bug: neg fixtures all return early on an object-safety
+  failure and never exercise successful existential interning. Implement the
+  object-safe dyn value-position end to end, and ZOM4003 then flows.
 - A3. Interface inheritance signature publication (RFC 0005 OS-0, ZOM4008):
   safe `interface Child : Base` ICEs even without dyn; admit parent interface
   signatures and verify inherited associated types / methods.
