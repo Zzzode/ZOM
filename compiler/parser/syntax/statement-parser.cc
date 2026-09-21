@@ -447,7 +447,9 @@ ast::NodeId Parser::Impl::parseLetStatement(ParserSyntaxFactory& builder, size_t
     --declarationsEnd;
   }
 
-  const ast::NodeId declarations = parseVariableDeclaratorList(builder, start + 1, declarationsEnd);
+  const bool constRequiresInitializer = kindAt(start) == ast::SyntaxKind::ConstKeyword;
+  const ast::NodeId declarations =
+      parseVariableDeclaratorList(builder, start + 1, declarationsEnd, constRequiresInitializer);
   if (!declarations) { return ast::NodeId(); }
 
   return builder.makeLetStmt(rangeFor(start, end), bindingDeclarationKindCode(kindAt(start)),

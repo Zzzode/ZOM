@@ -1,0 +1,5 @@
+section: "§3.10 AliasDeclaration"
+covers_rule: "aliasDeclaration"
+expected: "ACCEPT"
+notes:
+  - "The alias target is syntactically valid; the checker rejects the unsupported target type."

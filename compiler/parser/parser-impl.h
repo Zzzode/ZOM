@@ -753,10 +753,11 @@ struct Parser::Impl {
   size_t consumeVariableInitializer(TokenCursor& cursor, size_t limit) const;
 
   VariableDeclaratorParseResult parseVariableDeclarator(ParserSyntaxFactory& builder,
-                                                        TokenCursor& cursor, size_t limit) const;
+                                                        TokenCursor& cursor, size_t limit,
+                                                        bool requireInitializer) const;
 
-  ast::NodeId parseVariableDeclaratorList(ParserSyntaxFactory& builder, size_t start,
-                                          size_t end) const;
+  ast::NodeId parseVariableDeclaratorList(ParserSyntaxFactory& builder, size_t start, size_t end,
+                                          bool requireInitializer) const;
 
   ast::NodeId parseLetStatement(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 

@@ -129,10 +129,12 @@ DIAG(4084, BorrowExternContractUnverified, kError, "Extern borrow relation is no
 DIAG(4085, BorrowClosureContractUnexpressible, kError,
      "Body-local borrow-bearing closure requires an explicit region contract", 0)
 
-// A `const` declaration must carry a constant initializer; a declaration with
-// none has no value to bind and is a source error, never a compiler invariant.
-DIAG(4086, ConstantInitializerRequired, kError,
-     "`const` declaration requires an initializer", 0)
+// A module-scope `let`/`mut` binding may omit its initializer under the
+// definite-assignment rule; that rule is specified but not implemented yet, so
+// the form is refused honestly instead of crashing the middle end. A `const`
+// with no initializer is rejected earlier, by the parser.
+DIAG(4087, ModuleBindingInitializerRequired, kError,
+     "definite assignment for this module-scope binding is not supported yet", 0)
 
 DIAG(4088, MarkerInterfaceRequiresBodylessImpl, kError,
      "Marker interfaces require a bodyless marker implementation", 0)

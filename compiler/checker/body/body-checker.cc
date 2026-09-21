@@ -3247,53 +3247,11 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       const ast::NodeId pattern(declarator.payload.words[ast::kVariableDeclaratorPatternWord]);
       const ast::NodeId initializer(declarator.payload.words[ast::kVariableDeclaratorInitWord]);
       if (!tree.contains(pattern) ||
-          tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern) {
+          tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
+          !tree.contains(initializer)) {
         return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
                                definition.definition, site.introducer, definition.source.clone(),
                                factPath(CheckedFactGroup::DefinitionType));
-      }
-      // A module-scope Static declared without an initializer (`let y: i32;`) is
-      // an uninitialized declaration, not a missing fact: static storage is
-      // zero-initialized and the binding still publishes its declared type. Only
-      // Constant requires an initializer, and that is enforced below on the
-      // Constant branch. Every other case continues to require an initializer so
-      // a genuinely absent one stays a compiler invariant.
-      const bool hasInitializer = tree.contains(initializer);
-      if (!hasInitializer && definition.record.kind() != identity::DefinitionKind::Static) {
-        return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
-                               definition.definition, site.introducer, definition.source.clone(),
-                               factPath(CheckedFactGroup::DefinitionType));
-      }
-      if (!hasInitializer) {
-        auto uninitializedDeclaredType = valueType(input.signatureFacts, definition.definition);
-        auto uninitializedOwnerPreorder =
-            definitionPreorder(input.boundModule, definition.definition);
-        auto uninitializedProduction =
-            productionSite(input.requirements.impl->productionSiteValues.asPtr(), pattern);
-        if (uninitializedDeclaredType == zc::none || uninitializedOwnerPreorder == zc::none ||
-            uninitializedProduction == zc::none) {
-          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
-                                 definition.definition, pattern, definition.source.clone(),
-                                 factPath(CheckedFactGroup::DefinitionType));
-        }
-        ZC_IF_SOME(declaredTypeValue, uninitializedDeclaredType) {
-          definitionTypes.add(checked::DefinitionTypeMap::Entry{
-              definition.definition, declaredTypeValue, zc::Array<uint8_t>()});
-        }
-        ZC_IF_SOME(patternSite, uninitializedProduction) {
-          ZC_IF_SOME(declaredTypeValue, uninitializedDeclaredType) {
-            auto patternFact =
-                identifierPatternFact(patternSite, definition.definition, declaredTypeValue);
-            if (patternFact == zc::none) {
-              return rejectInvariant(signature::CheckerInvariantKind::CanonicalCodecMismatch,
-                                     module, 0, definition.definition, definition.node,
-                                     definition.source.clone(),
-                                     factPath(CheckedFactGroup::Pattern));
-            }
-            ZC_IF_SOME(value, patternFact) { patterns.add(zc::mv(value)); }
-          }
-        }
-        continue;
       }
       auto initializerType = factEntry(nodeTypes.asPtr(), initializer);
       auto initializerLiteral = factEntry(literals.asPtr(), initializer);

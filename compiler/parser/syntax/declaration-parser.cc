@@ -961,6 +961,16 @@ ast::NodeId Parser::Impl::parseClassMemberList(ParserSyntaxFactory& builder, siz
         }
       }
     } else if (head == ast::SyntaxKind::TypeKeyword) {
+      // Associated type members belong to interfaces (declaration) and impl
+      // blocks (assignment) per Ch.09 and the classMember/structMember/implMember
+      // grammar rules; a class, struct, or error body has no such element.
+      if (parentKind != ast::SyntaxKind::InterfaceDecl &&
+          parentKind != ast::SyntaxKind::StandaloneImplDecl) {
+        diagnosticEngine.report<diagnostics::DiagID::AssociatedTypeMemberNotAllowed>(
+            tokenAt(cursor).getLocation());
+        cursor = memberEnd > memberStart ? memberEnd : memberStart + 1;
+        continue;
+      }
       // Associated type declaration.
       size_t nameIndex = memberEnd;
       for (size_t i = cursor + 1; i < memberContentEnd; ++i) {
@@ -994,6 +1004,24 @@ ast::NodeId Parser::Impl::parseClassMemberList(ParserSyntaxFactory& builder, siz
         TokenCursor colonCursor = tokenCursorAt(constraintSearchStart);
         colonPos = consumeBalancedTypeUntil(colonCursor, memberContentEnd, ast::SyntaxKind::Colon);
         if (equalsPos < memberContentEnd && colonPos > equalsPos) { colonPos = memberContentEnd; }
+
+        if (parentKind == ast::SyntaxKind::StandaloneImplDecl) {
+          // implMember permits only an associated type assignment
+          // (`type Name = Type;`): the `=` is mandatory and a bound clause is
+          // not part of the assignment form.
+          if (colonPos < memberContentEnd) {
+            diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(colonPos),
+                                                                        "="_zc);
+            cursor = memberEnd > memberStart ? memberEnd : memberStart + 1;
+            continue;
+          }
+          if (equalsPos >= memberContentEnd) {
+            diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(
+                diagnosticLoc(memberContentEnd), "="_zc);
+            cursor = memberEnd > memberStart ? memberEnd : memberStart + 1;
+            continue;
+          }
+        }
 
         if (colonPos < memberContentEnd) {
           const size_t boundEnd = equalsPos < memberContentEnd ? equalsPos : memberContentEnd;
@@ -1069,6 +1097,19 @@ ast::NodeId Parser::Impl::parseClassMemberList(ParserSyntaxFactory& builder, siz
       const bool isMut = head == ast::SyntaxKind::MutKeyword;
 
       if (head == ast::SyntaxKind::ConstKeyword) {
+        // The classMember and implMember grammar rules admit a `const` member
+        // only through constDeclarationList, whose items carry an initializer.
+        // struct/error bodies do not yet define value-member grammar (their
+        // `let`/`const` members are a parser-only surface pending Ch.08
+        // grammar), so the requirement is not enforced there.
+        if ((parentKind == ast::SyntaxKind::ClassDecl ||
+             parentKind == ast::SyntaxKind::StandaloneImplDecl) &&
+            equalsPos >= memberContentEnd) {
+          diagnosticEngine.report<diagnostics::DiagID::ConstInitializerRequired>(
+              tokenAt(cursor).getLocation());
+          cursor = memberEnd > memberStart ? memberEnd : memberStart + 1;
+          continue;
+        }
         members.add(builder.makeClassConstDecl(rangeFor(memberStart, memberEnd),
                                                internIdent(builder, nameIndex), ty, init, isStatic,
                                                visibility));
@@ -1777,7 +1818,8 @@ size_t Parser::Impl::consumeVariableInitializer(TokenCursor& cursor, size_t limi
 }
 
 Parser::Impl::VariableDeclaratorParseResult Parser::Impl::parseVariableDeclarator(
-    ParserSyntaxFactory& builder, TokenCursor& cursor, size_t limit) const {
+    ParserSyntaxFactory& builder, TokenCursor& cursor, size_t limit,
+    bool requireInitializer) const {
   const size_t start = cursor.position();
   if (start >= limit) {
     diagnosticEngine.report<diagnostics::DiagID::VariableDeclarationExpected>(diagnosticLoc(start));
@@ -1825,6 +1867,12 @@ Parser::Impl::VariableDeclaratorParseResult Parser::Impl::parseVariableDeclarato
 
     initNode = parseRequiredExpression(builder, initStart, initEnd);
     if (!initNode) { return VariableDeclaratorParseResult(); }
+  } else if (requireInitializer) {
+    // A `const` binding must carry an initializer per Ch.06 and the
+    // constDeclarationList grammar rule; `let`/`mut` may omit one under the
+    // definite-assignment rule.
+    diagnosticEngine.report<diagnostics::DiagID::ConstInitializerRequired>(diagnosticLoc(start));
+    return VariableDeclaratorParseResult();
   }
 
   return {
@@ -1833,7 +1881,7 @@ Parser::Impl::VariableDeclaratorParseResult Parser::Impl::parseVariableDeclarato
 }
 
 ast::NodeId Parser::Impl::parseVariableDeclaratorList(ParserSyntaxFactory& builder, size_t start,
-                                                      size_t end) const {
+                                                      size_t end, bool requireInitializer) const {
   zc::Vector<ast::NodeId> declarators;
   TokenCursor cursor = tokenCursorAt(start);
   while (cursor.position() < end) {
@@ -1848,7 +1896,8 @@ ast::NodeId Parser::Impl::parseVariableDeclaratorList(ParserSyntaxFactory& build
     }
 
     const size_t declaratorStart = cursor.position();
-    const VariableDeclaratorParseResult declarator = parseVariableDeclarator(builder, cursor, end);
+    const VariableDeclaratorParseResult declarator =
+        parseVariableDeclarator(builder, cursor, end, requireInitializer);
     if (!declarator.node) { return ast::NodeId(); }
     declarators.add(declarator.node);
 

@@ -2,6 +2,6 @@
 // RUN: %FileCheck %s --input-file %t
 
 // A `const` declaration is a named compile-time value and must carry an
-// initializer. A missing one is a source error on the signature rail, never an
-// internal compiler error.
-// CHECK: Error [ZOM4086]: `const` declaration requires an initializer
+// initializer. The parser enforces the grammar requirement, so the form is a
+// parse error, never an internal compiler error.
+// CHECK: Error [ZOM2106]: `const` declaration requires an initializer

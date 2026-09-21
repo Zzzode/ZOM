@@ -7015,22 +7015,6 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         const auto& declarator = tree.node(patternSite.introducer);
         const ast::NodeId annotation(declarator.payload.words[ast::kVariableDeclaratorTyWord]);
         const ast::NodeId initializer(declarator.payload.words[ast::kVariableDeclaratorInitWord]);
-        // A `const` declaration with no initializer has no value to bind; the
-        // grammar requires one. Report it on the source rail instead of falling
-        // through to the canonical codec, which would surface it as a compiler
-        // invariant. A `let`/`mut` module binding without an initializer is a
-        // definite-assignment declaration and continues normally.
-        if (definitionKind == identity::DefinitionKind::Constant && !tree.contains(initializer)) {
-          auto failure =
-              signatureSourceFailure(SignatureSourceDiagnostic::ConstantInitializerRequired,
-                                     input.boundModule, definition.node, patternSite.introducer);
-          if (failure == zc::none) {
-            return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch, module,
-                                                patternSite.introducer.value));
-          }
-          ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
-          continue;
-        }
         zc::Maybe<identity::SemanticTypeId> valueType;
         zc::Maybe<CanonicalConstValue> constantValue;
         if (tree.contains(annotation)) {
@@ -7047,6 +7031,29 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
                                                 annotation.value));
           }
           ZC_IF_SOME(value, builtType) { valueType = value.type; }
+        }
+        // A module-scope `let`/`mut` binding with no initializer is refused on
+        // the source rail, after the annotation has been analyzed so an
+        // ill-formed annotation type still reports the diagnostic it owns. The
+        // binding may legally omit the initializer only under the
+        // definite-assignment rule, which is specified but not implemented, so
+        // refusing it here keeps an unimplemented HIR shape from surfacing as a
+        // compiler invariant. A `const` without an initializer is already
+        // rejected by the parser.
+        if (!tree.contains(initializer)) {
+          if (definitionKind != identity::DefinitionKind::Static) {
+            return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
+                                                patternSite.introducer.value));
+          }
+          auto failure =
+              signatureSourceFailure(SignatureSourceDiagnostic::ModuleBindingInitializerRequired,
+                                     input.boundModule, definition.node, patternSite.introducer);
+          if (failure == zc::none) {
+            return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch, module,
+                                                patternSite.introducer.value));
+          }
+          ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
+          continue;
         }
         if (tree.contains(initializer)) {
           auto key = checkedNodeKey(input.boundModule, initializer);

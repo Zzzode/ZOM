@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 06-declarations/module_binding_without_initializer_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A module-scope `let`/`mut` binding may legally omit its initializer only under
+// the definite-assignment rule. That rule is specified but not implemented, so
+// the form is refused on the signature rail instead of reaching an unimplemented
+// middle-end shape and surfacing as an internal compiler error.
+// CHECK: Error [ZOM4087]: definite assignment for this module-scope binding is not supported yet

@@ -123,3 +123,7 @@ DIAG(2104, MarkerImplCannotHaveBody, kError,
      "A marker implementation cannot have a body", 0)
 DIAG(2105, UnsupportedVisibilityModifierSpelling, kError,
      "Unknown visibility modifier '{0}'; expected 'public', 'private', or 'protected'", 1)
+DIAG(2106, ConstInitializerRequired, kError,
+     "`const` declaration requires an initializer", 0)
+DIAG(2107, AssociatedTypeMemberNotAllowed, kError,
+     "associated types are declared in interfaces and assigned in impl blocks", 0)

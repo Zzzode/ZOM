@@ -1,0 +1,9 @@
+// RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/assoc_type_outside_interface_neg_33.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2107]: associated types are declared in interfaces and assigned in impl blocks
+// CHECK-LITERAL:   --> conformance/assoc_type_outside_interface_neg_33.zom:2:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     type Item;
+// CHECK-LITERAL:   |     ^
+// CHECK-LITERAL: 1 error generated.

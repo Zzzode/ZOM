@@ -8,6 +8,36 @@ Tasks are ordered by dependency. Each line names the work, the owning RFC (if
 any), and the rough layer. "ICE" entries are compiler crashes observed on
 in-repo corpus that must become source diagnostics.
 
+## Resolved
+
+- 2026-09-22. Parser/spec alignment for binding and associated-type member
+  forms. The hand-written parser accepted two forms the grammar reference,
+  `ZomParser.g4`, and the semantic chapters reject, and the mismatch only
+  surfaced as downstream checker invariants:
+  - `const` without an initializer was accepted at module/block scope and as a
+    class/impl member, then rejected by the checker. The parser now enforces the
+    `constDeclarationList` rule (Ch.06, Ch.17) with ZOM2106
+    `ConstInitializerRequired`. The checker's ZOM4086 of the same name became
+    unreachable and was removed; the failure moved from the checker to the
+    parser.
+  - An associated type member (`type Item;`) was accepted inside a class,
+    struct, or error body even though `classMember`/`structMember` define no
+    such element; it is now a parser error ZOM2107
+    `AssociatedTypeMemberNotAllowed`. An impl block still accepts only the
+    assignment form (`type Item = T;`, mandatory `=`, no bound clause), matching
+    `implMember`. ZOM4107 `AssociatedTypeMemberUnsupported` stays reachable for
+    the still-unimplemented impl assignment and is covered by
+    `impl_assoc_type_unsupported_neg_34`.
+  - A module-scope `let`/`mut` without an initializer is now refused honestly on
+    the signature rail with ZOM4087 `ModuleBindingInitializerRequired` after the
+    annotation is analyzed (so an ill-formed annotation still reports its own
+    diagnostic), replacing an HIR-stage internal compiler error. Definite
+    assignment remains specified but unimplemented.
+  Also fixed a pre-existing architecture-gate failure by including the canonical
+  `checker/body/marker-proof.h` from `mir/build/mir-builder.h` instead of a
+  duplicate `MarkerProofEngine` forward declaration. Full serial sanitizer
+  suite (335/335) and every architecture/coverage gate pass.
+
 ## Phase A — Close the checker representability cracks (unblocks the middle end)
 
 - [x] A1. AST node/token id space: AttributeList id 0x000 collides with

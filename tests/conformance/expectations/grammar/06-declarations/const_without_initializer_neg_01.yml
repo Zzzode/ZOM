@@ -1,0 +1,5 @@
+section: "§6.9 LetDecl, ConstDecl"
+covers_rule: "constDecl (initializer required)"
+expected: "REJECT"
+notes:
+  - "A `const` declaration must bind an initializer; the parser enforces the grammar requirement with ZOM2106."

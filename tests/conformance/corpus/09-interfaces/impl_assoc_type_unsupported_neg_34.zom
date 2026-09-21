@@ -1,0 +1,7 @@
+interface Marker { }
+
+class C { }
+
+impl Marker for C {
+    type Item = u8;
+}

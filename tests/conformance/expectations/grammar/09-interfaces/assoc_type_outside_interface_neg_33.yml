@@ -1,0 +1,5 @@
+section: "§4.2 Interfaces"
+covers_rule: "associatedTypeDeclaration (class body has no such member)"
+expected: "REJECT"
+notes:
+  - "Associated types are declared in interfaces and assigned in impl blocks; the parser rejects them in a class body with ZOM2107."

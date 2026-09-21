@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/assoc_type_outside_interface_neg_33.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// An associated type member is declared in an interface and assigned in an impl
+// block. A class body has no such grammar element, so the parser rejects it
+// instead of admitting it to a later stage.
+// CHECK: Error [ZOM2107]: associated types are declared in interfaces and assigned in impl blocks

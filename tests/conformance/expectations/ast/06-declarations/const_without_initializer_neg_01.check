@@ -1,0 +1,9 @@
+// RUN: ! %zomc compile --dump-ast %corpus/06-declarations/const_without_initializer_neg_01.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2106]: `const` declaration requires an initializer
+// CHECK-LITERAL:   --> conformance/const_without_initializer_neg_01.zom:1:7
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | const LIMIT: i32;
+// CHECK-LITERAL:   |       ^
+// CHECK-LITERAL: 1 error generated.
