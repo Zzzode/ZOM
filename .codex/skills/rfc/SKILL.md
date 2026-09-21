@@ -103,6 +103,29 @@ and `tracking-issue`, and add approvers for every affected owner.
 Run `python3 scripts/check-rfc.py` after every RFC edit and before reporting the
 work complete.
 
+## Owner Approval Model
+
+RFC owners are the in-project review roles listed in
+`.codex/subagents/manifest.yaml` — they are **subagents, not humans**. There is
+no outside-human sign-off gate on an RFC status transition (see
+`docs/rfc/README.md` Owner Authority Model section).
+
+- One agent review per required owner is normally sufficient approval. Dispatch
+  the owner agent (e.g. via the Agent tool with the matching subagent type) to
+  perform and record the review; you do not need a separate human reviewer.
+- A genuine agent review that returns **APPROVE** for an owner is a real
+  recorded approval: add that owner to `approvers` and move
+  `REVIEW -> ACCEPTED` once every required owner approves (or each remaining
+  objection is recorded as non-blocking in the review tracker).
+- A review that returns **REQUEST-CHANGES / RETURNED / REJECTED** is not an
+  approval: keep the RFC in `REVIEW` (or move it back to `DRAFT`), fix the
+  blocking findings, and re-request that owner's review. Do not flip to
+  `ACCEPTED` over an unresolved blocking objection.
+- This does not weaken the honesty rule. "No human gate" is not permission to
+  fabricate a review: the recorded approval must correspond to an agent review
+  that was genuinely run, with its conclusion written to the review tracker.
+  Never record an approval or decision naming a review that did not happen.
+
 ## Output Expectations
 
 When creating or editing an RFC, report:
