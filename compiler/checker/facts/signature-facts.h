@@ -1008,10 +1008,19 @@ struct SignatureFactsInvariantRejected final {
 };
 
 enum class SignatureSourceDiagnostic : uint16_t {
+  DynGenericMethod = 4001,
+  DynSelfReturn = 4002,
+  DynMoveSelf = 4003,
+  DynUnassociatedType = 4004,
+  DynStaticMethod = 4005,
+  DynGatNotAllowed = 4006,
+  DynUnsizedParameter = 4007,
+  DynSuperNotObjectSafe = 4008,
   ConflictingImpl = 4017,
   InvalidBinaryOperands = 4028,
   InvalidComparisonOperands = 4029,
   OrphanImpl = 4054,
+  DynDuplicateAssociatedTypeBinding = 4055,
   BodyLiteralOutOfRange = 4077,
   MarkerInterfaceRequiresBodylessImpl = 4088,
   BehaviorInterfaceRequiresImplBody = 4089,
@@ -1037,6 +1046,14 @@ struct SignatureOperatorDisplayArg final {
   PrimitiveOperation operation;
 };
 
+struct SignatureDefinitionDisplayArg final {
+  identity::DefId definition;
+};
+
+struct SignatureTypeDisplayArg final {
+  identity::SemanticTypeId type;
+};
+
 /// \brief Closed typed argument algebra for signature-stage source diagnostics.
 class SignatureSourceArgument final {
 public:
@@ -1044,6 +1061,8 @@ public:
   explicit SignatureSourceArgument(SignaturePrimitiveTypeDisplayArg value) noexcept
       : value(value) {}
   explicit SignatureSourceArgument(SignatureOperatorDisplayArg&& value) : value(zc::mv(value)) {}
+  explicit SignatureSourceArgument(SignatureDefinitionDisplayArg value) noexcept : value(value) {}
+  explicit SignatureSourceArgument(SignatureTypeDisplayArg value) noexcept : value(value) {}
   SignatureSourceArgument(SignatureSourceArgument&&) noexcept = default;
   SignatureSourceArgument& operator=(SignatureSourceArgument&&) noexcept = default;
   ZC_DISALLOW_COPY(SignatureSourceArgument);
@@ -1051,7 +1070,7 @@ public:
 
 private:
   zc::OneOf<SignatureLiteralDisplayArg, SignaturePrimitiveTypeDisplayArg,
-            SignatureOperatorDisplayArg>
+            SignatureOperatorDisplayArg, SignatureDefinitionDisplayArg, SignatureTypeDisplayArg>
       value;
 };
 

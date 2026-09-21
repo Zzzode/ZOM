@@ -78,3 +78,10 @@ docs/rfc/**
 - The proposal leaves core semantics undefined.
 - The proposal is moving to `ACCEPTED` with missing owner signoff, unresolved
   blocking open questions, or `TBD` decision tracking.
+
+Owner signoff means a genuine review by each required-owner **subagent** (one
+agent per owner is normally sufficient); it never requires a human. An agent
+review that returns APPROVE is a real approval and may be recorded in
+`approvers`. Do not block an `ACCEPTED` transition merely because a human has
+not reviewed it, but never fabricate a review that did not run. See
+`docs/rfc/README.md` Owner Authority Model section.

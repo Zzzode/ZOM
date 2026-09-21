@@ -674,6 +674,17 @@ zc::Maybe<zc::String> renderSignatureArgument(const signature::SignatureSourceAr
         argument.variant().get<signature::SignatureOperatorDisplayArg>().operation)});
     return renderDisplayArgument(converted, identities, semanticTypes);
   }
+  if (argument.variant().is<signature::SignatureDefinitionDisplayArg>()) {
+    checked::CheckerDisplayArgument converted(checked::DefinitionDisplayArg{
+        argument.variant().get<signature::SignatureDefinitionDisplayArg>().definition});
+    return renderDisplayArgument(converted, identities, semanticTypes);
+  }
+  if (argument.variant().is<signature::SignatureTypeDisplayArg>()) {
+    zc::Maybe<identity::SemanticIdentifier> noAlias;
+    checked::CheckerDisplayArgument converted(checked::TypeDisplayArg{
+        argument.variant().get<signature::SignatureTypeDisplayArg>().type, zc::mv(noAlias)});
+    return renderDisplayArgument(converted, identities, semanticTypes);
+  }
   return zc::none;
 }
 
