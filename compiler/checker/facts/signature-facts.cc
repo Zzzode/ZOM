@@ -7015,6 +7015,22 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         const auto& declarator = tree.node(patternSite.introducer);
         const ast::NodeId annotation(declarator.payload.words[ast::kVariableDeclaratorTyWord]);
         const ast::NodeId initializer(declarator.payload.words[ast::kVariableDeclaratorInitWord]);
+        // A `const` declaration with no initializer has no value to bind; the
+        // grammar requires one. Report it on the source rail instead of falling
+        // through to the canonical codec, which would surface it as a compiler
+        // invariant. A `let`/`mut` module binding without an initializer is a
+        // definite-assignment declaration and continues normally.
+        if (definitionKind == identity::DefinitionKind::Constant && !tree.contains(initializer)) {
+          auto failure =
+              signatureSourceFailure(SignatureSourceDiagnostic::ConstantInitializerRequired,
+                                     input.boundModule, definition.node, patternSite.introducer);
+          if (failure == zc::none) {
+            return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch, module,
+                                                patternSite.introducer.value));
+          }
+          ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
+          continue;
+        }
         zc::Maybe<identity::SemanticTypeId> valueType;
         zc::Maybe<CanonicalConstValue> constantValue;
         if (tree.contains(annotation)) {

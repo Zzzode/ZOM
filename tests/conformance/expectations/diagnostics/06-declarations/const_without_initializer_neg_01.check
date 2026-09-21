@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 06-declarations/const_without_initializer_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A `const` declaration is a named compile-time value and must carry an
+// initializer. A missing one is a source error on the signature rail, never an
+// internal compiler error.
+// CHECK: Error [ZOM4086]: `const` declaration requires an initializer

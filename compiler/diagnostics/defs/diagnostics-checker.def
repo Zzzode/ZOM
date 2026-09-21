@@ -129,6 +129,11 @@ DIAG(4084, BorrowExternContractUnverified, kError, "Extern borrow relation is no
 DIAG(4085, BorrowClosureContractUnexpressible, kError,
      "Body-local borrow-bearing closure requires an explicit region contract", 0)
 
+// A `const` declaration must carry a constant initializer; a declaration with
+// none has no value to bind and is a source error, never a compiler invariant.
+DIAG(4086, ConstantInitializerRequired, kError,
+     "`const` declaration requires an initializer", 0)
+
 DIAG(4088, MarkerInterfaceRequiresBodylessImpl, kError,
      "Marker interfaces require a bodyless marker implementation", 0)
 DIAG(4089, BehaviorInterfaceRequiresImplBody, kError, "Behavior interfaces require an impl body", 0)

@@ -1022,6 +1022,7 @@ enum class SignatureSourceDiagnostic : uint16_t {
   OrphanImpl = 4054,
   DynDuplicateAssociatedTypeBinding = 4055,
   BodyLiteralOutOfRange = 4077,
+  ConstantInitializerRequired = 4086,
   MarkerInterfaceRequiresBodylessImpl = 4088,
   BehaviorInterfaceRequiresImplBody = 4089,
   GenericMarkerInterfaceNotAllowed = 4090,
