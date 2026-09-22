@@ -322,6 +322,11 @@ ACCEPTED_CHECKER_DIAGNOSTICS = (
     (4105, "ModuleStatementSemanticsUnavailable", "kError",
      "executable statements are not allowed at module scope; only declarations are supported",
      0),
+    (4108, "DynUnknownAssociatedTypeBinding", "kError",
+     "associated type {0} is not declared by dyn interface {1}", 2),
+    (4109, "DynInheritedAssociatedTypeBindingUnsupported", "kError",
+     "associated type {0} inherited from super-interface of {1} cannot be bound in a dyn head yet",
+     2),
 )
 
 REMOVED_CHECKER_DIAGNOSTIC_CODES = (4027, 4034, 4042, 4043, 4053)

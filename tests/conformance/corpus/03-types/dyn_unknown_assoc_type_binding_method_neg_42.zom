@@ -1,0 +1,5 @@
+interface I {
+    fun f(this);
+}
+
+let x: dyn I<Bogus = i32>;

@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/dyn_unknown_assoc_type_binding_method_neg_42.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A binding name that no associated-type member declares, written on a
+// method-bearing interface, is rejected at the binding site with ZOM4108,
+// never as an internal compiler error.
+// CHECK: Error [ZOM4108]:

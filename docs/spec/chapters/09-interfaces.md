@@ -408,6 +408,19 @@ let it: dyn Iterator = make_iter();                       // ZOM4004 DynUnassoci
 let it_ok: dyn Iterator<Item = u8> = make_iter();         // OK
 ```
 
+Each `Name = T` binding in the head must name an associated type of the
+principal. A name not declared by the interface emits
+`ZOM4108 DynUnknownAssociatedTypeBinding`, and assigning the same name twice
+emits `ZOM4055 DynDuplicateAssociatedTypeBinding`. A name inherited from a
+super-interface is not accepted in the head yet and emits
+`ZOM4109 DynInheritedAssociatedTypeBindingUnsupported`.
+
+```zom
+let bad: dyn Iterator<Unknown = u8>;                      // ZOM4108 DynUnknownAssociatedTypeBinding
+let dup: dyn Iterator<Item = u8, Item = str>;             // ZOM4055 DynDuplicateAssociatedTypeBinding
+let inh: dyn ChildIterator<Item = u8>;                    // ZOM4109 DynInheritedAssociatedTypeBindingUnsupported
+```
+
 ### 9.6.7 OS-5 No Static Methods
 
 A method lacking an explicit `this` receiver has no dispatch target in the

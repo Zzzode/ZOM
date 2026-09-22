@@ -1032,7 +1032,9 @@ enum class SignatureSourceDiagnostic : uint16_t {
   ModuleInitializerSemanticsUnavailable = 4104,
   ModuleStatementSemanticsUnavailable = 4105,
   TypeAliasTargetUnsupported = 4106,
-  AssociatedTypeMemberUnsupported = 4107
+  AssociatedTypeMemberUnsupported = 4107,
+  DynUnknownAssociatedTypeBinding = 4108,
+  DynInheritedAssociatedTypeBindingUnsupported = 4109
 };
 
 struct SignatureLiteralDisplayArg final {
@@ -1051,6 +1053,10 @@ struct SignatureDefinitionDisplayArg final {
   identity::DefId definition;
 };
 
+struct SignatureIdentifierDisplayArg final {
+  identity::SemanticIdentifier identifier;
+};
+
 struct SignatureTypeDisplayArg final {
   identity::SemanticTypeId type;
 };
@@ -1063,6 +1069,7 @@ public:
       : value(value) {}
   explicit SignatureSourceArgument(SignatureOperatorDisplayArg&& value) : value(zc::mv(value)) {}
   explicit SignatureSourceArgument(SignatureDefinitionDisplayArg value) noexcept : value(value) {}
+  explicit SignatureSourceArgument(SignatureIdentifierDisplayArg&& value) : value(zc::mv(value)) {}
   explicit SignatureSourceArgument(SignatureTypeDisplayArg value) noexcept : value(value) {}
   SignatureSourceArgument(SignatureSourceArgument&&) noexcept = default;
   SignatureSourceArgument& operator=(SignatureSourceArgument&&) noexcept = default;
@@ -1071,7 +1078,8 @@ public:
 
 private:
   zc::OneOf<SignatureLiteralDisplayArg, SignaturePrimitiveTypeDisplayArg,
-            SignatureOperatorDisplayArg, SignatureDefinitionDisplayArg, SignatureTypeDisplayArg>
+            SignatureOperatorDisplayArg, SignatureDefinitionDisplayArg,
+            SignatureIdentifierDisplayArg, SignatureTypeDisplayArg>
       value;
 };
 

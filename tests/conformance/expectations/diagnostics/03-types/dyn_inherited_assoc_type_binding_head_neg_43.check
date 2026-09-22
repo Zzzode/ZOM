@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/dyn_inherited_assoc_type_binding_head_neg_43.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A head binding naming an associated type declared by a super-interface is
+// not supported yet. It fails at the binding site with ZOM4109 rather than
+// being misreported as unknown (ZOM4108) or surfacing as an internal compiler
+// error.
+// CHECK: Error [ZOM4109]:

@@ -1143,17 +1143,14 @@ public:
                     const CheckerIdentityAuthority& identities,
                     type::SemanticTypeStore& semanticTypes,
                     zc::ArrayPtr<const identity::GenericParameterId> genericParameters,
+                    zc::Vector<SignatureSourceFailureRef>& sink,
                     zc::Maybe<identity::DefId> contextualInterface = zc::none)
       : boundModule(boundModule),
         identities(identities),
         semanticTypes(semanticTypes),
         genericParameters(genericParameters),
+        sink(sink),
         contextualInterface(zc::mv(contextualInterface)) {}
-
-  /// \brief Move out object-safety failures accumulated while building types.
-  zc::Vector<SignatureSourceFailureRef> takeObjectSafetyFailures() {
-    return zc::mv(objectSafetyFailures);
-  }
 
   zc::Maybe<BuiltSourceType> build(ast::NodeId node) {
     const auto& tree = boundModule.tree();
@@ -1587,19 +1584,22 @@ private:
     return zc::mv(result);
   }
 
-  /// \brief Emit one object-safety source failure onto the builder sink.
+  /// \brief Emit one source failure into the owning build's failure sink.
   void recordObjectSafetyFailure(SignatureSourceDiagnostic diagnostic, ast::NodeId site,
                                  zc::Vector<SignatureSourceArgument>&& arguments) {
     auto failure = signatureSourceFailure(diagnostic, boundModule, site, site);
     if (failure == zc::none) return;
     ZC_IF_SOME(value, failure) {
       for (auto& argument : arguments) { value.arguments.add(zc::mv(argument)); }
-      objectSafetyFailures.add(zc::mv(value));
+      sink.add(zc::mv(value));
     }
   }
 
   static SignatureSourceArgument definitionArg(identity::DefId definition) {
     return SignatureSourceArgument(SignatureDefinitionDisplayArg{definition});
+  }
+  static SignatureSourceArgument identifierArg(identity::SemanticIdentifier identifier) {
+    return SignatureSourceArgument(SignatureIdentifierDisplayArg{zc::mv(identifier)});
   }
   static SignatureSourceArgument typeArg(identity::SemanticTypeId type) {
     return SignatureSourceArgument(SignatureTypeDisplayArg{type});
@@ -1728,9 +1728,9 @@ private:
 
     // Collect the principal's associated-type names and validate head bindings.
     zc::Vector<AssociatedBinding> bindings =
-        readAssociatedBindings(node, ZC_ASSERT_NONNULL(interfaceNode));
+        readAssociatedBindings(node, ZC_ASSERT_NONNULL(interfaceNode), interfaceDef);
     if (bindings.size() == 0 && hasAssociatedBindingList(syntax)) {
-      return zc::none;  // malformed binding list (already reported if duplicate)
+      return zc::none;  // malformed binding list (reported for unknown/duplicate names)
     }
     // OS-4: every non-generic associated type must be bound in the dyn head.
     {
@@ -1785,8 +1785,60 @@ private:
   /// \brief Read and resolve the `<Name = T>` bindings of a dyn head, emitting
   /// ZOM4055 for a duplicate. Names must resolve to associated types declared by
   /// the principal interface.
+  /// \brief Whether an associated-type name is declared by a super-interface in
+  /// the principal's heritage closure. Direct members are resolved separately.
+  /// Returns false when a parent cannot be resolved locally; the heritage rail
+  /// rejects that malformation on its own. Used to distinguish an inherited
+  /// name (4109 unsupported) from a genuinely unknown name (4108).
+  bool isInheritedAssociatedName(ast::NodeId principalNode, ast::IdentId nameId) {
+    const auto& tree = boundModule.tree();
+    zc::Vector<ast::NodeId> pending;
+    zc::Vector<ast::NodeId> visited;
+    auto enqueue = [&](ast::NodeId node) {
+      for (const auto prior : visited) {
+        if (prior == node) { return; }
+      }
+      visited.add(node);
+      pending.add(node);
+    };
+    auto seedParents = directSuperInterfaces(principalNode);
+    if (seedParents == zc::none) { return false; }
+    ZC_IF_SOME(supers, seedParents) {
+      for (const auto& super : supers) {
+        auto superNode = localDefinitionNode(super.interface);
+        if (superNode != zc::none) { enqueue(ZC_ASSERT_NONNULL(superNode)); }
+      }
+    }
+    for (size_t head = 0; head < pending.size(); ++head) {
+      const auto current = pending[head];
+      auto associated = directAssociatedDefinitions(current);
+      if (associated != zc::none) {
+        ZC_IF_SOME(defs, associated) {
+          for (const auto def : defs) {
+            auto defNode = localDefinitionNode(def);
+            if (defNode == zc::none) { continue; }
+            const auto candidateName =
+                ast::IdentId(tree.node(ZC_ASSERT_NONNULL(defNode))
+                                 .payload.words[ast::kAssociatedTypeDeclNameWord]);
+            if (tree.ident(candidateName) == tree.ident(nameId)) { return true; }
+          }
+        }
+      }
+      auto parents = directSuperInterfaces(current);
+      if (parents == zc::none) { continue; }
+      ZC_IF_SOME(supers, parents) {
+        for (const auto& super : supers) {
+          auto superNode = localDefinitionNode(super.interface);
+          if (superNode != zc::none) { enqueue(ZC_ASSERT_NONNULL(superNode)); }
+        }
+      }
+    }
+    return false;
+  }
+
   zc::Vector<AssociatedBinding> readAssociatedBindings(ast::NodeId dynNode,
-                                                       ast::NodeId interfaceNode) {
+                                                       ast::NodeId interfaceNode,
+                                                       identity::DefId interfaceDef) {
     const auto& tree = boundModule.tree();
     zc::Vector<AssociatedBinding> bindings;
     const ast::NodeId listNode(
@@ -1798,6 +1850,7 @@ private:
         tree.node(listNode).payload.words[ast::kDynTypeAssocBindingListBindingsSizeWord]};
     if (!tree.contains(bindingNodes)) return bindings;
     auto ownAssociated = directAssociatedDefinitions(interfaceNode);
+    bool listRejected = false;
     for (const auto bindingNode : tree.list(bindingNodes)) {
       if (!tree.contains(bindingNode) ||
           tree.node(bindingNode).kind != ast::SyntaxKind::DynTypeAssocBinding) {
@@ -1825,16 +1878,29 @@ private:
         }
       }
       if (!resolved) {
-        bindings.clear();
-        return bindings;
+        // Keep scanning the remaining bindings so a later unknown/duplicate
+        // name is reported in the same pass, then fail the whole list.
+        listRejected = true;
+        auto name = identity::SemanticIdentifier::fromSource(tree.ident(nameId));
+        if (name != zc::none) {
+          zc::Vector<SignatureSourceArgument> arguments;
+          arguments.add(identifierArg(ZC_ASSERT_NONNULL(zc::mv(name))));
+          arguments.add(definitionArg(interfaceDef));
+          const auto diagnostic =
+              isInheritedAssociatedName(interfaceNode, nameId)
+                  ? SignatureSourceDiagnostic::DynInheritedAssociatedTypeBindingUnsupported
+                  : SignatureSourceDiagnostic::DynUnknownAssociatedTypeBinding;
+          recordObjectSafetyFailure(diagnostic, bindingNode, zc::mv(arguments));
+        }
+        continue;
       }
       for (const auto& existing : bindings) {
         if (existing.associated == associated) {
           zc::Vector<SignatureSourceArgument> arguments;
           arguments.add(definitionArg(associated));
-          arguments.add(definitionArg(associated));
+          arguments.add(definitionArg(interfaceDef));
           recordObjectSafetyFailure(SignatureSourceDiagnostic::DynDuplicateAssociatedTypeBinding,
-                                    dynNode, zc::mv(arguments));
+                                    bindingNode, zc::mv(arguments));
           bindings.clear();
           return bindings;
         }
@@ -1847,6 +1913,10 @@ private:
       ZC_IF_SOME(value, builtType) {
         bindings.add(AssociatedBinding{associated, value.type, zc::mv(value.pattern)});
       }
+    }
+    if (listRejected) {
+      bindings.clear();
+      return bindings;
     }
     return bindings;
   }
@@ -2185,8 +2255,8 @@ private:
   const CheckerIdentityAuthority& identities;
   type::SemanticTypeStore& semanticTypes;
   zc::ArrayPtr<const identity::GenericParameterId> genericParameters;
+  zc::Vector<SignatureSourceFailureRef>& sink;
   zc::Maybe<identity::DefId> contextualInterface;
-  zc::Vector<SignatureSourceFailureRef> objectSafetyFailures;
 
   static zc::Maybe<ast::NodeList> methodParameterList(const ast::Tree& tree,
                                                       ast::NodeId methodNode) {
@@ -2326,7 +2396,36 @@ struct BuiltSourceGenericParameters final {
   zc::Vector<GenericParameterSignature> signatures;
 };
 
-zc::Maybe<BuiltSourceGenericParameters> buildSourceGenericParameters(
+/// Source-level failure arm for a list (generic/parameter) build: the list is
+/// parser-valid but names a malformed dyn type or another source-rejected type.
+struct SourceListRejected final {
+  zc::Vector<SignatureSourceFailureRef> failures;
+};
+
+using SourceGenericParametersBuildResult =
+    zc::OneOf<BuiltSourceGenericParameters, SourceListRejected>;
+
+/// \brief Extract the built arm of a list-build result. A rejected arm moves
+/// its failures into the build sink and sets `rejected`; a structural none
+/// leaves `rejected` false. The caller skips the definition when rejected and
+/// keeps its invariant handling on a structural none.
+template <typename Built>
+zc::Maybe<Built> takeListBuildValue(zc::Maybe<zc::OneOf<Built, SourceListRejected>>& result,
+                                    zc::Vector<SignatureSourceFailureRef>& sink, bool& rejected) {
+  rejected = false;
+  if (result == zc::none) { return zc::none; }
+  auto& value = ZC_ASSERT_NONNULL(result);
+  if (value.template is<SourceListRejected>()) {
+    rejected = true;
+    for (auto& failure : value.template get<SourceListRejected>().failures) {
+      sink.add(zc::mv(failure));
+    }
+    return zc::none;
+  }
+  return zc::mv(value.template get<Built>());
+}
+
+zc::Maybe<SourceGenericParametersBuildResult> buildSourceGenericParameters(
     const SignatureFactsBuildInput& input, identity::DefId owner) {
   zc::Maybe<const identity::DefinitionKey&> ownerKey;
   for (const auto& definition : input.boundModule.definitions().definitions()) {
@@ -2375,8 +2474,9 @@ zc::Maybe<BuiltSourceGenericParameters> buildSourceGenericParameters(
 
   zc::Vector<identity::GenericParameterId> identities(entries.size());
   for (const auto& entry : entries) { identities.add(entry.parameter); }
+  zc::Vector<SignatureSourceFailureRef> listFailures;
   SourceTypeBuilder typeBuilder(input.boundModule, input.identities, input.semanticTypes,
-                                identities.asPtr());
+                                identities.asPtr(), listFailures);
   zc::Vector<GenericParameterSignature> signatures(entries.size());
   const auto& tree = input.boundModule.tree();
   for (size_t index = 0; index < entries.size(); ++index) {
@@ -2398,7 +2498,12 @@ zc::Maybe<BuiltSourceGenericParameters> buildSourceGenericParameters(
       if (!tree.contains(boundNodes) || boundNodes.empty()) return zc::none;
       for (const auto boundNode : tree.list(boundNodes)) {
         auto boundInterface = typeBuilder.buildInterface(boundNode);
-        if (boundInterface == zc::none) return zc::none;
+        if (boundInterface == zc::none) {
+          if (!listFailures.empty()) {
+            return SourceGenericParametersBuildResult(SourceListRejected{zc::mv(listFailures)});
+          }
+          return zc::none;
+        }
         ZC_IF_SOME(value, boundInterface) {
           auto shape = input.markerShapes.shape(value.interface);
           if (shape == zc::none) return zc::none;
@@ -2419,17 +2524,26 @@ zc::Maybe<BuiltSourceGenericParameters> buildSourceGenericParameters(
     const ast::NodeId defaultNode(syntax.payload.words[ast::kGenericTypeParamDefaultTyWord]);
     if (tree.contains(defaultNode)) {
       auto builtDefault = typeBuilder.build(defaultNode);
-      if (builtDefault == zc::none) return zc::none;
+      if (builtDefault == zc::none) {
+        if (!listFailures.empty()) {
+          return SourceGenericParametersBuildResult(SourceListRejected{zc::mv(listFailures)});
+        }
+        return zc::none;
+      }
       ZC_IF_SOME(value, builtDefault) { defaultType = value.type; }
     }
     signatures.add(GenericParameterSignature{entry.key.clone(), static_cast<uint32_t>(index),
                                              zc::mv(bounds), zc::mv(markerBounds),
                                              zc::mv(defaultType)});
   }
-  return BuiltSourceGenericParameters{zc::mv(identities), zc::mv(signatures)};
+  return SourceGenericParametersBuildResult(
+      BuiltSourceGenericParameters{zc::mv(identities), zc::mv(signatures)});
 }
 
-zc::Maybe<zc::Vector<ParameterSignature>> buildCallableParameters(
+using SourceCallableParametersBuildResult =
+    zc::OneOf<zc::Vector<ParameterSignature>, SourceListRejected>;
+
+zc::Maybe<SourceCallableParametersBuildResult> buildCallableParameters(
     const SignatureFactsBuildInput& input, identity::DefId owner, ast::NodeId parameterListNode,
     zc::ArrayPtr<const identity::GenericParameterId> genericParameters,
     zc::Maybe<identity::DefId> contextualInterface = zc::none) {
@@ -2494,8 +2608,9 @@ zc::Maybe<zc::Vector<ParameterSignature>> buildCallableParameters(
     }
   }
 
+  zc::Vector<SignatureSourceFailureRef> listFailures;
   SourceTypeBuilder typeBuilder(input.boundModule, input.identities, input.semanticTypes,
-                                genericParameters, contextualInterface);
+                                genericParameters, listFailures, contextualInterface);
   zc::Vector<ParameterSignature> parameters(entries.size());
   for (const auto& entry : entries) {
     if (!tree.contains(entry.node) ||
@@ -2510,7 +2625,12 @@ zc::Maybe<zc::Vector<ParameterSignature>> buildCallableParameters(
         tree.ident(ast::IdentId(syntax.payload.words[ast::kFunctionParameterDeclNameWord])));
     auto type =
         typeBuilder.build(ast::NodeId(syntax.payload.words[ast::kFunctionParameterDeclTyWord]));
-    if (label == zc::none || type == zc::none) return zc::none;
+    if (label == zc::none || type == zc::none) {
+      if (!listFailures.empty()) {
+        return SourceCallableParametersBuildResult(SourceListRejected{zc::mv(listFailures)});
+      }
+      return zc::none;
+    }
     ZC_IF_SOME(labelValue, label) {
       ZC_IF_SOME(typeValue, type) {
         ParameterMode mode = ParameterMode::Value;
@@ -2528,7 +2648,7 @@ zc::Maybe<zc::Vector<ParameterSignature>> buildCallableParameters(
       }
     }
   }
-  return parameters;
+  return SourceCallableParametersBuildResult(zc::mv(parameters));
 }
 
 zc::Maybe<ReceiverSignature> buildCallableReceiver(const SignatureFactsBuildInput& input,
@@ -2902,7 +3022,9 @@ zc::Maybe<identity::SemanticTypeId> resolveClosedSourceType(
     const CheckerIdentityAuthority& identities, type::SemanticTypeStore& semanticTypes,
     ast::NodeId typeSyntax) {
   zc::Vector<identity::GenericParameterId> noGenerics;
-  SourceTypeBuilder builder(boundModule, identities, semanticTypes, noGenerics.asPtr());
+  zc::Vector<SignatureSourceFailureRef> ignoredFailures;
+  SourceTypeBuilder builder(boundModule, identities, semanticTypes, noGenerics.asPtr(),
+                            ignoredFailures);
   auto built = builder.build(typeSyntax);
   ZC_IF_SOME(value, built) { return value.type; }
   return zc::none;
@@ -7138,11 +7260,8 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         if (tree.contains(annotation)) {
           zc::Vector<identity::GenericParameterId> noGenerics;
           SourceTypeBuilder typeBuilder(input.boundModule, input.identities, input.semanticTypes,
-                                        noGenerics.asPtr());
+                                        noGenerics.asPtr(), sourceFailures);
           auto builtType = typeBuilder.build(annotation);
-          for (auto& failure : typeBuilder.takeObjectSafetyFailures()) {
-            sourceFailures.add(zc::mv(failure));
-          }
           if (builtType == zc::none) {
             if (!sourceFailures.empty()) { continue; }
             return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
@@ -7440,22 +7559,24 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         }
 
         auto builtGenerics = buildSourceGenericParameters(input, definition.definition);
-        if (builtGenerics == zc::none) {
+        bool listRejected = false;
+        auto builtGenericValues = takeListBuildValue(builtGenerics, sourceFailures, listRejected);
+        if (builtGenericValues == zc::none) {
+          if (listRejected) { continue; }
           return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                               definition.node.value));
         }
-        zc::Vector<identity::GenericParameterId> genericParameterIds;
-        zc::Vector<GenericParameterSignature> genericParameters;
-        ZC_IF_SOME(value, builtGenerics) {
-          genericParameterIds = zc::mv(value.identities);
-          genericParameters = zc::mv(value.signatures);
-        }
+        zc::Vector<identity::GenericParameterId> genericParameterIds =
+            zc::mv(ZC_ASSERT_NONNULL(builtGenericValues).identities);
+        zc::Vector<GenericParameterSignature> genericParameters =
+            zc::mv(ZC_ASSERT_NONNULL(builtGenericValues).signatures);
         SourceTypeBuilder typeBuilder(input.boundModule, input.identities, input.semanticTypes,
-                                      genericParameterIds.asPtr());
+                                      genericParameterIds.asPtr(), sourceFailures);
         zc::Maybe<identity::SemanticTypeId> base;
         if (tree.contains(baseNode)) {
           auto builtBase = typeBuilder.build(baseNode);
           if (builtBase == zc::none) {
+            if (!sourceFailures.empty()) { continue; }
             return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                                 baseNode.value));
           }
@@ -7545,17 +7666,22 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         identity::DefId ownerDefinition;
         ZC_IF_SOME(value, owner) { ownerDefinition = value; }
         auto ownerGenerics = buildSourceGenericParameters(input, ownerDefinition);
-        if (ownerGenerics == zc::none) {
+        bool ownerGenericsRejected = false;
+        auto ownerGenericValues =
+            takeListBuildValue(ownerGenerics, sourceFailures, ownerGenericsRejected);
+        if (ownerGenericValues == zc::none) {
+          if (ownerGenericsRejected) { continue; }
           return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                               definition.node.value));
         }
-        zc::Vector<identity::GenericParameterId> genericParameterIds;
-        ZC_IF_SOME(value, ownerGenerics) { genericParameterIds = zc::mv(value.identities); }
+        zc::Vector<identity::GenericParameterId> genericParameterIds =
+            zc::mv(ZC_ASSERT_NONNULL(ownerGenericValues).identities);
         SourceTypeBuilder typeBuilder(input.boundModule, input.identities, input.semanticTypes,
-                                      genericParameterIds.asPtr());
+                                      genericParameterIds.asPtr(), sourceFailures);
         const ast::NodeId typeNode(syntax.payload.words[ast::kFieldDeclTyWord]);
         auto builtType = typeBuilder.build(typeNode);
         if (builtType == zc::none) {
+          if (!sourceFailures.empty()) { continue; }
           return buildReject(
               checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module, typeNode.value));
         }
@@ -7612,17 +7738,22 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         identity::DefId ownerDefinition;
         ZC_IF_SOME(value, owner) { ownerDefinition = value; }
         auto ownerGenerics = buildSourceGenericParameters(input, ownerDefinition);
-        if (ownerGenerics == zc::none) {
+        bool ownerGenericsRejected = false;
+        auto ownerGenericValues =
+            takeListBuildValue(ownerGenerics, sourceFailures, ownerGenericsRejected);
+        if (ownerGenericValues == zc::none) {
+          if (ownerGenericsRejected) { continue; }
           return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                               definition.node.value));
         }
-        zc::Vector<identity::GenericParameterId> genericParameterIds;
-        ZC_IF_SOME(value, ownerGenerics) { genericParameterIds = zc::mv(value.identities); }
+        zc::Vector<identity::GenericParameterId> genericParameterIds =
+            zc::mv(ZC_ASSERT_NONNULL(ownerGenericValues).identities);
         SourceTypeBuilder typeBuilder(input.boundModule, input.identities, input.semanticTypes,
-                                      genericParameterIds.asPtr());
+                                      genericParameterIds.asPtr(), sourceFailures);
         const auto& syntax = tree.node(definition.node);
         zc::Vector<identity::SemanticTypeId> payload;
         ast::NodeId discriminantNode;
+        bool variantTypeRejected = false;
         if (syntax.kind == ast::SyntaxKind::UnitVariant) {
           discriminantNode = ast::NodeId(syntax.payload.words[ast::kUnitVariantDiscriminantWord]);
         } else if (syntax.kind == ast::SyntaxKind::TupleVariant) {
@@ -7635,6 +7766,10 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
           for (const auto typeNode : tree.list(typeNodes)) {
             auto builtType = typeBuilder.build(typeNode);
             if (builtType == zc::none) {
+              if (!sourceFailures.empty()) {
+                variantTypeRejected = true;
+                break;
+              }
               return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                                   typeNode.value));
             }
@@ -7645,6 +7780,7 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
           return buildReject(
               checkerInvariant(CheckerInvariantKind::InvalidFact, module, definition.node.value));
         }
+        if (variantTypeRejected) { continue; }
         zc::Maybe<CanonicalInteger> discriminant;
         if (tree.contains(discriminantNode)) {
           auto checkedKey = checkedNodeKey(input.boundModule, discriminantNode);
@@ -7726,25 +7862,31 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         }
 
         auto builtGenerics = buildSourceGenericParameters(input, definition.definition);
-        if (builtGenerics == zc::none) {
+        bool builtGenericsRejected = false;
+        auto builtGenericParams =
+            takeListBuildValue(builtGenerics, sourceFailures, builtGenericsRejected);
+        if (builtGenericParams == zc::none) {
+          if (builtGenericsRejected) {
+            failedInterfaces.add(definition.definition);
+            continue;
+          }
           return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                               definition.node.value));
         }
-        zc::Vector<identity::GenericParameterId> genericParameterIds;
-        zc::Vector<GenericParameterSignature> genericParameters;
-        ZC_IF_SOME(value, builtGenerics) {
-          genericParameterIds = zc::mv(value.identities);
-          genericParameters = zc::mv(value.signatures);
-        }
+        zc::Vector<identity::GenericParameterId> genericParameterIds =
+            zc::mv(ZC_ASSERT_NONNULL(builtGenericParams).identities);
+        zc::Vector<GenericParameterSignature> genericParameters =
+            zc::mv(ZC_ASSERT_NONNULL(builtGenericParams).signatures);
         SourceTypeBuilder interfaceTypeBuilder(input.boundModule, input.identities,
                                                input.semanticTypes, genericParameterIds.asPtr(),
-                                               definition.definition);
+                                               sourceFailures, definition.definition);
 
         struct BuiltInterface final {
           InterfaceInstantiation interface;
           zc::Array<uint8_t> record;
         };
         zc::Vector<BuiltInterface> builtParents;
+        bool parentRejected = false;
         const ast::NodeId parentsNode(syntax.payload.words[ast::kInterfaceDeclIfacesIdWord]);
         if (tree.contains(parentsNode)) {
           const auto& parentSyntax = tree.node(parentsNode);
@@ -7762,6 +7904,11 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
           for (const auto parent : tree.list(parents)) {
             auto parentInterface = interfaceTypeBuilder.buildInterface(parent);
             if (parentInterface == zc::none) {
+              if (!sourceFailures.empty()) {
+                failedInterfaces.add(definition.definition);
+                parentRejected = true;
+                break;
+              }
               return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                                   parent.value));
             }
@@ -7778,6 +7925,7 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
             }
           }
         }
+        if (parentRejected) { continue; }
         for (size_t index = 1; index < builtParents.size(); ++index) {
           auto current = zc::mv(builtParents[index]);
           size_t insertion = index;
@@ -7899,16 +8047,18 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
                                             definition.node.value));
       }
       auto callableGenerics = buildSourceGenericParameters(input, definition.definition);
-      if (callableGenerics == zc::none) {
+      bool callableGenericsRejected = false;
+      auto callableGenericParams =
+          takeListBuildValue(callableGenerics, sourceFailures, callableGenericsRejected);
+      if (callableGenericParams == zc::none) {
+        if (callableGenericsRejected) { continue; }
         return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                             definition.node.value));
       }
-      zc::Vector<identity::GenericParameterId> genericParameterIds;
-      zc::Vector<GenericParameterSignature> genericParameterSignatures;
-      ZC_IF_SOME(value, callableGenerics) {
-        genericParameterIds = zc::mv(value.identities);
-        genericParameterSignatures = zc::mv(value.signatures);
-      }
+      zc::Vector<identity::GenericParameterId> genericParameterIds =
+          zc::mv(ZC_ASSERT_NONNULL(callableGenericParams).identities);
+      zc::Vector<GenericParameterSignature> genericParameterSignatures =
+          zc::mv(ZC_ASSERT_NONNULL(callableGenericParams).signatures);
       // An interface method may mention contextual `Self`; thread the owning
       // interface into the source type builder so bare `Self` resolves.
       zc::Maybe<identity::DefId> contextualInterface;
@@ -7930,16 +8080,24 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
       auto callableParameters =
           buildCallableParameters(input, definition.definition, parameters,
                                   genericParameterIds.asPtr(), contextualInterface);
-      if (callableParameters == zc::none) {
+      bool callableParametersRejected = false;
+      auto callableParameterValues =
+          takeListBuildValue(callableParameters, sourceFailures, callableParametersRejected);
+      if (callableParameterValues == zc::none) {
+        if (callableParametersRejected) { continue; }
         return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                             definition.node.value));
       }
+      zc::Vector<ParameterSignature> callableParameterSignatures =
+          zc::mv(ZC_ASSERT_NONNULL(callableParameterValues));
       zc::Maybe<identity::SemanticTypeId> returnSemanticType;
       if (tree.contains(returnType)) {
         SourceTypeBuilder typeBuilder(input.boundModule, input.identities, input.semanticTypes,
-                                      genericParameterIds.asPtr(), contextualInterface);
+                                      genericParameterIds.asPtr(), sourceFailures,
+                                      contextualInterface);
         auto builtReturn = typeBuilder.build(returnType);
         if (builtReturn == zc::none) {
+          if (!sourceFailures.empty()) { continue; }
           return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                               returnType.value));
         }
@@ -7965,8 +8123,7 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
           auto receiver = buildCallableReceiver(input, definition.definition);
           zc::Maybe<identity::SemanticTypeId> noRaises;
           zc::Maybe<ExternAbi> noAbi;
-          zc::Vector<ParameterSignature> parameterSignatures;
-          ZC_IF_SOME(value, callableParameters) { parameterSignatures = zc::mv(value); }
+          zc::Vector<ParameterSignature> parameterSignatures = zc::mv(callableParameterSignatures);
           built.add(BuiltSignature{
               SemanticSignature{
                   definition.definition, definitionKind, zc::mv(signatureScopeValue),
@@ -8048,12 +8205,13 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         }
       }
       SourceTypeBuilder typeBuilder(input.boundModule, input.identities, input.semanticTypes,
-                                    genericParameterIds.asPtr());
+                                    genericParameterIds.asPtr(), sourceFailures);
       struct BuiltConstraint final {
         CanonicalConstraint constraint;
         zc::Array<uint8_t> record;
       };
       zc::Vector<BuiltConstraint> builtConstraints;
+      bool predicateRejected = false;
       const ast::NodeId whereClause(syntax.payload.words[ast::kStandaloneImplDeclWhereWord]);
       if (tree.contains(whereClause)) {
         const auto& whereSyntax = tree.node(whereClause);
@@ -8085,6 +8243,10 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
           auto bound = typeBuilder.buildInterface(
               ast::NodeId(predicateSyntax.payload.words[ast::kWherePredBoundWord]));
           if (subject == zc::none || bound == zc::none) {
+            if (!sourceFailures.empty()) {
+              predicateRejected = true;
+              break;
+            }
             return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                                 predicate.value));
           }
@@ -8129,6 +8291,7 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
           }
         }
       }
+      if (predicateRejected) { continue; }
       for (size_t index = 1; index < builtConstraints.size(); ++index) {
         auto current = zc::mv(builtConstraints[index]);
         size_t insertion = index;
@@ -8156,6 +8319,7 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
       auto self =
           typeBuilder.build(ast::NodeId(syntax.payload.words[ast::kStandaloneImplDeclForTyWord]));
       if (interfacePattern == zc::none || interfaceValue == zc::none || self == zc::none) {
+        if (!sourceFailures.empty()) { continue; }
         return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                             implementation.node.value));
       }
@@ -8336,11 +8500,13 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
           checkerInvariant(CheckerInvariantKind::InvalidFact, module, implementation.node.value));
     }
     SourceTypeBuilder typeBuilder(input.boundModule, input.identities, input.semanticTypes,
-                                  zc::ArrayPtr<const identity::GenericParameterId>());
+                                  zc::ArrayPtr<const identity::GenericParameterId>(),
+                                  sourceFailures);
     const ast::NodeId markerPath(syntax.payload.words[ast::kMarkerImplMarkerPathWord]);
     auto markerDefinition = typeBuilder.definitionAtPath(markerPath);
     auto self = typeBuilder.build(ast::NodeId(syntax.payload.words[ast::kMarkerImplForTyWord]));
     if (markerDefinition == zc::none || self == zc::none) {
+      if (!sourceFailures.empty()) { continue; }
       return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                           implementation.node.value));
     }

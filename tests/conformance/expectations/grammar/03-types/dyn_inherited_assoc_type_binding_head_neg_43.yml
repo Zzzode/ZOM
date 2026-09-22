@@ -1,0 +1,5 @@
+section: "03-types dyn associated type bindings"
+covers_rule: "dynType, dyn associated type binding"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; the diagnostics runner rejects inherited associated-type head bindings with ZOM4109 until inherited bindings are supported."

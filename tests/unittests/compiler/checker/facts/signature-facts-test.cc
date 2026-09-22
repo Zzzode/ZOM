@@ -1652,6 +1652,70 @@ bool markerShapeInventoryPublishes(zc::StringPtr sourceText) {
                                          session.module(), shapeInputs.asPtr(), identities);
   return result.is<VerifiedMarkerShapeInventory>();
 }
+
+// Drives the production marker and signature stages over a source and returns
+// the raw signature build result so source-level rejections can be asserted
+// structurally (diagnostic enum, site node, typed arguments).
+SignatureFactsBuildResult buildSignatures(zc::StringPtr sourceText) {
+  tests::checker_fixture::CheckerAuthoritySession session(sourceText);
+  const auto& identities = session.identityAuthority();
+  zc::Vector<ownership::AdmittedBoundModule> admitted(identities.modules().size());
+  zc::Vector<MarkerShapeModuleInput> shapeInputs(identities.modules().size());
+  zc::Maybe<size_t> userIndex;
+  for (size_t index = 0; index < identities.modules().size(); ++index) {
+    auto admission =
+        ownership::SurfaceAdmissionBuilder::admit(identities.modules()[index].retain());
+    ZC_REQUIRE(admission.is<ownership::AdmittedBoundModule>());
+    admitted.add(zc::mv(admission).get<ownership::AdmittedBoundModule>());
+    shapeInputs.add(MarkerShapeModuleInput{admitted.back()});
+    if (identities.modules()[index].module() == session.module()) { userIndex = index; }
+  }
+  ZC_REQUIRE(userIndex != zc::none);
+  auto shapeResult =
+      MarkerShapeInventoryBuilder::build(session.semanticContext(), identities.fingerprint(),
+                                         session.module(), shapeInputs.asPtr(), identities);
+  ZC_REQUIRE(shapeResult.is<VerifiedMarkerShapeInventory>());
+  auto shapes = zc::mv(shapeResult).get<VerifiedMarkerShapeInventory>();
+  const auto configuration = MarkerPolicyConfiguration::explicitOnly();
+  zc::Vector<identity::ModuleId> noPreludeModules;
+  auto policyResult = MarkerPolicyRegistryBuilder::build(session.module(), configuration, shapes,
+                                                         noPreludeModules.asPtr(), identities);
+  ZC_REQUIRE(policyResult.is<VerifiedMarkerPolicyRegistry>());
+  auto policies = zc::mv(policyResult).get<VerifiedMarkerPolicyRegistry>();
+  ZC_IF_SOME(value, userIndex) {
+    return SignatureFactsBuilder::build(SignatureFactsBuildInput{
+        admitted[value], session.semanticTypes(), zc::mv(shapes), zc::mv(policies), identities});
+  }
+  ZC_UNREACHABLE
+}
+
+constexpr zc::StringPtr kUnknownAssociatedBindingSource = R"zom(class RecoveryOwner {}
+interface I {
+    fun f(this);
+}
+
+let x: dyn I<Bogus = i32>;
+)zom"_zc;
+
+constexpr zc::StringPtr kInheritedAssociatedBindingSource = R"zom(class RecoveryOwner {}
+interface Iterator {
+    type Item;
+}
+
+interface Child : Iterator {}
+
+let child: dyn Child<Item = u8>;
+)zom"_zc;
+
+constexpr zc::StringPtr kUnknownBindingParameterSource = R"zom(class RecoveryOwner {}
+interface I {
+    fun f(this);
+}
+
+fun g(x: dyn I<Bogus = i32>) -> i32 {
+    return 1;
+}
+)zom"_zc;
 }  // namespace
 
 // An interface-parent cycle must not be classified and published. The readiness
@@ -1661,6 +1725,48 @@ bool markerShapeInventoryPublishes(zc::StringPtr sourceText) {
 ZC_TEST("MarkerShapeInventoryBuilder rejects a behavior-bearing inheritance cycle") {
   ZC_EXPECT(!markerShapeInventoryPublishes(kBehaviorCycleSource));
   ZC_EXPECT(!markerShapeInventoryPublishes(kSelfCycleSource));
+}
+
+// An unknown binding name in a dyn head is a source malformation, not a
+// compiler invariant: the signature stage source-rejects with ZOM4108 at the
+// binding site and carries the written name plus the principal interface as
+// typed arguments.
+ZC_TEST("SignatureFactsBuilder source-rejects an unknown dyn associated type binding") {
+  auto result = buildSignatures(kUnknownAssociatedBindingSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() == 1);
+  const auto& failure = failures[0];
+  ZC_EXPECT(failure.diagnostic == SignatureSourceDiagnostic::DynUnknownAssociatedTypeBinding);
+  ZC_REQUIRE(failure.arguments.size() == 2);
+  ZC_REQUIRE(failure.arguments[0].variant().is<SignatureIdentifierDisplayArg>());
+  ZC_EXPECT(failure.arguments[0].variant().get<SignatureIdentifierDisplayArg>().identifier.text() ==
+            "Bogus"_zc);
+  ZC_REQUIRE(failure.arguments[1].variant().is<SignatureDefinitionDisplayArg>());
+}
+
+// An inherited associated-type name is reported with the dedicated 4109
+// unsupported diagnostic rather than mislabeled unknown (4108) and never as an
+// invariant; the parameter position drains through the same sink.
+ZC_TEST("SignatureFactsBuilder source-rejects an inherited dyn associated type binding") {
+  auto result = buildSignatures(kInheritedAssociatedBindingSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_EXPECT(failures[0].diagnostic ==
+            SignatureSourceDiagnostic::DynInheritedAssociatedTypeBindingUnsupported);
+  ZC_REQUIRE(failures[0].arguments[0].variant().is<SignatureIdentifierDisplayArg>());
+  ZC_EXPECT(
+      failures[0].arguments[0].variant().get<SignatureIdentifierDisplayArg>().identifier.text() ==
+      "Item"_zc);
+}
+
+ZC_TEST("SignatureFactsBuilder source-rejects an unknown dyn binding in a parameter type") {
+  auto result = buildSignatures(kUnknownBindingParameterSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_EXPECT(failures[0].diagnostic == SignatureSourceDiagnostic::DynUnknownAssociatedTypeBinding);
 }
 
 }  // namespace zomlang::compiler::checker::signature

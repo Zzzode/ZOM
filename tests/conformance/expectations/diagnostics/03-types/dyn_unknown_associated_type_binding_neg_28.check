@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/dyn_unknown_associated_type_binding_neg_28.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A binding name in a dyn head that the principal interface does not declare
+// is a source-level malformation: it fails at the binding site with ZOM4108,
+// never as an internal compiler error.
+// CHECK: Error [ZOM4108]:

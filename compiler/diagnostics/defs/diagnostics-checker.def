@@ -170,3 +170,8 @@ DIAG(4105, ModuleStatementSemanticsUnavailable, kError,
 DIAG(4106, TypeAliasTargetUnsupported, kError, "this type alias target is not supported yet", 0)
 DIAG(4107, AssociatedTypeMemberUnsupported, kError, "associated type members are not supported yet",
      0)
+DIAG(4108, DynUnknownAssociatedTypeBinding, kError,
+     "associated type {0} is not declared by dyn interface {1}", 2)
+DIAG(4109, DynInheritedAssociatedTypeBindingUnsupported, kError,
+     "associated type {0} inherited from super-interface of {1} cannot be bound in a dyn head yet",
+     2)
