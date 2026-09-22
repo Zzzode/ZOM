@@ -3176,9 +3176,11 @@ InterfaceHeritageValidator::validate(
   };
   zc::Vector<bool> reached(interfaces.size());
   zc::Vector<bool> onStack(interfaces.size());
+  zc::Vector<bool> cycleReported(interfaces.size());
   for (size_t i = 0; i < interfaces.size(); ++i) {
     reached.add(false);
     onStack.add(false);
+    cycleReported.add(false);
   }
   struct CycleFrame final {
     size_t node;
@@ -3200,8 +3202,15 @@ InterfaceHeritageValidator::validate(
       const identity::DefId parent = interfaces[frame.node].parents[frame.nextParent];
       ++frame.nextParent;
       const size_t next = parentIndex(parent);
-      if (next == interfaces.size()) { break; }
-      if (onStack[next]) {
+      if (next == interfaces.size()) {
+        // Every parent in this graph was resolved locally during the clause
+        // walk above, so an absent graph node is an internal inconsistency,
+        // not a source malformation.
+        return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact,
+                                            boundModule.module(),
+                                            interfaces[frame.node].declaration.value));
+      }
+      if (onStack[next] && !cycleReported[frame.node]) {
         auto failure = signatureSourceFailure(SignatureSourceDiagnostic::HeritageCycle, boundModule,
                                               interfaces[frame.node].declaration,
                                               interfaces[frame.node].declaration);
@@ -3212,8 +3221,10 @@ InterfaceHeritageValidator::validate(
         }
         failures.add(zc::mv(ZC_ASSERT_NONNULL(failure)));
         failedDeclarations.add(interfaces[frame.node].declaration);
-        onStack[frame.node] = false;
-        stack.resize(stack.size() - 1);
+        cycleReported[frame.node] = true;
+        // Keep traversing this frame's remaining parents: a second, distinct
+        // cycle reachable through a later edge must not be hidden. The
+        // per-node guard keeps one report per cycle-participating interface.
         continue;
       }
       if (!reached[next]) {
