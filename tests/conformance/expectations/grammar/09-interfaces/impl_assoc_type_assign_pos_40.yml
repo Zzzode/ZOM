@@ -1,0 +1,5 @@
+section: "9.4 Standalone impl I for T"
+covers_rule: "implMember TYPE ... ASSIGN typeExpr"
+expected: "ACCEPT"
+notes:
+  - "A well-formed impl assigns a concrete type to an associated type declared by the interface. The checker publishes the assignment through the impl head."

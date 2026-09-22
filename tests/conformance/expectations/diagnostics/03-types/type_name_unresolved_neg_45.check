@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/type_name_unresolved_neg_45.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A type named in a signature position that resolves to no definition is a
+// source error at every such position, so the checker closes it with 4120
+// TypeNameUnresolved rather than a MissingRequiredFact internal compiler
+// error.
+// CHECK: Error [ZOM4120]:

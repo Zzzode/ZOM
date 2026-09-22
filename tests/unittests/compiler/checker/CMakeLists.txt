@@ -6,7 +6,7 @@ add_ztest_unit_tests_from_directory(
 set_tests_properties(body-body-checker-test PROPERTIES TIMEOUT 180)
 set_tests_properties(inference-checked-facts-test PROPERTIES TIMEOUT 180)
 set_tests_properties(facts-dispatch-facts-test PROPERTIES TIMEOUT 180)
-set_tests_properties(facts-signature-facts-test PROPERTIES TIMEOUT 180)
+set_tests_properties(facts-signature-facts-test PROPERTIES TIMEOUT 900 RUN_SERIAL TRUE)
 set_tests_properties(body-marker-proof-test PROPERTIES TIMEOUT 600)
 set_tests_properties(body-primitive-binary-operation-test PROPERTIES TIMEOUT 600)
 

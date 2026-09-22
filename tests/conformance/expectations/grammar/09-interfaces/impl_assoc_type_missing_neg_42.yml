@@ -1,0 +1,5 @@
+section: "9.3.3 Associated Types / 9.4"
+covers_rule: "implBody, implMember"
+expected: "ACCEPT"
+notes:
+  - "The impl provides no assignment for the required associated type Item. The checker rejects it with 4117 ImplMissingAssociatedType."

@@ -1,0 +1,12 @@
+interface Iterator {
+    type Item;
+}
+
+struct Bytes {
+    value: u8,
+}
+
+impl Iterator for Bytes {
+    type Item = u8;
+    type Bogus = u8;
+}

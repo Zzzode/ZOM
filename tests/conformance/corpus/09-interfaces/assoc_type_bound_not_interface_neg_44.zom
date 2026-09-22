@@ -1,0 +1,7 @@
+struct NotInterface {
+    value: u8,
+}
+
+interface Collection {
+    type Item : NotInterface;
+}

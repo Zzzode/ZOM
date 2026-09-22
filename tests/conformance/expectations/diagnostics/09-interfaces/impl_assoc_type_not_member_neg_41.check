@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/impl_assoc_type_not_member_neg_41.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// An impl block may assign only associated types declared by the implemented
+// interface. `Bogus` is not a member of `Iterator`, so the checker rejects it
+// with 4116 ImplAssociatedTypeNotMember, never as an internal compiler error.
+// CHECK: Error [ZOM4116]:

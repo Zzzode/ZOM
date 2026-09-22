@@ -1,8 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/impl_assoc_type_unsupported_neg_34.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-// An associated type assignment inside an impl block is grammatically valid,
-// but associated type signatures are not built by the checker yet. The form is
-// refused on the source rail rather than surfacing as an internal compiler
-// error.
-// CHECK: Error [ZOM4107]: associated type members are not supported yet

@@ -23,11 +23,9 @@ in-repo corpus that must become source diagnostics.
   - An associated type member (`type Item;`) was accepted inside a class,
     struct, or error body even though `classMember`/`structMember` define no
     such element; it is now a parser error ZOM2107
-    `AssociatedTypeMemberNotAllowed`. An impl block still accepts only the
-    assignment form (`type Item = T;`, mandatory `=`, no bound clause), matching
-    `implMember`. ZOM4107 `AssociatedTypeMemberUnsupported` stays reachable for
-    the still-unimplemented impl assignment and is covered by
-    `impl_assoc_type_unsupported_neg_34`.
+    `AssociatedTypeMemberNotAllowed`. An impl block accepts only the assignment
+    form (`type Item = T;`, mandatory `=`, no bound clause), matching
+    `implMember`. Impl assignment is now fully implemented (see A7e).
   - A module-scope `let`/`mut` without an initializer is now refused honestly on
     the signature rail with ZOM4087 `ModuleBindingInitializerRequired` after the
     annotation is analyzed (so an ill-formed annotation still reports its own
@@ -116,11 +114,37 @@ in-repo corpus that must become source diagnostics.
   module heritage resolution), heritage parent type arguments are ignored by
   the validator (generic behavior interfaces still ICE on bad args), and the
   O(N x D) local-name scan makes the 256-parent corpus slow under ASan.
-- A7c. dyn types in interface BOUND positions (`fun f<T: dyn S>()`,
-  `impl I for T where T: dyn S`): the bound-side buildInterface call never
-  classifies a DynTypeExpr, so even a legal `dyn I` bound ICEs there. This is
-  separate from the principal path; the bound grammar arguably should reject
-  the `dyn` spelling outright.
+- A7c. DONE 2026-09-23: `dyn I` in an interface-bound position is a closed
+  source error everywhere the bound rail runs — generic parameter bounds
+  (`fun f<T: dyn I>()`), associated type bounds (`type X : dyn I;`), and impl
+  `where` predicates (`impl I for T where T: dyn I`) — via
+  ZOM4121 DynTypeNotAllowedAsBound emitted at the single SourceTypeBuilder
+  bound funnel. Function-level `where` clauses are still parser-unparsed
+  (ZOM2076), so they never reach this rail.
+- A7d. DONE 2026-09-23: the shared SourceTypeBuilder name-resolution funnel
+  now closes an unresolvable named type at every signature position
+  (parameters, returns, fields, variants, impl self/interface/targets,
+  associated type defaults, type arguments, and the dyn principal) with
+  ZOM4120 TypeNameUnresolved, replacing the long-standing dd0442 invariant for
+  unresolved type-position names (binder covers let annotations as ZOM3001).
+  Associated type bounds additionally classify an unresolved bound as
+  ZOM4118 AssociatedTypeBoundNotFound and a non-interface bound as ZOM4119
+  AssociatedTypeBoundNotInterface. A repeated bound (`I + I`) on either a
+  generic parameter or an associated type is ZOM4122 DuplicateInterfaceBound;
+  the associated-type and generic-parameter signature encoders now canonicalize
+  their bound order, which also fixed a pre-existing ICE on any legal
+  multi-bound parameter (`fun f<T: A + B>()`).
+- A7e. DONE 2026-09-23: impl associated type assignment is implemented end to
+  end. An interface-declared associated type now publishes a real
+  AssociatedTypeSignature (generic parameters, ordered bounds, marker bounds,
+  optional default) instead of being skipped, which closes the downstream
+  driver MissingProjection module-interface incident. The impl head consumes
+  each `type Name = T;` assignment: a name not declared by the interface is
+  ZOM4116 ImplAssociatedTypeNotMember, an impl that omits a required
+  non-generic associated type is ZOM4117 ImplMissingAssociatedType, and a GAT
+  assignment (`type Iter<T> = U;`) is ZOM4123
+  ImplGenericAssociatedTypeUnsupported until GAT substitution lands. The
+  now-unreachable ZOM4107 was removed.
 - A8. Concrete-to-dyn erasure at value positions (RFC 0005 coercion table):
   `let d: dyn D = sprite`. New checked coercion fact + HIR/MIR coercion
   carrier. (checker/hir/mir)

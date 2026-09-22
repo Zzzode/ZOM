@@ -1032,7 +1032,6 @@ enum class SignatureSourceDiagnostic : uint16_t {
   ModuleInitializerSemanticsUnavailable = 4104,
   ModuleStatementSemanticsUnavailable = 4105,
   TypeAliasTargetUnsupported = 4106,
-  AssociatedTypeMemberUnsupported = 4107,
   DynUnknownAssociatedTypeBinding = 4108,
   DynInheritedAssociatedTypeBindingUnsupported = 4109,
   DynPrincipalNotInterface = 4110,
@@ -1040,7 +1039,15 @@ enum class SignatureSourceDiagnostic : uint16_t {
   HeritageParentNotInterface = 4112,
   HeritageDuplicateParent = 4113,
   HeritageParentIsTypeParameter = 4114,
-  HeritageCycle = 4115
+  HeritageCycle = 4115,
+  ImplAssociatedTypeNotMember = 4116,
+  ImplMissingAssociatedType = 4117,
+  AssociatedTypeBoundNotFound = 4118,
+  AssociatedTypeBoundNotInterface = 4119,
+  TypeNameUnresolved = 4120,
+  DynTypeNotAllowedAsBound = 4121,
+  DuplicateInterfaceBound = 4122,
+  ImplGenericAssociatedTypeUnsupported = 4123
 };
 
 struct SignatureLiteralDisplayArg final {

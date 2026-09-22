@@ -1,3 +1,11 @@
+interface Show {
+    fun render(this);
+}
+
+interface Hash {
+    fun hash(this) -> u64;
+}
+
 interface FullAssoc {
     type Element<T, U> : Show + Hash = T | U;
 }

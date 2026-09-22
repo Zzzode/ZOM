@@ -1,0 +1,5 @@
+interface Show {}
+
+interface Collection {
+    type Item : Show + Show;
+}

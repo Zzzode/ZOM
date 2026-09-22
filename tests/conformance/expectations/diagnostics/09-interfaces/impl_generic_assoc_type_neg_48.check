@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/impl_generic_assoc_type_neg_48.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A generic associated type (GAT) assignment is grammatically admitted in an
+// impl block but its substitution semantics are a later contract. The checker
+// refuses it on the source rail with 4123
+// ImplGenericAssociatedTypeUnsupported, never as an internal compiler error.
+// CHECK: Error [ZOM4123]:

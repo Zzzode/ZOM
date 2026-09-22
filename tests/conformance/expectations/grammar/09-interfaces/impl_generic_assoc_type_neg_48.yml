@@ -1,0 +1,5 @@
+section: "9.3.3 Associated Types / 9.4"
+covers_rule: "implMember TYPE typeParameters? ASSIGN typeExpr"
+expected: "ACCEPT"
+notes:
+  - "The assignment targets a generic associated type. Its semantics are unimplemented; the checker rejects it with 4123 ImplGenericAssociatedTypeUnsupported."

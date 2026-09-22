@@ -1,0 +1,5 @@
+section: "Type expressions"
+covers_rule: "typeExpr, typeNamed"
+expected: "ACCEPT"
+notes:
+  - "The named type resolves to no definition in a signature position. The checker rejects it with 4120 TypeNameUnresolved."

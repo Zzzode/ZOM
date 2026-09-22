@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/assoc_type_bound_unresolved_neg_43.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// An associated type bound must name a resolvable interface. `Missing` cannot
+// be resolved, so the checker rejects it with 4118
+// AssociatedTypeBoundNotFound, never as an internal compiler error.
+// CHECK: Error [ZOM4118]:

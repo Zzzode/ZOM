@@ -337,6 +337,21 @@ ACCEPTED_CHECKER_DIAGNOSTICS = (
     (4114, "HeritageParentIsTypeParameter", "kError",
      "a generic parameter cannot be used as a super-interface", 0),
     (4115, "HeritageCycle", "kError", "cyclic interface inheritance is not allowed", 0),
+    (4116, "ImplAssociatedTypeNotMember", "kError",
+     "associated type {0} is not declared by implemented interface {1}", 2),
+    (4117, "ImplMissingAssociatedType", "kError",
+     "implementation is missing required associated type {0} of interface {1}", 2),
+    (4118, "AssociatedTypeBoundNotFound", "kError",
+     "this associated type bound cannot be resolved", 0),
+    (4119, "AssociatedTypeBoundNotInterface", "kError",
+     "associated type bound {0} is not an interface", 1),
+    (4120, "TypeNameUnresolved", "kError", "cannot find type {0} in this scope", 1),
+    (4121, "DynTypeNotAllowedAsBound", "kError",
+     "a dyn type is a value type and cannot be used as an interface bound", 0),
+    (4122, "DuplicateInterfaceBound", "kError",
+     "interface bound {0} is listed more than once", 1),
+    (4123, "ImplGenericAssociatedTypeUnsupported", "kError",
+     "assigning a generic associated type in an impl is not supported yet", 0),
 )
 
 REMOVED_CHECKER_DIAGNOSTIC_CODES = (4027, 4034, 4042, 4043, 4053)

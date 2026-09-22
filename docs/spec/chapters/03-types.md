@@ -539,6 +539,8 @@ the compact source forms `dyn I<Item = T>` and `dyn I + Sendable + Shared`.
 | `let x: dyn Iterator = value;` (associated type `Item` not bound) | ZOM4004 `DynUnassociatedType` |
 | `let x: dyn Iterator<Bogus = T> = value;` (unknown head binding) | ZOM4108 `DynUnknownAssociatedTypeBinding` |
 | `let x: dyn Child<Item = T> = value;` (inherited head binding) | ZOM4109 `DynInheritedAssociatedTypeBindingUnsupported` |
+| `let x: dyn Missing = value;` (principal does not resolve) | ZOM4120 `TypeNameUnresolved` |
+| `fun f<T: dyn I>()` (`dyn` existential used as an interface bound) | ZOM4121 `DynTypeNotAllowedAsBound`; a bound must name an interface, not a value type |
 
 **Runtime layout (2-word fat pointer):**
 

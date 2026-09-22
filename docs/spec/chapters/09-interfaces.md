@@ -186,6 +186,16 @@ associated type name, the unqualified projection `T::Item` is ambiguous. Use
 the fully qualified projection `<T as Interface>::Item` to select the source
 interface explicitly.
 
+An associated type bound or default must name a real interface or type. These
+malformations are closed source errors, never a compiler crash:
+
+| Form | Diagnostic |
+|------|------------|
+| `type E : Missing;` (bound does not resolve) | `ZOM4118 AssociatedTypeBoundNotFound` |
+| `type E : StructName;` (bound is not an interface) | `ZOM4119 AssociatedTypeBoundNotInterface` |
+| `type E : I + I;` (bound repeated) | `ZOM4122 DuplicateInterfaceBound` |
+| `type E = Missing;` (default type does not resolve) | `ZOM4120 TypeNameUnresolved` |
+
 ## 9.4 Standalone `impl I for T` (Independent Implementation Blocks)
 
 Not all behavior contracts can live inside the `class` body that declares the type. Two common cases motivate standalone implementation blocks: (a) the interface author owns the interface but does **not** own the target type (FFI types, standard-library types such as `u64`), and (b) the type author owns the type but wants to group impls into separate files for modularity (serialization, rendering, persistence in different compilation units).
@@ -240,6 +250,17 @@ impl Iterator for ByteReader {
     }
 }
 ```
+
+An impl must assign every non-generic associated type the interface
+declares, and may only assign names the interface declares. These are closed
+source errors, never a compiler crash:
+
+| Form | Diagnostic |
+|------|------------|
+| `impl I for T { type Bogus = U; }` (name not declared by `I`) | `ZOM4116 ImplAssociatedTypeNotMember` |
+| `impl I for T {}` (a required associated type is unassigned) | `ZOM4117 ImplMissingAssociatedType` |
+| `impl I for T { type Iter<P> = U; }` (GAT assignment) | `ZOM4123 ImplGenericAssociatedTypeUnsupported` |
+| `impl I for T { type Item = Missing; }` (target type unresolved) | `ZOM4120 TypeNameUnresolved` |
 
 ### 9.4.2 Generic Impls and Where-Clauses
 

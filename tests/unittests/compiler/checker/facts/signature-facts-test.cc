@@ -1867,4 +1867,216 @@ ZC_TEST("SignatureFactsBuilder source-rejects a non-interface dyn principal") {
   ZC_REQUIRE(failure.arguments[0].variant().is<SignatureDefinitionDisplayArg>());
 }
 
+constexpr zc::StringPtr kImplAssociatedAssignmentSource = R"zom(class RecoveryOwner {}
+interface Iterator {
+    type Item;
+}
+struct Bytes {
+    value: u8,
+}
+impl Iterator for Bytes {
+    type Item = u8;
+}
+)zom"_zc;
+
+constexpr zc::StringPtr kImplAssociatedNotMemberSource = R"zom(class RecoveryOwner {}
+interface Iterator {
+    type Item;
+}
+struct Bytes {
+    value: u8,
+}
+impl Iterator for Bytes {
+    type Item = u8;
+    type Bogus = u8;
+}
+)zom"_zc;
+
+constexpr zc::StringPtr kImplAssociatedMissingSource = R"zom(class RecoveryOwner {}
+interface Iterator {
+    type Item;
+}
+struct Bytes {
+    value: u8,
+}
+impl Iterator for Bytes {}
+)zom"_zc;
+
+constexpr zc::StringPtr kAssociatedBoundUndefinedSource = R"zom(class RecoveryOwner {}
+interface Collection {
+    type Error : Missing;
+}
+)zom"_zc;
+
+constexpr zc::StringPtr kAssociatedBoundNonInterfaceSource = R"zom(class RecoveryOwner {}
+struct Bound {
+    value: u8,
+}
+interface Collection {
+    type Item : Bound;
+}
+)zom"_zc;
+
+constexpr zc::StringPtr kTypeNameUnresolvedSource = R"zom(class RecoveryOwner {}
+fun f(x: Missing) -> u8 {
+    return 0;
+}
+)zom"_zc;
+
+constexpr zc::StringPtr kDynTypeAsBoundSource = R"zom(class RecoveryOwner {}
+interface I {}
+fun g<T: dyn I>() -> u8 {
+    return 0;
+}
+)zom"_zc;
+
+constexpr zc::StringPtr kAssociatedMultiBoundSource = R"zom(class RecoveryOwner {}
+interface Show {}
+interface Hash {}
+interface FullAssoc {
+    type Element<T, U> : Show + Hash;
+}
+)zom"_zc;
+
+constexpr zc::StringPtr kGenericParameterMultiBoundSource = R"zom(class RecoveryOwner {}
+interface Show {}
+interface Hash {}
+fun g<T: Show + Hash>(x: T) -> u8 {
+    return 0;
+}
+)zom"_zc;
+
+constexpr zc::StringPtr kDuplicateInterfaceBoundSource = R"zom(class RecoveryOwner {}
+interface Show {}
+interface FullAssoc {
+    type Element : Show + Show;
+}
+)zom"_zc;
+
+constexpr zc::StringPtr kImplGenericAssociatedAssignmentSource = R"zom(class RecoveryOwner {}
+interface Iterator {
+    type Iter<T>;
+}
+struct Bytes {
+    value: u8,
+}
+impl Iterator for Bytes {
+    type Iter<T> = u8;
+}
+)zom"_zc;
+
+// A well-formed impl assignment to an interface-declared associated type
+// publishes through the impl head rather than crashing the signature or module
+// interface stages.
+ZC_TEST("SignatureFactsBuilder publishes an impl associated type assignment") {
+  auto result = buildSignatures(kImplAssociatedAssignmentSource);
+  ZC_EXPECT(result.is<VerifiedSignatureFacts>());
+}
+
+ZC_TEST("SignatureFactsBuilder source-rejects an impl assignment to a non-member") {
+  auto result = buildSignatures(kImplAssociatedNotMemberSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_EXPECT(failures[0].diagnostic == SignatureSourceDiagnostic::ImplAssociatedTypeNotMember);
+  ZC_REQUIRE(failures[0].arguments.size() == 2);
+  ZC_EXPECT(failures[0].arguments[0].variant().is<SignatureIdentifierDisplayArg>());
+  ZC_EXPECT(
+      failures[0].arguments[0].variant().get<SignatureIdentifierDisplayArg>().identifier.text() ==
+      "Bogus"_zc);
+  ZC_EXPECT(failures[0].arguments[1].variant().is<SignatureDefinitionDisplayArg>());
+}
+
+ZC_TEST("SignatureFactsBuilder source-rejects an impl missing a required associated type") {
+  auto result = buildSignatures(kImplAssociatedMissingSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_EXPECT(failures[0].diagnostic == SignatureSourceDiagnostic::ImplMissingAssociatedType);
+  ZC_REQUIRE(failures[0].arguments.size() == 2);
+  ZC_EXPECT(failures[0].arguments[0].variant().is<SignatureDefinitionDisplayArg>());
+  ZC_EXPECT(failures[0].arguments[1].variant().is<SignatureDefinitionDisplayArg>());
+}
+
+ZC_TEST("SignatureFactsBuilder source-rejects an unresolved associated type bound") {
+  auto result = buildSignatures(kAssociatedBoundUndefinedSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_EXPECT(failures[0].diagnostic == SignatureSourceDiagnostic::AssociatedTypeBoundNotFound);
+}
+
+ZC_TEST("SignatureFactsBuilder source-rejects a non-interface associated type bound") {
+  auto result = buildSignatures(kAssociatedBoundNonInterfaceSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_EXPECT(failures[0].diagnostic == SignatureSourceDiagnostic::AssociatedTypeBoundNotInterface);
+  ZC_REQUIRE(failures[0].arguments.size() == 1);
+  ZC_EXPECT(failures[0].arguments[0].variant().is<SignatureDefinitionDisplayArg>());
+}
+
+// An unresolvable named type in a parameter signature is closed on the source
+// rail at the shared type builder instead of a MissingRequiredFact invariant.
+ZC_TEST("SignatureFactsBuilder source-rejects an unresolved named type") {
+  auto result = buildSignatures(kTypeNameUnresolvedSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_EXPECT(failures[0].diagnostic == SignatureSourceDiagnostic::TypeNameUnresolved);
+  ZC_REQUIRE(failures[0].arguments.size() == 1);
+  ZC_EXPECT(failures[0].arguments[0].variant().is<SignatureIdentifierDisplayArg>());
+  ZC_EXPECT(
+      failures[0].arguments[0].variant().get<SignatureIdentifierDisplayArg>().identifier.text() ==
+      "Missing"_zc);
+}
+
+// A dyn existential used as a generic parameter bound is rejected at the bound
+// site rather than falling through to an invariant.
+ZC_TEST("SignatureFactsBuilder source-rejects a dyn type used as a bound") {
+  auto result = buildSignatures(kDynTypeAsBoundSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_EXPECT(failures[0].diagnostic == SignatureSourceDiagnostic::DynTypeNotAllowedAsBound);
+}
+
+// Multiple associated type bounds are canonicalized in ascending order, so a
+// well-formed two-bound declaration publishes instead of failing canonical
+// encoding.
+ZC_TEST("SignatureFactsBuilder publishes an associated type with multiple bounds") {
+  auto result = buildSignatures(kAssociatedMultiBoundSource);
+  ZC_EXPECT(result.is<VerifiedSignatureFacts>());
+}
+
+// Generic parameter behavior bounds are likewise canonicalized in ascending
+// order; `T: Show + Hash` must publish rather than fail canonical encoding.
+ZC_TEST("SignatureFactsBuilder publishes a generic parameter with multiple bounds") {
+  auto result = buildSignatures(kGenericParameterMultiBoundSource);
+  ZC_EXPECT(result.is<VerifiedSignatureFacts>());
+}
+
+// Listing the same interface bound twice is a source malformation, not a
+// canonical-encoding invariant.
+ZC_TEST("SignatureFactsBuilder source-rejects a duplicated interface bound") {
+  auto result = buildSignatures(kDuplicateInterfaceBoundSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_EXPECT(failures[0].diagnostic == SignatureSourceDiagnostic::DuplicateInterfaceBound);
+  ZC_REQUIRE(failures[0].arguments.size() == 1);
+  ZC_EXPECT(failures[0].arguments[0].variant().is<SignatureDefinitionDisplayArg>());
+}
+
+// A GAT assignment in an impl block is grammatically admitted but its semantics
+// are a later contract; it is refused on the source rail rather than ICEing.
+ZC_TEST("SignatureFactsBuilder source-rejects an impl generic associated type assignment") {
+  auto result = buildSignatures(kImplGenericAssociatedAssignmentSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_EXPECT(failures[0].diagnostic ==
+            SignatureSourceDiagnostic::ImplGenericAssociatedTypeUnsupported);
+}
+
 }  // namespace zomlang::compiler::checker::signature

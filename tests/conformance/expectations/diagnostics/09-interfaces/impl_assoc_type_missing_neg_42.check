@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/impl_assoc_type_missing_neg_42.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// An implementation must assign every non-generic associated type declared by
+// the interface. The empty impl omits `Item`, so the checker rejects the impl
+// with 4117 ImplMissingAssociatedType at the impl head, never as an internal
+// compiler error.
+// CHECK: Error [ZOM4117]:

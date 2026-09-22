@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/dyn_type_as_bound_neg_46.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A generic parameter bound must name an interface. `dyn I` is the
+// existential value type, not an interface, so the checker rejects it with
+// 4121 DynTypeNotAllowedAsBound at every bound position, never as an internal
+// compiler error.
+// CHECK: Error [ZOM4121]:

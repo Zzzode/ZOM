@@ -1,0 +1,5 @@
+section: "Type expressions / generic bounds"
+covers_rule: "typeParameterBoundList, dynType"
+expected: "ACCEPT"
+notes:
+  - "The bound is a dyn existential rather than a named interface. The checker rejects it with 4121 DynTypeNotAllowedAsBound."

@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/duplicate_interface_bound_neg_47.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// The same interface bound listed twice is a source malformation rejected with
+// 4122 DuplicateInterfaceBound, not a canonical-encoding internal compiler
+// error.
+// CHECK: Error [ZOM4122]:

@@ -1,5 +1,0 @@
-section: "§9.4 Standalone impl associated type assignment"
-covers_rule: "implMember associated type assignment"
-expected: "ACCEPT"
-notes:
-  - "The grammar accepts `type Item = u8;` inside an impl block; the checker refuses associated type signatures it does not build yet."

@@ -1,0 +1,5 @@
+interface I {}
+
+fun f<T: dyn I>() -> u8 {
+    return 0;
+}

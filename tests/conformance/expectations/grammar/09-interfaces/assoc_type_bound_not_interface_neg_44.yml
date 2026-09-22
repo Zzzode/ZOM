@@ -1,0 +1,5 @@
+section: "9.3.3 Associated Types"
+covers_rule: "interfaceAssocType, associatedTypeBoundList"
+expected: "ACCEPT"
+notes:
+  - "The bound resolves to a struct rather than an interface. The checker rejects it with 4119 AssociatedTypeBoundNotInterface."

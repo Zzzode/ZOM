@@ -1,0 +1,5 @@
+section: "9.3.3 Associated Types"
+covers_rule: "interfaceAssocType, associatedTypeBoundList"
+expected: "ACCEPT"
+notes:
+  - "The bound cannot be resolved to a definition. The checker rejects it with 4118 AssociatedTypeBoundNotFound."

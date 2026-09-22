@@ -1,6 +1,10 @@
+interface Error {
+    fun report(this);
+}
+
 interface Collection {
     type Item;
     type Iter<T>;
     type Error : Error;
-    type State = Closed | Open;
+    type State = u8 | i32;
 }

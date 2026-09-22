@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/assoc_type_bound_not_interface_neg_44.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// An associated type bound must be an interface. `NotInterface` is a struct,
+// so the checker rejects it with 4119 AssociatedTypeBoundNotInterface, never
+// as an internal compiler error.
+// CHECK: Error [ZOM4119]:

@@ -1,0 +1,5 @@
+section: "9.3.3 Associated Types"
+covers_rule: "associatedTypeBoundList"
+expected: "ACCEPT"
+notes:
+  - "The bound list names the same interface twice. The checker rejects it with 4122 DuplicateInterfaceBound."

@@ -692,6 +692,19 @@ zc::Maybe<const binder::MaterializedDefinitionInventoryEntry&> materializedDefin
   return zc::none;
 }
 
+// An associated type assignment nested in a standalone impl block is consumed
+// by the impl head and gets no standalone definition signature, so the
+// signature census and the build loop must exclude it together. An associated
+// type declared by an interface is a signature-bearing member and gets its own
+// AssociatedTypeSignature.
+bool isImplOwnedAssociatedType(const binder::MaterializedDefinitionInventoryEntry& entry) {
+  if (entry.record.kind() != identity::DefinitionKind::AssociatedType) return false;
+  for (const auto& owner : entry.record.owners()) {
+    if (owner.kind() == identity::EnclosingStableOwnerKind::Implementation) { return true; }
+  }
+  return false;
+}
+
 zc::Maybe<identity::DefId> enclosingDefinitionOwner(
     const binder::MaterializedDefinitionInventoryEntry& definition,
     const binder::ImmutableDefinitionInventory& definitions,
@@ -918,7 +931,8 @@ zc::Maybe<SignatureScope> signatureScope(
     const binder::ImmutableBindingMetadata& metadata, const binder::DefinitionFact& definition,
     identity::ModuleId module, const CheckerIdentityAuthority& identities) {
   if (definition.kind == identity::DefinitionKind::Method ||
-      definition.kind == identity::DefinitionKind::Field) {
+      definition.kind == identity::DefinitionKind::Field ||
+      definition.kind == identity::DefinitionKind::AssociatedType) {
     auto materialized = materializedDefinition(input.definitions(), definition.identity);
     if (materialized == zc::none) return zc::none;
     ZC_IF_SOME(entry, materialized) {
@@ -962,41 +976,6 @@ zc::Maybe<SignatureScope> signatureScope(
     }
   }
   return zc::none;
-}
-
-bool sameDefinitionName(const identity::DeclaredDefinitionName& left,
-                        const identity::DeclaredDefinitionName& right) {
-  identity::CanonicalEncoder leftEncoder;
-  identity::CanonicalEncoder rightEncoder;
-  left.encode(leftEncoder);
-  right.encode(rightEncoder);
-  const auto leftBytes = leftEncoder.finish();
-  const auto rightBytes = rightEncoder.finish();
-  return sameBytes(leftBytes.asPtr(), rightBytes.asPtr());
-}
-
-zc::Maybe<identity::DefId> directAssociatedType(const binder::ImmutableBindingMetadata& metadata,
-                                                identity::DefId interface,
-                                                const identity::DeclaredDefinitionName& name) {
-  zc::Maybe<identity::DefId> result;
-  for (const auto& definition : metadata.definitions()) {
-    if (definition.kind != identity::DefinitionKind::AssociatedType ||
-        !sameDefinitionName(definition.name, name)) {
-      continue;
-    }
-    auto scope = findScope(metadata, definition.declaringScope);
-    if (scope == zc::none) continue;
-    ZC_IF_SOME(value, scope) {
-      const auto& owner = value.owner.value();
-      if (value.kind != binder::ScopeKind::TypeBody || !owner.is<binder::DefinitionScopeOwner>() ||
-          owner.get<binder::DefinitionScopeOwner>().definition != interface) {
-        continue;
-      }
-      if (result != zc::none) return zc::none;
-      result = definition.identity;
-    }
-  }
-  return result;
 }
 
 bool isCallableDeclaration(const ast::Tree& tree, ast::NodeId declaration,
@@ -1204,6 +1183,15 @@ public:
     const auto& tree = boundModule.tree();
     if (!tree.contains(node)) return zc::none;
     const auto& syntax = tree.node(node);
+    if (syntax.kind == ast::SyntaxKind::DynTypeExpr) {
+      // A bound must name an interface; `dyn I` is the existential value type,
+      // not an interface, and is equally invalid as a generic bound, a where
+      // predicate bound, an associated type bound, or a heritage parent.
+      auto failure = signatureSourceFailure(SignatureSourceDiagnostic::DynTypeNotAllowedAsBound,
+                                            boundModule, node, node);
+      if (failure != zc::none) { sink.add(zc::mv(ZC_ASSERT_NONNULL(failure))); }
+      return zc::none;
+    }
     if (syntax.kind != ast::SyntaxKind::NamedTypeExpr) return zc::none;
     auto definition =
         resolvedDefinition(ast::NodeId(syntax.payload.words[ast::kNamedTypeExprPathWord]));
@@ -1273,6 +1261,32 @@ public:
   }
 
 private:
+  /// \brief Record ZOM4120 for a named type whose path resolves to neither a
+  /// binding target, a generic parameter, nor a local definition. This is the
+  /// single funnel for every signature type position, so none of them fall
+  /// through to a MissingRequiredFact invariant.
+  void recordUnresolvedTypeName(ast::NodeId node) {
+    const auto& tree = boundModule.tree();
+    if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::NamedTypeExpr) { return; }
+    const ast::NodeId path(tree.node(node).payload.words[ast::kNamedTypeExprPathWord]);
+    if (!tree.contains(path) || tree.node(path).kind != ast::SyntaxKind::ModulePath) { return; }
+    const ast::IdentList segments{tree.node(path).payload.words[ast::kModulePathSegmentsFirstWord],
+                                  tree.node(path).payload.words[ast::kModulePathSegmentsSizeWord]};
+    if (!tree.contains(segments) || segments.size == 0) { return; }
+    const auto firstName = tree.identList(segments)[0];
+    if (!tree.contains(firstName)) { return; }
+    auto failure = signatureSourceFailure(SignatureSourceDiagnostic::TypeNameUnresolved,
+                                          boundModule, node, node);
+    if (failure == zc::none) { return; }
+    ZC_IF_SOME(value, failure) {
+      auto name = identity::SemanticIdentifier::fromSource(tree.ident(firstName));
+      if (name == zc::none) { return; }
+      value.arguments.add(
+          SignatureSourceArgument(SignatureIdentifierDisplayArg{zc::mv(ZC_ASSERT_NONNULL(name))}));
+      sink.add(zc::mv(value));
+    }
+  }
+
   template <typename DataBuilder, typename PatternBuilder>
   zc::Maybe<BuiltSourceType> buildUnary(ast::NodeId child, DataBuilder dataBuilder,
                                         PatternBuilder patternBuilder) {
@@ -1479,8 +1493,12 @@ private:
         return buildGenericParameter(parameter, arguments);
       }
       auto localDefinition = resolvedDefinition(path);
-      if (localDefinition == zc::none) return zc::none;
+      if (localDefinition == zc::none) {
+        recordUnresolvedTypeName(node);
+        return zc::none;
+      }
       ZC_IF_SOME(value, localDefinition) { return buildNamedDefinition(value, arguments); }
+      recordUnresolvedTypeName(node);
       return zc::none;
     }
     ZC_IF_SOME(target, resolved) {
@@ -1707,8 +1725,10 @@ private:
     const auto& syntax = tree.node(node);
     const ast::NodeId principalNode(syntax.payload.words[ast::kDynTypeExprPrincipalWord]);
     if (!recordNonInterfacePrincipal(principalNode)) {
-      // An unresolvable principal stays an invariant until the binder covers
-      // every type-bearing position; a parser-admitted non-path cannot occur.
+      // A non-path principal is structurally impossible; an unresolvable
+      // principal path is the same unknown type name as any other type
+      // position, so close it with ZOM4120 instead of an invariant.
+      recordUnresolvedTypeName(principalNode);
       return zc::none;
     }
     auto principalInterface = buildInterface(principalNode);
@@ -2545,14 +2565,55 @@ zc::Maybe<SourceGenericParametersBuildResult> buildSourceGenericParameters(
           ZC_IF_SOME(kind, shape) {
             if (kind == InterfaceMarkerShape::ClosedMarker) {
               if (!value.arguments.empty()) return zc::none;
+              bool duplicateMarker = false;
+              for (const auto existing : markerBounds) {
+                if (existing == value.interface) {
+                  duplicateMarker = true;
+                  break;
+                }
+              }
+              if (duplicateMarker) {
+                auto failure =
+                    signatureSourceFailure(SignatureSourceDiagnostic::DuplicateInterfaceBound,
+                                           input.boundModule, entry.node, boundNode);
+                if (failure == zc::none) return zc::none;
+                ZC_IF_SOME(duplicate, failure) {
+                  duplicate.arguments.add(
+                      SignatureSourceArgument(SignatureDefinitionDisplayArg{value.interface}));
+                  listFailures.add(zc::mv(duplicate));
+                }
+                continue;
+              }
               markerBounds.add(value.interface);
             } else if (kind == InterfaceMarkerShape::Behavior) {
+              bool duplicateBound = false;
+              for (const auto& existing : bounds) {
+                if (existing.interface == value.interface) {
+                  duplicateBound = true;
+                  break;
+                }
+              }
+              if (duplicateBound) {
+                auto failure =
+                    signatureSourceFailure(SignatureSourceDiagnostic::DuplicateInterfaceBound,
+                                           input.boundModule, entry.node, boundNode);
+                if (failure == zc::none) return zc::none;
+                ZC_IF_SOME(duplicate, failure) {
+                  duplicate.arguments.add(
+                      SignatureSourceArgument(SignatureDefinitionDisplayArg{value.interface}));
+                  listFailures.add(zc::mv(duplicate));
+                }
+                continue;
+              }
               bounds.add(zc::mv(value));
             } else {
               return zc::none;
             }
           }
         }
+      }
+      if (!listFailures.empty()) {
+        return SourceGenericParametersBuildResult(SourceListRejected{zc::mv(listFailures)});
       }
     }
     zc::Maybe<identity::SemanticTypeId> defaultType;
@@ -2567,6 +2628,56 @@ zc::Maybe<SourceGenericParametersBuildResult> buildSourceGenericParameters(
       }
       ZC_IF_SOME(value, builtDefault) { defaultType = value.type; }
     }
+    // Canonical encoding requires the behavior bounds in ascending canonical
+    // order; the source `A + B` order is arbitrary. Marker bounds are sorted by
+    // their definition key with the same comparator.
+    struct SortedParameterBound final {
+      InterfaceInstantiation instantiation;
+      zc::Array<uint8_t> record;
+    };
+    zc::Vector<SortedParameterBound> sortedBounds(bounds.size());
+    for (auto& bound : bounds) {
+      auto record = SignatureFactsCanonicalCodec::encodeInterfaceInstantiation(
+          bound, input.boundModule.module(), input.identities, input.semanticTypes);
+      if (record == zc::none) { return zc::none; }
+      sortedBounds.add(SortedParameterBound{zc::mv(bound), zc::mv(ZC_ASSERT_NONNULL(record))});
+    }
+    for (size_t boundIndex = 1; boundIndex < sortedBounds.size(); ++boundIndex) {
+      auto current = zc::mv(sortedBounds[boundIndex]);
+      size_t insertion = boundIndex;
+      while (insertion > 0 &&
+             lessBytes(current.record.asPtr(), sortedBounds[insertion - 1].record.asPtr())) {
+        sortedBounds[insertion] = zc::mv(sortedBounds[insertion - 1]);
+        --insertion;
+      }
+      sortedBounds[insertion] = zc::mv(current);
+    }
+    bounds = zc::Vector<InterfaceInstantiation>(sortedBounds.size());
+    for (auto& bound : sortedBounds) { bounds.add(zc::mv(bound.instantiation)); }
+    struct SortedParameterMarker final {
+      identity::DefId marker;
+      zc::Array<uint8_t> key;
+    };
+    zc::Vector<SortedParameterMarker> sortedMarkers(markerBounds.size());
+    for (const auto marker : markerBounds) {
+      auto markerEntry = input.identities.definition(marker);
+      if (markerEntry == zc::none) { return zc::none; }
+      identity::CanonicalEncoder markerEncoder;
+      ZC_ASSERT_NONNULL(markerEntry).key().encode(markerEncoder);
+      sortedMarkers.add(SortedParameterMarker{marker, markerEncoder.finish()});
+    }
+    for (size_t markerIndex = 1; markerIndex < sortedMarkers.size(); ++markerIndex) {
+      auto current = zc::mv(sortedMarkers[markerIndex]);
+      size_t insertion = markerIndex;
+      while (insertion > 0 &&
+             lessBytes(current.key.asPtr(), sortedMarkers[insertion - 1].key.asPtr())) {
+        sortedMarkers[insertion] = zc::mv(sortedMarkers[insertion - 1]);
+        --insertion;
+      }
+      sortedMarkers[insertion] = zc::mv(current);
+    }
+    markerBounds = zc::Vector<identity::DefId>(sortedMarkers.size());
+    for (const auto& marker : sortedMarkers) { markerBounds.add(marker.marker); }
     signatures.add(GenericParameterSignature{entry.key.clone(), static_cast<uint32_t>(index),
                                              zc::mv(bounds), zc::mv(markerBounds),
                                              zc::mv(defaultType)});
@@ -7418,7 +7529,8 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
   };
   zc::Vector<BuiltSignatureCensusEntry> builtSignatureCensus;
   for (const auto& definition : input.boundModule.definitions().definitions()) {
-    if (isLocalDefinition(definition) && isSignatureBearingDefinition(definition.record.kind())) {
+    if (isLocalDefinition(definition) && isSignatureBearingDefinition(definition.record.kind()) &&
+        !isImplOwnedAssociatedType(definition)) {
       builtSignatureCensus.add(BuiltSignatureCensusEntry{
           SignatureDefinitionCensusEntry{definition.definition, definition.record.kind()},
           definition.key.encode()});
@@ -7789,30 +7901,289 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
       }
       // Associated type members (`type Item;`) nested in an interface are
       // enumerated by the enclosing interface signature and need no standalone
-      // definition signature; skip them. A free-standing associated type outside
-      // an interface is not admitted and is rejected on the source rail.
+      // definition signature. An associated type assignment in a standalone
+      // impl block (`type Item = T;`) is consumed by the impl-head build
+      // below. Skip both; a free-standing associated type outside either
+      // owner is rejected on the source rail.
       if (definitionKind == identity::DefinitionKind::AssociatedType) {
-        bool interfaceOwned = false;
-        auto entry = materializedDefinition(input.boundModule.definitions(), definition.definition);
-        if (entry != zc::none) {
-          auto owner = enclosingDefinitionOwner(ZC_ASSERT_NONNULL(entry),
-                                                input.boundModule.definitions(), input.identities);
-          if (owner != zc::none) {
-            auto ownerRecord = input.identities.definition(ZC_ASSERT_NONNULL(owner));
-            interfaceOwned =
-                ownerRecord != zc::none && ZC_ASSERT_NONNULL(ownerRecord).record().kind() ==
-                                               identity::DefinitionKind::Interface;
-          }
+        // An associated type assignment in a standalone impl block is consumed
+        // by that impl head (and excluded from the signature census); the
+        // interface-declared associated type is itself a signature-bearing
+        // member and gets an AssociatedTypeSignature here.
+        auto ownedEntry =
+            materializedDefinition(input.boundModule.definitions(), definition.definition);
+        bool implOwned = false;
+        ZC_IF_SOME(entry, ownedEntry) { implOwned = isImplOwnedAssociatedType(entry); }
+        if (implOwned) { continue; }
+        if (!tree.contains(definition.node) ||
+            tree.node(definition.node).kind != ast::SyntaxKind::AssociatedTypeDecl) {
+          return buildReject(
+              checkerInvariant(CheckerInvariantKind::InvalidFact, module, definition.node.value));
         }
-        if (interfaceOwned) { continue; }
-        auto failure =
-            signatureSourceFailure(SignatureSourceDiagnostic::AssociatedTypeMemberUnsupported,
-                                   input.boundModule, definition.node, definition.node);
-        if (failure == zc::none) {
-          return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch, module,
+        const auto& associatedSyntax = tree.node(definition.node);
+        auto associatedGenerics = buildSourceGenericParameters(input, definition.definition);
+        bool associatedGenericsRejected = false;
+        auto associatedGenericValues =
+            takeListBuildValue(associatedGenerics, sourceFailures, associatedGenericsRejected);
+        if (associatedGenericValues == zc::none) {
+          if (associatedGenericsRejected) { continue; }
+          return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                               definition.node.value));
         }
-        ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
+        zc::Vector<identity::GenericParameterId> associatedGenericIds =
+            zc::mv(ZC_ASSERT_NONNULL(associatedGenericValues).identities);
+        zc::Vector<GenericParameterSignature> associatedGenericParameters =
+            zc::mv(ZC_ASSERT_NONNULL(associatedGenericValues).signatures);
+        SourceTypeBuilder associatedTypeBuilder(input.boundModule, input.identities,
+                                                input.semanticTypes, associatedGenericIds.asPtr(),
+                                                sourceFailures);
+        zc::Vector<InterfaceInstantiation> associatedBounds;
+        zc::Vector<identity::DefId> associatedMarkerBounds;
+        const ast::NodeId associatedBoundList(
+            associatedSyntax.payload.words[ast::kAssociatedTypeDeclBoundsIdWord]);
+        if (tree.contains(associatedBoundList)) {
+          if (tree.node(associatedBoundList).kind != ast::SyntaxKind::AssociatedTypeBoundList) {
+            return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact, module,
+                                                associatedBoundList.value));
+          }
+          const ast::NodeList associatedBoundNodes{
+              tree.node(associatedBoundList)
+                  .payload.words[ast::kAssociatedTypeBoundListBoundsFirstWord],
+              tree.node(associatedBoundList)
+                  .payload.words[ast::kAssociatedTypeBoundListBoundsSizeWord]};
+          if (!tree.contains(associatedBoundNodes)) {
+            return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact, module,
+                                                associatedBoundList.value));
+          }
+          for (const auto boundNode : tree.list(associatedBoundNodes)) {
+            if (!tree.contains(boundNode)) {
+              auto failure =
+                  signatureSourceFailure(SignatureSourceDiagnostic::AssociatedTypeBoundNotFound,
+                                         input.boundModule, definition.node, boundNode);
+              if (failure == zc::none) {
+                return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch,
+                                                    module, boundNode.value));
+              }
+              sourceFailures.add(zc::mv(ZC_ASSERT_NONNULL(failure)));
+              continue;
+            }
+            if (tree.node(boundNode).kind == ast::SyntaxKind::DynTypeExpr) {
+              auto failure =
+                  signatureSourceFailure(SignatureSourceDiagnostic::DynTypeNotAllowedAsBound,
+                                         input.boundModule, definition.node, boundNode);
+              if (failure == zc::none) {
+                return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch,
+                                                    module, boundNode.value));
+              }
+              sourceFailures.add(zc::mv(ZC_ASSERT_NONNULL(failure)));
+              continue;
+            }
+            if (tree.node(boundNode).kind != ast::SyntaxKind::NamedTypeExpr) {
+              auto failure =
+                  signatureSourceFailure(SignatureSourceDiagnostic::AssociatedTypeBoundNotFound,
+                                         input.boundModule, definition.node, boundNode);
+              if (failure == zc::none) {
+                return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch,
+                                                    module, boundNode.value));
+              }
+              sourceFailures.add(zc::mv(ZC_ASSERT_NONNULL(failure)));
+              continue;
+            }
+            auto resolvedBound =
+                resolveHeritageParent(tree, input.boundModule.bindings(), boundNode);
+            if (resolvedBound == zc::none) {
+              auto failure =
+                  signatureSourceFailure(SignatureSourceDiagnostic::AssociatedTypeBoundNotFound,
+                                         input.boundModule, definition.node, boundNode);
+              if (failure == zc::none) {
+                return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch,
+                                                    module, boundNode.value));
+              }
+              sourceFailures.add(zc::mv(ZC_ASSERT_NONNULL(failure)));
+              continue;
+            }
+            auto canonicalBound =
+                authorityDefinitionId(input.boundModule.definitions(), input.identities,
+                                      ZC_ASSERT_NONNULL(resolvedBound));
+            if (canonicalBound == zc::none) {
+              return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
+                                                  boundNode.value));
+            }
+            auto boundRecord = input.identities.definition(ZC_ASSERT_NONNULL(canonicalBound));
+            if (boundRecord == zc::none) {
+              return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
+                                                  boundNode.value));
+            }
+            if (ZC_ASSERT_NONNULL(boundRecord).record().kind() !=
+                identity::DefinitionKind::Interface) {
+              auto failure =
+                  signatureSourceFailure(SignatureSourceDiagnostic::AssociatedTypeBoundNotInterface,
+                                         input.boundModule, definition.node, boundNode);
+              if (failure == zc::none) {
+                return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch,
+                                                    module, boundNode.value));
+              }
+              ZC_IF_SOME(value, failure) {
+                value.arguments.add(SignatureSourceArgument(
+                    SignatureDefinitionDisplayArg{ZC_ASSERT_NONNULL(canonicalBound)}));
+                sourceFailures.add(zc::mv(value));
+              }
+              continue;
+            }
+            auto boundInterface = associatedTypeBuilder.buildInterface(boundNode);
+            if (boundInterface == zc::none) {
+              if (!sourceFailures.empty()) { continue; }
+              return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
+                                                  boundNode.value));
+            }
+            ZC_IF_SOME(value, boundInterface) {
+              auto shape = input.markerShapes.shape(value.interface);
+              if (shape == zc::none) {
+                return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact,
+                                                    module, boundNode.value));
+              }
+              ZC_IF_SOME(kind, shape) {
+                const auto recordDuplicateBound = [&]() {
+                  auto failure =
+                      signatureSourceFailure(SignatureSourceDiagnostic::DuplicateInterfaceBound,
+                                             input.boundModule, definition.node, boundNode);
+                  if (failure != zc::none) {
+                    ZC_IF_SOME(duplicate, failure) {
+                      duplicate.arguments.add(
+                          SignatureSourceArgument(SignatureDefinitionDisplayArg{value.interface}));
+                      sourceFailures.add(zc::mv(duplicate));
+                    }
+                  }
+                };
+                if (kind == InterfaceMarkerShape::ClosedMarker) {
+                  bool duplicateMarker = false;
+                  for (const auto existing : associatedMarkerBounds) {
+                    if (existing == value.interface) {
+                      duplicateMarker = true;
+                      break;
+                    }
+                  }
+                  if (duplicateMarker) {
+                    recordDuplicateBound();
+                    continue;
+                  }
+                  associatedMarkerBounds.add(value.interface);
+                } else if (kind == InterfaceMarkerShape::Behavior) {
+                  bool duplicateBound = false;
+                  for (const auto& existing : associatedBounds) {
+                    if (existing.interface == value.interface) {
+                      duplicateBound = true;
+                      break;
+                    }
+                  }
+                  if (duplicateBound) {
+                    recordDuplicateBound();
+                    continue;
+                  }
+                  associatedBounds.add(zc::mv(value));
+                } else {
+                  return buildReject(
+                      checkerInvariant(CheckerInvariantKind::InvalidFact, module, boundNode.value));
+                }
+              }
+            }
+          }
+        }
+        if (!sourceFailures.empty()) { continue; }
+        zc::Maybe<identity::SemanticTypeId> associatedDefault;
+        const ast::NodeId associatedDefaultNode(
+            associatedSyntax.payload.words[ast::kAssociatedTypeDeclDefaultTyWord]);
+        if (tree.contains(associatedDefaultNode)) {
+          auto builtDefault = associatedTypeBuilder.build(associatedDefaultNode);
+          if (builtDefault == zc::none) {
+            if (!sourceFailures.empty()) { continue; }
+            return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
+                                                associatedDefaultNode.value));
+          }
+          ZC_IF_SOME(value, builtDefault) { associatedDefault = value.type; }
+        }
+        // Canonical signature encoding requires bounds and marker bounds in
+        // ascending canonical order with no duplicates, matching the ordering
+        // enforced for interface heritage parents and generic parameters.
+        struct SortedAssociatedBound final {
+          InterfaceInstantiation instantiation;
+          zc::Array<uint8_t> record;
+        };
+        zc::Vector<SortedAssociatedBound> sortedBounds(associatedBounds.size());
+        for (auto& bound : associatedBounds) {
+          auto record = SignatureFactsCanonicalCodec::encodeInterfaceInstantiation(
+              bound, module, input.identities, input.semanticTypes);
+          if (record == zc::none) {
+            return buildReject(checkerInvariant(CheckerInvariantKind::CanonicalCodecMismatch,
+                                                module, definition.node.value));
+          }
+          sortedBounds.add(SortedAssociatedBound{zc::mv(bound), zc::mv(ZC_ASSERT_NONNULL(record))});
+        }
+        for (size_t index = 1; index < sortedBounds.size(); ++index) {
+          auto current = zc::mv(sortedBounds[index]);
+          size_t insertion = index;
+          while (insertion > 0 &&
+                 lessBytes(current.record.asPtr(), sortedBounds[insertion - 1].record.asPtr())) {
+            sortedBounds[insertion] = zc::mv(sortedBounds[insertion - 1]);
+            --insertion;
+          }
+          sortedBounds[insertion] = zc::mv(current);
+        }
+        for (size_t index = 1; index < sortedBounds.size(); ++index) {
+          if (sameBytes(sortedBounds[index - 1].record.asPtr(),
+                        sortedBounds[index].record.asPtr())) {
+            return buildReject(
+                checkerInvariant(CheckerInvariantKind::InvalidFact, module, definition.node.value));
+          }
+        }
+        associatedBounds = zc::Vector<InterfaceInstantiation>(sortedBounds.size());
+        for (auto& bound : sortedBounds) { associatedBounds.add(zc::mv(bound.instantiation)); }
+        struct SortedAssociatedMarker final {
+          identity::DefId marker;
+          zc::Array<uint8_t> key;
+        };
+        zc::Vector<SortedAssociatedMarker> sortedMarkers(associatedMarkerBounds.size());
+        for (const auto marker : associatedMarkerBounds) {
+          ZC_IF_SOME(entry, input.identities.definition(marker)) {
+            identity::CanonicalEncoder encoder;
+            entry.key().encode(encoder);
+            sortedMarkers.add(SortedAssociatedMarker{marker, encoder.finish()});
+          } else {
+            return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
+                                                definition.node.value));
+          }
+        }
+        for (size_t index = 1; index < sortedMarkers.size(); ++index) {
+          auto current = zc::mv(sortedMarkers[index]);
+          size_t insertion = index;
+          while (insertion > 0 &&
+                 lessBytes(current.key.asPtr(), sortedMarkers[insertion - 1].key.asPtr())) {
+            sortedMarkers[insertion] = zc::mv(sortedMarkers[insertion - 1]);
+            --insertion;
+          }
+          sortedMarkers[insertion] = zc::mv(current);
+        }
+        for (size_t index = 1; index < sortedMarkers.size(); ++index) {
+          if (sameBytes(sortedMarkers[index - 1].key.asPtr(), sortedMarkers[index].key.asPtr())) {
+            return buildReject(
+                checkerInvariant(CheckerInvariantKind::InvalidFact, module, definition.node.value));
+          }
+        }
+        associatedMarkerBounds = zc::Vector<identity::DefId>(sortedMarkers.size());
+        for (const auto& marker : sortedMarkers) { associatedMarkerBounds.add(marker.marker); }
+        ZC_IF_SOME(signatureScopeValue, scope) {
+          built.add(BuiltSignature{
+              SemanticSignature{definition.definition, definitionKind, zc::mv(signatureScopeValue),
+                                zc::Vector<SignatureModifier>(),
+                                zc::Vector<NormalizedAttributeFact>(),
+                                SemanticSignaturePayload(AssociatedTypeSignature{
+                                    zc::mv(associatedGenericParameters), zc::mv(associatedBounds),
+                                    zc::mv(associatedMarkerBounds), zc::mv(associatedDefault)}),
+                                bound.source.clone()},
+              SignatureDefinitionRequirement{definition.definition, definitionKind,
+                                             zc::Array<uint8_t>()},
+              definition.key.encode()});
+        }
         continue;
       }
       if (isNominalDefinition(definitionKind)) {
@@ -8681,6 +9052,59 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         return buildReject(
             checkerInvariant(CheckerInvariantKind::InvalidFact, module, membersNode.value));
       }
+      struct InterfaceAssociatedMember final {
+        identity::DefId definition;
+        ast::IdentId name;
+        bool isGeneric;
+      };
+      zc::Vector<InterfaceAssociatedMember> interfaceAssociatedMembers;
+      {
+        // The impl head names the interface by a NamedTypeExpr; resolve it to
+        // the interface declaration node and enumerate its directly declared
+        // associated types. Impl assignments are absent from binding metadata,
+        // so a metadata scope walk cannot find them.
+        zc::Maybe<ast::NodeId> interfaceDeclNode;
+        for (const auto& candidate : input.boundModule.definitions().definitions()) {
+          if (candidate.definition == interfaceDefinition && tree.contains(candidate.node) &&
+              tree.node(candidate.node).kind == ast::SyntaxKind::InterfaceDecl) {
+            interfaceDeclNode = candidate.node;
+            break;
+          }
+        }
+        if (interfaceDeclNode == zc::none) {
+          return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
+                                              implementation.node.value));
+        }
+        const ast::NodeId interfaceMembers(tree.node(ZC_ASSERT_NONNULL(interfaceDeclNode))
+                                               .payload.words[ast::kInterfaceDeclMembersIdWord]);
+        if (tree.contains(interfaceMembers) &&
+            tree.node(interfaceMembers).kind == ast::SyntaxKind::ClassMemberList) {
+          const ast::NodeList interfaceMemberList{
+              tree.node(interfaceMembers).payload.words[ast::kClassMemberListMembersFirstWord],
+              tree.node(interfaceMembers).payload.words[ast::kClassMemberListMembersSizeWord]};
+          if (tree.contains(interfaceMemberList)) {
+            for (const auto interfaceMember : tree.list(interfaceMemberList)) {
+              if (!tree.contains(interfaceMember) ||
+                  tree.node(interfaceMember).kind != ast::SyntaxKind::AssociatedTypeDecl) {
+                continue;
+              }
+              const auto& associatedNode = tree.node(interfaceMember);
+              auto associatedDefinition =
+                  input.boundModule.definitions().definitionAt(interfaceMember);
+              if (associatedDefinition == zc::none) {
+                return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact,
+                                                    module, interfaceMember.value));
+              }
+              const ast::NodeId associatedTypeParams(
+                  associatedNode.payload.words[ast::kAssociatedTypeDeclTypeParamsIdWord]);
+              interfaceAssociatedMembers.add(InterfaceAssociatedMember{
+                  ZC_ASSERT_NONNULL(associatedDefinition),
+                  ast::IdentId(associatedNode.payload.words[ast::kAssociatedTypeDeclNameWord]),
+                  tree.contains(associatedTypeParams)});
+            }
+          }
+        }
+      }
       for (const auto member : tree.list(members)) {
         if (!tree.contains(member)) {
           return buildReject(
@@ -8688,35 +9112,60 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         }
         const auto& memberSyntax = tree.node(member);
         if (memberSyntax.kind != ast::SyntaxKind::AssociatedTypeDecl) continue;
-        auto localDefinition = input.boundModule.definitions().definitionAt(member);
-        if (localDefinition == zc::none) {
-          return buildReject(
-              checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module, member.value));
+        const auto assignedName =
+            ast::IdentId(memberSyntax.payload.words[ast::kAssociatedTypeDeclNameWord]);
+        const InterfaceAssociatedMember* matched = nullptr;
+        for (const auto& interfaceAssociated : interfaceAssociatedMembers) {
+          if (tree.contains(interfaceAssociated.name) && tree.contains(assignedName) &&
+              tree.ident(interfaceAssociated.name) == tree.ident(assignedName)) {
+            matched = &interfaceAssociated;
+            break;
+          }
         }
-        zc::Maybe<const binder::DefinitionFact&> localFact;
-        ZC_IF_SOME(value, localDefinition) {
-          localFact = findDefinitionFact(input.boundModule.bindings(), value);
+        if (matched == nullptr) {
+          auto name = identity::SemanticIdentifier::fromSource(tree.ident(assignedName));
+          if (name != zc::none) {
+            auto failure =
+                signatureSourceFailure(SignatureSourceDiagnostic::ImplAssociatedTypeNotMember,
+                                       input.boundModule, implementation.node, member);
+            if (failure == zc::none) {
+              return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch,
+                                                  module, member.value));
+            }
+            ZC_IF_SOME(value, failure) {
+              value.arguments.add(SignatureSourceArgument(
+                  SignatureIdentifierDisplayArg{zc::mv(ZC_ASSERT_NONNULL(name))}));
+              value.arguments.add(
+                  SignatureSourceArgument(SignatureDefinitionDisplayArg{interfaceDefinition}));
+              sourceFailures.add(zc::mv(value));
+            }
+          }
+          continue;
         }
-        if (localFact == zc::none) {
-          return buildReject(
-              checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module, member.value));
-        }
-        zc::Maybe<identity::DefId> associated;
-        ZC_IF_SOME(value, localFact) {
-          associated =
-              directAssociatedType(input.boundModule.bindings(), interfaceDefinition, value.name);
+        if (matched->isGeneric) {
+          // Generic associated type (GAT) assignments are a later contract;
+          // close the grammatically admitted form on the source rail rather
+          // than aborting with an invariant.
+          auto failure = signatureSourceFailure(
+              SignatureSourceDiagnostic::ImplGenericAssociatedTypeUnsupported, input.boundModule,
+              implementation.node, member);
+          if (failure == zc::none) {
+            return buildReject(
+                checkerInvariant(CheckerInvariantKind::InputReceiptMismatch, module, member.value));
+          }
+          sourceFailures.add(zc::mv(ZC_ASSERT_NONNULL(failure)));
+          continue;
         }
         const ast::NodeId target(memberSyntax.payload.words[ast::kAssociatedTypeDeclDefaultTyWord]);
         auto targetType = typeBuilder.build(target);
-        if (associated == zc::none || targetType == zc::none) {
+        if (targetType == zc::none) {
+          if (!sourceFailures.empty()) { continue; }
           return buildReject(
               checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module, member.value));
         }
-        identity::DefId associatedDefinition;
         identity::SemanticTypeId type;
-        ZC_IF_SOME(value, associated) { associatedDefinition = value; }
         ZC_IF_SOME(value, targetType) { type = value.type; }
-        auto associatedEntry = input.identities.definition(associatedDefinition);
+        auto associatedEntry = input.identities.definition(matched->definition);
         if (associatedEntry == zc::none) {
           return buildReject(
               checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module, member.value));
@@ -8725,9 +9174,37 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
           identity::CanonicalEncoder encoder;
           value.key().encode(encoder);
           builtAssociatedBindings.add(BuiltAssociatedBinding{
-              AssociatedTypeBindingData{associatedDefinition, type}, encoder.finish()});
+              AssociatedTypeBindingData{matched->definition, type}, encoder.finish()});
         }
       }
+      if (!sourceFailures.empty()) { continue; }
+      for (const auto& required : interfaceAssociatedMembers) {
+        if (required.isGeneric) { continue; }
+        bool assigned = false;
+        for (const auto& binding : builtAssociatedBindings) {
+          if (binding.binding.associated == required.definition) {
+            assigned = true;
+            break;
+          }
+        }
+        if (!assigned) {
+          auto failure =
+              signatureSourceFailure(SignatureSourceDiagnostic::ImplMissingAssociatedType,
+                                     input.boundModule, implementation.node, implementation.node);
+          if (failure == zc::none) {
+            return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch, module,
+                                                implementation.node.value));
+          }
+          ZC_IF_SOME(value, failure) {
+            value.arguments.add(
+                SignatureSourceArgument(SignatureDefinitionDisplayArg{required.definition}));
+            value.arguments.add(
+                SignatureSourceArgument(SignatureDefinitionDisplayArg{interfaceDefinition}));
+            sourceFailures.add(zc::mv(value));
+          }
+        }
+      }
+      if (!sourceFailures.empty()) { continue; }
       for (size_t index = 1; index < builtAssociatedBindings.size(); ++index) {
         auto current = zc::mv(builtAssociatedBindings[index]);
         size_t insertion = index;
