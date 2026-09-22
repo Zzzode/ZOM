@@ -91,13 +91,36 @@ in-repo corpus that must become source diagnostics.
   `kDynTypeExprMarkersIdWord`), marker-name resolution with a closed unknown
   diagnostic, source-side sorting, and multi-qualified markers, so `dyn I + M`
   is still not observable from source.
-- A6. dyn existential head rest: principal that is not a bare NamedTypeExpr
-  (parenthesized, qualified) currently falls through to invariant. Qualified
-  paths already arrive as NamedTypeExpr and work; parenthesized principals are
-  parser-rejected (ZOM2072) and need an unwrap or a closed diagnostic.
-- A7. dyn unknown associated-type binding (`dyn I<Item=u8>` when I has no
-  Item): emit a closed diagnostic (no reserved code; add one or reuse
-  ZOM4020 with the correct args) instead of invariant.
+- A6. DONE 2026-09-22: a dyn principal resolving to a struct, class, enum, or
+  error emits ZOM4110 DynPrincipalNotInterface (with the offending definition)
+  at the principal node across every drained type position; parenthesized
+  principals are identical (parser strips them). Type-alias principals stay on
+  ZOM4106 until A11; unresolvable principals in parameter/return positions
+  (binder does not cover those positions) remain an invariant.
+- A7. DONE 2026-09-22: unknown dyn head binding emits ZOM4108
+  DynUnknownAssociatedTypeBinding at the binding node, carrying the written
+  name (new SignatureIdentifierDisplayArg) and the principal interface. A name
+  inherited from a super-interface emits ZOM4109
+  DynInheritedAssociatedTypeBindingUnsupported until inherited head bindings
+  are actually built. ZOM4055 duplicate bindings now anchor at the binding and
+  pass the principal as its second argument. The SourceTypeBuilder sink reaches
+  every signature type-build position (parameters, returns, fields, variants,
+  generics, impls, marker impls).
+- A7b. DONE 2026-09-22 (with A3b): malformed interface heritage clauses emit
+  ZOM4111 HeritageParentNotFound, ZOM4112 HeritageParentNotInterface, ZOM4113
+  HeritageDuplicateParent, ZOM4114 HeritageParentIsTypeParameter, and ZOM4115
+  HeritageCycle, through InterfaceHeritageValidator as a per-user-module
+  pre-gate and a per-module SignatureFactsBuilder check. Structural/authority
+  malformations and toolchain/core modules keep the invariant rail.
+  Remaining: qualified/imported heritage parents resolve as ZOM4111 (cross-
+  module heritage resolution), heritage parent type arguments are ignored by
+  the validator (generic behavior interfaces still ICE on bad args), and the
+  O(N x D) local-name scan makes the 256-parent corpus slow under ASan.
+- A7c. dyn types in interface BOUND positions (`fun f<T: dyn S>()`,
+  `impl I for T where T: dyn S`): the bound-side buildInterface call never
+  classifies a DynTypeExpr, so even a legal `dyn I` bound ICEs there. This is
+  separate from the principal path; the bound grammar arguably should reject
+  the `dyn` spelling outright.
 - A8. Concrete-to-dyn erasure at value positions (RFC 0005 coercion table):
   `let d: dyn D = sprite`. New checked coercion fact + HIR/MIR coercion
   carrier. (checker/hir/mir)
