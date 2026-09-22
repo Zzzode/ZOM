@@ -1,0 +1,3 @@
+interface Base {}
+
+interface Child : Base + Base {}

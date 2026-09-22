@@ -1,0 +1,5 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/interface_heritage_cycle_neg_39.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// The interface inheritance graph contains a self or mutual cycle. The checker rejects it with 4115 HeritageCycle, never as an internal compiler error.
+// CHECK: Error [ZOM4115]:

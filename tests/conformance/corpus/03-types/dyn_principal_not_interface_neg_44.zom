@@ -1,5 +1,5 @@
 struct NotAnInterface {
-    let value: u8
+    value: u8,
 }
 
 let x: dyn NotAnInterface;

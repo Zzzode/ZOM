@@ -1,0 +1,5 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/interface_heritage_parent_duplicate_neg_37.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// The same super-interface is inherited twice in one clause. The checker rejects it with 4113 HeritageDuplicateParent, never as an internal compiler error.
+// CHECK: Error [ZOM4113]:

@@ -3060,6 +3060,35 @@ bool CompilerSession::checkSources() {
   if (retainedCheckerAuthority.semanticContext() == impl->contextBrand) {
     const auto& checkerAuthority = retainedCheckerAuthority;
     const auto& fingerprint = checkerAuthority.fingerprint();
+
+    // User-source heritage validation before the context-wide marker build.
+    // The marker builder has no source-failure channel, so every user-writable
+    // malformed heritage clause must be rejected through the signature
+    // projector here; toolchain/core modules stay on the invariant rail.
+    for (const auto moduleIndex : ordinaryBoundModuleIndices) {
+      const auto& boundModule = checkerModules[moduleIndex];
+      auto heritageResult =
+          checker::signature::InterfaceHeritageValidator::validate(boundModule, checkerAuthority);
+      if (heritageResult.is<checker::signature::SignatureFactsInvariantRejected>()) {
+        auto rejected =
+            zc::mv(heritageResult).get<checker::signature::SignatureFactsInvariantRejected>();
+        return rejectChecker(boundModule.module(), zc::mv(rejected.failures));
+      }
+      auto& validatedHeritage =
+          heritageResult.get<checker::signature::ValidatedInterfaceHeritage>();
+      if (!validatedHeritage.failures.empty()) {
+        checker::signature::SignatureFactsSourceRejected sourceRejected{
+            zc::mv(validatedHeritage.failures), {}};
+        if (!impl->collectSemanticDiagnostics(checker::projectSignatureSourceDiagnostics(
+                                                  boundModule, retainedCheckerAuthority,
+                                                  *impl->semanticTypeStore, sourceRejected),
+                                              diagnostics::DiagnosticIncidentProducer::Checker)) {
+          return false;
+        }
+        return false;
+      }
+    }
+
     zc::Vector<checker::signature::MarkerShapeModuleInput> markerInputs(checkerModules.size());
     for (const auto& boundModule : checkerModules) {
       markerInputs.add(checker::signature::MarkerShapeModuleInput{boundModule});

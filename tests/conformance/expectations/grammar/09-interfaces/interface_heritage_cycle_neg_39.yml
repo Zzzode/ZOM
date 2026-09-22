@@ -1,0 +1,5 @@
+section: "9.3 Interface inheritance"
+covers_rule: "interfaceDeclaration, interfaceBoundList"
+expected: "ACCEPT"
+notes:
+  - "The interface inheritance graph contains a self or mutual cycle. The checker rejects it with 4115 HeritageCycle."

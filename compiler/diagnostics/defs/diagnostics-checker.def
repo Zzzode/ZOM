@@ -177,3 +177,10 @@ DIAG(4109, DynInheritedAssociatedTypeBindingUnsupported, kError,
      2)
 DIAG(4110, DynPrincipalNotInterface, kError,
      "{0} is not an interface and cannot be the principal of a dyn type", 1)
+DIAG(4111, HeritageParentNotFound, kError,
+     "this super-interface named in the heritage clause cannot be resolved", 0)
+DIAG(4112, HeritageParentNotInterface, kError, "super-interface {0} is not an interface", 1)
+DIAG(4113, HeritageDuplicateParent, kError, "super-interface {0} is inherited more than once", 1)
+DIAG(4114, HeritageParentIsTypeParameter, kError,
+     "a generic parameter cannot be used as a super-interface", 0)
+DIAG(4115, HeritageCycle, kError, "cyclic interface inheritance is not allowed", 0)

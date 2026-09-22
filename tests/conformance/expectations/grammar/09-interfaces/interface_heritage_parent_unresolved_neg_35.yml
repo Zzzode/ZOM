@@ -1,0 +1,5 @@
+section: "9.3 Interface inheritance"
+covers_rule: "interfaceDeclaration, interfaceBoundList"
+expected: "ACCEPT"
+notes:
+  - "The named super-interface cannot be resolved. The checker rejects it with 4111 HeritageParentNotFound."

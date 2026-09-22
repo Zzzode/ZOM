@@ -1,0 +1,3 @@
+interface CycleA : CycleB {}
+
+interface CycleB : CycleA {}

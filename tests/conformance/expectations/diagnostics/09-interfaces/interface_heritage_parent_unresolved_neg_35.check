@@ -1,0 +1,5 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/interface_heritage_parent_unresolved_neg_35.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// The named super-interface cannot be resolved. The checker rejects it with 4111 HeritageParentNotFound, never as an internal compiler error.
+// CHECK: Error [ZOM4111]:

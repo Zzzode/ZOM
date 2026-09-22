@@ -1,0 +1,5 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/interface_heritage_parent_noninterface_neg_36.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A super-interface parent resolves to a struct, class, enum, or error instead of an interface. The checker rejects it with 4112 HeritageParentNotInterface, never as an internal compiler error.
+// CHECK: Error [ZOM4112]:

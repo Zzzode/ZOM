@@ -1,45 +1,70 @@
 // RUN: %zomc compile --dump-ast %corpus/09-interfaces/interface_multiple_parents_pos_03.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #17 @1:1..4:1 file_name="interface_multiple_parents_pos_03.zom"
+// CHECK: SourceFile #25 @1:1..8:1 file_name="interface_multiple_parents_pos_03.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #16 @1:1..3:2
+// CHECK-NEXT:     StatementListItem #3 @1:1..1:22
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         InterfaceDecl #15 @1:1..3:2 name="IOReader"
+// CHECK-NEXT:         InterfaceDecl #2 @1:1..1:22 name="Readable"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ifaces_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #1 @1:20..1:22 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #6 @2:1..2:22
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         InterfaceDecl #5 @2:1..2:22 name="Closable"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ifaces_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #4 @2:20..2:22 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #9 @3:1..3:24
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         InterfaceDecl #8 @3:1..3:24 name="Disposable"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ifaces_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #7 @3:22..3:24 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #24 @5:1..7:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         InterfaceDecl #23 @5:1..7:2 name="IOReader"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ifaces_id:
-// CHECK-NEXT:             ImplIfaceList #7 @1:22..1:54
+// CHECK-NEXT:             ImplIfaceList #16 @5:22..5:54
 // CHECK-NEXT:               ifaces:
-// CHECK-NEXT:                 NamedTypeExpr #2 @1:22..1:30
+// CHECK-NEXT:                 NamedTypeExpr #11 @5:22..5:30
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #1 @1:22..1:30 segments=["Readable"] root=Relative
+// CHECK-NEXT:                     ModulePath #10 @5:22..5:30 segments=["Readable"] root=Relative
 // CHECK-NEXT:                   args: []
-// CHECK-NEXT:                 NamedTypeExpr #4 @1:33..1:41
+// CHECK-NEXT:                 NamedTypeExpr #13 @5:33..5:41
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #3 @1:33..1:41 segments=["Closable"] root=Relative
+// CHECK-NEXT:                     ModulePath #12 @5:33..5:41 segments=["Closable"] root=Relative
 // CHECK-NEXT:                   args: []
-// CHECK-NEXT:                 NamedTypeExpr #6 @1:44..1:54
+// CHECK-NEXT:                 NamedTypeExpr #15 @5:44..5:54
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #5 @1:44..1:54 segments=["Disposable"] root=Relative
+// CHECK-NEXT:                     ModulePath #14 @5:44..5:54 segments=["Disposable"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #14 @1:55..3:2 nmembers=1
+// CHECK-NEXT:             ClassMemberList #22 @5:55..7:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #13 @2:5..2:32 name="read" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #21 @6:5..6:30 name="read" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #11 @2:13..2:24 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #19 @6:13..6:22 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #10 @2:14..2:23 name="buf"
+// CHECK-NEXT:                         FunctionParameterDecl #18 @6:14..6:21 name="buf"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             SliceArrayTypeExpr #9 @2:19..2:23
-// CHECK-NEXT:                               elem:
-// CHECK-NEXT:                                 PredefinedTypeExpr #8 @2:20..2:22 kind=U8
+// CHECK-NEXT:                             PredefinedTypeExpr #17 @6:19..6:21 kind=U8
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #12 @2:28..2:31 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #20 @6:26..6:29 kind=I32
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null

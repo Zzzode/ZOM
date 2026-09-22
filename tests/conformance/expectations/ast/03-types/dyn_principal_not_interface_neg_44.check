@@ -11,9 +11,9 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #3 @1:23..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 FieldDecl #2 @2:5..2:18 name="value" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                 FieldDecl #2 @2:5..2:15 name="value" is_mut=false is_static=false visibility=Default
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:16..2:18 kind=U8
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:12..2:14 kind=U8
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #13 @5:1..5:27

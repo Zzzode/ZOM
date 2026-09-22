@@ -134,6 +134,11 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DynUnknownAssociatedTypeBinding) == 4108);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DynInheritedAssociatedTypeBindingUnsupported) == 4109);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DynPrincipalNotInterface) == 4110);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::HeritageParentNotFound) == 4111);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::HeritageParentNotInterface) == 4112);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::HeritageDuplicateParent) == 4113);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::HeritageParentIsTypeParameter) == 4114);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::HeritageCycle) == 4115);
 }
 
 ZC_TEST("DiagnosticTest.ReceiverParserDiagnosticIdsAreStable") {

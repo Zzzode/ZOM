@@ -329,6 +329,14 @@ ACCEPTED_CHECKER_DIAGNOSTICS = (
      2),
     (4110, "DynPrincipalNotInterface", "kError",
      "{0} is not an interface and cannot be the principal of a dyn type", 1),
+    (4111, "HeritageParentNotFound", "kError",
+     "this super-interface named in the heritage clause cannot be resolved", 0),
+    (4112, "HeritageParentNotInterface", "kError", "super-interface {0} is not an interface", 1),
+    (4113, "HeritageDuplicateParent", "kError", "super-interface {0} is inherited more than once",
+     1),
+    (4114, "HeritageParentIsTypeParameter", "kError",
+     "a generic parameter cannot be used as a super-interface", 0),
+    (4115, "HeritageCycle", "kError", "cyclic interface inheritance is not allowed", 0),
 )
 
 REMOVED_CHECKER_DIAGNOSTIC_CODES = (4027, 4034, 4042, 4043, 4053)

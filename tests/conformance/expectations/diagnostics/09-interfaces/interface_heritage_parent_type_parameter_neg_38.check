@@ -1,0 +1,5 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/interface_heritage_parent_type_parameter_neg_38.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A generic parameter cannot be used as a super-interface. The checker rejects it with 4114 HeritageParentIsTypeParameter, never as an internal compiler error.
+// CHECK: Error [ZOM4114]:

@@ -77,6 +77,16 @@ interface ReadWriteStream : ReadableStream + WritableStream {
 
 Multiple super-interfaces are joined by `+`, which denotes logical conjunction (AND). The pipe `|` is reserved for union types and is rejected in interface heritage position.
 
+Every parent in a heritage clause must be a locally resolvable interface. A malformed clause is a closed source error, never a compiler crash:
+
+| Form | Diagnostic |
+|------|------------|
+| `interface Child : Missing {}` (parent does not resolve) | `ZOM4111 HeritageParentNotFound` |
+| `interface Child : StructName {}` (parent is not an interface) | `ZOM4112 HeritageParentNotInterface` |
+| `interface Child : Base + Base {}` (parent repeated) | `ZOM4113 HeritageDuplicateParent` |
+| `interface Child<T> : T {}` (parent is a generic parameter) | `ZOM4114 HeritageParentIsTypeParameter` |
+| `interface A : B {}` and `interface B : A {}` (or self inheritance) | `ZOM4115 HeritageCycle` |
+
 ### 9.2.1 Generic Interface Inheritance
 
 Generic interfaces may inherit from other generic interfaces with type arguments:

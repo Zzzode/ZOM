@@ -1,0 +1,5 @@
+section: "9.3 Interface inheritance"
+covers_rule: "interfaceDeclaration, interfaceBoundList"
+expected: "ACCEPT"
+notes:
+  - "A generic parameter cannot be used as a super-interface. The checker rejects it with 4114 HeritageParentIsTypeParameter."

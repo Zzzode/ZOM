@@ -1,0 +1,5 @@
+section: "9.3 Interface inheritance"
+covers_rule: "interfaceDeclaration, interfaceBoundList"
+expected: "ACCEPT"
+notes:
+  - "The same super-interface is inherited twice in one clause. The checker rejects it with 4113 HeritageDuplicateParent."

@@ -1719,21 +1719,98 @@ fun g(x: dyn I<Bogus = i32>) -> i32 {
 
 constexpr zc::StringPtr kNonInterfacePrincipalSource = R"zom(class RecoveryOwner {}
 struct NotAnInterface {
-    let value: u8
+    value: u8,
 }
 
 let x: dyn NotAnInterface;
 )zom"_zc;
-}  // namespace
+// Drives InterfaceHeritageValidator over one user module and returns the
+// source failures (asserting the invariant arm is not taken).
+zc::Vector<SignatureSourceFailureRef> validateHeritage(zc::StringPtr sourceText) {
+  tests::checker_fixture::CheckerAuthoritySession session(sourceText);
+  const auto& identities = session.identityAuthority();
+  auto admission = ownership::SurfaceAdmissionBuilder::admit(identities.modules()[0].retain());
+  ZC_REQUIRE(admission.is<ownership::AdmittedBoundModule>());
+  auto result = InterfaceHeritageValidator::validate(
+      zc::mv(admission).get<ownership::AdmittedBoundModule>(), identities);
+  ZC_REQUIRE(result.is<ValidatedInterfaceHeritage>());
+  return zc::mv(result.get<ValidatedInterfaceHeritage>().failures);
+}
+
+constexpr zc::StringPtr kHeritageUndefinedSource = R"zom(class RecoveryOwner {}
+interface Child : Missing {}
+)zom"_zc;
+
+constexpr zc::StringPtr kHeritageNonInterfaceSource = R"zom(class RecoveryOwner {}
+struct Parent {
+    value: u8,
+}
+interface Child : Parent {}
+)zom"_zc;
+
+constexpr zc::StringPtr kHeritageDuplicateSource = R"zom(class RecoveryOwner {}
+interface Base {}
+interface Child : Base + Base {}
+)zom"_zc;
+
+constexpr zc::StringPtr kHeritageTypeParameterSource = R"zom(class RecoveryOwner {}
+interface Child<T> : T {}
+)zom"_zc;
+
+constexpr zc::StringPtr kHeritageValidChainSource = R"zom(class RecoveryOwner {}
+interface A {}
+interface B : A {}
+interface C : B {}
+)zom"_zc;
 
 // An interface-parent cycle must not be classified and published. The readiness
 // fixpoint pre-classifies member-bearing interfaces as Behavior and skips them,
-// so an explicit back-edge check is required to reject both a two-node cycle
-// that carries a member and a self-inheriting interface.
+// so the marker builder still rejects through the heritage source rail (4115)
+// for both a two-node cycle that carries a member and a self-inheriting
+// interface.
 ZC_TEST("MarkerShapeInventoryBuilder rejects a behavior-bearing inheritance cycle") {
+  const auto behaviorFailures = validateHeritage(kBehaviorCycleSource);
+  ZC_REQUIRE(behaviorFailures.size() >= 1);
+  ZC_EXPECT(behaviorFailures[0].diagnostic == SignatureSourceDiagnostic::HeritageCycle);
+  const auto selfFailures = validateHeritage(kSelfCycleSource);
+  ZC_REQUIRE(selfFailures.size() == 1);
+  ZC_EXPECT(selfFailures[0].diagnostic == SignatureSourceDiagnostic::HeritageCycle);
   ZC_EXPECT(!markerShapeInventoryPublishes(kBehaviorCycleSource));
   ZC_EXPECT(!markerShapeInventoryPublishes(kSelfCycleSource));
 }
+
+#define ZOM_EXPECT_HERITAGE_FAILURE(SOURCE, DIAGNOSTIC)                         \
+  do {                                                                          \
+    const auto failures = validateHeritage(SOURCE);                             \
+    ZC_REQUIRE(failures.size() == 1);                                           \
+    ZC_EXPECT(failures[0].diagnostic == SignatureSourceDiagnostic::DIAGNOSTIC); \
+  } while (false)
+
+ZC_TEST("InterfaceHeritageValidator rejects an unresolved super-interface") {
+  ZOM_EXPECT_HERITAGE_FAILURE(kHeritageUndefinedSource, HeritageParentNotFound);
+}
+
+ZC_TEST("InterfaceHeritageValidator rejects a non-interface super-interface") {
+  ZOM_EXPECT_HERITAGE_FAILURE(kHeritageNonInterfaceSource, HeritageParentNotInterface);
+}
+
+ZC_TEST("InterfaceHeritageValidator rejects a duplicated super-interface") {
+  ZOM_EXPECT_HERITAGE_FAILURE(kHeritageDuplicateSource, HeritageDuplicateParent);
+}
+
+ZC_TEST("InterfaceHeritageValidator rejects a generic parameter super-interface") {
+  ZOM_EXPECT_HERITAGE_FAILURE(kHeritageTypeParameterSource, HeritageParentIsTypeParameter);
+}
+
+// An acyclic chain, including a transitive three-level chain, publishes no
+// heritage failures.
+ZC_TEST("InterfaceHeritageValidator publishes a valid inheritance chain") {
+  ZC_EXPECT(validateHeritage(kSafeInheritanceSource).size() == 0);
+  ZC_EXPECT(validateHeritage(kHeritageValidChainSource).size() == 0);
+}
+
+#undef ZOM_EXPECT_HERITAGE_FAILURE
+}  // namespace
 
 // An unknown binding name in a dyn head is a source malformation, not a
 // compiler invariant: the signature stage source-rejects with ZOM4108 at the

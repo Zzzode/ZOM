@@ -1035,7 +1035,12 @@ enum class SignatureSourceDiagnostic : uint16_t {
   AssociatedTypeMemberUnsupported = 4107,
   DynUnknownAssociatedTypeBinding = 4108,
   DynInheritedAssociatedTypeBindingUnsupported = 4109,
-  DynPrincipalNotInterface = 4110
+  DynPrincipalNotInterface = 4110,
+  HeritageParentNotFound = 4111,
+  HeritageParentNotInterface = 4112,
+  HeritageDuplicateParent = 4113,
+  HeritageParentIsTypeParameter = 4114,
+  HeritageCycle = 4115
 };
 
 struct SignatureLiteralDisplayArg final {
@@ -1195,6 +1200,26 @@ private:
 
 struct MarkerShapeModuleInput final {
   const ownership::AdmittedBoundModule& boundModule;
+};
+
+/// \brief Structured result of validating one module's interface heritage:
+/// the source failures collected, plus the InterfaceDecl nodes whose clauses
+/// produced them (so the signature builder can skip those interfaces).
+struct ValidatedInterfaceHeritage final {
+  zc::Vector<SignatureSourceFailureRef> failures;
+  zc::Vector<ast::NodeId> failedDeclarations;
+};
+
+/// \brief Validates interface heritage clauses of one bound module on the
+/// source rail: unresolved parents, non-interface parents, duplicate parents,
+/// generic-parameter parents, and inheritance cycles all become structured
+/// source failures rather than marker-builder invariants. Structural
+/// malformations and authority failures stay on the invariant rail.
+class InterfaceHeritageValidator final {
+public:
+  ZC_NODISCARD static zc::OneOf<ValidatedInterfaceHeritage, SignatureFactsInvariantRejected>
+  validate(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+           const CheckerIdentityAuthority& identities);
 };
 
 using MarkerShapeInventoryBuildResult =

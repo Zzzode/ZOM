@@ -2995,6 +2995,240 @@ zc::Maybe<DirectInterfaceShape> inspectDirectInterface(
                               hasGenerics,           hasBehavior, zc::mv(parentDefinitions)};
 }
 
+/// \brief Whether a single-segment heritage path names a generic parameter of
+/// the interface being declared.
+bool heritageParentIsGenericParameter(const ast::Tree& tree, ast::NodeId interfaceNode,
+                                      ast::NodeId parentNode) {
+  if (!tree.contains(parentNode) || tree.node(parentNode).kind != ast::SyntaxKind::NamedTypeExpr) {
+    return false;
+  }
+  const ast::NodeId path(tree.node(parentNode).payload.words[ast::kNamedTypeExprPathWord]);
+  if (!tree.contains(path) || tree.node(path).kind != ast::SyntaxKind::ModulePath ||
+      tree.node(path).payload.words[ast::kModulePathRootWord] != 0) {
+    return false;
+  }
+  const ast::IdentList segments{tree.node(path).payload.words[ast::kModulePathSegmentsFirstWord],
+                                tree.node(path).payload.words[ast::kModulePathSegmentsSizeWord]};
+  if (!tree.contains(segments) || segments.size != 1) { return false; }
+  const auto name = tree.ident(tree.identList(segments)[0]);
+  const ast::NodeId generics(
+      tree.node(interfaceNode).payload.words[ast::kInterfaceDeclTypeParamsIdWord]);
+  if (!tree.contains(generics) || tree.node(generics).kind != ast::SyntaxKind::GenericParams) {
+    return false;
+  }
+  const ast::NodeList parameters{
+      tree.node(generics).payload.words[ast::kGenericParamsParamsFirstWord],
+      tree.node(generics).payload.words[ast::kGenericParamsParamsSizeWord]};
+  if (!tree.contains(parameters)) { return false; }
+  for (const auto parameter : tree.list(parameters)) {
+    if (!tree.contains(parameter) ||
+        tree.node(parameter).kind != ast::SyntaxKind::GenericTypeParam) {
+      continue;
+    }
+    const auto parameterName =
+        ast::IdentId(tree.node(parameter).payload.words[ast::kGenericTypeParamNameWord]);
+    if (tree.contains(parameterName) && tree.ident(parameterName) == name) { return true; }
+  }
+  return false;
+}
+
+}  // namespace
+
+zc::OneOf<ValidatedInterfaceHeritage, SignatureFactsInvariantRejected>
+InterfaceHeritageValidator::validate(
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+    const CheckerIdentityAuthority& identities) {
+  const auto& tree = boundModule.tree();
+  const auto& metadata = boundModule.bindings();
+  const auto& definitions = boundModule.definitions();
+  zc::Vector<SignatureSourceFailureRef> failures;
+  zc::Vector<ast::NodeId> failedDeclarations;
+
+  struct InterfaceHeritage final {
+    identity::DefId interface;
+    ast::NodeId declaration;
+    zc::Vector<ast::NodeId> parentNodes;
+    zc::Vector<identity::DefId> parents;
+  };
+  zc::Vector<InterfaceHeritage> interfaces;
+
+  for (const auto& definition : definitions.definitions()) {
+    if (definition.record.kind() != identity::DefinitionKind::Interface) { continue; }
+    if (!tree.contains(definition.node) ||
+        tree.node(definition.node).kind != ast::SyntaxKind::InterfaceDecl) {
+      return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact, boundModule.module(),
+                                          definition.node.value));
+    }
+    InterfaceHeritage heritage;
+    heritage.interface = definition.definition;
+    heritage.declaration = definition.node;
+    bool declarationFailed = false;
+    const ast::NodeId parentsNode(
+        tree.node(definition.node).payload.words[ast::kInterfaceDeclIfacesIdWord]);
+    if (tree.contains(parentsNode)) {
+      if (tree.node(parentsNode).kind != ast::SyntaxKind::ImplIfaceList) {
+        return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact, boundModule.module(),
+                                            parentsNode.value));
+      }
+      const ast::NodeList parentList{
+          tree.node(parentsNode).payload.words[ast::kImplIfaceListIfacesFirstWord],
+          tree.node(parentsNode).payload.words[ast::kImplIfaceListIfacesSizeWord]};
+      if (!tree.contains(parentList)) {
+        return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact, boundModule.module(),
+                                            parentsNode.value));
+      }
+      for (const auto parent : tree.list(parentList)) {
+        if (!tree.contains(parent)) {
+          return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact,
+                                              boundModule.module(), parent.value));
+        }
+        heritage.parentNodes.add(parent);
+        if (tree.node(parent).kind != ast::SyntaxKind::NamedTypeExpr) {
+          return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact,
+                                              boundModule.module(), parent.value));
+        }
+        if (heritageParentIsGenericParameter(tree, definition.node, parent)) {
+          auto failure =
+              signatureSourceFailure(SignatureSourceDiagnostic::HeritageParentIsTypeParameter,
+                                     boundModule, definition.node, parent);
+          if (failure == zc::none) {
+            return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact,
+                                                boundModule.module(), parent.value));
+          }
+          failures.add(zc::mv(ZC_ASSERT_NONNULL(failure)));
+          declarationFailed = true;
+          continue;
+        }
+        auto resolved = resolveHeritageParent(tree, metadata, parent);
+        if (resolved == zc::none) {
+          auto failure = signatureSourceFailure(SignatureSourceDiagnostic::HeritageParentNotFound,
+                                                boundModule, definition.node, parent);
+          if (failure == zc::none) {
+            return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact,
+                                                boundModule.module(), parent.value));
+          }
+          failures.add(zc::mv(ZC_ASSERT_NONNULL(failure)));
+          declarationFailed = true;
+          continue;
+        }
+        auto canonical =
+            authorityDefinitionId(definitions, identities, ZC_ASSERT_NONNULL(resolved));
+        if (canonical == zc::none) {
+          return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact,
+                                              boundModule.module(), parent.value));
+        }
+        ZC_IF_SOME(entry, identities.definition(ZC_ASSERT_NONNULL(canonical))) {
+          if (entry.record().kind() != identity::DefinitionKind::Interface) {
+            auto failure =
+                signatureSourceFailure(SignatureSourceDiagnostic::HeritageParentNotInterface,
+                                       boundModule, definition.node, parent);
+            if (failure == zc::none) {
+              return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact,
+                                                  boundModule.module(), parent.value));
+            }
+            ZC_IF_SOME(value, failure) {
+              value.arguments.add(
+                  SignatureSourceArgument(SignatureDefinitionDisplayArg{entry.handle()}));
+              failures.add(zc::mv(value));
+            }
+            declarationFailed = true;
+            continue;
+          }
+        } else {
+          return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact,
+                                              boundModule.module(), parent.value));
+        }
+        bool duplicate = false;
+        for (const auto previous : heritage.parents) {
+          if (previous == ZC_ASSERT_NONNULL(canonical)) { duplicate = true; }
+        }
+        if (duplicate) {
+          auto failure = signatureSourceFailure(SignatureSourceDiagnostic::HeritageDuplicateParent,
+                                                boundModule, definition.node, parent);
+          if (failure == zc::none) {
+            return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact,
+                                                boundModule.module(), parent.value));
+          }
+          ZC_IF_SOME(value, failure) {
+            value.arguments.add(SignatureSourceArgument(
+                SignatureDefinitionDisplayArg{ZC_ASSERT_NONNULL(canonical)}));
+            failures.add(zc::mv(value));
+          }
+          declarationFailed = true;
+          continue;
+        }
+        heritage.parents.add(ZC_ASSERT_NONNULL(canonical));
+      }
+    }
+    if (declarationFailed) { failedDeclarations.add(definition.node); }
+    interfaces.add(zc::mv(heritage));
+  }
+
+  // Cycle detection over the locally resolved parent graph. Heritage
+  // resolution is local-only, so every parent is in this same module; a parent
+  // absent from the graph was source-rejected above and must not abort the
+  // traversal into an invariant.
+  const auto parentIndex = [&](identity::DefId parent) -> size_t {
+    for (size_t candidate = 0; candidate < interfaces.size(); ++candidate) {
+      if (interfaces[candidate].interface == parent) { return candidate; }
+    }
+    return interfaces.size();
+  };
+  zc::Vector<bool> reached(interfaces.size());
+  zc::Vector<bool> onStack(interfaces.size());
+  for (size_t i = 0; i < interfaces.size(); ++i) {
+    reached.add(false);
+    onStack.add(false);
+  }
+  struct CycleFrame final {
+    size_t node;
+    size_t nextParent;
+  };
+  for (size_t root = 0; root < interfaces.size(); ++root) {
+    if (reached[root]) { continue; }
+    zc::Vector<CycleFrame> stack;
+    reached[root] = true;
+    onStack[root] = true;
+    stack.add(CycleFrame{root, 0});
+    while (stack.size() > 0) {
+      CycleFrame& frame = stack[stack.size() - 1];
+      if (frame.nextParent >= interfaces[frame.node].parents.size()) {
+        onStack[frame.node] = false;
+        stack.resize(stack.size() - 1);
+        continue;
+      }
+      const identity::DefId parent = interfaces[frame.node].parents[frame.nextParent];
+      ++frame.nextParent;
+      const size_t next = parentIndex(parent);
+      if (next == interfaces.size()) { break; }
+      if (onStack[next]) {
+        auto failure = signatureSourceFailure(SignatureSourceDiagnostic::HeritageCycle, boundModule,
+                                              interfaces[frame.node].declaration,
+                                              interfaces[frame.node].declaration);
+        if (failure == zc::none) {
+          return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact,
+                                              boundModule.module(),
+                                              interfaces[frame.node].declaration.value));
+        }
+        failures.add(zc::mv(ZC_ASSERT_NONNULL(failure)));
+        failedDeclarations.add(interfaces[frame.node].declaration);
+        onStack[frame.node] = false;
+        stack.resize(stack.size() - 1);
+        continue;
+      }
+      if (!reached[next]) {
+        reached[next] = true;
+        onStack[next] = true;
+        stack.add(CycleFrame{next, 0});
+      }
+    }
+  }
+
+  return zc::OneOf<ValidatedInterfaceHeritage, SignatureFactsInvariantRejected>(
+      ValidatedInterfaceHeritage{zc::mv(failures), zc::mv(failedDeclarations)});
+}
+
+namespace {
 bool encodeSortedRecordBytes(identity::CanonicalEncoder& encoder,
                              zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> records) {
   zc::Vector<zc::ArrayPtr<const uint8_t>> sorted(records.size());
@@ -7094,6 +7328,27 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
   zc::Vector<SignatureSourceFailureRef> sourceFailures;
   zc::Vector<SignatureAdvisoryRef> advisories;
   zc::Vector<identity::DefId> failedInterfaces;
+
+  // Validate interface heritage once for the module on the source rail. The
+  // production session runs the same validator as a pre-gate; doing it here
+  // too keeps direct SignatureFactsBuilder callers (ztests) off the invariant
+  // rail for malformed heritage.
+  auto heritageResult = InterfaceHeritageValidator::validate(input.boundModule, input.identities);
+  if (heritageResult.is<SignatureFactsInvariantRejected>()) {
+    return zc::mv(heritageResult.get<SignatureFactsInvariantRejected>());
+  }
+  zc::Vector<ast::NodeId> failedHeritageDeclarations;
+  {
+    auto& heritage = heritageResult.get<ValidatedInterfaceHeritage>();
+    for (auto& failure : heritage.failures) { sourceFailures.add(zc::mv(failure)); }
+    for (const auto node : heritage.failedDeclarations) { failedHeritageDeclarations.add(node); }
+  }
+  const auto isFailedHeritage = [&](ast::NodeId node) {
+    for (const auto failed : failedHeritageDeclarations) {
+      if (failed == node) { return true; }
+    }
+    return false;
+  };
   const auto isLocalDefinition =
       [&](const binder::MaterializedDefinitionInventoryEntry& definition) {
         return definition.record.module().encode().asPtr() == moduleKey.encode().asPtr();
@@ -7857,6 +8112,10 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         continue;
       }
       if (definitionKind == identity::DefinitionKind::Interface) {
+        if (isFailedHeritage(definition.node)) {
+          failedInterfaces.add(definition.definition);
+          continue;
+        }
         auto shape = input.markerShapes.shape(definition.definition);
         if (shape == zc::none || !tree.contains(definition.node)) {
           return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,

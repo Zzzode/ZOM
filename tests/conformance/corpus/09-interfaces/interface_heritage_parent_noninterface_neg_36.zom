@@ -1,0 +1,3 @@
+struct Parent {}
+
+interface Child : Parent {}

@@ -1,3 +1,7 @@
+interface Readable {}
+interface Closable {}
+interface Disposable {}
+
 interface IOReader : Readable + Closable + Disposable {
-    fun read(buf: [u8]) -> i32;
+    fun read(buf: u8) -> i32;
 }
