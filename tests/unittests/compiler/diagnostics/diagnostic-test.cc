@@ -133,6 +133,7 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ModuleStatementSemanticsUnavailable) == 4105);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DynUnknownAssociatedTypeBinding) == 4108);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DynInheritedAssociatedTypeBindingUnsupported) == 4109);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynPrincipalNotInterface) == 4110);
 }
 
 ZC_TEST("DiagnosticTest.ReceiverParserDiagnosticIdsAreStable") {

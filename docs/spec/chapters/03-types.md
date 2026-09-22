@@ -534,9 +534,11 @@ the compact source forms `dyn I<Item = T>` and `dyn I + Sendable + Shared`.
 | Form | Diagnostic |
 |------|------------|
 | `let x: dyn = value;` (bare `dyn` with no interface) | Parser/type diagnostic for missing dyn interface head |
-| `let x: dyn (i32 \| str) = value;` (non-interface after `dyn`) | Type diagnostic for non-interface dyn head |
+| `let x: dyn (i32 \| str) = value;` (non-interface after `dyn`) | Parser ZOM2072 for a non-path head; a principal path resolving to a struct, class, enum, or error emits ZOM4110 `DynPrincipalNotInterface` |
 | `let x: dyn Error + dyn Sendable = value;` (repeated `dyn` prefix) | Parser/type diagnostic for repeated dyn prefix |
 | `let x: dyn Iterator = value;` (associated type `Item` not bound) | ZOM4004 `DynUnassociatedType` |
+| `let x: dyn Iterator<Bogus = T> = value;` (unknown head binding) | ZOM4108 `DynUnknownAssociatedTypeBinding` |
+| `let x: dyn Child<Item = T> = value;` (inherited head binding) | ZOM4109 `DynInheritedAssociatedTypeBindingUnsupported` |
 
 **Runtime layout (2-word fat pointer):**
 

@@ -1034,7 +1034,8 @@ enum class SignatureSourceDiagnostic : uint16_t {
   TypeAliasTargetUnsupported = 4106,
   AssociatedTypeMemberUnsupported = 4107,
   DynUnknownAssociatedTypeBinding = 4108,
-  DynInheritedAssociatedTypeBindingUnsupported = 4109
+  DynInheritedAssociatedTypeBindingUnsupported = 4109,
+  DynPrincipalNotInterface = 4110
 };
 
 struct SignatureLiteralDisplayArg final {

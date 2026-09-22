@@ -1,0 +1,5 @@
+section: "03-types dyn existential types"
+covers_rule: "dynType"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; the diagnostics runner rejects a non-interface dyn principal with ZOM4110."

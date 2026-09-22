@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/dyn_principal_not_interface_neg_44.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A dyn principal must name an interface. A principal that resolves to a
+// struct, class, enum, error, or alias is rejected at the principal site with
+// ZOM4110, never as an internal compiler error.
+// CHECK: Error [ZOM4110]:

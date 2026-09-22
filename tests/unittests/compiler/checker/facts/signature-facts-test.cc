@@ -1716,6 +1716,14 @@ fun g(x: dyn I<Bogus = i32>) -> i32 {
     return 1;
 }
 )zom"_zc;
+
+constexpr zc::StringPtr kNonInterfacePrincipalSource = R"zom(class RecoveryOwner {}
+struct NotAnInterface {
+    let value: u8
+}
+
+let x: dyn NotAnInterface;
+)zom"_zc;
 }  // namespace
 
 // An interface-parent cycle must not be classified and published. The readiness
@@ -1767,6 +1775,19 @@ ZC_TEST("SignatureFactsBuilder source-rejects an unknown dyn binding in a parame
   const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
   ZC_REQUIRE(failures.size() == 1);
   ZC_EXPECT(failures[0].diagnostic == SignatureSourceDiagnostic::DynUnknownAssociatedTypeBinding);
+}
+
+// A dyn principal that resolves to a non-interface definition is source
+// rejected at the principal node rather than surfacing as an invariant.
+ZC_TEST("SignatureFactsBuilder source-rejects a non-interface dyn principal") {
+  auto result = buildSignatures(kNonInterfacePrincipalSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() == 1);
+  const auto& failure = failures[0];
+  ZC_EXPECT(failure.diagnostic == SignatureSourceDiagnostic::DynPrincipalNotInterface);
+  ZC_REQUIRE(failure.arguments.size() == 1);
+  ZC_REQUIRE(failure.arguments[0].variant().is<SignatureDefinitionDisplayArg>());
 }
 
 }  // namespace zomlang::compiler::checker::signature

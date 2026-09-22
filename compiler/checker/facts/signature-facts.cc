@@ -1669,6 +1669,36 @@ private:
     return false;
   }
 
+  /// \brief When a dyn principal type path resolves to a non-interface
+  /// definition, record ZOM4110 at the principal node. Returns false for an
+  /// unresolvable path (binder owns that error) and true for a definition of
+  /// any kind.
+  bool recordNonInterfacePrincipal(ast::NodeId principalNode) {
+    const auto& tree = boundModule.tree();
+    if (!tree.contains(principalNode) ||
+        tree.node(principalNode).kind != ast::SyntaxKind::NamedTypeExpr) {
+      return false;
+    }
+    auto definition = resolvedDefinition(
+        ast::NodeId(tree.node(principalNode).payload.words[ast::kNamedTypeExprPathWord]));
+    if (definition == zc::none) { return false; }
+    ZC_IF_SOME(record, identities.definition(ZC_ASSERT_NONNULL(definition))) {
+      // Type aliases are refused on the ZOM4106 rail before any type is built;
+      // leave them to that diagnostic instead of mislabeling the alias target.
+      if (record.record().kind() == identity::DefinitionKind::Interface ||
+          record.record().kind() == identity::DefinitionKind::TypeAlias) {
+        return true;
+      }
+    } else {
+      return false;
+    }
+    zc::Vector<SignatureSourceArgument> arguments;
+    arguments.add(definitionArg(ZC_ASSERT_NONNULL(definition)));
+    recordObjectSafetyFailure(SignatureSourceDiagnostic::DynPrincipalNotInterface, principalNode,
+                              zc::mv(arguments));
+    return true;
+  }
+
   /// \brief Build an existential `dyn I<...>` type, validating object safety
   /// (OS-0..OS-7) and the head associated-type bindings. On any object-safety
   /// failure the failure is recorded on the builder sink and none is returned.
@@ -1676,6 +1706,11 @@ private:
     const auto& tree = boundModule.tree();
     const auto& syntax = tree.node(node);
     const ast::NodeId principalNode(syntax.payload.words[ast::kDynTypeExprPrincipalWord]);
+    if (!recordNonInterfacePrincipal(principalNode)) {
+      // An unresolvable principal stays an invariant until the binder covers
+      // every type-bearing position; a parser-admitted non-path cannot occur.
+      return zc::none;
+    }
     auto principalInterface = buildInterface(principalNode);
     if (principalInterface == zc::none) return zc::none;
     auto principalPattern = buildPatternInterface(principalNode);

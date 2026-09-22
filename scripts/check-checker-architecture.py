@@ -327,6 +327,8 @@ ACCEPTED_CHECKER_DIAGNOSTICS = (
     (4109, "DynInheritedAssociatedTypeBindingUnsupported", "kError",
      "associated type {0} inherited from super-interface of {1} cannot be bound in a dyn head yet",
      2),
+    (4110, "DynPrincipalNotInterface", "kError",
+     "{0} is not an interface and cannot be the principal of a dyn type", 1),
 )
 
 REMOVED_CHECKER_DIAGNOSTIC_CODES = (4027, 4034, 4042, 4043, 4053)

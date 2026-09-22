@@ -175,3 +175,5 @@ DIAG(4108, DynUnknownAssociatedTypeBinding, kError,
 DIAG(4109, DynInheritedAssociatedTypeBindingUnsupported, kError,
      "associated type {0} inherited from super-interface of {1} cannot be bound in a dyn head yet",
      2)
+DIAG(4110, DynPrincipalNotInterface, kError,
+     "{0} is not an interface and cannot be the principal of a dyn type", 1)
