@@ -14,9 +14,9 @@
 
 #include "compiler/type/semantic-type-key.h"
 
-#include "zc/core/vector.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/type/semantic-type-store.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::type::semantic {
 namespace {
@@ -342,12 +342,27 @@ private:
     return output.finish();
   }
 
-  bool validateMarkerFacts(zc::ArrayPtr<const identity::DefId> markers) {
-    if (markers.size() == 0) return true;
+  // Encode the existential marker bound: each marker must resolve to an
+  // Interface definition and the set is emitted in strictly ascending canonical
+  // order with no duplicates. The producer sorts the set; an unsorted or
+  // duplicate input is a non-canonical closed value. Pre-encoding once (like
+  // encodeSet) avoids validating and keying each marker twice.
+  bool encodeMarkers(identity::CanonicalEncoder& output,
+                     zc::ArrayPtr<const identity::DefId> markers) {
+    zc::Vector<zc::Array<uint8_t>> encoded;
     for (const auto marker : markers) {
-      if (definitionBytes(marker, DefinitionRole::Interface) == zc::none) return false;
+      ZC_IF_SOME(key, definitionBytes(marker, DefinitionRole::Interface)) {
+        if (encoded.size() != 0 && compareBytes(encoded.back().asPtr(), key.asPtr()) >= 0) {
+          return rejectNonCanonical();
+        }
+        encoded.add(zc::mv(key));
+      } else {
+        return false;
+      }
     }
-    return rejectClosedValue();
+    output.encodeSequenceSize(encoded.size());
+    for (const auto& key : encoded) { append(output, key.asPtr()); }
+    return true;
   }
 
   bool encodeExistential(identity::CanonicalEncoder& output, const ExistentialTypeData& value) {
@@ -371,8 +386,7 @@ private:
       }
     }
 
-    if (!validateMarkerFacts(value.markers.asPtr())) return false;
-    output.encodeSequenceSize(0);
+    if (!encodeMarkers(output, value.markers.asPtr())) return false;
     output.encodeSequenceSize(value.associatedBindings.size());
     zc::Array<uint8_t> previousAssociated;
     for (const auto& binding : value.associatedBindings) {

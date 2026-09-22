@@ -3,12 +3,12 @@
 
 #include "compiler/type/semantic-type-key.h"
 
-#include "zc/core/encoding.h"
-#include "zc/core/memory.h"
-#include "zc/ztest/test.h"
 #include "compiler/identity/crypto/sha256.h"
 #include "compiler/type/semantic-type-store.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
+#include "zc/core/encoding.h"
+#include "zc/core/memory.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::type::semantic {
 namespace {
@@ -354,14 +354,46 @@ ZC_TEST("SemanticTypeKey.RejectsNonCanonicalExistentialInputs") {
                                    zc::mv(duplicateMarkers), zc::mv(duplicateBindings)}),
       fixture, identity::IdentityInvariantKind::NonCanonicalEncoding);
 
-  zc::Vector<ExistentialInterfaceData> noAdditional;
-  zc::Vector<identity::DefId> markers;
-  markers.add(interfaces[1]);
-  zc::Vector<AssociatedTypeBindingData> markerBindings;
-  expectRejected(
-      TypeData(ExistentialTypeData{existentialInterface(interfaces[0]), zc::mv(noAdditional),
-                                   zc::mv(markers), zc::mv(markerBindings)}),
-      fixture, identity::IdentityInvariantKind::InvalidClosedValue);
+  // A single, distinct marker interface is a valid canonical existential
+  // marker bound. intern() requires canonicalization to succeed and returns the
+  // store id.
+  {
+    zc::Vector<ExistentialInterfaceData> noAdditional;
+    zc::Vector<identity::DefId> oneMarker;
+    oneMarker.add(interfaces[1]);
+    zc::Vector<AssociatedTypeBindingData> markerBindings;
+    auto id = fixture.intern(
+        TypeData(ExistentialTypeData{existentialInterface(interfaces[0]), zc::mv(noAdditional),
+                                     zc::mv(oneMarker), zc::mv(markerBindings)}));
+    ZC_EXPECT(id != identity::SemanticTypeId());
+  }
+
+  // Markers must be in strictly ascending canonical order; an unsorted pair is
+  // a non-canonical closed value.
+  {
+    zc::Vector<ExistentialInterfaceData> noAdditional;
+    zc::Vector<identity::DefId> reversedMarkers;
+    reversedMarkers.add(interfaces[2]);
+    reversedMarkers.add(interfaces[1]);
+    zc::Vector<AssociatedTypeBindingData> markerBindings;
+    expectRejected(
+        TypeData(ExistentialTypeData{existentialInterface(interfaces[0]), zc::mv(noAdditional),
+                                     zc::mv(reversedMarkers), zc::mv(markerBindings)}),
+        fixture, identity::IdentityInvariantKind::NonCanonicalEncoding);
+  }
+
+  // A duplicated marker is non-canonical.
+  {
+    zc::Vector<ExistentialInterfaceData> noAdditional;
+    zc::Vector<identity::DefId> duplicateMarkers;
+    duplicateMarkers.add(interfaces[1]);
+    duplicateMarkers.add(interfaces[1]);
+    zc::Vector<AssociatedTypeBindingData> markerBindings;
+    expectRejected(
+        TypeData(ExistentialTypeData{existentialInterface(interfaces[0]), zc::mv(noAdditional),
+                                     zc::mv(duplicateMarkers), zc::mv(markerBindings)}),
+        fixture, identity::IdentityInvariantKind::NonCanonicalEncoding);
+  }
 
   zc::Vector<ExistentialInterfaceData> bindingAdditional;
   zc::Vector<identity::DefId> bindingMarkers;

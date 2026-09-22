@@ -82,11 +82,19 @@ in-repo corpus that must become source diagnostics.
   borrow-rail ZOM4083; slice `[T]` parameter hits an InvalidFact in
   borrow classification. Decide and implement the parametric region/borrow
   contract so these signatures build. (RFC 0007 boundary)
-- A5. dyn marker bounds: type store `validateMarkerFacts` rejects non-empty
-  marker lists and `encodeExistential` hardcodes 0 markers. Enable
-  `dyn I + M + N` interning (sorted markers), then multi-qualified markers.
+- A5. dyn marker bounds. STORE LAYER DONE 2026-09-22: the canonical semantic
+  type key now encodes a non-empty existential marker sequence in strictly
+  ascending canonical order with no duplicates (wrong kind/foreign handle fails
+  closed), replacing the blanket reject and the hardcoded size-0 marker
+  sequence; empty-marker key bytes are unchanged. Remaining: the production
+  producer (`buildDyn` still hardcodes an empty marker vector and never reads
+  `kDynTypeExprMarkersIdWord`), marker-name resolution with a closed unknown
+  diagnostic, source-side sorting, and multi-qualified markers, so `dyn I + M`
+  is still not observable from source.
 - A6. dyn existential head rest: principal that is not a bare NamedTypeExpr
-  (parenthesized, qualified) currently falls through to invariant.
+  (parenthesized, qualified) currently falls through to invariant. Qualified
+  paths already arrive as NamedTypeExpr and work; parenthesized principals are
+  parser-rejected (ZOM2072) and need an unwrap or a closed diagnostic.
 - A7. dyn unknown associated-type binding (`dyn I<Item=u8>` when I has no
   Item): emit a closed diagnostic (no reserved code; add one or reuse
   ZOM4020 with the correct args) instead of invariant.
