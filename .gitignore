@@ -20,6 +20,7 @@ venv.bak/
 build/
 # RFC 0048: compiler construction TUs grouped under source-tree build/ dirs
 !compiler/hir/build/
+!compiler/mir/build/
 develop-eggs/
 dist/
 downloads/

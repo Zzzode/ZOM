@@ -3564,5 +3564,60 @@ ZC_TEST("Built MIR arithmetic rvalue byte oracle is stable and mutation sensitiv
   ZC_EXPECT(framedDigest(record.asPtr()) == baseline);
 }
 
+ZC_TEST("HIR pipeline lowers a scalar-return inherent method to a receiver MIR local") {
+  // The flat scalar-return method body (`fun get(this) -> i32 { return 7; }`)
+  // is the first inherent method shape to reach Built MIR. The method lowers as
+  // a function whose source definition kind is Method and whose single leading
+  // local is the implicit `this` receiver parameter; the admitted scalar body
+  // never reads it and the entry block returns the scalar constant directly.
+  HirPipelineFixture fixture(
+      "struct Cell {\n"
+      "  value: i32,\n"
+      "  fun get(this) -> i32 { return 7; }\n"
+      "}\n"
+      "fun entry() -> i32 { return 0; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 2);
+  zc::Maybe<const HirFunctionDeclaration&> method;
+  for (const auto& function : module.functions()) {
+    if (function.receiver != zc::none) method = function;
+  }
+  ZC_REQUIRE(method != zc::none);
+  const auto& methodDecl = ZC_ASSERT_NONNULL(method);
+  ZC_REQUIRE(methodDecl.parameters.size() == 0);
+  ZC_REQUIRE(methodDecl.receiver != zc::none);
+
+  const auto builtMirModules = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(!fixture.compilerSession().hasDiagnosticErrors());
+  ZC_REQUIRE(builtMirModules.size() == 1);
+  zc::Maybe<const mir::MirFunction&> mirMethod;
+  for (const auto& function : builtMirModules[0].builtMir().functions()) {
+    if (function.owner == methodDecl.definition) mirMethod = function;
+  }
+  ZC_REQUIRE(mirMethod != zc::none);
+  ZC_IF_SOME(function, mirMethod) {
+    ZC_EXPECT(function.sourceDefinitionKind == identity::DefinitionKind::Method);
+    ZC_EXPECT(function.kind == mir::MirFunctionKind::Function);
+    ZC_EXPECT(function.resultType == methodDecl.resultType);
+    ZC_REQUIRE(function.locals.size() == 1);
+    ZC_EXPECT(function.locals[0].id.ordinal() == 1);
+    ZC_EXPECT(function.locals[0].kind == mir::MirLocalKind::Parameter);
+    ZC_IF_SOME(receiver, methodDecl.receiver) {
+      ZC_EXPECT(function.locals[0].type == receiver.type);
+    }
+    ZC_REQUIRE(function.blocks.size() == 1);
+    ZC_EXPECT(function.blocks[0].statements.size() == 0);
+    const auto& terminator = function.blocks[0].terminator;
+    ZC_EXPECT(terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_REQUIRE(terminator.returnValue().value != zc::none);
+    ZC_IF_SOME(operand, terminator.returnValue().value) {
+      ZC_EXPECT(operand.kind() == mir::MirOperandKind::Constant);
+      ZC_EXPECT(operand.constantValue().type == methodDecl.resultType);
+      ZC_EXPECT(operand.constantValue().value.tag() ==
+                checker::signature::CanonicalConstValueTag::Integer);
+    }
+  }
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::hir

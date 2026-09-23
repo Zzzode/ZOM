@@ -1,0 +1,5 @@
+section: "08-adt inherent method scalar body"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A shared-receiver inherent method returning a scalar literal builds verified semantic HIR and Built MIR; the implicit this receiver is the leading unused parameter local."

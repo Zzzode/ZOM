@@ -400,7 +400,10 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(
 
 /// \brief Lowers `fun f(...) -> T { return <literal>; }`: one root scope, no
 /// locals, one empty entry block returning the scalar constant. Byte-identical
-/// to the legacy fallthrough scalar construction.
+/// to the legacy fallthrough scalar construction. An inherent method
+/// (`fun m(this) -> T { return <literal>; }`) additionally declares its
+/// implicit `this` receiver as the leading parameter local, which the admitted
+/// scalar body never reads.
 zc::Maybe<RecursiveFunctionProduct> buildScalarReturn(
     const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
     const hir::HirScalarLiteralExpression& literal,
@@ -408,17 +411,22 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarReturn(
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
 
+  const bool isMethod = declaration.receiver != zc::none;
   detail::MirFnCtx ctx;
   const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  ZC_IF_SOME(receiver, declaration.receiver) {
+    ctx.declareLocal(MirLocalKind::Parameter, receiver.type, scope, receiver.sourceSpan.clone());
+  }
   const MirBlockId entry = ctx.beginBlock(scope);
   (void)entry;
   ctx.terminateBlock(MirTerminator::returnValue(
       MirOperand::constant(declaration.resultType, literal.value.clone()),
       sourceReturn.sourceSpan.clone()));
 
-  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
-                                    identity::DefinitionKind::Function, declaration.resultType,
-                                    declaration.sourceSpan.clone());
+  MirFunction function =
+      ctx.finish(declaration.definition, MirFunctionKind::Function,
+                 isMethod ? identity::DefinitionKind::Method : identity::DefinitionKind::Function,
+                 declaration.resultType, declaration.sourceSpan.clone());
   zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }

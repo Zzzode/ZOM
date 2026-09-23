@@ -1431,14 +1431,18 @@ bool validScalarReturnFunction(const MirFunction& function, const hir::VerifiedH
     if (unsafeBlock == zc::none) return false;
   }
   const bool hasUnsafeBlock = unsafeBlock != zc::none;
+  const bool isMethod = declaration.receiver != zc::none;
+  const auto expectedSourceKind =
+      isMethod ? identity::DefinitionKind::Method : identity::DefinitionKind::Function;
   if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
-      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.sourceDefinitionKind != expectedSourceKind ||
       function.resultType != declaration.resultType ||
       !sameSpan(function.sourceSpan, declaration.sourceSpan) ||
-      function.sourceScopes.size() != (hasUnsafeBlock ? 2 : 1) || function.locals.size() != 0 ||
-      function.blocks.size() != 1 || declaration.body != sourceBlock.node ||
-      sourceBlock.statements.size() != 1 || sourceBlock.statements[0] != sourceReturn.node ||
-      sourceReturn.value != expression.node || sourceReturn.resultType != declaration.resultType ||
+      function.sourceScopes.size() != (hasUnsafeBlock ? 2 : 1) ||
+      function.locals.size() != (isMethod ? 1 : 0) || function.blocks.size() != 1 ||
+      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 1 ||
+      sourceBlock.statements[0] != sourceReturn.node || sourceReturn.value != expression.node ||
+      sourceReturn.resultType != declaration.resultType ||
       expression.type != declaration.resultType) {
     return false;
   }
@@ -1451,6 +1455,17 @@ bool validScalarReturnFunction(const MirFunction& function, const hir::VerifiedH
       block.terminator.returnValue().value == zc::none ||
       !sameSpan(block.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
+  }
+  // An inherent method carries its implicit `this` receiver as the single
+  // leading parameter local; the admitted scalar body never reads it.
+  if (isMethod) {
+    const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
+    const auto& receiverLocal = function.locals[0];
+    if (receiverLocal.id != localId(1) || receiverLocal.kind != MirLocalKind::Parameter ||
+        receiverLocal.type != receiver.type || receiverLocal.sourceScope != scope.id ||
+        !sameSpan(receiverLocal.sourceSpan, receiver.sourceSpan)) {
+      return false;
+    }
   }
   if (hasUnsafeBlock) {
     ZC_IF_SOME(unsafeBlockRef, unsafeBlock) {
@@ -5018,24 +5033,29 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
   // constant when the HIR function declaration carries an unsafe-block node.
   // Other function shapes do not yet lower unsafe blocks.
   for (const auto& declaration : hirModule.functions()) {
-    // Inherent methods now reach verified semantic HIR with their implicit
-    // `this` receiver, but Built MIR does not model a method owner or a
-    // receiver parameter local yet. Drain every method-sourced function as a
-    // per-definition capability rejection (ZOM4099) until the MIR method carrier
-    // exists, rather than mislabeling it as a module function or tripping an
-    // internal invariant.
-    bool sourceIsMethod = false;
-    for (const auto& source : input.body.boundModule.definitions().definitions()) {
-      if (source.definition != declaration.definition) continue;
-      sourceIsMethod = source.record.kind() == identity::DefinitionKind::Method;
-      break;
-    }
-    if (sourceIsMethod) {
+    auto sourceBlock = blockFor(hirModule, declaration.body);
+    // An inherent method reaches this loop only in the verified flat
+    // scalar-literal-return shape (the HIR builder drains every other method
+    // body as ZOM4099 before verification). Lower it through the same strict
+    // recursive rail, which declares the implicit `this` receiver as the
+    // leading parameter local that the scalar body never reads. Any shape the
+    // rail does not admit stays a per-definition capability rejection rather
+    // than falling through to module-function construction.
+    if (declaration.receiver != zc::none) {
+      bool lowered = false;
+      ZC_IF_SOME(block, sourceBlock) {
+        auto recursive =
+            tryBuildRecursiveFunction(declaration, block, hirModule, identities, proofs, copy);
+        ZC_IF_SOME(product, recursive) {
+          pending.add(PendingMirFunction{zc::mv(product.function), zc::mv(product.ownerKey)});
+          lowered = true;
+        }
+      }
+      if (lowered) continue;
       return rejectMirCapability<BuiltMirCandidate>(ir::IrFailureKind::UnsupportedSourceConstruct,
                                                     declaration.definition, identities,
                                                     declaration.sourceSpan.clone());
     }
-    auto sourceBlock = blockFor(hirModule, declaration.body);
     if (sourceBlock == zc::none) {
       return rejectMir<BuiltMirCandidate>(
           ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::MissingRequiredFact, module,
