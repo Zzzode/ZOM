@@ -5018,6 +5018,23 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
   // constant when the HIR function declaration carries an unsafe-block node.
   // Other function shapes do not yet lower unsafe blocks.
   for (const auto& declaration : hirModule.functions()) {
+    // Inherent methods now reach verified semantic HIR with their implicit
+    // `this` receiver, but Built MIR does not model a method owner or a
+    // receiver parameter local yet. Drain every method-sourced function as a
+    // per-definition capability rejection (ZOM4099) until the MIR method carrier
+    // exists, rather than mislabeling it as a module function or tripping an
+    // internal invariant.
+    bool sourceIsMethod = false;
+    for (const auto& source : input.body.boundModule.definitions().definitions()) {
+      if (source.definition != declaration.definition) continue;
+      sourceIsMethod = source.record.kind() == identity::DefinitionKind::Method;
+      break;
+    }
+    if (sourceIsMethod) {
+      return rejectMirCapability<BuiltMirCandidate>(ir::IrFailureKind::UnsupportedSourceConstruct,
+                                                    declaration.definition, identities,
+                                                    declaration.sourceSpan.clone());
+    }
     auto sourceBlock = blockFor(hirModule, declaration.body);
     if (sourceBlock == zc::none) {
       return rejectMir<BuiltMirCandidate>(

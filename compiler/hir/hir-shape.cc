@@ -325,13 +325,37 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
 
 zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                                                    const ast::Node& function) {
-  if (function.kind != ast::SyntaxKind::FunctionDecl) return zc::none;
-  const ast::NodeId body(function.payload.words[ast::kFunctionDeclBodyWord]);
+  const bool isMethod = function.kind == ast::SyntaxKind::MethodDecl;
+  if (function.kind != ast::SyntaxKind::FunctionDecl && !isMethod) return zc::none;
+  const auto bodyWord = isMethod ? ast::kMethodDeclBodyWord : ast::kFunctionDeclBodyWord;
+  const ast::NodeId body(function.payload.words[bodyWord]);
   if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return zc::none;
   const auto& block = tree.node(body);
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
   if (!tree.contains(statements) || statements.empty()) return zc::none;
+  // An inherent method is admitted only for the single flat scalar-literal
+  // return (`fun m(this) -> T { return <literal>; }`). Every other body shape
+  // (locals, parameters, `this` reads, calls, conditionals, loops, unsafe
+  // blocks, binary returns) returns none so the capability drain keeps the
+  // method on ZOM4099 until its lowering exists.
+  if (isMethod) {
+    if (statements.size != 1) return zc::none;
+    auto returnItem = statementItem(tree, tree.list(statements)[0]);
+    if (returnItem == zc::none) return zc::none;
+    ast::NodeId returnNode;
+    ZC_IF_SOME(value, returnItem) { returnNode = value; }
+    if (!tree.contains(returnNode) || tree.node(returnNode).kind != ast::SyntaxKind::ReturnStmt) {
+      return zc::none;
+    }
+    ast::NodeId value(tree.node(returnNode).payload.words[ast::kReturnStmtValueWord]);
+    if (!tree.contains(value) || !isScalarLiteral(tree.node(value).kind)) return zc::none;
+    FunctionReturnShape shape{};
+    shape.body = body;
+    shape.returnStatement = returnNode;
+    shape.value = value;
+    return shape;
+  }
   if (statements.size == 1) {
     auto conditionalItem = statementItem(tree, tree.list(statements)[0]);
     if (conditionalItem != zc::none) {

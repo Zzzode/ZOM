@@ -9,6 +9,7 @@
 #include "compiler/hir/checked-module.h"
 #include "compiler/hir/hir-node-id.h"
 #include "compiler/type/semantic-type-data.h"
+#include "compiler/type/semantic-type-store.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
@@ -323,12 +324,16 @@ struct HirBlockStatement final {
   identity::SourceSpan sourceSpan;
 };
 
-/// \brief One module-scope function with a verified scalar return body.
+/// \brief One module-scope function, or one inherent nominal method with a
+/// verified scalar return body. An ordinary function leaves `receiver` unset;
+/// an inherent method sets it to its implicit `this` receiver (kept separate
+/// from `parameters`, which lists only the explicit ordinary parameters).
 struct HirFunctionDeclaration final {
   HirNodeId node;
   identity::DefId definition;
   identity::SemanticTypeId resultType;
   zc::Vector<HirParameter> parameters;
+  zc::Maybe<HirParameter> receiver;
   HirVisibility visibility;
   HirLinkage linkage;
   identity::SourceSpan sourceSpan;
@@ -444,7 +449,7 @@ private:
 class HirBuilder final {
 public:
   ZC_NODISCARD static ir::IrOperationResult<HirModuleCandidate> build(
-      VerifiedCheckedModule&& checkedModule);
+      VerifiedCheckedModule&& checkedModule, type::SemanticTypeStore& semanticTypes);
 };
 
 /// \brief Sole publisher of immutable NodeId-free HIR modules.

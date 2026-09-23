@@ -185,6 +185,13 @@ zc::Maybe<HirLinkage> linkage(const checker::signature::CallableSignature& signa
 
 zc::Maybe<HirVisibility> visibility(const binder::VisibilityEnvelope& source);
 
+// Maps an inherent member's declared visibility to HIR visibility. A public
+// member is externally visible; protected and private members are confined to
+// the defining module. The owner's own export status is reconciled at link
+// time, which stays Internal in this method slice.
+HirVisibility memberVisibility(checker::signature::MemberVisibility source,
+                               identity::ModuleId module);
+
 bool sameVisibility(const HirVisibility& left, const HirVisibility& right);
 
 HirNodeId hirId(uint32_t ordinal);

@@ -26,9 +26,9 @@ void lowerComparisonReturnFunction(PendingFunctionDeclaration&& function, HirFnC
   const HirNodeId returnId = ctx.allocNode();
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
-                                         zc::mv(function.parameters), function.visibility.clone(),
-                                         function.linkage, function.declarationSpan.clone(), bodyId,
-                                         zc::none});
+                                         zc::mv(function.parameters), zc::none,
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
   zc::Vector<HirNodeId> statements;
   statements.add(returnId);
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});

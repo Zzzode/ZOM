@@ -172,6 +172,9 @@ struct PendingFunctionDeclaration final {
   identity::DefId definition;
   identity::SemanticTypeId resultType;
   zc::Vector<HirParameter> parameters;
+  // Set only for an inherent method: its implicit `this` receiver, kept
+  // separate from the ordinary `parameters`.
+  zc::Maybe<HirParameter> receiver;
   HirVisibility visibility;
   HirLinkage linkage;
   identity::SourceSpan declarationSpan;

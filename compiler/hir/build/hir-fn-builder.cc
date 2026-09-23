@@ -144,13 +144,15 @@ void lowerScalarLeaf(HirNodeId destination, identity::SemanticTypeId literalType
   }
 }
 
-/// \brief Emits the shared function header record, consuming its parameters.
+/// \brief Emits the shared function header record, consuming its parameters and
+/// the optional inherent-method receiver.
 HirFunctionDeclaration lowerFunctionHeader(HirNodeId functionId, HirNodeId bodyId,
                                            PendingFunctionDeclaration& function) {
   return HirFunctionDeclaration{functionId,
                                 function.definition,
                                 function.resultType,
                                 zc::mv(function.parameters),
+                                zc::mv(function.receiver),
                                 function.visibility.clone(),
                                 function.linkage,
                                 function.declarationSpan.clone(),
@@ -273,10 +275,10 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
         ZC_ASSERT_NONNULL(function.unsafeBlockSpan).clone()});
   }
 
-  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
-                                         zc::mv(function.parameters), function.visibility.clone(),
-                                         function.linkage, function.declarationSpan.clone(), bodyId,
-                                         zc::mv(unsafeBlockId)});
+  ctx.addFunction(HirFunctionDeclaration{
+      functionId, function.definition, function.resultType, zc::mv(function.parameters), zc::none,
+      function.visibility.clone(), function.linkage, function.declarationSpan.clone(), bodyId,
+      zc::mv(unsafeBlockId)});
   zc::Vector<HirNodeId> statements;
   for (const auto localNodeId : localNodeIds) { statements.add(localNodeId); }
   statements.add(returnId);

@@ -3605,7 +3605,8 @@ bool CompilerSession::checkSources() {
       return rejectIrInvariant(checkedModule.invariantFailures());
     }
 
-    auto hirCandidate = hir::HirBuilder::build(zc::mv(checkedModule).takeVerified());
+    auto hirCandidate =
+        hir::HirBuilder::build(zc::mv(checkedModule).takeVerified(), *impl->semanticTypeStore);
     if (hirCandidate.isCapabilityRejected()) {
       return rejectIrCapability(hirCandidate.capabilityFailures());
     }

@@ -1723,7 +1723,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       const auto& tree = bound.tree();
       if (!hasExecutableBody(sourceDefinition, definitions) ||
           !definitionBelongsToModule(sourceDefinition, definitions) ||
-          sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+          (sourceDefinition.record.kind() != identity::DefinitionKind::Function &&
+           sourceDefinition.record.kind() != identity::DefinitionKind::Method) ||
           !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
           !tree.contains(sourceDefinition.node)) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -2147,7 +2148,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       const auto& tree = bound.tree();
       if (!hasExecutableBody(sourceDefinition, definitions) ||
           !definitionBelongsToModule(sourceDefinition, definitions) ||
-          sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+          (sourceDefinition.record.kind() != identity::DefinitionKind::Function &&
+           sourceDefinition.record.kind() != identity::DefinitionKind::Method) ||
           !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
           !tree.contains(sourceDefinition.node)) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -2385,7 +2387,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       const auto& tree = bound.tree();
       if (!hasExecutableBody(sourceDefinition, definitions) ||
           !definitionBelongsToModule(sourceDefinition, definitions) ||
-          sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+          (sourceDefinition.record.kind() != identity::DefinitionKind::Function &&
+           sourceDefinition.record.kind() != identity::DefinitionKind::Method) ||
           !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
           !tree.contains(sourceDefinition.node)) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -4309,27 +4312,38 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
 
     auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
     auto signaturePosition = signatureIndex(signatures.definitions.asPtr(), function.definition);
-    auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
-    if (sourceDefinitionIndex == zc::none || signaturePosition == zc::none ||
-        rootPosition == zc::none) {
+    if (sourceDefinitionIndex == zc::none || signaturePosition == zc::none) {
       return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                           ir::IrFailureKind::MissingRequiredFact, module,
                                           registries, index + 1);
     }
     size_t definitionSlot = 0;
     size_t signatureSlot = 0;
-    size_t rootSlot = 0;
     ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
     ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
-    ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
     const auto& sourceDefinition = definitions.definitions()[definitionSlot];
     const auto& tree = bound.tree();
+    const bool isMethod = sourceDefinition.record.kind() == identity::DefinitionKind::Method;
+    // An inherent member carries no module-scope signature root.
+    auto rootPosition = zc::Maybe<size_t>(zc::none);
+    if (!isMethod) {
+      rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
+      if (rootPosition == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+    }
+    size_t rootSlot = 0;
+    ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
+    const auto expectedSourceKind =
+        isMethod ? ast::SyntaxKind::MethodDecl : ast::SyntaxKind::FunctionDecl;
     if (!hasExecutableBody(sourceDefinition, definitions) ||
         !definitionBelongsToModule(sourceDefinition, definitions) ||
-        sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+        (sourceDefinition.record.kind() != identity::DefinitionKind::Function && !isMethod) ||
         !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
         !tree.contains(sourceDefinition.node) ||
-        tree.node(sourceDefinition.node).kind != ast::SyntaxKind::FunctionDecl) {
+        tree.node(sourceDefinition.node).kind != expectedSourceKind) {
       return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                           ir::IrFailureKind::InvalidFact, module, registries,
                                           index + 1);
@@ -4686,15 +4700,39 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       continue;
     }
     const auto& signature = signatures.definitions[signatureSlot];
-    const auto& root = signatures.roots[rootSlot];
-    if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
-        !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>()) {
+    zc::Maybe<checker::signature::MemberSignatureScope> memberScope;
+    if (isMethod) {
+      if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+          !signature.scope.variant().is<checker::signature::MemberSignatureScope>()) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      memberScope = signature.scope.variant().get<checker::signature::MemberSignatureScope>();
+    } else if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+               !signature.scope.variant()
+                    .is<checker::signature::ModuleDefinitionSignatureScope>()) {
       return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                           ir::IrFailureKind::InvalidFact, module, registries,
                                           index + 1);
     }
     const auto& callable = signature.payload.variant().get<checker::signature::CallableSignature>();
-    auto expectedVisibility = visibility(root.visibility);
+    // An ordinary function has no receiver while an inherent method must have
+    // exactly one, and the materialized header must agree.
+    if ((callable.receiver != zc::none) != isMethod ||
+        (function.receiver != zc::none) != isMethod) {
+      return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                          ir::IrFailureKind::InvalidFact, module, registries,
+                                          index + 1);
+    }
+    zc::Maybe<HirVisibility> expectedVisibility;
+    if (isMethod) {
+      ZC_IF_SOME(scope, memberScope) {
+        expectedVisibility = memberVisibility(scope.visibility, module);
+      }
+    } else {
+      expectedVisibility = visibility(signatures.roots[rootSlot].visibility);
+    }
     auto expectedLinkage = linkage(callable);
     bool visibilityMatches = false;
     bool linkageMatches = false;
@@ -4708,10 +4746,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     ZC_IF_SOME(value, returnSpan) {
       returnSpanMatches = sameSpan(returnStatement.sourceSpan, value);
     }
+    const bool moduleMembershipValid =
+        isMethod ? definitionBelongsToModule(sourceDefinition, definitions)
+                 : (signatures.roots[rootSlot].canonicalDefinition == function.definition &&
+                    signatures.roots[rootSlot].sourceModule == module);
     if (signature.definition != function.definition ||
-        signature.definitionKind != identity::DefinitionKind::Function ||
-        root.canonicalDefinition != function.definition || root.sourceModule != module ||
-        callable.receiver != zc::none || callable.raises != zc::none ||
+        signature.definitionKind !=
+            (isMethod ? identity::DefinitionKind::Method : identity::DefinitionKind::Function) ||
+        !moduleMembershipValid || callable.raises != zc::none ||
         callable.success != function.resultType ||
         !sameSpan(function.sourceSpan, sourceDefinition.source) ||
         !sameSpan(signature.declarationSpan, sourceDefinition.source) || !visibilityMatches ||
@@ -4720,9 +4762,56 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                           ir::IrFailureKind::InvalidFact, module, registries,
                                           index + 1);
     }
+    // The member scope's owner is the enclosing nominal, never the method
+    // itself; the receiver type is validated below against that same owner.
+    ZC_IF_SOME(scope, memberScope) {
+      if (scope.owner == function.definition) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+    }
+    if (isMethod) {
+      bool receiverMatches = false;
+      ZC_IF_SOME(expected, callable.receiver) {
+        ZC_IF_SOME(actual, function.receiver) {
+          if (actual.key == expected.parameter) {
+            auto receiverTypeLookup = semanticTypes.get(actual.type);
+            if (receiverTypeLookup.is<type::SemanticTypeLookup>()) {
+              const auto& receiverData = receiverTypeLookup.get<type::SemanticTypeLookup>().data();
+              if (receiverData.is<type::semantic::ReferenceTypeData>()) {
+                const auto& reference = receiverData.get<type::semantic::ReferenceTypeData>();
+                const auto expectedMutability =
+                    expected.mode == checker::signature::ReceiverMode::Mutable
+                        ? type::semantic::Mutability::Mutable
+                        : type::semantic::Mutability::Const;
+                auto referentLookup = semanticTypes.get(reference.referent);
+                if (reference.mutability == expectedMutability &&
+                    referentLookup.is<type::SemanticTypeLookup>()) {
+                  const auto& referentData = referentLookup.get<type::SemanticTypeLookup>().data();
+                  ZC_IF_SOME(scope, memberScope) {
+                    if (referentData.is<type::semantic::NominalTypeData>() &&
+                        referentData.get<type::semantic::NominalTypeData>().definition ==
+                            scope.owner) {
+                      receiverMatches = true;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      if (!receiverMatches) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+    }
 
-    const ast::NodeId parameterListNode(
-        tree.node(sourceDefinition.node).payload.words[ast::kFunctionDeclParamsIdWord]);
+    const auto paramsWord =
+        isMethod ? ast::kMethodDeclParamsIdWord : ast::kFunctionDeclParamsIdWord;
+    const ast::NodeId parameterListNode(tree.node(sourceDefinition.node).payload.words[paramsWord]);
     if (!tree.contains(parameterListNode) ||
         tree.node(parameterListNode).kind != ast::SyntaxKind::FunctionParameterList) {
       return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -4733,15 +4822,23 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     const ast::NodeList parameterNodes{
         parameterList.payload.words[ast::kFunctionParameterListParamsFirstWord],
         parameterList.payload.words[ast::kFunctionParameterListParamsSizeWord]};
-    if (!tree.contains(parameterNodes) ||
-        function.parameters.size() != callable.parameters.size() ||
-        function.parameters.size() != parameterNodes.size) {
+    // A method's AST parameter list may lead with the implicit `this`
+    // receiver; it is verified separately and never counted as an ordinary
+    // parameter.
+    if (!tree.contains(parameterNodes) || parameterNodes.size < function.parameters.size()) {
       return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                           ir::IrFailureKind::MissingRequiredFact, module,
                                           registries, index + 1);
     }
+    const size_t receiverCount = parameterNodes.size - function.parameters.size();
+    if ((!isMethod && receiverCount != 0) || (isMethod && receiverCount > 1) ||
+        (isMethod && (receiverCount == 1) != (function.receiver != zc::none))) {
+      return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                          ir::IrFailureKind::InvalidFact, module, registries,
+                                          index + 1);
+    }
     for (size_t parameterIndex = 0; parameterIndex < function.parameters.size(); ++parameterIndex) {
-      const auto parameterNode = tree.list(parameterNodes)[parameterIndex];
+      const auto parameterNode = tree.list(parameterNodes)[receiverCount + parameterIndex];
       if (!tree.contains(parameterNode) ||
           tree.node(parameterNode).kind != ast::SyntaxKind::FunctionParameterDecl) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -4755,6 +4852,22 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           parameter.type != signatureParameter.type || signatureParameter.hasDefault ||
           !typeExists(parameter.type, semanticTypes) ||
           !sameSpan(parameter.sourceSpan, ZC_ASSERT_NONNULL(parameterSpan))) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+    }
+    if (isMethod && receiverCount == 1) {
+      const auto receiverNode = tree.list(parameterNodes)[0];
+      if (!tree.contains(receiverNode) ||
+          tree.node(receiverNode).kind != ast::SyntaxKind::FunctionParameterDecl) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      auto receiverSpan = bound.parsedModule().spanFor(tree.node(receiverNode).range);
+      if (receiverSpan == zc::none || !sameSpan(ZC_ASSERT_NONNULL(function.receiver).sourceSpan,
+                                                ZC_ASSERT_NONNULL(receiverSpan))) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);

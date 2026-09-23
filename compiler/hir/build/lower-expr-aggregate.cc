@@ -43,9 +43,9 @@ void lowerAggregateFieldProjectionFunction(PendingFunctionDeclaration&& function
   const HirNodeId valueId = ctx.allocNode();
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
-                                         zc::mv(function.parameters), function.visibility.clone(),
-                                         function.linkage, function.declarationSpan.clone(), bodyId,
-                                         zc::none});
+                                         zc::mv(function.parameters), zc::none,
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
   zc::Vector<HirNodeId> statements;
   statements.add(localId);
   statements.add(returnId);

@@ -81,6 +81,7 @@ size_t executableDefinitionCount(const binder::ImmutableDefinitionInventory& def
   for (const auto& definition : definitions.definitions()) {
     if (hasExecutableBody(definition, definitions) &&
         (definition.record.kind() == identity::DefinitionKind::Function ||
+         definition.record.kind() == identity::DefinitionKind::Method ||
          definition.record.kind() == identity::DefinitionKind::Static ||
          definition.record.kind() == identity::DefinitionKind::Constant)) {
       ++count;
@@ -143,6 +144,18 @@ zc::Maybe<HirVisibility> visibility(const binder::VisibilityEnvelope& source) {
   }
   if (source.value().is<binder::ExternalVisibility>()) return HirVisibility::external();
   return zc::none;
+}
+
+HirVisibility memberVisibility(checker::signature::MemberVisibility source,
+                               identity::ModuleId module) {
+  switch (source) {
+    case checker::signature::MemberVisibility::Public:
+      return HirVisibility::external();
+    case checker::signature::MemberVisibility::Protected:
+    case checker::signature::MemberVisibility::Private:
+      return HirVisibility::module(module);
+  }
+  ZC_UNREACHABLE
 }
 
 bool sameVisibility(const HirVisibility& left, const HirVisibility& right) {

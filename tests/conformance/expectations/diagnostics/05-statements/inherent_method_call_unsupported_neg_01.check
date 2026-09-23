@@ -1,10 +1,12 @@
 // RUN: cd %corpus && ! %zomc compile --check 05-statements/inherent_method_call_unsupported_neg_01.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// The checker now accepts the shared-receiver inherent call and produces its
-// call facts, but semantic HIR does not lower a Method owner or the implicit
-// `this` receiver yet. The enclosing method body is rejected as a capability
-// gap (ZOM4099), never as an internal compiler error.
+// The checker accepts the shared-receiver inherent call and produces its call
+// facts, and the callee method body itself now builds verified semantic HIR,
+// but the HIR receiver-call carrier only lowers a mutable borrow today. The
+// shared call is therefore rejected on the calling definition as a capability
+// gap (ZOM4099), projected at the call site, never as an internal compiler
+// error.
 
 // CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
-// CHECK-LITERAL:   --> conformance/05-statements/inherent_method_call_unsupported_neg_01.zom:3:3
+// CHECK-LITERAL:   --> conformance/05-statements/inherent_method_call_unsupported_neg_01.zom:8:10

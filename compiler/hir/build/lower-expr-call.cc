@@ -22,9 +22,9 @@ void lowerDirectCallReturnFunction(PendingFunctionDeclaration&& function, HirFnC
   const HirNodeId callId = ctx.allocNode();
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
-                                         zc::mv(function.parameters), function.visibility.clone(),
-                                         function.linkage, function.declarationSpan.clone(), bodyId,
-                                         zc::none});
+                                         zc::mv(function.parameters), zc::none,
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
   zc::Vector<HirNodeId> statements;
   statements.add(returnId);
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
@@ -55,9 +55,9 @@ void lowerDirectCallInitializerFunction(PendingFunctionDeclaration&& function, H
   const HirNodeId valueId = ctx.allocNode();
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
-                                         zc::mv(function.parameters), function.visibility.clone(),
-                                         function.linkage, function.declarationSpan.clone(), bodyId,
-                                         zc::none});
+                                         zc::mv(function.parameters), zc::none,
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
   zc::Vector<HirNodeId> statements;
   statements.add(localId);
   statements.add(returnId);
@@ -97,9 +97,9 @@ void lowerReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& 
   const HirNodeId callId = ctx.allocNode();
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
-                                         zc::mv(function.parameters), function.visibility.clone(),
-                                         function.linkage, function.declarationSpan.clone(), bodyId,
-                                         zc::none});
+                                         zc::mv(function.parameters), zc::none,
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
   zc::Vector<HirNodeId> statements;
   statements.add(localId);
   statements.add(returnId);
