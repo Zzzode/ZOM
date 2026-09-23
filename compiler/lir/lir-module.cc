@@ -41,6 +41,12 @@ Statement Statement::compare(uint32_t destinationOrdinal, ComparisonOp op, Opera
   return Statement(StatementKind::Compare, destinationOrdinal, op, left, right);
 }
 
+Statement Statement::takeAddress(uint32_t destinationOrdinal, uint32_t sourceOrdinal) noexcept {
+  Operand source = Operand::localUse(sourceOrdinal);
+  return Statement(StatementKind::TakeAddress, destinationOrdinal, ComparisonOp::Eq, source,
+                   source);
+}
+
 // A never-read placeholder constant for terminators that carry no integer
 // constant. The i1 carrier always exists, so `from` cannot fail here.
 IntegerConstant Terminator::fallbackConstant() noexcept {

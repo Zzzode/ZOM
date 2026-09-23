@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """RFC 0043 O5/KR5.4: `zomc run` executes an entry-compatible native program.
 
-Run only when the LLVM backend is built. A program whose sole function folds to
-the reserved no-argument i32 `zom.module_init` entry (the aggregate field-return
-fixture) links and executes end to end, exiting with the returned value (42). A
-program whose object keeps a parameterized symbol (the boolean-conditional
-diamond fixture) is object-only, so `zomc run` fails closed on it. This is the
-first end-to-end run assertion; it deliberately avoids the separate
-check-native-execution.py contract.
+Run only when the LLVM backend is built. A program whose entry folds to the
+reserved no-argument i32 `zom.module_init` symbol links and executes end to
+end, exiting with the returned value. A program whose object keeps a
+parameterized symbol (the boolean-conditional diamond fixture) is object-only,
+so `zomc run` fails closed on it.
+
+One or more positive programs are named with repeated
+``--run-case manifest::package::binary::exit-code`` entries; the script asserts
+each one runs with its exact exit code. A single object-only reject case is
+named with ``--reject-case``.
 """
 
 from __future__ import annotations
@@ -47,41 +50,62 @@ def run(zomc: str, manifest: str, package: str, binary: str) -> tuple[int, str]:
         return result.returncode, ANSI.sub("", result.stdout)
 
 
+def parse_case(spec: str) -> tuple[str, str, str, int]:
+    parts = spec.split("::")
+    if len(parts) != 4:
+        raise ValueError(f"run case must be manifest::package::binary::exit, got: {spec!r}")
+    manifest, package, binary, exit_text = parts
+    return manifest, package, binary, int(exit_text)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--zomc", required=True)
-    parser.add_argument("--run-manifest", required=True)
-    parser.add_argument("--run-package", required=True)
-    parser.add_argument("--run-bin", required=True)
-    parser.add_argument("--run-exit", required=True, type=int)
-    parser.add_argument("--reject-manifest", required=True)
-    parser.add_argument("--reject-package", required=True)
-    parser.add_argument("--reject-bin", required=True)
+    parser.add_argument(
+        "--run-case",
+        action="append",
+        required=True,
+        metavar="manifest::package::binary::exit",
+        help="Entry-compatible program and its expected exit code; repeatable.",
+    )
+    parser.add_argument(
+        "--reject-case",
+        required=True,
+        metavar="manifest::package::binary",
+        help="Object-only program that zomc run must reject.",
+    )
     arguments = parser.parse_args()
     zomc = str(Path(arguments.zomc).resolve(strict=True))
 
-    # Positive: the entry-compatible program runs to completion with the expected
-    # exit code and no linking/publication failure.
-    exit_code, output = run(zomc, arguments.run_manifest, arguments.run_package, arguments.run_bin)
-    if LINK_FAILED in output:
-        raise RuntimeError(f"native run reported a link failure:\nrc={exit_code}\n{output}")
-    if exit_code != arguments.run_exit:
-        raise RuntimeError(
-            f"native run exit mismatch: expected {arguments.run_exit}, got {exit_code}\n{output}"
-        )
+    # Positive: every entry-compatible program runs to completion with its exact
+    # expected exit code and no linking/publication failure.
+    positive_cases = [parse_case(spec) for spec in arguments.run_case]
+    for manifest, package, binary, expected_exit in positive_cases:
+        exit_code, output = run(zomc, manifest, package, binary)
+        if LINK_FAILED in output:
+            raise RuntimeError(f"native run reported a link failure:\nrc={exit_code}\n{output}")
+        if exit_code != expected_exit:
+            raise RuntimeError(
+                f"native run exit mismatch for {package}: expected {expected_exit}, "
+                f"got {exit_code}\n{output}"
+            )
 
     # Negative: the object-only program has no zom.module_init entry, so run fails
     # closed rather than executing.
-    reject_code, reject_output = run(
-        zomc, arguments.reject_manifest, arguments.reject_package, arguments.reject_bin
-    )
-    if reject_code == arguments.run_exit and LINK_FAILED not in reject_output:
+    reject_parts = arguments.reject_case.split("::")
+    if len(reject_parts) != 3:
+        raise ValueError(
+            f"reject case must be manifest::package::binary, got: {arguments.reject_case!r}"
+        )
+    reject_manifest, reject_package, reject_binary = reject_parts
+    reject_code, reject_output = run(zomc, reject_manifest, reject_package, reject_binary)
+    if reject_code == 0 and LINK_FAILED not in reject_output:
         raise RuntimeError(
             "object-only program unexpectedly ran instead of failing closed:"
             f"\nrc={reject_code}\n{reject_output}"
         )
 
-    print("zomc run executed the entry-compatible program and rejected the object-only program")
+    print("zomc run executed every entry-compatible program and rejected the object-only program")
     return 0
 
 

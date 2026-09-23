@@ -157,6 +157,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-leaf-consumer/Zom.toml::call_leaf_consumer::call_leaf_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/aggregate-consumer/Zom.toml::aggregate_consumer::aggregate_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-consumer/Zom.toml::receiver_consumer::receiver_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-fourfn-consumer/Zom.toml::reject_fourfn_consumer::reject_fourfn_consumer"
       --reject-case
@@ -182,20 +184,12 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-native-run.py"
       --zomc
       "$<TARGET_FILE:zomc>"
-      --run-manifest
-      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/aggregate-consumer/Zom.toml"
-      --run-package
-      aggregate_consumer
-      --run-bin
-      aggregate_consumer
-      --run-exit
-      42
-      --reject-manifest
-      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml"
-      --reject-package
-      conditional_consumer
-      --reject-bin
-      conditional_consumer)
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/aggregate-consumer/Zom.toml::aggregate_consumer::aggregate_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-consumer/Zom.toml::receiver_consumer::receiver_consumer::7"
+      --reject-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer")
   set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)
 endif()
 add_test(

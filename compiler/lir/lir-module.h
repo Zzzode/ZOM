@@ -127,22 +127,33 @@ private:
 enum class StatementKind : uint8_t {
   Assign = 0x01,
   Compare = 0x02,
+  TakeAddress = 0x03,
 };
 
-/// \brief One LIR statement: store an operand or a comparison into a local slot.
+/// \brief One LIR statement: store an operand or a comparison into a local slot,
+/// or take the address of a whole slot into a pointer slot.
 ///
 /// `Assign` stores `value` into `destinationOrdinal`. `Compare` stores the
 /// one-bit result of `op` applied to `left` and `right` into the destination.
-/// Locals are addressed by one-based ordinal.
+/// `TakeAddress` stores the address of the whole `sourceOrdinal` slot into a
+/// pointer-typed destination. Locals are addressed by one-based ordinal.
 class Statement final {
 public:
   ZC_NODISCARD static Statement assign(uint32_t destinationOrdinal, Operand value) noexcept;
   ZC_NODISCARD static Statement compare(uint32_t destinationOrdinal, ComparisonOp op, Operand left,
                                         Operand right) noexcept;
+  /// \brief Stores the address of a whole source local slot into a pointer
+  /// destination slot (the receiver borrow of a caller owner local). Only valid
+  /// when the destination carries an opaque pointer and the source is a
+  /// declared whole slot (never a constant or a projection).
+  ZC_NODISCARD static Statement takeAddress(uint32_t destinationOrdinal,
+                                            uint32_t sourceOrdinal) noexcept;
 
   ZC_NODISCARD StatementKind kind() const noexcept { return kindValue; }
   ZC_NODISCARD uint32_t destinationOrdinal() const noexcept { return destinationValue; }
   ZC_NODISCARD const Operand& value() const noexcept { return leftValue; }
+  ZC_NODISCARD const Operand& source() const noexcept { return leftValue; }
+  ZC_NODISCARD uint32_t sourceOrdinal() const noexcept { return leftValue.localOrdinal(); }
   ZC_NODISCARD ComparisonOp comparisonOp() const noexcept { return opValue; }
   ZC_NODISCARD const Operand& left() const noexcept { return leftValue; }
   ZC_NODISCARD const Operand& right() const noexcept { return rightValue; }

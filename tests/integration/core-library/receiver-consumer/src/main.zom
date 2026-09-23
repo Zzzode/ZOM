@@ -1,0 +1,10 @@
+// Shared-receiver inherent method call fixture: the entry initializes a
+// one-field struct local, calls its shared method through an implicit borrow,
+// and returns the method result. The caller folds to the reserved no-argument
+// i32 zom.module_init entry and the method emits as zom.callee, so the program
+// links against the runtime `_start` and exits 7.
+struct Cell {
+  value: i32,
+  fun get(this) -> i32 { return 7; }
+}
+fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.get(); }

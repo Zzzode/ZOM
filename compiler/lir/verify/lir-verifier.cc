@@ -255,6 +255,23 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
             }
             break;
           }
+          case StatementKind::TakeAddress: {
+            // The destination is an opaque pointer holding the address of a
+            // whole declared slot; the source cannot be a constant (its address
+            // is unrepresentable) and its carrier intentionally differs.
+            if (destinationCarrier.kind() != ValueTypeKind::Pointer) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            const Operand& source = statement.source();
+            if (source.isConstant()) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            auto slotFinding = requireSlot(source.localOrdinal(), blockOrdinal, statementIndex);
+            if (slotFinding != zc::none) return slotFinding;
+            break;
+          }
         }
       }
 

@@ -236,6 +236,26 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerCallModuleWithLeaf(
       const mir::MirFunction& caller, const mir::MirFunction& callee, const mir::MirFunction& leaf,
       const type::SemanticTypeStore& semanticTypes);
+
+  /// \brief Lowers one shared-receiver inherent method call module to LIR.
+  ///
+  /// Admits a two-function pair: a caller with one aggregate-initialized owner
+  /// local, a shared borrow temporary, and a call result temporary (entry
+  /// initializes the one-field owner slot, takes its address, calls the method
+  /// with that pointer, and returns the result), and a Method-sourced callee
+  /// with one shared-reference receiver parameter whose single block returns a
+  /// scalar constant. The caller folds to the reserved `zom.module_init` entry
+  /// symbol so the runtime `_start` runs it; the method emits as `zom.callee`.
+  /// Mutable receivers, projected fields, non-scalar or multi-field owners, and
+  /// every other shape return none.
+  ///
+  /// \param caller Verified caller MIR function (two-block shared receiver call).
+  /// \param callee Verified method MIR function (constant return, receiver param).
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered LIR module, or none when outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerReceiverCallModule(
+      const mir::MirFunction& caller, const mir::MirFunction& callee,
+      const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::lir

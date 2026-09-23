@@ -162,6 +162,15 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
   auto integerType = [&](lir::IntegerBitWidth width) -> ::llvm::IntegerType* {
     return ::llvm::Type::getIntNTy(*context, bitCountFor(width));
   };
+  // Maps one LIR SSA carrier to its LLVM representation. An opaque pointer
+  // carrier is a target pointer in its declared address space (opaque-pointer
+  // LLVM, no pointee type); every other carrier is an integer today.
+  auto llvmType = [&](const lir::ValueType& carrier) -> ::llvm::Type* {
+    if (carrier.kind() == lir::ValueTypeKind::Pointer) {
+      return ::llvm::PointerType::get(*context, carrier.pointerAddressSpace());
+    }
+    return integerType(carrier.integerWidth());
+  };
   // The LLVM return type of one LIR function. A single-block ReturnAggregate
   // returns a literal struct whose element types are the slot carriers in slot
   // order (RFC 0021 carrier bundle); every other shape returns its scalar integer
@@ -191,7 +200,7 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
     ::llvm::Type* candidateReturn = functionReturnType(candidate);
     zc::Vector<::llvm::Type*> paramTypes;
     for (const auto& parameter : candidate.parameters()) {
-      paramTypes.add(integerType(parameter.carrier().integerWidth()));
+      paramTypes.add(llvmType(parameter.carrier()));
     }
     ::llvm::ArrayRef<::llvm::Type*> paramTypeRef(paramTypes.begin(), paramTypes.size());
     ::llvm::FunctionType* functionType =
@@ -266,14 +275,12 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
 
     // Alloca every local slot (parameters and body locals), keyed by ordinal, in
     // the entry block; then store each incoming argument into its slot.
-    auto slotType = [&](uint32_t ordinal) -> ::llvm::IntegerType* {
+    auto slotType = [&](uint32_t ordinal) -> ::llvm::Type* {
       for (const auto& parameter : parameters) {
-        if (parameter.ordinal() == ordinal) {
-          return integerType(parameter.carrier().integerWidth());
-        }
+        if (parameter.ordinal() == ordinal) { return llvmType(parameter.carrier()); }
       }
       for (const auto& local : locals) {
-        if (local.ordinal() == ordinal) { return integerType(local.carrier().integerWidth()); }
+        if (local.ordinal() == ordinal) { return llvmType(local.carrier()); }
       }
       return returnType;
     };
@@ -338,6 +345,11 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
           }
           stored = ::llvm::CmpInst::Create(::llvm::Instruction::ICmp, predicate, left, right, "cmp",
                                            target);
+        } else if (statement.kind() == lir::StatementKind::TakeAddress) {
+          // The address of a whole alloca slot is the alloca pointer itself in
+          // opaque-pointer LLVM; the folded owner slot is one scalar, so no GEP
+          // is needed.
+          stored = slotFor(statement.sourceOrdinal());
         } else {
           stored = loadOperand(statement.value(), target);
         }

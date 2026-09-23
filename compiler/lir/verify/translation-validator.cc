@@ -76,6 +76,51 @@ zc::Maybe<ValueType> boolCarrier(identity::SemanticTypeId type,
   return zc::none;
 }
 
+// Independently derived opaque-pointer carrier for a shared const reference
+// (the implicit `this` receiver). Mutable references and non-references fail.
+zc::Maybe<ValueType> pointerCarrier(identity::SemanticTypeId type,
+                                    const type::SemanticTypeStore& types) noexcept {
+  auto lookup = types.get(type);
+  if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  if (!data.is<type::semantic::ReferenceTypeData>()) return zc::none;
+  if (data.get<type::semantic::ReferenceTypeData>().mutability !=
+      type::semantic::Mutability::Const) {
+    return zc::none;
+  }
+  return ValueType::pointer(0);
+}
+
+// Independently resolves the carrier of one materialized MIR local. Beyond the
+// integer and boolean carriers, a shared-reference parameter or temporary
+// carries an opaque pointer, and a one-field aggregate-initialized owner local
+// folds to its single constant element's integer carrier (the receiver-call
+// owner slot). Every other local returns none.
+zc::Maybe<ValueType> localCarrier(const mir::MirLocalDeclaration& source,
+                                  const MirFunction& function,
+                                  const type::SemanticTypeStore& types) noexcept {
+  ZC_IF_SOME(carrier, integerCarrier(source.type, types)) { return carrier; }
+  ZC_IF_SOME(carrier, boolCarrier(source.type, types)) { return carrier; }
+  ZC_IF_SOME(carrier, pointerCarrier(source.type, types)) { return carrier; }
+  for (const auto& block : function.blocks) {
+    for (const auto& statement : block.statements) {
+      if (statement.kind() != mir::MirStatementKind::Assign) continue;
+      const auto& assignment = statement.assignmentValue();
+      if (assignment.destination.local() != source.id ||
+          assignment.destination.projections().size() != 0 ||
+          assignment.value.kind() != mir::MirRvalueKind::NominalAggregate) {
+        continue;
+      }
+      const auto& aggregate = assignment.value.nominalAggregateValue();
+      if (aggregate.elements.size() == 1 &&
+          aggregate.elements[0].operand.kind() == mir::MirOperandKind::Constant) {
+        return integerCarrier(aggregate.elements[0].operand.constantValue().type, types);
+      }
+    }
+  }
+  return zc::none;
+}
+
 // Independent zero-extension of a non-negative canonical integer magnitude.
 zc::Maybe<uint64_t> zeroExtendedBits(const checker::signature::CanonicalInteger& integer,
                                      IntegerBitWidth width) noexcept {
@@ -283,12 +328,30 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
   }
 
-  // Slot set. A folded function declares no slots; a materialized function maps
-  // every MIR local one-to-one to a parameter or body-local slot with the
-  // independently derived carrier.
+  // Slot set. A folded function declares no body locals; a folded direct
+  // constant return (the receiver callee shape) may additionally declare its
+  // parameter carriers (the implicit `this` pointer), which the scalar body
+  // never reads. Every other fold declares no slots at all. A materialized
+  // function maps every MIR local one-to-one to a parameter or body-local slot
+  // with the independently derived carrier.
   if (folded) {
-    if (lir.parameters().size() != 0 || lir.locals().size() != 0) {
+    uint32_t parameterCount = 0;
+    for (const auto& local : mir.locals) {
+      if (local.kind == mir::MirLocalKind::Parameter) ++parameterCount;
+    }
+    const bool parametersAllowed = fold.kind == FoldKind::DirectConstant;
+    if (lir.locals().size() != 0 || (!parametersAllowed && lir.parameters().size() != 0) ||
+        (parametersAllowed && lir.parameters().size() != parameterCount)) {
       return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
+    for (uint32_t i = 0; i < lir.parameters().size(); ++i) {
+      if (i >= mir.locals.size() || mir.locals[i].kind != mir::MirLocalKind::Parameter) {
+        return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+      }
+      const auto carrier = localCarrier(mir.locals[i], mir, types);
+      if (carrier == zc::none || lir.parameters()[i].carrier() != ZC_ASSERT_NONNULL(carrier)) {
+        return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+      }
     }
   } else {
     uint32_t parameterCount = 0;
@@ -306,14 +369,7 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
       if (actual.ordinal() != source.id.ordinal()) {
         return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
       }
-      // Resolve the slot carrier from the MIR local type. An integer local
-      // (parameter, user/function-result, or a call-result temporary) carries
-      // an integer carrier; only the comparison-diamond temporary holds the
-      // one-bit boolean result of its Comparison. Integer is tried first so the
-      // boolean temporary falls through to the i1 carrier while every integer
-      // temporary resolves to its integer carrier.
-      zc::Maybe<ValueType> carrier = integerCarrier(source.type, types);
-      if (carrier == zc::none) { carrier = boolCarrier(source.type, types); }
+      const auto carrier = localCarrier(source, mir, types);
       if (carrier == zc::none || actual.carrier() != ZC_ASSERT_NONNULL(carrier)) {
         return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
       }
@@ -406,17 +462,61 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
               }
               break;
             }
-            case mir::MirRvalueKind::NominalAggregate:
+            case mir::MirRvalueKind::NominalAggregate: {
+              // The receiver-call owner slot folds a one-element aggregate of
+              // a scalar constant into a plain integer Assign of that element;
+              // any other materialized aggregate stays outside the subset.
+              if (actual.kind() != StatementKind::Assign) {
+                return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                             statementIndex);
+              }
+              const auto& aggregate = assignment.value.nominalAggregateValue();
+              if (aggregate.elements.size() != 1 ||
+                  aggregate.elements[0].operand.kind() != mir::MirOperandKind::Constant) {
+                return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                             statementIndex);
+              }
+              const auto elementCarrier =
+                  integerCarrier(aggregate.elements[0].operand.constantValue().type, types);
+              if (elementCarrier == zc::none ||
+                  !sameConstant(actual.value(), aggregate.elements[0].operand,
+                                ZC_ASSERT_NONNULL(elementCarrier))) {
+                return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1,
+                             statementIndex);
+              }
+              break;
+            }
             case mir::MirRvalueKind::Arithmetic:
-              // A materialized aggregate or arithmetic assignment has no LIR
-              // effect in the admitted single-function subset.
+              // A materialized arithmetic assignment has no LIR effect in the
+              // admitted single-function subset.
               return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
                            statementIndex);
           }
           ++lirStatement;
           break;
         }
-        case mir::MirStatementKind::BorrowCreation:
+        case mir::MirStatementKind::BorrowCreation: {
+          // A shared receiver borrow maps to TakeAddress of the whole owner
+          // slot into the borrow temporary. Mutable borrows stay outside the
+          // subset.
+          if (lirStatement >= lirBlock.statements().size()) {
+            return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                         statementIndex);
+          }
+          const Statement& actual = lirBlock.statements()[lirStatement];
+          const auto& borrow = mirStatement.borrowCreationValue();
+          if (borrow.kind != mir::MirBorrowKind::Shared ||
+              actual.kind() != StatementKind::TakeAddress || actual.source().isConstant() ||
+              actual.destinationOrdinal() != borrow.destination.local().ordinal() ||
+              actual.sourceOrdinal() != borrow.source.local().ordinal() ||
+              borrow.destination.projections().size() != 0 ||
+              borrow.source.projections().size() != 0) {
+            return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                         statementIndex);
+          }
+          ++lirStatement;
+          break;
+        }
         case mir::MirStatementKind::SetDiscriminant:
         case mir::MirStatementKind::Deinitialize:
           return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
@@ -604,7 +704,8 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
               sourceArgument.kind() == mir::MirOperandKind::Constant
                   ? sourceArgument.constantValue().type
                   : sourceArgument.place().resultType();
-          const auto carrier = integerCarrier(sourceType, types);
+          auto carrier = integerCarrier(sourceType, types);
+          if (carrier == zc::none) { carrier = pointerCarrier(sourceType, types); }
           if (carrier == zc::none ||
               !sameConstant(arguments[a], sourceArgument, ZC_ASSERT_NONNULL(carrier))) {
             return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);

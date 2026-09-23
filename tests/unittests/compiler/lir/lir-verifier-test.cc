@@ -135,6 +135,48 @@ Module validConditionalModule() {
   return Module(zc::mv(functions));
 }
 
+// A well-formed shared-receiver call module: the caller folds its one-field
+// owner slot, takes its address into a pointer temporary, calls the pointer-
+// parameter callee with that address, and returns the result; the callee
+// returns an i32 constant.
+Module validReceiverCallModule() {
+  zc::Vector<Function> functions;
+  {
+    zc::Vector<Statement> statements;
+    statements.add(
+        Statement::assign(1, Operand::constant(constant(carrier(IntegerBitWidth::Bit32), 0))));
+    statements.add(Statement::takeAddress(2, 1));
+    zc::Vector<Operand> arguments;
+    arguments.add(Operand::localUse(2));
+    zc::Vector<BasicBlock> blocks;
+    blocks.add(BasicBlock(
+        blockId(1), zc::mv(statements),
+        ZC_ASSERT_NONNULL(Terminator::callFunction(
+            /*calleeIndex=*/1, /*destinationOrdinal=*/3, zc::mv(arguments), blockId(2)))));
+    blocks.add(BasicBlock(blockId(2), zc::Vector<Statement>(), Terminator::returnLocal(3)));
+    zc::Vector<Local> noParameters;
+    zc::Vector<Local> locals;
+    locals.add(Local(1, carrier(IntegerBitWidth::Bit32)));
+    locals.add(Local(2, ValueType::pointer(0)));
+    locals.add(Local(3, carrier(IntegerBitWidth::Bit32)));
+    functions.add(Function(tests::testDefinition(0), zc::heapString("zom.module_init"),
+                           carrier(IntegerBitWidth::Bit32), zc::mv(noParameters), zc::mv(locals),
+                           zc::mv(blocks)));
+  }
+  {
+    zc::Vector<BasicBlock> blocks;
+    blocks.add(BasicBlock(blockId(1),
+                          Terminator::returnInteger(constant(carrier(IntegerBitWidth::Bit32), 7))));
+    zc::Vector<Local> parameters;
+    parameters.add(Local(1, ValueType::pointer(0)));
+    zc::Vector<Local> noLocals;
+    functions.add(Function(tests::testDefinition(1), zc::heapString("zom.callee"),
+                           carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(noLocals),
+                           zc::mv(blocks)));
+  }
+  return Module(zc::mv(functions));
+}
+
 ZC_TEST("LIR structural verifier accepts the admitted scalar, call, and diamond modules") {
   {
     Module module = validScalarModule();
@@ -148,6 +190,52 @@ ZC_TEST("LIR structural verifier accepts the admitted scalar, call, and diamond 
     Module module = validConditionalModule();
     ZC_EXPECT(LirStructuralVerifier::verify(module) == zc::none);
   }
+}
+
+ZC_TEST("LIR structural verifier accepts a shared-receiver take-address call module") {
+  Module module = validReceiverCallModule();
+  ZC_EXPECT(LirStructuralVerifier::verify(module) == zc::none);
+}
+
+ZC_TEST("LIR structural verifier rejects take-address into a non-pointer slot") {
+  zc::Vector<Function> functions;
+  {
+    zc::Vector<Statement> statements;
+    statements.add(
+        Statement::assign(1, Operand::constant(constant(carrier(IntegerBitWidth::Bit32), 0))));
+    statements.add(Statement::takeAddress(2, 1));
+    zc::Vector<Operand> arguments;
+    arguments.add(Operand::localUse(2));
+    zc::Vector<BasicBlock> blocks;
+    blocks.add(BasicBlock(
+        blockId(1), zc::mv(statements),
+        ZC_ASSERT_NONNULL(Terminator::callFunction(1, 3, zc::mv(arguments), blockId(2)))));
+    blocks.add(BasicBlock(blockId(2), zc::Vector<Statement>(), Terminator::returnLocal(3)));
+    zc::Vector<Local> parameters;
+    zc::Vector<Local> locals;
+    locals.add(Local(1, carrier(IntegerBitWidth::Bit32)));
+    // Slot 2 must be a pointer for TakeAddress; i32 is the mismatch under test.
+    locals.add(Local(2, carrier(IntegerBitWidth::Bit32)));
+    locals.add(Local(3, carrier(IntegerBitWidth::Bit32)));
+    functions.add(Function(tests::testDefinition(0), zc::heapString("zom.module_init"),
+                           carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(locals),
+                           zc::mv(blocks)));
+  }
+  {
+    zc::Vector<BasicBlock> blocks;
+    blocks.add(BasicBlock(blockId(1),
+                          Terminator::returnInteger(constant(carrier(IntegerBitWidth::Bit32), 7))));
+    zc::Vector<Local> parameters;
+    parameters.add(Local(1, ValueType::pointer(0)));
+    zc::Vector<Local> noLocals;
+    functions.add(Function(tests::testDefinition(1), zc::heapString("zom.callee"),
+                           carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(noLocals),
+                           zc::mv(blocks)));
+  }
+  Module module(zc::mv(functions));
+  auto finding = LirStructuralVerifier::verify(module);
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == LirVerificationFaultKind::CarrierMismatch);
 }
 
 ZC_TEST("LIR structural verifier rejects an empty function symbol") {

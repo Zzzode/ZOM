@@ -1739,5 +1739,148 @@ ZC_TEST("Three-function call-with-leaf module translates with the leaf uncalled"
   ZC_EXPECT(ir.contains("ret i32 9"_zc));
 }
 
+// Shared-receiver inherent method call: a Method-sourced callee with one
+// shared-reference receiver parameter returning a scalar constant 7, and a
+// caller that initializes a one-field owner local, takes its address, calls the
+// method with that pointer, and returns the result. Lowers to a verified LLVM
+// module (`call i32 @zom.callee(ptr)`, `alloca ptr`, `ret i32 7`) and an ELF
+// object; the caller folds to the runnable `zom.module_init` entry.
+namespace {
+identity::SemanticTypeId internTypeData(type::SemanticTypeStore& types,
+                                        type::semantic::TypeData data) {
+  auto canonical = types.canonicalizeClosed(zc::mv(data));
+  ZC_REQUIRE(canonical.is<type::semantic::CanonicalTypeData>());
+  auto interned = types.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+  ZC_REQUIRE(interned.is<type::SemanticTypeInterned>());
+  return interned.get<type::SemanticTypeInterned>().id;
+}
+}  // namespace
+
+ZC_TEST("Shared-receiver method call lowers MIR -> LIR -> verified LLVM with a pointer argument") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto structDef = tests::testDefinition(2);
+  const auto fieldDef = tests::testDefinition(3);
+  const auto callerOwner = tests::testDefinition(0);
+  const auto calleeOwner = tests::testDefinition(1);
+  auto& types = typeContext.semanticTypes();
+  // The pointer lowering is referent-agnostic; a shared reference to the folded
+  // element carrier exercises the exact same LIR/LLVM pointer path as `&Cell`.
+  const auto cellType = i32;
+  const auto receiverType =
+      internTypeData(types, type::semantic::TypeData(type::semantic::ReferenceTypeData{
+                                type::semantic::Mutability::Const, cellType}));
+
+  // Callee: one receiver parameter local, single block returning constant 7.
+  {
+    zc::Vector<mir::MirSourceScope> scopes;
+    scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+    zc::Vector<mir::MirLocalDeclaration> locals;
+    locals.add(mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::Parameter, receiverType,
+                                        scopeId(1), span()});
+    zc::Vector<mir::MirStatement> statements;
+    zc::Vector<mir::MirBasicBlock> blocks;
+    blocks.add(mir::MirBasicBlock{blockId(1), scopeId(1), zc::mv(statements),
+                                  mir::MirTerminator::returnValue(
+                                      mir::MirOperand::constant(i32, integerConstant(7)), span())});
+    mir::MirFunction callee{calleeOwner,
+                            mir::MirFunctionKind::Function,
+                            identity::DefinitionKind::Method,
+                            i32,
+                            span(),
+                            zc::mv(scopes),
+                            zc::mv(locals),
+                            zc::mv(blocks)};
+
+    // Caller: owner local, shared borrow temporary, result temporary.
+    zc::Vector<mir::MirSourceScope> callerScopes;
+    callerScopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+    zc::Vector<mir::MirLocalDeclaration> callerLocals;
+    callerLocals.add(mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::UserLocal, cellType,
+                                              scopeId(1), span()});
+    callerLocals.add(mir::MirLocalDeclaration{localId(2), mir::MirLocalKind::Temporary,
+                                              receiverType, scopeId(1), span()});
+    callerLocals.add(mir::MirLocalDeclaration{localId(3), mir::MirLocalKind::Temporary, i32,
+                                              scopeId(1), span()});
+    zc::Vector<mir::MirStatement> entry;
+    entry.add(mir::MirStatement::storageLive(localId(1), span()));
+    zc::Vector<mir::MirNominalAggregateElement> elements;
+    elements.add(mir::MirNominalAggregateElement{
+        fieldDef, mir::MirOperand::constant(i32, integerConstant(0))});
+    {
+      zc::Vector<mir::MirProjection> projections;
+      entry.add(mir::MirStatement::assign(
+          mir::MirPlace(localId(1), cellType, zc::mv(projections), cellType),
+          mir::MirRvalue::nominalAggregate(structDef, cellType, zc::mv(elements)),
+          mir::MirInitializationKind::Initialize, span()));
+    }
+    entry.add(mir::MirStatement::storageLive(localId(2), span()));
+    {
+      zc::Vector<mir::MirProjection> destinationProjections;
+      zc::Vector<mir::MirProjection> sourceProjections;
+      entry.add(mir::MirStatement::borrowCreation(
+          mir::MirPlace(localId(2), receiverType, zc::mv(destinationProjections), receiverType),
+          mir::MirBorrowKind::Shared,
+          mir::MirPlace(localId(1), cellType, zc::mv(sourceProjections), cellType), span()));
+    }
+    entry.add(mir::MirStatement::storageLive(localId(3), span()));
+    zc::Vector<mir::MirOperand> arguments;
+    {
+      zc::Vector<mir::MirProjection> projections;
+      arguments.add(mir::MirOperand::copy(
+          mir::MirPlace(localId(2), receiverType, zc::mv(projections), receiverType)));
+    }
+    zc::Vector<mir::MirBasicBlock> callerBlocks;
+    callerBlocks.add(mir::MirBasicBlock{
+        blockId(1), scopeId(1), zc::mv(entry),
+        mir::MirTerminator::call(calleeOwner, zc::mv(arguments), mir::MirCallEffect::noActivation(),
+                                 resultPlace(localId(3), i32), blockId(2), zc::none, span())});
+    zc::Vector<mir::MirStatement> continuation;
+    callerBlocks.add(
+        mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(continuation),
+                           mir::MirTerminator::returnValue(
+                               mir::MirOperand::move(resultPlace(localId(3), i32)), span())});
+    mir::MirFunction caller{callerOwner,
+                            mir::MirFunctionKind::Function,
+                            identity::DefinitionKind::Function,
+                            i32,
+                            span(),
+                            zc::mv(callerScopes),
+                            zc::mv(callerLocals),
+                            zc::mv(callerBlocks)};
+
+    auto lir = lir::MirToLirLowering::lowerReceiverCallModule(caller, callee, types);
+    ZC_REQUIRE(lir != zc::none);
+    const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
+    ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+    {
+      auto functions = zc::heapArray<const mir::MirFunction*>(2);
+      functions[0] = &caller;
+      functions[1] = &callee;
+      ZC_EXPECT(lir::TranslationValidator::validate(functions.asPtr(), lirModule, types) ==
+                zc::none);
+    }
+
+    LlvmTranslator translator;
+    auto result = translator.translate(lirModule);
+    ZC_EXPECT(result.verified());
+    if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+
+    const auto ir = result.textualIr();
+    ZC_EXPECT(ir.contains("call i32"_zc));
+    ZC_EXPECT(ir.contains("@zom.callee(ptr"_zc));
+    ZC_EXPECT(ir.contains("alloca ptr"_zc));
+    ZC_EXPECT(ir.contains("zom.module_init"_zc));
+    ZC_EXPECT(ir.contains("ret i32 7"_zc));
+
+    const auto object = result.objectCode();
+    ZC_REQUIRE(object.size() >= 4);
+    ZC_EXPECT(object[0] == 0x7f);
+    ZC_EXPECT(object[1] == static_cast<uint8_t>('E'));
+    ZC_EXPECT(object[2] == static_cast<uint8_t>('L'));
+    ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
+  }
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::backend::llvm
