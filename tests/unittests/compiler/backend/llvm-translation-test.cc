@@ -1183,10 +1183,100 @@ ZC_TEST("Same-module call forwarding its parameter argument lowers to verified L
   ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
 }
 
+// Return-position parameter-argument call: `fun id(x: i32) -> i32 { return x }`,
+// `fun f(input: i32) -> i32 { return id(input) }` lowers to a two-function
+// LIR module. The caller is one Parameter local, a Temporary (the call
+// destination), and a FunctionResult: entry StorageLive(temp) + Call(dest=temp),
+// continuation StorageLive(result) + Assign(result = move temp) + StorageDead(temp)
+// + Return(result). The call argument is a copy of the parameter slot.
+mir::MirFunction buildParameterArgumentReturnCaller(identity::DefId owner, identity::DefId callee,
+                                                    identity::SemanticTypeId i32) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(
+      mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::Parameter, i32, scopeId(1), span()});
+  locals.add(
+      mir::MirLocalDeclaration{localId(2), mir::MirLocalKind::Temporary, i32, scopeId(1), span()});
+  locals.add(mir::MirLocalDeclaration{localId(3), mir::MirLocalKind::FunctionResult, i32,
+                                      scopeId(1), span()});
+
+  zc::Vector<mir::MirBasicBlock> blocks;
+  // Entry: StorageLive(temporary); Call(id, [copy param 1], dest=temporary, bb2).
+  zc::Vector<mir::MirStatement> entryStatements;
+  entryStatements.add(mir::MirStatement::storageLive(localId(2), span()));
+  zc::Vector<mir::MirOperand> arguments;
+  arguments.add(mir::MirOperand::copy(resultPlace(localId(1), i32)));
+  blocks.add(mir::MirBasicBlock{
+      blockId(1), scopeId(1), zc::mv(entryStatements),
+      mir::MirTerminator::call(callee, zc::mv(arguments), mir::MirCallEffect::noActivation(),
+                               resultPlace(localId(2), i32), blockId(2), zc::none, span())});
+  // Continuation: materialize the function result from the temporary and return it.
+  zc::Vector<mir::MirStatement> continuationStatements;
+  continuationStatements.add(mir::MirStatement::storageLive(localId(3), span()));
+  continuationStatements.add(mir::MirStatement::assign(
+      resultPlace(localId(3), i32),
+      mir::MirRvalue::use(mir::MirOperand::move(resultPlace(localId(2), i32))),
+      mir::MirInitializationKind::Initialize, span()));
+  continuationStatements.add(mir::MirStatement::storageDead(localId(2), span()));
+  blocks.add(mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(continuationStatements),
+                                mir::MirTerminator::returnValue(
+                                    mir::MirOperand::copy(resultPlace(localId(3), i32)), span())});
+
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+ZC_TEST("Same-module return call forwarding its parameter argument lowers to verified LLVM") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto callerOwner = tests::testDefinition(2);
+  const auto calleeOwner = tests::testDefinition(3);
+
+  auto callee = buildParameterReturnCallee(calleeOwner, i32);
+  auto caller = buildParameterArgumentReturnCaller(callerOwner, calleeOwner, i32);
+
+  auto lir = lir::MirToLirLowering::lowerCallModuleWithArgument(caller, callee,
+                                                                typeContext.semanticTypes());
+  ZC_REQUIRE(lir != zc::none);
+  const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
+  ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+  ZC_EXPECT(lirModule.functions().size() == 2);
+  {
+    auto functions = zc::heapArray<const mir::MirFunction*>(2);
+    functions[0] = &caller;
+    functions[1] = &callee;
+    ZC_EXPECT(lir::TranslationValidator::validate(functions.asPtr(), lirModule,
+                                                  typeContext.semanticTypes()) == zc::none);
+  }
+
+  LlvmTranslator translator;
+  auto result = translator.translate(lirModule);
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+
+  const auto ir = result.textualIr();
+  ZC_EXPECT(ir.contains("call i32"_zc));
+  // The argument is the incoming parameter slot, never an integer constant.
+  ZC_EXPECT(ir.contains("load"_zc));
+  ZC_EXPECT(!ir.contains("(i32 0)"_zc));
+
+  const auto object = result.objectCode();
+  ZC_REQUIRE(object.size() >= 4);
+  ZC_EXPECT(object[0] == 0x7f);
+  ZC_EXPECT(object[1] == static_cast<uint8_t>('E'));
+  ZC_EXPECT(object[2] == static_cast<uint8_t>('L'));
+  ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
+}
+
 ZC_TEST("Zero-argument call lowering rejects a callee whose owner differs from the call target") {
   // Regression: the caller's call targets a DIFFERENT definition than the callee
-  // function being lowered. Wiring it to LIR function index 1 anyway would call
-  // the wrong function. lowerCallModule must reject the mismatch.
   tests::TestSemanticTypeContext typeContext;
   const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
   const auto callerOwner = tests::testDefinition(0);

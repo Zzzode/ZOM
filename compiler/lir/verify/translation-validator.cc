@@ -306,17 +306,14 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
       if (actual.ordinal() != source.id.ordinal()) {
         return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
       }
-      // The comparison temporary carries the bool result of its comparison;
-      // every other local carries an integer in the admitted subset. The
-      // conditional's boolean parameter is the one non-integer non-temporary
-      // slot and resolves through the bool carrier.
-      zc::Maybe<ValueType> carrier;
-      if (source.kind == mir::MirLocalKind::Temporary) {
-        carrier = boolCarrier(source.type, types);
-      } else {
-        carrier = integerCarrier(source.type, types);
-        if (carrier == zc::none) carrier = boolCarrier(source.type, types);
-      }
+      // Resolve the slot carrier from the MIR local type. An integer local
+      // (parameter, user/function-result, or a call-result temporary) carries
+      // an integer carrier; only the comparison-diamond temporary holds the
+      // one-bit boolean result of its Comparison. Integer is tried first so the
+      // boolean temporary falls through to the i1 carrier while every integer
+      // temporary resolves to its integer carrier.
+      zc::Maybe<ValueType> carrier = integerCarrier(source.type, types);
+      if (carrier == zc::none) { carrier = boolCarrier(source.type, types); }
       if (carrier == zc::none || actual.carrier() != ZC_ASSERT_NONNULL(carrier)) {
         return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
       }
