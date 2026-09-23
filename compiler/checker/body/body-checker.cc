@@ -2847,6 +2847,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
     identity::DefId interface;
     identity::ImplId impl;
     zc::Vector<checked::AssociatedTypeBindingData> bindings;
+    checked::CoercionSite site;
   };
   zc::Vector<SelectedDynErase> dynErases;
   for (uint8_t stage = 0; stage != 5; ++stage) {
@@ -2978,9 +2979,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                     bindings.add(
                         checked::AssociatedTypeBindingData{binding.associated, binding.type});
                   }
-                  dynErases.add(SelectedDynErase{site.node, produced, declared,
-                                                 existential.principal.definition, impl,
-                                                 zc::mv(bindings)});
+                  dynErases.add(SelectedDynErase{
+                      site.node, produced, declared, existential.principal.definition, impl,
+                      zc::mv(bindings), checked::CoercionSite::AnnotatedInitializer});
                   erased = true;
                 }
               }
@@ -3133,9 +3134,56 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             }
             ZC_IF_SOME(type, argumentType) {
               if (type.value != value.parameters[index]) {
-                return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
-                                       site.key.schemaPreorder, zc::none, site.node,
-                                       site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+                // A concrete argument coerces to an erasable dyn parameter via
+                // a concrete-to-dyn DynErase, mirroring the annotated
+                // initializer decision. The adjustment is attached after the
+                // witness store is frozen; here we only select the plan.
+                auto parameterExistential =
+                    erasableExistentialType(input.semanticTypes, value.parameters[index]);
+                bool argumentErased = false;
+                ZC_IF_SOME(existential, parameterExistential) {
+                  ZC_IF_SOME(impl, selectDynEraseImpl(input, type.value, existential)) {
+                    zc::Vector<checked::AssociatedTypeBindingData> bindings;
+                    for (const auto& binding : existential.associatedBindings) {
+                      bindings.add(
+                          checked::AssociatedTypeBindingData{binding.associated, binding.type});
+                    }
+                    dynErases.add(SelectedDynErase{argument, type.value, value.parameters[index],
+                                                   existential.principal.definition, impl,
+                                                   zc::mv(bindings),
+                                                   checked::CoercionSite::Argument});
+                    argumentErased = true;
+                  }
+                }
+                if (!argumentErased) {
+                  const auto argumentSite = productionSite(
+                      input.requirements.impl->productionSiteValues.asPtr(), argument);
+                  ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, argument)) {
+                    ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                      if (parameterExistential != zc::none) {
+                        const auto& existentialValue = ZC_ASSERT_NONNULL(parameterExistential);
+                        if (argumentSite != zc::none &&
+                            hasImplForErasureOutsideSlice(input, type.value, existentialValue)) {
+                          return attachRecoveryLedger(
+                              rejectGenericErasureUnsupported(
+                                  ZC_ASSERT_NONNULL(argumentSite), ownerOrdinal, type.value,
+                                  existentialValue.principal.definition),
+                              input, factStoreBrands);
+                        }
+                        if (argumentSite != zc::none) {
+                          return attachRecoveryLedger(
+                              rejectTraitNotImplemented(ZC_ASSERT_NONNULL(argumentSite),
+                                                        ownerOrdinal, type.value,
+                                                        existentialValue.principal.definition),
+                              input, factStoreBrands);
+                        }
+                      }
+                    }
+                  }
+                  return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                         site.key.schemaPreorder, zc::none, site.node,
+                                         site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+                }
               }
               if (isLiteralArgument) {
                 ZC_IF_SOME(literalFact, literal) {
@@ -3680,6 +3728,13 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                              requirement.key.sourceSpan.clone(), factPath(requirement.group));
     }
   }
+  // Only annotated-initializer erasures occupy the top-level Coercion fact
+  // group; argument-position erasures ride inside their call's argument
+  // adjustments and are validated through the call fact instead.
+  size_t initializerEraseCount = 0;
+  for (const auto& erase : dynErases) {
+    if (erase.site == checked::CoercionSite::AnnotatedInitializer) { ++initializerEraseCount; }
+  }
   if (nodeTypes.size() !=
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::NodeType) ||
       literals.size() !=
@@ -3690,7 +3745,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Call) ||
       places.size() !=
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Place) ||
-      dynErases.size() !=
+      initializerEraseCount !=
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Coercion) ||
       members.size() !=
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Member) ||
@@ -3777,6 +3832,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
   if (dynErases.size() != 0) {
     ZC_IF_SOME(witnessId, eraseWitnessId) {
       for (const auto& erase : dynErases) {
+        // Argument-position erasures ride inside the call's CheckedArgumentFact
+        // adjustment rather than the top-level coercion map.
+        if (erase.site != checked::CoercionSite::AnnotatedInitializer) { continue; }
         zc::Vector<checked::CoercionStep> steps;
         steps.add(checked::CoercionStep(
             checked::DynEraseStep{signature::InterfaceInstantiation{
@@ -3786,10 +3844,44 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             input.boundModule.tree().node(erase.node).range);
         coercionEntries.add(checked::CoercionFactMap::Entry{
             erase.node,
-            checked::CoercionAdjustment{checked::CoercionSite::AnnotatedInitializer, erase.concrete,
-                                        erase.existential, zc::mv(steps),
-                                        zc::mv(ZC_ASSERT_NONNULL(eraseSpan))},
+            checked::CoercionAdjustment{erase.site, erase.concrete, erase.existential,
+                                        zc::mv(steps), zc::mv(ZC_ASSERT_NONNULL(eraseSpan))},
             zc::Array<uint8_t>()});
+      }
+      // Attach the argument-position DynErase adjustments to their enclosing
+      // call facts. Each adjustment source/destination must equal the argument
+      // fact's source/parameter types, which the verifier re-checks.
+      if (eraseWitnessId != zc::none) {
+        for (auto& callEntry : calls) {
+          zc::Vector<checked::CheckedArgumentFact> adjustedArguments;
+          for (auto& argument : callEntry.value.invocation.arguments) {
+            zc::Maybe<checked::CoercionAdjustment> adjustment = zc::mv(argument.adjustment);
+            if (adjustment == zc::none) {
+              for (const auto& erase : dynErases) {
+                if (erase.site != checked::CoercionSite::Argument ||
+                    erase.node != argument.sourceNode || erase.concrete != argument.sourceType ||
+                    erase.existential != argument.parameterType) {
+                  continue;
+                }
+                zc::Vector<checked::CoercionStep> steps;
+                steps.add(checked::CoercionStep(checked::DynEraseStep{
+                    signature::InterfaceInstantiation{erase.interface,
+                                                      zc::Vector<identity::SemanticTypeId>()},
+                    erase.impl, ZC_ASSERT_NONNULL(eraseWitnessId)}));
+                auto span = input.boundModule.parsedModule().spanFor(
+                    input.boundModule.tree().node(erase.node).range);
+                adjustment = checked::CoercionAdjustment{
+                    checked::CoercionSite::Argument, erase.concrete, erase.existential,
+                    zc::mv(steps), zc::mv(ZC_ASSERT_NONNULL(span))};
+                break;
+              }
+            }
+            adjustedArguments.add(
+                checked::CheckedArgumentFact{argument.sourceNode, argument.sourceType,
+                                             argument.parameterType, zc::mv(adjustment)});
+          }
+          callEntry.value.invocation.arguments = zc::mv(adjustedArguments);
+        }
       }
     }
   }

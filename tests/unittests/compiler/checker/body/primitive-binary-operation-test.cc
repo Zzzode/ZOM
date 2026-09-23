@@ -1276,4 +1276,67 @@ ZC_TEST("ConcreteToDynErasure.GenericConcreteReportsUnsupportedNotMissingImpl") 
             checked::CheckerErrorId::GenericConcreteDynErasureUnsupported());
 }
 
+// Passing a concrete value to a dyn parameter attaches a single DynErase
+// adjustment to the call's argument fact (argument-position erasure).
+ZC_TEST("ConcreteToDynErasure.ArgumentPositionAttachesDynEraseAdjustment") {
+  PrimitiveBinaryFixture fixture(
+      "class RecoveryOwner {}\n"
+      "interface Drawable {\n    fun draw(this);\n}\n"
+      "struct Circle {}\n"
+      "impl Drawable for Circle {}\n"
+      "fun render(d: dyn Drawable) -> i32 { return 1; }\n"
+      "fun erase(c: Circle) -> i32 {\n    let r: i32 = render(c);\n    return r;\n}\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+  ZC_REQUIRE(facts.calls().entries().size() == 1);
+  const auto& call = facts.calls().entries()[0].value;
+  ZC_REQUIRE(call.invocation.arguments.size() == 1);
+  const auto& argument = call.invocation.arguments[0];
+  ZC_REQUIRE(argument.adjustment != zc::none);
+  const auto& adjustment = ZC_ASSERT_NONNULL(argument.adjustment);
+  ZC_EXPECT(adjustment.site == checked::CoercionSite::Argument);
+  ZC_EXPECT(adjustment.source == argument.sourceType);
+  ZC_EXPECT(adjustment.destination == argument.parameterType);
+  ZC_REQUIRE(adjustment.steps.size() == 1);
+  ZC_EXPECT(adjustment.steps[0].variant().is<checked::DynEraseStep>());
+  ZC_IF_SOME(step, adjustment.steps[0].variant().tryGet<checked::DynEraseStep>()) {
+    ZC_EXPECT(facts.witnessStore().contains(step.witnesses));
+  }
+  // Argument erasures do not occupy the top-level coercion map.
+  ZC_EXPECT(facts.coercions().size() == 0);
+}
+
+// A concrete argument with no impl of the dyn parameter interface is
+// ZOM4018 at the argument site.
+ZC_TEST("ConcreteToDynErasure.ArgumentPositionRejectsMissingImpl") {
+  PrimitiveBinaryFixture fixture(
+      "class RecoveryOwner {}\n"
+      "interface Drawable {\n    fun draw(this);\n}\n"
+      "struct Square {}\n"
+      "fun render(d: dyn Drawable) -> i32 { return 1; }\n"
+      "fun erase(s: Square) -> i32 {\n    let r: i32 = render(s);\n    return r;\n}\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() >= 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::CheckerTraitNotImplemented());
+}
+
+// A generic concrete argument with a real impl is ZOM4124, not a false 4018.
+ZC_TEST("ConcreteToDynErasure.ArgumentPositionGenericReportsUnsupported") {
+  PrimitiveBinaryFixture fixture(
+      "class RecoveryOwner {}\n"
+      "interface Drawable {\n    fun draw(this);\n}\n"
+      "struct Box<T> {}\n"
+      "impl Drawable for Box<i32> {}\n"
+      "fun render(d: dyn Drawable) -> i32 { return 1; }\n"
+      "fun erase(b: Box<i32>) -> i32 {\n    let r: i32 = render(b);\n    return r;\n}\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() >= 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::GenericConcreteDynErasureUnsupported());
+}
+
 }  // namespace zomlang::compiler::checker::body

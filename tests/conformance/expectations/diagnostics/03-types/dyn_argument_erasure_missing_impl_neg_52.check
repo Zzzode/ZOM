@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/dyn_argument_erasure_missing_impl_neg_52.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A concrete argument passed to a dyn parameter with no impl is rejected with
+// 4018 CheckerTraitNotImplemented at the argument site, never an internal
+// compiler error.
+// CHECK: Error [ZOM4018]:

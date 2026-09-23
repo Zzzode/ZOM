@@ -1,0 +1,16 @@
+interface Drawable {
+    fun draw(this);
+}
+
+struct Square {
+    value: u8,
+}
+
+fun render(target: dyn Drawable) -> i32 {
+    return 1;
+}
+
+fun use(shape: Square) -> i32 {
+    let result: i32 = render(shape);
+    return result;
+}

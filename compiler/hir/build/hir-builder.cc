@@ -134,6 +134,31 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                                      entry.value.sourceSpan.clone());
     }
   }
+  // Argument-position concrete-to-dyn erasures ride inside a direct call's
+  // CheckedArgumentFact adjustment rather than the top-level coercion map. The
+  // argument lowering carrier is not built yet, so a well-formed single
+  // DynErase argument adjustment is the same per-definition capability
+  // rejection. Any other adjustment shape stays an invariant rejection.
+  for (const auto& callEntry : facts.calls().entries()) {
+    for (const auto& argument : callEntry.value.invocation.arguments) {
+      if (argument.adjustment == zc::none) { continue; }
+      const auto& adjustment = ZC_ASSERT_NONNULL(argument.adjustment);
+      if (!isSingleDynEraseAdjustment(adjustment)) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::AdditionalFact, module, registries,
+                                             4);
+      }
+      const auto owner =
+          enclosingExecutableDefinition(bound.tree(), bound.definitions(), argument.sourceNode);
+      if (owner == zc::none) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::InvalidFact, module, registries, 5);
+      }
+      return rejectHirCapability<HirModuleCandidate>(ZC_ASSERT_NONNULL(owner), registries,
+                                                     ir::IrFailureKind::UnsupportedSourceConstruct,
+                                                     adjustment.sourceSpan.clone());
+    }
+  }
 
   const auto definitions = bound.definitions().definitions();
   if (definitions.size() > UINT32_MAX / 4) {

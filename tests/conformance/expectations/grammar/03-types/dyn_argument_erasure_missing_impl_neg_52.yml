@@ -1,0 +1,5 @@
+section: "Existential Types"
+covers_rule: "dynType, callExpression, argument"
+expected: "ACCEPT"
+notes:
+  - "The concrete argument has no impl of the parameter's principal interface. The checker rejects the argument-position coercion with 4018 CheckerTraitNotImplemented."

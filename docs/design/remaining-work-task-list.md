@@ -173,11 +173,23 @@ in-repo corpus that must become source diagnostics.
   downcast-rejection, and generic-rejection shapes are covered by body ztests
   through the full verifier; CLI lit covers the 4018/4124 negatives (positive
   CLI lit is masked by the unrelated pre-existing impl-method-body c28f1 gap).
-- A8b. Open (next A8 step): argument-position concrete-to-dyn erasure
-  (`render(concrate)` to a `dyn I` parameter) via
-  `CheckedArgumentFact.adjustment` with `CoercionSite::Argument`; the call
-  envelope and `validArgument` already cross-check the adjustment, so this
-  reuses the same selector and witness path.
+- A8b. PARTIAL 2026-09-23 (argument-position checker rail landed; HIR carrier
+  open): passing a concrete value to a `dyn I` parameter (`render(shape)`)
+  selects the same non-generic impl and attaches a single DynErase step to the
+  call's `CheckedArgumentFact.adjustment` with `CoercionSite::Argument`; the
+  adjustment rides inside the call fact (not the top-level coercion map) and is
+  cross-checked by `validArgument`, the dispatch fact clone rail, and the
+  witness store. Missing impl is ZOM4018 and a generic-but-implemented concrete
+  is ZOM4124 at the argument site. HIR fails closed: a single-DynErase argument
+  adjustment is a per-definition ZOM4099 capability rejection. Covered by body
+  ztests through the full verifier (adjustment shape + witness membership) and a
+  4018 argument lit negative. Pre-existing gap unrelated to dyn: a direct call
+  whose argument is a plain non-erased parameter identifier still hits an ir
+  invariant (9ae682fa) - the direct-call argument lowering carrier itself is
+  unbuilt beyond literal arguments, so the positive/identity argument CLI path
+  stays masked. Open: return, assignment, aggregate-field, and conditional
+  coercion sites; generic impls; markers; additional interfaces; the real HIR
+  erasure node, MIR rvalue, and LIR 2-word fat-pointer/vtable layout.
 - A9. dyn upcast `dyn I as dyn J` (ZOM4044) and invalid-upcast rejection;
   vtable/super offset representation. Depends on A3.
 - A10. dyn method calls / trait dispatch through an existential receiver.
