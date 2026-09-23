@@ -1,0 +1,11 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/inherent_method_body_capability_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// Merely defining an inherent method with a body is well-formed source the
+// checker has verified, but semantic HIR does not model a Method owner or the
+// implicit `this` receiver yet. It must surface the per-definition capability
+// rejection ZOM4099, not an internal compiler error. Receiver calls and
+// `this` reads use the more specific ZOM4125 at the checker.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/08-adt/inherent_method_body_capability_neg_01.zom:3:3

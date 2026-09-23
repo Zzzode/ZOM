@@ -161,6 +161,23 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
   }
 
   const auto definitions = bound.definitions().definitions();
+  // A bodied inherent struct/class method is well-formed source the checker has
+  // already verified, but the semantic HIR does not model a Method owner or the
+  // implicit `this` receiver yet. The builder below only enumerates
+  // Function/Static/Constant, while the method's body still contributes checked
+  // facts, so simply skipping it trips the count-balance verifier as an internal
+  // incident. Drain the first executable method as a per-definition capability
+  // rejection (ZOM4099) instead. Receiver calls and `this` reads are rejected
+  // earlier at the checker with the more specific ZOM4125, so only bodies the
+  // checker accepts reach this rail.
+  for (const auto& definition : definitions) {
+    if (definition.record.kind() == identity::DefinitionKind::Method &&
+        hasExecutableBody(definition, bound.definitions())) {
+      return rejectHirCapability<HirModuleCandidate>(definition.definition, registries,
+                                                     ir::IrFailureKind::UnsupportedSourceConstruct,
+                                                     definition.source.clone());
+    }
+  }
   if (definitions.size() > UINT32_MAX / 4) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::InvalidFact, module, registries, 1);

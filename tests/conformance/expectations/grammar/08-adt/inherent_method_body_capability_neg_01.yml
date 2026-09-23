@@ -1,0 +1,5 @@
+section: "08-adt inherent method declaration syntax"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits the method body; semantic HIR rejects the unadmitted Method owner with ZOM4099."
