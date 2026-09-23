@@ -1356,20 +1356,27 @@ ZC_TEST("InherentMethodCall.SharedReceiverCallProducesCheckedFacts") {
   ZC_IF_SOME(mode, call.receiverMode) { ZC_EXPECT(mode == checked::ReceiverMode::Shared); }
 }
 
-// Reading a field through the implicit `this` receiver inside an inherent
-// method body is the same unadmitted shape and reports ZOM4125, never an
-// internal compiler error.
-ZC_TEST("InherentMethodCall.ThisFieldReadReportsSemanticsUnavailable") {
+// Reading a field through the implicit `this` receiver inside a shared-receiver
+// inherent method body now produces a receiver-parameter place fact with one
+// field projection, with no source rejection or internal invariant.
+ZC_TEST("InherentMethodCall.ThisFieldReadProducesReceiverParameterPlace") {
   PrimitiveBinaryFixture fixture(
       "struct Cell {\n    value: i32,\n"
       "    fun get(this) -> i32 { return this.value; }\n}\n"
       "fun entry() -> i32 {\n    let cell = Cell { value: 0 };\n    return cell.value;\n}\n"_zc);
-  auto result = fixture.runBodyChecker();
-  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
-  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
-  ZC_REQUIRE(rejection.failures.size() == 1);
-  ZC_EXPECT(rejection.failures[0].diagnostic ==
-            checked::CheckerErrorId::MethodCallSemanticsUnavailable());
+  const auto& facts = fixture.adoptVerifiedFacts();
+  ZC_REQUIRE(facts.members().entries().size() == 2);
+  ZC_REQUIRE(facts.places().entries().size() == 2);
+  bool foundReceiverFieldRead = false;
+  for (const auto& entry : facts.places().entries()) {
+    const auto& place = entry.value;
+    if (place.root.variant().is<checked::CallableParameterPlaceRoot>()) {
+      ZC_EXPECT(place.projections.size() == 1);
+      ZC_EXPECT(place.projections[0].variant().is<checked::FieldProjection>());
+      foundReceiverFieldRead = true;
+    }
+  }
+  ZC_EXPECT(foundReceiverFieldRead);
 }
 
 }  // namespace zomlang::compiler::checker::body

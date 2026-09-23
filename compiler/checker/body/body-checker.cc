@@ -864,6 +864,127 @@ zc::Maybe<OwnerLocalFieldShape> ownerLocalFieldShape(
   ZC_UNREACHABLE
 }
 
+/// \brief Resolved field read through the implicit `this` receiver of an
+/// inherent method: the receiver parameter root, the owner nominal type, and
+/// the projected field. A shared-receiver read is never a mutable place.
+struct ThisReceiverFieldShape final {
+  identity::CallableParameterId receiverParameter;
+  identity::SemanticTypeId receiverType;
+  identity::SemanticTypeId receiverReferenceType;
+  identity::DefId field;
+  identity::SemanticTypeId fieldType;
+};
+
+/// \brief Resolves `this.field` inside an inherent method body to the
+/// receiver parameter and field definition. The receiver source type is read
+/// from the typed `this` expression (a shared const reference to the owner
+/// nominal); a shared-receiver read is never a mutable place.
+zc::Maybe<ThisReceiverFieldShape> thisReceiverFieldShape(const BodyCheckingInput& input,
+                                                         ast::NodeId node) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::MemberExpression) {
+    return zc::none;
+  }
+  const auto& member = tree.node(node);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return zc::none;
+  }
+  const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::ThisExpr) {
+    return zc::none;
+  }
+  zc::Maybe<identity::CallableParameterId> receiverParameter;
+  for (const auto& binding : input.boundModule.bindings().thisBindings()) {
+    if (binding.expression != object) continue;
+    if (receiverParameter != zc::none) { return zc::none; }
+    receiverParameter = binding.binding.receiverParameter;
+  }
+  if (receiverParameter == zc::none) { return zc::none; }
+
+  // The implicit receiver is declared with `Self` and is not part of the
+  // callable parameter list. Resolve the enclosing method and its receiver from
+  // the member-signature scope: the receiver key must name this parameter and
+  // the referent is the scope's owner nominal.
+  const auto& spans = input.boundModule.parsedModule();
+  zc::Maybe<identity::SourceSpan> nodeSpan = spans.spanFor(tree.node(object).range);
+  if (nodeSpan == zc::none) { return zc::none; }
+  zc::Maybe<identity::DefId> methodDefinition;
+  for (const auto& definition : input.boundModule.bindings().definitions()) {
+    if (definition.kind != identity::DefinitionKind::Method ||
+        !definition.site.value().is<binder::DeclarationDefinitionSite>()) {
+      continue;
+    }
+    const ast::NodeId bodyNode =
+        definition.site.value().get<binder::DeclarationDefinitionSite>().node;
+    if (!tree.contains(bodyNode)) { continue; }
+    auto bodySpan = spans.spanFor(tree.node(bodyNode).range);
+    if (bodySpan == zc::none || nodeSpan == zc::none) { continue; }
+    if (ZC_ASSERT_NONNULL(bodySpan).byteStart() <= ZC_ASSERT_NONNULL(nodeSpan).byteStart() &&
+        ZC_ASSERT_NONNULL(nodeSpan).byteEnd() <= ZC_ASSERT_NONNULL(bodySpan).byteEnd()) {
+      if (methodDefinition != zc::none) { return zc::none; }
+      methodDefinition = definition.identity;
+    }
+  }
+  if (methodDefinition == zc::none) { return zc::none; }
+
+  auto receiverAuthority = input.identities.callableParameter(ZC_ASSERT_NONNULL(receiverParameter));
+  if (receiverAuthority == zc::none) { return zc::none; }
+  zc::Maybe<identity::DefId> ownerDefinition;
+  zc::Maybe<identity::SemanticTypeId> receiverReferenceType;
+  zc::Maybe<identity::SemanticTypeId> receiverType;
+  for (const auto& signature : input.signatureFacts.signatures()) {
+    if (signature.definition != ZC_ASSERT_NONNULL(methodDefinition)) { continue; }
+    if (!signature.payload.variant().is<signature::CallableSignature>()) { continue; }
+    if (!signature.scope.variant().is<signature::MemberSignatureScope>()) { continue; }
+    const auto& callable = signature.payload.variant().get<signature::CallableSignature>();
+    const auto& scope = signature.scope.variant().get<signature::MemberSignatureScope>();
+    if (callable.receiver == zc::none || ownerDefinition != zc::none) { return zc::none; }
+    const auto& receiverSignature = ZC_ASSERT_NONNULL(callable.receiver);
+    if (receiverSignature.mode != signature::ReceiverMode::Shared ||
+        receiverSignature.parameter != ZC_ASSERT_NONNULL(receiverAuthority).key()) {
+      return zc::none;
+    }
+    auto admitted = input.semanticTypes.canonicalizeClosed(
+        type::semantic::TypeData(type::semantic::NominalTypeData{scope.owner, {}}));
+    if (!admitted.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
+    auto interned =
+        input.semanticTypes.intern(zc::mv(admitted).get<type::semantic::CanonicalTypeData>());
+    if (!interned.is<type::SemanticTypeInterned>()) { return zc::none; }
+    const auto ownerType = interned.get<type::SemanticTypeInterned>().id;
+    auto referenceAdmitted = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+        type::semantic::ReferenceTypeData{type::semantic::Mutability::Const, ownerType}));
+    if (!referenceAdmitted.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
+    auto referenceInterned = input.semanticTypes.intern(
+        zc::mv(referenceAdmitted).get<type::semantic::CanonicalTypeData>());
+    if (!referenceInterned.is<type::SemanticTypeInterned>()) { return zc::none; }
+    receiverReferenceType = referenceInterned.get<type::SemanticTypeInterned>().id;
+    receiverType = ownerType;
+    ownerDefinition = scope.owner;
+  }
+  if (receiverType == zc::none || receiverReferenceType == zc::none ||
+      ownerDefinition == zc::none) {
+    return zc::none;
+  }
+  auto referenceLookup = input.semanticTypes.get(ZC_ASSERT_NONNULL(receiverReferenceType));
+  if (!referenceLookup.is<type::SemanticTypeLookup>()) { return zc::none; }
+  const auto& referenceData = referenceLookup.get<type::SemanticTypeLookup>().data();
+  if (!referenceData.is<type::semantic::ReferenceTypeData>() ||
+      referenceData.get<type::semantic::ReferenceTypeData>().mutability !=
+          type::semantic::Mutability::Const) {
+    return zc::none;
+  }
+  const auto ownerType = referenceData.get<type::semantic::ReferenceTypeData>().referent;
+
+  auto field = nominalFieldShape(
+      input, ZC_ASSERT_NONNULL(ownerDefinition),
+      tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord])));
+  if (field == zc::none) { return zc::none; }
+  return ThisReceiverFieldShape{ZC_ASSERT_NONNULL(receiverParameter), ownerType,
+                                ZC_ASSERT_NONNULL(receiverReferenceType),
+                                ZC_ASSERT_NONNULL(field).definition, ZC_ASSERT_NONNULL(field).type};
+}
+
 struct StructLiteralShape final {
   identity::DefId definition;
   identity::SemanticTypeId type;
@@ -3173,6 +3294,42 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         // to a method-call capability diagnostic. A `this` outside every
         // method body keeps its existing rejection (the parser independently
         // rejects `this` in module functions with ZOM2095).
+        // A `this` expression that is the receiver of an admitted `this.field`
+        // read produces only its receiver node-type fact; the enclosing member
+        // expression's place fact covers the projection.
+        if (input.boundModule.tree().node(site.node).kind == ast::SyntaxKind::ThisExpr) {
+          zc::Maybe<ThisReceiverFieldShape> admittedThisField;
+          const auto& tree = input.boundModule.tree();
+          for (size_t index = 0; index < tree.nodeCount(); ++index) {
+            const ast::NodeId candidate(static_cast<uint32_t>(index));
+            if (!tree.contains(candidate) ||
+                tree.node(candidate).kind != ast::SyntaxKind::MemberExpression) {
+              continue;
+            }
+            const auto& member = tree.node(candidate);
+            if (static_cast<ast::MemberAccessKind>(
+                    member.payload.words[ast::kMemberExpressionAccessWord]) !=
+                ast::MemberAccessKind::Dot) {
+              continue;
+            }
+            const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+            if (object != site.node) { continue; }
+            auto shape = thisReceiverFieldShape(input, candidate);
+            if (shape != zc::none) {
+              if (admittedThisField != zc::none) {
+                admittedThisField = zc::none;
+                break;
+              }
+              admittedThisField = shape;
+            }
+          }
+          if (admittedThisField != zc::none) {
+            nodeTypes.add(checked::NodeTypeMap::Entry{
+                site.node, ZC_ASSERT_NONNULL(admittedThisField).receiverReferenceType,
+                zc::Array<uint8_t>()});
+            continue;
+          }
+        }
         ZC_IF_SOME(method, unsupportedInherentMethodThis(input, site.node)) {
           return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(method));
         }
@@ -3675,10 +3832,31 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           }
         }
       } else if (site.production == BodyProductionKind::OwnerLocalFieldReference) {
-        auto shape = ownerLocalFieldShape(input, site.node, nodeTypes.asPtr());
-        if (shape == zc::none) {
+        auto thisShape = thisReceiverFieldShape(input, site.node);
+        auto shape = thisShape != zc::none
+                         ? zc::none
+                         : ownerLocalFieldShape(input, site.node, nodeTypes.asPtr());
+        if (thisShape == zc::none && shape == zc::none) {
           return rejectMethodCallCapability(site, input, factStoreBrands,
                                             unsupportedThisFieldAccess(input, site.node));
+        }
+        ZC_IF_SOME(value, thisShape) {
+          producedType = value.fieldType;
+          zc::Maybe<checked::CoercionAdjustment> noAdjustment;
+          members.add(checked::MemberFactMap::Entry{
+              site.node,
+              checked::CheckedMemberFact{site.node, value.receiverType, value.field,
+                                         value.fieldType, zc::mv(noAdjustment)},
+              zc::Array<uint8_t>()});
+          zc::Vector<checked::PlaceProjection> projections;
+          projections.add(checked::PlaceProjection(checked::FieldProjection{value.field}));
+          places.add(checked::PlaceFactMap::Entry{
+              site.node,
+              checked::CheckedPlaceFact{
+                  site.node,
+                  checked::PlaceRoot(checked::CallableParameterPlaceRoot{value.receiverParameter}),
+                  zc::mv(projections), value.fieldType, false, true},
+              zc::Array<uint8_t>()});
         }
         ZC_IF_SOME(value, shape) {
           producedType = value.fieldType;
