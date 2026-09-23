@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 04-expressions/call_initializer_parameter_arg_neg_21.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// Initializing a local from a direct call that passes a function parameter is
+// valid source but the MIR lowering slice emits only constant call arguments
+// for a call initializer. It is reported as a per-definition capability
+// failure (ZOM4099), never an internal compiler error.
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/04-expressions/call_initializer_parameter_arg_neg_21.zom:6:23

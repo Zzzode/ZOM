@@ -183,13 +183,17 @@ in-repo corpus that must become source diagnostics.
   is ZOM4124 at the argument site. HIR fails closed: a single-DynErase argument
   adjustment is a per-definition ZOM4099 capability rejection. Covered by body
   ztests through the full verifier (adjustment shape + witness membership) and a
-  4018 argument lit negative. Pre-existing gap unrelated to dyn: a direct call
-  whose argument is a plain non-erased parameter identifier still hits an ir
-  invariant (9ae682fa) - the direct-call argument lowering carrier itself is
-  unbuilt beyond literal arguments, so the positive/identity argument CLI path
-  stays masked. Open: return, assignment, aggregate-field, and conditional
-  coercion sites; generic impls; markers; additional interfaces; the real HIR
-  erasure node, MIR rvalue, and LIR 2-word fat-pointer/vtable layout.
+  4018 argument lit negative. A call-initialized local whose argument is a
+  non-constant (parameter/place) value previously hit a Mir-construction
+  invariant (9ae682fa); it now fails closed as a per-definition ZOM4099
+  capability rejection (`rejectMirCapability`, MirConstruction + definition
+  owner, call span), covering both the direct-call and receiver-call fixed
+  shapes. Literal/zero-argument call initializers and parameter-argument
+  return-position calls still lower. Open: parameter/place operand codegen for
+  the call initializer (the actual MIR/LIR carrier), plus return, assignment,
+  aggregate-field, and conditional coercion sites; generic impls; markers;
+  additional interfaces; the real HIR erasure node, MIR rvalue, and LIR 2-word
+  fat-pointer/vtable layout.
 - A9. dyn upcast `dyn I as dyn J` (ZOM4044) and invalid-upcast rejection;
   vtable/super offset representation. Depends on A3.
 - A10. dyn method calls / trait dispatch through an existential receiver.

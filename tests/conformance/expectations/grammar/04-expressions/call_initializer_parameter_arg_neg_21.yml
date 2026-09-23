@@ -1,0 +1,5 @@
+section: "Call Expressions"
+covers_rule: "callExpression, letStmt, parameterArgument"
+expected: "ACCEPT"
+notes:
+  - "Initializing a local from a direct call with a function-parameter argument parses and type-checks, but the MIR call-initializer lowering emits only constant arguments in the current slice. Construction reports 4099 FunctionBodySemanticsUnavailable instead of an invariant."

@@ -683,6 +683,37 @@ ir::IrOperationResult<VerifiedValue> rejectMir(
   ZC_UNREACHABLE
 }
 
+// Fails Mir construction as a per-definition *capability* rejection projected
+// to a user diagnostic, rather than as an internal invariant. Used for
+// type-checked source constructs the current MIR lowering slice cannot emit
+// (RFC 0048); definition owner with no site is legal at MirConstruction.
+template <typename VerifiedValue>
+ir::IrOperationResult<VerifiedValue> rejectMirCapability(
+    ir::IrFailureKind kind, identity::DefId definition,
+    const checker::CheckerIdentityAuthority& identities, zc::Maybe<identity::SourceSpan> span) {
+  AuthorityIdentityResolver resolver(identities);
+  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::MirConstruction,
+                                                     ir::IrFailureOwner::definition(definition));
+  ZC_IREQUIRE(fallback != zc::none, "Mir capability failure fallback must be legal");
+  zc::Maybe<ir::IrFailureSite> noSite;
+  auto descriptor = ir::IrFailureDescriptor::decoded(
+      ir::IrRejectedBranch::CapabilityRejected, ir::IrFailurePhase::MirConstruction, kind,
+      ir::IrFailureOwner::definition(definition), zc::mv(noSite), ir::IrFailureDetail::none(),
+      zc::mv(span), zc::Vector<uint32_t>(), 0);
+  ZC_IF_SOME(fallbackValue, fallback) {
+    auto admitted = ir::IrFailureFactory::admit(zc::mv(descriptor), fallbackValue, resolver);
+    ZC_IREQUIRE(admitted.is<ir::AcceptedIrFailureDescriptor>(),
+                "Mir capability rejection must admit without identity expansion");
+    zc::Vector<ir::IrFailureFact> facts;
+    facts.add(zc::mv(admitted).get<ir::AcceptedIrFailureDescriptor>().fact);
+    auto sorted = ir::SortedCapabilityFailureFacts::from(zc::mv(facts));
+    ZC_IF_SOME(values, sorted) {
+      return ir::IrOperationResult<VerifiedValue>::capabilityRejected(zc::mv(values));
+    }
+  }
+  ZC_UNREACHABLE
+}
+
 zc::Maybe<identity::DefId> firstDefinition(const hir::VerifiedHirModule& module) {
   if (module.declarations().size() != 0) return module.declarations()[0].definition;
   if (module.functions().size() != 0) return module.functions()[0].definition;
@@ -5171,10 +5202,9 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                     }
                   }
                   if (!constantArguments) {
-                    return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
-                                                        ir::IrFailureKind::InvalidFact, module,
-                                                        declaration.definition, identities,
-                                                        static_cast<uint32_t>(pending.size() + 1));
+                    return rejectMirCapability<BuiltMirCandidate>(
+                        ir::IrFailureKind::UnsupportedSourceConstruct, declaration.definition,
+                        identities, call.sourceSpan.clone());
                   }
                   zc::Vector<MirProjection> resultProjections;
                   zc::Maybe<MirBlockId> noUnwind;
@@ -8060,10 +8090,13 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                   }
                 }
                 if (!constantArguments) {
-                  return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
-                                                      ir::IrFailureKind::InvalidFact, module,
-                                                      declaration.definition, identities,
-                                                      static_cast<uint32_t>(pending.size() + 1));
+                  // A call-initialized local with a non-constant (parameter or
+                  // place) argument is valid source the current MIR lowering
+                  // slice cannot emit yet. Fail closed as a per-definition
+                  // capability rejection instead of an internal invariant.
+                  return rejectMirCapability<BuiltMirCandidate>(
+                      ir::IrFailureKind::UnsupportedSourceConstruct, declaration.definition,
+                      identities, directCall.sourceSpan.clone());
                 }
                 zc::Maybe<MirBlockId> noUnwind;
                 auto callTerminator = MirTerminator::call(

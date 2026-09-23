@@ -1,0 +1,8 @@
+fun helper(value: i32) -> i32 {
+    return value;
+}
+
+fun entry(input: i32) -> i32 {
+    let result: i32 = helper(input);
+    return result;
+}
