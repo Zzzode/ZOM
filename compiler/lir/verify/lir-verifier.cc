@@ -318,23 +318,27 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
           if (*declaredSlotCarrier(function, destinationOrdinal) != callee.returnCarrier()) {
             return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal);
           }
-          // A zero- or one-argument call shares the single-argument field; the
-          // ordered vector form carries the multi-argument shape. The argument
-          // count and per-argument carriers must match the callee parameters.
-          uint32_t argumentCount = 0;
-          if (terminator.callHasArgument()) {
-            argumentCount = 1;
-          } else {
-            argumentCount = static_cast<uint32_t>(terminator.callArguments().size());
-          }
-          if (argumentCount != callee.parameters().size()) {
+          // The ordered argument vector matches the callee parameters in count
+          // and carrier. A constant argument carries its own carrier; a
+          // local-use argument must name a declared slot whose carrier matches
+          // the callee parameter.
+          const auto arguments = terminator.callArguments();
+          if (arguments.size() != callee.parameters().size()) {
             return fault(LirVerificationFaultKind::TerminatorArity, functionIndex, blockOrdinal);
           }
-          for (uint32_t a = 0; a < argumentCount; ++a) {
-            const ValueType& argumentCarrier = terminator.callHasArgument()
-                                                   ? terminator.callArgument().carrier()
-                                                   : terminator.callArguments()[a].carrier();
-            if (argumentCarrier != callee.parameters()[a].carrier()) {
+          for (uint32_t a = 0; a < arguments.size(); ++a) {
+            const Operand& argument = arguments[a];
+            const ValueType& expectedCarrier = callee.parameters()[a].carrier();
+            if (!argument.isConstant()) {
+              auto slotFinding = requireSlot(argument.localOrdinal(), blockOrdinal, kFunctionLevel);
+              if (slotFinding != zc::none) return slotFinding;
+              if (*declaredSlotCarrier(function, argument.localOrdinal()) != expectedCarrier) {
+                return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex,
+                             blockOrdinal);
+              }
+              continue;
+            }
+            if (argument.constantValue().carrier() != expectedCarrier) {
               return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal);
             }
           }

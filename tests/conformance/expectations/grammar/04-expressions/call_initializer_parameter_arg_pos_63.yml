@@ -1,0 +1,5 @@
+section: "Call Expressions"
+covers_rule: "callExpression, letStmt, parameterArgument"
+expected: "ACCEPT"
+notes:
+  - "Initializing a local from a direct call with a function-parameter argument parses, type-checks, and lowers end to end. The caller's parameters lower to leading MIR parameter locals, the argument is copied as a place operand, and the call result initializes the user local before it is returned."

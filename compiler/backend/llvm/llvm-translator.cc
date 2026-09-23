@@ -358,18 +358,13 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
         }
         case lir::TerminatorKind::Call: {
           // Call a module-local defined function, passing zero, one, or a bounded
-          // vector of integer-constant arguments; store the integer result into
-          // the destination slot, then branch to the normal target.
+          // vector of integer arguments (each a constant or a load of a declared
+          // slot); store the integer result into the destination slot, then
+          // branch to the normal target.
           ::llvm::Function* callee = llvmFunctions[terminator.calleeIndex()];
           zc::Vector<::llvm::Value*> callArgs;
-          if (terminator.callHasArgument()) {
-            auto* argType = integerType(terminator.callArgument().carrier().integerWidth());
-            callArgs.add(::llvm::ConstantInt::get(argType, terminator.callArgument().bits(),
-                                                  /*IsSigned=*/false));
-          }
           for (const auto& argument : terminator.callArguments()) {
-            auto* argType = integerType(argument.carrier().integerWidth());
-            callArgs.add(::llvm::ConstantInt::get(argType, argument.bits(), /*IsSigned=*/false));
+            callArgs.add(loadOperand(argument, target));
           }
           ::llvm::ArrayRef<::llvm::Value*> callArgsRef(callArgs.begin(), callArgs.size());
           auto* callResult = ::llvm::CallInst::Create(callee->getFunctionType(), callee,

@@ -184,27 +184,15 @@ public:
   ZC_NODISCARD static Terminator returnLocal(uint32_t localOrdinal) noexcept;
   /// \brief Builds a call terminator: call a module-local function (by zero-based
   /// index), store its integer result into `destinationOrdinal`, then branch to
-  /// `normalTarget`. This form passes no arguments.
-  ZC_NODISCARD static Terminator callFunction(uint32_t calleeIndex, uint32_t destinationOrdinal,
-                                              LirBlockId normalTarget) noexcept;
-  /// \brief Builds a call terminator that passes one integer-constant argument.
-  /// Otherwise identical to `callFunction`. This is the first argument-carrying
-  /// call shape (RFC 0021 KR5.2); wider argument vectors are later steps.
-  ZC_NODISCARD static Terminator callFunctionWithArgument(uint32_t calleeIndex,
-                                                          uint32_t destinationOrdinal,
-                                                          IntegerConstant argument,
-                                                          LirBlockId normalTarget) noexcept;
-  /// \brief Builds a call terminator that passes an ordered vector of
-  /// integer-constant arguments. This is the first multi-argument call shape
-  /// (RFC 0021 KR5.2 / RFC 0009 widening); the vector must be non-empty and within
-  /// `kMaxCallArguments`, so the factory itself fails closed on an empty or
-  /// over-cap vector rather than trusting the caller. A single-argument vector is
-  /// representable here but the existing `callFunctionWithArgument` remains the
-  /// canonical one-argument form.
-  /// \return The terminator, or none when the vector is empty or over the cap.
-  ZC_NODISCARD static zc::Maybe<Terminator> callFunctionWithArguments(
-      uint32_t calleeIndex, uint32_t destinationOrdinal, zc::Vector<IntegerConstant>&& arguments,
-      LirBlockId normalTarget) noexcept;
+  /// `normalTarget`. Each argument is an `Operand`: an integer constant or a use
+  /// of a declared parameter/body-local slot. An empty vector is a zero-argument
+  /// call. The vector is capped at `kMaxCallArguments` so a call cannot describe
+  /// an unbounded argument list.
+  /// \return The terminator, or none when the vector is over the cap.
+  ZC_NODISCARD static zc::Maybe<Terminator> callFunction(uint32_t calleeIndex,
+                                                         uint32_t destinationOrdinal,
+                                                         zc::Vector<Operand>&& arguments,
+                                                         LirBlockId normalTarget) noexcept;
   /// \brief Builds a terminator that returns an ordered bundle of integer
   /// constants as a multi-slot direct return (RFC 0021 carrier bundle rendered as
   /// a literal struct). The slots are returned in the given order.
@@ -229,13 +217,9 @@ public:
   ZC_NODISCARD uint32_t calleeIndex() const noexcept { return calleeIndexValue; }
   ZC_NODISCARD uint32_t callDestinationOrdinal() const noexcept { return localOrdinalValue; }
   ZC_NODISCARD LirBlockId callNormalTarget() const noexcept { return trueTargetValue; }
-  /// \brief True when a Call terminator passes one integer-constant argument.
-  ZC_NODISCARD bool callHasArgument() const noexcept { return callHasArgumentValue; }
-  /// \brief The single integer-constant call argument; valid when callHasArgument().
-  ZC_NODISCARD const IntegerConstant& callArgument() const noexcept { return integerValue; }
-  /// \brief The ordered multi-argument call vector; empty for the zero-argument and
-  /// canonical one-argument (`callHasArgument()`) call forms.
-  ZC_NODISCARD zc::ArrayPtr<const IntegerConstant> callArguments() const noexcept {
+  /// \brief The ordered call arguments; each is an integer-constant or
+  /// local-slot operand. Empty for a zero-argument call.
+  ZC_NODISCARD zc::ArrayPtr<const Operand> callArguments() const noexcept {
     return callArgumentsValue.asPtr();
   }
   /// \brief The ordered return slots; valid only for a ReturnAggregate terminator.
@@ -253,22 +237,8 @@ private:
         localOrdinalValue(localOrdinal),
         trueTargetValue(trueTarget),
         falseTargetValue(falseTarget) {}
-  Terminator(uint32_t calleeIndex, uint32_t destinationOrdinal, LirBlockId normalTarget) noexcept
-      : kindValue(TerminatorKind::Call),
-        integerValue(fallbackConstant()),
-        localOrdinalValue(destinationOrdinal),
-        trueTargetValue(normalTarget),
-        calleeIndexValue(calleeIndex) {}
-  Terminator(uint32_t calleeIndex, uint32_t destinationOrdinal, IntegerConstant argument,
+  Terminator(uint32_t calleeIndex, uint32_t destinationOrdinal, zc::Vector<Operand>&& arguments,
              LirBlockId normalTarget) noexcept
-      : kindValue(TerminatorKind::Call),
-        integerValue(argument),
-        localOrdinalValue(destinationOrdinal),
-        trueTargetValue(normalTarget),
-        calleeIndexValue(calleeIndex),
-        callHasArgumentValue(true) {}
-  Terminator(uint32_t calleeIndex, uint32_t destinationOrdinal,
-             zc::Vector<IntegerConstant>&& arguments, LirBlockId normalTarget) noexcept
       : kindValue(TerminatorKind::Call),
         integerValue(fallbackConstant()),
         localOrdinalValue(destinationOrdinal),
@@ -288,9 +258,8 @@ private:
   LirBlockId trueTargetValue;
   LirBlockId falseTargetValue;
   uint32_t calleeIndexValue = 0;
-  bool callHasArgumentValue = false;
   zc::Vector<IntegerConstant> aggregateSlotsValue;
-  zc::Vector<IntegerConstant> callArgumentsValue;
+  zc::Vector<Operand> callArgumentsValue;
 };
 
 /// \brief One immutable LIR basic block: an identity, statements, a terminator.

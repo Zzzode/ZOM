@@ -64,25 +64,13 @@ Terminator Terminator::returnLocal(uint32_t localOrdinal) noexcept {
   return Terminator(TerminatorKind::ReturnLocal, localOrdinal, LirBlockId(), LirBlockId());
 }
 
-Terminator Terminator::callFunction(uint32_t calleeIndex, uint32_t destinationOrdinal,
-                                    LirBlockId normalTarget) noexcept {
-  return Terminator(calleeIndex, destinationOrdinal, normalTarget);
-}
-
-Terminator Terminator::callFunctionWithArgument(uint32_t calleeIndex, uint32_t destinationOrdinal,
-                                                IntegerConstant argument,
-                                                LirBlockId normalTarget) noexcept {
-  return Terminator(calleeIndex, destinationOrdinal, argument, normalTarget);
-}
-
-zc::Maybe<Terminator> Terminator::callFunctionWithArguments(uint32_t calleeIndex,
-                                                            uint32_t destinationOrdinal,
-                                                            zc::Vector<IntegerConstant>&& arguments,
-                                                            LirBlockId normalTarget) noexcept {
-  // A multi-argument call must carry at least one argument and stay within the
-  // argument cap; an empty or over-cap vector is not a representable call. The
-  // factory enforces the cap itself so no caller can construct an unbounded call.
-  if (arguments.size() == 0 || arguments.size() > kMaxCallArguments) { return zc::none; }
+zc::Maybe<Terminator> Terminator::callFunction(uint32_t calleeIndex, uint32_t destinationOrdinal,
+                                               zc::Vector<Operand>&& arguments,
+                                               LirBlockId normalTarget) noexcept {
+  // The argument vector stays within the call cap; an over-cap vector is not a
+  // representable call. The factory enforces the cap itself so no caller can
+  // construct an unbounded call. An empty vector is a valid zero-argument call.
+  if (arguments.size() > kMaxCallArguments) { return zc::none; }
   return Terminator(calleeIndex, destinationOrdinal, zc::mv(arguments), normalTarget);
 }
 

@@ -878,13 +878,18 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModule(const mir::MirFunction& call
   }
   if (calleeConstant == zc::none) { return zc::none; }
 
-  // Caller: one integer result local, two blocks (entry Call, continuation
-  // Return), a zero-argument call whose destination is the result local.
-  if (caller.kind != mir::MirFunctionKind::Function || caller.locals.size() != 1 ||
+  // Caller: P leading parameter locals followed by one integer result local, two
+  // blocks (entry StorageLive(result) + Call, continuation Return of the result).
+  // This call carries no arguments.
+  if (caller.kind != mir::MirFunctionKind::Function || caller.locals.size() < 1 ||
       caller.blocks.size() != 2 || caller.resultType != callee.resultType) {
     return zc::none;
   }
-  const auto& resultLocal = caller.locals[0];
+  const size_t callerParameterCount = caller.locals.size() - 1;
+  for (size_t p = 0; p < callerParameterCount; ++p) {
+    if (caller.locals[p].kind != mir::MirLocalKind::Parameter) { return zc::none; }
+  }
+  const auto& resultLocal = caller.locals[callerParameterCount];
   if (resultLocal.type != caller.resultType) { return zc::none; }
   auto callerCarrier = integerCarrierFor(caller.resultType, semanticTypes);
   if (callerCarrier == zc::none) { return zc::none; }
@@ -936,13 +941,21 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModule(const mir::MirFunction& call
   {
     zc::Vector<BasicBlock> callerBlocks;
     zc::Vector<Statement> entryStatements;
+    zc::Vector<Operand> noArguments;
+    auto callTerminator = Terminator::callFunction(
+        /*calleeIndex=*/1, resultOrdinal, zc::mv(noArguments), ZC_REQUIRE_NONNULL(callerContId));
+    if (callTerminator == zc::none) { return zc::none; }
     callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
-                                Terminator::callFunction(/*calleeIndex=*/1, resultOrdinal,
-                                                         ZC_REQUIRE_NONNULL(callerContId))));
+                                ZC_REQUIRE_NONNULL(zc::mv(callTerminator))));
     zc::Vector<Statement> contStatements;
     callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerContId), zc::mv(contStatements),
                                 Terminator::returnLocal(resultOrdinal)));
     zc::Vector<Local> parameters;
+    for (size_t p = 0; p < callerParameterCount; ++p) {
+      auto carrier = integerCarrierFor(caller.locals[p].type, semanticTypes);
+      if (carrier == zc::none) { return zc::none; }
+      parameters.add(Local(caller.locals[p].id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
+    }
     zc::Vector<Local> locals;
     locals.add(Local(resultOrdinal, callerCarrierValue));
     functions.add(Function(caller.owner, zc::heapString("zom.caller"), callerCarrierValue,
@@ -994,14 +1007,18 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
   }
   if (!calleeReturnsParam) { return zc::none; }
 
-  // Caller: one integer result local, two blocks (entry Call, continuation
-  // Return), a one-argument call whose single argument is an integer constant and
-  // whose destination is the result local.
-  if (caller.kind != mir::MirFunctionKind::Function || caller.locals.size() != 1 ||
+  // Caller: P leading parameter locals then one integer result local, two blocks
+  // (entry StorageLive(result) + Call, continuation Return of the result). The
+  // single argument is an integer constant or a place-use of a leading parameter.
+  if (caller.kind != mir::MirFunctionKind::Function || caller.locals.size() < 1 ||
       caller.blocks.size() != 2 || caller.resultType != callee.resultType) {
     return zc::none;
   }
-  const auto& resultLocal = caller.locals[0];
+  const size_t callerParameterCount = caller.locals.size() - 1;
+  for (size_t p = 0; p < callerParameterCount; ++p) {
+    if (caller.locals[p].kind != mir::MirLocalKind::Parameter) { return zc::none; }
+  }
+  const auto& resultLocal = caller.locals[callerParameterCount];
   if (resultLocal.type != caller.resultType) { return zc::none; }
   auto callerCarrier = integerCarrierFor(caller.resultType, semanticTypes);
   if (callerCarrier == zc::none) { return zc::none; }
@@ -1025,20 +1042,24 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
   // The call's target definition must be the callee being lowered; otherwise the
   // caller would be wired to the wrong module-local function index.
   if (!(call.callee == callee.owner)) { return zc::none; }
-  // The single argument must be an integer constant of the callee parameter type.
+  // Lower the single argument to a constant operand or a use of a leading
+  // parameter slot. A projected place or a non-parameter place is rejected.
   const auto& argument = call.arguments[0];
-  if (argument.kind() != mir::MirOperandKind::Constant ||
-      argument.constantValue().type != calleeParam.type) {
-    return zc::none;
+  zc::Maybe<Operand> argumentOperand;
+  if (argument.kind() == mir::MirOperandKind::Constant) {
+    if (argument.constantValue().type != calleeParam.type) { return zc::none; }
+    argumentOperand = lirOperandFor(argument, calleeCarrierValue);
+  } else {
+    if (argument.place().projections().size() != 0) { return zc::none; }
+    const uint32_t argumentOrdinal = argument.place().local().ordinal();
+    bool namesParameter = false;
+    for (size_t p = 0; p < callerParameterCount; ++p) {
+      if (caller.locals[p].id.ordinal() == argumentOrdinal) { namesParameter = true; }
+    }
+    if (!namesParameter) { return zc::none; }
+    argumentOperand = lirOperandFor(argument, calleeCarrierValue);
   }
-  const auto argumentInteger = argument.constantValue().value.integerValue();
-  if (argumentInteger == zc::none) { return zc::none; }
-  auto argumentBits =
-      zeroExtendedBits(ZC_REQUIRE_NONNULL(argumentInteger), calleeCarrierValue.integerWidth());
-  if (argumentBits == zc::none) { return zc::none; }
-  auto argumentConstant =
-      IntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(argumentBits));
-  if (argumentConstant == zc::none) { return zc::none; }
+  if (argumentOperand == zc::none) { return zc::none; }
 
   if (continuation.statements.size() != 0 ||
       continuation.terminator.kind() != mir::MirTerminatorKind::Return) {
@@ -1064,20 +1085,28 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
   zc::Vector<Function> functions;
 
   // Function 0: the caller. Its call targets function index 1 (the callee),
-  // passes the integer-constant argument, stores the integer result into the
-  // result slot, and continues to the return.
+  // passes the constant or parameter-slot argument, stores the integer result
+  // into the result slot, and continues to the return.
   {
     zc::Vector<BasicBlock> callerBlocks;
     zc::Vector<Statement> entryStatements;
-    callerBlocks.add(
-        BasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
-                   Terminator::callFunctionWithArgument(/*calleeIndex=*/1, resultOrdinal,
-                                                        ZC_REQUIRE_NONNULL(argumentConstant),
-                                                        ZC_REQUIRE_NONNULL(callerContId))));
+    zc::Vector<Operand> argumentOperands;
+    argumentOperands.add(ZC_ASSERT_NONNULL(argumentOperand));
+    auto callTerminator = Terminator::callFunction(
+        /*calleeIndex=*/1, resultOrdinal, zc::mv(argumentOperands),
+        ZC_REQUIRE_NONNULL(callerContId));
+    if (callTerminator == zc::none) { return zc::none; }
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
+                                ZC_REQUIRE_NONNULL(zc::mv(callTerminator))));
     zc::Vector<Statement> contStatements;
     callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerContId), zc::mv(contStatements),
                                 Terminator::returnLocal(resultOrdinal)));
     zc::Vector<Local> parameters;
+    for (size_t p = 0; p < callerParameterCount; ++p) {
+      auto carrier = integerCarrierFor(caller.locals[p].type, semanticTypes);
+      if (carrier == zc::none) { return zc::none; }
+      parameters.add(Local(caller.locals[p].id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
+    }
     zc::Vector<Local> locals;
     locals.add(Local(resultOrdinal, callerCarrierValue));
     functions.add(Function(caller.owner, zc::heapString("zom.caller"), callerCarrierValue,
@@ -1138,14 +1167,18 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArguments(
   }
   if (!calleeReturnsParam0) { return zc::none; }
 
-  // Caller: one integer result local, two blocks (entry Call, continuation
-  // Return), a two-argument call whose arguments are integer constants and whose
-  // destination is the result local.
-  if (caller.kind != mir::MirFunctionKind::Function || caller.locals.size() != 1 ||
+  // Caller: P leading parameter locals then one integer result local, two blocks
+  // (entry StorageLive(result) + Call, continuation Return of the result). The
+  // two arguments are integer constants or place-uses of leading parameter slots.
+  if (caller.kind != mir::MirFunctionKind::Function || caller.locals.size() < 1 ||
       caller.blocks.size() != 2 || caller.resultType != callee.resultType) {
     return zc::none;
   }
-  const auto& resultLocal = caller.locals[0];
+  const size_t callerParameterCount = caller.locals.size() - 1;
+  for (size_t p = 0; p < callerParameterCount; ++p) {
+    if (caller.locals[p].kind != mir::MirLocalKind::Parameter) { return zc::none; }
+  }
+  const auto& resultLocal = caller.locals[callerParameterCount];
   if (resultLocal.type != caller.resultType) { return zc::none; }
   auto callerCarrier = integerCarrierFor(caller.resultType, semanticTypes);
   if (callerCarrier == zc::none) { return zc::none; }
@@ -1169,28 +1202,34 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArguments(
   }
   if (!(call.callee == callee.owner)) { return zc::none; }
 
-  // Each argument must be an integer constant of the matching callee parameter
-  // type. Lower each to its carrier constant in argument order.
+  // Lower both arguments in order. Each is either an integer constant of the
+  // matching callee parameter type or a bare use of a leading parameter slot;
+  // a projected or non-parameter place is outside the slice.
   const identity::SemanticTypeId calleeParamTypes[] = {calleeParam0.type, calleeParam1.type};
-  zc::Vector<IntegerConstant> argumentConstants(2);
+  const ValueType calleeParamCarriers[] = {calleeCarrierValue,
+                                           ZC_REQUIRE_NONNULL(calleeParam1Carrier)};
+  auto namesLeadingParameter = [&](const mir::MirOperand& operand) -> bool {
+    if (operand.kind() == mir::MirOperandKind::Constant ||
+        operand.place().projections().size() != 0) {
+      return false;
+    }
+    const uint32_t ordinal = operand.place().local().ordinal();
+    for (size_t p = 0; p < callerParameterCount; ++p) {
+      if (caller.locals[p].id.ordinal() == ordinal) { return true; }
+    }
+    return false;
+  };
+  zc::Vector<Operand> argumentOperands;
   for (size_t index = 0; index < call.arguments.size(); ++index) {
     const auto& argument = call.arguments[index];
-    if (argument.kind() != mir::MirOperandKind::Constant ||
-        argument.constantValue().type != calleeParamTypes[index]) {
+    if (argument.kind() == mir::MirOperandKind::Constant) {
+      if (argument.constantValue().type != calleeParamTypes[index]) { return zc::none; }
+    } else if (!namesLeadingParameter(argument)) {
       return zc::none;
     }
-    auto argumentCarrier = integerCarrierFor(argument.constantValue().type, semanticTypes);
-    if (argumentCarrier == zc::none) { return zc::none; }
-    const auto argumentCarrierValue = ZC_REQUIRE_NONNULL(argumentCarrier);
-    const auto argumentInteger = argument.constantValue().value.integerValue();
-    if (argumentInteger == zc::none) { return zc::none; }
-    auto argumentBits =
-        zeroExtendedBits(ZC_REQUIRE_NONNULL(argumentInteger), argumentCarrierValue.integerWidth());
-    if (argumentBits == zc::none) { return zc::none; }
-    auto argumentConstant =
-        IntegerConstant::from(argumentCarrierValue, ZC_REQUIRE_NONNULL(argumentBits));
-    if (argumentConstant == zc::none) { return zc::none; }
-    argumentConstants.add(ZC_REQUIRE_NONNULL(argumentConstant));
+    auto lowered = lirOperandFor(argument, calleeParamCarriers[index]);
+    if (lowered == zc::none) { return zc::none; }
+    argumentOperands.add(ZC_REQUIRE_NONNULL(lowered));
   }
 
   if (continuation.statements.size() != 0 ||
@@ -1217,13 +1256,13 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArguments(
   zc::Vector<Function> functions;
 
   // Function 0: the caller. Its call targets function index 1 (the callee), passes
-  // the two integer-constant arguments, stores the integer result into the result
-  // slot, and continues to the return.
+  // the two constant or parameter-slot arguments, stores the integer result into
+  // the result slot, and continues to the return.
   {
     zc::Vector<BasicBlock> callerBlocks;
     zc::Vector<Statement> entryStatements;
-    auto callTerminator = Terminator::callFunctionWithArguments(
-        /*calleeIndex=*/1, resultOrdinal, zc::mv(argumentConstants),
+    auto callTerminator = Terminator::callFunction(
+        /*calleeIndex=*/1, resultOrdinal, zc::mv(argumentOperands),
         ZC_REQUIRE_NONNULL(callerContId));
     if (callTerminator == zc::none) { return zc::none; }
     callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
@@ -1232,6 +1271,11 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArguments(
     callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerContId), zc::mv(contStatements),
                                 Terminator::returnLocal(resultOrdinal)));
     zc::Vector<Local> parameters;
+    for (size_t p = 0; p < callerParameterCount; ++p) {
+      auto carrier = integerCarrierFor(caller.locals[p].type, semanticTypes);
+      if (carrier == zc::none) { return zc::none; }
+      parameters.add(Local(caller.locals[p].id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
+    }
     zc::Vector<Local> locals;
     locals.add(Local(resultOrdinal, callerCarrierValue));
     functions.add(Function(caller.owner, zc::heapString("zom.caller"), callerCarrierValue,
@@ -1318,13 +1362,18 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithLeaf(
   }
   if (leafConstant == zc::none) { return zc::none; }
 
-  // Caller: the zero-argument call shape (one integer result local, two blocks:
-  // entry Call, continuation Return). The call must target the identified callee.
-  if (caller.kind != mir::MirFunctionKind::Function || caller.locals.size() != 1 ||
+  // Caller: P leading parameter locals then one integer result local, two blocks
+  // (entry StorageLive(result) + zero-argument Call, continuation Return). The
+  // call must target the identified callee, never the leaf.
+  if (caller.kind != mir::MirFunctionKind::Function || caller.locals.size() < 1 ||
       caller.blocks.size() != 2 || caller.resultType != callee.resultType) {
     return zc::none;
   }
-  const auto& resultLocal = caller.locals[0];
+  const size_t callerParameterCount = caller.locals.size() - 1;
+  for (size_t p = 0; p < callerParameterCount; ++p) {
+    if (caller.locals[p].kind != mir::MirLocalKind::Parameter) { return zc::none; }
+  }
+  const auto& resultLocal = caller.locals[callerParameterCount];
   if (resultLocal.type != caller.resultType) { return zc::none; }
   auto callerCarrier = integerCarrierFor(caller.resultType, semanticTypes);
   if (callerCarrier == zc::none) { return zc::none; }
@@ -1379,13 +1428,21 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithLeaf(
   {
     zc::Vector<BasicBlock> callerBlocks;
     zc::Vector<Statement> entryStatements;
+    zc::Vector<Operand> noArguments;
+    auto callTerminator = Terminator::callFunction(
+        /*calleeIndex=*/1, resultOrdinal, zc::mv(noArguments), ZC_REQUIRE_NONNULL(callerContId));
+    if (callTerminator == zc::none) { return zc::none; }
     callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
-                                Terminator::callFunction(/*calleeIndex=*/1, resultOrdinal,
-                                                         ZC_REQUIRE_NONNULL(callerContId))));
+                                ZC_REQUIRE_NONNULL(zc::mv(callTerminator))));
     zc::Vector<Statement> contStatements;
     callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerContId), zc::mv(contStatements),
                                 Terminator::returnLocal(resultOrdinal)));
     zc::Vector<Local> parameters;
+    for (size_t p = 0; p < callerParameterCount; ++p) {
+      auto carrier = integerCarrierFor(caller.locals[p].type, semanticTypes);
+      if (carrier == zc::none) { return zc::none; }
+      parameters.add(Local(caller.locals[p].id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
+    }
     zc::Vector<Local> locals;
     locals.add(Local(resultOrdinal, callerCarrierValue));
     functions.add(Function(caller.owner, zc::heapString("zom.caller"), callerCarrierValue,

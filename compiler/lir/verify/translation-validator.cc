@@ -594,27 +594,28 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
         if (lirTerminator.callNormalTarget().ordinal() != call.normalTarget.ordinal()) {
           return fault(TranslationFaultKind::EdgeTargetMismatch, functionIndex, b + 1, b + 1);
         }
-        // Argument count and per-argument constant correspondence. The
-        // admitted calls carry integer constants only; the one-argument call
-        // reads its operand through the single-argument accessor.
-        const uint32_t argumentCount =
-            lirTerminator.callHasArgument()
-                ? 1u
-                : static_cast<uint32_t>(lirTerminator.callArguments().size());
-        if (argumentCount != call.arguments.size()) {
+        // Argument count and per-argument correspondence. Each argument is a
+        // constant (matching constant bits and carrier) or a bare place-use
+        // (matching the referenced local ordinal); `sameConstant` resolves both.
+        const auto arguments = lirTerminator.callArguments();
+        if (arguments.size() != call.arguments.size()) {
           return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
         }
-        for (uint32_t a = 0; a < argumentCount; ++a) {
-          const Operand& actual = lirTerminator.callHasArgument()
-                                      ? Operand::constant(lirTerminator.callArgument())
-                                      : Operand::constant(lirTerminator.callArguments()[a]);
-          if (call.arguments[a].kind() != mir::MirOperandKind::Constant) {
+        for (uint32_t a = 0; a < arguments.size(); ++a) {
+          const mir::MirOperand& sourceArgument = call.arguments[a];
+          const identity::SemanticTypeId sourceType =
+              sourceArgument.kind() == mir::MirOperandKind::Constant
+                  ? sourceArgument.constantValue().type
+                  : sourceArgument.place().resultType();
+          const auto carrier = integerCarrier(sourceType, types);
+          if (carrier == zc::none ||
+              !sameConstant(arguments[a], sourceArgument, ZC_ASSERT_NONNULL(carrier))) {
             return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
           }
-          const auto carrier = integerCarrier(call.arguments[a].constantValue().type, types);
-          if (carrier == zc::none ||
-              !sameConstant(actual, call.arguments[a], ZC_ASSERT_NONNULL(carrier))) {
-            return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
+          if (!arguments[a].isConstant() &&
+              lirSlotCarrier(moduleFunctions[functionIndex], arguments[a].localOrdinal()) ==
+                  nullptr) {
+            return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
           }
         }
         break;

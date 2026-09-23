@@ -68,9 +68,11 @@ Module validCallModule() {
   {
     zc::Vector<BasicBlock> blocks;
     zc::Vector<Statement> entryStatements;
+    zc::Vector<Operand> noArguments;
     blocks.add(BasicBlock(
         blockId(1), zc::mv(entryStatements),
-        Terminator::callFunction(/*calleeIndex=*/1, /*destinationOrdinal=*/1, blockId(2))));
+        ZC_ASSERT_NONNULL(Terminator::callFunction(
+            /*calleeIndex=*/1, /*destinationOrdinal=*/1, zc::mv(noArguments), blockId(2)))));
     zc::Vector<Statement> continuationStatements;
     blocks.add(BasicBlock(blockId(2), zc::mv(continuationStatements),
                           Terminator::returnLocal(/*localOrdinal=*/1)));
@@ -167,8 +169,10 @@ ZC_TEST("LIR structural verifier rejects duplicate function symbols") {
     zc::Vector<BasicBlock> blocks;
     {
       zc::Vector<Statement> statements;
-      blocks.add(
-          BasicBlock(blockId(1), zc::mv(statements), Terminator::callFunction(1, 1, blockId(2))));
+      zc::Vector<Operand> noArguments;
+      blocks.add(BasicBlock(
+          blockId(1), zc::mv(statements),
+          ZC_ASSERT_NONNULL(Terminator::callFunction(1, 1, zc::mv(noArguments), blockId(2)))));
     }
     {
       zc::Vector<Statement> statements;
@@ -378,8 +382,10 @@ ZC_TEST("LIR structural verifier rejects a call index outside the module range")
   zc::Vector<BasicBlock> blocks;
   {
     zc::Vector<Statement> statements;
+    zc::Vector<Operand> noArguments;
     blocks.add(BasicBlock(blockId(1), zc::mv(statements),
-                          Terminator::callFunction(/*calleeIndex=*/9, 1, blockId(2))));
+                          ZC_ASSERT_NONNULL(Terminator::callFunction(
+                              /*calleeIndex=*/9, 1, zc::mv(noArguments), blockId(2)))));
   }
   {
     zc::Vector<Statement> statements;
@@ -404,8 +410,10 @@ ZC_TEST("LIR structural verifier rejects call argument count arity mismatch") {
     zc::Vector<BasicBlock> blocks;
     {
       zc::Vector<Statement> statements;
+      zc::Vector<Operand> noArguments;
       blocks.add(BasicBlock(blockId(1), zc::mv(statements),
-                            Terminator::callFunction(/*calleeIndex=*/1, 1, blockId(2))));
+                            ZC_ASSERT_NONNULL(Terminator::callFunction(
+                                /*calleeIndex=*/1, 1, zc::mv(noArguments), blockId(2)))));
     }
     {
       zc::Vector<Statement> statements;

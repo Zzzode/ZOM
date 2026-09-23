@@ -471,9 +471,11 @@ Module callLir(identity::DefId callerOwner, identity::DefId calleeOwner, bool wr
     zc::Vector<BasicBlock> blocks;
     {
       zc::Vector<Statement> statements;
+      zc::Vector<Operand> noArguments;
       blocks.add(BasicBlock(
           lirBlock(1), zc::mv(statements),
-          Terminator::callFunction(/*calleeIndex=*/1, /*destinationOrdinal=*/1, lirBlock(2))));
+          ZC_ASSERT_NONNULL(Terminator::callFunction(
+              /*calleeIndex=*/1, /*destinationOrdinal=*/1, zc::mv(noArguments), lirBlock(2)))));
     }
     {
       zc::Vector<Statement> statements;
@@ -551,8 +553,10 @@ ZC_TEST("Translation validator rejects a call index aimed at a sibling with the 
     zc::Vector<BasicBlock> blocks;
     {
       zc::Vector<Statement> statements;
-      blocks.add(
-          BasicBlock(lirBlock(1), zc::mv(statements), Terminator::callFunction(1, 1, lirBlock(2))));
+      zc::Vector<Operand> noArguments;
+      blocks.add(BasicBlock(
+          lirBlock(1), zc::mv(statements),
+          ZC_ASSERT_NONNULL(Terminator::callFunction(1, 1, zc::mv(noArguments), lirBlock(2)))));
     }
     {
       zc::Vector<Statement> statements;
@@ -574,12 +578,10 @@ ZC_TEST("Translation validator rejects a call index aimed at a sibling with the 
   ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == TranslationFaultKind::CallCalleeMismatch);
 }
 
-ZC_TEST("Translation validator fail-closes on a non-constant call argument") {
-  // A MIR call argument that is a place (not a constant) must produce a
-  // translation finding rather than dereferencing the Constant OneOf variant.
-  // The LIR side carries a constant argument, so without the kind guard the
-  // validator would call MirOperand::constantValue() on a Copy operand and
-  // abort (or read UB under NDEBUG).
+ZC_TEST("Translation validator fail-closes on a call argument kind mismatch") {
+  // A place call argument must correspond to a LIR local-use operand, and a
+  // constant argument to a LIR constant operand; a place paired with a constant
+  // is a correspondence mismatch and produces a translation finding.
   TestSemanticTypeContext types;
   const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
   const auto callerOwner = testDefinition(46);
@@ -637,9 +639,11 @@ ZC_TEST("Translation validator fail-closes on a non-constant call argument") {
   zc::Vector<Function> lirFunctions;
   {
     zc::Vector<BasicBlock> callerBlocks;
-    callerBlocks.add(BasicBlock(
-        lirBlock(1), Terminator::callFunctionWithArgument(
-                         /*calleeIndex=*/1, /*destinationOrdinal=*/1, i32Const(9), lirBlock(2))));
+    zc::Vector<Operand> callArguments;
+    callArguments.add(Operand::constant(i32Const(9)));
+    callerBlocks.add(BasicBlock(lirBlock(1), ZC_ASSERT_NONNULL(Terminator::callFunction(
+                                                 /*calleeIndex=*/1, /*destinationOrdinal=*/1,
+                                                 zc::mv(callArguments), lirBlock(2)))));
     callerBlocks.add(BasicBlock(lirBlock(2), Terminator::returnLocal(1)));
     zc::Vector<Local> parameters;
     zc::Vector<Local> lirLocals;

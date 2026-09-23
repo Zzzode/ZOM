@@ -4174,10 +4174,11 @@ bool validLocalCallReturnFunction(
     identity::DefId copy, identity::ModuleId module,
     const checker::CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes) {
+  const uint32_t parameterCount = static_cast<uint32_t>(declaration.parameters.size());
   if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
       function.resultType != declaration.resultType || function.sourceScopes.size() != 1 ||
-      function.locals.size() != 1 || function.blocks.size() != 2 ||
+      function.locals.size() != declaration.parameters.size() + 1 || function.blocks.size() != 2 ||
       declaration.body != sourceBlock.node || sourceBlock.statements.size() != 2 ||
       sourceBlock.statements[0] != sourceLocal.node ||
       sourceBlock.statements[1] != sourceReturn.node || sourceLocal.initializer != call.node ||
@@ -4187,11 +4188,32 @@ bool validLocalCallReturnFunction(
     return false;
   }
   const auto& scope = function.sourceScopes[0];
-  const auto& local = function.locals[0];
+  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+    const auto& parameterLocal = function.locals[i];
+    if (parameterLocal.id != localId(static_cast<uint32_t>(i + 1)) ||
+        parameterLocal.kind != MirLocalKind::Parameter ||
+        parameterLocal.type != declaration.parameters[i].type ||
+        parameterLocal.sourceScope != scopeId(1) ||
+        !sameSpan(parameterLocal.sourceSpan, declaration.parameters[i].sourceSpan)) {
+      return false;
+    }
+  }
+  auto parameterLocalIndex = [&](const identity::CallableParameterKey& key,
+                                 size_t& outIndex) -> bool {
+    for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+      if (declaration.parameters[i].key == key) {
+        outIndex = i;
+        return true;
+      }
+    }
+    return false;
+  };
+  const auto resultLocalId = localId(parameterCount + 1);
+  const auto& local = function.locals[parameterCount];
   const auto& entry = function.blocks[0];
   const auto& continuation = function.blocks[1];
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
-      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || local.id != localId(1) ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || local.id != resultLocalId ||
       local.kind != MirLocalKind::UserLocal || local.type != sourceLocal.type ||
       local.sourceScope != scope.id || !sameSpan(local.sourceSpan, sourceLocal.sourceSpan) ||
       entry.id != blockId(1) || entry.sourceScope != scope.id || entry.statements.size() != 1 ||
@@ -4219,14 +4241,27 @@ bool validLocalCallReturnFunction(
   for (size_t index = 0; index < call.arguments.size(); ++index) {
     const auto& actual = terminator.arguments[index];
     const auto& expected = call.arguments[index];
-    if (expected.value == zc::none) return false;
     ZC_IF_SOME(value, expected.value) {
       if (actual.kind() != MirOperandKind::Constant ||
           actual.constantValue().type != expected.type ||
           !sameConstant(actual.constantValue().value, value, module, identities, semanticTypes)) {
         return false;
       }
+      continue;
     }
+    ZC_IF_SOME(parameter, expected.parameter) {
+      size_t parameterIndex = 0;
+      if (!parameterLocalIndex(parameter, parameterIndex) ||
+          !matchesPlaceUse(actual, proofs, copy, expected.type) ||
+          actual.place().local() != localId(static_cast<uint32_t>(parameterIndex + 1)) ||
+          actual.place().rootType() != expected.type ||
+          actual.place().resultType() != expected.type ||
+          actual.place().projections().size() != 0) {
+        return false;
+      }
+      continue;
+    }
+    return false;
   }
   ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, local.type) && value.place().local() == local.id &&
@@ -8069,45 +8104,79 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                       declaration.definition, identities,
                                                       static_cast<uint32_t>(pending.size() + 1));
                 }
+                // The caller's parameters lower to leading parameter locals so a
+                // parameter-reference call argument is copied as a place operand;
+                // the call-initialized user local follows the parameters.
+                const uint32_t parameterCount =
+                    static_cast<uint32_t>(declaration.parameters.size());
+                const auto resultLocal = localId(parameterCount + 1);
+                auto parameterLocalIndex = [&](const identity::CallableParameterKey& key,
+                                               size_t& outIndex) -> bool {
+                  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+                    if (declaration.parameters[i].key == key) {
+                      outIndex = i;
+                      return true;
+                    }
+                  }
+                  return false;
+                };
                 zc::Vector<MirSourceScope> scopes;
                 zc::Maybe<MirSourceScopeId> noParent;
                 scopes.add(
                     MirSourceScope{scopeId(1), zc::mv(noParent), declaration.sourceSpan.clone()});
                 zc::Vector<MirLocalDeclaration> locals;
-                locals.add(MirLocalDeclaration{localId(1), MirLocalKind::UserLocal, local.type,
+                for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+                  locals.add(MirLocalDeclaration{localId(static_cast<uint32_t>(i + 1)),
+                                                 MirLocalKind::Parameter,
+                                                 declaration.parameters[i].type, scopeId(1),
+                                                 declaration.parameters[i].sourceSpan.clone()});
+                }
+                locals.add(MirLocalDeclaration{resultLocal, MirLocalKind::UserLocal, local.type,
                                                scopeId(1), local.sourceSpan.clone()});
                 zc::Vector<MirStatement> entryStatements;
                 entryStatements.add(
-                    MirStatement::storageLive(localId(1), local.sourceSpan.clone()));
+                    MirStatement::storageLive(resultLocal, local.sourceSpan.clone()));
                 zc::Vector<MirProjection> destinationProjections;
                 zc::Vector<MirOperand> arguments;
-                bool constantArguments = true;
+                bool argumentsResolved = true;
                 for (const auto& argument : directCall.arguments) {
                   ZC_IF_SOME(value, argument.value) {
                     arguments.add(MirOperand::constant(argument.type, value.clone()));
-                  } else {
-                    constantArguments = false;
+                  }
+                  ZC_IF_SOME(parameter, argument.parameter) {
+                    size_t parameterIndex = 0;
+                    if (!parameterLocalIndex(parameter, parameterIndex)) {
+                      argumentsResolved = false;
+                      break;
+                    }
+                    zc::Vector<MirProjection> argumentProjections;
+                    auto operand = placeUse(
+                        proofs, copy,
+                        MirPlace(localId(static_cast<uint32_t>(parameterIndex + 1)), argument.type,
+                                 zc::mv(argumentProjections), argument.type));
+                    if (operand == zc::none) {
+                      argumentsResolved = false;
+                      break;
+                    }
+                    arguments.add(zc::mv(ZC_ASSERT_NONNULL(operand)));
                   }
                 }
-                if (!constantArguments) {
-                  // A call-initialized local with a non-constant (parameter or
-                  // place) argument is valid source the current MIR lowering
-                  // slice cannot emit yet. Fail closed as a per-definition
-                  // capability rejection instead of an internal invariant.
-                  return rejectMirCapability<BuiltMirCandidate>(
-                      ir::IrFailureKind::UnsupportedSourceConstruct, declaration.definition,
-                      identities, directCall.sourceSpan.clone());
+                if (!argumentsResolved) {
+                  return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
+                                                      ir::IrFailureKind::InvalidFact, module,
+                                                      declaration.definition, identities,
+                                                      static_cast<uint32_t>(pending.size() + 1));
                 }
                 zc::Maybe<MirBlockId> noUnwind;
                 auto callTerminator = MirTerminator::call(
                     directCall.callee, zc::mv(arguments), MirCallEffect::noActivation(),
-                    MirPlace(localId(1), local.type, zc::mv(destinationProjections), local.type),
+                    MirPlace(resultLocal, local.type, zc::mv(destinationProjections), local.type),
                     blockId(2), zc::mv(noUnwind), directCall.sourceSpan.clone());
                 zc::Vector<MirStatement> continuationStatements;
                 zc::Vector<MirProjection> returnProjections;
                 auto returnOperand = placeUse(
                     proofs, copy,
-                    MirPlace(localId(1), local.type, zc::mv(returnProjections), local.type));
+                    MirPlace(resultLocal, local.type, zc::mv(returnProjections), local.type));
                 if (returnOperand == zc::none) {
                   return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
                                                       ir::IrFailureKind::InvalidFact, module,
