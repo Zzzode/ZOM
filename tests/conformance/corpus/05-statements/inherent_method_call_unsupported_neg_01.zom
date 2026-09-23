@@ -1,0 +1,9 @@
+struct Cell {
+  value: i32,
+  fun get(this) -> i32 { return 7; }
+}
+
+fun entry() -> i32 {
+  let cell = Cell { value: 0 };
+  return cell.get();
+}

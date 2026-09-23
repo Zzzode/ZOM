@@ -199,3 +199,7 @@ DIAG(4123, ImplGenericAssociatedTypeUnsupported, kError,
      "assigning a generic associated type in an impl is not supported yet", 0)
 DIAG(4124, GenericConcreteDynErasureUnsupported, kError,
      "erasing the generic or non-plain type {0} to dyn {1} is not supported yet", 2)
+// A call to an inherent (non-interface) method through a struct receiver is
+// well-formed source the HIR/MIR/LIR lowering does not admit yet. The method
+// name is shown, not its receiver type.
+DIAG(4125, MethodCallSemanticsUnavailable, kError, "method call `{0}` is not supported yet", 1)

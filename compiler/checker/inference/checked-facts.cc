@@ -1670,6 +1670,11 @@ zc::Maybe<zc::Array<uint8_t>> encodeDisplayArgumentRecord(
     }
     return encoder.finish();
   }
+  if (value.is<DeclaredDefinitionNameDisplayArg>()) {
+    encoder.encodeUint8(0x0a);
+    value.get<DeclaredDefinitionNameDisplayArg>().name.encode(encoder);
+    return encoder.finish();
+  }
   if (!value.is<PatternsDisplayArg>()) return zc::none;
   const auto& patterns = value.get<PatternsDisplayArg>().patterns;
   if (patterns.size() == 0) return zc::none;
@@ -2701,7 +2706,8 @@ enum class DisplayArgumentKind : uint8_t {
   ConstraintContext,
   Operator,
   Literal,
-  Patterns
+  Patterns,
+  DeclaredDefinitionName
 };
 
 DisplayArgumentKind displayArgumentKind(const CheckerDisplayArgument& argument) {
@@ -2714,6 +2720,8 @@ DisplayArgumentKind displayArgumentKind(const CheckerDisplayArgument& argument) 
   if (value.is<ConstraintContextDisplayArg>()) return DisplayArgumentKind::ConstraintContext;
   if (value.is<OperatorDisplayArg>()) return DisplayArgumentKind::Operator;
   if (value.is<LiteralDisplayArg>()) return DisplayArgumentKind::Literal;
+  if (value.is<DeclaredDefinitionNameDisplayArg>())
+    return DisplayArgumentKind::DeclaredDefinitionName;
   return DisplayArgumentKind::Patterns;
 }
 
@@ -2807,6 +2815,8 @@ bool validArgumentSchema(const CheckerFailureRef& failure) {
       return argumentKinds(arguments, Kind::Operator);
     case DiagID::UnknownStructField:
       return argumentKinds(arguments, Kind::Identifier);
+    case DiagID::MethodCallSemanticsUnavailable:
+      return argumentKinds(arguments, Kind::DeclaredDefinitionName);
     case DiagID::BodyLiteralOutOfRange:
       return argumentKinds(arguments, Kind::Literal, Kind::PrimitiveType);
     case DiagID::ConstantArithmeticFailure:
@@ -2837,7 +2847,9 @@ bool validDisplayArgument(const CheckerDisplayArgument& argument, identity::Modu
   if (value.is<DefinitionDisplayArg>()) {
     return authorizedDefinition(value.get<DefinitionDisplayArg>().definition, module, input);
   }
-  if (value.is<IdentifierDisplayArg>() || value.is<CountDisplayArg>()) return true;
+  if (value.is<IdentifierDisplayArg>() || value.is<CountDisplayArg>() ||
+      value.is<DeclaredDefinitionNameDisplayArg>())
+    return true;
   if (value.is<ConstraintContextDisplayArg>()) {
     const auto reason = static_cast<uint8_t>(value.get<ConstraintContextDisplayArg>().reason);
     return reason >= 0x01 && reason <= 0x0c;
@@ -2942,6 +2954,7 @@ bool validDiagnosticProduction(const CheckerFailureRef& failure) {
     case DiagID::CannotDereferenceType:
       return matches(Stage::Body, Producer::Dereference, Class::InvalidOperation, true);
     case DiagID::MemberNotFound:
+    case DiagID::MethodCallSemanticsUnavailable:
       return matches(Stage::Body, Producer::Call, Class::InvalidOperation, true);
     case DiagID::IndexRequiresInteger:
     case DiagID::TupleIndexRequiresIntegerLiteral:

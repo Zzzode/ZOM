@@ -564,6 +564,11 @@ zc::String renderDisplayArgument(const checked::CheckerDisplayArgument& argument
                            diagnostics::DiagnosticQuote::Backtick),
                    "`");
   }
+  if (value.is<checked::DeclaredDefinitionNameDisplayArg>()) {
+    // No backticks: the diagnostic format already quotes the name.
+    return zc::str(escaped(value.get<checked::DeclaredDefinitionNameDisplayArg>().name.text(),
+                           diagnostics::DiagnosticQuote::Backtick));
+  }
   if (value.is<checked::CountDisplayArg>()) {
     return zc::str(value.get<checked::CountDisplayArg>().count);
   }

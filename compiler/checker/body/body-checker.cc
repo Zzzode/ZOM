@@ -1290,6 +1290,206 @@ zc::Maybe<BinaryInitializerTypeMismatch> binaryInitializerTypeMismatch(
   return BinaryInitializerTypeMismatch{declared, resultType};
 }
 
+/// \brief Returns the enclosing method's bare name when a node lies inside the
+/// body of an inherent struct/class method.
+///
+/// Inherent method bodies are checked as ordinary function bodies with an
+/// implicit `this` receiver, but the body checker cannot lower them yet. A
+/// `this` expression inside a Method body is therefore well-formed receiver
+/// syntax the later phases cannot accept; this predicate supplies the method
+/// name so the rejection can be reported as a capability instead of an
+/// invariant. Returns none when the node is outside every Method body (for
+/// example a `this` expression in a module function, which the parser rejects
+/// independently with ZOM2095).
+zc::Maybe<identity::DeclaredDefinitionName> enclosingMethodName(const BodyCheckingInput& input,
+                                                                ast::NodeId node) {
+  const auto& boundModule = input.boundModule;
+  const auto& tree = boundModule.tree();
+  const auto& parsedModule = boundModule.parsedModule();
+  if (!tree.contains(node)) { return zc::none; }
+  const source::SourceRange nodeRange = tree.node(node).range;
+  zc::Maybe<identity::SourceSpan> nodeSpan = parsedModule.spanFor(nodeRange);
+  for (const auto& definition : boundModule.bindings().definitions()) {
+    if (definition.kind != identity::DefinitionKind::Method) { continue; }
+    if (!definition.site.value().is<binder::DeclarationDefinitionSite>()) { continue; }
+    const ast::NodeId bodyNode =
+        definition.site.value().get<binder::DeclarationDefinitionSite>().node;
+    if (!tree.contains(bodyNode)) { continue; }
+    // A method body is parsed as a MethodDecl but bound as DefinitionKind::Method.
+    const auto bodyKind = tree.node(bodyNode).kind;
+    if (bodyKind != ast::SyntaxKind::FunctionDecl && bodyKind != ast::SyntaxKind::MethodDecl) {
+      continue;
+    }
+    zc::Maybe<identity::SourceSpan> bodySpan = parsedModule.spanFor(tree.node(bodyNode).range);
+    if (bodySpan == zc::none || nodeSpan == zc::none) { continue; }
+    const auto& body = ZC_ASSERT_NONNULL(bodySpan);
+    const auto& contained = ZC_ASSERT_NONNULL(nodeSpan);
+    if (body.byteStart() <= contained.byteStart() && contained.byteEnd() <= body.byteEnd()) {
+      return definition.name.clone();
+    }
+  }
+  return zc::none;
+}
+
+/// \brief Returns the enclosing method's bare name when a `this` expression is
+/// the implicit receiver of an inherent struct/class method the later phases
+/// cannot lower.
+zc::Maybe<identity::DeclaredDefinitionName> unsupportedInherentMethodThis(
+    const BodyCheckingInput& input, ast::NodeId node) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::ThisExpr) {
+    return zc::none;
+  }
+  return enclosingMethodName(input, node);
+}
+
+/// \brief Returns the enclosing method's name when a member projection has an
+/// implicit `this` receiver (`this.field`) the later phases cannot lower yet.
+///
+/// A `this.field` read is well-formed inside an inherent method body but the
+/// HIR/MIR/LIR receiver-field rail does not admit it; it must reach ZOM4125
+/// rather than the owner-local field invariant.
+zc::Maybe<identity::DeclaredDefinitionName> unsupportedThisFieldAccess(
+    const BodyCheckingInput& input, ast::NodeId memberNode) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(memberNode) ||
+      tree.node(memberNode).kind != ast::SyntaxKind::MemberExpression) {
+    return zc::none;
+  }
+  const auto& member = tree.node(memberNode);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return zc::none;
+  }
+  const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::ThisExpr) {
+    return zc::none;
+  }
+  return enclosingMethodName(input, object);
+}
+
+/// \brief Returns the resolved method when a well-formed shared-receiver
+/// inherent method call on an immutable owner local cannot be lowered yet.
+///
+/// This mirrors concreteMethodCallShape's gates exactly, with the two receiver
+/// choices inverted: the receiver is an immutable (`let`) owner local rather
+/// than a `mut` one, and the resolved method's receiver mode is Shared rather
+/// than Mutable. The later HIR/MIR/LIR phases do not admit this shape, so it
+/// must reach a capability rejection (ZOM4125) instead of an invariant. Returns
+/// none for every shape the mutable rail accepts or for malformed input, so
+/// those keep their existing diagnostics.
+zc::Maybe<identity::DeclaredDefinitionName> unsupportedSharedReceiverInherentMethodCall(
+    const BodyCheckingInput& input, zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
+    ast::NodeId callNode) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(callNode) || tree.node(callNode).kind != ast::SyntaxKind::CallExpression) {
+    return zc::none;
+  }
+  const auto& call = tree.node(callNode);
+  const ast::NodeId callee(call.payload.words[ast::kCallExpressionCalleeWord]);
+  const ast::NodeList typeArguments{call.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+                                    call.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+  const ast::NodeList arguments{call.payload.words[ast::kCallExpressionArgsFirstWord],
+                                call.payload.words[ast::kCallExpressionArgsSizeWord]};
+  if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::MemberExpression ||
+      !tree.contains(typeArguments) || !typeArguments.empty() || !tree.contains(arguments)) {
+    return zc::none;
+  }
+  const auto& member = tree.node(callee);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return zc::none;
+  }
+  const ast::NodeId receiverNode(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(receiverNode) || tree.node(receiverNode).kind != ast::SyntaxKind::IdentExpr ||
+      resolvedOwnerLocal(input.boundModule.bindings(), receiverNode) == zc::none ||
+      isMutableOwnerLocal(input.boundModule, receiverNode)) {
+    return zc::none;
+  }
+  const auto receiverSourceType = ownerLocalReferenceType(input, receiverNode, nodeTypes);
+  if (receiverSourceType == zc::none) { return zc::none; }
+  auto receiverLookup = input.semanticTypes.get(ZC_ASSERT_NONNULL(receiverSourceType));
+  if (!receiverLookup.is<type::SemanticTypeLookup>() ||
+      !receiverLookup.get<type::SemanticTypeLookup>()
+           .data()
+           .is<type::semantic::NominalTypeData>()) {
+    return zc::none;
+  }
+  const auto& nominal =
+      receiverLookup.get<type::SemanticTypeLookup>().data().get<type::semantic::NominalTypeData>();
+  if (nominal.arguments.size() != 0) return zc::none;
+
+  const auto memberName =
+      tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
+  zc::Maybe<identity::DefId> selected;
+  zc::Maybe<identity::DeclaredDefinitionName> selectedName;
+  uint32_t parameterCount = 0;
+  for (const auto& nominalSignature : input.signatureFacts.signatures()) {
+    if (nominalSignature.definition != nominal.definition ||
+        !nominalSignature.payload.variant().is<signature::NominalSignature>()) {
+      continue;
+    }
+    const auto& nominalFacts =
+        nominalSignature.payload.variant().get<signature::NominalSignature>();
+    if (nominalFacts.genericParameters.size() != 0) return zc::none;
+    for (const auto candidate : nominalFacts.members) {
+      bool namedMethod = false;
+      for (const auto& definition : input.boundModule.definitions().definitions()) {
+        if (definition.definition == candidate &&
+            definition.record.kind() == identity::DefinitionKind::Method &&
+            definition.record.name() == memberName) {
+          namedMethod = true;
+        }
+      }
+      if (namedMethod) {
+        for (const auto& binding : input.boundModule.bindings().definitions()) {
+          if (binding.identity == candidate) { selectedName = binding.name.clone(); }
+        }
+      }
+      if (!namedMethod) continue;
+      if (selected != zc::none) return zc::none;
+      for (const auto& methodSignature : input.signatureFacts.signatures()) {
+        if (methodSignature.definition != candidate ||
+            !methodSignature.scope.variant().is<signature::MemberSignatureScope>() ||
+            !methodSignature.payload.variant().is<signature::CallableSignature>()) {
+          continue;
+        }
+        const auto& scope = methodSignature.scope.variant().get<signature::MemberSignatureScope>();
+        const auto& callable =
+            methodSignature.payload.variant().get<signature::CallableSignature>();
+        if (scope.owner != nominal.definition || callable.genericParameters.size() != 0 ||
+            callable.receiver == zc::none || callable.raises != zc::none ||
+            callable.abi != zc::none) {
+          return zc::none;
+        }
+        ZC_IF_SOME(receiver, callable.receiver) {
+          if (receiver.mode != signature::ReceiverMode::Shared) return zc::none;
+        }
+        for (const auto& parameter : callable.parameters) {
+          if (parameter.hasDefault || parameter.mode != signature::ParameterMode::Value) {
+            return zc::none;
+          }
+          ++parameterCount;
+        }
+        selected = candidate;
+      }
+    }
+  }
+  if (selected == zc::none || parameterCount != arguments.size) { return zc::none; }
+  bool deferredMember = false;
+  for (const auto& fact : input.boundModule.bindings().deferredMembers()) {
+    if (fact.node != callee || fact.base != receiverNode || fact.member.text() != memberName ||
+        fact.expectedNamespaces.size() != 1 ||
+        fact.expectedNamespaces[0] != binder::Namespace::Value ||
+        fact.genericArguments.size() != 0 || deferredMember) {
+      continue;
+    }
+    deferredMember = true;
+  }
+  if (!deferredMember) return zc::none;
+  return selectedName;
+}
+
 /// \brief Returns the binary operator the checker does not yet implement.
 ///
 /// Surface admission is deliberately operator-agnostic: it admits every
@@ -2030,6 +2230,29 @@ checked::CheckedFactsSourceRejected rejectUnsupportedBinaryOperator(const BodyPr
                                              zc::Vector<checked::FrozenRecoveryLedger>()};
 }
 
+checked::CheckedFactsSourceRejected rejectUnsupportedInherentMethodCall(
+    const BodyProductionSite& site, uint32_t ownerPreorder,
+    identity::DeclaredDefinitionName methodName) {
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(checked::CheckerDisplayArgument(
+      checked::DeclaredDefinitionNameDisplayArg{zc::mv(methodName)}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::MethodCallSemanticsUnavailable(),
+      checked::CheckerDiagnosticStage::Body, site.node, site.key.sourceSpan.clone(),
+      zc::mv(arguments), zc::mv(notes), checked::CheckerDiagnosticProducer::Call,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
 checked::CheckedFactsSourceRejected rejectNonUnionErrorOperator(
     const BodyProductionSite& site, uint32_t ownerPreorder, identity::SemanticTypeId operandType,
     ast::PostfixOperatorKind operation) {
@@ -2134,6 +2357,33 @@ attachRecoveryLedger(checked::CheckedFactsSourceRejected&& rejection,
   rejection.recoveryLedgers.add(
       zc::mv(finished).get<inference::InferenceRecoveryRecovered>().ledger);
   return zc::mv(rejection);
+}
+
+/// \brief Attaches a ZOM4125 recovery ledger for a method-call site, resolving
+/// its enclosing callable owner exactly like the binary-operator rail.
+///
+/// The emitter ordinal must name the real enclosing body owner; hardcoding
+/// ordinal zero makes the recovery issuer reject the root and collapse the
+/// honest capability diagnostic back into an invariant. A site with no
+/// resolvable body owner keeps its existing invariant rejection.
+zc::OneOf<checked::CheckedFactsSourceRejected, checked::CheckedFactsInvariantRejected>
+rejectMethodCallCapability(const BodyProductionSite& site, const BodyCheckingInput& input,
+                           const identity::RegistryBrandIssuer& factStoreBrands,
+                           zc::Maybe<identity::DeclaredDefinitionName>&& methodName) {
+  ZC_IF_SOME(name, methodName) {
+    ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+      ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+        return attachRecoveryLedger(
+            rejectUnsupportedInherentMethodCall(site, ownerOrdinal, zc::mv(name)), input,
+            factStoreBrands);
+      }
+    }
+  }
+  zc::Vector<uint32_t> structuralPath;
+  structuralPath.add(static_cast<uint32_t>(site.primaryGroup));
+  return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact,
+                         input.boundModule.module(), site.key.schemaPreorder, zc::none, site.node,
+                         site.key.sourceSpan.clone(), zc::mv(structuralPath));
 }
 
 zc::Vector<uint32_t> factPath(CheckedFactGroup group) {
@@ -2897,6 +3147,15 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             }
           }
         }
+        // A `this` expression inside the body of an inherent struct/class
+        // method is well-formed receiver syntax the later HIR/MIR/LIR phases do
+        // not admit yet. When it is enclosed by a Method definition, route it
+        // to a method-call capability diagnostic. A `this` outside every
+        // method body keeps its existing rejection (the parser independently
+        // rejects `this` in module functions with ZOM2095).
+        ZC_IF_SOME(method, unsupportedInherentMethodThis(input, site.node)) {
+          return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(method));
+        }
         return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                site.key.schemaPreorder, zc::none, site.node,
                                site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -3023,9 +3282,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       } else if (site.production == BodyProductionKind::ConcreteMethodCall) {
         auto shape = concreteMethodCallShape(input, site.node, nodeTypes.asPtr());
         if (shape == zc::none) {
-          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
-                                 site.key.schemaPreorder, zc::none, site.node,
-                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+          return rejectMethodCallCapability(
+              site, input, factStoreBrands,
+              unsupportedSharedReceiverInherentMethodCall(input, nodeTypes.asPtr(), site.node));
         }
         ZC_IF_SOME(value, shape) {
           const auto& call = input.boundModule.tree().node(site.node);
@@ -3396,9 +3655,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       } else if (site.production == BodyProductionKind::OwnerLocalFieldReference) {
         auto shape = ownerLocalFieldShape(input, site.node, nodeTypes.asPtr());
         if (shape == zc::none) {
-          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
-                                 site.key.schemaPreorder, zc::none, site.node,
-                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+          return rejectMethodCallCapability(site, input, factStoreBrands,
+                                            unsupportedThisFieldAccess(input, site.node));
         }
         ZC_IF_SOME(value, shape) {
           producedType = value.fieldType;
@@ -3429,9 +3687,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             });
         auto shape = concreteMethodCallShape(input, callNode, nodeTypes.asPtr());
         if (shape == zc::none) {
-          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
-                                 site.key.schemaPreorder, zc::none, site.node,
-                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+          return rejectMethodCallCapability(
+              site, input, factStoreBrands,
+              unsupportedSharedReceiverInherentMethodCall(input, nodeTypes.asPtr(), callNode));
         }
         ZC_IF_SOME(value, shape) {
           producedType = value.calleeType;

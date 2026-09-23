@@ -1339,4 +1339,35 @@ ZC_TEST("ConcreteToDynErasure.ArgumentPositionGenericReportsUnsupported") {
             checked::CheckerErrorId::GenericConcreteDynErasureUnsupported());
 }
 
+// A shared-receiver inherent method call on an immutable owner local is
+// well-formed source the HIR/MIR/LIR lowering does not admit yet. The body
+// checker rejects it as a capability gap (ZOM4125), not as an invariant.
+ZC_TEST("InherentMethodCall.SharedReceiverCallReportsSemanticsUnavailable") {
+  PrimitiveBinaryFixture fixture(
+      "struct Cell {\n    value: i32,\n    fun get(this) -> i32 { return 7; }\n}\n"
+      "fun entry() -> i32 {\n    let cell = Cell { value: 0 };\n    return cell.get();\n}\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::MethodCallSemanticsUnavailable());
+}
+
+// Reading a field through the implicit `this` receiver inside an inherent
+// method body is the same unadmitted shape and reports ZOM4125, never an
+// internal compiler error.
+ZC_TEST("InherentMethodCall.ThisFieldReadReportsSemanticsUnavailable") {
+  PrimitiveBinaryFixture fixture(
+      "struct Cell {\n    value: i32,\n"
+      "    fun get(this) -> i32 { return this.value; }\n}\n"
+      "fun entry() -> i32 {\n    let cell = Cell { value: 0 };\n    return cell.value;\n}\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::MethodCallSemanticsUnavailable());
+}
+
 }  // namespace zomlang::compiler::checker::body

@@ -57,6 +57,7 @@ CHECKER_ERROR(ConstantDependencyCycle)
 CHECKER_ERROR(ConstantArithmeticFailure)
 CHECKER_ERROR(BinaryOperatorSemanticsUnavailable)
 CHECKER_ERROR(GenericConcreteDynErasureUnsupported)
+CHECKER_ERROR(MethodCallSemanticsUnavailable)
 
 CHECKER_WARNING(CheckerUnreachableMatchArm)
 

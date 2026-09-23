@@ -7,26 +7,26 @@
 
 #include <cstdint>
 
+#include "compiler/ast/node-id.h"
+#include "compiler/binder/graph/parsed-module.h"
+#include "compiler/binder/metadata/immutable-definition-inventory.h"
+#include "compiler/checker/checker-identity-authority.h"
+#include "compiler/checker/diagnostics/checker-diagnostic-id.h"
+#include "compiler/checker/facts/cross-module-facts.h"
+#include "compiler/checker/facts/signature-facts.h"
+#include "compiler/checker/operator-kind.h"
+#include "compiler/diagnostics/core/diagnostic-ids.h"
+#include "compiler/identity/crypto/sha256.h"
+#include "compiler/identity/handle.h"
+#include "compiler/identity/key/crate-key.h"
+#include "compiler/identity/semantic/context-fingerprint.h"
+#include "compiler/type/semantic-type-store.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "compiler/ast/node-id.h"
-#include "compiler/binder/metadata/immutable-definition-inventory.h"
-#include "compiler/binder/graph/parsed-module.h"
-#include "compiler/checker/diagnostics/checker-diagnostic-id.h"
-#include "compiler/checker/checker-identity-authority.h"
-#include "compiler/checker/facts/cross-module-facts.h"
-#include "compiler/checker/operator-kind.h"
-#include "compiler/checker/facts/signature-facts.h"
-#include "compiler/diagnostics/core/diagnostic-ids.h"
-#include "compiler/identity/key/crate-key.h"
-#include "compiler/identity/handle.h"
-#include "compiler/identity/semantic/context-fingerprint.h"
-#include "compiler/identity/crypto/sha256.h"
-#include "compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::checker::inference {
 
@@ -784,6 +784,9 @@ struct DefinitionDisplayArg final {
 struct IdentifierDisplayArg final {
   identity::SemanticIdentifier identifier;
 };
+struct DeclaredDefinitionNameDisplayArg final {
+  identity::DeclaredDefinitionName name;
+};
 struct CountDisplayArg final {
   uint64_t count;
 };
@@ -807,6 +810,8 @@ public:
   explicit CheckerDisplayArgument(PrimitiveTypeDisplayArg value) noexcept : value(value) {}
   explicit CheckerDisplayArgument(DefinitionDisplayArg value) noexcept : value(value) {}
   explicit CheckerDisplayArgument(IdentifierDisplayArg&& value) : value(zc::mv(value)) {}
+  explicit CheckerDisplayArgument(DeclaredDefinitionNameDisplayArg&& value)
+      : value(zc::mv(value)) {}
   explicit CheckerDisplayArgument(CountDisplayArg value) noexcept : value(value) {}
   explicit CheckerDisplayArgument(ConstraintContextDisplayArg value) noexcept : value(value) {}
   explicit CheckerDisplayArgument(OperatorDisplayArg&& value) : value(zc::mv(value)) {}
@@ -819,8 +824,8 @@ public:
 
 private:
   zc::OneOf<TypeDisplayArg, PrimitiveTypeDisplayArg, DefinitionDisplayArg, IdentifierDisplayArg,
-            CountDisplayArg, ConstraintContextDisplayArg, OperatorDisplayArg, LiteralDisplayArg,
-            PatternsDisplayArg>
+            DeclaredDefinitionNameDisplayArg, CountDisplayArg, ConstraintContextDisplayArg,
+            OperatorDisplayArg, LiteralDisplayArg, PatternsDisplayArg>
       value;
 };
 
