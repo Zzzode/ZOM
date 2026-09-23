@@ -2626,9 +2626,13 @@ bool validCallEnvelope(const CheckedCallEnvelope& invocation,
     ZC_IF_SOME(receiver, invocation.receiver) {
       ZC_IF_SOME(mode, invocation.receiverMode) {
         ZC_IF_SOME(adjustment, invocation.receiverAdjustment) {
-          if (mode != ReceiverMode::Mutable || receiver.sourceType != adjustment.source ||
+          const ReceiverAdjustmentStep expectedStep = mode == ReceiverMode::Mutable
+                                                          ? ReceiverAdjustmentStep::BorrowMutable
+                                                          : ReceiverAdjustmentStep::BorrowShared;
+          if ((mode != ReceiverMode::Mutable && mode != ReceiverMode::Shared) ||
+              receiver.sourceType != adjustment.source ||
               receiver.parameterType != adjustment.destination || adjustment.steps.size() != 1 ||
-              adjustment.steps[0] != ReceiverAdjustmentStep::BorrowMutable) {
+              adjustment.steps[0] != expectedStep) {
             return false;
           }
         }

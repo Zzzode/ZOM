@@ -1340,18 +1340,20 @@ ZC_TEST("ConcreteToDynErasure.ArgumentPositionGenericReportsUnsupported") {
 }
 
 // A shared-receiver inherent method call on an immutable owner local is
-// well-formed source the HIR/MIR/LIR lowering does not admit yet. The body
-// checker rejects it as a capability gap (ZOM4125), not as an invariant.
-ZC_TEST("InherentMethodCall.SharedReceiverCallReportsSemanticsUnavailable") {
+// well-formed and the body checker now produces and verifies its call facts.
+// The shared borrow lowering is admitted later at HIR; the checker itself
+// accepts the call.
+ZC_TEST("InherentMethodCall.SharedReceiverCallProducesCheckedFacts") {
   PrimitiveBinaryFixture fixture(
       "struct Cell {\n    value: i32,\n    fun get(this) -> i32 { return 7; }\n}\n"
       "fun entry() -> i32 {\n    let cell = Cell { value: 0 };\n    return cell.get();\n}\n"_zc);
-  auto result = fixture.runBodyChecker();
-  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
-  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
-  ZC_REQUIRE(rejection.failures.size() == 1);
-  ZC_EXPECT(rejection.failures[0].diagnostic ==
-            checked::CheckerErrorId::MethodCallSemanticsUnavailable());
+  const auto& facts = fixture.adoptVerifiedFacts();
+  ZC_REQUIRE(facts.calls().entries().size() == 1);
+  const auto& call = facts.calls().entries()[0].value.invocation;
+  const auto& selected = call.selected.variant();
+  ZC_REQUIRE(selected.is<checked::ConcreteMethodCallable>());
+  ZC_EXPECT(call.receiverMode != zc::none);
+  ZC_IF_SOME(mode, call.receiverMode) { ZC_EXPECT(mode == checked::ReceiverMode::Shared); }
 }
 
 // Reading a field through the implicit `this` receiver inside an inherent

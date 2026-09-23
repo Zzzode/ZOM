@@ -2550,6 +2550,17 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
           ZC_IF_SOME(receiver, invocation.receiver) {
             ZC_IF_SOME(mode, invocation.receiverMode) {
               ZC_IF_SOME(adjustment, invocation.receiverAdjustment) {
+                // A shared-receiver method call is a well-formed call the
+                // checker has verified, but the HIR/MIR receiver-call carrier
+                // only lowers a mutable borrow today. Reject it as a capability
+                // gap (ZOM4099) on the calling definition rather than an
+                // internal invariant while the shared path is built out.
+                if (mode == checker::checked::ReceiverMode::Shared) {
+                  return rejectHirCapability<HirModuleCandidate>(
+                      definition.definition, registries,
+                      ir::IrFailureKind::UnsupportedSourceConstruct,
+                      ZC_ASSERT_NONNULL(callSpan).clone());
+                }
                 auto receiverParameter = checkedModule.semanticTypes().get(receiver.parameterType);
                 if (!receiverParameter.is<type::SemanticTypeLookup>() ||
                     !receiverParameter.get<type::SemanticTypeLookup>()

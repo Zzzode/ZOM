@@ -1928,6 +1928,7 @@ struct ConcreteMethodCallShape final {
   identity::SemanticTypeId receiverParameterType;
   identity::SemanticTypeId calleeType;
   identity::SemanticTypeId success;
+  signature::ReceiverMode receiverMode;
   zc::Vector<identity::SemanticTypeId> parameters;
 };
 
@@ -1955,9 +1956,10 @@ zc::Maybe<ConcreteMethodCallShape> concreteMethodCallShape(
   }
   const ast::NodeId receiverNode(member.payload.words[ast::kMemberExpressionObjectWord]);
   if (!tree.contains(receiverNode) || tree.node(receiverNode).kind != ast::SyntaxKind::IdentExpr ||
-      !isMutableOwnerLocal(input.boundModule, receiverNode)) {
+      resolvedOwnerLocal(input.boundModule.bindings(), receiverNode) == zc::none) {
     return zc::none;
   }
+  const bool receiverLocalIsMutable = isMutableOwnerLocal(input.boundModule, receiverNode);
   const auto receiverSourceType = ownerLocalReferenceType(input, receiverNode, nodeTypes);
   if (receiverSourceType == zc::none) return zc::none;
   auto receiverLookup = input.semanticTypes.get(ZC_ASSERT_NONNULL(receiverSourceType));
@@ -1970,18 +1972,12 @@ zc::Maybe<ConcreteMethodCallShape> concreteMethodCallShape(
   const auto& nominal =
       receiverLookup.get<type::SemanticTypeLookup>().data().get<type::semantic::NominalTypeData>();
   if (nominal.arguments.size() != 0) return zc::none;
-  auto canonicalReceiver = input.semanticTypes.canonicalizeClosed(
-      type::semantic::TypeData(type::semantic::ReferenceTypeData{
-          type::semantic::Mutability::Mutable, ZC_ASSERT_NONNULL(receiverSourceType)}));
-  if (!canonicalReceiver.is<type::semantic::CanonicalTypeData>()) return zc::none;
-  auto receiverParameter = input.semanticTypes.intern(
-      zc::mv(canonicalReceiver).get<type::semantic::CanonicalTypeData>());
-  if (!receiverParameter.is<type::SemanticTypeInterned>()) return zc::none;
 
   const auto memberName =
       tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
   zc::Maybe<identity::DefId> selected;
   zc::Maybe<identity::SemanticTypeId> success;
+  zc::Maybe<signature::ReceiverMode> receiverMode;
   zc::Vector<identity::SemanticTypeId> parameters;
   for (const auto& nominalSignature : input.signatureFacts.signatures()) {
     if (nominalSignature.definition != nominal.definition ||
@@ -2016,8 +2012,18 @@ zc::Maybe<ConcreteMethodCallShape> concreteMethodCallShape(
             callable.abi != zc::none) {
           return zc::none;
         }
+        // The owner local's mutability must grant the method's receiver mode:
+        // a mutable receiver needs a `mut` local and a shared receiver an
+        // immutable one. Move and by-value receivers stay outside this slice.
         ZC_IF_SOME(receiver, callable.receiver) {
-          if (receiver.mode != signature::ReceiverMode::Mutable) return zc::none;
+          if (receiver.mode == signature::ReceiverMode::Mutable) {
+            if (!receiverLocalIsMutable) return zc::none;
+          } else if (receiver.mode == signature::ReceiverMode::Shared) {
+            if (receiverLocalIsMutable) return zc::none;
+          } else {
+            return zc::none;
+          }
+          receiverMode = receiver.mode;
         }
         for (const auto& parameter : callable.parameters) {
           if (parameter.hasDefault || parameter.mode != signature::ParameterMode::Value)
@@ -2029,7 +2035,8 @@ zc::Maybe<ConcreteMethodCallShape> concreteMethodCallShape(
       }
     }
   }
-  if (selected == zc::none || success == zc::none || arguments.size != parameters.size()) {
+  if (selected == zc::none || success == zc::none || receiverMode == zc::none ||
+      arguments.size != parameters.size()) {
     return zc::none;
   }
   bool deferredMember = false;
@@ -2043,6 +2050,18 @@ zc::Maybe<ConcreteMethodCallShape> concreteMethodCallShape(
     deferredMember = true;
   }
   if (!deferredMember) return zc::none;
+
+  const auto receiverMutability =
+      ZC_ASSERT_NONNULL(receiverMode) == signature::ReceiverMode::Mutable
+          ? type::semantic::Mutability::Mutable
+          : type::semantic::Mutability::Const;
+  auto canonicalReceiver = input.semanticTypes.canonicalizeClosed(
+      type::semantic::TypeData(type::semantic::ReferenceTypeData{
+          receiverMutability, ZC_ASSERT_NONNULL(receiverSourceType)}));
+  if (!canonicalReceiver.is<type::semantic::CanonicalTypeData>()) return zc::none;
+  auto receiverParameter = input.semanticTypes.intern(
+      zc::mv(canonicalReceiver).get<type::semantic::CanonicalTypeData>());
+  if (!receiverParameter.is<type::SemanticTypeInterned>()) return zc::none;
 
   zc::Vector<identity::SemanticTypeId> canonicalParameters;
   for (const auto parameter : parameters) canonicalParameters.add(parameter);
@@ -2061,6 +2080,7 @@ zc::Maybe<ConcreteMethodCallShape> concreteMethodCallShape(
                                    receiverParameter.get<type::SemanticTypeInterned>().id,
                                    interned.get<type::SemanticTypeInterned>().id,
                                    ZC_ASSERT_NONNULL(success),
+                                   ZC_ASSERT_NONNULL(receiverMode),
                                    zc::mv(parameters)};
   }
   ZC_UNREACHABLE
@@ -3327,9 +3347,11 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           receiver =
               checked::CheckedArgumentFact{value.receiverNode, value.receiverSourceType,
                                            value.receiverParameterType, zc::mv(noReceiverCoercion)};
-          zc::Maybe<signature::ReceiverMode> receiverMode = signature::ReceiverMode::Mutable;
+          zc::Maybe<signature::ReceiverMode> receiverMode = value.receiverMode;
           zc::Vector<checked::ReceiverAdjustmentStep> adjustmentSteps;
-          adjustmentSteps.add(checked::ReceiverAdjustmentStep::BorrowMutable);
+          adjustmentSteps.add(value.receiverMode == signature::ReceiverMode::Mutable
+                                  ? checked::ReceiverAdjustmentStep::BorrowMutable
+                                  : checked::ReceiverAdjustmentStep::BorrowShared);
           zc::Maybe<checked::ReceiverAdjustment> receiverAdjustment;
           receiverAdjustment =
               checked::ReceiverAdjustment{value.receiverSourceType, value.receiverParameterType,

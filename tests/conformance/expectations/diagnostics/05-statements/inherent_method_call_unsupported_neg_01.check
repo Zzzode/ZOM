@@ -1,10 +1,10 @@
 // RUN: cd %corpus && ! %zomc compile --check 05-statements/inherent_method_call_unsupported_neg_01.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// A call to an inherent struct method through an immutable receiver is
-// well-formed source the HIR/MIR/LIR lowering does not admit yet. It must be
-// reported as a capability gap (ZOM4125), not as a compiler incident. The
-// method name is shown, not its receiver type.
+// The checker now accepts the shared-receiver inherent call and produces its
+// call facts, but semantic HIR does not lower a Method owner or the implicit
+// `this` receiver yet. The enclosing method body is rejected as a capability
+// gap (ZOM4099), never as an internal compiler error.
 
-// CHECK-LITERAL: Error [ZOM4125]: method call `get` is not supported yet
-// CHECK-LITERAL:   --> conformance/05-statements/inherent_method_call_unsupported_neg_01.zom:8:10
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/05-statements/inherent_method_call_unsupported_neg_01.zom:3:3

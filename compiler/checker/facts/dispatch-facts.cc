@@ -7,8 +7,8 @@
 
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/ast/generated/node-traverse.h"
-#include "compiler/binder/metadata/immutable-definition-inventory.h"
 #include "compiler/binder/graph/parsed-module.h"
+#include "compiler/binder/metadata/immutable-definition-inventory.h"
 #include "compiler/driver/query/module-graph/materialized-module-graph-query.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 
