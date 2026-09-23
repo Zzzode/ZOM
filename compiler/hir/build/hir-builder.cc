@@ -2717,12 +2717,20 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           ZC_IF_SOME(receiver, invocation.receiver) {
             ZC_IF_SOME(mode, invocation.receiverMode) {
               ZC_IF_SOME(adjustment, invocation.receiverAdjustment) {
-                // A shared-receiver method call is a well-formed call the
-                // checker has verified, but the HIR/MIR receiver-call carrier
-                // only lowers a mutable borrow today. Reject it as a capability
-                // gap (ZOM4099) on the calling definition rather than an
-                // internal invariant while the shared path is built out.
-                if (mode == checker::checked::ReceiverMode::Shared) {
+                // Both receiver modes lower through the same carrier: a
+                // shared call borrows a shared reference into the receiver
+                // temporary and leaves it unactivated; a mutable call borrows
+                // a mutable reference and activates the temporary.
+                const bool sharedCall = mode == checker::checked::ReceiverMode::Shared;
+                const auto expectedMutability = sharedCall ? type::semantic::Mutability::Const
+                                                           : type::semantic::Mutability::Mutable;
+                const auto expectedMode = sharedCall ? checker::checked::ReceiverMode::Shared
+                                                     : checker::checked::ReceiverMode::Mutable;
+                const auto expectedStep =
+                    sharedCall ? checker::checked::ReceiverAdjustmentStep::BorrowShared
+                               : checker::checked::ReceiverAdjustmentStep::BorrowMutable;
+                if (mode != checker::checked::ReceiverMode::Shared &&
+                    mode != checker::checked::ReceiverMode::Mutable) {
                   return rejectHirCapability<HirModuleCandidate>(
                       definition.definition, registries,
                       ir::IrFailureKind::UnsupportedSourceConstruct,
@@ -2736,7 +2744,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                     receiverParameter.get<type::SemanticTypeLookup>()
                             .data()
                             .get<type::semantic::ReferenceTypeData>()
-                            .mutability != type::semantic::Mutability::Mutable ||
+                            .mutability != expectedMutability ||
                     receiverParameter.get<type::SemanticTypeLookup>()
                             .data()
                             .get<type::semantic::ReferenceTypeData>()
@@ -2747,19 +2755,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 }
                 if (receiver.sourceNode != receiverNode ||
                     receiver.sourceType != facts.nodeTypes().entries()[receiverTypeSlot].value ||
-                    receiver.adjustment != zc::none ||
-                    mode != checker::checked::ReceiverMode::Mutable ||
+                    receiver.adjustment != zc::none || mode != expectedMode ||
                     adjustment.source != receiver.sourceType ||
                     adjustment.destination != receiver.parameterType ||
-                    adjustment.steps.size() != 1 ||
-                    adjustment.steps[0] !=
-                        checker::checked::ReceiverAdjustmentStep::BorrowMutable) {
+                    adjustment.steps.size() != 1 || adjustment.steps[0] != expectedStep) {
                   return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                        ir::IrFailureKind::InvalidFact, module,
                                                        registries, ordinal + 2);
                 }
                 zc::Vector<checker::checked::ReceiverAdjustmentStep> steps;
-                steps.add(checker::checked::ReceiverAdjustmentStep::BorrowMutable);
+                steps.add(expectedStep);
                 zc::Vector<HirDirectCallArgument> callArguments;
                 const auto argumentNodes = tree.list(arguments);
                 for (size_t index = 0; index < argumentNodes.size(); ++index) {
@@ -3388,9 +3393,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       if (function.local == zc::none || function.localReference == zc::none ||
           function.call != zc::none || function.literal != zc::none ||
           function.aggregate == zc::none ||
-          call.receiverMode != checker::checked::ReceiverMode::Mutable ||
+          (call.receiverMode != checker::checked::ReceiverMode::Mutable &&
+           call.receiverMode != checker::checked::ReceiverMode::Shared) ||
           call.receiverAdjustments.size() != 1 ||
-          call.receiverAdjustments[0] != checker::checked::ReceiverAdjustmentStep::BorrowMutable) {
+          call.receiverAdjustments[0] !=
+              (call.receiverMode == checker::checked::ReceiverMode::Mutable
+                   ? checker::checked::ReceiverAdjustmentStep::BorrowMutable
+                   : checker::checked::ReceiverAdjustmentStep::BorrowShared)) {
         return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                              ir::IrFailureKind::InvalidFact, module, registries, 1);
       }

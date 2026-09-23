@@ -1,0 +1,5 @@
+section: "05-statements shared-receiver inherent method call"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A return-position call of a shared-receiver method on an aggregate-initialized owner local lowers through HIR and Built MIR."

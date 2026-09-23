@@ -1,5 +1,5 @@
-section: "08-classes inherent method call syntax"
+section: "05-statements inherent method call syntax"
 covers_rule: "methodDeclaration"
 expected: "ACCEPT"
 notes:
-  - "Syntax is valid; diagnostics runner checks the ZOM4125 receiver-call capability rejection."
+  - "Syntax is valid; diagnostics runner checks the ZOM4099 capability rejection for a receiver call in a local initializer."

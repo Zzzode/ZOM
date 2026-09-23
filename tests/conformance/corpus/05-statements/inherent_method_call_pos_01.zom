@@ -5,6 +5,5 @@ struct Cell {
 
 fun entry() -> i32 {
   let cell = Cell { value: 0 };
-  let result = cell.get();
-  return result;
+  return cell.get();
 }

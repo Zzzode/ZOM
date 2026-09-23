@@ -3307,6 +3307,17 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         receiverAggregate = aggregate;
       }
+      const bool sharedReceiverCall =
+          ZC_ASSERT_NONNULL(receiverCall).receiverMode == checker::checked::ReceiverMode::Shared;
+      const auto expectedReceiverMode = sharedReceiverCall
+                                            ? checker::checked::ReceiverMode::Shared
+                                            : checker::checked::ReceiverMode::Mutable;
+      const auto expectedReceiverStep =
+          sharedReceiverCall ? checker::checked::ReceiverAdjustmentStep::BorrowShared
+                             : checker::checked::ReceiverAdjustmentStep::BorrowMutable;
+      const auto expectedReceiverMutability = sharedReceiverCall
+                                                  ? type::semantic::Mutability::Const
+                                                  : type::semantic::Mutability::Mutable;
       if (!returnsLocal || !localHasInitializer || hasLocalWrite || directCall != zc::none ||
           localBinding == zc::none || localReference == zc::none || literalExpression != zc::none ||
           receiverAggregate == zc::none || function.node != hirId(expectedFunction) ||
@@ -3330,10 +3341,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           ZC_ASSERT_NONNULL(receiverCall).receiverSourceType !=
               ZC_ASSERT_NONNULL(localBinding).type ||
           ZC_ASSERT_NONNULL(receiverCall).resultType != function.resultType ||
-          ZC_ASSERT_NONNULL(receiverCall).receiverMode != checker::checked::ReceiverMode::Mutable ||
+          ZC_ASSERT_NONNULL(receiverCall).receiverMode != expectedReceiverMode ||
           ZC_ASSERT_NONNULL(receiverCall).receiverAdjustments.size() != 1 ||
-          ZC_ASSERT_NONNULL(receiverCall).receiverAdjustments[0] !=
-              checker::checked::ReceiverAdjustmentStep::BorrowMutable ||
+          ZC_ASSERT_NONNULL(receiverCall).receiverAdjustments[0] != expectedReceiverStep ||
           !typeExists(ZC_ASSERT_NONNULL(localBinding).type, semanticTypes) ||
           !typeExists(function.resultType, semanticTypes)) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -3348,7 +3358,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           receiverParameter.get<type::SemanticTypeLookup>()
                   .data()
                   .get<type::semantic::ReferenceTypeData>()
-                  .mutability != type::semantic::Mutability::Mutable ||
+                  .mutability != expectedReceiverMutability ||
           receiverParameter.get<type::SemanticTypeLookup>()
                   .data()
                   .get<type::semantic::ReferenceTypeData>()
@@ -3547,8 +3557,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                 mode != ZC_ASSERT_NONNULL(receiverCall).receiverMode ||
                 adjustment.source != ZC_ASSERT_NONNULL(receiverCall).receiverSourceType ||
                 adjustment.destination != ZC_ASSERT_NONNULL(receiverCall).receiverType ||
-                adjustment.steps.size() != 1 ||
-                adjustment.steps[0] != checker::checked::ReceiverAdjustmentStep::BorrowMutable) {
+                adjustment.steps.size() != 1 || adjustment.steps[0] != expectedReceiverStep) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::InvalidFact, module,
                                                   registries, index + 1);

@@ -4295,6 +4295,12 @@ bool validReceiverCallReturnFunction(
     identity::DefId copy, identity::ModuleId module,
     const checker::CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes) {
+  const bool sharedCall = call.receiverMode == checker::checked::ReceiverMode::Shared;
+  const auto expectedReceiverMode =
+      sharedCall ? checker::checked::ReceiverMode::Shared : checker::checked::ReceiverMode::Mutable;
+  const auto expectedReceiverStep = sharedCall
+                                        ? checker::checked::ReceiverAdjustmentStep::BorrowShared
+                                        : checker::checked::ReceiverAdjustmentStep::BorrowMutable;
   if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
       function.resultType != declaration.resultType || function.sourceScopes.size() != 1 ||
@@ -4307,10 +4313,8 @@ bool validReceiverCallReturnFunction(
       sourceLocal.type != receiver.type || sourceLocal.type != call.receiverSourceType ||
       aggregate.category != hir::HirValueCategory::Value ||
       receiver.category != hir::HirValueCategory::Place ||
-      call.resultType != declaration.resultType ||
-      call.receiverMode != checker::checked::ReceiverMode::Mutable ||
-      call.receiverAdjustments.size() != 1 ||
-      call.receiverAdjustments[0] != checker::checked::ReceiverAdjustmentStep::BorrowMutable) {
+      call.resultType != declaration.resultType || call.receiverMode != expectedReceiverMode ||
+      call.receiverAdjustments.size() != 1 || call.receiverAdjustments[0] != expectedReceiverStep) {
     return false;
   }
   const auto& scope = function.sourceScopes[0];
@@ -4374,8 +4378,9 @@ bool validReceiverCallReturnFunction(
       return false;
     }
   }
+  const auto expectedBorrowKind = sharedCall ? MirBorrowKind::Shared : MirBorrowKind::Mutable;
   const auto& borrow = entry.statements[3].borrowCreationValue();
-  if (borrow.kind != MirBorrowKind::Mutable ||
+  if (borrow.kind != expectedBorrowKind ||
       !sameSpan(entry.statements[3].sourceSpan(), receiver.sourceSpan) ||
       borrow.destination.local() != receiverTemporary.id ||
       borrow.destination.rootType() != receiverTemporary.type ||
@@ -4387,15 +4392,18 @@ bool validReceiverCallReturnFunction(
   }
   const auto& terminator = entry.terminator.callValue();
   auto activatedReceiver = terminator.effect.activatedMutableReceiver();
+  const auto expectedEffectKind =
+      sharedCall ? MirCallEffectKind::NoActivation : MirCallEffectKind::ActivateMutableReceiver;
   if (terminator.callee != call.callee ||
       terminator.arguments.size() != call.arguments.size() + 1 ||
       terminator.destination.local() != result.id ||
       terminator.destination.rootType() != result.type ||
       terminator.destination.resultType() != result.type ||
       terminator.destination.projections().size() != 0 ||
-      terminator.effect.kind() != MirCallEffectKind::ActivateMutableReceiver ||
-      activatedReceiver == zc::none ||
-      ZC_ASSERT_NONNULL(activatedReceiver) != receiverTemporary.id ||
+      terminator.effect.kind() != expectedEffectKind ||
+      (sharedCall ? activatedReceiver != zc::none
+                  : activatedReceiver == zc::none ||
+                        ZC_ASSERT_NONNULL(activatedReceiver) != receiverTemporary.id) ||
       terminator.normalTarget != continuation.id || terminator.unwindTarget != zc::none ||
       !matchesPlaceUse(terminator.arguments[0], proofs, copy, receiverTemporary.type)) {
     return false;
@@ -5202,10 +5210,13 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                       reference.type != call.receiverSourceType ||
                       reference.category != hir::HirValueCategory::Place ||
                       call.resultType != declaration.resultType ||
-                      call.receiverMode != checker::checked::ReceiverMode::Mutable ||
+                      (call.receiverMode != checker::checked::ReceiverMode::Mutable &&
+                       call.receiverMode != checker::checked::ReceiverMode::Shared) ||
                       call.receiverAdjustments.size() != 1 ||
                       call.receiverAdjustments[0] !=
-                          checker::checked::ReceiverAdjustmentStep::BorrowMutable ||
+                          (call.receiverMode == checker::checked::ReceiverMode::Mutable
+                               ? checker::checked::ReceiverAdjustmentStep::BorrowMutable
+                               : checker::checked::ReceiverAdjustmentStep::BorrowShared) ||
                       definition == zc::none) {
                     return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
                                                         ir::IrFailureKind::InvalidFact, module,
@@ -5241,12 +5252,16 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                       MirInitializationKind::Initialize, initializer.sourceSpan.clone()));
                   entryStatements.add(
                       MirStatement::storageLive(localId(2), reference.sourceSpan.clone()));
+                  const bool sharedCall =
+                      call.receiverMode == checker::checked::ReceiverMode::Shared;
+                  const auto receiverBorrowKind =
+                      sharedCall ? MirBorrowKind::Shared : MirBorrowKind::Mutable;
                   zc::Vector<MirProjection> receiverDestinationProjections;
                   zc::Vector<MirProjection> receiverSourceProjections;
                   entryStatements.add(MirStatement::borrowCreation(
                       MirPlace(localId(2), call.receiverType,
                                zc::mv(receiverDestinationProjections), call.receiverType),
-                      MirBorrowKind::Mutable,
+                      receiverBorrowKind,
                       MirPlace(localId(1), local.type, zc::mv(receiverSourceProjections),
                                local.type),
                       reference.sourceSpan.clone()));
@@ -5280,9 +5295,11 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                   }
                   zc::Vector<MirProjection> resultProjections;
                   zc::Maybe<MirBlockId> noUnwind;
+                  auto receiverEffect = sharedCall
+                                            ? MirCallEffect::noActivation()
+                                            : MirCallEffect::activateMutableReceiver(localId(2));
                   auto callTerminator =
-                      MirTerminator::call(call.callee, zc::mv(arguments),
-                                          MirCallEffect::activateMutableReceiver(localId(2)),
+                      MirTerminator::call(call.callee, zc::mv(arguments), zc::mv(receiverEffect),
                                           MirPlace(localId(3), call.resultType,
                                                    zc::mv(resultProjections), call.resultType),
                                           blockId(2), zc::mv(noUnwind), call.sourceSpan.clone());

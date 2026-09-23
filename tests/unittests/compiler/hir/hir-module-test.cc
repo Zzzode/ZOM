@@ -1847,6 +1847,81 @@ ZC_TEST("HIR pipeline lowers a mutable local receiver call") {
   ZC_REQUIRE(call.arguments.size() == 1);
 }
 
+ZC_TEST("HIR pipeline lowers a shared local receiver call with a bodied method") {
+  // `let cell = Cell { value: 0 }; return cell.get();` against a shared
+  // receiver method `fun get(this) -> i32 { return 7; }`. Unlike the mutable
+  // bodyless-method call, the shared call borrows a shared reference into the
+  // receiver temporary, leaves the temporary unactivated (NoActivation), and
+  // both the caller and the bodied method lower to verified Built MIR.
+  HirPipelineFixture fixture(
+      "struct Cell { value: i32, fun get(this) -> i32 { return 7; } }\n"
+      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.get(); }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 2);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.aggregates().size() == 1);
+  ZC_REQUIRE(module.localReferences().size() == 1);
+  ZC_REQUIRE(module.receiverCalls().size() == 1);
+
+  const auto& local = module.locals()[0];
+  const auto& receiver = module.localReferences()[0];
+  const auto& call = module.receiverCalls()[0];
+  ZC_EXPECT(receiver.local == local.local);
+  ZC_EXPECT(call.receiver == receiver.node);
+  ZC_EXPECT(call.receiverSourceType == local.type);
+  ZC_EXPECT(call.receiverMode == checker::checked::ReceiverMode::Shared);
+  ZC_REQUIRE(call.receiverAdjustments.size() == 1);
+  ZC_EXPECT(call.receiverAdjustments[0] == checker::checked::ReceiverAdjustmentStep::BorrowShared);
+  ZC_REQUIRE(call.arguments.size() == 0);
+
+  zc::Maybe<const HirFunctionDeclaration&> method;
+  zc::Maybe<const HirFunctionDeclaration&> caller;
+  for (const auto& function : module.functions()) {
+    if (function.receiver != zc::none) method = function;
+    if (function.definition == call.callee) method = function;
+    if (function.definition != call.callee) caller = function;
+  }
+  ZC_REQUIRE(method != zc::none);
+  ZC_REQUIRE(caller != zc::none);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> callerFunction;
+  zc::Maybe<const mir::MirFunction&> methodFunction;
+  for (const auto& function : builtMir[0].builtMir().functions()) {
+    if (function.owner == ZC_ASSERT_NONNULL(caller).definition) callerFunction = function;
+    if (function.owner == call.callee) methodFunction = function;
+  }
+  ZC_REQUIRE(callerFunction != zc::none);
+  ZC_REQUIRE(methodFunction != zc::none);
+  ZC_IF_SOME(function, callerFunction) {
+    // User local, shared-receiver borrow temporary, call result temporary.
+    ZC_REQUIRE(function.locals.size() == 3);
+    ZC_EXPECT(function.locals[0].kind == mir::MirLocalKind::UserLocal);
+    ZC_EXPECT(function.locals[1].kind == mir::MirLocalKind::Temporary);
+    ZC_EXPECT(function.locals[2].kind == mir::MirLocalKind::Temporary);
+    ZC_REQUIRE(function.blocks.size() == 2);
+    const auto& entry = function.blocks[0];
+    const auto& continuation = function.blocks[1];
+    ZC_EXPECT(entry.statements[3].kind() == mir::MirStatementKind::BorrowCreation);
+    ZC_EXPECT(entry.statements[3].borrowCreationValue().kind == mir::MirBorrowKind::Shared);
+    ZC_REQUIRE(entry.terminator.kind() == mir::MirTerminatorKind::Call);
+    const auto& mirCall = entry.terminator.callValue();
+    ZC_EXPECT(mirCall.effect.kind() == mir::MirCallEffectKind::NoActivation);
+    ZC_REQUIRE(mirCall.arguments.size() == 1);
+    ZC_EXPECT(mirCall.arguments[0].kind() == mir::MirOperandKind::Copy);
+    ZC_EXPECT(mirCall.arguments[0].place().local() == function.locals[1].id);
+    ZC_EXPECT(mirCall.normalTarget == continuation.id);
+  }
+  ZC_IF_SOME(function, methodFunction) {
+    ZC_EXPECT(function.sourceDefinitionKind == identity::DefinitionKind::Method);
+    ZC_REQUIRE(function.locals.size() == 1);
+    ZC_EXPECT(function.locals[0].kind == mir::MirLocalKind::Parameter);
+    ZC_REQUIRE(function.blocks.size() == 1);
+    ZC_EXPECT(function.blocks[0].terminator.kind() == mir::MirTerminatorKind::Return);
+  }
+}
+
 ZC_TEST("HIR pipeline lowers a bare direct call through exact node strides") {
   // Family 5 direct-call arm, bare-return shape: `return callee(<args>);`.
   // Asserts the exact four-node source-preorder stride (function, body, return,
