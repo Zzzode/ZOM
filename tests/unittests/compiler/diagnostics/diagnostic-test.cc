@@ -147,6 +147,7 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DynTypeNotAllowedAsBound) == 4121);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DuplicateInterfaceBound) == 4122);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ImplGenericAssociatedTypeUnsupported) == 4123);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::GenericConcreteDynErasureUnsupported) == 4124);
 }
 
 ZC_TEST("DiagnosticTest.ReceiverParserDiagnosticIdsAreStable") {

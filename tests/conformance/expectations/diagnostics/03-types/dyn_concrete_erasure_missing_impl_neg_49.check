@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/dyn_concrete_erasure_missing_impl_neg_49.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A concrete value assigned to an annotated dyn existential whose type has no
+// impl of the principal interface is rejected with 4018
+// CheckerTraitNotImplemented at the initializer, never as an internal compiler
+// error.
+// CHECK: Error [ZOM4018]:

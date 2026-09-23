@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/dyn_concrete_erasure_unrelated_neg_50.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A primitive value cannot implement an interface, so erasing it to a dyn
+// existential is rejected with 4018 CheckerTraitNotImplemented, never as an
+// internal compiler error.
+// CHECK: Error [ZOM4018]:

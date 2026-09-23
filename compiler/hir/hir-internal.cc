@@ -216,6 +216,56 @@ bool noUnsupportedFacts(const checker::checked::VerifiedCheckedFacts& facts) {
          facts.errorOperators().size() == 0;
 }
 
+// True when every unsupported family other than coercions is empty. Coercions
+// are handled separately so a single concrete-to-dyn erasure can fail closed as
+// a per-definition capability rejection instead of a module invariant.
+bool unsupportedNonErasureFacts(const checker::checked::VerifiedCheckedFacts& facts) {
+  return facts.casts().size() == 0 && facts.compoundAssignments().size() == 0 &&
+         facts.observedOperations().size() == 0 && facts.captures().size() == 0 &&
+         facts.exhaustiveness().size() == 0 && facts.unsafeOperations().size() == 0 &&
+         facts.projections().size() == 0 && facts.obligations().size() == 0 &&
+         facts.errorUnionShapes().size() == 0 && facts.errorOperators().size() == 0;
+}
+
+// A concrete-to-dyn erasure the lowering carrier does not implement yet:
+// exactly one DynErase step and nothing else.
+bool isSingleDynEraseAdjustment(const checker::checked::CoercionAdjustment& adjustment) {
+  return adjustment.steps.size() == 1 &&
+         adjustment.steps[0].variant().is<checker::checked::DynEraseStep>();
+}
+
+// Returns the innermost executable definition whose AST subtree contains
+// `node`, or none. Innermost is the definition with the deepest owner chain
+// (nested function declarations nest their ranges), mirroring the body
+// checker's enclosingBodyOwner; an equal-depth tie is ambiguous and yields
+// none instead of attributing the failure to the outermost function.
+zc::Maybe<identity::DefId> enclosingExecutableDefinition(
+    const ast::Tree& tree, const binder::ImmutableDefinitionInventory& definitions,
+    ast::NodeId node) {
+  if (!tree.contains(node)) { return zc::none; }
+  const auto nodeRange = tree.node(node).range;
+  if (nodeRange.isInvalid()) { return zc::none; }
+  zc::Maybe<identity::DefId> result;
+  size_t bestDepth = 0;
+  for (const auto& definition : definitions.definitions()) {
+    if (!hasExecutableBody(definition, definitions)) { continue; }
+    if (!tree.contains(definition.node)) { continue; }
+    const auto range = tree.node(definition.node).range;
+    if (!range.isValid() || range.getStart() > nodeRange.getStart() ||
+        nodeRange.getEnd() > range.getEnd()) {
+      continue;
+    }
+    const size_t depth = definition.record.owners().size();
+    if (result == zc::none || depth > bestDepth) {
+      result = definition.definition;
+      bestDepth = depth;
+    } else if (depth == bestDepth) {
+      return zc::none;
+    }
+  }
+  return result;
+}
+
 zc::Maybe<identity::DefId> resolvedDefinition(const binder::ImmutableBindingMetadata& bindings,
                                               ast::NodeId node) {
   zc::Maybe<identity::DefId> result;

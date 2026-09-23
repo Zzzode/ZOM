@@ -315,7 +315,8 @@ public:
       importedSignatures = zc::mv(moduleImportedViews[index]);
     }
 
-    auto inventoryResult = BodyFactRequirementInventoryBuilder::build(boundModule());
+    auto inventoryResult =
+        BodyFactRequirementInventoryBuilder::build({boundModule(), identities, semanticTypes()});
     ZC_REQUIRE(inventoryResult.is<VerifiedBodyFactRequirementInventory>());
     bodyRequirements = zc::mv(inventoryResult).get<VerifiedBodyFactRequirementInventory>();
   }
@@ -1134,6 +1135,145 @@ ZC_TEST("LocalWrite.RejectsCallValueWriteAtSurfaceAdmission") {
   const auto& userBound = driver::core_library_test::soleUserBoundModule(identities);
   auto admission = ownership::SurfaceAdmissionBuilder::admit(userBound.retain());
   ZC_EXPECT(admission.is<ownership::SurfaceSourceRejected>());
+}
+
+// A concrete value assigned to an annotated bare-principal dyn existential
+// records a single DynErase coercion. The interface declares a method (so it is
+// a behavior interface) but the body under test is only `erase`; the body
+// checker does not require the impl method body here.
+ZC_TEST("ConcreteToDynErasure.RecordsDynEraseAtAnnotatedInitializer") {
+  PrimitiveBinaryFixture fixture(
+      "class RecoveryOwner {}\n"
+      "interface Drawable {\n    fun draw(this);\n}\n"
+      "struct Circle {}\n"
+      "impl Drawable for Circle {}\n"
+      "fun erase(c: Circle) -> i32 {\n    let d: dyn Drawable = c;\n"
+      "    let x: i32 = 1;\n    return x;\n}\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsCandidate>());
+  auto& candidate = result.get<checked::CheckedFactsCandidate>();
+  ZC_EXPECT(candidate.coercions.size() == 1);
+  ZC_REQUIRE(candidate.coercions.size() == 1);
+  const auto& adjustment = candidate.coercions.entries()[0].value;
+  ZC_EXPECT(adjustment.site == checked::CoercionSite::AnnotatedInitializer);
+  ZC_REQUIRE(adjustment.steps.size() == 1);
+  ZC_EXPECT(adjustment.steps[0].variant().is<checked::DynEraseStep>());
+  ZC_IF_SOME(step, adjustment.steps[0].variant().tryGet<checked::DynEraseStep>()) {
+    ZC_EXPECT(candidate.witnessStore.contains(step.witnesses));
+  }
+}
+
+// The recorded DynErase coercion survives the full checked-facts verifier and
+// repository adoption with its canonical encoding, proving the fact is
+// publishable rather than merely constructed.
+ZC_TEST("ConcreteToDynErasure.VerifiesAndAdoptsDynEraseCoercion") {
+  PrimitiveBinaryFixture fixture(
+      "class RecoveryOwner {}\n"
+      "interface Drawable {\n    fun draw(this);\n}\n"
+      "struct Circle {}\n"
+      "impl Drawable for Circle {}\n"
+      "fun erase(c: Circle) -> i32 {\n    let d: dyn Drawable = c;\n"
+      "    let x: i32 = 1;\n    return x;\n}\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+  ZC_EXPECT(facts.coercions().size() == 1);
+}
+
+// A concrete type with no impl of the declared dyn interface is a ZOM4018
+// source rejection, never an invariant.
+ZC_TEST("ConcreteToDynErasure.RejectsConcreteWithoutImpl") {
+  PrimitiveBinaryFixture fixture(
+      "class RecoveryOwner {}\n"
+      "interface Drawable {\n    fun draw(this);\n}\n"
+      "struct Circle {}\n"
+      "struct Square {}\n"
+      "impl Drawable for Circle {}\n"
+      "fun erase(s: Square) -> i32 {\n    let d: dyn Drawable = s;\n"
+      "    let x: i32 = 1;\n    return x;\n}\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() >= 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::CheckerTraitNotImplemented());
+}
+
+// An unrelated primitive type erased to a dyn interface is also ZOM4018.
+ZC_TEST("ConcreteToDynErasure.RejectsUnrelatedConcreteType") {
+  PrimitiveBinaryFixture fixture(
+      "class RecoveryOwner {}\n"
+      "interface Drawable {\n    fun draw(this);\n}\n"
+      "fun erase(v: i32) -> i32 {\n    let d: dyn Drawable = v;\n"
+      "    let x: i32 = 1;\n    return x;\n}\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() >= 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::CheckerTraitNotImplemented());
+}
+
+// Copying an already-dyn parameter into a same-shape dyn local is an identity
+// move: no DynErase coercion and no rejection (previously an invariant ICE).
+ZC_TEST("ConcreteToDynErasure.IdentityDynParameterCopyNeedsNoCoercion") {
+  PrimitiveBinaryFixture fixture(
+      "class RecoveryOwner {}\n"
+      "interface Drawable {\n    fun draw(this);\n}\n"
+      "fun copy(d: dyn Drawable) -> i32 {\n    let b: dyn Drawable = d;\n"
+      "    let x: i32 = 1;\n    return x;\n}\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsCandidate>());
+  ZC_EXPECT(result.get<checked::CheckedFactsCandidate>().coercions.size() == 0);
+}
+
+// Chaining through an earlier dyn-erased local records only one erasure; the
+// dyn-to-dyn second copy is an identity move rather than a fabricated erasure.
+ZC_TEST("ConcreteToDynErasure.ErasedLocalChainRecordsSingleErasure") {
+  PrimitiveBinaryFixture fixture(
+      "class RecoveryOwner {}\n"
+      "interface Drawable {\n    fun draw(this);\n}\n"
+      "struct Circle {}\n"
+      "impl Drawable for Circle {}\n"
+      "fun erase(c: Circle) -> i32 {\n    let a: dyn Drawable = c;\n"
+      "    let b: dyn Drawable = a;\n    let x: i32 = 1;\n    return x;\n}\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsCandidate>());
+  ZC_EXPECT(result.get<checked::CheckedFactsCandidate>().coercions.size() == 1);
+}
+
+// Moving an erased dyn local back into a concrete local is an unsound
+// downcast and must fail as an ordinary type mismatch, never be accepted.
+ZC_TEST("ConcreteToDynErasure.RejectsDynToConcreteDowncast") {
+  PrimitiveBinaryFixture fixture(
+      "class RecoveryOwner {}\n"
+      "interface Drawable {\n    fun draw(this);\n}\n"
+      "struct Circle {}\n"
+      "impl Drawable for Circle {}\n"
+      "fun erase(c: Circle) -> i32 {\n    let a: dyn Drawable = c;\n"
+      "    let b: Circle = a;\n    let x: i32 = 1;\n    return x;\n}\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() >= 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic == checked::CheckerErrorId::TypeCheckerTypeMismatch());
+}
+
+// A generic concrete type with a real impl is outside the non-generic erasure
+// slice; it reports a semantics-unavailable diagnostic, not a false
+// "trait not implemented" obligation.
+ZC_TEST("ConcreteToDynErasure.GenericConcreteReportsUnsupportedNotMissingImpl") {
+  PrimitiveBinaryFixture fixture(
+      "class RecoveryOwner {}\n"
+      "interface Drawable {\n    fun draw(this);\n}\n"
+      "struct Box<T> {}\n"
+      "impl Drawable for Box<i32> {}\n"
+      "fun erase(b: Box<i32>) -> i32 {\n    let d: dyn Drawable = b;\n"
+      "    let x: i32 = 1;\n    return x;\n}\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() >= 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::GenericConcreteDynErasureUnsupported());
 }
 
 }  // namespace zomlang::compiler::checker::body

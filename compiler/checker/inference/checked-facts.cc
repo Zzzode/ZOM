@@ -2789,6 +2789,8 @@ bool validArgumentSchema(const CheckerFailureRef& failure) {
       return argumentKinds(arguments, Kind::Definition, Kind::Type);
     case DiagID::CheckerTraitNotImplemented:
       return argumentKinds(arguments, Kind::Type, Kind::Definition);
+    case DiagID::GenericConcreteDynErasureUnsupported:
+      return argumentKinds(arguments, Kind::Type, Kind::Definition);
     case DiagID::OperatorTraitSignatureMismatch:
       return argumentKinds(arguments, Kind::Operator, Kind::Type);
     case DiagID::NoAssociatedTypeProjection:
@@ -2910,6 +2912,11 @@ bool validDiagnosticProduction(const CheckerFailureRef& failure) {
              hasNoRecoveryPolicy(failure);
     case DiagID::CheckerTraitNotImplemented:
       return matches(Stage::Body, Producer::Obligation, Class::FailedObligation, true);
+    case DiagID::GenericConcreteDynErasureUnsupported:
+      // Coherence has a satisfying impl, but the concrete type falls outside
+      // the non-generic erasure slice; this is an unsupported operation, not a
+      // failed trait obligation.
+      return matches(Stage::Body, Producer::Obligation, Class::InvalidOperation, true);
     case DiagID::OperatorTraitSignatureMismatch:
       return matches(Stage::Body, Producer::Operator, Class::FailedObligation, true);
     case DiagID::NoAssociatedTypeProjection:

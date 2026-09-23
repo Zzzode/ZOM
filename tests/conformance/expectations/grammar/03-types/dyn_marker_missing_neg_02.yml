@@ -2,4 +2,4 @@ section: "Ch.03 Existential marker bounds"
 covers_rule: "dynType, marker bound erasure"
 expected: "ACCEPT"
 notes:
-  - "Syntax is valid; diagnostics runner checks that a negative marker impl rejects dyn erasure requiring that marker."
+  - "Grammar and AST coverage only. A dyn head requiring an unsatisfied marker bound is rejected by the checker; concrete erasure lowering is tracked separately."

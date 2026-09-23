@@ -1,0 +1,5 @@
+section: "Existential Types"
+covers_rule: "dynType, letStmt"
+expected: "ACCEPT"
+notes:
+  - "The concrete initializer has an impl of the principal interface but the concrete type is generic, which the non-generic erasure slice cannot lower. The checker rejects it with 4124 GenericConcreteDynErasureUnsupported rather than a false 4018."

@@ -314,6 +314,11 @@ zc::Maybe<ast::NodeId> ownerLocalInitializer(
   return zc::none;
 }
 
+zc::Maybe<identity::SemanticTypeId> ownerLocalInitializerDeclaredType(
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+    const CheckerIdentityAuthority& identities, type::SemanticTypeStore& semanticTypes,
+    ast::NodeId initializer);
+
 zc::Maybe<identity::SemanticTypeId> ownerLocalReferenceType(
     const BodyCheckingInput& input, ast::NodeId node,
     zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
@@ -323,6 +328,17 @@ zc::Maybe<identity::SemanticTypeId> ownerLocalReferenceType(
     const auto initializer = ownerLocalInitializer(input.boundModule, value);
     const auto& tree = input.boundModule.tree();
     ZC_IF_SOME(initializerNode, initializer) {
+      // An annotated owner local binds to its declared annotation type. The
+      // definition-type production independently verifies the initializer
+      // meets that annotation (a concrete-to-dyn erasure coerces at the
+      // initializer site), so every later reference must see the bound
+      // annotation rather than the initializer's raw type. Reading the
+      // initializer node type here would let a reference to an erased
+      // `let a: dyn I = c` flow as the concrete type, fabricating a second
+      // erasure or accepting an unsound dyn-to-concrete move.
+      auto declared = ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                                        input.semanticTypes, initializerNode);
+      if (declared != zc::none) { return declared; }
       for (const auto& entry : nodeTypes) {
         if (entry.key == initializerNode) return entry.value;
       }
@@ -416,9 +432,11 @@ bool dependsOnDirectCallLocalInitializer(const BodyCheckingInput& input, ast::No
 // enforce that a primitive-binary initializer's result type matches the local's
 // annotation.
 zc::Maybe<identity::SemanticTypeId> ownerLocalInitializerDeclaredType(
-    const BodyCheckingInput& input, ast::NodeId initializer) {
-  const auto& tree = input.boundModule.tree();
-  for (const auto& local : input.boundModule.definitions().ownerLocalBindings()) {
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+    const CheckerIdentityAuthority& identities, type::SemanticTypeStore& semanticTypes,
+    ast::NodeId initializer) {
+  const auto& tree = boundModule.tree();
+  for (const auto& local : boundModule.definitions().ownerLocalBindings()) {
     if (!local.site.value().is<binder::PatternBindingSite>()) continue;
     const auto& site = local.site.value().get<binder::PatternBindingSite>();
     if (!tree.contains(site.introducer) ||
@@ -431,10 +449,197 @@ zc::Maybe<identity::SemanticTypeId> ownerLocalInitializerDeclaredType(
     }
     const ast::NodeId annotation(declarator.payload.words[ast::kVariableDeclaratorTyWord]);
     if (!tree.contains(annotation)) return zc::none;
-    return signature::resolveClosedSourceType(input.boundModule, input.identities,
-                                              input.semanticTypes, annotation);
+    return signature::resolveClosedSourceType(boundModule, identities, semanticTypes, annotation);
   }
   return zc::none;
+}
+
+// A selected concrete-to-dyn erasure at one annotated initializer site. The
+// slice admits only a non-generic nominal concrete type erased to a bare
+// object-safe principal interface with matching associated bindings and no
+// marker or additional-interface requirements.
+struct DynErasePlan final {
+  identity::DefId interface;
+  identity::ImplId impl;
+  zc::Vector<checked::AssociatedTypeBindingData> bindings;
+};
+
+// Reads the existential payload of `type` when it is in the erasable slice
+// shape, or none for every other type form.
+zc::Maybe<const type::semantic::ExistentialTypeData&> erasableExistentialType(
+    type::SemanticTypeStore& semanticTypes, identity::SemanticTypeId type) {
+  auto lookup = semanticTypes.get(type);
+  if (!lookup.is<type::SemanticTypeLookup>()) { return zc::none; }
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  if (!data.is<type::semantic::ExistentialTypeData>()) { return zc::none; }
+  const auto& existential = data.get<type::semantic::ExistentialTypeData>();
+  if (!existential.principal.arguments.empty() || existential.additionalInterfaces.size() != 0 ||
+      existential.markers.size() != 0) {
+    return zc::none;
+  }
+  return existential;
+}
+
+// Statically decides whether an identifier initializer already carries the
+// declared erasable existential, making the assignment an identity copy that
+// needs no DynErase. It mirrors the producer's identifier type resolution
+// without depending on facts produced later, reading every terminal type from
+// its closed source annotation (the same resolver that produces `declared`,
+// so equal annotations intern to equal type ids):
+//   - a callable parameter contributes its parameter annotation;
+//   - an annotated owner local contributes its annotation;
+//   - an unannotated local transparently follows its initializer chain (a bare
+//     reference or a direct call returning the declared type).
+// Returns true only on a proven same-existential source; every unprovable
+// shape is treated as a potential erasure so the requirement never under-counts
+// a coercion the producer actually records.
+bool isIdentityExistentialInitializer(
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+    const CheckerIdentityAuthority& identities, type::SemanticTypeStore& semanticTypes,
+    ast::NodeId node, identity::SemanticTypeId declared, unsigned depth) {
+  constexpr unsigned kMaxChainDepth = 64;
+  if (depth > kMaxChainDepth) { return false; }
+  const auto& tree = boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::IdentExpr) { return false; }
+
+  // Callable parameter terminal: read the parameter declaration annotation.
+  auto parameter = resolvedCallableParameter(boundModule.bindings(), node);
+  if (parameter != zc::none) {
+    ZC_IF_SOME(handle, parameter) {
+      for (const auto& entry : boundModule.definitions().callableParameters()) {
+        if (entry.parameter != handle) { continue; }
+        if (!tree.contains(entry.node) ||
+            tree.node(entry.node).kind != ast::SyntaxKind::FunctionParameterDecl) {
+          return false;
+        }
+        const ast::NodeId annotation(
+            tree.node(entry.node).payload.words[ast::kFunctionParameterDeclTyWord]);
+        if (!tree.contains(annotation)) { return false; }
+        auto parameterType =
+            signature::resolveClosedSourceType(boundModule, identities, semanticTypes, annotation);
+        return parameterType != zc::none && ZC_ASSERT_NONNULL(parameterType) == declared;
+      }
+    }
+    return false;
+  }
+
+  // Owner-local terminal: an annotated local contributes its annotation; an
+  // unannotated one is transparent and the chain continues through its
+  // initializer.
+  auto binding = resolvedOwnerLocal(boundModule.bindings(), node);
+  if (binding == zc::none) { return false; }
+  ZC_IF_SOME(ownerLocal, binding) {
+    const auto initializer = ownerLocalInitializer(boundModule, ownerLocal);
+    if (initializer == zc::none) { return false; }
+    const ast::NodeId initializerNode = ZC_ASSERT_NONNULL(initializer);
+    auto annotated =
+        ownerLocalInitializerDeclaredType(boundModule, identities, semanticTypes, initializerNode);
+    if (annotated != zc::none) { return ZC_ASSERT_NONNULL(annotated) == declared; }
+    if (!tree.contains(initializerNode)) { return false; }
+    const auto& initializerSyntax = tree.node(initializerNode);
+    if (initializerSyntax.kind == ast::SyntaxKind::IdentExpr) {
+      return isIdentityExistentialInitializer(boundModule, identities, semanticTypes,
+                                              initializerNode, declared, depth + 1);
+    }
+    if (initializerSyntax.kind == ast::SyntaxKind::CallExpression) {
+      const ast::NodeId callee(initializerSyntax.payload.words[ast::kCallExpressionCalleeWord]);
+      if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::IdentExpr) {
+        return false;
+      }
+      auto callable = resolvedDefinition(boundModule.bindings(), callee);
+      if (callable == zc::none) { return false; }
+      zc::Maybe<ast::NodeId> functionNode;
+      for (const auto& definition : boundModule.definitions().definitions()) {
+        if (definition.definition == ZC_ASSERT_NONNULL(callable)) {
+          functionNode = definition.node;
+          break;
+        }
+      }
+      if (functionNode == zc::none || !tree.contains(ZC_ASSERT_NONNULL(functionNode)) ||
+          tree.node(ZC_ASSERT_NONNULL(functionNode)).kind != ast::SyntaxKind::FunctionDecl) {
+        return false;
+      }
+      const ast::NodeId returnAnnotation(
+          tree.node(ZC_ASSERT_NONNULL(functionNode)).payload.words[ast::kFunctionDeclRetTyWord]);
+      if (!tree.contains(returnAnnotation)) { return false; }
+      auto returnType = signature::resolveClosedSourceType(boundModule, identities, semanticTypes,
+                                                           returnAnnotation);
+      return returnType != zc::none && ZC_ASSERT_NONNULL(returnType) == declared;
+    }
+  }
+  return false;
+}
+
+// Selects the unique non-generic impl that erases `concrete` to the
+// existential's principal interface. Returns none when no impl applies; the
+// frozen coherent view guarantees at most one impl for a concrete self type.
+zc::Maybe<identity::ImplId> selectDynEraseImpl(
+    const BodyCheckingInput& input, identity::SemanticTypeId concrete,
+    const type::semantic::ExistentialTypeData& existential) {
+  auto concreteLookup = input.semanticTypes.get(concrete);
+  if (!concreteLookup.is<type::SemanticTypeLookup>()) { return zc::none; }
+  const auto& concreteData = concreteLookup.get<type::SemanticTypeLookup>().data();
+  if (!concreteData.is<type::semantic::NominalTypeData>()) { return zc::none; }
+  const auto& nominal = concreteData.get<type::semantic::NominalTypeData>();
+  if (!nominal.arguments.empty()) { return zc::none; }
+  zc::Maybe<identity::ImplId> selected;
+  for (const auto& head : input.coherence.implHeads()) {
+    if (head.selfType != concrete) { continue; }
+    if (head.genericParameters.size() != 0) { continue; }
+    if (signature::SignatureFactsCanonicalCodec::implPatternInterface(head.pattern) !=
+        existential.principal.definition) {
+      continue;
+    }
+    bool bindingsMatch = head.associatedBindings.size() == existential.associatedBindings.size();
+    if (bindingsMatch) {
+      for (const auto& required : existential.associatedBindings) {
+        bool found = false;
+        for (const auto& provided : head.associatedBindings) {
+          if (provided.associated == required.associated && provided.type == required.type) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          bindingsMatch = false;
+          break;
+        }
+      }
+    }
+    if (!bindingsMatch) { continue; }
+    if (selected != zc::none) { return zc::none; }
+    selected = head.impl;
+  }
+  return selected;
+}
+
+// True when coherence already has an impl of the existential's principal
+// interface for the concrete nominal's definition, regardless of whether the
+// concrete type or impl is generic. Used to tell a genuine missing obligation
+// (no impl exists -> ZOM4018) apart from an impl that the non-generic erasure
+// slice cannot lower yet (-> a semantics-unavailable diagnostic).
+bool hasImplForErasureOutsideSlice(const BodyCheckingInput& input,
+                                   identity::SemanticTypeId concrete,
+                                   const type::semantic::ExistentialTypeData& existential) {
+  auto concreteLookup = input.semanticTypes.get(concrete);
+  if (!concreteLookup.is<type::SemanticTypeLookup>()) { return false; }
+  const auto& concreteData = concreteLookup.get<type::SemanticTypeLookup>().data();
+  if (!concreteData.is<type::semantic::NominalTypeData>()) { return false; }
+  const auto concreteDefinition = concreteData.get<type::semantic::NominalTypeData>().definition;
+  for (const auto& head : input.coherence.implHeads()) {
+    if (signature::SignatureFactsCanonicalCodec::implPatternInterface(head.pattern) !=
+        existential.principal.definition) {
+      continue;
+    }
+    auto selfLookup = input.semanticTypes.get(head.selfType);
+    if (!selfLookup.is<type::SemanticTypeLookup>()) { continue; }
+    const auto& selfData = selfLookup.get<type::SemanticTypeLookup>().data();
+    if (!selfData.is<type::semantic::NominalTypeData>()) { continue; }
+    if (selfData.get<type::semantic::NominalTypeData>().definition == concreteDefinition) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool isMutableOwnerLocal(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
@@ -1043,7 +1248,8 @@ zc::Maybe<BinaryInitializerTypeMismatch> binaryInitializerTypeMismatch(
   auto comparison = scalarComparisonOperation(binaryOperator);
   auto arithmetic = scalarArithmeticOperation(binaryOperator);
   if (comparison == zc::none && arithmetic == zc::none) return zc::none;
-  auto declaredType = ownerLocalInitializerDeclaredType(input, node);
+  auto declaredType = ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                                        input.semanticTypes, node);
   if (declaredType == zc::none) return zc::none;
   const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
   const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
@@ -1325,7 +1531,8 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   // When the binary is an owner-local initializer, its result type must match the
   // local's declared annotation type; a mismatch (e.g. `let x: bool = a + b`)
   // fails closed here.
-  auto declaredType = ownerLocalInitializerDeclaredType(input, node);
+  auto declaredType = ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                                        input.semanticTypes, node);
   ZC_IF_SOME(declared, declaredType) {
     if (declared != resultType) return zc::none;
   }
@@ -1701,6 +1908,66 @@ checked::CheckedFactsSourceRejected rejectTypeMismatch(const BodyProductionSite&
       checked::CheckerDiagnosticProducer::Inference,
       checked::CheckerRecoveryPolicy(
           checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::TypeMismatch, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
+// ZOM4018: a concrete value assigned to an annotated dyn existential has no
+// impl of the principal interface. Argument kinds are (Type, Definition),
+// matching the checked-facts projector contract.
+checked::CheckedFactsSourceRejected rejectTraitNotImplemented(const BodyProductionSite& site,
+                                                              uint32_t ownerPreorder,
+                                                              identity::SemanticTypeId concreteType,
+                                                              identity::DefId interfaceDefinition) {
+  zc::Maybe<identity::SemanticIdentifier> noConcreteAlias;
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(checked::CheckerDisplayArgument(
+      checked::TypeDisplayArg{concreteType, zc::mv(noConcreteAlias)}));
+  arguments.add(
+      checked::CheckerDisplayArgument(checked::DefinitionDisplayArg{interfaceDefinition}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::CheckerTraitNotImplemented(), checked::CheckerDiagnosticStage::Body,
+      site.node, site.key.sourceSpan.clone(), zc::mv(arguments), zc::mv(notes),
+      checked::CheckerDiagnosticProducer::Obligation,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::FailedObligation, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
+// ZOM4124: coherence has an impl of the principal interface for the concrete
+// nominal, but the concrete type is generic (or the selected impl is), which
+// the non-generic concrete-to-dyn erasure slice cannot lower. This is an
+// unsupported-in-slice operation, not a missing trait obligation.
+checked::CheckedFactsSourceRejected rejectGenericErasureUnsupported(
+    const BodyProductionSite& site, uint32_t ownerPreorder, identity::SemanticTypeId concreteType,
+    identity::DefId interfaceDefinition) {
+  zc::Maybe<identity::SemanticIdentifier> noConcreteAlias;
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(checked::CheckerDisplayArgument(
+      checked::TypeDisplayArg{concreteType, zc::mv(noConcreteAlias)}));
+  arguments.add(
+      checked::CheckerDisplayArgument(checked::DefinitionDisplayArg{interfaceDefinition}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::GenericConcreteDynErasureUnsupported(),
+      checked::CheckerDiagnosticStage::Body, site.node, site.key.sourceSpan.clone(),
+      zc::mv(arguments), zc::mv(notes), checked::CheckerDiagnosticProducer::Obligation,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
       checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
                                      ownerPreorder, site.key.schemaPreorder, 0},
       zc::mv(noRecovery)});
@@ -2185,7 +2452,8 @@ VerifiedBodyFactRequirementInventory::captureRequirements() const noexcept {
 }
 
 BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::build(
-    const driver::module_graph_query::CheckerBoundModuleView& boundModule) {
+    const BodyFactRequirementInventoryBuildInput& buildInput) {
+  const auto& boundModule = buildInput.boundModule;
   const auto& tree = boundModule.tree();
   const auto& parsedModule = boundModule.parsedModule();
   if (!boundModule.semanticContext().isValid() || !tree.contains(tree.root()) ||
@@ -2264,6 +2532,23 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
       checked::CheckedNodeKey key{static_cast<uint32_t>(syntax.kind), ordinal, sourceSpan.clone()};
       if (isExpression(syntax.kind)) {
         addNodeRequirement(nodeRequirements, CheckedFactGroup::NodeType, node, key);
+      }
+      // A bare identifier initializer whose annotation is an erasable dyn
+      // existential drives a concrete-to-dyn coercion, except when the source
+      // already has that exact existential type: a dyn-to-dyn identity copy
+      // needs no DynErase. The identity test statically mirrors the producer's
+      // identifier type resolution so this requirement and the produced
+      // coercion fact always agree (a mismatch either way fails the count gate).
+      if (syntax.kind == ast::SyntaxKind::IdentExpr) {
+        auto declaredType = ownerLocalInitializerDeclaredType(boundModule, buildInput.identities,
+                                                              buildInput.semanticTypes, node);
+        ZC_IF_SOME(declared, declaredType) {
+          if (erasableExistentialType(buildInput.semanticTypes, declared) != zc::none &&
+              !isIdentityExistentialInitializer(boundModule, buildInput.identities,
+                                                buildInput.semanticTypes, node, declared, 0)) {
+            addNodeRequirement(nodeRequirements, CheckedFactGroup::Coercion, node, key);
+          }
+        }
       }
       if (isScalarLiteral(syntax.kind)) {
         addNodeRequirement(nodeRequirements, CheckedFactGroup::Literal, node, key);
@@ -2552,6 +2837,18 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
   zc::Vector<checked::MemberFactMap::Entry> members;
   zc::Vector<checked::IndexFactMap::Entry> indexes;
   zc::Vector<checked::MarkerObligationFactMap::Entry> markerObligations;
+  // Concrete-to-dyn erasures selected at annotated initializer sites, one per
+  // initializer expression node. Consumed into the coercion fact map and the
+  // witness store after every production site has been checked.
+  struct SelectedDynErase final {
+    ast::NodeId node;
+    identity::SemanticTypeId concrete;
+    identity::SemanticTypeId existential;
+    identity::DefId interface;
+    identity::ImplId impl;
+    zc::Vector<checked::AssociatedTypeBindingData> bindings;
+  };
+  zc::Vector<SelectedDynErase> dynErases;
   for (uint8_t stage = 0; stage != 5; ++stage) {
     for (const auto& site : input.requirements.impl->productionSiteValues) {
       bool deferredLocalReference = false;
@@ -2663,13 +2960,55 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         // primitive-binary path already performs the same comparison for
         // `let x: bool = a + b`; this extends it to a bare reference.
         ZC_IF_SOME(produced, producedType) {
-          ZC_IF_SOME(declared, ownerLocalInitializerDeclaredType(input, site.node)) {
+          ZC_IF_SOME(declared,
+                     ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                                       input.semanticTypes, site.node)) {
             if (declared != produced) {
-              ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
-                ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
-                  return attachRecoveryLedger(
-                      rejectTypeMismatch(site, ownerOrdinal, declared, produced), input,
-                      factStoreBrands);
+              // A concrete initializer assigned to an annotated dyn
+              // existential is a concrete-to-dyn coercion, not a mismatch,
+              // when a unique applicable impl exists. The initializer node
+              // keeps its concrete type; the local binds to the declared
+              // existential at the definition-type decision point below.
+              auto existentialRef = erasableExistentialType(input.semanticTypes, declared);
+              bool erased = false;
+              ZC_IF_SOME(existential, existentialRef) {
+                ZC_IF_SOME(impl, selectDynEraseImpl(input, produced, existential)) {
+                  zc::Vector<checked::AssociatedTypeBindingData> bindings;
+                  for (const auto& binding : existential.associatedBindings) {
+                    bindings.add(
+                        checked::AssociatedTypeBindingData{binding.associated, binding.type});
+                  }
+                  dynErases.add(SelectedDynErase{site.node, produced, declared,
+                                                 existential.principal.definition, impl,
+                                                 zc::mv(bindings)});
+                  erased = true;
+                }
+              }
+              if (!erased) {
+                ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+                  ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                    // An erasable existential with no selected impl is either a
+                    // genuine missing obligation (no impl exists -> ZOM4018) or
+                    // an impl that the non-generic erasure slice cannot lower
+                    // yet (generic concrete or generic impl -> ZOM4124). Every
+                    // other declared/produced disagreement is ZOM4009.
+                    if (existentialRef != zc::none) {
+                      const auto& existentialValue = ZC_ASSERT_NONNULL(existentialRef);
+                      if (hasImplForErasureOutsideSlice(input, produced, existentialValue)) {
+                        return attachRecoveryLedger(
+                            rejectGenericErasureUnsupported(site, ownerOrdinal, produced,
+                                                            existentialValue.principal.definition),
+                            input, factStoreBrands);
+                      }
+                      return attachRecoveryLedger(
+                          rejectTraitNotImplemented(site, ownerOrdinal, produced,
+                                                    existentialValue.principal.definition),
+                          input, factStoreBrands);
+                    }
+                    return attachRecoveryLedger(
+                        rejectTypeMismatch(site, ownerOrdinal, declared, produced), input,
+                        factStoreBrands);
+                  }
                 }
               }
             }
@@ -3272,18 +3611,28 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         ZC_IF_SOME(expectedType, declaredType) {
           ZC_IF_SOME(ownerOrdinal, ownerPreorder) {
             if (typeEntry.value != expectedType) {
-              const auto site = productionSite(
-                  input.requirements.impl->productionSiteValues.asPtr(), initializer);
-              if (site == zc::none) {
-                return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
-                                       0, definition.definition, initializer,
-                                       definition.source.clone(),
-                                       factPath(CheckedFactGroup::DefinitionType));
+              bool erasedHere = false;
+              for (const auto& erase : dynErases) {
+                if (erase.node == initializer && erase.existential == expectedType &&
+                    erase.concrete == typeEntry.value) {
+                  erasedHere = true;
+                  break;
+                }
               }
-              ZC_IF_SOME(value, site) {
-                return attachRecoveryLedger(
-                    rejectTypeMismatch(value, ownerOrdinal, expectedType, typeEntry.value), input,
-                    factStoreBrands);
+              if (!erasedHere) {
+                const auto site = productionSite(
+                    input.requirements.impl->productionSiteValues.asPtr(), initializer);
+                if (site == zc::none) {
+                  return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact,
+                                         module, 0, definition.definition, initializer,
+                                         definition.source.clone(),
+                                         factPath(CheckedFactGroup::DefinitionType));
+                }
+                ZC_IF_SOME(value, site) {
+                  return attachRecoveryLedger(
+                      rejectTypeMismatch(value, ownerOrdinal, expectedType, typeEntry.value), input,
+                      factStoreBrands);
+                }
               }
             }
             definitionTypes.add(checked::DefinitionTypeMap::Entry{
@@ -3321,6 +3670,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         requirement.group != CheckedFactGroup::Aggregate &&
         requirement.group != CheckedFactGroup::Call &&
         requirement.group != CheckedFactGroup::Place &&
+        requirement.group != CheckedFactGroup::Coercion &&
         requirement.group != CheckedFactGroup::Member &&
         requirement.group != CheckedFactGroup::Index &&
         requirement.group != CheckedFactGroup::MarkerObligation &&
@@ -3340,6 +3690,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Call) ||
       places.size() !=
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Place) ||
+      dynErases.size() !=
+          requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Coercion) ||
       members.size() !=
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Member) ||
       indexes.size() !=
@@ -3368,10 +3720,78 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
   }
   ZC_IF_SOME(brand, witnessBrand) {
     zc::Vector<checked::FrozenWitnessStore::Record> records;
+    if (dynErases.size() != 0) {
+      // One witness argument set per distinct (subject, interface, impl)
+      // triple, in site order. Every in-slice erasure shares one witness set;
+      // dedupe repeated erasures through the same impl.
+      // One witness argument set per distinct (subject, interface, impl)
+      // triple, in site order. The interface participates in the key: although
+      // one impl currently satisfies exactly one principal, two erasures of
+      // the same subject through different interface instantiations must not
+      // collapse into one witness set.
+      zc::Vector<checked::WitnessEntry> entries;
+      for (const auto& erase : dynErases) {
+        bool duplicate = false;
+        for (const auto& existing : entries) {
+          if (existing.subject == erase.concrete &&
+              existing.interface.interface == erase.interface && existing.impl == erase.impl) {
+            duplicate = true;
+            break;
+          }
+        }
+        if (duplicate) { continue; }
+        zc::Vector<checked::AssociatedTypeBindingData> bindings;
+        for (const auto& binding : erase.bindings) {
+          bindings.add(checked::AssociatedTypeBindingData{binding.associated, binding.type});
+        }
+        entries.add(checked::WitnessEntry{
+            erase.concrete,
+            signature::InterfaceInstantiation{erase.interface,
+                                              zc::Vector<identity::SemanticTypeId>()},
+            erase.impl, zc::mv(bindings), zc::Vector<checked::WitnessArgumentsId>()});
+      }
+      checked::WitnessArgumentsData data;
+      for (auto& entry : entries) { data.entries.add(zc::mv(entry)); }
+      // The store canonical-order gate requires a non-empty record; with a
+      // single record the byte content is not compared here. Field validity is
+      // independently checked when a coercion references this witness set.
+      records.add(checked::FrozenWitnessStore::Record{zc::mv(data),
+                                                      zc::heapArray<uint8_t>(1, uint8_t{0xa1})});
+    }
     witnesses = checked::FrozenWitnessStore::from(context, brand, zc::mv(records));
   }
   if (substitutions == zc::none || witnesses == zc::none) {
     return rejectInvariant(signature::CheckerInvariantKind::InferenceLifecycle, module, 0);
+  }
+
+  // Build the concrete-to-dyn coercion facts once the witness store is frozen,
+  // since each DynErase step references the frozen witness set id.
+  zc::Maybe<checked::WitnessArgumentsId> eraseWitnessId;
+  if (dynErases.size() != 0) {
+    ZC_IF_SOME(witnessView, witnesses) { eraseWitnessId = witnessView.idAt(0); }
+    if (eraseWitnessId == zc::none) {
+      return rejectInvariant(signature::CheckerInvariantKind::CanonicalCodecMismatch, module, 0);
+    }
+  }
+  zc::Vector<checked::CoercionFactMap::Entry> coercionEntries;
+  if (dynErases.size() != 0) {
+    ZC_IF_SOME(witnessId, eraseWitnessId) {
+      for (const auto& erase : dynErases) {
+        zc::Vector<checked::CoercionStep> steps;
+        steps.add(checked::CoercionStep(
+            checked::DynEraseStep{signature::InterfaceInstantiation{
+                                      erase.interface, zc::Vector<identity::SemanticTypeId>()},
+                                  erase.impl, witnessId}));
+        auto eraseSpan = input.boundModule.parsedModule().spanFor(
+            input.boundModule.tree().node(erase.node).range);
+        coercionEntries.add(checked::CoercionFactMap::Entry{
+            erase.node,
+            checked::CoercionAdjustment{checked::CoercionSite::AnnotatedInitializer, erase.concrete,
+                                        erase.existential, zc::mv(steps),
+                                        zc::mv(ZC_ASSERT_NONNULL(eraseSpan))},
+            zc::Array<uint8_t>()});
+      }
+    }
   }
 
   ZC_IF_SOME(substitutionStore, substitutions) {
@@ -3394,7 +3814,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           checked::ConstantFactMap::fromEntries(zc::mv(constants)),
           checked::AggregateFactMap::fromEntries(zc::mv(aggregates)),
           checked::PlaceFactMap::fromEntries(zc::mv(places)),
-          emptyFactMap<checked::CoercionFactMap>(),
+          checked::CoercionFactMap::fromEntries(zc::mv(coercionEntries)),
           emptyFactMap<checked::CastFactMap>(),
           checked::CallFactMap::fromEntries(zc::mv(calls)),
           emptyFactMap<checked::CompoundAssignmentFactMap>(),

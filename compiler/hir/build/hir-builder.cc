@@ -101,9 +101,38 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
       checkedModule.borrowEvidenceLease().key().revision.digest() !=
           checkedModule.borrowEvidenceRevision().digest() ||
       checkedModule.dispatchFacts().facts().size() != facts.calls().size() ||
-      !noUnsupportedFacts(facts)) {
+      !unsupportedNonErasureFacts(facts)) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 0);
+  }
+  // Concrete-to-dyn erasure is accepted and verified by the checker but the
+  // HIR/MIR erasure carrier (existential locals, vtable construction) is not
+  // built yet. Fail closed as a per-definition capability rejection projected
+  // to ZOM4099, never as an invariant and never silently scalar-lowered. Any
+  // other coercion shape stays an invariant rejection.
+  if (facts.coercions().size() != 0) {
+    // Validate every coercion before admitting any capability failure, so a
+    // malformed entry can never be masked by an earlier well-formed one.
+    for (const auto& entry : facts.coercions().entries()) {
+      if (!isSingleDynEraseAdjustment(entry.value)) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::AdditionalFact, module, registries,
+                                             2);
+      }
+      if (enclosingExecutableDefinition(bound.tree(), bound.definitions(), entry.key) == zc::none) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::InvalidFact, module, registries, 3);
+      }
+    }
+    // All coercions are well-formed single DynErase steps; reject the first
+    // one's enclosing definition as an unsupported construct.
+    for (const auto& entry : facts.coercions().entries()) {
+      const auto owner =
+          enclosingExecutableDefinition(bound.tree(), bound.definitions(), entry.key);
+      return rejectHirCapability<HirModuleCandidate>(ZC_ASSERT_NONNULL(owner), registries,
+                                                     ir::IrFailureKind::UnsupportedSourceConstruct,
+                                                     entry.value.sourceSpan.clone());
+    }
   }
 
   const auto definitions = bound.definitions().definitions();

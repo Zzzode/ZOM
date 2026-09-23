@@ -2305,7 +2305,8 @@ zc::Maybe<checker::marker::MarkerProofResult> CompilerSession::proveMarker(
       auto bound = authority.boundModule(requester);
       if (bound == zc::none) return zc::none;
       const auto& boundView = ZC_ASSERT_NONNULL(bound);
-      auto inventoryResult = checker::body::BodyFactRequirementInventoryBuilder::build(boundView);
+      auto inventoryResult = checker::body::BodyFactRequirementInventoryBuilder::build(
+          {boundView, authority, *impl->semanticTypeStore});
       if (!inventoryResult.is<checker::body::VerifiedBodyFactRequirementInventory>()) {
         return zc::none;
       }
@@ -3315,8 +3316,8 @@ bool CompilerSession::checkSources() {
         for (const auto moduleIndex : checkerFactModuleIndices) {
           const auto& boundView = checkerModules[moduleIndex];
           const auto factIndex = checkerFactIndexByModule[moduleIndex];
-          auto inventoryResult =
-              checker::body::BodyFactRequirementInventoryBuilder::build(boundView.boundModule());
+          auto inventoryResult = checker::body::BodyFactRequirementInventoryBuilder::build(
+              {boundView.boundModule(), checkerAuthority, *impl->semanticTypeStore});
           if (!inventoryResult.is<checker::body::VerifiedBodyFactRequirementInventory>()) {
             auto rejected =
                 zc::mv(inventoryResult).get<checker::checked::CheckedFactsInvariantRejected>();

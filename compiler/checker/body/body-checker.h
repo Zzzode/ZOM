@@ -5,20 +5,20 @@
 
 #pragma once
 
-#include "zc/core/common.h"
-#include "zc/core/memory.h"
-#include "zc/core/one-of.h"
-#include "zc/core/vector.h"
-#include "compiler/checker/inference/checked-facts.h"
 #include "compiler/checker/checker-identity-authority.h"
 #include "compiler/checker/facts/coherence-facts.h"
 #include "compiler/checker/facts/cross-module-facts.h"
 #include "compiler/checker/facts/signature-facts.h"
+#include "compiler/checker/inference/checked-facts.h"
 #include "compiler/driver/query/module-graph/materialized-module-graph-query.h"
 #include "compiler/identity/brand.h"
 #include "compiler/identity/key/crate-key.h"
 #include "compiler/identity/semantic/context-fingerprint.h"
 #include "compiler/type/semantic-type-store.h"
+#include "zc/core/common.h"
+#include "zc/core/memory.h"
+#include "zc/core/one-of.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::driver::core {
 
@@ -71,11 +71,18 @@ private:
 using BodyFactRequirementInventoryBuildResult =
     zc::OneOf<VerifiedBodyFactRequirementInventory, checked::CheckedFactsInvariantRejected>;
 
+/// \brief Inputs for body fact requirement inventory construction.
+struct BodyFactRequirementInventoryBuildInput final {
+  const driver::module_graph_query::CheckerBoundModuleView& boundModule;
+  const CheckerIdentityAuthority& identities;
+  type::SemanticTypeStore& semanticTypes;
+};
+
 /// \brief Walks the verified AST and binder publication to generate exact fact requirements.
 class BodyFactRequirementInventoryBuilder final {
 public:
   ZC_NODISCARD static BodyFactRequirementInventoryBuildResult build(
-      const driver::module_graph_query::CheckerBoundModuleView& boundModule);
+      const BodyFactRequirementInventoryBuildInput& input);
 };
 
 /// \brief Complete capability input for production body checking.

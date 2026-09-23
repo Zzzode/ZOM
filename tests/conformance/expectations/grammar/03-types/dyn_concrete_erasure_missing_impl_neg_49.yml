@@ -1,0 +1,5 @@
+section: "Existential Types"
+covers_rule: "dynType, letStmt"
+expected: "ACCEPT"
+notes:
+  - "The concrete initializer has no impl of the principal interface. The checker rejects it with 4018 CheckerTraitNotImplemented."

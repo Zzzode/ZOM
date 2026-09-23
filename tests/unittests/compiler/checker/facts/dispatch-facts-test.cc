@@ -853,7 +853,8 @@ ZC_TEST("DispatchSiteInventoryBuilder.ProjectsCallAndOperatorRequirements") {
       "class Holder { fun act() {} }\n"
       "fun helper() {}\n"
       "fun calculate() { helper(); let holder = Holder {}; holder.act(); let value = 1 + 2; let negated = -value; let indexed = value[0]; let fallback = value ?? 4; value += 3; }\n"_zc);
-  auto requirements = body::BodyFactRequirementInventoryBuilder::build(session.boundModule());
+  auto requirements = body::BodyFactRequirementInventoryBuilder::build(
+      {session.boundModule(), session.identityAuthority(), session.semanticTypes()});
   ZC_REQUIRE(requirements.is<body::VerifiedBodyFactRequirementInventory>());
   auto inventory = DispatchSiteInventoryBuilder::build(
       session.boundModule(), requirements.get<body::VerifiedBodyFactRequirementInventory>());

@@ -145,9 +145,39 @@ in-repo corpus that must become source diagnostics.
   assignment (`type Iter<T> = U;`) is ZOM4123
   ImplGenericAssociatedTypeUnsupported until GAT substitution lands. The
   now-unreachable ZOM4107 was removed.
-- A8. Concrete-to-dyn erasure at value positions (RFC 0005 coercion table):
-  `let d: dyn D = sprite`. New checked coercion fact + HIR/MIR coercion
-  carrier. (checker/hir/mir)
+- A8. PARTIAL 2026-09-23 (checker coercion rail landed; HIR/MIR carrier open):
+  `let d: dyn D = sprite` now produces a real, verifier-adopted RFC 0005
+  `CoercionAdjustment` with one `DynErase` step at annotated initializer
+  sites. The body checker selects the unique non-generic impl of a bare
+  object-safe principal for a non-generic nominal initializer (matching
+  associated bindings), binds the local to the declared existential while
+  keeping the initializer node at the concrete type, and publishes a witness
+  record. A concrete type with no such impl is the source diagnostic
+  ZOM4018 `CheckerTraitNotImplemented` (producer Obligation / recovery class
+  FailedObligation) instead of the former dd0442/08865 invariant. A concrete
+  nominal that has an impl but falls outside the non-generic erasure slice
+  (generic self type, generic impl) is ZOM4124
+  `GenericConcreteDynErasureUnsupported`, never a false 4018. A dyn-to-dyn
+  identity copy (an already-existential parameter or annotated local moved
+  into the same `dyn` type) records no coercion and is accepted; references to
+  an erased local resolve to the bound existential type, so an unsound
+  dyn-to-concrete downcast is rejected with ZOM4009. The HIR boundary fails
+  closed: a single-step DynErase reaches HIR construction and is rejected as a
+  per-definition *capability* failure (UnsupportedSourceConstruct -> ZOM4099),
+  never silently scalar-lowered and never an invariant; the failure is
+  attributed to the innermost enclosing executable definition. Open: the
+  actual HIR erasure node, MIR rvalue, LIR 2-word fat-pointer/vtable layout
+  and vtable globals (no object code yet), plus argument-position
+  (`CheckedArgumentFact.adjustment`), return, assignment, generic impls,
+  markers, and additional interfaces. The positive coercion, identity-copy,
+  downcast-rejection, and generic-rejection shapes are covered by body ztests
+  through the full verifier; CLI lit covers the 4018/4124 negatives (positive
+  CLI lit is masked by the unrelated pre-existing impl-method-body c28f1 gap).
+- A8b. Open (next A8 step): argument-position concrete-to-dyn erasure
+  (`render(concrate)` to a `dyn I` parameter) via
+  `CheckedArgumentFact.adjustment` with `CoercionSite::Argument`; the call
+  envelope and `validArgument` already cross-check the adjustment, so this
+  reuses the same selector and witness path.
 - A9. dyn upcast `dyn I as dyn J` (ZOM4044) and invalid-upcast rejection;
   vtable/super offset representation. Depends on A3.
 - A10. dyn method calls / trait dispatch through an existential receiver.

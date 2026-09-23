@@ -2195,8 +2195,8 @@ ZC_TEST("MarkerProofEngine resolves explicit builtin and structural evidence") {
           const auto mutableReference =
               internedMutableReference.get<type::SemanticTypeInterned>().id;
 
-          auto inventoryResult =
-              checker::body::BodyFactRequirementInventoryBuilder::build(boundView);
+          auto inventoryResult = checker::body::BodyFactRequirementInventoryBuilder::build(
+              {boundView, identities, semanticTypes});
           ZC_REQUIRE(inventoryResult.is<checker::body::VerifiedBodyFactRequirementInventory>());
           auto inventory =
               zc::mv(inventoryResult).get<checker::body::VerifiedBodyFactRequirementInventory>();

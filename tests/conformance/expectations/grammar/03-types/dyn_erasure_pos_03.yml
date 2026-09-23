@@ -2,4 +2,4 @@ section: "Ch.03 Existential erasure semantics"
 covers_rule: "dynType, standaloneImplDeclaration, letStmt"
 expected: "ACCEPT"
 notes:
-  - "Syntax is valid; diagnostics runner checks concrete-to-dyn erasure through the CLI pipeline."
+  - "Grammar and AST coverage only. This module-scope form is not semantically compiled (ZOM4087/ZOM4104) and concrete-to-dyn erasure lowering is tracked separately; the annotation form is parser-accepted."

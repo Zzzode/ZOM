@@ -1,0 +1,15 @@
+interface Drawable {
+    fun draw(this);
+}
+
+struct Box<T> {
+    value: T,
+}
+
+impl Drawable for Box<i32> {}
+
+fun erase(shape: Box<i32>) -> i32 {
+    let drawn: dyn Drawable = shape;
+    let sentinel: i32 = 1;
+    return sentinel;
+}

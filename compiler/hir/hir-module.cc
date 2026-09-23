@@ -802,6 +802,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       candidate.impl->checkedModule.dispatchFacts().facts().size() !=
           directCallCount + receiverCallCount + equalityConditionalCount + sequentialBinaryCount +
               binaryWriteCount ||
+      // The verifier deliberately keeps the strict unsupported-facts gate,
+      // coercions included. HirBuilder::build drains every concrete-to-dyn
+      // erasure as a per-definition capability rejection before verification,
+      // so a coercion reaching here means that drain was bypassed - an internal
+      // invariant, unlike the user-facing capability path in build().
       !noUnsupportedFacts(facts) || candidate.impl->patterns.size() != declarationCount ||
       static_cast<int64_t>(candidate.impl->localReferences.size() + localFieldProjectionCount +
                            localAliasReborrowCount + localBorrowCount) +

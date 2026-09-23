@@ -116,6 +116,39 @@ ir::IrOperationResult<VerifiedValue> rejectHir(
   ZC_UNREACHABLE
 }
 
+// Fails HIR construction as a *capability* rejection (a source-level
+// unsupported construct projected to a user diagnostic such as ZOM4099),
+// scoped to one executable definition, rather than as an internal invariant.
+// Used for constructs the checker now accepts and verifies but the HIR/MIR
+// lowering carrier does not implement yet (concrete-to-dyn erasure).
+template <typename VerifiedValue>
+ir::IrOperationResult<VerifiedValue> rejectHirCapability(
+    identity::DefId definition, const checker::CheckerIdentityAuthority& identities,
+    ir::IrFailureKind kind, identity::SourceSpan span) {
+  AuthorityIdentityResolver resolver(identities);
+  auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::HirConstruction,
+                                                     ir::IrFailureOwner::definition(definition));
+  ZC_IREQUIRE(fallback != zc::none, "HIR capability fallback must be legal");
+  zc::Maybe<ir::IrFailureSite> noSite;
+  auto descriptor = ir::IrFailureDescriptor::decoded(
+      ir::IrRejectedBranch::CapabilityRejected, ir::IrFailurePhase::HirConstruction, kind,
+      ir::IrFailureOwner::definition(definition), zc::mv(noSite), ir::IrFailureDetail::none(),
+      zc::mv(span), zc::Vector<uint32_t>(), 0);
+  ZC_IF_SOME(fallbackValue, fallback) {
+    auto admitted = ir::IrFailureFactory::admit(zc::mv(descriptor), fallbackValue, resolver);
+    ZC_IREQUIRE(admitted.is<ir::AcceptedIrFailureDescriptor>(),
+                "Definition-scoped HIR capability rejection must admit without identity expansion");
+    zc::Vector<ir::IrFailureFact> facts;
+    facts.add(zc::mv(admitted).get<ir::AcceptedIrFailureDescriptor>().fact);
+    auto sorted = ir::SortedCapabilityFailureFacts::from(zc::mv(facts));
+    ZC_IF_SOME(values, sorted) {
+      return ir::IrOperationResult<VerifiedValue>::capabilityRejected(zc::mv(values));
+    }
+    ZC_UNREACHABLE
+  }
+  ZC_UNREACHABLE
+}
+
 template <typename Map, typename Key>
 zc::Maybe<size_t> factIndex(const Map& map, const Key& key) {
   const auto entries = map.entries();
@@ -168,6 +201,14 @@ bool isScalarComparisonOperation(checker::PrimitiveOperation operation);
 bool isScalarArithmeticOperation(checker::PrimitiveOperation operation);
 
 bool noUnsupportedFacts(const checker::checked::VerifiedCheckedFacts& facts);
+
+bool unsupportedNonErasureFacts(const checker::checked::VerifiedCheckedFacts& facts);
+
+bool isSingleDynEraseAdjustment(const checker::checked::CoercionAdjustment& adjustment);
+
+zc::Maybe<identity::DefId> enclosingExecutableDefinition(
+    const ast::Tree& tree, const binder::ImmutableDefinitionInventory& definitions,
+    ast::NodeId node);
 
 zc::Maybe<identity::DefId> resolvedDefinition(const binder::ImmutableBindingMetadata& bindings,
                                               ast::NodeId node);

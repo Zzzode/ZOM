@@ -1,0 +1,9 @@
+interface Drawable {
+    fun draw(this);
+}
+
+fun erase(value: i32) -> i32 {
+    let drawn: dyn Drawable = value;
+    let sentinel: i32 = 1;
+    return sentinel;
+}

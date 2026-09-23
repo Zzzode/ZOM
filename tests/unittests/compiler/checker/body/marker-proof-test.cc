@@ -381,7 +381,8 @@ public:
       importedSignatures = zc::mv(moduleImportedViews[index]);
     }
 
-    auto inventoryResult = body::BodyFactRequirementInventoryBuilder::build(boundModule());
+    auto inventoryResult = body::BodyFactRequirementInventoryBuilder::build(
+        {boundModule(), identities, semanticTypes()});
     ZC_REQUIRE(inventoryResult.is<body::VerifiedBodyFactRequirementInventory>());
     bodyRequirements = zc::mv(inventoryResult).get<body::VerifiedBodyFactRequirementInventory>();
   }

@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/dyn_generic_erasure_unsupported_neg_51.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A generic concrete type that has an impl of the principal interface is
+// outside the non-generic concrete-to-dyn erasure slice. It reports 4124
+// GenericConcreteDynErasureUnsupported, never the false obligation claim
+// 4018 CheckerTraitNotImplemented and never an internal compiler error.
+// CHECK: Error [ZOM4124]:

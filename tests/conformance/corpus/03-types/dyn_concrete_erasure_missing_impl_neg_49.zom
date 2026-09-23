@@ -1,0 +1,19 @@
+interface Drawable {
+    fun draw(this);
+}
+
+struct Circle {
+    value: u8,
+}
+
+struct Square {
+    value: u8,
+}
+
+impl Drawable for Circle {}
+
+fun erase(shape: Square) -> i32 {
+    let drawn: dyn Drawable = shape;
+    let sentinel: i32 = 1;
+    return sentinel;
+}

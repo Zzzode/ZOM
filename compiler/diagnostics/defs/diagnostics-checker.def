@@ -197,3 +197,5 @@ DIAG(4122, DuplicateInterfaceBound, kError,
      "interface bound {0} is listed more than once", 1)
 DIAG(4123, ImplGenericAssociatedTypeUnsupported, kError,
      "assigning a generic associated type in an impl is not supported yet", 0)
+DIAG(4124, GenericConcreteDynErasureUnsupported, kError,
+     "erasing the generic or non-plain type {0} to dyn {1} is not supported yet", 2)
