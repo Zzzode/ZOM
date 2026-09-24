@@ -445,7 +445,21 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     for (const auto& local : mir.locals) {
       if (local.kind == mir::MirLocalKind::Parameter) ++parameterCount;
     }
-    const bool parametersAllowed = fold.kind == FoldKind::DirectConstant;
+    // A direct constant return (the literal-method callee) may declare its
+    // parameter carriers, which the scalar body never reads. A scalar-constant
+    // fold may do the same only when the fold's source local is the sole
+    // non-parameter local (the receiver constant-local method fold); the
+    // module-function scalar initializer fold still declares no slots.
+    bool parametersAllowed = fold.kind == FoldKind::DirectConstant;
+    if (!parametersAllowed && fold.kind == FoldKind::ScalarConstant) {
+      parametersAllowed = true;
+      for (const auto& local : mir.locals) {
+        if (local.kind != mir::MirLocalKind::Parameter && local.id != fold.sourceLocal) {
+          parametersAllowed = false;
+          break;
+        }
+      }
+    }
     if (lir.locals().size() != 0 || (!parametersAllowed && lir.parameters().size() != 0) ||
         (parametersAllowed && lir.parameters().size() != parameterCount)) {
       return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);

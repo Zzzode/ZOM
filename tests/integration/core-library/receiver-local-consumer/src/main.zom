@@ -1,0 +1,11 @@
+// A shared-receiver method binds a scalar local from a literal and returns it.
+// The receiver is unused by the body and the user local folds to a constant
+// return, so the callee lowers to ReturnInteger and the program exits 42.
+struct Cell {
+  value: i32,
+  fun answer(this) -> i32 { let x = 42; return x; }
+}
+fun entry() -> i32 {
+  let cell = Cell { value: 0 };
+  return cell.answer();
+}

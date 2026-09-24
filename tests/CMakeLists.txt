@@ -168,6 +168,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-mut-consumer/Zom.toml::receiver_mut_consumer::receiver_mut_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-mut-fieldwrite-consumer/Zom.toml::receiver_mut_fieldwrite_consumer::receiver_mut_fieldwrite_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-local-consumer/Zom.toml::receiver_local_consumer::receiver_local_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-fourfn-consumer/Zom.toml::reject_fourfn_consumer::reject_fourfn_consumer"
       --reject-case
@@ -205,6 +207,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-mut-consumer/Zom.toml::receiver_mut_consumer::receiver_mut_consumer::7"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-mut-fieldwrite-consumer/Zom.toml::receiver_mut_fieldwrite_consumer::receiver_mut_fieldwrite_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-local-consumer/Zom.toml::receiver_local_consumer::receiver_local_consumer::42"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer")
   set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)

@@ -1,0 +1,11 @@
+struct Cell {
+  value: i32,
+  fun answer(this) -> i32 {
+    let x = 42;
+    return x;
+  }
+}
+fun entry() -> i32 {
+  let cell = Cell { value: 0 };
+  return cell.answer();
+}

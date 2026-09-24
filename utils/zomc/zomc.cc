@@ -1553,8 +1553,8 @@ private:
           zc::str("MIR -> LIR lowering rejected this module (outside the scalar-initializer, "
                   "boolean-conditional, reducible while-loop, comparison-driven conditional, "
                   "aggregate field-return, same-module direct-call, shared-receiver method "
-                  "call, mutating-receiver field write-read, and three-function direct-call-with-"
-                  "leaf slices)."));
+                  "call, mutating-receiver field write-read, shared-receiver constant-local "
+                  "method, and three-function direct-call-with-leaf slices)."));
     }
     backend::llvm::LlvmTranslator translator;
     ZC_IF_SOME(lirModule, lir) {

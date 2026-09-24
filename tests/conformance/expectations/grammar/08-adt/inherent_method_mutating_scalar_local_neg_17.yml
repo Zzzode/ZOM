@@ -1,0 +1,5 @@
+section: "08-adt inherent mutating method scalar local"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits a scalar let local in a mutating method; semantic HIR rejects the method without an admitted receiver-field write with ZOM4099 on the method definition."

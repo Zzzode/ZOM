@@ -3135,6 +3135,73 @@ bool validLocalReturnFunction(
   return false;
 }
 
+bool validMethodScalarLocalReturnFunction(
+    const MirFunction& function, const hir::VerifiedHirModule& hirModule,
+    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& sourceBlock,
+    const hir::HirLocalBinding& sourceLocal, const hir::HirScalarLiteralExpression& initializer,
+    const hir::HirReturnStatement& sourceReturn, const hir::HirLocalReferenceExpression& reference,
+    identity::ModuleId module, const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copy) {
+  if (declaration.receiver == zc::none || declaration.unsafeBlock != zc::none) return false;
+  const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Method ||
+      function.resultType != declaration.resultType ||
+      !sameSpan(function.sourceSpan, declaration.sourceSpan) || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 2 || function.blocks.size() != 1 ||
+      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 2 ||
+      sourceBlock.statements[0] != sourceLocal.node ||
+      sourceBlock.statements[1] != sourceReturn.node ||
+      sourceLocal.initializer != initializer.node || sourceReturn.value != reference.node ||
+      sourceLocal.local != reference.local || sourceLocal.type != declaration.resultType ||
+      reference.type != sourceLocal.type || reference.category != hir::HirValueCategory::Place) {
+    return false;
+  }
+  const auto& scope = function.sourceScopes[0];
+  const auto& receiverLocal = function.locals[0];
+  const auto& local = function.locals[1];
+  const auto& block = function.blocks[0];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || receiverLocal.id != localId(1) ||
+      receiverLocal.kind != MirLocalKind::Parameter || receiverLocal.type != receiver.type ||
+      receiverLocal.sourceScope != scope.id ||
+      !sameSpan(receiverLocal.sourceSpan, receiver.sourceSpan) || local.id != localId(2) ||
+      local.kind != MirLocalKind::UserLocal || local.type != sourceLocal.type ||
+      local.sourceScope != scope.id || !sameSpan(local.sourceSpan, sourceLocal.sourceSpan) ||
+      block.id != blockId(1) || block.sourceScope != scope.id || block.statements.size() != 2 ||
+      block.statements[0].kind() != MirStatementKind::StorageLive ||
+      block.statements[0].storageLocal() != local.id ||
+      !sameSpan(block.statements[0].sourceSpan(), sourceLocal.sourceSpan) ||
+      block.statements[1].kind() != MirStatementKind::Assign ||
+      block.statements[1].assignmentValue().initialization != MirInitializationKind::Initialize ||
+      block.statements[1].assignmentValue().destination.local() != local.id ||
+      block.statements[1].assignmentValue().destination.rootType() != local.type ||
+      block.statements[1].assignmentValue().destination.resultType() != local.type ||
+      block.statements[1].assignmentValue().destination.projections().size() != 0 ||
+      block.statements[1].assignmentValue().value.kind() != MirRvalueKind::Use ||
+      block.statements[1].assignmentValue().value.useValue().operand.kind() !=
+          MirOperandKind::Constant ||
+      !sameSpan(block.statements[1].sourceSpan(), initializer.sourceSpan) ||
+      block.terminator.kind() != MirTerminatorKind::Return ||
+      block.terminator.returnValue().value == zc::none ||
+      !sameSpan(block.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+    return false;
+  }
+  const auto& constant =
+      block.statements[1].assignmentValue().value.useValue().operand.constantValue();
+  if (constant.type != initializer.type ||
+      !sameConstant(constant.value, initializer.value, module, identities, semanticTypes)) {
+    return false;
+  }
+  ZC_IF_SOME(value, block.terminator.returnValue().value) {
+    return matchesPlaceUse(value, proofs, copy, local.type) && value.place().local() == local.id &&
+           value.place().rootType() == local.type && value.place().resultType() == local.type &&
+           value.place().projections().size() == 0;
+  }
+  return false;
+}
+
 bool validLocalAggregateFieldReturnFunction(
     const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
     const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& sourceLocal,
@@ -9385,9 +9452,17 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
             ZC_IF_SOME(localInitializer, initializer) {
               if (sourceOverwrite == zc::none) {
                 ZC_IF_SOME(reference, localReference) {
-                  valid = validLocalReturnFunction(
-                      function, hirModule, sourceDeclaration, block, local, localInitializer,
-                      returnStatement, reference, module, identities, semanticTypes, proofs, copy);
+                  if (sourceDeclaration.receiver != zc::none) {
+                    valid = validMethodScalarLocalReturnFunction(
+                        function, hirModule, sourceDeclaration, block, local, localInitializer,
+                        returnStatement, reference, module, identities, semanticTypes, proofs,
+                        copy);
+                  } else {
+                    valid = validLocalReturnFunction(function, hirModule, sourceDeclaration, block,
+                                                     local, localInitializer, returnStatement,
+                                                     reference, module, identities, semanticTypes,
+                                                     proofs, copy);
+                  }
                 }
               }
             }

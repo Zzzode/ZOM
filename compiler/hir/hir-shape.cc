@@ -391,6 +391,50 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     // write value is a scalar literal in this slice; receiver mutability is a
     // checker decision, not a shape decision.
     if (statements.size == 2) {
+      // One-let method shape: `let id = <scalar literal>;` immediately followed
+      // by `return id;`, on a shared receiver with no ordinary parameters. The
+      // binding must be a plain `let`; mut locals and non-literal initializers
+      // keep their own future shapes and return none.
+      if (hasReceiver && ordinaryCount == 0) {
+        auto letItem = statementItem(tree, tree.list(statements)[0]);
+        auto letReturnItem = statementItem(tree, tree.list(statements)[1]);
+        if (letItem != zc::none && letReturnItem != zc::none) {
+          ast::NodeId letNode;
+          ZC_IF_SOME(value, letItem) { letNode = value; }
+          ast::NodeId letStatement;
+          ZC_IF_SOME(value, letReturnItem) { letStatement = value; }
+          auto letDeclarator = localDeclarator(tree, letNode);
+          if (letDeclarator != zc::none && tree.node(letNode).kind == ast::SyntaxKind::LetStmt &&
+              static_cast<ast::BindingDeclarationKind>(
+                  tree.node(letNode).payload.words[ast::kLetStmtKindWord]) ==
+                  ast::BindingDeclarationKind::Let &&
+              tree.node(letStatement).kind == ast::SyntaxKind::ReturnStmt) {
+            ast::NodeId declarator;
+            ZC_IF_SOME(value, letDeclarator) { declarator = value; }
+            const ast::NodeId pattern(
+                tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
+            const ast::NodeId initializer(
+                tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+            if (tree.contains(pattern) && tree.contains(initializer) &&
+                isScalarLiteral(tree.node(initializer).kind)) {
+              const ast::NodeId letReturnValue(
+                  tree.node(letStatement).payload.words[ast::kReturnStmtValueWord]);
+              if (tree.contains(letReturnValue) &&
+                  matchesLocalReference(tree, pattern, letReturnValue)) {
+                FunctionReturnShape shape{};
+                shape.body = body;
+                shape.returnStatement = letStatement;
+                shape.value = letReturnValue;
+                shape.localPattern = pattern;
+                shape.localInitializer = initializer;
+                shape.returnsLocal = true;
+                shape.localReference = letReturnValue;
+                return shape;
+              }
+            }
+          }
+        }
+      }
       auto writeItem = statementItem(tree, tree.list(statements)[0]);
       if (writeItem == zc::none) return zc::none;
       ast::NodeId writeStatement;

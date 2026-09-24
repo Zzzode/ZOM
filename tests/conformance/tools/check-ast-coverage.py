@@ -13,6 +13,16 @@ GRAMMAR_EXPECTATION_ROOT = CONFORMANCE_ROOT / "expectations" / "grammar"
 EXPECTED_RE = re.compile(r'^expected:\s*"?([A-Z]+)"?', re.MULTILINE)
 EXPECTED_DIAGNOSTIC_RE = re.compile(r"^expected_diagnostic:", re.MULTILINE)
 
+KNOWN_HAND_PARSER_DIVERGENCES = {
+    # The ANTLR grammar oracle accepts the mutating modifier in these positions;
+    # the hand parser deliberately rejects them with a ZOM2098 diagnostic. The
+    # context-aware g4 predicate that unifies the two parsers on modifier
+    # placement is tracked follow-up work; until it lands, their AST RUN verdict
+    # (REJECT) legitimately differs from the grammar verdict (ACCEPT).
+    Path("06-declarations/mutating_modifier_requires_method_neg_01.check"),
+    Path("08-adt/mutating_modifier_constructor_neg_01.check"),
+}
+
 ALLOWED_EXTRA_AST_CHECKS = {
     Path("00-dump-format/default-tree.check"),
     Path("00-dump-format/invalid-format.check"),
@@ -182,6 +192,11 @@ def main() -> int:
         - ALLOWED_EXTRA_AST_CHECKS
     )
     stale_ast_only_allowlist = sorted(ALLOWED_AST_WITHOUT_GRAMMAR_CHECKS - ast_checks)
+    stale_divergence_allowlist = sorted(
+        path
+        for path in KNOWN_HAND_PARSER_DIVERGENCES
+        if not (AST_EXPECTATION_ROOT / path).exists() or path not in grammar_expectations
+    )
 
     run_errors: list[str] = []
     verdict_mismatches: list[str] = []
@@ -195,7 +210,7 @@ def main() -> int:
             run_errors.append(f"{rel.as_posix()}: {error}")
             continue
 
-        if actual != expected:
+        if actual != expected and rel not in KNOWN_HAND_PARSER_DIVERGENCES:
             verdict_mismatches.append(
                 f"{rel.as_posix()}: grammar expects {expected}, AST RUN expects {actual}"
             )
@@ -207,6 +222,7 @@ def main() -> int:
         or missing_ast_for_grammar
         or ast_without_grammar
         or stale_ast_only_allowlist
+        or stale_divergence_allowlist
         or run_errors
         or verdict_mismatches
     ):
@@ -217,6 +233,7 @@ def main() -> int:
         print_examples("Grammar expectations without AST checks", missing_ast_for_grammar)
         print_examples("AST checks without grammar expectation or explicit allowlist", ast_without_grammar)
         print_examples("Stale AST-only allowlist entries", stale_ast_only_allowlist)
+        print_examples("Stale hand-parser divergence allowlist entries", stale_divergence_allowlist)
         print_text_examples("Invalid AST RUN directives", run_errors)
         print_text_examples("AST RUN verdict mismatches against grammar expectations", verdict_mismatches)
         return 1

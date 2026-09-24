@@ -1795,6 +1795,26 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         continue;
       }
       if (shape.returnsLocal) {
+        // A scalar-local method body is admitted only through a shared receiver.
+        // A mutable receiver without an admitted receiver-field write is
+        // well-formed source the current lowering does not emit; drain the
+        // owning definition with the capability code rather than an invariant.
+        if (methodReceiver != zc::none) {
+          const auto& methodReceiverValue = ZC_ASSERT_NONNULL(methodReceiver);
+          auto receiverTypeLookup = checkedModule.semanticTypes().get(methodReceiverValue.type);
+          if (!receiverTypeLookup.is<type::SemanticTypeLookup>() ||
+              !receiverTypeLookup.get<type::SemanticTypeLookup>()
+                   .data()
+                   .is<type::semantic::ReferenceTypeData>() ||
+              receiverTypeLookup.get<type::SemanticTypeLookup>()
+                      .data()
+                      .get<type::semantic::ReferenceTypeData>()
+                      .mutability != type::semantic::Mutability::Const) {
+            return rejectHirCapability<HirModuleCandidate>(
+                definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                definition.source.clone());
+          }
+        }
         auto localBinding = resolvedOwnerLocal(bound.bindings(), shape.localReference);
         auto patternSpan = bound.parsedModule().spanFor(tree.node(shape.localPattern).range);
         if (localBinding == zc::none || patternSpan == zc::none ||

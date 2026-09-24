@@ -731,6 +731,51 @@ zc::Maybe<RecursiveFunctionProduct> buildAggregateLocalReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers `fun m(this) -> T { let x = <literal>; return x; }` on a shared
+/// receiver: one root scope, one receiver parameter local at localId(1), one
+/// UserLocal at localId(2), StorageLive followed by an Initialize Assign of the
+/// scalar constant, and a Return of the copy/move place-use of the user local.
+/// The receiver is unused by the body and folds away at LIR.
+zc::Maybe<RecursiveFunctionProduct> buildMethodScalarLocalReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirLocalBinding& sourceLocal,
+    const hir::HirScalarLiteralExpression& initializer, const hir::HirReturnStatement& sourceReturn,
+    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copyMarker) {
+  if (declaration.receiver == zc::none) return zc::none;
+  const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  (void)ctx.declareLocal(MirLocalKind::Parameter, receiver.type, scope,
+                         receiver.sourceSpan.clone());
+  const MirLocalId userLocal = ctx.declareLocal(MirLocalKind::UserLocal, sourceLocal.type, scope,
+                                                sourceLocal.sourceSpan.clone());
+
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  ctx.appendStatement(MirStatement::storageLive(userLocal, sourceLocal.sourceSpan.clone()));
+  zc::Vector<MirProjection> destinationProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(userLocal, sourceLocal.type, zc::mv(destinationProjections), sourceLocal.type),
+      MirRvalue::use(MirOperand::constant(sourceLocal.type, initializer.value.clone())),
+      MirInitializationKind::Initialize, initializer.sourceSpan.clone()));
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(userLocal, sourceLocal.type, zc::mv(returnProjections), sourceLocal.type));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Method, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers `fun m(this) -> T { this.field = <constant>; return this.field; }`
 /// on a mutable receiver: one root scope, one receiver parameter local carrying
 /// the mutable reference, one Overwrite Assign to the [Dereference, Field] place
@@ -858,10 +903,11 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
   // Single scalar-initialized user local: `let x = <literal>; return x;`. The
   // strict gate mirrors validLocalReturnFunction and the dedicated two-statement
   // construction: one binding whose initializer is a scalar literal and a bare
-  // place reference of that same local. No parameter locals are declared on this
-  // legacy layout, regardless of the function signature. Aggregate, binary,
-  // parameter, call, borrow, and uninitialized initializers keep their own
-  // legacy shapes.
+  // place reference of that same local. The plain-function layout declares no
+  // parameter locals regardless of signature; a receiver method routes through
+  // buildMethodScalarLocalReturn, which keeps the receiver parameter local.
+  // Aggregate, binary, parameter, call, borrow, and uninitialized initializers
+  // keep their own legacy shapes.
   if (block.statements.size() == 2 && declaration.unsafeBlock == zc::none) {
     auto sourceLocal = localFor(hirModule, block.statements[0]);
     if (sourceLocal != zc::none) {
@@ -881,9 +927,14 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
           ZC_ASSERT_NONNULL(literal).type == binding.type &&
           ZC_ASSERT_NONNULL(reference).type == binding.type &&
           ZC_ASSERT_NONNULL(reference).category == hir::HirValueCategory::Place) {
-        return buildScalarLocalReturn(declaration, binding, ZC_ASSERT_NONNULL(literal),
-                                      ZC_ASSERT_NONNULL(sourceReturn), identities, proofs,
-                                      copyMarker);
+        if (declaration.receiver == zc::none) {
+          return buildScalarLocalReturn(declaration, binding, ZC_ASSERT_NONNULL(literal),
+                                        ZC_ASSERT_NONNULL(sourceReturn), identities, proofs,
+                                        copyMarker);
+        }
+        return buildMethodScalarLocalReturn(declaration, binding, ZC_ASSERT_NONNULL(literal),
+                                            ZC_ASSERT_NONNULL(sourceReturn), identities, proofs,
+                                            copyMarker);
       }
     }
   }

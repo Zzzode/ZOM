@@ -1,0 +1,5 @@
+section: "08-adt inherent method scalar local return"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A shared-receiver inherent method binds one plain let local from a scalar literal and returns that local; it builds verified semantic HIR and Built MIR with a receiver parameter local and one initialized user local, and folds to a constant callee return."

@@ -1573,9 +1573,12 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   // (A) a scalar-constant return and no ordinary parameters (the
   //     literal-method slice),
   // (B) a [Dereference, Field] place-use of the receiver and no ordinary
-  //     parameters (the `this.field` read slice), or
+  //     parameters (the `this.field` read slice),
   // (C) exactly one ordinary integer parameter local returned bare (the
-  //     parameter-return method slice).
+  //     parameter-return method slice), or
+  // (E) one user local StorageLive'd and Initialize-assigned a constant that
+  //     is then returned bare (the constant-local fold; the local and its
+  //     statements fold away, leaving a constant-return callee).
   if (callee.kind != mir::MirFunctionKind::Function ||
       callee.sourceDefinitionKind != identity::DefinitionKind::Method ||
       (callee.locals.size() != 1 && callee.locals.size() != 2) || callee.blocks.size() != 1) {
@@ -1593,23 +1596,30 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   if (calleeCarrier == zc::none) { return zc::none; }
   const auto calleeCarrierValue = ZC_REQUIRE_NONNULL(calleeCarrier);
   // Every trailing parameter local must be an integer-typed parameter; their
-  // carriers become the callee LIR parameter carriers in ordinal order.
+  // carriers become the callee LIR parameter carriers in ordinal order. The one
+  // alternative trailing layout is a single UserLocal initialized from a
+  // constant and returned bare: the constant-local fold, whose body folds to a
+  // constant return and whose user local never becomes an LIR slot.
   zc::Vector<ValueType> ordinaryCarriers;
-  for (size_t i = 1; i < callee.locals.size(); ++i) {
-    const auto& parameterLocal = callee.locals[i];
-    if (parameterLocal.kind != mir::MirLocalKind::Parameter ||
-        parameterLocal.id.ordinal() != receiverLocal.id.ordinal() + i) {
-      return zc::none;
+  bool calleeConstLocalFold = false;
+  if (callee.locals.size() == 2 && callee.locals[1].kind == mir::MirLocalKind::UserLocal &&
+      callee.locals[1].id.ordinal() == receiverLocal.id.ordinal() + 1) {
+    calleeConstLocalFold = true;
+  } else {
+    for (size_t i = 1; i < callee.locals.size(); ++i) {
+      const auto& parameterLocal = callee.locals[i];
+      if (parameterLocal.kind != mir::MirLocalKind::Parameter ||
+          parameterLocal.id.ordinal() != receiverLocal.id.ordinal() + i) {
+        return zc::none;
+      }
+      auto carrier = integerCarrierFor(parameterLocal.type, semanticTypes);
+      if (carrier == zc::none) { return zc::none; }
+      ordinaryCarriers.add(ZC_REQUIRE_NONNULL(carrier));
     }
-    auto carrier = integerCarrierFor(parameterLocal.type, semanticTypes);
-    if (carrier == zc::none) { return zc::none; }
-    ordinaryCarriers.add(ZC_REQUIRE_NONNULL(carrier));
   }
   const auto& calleeBlock = callee.blocks[0];
-  if (calleeBlock.statements.size() > 1 ||
-      calleeBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
-    return zc::none;
-  }
+  if (calleeBlock.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }
+  if (calleeBlock.statements.size() > (calleeConstLocalFold ? 2 : 1)) { return zc::none; }
   const auto& calleeReturn = calleeBlock.terminator.returnValue().value;
   if (calleeReturn == zc::none) { return zc::none; }
   zc::Maybe<IntegerConstant> calleeConstant;
@@ -1681,10 +1691,42 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
         // ordinal would otherwise collide with the first parameter ordinal.
         if (callee.locals.size() != 1) { return zc::none; }
         calleeFieldRead = true;
+      } else if (calleeConstLocalFold && place.projections().size() == 0 &&
+                 calleeBlock.statements.size() == 2) {
+        // Case E: `let x = <constant>; return x;` on a receiver method. The
+        // single user local is StorageLive'd then Initialize-assigned the
+        // returned constant; the body folds to a constant return and the user
+        // local never becomes an LIR slot.
+        const auto& userLocal = callee.locals[1];
+        const auto& live = calleeBlock.statements[0];
+        const auto& initialize = calleeBlock.statements[1];
+        if (live.kind() != mir::MirStatementKind::StorageLive ||
+            live.storageLocal() != userLocal.id ||
+            initialize.kind() != mir::MirStatementKind::Assign ||
+            initialize.assignmentValue().initialization != mir::MirInitializationKind::Initialize ||
+            initialize.assignmentValue().destination.local() != userLocal.id ||
+            initialize.assignmentValue().destination.projections().size() != 0 ||
+            initialize.assignmentValue().value.kind() != mir::MirRvalueKind::Use ||
+            initialize.assignmentValue().value.useValue().operand.kind() !=
+                mir::MirOperandKind::Constant ||
+            place.local() != userLocal.id || place.rootType() != userLocal.type ||
+            place.resultType() != callee.resultType) {
+          return zc::none;
+        }
+        const auto& foldedOperand =
+            initialize.assignmentValue().value.useValue().operand.constantValue();
+        if (foldedOperand.type != callee.resultType) { return zc::none; }
+        const auto foldedInteger = foldedOperand.value.integerValue();
+        if (foldedInteger == zc::none) { return zc::none; }
+        auto foldedBits =
+            zeroExtendedBits(ZC_REQUIRE_NONNULL(foldedInteger), calleeCarrierValue.integerWidth());
+        if (foldedBits == zc::none) { return zc::none; }
+        calleeConstant = IntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(foldedBits));
       } else if (place.projections().size() == 0 && callee.locals.size() == 2) {
         // Case C: the single ordinary parameter at ordinal receiver + 1.
         const auto& parameterLocal = callee.locals[1];
-        if (place.local() != parameterLocal.id || place.rootType() != parameterLocal.type ||
+        if (parameterLocal.kind != mir::MirLocalKind::Parameter ||
+            place.local() != parameterLocal.id || place.rootType() != parameterLocal.type ||
             place.resultType() != callee.resultType) {
           return zc::none;
         }
@@ -1772,7 +1814,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   }
 
   const auto& mirCall = entry.terminator.callValue();
-  const size_t ordinaryParameterCount = callee.locals.size() - 1;
+  const size_t ordinaryParameterCount = ordinaryCarriers.size();
   const auto expectedEffectKind = callerIsMutable ? mir::MirCallEffectKind::ActivateMutableReceiver
                                                   : mir::MirCallEffectKind::NoActivation;
   if (mirCall.callee != callee.owner || mirCall.arguments.size() != 1 + ordinaryParameterCount ||
