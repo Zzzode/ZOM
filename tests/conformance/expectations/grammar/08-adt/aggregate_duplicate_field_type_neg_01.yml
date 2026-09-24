@@ -1,0 +1,5 @@
+section: "08-adt aggregate owner local capability"
+covers_rule: "structLiteral"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits the two-field aggregate; semantic HIR rejects same-typed sibling fields with ZOM4099 because the ownership overlay cannot disambiguate them yet."

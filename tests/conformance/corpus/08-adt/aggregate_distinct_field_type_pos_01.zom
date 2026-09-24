@@ -1,0 +1,6 @@
+struct Cell {
+  value: i32,
+  flag: bool,
+  fun get(this) -> i32 { return this.value; }
+}
+fun entry() -> i32 { let cell = Cell { value: 42, flag: true }; return cell.get(); }

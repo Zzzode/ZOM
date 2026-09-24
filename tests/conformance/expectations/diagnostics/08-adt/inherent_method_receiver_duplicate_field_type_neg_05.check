@@ -1,0 +1,11 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/inherent_method_receiver_duplicate_field_type_neg_05.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A two-field owner whose fields share one canonical type (two i32 fields)
+// cannot be tracked by the ownership overlay in this slice: the per-field drop
+// and marker plans are keyed by field type only, so same-typed siblings
+// collide. The initializer must drain per definition as ZOM4099 at HIR
+// construction, never reach proof validation as an internal compiler error.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/08-adt/inherent_method_receiver_duplicate_field_type_neg_05.zom:6:33

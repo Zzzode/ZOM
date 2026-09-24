@@ -1,0 +1,5 @@
+struct Cell {
+  value: i32,
+  other: i32,
+}
+fun entry() -> i32 { let cell = Cell { value: 1, other: 2 }; return cell.value; }

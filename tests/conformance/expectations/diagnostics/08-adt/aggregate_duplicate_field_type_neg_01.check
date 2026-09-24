@@ -1,0 +1,10 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/aggregate_duplicate_field_type_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// Same-typed sibling fields collide in the ownership overlay regardless of
+// whether the local is borrowed or a method is called; the plain field read
+// still drains per definition as ZOM4099 at the aggregate initializer, not an
+// internal compiler error.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/08-adt/aggregate_duplicate_field_type_neg_01.zom:5:33

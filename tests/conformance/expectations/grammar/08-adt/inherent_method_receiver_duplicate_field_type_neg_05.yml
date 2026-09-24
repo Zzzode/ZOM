@@ -1,0 +1,5 @@
+section: "08-adt inherent method receiver call capability"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits the call; semantic HIR rejects the two same-typed-field owner with ZOM4099 because the ownership overlay cannot disambiguate the fields yet."

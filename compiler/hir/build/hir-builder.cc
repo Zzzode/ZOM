@@ -132,6 +132,23 @@ zc::Maybe<HirParameter> buildMethodReceiverParameter(
                       receiverEntry->source.clone()};
 }
 
+/// \brief True when two aggregate elements initialize fields of the same
+/// canonical semantic type. The ownership overlay keys per-field drop and
+/// marker plans by field type only, so same-typed sibling fields collide and
+/// cannot be validated in this slice. Such an initializer must drain as a
+/// per-definition capability rejection (ZOM4099) at HIR construction rather
+/// than reach proof validation as an internal incident. Canonical handles make
+/// this alias-transparent; a syntax comparison would not be.
+bool aggregateHasDuplicateFieldTypes(
+    zc::ArrayPtr<const checker::checked::AggregateElementFact> elements) {
+  for (size_t first = 0; first < elements.size(); ++first) {
+    for (size_t second = first + 1; second < elements.size(); ++second) {
+      if (elements[first].destinationType == elements[second].destinationType) return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 }  // namespace detail
 
@@ -1341,6 +1358,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               rejected = true;
               break;
             }
+            // Same-typed sibling fields cannot be tracked by the ownership
+            // overlay yet; drain the owning definition as ZOM4099 instead of
+            // failing proof validation as an internal incident.
+            if (aggregateHasDuplicateFieldTypes(sourceAggregate.elements.asPtr())) {
+              return rejectHirCapability<HirModuleCandidate>(
+                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                  ZC_ASSERT_NONNULL(initializerSpan).clone());
+            }
             zc::Vector<HirNominalAggregateElement> elements;
             for (const auto& sourceElement : sourceAggregate.elements) {
               if (sourceElement.field == zc::none ||
@@ -1902,6 +1927,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                    ir::IrFailureKind::InvalidFact, module,
                                                    registries, ordinal + 2);
+            }
+            // Same-typed sibling fields cannot be tracked by the ownership
+            // overlay yet; drain the owning definition as ZOM4099 instead of
+            // failing proof validation as an internal incident.
+            if (aggregateHasDuplicateFieldTypes(sourceAggregate.elements.asPtr())) {
+              return rejectHirCapability<HirModuleCandidate>(
+                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                  ZC_ASSERT_NONNULL(initializerSpan).clone());
             }
             zc::Vector<HirNominalAggregateElement> elements;
             for (const auto& sourceElement : sourceAggregate.elements) {

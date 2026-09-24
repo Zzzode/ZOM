@@ -1,0 +1,5 @@
+section: "08-adt aggregate owner local capability"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Two fields of distinct canonical types do not collide; the receiver call keeps accepting, while same-typed siblings drain ZOM4099."

@@ -1,0 +1,6 @@
+struct Cell {
+  value: i32,
+  other: i32,
+  fun get(this) -> i32 { return this.value; }
+}
+fun entry() -> i32 { let cell = Cell { value: 42, other: 1 }; return cell.get(); }
