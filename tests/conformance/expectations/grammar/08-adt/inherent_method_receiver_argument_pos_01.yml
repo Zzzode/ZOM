@@ -1,0 +1,5 @@
+section: "08-adt inherent method receiver argument"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A shared-receiver inherent method with one explicit integer parameter can return that parameter, and the caller can invoke it with one constant argument through the implicit shared borrow of the receiver."

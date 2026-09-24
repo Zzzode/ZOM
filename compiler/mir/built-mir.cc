@@ -2425,9 +2425,10 @@ bool validParameterReturnFunction(const MirFunction& function,
                                   const hir::HirParameterReferenceExpression& reference,
                                   checker::marker::MarkerProofEngine& proofs,
                                   identity::DefId copy) {
-  // The returned parameter must be one of the declared parameters; its local is
-  // the matching leading parameter local. N == 1, K == 0 is the byte-identical
-  // single-parameter special case.
+  // The returned parameter must be one of the declared parameters; for a method
+  // the implicit receiver leads as local 1, so ordinary parameter locals start
+  // at local 2. N == 1, K == 0 is the byte-identical single-parameter special
+  // case.
   size_t referencedIndex = 0;
   bool referencedFound = false;
   for (size_t i = 0; i < declaration.parameters.size(); ++i) {
@@ -2438,11 +2439,14 @@ bool validParameterReturnFunction(const MirFunction& function,
       break;
     }
   }
+  const bool isMethod = declaration.receiver != zc::none;
+  const size_t leadingReceiverCount = isMethod ? 1 : 0;
   if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
-      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.sourceDefinitionKind !=
+          (isMethod ? identity::DefinitionKind::Method : identity::DefinitionKind::Function) ||
       function.resultType != declaration.resultType || function.sourceScopes.size() != 1 ||
-      function.locals.size() != declaration.parameters.size() || function.blocks.size() != 1 ||
-      declaration.parameters.size() == 0 || !referencedFound ||
+      function.locals.size() != declaration.parameters.size() + leadingReceiverCount ||
+      function.blocks.size() != 1 || declaration.parameters.size() == 0 || !referencedFound ||
       declaration.body != sourceBlock.node || sourceBlock.statements.size() != 1 ||
       sourceBlock.statements[0] != sourceReturn.node || sourceReturn.value != reference.node ||
       reference.type != declaration.resultType ||
@@ -2455,9 +2459,20 @@ bool validParameterReturnFunction(const MirFunction& function,
       !sameSpan(scope.sourceSpan, declaration.sourceSpan)) {
     return false;
   }
+  size_t localSlot = 0;
+  if (isMethod) {
+    const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
+    const auto& receiverLocal = function.locals[0];
+    if (receiverLocal.id != localId(1) || receiverLocal.kind != MirLocalKind::Parameter ||
+        receiverLocal.type != receiver.type || receiverLocal.sourceScope != scope.id ||
+        !sameSpan(receiverLocal.sourceSpan, receiver.sourceSpan)) {
+      return false;
+    }
+    localSlot = 1;
+  }
   for (size_t i = 0; i < declaration.parameters.size(); ++i) {
-    const auto& parameterLocal = function.locals[i];
-    if (parameterLocal.id != localId(static_cast<uint32_t>(i + 1)) ||
+    const auto& parameterLocal = function.locals[localSlot + i];
+    if (parameterLocal.id != localId(static_cast<uint32_t>(i + 1 + leadingReceiverCount)) ||
         parameterLocal.kind != MirLocalKind::Parameter ||
         parameterLocal.type != declaration.parameters[i].type ||
         parameterLocal.sourceScope != scope.id ||
@@ -2465,7 +2480,8 @@ bool validParameterReturnFunction(const MirFunction& function,
       return false;
     }
   }
-  const auto referencedLocal = localId(static_cast<uint32_t>(referencedIndex + 1));
+  const auto referencedLocal =
+      localId(static_cast<uint32_t>(referencedIndex + 1 + leadingReceiverCount));
   if (block.id != blockId(1) || block.sourceScope != scope.id || block.statements.size() != 0 ||
       block.terminator.kind() != MirTerminatorKind::Return ||
       block.terminator.returnValue().value == zc::none ||

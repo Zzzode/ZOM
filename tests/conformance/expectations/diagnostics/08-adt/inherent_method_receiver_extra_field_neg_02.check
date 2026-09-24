@@ -1,0 +1,10 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/inherent_method_receiver_extra_field_neg_02.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A `this.field` return is admitted only for a receiver with no ordinary
+// parameters; combining the field-read body with an explicit parameter is a
+// different shape and stays on the per-definition capability rejection
+// ZOM4099 rather than an internal verification invariant.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/08-adt/inherent_method_receiver_extra_field_neg_02.zom:3:3

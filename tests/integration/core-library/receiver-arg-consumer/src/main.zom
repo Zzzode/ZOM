@@ -1,0 +1,8 @@
+// Shared-receiver method with one explicit integer parameter: the method body
+// returns the parameter unchanged, so the caller's constant argument passes in
+// through the receiver-plus-argument call and exits 42.
+struct Cell {
+  value: i32,
+  fun echo(this, answer: i32) -> i32 { return answer; }
+}
+fun entry() -> i32 { let cell = Cell { value: 7 }; return cell.echo(42); }

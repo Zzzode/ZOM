@@ -1,11 +1,10 @@
 // RUN: cd %corpus && ! %zomc compile --check 08-adt/inherent_method_body_capability_neg_01.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// The flat scalar-literal method body and the shared `this` field-read body
-// now build verified semantic HIR and Built MIR, but a method that returns an
-// ordinary parameter is still outside the admitted shapes, so semantic HIR
-// rejects the method definition with the per-definition capability rejection
-// ZOM4099, not an internal compiler error.
+// A shared-receiver method may return one explicit integer parameter, but a
+// method with two ordinary parameters is still outside the admitted shapes, so
+// semantic HIR rejects the method definition with the per-definition
+// capability rejection ZOM4099, not an internal compiler error.
 
 // CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
 // CHECK-LITERAL:   --> conformance/08-adt/inherent_method_body_capability_neg_01.zom:3:3

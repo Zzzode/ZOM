@@ -478,10 +478,11 @@ zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
-/// \brief Lowers `fun f(p0..pN-1) -> R { return pK; }`: one root scope, one
-/// parameter local per declared parameter in source order, one empty entry
-/// block returning a copy/move place-use of the referenced parameter local.
-/// Byte-identical to the legacy parameter-return construction.
+/// \brief Lowers `fun f(p0..pN-1) -> R { return pK; }`, or the method twin
+/// `fun m(this, p0..pN-1) -> R { return pK; }`: one root scope, parameter
+/// locals in source order with the implicit receiver leading for a method,
+/// one empty entry block returning a copy/move place-use of the referenced
+/// parameter local. Byte-identical to the legacy parameter-return construction.
 zc::Maybe<RecursiveFunctionProduct> buildParameterReturn(
     const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
     const hir::HirParameterReferenceExpression& reference,
@@ -501,14 +502,18 @@ zc::Maybe<RecursiveFunctionProduct> buildParameterReturn(
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
 
+  const bool isMethod = declaration.receiver != zc::none;
   detail::MirFnCtx ctx;
   const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  ZC_IF_SOME(receiver, declaration.receiver) {
+    ctx.declareLocal(MirLocalKind::Parameter, receiver.type, scope, receiver.sourceSpan.clone());
+  }
   for (size_t i = 0; i < declaration.parameters.size(); ++i) {
     ctx.declareLocal(MirLocalKind::Parameter, declaration.parameters[i].type, scope,
                      declaration.parameters[i].sourceSpan.clone());
   }
-  const MirLocalId referencedLocal =
-      ZC_ASSERT_NONNULL(MirLocalId::fromOrdinal(static_cast<uint32_t>(referencedIndex + 1)));
+  const auto referencedLocal = ZC_ASSERT_NONNULL(
+      MirLocalId::fromOrdinal(static_cast<uint32_t>(referencedIndex + 1 + (isMethod ? 1 : 0))));
   zc::Vector<MirProjection> projections;
   auto returnOperand =
       placeUse(proofs, copyMarker,
@@ -520,9 +525,10 @@ zc::Maybe<RecursiveFunctionProduct> buildParameterReturn(
   ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
                                                 sourceReturn.sourceSpan.clone()));
 
-  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
-                                    identity::DefinitionKind::Function, declaration.resultType,
-                                    declaration.sourceSpan.clone());
+  MirFunction function =
+      ctx.finish(declaration.definition, MirFunctionKind::Function,
+                 isMethod ? identity::DefinitionKind::Method : identity::DefinitionKind::Function,
+                 declaration.resultType, declaration.sourceSpan.clone());
   zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }

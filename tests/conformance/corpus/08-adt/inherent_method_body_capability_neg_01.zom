@@ -1,5 +1,5 @@
 struct Counter {
   count: i32,
-  fun value(this, extra: i32) -> i32 { return extra; }
+  fun value(this, extra: i32, other: i32) -> i32 { return extra; }
 }
 fun entry() -> i32 { return 0; }

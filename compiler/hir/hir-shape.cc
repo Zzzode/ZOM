@@ -37,6 +37,45 @@ bool isPrimitiveBinaryOperator(ast::BinaryOperatorKind syntax) {
   return false;
 }
 
+// One method parameter-list classification: whether the leading declared
+// parameter is the implicit `this` receiver and the count of ordinary declared
+// parameters after it.
+struct MethodParameterLayout final {
+  bool hasReceiver;
+  size_t ordinaryCount;
+};
+
+zc::Maybe<MethodParameterLayout> methodParameterLayout(const ast::Tree& tree,
+                                                       const ast::Node& function) {
+  const ast::NodeId listNode(function.payload.words[ast::kMethodDeclParamsIdWord]);
+  if (!tree.contains(listNode) ||
+      tree.node(listNode).kind != ast::SyntaxKind::FunctionParameterList) {
+    return zc::none;
+  }
+  const ast::NodeList parameters{
+      tree.node(listNode).payload.words[ast::kFunctionParameterListParamsFirstWord],
+      tree.node(listNode).payload.words[ast::kFunctionParameterListParamsSizeWord]};
+  if (!tree.contains(parameters)) return zc::none;
+  bool hasReceiver = false;
+  size_t ordinaryCount = 0;
+  for (size_t index = 0; index < parameters.size; ++index) {
+    const auto parameter = tree.list(parameters)[index];
+    if (!tree.contains(parameter) ||
+        tree.node(parameter).kind != ast::SyntaxKind::FunctionParameterDecl) {
+      return zc::none;
+    }
+    const auto name = tree.ident(
+        ast::IdentId(tree.node(parameter).payload.words[ast::kFunctionParameterDeclNameWord]));
+    if (name == "this"_zc) {
+      if (index != 0 || hasReceiver) return zc::none;
+      hasReceiver = true;
+    } else {
+      ++ordinaryCount;
+    }
+  }
+  return MethodParameterLayout{hasReceiver, ordinaryCount};
+}
+
 zc::Maybe<ast::NodeId> localDeclarator(const ast::Tree& tree, ast::NodeId statement) {
   auto item = statementItem(tree, statement);
   if (item == zc::none) return zc::none;
@@ -334,13 +373,20 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
   if (!tree.contains(statements) || statements.empty()) return zc::none;
-  // An inherent method is admitted only for a single flat return statement:
-  // `return <literal>;` or `return this.<field>;` read through the implicit
-  // shared receiver. Every other body shape (locals, ordinary parameters,
-  // calls, conditionals, loops, unsafe blocks, binary returns) returns none so
-  // the capability drain keeps the method on ZOM4099 until its lowering exists.
+  // An inherent method is admitted only for a single flat return statement,
+  // with parameter arities matching the lowered shapes exactly so the
+  // capability drain keeps every other body on ZOM4099:
+  // `return <literal>;` (receiver optional, no ordinary parameters),
+  // `return <ordinary-parameter>;` (receiver plus exactly one parameter), or
+  // `return this.<field>;` (receiver, no ordinary parameters). Every other body
+  // shape (locals, calls, conditionals, loops, unsafe blocks, binary returns,
+  // extra parameters) returns none until its lowering exists.
   if (isMethod) {
     if (statements.size != 1) return zc::none;
+    auto layout = methodParameterLayout(tree, function);
+    if (layout == zc::none) return zc::none;
+    const bool hasReceiver = ZC_ASSERT_NONNULL(layout).hasReceiver;
+    const size_t ordinaryCount = ZC_ASSERT_NONNULL(layout).ordinaryCount;
     auto returnItem = statementItem(tree, tree.list(statements)[0]);
     if (returnItem == zc::none) return zc::none;
     ast::NodeId returnNode;
@@ -354,13 +400,21 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     shape.body = body;
     shape.returnStatement = returnNode;
     shape.value = value;
-    if (isScalarLiteral(tree.node(value).kind)) return shape;
+    if (isScalarLiteral(tree.node(value).kind)) {
+      if (ordinaryCount != 0) return zc::none;
+      return shape;
+    }
+    if (tree.node(value).kind == ast::SyntaxKind::IdentExpr) {
+      if (hasReceiver && ordinaryCount == 1) return shape;
+      return zc::none;
+    }
     if (tree.node(value).kind == ast::SyntaxKind::MemberExpression &&
         static_cast<ast::MemberAccessKind>(
             tree.node(value).payload.words[ast::kMemberExpressionAccessWord]) ==
             ast::MemberAccessKind::Dot) {
       const ast::NodeId object(tree.node(value).payload.words[ast::kMemberExpressionObjectWord]);
-      if (tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::ThisExpr) {
+      if (tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::ThisExpr &&
+          hasReceiver && ordinaryCount == 0) {
         shape.returnsReceiverField = true;
         return shape;
       }

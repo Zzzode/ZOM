@@ -1,0 +1,5 @@
+section: "08-adt inherent method declaration syntax"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits the method with the extra parameter; semantic HIR rejects the this.field body combined with an ordinary parameter with ZOM4099."

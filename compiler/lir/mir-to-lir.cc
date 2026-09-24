@@ -1563,12 +1563,17 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithLeaf(
 zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
     const mir::MirFunction& caller, const mir::MirFunction& callee,
     const type::SemanticTypeStore& semanticTypes) {
-  // Callee: a Method-sourced function with one shared-reference receiver
-  // parameter local and a single block returning a scalar constant. The
-  // receiver is unused by the admitted scalar body.
+  // Callee: a Method-sourced function whose first parameter local is the
+  // shared-reference receiver. It admits exactly one block with one of:
+  // (A) a scalar-constant return and no ordinary parameters (the
+  //     literal-method slice),
+  // (B) a [Dereference, Field] place-use of the receiver and no ordinary
+  //     parameters (the `this.field` read slice), or
+  // (C) exactly one ordinary integer parameter local returned bare (the
+  //     parameter-return method slice).
   if (callee.kind != mir::MirFunctionKind::Function ||
       callee.sourceDefinitionKind != identity::DefinitionKind::Method ||
-      callee.locals.size() != 1 || callee.blocks.size() != 1) {
+      (callee.locals.size() != 1 && callee.locals.size() != 2) || callee.blocks.size() != 1) {
     return zc::none;
   }
   const auto& receiverLocal = callee.locals[0];
@@ -1579,6 +1584,19 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   auto calleeCarrier = integerCarrierFor(callee.resultType, semanticTypes);
   if (calleeCarrier == zc::none) { return zc::none; }
   const auto calleeCarrierValue = ZC_REQUIRE_NONNULL(calleeCarrier);
+  // Every trailing parameter local must be an integer-typed parameter; their
+  // carriers become the callee LIR parameter carriers in ordinal order.
+  zc::Vector<ValueType> ordinaryCarriers;
+  for (size_t i = 1; i < callee.locals.size(); ++i) {
+    const auto& parameterLocal = callee.locals[i];
+    if (parameterLocal.kind != mir::MirLocalKind::Parameter ||
+        parameterLocal.id.ordinal() != receiverLocal.id.ordinal() + i) {
+      return zc::none;
+    }
+    auto carrier = integerCarrierFor(parameterLocal.type, semanticTypes);
+    if (carrier == zc::none) { return zc::none; }
+    ordinaryCarriers.add(ZC_REQUIRE_NONNULL(carrier));
+  }
   const auto& calleeBlock = callee.blocks[0];
   if (calleeBlock.statements.size() != 0 ||
       calleeBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
@@ -1586,13 +1604,13 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   }
   const auto& calleeReturn = calleeBlock.terminator.returnValue().value;
   if (calleeReturn == zc::none) { return zc::none; }
-  // The callee body is either (A) a scalar-constant return (the literal-method
-  // slice) or (B) a direct copy/move place-use of the shared receiver parameter
-  // reached through [Dereference, Field] (the `this.field` read slice).
   zc::Maybe<IntegerConstant> calleeConstant;
   bool calleeFieldRead = false;
+  zc::Maybe<uint32_t> calleeReturnParameterOrdinal;
   ZC_IF_SOME(value, calleeReturn) {
     if (value.kind() == mir::MirOperandKind::Constant) {
+      // The literal-method body carries no ordinary parameters.
+      if (callee.locals.size() != 1) { return zc::none; }
       if (value.constantValue().type != callee.resultType) { return zc::none; }
       const auto integer = value.constantValue().value.integerValue();
       if (integer == zc::none) { return zc::none; }
@@ -1601,18 +1619,32 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
       calleeConstant = IntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(bits));
     } else {
       const auto& place = value.place();
-      if (place.local() != receiverLocal.id || place.rootType() != receiverLocal.type ||
-          place.resultType() != callee.resultType || place.projections().size() != 2 ||
-          place.projections()[0].kind() != mir::MirProjectionKind::Dereference ||
-          place.projections()[0].inputType() != receiverLocal.type ||
-          place.projections()[1].kind() != mir::MirProjectionKind::Field ||
-          place.projections()[1].resultType() != callee.resultType) {
+      if (place.projections().size() == 2 && place.local() == receiverLocal.id &&
+          place.rootType() == receiverLocal.type && place.resultType() == callee.resultType &&
+          place.projections()[0].kind() == mir::MirProjectionKind::Dereference &&
+          place.projections()[0].inputType() == receiverLocal.type &&
+          place.projections()[1].kind() == mir::MirProjectionKind::Field &&
+          place.projections()[1].resultType() == callee.resultType) {
+        // Case B carries no ordinary parameters: the synthesized result slot
+        // ordinal would otherwise collide with the first parameter ordinal.
+        if (callee.locals.size() != 1) { return zc::none; }
+        calleeFieldRead = true;
+      } else if (place.projections().size() == 0 && callee.locals.size() == 2) {
+        // Case C: the single ordinary parameter at ordinal receiver + 1.
+        const auto& parameterLocal = callee.locals[1];
+        if (place.local() != parameterLocal.id || place.rootType() != parameterLocal.type ||
+            place.resultType() != callee.resultType) {
+          return zc::none;
+        }
+        calleeReturnParameterOrdinal = parameterLocal.id.ordinal();
+      } else {
         return zc::none;
       }
-      calleeFieldRead = true;
     }
   }
-  if (calleeConstant == zc::none && !calleeFieldRead) { return zc::none; }
+  if (calleeConstant == zc::none && !calleeFieldRead && calleeReturnParameterOrdinal == zc::none) {
+    return zc::none;
+  }
 
   // Caller: one aggregate-initialized owner local, one shared-receiver borrow
   // temporary, and one call result temporary; two blocks (Call then Return).
@@ -1683,7 +1715,8 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   }
 
   const auto& mirCall = entry.terminator.callValue();
-  if (mirCall.callee != callee.owner || mirCall.arguments.size() != 1 ||
+  const size_t ordinaryParameterCount = callee.locals.size() - 1;
+  if (mirCall.callee != callee.owner || mirCall.arguments.size() != 1 + ordinaryParameterCount ||
       mirCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       mirCall.destination.local() != resultTemporary.id ||
       mirCall.destination.projections().size() != 0 || mirCall.normalTarget != continuation.id ||
@@ -1695,6 +1728,19 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
       receiverArgument.place().local() != borrowTemporary.id ||
       receiverArgument.place().projections().size() != 0) {
     return zc::none;
+  }
+  // Every trailing call argument is an integer constant matching the callee's
+  // ordinary parameter carrier; place arguments ride a later slice.
+  zc::Vector<Operand> extraArguments;
+  for (size_t i = 0; i < ordinaryParameterCount; ++i) {
+    const auto& argument = mirCall.arguments[1 + i];
+    if (argument.kind() != mir::MirOperandKind::Constant ||
+        argument.constantValue().type != callee.locals[1 + i].type) {
+      return zc::none;
+    }
+    auto argumentOperand = lirOperandFor(argument, ordinaryCarriers[i]);
+    if (argumentOperand == zc::none) { return zc::none; }
+    extraArguments.add(ZC_REQUIRE_NONNULL(argumentOperand));
   }
   const auto& returnValue = continuation.terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
@@ -1721,6 +1767,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
         Statement::takeAddress(borrowTemporary.id.ordinal(), ownerLocal.id.ordinal()));
     zc::Vector<Operand> arguments;
     arguments.add(Operand::localUse(borrowTemporary.id.ordinal()));
+    for (auto& extraArgument : extraArguments) { arguments.add(zc::mv(extraArgument)); }
     auto callTerminator = Terminator::callFunction(
         /*calleeIndex=*/1, resultTemporary.id.ordinal(), zc::mv(arguments),
         ZC_REQUIRE_NONNULL(callerContId));
@@ -1743,6 +1790,9 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   {
     zc::Vector<Local> parameters;
     parameters.add(Local(receiverLocal.id.ordinal(), receiverCarrierValue));
+    for (size_t i = 0; i < ordinaryCarriers.size(); ++i) {
+      parameters.add(Local(receiverLocal.id.ordinal() + 1 + i, ordinaryCarriers[i]));
+    }
     if (calleeFieldRead) {
       // The field read materializes in a synthesized result slot (the first body
       // local, ordinal receiver + 1): LoadField through the receiver pointer at
@@ -1758,10 +1808,20 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
       calleeLocals.add(Local(resultOrdinal, calleeCarrierValue));
       functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
                              zc::mv(parameters), zc::mv(calleeLocals), zc::mv(calleeBlocks)));
-    } else {
+    } else if (calleeConstant != zc::none) {
       zc::Vector<BasicBlock> calleeBlocks;
       calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId),
                                   Terminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
+      zc::Vector<Local> noLocals;
+      functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
+                             zc::mv(parameters), zc::mv(noLocals), zc::mv(calleeBlocks)));
+    } else {
+      // The method returns one of its ordinary parameters: the incoming
+      // argument slot is returned directly with no body local.
+      zc::Vector<BasicBlock> calleeBlocks;
+      calleeBlocks.add(
+          BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId),
+                     Terminator::returnLocal(ZC_REQUIRE_NONNULL(calleeReturnParameterOrdinal))));
       zc::Vector<Local> noLocals;
       functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
                              zc::mv(parameters), zc::mv(noLocals), zc::mv(calleeBlocks)));

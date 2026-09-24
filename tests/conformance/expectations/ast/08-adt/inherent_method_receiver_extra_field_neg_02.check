@@ -1,23 +1,23 @@
-// RUN: %zomc compile --dump-ast %corpus/08-adt/inherent_method_body_capability_neg_01.zom | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/08-adt/inherent_method_receiver_extra_field_neg_02.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #28 @1:1..6:1 file_name="inherent_method_body_capability_neg_01.zom"
+// CHECK: SourceFile #27 @1:1..6:1 file_name="inherent_method_receiver_extra_field_neg_02.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #19 @1:1..4:2
+// CHECK-NEXT:     StatementListItem #18 @1:1..4:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         StructDecl #18 @1:1..4:2 name="Counter"
+// CHECK-NEXT:         StructDecl #17 @1:1..4:2 name="Counter"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #17 @1:16..4:2 nmembers=2
+// CHECK-NEXT:             ClassMemberList #16 @1:16..4:2 nmembers=2
 // CHECK-NEXT:               members:
 // CHECK-NEXT:                 FieldDecl #2 @2:3..2:14 name="count" is_mut=false is_static=false visibility=Default
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #1 @2:10..2:13 kind=I32
 // CHECK-NEXT:                   init: null
-// CHECK-NEXT:                 MethodDecl #16 @3:3..3:67 name="value" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #15 @3:3..3:60 name="value" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #10 @3:12..3:42 nparams=3
+// CHECK-NEXT:                     FunctionParameterList #8 @3:12..3:30 nparams=2
 // CHECK-NEXT:                       params:
 // CHECK-NEXT:                         FunctionParameterDecl #5 @3:13..3:17 name="this"
 // CHECK-NEXT:                           ty:
@@ -32,42 +32,39 @@
 // CHECK-NEXT:                             PredefinedTypeExpr #6 @3:26..3:29 kind=I32
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                         FunctionParameterDecl #9 @3:31..3:41 name="other"
-// CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             PredefinedTypeExpr #8 @3:38..3:41 kind=I32
-// CHECK-NEXT:                           default_: null
-// CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #11 @3:46..3:49 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #9 @3:34..3:37 kind=I32
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #15 @3:50..3:67
+// CHECK-NEXT:                     BlockStmt #14 @3:38..3:60
 // CHECK-NEXT:                       stmts:
-// CHECK-NEXT:                         StatementListItem #14 @3:52..3:65
+// CHECK-NEXT:                         StatementListItem #13 @3:40..3:58
 // CHECK-NEXT:                           item:
-// CHECK-NEXT:                             ReturnStmt #13 @3:52..3:65
+// CHECK-NEXT:                             ReturnStmt #12 @3:40..3:58
 // CHECK-NEXT:                               value:
-// CHECK-NEXT:                                 IdentExpr #12 @3:59..3:64 name="extra"
+// CHECK-NEXT:                                 MemberExpression #11 @3:47..3:57 property="count" access=Dot
+// CHECK-NEXT:                                   object:
+// CHECK-NEXT:                                     ThisExpr #10 @3:47..3:51
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #27 @5:1..5:33
+// CHECK-NEXT:     StatementListItem #26 @5:1..5:33
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #26 @5:1..5:33 name="entry"
+// CHECK-NEXT:         FunctionDecl #25 @5:1..5:33 name="entry"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #20 @5:10..5:12 nparams=0
+// CHECK-NEXT:             FunctionParameterList #19 @5:10..5:12 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #21 @5:16..5:19 kind=I32
+// CHECK-NEXT:             PredefinedTypeExpr #20 @5:16..5:19 kind=I32
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #25 @5:20..5:33
+// CHECK-NEXT:             BlockStmt #24 @5:20..5:33
 // CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #24 @5:22..5:31
+// CHECK-NEXT:                 StatementListItem #23 @5:22..5:31
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ReturnStmt #23 @5:22..5:31
+// CHECK-NEXT:                     ReturnStmt #22 @5:22..5:31
 // CHECK-NEXT:                       value:
-// CHECK-NEXT:                         IntLiteral #22 @5:29..5:30 base=10 value="0"
+// CHECK-NEXT:                         IntLiteral #21 @5:29..5:30 base=10 value="0"
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null
