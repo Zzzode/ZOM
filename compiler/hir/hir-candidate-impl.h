@@ -18,6 +18,7 @@ struct HirModuleCandidate::Impl final {
        zc::Vector<HirLocalWriteStatement>&& localWrites,
        zc::Vector<HirLocalReferenceExpression>&& localReferences,
        zc::Vector<HirLocalFieldProjectionExpression>&& localFieldProjections,
+       zc::Vector<HirParameterFieldProjectionExpression>&& parameterFieldProjections,
        zc::Vector<HirParameterReferenceExpression>&& parameterReferences,
        zc::Vector<HirParameterIndexExpression>&& parameterIndexes,
        zc::Vector<HirParameterReborrowExpression>&& parameterReborrows,
@@ -40,6 +41,7 @@ struct HirModuleCandidate::Impl final {
         localWrites(zc::mv(localWrites)),
         localReferences(zc::mv(localReferences)),
         localFieldProjections(zc::mv(localFieldProjections)),
+        parameterFieldProjections(zc::mv(parameterFieldProjections)),
         parameterReferences(zc::mv(parameterReferences)),
         parameterIndexes(zc::mv(parameterIndexes)),
         parameterReborrows(zc::mv(parameterReborrows)),
@@ -63,6 +65,7 @@ struct HirModuleCandidate::Impl final {
   zc::Vector<HirLocalWriteStatement> localWrites;
   zc::Vector<HirLocalReferenceExpression> localReferences;
   zc::Vector<HirLocalFieldProjectionExpression> localFieldProjections;
+  zc::Vector<HirParameterFieldProjectionExpression> parameterFieldProjections;
   zc::Vector<HirParameterReferenceExpression> parameterReferences;
   zc::Vector<HirParameterIndexExpression> parameterIndexes;
   zc::Vector<HirParameterReborrowExpression> parameterReborrows;

@@ -35,6 +35,7 @@ public:
            zc::Vector<HirPrimitiveBinaryExpression>& primitiveBinaryOperations,
            zc::Vector<HirNominalAggregateExpression>& aggregates,
            zc::Vector<HirLocalFieldProjectionExpression>& localFieldProjections,
+           zc::Vector<HirParameterFieldProjectionExpression>& parameterFieldProjections,
            zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks,
            zc::Vector<HirParameterReborrowExpression>& parameterReborrows,
            zc::Vector<HirLocalBorrowExpression>& localBorrows,
@@ -57,6 +58,7 @@ public:
   void addPrimitiveBinary(HirPrimitiveBinaryExpression operation);
   void addAggregate(HirNominalAggregateExpression aggregate);
   void addLocalFieldProjection(HirLocalFieldProjectionExpression projection);
+  void addParameterFieldProjection(HirParameterFieldProjectionExpression projection);
   void addUnsafeBlock(HirUnsafeBlockExpression block);
   void addParameterReborrow(HirParameterReborrowExpression reborrow);
   void addLocalBorrow(HirLocalBorrowExpression borrow);
@@ -82,6 +84,7 @@ private:
   zc::Vector<HirPrimitiveBinaryExpression>* primitiveBinaryOperations;
   zc::Vector<HirNominalAggregateExpression>* aggregates;
   zc::Vector<HirLocalFieldProjectionExpression>* localFieldProjections;
+  zc::Vector<HirParameterFieldProjectionExpression>* parameterFieldProjections;
   zc::Vector<HirUnsafeBlockExpression>* unsafeBlocks;
   zc::Vector<HirParameterReborrowExpression>* parameterReborrows;
   zc::Vector<HirLocalBorrowExpression>* localBorrows;
@@ -112,6 +115,12 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
 /// \brief Lowers one local field-projection return whose local is initialized
 /// by a nominal aggregate: `let cell = T {...}; return cell.field;`.
 void lowerAggregateFieldProjectionFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
+/// \brief Lowers one shared-receiver field-read method body:
+/// `fun m(this) -> T { return this.field; }` through the recursive driver:
+/// function -> block -> return -> parameter field projection. The receiver
+/// moves into the function header; the projection keys on its parameter key.
+void lowerReceiverFieldReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
 /// \brief Lowers one mutable-local write body: one initialized mut local, one
 /// or more non-field scalar/parameter/binary writes, and a local-reference

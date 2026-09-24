@@ -20,6 +20,7 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
                    zc::Vector<HirPrimitiveBinaryExpression>& primitiveBinaryOperations,
                    zc::Vector<HirNominalAggregateExpression>& aggregates,
                    zc::Vector<HirLocalFieldProjectionExpression>& localFieldProjections,
+                   zc::Vector<HirParameterFieldProjectionExpression>& parameterFieldProjections,
                    zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks,
                    zc::Vector<HirParameterReborrowExpression>& parameterReborrows,
                    zc::Vector<HirLocalBorrowExpression>& localBorrows,
@@ -39,6 +40,7 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
       primitiveBinaryOperations(&primitiveBinaryOperations),
       aggregates(&aggregates),
       localFieldProjections(&localFieldProjections),
+      parameterFieldProjections(&parameterFieldProjections),
       unsafeBlocks(&unsafeBlocks),
       parameterReborrows(&parameterReborrows),
       localBorrows(&localBorrows),
@@ -87,6 +89,10 @@ void HirFnCtx::addAggregate(HirNominalAggregateExpression aggregate) {
 
 void HirFnCtx::addLocalFieldProjection(HirLocalFieldProjectionExpression projection) {
   localFieldProjections->add(zc::mv(projection));
+}
+
+void HirFnCtx::addParameterFieldProjection(HirParameterFieldProjectionExpression projection) {
+  parameterFieldProjections->add(zc::mv(projection));
 }
 
 void HirFnCtx::addUnsafeBlock(HirUnsafeBlockExpression block) { unsafeBlocks->add(zc::mv(block)); }
@@ -419,6 +425,29 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
         returnValueId, hirLocalId(static_cast<uint32_t>(sequential.returnLocal + 1)),
         sequential.type, HirValueCategory::Place, sequential.returnValueSpan.clone()});
   }
+}
+
+void lowerReceiverFieldReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  const auto& projection = ZC_ASSERT_NONNULL(function.parameterFieldProjection);
+  const identity::SemanticTypeId receiverType = projection.receiverType;
+  const identity::DefId field = projection.field;
+  const identity::SemanticTypeId resultType = projection.type;
+  const HirValueCategory category = projection.category;
+
+  const HirNodeId functionId = ctx.allocNode();
+  const HirNodeId bodyId = ctx.allocNode();
+  const HirNodeId returnId = ctx.allocNode();
+  const HirNodeId valueId = ctx.allocNode();
+
+  ctx.addFunction(lowerFunctionHeader(functionId, bodyId, function));
+  zc::Vector<HirNodeId> statements;
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+  ctx.addParameterFieldProjection(HirParameterFieldProjectionExpression{
+      valueId, projection.parameter.clone(), receiverType, field, resultType, category,
+      projection.sourceSpan.clone()});
+  ctx.addReturn(
+      HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
 }
 
 }  // namespace detail

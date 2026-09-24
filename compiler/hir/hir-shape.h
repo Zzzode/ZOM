@@ -92,6 +92,9 @@ struct FunctionReturnShape final {
   bool returnsLocal = false;
   ast::NodeId localReference;
   bool returnsLocalField = false;
+  // Single-statement inherent-method shape: `return this.<field>;` read through
+  // the implicit shared receiver parameter with one field projection.
+  bool returnsReceiverField = false;
   bool returnsLocalReborrow = false;
   // Sequential-local shape: N leading `let id: T = <literal | aggregate |
   // identifier>;` statements followed by `return <identifier>;`. Per-binding

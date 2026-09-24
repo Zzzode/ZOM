@@ -334,11 +334,11 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
   if (!tree.contains(statements) || statements.empty()) return zc::none;
-  // An inherent method is admitted only for the single flat scalar-literal
-  // return (`fun m(this) -> T { return <literal>; }`). Every other body shape
-  // (locals, parameters, `this` reads, calls, conditionals, loops, unsafe
-  // blocks, binary returns) returns none so the capability drain keeps the
-  // method on ZOM4099 until its lowering exists.
+  // An inherent method is admitted only for a single flat return statement:
+  // `return <literal>;` or `return this.<field>;` read through the implicit
+  // shared receiver. Every other body shape (locals, ordinary parameters,
+  // calls, conditionals, loops, unsafe blocks, binary returns) returns none so
+  // the capability drain keeps the method on ZOM4099 until its lowering exists.
   if (isMethod) {
     if (statements.size != 1) return zc::none;
     auto returnItem = statementItem(tree, tree.list(statements)[0]);
@@ -349,12 +349,23 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       return zc::none;
     }
     ast::NodeId value(tree.node(returnNode).payload.words[ast::kReturnStmtValueWord]);
-    if (!tree.contains(value) || !isScalarLiteral(tree.node(value).kind)) return zc::none;
+    if (!tree.contains(value)) return zc::none;
     FunctionReturnShape shape{};
     shape.body = body;
     shape.returnStatement = returnNode;
     shape.value = value;
-    return shape;
+    if (isScalarLiteral(tree.node(value).kind)) return shape;
+    if (tree.node(value).kind == ast::SyntaxKind::MemberExpression &&
+        static_cast<ast::MemberAccessKind>(
+            tree.node(value).payload.words[ast::kMemberExpressionAccessWord]) ==
+            ast::MemberAccessKind::Dot) {
+      const ast::NodeId object(tree.node(value).payload.words[ast::kMemberExpressionObjectWord]);
+      if (tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::ThisExpr) {
+        shape.returnsReceiverField = true;
+        return shape;
+      }
+    }
+    return zc::none;
   }
   if (statements.size == 1) {
     auto conditionalItem = statementItem(tree, tree.list(statements)[0]);

@@ -129,6 +129,22 @@ struct HirLocalFieldProjectionExpression final {
   identity::SourceSpan sourceSpan;
 };
 
+/// \brief One checked field projection rooted at a function parameter.
+///
+/// The sole admitted root is an inherent method's implicit `this` receiver
+/// parameter (a shared reference to the owner nominal); the field read
+/// implicitly dereferences that reference. `receiverType` is the referent
+/// owner type, not the parameter's reference type.
+struct HirParameterFieldProjectionExpression final {
+  HirNodeId node;
+  identity::CallableParameterKey parameter;
+  identity::SemanticTypeId receiverType;
+  identity::DefId field;
+  identity::SemanticTypeId type;
+  HirValueCategory category;
+  identity::SourceSpan sourceSpan;
+};
+
 enum class HirLocalWriteKind : uint8_t { Initialize = 0x01, Overwrite = 0x02 };
 
 /// \brief One verified scalar write to a mutable function-local place.
@@ -413,6 +429,8 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const HirLocalWriteStatement> localWrites() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirLocalReferenceExpression> localReferences() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirLocalFieldProjectionExpression> localFieldProjections()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirParameterFieldProjectionExpression> parameterFieldProjections()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirParameterReferenceExpression> parameterReferences()
       const noexcept;

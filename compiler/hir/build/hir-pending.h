@@ -190,6 +190,7 @@ struct PendingFunctionDeclaration final {
   zc::Vector<PendingLocalWriteValue> localWriteValues;
   zc::Maybe<HirLocalReferenceExpression> localReference;
   zc::Maybe<HirLocalFieldProjectionExpression> localFieldProjection;
+  zc::Maybe<HirParameterFieldProjectionExpression> parameterFieldProjection;
   zc::Maybe<HirParameterReferenceExpression> parameterReference;
   zc::Maybe<HirParameterIndexExpression> parameterIndex;
   zc::Maybe<HirParameterReborrowExpression> parameterReborrow;
