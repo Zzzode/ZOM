@@ -102,3 +102,6 @@ docs/spec/ZomParser.java
 docs/spec/ZomParser.tokens
 docs/spec/ZomParserBaseListener.java
 docs/spec/ZomParserListener.java
+
+# zc atomic-write hidden temp directories (interrupted-install leftovers)
+.zc-tmp.*
