@@ -1,0 +1,5 @@
+section: "08-adt inherent method declaration syntax"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits the field arithmetic method body; the body checker rejects the unadmitted binary result with ZOM4125 on the method."

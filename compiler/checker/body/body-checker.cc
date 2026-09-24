@@ -3380,6 +3380,17 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         ZC_IF_SOME(method, unsupportedInherentMethodThis(input, site.node)) {
           return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(method));
         }
+        // Every other unproduced site inside an inherent method body is a
+        // well-formed construct the current HIR/MIR/LIR slice does not admit
+        // (binary results over receiver fields, control flow, nested method
+        // calls, and so on). The HIR gate drains the method definition as a
+        // capability rejection; emit the checker-side method capability code
+        // ZOM4125 here so the unsupported construct never falls through to a
+        // MissingRequiredFact invariant. Sites outside a method keep the
+        // invariant rail.
+        ZC_IF_SOME(method, enclosingMethodName(input, site.node)) {
+          return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(method));
+        }
         return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                site.key.schemaPreorder, zc::none, site.node,
                                site.key.sourceSpan.clone(), factPath(site.primaryGroup));
