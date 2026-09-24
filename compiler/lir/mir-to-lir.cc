@@ -103,14 +103,19 @@ zc::Maybe<ValueType> boolCarrierFor(identity::SemanticTypeId type,
 /// The implicit `this` receiver of a shared-receiver method is a const
 /// reference; its physical carrier is a target pointer in address space zero.
 /// Mutable references and every non-reference type fail closed in this slice.
-zc::Maybe<ValueType> sharedReferencePointerCarrier(identity::SemanticTypeId type,
-                                                   const type::SemanticTypeStore& semanticTypes) {
+zc::Maybe<bool> receiverReferenceIsMutable(identity::SemanticTypeId type,
+                                           const type::SemanticTypeStore& semanticTypes) {
   auto lookup = semanticTypes.get(type);
   if (!lookup.is<type::SemanticTypeLookup>()) { return zc::none; }
   const auto& data = lookup.get<type::SemanticTypeLookup>().data();
   if (!data.is<type::semantic::ReferenceTypeData>()) { return zc::none; }
-  const auto& reference = data.get<type::semantic::ReferenceTypeData>();
-  if (reference.mutability != type::semantic::Mutability::Const) { return zc::none; }
+  return data.get<type::semantic::ReferenceTypeData>().mutability ==
+         type::semantic::Mutability::Mutable;
+}
+
+zc::Maybe<ValueType> receiverPointerCarrier(identity::SemanticTypeId type,
+                                            const type::SemanticTypeStore& semanticTypes) {
+  if (receiverReferenceIsMutable(type, semanticTypes) == zc::none) { return zc::none; }
   return ValueType::pointer(0);
 }
 
@@ -1578,7 +1583,10 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   }
   const auto& receiverLocal = callee.locals[0];
   if (receiverLocal.kind != mir::MirLocalKind::Parameter) { return zc::none; }
-  auto receiverCarrier = sharedReferencePointerCarrier(receiverLocal.type, semanticTypes);
+  auto calleeReceiverMutable = receiverReferenceIsMutable(receiverLocal.type, semanticTypes);
+  if (calleeReceiverMutable == zc::none) { return zc::none; }
+  const bool calleeIsMutable = ZC_ASSERT_NONNULL(calleeReceiverMutable);
+  auto receiverCarrier = receiverPointerCarrier(receiverLocal.type, semanticTypes);
   if (receiverCarrier == zc::none) { return zc::none; }
   const auto receiverCarrierValue = ZC_REQUIRE_NONNULL(receiverCarrier);
   auto calleeCarrier = integerCarrierFor(callee.resultType, semanticTypes);
@@ -1662,9 +1670,12 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
       resultTemporary.kind != mir::MirLocalKind::Temporary) {
     return zc::none;
   }
-  if (sharedReferencePointerCarrier(borrowTemporary.type, semanticTypes) == zc::none) {
-    return zc::none;
-  }
+  auto callerBorrowMutable = receiverReferenceIsMutable(borrowTemporary.type, semanticTypes);
+  if (callerBorrowMutable == zc::none) { return zc::none; }
+  const bool callerIsMutable = ZC_ASSERT_NONNULL(callerBorrowMutable);
+  // The caller's borrow mode must agree with the callee's receiver mode; a
+  // shared call into a mutable receiver or vice versa is an invalid lowering.
+  if (callerIsMutable != calleeIsMutable) { return zc::none; }
   auto callerCarrier = integerCarrierFor(caller.resultType, semanticTypes);
   if (callerCarrier == zc::none) { return zc::none; }
   const auto callerCarrierValue = ZC_REQUIRE_NONNULL(callerCarrier);
@@ -1707,8 +1718,9 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   if (ownerConstant == zc::none) { return zc::none; }
 
   const auto& borrow = entry.statements[3].borrowCreationValue();
-  if (borrow.kind != mir::MirBorrowKind::Shared ||
-      borrow.destination.local() != borrowTemporary.id ||
+  const auto expectedBorrowKind =
+      callerIsMutable ? mir::MirBorrowKind::Mutable : mir::MirBorrowKind::Shared;
+  if (borrow.kind != expectedBorrowKind || borrow.destination.local() != borrowTemporary.id ||
       borrow.destination.projections().size() != 0 || borrow.source.local() != ownerLocal.id ||
       borrow.source.projections().size() != 0) {
     return zc::none;
@@ -1716,12 +1728,21 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
 
   const auto& mirCall = entry.terminator.callValue();
   const size_t ordinaryParameterCount = callee.locals.size() - 1;
+  const auto expectedEffectKind = callerIsMutable ? mir::MirCallEffectKind::ActivateMutableReceiver
+                                                  : mir::MirCallEffectKind::NoActivation;
   if (mirCall.callee != callee.owner || mirCall.arguments.size() != 1 + ordinaryParameterCount ||
-      mirCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
+      mirCall.effect.kind() != expectedEffectKind ||
       mirCall.destination.local() != resultTemporary.id ||
       mirCall.destination.projections().size() != 0 || mirCall.normalTarget != continuation.id ||
       mirCall.unwindTarget != zc::none) {
     return zc::none;
+  }
+  if (callerIsMutable) {
+    // The activation targets the receiver borrow temporary.
+    auto activated = mirCall.effect.activatedMutableReceiver();
+    if (activated == zc::none || ZC_ASSERT_NONNULL(activated) != borrowTemporary.id) {
+      return zc::none;
+    }
   }
   const auto& receiverArgument = mirCall.arguments[0];
   if (receiverArgument.kind() == mir::MirOperandKind::Constant ||

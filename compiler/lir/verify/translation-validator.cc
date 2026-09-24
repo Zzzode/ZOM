@@ -84,18 +84,16 @@ zc::Maybe<ValueType> pointerCarrier(identity::SemanticTypeId type,
   if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
   const auto& data = lookup.get<type::SemanticTypeLookup>().data();
   if (!data.is<type::semantic::ReferenceTypeData>()) return zc::none;
-  if (data.get<type::semantic::ReferenceTypeData>().mutability !=
-      type::semantic::Mutability::Const) {
-    return zc::none;
-  }
+  // Both shared and mutable references lower to the opaque pointer carrier;
+  // mutability is enforced by borrow-mode facts rather than the LIR carrier.
   return ValueType::pointer(0);
 }
 
 // Independently resolves the carrier of one materialized MIR local. Beyond the
-// integer and boolean carriers, a shared-reference parameter or temporary
-// carries an opaque pointer, and a one-field aggregate-initialized owner local
-// folds to its single constant element's integer carrier (the receiver-call
-// owner slot). Every other local returns none.
+// integer and boolean carriers, a shared- or mutable-reference parameter or
+// temporary carries an opaque pointer, and a one-field aggregate-initialized
+// owner local folds to its single constant element's integer carrier (the
+// receiver-call owner slot). Every other local returns none.
 zc::Maybe<ValueType> localCarrier(const mir::MirLocalDeclaration& source,
                                   const MirFunction& function,
                                   const type::SemanticTypeStore& types) noexcept {
@@ -541,16 +539,18 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
           break;
         }
         case mir::MirStatementKind::BorrowCreation: {
-          // A shared receiver borrow maps to TakeAddress of the whole owner
-          // slot into the borrow temporary. Mutable borrows stay outside the
-          // subset.
+          // A receiver borrow maps to TakeAddress of the whole owner slot into
+          // the borrow temporary; both shared and mutable borrows share the one
+          // pointer carrier, so the MIR borrow kind only has to be one of the
+          // two receiver modes.
           if (lirStatement >= lirBlock.statements().size()) {
             return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
                          statementIndex);
           }
           const Statement& actual = lirBlock.statements()[lirStatement];
           const auto& borrow = mirStatement.borrowCreationValue();
-          if (borrow.kind != mir::MirBorrowKind::Shared ||
+          if ((borrow.kind != mir::MirBorrowKind::Shared &&
+               borrow.kind != mir::MirBorrowKind::Mutable) ||
               actual.kind() != StatementKind::TakeAddress || actual.source().isConstant() ||
               actual.destinationOrdinal() != borrow.destination.local().ordinal() ||
               actual.sourceOrdinal() != borrow.source.local().ordinal() ||
@@ -766,6 +766,35 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
         const auto arguments = lirTerminator.callArguments();
         if (arguments.size() != call.arguments.size()) {
           return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+        }
+        // Borrow-mode/call-effect agreement for receiver calls: when a prior
+        // BorrowCreation produced the call's first place-use argument, a
+        // mutable receiver call must activate that borrow temporary and a
+        // shared receiver call must carry no activation. A first argument with
+        // no incoming borrow is an ordinary direct-call operand, not a
+        // receiver, and is checked by the generic argument rules below.
+        if (call.arguments.size() >= 1 &&
+            call.arguments[0].kind() != mir::MirOperandKind::Constant) {
+          const auto receiverTemporary = call.arguments[0].place().local();
+          zc::Maybe<mir::MirBorrowKind> receiverBorrow;
+          for (const auto& prior : mirBlock.statements) {
+            if (prior.kind() != mir::MirStatementKind::BorrowCreation) continue;
+            const auto& priorBorrow = prior.borrowCreationValue();
+            if (priorBorrow.destination.local() == receiverTemporary) {
+              receiverBorrow = priorBorrow.kind;
+            }
+          }
+          if (receiverBorrow != zc::none) {
+            const auto activated = call.effect.activatedMutableReceiver();
+            const bool mutableBorrow =
+                ZC_ASSERT_NONNULL(receiverBorrow) == mir::MirBorrowKind::Mutable;
+            if (mutableBorrow !=
+                    (call.effect.kind() == mir::MirCallEffectKind::ActivateMutableReceiver) ||
+                (mutableBorrow &&
+                 (activated == zc::none || ZC_ASSERT_NONNULL(activated) != receiverTemporary))) {
+              return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+            }
+          }
         }
         for (uint32_t a = 0; a < arguments.size(); ++a) {
           const mir::MirOperand& sourceArgument = call.arguments[a];
