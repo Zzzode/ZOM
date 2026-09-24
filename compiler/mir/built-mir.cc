@@ -1135,6 +1135,17 @@ zc::Maybe<const hir::HirParameterFieldProjectionExpression&> parameterFieldProje
   return result;
 }
 
+zc::Maybe<const hir::HirParameterFieldWriteStatement&> parameterFieldWriteFor(
+    const hir::VerifiedHirModule& module, hir::HirNodeId node) {
+  zc::Maybe<const hir::HirParameterFieldWriteStatement&> result;
+  for (const auto& write : module.parameterFieldWrites()) {
+    if (write.node != node) continue;
+    if (result != zc::none) return zc::none;
+    result = write;
+  }
+  return result;
+}
+
 zc::Maybe<const hir::HirParameterReferenceExpression&> parameterReferenceFor(
     const hir::VerifiedHirModule& module, hir::HirNodeId node) {
   zc::Maybe<const hir::HirParameterReferenceExpression&> result;
@@ -1543,6 +1554,87 @@ bool validReceiverFieldReturnFunction(const MirFunction& function,
   if (receiverLocal.id != localId(1) || receiverLocal.kind != MirLocalKind::Parameter ||
       receiverLocal.type != receiver.type || receiverLocal.sourceScope != scope.id ||
       !sameSpan(receiverLocal.sourceSpan, receiver.sourceSpan)) {
+    return false;
+  }
+  bool validReturn = false;
+  ZC_IF_SOME(value, block.terminator.returnValue().value) {
+    validReturn =
+        matchesPlaceUse(value, proofs, copy, projection.type) &&
+        value.place().local() == localId(1) && value.place().rootType() == receiver.type &&
+        value.place().resultType() == projection.type && value.place().projections().size() == 2 &&
+        value.place().projections()[0].kind() == MirProjectionKind::Dereference &&
+        value.place().projections()[0].inputType() == receiver.type &&
+        value.place().projections()[0].resultType() == projection.receiverType &&
+        value.place().projections()[1].kind() == MirProjectionKind::Field &&
+        value.place().projections()[1].fieldValue().field == projection.field &&
+        value.place().projections()[1].inputType() == projection.receiverType &&
+        value.place().projections()[1].resultType() == projection.type;
+  }
+  return validReturn;
+}
+
+bool validReceiverFieldWriteReturnFunction(
+    const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
+    const hir::HirBlockStatement& sourceBlock,
+    const hir::HirParameterFieldWriteStatement& sourceWrite,
+    const hir::HirScalarLiteralExpression& writeLiteral,
+    const hir::HirReturnStatement& sourceReturn,
+    const hir::HirParameterFieldProjectionExpression& projection,
+    const hir::VerifiedHirModule& hirModule, identity::ModuleId module,
+    const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copy) {
+  if (declaration.receiver == zc::none) return false;
+  const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Method ||
+      function.resultType != declaration.resultType ||
+      !sameSpan(function.sourceSpan, declaration.sourceSpan) || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 1 || function.blocks.size() != 1 ||
+      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 2 ||
+      sourceBlock.statements[0] != sourceWrite.node ||
+      sourceBlock.statements[1] != sourceReturn.node || sourceReturn.value != projection.node ||
+      sourceReturn.resultType != declaration.resultType || sourceWrite.value != writeLiteral.node ||
+      sourceWrite.type != declaration.resultType || sourceWrite.parameter != receiver.key ||
+      sourceWrite.field != projection.field || writeLiteral.type != declaration.resultType ||
+      projection.type != declaration.resultType || projection.parameter != receiver.key) {
+    return false;
+  }
+  const auto& scope = function.sourceScopes[0];
+  const auto& block = function.blocks[0];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || block.id != blockId(1) ||
+      block.sourceScope != scope.id || block.statements.size() != 1 ||
+      block.statements[0].kind() != MirStatementKind::Assign ||
+      block.terminator.kind() != MirTerminatorKind::Return ||
+      block.terminator.returnValue().value == zc::none ||
+      !sameSpan(block.statements[0].sourceSpan(), sourceWrite.sourceSpan) ||
+      !sameSpan(block.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+    return false;
+  }
+  const auto& receiverLocal = function.locals[0];
+  if (receiverLocal.id != localId(1) || receiverLocal.kind != MirLocalKind::Parameter ||
+      receiverLocal.type != receiver.type || receiverLocal.sourceScope != scope.id ||
+      !sameSpan(receiverLocal.sourceSpan, receiver.sourceSpan)) {
+    return false;
+  }
+  const auto& assign = block.statements[0].assignmentValue();
+  if (assign.initialization != MirInitializationKind::Overwrite ||
+      assign.destination.local() != localId(1) || assign.destination.rootType() != receiver.type ||
+      assign.destination.resultType() != projection.type ||
+      assign.destination.projections().size() != 2 ||
+      assign.destination.projections()[0].kind() != MirProjectionKind::Dereference ||
+      assign.destination.projections()[0].inputType() != receiver.type ||
+      assign.destination.projections()[0].resultType() != projection.receiverType ||
+      assign.destination.projections()[1].kind() != MirProjectionKind::Field ||
+      assign.destination.projections()[1].fieldValue().field != projection.field ||
+      assign.destination.projections()[1].inputType() != projection.receiverType ||
+      assign.destination.projections()[1].resultType() != projection.type ||
+      assign.value.kind() != MirRvalueKind::Use ||
+      assign.value.useValue().operand.kind() != MirOperandKind::Constant ||
+      assign.value.useValue().operand.constantValue().type != writeLiteral.type ||
+      !sameConstant(assign.value.useValue().operand.constantValue().value, writeLiteral.value,
+                    module, identities, semanticTypes)) {
     return false;
   }
   bool validReturn = false;
@@ -5051,7 +5143,8 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                hirModule.aggregates().size() + uninitializedLocalReturnCount +
                                parameterReturnCount + parameterReborrowCount +
                                hirModule.parameterFieldProjections().size() -
-                               localAliasReborrowCount - hirModule.localWrites().size()) ||
+                               localAliasReborrowCount - hirModule.localWrites().size() -
+                               hirModule.parameterFieldWrites().size()) ||
       hirModule.functions().size() != hirModule.blocks().size() ||
       hirModule.functions().size() != hirModule.returns().size()) {
     return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
@@ -9109,6 +9202,16 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       auto localReference = localReferenceFor(hirModule, expressionNode);
       auto localFieldProjection = localFieldProjectionFor(hirModule, expressionNode);
       auto receiverFieldProjection = parameterFieldProjectionFor(hirModule, expressionNode);
+      // In a two-statement receiver write-read body the leading statement is a
+      // parameter field write; resolve it independently.
+      hir::HirNodeId leadingNode;
+      if (sourceBlock != zc::none && ZC_ASSERT_NONNULL(sourceBlock).statements.size() == 2) {
+        leadingNode = ZC_ASSERT_NONNULL(sourceBlock).statements[0];
+      }
+      auto receiverFieldWrite = parameterFieldWriteFor(hirModule, leadingNode);
+      hir::HirNodeId receiverWriteValueNode;
+      ZC_IF_SOME(value, receiverFieldWrite) { receiverWriteValueNode = value.value; }
+      auto receiverWriteLiteral = expressionFor(hirModule, receiverWriteValueNode);
       auto localBorrow = localBorrowFor(hirModule, expressionNode);
       hir::HirNodeId initializerNode;
       ZC_IF_SOME(value, sourceLocal) {
@@ -9320,7 +9423,13 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
                                               semanticTypes);
           }
           ZC_IF_SOME(sourceReceiverField, receiverFieldProjection) {
-            if (sourceDeclaration.receiver != zc::none) {
+            if (sourceDeclaration.receiver != zc::none && receiverFieldWrite != zc::none &&
+                receiverWriteLiteral != zc::none) {
+              valid = validReceiverFieldWriteReturnFunction(
+                  function, sourceDeclaration, block, ZC_ASSERT_NONNULL(receiverFieldWrite),
+                  ZC_ASSERT_NONNULL(receiverWriteLiteral), returnStatement, sourceReceiverField,
+                  hirModule, module, identities, semanticTypes, proofs, copy);
+            } else if (sourceDeclaration.receiver != zc::none) {
               valid = validReceiverFieldReturnFunction(function, sourceDeclaration, block,
                                                        returnStatement, sourceReceiverField, proofs,
                                                        copy);

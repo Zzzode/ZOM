@@ -147,6 +147,22 @@ struct HirParameterFieldProjectionExpression final {
 
 enum class HirLocalWriteKind : uint8_t { Initialize = 0x01, Overwrite = 0x02 };
 
+/// \brief One verified scalar Overwrite of a field reached through an inherent
+/// method's mutable receiver: `this.<field> = <scalar>;`. The statement names
+/// the receiver parameter and one field projection; its value is the node of a
+/// pooled scalar literal expression. Receiver storage is provided initialized
+/// by the caller, so the write is always an Overwrite.
+struct HirParameterFieldWriteStatement final {
+  HirNodeId node;
+  identity::CallableParameterKey parameter;
+  identity::SemanticTypeId receiverType;
+  identity::DefId field;
+  identity::SemanticTypeId type;
+  HirNodeId value;
+  identity::SourceSpan sourceSpan;
+  identity::SourceSpan valueSpan;
+};
+
 /// \brief One verified scalar write to a mutable function-local place.
 struct HirLocalWriteStatement final {
   HirNodeId node;
@@ -431,6 +447,8 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const HirLocalFieldProjectionExpression> localFieldProjections()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirParameterFieldProjectionExpression> parameterFieldProjections()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirParameterFieldWriteStatement> parameterFieldWrites()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirParameterReferenceExpression> parameterReferences()
       const noexcept;

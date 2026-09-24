@@ -317,6 +317,28 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
       const auto& source = blocks[index];
       ::llvm::BasicBlock* target = llvmBlocks[index];
       for (const auto& statement : source.statements()) {
+        if (statement.kind() == lir::StatementKind::StoreField) {
+          // Load the receiver pointer held by the base slot, then store the
+          // value operand through it. The admitted one-field owner is one
+          // scalar at offset zero; a non-zero offset steps byte-wise over the
+          // opaque pointee with an i8 GEP. This statement has no destination
+          // slot.
+          auto* baseSlot = slotFor(statement.basePointerOrdinal());
+          auto* fieldPointer =
+              new ::llvm::LoadInst(baseSlot->getAllocatedType(), baseSlot, "fieldptr", target);
+          ::llvm::Value* fieldAddress = fieldPointer;
+          if (statement.fieldOffsetBytes() != 0) {
+            ::llvm::Value* offset =
+                ::llvm::ConstantInt::getSigned(::llvm::Type::getInt64Ty(*context),
+                                               static_cast<int64_t>(statement.fieldOffsetBytes()));
+            ::llvm::ArrayRef<::llvm::Value*> indices(offset);
+            fieldAddress = ::llvm::GetElementPtrInst::Create(
+                ::llvm::Type::getInt8Ty(*context), fieldPointer, indices, "fieldgep", target);
+          }
+          ::llvm::Value* written = loadOperand(statement.storedValue(), target);
+          new ::llvm::StoreInst(written, fieldAddress, /*isVolatile=*/false, target);
+          continue;
+        }
         auto* destination = slotFor(statement.destinationOrdinal());
         ::llvm::Value* stored = nullptr;
         if (statement.kind() == lir::StatementKind::Compare) {

@@ -2773,6 +2773,10 @@ bool validArgumentSchema(const CheckerFailureRef& failure) {
       // Owner locals have no DefId; the offending binding is named by its
       // source identifier.
       return argumentKinds(arguments, Kind::Identifier);
+    case DiagID::CannotMutateSharedReceiver:
+      // The offending place is the implicit receiver keyword; no display
+      // arguments are needed.
+      return argumentKinds(arguments);
     case DiagID::DynUnsizedParameter:
       return argumentKinds(arguments, Kind::Definition, Kind::Definition, Kind::Type);
     case DiagID::TypeCheckerTypeMismatch:
@@ -2945,6 +2949,8 @@ bool validDiagnosticProduction(const CheckerFailureRef& failure) {
       return failure.stage == Stage::Exhaustiveness &&
              failure.producer == Producer::Exhaustiveness && hasNoRecoveryPolicy(failure);
     case DiagID::CannotMutateImmutableVariable:
+      return matches(Stage::Body, Producer::Mutation, Class::InvalidOperation, true);
+    case DiagID::CannotMutateSharedReceiver:
       return matches(Stage::Body, Producer::Mutation, Class::InvalidOperation, true);
     case DiagID::ErrorPropagateOutsideRaises:
     case DiagID::ErrorUnwrapNonUnion:

@@ -1,0 +1,106 @@
+// RUN: %zomc compile --dump-ast %corpus/08-adt/inherent_method_mutating_receiver_field_write_pos_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #43 @1:1..6:1 file_name="inherent_method_mutating_receiver_field_write_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #22 @1:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StructDecl #21 @1:1..4:2 name="Cell"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #20 @1:13..4:2 nmembers=2
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #2 @2:3..2:14 name="value" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:10..2:13 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:                 MethodDecl #19 @3:3..3:73 name="bump" mode=Mutating visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #6 @3:20..3:26 nparams=1
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         FunctionParameterDecl #5 @3:21..3:25 name="this"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             NamedTypeExpr #4 @3:21..3:25
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #3 @3:21..3:25 segments=["Self"] root=Relative
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   type_params_id: null
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #7 @3:30..3:33 kind=I32
+// CHECK-NEXT:                   raises_ty: null
+// CHECK-NEXT:                   body:
+// CHECK-NEXT:                     BlockStmt #18 @3:34..3:73
+// CHECK-NEXT:                       stmts:
+// CHECK-NEXT:                         StatementListItem #13 @3:36..3:52
+// CHECK-NEXT:                           item:
+// CHECK-NEXT:                             ExpressionStatement #12 @3:36..3:52
+// CHECK-NEXT:                               expression:
+// CHECK-NEXT:                                 AssignmentExpr #11 @3:36..3:51 op=Assign
+// CHECK-NEXT:                                   lhs:
+// CHECK-NEXT:                                     MemberExpression #9 @3:36..3:46 property="value" access=Dot
+// CHECK-NEXT:                                       object:
+// CHECK-NEXT:                                         ThisExpr #8 @3:36..3:40
+// CHECK-NEXT:                                   rhs:
+// CHECK-NEXT:                                     IntLiteral #10 @3:49..3:51 base=10 value="42"
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                         StatementListItem #17 @3:53..3:71
+// CHECK-NEXT:                           item:
+// CHECK-NEXT:                             ReturnStmt #16 @3:53..3:71
+// CHECK-NEXT:                               value:
+// CHECK-NEXT:                                 MemberExpression #15 @3:60..3:70 property="value" access=Dot
+// CHECK-NEXT:                                   object:
+// CHECK-NEXT:                                     ThisExpr #14 @3:60..3:64
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #42 @5:1..5:73
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #41 @5:1..5:73 name="entry"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #23 @5:10..5:12 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #24 @5:16..5:19 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #40 @5:20..5:73
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #34 @5:22..5:51
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #33 @5:22..5:51 kind=Mut
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #32 @5:26..5:50 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #31 @5:26..5:50
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #25 @5:26..5:30 name="cell"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 StructLiteralExpr #30 @5:33..5:50
+// CHECK-NEXT:                                   ty:
+// CHECK-NEXT:                                     NamedTypeExpr #27 @5:33..5:37
+// CHECK-NEXT:                                       path:
+// CHECK-NEXT:                                         ModulePath #26 @5:33..5:37 segments=["Cell"] root=Relative
+// CHECK-NEXT:                                       args: []
+// CHECK-NEXT:                                   properties:
+// CHECK-NEXT:                                     ObjectProperty #29 @5:40..5:48 name="value" short_form=false
+// CHECK-NEXT:                                       value:
+// CHECK-NEXT:                                         IntLiteral #28 @5:47..5:48 base=10 value="0"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #39 @5:52..5:71
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #38 @5:52..5:71
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         CallExpression #37 @5:59..5:70
+// CHECK-NEXT:                           callee:
+// CHECK-NEXT:                             MemberExpression #36 @5:59..5:68 property="bump" access=Dot
+// CHECK-NEXT:                               object:
+// CHECK-NEXT:                                 IdentExpr #35 @5:59..5:63 name="cell"
+// CHECK-NEXT:                           type_args: []
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

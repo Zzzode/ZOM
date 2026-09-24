@@ -129,19 +129,22 @@ enum class StatementKind : uint8_t {
   Compare = 0x02,
   TakeAddress = 0x03,
   LoadField = 0x04,
+  StoreField = 0x05,
 };
 
 /// \brief One LIR statement: store an operand or a comparison into a local slot,
-/// take the address of a whole slot, or load one field of a folded aggregate
-/// addressed through a pointer slot.
+/// take the address of a whole slot, load one field of a folded aggregate
+/// addressed through a pointer slot, or store one operand into such a field.
 ///
 /// `Assign` stores `value` into `destinationOrdinal`. `Compare` stores the
 /// one-bit result of `op` applied to `left` and `right` into the destination.
 /// `TakeAddress` stores the address of the whole `sourceOrdinal` slot into a
 /// pointer-typed destination. `LoadField` stores into the destination the value
 /// loaded `fieldOffsetBytes` bytes from the opaque pointer held in the base
-/// slot (a shared-receiver `this` field read). Locals are addressed by
-/// one-based ordinal.
+/// slot (a shared-receiver `this` field read). `StoreField` has no destination
+/// slot: it stores `storedValue` `fieldOffsetBytes` bytes into the aggregate
+/// addressed by the opaque pointer held in the base slot (a mutating-receiver
+/// `this.field = value` write). Locals are addressed by one-based ordinal.
 class Statement final {
 public:
   ZC_NODISCARD static Statement assign(uint32_t destinationOrdinal, Operand value) noexcept;
@@ -160,6 +163,14 @@ public:
   /// offset-zero read is admitted until an aggregate layout store exists.
   ZC_NODISCARD static Statement loadField(uint32_t destinationOrdinal, uint32_t basePointerOrdinal,
                                           uint32_t fieldOffsetBytes) noexcept;
+  /// \brief Stores an integer operand into one field of the folded aggregate
+  /// referenced by a pointer slot (a mutating-receiver field write). The base
+  /// slot carries an opaque pointer to a folded one-field owner; the value is
+  /// written at `fieldOffsetBytes` from that address. Only the offset-zero
+  /// write is admitted until an aggregate layout store exists. This statement
+  /// names no destination slot.
+  ZC_NODISCARD static Statement storeField(uint32_t basePointerOrdinal, Operand value,
+                                           uint32_t fieldOffsetBytes) noexcept;
 
   ZC_NODISCARD StatementKind kind() const noexcept { return kindValue; }
   ZC_NODISCARD uint32_t destinationOrdinal() const noexcept { return destinationValue; }
@@ -167,6 +178,7 @@ public:
   ZC_NODISCARD const Operand& source() const noexcept { return leftValue; }
   ZC_NODISCARD uint32_t sourceOrdinal() const noexcept { return leftValue.localOrdinal(); }
   ZC_NODISCARD uint32_t basePointerOrdinal() const noexcept { return leftValue.localOrdinal(); }
+  ZC_NODISCARD const Operand& storedValue() const noexcept { return rightValue; }
   ZC_NODISCARD uint32_t fieldOffsetBytes() const noexcept { return fieldOffsetValue; }
   ZC_NODISCARD ComparisonOp comparisonOp() const noexcept { return opValue; }
   ZC_NODISCARD const Operand& left() const noexcept { return leftValue; }

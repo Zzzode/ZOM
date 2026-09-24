@@ -1,0 +1,5 @@
+section: "08-adt inherent mutating method receiver field write"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A mutating-receiver inherent method overwrites this.field with a scalar literal and returns the same field; it builds verified semantic HIR and Built MIR with an Overwrite Assign to a Dereference plus Field place and lowers to a StoreField followed by a LoadField through the receiver pointer."

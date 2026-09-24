@@ -95,6 +95,14 @@ struct FunctionReturnShape final {
   // Single-statement inherent-method shape: `return this.<field>;` read through
   // the implicit shared receiver parameter with one field projection.
   bool returnsReceiverField = false;
+  // Two-statement mutating-method shape: `this.<field> = <scalar literal>;`
+  // followed by `return this.<field>;` through the mutable receiver. The write
+  // statement, its assignment, and the written literal nodes are carried for
+  // the builder; the returned field uses `value` and returnsReceiverField.
+  bool writesReceiverField = false;
+  ast::NodeId receiverWriteStatement;
+  ast::NodeId receiverWriteAssignment;
+  ast::NodeId receiverWriteValue;
   bool returnsLocalReborrow = false;
   // Sequential-local shape: N leading `let id: T = <literal | aggregate |
   // identifier>;` statements followed by `return <identifier>;`. Per-binding

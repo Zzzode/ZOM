@@ -36,6 +36,7 @@ public:
            zc::Vector<HirNominalAggregateExpression>& aggregates,
            zc::Vector<HirLocalFieldProjectionExpression>& localFieldProjections,
            zc::Vector<HirParameterFieldProjectionExpression>& parameterFieldProjections,
+           zc::Vector<HirParameterFieldWriteStatement>& parameterFieldWrites,
            zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks,
            zc::Vector<HirParameterReborrowExpression>& parameterReborrows,
            zc::Vector<HirLocalBorrowExpression>& localBorrows,
@@ -59,6 +60,7 @@ public:
   void addAggregate(HirNominalAggregateExpression aggregate);
   void addLocalFieldProjection(HirLocalFieldProjectionExpression projection);
   void addParameterFieldProjection(HirParameterFieldProjectionExpression projection);
+  void addParameterFieldWrite(HirParameterFieldWriteStatement write);
   void addUnsafeBlock(HirUnsafeBlockExpression block);
   void addParameterReborrow(HirParameterReborrowExpression reborrow);
   void addLocalBorrow(HirLocalBorrowExpression borrow);
@@ -85,6 +87,7 @@ private:
   zc::Vector<HirNominalAggregateExpression>* aggregates;
   zc::Vector<HirLocalFieldProjectionExpression>* localFieldProjections;
   zc::Vector<HirParameterFieldProjectionExpression>* parameterFieldProjections;
+  zc::Vector<HirParameterFieldWriteStatement>* parameterFieldWrites;
   zc::Vector<HirUnsafeBlockExpression>* unsafeBlocks;
   zc::Vector<HirParameterReborrowExpression>* parameterReborrows;
   zc::Vector<HirLocalBorrowExpression>* localBorrows;
@@ -121,6 +124,12 @@ void lowerAggregateFieldProjectionFunction(PendingFunctionDeclaration&& function
 /// function -> block -> return -> parameter field projection. The receiver
 /// moves into the function header; the projection keys on its parameter key.
 void lowerReceiverFieldReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
+/// \brief Lowers one mutating-receiver write-read method body:
+/// `fun m(this) -> T { this.field = <scalar>; return this.field; }`. Six node
+/// ids in source preorder: function, body, write, write value literal, return,
+/// returned parameter field projection.
+void lowerReceiverFieldWriteReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
 /// \brief Lowers one mutable-local write body: one initialized mut local, one
 /// or more non-field scalar/parameter/binary writes, and a local-reference

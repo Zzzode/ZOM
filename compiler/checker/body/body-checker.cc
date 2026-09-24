@@ -47,6 +47,7 @@ enum class BodyProductionKind : uint8_t {
   ReadIndex = 0x16,
   UnsafeBlock = 0x18,
   PrimitiveBinaryOperation = 0x19,
+  ReceiverFieldWrite = 0x1a,
   Unsupported = 0x17
 };
 
@@ -772,6 +773,38 @@ bool isSimpleOwnerLocalFieldWrite(
   return scalar && isMutableOwnerLocal(boundModule, object);
 }
 
+/// \brief Classifies `this.<field> = <scalar literal>` inside a method body.
+/// Structural only: whether the enclosing method's receiver is mutable is
+/// authorized against the callable signature at fact production, so a write
+/// through a shared receiver drains there instead of being admitted here.
+bool isSimpleReceiverFieldWrite(
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule, ast::NodeId assignment) {
+  const auto& tree = boundModule.tree();
+  if (!tree.contains(assignment)) return false;
+  const auto& syntax = tree.node(assignment);
+  if (syntax.kind != ast::SyntaxKind::AssignmentExpr ||
+      static_cast<ast::AssignmentOperatorKind>(syntax.payload.words[ast::kAssignmentExprOpWord]) !=
+          ast::AssignmentOperatorKind::Assign) {
+    return false;
+  }
+  const ast::NodeId target(syntax.payload.words[ast::kAssignmentExprLhsWord]);
+  const ast::NodeId value(syntax.payload.words[ast::kAssignmentExprRhsWord]);
+  if (!tree.contains(target) || !tree.contains(value) ||
+      tree.node(target).kind != ast::SyntaxKind::MemberExpression) {
+    return false;
+  }
+  const auto& member = tree.node(target);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return false;
+  }
+  const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::ThisExpr) {
+    return false;
+  }
+  return isScalarLiteral(tree.node(value).kind);
+}
+
 struct OwnerLocalFieldShape final {
   binder::OwnerLocalBindingId binding;
   identity::SemanticTypeId receiverType;
@@ -872,21 +905,23 @@ zc::Maybe<OwnerLocalFieldShape> ownerLocalFieldShape(
   ZC_UNREACHABLE
 }
 
-/// \brief Resolved field read through the implicit `this` receiver of an
+/// \brief Resolved field access through the implicit `this` receiver of an
 /// inherent method: the receiver parameter root, the owner nominal type, and
-/// the projected field. A shared-receiver read is never a mutable place.
+/// the projected field. `receiverMutable` records the callable receiver mode;
+/// a place derived from a shared receiver is never a mutable place.
 struct ThisReceiverFieldShape final {
   identity::CallableParameterId receiverParameter;
   identity::SemanticTypeId receiverType;
   identity::SemanticTypeId receiverReferenceType;
   identity::DefId field;
   identity::SemanticTypeId fieldType;
+  bool receiverMutable;
 };
 
 /// \brief Resolves `this.field` inside an inherent method body to the
-/// receiver parameter and field definition. The receiver source type is read
-/// from the typed `this` expression (a shared const reference to the owner
-/// nominal); a shared-receiver read is never a mutable place.
+/// receiver parameter and field definition. Both a shared const receiver and a
+/// mutating mutable receiver are accepted; the receiver source type is read from
+/// the typed `this` expression and its mutability is returned to the caller.
 zc::Maybe<ThisReceiverFieldShape> thisReceiverFieldShape(const BodyCheckingInput& input,
                                                          ast::NodeId node) {
   const auto& tree = input.boundModule.tree();
@@ -941,6 +976,7 @@ zc::Maybe<ThisReceiverFieldShape> thisReceiverFieldShape(const BodyCheckingInput
   zc::Maybe<identity::DefId> ownerDefinition;
   zc::Maybe<identity::SemanticTypeId> receiverReferenceType;
   zc::Maybe<identity::SemanticTypeId> receiverType;
+  bool receiverMutable = false;
   for (const auto& signature : input.signatureFacts.signatures()) {
     if (signature.definition != ZC_ASSERT_NONNULL(methodDefinition)) { continue; }
     if (!signature.payload.variant().is<signature::CallableSignature>()) { continue; }
@@ -949,10 +985,12 @@ zc::Maybe<ThisReceiverFieldShape> thisReceiverFieldShape(const BodyCheckingInput
     const auto& scope = signature.scope.variant().get<signature::MemberSignatureScope>();
     if (callable.receiver == zc::none || ownerDefinition != zc::none) { return zc::none; }
     const auto& receiverSignature = ZC_ASSERT_NONNULL(callable.receiver);
-    if (receiverSignature.mode != signature::ReceiverMode::Shared ||
+    if ((receiverSignature.mode != signature::ReceiverMode::Shared &&
+         receiverSignature.mode != signature::ReceiverMode::Mutable) ||
         receiverSignature.parameter != ZC_ASSERT_NONNULL(receiverAuthority).key()) {
       return zc::none;
     }
+    receiverMutable = receiverSignature.mode == signature::ReceiverMode::Mutable;
     auto admitted = input.semanticTypes.canonicalizeClosed(
         type::semantic::TypeData(type::semantic::NominalTypeData{scope.owner, {}}));
     if (!admitted.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
@@ -961,7 +999,9 @@ zc::Maybe<ThisReceiverFieldShape> thisReceiverFieldShape(const BodyCheckingInput
     if (!interned.is<type::SemanticTypeInterned>()) { return zc::none; }
     const auto ownerType = interned.get<type::SemanticTypeInterned>().id;
     auto referenceAdmitted = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
-        type::semantic::ReferenceTypeData{type::semantic::Mutability::Const, ownerType}));
+        type::semantic::ReferenceTypeData{receiverMutable ? type::semantic::Mutability::Mutable
+                                                          : type::semantic::Mutability::Const,
+                                          ownerType}));
     if (!referenceAdmitted.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
     auto referenceInterned = input.semanticTypes.intern(
         zc::mv(referenceAdmitted).get<type::semantic::CanonicalTypeData>());
@@ -978,8 +1018,8 @@ zc::Maybe<ThisReceiverFieldShape> thisReceiverFieldShape(const BodyCheckingInput
   if (!referenceLookup.is<type::SemanticTypeLookup>()) { return zc::none; }
   const auto& referenceData = referenceLookup.get<type::SemanticTypeLookup>().data();
   if (!referenceData.is<type::semantic::ReferenceTypeData>() ||
-      referenceData.get<type::semantic::ReferenceTypeData>().mutability !=
-          type::semantic::Mutability::Const) {
+      (referenceData.get<type::semantic::ReferenceTypeData>().mutability ==
+       type::semantic::Mutability::Mutable) != receiverMutable) {
     return zc::none;
   }
   const auto ownerType = referenceData.get<type::semantic::ReferenceTypeData>().referent;
@@ -988,9 +1028,12 @@ zc::Maybe<ThisReceiverFieldShape> thisReceiverFieldShape(const BodyCheckingInput
       input, ZC_ASSERT_NONNULL(ownerDefinition),
       tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord])));
   if (field == zc::none) { return zc::none; }
-  return ThisReceiverFieldShape{ZC_ASSERT_NONNULL(receiverParameter), ownerType,
+  return ThisReceiverFieldShape{ZC_ASSERT_NONNULL(receiverParameter),
+                                ownerType,
                                 ZC_ASSERT_NONNULL(receiverReferenceType),
-                                ZC_ASSERT_NONNULL(field).definition, ZC_ASSERT_NONNULL(field).type};
+                                ZC_ASSERT_NONNULL(field).definition,
+                                ZC_ASSERT_NONNULL(field).type,
+                                receiverMutable};
 }
 
 struct StructLiteralShape final {
@@ -2574,6 +2617,29 @@ checked::CheckedFactsSourceRejected rejectCannotMutateImmutableVariable(
                                              zc::Vector<checked::FrozenRecoveryLedger>()};
 }
 
+/// \brief Rejects a field write through a shared (immutable) method receiver
+/// with ZOM4126. The offending place is the implicit receiver keyword, so the
+/// diagnostic carries no display arguments.
+checked::CheckedFactsSourceRejected rejectCannotMutateSharedReceiver(const BodyProductionSite& site,
+                                                                     uint32_t ownerPreorder) {
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::CannotMutateSharedReceiver(), checked::CheckerDiagnosticStage::Body,
+      site.node, site.key.sourceSpan.clone(), zc::mv(arguments), zc::mv(notes),
+      checked::CheckerDiagnosticProducer::Mutation,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
 zc::Vector<uint32_t> factPath(CheckedFactGroup group) {
   zc::Vector<uint32_t> path;
   path.add(static_cast<uint32_t>(group));
@@ -3078,6 +3144,8 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
             production = BodyProductionKind::LocalWrite;
           } else if (isSimpleOwnerLocalFieldWrite(boundModule, node)) {
             production = BodyProductionKind::OwnerLocalFieldWrite;
+          } else if (isSimpleReceiverFieldWrite(boundModule, node)) {
+            production = BodyProductionKind::ReceiverFieldWrite;
           }
           break;
         case ast::SyntaxKind::MemberExpression:
@@ -3301,6 +3369,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                              deferredLocalReference;
       const bool methodReference = site.production == BodyProductionKind::OwnerLocalMethodReference;
       const bool fieldWrite = site.production == BodyProductionKind::OwnerLocalFieldWrite;
+      const bool receiverFieldWrite = site.production == BodyProductionKind::ReceiverFieldWrite;
       const bool directCall = site.production == BodyProductionKind::DirectCall;
       const bool concreteMethodCall = site.production == BodyProductionKind::ConcreteMethodCall;
       const bool errorOperator = site.production == BodyProductionKind::ErrorOperator;
@@ -3308,12 +3377,13 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       const bool unsafeBlock = site.production == BodyProductionKind::UnsafeBlock;
       const bool primitiveBinary = site.production == BodyProductionKind::PrimitiveBinaryOperation;
       if ((stage == 0 &&
-           (structured || projected || fieldWrite || directCall || concreteMethodCall ||
-            errorOperator || indexed || unsafeBlock || primitiveBinary)) ||
+           (structured || projected || fieldWrite || receiverFieldWrite || directCall ||
+            concreteMethodCall || errorOperator || indexed || unsafeBlock || primitiveBinary)) ||
           (stage == 1 && (((!structured && !directCall) || errorOperator || indexed) &&
                           !unsafeBlock && !primitiveBinary)) ||
           (stage == 2 && ((!projected && !indexed) || methodReference)) ||
-          (stage == 3 && (!fieldWrite && !concreteMethodCall && !methodReference)) ||
+          (stage == 3 &&
+           (!fieldWrite && !receiverFieldWrite && !concreteMethodCall && !methodReference)) ||
           (stage == 4 && !errorOperator)) {
         continue;
       }
@@ -3904,6 +3974,46 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             producedType = type.value;
           }
         }
+      } else if (site.production == BodyProductionKind::ReceiverFieldWrite) {
+        const auto& assignment = input.boundModule.tree().node(site.node);
+        const ast::NodeId target(assignment.payload.words[ast::kAssignmentExprLhsWord]);
+        auto targetShape = thisReceiverFieldShape(input, target);
+        if (targetShape == zc::none) {
+          return rejectMethodCallCapability(site, input, factStoreBrands,
+                                            unsupportedThisFieldAccess(input, target));
+        }
+        if (!ZC_ASSERT_NONNULL(targetShape).receiverMutable) {
+          // A field write through a shared receiver is the same mutation error
+          // as writing an immutable variable, naming the implicit receiver.
+          zc::Maybe<uint32_t> ownerOrdinal;
+          ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+            ownerOrdinal = definitionPreorder(input.boundModule, owner);
+          }
+          if (ownerOrdinal == zc::none) {
+            return rejectMethodCallCapability(site, input, factStoreBrands,
+                                              unsupportedThisFieldAccess(input, target));
+          }
+          return attachRecoveryLedger(
+              rejectCannotMutateSharedReceiver(site, ZC_ASSERT_NONNULL(ownerOrdinal)), input,
+              factStoreBrands);
+        }
+        auto targetType = factEntry(nodeTypes.asPtr(), target);
+        auto targetPlace = factEntry(places.asPtr(), target);
+        if (targetType == zc::none || targetPlace == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        ZC_IF_SOME(type, targetType) {
+          ZC_IF_SOME(place, targetPlace) {
+            if (place.value.type != type.value || !place.value.mutablePlace) {
+              return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                     site.key.schemaPreorder, zc::none, site.node,
+                                     site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+            }
+            producedType = type.value;
+          }
+        }
       } else if (site.production == BodyProductionKind::OwnerLocalFieldReference) {
         auto thisShape = thisReceiverFieldShape(input, site.node);
         auto shape = thisShape != zc::none
@@ -3923,12 +4033,14 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
               zc::Array<uint8_t>()});
           zc::Vector<checked::PlaceProjection> projections;
           projections.add(checked::PlaceProjection(checked::FieldProjection{value.field}));
+          // A place reached through a mutable receiver is itself mutable; the
+          // receiver field-write arm requires that bit on its target.
           places.add(checked::PlaceFactMap::Entry{
               site.node,
               checked::CheckedPlaceFact{
                   site.node,
                   checked::PlaceRoot(checked::CallableParameterPlaceRoot{value.receiverParameter}),
-                  zc::mv(projections), value.fieldType, false, true},
+                  zc::mv(projections), value.fieldType, value.receiverMutable, true},
               zc::Array<uint8_t>()});
         }
         ZC_IF_SOME(value, shape) {
@@ -4114,7 +4226,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
 
   for (const auto& site : input.requirements.impl->productionSiteValues) {
     if (site.production != BodyProductionKind::LocalWrite &&
-        site.production != BodyProductionKind::OwnerLocalFieldWrite) {
+        site.production != BodyProductionKind::OwnerLocalFieldWrite &&
+        site.production != BodyProductionKind::ReceiverFieldWrite) {
       continue;
     }
     const auto& assignment = input.boundModule.tree().node(site.node);
@@ -4136,7 +4249,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         }
       }
     }
-    if (site.production == BodyProductionKind::OwnerLocalFieldWrite) {
+    if (site.production == BodyProductionKind::OwnerLocalFieldWrite ||
+        site.production == BodyProductionKind::ReceiverFieldWrite) {
       auto targetPlace = factEntry(places.asPtr(), target);
       if (targetPlace == zc::none) {
         return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,

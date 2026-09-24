@@ -75,6 +75,11 @@ zc::Maybe<const hir::HirParameterFieldProjectionExpression&> parameterFieldProje
   return uniqueRecordFor(module.parameterFieldProjections(), node);
 }
 
+zc::Maybe<const hir::HirParameterFieldWriteStatement&> parameterFieldWriteFor(
+    const hir::VerifiedHirModule& module, hir::HirNodeId node) {
+  return uniqueRecordFor(module.parameterFieldWrites(), node);
+}
+
 zc::Maybe<const hir::HirNominalAggregateExpression&> aggregateFor(
     const hir::VerifiedHirModule& module, hir::HirNodeId node) {
   return uniqueRecordFor(module.aggregates(), node);
@@ -726,6 +731,64 @@ zc::Maybe<RecursiveFunctionProduct> buildAggregateLocalReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers `fun m(this) -> T { this.field = <constant>; return this.field; }`
+/// on a mutable receiver: one root scope, one receiver parameter local carrying
+/// the mutable reference, one Overwrite Assign to the [Dereference, Field] place
+/// with a constant-use rvalue, and a Return of a copy/move place-use of that same
+/// projected place.
+zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldWriteReturn(
+    const hir::HirFunctionDeclaration& declaration,
+    const hir::HirParameterFieldWriteStatement& sourceWrite,
+    const hir::HirScalarLiteralExpression& writeLiteral,
+    const hir::HirParameterFieldProjectionExpression& projection,
+    const hir::HirReturnStatement& sourceReturn,
+    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copyMarker) {
+  if (declaration.receiver == zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
+  const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
+  if (projection.type != declaration.resultType || sourceWrite.type != declaration.resultType ||
+      writeLiteral.type != declaration.resultType || sourceWrite.field != projection.field ||
+      sourceWrite.parameter != receiver.key) {
+    return zc::none;
+  }
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId receiverLocal =
+      ctx.declareLocal(MirLocalKind::Parameter, receiver.type, scope, receiver.sourceSpan.clone());
+
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  zc::Vector<MirProjection> writeProjections;
+  writeProjections.add(MirProjection::dereference(receiver.type, projection.receiverType));
+  writeProjections.add(
+      MirProjection::field(projection.field, projection.receiverType, projection.type));
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(receiverLocal, receiver.type, zc::mv(writeProjections), projection.type),
+      MirRvalue::use(MirOperand::constant(projection.type, writeLiteral.value.clone())),
+      MirInitializationKind::Overwrite, sourceWrite.sourceSpan.clone()));
+
+  zc::Vector<MirProjection> returnProjections;
+  returnProjections.add(MirProjection::dereference(receiver.type, projection.receiverType));
+  returnProjections.add(
+      MirProjection::field(projection.field, projection.receiverType, projection.type));
+  auto returnOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(receiverLocal, receiver.type, zc::mv(returnProjections), projection.type));
+  if (returnOperand == zc::none) return zc::none;
+
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Method, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 }  // namespace
 
 zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
@@ -771,6 +834,24 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
       return buildParameterReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
                                   ZC_ASSERT_NONNULL(parameterReference), identities, proofs,
                                   copyMarker);
+    }
+  }
+
+  // Receiver field write-read: a mutating-receiver method whose two-statement
+  // body overwrites this.field with a literal and returns the field.
+  if (block.statements.size() == 2 && declaration.receiver != zc::none &&
+      declaration.unsafeBlock == zc::none) {
+    auto write = parameterFieldWriteFor(hirModule, block.statements[0]);
+    auto projection = parameterFieldProjectionFor(hirModule, valueNode);
+    if (write != zc::none && projection != zc::none) {
+      auto writeLiteral = expressionFor(hirModule, ZC_ASSERT_NONNULL(write).value);
+      if (writeLiteral != zc::none) {
+        auto product = buildReceiverFieldWriteReturn(
+            declaration, ZC_ASSERT_NONNULL(write), ZC_ASSERT_NONNULL(writeLiteral),
+            ZC_ASSERT_NONNULL(projection), ZC_ASSERT_NONNULL(sourceReturn), identities, proofs,
+            copyMarker);
+        if (product != zc::none) return product;
+      }
     }
   }
 

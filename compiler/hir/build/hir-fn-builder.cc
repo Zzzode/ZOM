@@ -21,6 +21,7 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
                    zc::Vector<HirNominalAggregateExpression>& aggregates,
                    zc::Vector<HirLocalFieldProjectionExpression>& localFieldProjections,
                    zc::Vector<HirParameterFieldProjectionExpression>& parameterFieldProjections,
+                   zc::Vector<HirParameterFieldWriteStatement>& parameterFieldWrites,
                    zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks,
                    zc::Vector<HirParameterReborrowExpression>& parameterReborrows,
                    zc::Vector<HirLocalBorrowExpression>& localBorrows,
@@ -41,6 +42,7 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
       aggregates(&aggregates),
       localFieldProjections(&localFieldProjections),
       parameterFieldProjections(&parameterFieldProjections),
+      parameterFieldWrites(&parameterFieldWrites),
       unsafeBlocks(&unsafeBlocks),
       parameterReborrows(&parameterReborrows),
       localBorrows(&localBorrows),
@@ -93,6 +95,10 @@ void HirFnCtx::addLocalFieldProjection(HirLocalFieldProjectionExpression project
 
 void HirFnCtx::addParameterFieldProjection(HirParameterFieldProjectionExpression projection) {
   parameterFieldProjections->add(zc::mv(projection));
+}
+
+void HirFnCtx::addParameterFieldWrite(HirParameterFieldWriteStatement write) {
+  parameterFieldWrites->add(zc::mv(write));
 }
 
 void HirFnCtx::addUnsafeBlock(HirUnsafeBlockExpression block) { unsafeBlocks->add(zc::mv(block)); }
@@ -446,6 +452,41 @@ void lowerReceiverFieldReturnFunction(PendingFunctionDeclaration&& function, Hir
   ctx.addParameterFieldProjection(HirParameterFieldProjectionExpression{
       valueId, projection.parameter.clone(), receiverType, field, resultType, category,
       projection.sourceSpan.clone()});
+  ctx.addReturn(
+      HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
+}
+
+void lowerReceiverFieldWriteReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  const auto& projection = ZC_ASSERT_NONNULL(function.parameterFieldProjection);
+  const auto& write = ZC_ASSERT_NONNULL(function.parameterFieldWrite);
+  const identity::SemanticTypeId receiverType = projection.receiverType;
+  const identity::DefId field = projection.field;
+  const identity::SemanticTypeId resultType = projection.type;
+  const auto& literal = ZC_ASSERT_NONNULL(function.parameterFieldWriteLiteral);
+
+  // Source preorder: function, body, write statement, write value literal,
+  // return, returned parameter field projection. The block lists the write
+  // before the return; the write names the literal node as its value.
+  const HirNodeId functionId = ctx.allocNode();
+  const HirNodeId bodyId = ctx.allocNode();
+  const HirNodeId writeId = ctx.allocNode();
+  const HirNodeId writeValueId = ctx.allocNode();
+  const HirNodeId returnId = ctx.allocNode();
+  const HirNodeId valueId = ctx.allocNode();
+
+  ctx.addFunction(lowerFunctionHeader(functionId, bodyId, function));
+  zc::Vector<HirNodeId> statements;
+  statements.add(writeId);
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+  ctx.addParameterFieldWrite(HirParameterFieldWriteStatement{
+      writeId, write.parameter.clone(), receiverType, field, resultType, writeValueId,
+      write.sourceSpan.clone(), write.valueSpan.clone()});
+  ctx.addExpression(HirScalarLiteralExpression{writeValueId, resultType, literal.clone(),
+                                               HirValueCategory::Value, write.valueSpan.clone()});
+  ctx.addParameterFieldProjection(HirParameterFieldProjectionExpression{
+      valueId, projection.parameter.clone(), receiverType, field, resultType,
+      HirValueCategory::Place, projection.sourceSpan.clone()});
   ctx.addReturn(
       HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
 }

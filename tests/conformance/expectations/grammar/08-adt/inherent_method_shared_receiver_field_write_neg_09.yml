@@ -1,0 +1,5 @@
+section: "08-adt inherent shared receiver field write"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits the field-write syntax; the checker rejects writing a field through a shared (non-mutating) this receiver with ZOM4126 and asks for the mutating modifier."

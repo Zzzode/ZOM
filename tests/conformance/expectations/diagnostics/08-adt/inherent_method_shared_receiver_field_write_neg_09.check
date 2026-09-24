@@ -1,0 +1,10 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/inherent_method_shared_receiver_field_write_neg_09.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A field write through a shared (non-mutating) receiver is a genuine
+// mutability error: ZOM4126 names the shared `this` receiver and points at the
+// write, instead of draining the method as a capability rejection or an
+// internal compiler invariant.
+
+// CHECK-LITERAL: Error [ZOM4126]: cannot mutate a field through the shared `this` receiver; mark the method `mutating`
+// CHECK-LITERAL:   --> conformance/08-adt/inherent_method_shared_receiver_field_write_neg_09.zom:3:27

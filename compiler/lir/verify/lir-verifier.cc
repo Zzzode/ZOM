@@ -200,6 +200,41 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
       for (uint32_t s = 0; s < block.statements().size(); ++s) {
         const Statement& statement = block.statements()[s];
         const uint32_t statementIndex = s + 1;
+        if (statement.kind() == StatementKind::StoreField) {
+          // A field write names a base pointer slot and a stored value but no
+          // destination slot, so it is validated separately from the
+          // destination-oriented statements.
+          const Operand& base = statement.source();
+          if (base.isConstant()) {
+            return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                         statementIndex);
+          }
+          auto baseSlotFinding = requireSlot(base.localOrdinal(), blockOrdinal, statementIndex);
+          if (baseSlotFinding != zc::none) return baseSlotFinding;
+          const ValueType* baseCarrier = declaredSlotCarrier(function, base.localOrdinal());
+          if (baseCarrier == nullptr || baseCarrier->kind() != ValueTypeKind::Pointer ||
+              statement.fieldOffsetBytes() != 0) {
+            return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                         statementIndex);
+          }
+          const Operand& stored = statement.storedValue();
+          if (stored.isConstant()) {
+            if (stored.constantValue().carrier().kind() != ValueTypeKind::Integer) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+          } else {
+            auto storedSlotFinding =
+                requireSlot(stored.localOrdinal(), blockOrdinal, statementIndex);
+            if (storedSlotFinding != zc::none) return storedSlotFinding;
+            const ValueType* storedCarrier = operandSlotCarrier(function, stored);
+            if (storedCarrier == nullptr || storedCarrier->kind() != ValueTypeKind::Integer) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+          }
+          continue;
+        }
         auto destinationFinding =
             requireSlot(statement.destinationOrdinal(), blockOrdinal, statementIndex);
         if (destinationFinding != zc::none) return destinationFinding;
@@ -296,6 +331,10 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
             }
             break;
           }
+          case StatementKind::StoreField:
+            // Validated before the destination-oriented switch; unreachable here.
+            return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                         statementIndex);
         }
       }
 

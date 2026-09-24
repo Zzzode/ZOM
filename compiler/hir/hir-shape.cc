@@ -382,11 +382,90 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   // shape (locals, calls, conditionals, loops, unsafe blocks, binary returns,
   // extra parameters) returns none until its lowering exists.
   if (isMethod) {
-    if (statements.size != 1) return zc::none;
     auto layout = methodParameterLayout(tree, function);
     if (layout == zc::none) return zc::none;
     const bool hasReceiver = ZC_ASSERT_NONNULL(layout).hasReceiver;
     const size_t ordinaryCount = ZC_ASSERT_NONNULL(layout).ordinaryCount;
+    // Two-statement mutating-method shape: `this.<field> = <scalar literal>;`
+    // immediately followed by `return this.<field>;` on the same field. The
+    // write value is a scalar literal in this slice; receiver mutability is a
+    // checker decision, not a shape decision.
+    if (statements.size == 2) {
+      auto writeItem = statementItem(tree, tree.list(statements)[0]);
+      if (writeItem == zc::none) return zc::none;
+      ast::NodeId writeStatement;
+      ZC_IF_SOME(value, writeItem) { writeStatement = value; }
+      if (!tree.contains(writeStatement) ||
+          tree.node(writeStatement).kind != ast::SyntaxKind::ExpressionStatement) {
+        return zc::none;
+      }
+      const ast::NodeId assignment(
+          tree.node(writeStatement).payload.words[ast::kExpressionStatementExpressionWord]);
+      if (!tree.contains(assignment) ||
+          tree.node(assignment).kind != ast::SyntaxKind::AssignmentExpr ||
+          static_cast<ast::AssignmentOperatorKind>(
+              tree.node(assignment).payload.words[ast::kAssignmentExprOpWord]) !=
+              ast::AssignmentOperatorKind::Assign) {
+        return zc::none;
+      }
+      const ast::NodeId writeTarget(
+          tree.node(assignment).payload.words[ast::kAssignmentExprLhsWord]);
+      const ast::NodeId writeValue(
+          tree.node(assignment).payload.words[ast::kAssignmentExprRhsWord]);
+      if (!tree.contains(writeTarget) || !tree.contains(writeValue) ||
+          tree.node(writeTarget).kind != ast::SyntaxKind::MemberExpression ||
+          static_cast<ast::MemberAccessKind>(
+              tree.node(writeTarget).payload.words[ast::kMemberExpressionAccessWord]) !=
+              ast::MemberAccessKind::Dot ||
+          !isScalarLiteral(tree.node(writeValue).kind)) {
+        return zc::none;
+      }
+      const ast::NodeId writeObject(
+          tree.node(writeTarget).payload.words[ast::kMemberExpressionObjectWord]);
+      if (!tree.contains(writeObject) || tree.node(writeObject).kind != ast::SyntaxKind::ThisExpr) {
+        return zc::none;
+      }
+      auto returnItem = statementItem(tree, tree.list(statements)[1]);
+      if (returnItem == zc::none) return zc::none;
+      ast::NodeId returnNode;
+      ZC_IF_SOME(value, returnItem) { returnNode = value; }
+      if (!tree.contains(returnNode) || tree.node(returnNode).kind != ast::SyntaxKind::ReturnStmt) {
+        return zc::none;
+      }
+      const ast::NodeId returnValue(tree.node(returnNode).payload.words[ast::kReturnStmtValueWord]);
+      if (!tree.contains(returnValue) ||
+          tree.node(returnValue).kind != ast::SyntaxKind::MemberExpression ||
+          static_cast<ast::MemberAccessKind>(
+              tree.node(returnValue).payload.words[ast::kMemberExpressionAccessWord]) !=
+              ast::MemberAccessKind::Dot) {
+        return zc::none;
+      }
+      const ast::NodeId returnObject(
+          tree.node(returnValue).payload.words[ast::kMemberExpressionObjectWord]);
+      if (!tree.contains(returnObject) ||
+          tree.node(returnObject).kind != ast::SyntaxKind::ThisExpr) {
+        return zc::none;
+      }
+      // The return reads the SAME field as the write. The two member expressions
+      // are distinct source nodes, so compare their projected properties.
+      const ast::IdentId writeProperty(
+          tree.node(writeTarget).payload.words[ast::kMemberExpressionPropertyWord]);
+      const ast::IdentId returnProperty(
+          tree.node(returnValue).payload.words[ast::kMemberExpressionPropertyWord]);
+      if (tree.ident(writeProperty) != tree.ident(returnProperty)) { return zc::none; }
+      if (!hasReceiver || ordinaryCount != 0) return zc::none;
+      FunctionReturnShape shape{};
+      shape.body = body;
+      shape.returnStatement = returnNode;
+      shape.value = returnValue;
+      shape.returnsReceiverField = true;
+      shape.writesReceiverField = true;
+      shape.receiverWriteStatement = writeStatement;
+      shape.receiverWriteAssignment = assignment;
+      shape.receiverWriteValue = writeValue;
+      return shape;
+    }
+    if (statements.size != 1) return zc::none;
     auto returnItem = statementItem(tree, tree.list(statements)[0]);
     if (returnItem == zc::none) return zc::none;
     ast::NodeId returnNode;

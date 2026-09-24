@@ -356,6 +356,8 @@ ACCEPTED_CHECKER_DIAGNOSTICS = (
      "erasing the generic or non-plain type {0} to dyn {1} is not supported yet", 2),
     (4125, "MethodCallSemanticsUnavailable", "kError",
      "method call `{0}` is not supported yet", 1),
+    (4126, "CannotMutateSharedReceiver", "kError",
+     "cannot mutate a field through the shared `this` receiver; mark the method `mutating`", 0),
 )
 
 REMOVED_CHECKER_DIAGNOSTIC_CODES = (4027, 4034, 4042, 4043, 4053)
@@ -972,7 +974,7 @@ def check_diagnostic_registry(files: dict[Path, str], errors: list[str]) -> None
     for code, name, severity, _message, _arity in ACCEPTED_CHECKER_DIAGNOSTICS:
         if severity == "kError" and (
             4001 <= code <= 4055 or 4077 <= code <= 4081 or code == 4103 or code == 4124
-            or code == 4125
+            or code == 4125 or code == 4126
         ):
             expected_errors.append(("ERROR", name))
         elif code == 4023:

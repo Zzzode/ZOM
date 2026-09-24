@@ -58,6 +58,7 @@ CHECKER_ERROR(ConstantArithmeticFailure)
 CHECKER_ERROR(BinaryOperatorSemanticsUnavailable)
 CHECKER_ERROR(GenericConcreteDynErasureUnsupported)
 CHECKER_ERROR(MethodCallSemanticsUnavailable)
+CHECKER_ERROR(CannotMutateSharedReceiver)
 
 CHECKER_WARNING(CheckerUnreachableMatchArm)
 

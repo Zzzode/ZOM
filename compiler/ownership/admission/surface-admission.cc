@@ -86,7 +86,11 @@ bool isAdmittedExpressionStatement(const ast::Tree& tree, const ast::Node& state
   if (tree.node(target).kind == ast::SyntaxKind::IdentExpr) return true;
   if (tree.node(target).kind != ast::SyntaxKind::MemberExpression) return false;
   const ast::NodeId object(tree.node(target).payload.words[ast::kMemberExpressionObjectWord]);
-  return tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::IdentExpr;
+  // A receiver field write (`this.field = <literal>`) is admitted structurally;
+  // whether the enclosing method's receiver is mutable is a checker decision,
+  // kept out of surface admission.
+  return tree.contains(object) && (tree.node(object).kind == ast::SyntaxKind::IdentExpr ||
+                                   tree.node(object).kind == ast::SyntaxKind::ThisExpr);
 }
 
 bool isScalarLiteral(ast::SyntaxKind kind) noexcept {

@@ -3,9 +3,9 @@
 
 // Reading a field through the implicit `this` receiver is admitted only for
 // shared receivers in this slice. The same `this.value` read inside a
-// `mutating` method is well-formed source the HIR/MIR/LIR rail cannot lower
-// yet, so the body checker reports the capability rejection ZOM4125 on the
-// field access, never an internal compiler error.
+// `mutating` method without an admitted write is well-formed source the
+// HIR/MIR/LIR rail cannot lower yet, so the owning method is drained as the
+// capability rejection ZOM4099, never an internal compiler error.
 
-// CHECK-LITERAL: Error [ZOM4125]: method call `get` is not supported yet
-// CHECK-LITERAL:   --> conformance/08-adt/inherent_method_mutating_field_read_neg_04.zom:3:42
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/08-adt/inherent_method_mutating_field_read_neg_04.zom:3:3

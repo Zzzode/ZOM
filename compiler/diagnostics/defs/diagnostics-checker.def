@@ -203,3 +203,5 @@ DIAG(4124, GenericConcreteDynErasureUnsupported, kError,
 // well-formed source the HIR/MIR/LIR lowering does not admit yet. The method
 // name is shown, not its receiver type.
 DIAG(4125, MethodCallSemanticsUnavailable, kError, "method call `{0}` is not supported yet", 1)
+DIAG(4126, CannotMutateSharedReceiver, kError,
+     "cannot mutate a field through the shared `this` receiver; mark the method `mutating`", 0)

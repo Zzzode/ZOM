@@ -1,0 +1,8 @@
+// Mutating-receiver method overwrites a field through the receiver pointer and
+// reads it back: the write lowers to StoreField, the read to LoadField, and
+// the module initializer returns 42.
+struct Cell {
+  value: i32,
+  mutating fun bump(this) -> i32 { this.value = 42; return this.value; }
+}
+fun entry() -> i32 { mut cell = Cell { value: 0 }; return cell.bump(); }

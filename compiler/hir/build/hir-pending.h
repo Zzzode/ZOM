@@ -209,6 +209,10 @@ struct PendingFunctionDeclaration final {
   // return reuse the flat mut-local fields; this holds only the loop condition
   // parameter reference and the loop span.
   zc::Maybe<PendingLoopBodyReturn> loopBodyReturn;
+  // Populated for the mutating-receiver write-read body: one Overwrite of a
+  // field reached through the mutable receiver, plus its scalar literal value.
+  zc::Maybe<HirParameterFieldWriteStatement> parameterFieldWrite;
+  zc::Maybe<checker::checked::CanonicalConstValue> parameterFieldWriteLiteral;
 };
 
 }  // namespace detail
