@@ -1,0 +1,5 @@
+section: "08-adt inherent method receiver field read"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A shared-receiver inherent method returning this.field reads through the implicit this receiver parameter; it builds verified semantic HIR and Built MIR with a Dereference plus Field place projection and lowers to a native pointer field load."

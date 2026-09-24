@@ -1922,6 +1922,64 @@ ZC_TEST("HIR pipeline lowers a shared local receiver call with a bodied method")
   }
 }
 
+ZC_TEST("HIR pipeline lowers a shared-receiver this field read") {
+  // `fun get(this) -> i32 { return this.value; }` reads the one field through
+  // the implicit shared receiver. The read materializes as a parameter-keyed
+  // field projection (the receiver carries `&Cell`; its referent is the field
+  // owner), and its Built MIR return is a place-use of the receiver parameter
+  // through [Dereference, Field].
+  HirPipelineFixture fixture(
+      "struct Cell { value: i32, fun get(this) -> i32 { return this.value; } }\n"
+      "fun entry() -> i32 { let cell = Cell { value: 7 }; return cell.get(); }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 2);
+  ZC_REQUIRE(module.parameterFieldProjections().size() == 1);
+  const auto& projection = module.parameterFieldProjections()[0];
+  ZC_EXPECT(projection.category == HirValueCategory::Place);
+
+  zc::Maybe<const HirFunctionDeclaration&> method;
+  for (const auto& function : module.functions()) {
+    if (function.receiver != zc::none) method = function;
+  }
+  ZC_REQUIRE(method != zc::none);
+  const auto& methodDecl = ZC_ASSERT_NONNULL(method);
+  ZC_REQUIRE(methodDecl.parameters.size() == 0);
+  ZC_EXPECT(projection.parameter == ZC_ASSERT_NONNULL(methodDecl.receiver).key);
+  ZC_EXPECT(projection.type == methodDecl.resultType);
+  // Four-node stride: function, body, return, parameter field projection.
+  ZC_EXPECT(projection.node.ordinal() == methodDecl.node.ordinal() + 3);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(!fixture.compilerSession().hasDiagnosticErrors());
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> methodFunction;
+  for (const auto& function : builtMir[0].builtMir().functions()) {
+    if (function.owner == methodDecl.definition) methodFunction = function;
+  }
+  ZC_REQUIRE(methodFunction != zc::none);
+  ZC_IF_SOME(function, methodFunction) {
+    ZC_EXPECT(function.sourceDefinitionKind == identity::DefinitionKind::Method);
+    ZC_REQUIRE(function.locals.size() == 1);
+    ZC_EXPECT(function.locals[0].kind == mir::MirLocalKind::Parameter);
+    ZC_EXPECT(function.locals[0].type == ZC_ASSERT_NONNULL(methodDecl.receiver).type);
+    ZC_REQUIRE(function.blocks.size() == 1);
+    ZC_EXPECT(function.blocks[0].statements.size() == 0);
+    const auto& terminator = function.blocks[0].terminator;
+    ZC_EXPECT(terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_REQUIRE(terminator.returnValue().value != zc::none);
+    ZC_IF_SOME(operand, terminator.returnValue().value) {
+      ZC_EXPECT(operand.kind() != mir::MirOperandKind::Constant);
+      ZC_EXPECT(operand.place().local() == function.locals[0].id);
+      ZC_EXPECT(operand.place().resultType() == methodDecl.resultType);
+      ZC_REQUIRE(operand.place().projections().size() == 2);
+      ZC_EXPECT(operand.place().projections()[0].kind() == mir::MirProjectionKind::Dereference);
+      ZC_EXPECT(operand.place().projections()[0].resultType() == projection.receiverType);
+      ZC_EXPECT(operand.place().projections()[1].kind() == mir::MirProjectionKind::Field);
+      ZC_EXPECT(operand.place().projections()[1].fieldValue().field == projection.field);
+    }
+  }
+}
+
 ZC_TEST("HIR pipeline lowers a bare direct call through exact node strides") {
   // Family 5 direct-call arm, bare-return shape: `return callee(<args>);`.
   // Asserts the exact four-node source-preorder stride (function, body, return,

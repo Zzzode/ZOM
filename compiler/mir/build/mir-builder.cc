@@ -70,6 +70,11 @@ zc::Maybe<const hir::HirLocalFieldProjectionExpression&> localFieldProjectionFor
   return uniqueRecordFor(module.localFieldProjections(), node);
 }
 
+zc::Maybe<const hir::HirParameterFieldProjectionExpression&> parameterFieldProjectionFor(
+    const hir::VerifiedHirModule& module, hir::HirNodeId node) {
+  return uniqueRecordFor(module.parameterFieldProjections(), node);
+}
+
 zc::Maybe<const hir::HirNominalAggregateExpression&> aggregateFor(
     const hir::VerifiedHirModule& module, hir::HirNodeId node) {
   return uniqueRecordFor(module.aggregates(), node);
@@ -431,6 +436,48 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers `fun m(this) -> T { return this.field; }` on a shared
+/// receiver: one root scope, one receiver parameter local carrying the shared
+/// reference, and a Return of a copy/move place-use rooted at that local
+/// through [Dereference(&Owner -> Owner), Field(Owner -> T)].
+zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
+    const hir::HirParameterFieldProjectionExpression& projection,
+    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copyMarker) {
+  if (declaration.receiver == zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
+  const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
+  if (projection.type != declaration.resultType ||
+      projection.category != hir::HirValueCategory::Place) {
+    return zc::none;
+  }
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  ctx.declareLocal(MirLocalKind::Parameter, receiver.type, scope, receiver.sourceSpan.clone());
+
+  zc::Vector<MirProjection> projections;
+  projections.add(MirProjection::dereference(receiver.type, projection.receiverType));
+  projections.add(MirProjection::field(projection.field, projection.receiverType, projection.type));
+  auto returnOperand = placeUse(proofs, copyMarker,
+                                MirPlace(ZC_ASSERT_NONNULL(MirLocalId::fromOrdinal(1)),
+                                         receiver.type, zc::mv(projections), projection.type));
+  if (returnOperand == zc::none) return zc::none;
+
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Method, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers `fun f(p0..pN-1) -> R { return pK; }`: one root scope, one
 /// parameter local per declared parameter in source order, one empty entry
 /// block returning a copy/move place-use of the referenced parameter local.
@@ -695,6 +742,17 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
         ZC_ASSERT_NONNULL(literal).type == declaration.resultType) {
       return buildScalarReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
                                ZC_ASSERT_NONNULL(literal), identities);
+    }
+
+    // Receiver field read: a shared-receiver method returning this.field.
+    auto receiverFieldProjection = parameterFieldProjectionFor(hirModule, valueNode);
+    if (declaration.receiver != zc::none && receiverFieldProjection != zc::none &&
+        ZC_ASSERT_NONNULL(receiverFieldProjection).type == declaration.resultType &&
+        ZC_ASSERT_NONNULL(receiverFieldProjection).category == hir::HirValueCategory::Place &&
+        declaration.unsafeBlock == zc::none) {
+      return buildReceiverFieldReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
+                                      ZC_ASSERT_NONNULL(receiverFieldProjection), identities,
+                                      proofs, copyMarker);
     }
 
     // Parameter return: a bare parameter reference (never a parameter reborrow,
