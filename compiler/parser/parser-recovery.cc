@@ -796,6 +796,18 @@ Parser::Impl::SourceElementParseResult Parser::Impl::parseSourceElement(
       break;
     }
   }
+  // `mutating` qualifies an inherent or interface method only. On a
+  // module-scope or block function declaration the boundary scan would skip
+  // the token silently, so reject it on the modifier itself.
+  if (result.boundary.kind == ast::SyntaxKind::FunctionDecl) {
+    for (size_t index = result.boundary.nodeStart; index < result.boundary.head; ++index) {
+      if (kindAt(index) == ast::SyntaxKind::MutatingKeyword) {
+        diagnosticEngine.report<diagnostics::DiagID::MutatingModifierRequiresMethod>(
+            tokenAt(index).getLocation());
+        break;
+      }
+    }
+  }
   if (result.boundary.start < result.boundary.nodeStart &&
       result.boundary.kind == ast::SyntaxKind::ExpressionStatement) {
     diagnosticEngine.report<diagnostics::DiagID::UnexpectedTokenExpected>(

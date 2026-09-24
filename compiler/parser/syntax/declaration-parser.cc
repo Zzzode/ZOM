@@ -758,6 +758,7 @@ ast::NodeId Parser::Impl::parseClassMemberList(ParserSyntaxFactory& builder, siz
     // Detect modifier flags.
     bool isStatic = false;
     bool isMutating = false;
+    size_t mutatingIdx = modifiersEnd;
     uint8_t visibility = 0;  // Default
     size_t foundIdx = 0;
     if (modifierGroupContains(modifiersStart, modifiersEnd, ast::SyntaxKind::StaticKeyword,
@@ -765,7 +766,7 @@ ast::NodeId Parser::Impl::parseClassMemberList(ParserSyntaxFactory& builder, siz
       isStatic = true;
     }
     if (modifierGroupContains(modifiersStart, modifiersEnd, ast::SyntaxKind::MutatingKeyword,
-                              foundIdx)) {
+                              mutatingIdx)) {
       isMutating = true;
     }
     if (modifierGroupContains(modifiersStart, modifiersEnd, ast::SyntaxKind::PublicKeyword,
@@ -852,8 +853,17 @@ ast::NodeId Parser::Impl::parseClassMemberList(ParserSyntaxFactory& builder, siz
         head == ast::SyntaxKind::DeinitKeyword ||
         (head == ast::SyntaxKind::Identifier && isSoftKeyword(cursor, "deinit"_zc));
     const bool isInitOrDeinit = isConstructor || isDestructor;
-    if (head == ast::SyntaxKind::FunKeyword || head == ast::SyntaxKind::GetKeyword ||
-        head == ast::SyntaxKind::SetKeyword || isInitOrDeinit) {
+    // `mutating` only qualifies a method, getter, or setter. A mutating
+    // constructor/destructor or a mutating field/associated type is invalid;
+    // reject it on the modifier token rather than silently dropping it.
+    const bool isCallableMember = head == ast::SyntaxKind::FunKeyword ||
+                                  head == ast::SyntaxKind::GetKeyword ||
+                                  head == ast::SyntaxKind::SetKeyword;
+    if (isMutating && !isCallableMember) {
+      diagnosticEngine.report<diagnostics::DiagID::MutatingModifierRequiresMethod>(
+          tokenAt(mutatingIdx).getLocation());
+    }
+    if (isCallableMember || isInitOrDeinit) {
       // Method / getter / setter.
       size_t nameIndex = memberEnd;
       if (isInitOrDeinit) {

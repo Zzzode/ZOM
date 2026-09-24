@@ -1,0 +1,2 @@
+mutating fun f() -> i32 { return 1; }
+fun entry() -> i32 { return 0; }

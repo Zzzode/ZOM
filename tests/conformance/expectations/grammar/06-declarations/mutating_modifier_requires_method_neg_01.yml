@@ -1,0 +1,5 @@
+section: "§6.1 ModifierList"
+covers_rule: "checkModifierList (MUTATING on module function)"
+expected: "ACCEPT"
+notes:
+  - "The hand parser rejects mutating on a module-scope function with ZOM2098."

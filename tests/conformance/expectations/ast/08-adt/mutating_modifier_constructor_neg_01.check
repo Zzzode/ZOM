@@ -1,0 +1,9 @@
+// RUN: ! %zomc compile --dump-ast %corpus/08-adt/mutating_modifier_constructor_neg_01.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2098]: The 'mutating' modifier is valid only on a method, getter, or setter
+// CHECK-LITERAL:   --> conformance/mutating_modifier_constructor_neg_01.zom:3:3
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |   mutating init() {}
+// CHECK-LITERAL:   |   ^
+// CHECK-LITERAL: 1 error generated.

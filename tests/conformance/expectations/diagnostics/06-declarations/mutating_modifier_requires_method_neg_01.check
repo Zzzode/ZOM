@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 06-declarations/mutating_modifier_requires_method_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// `mutating` is a member-method modifier. On a module-scope function it must
+// be rejected on the modifier token rather than silently skipped.
+
+// CHECK-LITERAL: Error [ZOM2098]: The 'mutating' modifier is valid only on a method, getter, or setter
+// CHECK-LITERAL:   --> conformance/06-declarations/mutating_modifier_requires_method_neg_01.zom:1:1

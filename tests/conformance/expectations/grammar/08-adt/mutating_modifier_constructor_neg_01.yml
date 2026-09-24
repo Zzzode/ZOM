@@ -1,0 +1,5 @@
+section: "08-adt inherent constructor declaration"
+covers_rule: "constructorDeclaration"
+expected: "ACCEPT"
+notes:
+  - "The hand parser rejects mutating on a constructor with ZOM2098."

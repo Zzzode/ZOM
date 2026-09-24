@@ -113,6 +113,8 @@ DIAG(2096, ImportOrExportDeclarationRequiresModuleScope, kError,
      "Import and export declarations are valid only as module items", 0)
 DIAG(2097, InvalidMethodReceiver, kError,
      "A mutating method requires a mutable 'this' receiver", 0)
+DIAG(2098, MutatingModifierRequiresMethod, kError,
+     "The 'mutating' modifier is valid only on a method, getter, or setter", 0)
 DIAG(2100, ImplRequiresSingleInterface, kError,
      "An impl declaration implements exactly one interface", 0)
 DIAG(2101, MarkerImplCannotBeGeneric, kError,

@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/mutating_modifier_constructor_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A constructor is not a method, so `mutating init` is rejected on the
+// modifier instead of being silently dropped.
+
+// CHECK-LITERAL: Error [ZOM2098]: The 'mutating' modifier is valid only on a method, getter, or setter
+// CHECK-LITERAL:   --> conformance/08-adt/mutating_modifier_constructor_neg_01.zom:3:3
