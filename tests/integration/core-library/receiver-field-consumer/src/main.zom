@@ -1,0 +1,11 @@
+// Shared-receiver inherent method field-read fixture: the entry initializes a
+// one-field struct local, calls its shared method through an implicit borrow,
+// and the method returns the field read through `this`. The caller folds to
+// the reserved no-argument i32 zom.module_init entry and the method emits as
+// zom.callee (one TakeAddress on the caller side, one offset-zero field load in
+// the callee), so the program links against the runtime `_start` and exits 42.
+struct Cell {
+  value: i32,
+  fun get(this) -> i32 { return this.value; }
+}
+fun entry() -> i32 { let cell = Cell { value: 42 }; return cell.get(); }
