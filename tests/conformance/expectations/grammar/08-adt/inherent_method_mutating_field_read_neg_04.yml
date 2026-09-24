@@ -1,0 +1,5 @@
+section: "08-adt inherent method declaration syntax"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits the mutating method with a this-field read; the body checker rejects it on the unadmitted field access with ZOM4125."

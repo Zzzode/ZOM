@@ -2055,7 +2055,8 @@ struct ConcreteMethodCallShape final {
 
 zc::Maybe<ConcreteMethodCallShape> concreteMethodCallShape(
     const BodyCheckingInput& input, ast::NodeId callNode,
-    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
+    zc::Maybe<ast::NodeId>* immutableReceiver = nullptr) {
   const auto& tree = input.boundModule.tree();
   if (!tree.contains(callNode) || tree.node(callNode).kind != ast::SyntaxKind::CallExpression) {
     return zc::none;
@@ -2133,15 +2134,24 @@ zc::Maybe<ConcreteMethodCallShape> concreteMethodCallShape(
             callable.abi != zc::none) {
           return zc::none;
         }
-        // The owner local's mutability must grant the method's receiver mode:
-        // a mutable receiver needs a `mut` local and a shared receiver an
-        // immutable one. Move and by-value receivers stay outside this slice.
+        // The owner local's mutability must grant the method's receiver mode.
+        // A shared receiver accepts either an immutable or mutable local (a
+        // mutable place is always shareable); a mutable receiver requires a
+        // `mut` local. The one genuine error -- mutable receiver on an
+        // immutable `let` -- is reported as ZOM4024 by the caller once the rest
+        // of the call resolves. Move and by-value receivers stay outside this
+        // slice.
         ZC_IF_SOME(receiver, callable.receiver) {
           if (receiver.mode == signature::ReceiverMode::Mutable) {
-            if (!receiverLocalIsMutable) return zc::none;
-          } else if (receiver.mode == signature::ReceiverMode::Shared) {
-            if (receiverLocalIsMutable) return zc::none;
-          } else {
+            if (!receiverLocalIsMutable) {
+              // The receiver is an immutable owner local. Record the receiver
+              // identifier node so the caller emits ZOM4024 naming the binding
+              // that cannot be mutably borrowed; owner locals have no DefId, so
+              // the diagnostic carries the source identifier instead.
+              if (immutableReceiver != nullptr) *immutableReceiver = receiverNode;
+              return zc::none;
+            }
+          } else if (receiver.mode != signature::ReceiverMode::Shared) {
             return zc::none;
           }
           receiverMode = receiver.mode;
@@ -2525,6 +2535,35 @@ rejectMethodCallCapability(const BodyProductionSite& site, const BodyCheckingInp
   return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact,
                          input.boundModule.module(), site.key.schemaPreorder, zc::none, site.node,
                          site.key.sourceSpan.clone(), zc::mv(structuralPath));
+}
+
+checked::CheckedFactsSourceRejected rejectCannotMutateImmutableVariable(
+    const BodyProductionSite& site, uint32_t ownerPreorder, const ast::Tree& tree,
+    ast::NodeId receiverNode) {
+  // Owner locals carry no DefId; the ZOM4024 argument is the receiver's source
+  // identifier, validated by the same Identifier display-argument schema.
+  auto receiverName = identity::SemanticIdentifier::fromSource(
+      tree.ident(ast::IdentId(tree.node(receiverNode).payload.words[ast::kIdentExprNameWord])));
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  if (receiverName != zc::none) {
+    arguments.add(checked::CheckerDisplayArgument(
+        checked::IdentifierDisplayArg{zc::mv(ZC_ASSERT_NONNULL(receiverName))}));
+  }
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::CannotMutateImmutableVariable(),
+      checked::CheckerDiagnosticStage::Body, site.node, site.key.sourceSpan.clone(),
+      zc::mv(arguments), zc::mv(notes), checked::CheckerDiagnosticProducer::Mutation,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
 }
 
 zc::Vector<uint32_t> factPath(CheckedFactGroup group) {
@@ -3457,8 +3496,23 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
         }
       } else if (site.production == BodyProductionKind::ConcreteMethodCall) {
-        auto shape = concreteMethodCallShape(input, site.node, nodeTypes.asPtr());
+        zc::Maybe<ast::NodeId> immutableReceiver;
+        auto shape =
+            concreteMethodCallShape(input, site.node, nodeTypes.asPtr(), &immutableReceiver);
         if (shape == zc::none) {
+          // A mutable-receiver method invoked on an immutable `let` local is a
+          // genuine mutability error (ZOM4024), distinct from a method the
+          // lowering does not implement yet (ZOM4125).
+          if (immutableReceiver != zc::none) {
+            ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+              ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                return attachRecoveryLedger(rejectCannotMutateImmutableVariable(
+                                                site, ownerOrdinal, input.boundModule.tree(),
+                                                ZC_ASSERT_NONNULL(immutableReceiver)),
+                                            input, factStoreBrands);
+              }
+            }
+          }
           return rejectMethodCallCapability(
               site, input, factStoreBrands,
               unsupportedSharedReceiverInherentMethodCall(input, nodeTypes.asPtr(), site.node));
@@ -3885,8 +3939,20 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                 callNode = node;
               }
             });
-        auto shape = concreteMethodCallShape(input, callNode, nodeTypes.asPtr());
+        zc::Maybe<ast::NodeId> immutableReceiver;
+        auto shape =
+            concreteMethodCallShape(input, callNode, nodeTypes.asPtr(), &immutableReceiver);
         if (shape == zc::none) {
+          if (immutableReceiver != zc::none) {
+            ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, callNode)) {
+              ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                return attachRecoveryLedger(rejectCannotMutateImmutableVariable(
+                                                site, ownerOrdinal, input.boundModule.tree(),
+                                                ZC_ASSERT_NONNULL(immutableReceiver)),
+                                            input, factStoreBrands);
+              }
+            }
+          }
           return rejectMethodCallCapability(
               site, input, factStoreBrands,
               unsupportedSharedReceiverInherentMethodCall(input, nodeTypes.asPtr(), callNode));

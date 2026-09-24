@@ -1,0 +1,5 @@
+struct Counter {
+  count: i32,
+  mutating fun bump(this) -> i32 { return 7; }
+}
+fun entry() -> i32 { let counter = Counter { count: 0 }; return counter.bump(); }

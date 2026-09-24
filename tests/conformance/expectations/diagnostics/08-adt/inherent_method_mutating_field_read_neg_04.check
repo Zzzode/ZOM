@@ -1,0 +1,11 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/inherent_method_mutating_field_read_neg_04.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// Reading a field through the implicit `this` receiver is admitted only for
+// shared receivers in this slice. The same `this.value` read inside a
+// `mutating` method is well-formed source the HIR/MIR/LIR rail cannot lower
+// yet, so the body checker reports the capability rejection ZOM4125 on the
+// field access, never an internal compiler error.
+
+// CHECK-LITERAL: Error [ZOM4125]: method call `get` is not supported yet
+// CHECK-LITERAL:   --> conformance/08-adt/inherent_method_mutating_field_read_neg_04.zom:3:42

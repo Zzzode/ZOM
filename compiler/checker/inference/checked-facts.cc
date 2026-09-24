@@ -2765,11 +2765,14 @@ bool validArgumentSchema(const CheckerFailureRef& failure) {
       return argumentKinds(arguments, Kind::Definition, Kind::Definition);
     case DiagID::DynStaticMethod:
     case DiagID::CannotInferTypeParameter:
-    case DiagID::CannotMutateImmutableVariable:
     case DiagID::MissingStructField:
     case DiagID::ConstantValueOutOfRange:
     case DiagID::ConstantDependencyCycle:
       return argumentKinds(arguments, Kind::Definition);
+    case DiagID::CannotMutateImmutableVariable:
+      // Owner locals have no DefId; the offending binding is named by its
+      // source identifier.
+      return argumentKinds(arguments, Kind::Identifier);
     case DiagID::DynUnsizedParameter:
       return argumentKinds(arguments, Kind::Definition, Kind::Definition, Kind::Type);
     case DiagID::TypeCheckerTypeMismatch:

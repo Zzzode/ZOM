@@ -1,0 +1,10 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/inherent_method_mutating_immutable_neg_03.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A mutating-receiver method requires a mutable place. Invoking one on an
+// immutable `let` owner local is a genuine mutability error: the body checker
+// reports ZOM4024 naming the immutable binding, rather than draining the call
+// as a capability rejection or an internal compiler invariant.
+
+// CHECK-LITERAL: Error [ZOM4024]: Cannot mutate immutable definition `counter`
+// CHECK-LITERAL:   --> conformance/08-adt/inherent_method_mutating_immutable_neg_03.zom:5:65

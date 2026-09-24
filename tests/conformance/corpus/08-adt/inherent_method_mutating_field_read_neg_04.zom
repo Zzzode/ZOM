@@ -1,0 +1,5 @@
+struct Cell {
+  value: i32,
+  mutating fun get(this) -> i32 { return this.value; }
+}
+fun entry() -> i32 { mut cell = Cell { value: 9 }; return cell.get(); }

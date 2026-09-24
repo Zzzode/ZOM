@@ -1,0 +1,5 @@
+section: "08-adt inherent method declaration syntax"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits the mutating call; the body checker rejects a mutating-receiver call on an immutable `let` local with ZOM4024."
