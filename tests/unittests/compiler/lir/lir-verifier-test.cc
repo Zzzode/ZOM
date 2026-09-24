@@ -197,6 +197,86 @@ ZC_TEST("LIR structural verifier accepts a shared-receiver take-address call mod
   ZC_EXPECT(LirStructuralVerifier::verify(module) == zc::none);
 }
 
+// Builds the receiver field-read module with the callee's load field tuned:
+// the base and destination carriers, byte offset, and base ordinal are all
+// parameterized so malformed carriers/ordinals can be exercised.
+Module fieldReadModule(ValueType baseCarrier, ValueType destinationCarrier,
+                       uint32_t basePointerOrdinal, uint32_t fieldOffsetBytes) {
+  zc::Vector<Function> functions;
+  {
+    zc::Vector<Statement> statements;
+    statements.add(
+        Statement::assign(1, Operand::constant(constant(carrier(IntegerBitWidth::Bit32), 42))));
+    statements.add(Statement::takeAddress(2, 1));
+    zc::Vector<Operand> arguments;
+    arguments.add(Operand::localUse(2));
+    zc::Vector<BasicBlock> blocks;
+    blocks.add(BasicBlock(
+        blockId(1), zc::mv(statements),
+        ZC_ASSERT_NONNULL(Terminator::callFunction(
+            /*calleeIndex=*/1, /*destinationOrdinal=*/3, zc::mv(arguments), blockId(2)))));
+    blocks.add(BasicBlock(blockId(2), zc::Vector<Statement>(), Terminator::returnLocal(3)));
+    zc::Vector<Local> noParameters;
+    zc::Vector<Local> locals;
+    locals.add(Local(1, carrier(IntegerBitWidth::Bit32)));
+    locals.add(Local(2, ValueType::pointer(0)));
+    locals.add(Local(3, carrier(IntegerBitWidth::Bit32)));
+    functions.add(Function(tests::testDefinition(0), zc::heapString("zom.module_init"),
+                           carrier(IntegerBitWidth::Bit32), zc::mv(noParameters), zc::mv(locals),
+                           zc::mv(blocks)));
+  }
+  {
+    zc::Vector<Statement> statements;
+    statements.add(Statement::loadField(2, basePointerOrdinal, fieldOffsetBytes));
+    zc::Vector<BasicBlock> blocks;
+    blocks.add(BasicBlock(blockId(1), zc::mv(statements), Terminator::returnLocal(2)));
+    zc::Vector<Local> parameters;
+    parameters.add(Local(1, baseCarrier));
+    zc::Vector<Local> locals;
+    locals.add(Local(2, destinationCarrier));
+    functions.add(Function(tests::testDefinition(1), zc::heapString("zom.callee"),
+                           carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(locals),
+                           zc::mv(blocks)));
+  }
+  return Module(zc::mv(functions));
+}
+
+ZC_TEST("LIR structural verifier accepts an offset-zero receiver load-field callee") {
+  Module module = fieldReadModule(ValueType::pointer(0), carrier(IntegerBitWidth::Bit32),
+                                  /*basePointerOrdinal=*/1, /*fieldOffsetBytes=*/0);
+  ZC_EXPECT(LirStructuralVerifier::verify(module) == zc::none);
+}
+
+ZC_TEST("LIR structural verifier rejects a non-offset-zero load field") {
+  Module module = fieldReadModule(ValueType::pointer(0), carrier(IntegerBitWidth::Bit32), 1, 4);
+  auto finding = LirStructuralVerifier::verify(module);
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == LirVerificationFaultKind::CarrierMismatch);
+}
+
+ZC_TEST("LIR structural verifier rejects a load field whose destination is a pointer") {
+  Module module = fieldReadModule(ValueType::pointer(0), ValueType::pointer(0), 1, 0);
+  auto finding = LirStructuralVerifier::verify(module);
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == LirVerificationFaultKind::CarrierMismatch);
+}
+
+ZC_TEST("LIR structural verifier rejects a load field through a non-pointer base") {
+  Module module =
+      fieldReadModule(carrier(IntegerBitWidth::Bit32), carrier(IntegerBitWidth::Bit32), 1, 0);
+  auto finding = LirStructuralVerifier::verify(module);
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == LirVerificationFaultKind::CarrierMismatch);
+}
+
+ZC_TEST("LIR structural verifier rejects a load field through an undeclared base") {
+  Module module = fieldReadModule(ValueType::pointer(0), carrier(IntegerBitWidth::Bit32),
+                                  /*basePointerOrdinal=*/3, /*fieldOffsetBytes=*/0);
+  auto finding = LirStructuralVerifier::verify(module);
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == LirVerificationFaultKind::UndeclaredLocalSlot);
+}
+
 ZC_TEST("LIR structural verifier rejects take-address into a non-pointer slot") {
   zc::Vector<Function> functions;
   {

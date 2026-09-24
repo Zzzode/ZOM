@@ -1586,19 +1586,33 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   }
   const auto& calleeReturn = calleeBlock.terminator.returnValue().value;
   if (calleeReturn == zc::none) { return zc::none; }
+  // The callee body is either (A) a scalar-constant return (the literal-method
+  // slice) or (B) a direct copy/move place-use of the shared receiver parameter
+  // reached through [Dereference, Field] (the `this.field` read slice).
   zc::Maybe<IntegerConstant> calleeConstant;
+  bool calleeFieldRead = false;
   ZC_IF_SOME(value, calleeReturn) {
-    if (value.kind() != mir::MirOperandKind::Constant ||
-        value.constantValue().type != callee.resultType) {
-      return zc::none;
+    if (value.kind() == mir::MirOperandKind::Constant) {
+      if (value.constantValue().type != callee.resultType) { return zc::none; }
+      const auto integer = value.constantValue().value.integerValue();
+      if (integer == zc::none) { return zc::none; }
+      auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), calleeCarrierValue.integerWidth());
+      if (bits == zc::none) { return zc::none; }
+      calleeConstant = IntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(bits));
+    } else {
+      const auto& place = value.place();
+      if (place.local() != receiverLocal.id || place.rootType() != receiverLocal.type ||
+          place.resultType() != callee.resultType || place.projections().size() != 2 ||
+          place.projections()[0].kind() != mir::MirProjectionKind::Dereference ||
+          place.projections()[0].inputType() != receiverLocal.type ||
+          place.projections()[1].kind() != mir::MirProjectionKind::Field ||
+          place.projections()[1].resultType() != callee.resultType) {
+        return zc::none;
+      }
+      calleeFieldRead = true;
     }
-    const auto integer = value.constantValue().value.integerValue();
-    if (integer == zc::none) { return zc::none; }
-    auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), calleeCarrierValue.integerWidth());
-    if (bits == zc::none) { return zc::none; }
-    calleeConstant = IntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(bits));
   }
-  if (calleeConstant == zc::none) { return zc::none; }
+  if (calleeConstant == zc::none && !calleeFieldRead) { return zc::none; }
 
   // Caller: one aggregate-initialized owner local, one shared-receiver borrow
   // temporary, and one call result temporary; two blocks (Call then Return).
@@ -1727,14 +1741,31 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
                            zc::mv(noParameters), zc::mv(locals), zc::mv(callerBlocks)));
   }
   {
-    zc::Vector<BasicBlock> calleeBlocks;
-    calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId),
-                                Terminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
     zc::Vector<Local> parameters;
     parameters.add(Local(receiverLocal.id.ordinal(), receiverCarrierValue));
-    zc::Vector<Local> noLocals;
-    functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
-                           zc::mv(parameters), zc::mv(noLocals), zc::mv(calleeBlocks)));
+    if (calleeFieldRead) {
+      // The field read materializes in a synthesized result slot (the first body
+      // local, ordinal receiver + 1): LoadField through the receiver pointer at
+      // offset zero, then ReturnLocal the loaded field.
+      const uint32_t resultOrdinal = receiverLocal.id.ordinal() + 1;
+      zc::Vector<Statement> calleeStatements;
+      calleeStatements.add(
+          Statement::loadField(resultOrdinal, receiverLocal.id.ordinal(), /*fieldOffsetBytes=*/0));
+      zc::Vector<BasicBlock> calleeBlocks;
+      calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId), zc::mv(calleeStatements),
+                                  Terminator::returnLocal(resultOrdinal)));
+      zc::Vector<Local> calleeLocals;
+      calleeLocals.add(Local(resultOrdinal, calleeCarrierValue));
+      functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
+                             zc::mv(parameters), zc::mv(calleeLocals), zc::mv(calleeBlocks)));
+    } else {
+      zc::Vector<BasicBlock> calleeBlocks;
+      calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId),
+                                  Terminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
+      zc::Vector<Local> noLocals;
+      functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
+                             zc::mv(parameters), zc::mv(noLocals), zc::mv(calleeBlocks)));
+    }
   }
 
   return Module(zc::mv(functions));

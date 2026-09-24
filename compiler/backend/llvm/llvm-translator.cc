@@ -350,6 +350,27 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
           // opaque-pointer LLVM; the folded owner slot is one scalar, so no GEP
           // is needed.
           stored = slotFor(statement.sourceOrdinal());
+        } else if (statement.kind() == lir::StatementKind::LoadField) {
+          // Load the receiver pointer held by the base slot, then load the field
+          // through it. The admitted one-field owner is one scalar at offset
+          // zero, so the read is a direct load; a non-zero offset would step
+          // byte-wise over the opaque pointee with an i8 GEP.
+          auto* baseSlot = slotFor(statement.basePointerOrdinal());
+          auto* fieldPointer =
+              new ::llvm::LoadInst(baseSlot->getAllocatedType(), baseSlot, "fieldptr", target);
+          if (statement.fieldOffsetBytes() != 0) {
+            ::llvm::Value* offset =
+                ::llvm::ConstantInt::getSigned(::llvm::Type::getInt64Ty(*context),
+                                               static_cast<int64_t>(statement.fieldOffsetBytes()));
+            ::llvm::ArrayRef<::llvm::Value*> indices(offset);
+            ::llvm::Value* fieldAddress = ::llvm::GetElementPtrInst::Create(
+                ::llvm::Type::getInt8Ty(*context), fieldPointer, indices, "fieldgep", target);
+            stored = new ::llvm::LoadInst(destination->getAllocatedType(), fieldAddress, "field",
+                                          target);
+          } else {
+            stored = new ::llvm::LoadInst(destination->getAllocatedType(), fieldPointer, "field",
+                                          target);
+          }
         } else {
           stored = loadOperand(statement.value(), target);
         }

@@ -47,6 +47,13 @@ Statement Statement::takeAddress(uint32_t destinationOrdinal, uint32_t sourceOrd
                    source);
 }
 
+Statement Statement::loadField(uint32_t destinationOrdinal, uint32_t basePointerOrdinal,
+                               uint32_t fieldOffsetBytes) noexcept {
+  Operand base = Operand::localUse(basePointerOrdinal);
+  return Statement(StatementKind::LoadField, destinationOrdinal, ComparisonOp::Eq, base, base,
+                   fieldOffsetBytes);
+}
+
 // A never-read placeholder constant for terminators that carry no integer
 // constant. The i1 carrier always exists, so `from` cannot fail here.
 IntegerConstant Terminator::fallbackConstant() noexcept {

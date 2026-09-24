@@ -128,15 +128,20 @@ enum class StatementKind : uint8_t {
   Assign = 0x01,
   Compare = 0x02,
   TakeAddress = 0x03,
+  LoadField = 0x04,
 };
 
 /// \brief One LIR statement: store an operand or a comparison into a local slot,
-/// or take the address of a whole slot into a pointer slot.
+/// take the address of a whole slot, or load one field of a folded aggregate
+/// addressed through a pointer slot.
 ///
 /// `Assign` stores `value` into `destinationOrdinal`. `Compare` stores the
 /// one-bit result of `op` applied to `left` and `right` into the destination.
 /// `TakeAddress` stores the address of the whole `sourceOrdinal` slot into a
-/// pointer-typed destination. Locals are addressed by one-based ordinal.
+/// pointer-typed destination. `LoadField` stores into the destination the value
+/// loaded `fieldOffsetBytes` bytes from the opaque pointer held in the base
+/// slot (a shared-receiver `this` field read). Locals are addressed by
+/// one-based ordinal.
 class Statement final {
 public:
   ZC_NODISCARD static Statement assign(uint32_t destinationOrdinal, Operand value) noexcept;
@@ -148,30 +153,41 @@ public:
   /// declared whole slot (never a constant or a projection).
   ZC_NODISCARD static Statement takeAddress(uint32_t destinationOrdinal,
                                             uint32_t sourceOrdinal) noexcept;
+  /// \brief Loads one field of the folded aggregate referenced by a pointer
+  /// slot into an integer destination slot (a receiver-parameter field read).
+  /// The base slot carries an opaque pointer to a folded one-field owner; the
+  /// field is read at `fieldOffsetBytes` from that address. Only the
+  /// offset-zero read is admitted until an aggregate layout store exists.
+  ZC_NODISCARD static Statement loadField(uint32_t destinationOrdinal, uint32_t basePointerOrdinal,
+                                          uint32_t fieldOffsetBytes) noexcept;
 
   ZC_NODISCARD StatementKind kind() const noexcept { return kindValue; }
   ZC_NODISCARD uint32_t destinationOrdinal() const noexcept { return destinationValue; }
   ZC_NODISCARD const Operand& value() const noexcept { return leftValue; }
   ZC_NODISCARD const Operand& source() const noexcept { return leftValue; }
   ZC_NODISCARD uint32_t sourceOrdinal() const noexcept { return leftValue.localOrdinal(); }
+  ZC_NODISCARD uint32_t basePointerOrdinal() const noexcept { return leftValue.localOrdinal(); }
+  ZC_NODISCARD uint32_t fieldOffsetBytes() const noexcept { return fieldOffsetValue; }
   ZC_NODISCARD ComparisonOp comparisonOp() const noexcept { return opValue; }
   ZC_NODISCARD const Operand& left() const noexcept { return leftValue; }
   ZC_NODISCARD const Operand& right() const noexcept { return rightValue; }
 
 private:
   Statement(StatementKind kind, uint32_t destinationOrdinal, ComparisonOp op, Operand left,
-            Operand right) noexcept
+            Operand right, uint32_t fieldOffsetBytes = 0) noexcept
       : kindValue(kind),
         destinationValue(destinationOrdinal),
         opValue(op),
         leftValue(left),
-        rightValue(right) {}
+        rightValue(right),
+        fieldOffsetValue(fieldOffsetBytes) {}
 
   StatementKind kindValue;
   uint32_t destinationValue;
   ComparisonOp opValue;
   Operand leftValue;
   Operand rightValue;
+  uint32_t fieldOffsetValue = 0;
 };
 
 /// \brief Closed terminator algebra for the supported LIR subset.

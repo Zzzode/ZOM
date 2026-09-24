@@ -272,6 +272,30 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
             if (slotFinding != zc::none) return slotFinding;
             break;
           }
+          case StatementKind::LoadField: {
+            // The destination holds the loaded field carrier; the base slot
+            // holds the opaque pointer to the folded one-field owner. Only the
+            // offset-zero read is admitted; a non-zero offset needs aggregate
+            // layout facts LIR does not carry yet.
+            if (destinationCarrier.kind() != ValueTypeKind::Integer ||
+                statement.fieldOffsetBytes() != 0) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            const Operand& base = statement.source();
+            if (base.isConstant()) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            auto baseSlotFinding = requireSlot(base.localOrdinal(), blockOrdinal, statementIndex);
+            if (baseSlotFinding != zc::none) return baseSlotFinding;
+            const ValueType* baseCarrier = declaredSlotCarrier(function, base.localOrdinal());
+            if (baseCarrier == nullptr || baseCarrier->kind() != ValueTypeKind::Pointer) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            break;
+          }
         }
       }
 

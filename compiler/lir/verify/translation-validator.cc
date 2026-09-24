@@ -294,6 +294,37 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
 
   const bool folded = fold.kind != FoldKind::None;
 
+  // A shared-receiver method returning this.field has no fold: its Return
+  // operand is a copy/move place-use rooted at the receiver parameter through
+  // [Dereference, Field]. The read materializes as one LoadField into a
+  // synthesized result slot followed by ReturnLocal.
+  struct ReceiverFieldRead final {
+    uint32_t receiverOrdinal = 0;
+    uint32_t resultOrdinal = 0;
+  };
+  zc::Maybe<ReceiverFieldRead> receiverFieldRead;
+  if (!folded && mir.locals.size() == 1 && mir.locals[0].kind == mir::MirLocalKind::Parameter &&
+      mir.blocks.size() == 1) {
+    const auto& term = mir.blocks[0].terminator;
+    if (term.kind() == mir::MirTerminatorKind::Return && term.returnValue().value != zc::none) {
+      const auto& rv = ZC_ASSERT_NONNULL(term.returnValue().value);
+      if (rv.kind() != mir::MirOperandKind::Constant) {
+        const auto& place = rv.place();
+        const uint32_t receiverOrdinal = mir.locals[0].id.ordinal();
+        const uint32_t resultOrdinal = receiverOrdinal + 1;
+        if (place.local().ordinal() == receiverOrdinal && place.rootType() == mir.locals[0].type &&
+            place.resultType() == mir.resultType && place.projections().size() == 2 &&
+            place.projections()[0].kind() == mir::MirProjectionKind::Dereference &&
+            place.projections()[0].inputType() == mir.locals[0].type &&
+            place.projections()[0].resultType() == place.projections()[1].inputType() &&
+            place.projections()[1].kind() == mir::MirProjectionKind::Field &&
+            place.projections()[1].resultType() == mir.resultType) {
+          receiverFieldRead = ReceiverFieldRead{receiverOrdinal, resultOrdinal};
+        }
+      }
+    }
+  }
+
   // Resolve the carrier the LIR return must carry. A materialized function
   // returns the MIR result carrier. A folded scalar function does too; a folded
   // whole-struct bundle carries its first element's carrier, and a folded
@@ -352,6 +383,20 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
       if (carrier == zc::none || lir.parameters()[i].carrier() != ZC_ASSERT_NONNULL(carrier)) {
         return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
       }
+    }
+  } else if (receiverFieldRead != zc::none) {
+    // The receiver parameter maps 1:1; the field-read result slot is
+    // synthesized in LIR (ordinal receiver + 1) and has no MIR local.
+    if (lir.parameters().size() != 1 || lir.locals().size() != 1) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
+    const auto& read = ZC_ASSERT_NONNULL(receiverFieldRead);
+    const auto parameterCarrier = localCarrier(mir.locals[0], mir, types);
+    if (parameterCarrier == zc::none || lir.parameters()[0].ordinal() != read.receiverOrdinal ||
+        lir.parameters()[0].carrier() != ZC_ASSERT_NONNULL(parameterCarrier) ||
+        lir.locals()[0].ordinal() != read.resultOrdinal ||
+        lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(integerCarrier(mir.resultType, types))) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
     }
   } else {
     uint32_t parameterCount = 0;
@@ -523,7 +568,25 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                        statementIndex);
       }
     }
-    if (lirStatement != lirBlock.statements().size()) {
+    if (receiverFieldRead != zc::none) {
+      // The projected receiver return has no MIR statement; LIR emits exactly
+      // one LoadField into the synthesized result slot.
+      if (lirStatement != 0 || lirBlock.statements().size() != 1) {
+        return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1, 1);
+      }
+      const Statement& load = lirBlock.statements()[0];
+      const auto& read = ZC_ASSERT_NONNULL(receiverFieldRead);
+      const auto baseCarrier = localCarrier(mir.locals[0], mir, types);
+      const auto resultCarrier = integerCarrier(mir.resultType, types);
+      if (baseCarrier == zc::none || resultCarrier == zc::none ||
+          load.kind() != StatementKind::LoadField || load.source().isConstant() ||
+          load.destinationOrdinal() != read.resultOrdinal ||
+          load.basePointerOrdinal() != read.receiverOrdinal || load.fieldOffsetBytes() != 0 ||
+          lir.parameters()[0].carrier() != ZC_ASSERT_NONNULL(baseCarrier) ||
+          lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(resultCarrier)) {
+        return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1, 1);
+      }
+    } else if (lirStatement != lirBlock.statements().size()) {
       return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
                    lirStatement + 1);
     }
@@ -596,6 +659,12 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
             }
             if (!found)
               return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
+          }
+        } else if (receiverFieldRead != zc::none) {
+          if (lirTerminator.kind() != TerminatorKind::ReturnLocal ||
+              lirTerminator.returnLocalOrdinal() !=
+                  ZC_ASSERT_NONNULL(receiverFieldRead).resultOrdinal) {
+            return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
           }
         } else {
           if (lirTerminator.kind() != TerminatorKind::ReturnLocal) {
