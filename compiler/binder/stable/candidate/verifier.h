@@ -27,7 +27,8 @@ struct StableIdentityCandidateInvariant final {
 
 enum class StableIdentityCandidateSourceFailureKind : uint8_t {
   ConstantExpressionNotAllowed = 0x01,
-  DuplicateGenericParameter = 0x02
+  DuplicateGenericParameter = 0x02,
+  InvalidMethodReceiver = 0x03
 };
 
 struct StableIdentityCandidateSourceFailure final {

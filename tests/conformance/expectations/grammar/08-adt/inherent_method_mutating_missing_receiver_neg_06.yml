@@ -1,0 +1,5 @@
+section: "08-adt inherent method declaration syntax"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A mutating method without an explicit receiver is rejected at identity admission with ZOM2097."

@@ -346,6 +346,18 @@ StableBindingDiagnosticFactFactory::duplicateGenericParameter(
       zc::mv(factArguments), zc::mv(ZC_ASSERT_NONNULL(primaryValue)), zc::mv(secondary));
 }
 
+zc::Maybe<diagnostics::DiagnosticFact> StableBindingDiagnosticFactFactory::invalidMethodReceiver(
+    const IdentitySyntaxSiteKey& primary) {
+  auto occurrenceValue =
+      occurrence(primary, diagnostics::IdentityDiagnosticEmitter::InvalidMethodReceiver);
+  auto primaryValue = provenance(primary);
+  if (occurrenceValue == zc::none || primaryValue == zc::none) { return zc::none; }
+  return diagnostics::DiagnosticFact::from(
+      zc::mv(ZC_ASSERT_NONNULL(occurrenceValue)), diagnostics::DiagID::InvalidMethodReceiver,
+      zc::Vector<zc::String>(), zc::mv(ZC_ASSERT_NONNULL(primaryValue)),
+      zc::Vector<diagnostics::DiagnosticSecondary>());
+}
+
 zc::Maybe<diagnostics::DiagnosticFact> StableBindingDiagnosticFactFactory::definitionRedeclaration(
     const IdentitySyntaxSiteKey& duplicate, const IdentitySyntaxSiteKey& previous,
     diagnostics::DiagID diagnostic, zc::StringPtr name) {

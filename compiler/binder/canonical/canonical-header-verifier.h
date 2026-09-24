@@ -5,18 +5,20 @@
 
 #pragma once
 
-#include "zc/core/one-of.h"
-#include "zc/core/vector.h"
 #include "compiler/binder/canonical/canonical-bound-syntax-occurrence.h"
+#include "compiler/binder/canonical/canonical-header-type-producer.h"
 #include "compiler/binder/metadata/definition-inventory.h"
 #include "compiler/identity/canonical/impl-header.h"
 #include "compiler/identity/crypto/overload-header-digest.h"
+#include "zc/core/one-of.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::binder {
 
 /// \brief Independent AST-oracle failure; no producer diagnostic is reused.
 struct CanonicalHeaderVerificationFailure final {
   ast::NodeId node;
+  CanonicalHeaderSyntaxFailureKind kind;
 };
 
 /// \brief Independently reconstructed callable header and complete bound occurrence stream.

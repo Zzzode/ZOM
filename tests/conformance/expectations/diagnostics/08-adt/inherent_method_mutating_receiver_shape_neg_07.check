@@ -1,0 +1,10 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/inherent_method_mutating_receiver_shape_neg_07.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// `this: S` names the enclosing type by value, but a mutating method needs a
+// mutable receiver (`this` or `this: &mut Self`). The malformed receiver is a
+// source diagnostic ZOM2097 on the receiver parameter, never an internal
+// compiler error.
+
+// CHECK-LITERAL: Error [ZOM2097]: A mutating method requires a mutable 'this' receiver
+// CHECK-LITERAL:   --> conformance/08-adt/inherent_method_mutating_receiver_shape_neg_07.zom:2:18

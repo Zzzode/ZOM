@@ -1,0 +1,4 @@
+struct S {
+  mutating fun f(this: S) -> i32 { return 1; }
+}
+fun entry() -> i32 { return 0; }

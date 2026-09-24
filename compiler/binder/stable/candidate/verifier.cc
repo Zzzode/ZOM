@@ -968,13 +968,14 @@ static StableIdentityCandidateVerification reconstructStableCandidates(
           auto header = CanonicalHeaderVerifier::reconstructDefinition(tree, headerSyntax, entry);
           if (!header.is<VerifiedCanonicalDefinitionHeader>()) {
             const auto bad = header.get<CanonicalHeaderVerificationFailure>().node;
-            const bool matchingProductionFailure =
+            const auto headerKind = header.get<CanonicalHeaderVerificationFailure>().kind;
+            const bool matchingConstantFailure =
                 productionFailure != nullptr &&
                 productionFailure->kind == StableIdentityCandidateFailureKind::InvalidHeader &&
                 productionFailure->headerKind ==
                     CanonicalHeaderSyntaxFailureKind::InvalidConstantExpression &&
                 productionFailure->node == bad;
-            if ((production == nullptr || matchingProductionFailure) &&
+            if ((production == nullptr || matchingConstantFailure) &&
                 isNonLiteralFixedArrayLength(tree, entry.node, bad)) {
               auto source = parsedModule.spanFor(tree.node(bad).range);
               if (source == zc::none) {
@@ -983,6 +984,35 @@ static StableIdentityCandidateVerification reconstructStableCandidates(
               ZC_IF_SOME(value, source) {
                 return StableIdentityCandidateSourceFailure{
                     StableIdentityCandidateSourceFailureKind::ConstantExpressionNotAllowed,
+                    bad,
+                    zc::mv(value),
+                    zc::none,
+                    zc::none,
+                    zc::none};
+              }
+            }
+            // A method header whose receiver is missing or malformed is
+            // well-formed parser input; the independent oracle re-derived the
+            // InvalidReceiver kind, and the producer (when present) agrees on
+            // the node and kind. Drain it as ZOM2097 instead of an admission
+            // invariant. Interface methods legally omit an explicit receiver;
+            // the oracle exempts them before recording this failure.
+            const bool matchingReceiverFailure =
+                headerKind == CanonicalHeaderSyntaxFailureKind::InvalidReceiver &&
+                (production == nullptr ||
+                 (productionFailure != nullptr &&
+                  productionFailure->kind == StableIdentityCandidateFailureKind::InvalidHeader &&
+                  productionFailure->headerKind ==
+                      CanonicalHeaderSyntaxFailureKind::InvalidReceiver &&
+                  productionFailure->node == bad));
+            if (matchingReceiverFailure) {
+              auto source = parsedModule.spanFor(tree.node(bad).range);
+              if (source == zc::none) {
+                return invariant(StableIdentityCandidateInvariantKind::InvalidSyntaxSite, bad);
+              }
+              ZC_IF_SOME(value, source) {
+                return StableIdentityCandidateSourceFailure{
+                    StableIdentityCandidateSourceFailureKind::InvalidMethodReceiver,
                     bad,
                     zc::mv(value),
                     zc::none,

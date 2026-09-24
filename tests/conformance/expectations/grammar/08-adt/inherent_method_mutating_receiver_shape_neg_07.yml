@@ -1,0 +1,5 @@
+section: "08-adt inherent method declaration syntax"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A mutating method whose receiver is not `this` or `this: &mut Self` is rejected at identity admission with ZOM2097."

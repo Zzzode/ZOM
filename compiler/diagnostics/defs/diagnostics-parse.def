@@ -111,6 +111,8 @@ DIAG(2094, ReceiverDefaultNotAllowed, kError,
 DIAG(2095, ReceiverNotAllowedHere, kError, "Receiver 'this' is not allowed in {0}", 1)
 DIAG(2096, ImportOrExportDeclarationRequiresModuleScope, kError,
      "Import and export declarations are valid only as module items", 0)
+DIAG(2097, InvalidMethodReceiver, kError,
+     "A mutating method requires a mutable 'this' receiver", 0)
 DIAG(2100, ImplRequiresSingleInterface, kError,
      "An impl declaration implements exactly one interface", 0)
 DIAG(2101, MarkerImplCannotBeGeneric, kError,

@@ -7,9 +7,9 @@
 
 #include <cstdint>
 
-#include "zc/core/vector.h"
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/identity/canonical/header-name.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -22,17 +22,17 @@ using identity::CanonicalCallableResult;
 using identity::CanonicalGenericParameter;
 using identity::CanonicalHeaderTypeSyntax;
 using identity::CanonicalHeaderTypeSyntaxKind;
-using identity::ImplHeader;
 using identity::CanonicalNamedHeaderType;
 using identity::CanonicalNameReference;
 using identity::CanonicalNameRoot;
 using identity::CanonicalObjectTypeMember;
-using identity::OverloadHeader;
 using identity::CanonicalTraitReference;
 using identity::DeclaredDefinitionName;
 using identity::ExternalAbi;
+using identity::ImplHeader;
 using identity::ImplPolarity;
 using identity::ImplSafety;
+using identity::OverloadHeader;
 using identity::PredefinedTypeKind;
 using identity::RawPointerMutability;
 using identity::ReceiverShape;
@@ -103,8 +103,24 @@ ast::NodeId implBinder(const ast::Tree& tree, ast::NodeId node) {
   return ast::NodeId(tree.node(node).payload.words[ast::kStandaloneImplDeclTypeParamsIdWord]);
 }
 
+/// \brief Shared classification of the first syntax node that failed header
+/// reconstruction. The node mirrors the producer's failure site and the kind is
+/// re-derived independently so a source-failure verifier can distinguish an
+/// invalid receiver from other malformed callable syntax.
+struct HeaderFailureState final {
+  ast::NodeId node;
+  CanonicalHeaderSyntaxFailureKind kind = CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax;
+
+  void set(CanonicalHeaderSyntaxFailureKind failureKind, ast::NodeId failureNode) {
+    if (!node) {
+      node = failureNode;
+      kind = failureKind;
+    }
+  }
+};
+
 bool appendBinderFrame(const ast::Tree& tree, ast::NodeId genericParameters,
-                       zc::Vector<OracleBinderFrame>& frames, ast::NodeId& badNode) {
+                       zc::Vector<OracleBinderFrame>& frames, HeaderFailureState& failure) {
   zc::Vector<ast::IdentId> names;
   if (!genericParameters) {
     frames.add(OracleBinderFrame{genericParameters, zc::mv(names)});
@@ -112,25 +128,25 @@ bool appendBinderFrame(const ast::Tree& tree, ast::NodeId genericParameters,
   }
   if (!tree.contains(genericParameters) ||
       tree.node(genericParameters).kind != ast::SyntaxKind::GenericParams) {
-    badNode = genericParameters;
+    failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, genericParameters);
     return false;
   }
   const auto& syntax = tree.node(genericParameters);
   const ast::NodeList parameters{syntax.payload.words[ast::kGenericParamsParamsFirstWord],
                                  syntax.payload.words[ast::kGenericParamsParamsSizeWord]};
   if (!tree.contains(parameters)) {
-    badNode = genericParameters;
+    failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, genericParameters);
     return false;
   }
   for (const auto parameter : tree.list(parameters)) {
     if (!tree.contains(parameter) ||
         tree.node(parameter).kind != ast::SyntaxKind::GenericTypeParam) {
-      badNode = parameter;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, parameter);
       return false;
     }
     const ast::IdentId name(tree.node(parameter).payload.words[ast::kGenericTypeParamNameWord]);
     if (SemanticIdentifier::fromCanonical(tree.ident(name)) == zc::none) {
-      badNode = parameter;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, parameter);
       return false;
     }
     names.add(name);
@@ -142,28 +158,28 @@ bool appendBinderFrame(const ast::Tree& tree, ast::NodeId genericParameters,
 zc::Maybe<zc::Vector<OracleBinderFrame>> buildBinderStack(
     const ast::Tree& tree, const CanonicalHeaderSyntaxView& syntax,
     zc::ArrayPtr<const StructuralIdentityParent> parents, ast::NodeId currentBinder,
-    ast::NodeId& badNode) {
+    HeaderFailureState& failure) {
   zc::Vector<OracleBinderFrame> frames(parents.size() + 1);
-  if (!appendBinderFrame(tree, currentBinder, frames, badNode)) return zc::none;
+  if (!appendBinderFrame(tree, currentBinder, frames, failure)) return zc::none;
   for (size_t remaining = parents.size(); remaining > 0; --remaining) {
     const auto& parent = parents[remaining - 1];
     ast::NodeId binder;
     if (parent.kind == StructuralIdentityParentKind::Definition) {
       auto definition = definitionAt(syntax, parent.node);
       if (definition == zc::none) {
-        badNode = parent.node;
+        failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, parent.node);
         return zc::none;
       }
       binder = definitionBinder(tree, parent.node);
     } else {
       auto implementation = implAt(syntax, parent.node);
       if (implementation == zc::none) {
-        badNode = parent.node;
+        failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, parent.node);
         return zc::none;
       }
       binder = implBinder(tree, parent.node);
     }
-    if (!appendBinderFrame(tree, binder, frames, badNode)) return zc::none;
+    if (!appendBinderFrame(tree, binder, frames, failure)) return zc::none;
   }
   return zc::mv(frames);
 }
@@ -171,8 +187,8 @@ zc::Maybe<zc::Vector<OracleBinderFrame>> buildBinderStack(
 class TypeOracle final {
 public:
   TypeOracle(const ast::Tree& tree, zc::ArrayPtr<const OracleBinderFrame> frames,
-             ast::NodeId& badNode) noexcept
-      : tree(tree), frames(frames), badNode(badNode) {}
+             HeaderFailureState& failure) noexcept
+      : tree(tree), frames(frames), failure(failure) {}
 
   zc::Maybe<CanonicalHeaderTypeSyntax> normalize(ast::NodeId node) {
     if (!tree.contains(node)) return reject(node);
@@ -214,13 +230,14 @@ public:
 
 private:
   zc::Maybe<CanonicalHeaderTypeSyntax> reject(ast::NodeId node) {
-    if (!badNode) badNode = node;
+    failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, node);
     return zc::none;
   }
 
   zc::Maybe<SemanticIdentifier> identifier(ast::IdentId value, ast::NodeId node) {
     auto name = SemanticIdentifier::fromCanonical(tree.ident(value));
-    if (name == zc::none && !badNode) badNode = node;
+    if (name == zc::none)
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, node);
     return name;
   }
 
@@ -239,20 +256,20 @@ private:
 
   zc::Maybe<CanonicalNameReference> moduleName(ast::NodeId path) {
     if (!tree.contains(path) || tree.node(path).kind != ast::SyntaxKind::ModulePath) {
-      if (!badNode) badNode = path;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, path);
       return zc::none;
     }
     const auto& syntax = tree.node(path);
     const ast::IdentList segments{syntax.payload.words[ast::kModulePathSegmentsFirstWord],
                                   syntax.payload.words[ast::kModulePathSegmentsSizeWord]};
     if (segments.size == 0 || !tree.contains(segments)) {
-      if (!badNode) badNode = path;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, path);
       return zc::none;
     }
     const auto values = tree.identList(segments);
     const uint32_t rootTag = syntax.payload.words[ast::kModulePathRootWord];
     if (rootTag > 1) {
-      if (!badNode) badNode = path;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, path);
       return zc::none;
     }
     CanonicalNameRoot root =
@@ -271,13 +288,14 @@ private:
       ZC_IF_SOME(value, segment) { suffix.add(zc::mv(value)); }
     }
     auto result = CanonicalNameReference::from(zc::mv(root), zc::mv(suffix));
-    if (result == zc::none && !badNode) badNode = path;
+    if (result == zc::none)
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, path);
     return result;
   }
 
   zc::Maybe<CanonicalNameReference> attributeName(ast::NodeId path) {
     if (!tree.contains(path) || tree.node(path).kind != ast::SyntaxKind::AttributePath) {
-      if (!badNode) badNode = path;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, path);
       return zc::none;
     }
     const auto& syntax = tree.node(path);
@@ -285,7 +303,7 @@ private:
                                   syntax.payload.words[ast::kAttributePathSegmentsSizeWord]};
     if (syntax.payload.words[ast::kAttributePathLeadingWord] != 0 || segments.size == 0 ||
         !tree.contains(segments)) {
-      if (!badNode) badNode = path;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, path);
       return zc::none;
     }
     zc::Vector<SemanticIdentifier> suffix(segments.size);
@@ -299,7 +317,7 @@ private:
 
   zc::Maybe<zc::Vector<CanonicalHeaderTypeSyntax>> typeList(ast::NodeList nodes) {
     if (!tree.contains(nodes)) {
-      if (!badNode) badNode = ast::NodeId();
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, ast::NodeId());
       return zc::none;
     }
     zc::Vector<CanonicalHeaderTypeSyntax> result(nodes.size);
@@ -337,13 +355,13 @@ private:
 
   zc::Maybe<uint64_t> arrayLength(ast::NodeId node) {
     if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::IntLiteral) {
-      if (!badNode) badNode = node;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, node);
       return zc::none;
     }
     const auto& syntax = tree.node(node);
     const uint32_t base = syntax.payload.words[ast::kIntLiteralBaseWord];
     if (base != 2 && base != 8 && base != 10 && base != 16) {
-      if (!badNode) badNode = node;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, node);
       return zc::none;
     }
     uint64_t result = 0;
@@ -359,7 +377,7 @@ private:
         digit = static_cast<uint8_t>(character - 'A' + 10);
       }
       if (digit >= base || result > (UINT64_MAX - digit) / base) {
-        if (!badNode) badNode = node;
+        failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, node);
         return zc::none;
       }
       result = result * base + digit;
@@ -619,7 +637,7 @@ private:
 
   const ast::Tree& tree;
   zc::ArrayPtr<const OracleBinderFrame> frames;
-  ast::NodeId& badNode;
+  HeaderFailureState& failure;
 };
 
 class HeaderOracle final {
@@ -629,37 +647,40 @@ public:
 
   CanonicalDefinitionHeaderVerification definition(const DefinitionInventoryEntry& entry) {
     auto syntax = classifyCallable(entry);
-    if (syntax == zc::none) return failure(entry.node);
+    if (syntax == zc::none) return buildFailure(entry.node);
     ZC_IF_SOME(callable, syntax) {
       auto frames = buildBinderStack(tree, syntaxView, entry.parentPath.asPtr(),
-                                     callable.genericParameters, badNode);
-      if (frames == zc::none) return failure(entry.node);
+                                     callable.genericParameters, failure);
+      if (frames == zc::none) return buildFailure(entry.node);
       ZC_IF_SOME(frameValues, frames) {
-        TypeOracle types(tree, frameValues.asPtr(), badNode);
+        TypeOracle types(tree, frameValues.asPtr(), failure);
         auto name = declaredCallableName(entry, callable.name);
-        if (name == zc::none) return failure(entry.node);
+        if (name == zc::none) return buildFailure(entry.node);
         zc::Vector<CanonicalGenericParameter> generics;
         zc::Vector<CanonicalBoundObligation> obligations;
         if (!genericBlock(callable.genericParameters, true, types, generics, obligations)) {
-          return failure(entry.node);
+          return buildFailure(entry.node);
         }
         zc::Vector<CanonicalCallableParameter> parameters;
         zc::Maybe<ReceiverShape> receiver;
-        if (!callableParameters(callable, types, parameters, receiver)) {
-          return failure(entry.node);
+        const bool bodylessInterfaceMethod = callable.kind == CallableHeaderKind::Method &&
+                                             enclosingDeclIsInterface(entry.parentPath.asPtr());
+        if (!callableParameters(callable, entry.node, bodylessInterfaceMethod, types, parameters,
+                                receiver)) {
+          return buildFailure(entry.node);
         }
         auto result = callableResult(callable, types);
         auto raises = callableRaises(callable.raises, types);
         if (result == zc::none || (callable.raises && raises == zc::none)) {
-          return failure(entry.node);
+          return buildFailure(entry.node);
         }
         ZC_IF_SOME(nameValue, name) {
           ZC_IF_SOME(resultValue, result) {
-            auto header = OverloadHeader::from(
-                callable.kind, zc::mv(nameValue), zc::mv(receiver), zc::mv(generics),
-                zc::mv(obligations), zc::mv(parameters), zc::mv(resultValue), zc::mv(raises),
-                zc::mv(callable.externalAbi));
-            if (header == zc::none) return failure(entry.node);
+            auto header = OverloadHeader::from(callable.kind, zc::mv(nameValue), zc::mv(receiver),
+                                               zc::mv(generics), zc::mv(obligations),
+                                               zc::mv(parameters), zc::mv(resultValue),
+                                               zc::mv(raises), zc::mv(callable.externalAbi));
+            if (header == zc::none) return buildFailure(entry.node);
             ZC_IF_SOME(value, header) {
               return VerifiedCanonicalDefinitionHeader{
                   identity::OverloadHeaderAuthority::from(zc::mv(value)), zc::mv(boundOccurrences)};
@@ -668,11 +689,11 @@ public:
         }
       }
     }
-    return failure(entry.node);
+    return buildFailure(entry.node);
   }
 
   CanonicalImplHeaderVerification implementation(const ImplInventoryEntry& entry) {
-    if (!tree.contains(entry.node)) return failure(entry.node);
+    if (!tree.contains(entry.node)) return buildFailure(entry.node);
     const auto& syntax = tree.node(entry.node);
     ast::NodeId genericParameters;
     ast::NodeId whereClause;
@@ -695,25 +716,25 @@ public:
       }
       if (syntax.payload.words[ast::kMarkerImplIsUnsafeWord] != 0) safety = ImplSafety::Unsafe;
       if (polarity == ImplPolarity::Negative && safety == ImplSafety::Unsafe) {
-        return failure(entry.node);
+        return buildFailure(entry.node);
       }
       markerTrait =
           markerTraitReference(ast::NodeId(syntax.payload.words[ast::kMarkerImplMarkerPathWord]));
-      if (markerTrait == zc::none) return failure(entry.node);
+      if (markerTrait == zc::none) return buildFailure(entry.node);
     } else {
-      return failure(entry.node);
+      return buildFailure(entry.node);
     }
 
     auto frames =
-        buildBinderStack(tree, syntaxView, entry.parentPath.asPtr(), genericParameters, badNode);
-    if (frames == zc::none) return failure(entry.node);
+        buildBinderStack(tree, syntaxView, entry.parentPath.asPtr(), genericParameters, failure);
+    if (frames == zc::none) return buildFailure(entry.node);
     ZC_IF_SOME(frameValues, frames) {
-      TypeOracle types(tree, frameValues.asPtr(), badNode);
+      TypeOracle types(tree, frameValues.asPtr(), failure);
       zc::Vector<CanonicalGenericParameter> generics;
       zc::Vector<CanonicalBoundObligation> obligations;
       if (!genericBlock(genericParameters, false, types, generics, obligations) ||
           !whereBounds(whereClause, types, obligations)) {
-        return failure(entry.node);
+        return buildFailure(entry.node);
       }
       zc::Maybe<CanonicalTraitReference> trait;
       if (syntax.kind == ast::SyntaxKind::StandaloneImplDecl) {
@@ -723,25 +744,24 @@ public:
         trait = zc::mv(markerTrait);
       }
       auto selfType = types.normalize(selfTypeNode);
-      if (trait == zc::none || selfType == zc::none) return failure(entry.node);
+      if (trait == zc::none || selfType == zc::none) return buildFailure(entry.node);
       ZC_IF_SOME(traitValue, trait) {
         ZC_IF_SOME(selfTypeValue, selfType) {
-          auto header =
-              ImplHeader::from(zc::mv(generics), polarity, safety, zc::mv(traitValue),
-                                        zc::mv(selfTypeValue), zc::mv(obligations));
-          if (header == zc::none) return failure(entry.node);
+          auto header = ImplHeader::from(zc::mv(generics), polarity, safety, zc::mv(traitValue),
+                                         zc::mv(selfTypeValue), zc::mv(obligations));
+          if (header == zc::none) return buildFailure(entry.node);
           ZC_IF_SOME(value, header) {
             return VerifiedCanonicalImplHeader{zc::mv(value), zc::mv(boundOccurrences)};
           }
         }
       }
     }
-    return failure(entry.node);
+    return buildFailure(entry.node);
   }
 
 private:
-  CanonicalHeaderVerificationFailure failure(ast::NodeId fallback) const {
-    return CanonicalHeaderVerificationFailure{badNode ? badNode : fallback};
+  CanonicalHeaderVerificationFailure buildFailure(ast::NodeId fallback) const {
+    return CanonicalHeaderVerificationFailure{failure.node ? failure.node : fallback, failure.kind};
   }
 
   zc::Maybe<CallableSyntax> classifyCallable(const DefinitionInventoryEntry& entry) {
@@ -828,21 +848,21 @@ private:
     if (!whereClause) return true;
     if (!tree.contains(whereClause) ||
         tree.node(whereClause).kind != ast::SyntaxKind::WhereClause) {
-      if (!badNode) badNode = whereClause;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, whereClause);
       return false;
     }
     const auto& syntax = tree.node(whereClause);
     const ast::NodeList predicates{syntax.payload.words[ast::kWhereClausePredsFirstWord],
                                    syntax.payload.words[ast::kWhereClausePredsSizeWord]};
     if (!tree.contains(predicates)) {
-      if (!badNode) badNode = whereClause;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, whereClause);
       return false;
     }
     for (const auto predicate : tree.list(predicates)) {
       if (!tree.contains(predicate) || tree.node(predicate).kind != ast::SyntaxKind::WherePred ||
           tree.node(predicate).payload.words[ast::kWherePredKindWord] !=
               static_cast<uint32_t>(ast::WhereBoundKind::Implements)) {
-        if (!badNode) badNode = predicate;
+        failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, predicate);
         return false;
       }
       const auto& value = tree.node(predicate);
@@ -882,7 +902,7 @@ private:
       if (boundList) {
         if (!tree.contains(boundList) ||
             tree.node(boundList).kind != ast::SyntaxKind::TypeParameterBoundList) {
-          if (!badNode) badNode = boundList;
+          failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, boundList);
           return false;
         }
         const auto& listSyntax = tree.node(boundList);
@@ -890,7 +910,7 @@ private:
             listSyntax.payload.words[ast::kTypeParameterBoundListBoundsFirstWord],
             listSyntax.payload.words[ast::kTypeParameterBoundListBoundsSizeWord]};
         if (!tree.contains(bounds)) {
-          if (!badNode) badNode = boundList;
+          failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, boundList);
           return false;
         }
         for (const auto boundNode : tree.list(bounds)) {
@@ -906,7 +926,7 @@ private:
     }
     const ast::NodeId nestedWhere(syntax.payload.words[ast::kGenericParamsWhereWord]);
     if (!consumeWhere && nestedWhere) {
-      if (!badNode) badNode = nestedWhere;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, nestedWhere);
       return false;
     }
     return !consumeWhere || whereBounds(nestedWhere, types, obligations);
@@ -984,21 +1004,24 @@ private:
 
   bool receiver(ast::NodeId parameter, uint8_t methodMode, ReceiverShape& shape) {
     const auto& syntax = tree.node(parameter);
+    // The "this" parameter itself exists; every rejection here is a
+    // receiver-shape error (default value, wrong mode, or a type that is not
+    // the admitted `Self` / reference-to-`Self` form).
     if (syntax.payload.words[ast::kFunctionParameterDeclDefaultWord] != 0 || methodMode == 1 ||
         methodMode >= 3) {
-      if (!badNode) badNode = parameter;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidReceiver, parameter);
       return false;
     }
     const ast::NodeId type(syntax.payload.words[ast::kFunctionParameterDeclTyWord]);
     bool malformed = false;
     const bool move = moveAttribute(parameter, malformed);
     if (malformed) {
-      if (!badNode) badNode = parameter;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidReceiver, parameter);
       return false;
     }
     if (exactSelf(type)) {
       if (move && methodMode == 2) {
-        if (!badNode) badNode = parameter;
+        failure.set(CanonicalHeaderSyntaxFailureKind::InvalidReceiver, parameter);
         return false;
       }
       shape = move ? ReceiverShape::Move
@@ -1007,17 +1030,17 @@ private:
     }
     if (!tree.contains(type) || tree.node(type).kind != ast::SyntaxKind::ReferenceTypeExpr ||
         move) {
-      if (!badNode) badNode = parameter;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidReceiver, parameter);
       return false;
     }
     const auto& reference = tree.node(type);
     if (!exactSelf(ast::NodeId(reference.payload.words[ast::kReferenceTypeExprElemWord]))) {
-      if (!badNode) badNode = parameter;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidReceiver, parameter);
       return false;
     }
     const bool isMutable = reference.payload.words[ast::kReferenceTypeExprIsMutWord] != 0;
     if (!isMutable && methodMode == 2) {
-      if (!badNode) badNode = parameter;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidReceiver, parameter);
       return false;
     }
     shape = isMutable ? ReceiverShape::Mutable : ReceiverShape::Shared;
@@ -1032,7 +1055,7 @@ private:
     auto type =
         types.normalize(ast::NodeId(syntax.payload.words[ast::kFunctionParameterDeclTyWord]));
     if (label == zc::none || type == zc::none) {
-      if (!badNode) badNode = parameter;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, parameter);
       return false;
     }
     ZC_IF_SOME(labelValue, label) {
@@ -1045,7 +1068,19 @@ private:
     return true;
   }
 
-  bool callableParameters(const CallableSyntax& callable, TypeOracle& types,
+  /// \brief True when the method's lexical parent is an interface declaration.
+  bool enclosingDeclIsInterface(zc::ArrayPtr<const StructuralIdentityParent> parents) {
+    for (const auto& parent : parents) {
+      if (parent.kind == StructuralIdentityParentKind::Definition && tree.contains(parent.node) &&
+          tree.node(parent.node).kind == ast::SyntaxKind::InterfaceDecl) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool callableParameters(const CallableSyntax& callable, ast::NodeId methodNode,
+                          bool bodylessInterfaceMethod, TypeOracle& types,
                           zc::Vector<CanonicalCallableParameter>& parameters,
                           zc::Maybe<ReceiverShape>& receiverShape) {
     ast::NodeList parameterNodes;
@@ -1056,7 +1091,7 @@ private:
     } else {
       if (!tree.contains(callable.parameters) ||
           tree.node(callable.parameters).kind != ast::SyntaxKind::FunctionParameterList) {
-        if (!badNode) badNode = callable.parameters;
+        failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, callable.parameters);
         return false;
       }
       const auto& syntax = tree.node(callable.parameters);
@@ -1065,7 +1100,7 @@ private:
                         syntax.payload.words[ast::kFunctionParameterListParamsSizeWord]};
     }
     if (!tree.contains(parameterNodes)) {
-      if (!badNode) badNode = callable.parameters;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, callable.parameters);
       return false;
     }
     bool foundReceiver = false;
@@ -1073,7 +1108,7 @@ private:
     for (const auto parameter : tree.list(parameterNodes)) {
       if (!tree.contains(parameter) ||
           tree.node(parameter).kind != ast::SyntaxKind::FunctionParameterDecl) {
-        if (!badNode) badNode = parameter;
+        failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, parameter);
         return false;
       }
       const auto& syntax = tree.node(parameter);
@@ -1081,7 +1116,7 @@ private:
           tree.ident(ast::IdentId(syntax.payload.words[ast::kFunctionParameterDeclNameWord]));
       if (name == "this"_zc) {
         if (callable.kind != CallableHeaderKind::Method || foundReceiver || ordinal != 0) {
-          if (!badNode) badNode = parameter;
+          failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, parameter);
           return false;
         }
         ReceiverShape shape = ReceiverShape::Shared;
@@ -1093,8 +1128,11 @@ private:
       }
       ++ordinal;
     }
-    if (callable.kind == CallableHeaderKind::Method &&
+    if (callable.kind == CallableHeaderKind::Method && !bodylessInterfaceMethod &&
         ((callable.methodMode == 2 && !foundReceiver) || callable.methodMode >= 3)) {
+      // A mutating method without a receiver is well-formed parser input; the
+      // failure site is the method definition node, matching the producer.
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidReceiver, methodNode);
       return false;
     }
     return true;
@@ -1141,13 +1179,13 @@ private:
         return CanonicalTraitReference::from(named.name().clone(), zc::mv(arguments));
       }
     }
-    if (!badNode) badNode = node;
+    failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, node);
     return zc::none;
   }
 
   zc::Maybe<CanonicalTraitReference> markerTraitReference(ast::NodeId path) {
     if (!tree.contains(path) || tree.node(path).kind != ast::SyntaxKind::AttributePath) {
-      if (!badNode) badNode = path;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, path);
       return zc::none;
     }
     const auto& syntax = tree.node(path);
@@ -1155,14 +1193,14 @@ private:
                                   syntax.payload.words[ast::kAttributePathSegmentsSizeWord]};
     if (syntax.payload.words[ast::kAttributePathLeadingWord] != 0 || segments.size == 0 ||
         !tree.contains(segments)) {
-      if (!badNode) badNode = path;
+      failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, path);
       return zc::none;
     }
     zc::Vector<SemanticIdentifier> suffix(segments.size);
     for (const auto segment : tree.identList(segments)) {
       auto name = SemanticIdentifier::fromCanonical(tree.ident(segment));
       if (name == zc::none) {
-        if (!badNode) badNode = path;
+        failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, path);
         return zc::none;
       }
       ZC_IF_SOME(value, name) { suffix.add(zc::mv(value)); }
@@ -1179,7 +1217,7 @@ private:
   const ast::Tree& tree;
   const CanonicalHeaderSyntaxView& syntaxView;
   zc::Vector<CanonicalBoundSyntaxOccurrence> boundOccurrences;
-  ast::NodeId badNode;
+  HeaderFailureState failure;
 };
 
 }  // namespace

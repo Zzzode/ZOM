@@ -576,6 +576,13 @@ zc::Maybe<diagnostics::DiagnosticFact> identityAdmissionDiagnostic(
       return binder::StableBindingDiagnosticFactFactory::duplicateGenericParameter(
           ZC_ASSERT_NONNULL(primary), ZC_ASSERT_NONNULL(previous), arguments);
     }
+    case binder::StableIdentityCandidateSourceFailureKind::InvalidMethodReceiver:
+      if (failure.previousNode != zc::none || failure.previous != zc::none ||
+          failure.identifier != zc::none) {
+        return zc::none;
+      }
+      return binder::StableBindingDiagnosticFactFactory::invalidMethodReceiver(
+          ZC_ASSERT_NONNULL(primary));
   }
   ZC_UNREACHABLE;
 }

@@ -5,9 +5,9 @@
 
 #include "compiler/binder/canonical/canonical-definition-header-producer.h"
 
-#include "zc/core/vector.h"
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/identity/canonical/overload-header.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -22,9 +22,9 @@ using identity::CanonicalHeaderTypeSyntaxKind;
 using identity::CanonicalNamedHeaderType;
 using identity::CanonicalNameReference;
 using identity::CanonicalNameRoot;
-using identity::OverloadHeader;
 using identity::DeclaredDefinitionName;
 using identity::ExternalAbi;
+using identity::OverloadHeader;
 using identity::OverloadHeaderAuthority;
 using identity::ReceiverShape;
 using identity::ReferenceMutability;
@@ -70,16 +70,19 @@ public:
       }
       zc::Vector<CanonicalCallableParameter> parameters;
       zc::Maybe<ReceiverShape> receiver;
-      if (!buildParameters(syntax, frames.asPtr(), parameters, receiver)) { return failure; }
+      if (!buildParameters(syntax, frames.asPtr(), parameters, receiver,
+                           enclosingDeclIsInterface())) {
+        return failure;
+      }
       auto result = buildResult(syntax, frames.asPtr());
       auto raises = buildRaises(syntax.raises, frames.asPtr());
       if (result == zc::none || (syntax.raises && raises == zc::none)) { return failure; }
       ZC_IF_SOME(nameValue, name) {
         ZC_IF_SOME(resultValue, result) {
-          auto header = OverloadHeader::from(
-              syntax.kind, zc::mv(nameValue), zc::mv(receiver), zc::mv(generics),
-              zc::mv(obligations), zc::mv(parameters), zc::mv(resultValue), zc::mv(raises),
-              zc::mv(syntax.externalAbi));
+          auto header =
+              OverloadHeader::from(syntax.kind, zc::mv(nameValue), zc::mv(receiver),
+                                   zc::mv(generics), zc::mv(obligations), zc::mv(parameters),
+                                   zc::mv(resultValue), zc::mv(raises), zc::mv(syntax.externalAbi));
           if (header == zc::none) {
             reject(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, definition.node);
             return failure;
@@ -425,10 +428,23 @@ private:
     return true;
   }
 
+  /// \brief True when the produced definition's lexical parent is an
+  /// interface. Interface method declarations may omit an explicit receiver;
+  /// the implementing type supplies it.
+  bool enclosingDeclIsInterface() const {
+    for (const auto& parent : definition.parentPath) {
+      if (parent.kind != StructuralIdentityParentKind::Definition || !tree.contains(parent.node)) {
+        continue;
+      }
+      return tree.node(parent.node).kind == ast::SyntaxKind::InterfaceDecl;
+    }
+    return false;
+  }
+
   bool buildParameters(const CallableSyntax& callable,
                        zc::ArrayPtr<const CanonicalGenericBinderFrame> frames,
                        zc::Vector<CanonicalCallableParameter>& parameters,
-                       zc::Maybe<ReceiverShape>& receiver) {
+                       zc::Maybe<ReceiverShape>& receiver, bool bodylessInterfaceMethod) {
     ast::NodeList list;
     if (callable.kind == CallableHeaderKind::Function && callable.externalAbi != zc::none) {
       const auto& syntax = tree.node(callable.parameters);
@@ -469,10 +485,12 @@ private:
       }
       ++ordinal;
     }
-    if (callable.kind == CallableHeaderKind::Method && callable.methodMode == 2 && !foundReceiver) {
+    if (callable.kind == CallableHeaderKind::Method && !bodylessInterfaceMethod &&
+        callable.methodMode == 2 && !foundReceiver) {
       return reject(CanonicalHeaderSyntaxFailureKind::InvalidReceiver, definition.node);
     }
-    if (callable.kind == CallableHeaderKind::Method && callable.methodMode >= 3) {
+    if (callable.kind == CallableHeaderKind::Method && !bodylessInterfaceMethod &&
+        callable.methodMode >= 3) {
       return reject(CanonicalHeaderSyntaxFailureKind::InvalidReceiver, definition.node);
     }
     return true;

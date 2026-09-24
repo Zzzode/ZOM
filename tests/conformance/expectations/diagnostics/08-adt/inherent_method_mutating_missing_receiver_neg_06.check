@@ -1,0 +1,11 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/inherent_method_mutating_missing_receiver_neg_06.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A mutating inherent method without an explicit `this` receiver is malformed
+// header syntax, not an internal admission failure: identity admission
+// reclassifies the producer-agreed and independently reconstructed
+// InvalidReceiver header failure as the source diagnostic ZOM2097 on the
+// method definition.
+
+// CHECK-LITERAL: Error [ZOM2097]: A mutating method requires a mutable 'this' receiver
+// CHECK-LITERAL:   --> conformance/08-adt/inherent_method_mutating_missing_receiver_neg_06.zom:2:3

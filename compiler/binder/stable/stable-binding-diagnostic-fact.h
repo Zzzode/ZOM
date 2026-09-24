@@ -5,13 +5,13 @@
 
 #pragma once
 
+#include "compiler/binder/identity/identity-pre-admission.h"
+#include "compiler/binder/metadata/binding-metadata.h"
+#include "compiler/diagnostics/fact/diagnostic-fact.h"
+#include "compiler/identity/canonical/canonical-scalar.h"
 #include "zc/core/array.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
-#include "compiler/binder/metadata/binding-metadata.h"
-#include "compiler/binder/identity/identity-pre-admission.h"
-#include "compiler/diagnostics/fact/diagnostic-fact.h"
-#include "compiler/identity/canonical/canonical-scalar.h"
 
 namespace zomlang::compiler::binder {
 
@@ -79,6 +79,11 @@ public:
   ZC_NODISCARD static zc::Maybe<diagnostics::DiagnosticFact> duplicateGenericParameter(
       const IdentitySyntaxSiteKey& duplicate, const IdentitySyntaxSiteKey& previous,
       const BinderIdentifierDiagnosticArguments& arguments);
+
+  /// \brief Builds the ZOM2097 fact for a method whose mutating receiver is
+  /// missing or malformed.
+  ZC_NODISCARD static zc::Maybe<diagnostics::DiagnosticFact> invalidMethodReceiver(
+      const IdentitySyntaxSiteKey& primary);
   ZC_NODISCARD static zc::Maybe<diagnostics::DiagnosticFact> definitionRedeclaration(
       const IdentitySyntaxSiteKey& duplicate, const IdentitySyntaxSiteKey& previous,
       diagnostics::DiagID diagnostic, zc::StringPtr name);
