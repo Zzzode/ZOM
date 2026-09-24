@@ -9054,53 +9054,73 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
       }
       struct InterfaceAssociatedMember final {
         identity::DefId definition;
-        ast::IdentId name;
+        identity::SemanticIdentifier name;
         bool isGeneric;
       };
       zc::Vector<InterfaceAssociatedMember> interfaceAssociatedMembers;
       {
         // The impl head names the interface by a NamedTypeExpr; resolve it to
-        // the interface declaration node and enumerate its directly declared
-        // associated types. Impl assignments are absent from binding metadata,
-        // so a metadata scope walk cannot find them.
+        // the InterfaceDecl declaration node and enumerate its directly
+        // declared associated types. The interface is usually local, but a
+        // coherence cross-module case implements an imported interface, whose
+        // AST lives in the owning module's retained bound view. Impl
+        // assignments are absent from binding metadata, so a metadata scope
+        // walk cannot find them.
+        const driver::module_graph_query::CheckerBoundModuleView* interfaceModule = nullptr;
         zc::Maybe<ast::NodeId> interfaceDeclNode;
-        for (const auto& candidate : input.boundModule.definitions().definitions()) {
-          if (candidate.definition == interfaceDefinition && tree.contains(candidate.node) &&
-              tree.node(candidate.node).kind == ast::SyntaxKind::InterfaceDecl) {
+        for (const auto& candidateModule : input.identities.modules()) {
+          for (const auto& candidate : candidateModule.definitions().definitions()) {
+            if (candidate.definition != interfaceDefinition ||
+                !candidateModule.tree().contains(candidate.node) ||
+                candidateModule.tree().node(candidate.node).kind !=
+                    ast::SyntaxKind::InterfaceDecl) {
+              continue;
+            }
+            if (interfaceModule != nullptr) {
+              return buildReject(checkerInvariant(CheckerInvariantKind::AdditionalFact, module,
+                                                  implementation.node.value));
+            }
+            interfaceModule = &candidateModule;
             interfaceDeclNode = candidate.node;
-            break;
           }
         }
-        if (interfaceDeclNode == zc::none) {
+        if (interfaceModule == nullptr || interfaceDeclNode == zc::none) {
           return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                               implementation.node.value));
         }
-        const ast::NodeId interfaceMembers(tree.node(ZC_ASSERT_NONNULL(interfaceDeclNode))
+        const ast::Tree& interfaceTree = interfaceModule->tree();
+        const ast::NodeId interfaceMembers(interfaceTree.node(ZC_ASSERT_NONNULL(interfaceDeclNode))
                                                .payload.words[ast::kInterfaceDeclMembersIdWord]);
-        if (tree.contains(interfaceMembers) &&
-            tree.node(interfaceMembers).kind == ast::SyntaxKind::ClassMemberList) {
+        if (interfaceTree.contains(interfaceMembers) &&
+            interfaceTree.node(interfaceMembers).kind == ast::SyntaxKind::ClassMemberList) {
           const ast::NodeList interfaceMemberList{
-              tree.node(interfaceMembers).payload.words[ast::kClassMemberListMembersFirstWord],
-              tree.node(interfaceMembers).payload.words[ast::kClassMemberListMembersSizeWord]};
-          if (tree.contains(interfaceMemberList)) {
-            for (const auto interfaceMember : tree.list(interfaceMemberList)) {
-              if (!tree.contains(interfaceMember) ||
-                  tree.node(interfaceMember).kind != ast::SyntaxKind::AssociatedTypeDecl) {
+              interfaceTree.node(interfaceMembers)
+                  .payload.words[ast::kClassMemberListMembersFirstWord],
+              interfaceTree.node(interfaceMembers)
+                  .payload.words[ast::kClassMemberListMembersSizeWord]};
+          if (interfaceTree.contains(interfaceMemberList)) {
+            for (const auto interfaceMember : interfaceTree.list(interfaceMemberList)) {
+              if (!interfaceTree.contains(interfaceMember) ||
+                  interfaceTree.node(interfaceMember).kind != ast::SyntaxKind::AssociatedTypeDecl) {
                 continue;
               }
-              const auto& associatedNode = tree.node(interfaceMember);
+              const auto& associatedNode = interfaceTree.node(interfaceMember);
               auto associatedDefinition =
-                  input.boundModule.definitions().definitionAt(interfaceMember);
-              if (associatedDefinition == zc::none) {
+                  interfaceModule->definitions().definitionAt(interfaceMember);
+              const auto associatedNameId =
+                  ast::IdentId(associatedNode.payload.words[ast::kAssociatedTypeDeclNameWord]);
+              auto associatedName =
+                  identity::SemanticIdentifier::fromSource(interfaceTree.ident(associatedNameId));
+              if (associatedDefinition == zc::none || associatedName == zc::none) {
                 return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact,
                                                     module, interfaceMember.value));
               }
               const ast::NodeId associatedTypeParams(
                   associatedNode.payload.words[ast::kAssociatedTypeDeclTypeParamsIdWord]);
-              interfaceAssociatedMembers.add(InterfaceAssociatedMember{
-                  ZC_ASSERT_NONNULL(associatedDefinition),
-                  ast::IdentId(associatedNode.payload.words[ast::kAssociatedTypeDeclNameWord]),
-                  tree.contains(associatedTypeParams)});
+              interfaceAssociatedMembers.add(
+                  InterfaceAssociatedMember{ZC_ASSERT_NONNULL(associatedDefinition),
+                                            zc::mv(ZC_ASSERT_NONNULL(associatedName)),
+                                            interfaceTree.contains(associatedTypeParams)});
             }
           }
         }
@@ -9114,31 +9134,34 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         if (memberSyntax.kind != ast::SyntaxKind::AssociatedTypeDecl) continue;
         const auto assignedName =
             ast::IdentId(memberSyntax.payload.words[ast::kAssociatedTypeDeclNameWord]);
+        auto assignedIdentifier =
+            identity::SemanticIdentifier::fromSource(tree.ident(assignedName));
+        if (assignedIdentifier == zc::none) {
+          return buildReject(
+              checkerInvariant(CheckerInvariantKind::InvalidFact, module, member.value));
+        }
+        const auto& assignedIdentifierValue = ZC_ASSERT_NONNULL(assignedIdentifier);
         const InterfaceAssociatedMember* matched = nullptr;
         for (const auto& interfaceAssociated : interfaceAssociatedMembers) {
-          if (tree.contains(interfaceAssociated.name) && tree.contains(assignedName) &&
-              tree.ident(interfaceAssociated.name) == tree.ident(assignedName)) {
+          if (interfaceAssociated.name == assignedIdentifierValue) {
             matched = &interfaceAssociated;
             break;
           }
         }
         if (matched == nullptr) {
-          auto name = identity::SemanticIdentifier::fromSource(tree.ident(assignedName));
-          if (name != zc::none) {
-            auto failure =
-                signatureSourceFailure(SignatureSourceDiagnostic::ImplAssociatedTypeNotMember,
-                                       input.boundModule, implementation.node, member);
-            if (failure == zc::none) {
-              return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch,
-                                                  module, member.value));
-            }
-            ZC_IF_SOME(value, failure) {
-              value.arguments.add(SignatureSourceArgument(
-                  SignatureIdentifierDisplayArg{zc::mv(ZC_ASSERT_NONNULL(name))}));
-              value.arguments.add(
-                  SignatureSourceArgument(SignatureDefinitionDisplayArg{interfaceDefinition}));
-              sourceFailures.add(zc::mv(value));
-            }
+          auto failure =
+              signatureSourceFailure(SignatureSourceDiagnostic::ImplAssociatedTypeNotMember,
+                                     input.boundModule, implementation.node, member);
+          if (failure == zc::none) {
+            return buildReject(
+                checkerInvariant(CheckerInvariantKind::InputReceiptMismatch, module, member.value));
+          }
+          ZC_IF_SOME(value, failure) {
+            value.arguments.add(SignatureSourceArgument(
+                SignatureIdentifierDisplayArg{zc::mv(ZC_ASSERT_NONNULL(assignedIdentifier))}));
+            value.arguments.add(
+                SignatureSourceArgument(SignatureDefinitionDisplayArg{interfaceDefinition}));
+            sourceFailures.add(zc::mv(value));
           }
           continue;
         }

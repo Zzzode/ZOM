@@ -338,6 +338,30 @@ package::DigestVerifiedSourceSnapshot coherenceFailureModuleSnapshot() {
   return zc::mv(result.get<package::DigestVerifiedSourceSnapshot>());
 }
 
+package::DigestVerifiedSourceSnapshot importedAssociatedTypeImplSnapshot() {
+  auto sourceDirectory = zc::newInMemoryDirectory(zc::nullClock());
+  sourceDirectory
+      ->openFile(zc::Path({"src"_zc, "main.zom"_zc}),
+                 zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
+      ->writeAll(
+          "import app::child::{Behavior};\nstruct Handle { value: i32, }\nimpl Behavior for "
+          "Handle { type Item = i32; }"_zc);
+  sourceDirectory->openFile(zc::Path({"src"_zc, "child.zom"_zc}), zc::WriteMode::CREATE)
+      ->writeAll("module child;\nexport interface Behavior { type Item; }"_zc);
+  MemoryFreshDirectoryFactory factory;
+  package::SourceDirectoryMaterializer materializer;
+  auto result = materializer.materialize(*sourceDirectory, factory);
+  ZC_REQUIRE(result.is<package::DigestVerifiedSourceSnapshot>());
+  return zc::mv(result.get<package::DigestVerifiedSourceSnapshot>());
+}
+
+zc::Vector<package::ResolvedPackageSourceSnapshot> importedAssociatedTypeImplSnapshots() {
+  zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
+  snapshots.add(package::ResolvedPackageSourceSnapshot::from(packageBase("app"_zc),
+                                                             importedAssociatedTypeImplSnapshot()));
+  return snapshots;
+}
+
 package::DigestVerifiedSourceSnapshot atomicCheckerFailureModuleSnapshot() {
   auto sourceDirectory = zc::newInMemoryDirectory(zc::nullClock());
   sourceDirectory
@@ -1422,6 +1446,33 @@ ZC_TEST("CompilerSession materializes imported behavior implementations before c
   ZC_EXPECT(!session.hasDiagnosticErrors());
   auto authority = checkerIdentityAuthority(session);
   ZC_EXPECT(userBoundModuleCount(authority) == 2);
+}
+
+ZC_TEST("CompilerSession checks an imported interface associated-type implementation") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+      importedAssociatedTypeImplSnapshots());
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+  installCore(session);
+
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  // The interface and its associated type are declared in the imported child
+  // module; signature construction must resolve the InterfaceDecl through the
+  // owner module's retained bound view instead of demanding it locally.
+  ZC_EXPECT(session.checkSources());
+  ZC_EXPECT(!session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getCheckerInvariantFailures().size() == 0);
 }
 
 ZC_TEST("CompilerSession projects module aliases through retained dependency surfaces") {
