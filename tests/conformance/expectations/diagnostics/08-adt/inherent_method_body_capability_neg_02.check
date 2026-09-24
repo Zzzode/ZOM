@@ -1,0 +1,11 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/inherent_method_body_capability_neg_02.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A scalar `let` local declared inside a receiver method body is well-formed
+// source the HIR method gate does not admit. The body checker must recognize
+// the local's pattern inside the Method owner (not only Function owners) so
+// the method drains per definition as ZOM4099, never as a checker invariant or
+// an internal compiler error.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/08-adt/inherent_method_body_capability_neg_02.zom:3:3

@@ -145,12 +145,20 @@ bool isOwnerLocalPattern(const driver::module_graph_query::CheckerBoundModuleVie
       continue;
     }
     for (const auto& definition : boundModule.definitions().definitions()) {
-      if (definition.record.kind() != identity::DefinitionKind::Function ||
-          !tree.contains(definition.node) ||
-          tree.node(definition.node).kind != ast::SyntaxKind::FunctionDecl) {
-        continue;
-      }
-      const ast::NodeId body(tree.node(definition.node).payload.words[ast::kFunctionDeclBodyWord]);
+      // An owner local may be declared inside a function or a method body. The
+      // later HIR method gate drains every non-admitted method body per
+      // definition (ZOM4099), so accepting the pattern here only removes a
+      // spurious fact requirement; it does not admit the body to lowering.
+      // Constructors and destructors stay out until their HIR gates exist.
+      const bool isFunction = definition.record.kind() == identity::DefinitionKind::Function &&
+                              tree.contains(definition.node) &&
+                              tree.node(definition.node).kind == ast::SyntaxKind::FunctionDecl;
+      const bool isMethod = definition.record.kind() == identity::DefinitionKind::Method &&
+                            tree.contains(definition.node) &&
+                            tree.node(definition.node).kind == ast::SyntaxKind::MethodDecl;
+      if (!isFunction && !isMethod) continue;
+      const auto bodyWord = isFunction ? ast::kFunctionDeclBodyWord : ast::kMethodDeclBodyWord;
+      const ast::NodeId body(tree.node(definition.node).payload.words[bodyWord]);
       if (tree.contains(body) && subtreeContains(tree, body, node)) { return true; }
     }
   }

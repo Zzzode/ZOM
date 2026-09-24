@@ -1,0 +1,5 @@
+section: "08-adt inherent method declaration syntax"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits the local-bearing method; semantic HIR rejects the unadmitted method body with ZOM4099 on the method definition."
