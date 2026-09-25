@@ -29,7 +29,7 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
     const HirNodeId returnId = ctx.allocNode();
 
     ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
-                                           zc::mv(function.parameters), zc::none,
+                                           zc::mv(function.parameters), zc::mv(function.receiver),
                                            function.visibility.clone(), function.linkage,
                                            function.declarationSpan.clone(), bodyId, zc::none});
     zc::Vector<HirNodeId> statements;
@@ -59,7 +59,7 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
   const HirNodeId returnId = ctx.allocNode();
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
-                                         zc::mv(function.parameters), zc::none,
+                                         zc::mv(function.parameters), zc::mv(function.receiver),
                                          function.visibility.clone(), function.linkage,
                                          function.declarationSpan.clone(), bodyId, zc::none});
   zc::Vector<HirNodeId> statements;

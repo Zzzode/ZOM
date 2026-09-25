@@ -2062,6 +2062,71 @@ ZC_TEST("HIR pipeline drains a mutating-receiver method with a scalar local as Z
   ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
 }
 
+ZC_TEST("HIR pipeline lowers a shared-receiver method conditional return") {
+  // `fun choose(this, flag: bool) -> i32 { if (flag) { return 42; } else {
+  // return 0; } }` lowers to a four-block diamond. Built MIR declares the
+  // receiver parameter at ordinal 1, the bool condition parameter at ordinal 2,
+  // and a FunctionResult local at ordinal 3; the entry switches on the
+  // condition and each arm Initialize-assigns its literal before the join
+  // returns the result.
+  HirPipelineFixture fixture(
+      "struct Cell { value: i32, fun choose(this, flag: bool) -> i32 {"
+      " if (flag) { return 42; } else { return 0; } } }\n"
+      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.choose(true); }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 2);
+  ZC_REQUIRE(module.conditionals().size() == 1);
+
+  zc::Maybe<const HirFunctionDeclaration&> method;
+  for (const auto& function : module.functions()) {
+    if (function.receiver != zc::none) method = function;
+  }
+  ZC_REQUIRE(method != zc::none);
+  const auto& methodDecl = ZC_ASSERT_NONNULL(method);
+  ZC_REQUIRE(methodDecl.parameters.size() == 1);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(!fixture.compilerSession().hasDiagnosticErrors());
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> methodFunction;
+  for (const auto& function : builtMir[0].builtMir().functions()) {
+    if (function.owner == methodDecl.definition) methodFunction = function;
+  }
+  ZC_REQUIRE(methodFunction != zc::none);
+  ZC_IF_SOME(function, methodFunction) {
+    ZC_EXPECT(function.sourceDefinitionKind == identity::DefinitionKind::Method);
+    ZC_REQUIRE(function.locals.size() == 3);
+    ZC_EXPECT(function.locals[0].kind == mir::MirLocalKind::Parameter);
+    ZC_EXPECT(function.locals[0].id == mir::MirLocalId::fromOrdinal(1));
+    ZC_EXPECT(function.locals[1].kind == mir::MirLocalKind::Parameter);
+    ZC_EXPECT(function.locals[1].id == mir::MirLocalId::fromOrdinal(2));
+    ZC_EXPECT(function.locals[2].kind == mir::MirLocalKind::FunctionResult);
+    ZC_EXPECT(function.locals[2].id == mir::MirLocalId::fromOrdinal(3));
+    ZC_REQUIRE(function.blocks.size() == 4);
+    ZC_EXPECT(function.blocks[0].terminator.kind() == mir::MirTerminatorKind::SwitchInt);
+    ZC_EXPECT(function.blocks[1].terminator.kind() == mir::MirTerminatorKind::Goto);
+    ZC_EXPECT(function.blocks[2].terminator.kind() == mir::MirTerminatorKind::Goto);
+    ZC_EXPECT(function.blocks[3].terminator.kind() == mir::MirTerminatorKind::Return);
+  }
+}
+
+ZC_TEST("HIR pipeline drains a mutating-receiver method conditional as ZOM4099") {
+  // An if/else conditional in a mutating-receiver method is well-formed source
+  // the lowering does not emit; the owning definition drains as ZOM4099.
+  identity::SemanticContextFactory contextFactory;
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  bool checked = HirPipelineFixture::prepareCheckedSession(
+      session,
+      "struct Cell { value: i32, mutating fun choose(this, flag: bool) -> i32 {"
+      " if (flag) { return 42; } else { return 0; } } }\n"
+      "fun entry() -> i32 { mut cell = Cell { value: 0 }; return cell.choose(true); }"_zc);
+  ZC_EXPECT(!checked);
+  ZC_EXPECT(session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
+}
+
 ZC_TEST("HIR pipeline lowers a shared-receiver method returning an explicit parameter") {
   // `fun echo(this, answer: i32) -> i32 { return answer; }` returns its one
   // ordinary parameter. The HIR tail is a generic parameter reference; Built

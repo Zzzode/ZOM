@@ -562,6 +562,61 @@ ZC_TEST("Boolean-conditional diamond lowers to a verified multi-block LLVM funct
   ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
 }
 
+// Builds one shared-receiver method callee with a four-block literal-arm
+// conditional: receiver pointer local 1, bool condition parameter local 2,
+// and FunctionResult local 3. The entry switches on the condition and each
+// arm Initialize-assigns its literal before the join returns the result.
+mir::MirFunction buildReceiverConditionalCallee(identity::DefId calleeOwner,
+                                                identity::SemanticTypeId i32,
+                                                identity::SemanticTypeId boolType,
+                                                identity::SemanticTypeId receiverType,
+                                                uint8_t thenValue, uint8_t elseValue) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::Parameter, receiverType,
+                                      scopeId(1), span()});
+  locals.add(mir::MirLocalDeclaration{localId(2), mir::MirLocalKind::Parameter, boolType,
+                                      scopeId(1), span()});
+  locals.add(mir::MirLocalDeclaration{localId(3), mir::MirLocalKind::FunctionResult, i32,
+                                      scopeId(1), span()});
+
+  zc::Vector<mir::MirStatement> entryStatements;
+  entryStatements.add(mir::MirStatement::storageLive(localId(3), span()));
+  zc::Vector<mir::MirSwitchIntArm> arms;
+  arms.add(mir::MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), blockId(2)});
+  arms.add(mir::MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), blockId(3)});
+  auto entryTerminator = mir::MirTerminator::switchInt(
+      mir::MirOperand::copy(resultPlace(localId(2), boolType)), zc::mv(arms), blockId(3), span());
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(
+      mir::MirBasicBlock{blockId(1), scopeId(1), zc::mv(entryStatements), zc::mv(entryTerminator)});
+  auto armBlock = [&](uint32_t id, uint8_t value) {
+    zc::Vector<mir::MirStatement> statements;
+    zc::Vector<mir::MirProjection> projections;
+    statements.add(mir::MirStatement::assign(
+        mir::MirPlace(localId(3), i32, zc::mv(projections), i32),
+        mir::MirRvalue::use(mir::MirOperand::constant(i32, integerConstant(value))),
+        mir::MirInitializationKind::Initialize, span()));
+    return mir::MirBasicBlock{blockId(id), scopeId(1), zc::mv(statements),
+                              mir::MirTerminator::gotoTarget(blockId(4), span())};
+  };
+  blocks.add(armBlock(2, thenValue));
+  blocks.add(armBlock(3, elseValue));
+  zc::Vector<mir::MirStatement> joinStatements;
+  blocks.add(mir::MirBasicBlock{blockId(4), scopeId(1), zc::mv(joinStatements),
+                                mir::MirTerminator::returnValue(
+                                    mir::MirOperand::move(resultPlace(localId(3), i32)), span())});
+  return mir::MirFunction{calleeOwner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Method,
+                          i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
 // Build the verified reducible four-block while-loop return MIR shape:
 //   fun f(cond: bool) -> i32 { while cond {} return exitValue }
 //   local#1 = cond : bool (Parameter); local#2 = result : i32 (FunctionResult)
@@ -2619,6 +2674,117 @@ ZC_TEST("Shared-receiver scalar local mismatches fail closed before LIR emission
                           zc::mv(callerLocals),
                           zc::mv(callerBlocks)};
   ZC_EXPECT(lir::MirToLirLowering::lowerReceiverCallModule(caller, callee, types) == zc::none);
+}
+
+ZC_TEST("Shared-receiver method conditional lowers to a verified multi-block callee") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto boolType = typeContext.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto structDef = tests::testDefinition(2);
+  const auto fieldDef = tests::testDefinition(3);
+  const auto callerOwner = tests::testDefinition(0);
+  const auto calleeOwner = tests::testDefinition(1);
+  auto& types = typeContext.semanticTypes();
+  const auto cellType = i32;
+  const auto receiverType =
+      internTypeData(types, type::semantic::TypeData(type::semantic::ReferenceTypeData{
+                                type::semantic::Mutability::Const, cellType}));
+
+  // Callee: receiver pointer, bool condition parameter, and the four-block
+  // literal-arm diamond.
+  mir::MirFunction callee =
+      buildReceiverConditionalCallee(calleeOwner, i32, boolType, receiverType, 42, 0);
+
+  // Caller: owner local, shared borrow temporary, result temporary; the call
+  // passes the receiver pointer and the constant bool argument.
+  zc::Vector<mir::MirSourceScope> callerScopes;
+  callerScopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+  zc::Vector<mir::MirLocalDeclaration> callerLocals;
+  callerLocals.add(mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::UserLocal, cellType,
+                                            scopeId(1), span()});
+  callerLocals.add(mir::MirLocalDeclaration{localId(2), mir::MirLocalKind::Temporary, receiverType,
+                                            scopeId(1), span()});
+  callerLocals.add(
+      mir::MirLocalDeclaration{localId(3), mir::MirLocalKind::Temporary, i32, scopeId(1), span()});
+  zc::Vector<mir::MirStatement> entry;
+  entry.add(mir::MirStatement::storageLive(localId(1), span()));
+  zc::Vector<mir::MirNominalAggregateElement> elements;
+  elements.add(mir::MirNominalAggregateElement{fieldDef,
+                                               mir::MirOperand::constant(i32, integerConstant(0))});
+  {
+    zc::Vector<mir::MirProjection> projections;
+    entry.add(mir::MirStatement::assign(
+        mir::MirPlace(localId(1), cellType, zc::mv(projections), cellType),
+        mir::MirRvalue::nominalAggregate(structDef, cellType, zc::mv(elements)),
+        mir::MirInitializationKind::Initialize, span()));
+  }
+  entry.add(mir::MirStatement::storageLive(localId(2), span()));
+  {
+    zc::Vector<mir::MirProjection> destinationProjections;
+    zc::Vector<mir::MirProjection> sourceProjections;
+    entry.add(mir::MirStatement::borrowCreation(
+        mir::MirPlace(localId(2), receiverType, zc::mv(destinationProjections), receiverType),
+        mir::MirBorrowKind::Shared,
+        mir::MirPlace(localId(1), cellType, zc::mv(sourceProjections), cellType), span()));
+  }
+  entry.add(mir::MirStatement::storageLive(localId(3), span()));
+  zc::Vector<mir::MirOperand> arguments;
+  {
+    zc::Vector<mir::MirProjection> projections;
+    arguments.add(mir::MirOperand::copy(
+        mir::MirPlace(localId(2), receiverType, zc::mv(projections), receiverType)));
+  }
+  arguments.add(
+      mir::MirOperand::constant(boolType, checker::checked::CanonicalConstValue::boolean(true)));
+  zc::Vector<mir::MirBasicBlock> callerBlocks;
+  callerBlocks.add(mir::MirBasicBlock{
+      blockId(1), scopeId(1), zc::mv(entry),
+      mir::MirTerminator::call(calleeOwner, zc::mv(arguments), mir::MirCallEffect::noActivation(),
+                               resultPlace(localId(3), i32), blockId(2), zc::none, span())});
+  zc::Vector<mir::MirStatement> continuation;
+  callerBlocks.add(
+      mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(continuation),
+                         mir::MirTerminator::returnValue(
+                             mir::MirOperand::move(resultPlace(localId(3), i32)), span())});
+  mir::MirFunction caller{callerOwner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(callerScopes),
+                          zc::mv(callerLocals),
+                          zc::mv(callerBlocks)};
+
+  auto lir = lir::MirToLirLowering::lowerReceiverCallModule(caller, callee, types);
+  ZC_REQUIRE(lir != zc::none);
+  const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
+  ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+  {
+    auto functions = zc::heapArray<const mir::MirFunction*>(2);
+    functions[0] = &caller;
+    functions[1] = &callee;
+    ZC_EXPECT(lir::TranslationValidator::validate(functions.asPtr(), lirModule, types) == zc::none);
+  }
+  ZC_EXPECT(lirModule.functions()[1].blocks().size() == 4);
+  ZC_EXPECT(lirModule.functions()[1].parameters().size() == 2);
+
+  LlvmTranslator translator;
+  auto result = translator.translate(lirModule);
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+
+  const auto ir = result.textualIr();
+  ZC_EXPECT(ir.contains("@zom.callee"_zc));
+  ZC_EXPECT(ir.contains("br i1"_zc));
+  ZC_EXPECT(ir.contains("store i32 42"_zc));
+  ZC_EXPECT(ir.contains("store i32 0"_zc));
+
+  const auto object = result.objectCode();
+  ZC_REQUIRE(object.size() >= 4);
+  ZC_EXPECT(object[0] == 0x7f);
+  ZC_EXPECT(object[1] == static_cast<uint8_t>('E'));
+  ZC_EXPECT(object[2] == static_cast<uint8_t>('L'));
+  ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
 }
 
 ZC_TEST("Mutating-receiver mismatches fail closed before LIR emission") {

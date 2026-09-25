@@ -1582,6 +1582,14 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   if (callee.kind != mir::MirFunctionKind::Function ||
       callee.sourceDefinitionKind != identity::DefinitionKind::Method ||
       (callee.locals.size() != 1 && callee.locals.size() != 2) || callee.blocks.size() != 1) {
+    // The one multi-block callee shape is the shared-receiver method
+    // conditional: a receiver pointer plus one bool ordinary parameter, a
+    // FunctionResult local, and a four-block diamond returning literal arms.
+    if (callee.kind == mir::MirFunctionKind::Function &&
+        callee.sourceDefinitionKind == identity::DefinitionKind::Method &&
+        callee.locals.size() == 3 && callee.blocks.size() == 4) {
+      return lowerReceiverConditionalCallModule(caller, callee, semanticTypes);
+    }
     return zc::none;
   }
   const auto& receiverLocal = callee.locals[0];
@@ -1952,6 +1960,270 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
       functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
                              zc::mv(parameters), zc::mv(noLocals), zc::mv(calleeBlocks)));
     }
+  }
+
+  return Module(zc::mv(functions));
+}
+
+zc::Maybe<Module> MirToLirLowering::lowerReceiverConditionalCallModule(
+    const mir::MirFunction& caller, const mir::MirFunction& callee,
+    const type::SemanticTypeStore& semanticTypes) {
+  // Callee: a shared-receiver method with one bool ordinary parameter and a
+  // four-block literal-arm conditional. Locals are the receiver pointer at
+  // ordinal 1, the bool parameter at ordinal 2, and the FunctionResult at
+  // ordinal 3.
+  if (callee.kind != mir::MirFunctionKind::Function ||
+      callee.sourceDefinitionKind != identity::DefinitionKind::Method) {
+    return zc::none;
+  }
+  const auto& receiverLocal = callee.locals[0];
+  const auto& conditionLocal = callee.locals[1];
+  const auto& resultLocal = callee.locals[2];
+  if (receiverLocal.kind != mir::MirLocalKind::Parameter ||
+      conditionLocal.kind != mir::MirLocalKind::Parameter ||
+      resultLocal.kind != mir::MirLocalKind::FunctionResult) {
+    return zc::none;
+  }
+  auto calleeReceiverMutable = receiverReferenceIsMutable(receiverLocal.type, semanticTypes);
+  if (calleeReceiverMutable == zc::none || ZC_ASSERT_NONNULL(calleeReceiverMutable)) {
+    return zc::none;
+  }
+  auto receiverCarrier = receiverPointerCarrier(receiverLocal.type, semanticTypes);
+  const auto receiverCarrierValue = ZC_REQUIRE_NONNULL(receiverCarrier);
+  auto conditionCarrier = boolCarrierFor(conditionLocal.type, semanticTypes);
+  const auto conditionCarrierValue = ZC_REQUIRE_NONNULL(conditionCarrier);
+  auto calleeCarrier = integerCarrierFor(callee.resultType, semanticTypes);
+  const auto calleeCarrierValue = ZC_REQUIRE_NONNULL(calleeCarrier);
+
+  const auto& entry = callee.blocks[0];
+  const auto& thenBlock = callee.blocks[1];
+  const auto& elseBlock = callee.blocks[2];
+  const auto& joinBlock = callee.blocks[3];
+  if (entry.statements.size() != 1 ||
+      entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != resultLocal.id ||
+      entry.terminator.kind() != mir::MirTerminatorKind::SwitchInt ||
+      thenBlock.statements.size() != 1 ||
+      thenBlock.statements[0].kind() != mir::MirStatementKind::Assign ||
+      thenBlock.terminator.kind() != mir::MirTerminatorKind::Goto ||
+      elseBlock.statements.size() != 1 ||
+      elseBlock.statements[0].kind() != mir::MirStatementKind::Assign ||
+      elseBlock.terminator.kind() != mir::MirTerminatorKind::Goto ||
+      joinBlock.statements.size() != 0 ||
+      joinBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& switchInt = entry.terminator.switchIntValue();
+  if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
+      switchInt.discriminant.place().local() != conditionLocal.id ||
+      switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 2 ||
+      switchInt.defaultTarget != elseBlock.id) {
+    return zc::none;
+  }
+  auto trueLiteral = switchInt.arms[0].value.booleanValue();
+  auto falseLiteral = switchInt.arms[1].value.booleanValue();
+  if (trueLiteral == zc::none || falseLiteral == zc::none || !ZC_ASSERT_NONNULL(trueLiteral) ||
+      ZC_ASSERT_NONNULL(falseLiteral) || switchInt.arms[0].target != thenBlock.id ||
+      switchInt.arms[1].target != elseBlock.id) {
+    return zc::none;
+  }
+  if (thenBlock.terminator.gotoValue().target != joinBlock.id ||
+      elseBlock.terminator.gotoValue().target != joinBlock.id) {
+    return zc::none;
+  }
+  auto armConstant = [&](const mir::MirBasicBlock& branch) -> zc::Maybe<IntegerConstant> {
+    const auto& assignment = branch.statements[0].assignmentValue();
+    if (assignment.initialization != mir::MirInitializationKind::Initialize ||
+        assignment.destination.local() != resultLocal.id ||
+        assignment.destination.projections().size() != 0 ||
+        assignment.value.kind() != mir::MirRvalueKind::Use ||
+        assignment.value.useValue().operand.kind() != mir::MirOperandKind::Constant) {
+      return zc::none;
+    }
+    const auto& constantOperand = assignment.value.useValue().operand.constantValue();
+    const auto integer = constantOperand.value.integerValue();
+    if (integer == zc::none) { return zc::none; }
+    auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), calleeCarrierValue.integerWidth());
+    if (bits == zc::none) { return zc::none; }
+    return IntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(bits));
+  };
+  auto thenConstant = armConstant(thenBlock);
+  auto elseConstant = armConstant(elseBlock);
+  const auto& joinReturn = joinBlock.terminator.returnValue().value;
+  if (thenConstant == zc::none || elseConstant == zc::none || joinReturn == zc::none) {
+    return zc::none;
+  }
+  ZC_IF_SOME(value, joinReturn) {
+    if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != resultLocal.id ||
+        value.place().projections().size() != 0) {
+      return zc::none;
+    }
+  }
+
+  // Caller: one aggregate-initialized owner local, one shared-receiver borrow
+  // temporary, and one result temporary, with one constant bool argument.
+  if (caller.kind != mir::MirFunctionKind::Function ||
+      caller.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      caller.locals.size() != 3 || caller.blocks.size() != 2 ||
+      caller.resultType != callee.resultType) {
+    return zc::none;
+  }
+  const auto& ownerLocal = caller.locals[0];
+  const auto& borrowTemporary = caller.locals[1];
+  const auto& resultTemporary = caller.locals[2];
+  if (ownerLocal.kind != mir::MirLocalKind::UserLocal ||
+      borrowTemporary.kind != mir::MirLocalKind::Temporary ||
+      resultTemporary.kind != mir::MirLocalKind::Temporary) {
+    return zc::none;
+  }
+  auto callerBorrowMutable = receiverReferenceIsMutable(borrowTemporary.type, semanticTypes);
+  if (callerBorrowMutable == zc::none || ZC_ASSERT_NONNULL(callerBorrowMutable)) {
+    return zc::none;
+  }
+  auto callerCarrier = integerCarrierFor(caller.resultType, semanticTypes);
+  const auto callerCarrierValue = ZC_REQUIRE_NONNULL(callerCarrier);
+
+  const auto& callerEntry = caller.blocks[0];
+  const auto& callerContinuation = caller.blocks[1];
+  if (callerEntry.statements.size() != 5 ||
+      callerEntry.terminator.kind() != mir::MirTerminatorKind::Call ||
+      callerContinuation.statements.size() != 0 ||
+      callerContinuation.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  if (callerEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      callerEntry.statements[0].storageLocal() != ownerLocal.id ||
+      callerEntry.statements[1].kind() != mir::MirStatementKind::Assign ||
+      callerEntry.statements[2].kind() != mir::MirStatementKind::StorageLive ||
+      callerEntry.statements[2].storageLocal() != borrowTemporary.id ||
+      callerEntry.statements[3].kind() != mir::MirStatementKind::BorrowCreation ||
+      callerEntry.statements[4].kind() != mir::MirStatementKind::StorageLive ||
+      callerEntry.statements[4].storageLocal() != resultTemporary.id) {
+    return zc::none;
+  }
+  const auto& initialization = callerEntry.statements[1].assignmentValue();
+  if (initialization.initialization != mir::MirInitializationKind::Initialize ||
+      initialization.destination.local() != ownerLocal.id ||
+      initialization.destination.projections().size() != 0 ||
+      initialization.value.kind() != mir::MirRvalueKind::NominalAggregate) {
+    return zc::none;
+  }
+  const auto& aggregate = initialization.value.nominalAggregateValue();
+  if (aggregate.type != ownerLocal.type || aggregate.elements.size() != 1) { return zc::none; }
+  const auto& elementOperand = aggregate.elements[0].operand;
+  if (elementOperand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
+  auto ownerCarrier = integerCarrierFor(elementOperand.constantValue().type, semanticTypes);
+  if (ownerCarrier == zc::none) { return zc::none; }
+  const auto ownerCarrierValue = ZC_REQUIRE_NONNULL(ownerCarrier);
+  auto ownerConstant = lirOperandFor(elementOperand, ownerCarrierValue);
+  if (ownerConstant == zc::none) { return zc::none; }
+
+  const auto& borrow = callerEntry.statements[3].borrowCreationValue();
+  if (borrow.kind != mir::MirBorrowKind::Shared ||
+      borrow.destination.local() != borrowTemporary.id ||
+      borrow.destination.projections().size() != 0 || borrow.source.local() != ownerLocal.id ||
+      borrow.source.projections().size() != 0) {
+    return zc::none;
+  }
+
+  const auto& mirCall = callerEntry.terminator.callValue();
+  if (mirCall.callee != callee.owner || mirCall.arguments.size() != 2 ||
+      mirCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
+      mirCall.destination.local() != resultTemporary.id ||
+      mirCall.destination.projections().size() != 0 ||
+      mirCall.normalTarget != callerContinuation.id || mirCall.unwindTarget != zc::none) {
+    return zc::none;
+  }
+  const auto& receiverArgument = mirCall.arguments[0];
+  if (receiverArgument.kind() == mir::MirOperandKind::Constant ||
+      receiverArgument.place().local() != borrowTemporary.id ||
+      receiverArgument.place().projections().size() != 0) {
+    return zc::none;
+  }
+  const auto& boolArgument = mirCall.arguments[1];
+  if (boolArgument.kind() != mir::MirOperandKind::Constant ||
+      boolArgument.constantValue().type != conditionLocal.type) {
+    return zc::none;
+  }
+  // A bool argument carries an i1 constant distinct from the integer path.
+  const auto boolConstant = boolArgument.constantValue().value.booleanValue();
+  if (boolConstant == zc::none) { return zc::none; }
+  auto boolIntegerConstant =
+      IntegerConstant::from(conditionCarrierValue, ZC_ASSERT_NONNULL(boolConstant) ? 1 : 0);
+  if (boolIntegerConstant == zc::none) { return zc::none; }
+  auto boolArgumentOperand = Operand::constant(ZC_ASSERT_NONNULL(boolIntegerConstant));
+  const auto& callerReturn = callerContinuation.terminator.returnValue().value;
+  ZC_IF_SOME(value, callerReturn) {
+    if (value.kind() == mir::MirOperandKind::Constant ||
+        value.place().local() != resultTemporary.id || value.place().projections().size() != 0) {
+      return zc::none;
+    }
+  }
+
+  auto callerEntryId = LirBlockId::fromOrdinal(1);
+  auto callerContId = LirBlockId::fromOrdinal(2);
+  auto calleeEntryId = LirBlockId::fromOrdinal(1);
+  auto calleeThenId = LirBlockId::fromOrdinal(2);
+  auto calleeElseId = LirBlockId::fromOrdinal(3);
+  auto calleeJoinId = LirBlockId::fromOrdinal(4);
+  if (callerEntryId == zc::none || callerContId == zc::none || calleeEntryId == zc::none ||
+      calleeThenId == zc::none || calleeElseId == zc::none || calleeJoinId == zc::none) {
+    return zc::none;
+  }
+
+  zc::Vector<Function> functions;
+  {
+    zc::Vector<Statement> entryStatements;
+    entryStatements.add(
+        Statement::assign(ownerLocal.id.ordinal(), ZC_ASSERT_NONNULL(ownerConstant)));
+    entryStatements.add(
+        Statement::takeAddress(borrowTemporary.id.ordinal(), ownerLocal.id.ordinal()));
+    zc::Vector<Operand> arguments;
+    arguments.add(Operand::localUse(borrowTemporary.id.ordinal()));
+    arguments.add(zc::mv(boolArgumentOperand));
+    auto callTerminator = Terminator::callFunction(
+        /*calleeIndex=*/1, resultTemporary.id.ordinal(), zc::mv(arguments),
+        ZC_REQUIRE_NONNULL(callerContId));
+    if (callTerminator == zc::none) { return zc::none; }
+    zc::Vector<BasicBlock> callerBlocks;
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
+                                ZC_REQUIRE_NONNULL(zc::mv(callTerminator))));
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerContId),
+                                Terminator::returnLocal(resultTemporary.id.ordinal())));
+    zc::Vector<Local> noParameters;
+    zc::Vector<Local> locals;
+    locals.add(Local(ownerLocal.id.ordinal(), ownerCarrierValue));
+    locals.add(Local(borrowTemporary.id.ordinal(), receiverCarrierValue));
+    locals.add(Local(resultTemporary.id.ordinal(), callerCarrierValue));
+    functions.add(Function(caller.owner, zc::heapString("zom.module_init"), callerCarrierValue,
+                           zc::mv(noParameters), zc::mv(locals), zc::mv(callerBlocks)));
+  }
+  {
+    zc::Vector<Local> parameters;
+    parameters.add(Local(receiverLocal.id.ordinal(), receiverCarrierValue));
+    parameters.add(Local(conditionLocal.id.ordinal(), conditionCarrierValue));
+    zc::Vector<Local> locals;
+    locals.add(Local(resultLocal.id.ordinal(), calleeCarrierValue));
+    zc::Vector<BasicBlock> calleeBlocks;
+    calleeBlocks.add(BasicBlock(
+        ZC_REQUIRE_NONNULL(calleeEntryId),
+        Terminator::condBranch(conditionLocal.id.ordinal(), ZC_REQUIRE_NONNULL(calleeThenId),
+                               ZC_REQUIRE_NONNULL(calleeElseId))));
+    zc::Vector<Statement> thenStatements;
+    thenStatements.add(Statement::assign(resultLocal.id.ordinal(),
+                                         Operand::constant(ZC_ASSERT_NONNULL(thenConstant))));
+    calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeThenId), zc::mv(thenStatements),
+                                Terminator::gotoBlock(ZC_REQUIRE_NONNULL(calleeJoinId))));
+    zc::Vector<Statement> elseStatements;
+    elseStatements.add(Statement::assign(resultLocal.id.ordinal(),
+                                         Operand::constant(ZC_ASSERT_NONNULL(elseConstant))));
+    calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeElseId), zc::mv(elseStatements),
+                                Terminator::gotoBlock(ZC_REQUIRE_NONNULL(calleeJoinId))));
+    zc::Vector<Statement> joinStatements;
+    calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeJoinId), zc::mv(joinStatements),
+                                Terminator::returnLocal(resultLocal.id.ordinal())));
+    functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
+                           zc::mv(parameters), zc::mv(locals), zc::mv(calleeBlocks)));
   }
 
   return Module(zc::mv(functions));

@@ -1,0 +1,5 @@
+section: "08-adt inherent mutating method conditional return"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits an if/else in a mutating method; semantic HIR rejects the mutating-receiver conditional with ZOM4099 on the method definition."

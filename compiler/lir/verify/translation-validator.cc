@@ -134,8 +134,17 @@ zc::Maybe<uint64_t> zeroExtendedBits(const checker::signature::CanonicalInteger&
 
 zc::Maybe<IntegerConstant> constantFor(const mir::MirOperand& operand, ValueType carrier) noexcept {
   if (operand.kind() != mir::MirOperandKind::Constant) return zc::none;
+  const auto boolean = operand.constantValue().value.booleanValue();
+  if (boolean != zc::none) {
+    if (carrier.kind() != ValueTypeKind::Integer ||
+        carrier.integerWidth() != IntegerBitWidth::Bit1) {
+      return zc::none;
+    }
+    return IntegerConstant::from(carrier, ZC_ASSERT_NONNULL(boolean) ? 1 : 0);
+  }
   const auto integer = operand.constantValue().value.integerValue();
   if (integer == zc::none) return zc::none;
+  if (carrier.integerWidth() == IntegerBitWidth::Bit1) return zc::none;
   auto bits = zeroExtendedBits(ZC_ASSERT_NONNULL(integer), carrier.integerWidth());
   if (bits == zc::none) return zc::none;
   return IntegerConstant::from(carrier, ZC_ASSERT_NONNULL(bits));
@@ -960,6 +969,7 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                   ? sourceArgument.constantValue().type
                   : sourceArgument.place().resultType();
           auto carrier = integerCarrier(sourceType, types);
+          if (carrier == zc::none) { carrier = boolCarrier(sourceType, types); }
           if (carrier == zc::none) { carrier = pointerCarrier(sourceType, types); }
           if (carrier == zc::none ||
               !sameConstant(arguments[a], sourceArgument, ZC_ASSERT_NONNULL(carrier))) {

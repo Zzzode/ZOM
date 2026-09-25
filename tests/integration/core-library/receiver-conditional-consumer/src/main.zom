@@ -1,0 +1,14 @@
+// A shared-receiver method selects between two literal results on a bool
+// ordinary parameter. The four-block diamond lowers through a CondBranch
+// callee; the true arm returns 42 and the entry selects it, so the program
+// exits 42.
+struct Cell {
+  value: i32,
+  fun choose(this, flag: bool) -> i32 {
+    if (flag) { return 42; } else { return 0; }
+  }
+}
+fun entry() -> i32 {
+  let cell = Cell { value: 0 };
+  return cell.choose(true);
+}

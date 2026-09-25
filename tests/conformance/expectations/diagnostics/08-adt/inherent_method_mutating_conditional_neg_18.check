@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/inherent_method_mutating_conditional_neg_18.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// An if/else conditional in a mutating-receiver method is well-formed source
+// the current lowering does not emit. The owning definition must drain as
+// ZOM4099, never as a checker invariant or an internal compiler error.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/08-adt/inherent_method_mutating_conditional_neg_18.zom:3:3

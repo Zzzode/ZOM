@@ -9,6 +9,15 @@
 
 namespace zomlang::compiler::hir {
 namespace detail {
+
+zc::Maybe<ast::NodeId> statementItem(const ast::Tree& tree, ast::NodeId statement) {
+  if (!tree.contains(statement)) return zc::none;
+  if (tree.node(statement).kind != ast::SyntaxKind::StatementListItem) { return statement; }
+  const ast::NodeId item(tree.node(statement).payload.words[ast::kStatementListItemItemWord]);
+  if (!tree.contains(item)) return zc::none;
+  return item;
+}
+
 namespace {
 
 // Returns true when the syntactic binary operator is one of the six relational
@@ -118,6 +127,81 @@ bool matchesLocalReference(const ast::Tree& tree, ast::NodeId pattern, ast::Node
          tree.node(reference).payload.words[ast::kIdentExprNameWord];
 }
 
+// Classifies one statement as the conditional-return shape: an `if` with block
+// branches whose tails each return, either over a bare identifier condition or
+// a relational comparison of identifier/scalar-literal operands. Returns none
+// for every other statement.
+zc::Maybe<FunctionReturnShape> conditionalReturnShape(const ast::Tree& tree, ast::NodeId body,
+                                                      ast::NodeId statement) {
+  if (!tree.contains(statement) || tree.node(statement).kind != ast::SyntaxKind::IfStmt) {
+    return zc::none;
+  }
+  const auto& ifNode = tree.node(statement);
+  const ast::NodeId thenStmt(ifNode.payload.words[ast::kIfStmtThenStmtWord]);
+  const ast::NodeId elseStmt(ifNode.payload.words[ast::kIfStmtElseStmtWord]);
+  if (!tree.contains(thenStmt) || !tree.contains(elseStmt) ||
+      tree.node(thenStmt).kind != ast::SyntaxKind::BlockStmt ||
+      tree.node(elseStmt).kind != ast::SyntaxKind::BlockStmt) {
+    return zc::none;
+  }
+  auto branchReturnValue = [&](ast::NodeId branch) -> zc::Maybe<ast::NodeId> {
+    const auto& branchNode = tree.node(branch);
+    const ast::NodeList branchStmts{branchNode.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                    branchNode.payload.words[ast::kBlockStmtStmtsSizeWord]};
+    if (!tree.contains(branchStmts) || branchStmts.empty()) return zc::none;
+    auto tail = statementItem(tree, tree.list(branchStmts)[branchStmts.size - 1]);
+    if (tail == zc::none) return zc::none;
+    ast::NodeId tailStmt;
+    ZC_IF_SOME(value, tail) { tailStmt = value; }
+    if (tree.node(tailStmt).kind != ast::SyntaxKind::ReturnStmt) return zc::none;
+    const ast::NodeId returnValue(tree.node(tailStmt).payload.words[ast::kReturnStmtValueWord]);
+    if (!tree.contains(returnValue)) return zc::none;
+    return returnValue;
+  };
+  auto thenValue = branchReturnValue(thenStmt);
+  auto elseValue = branchReturnValue(elseStmt);
+  if (thenValue == zc::none || elseValue == zc::none) return zc::none;
+  ast::NodeId thenNode;
+  ast::NodeId elseNode;
+  ZC_IF_SOME(value, thenValue) { thenNode = value; }
+  ZC_IF_SOME(value, elseValue) { elseNode = value; }
+  const ast::NodeId condition(ifNode.payload.words[ast::kIfStmtCondWord]);
+  FunctionReturnShape shape{};
+  shape.body = body;
+  shape.returnStatement = statement;
+  shape.value = statement;
+  shape.isConditional = true;
+  shape.condition = condition;
+  shape.thenReturnValue = thenNode;
+  shape.elseReturnValue = elseNode;
+  // Detect the relational-comparison condition: a comparison BinaryExpr for one
+  // of the six relational operators whose operands are each an IdentExpr
+  // parameter reference or a scalar literal, with at least one parameter
+  // operand. A bare identifier condition keeps the parameter-reference
+  // lowering.
+  if (tree.contains(condition) && tree.node(condition).kind == ast::SyntaxKind::BinaryExpr &&
+      isRelationalBinaryOperator(static_cast<ast::BinaryOperatorKind>(
+          tree.node(condition).payload.words[ast::kBinaryExprOpWord]))) {
+    const ast::NodeId left(tree.node(condition).payload.words[ast::kBinaryExprLhsWord]);
+    const ast::NodeId right(tree.node(condition).payload.words[ast::kBinaryExprRhsWord]);
+    if (!tree.contains(left) || !tree.contains(right)) return zc::none;
+    const bool leftIdent = tree.node(left).kind == ast::SyntaxKind::IdentExpr;
+    const bool rightIdent = tree.node(right).kind == ast::SyntaxKind::IdentExpr;
+    const bool leftLiteral = isScalarLiteral(tree.node(left).kind);
+    const bool rightLiteral = isScalarLiteral(tree.node(right).kind);
+    if ((!leftIdent && !leftLiteral) || (!rightIdent && !rightLiteral) ||
+        (!leftIdent && !rightIdent)) {
+      return zc::none;
+    }
+    shape.conditionIsEquality = true;
+    shape.conditionLeft = left;
+    shape.conditionRight = right;
+    shape.conditionLeftIsLiteral = !leftIdent;
+    shape.conditionRightIsLiteral = !rightIdent;
+  }
+  return shape;
+}
+
 zc::Maybe<ast::NodeId> localBorrowReference(const ast::Tree& tree, ast::NodeId expression) {
   if (!tree.contains(expression) ||
       tree.node(expression).kind != ast::SyntaxKind::UnaryExpression) {
@@ -136,14 +220,6 @@ zc::Maybe<ast::NodeId> localBorrowReference(const ast::Tree& tree, ast::NodeId e
 }
 
 }  // namespace
-
-zc::Maybe<ast::NodeId> statementItem(const ast::Tree& tree, ast::NodeId statement) {
-  if (!tree.contains(statement)) return zc::none;
-  if (tree.node(statement).kind != ast::SyntaxKind::StatementListItem) { return statement; }
-  const ast::NodeId item(tree.node(statement).payload.words[ast::kStatementListItemItemWord]);
-  if (!tree.contains(item)) return zc::none;
-  return item;
-}
 
 zc::Maybe<ast::NodeId> reborrowReference(const ast::Tree& tree, ast::NodeId expression) {
   if (!tree.contains(expression) ||
@@ -510,18 +586,37 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       return shape;
     }
     if (statements.size != 1) return zc::none;
-    auto returnItem = statementItem(tree, tree.list(statements)[0]);
-    if (returnItem == zc::none) return zc::none;
-    ast::NodeId returnNode;
-    ZC_IF_SOME(value, returnItem) { returnNode = value; }
-    if (!tree.contains(returnNode) || tree.node(returnNode).kind != ast::SyntaxKind::ReturnStmt) {
+    auto methodItem = statementItem(tree, tree.list(statements)[0]);
+    if (methodItem == zc::none) return zc::none;
+    ast::NodeId methodStatement;
+    ZC_IF_SOME(value, methodItem) { methodStatement = value; }
+    // The method conditional: one if/else whose branches return scalar literals
+    // over a bare bool ordinary-parameter condition, on a shared receiver with
+    // exactly one ordinary parameter. Equality conditions, field arms, and
+    // parameter arms keep their own future shapes.
+    if (tree.node(methodStatement).kind == ast::SyntaxKind::IfStmt && hasReceiver &&
+        ordinaryCount == 1) {
+      auto methodConditional = conditionalReturnShape(tree, body, methodStatement);
+      if (methodConditional != zc::none) {
+        const auto& conditional = ZC_ASSERT_NONNULL(methodConditional);
+        if (!conditional.conditionIsEquality &&
+            tree.node(conditional.condition).kind == ast::SyntaxKind::IdentExpr &&
+            isScalarLiteral(tree.node(conditional.thenReturnValue).kind) &&
+            isScalarLiteral(tree.node(conditional.elseReturnValue).kind)) {
+          return conditional;
+        }
+      }
       return zc::none;
     }
-    ast::NodeId value(tree.node(returnNode).payload.words[ast::kReturnStmtValueWord]);
+    if (!tree.contains(methodStatement) ||
+        tree.node(methodStatement).kind != ast::SyntaxKind::ReturnStmt) {
+      return zc::none;
+    }
+    ast::NodeId value(tree.node(methodStatement).payload.words[ast::kReturnStmtValueWord]);
     if (!tree.contains(value)) return zc::none;
     FunctionReturnShape shape{};
     shape.body = body;
-    shape.returnStatement = returnNode;
+    shape.returnStatement = methodStatement;
     shape.value = value;
     if (isScalarLiteral(tree.node(value).kind)) {
       if (ordinaryCount != 0) return zc::none;
@@ -550,72 +645,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       ast::NodeId conditionalStmt;
       ZC_IF_SOME(value, conditionalItem) { conditionalStmt = value; }
       if (tree.node(conditionalStmt).kind == ast::SyntaxKind::IfStmt) {
-        const auto& ifNode = tree.node(conditionalStmt);
-        const ast::NodeId thenStmt(ifNode.payload.words[ast::kIfStmtThenStmtWord]);
-        const ast::NodeId elseStmt(ifNode.payload.words[ast::kIfStmtElseStmtWord]);
-        if (tree.contains(thenStmt) && tree.contains(elseStmt) &&
-            tree.node(thenStmt).kind == ast::SyntaxKind::BlockStmt &&
-            tree.node(elseStmt).kind == ast::SyntaxKind::BlockStmt) {
-          auto branchReturnValue = [&](ast::NodeId branch) -> zc::Maybe<ast::NodeId> {
-            const auto& branchNode = tree.node(branch);
-            const ast::NodeList branchStmts{branchNode.payload.words[ast::kBlockStmtStmtsFirstWord],
-                                            branchNode.payload.words[ast::kBlockStmtStmtsSizeWord]};
-            if (!tree.contains(branchStmts) || branchStmts.empty()) return zc::none;
-            auto tail = statementItem(tree, tree.list(branchStmts)[branchStmts.size - 1]);
-            if (tail == zc::none) return zc::none;
-            ast::NodeId tailStmt;
-            ZC_IF_SOME(value, tail) { tailStmt = value; }
-            if (tree.node(tailStmt).kind != ast::SyntaxKind::ReturnStmt) return zc::none;
-            const ast::NodeId returnValue(
-                tree.node(tailStmt).payload.words[ast::kReturnStmtValueWord]);
-            if (!tree.contains(returnValue)) return zc::none;
-            return returnValue;
-          };
-          auto thenValue = branchReturnValue(thenStmt);
-          auto elseValue = branchReturnValue(elseStmt);
-          if (thenValue != zc::none && elseValue != zc::none) {
-            ast::NodeId thenNode;
-            ast::NodeId elseNode;
-            ZC_IF_SOME(value, thenValue) { thenNode = value; }
-            ZC_IF_SOME(value, elseValue) { elseNode = value; }
-            const ast::NodeId condition(ifNode.payload.words[ast::kIfStmtCondWord]);
-            FunctionReturnShape shape{};
-            shape.body = body;
-            shape.returnStatement = conditionalStmt;
-            shape.value = conditionalStmt;
-            shape.isConditional = true;
-            shape.condition = condition;
-            shape.thenReturnValue = thenNode;
-            shape.elseReturnValue = elseNode;
-            // Detect the relational-comparison condition: a comparison
-            // BinaryExpr for one of the six relational operators whose operands
-            // are each an IdentExpr parameter reference or a scalar literal, with
-            // at least one parameter operand. A bare identifier condition keeps
-            // the parameter-reference lowering.
-            if (tree.contains(condition) &&
-                tree.node(condition).kind == ast::SyntaxKind::BinaryExpr &&
-                isRelationalBinaryOperator(static_cast<ast::BinaryOperatorKind>(
-                    tree.node(condition).payload.words[ast::kBinaryExprOpWord]))) {
-              const ast::NodeId left(tree.node(condition).payload.words[ast::kBinaryExprLhsWord]);
-              const ast::NodeId right(tree.node(condition).payload.words[ast::kBinaryExprRhsWord]);
-              if (!tree.contains(left) || !tree.contains(right)) return zc::none;
-              const bool leftIdent = tree.node(left).kind == ast::SyntaxKind::IdentExpr;
-              const bool rightIdent = tree.node(right).kind == ast::SyntaxKind::IdentExpr;
-              const bool leftLiteral = isScalarLiteral(tree.node(left).kind);
-              const bool rightLiteral = isScalarLiteral(tree.node(right).kind);
-              if ((!leftIdent && !leftLiteral) || (!rightIdent && !rightLiteral) ||
-                  (!leftIdent && !rightIdent)) {
-                return zc::none;
-              }
-              shape.conditionIsEquality = true;
-              shape.conditionLeft = left;
-              shape.conditionRight = right;
-              shape.conditionLeftIsLiteral = !leftIdent;
-              shape.conditionRightIsLiteral = !rightIdent;
-            }
-            return shape;
-          }
-        }
+        return conditionalReturnShape(tree, body, conditionalStmt);
       }
     }
   }

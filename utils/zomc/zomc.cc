@@ -1431,19 +1431,21 @@ private:
       } else if (functions.size() == 2) {
         // Two functions: identify the unique direct-call caller/callee pair by
         // block count. The caller is a `Function` with two blocks (entry Call,
-        // continuation Return); the callee is a `Function` with one block. If both
-        // roles are filled by exactly one distinct function, lower the pair --
-        // first as a zero-argument call (KR5.2 C4), then a single-argument call
-        // (KR5.2 C5), then a two-argument call (multi-argument slice). The three
-        // lowerings' internal gates (callee local/parameter count, call argument
-        // count, and the call targeting the identified callee) select at most one;
-        // any ambiguity (same-shape pair, missing role) or residual mismatch leaves
-        // `lir` as none.
+        // continuation Return); the callee is a Method with one block (the
+        // constant/field/parameter slices) or four blocks (the receiver method
+        // conditional diamond). If both roles are filled by exactly one distinct
+        // function, lower the pair -- first as a zero-argument call (KR5.2 C4),
+        // then a single-argument call (KR5.2 C5), then a two-argument call
+        // (multi-argument slice). The three lowerings' internal gates (callee
+        // local/parameter count, call argument count, and the call targeting the
+        // identified callee) select at most one; any ambiguity (same-shape
+        // pair, missing role) or residual mismatch leaves `lir` as none.
         auto isCaller = [](const mir::MirFunction& fn) {
           return fn.kind == mir::MirFunctionKind::Function && fn.blocks.size() == 2;
         };
         auto isCallee = [](const mir::MirFunction& fn) {
-          return fn.kind == mir::MirFunctionKind::Function && fn.blocks.size() == 1;
+          return fn.kind == mir::MirFunctionKind::Function &&
+                 (fn.blocks.size() == 1 || fn.blocks.size() == 4);
         };
         zc::Maybe<size_t> callerIndex;
         zc::Maybe<size_t> calleeIndex;
@@ -1554,7 +1556,8 @@ private:
                   "boolean-conditional, reducible while-loop, comparison-driven conditional, "
                   "aggregate field-return, same-module direct-call, shared-receiver method "
                   "call, mutating-receiver field write-read, shared-receiver constant-local "
-                  "method, and three-function direct-call-with-leaf slices)."));
+                  "method, shared-receiver conditional method, and three-function "
+                  "direct-call-with-leaf slices)."));
     }
     backend::llvm::LlvmTranslator translator;
     ZC_IF_SOME(lirModule, lir) {

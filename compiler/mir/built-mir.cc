@@ -1824,6 +1824,147 @@ bool validConditionalReturnFunction(
   return false;
 }
 
+bool validMethodConditionalReturnFunction(const MirFunction& function,
+                                          const hir::HirFunctionDeclaration& declaration,
+                                          const hir::HirBlockStatement& sourceBlock,
+                                          const hir::HirReturnStatement& sourceReturn,
+                                          const hir::HirConditionalExpression& conditional,
+                                          const hir::HirParameterReferenceExpression& conditionRef,
+                                          const hir::HirScalarLiteralExpression& thenLiteral,
+                                          const hir::HirScalarLiteralExpression& elseLiteral,
+                                          checker::marker::MarkerProofEngine& proofs,
+                                          identity::DefId copy, identity::ModuleId module,
+                                          const checker::CheckerIdentityAuthority& identities,
+                                          const type::SemanticTypeStore& semanticTypes) {
+  if (declaration.receiver == zc::none || declaration.unsafeBlock != zc::none) return false;
+  const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Method ||
+      function.resultType != declaration.resultType ||
+      !sameSpan(function.sourceSpan, declaration.sourceSpan) || function.sourceScopes.size() != 1 ||
+      function.locals.size() != declaration.parameters.size() + 2 || function.blocks.size() != 4 ||
+      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 1 ||
+      sourceBlock.statements[0] != sourceReturn.node || sourceReturn.value != conditional.node ||
+      sourceReturn.resultType != declaration.resultType ||
+      conditional.condition != conditionRef.node ||
+      conditional.thenReturnValue != thenLiteral.node ||
+      conditional.elseReturnValue != elseLiteral.node ||
+      conditional.type != declaration.resultType || thenLiteral.type != declaration.resultType ||
+      elseLiteral.type != declaration.resultType) {
+    return false;
+  }
+  const auto& scope = function.sourceScopes[0];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan)) {
+    return false;
+  }
+  // Local 1 is the receiver parameter; ordinary parameters are locals 2..N+1.
+  const auto& receiverLocal = function.locals[0];
+  if (receiverLocal.id != localId(1) || receiverLocal.kind != MirLocalKind::Parameter ||
+      receiverLocal.type != receiver.type || receiverLocal.sourceScope != scopeId(1) ||
+      !sameSpan(receiverLocal.sourceSpan, receiver.sourceSpan)) {
+    return false;
+  }
+  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+    const auto& local = function.locals[i + 1];
+    if (local.id != localId(static_cast<uint32_t>(i + 2)) ||
+        local.kind != MirLocalKind::Parameter || local.type != declaration.parameters[i].type ||
+        local.sourceScope != scopeId(1) ||
+        !sameSpan(local.sourceSpan, declaration.parameters[i].sourceSpan)) {
+      return false;
+    }
+  }
+  const auto resultLocal = localId(static_cast<uint32_t>(declaration.parameters.size() + 2));
+  const auto& result = function.locals[declaration.parameters.size() + 1];
+  if (result.id != resultLocal || result.kind != MirLocalKind::FunctionResult ||
+      result.type != declaration.resultType || result.sourceScope != scopeId(1) ||
+      !sameSpan(result.sourceSpan, sourceReturn.sourceSpan)) {
+    return false;
+  }
+  const auto& entry = function.blocks[0];
+  const auto& thenBlock = function.blocks[1];
+  const auto& elseBlock = function.blocks[2];
+  const auto& joinBlock = function.blocks[3];
+  if (entry.id != blockId(1) || entry.sourceScope != scopeId(1) || entry.statements.size() != 1 ||
+      entry.statements[0].kind() != MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != resultLocal ||
+      !sameSpan(entry.statements[0].sourceSpan(), sourceReturn.sourceSpan) ||
+      entry.terminator.kind() != MirTerminatorKind::SwitchInt || thenBlock.id != blockId(2) ||
+      thenBlock.sourceScope != scopeId(1) || thenBlock.statements.size() != 1 ||
+      thenBlock.terminator.kind() != MirTerminatorKind::Goto ||
+      thenBlock.terminator.gotoValue().target != blockId(4) || elseBlock.id != blockId(3) ||
+      elseBlock.sourceScope != scopeId(1) || elseBlock.statements.size() != 1 ||
+      elseBlock.terminator.kind() != MirTerminatorKind::Goto ||
+      elseBlock.terminator.gotoValue().target != blockId(4) || joinBlock.id != blockId(4) ||
+      joinBlock.sourceScope != scopeId(1) || joinBlock.statements.size() != 0 ||
+      joinBlock.terminator.kind() != MirTerminatorKind::Return) {
+    return false;
+  }
+  const auto& switchInt = entry.terminator.switchIntValue();
+  if (switchInt.arms.size() != 2 || switchInt.defaultTarget != blockId(3)) { return false; }
+  if (switchInt.arms[0].target != blockId(2) || switchInt.arms[1].target != blockId(3)) {
+    return false;
+  }
+  auto trueValue = switchInt.arms[0].value.booleanValue();
+  auto falseValue = switchInt.arms[1].value.booleanValue();
+  if (trueValue == zc::none || falseValue == zc::none || !ZC_ASSERT_NONNULL(trueValue) ||
+      ZC_ASSERT_NONNULL(falseValue)) {
+    return false;
+  }
+  // The condition resolves to an ordinary parameter at local index + 2.
+  size_t conditionIndex = 0;
+  bool conditionResolved = false;
+  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+    if (declaration.parameters[i].key == conditionRef.parameter) {
+      conditionIndex = i;
+      conditionResolved = true;
+      break;
+    }
+  }
+  if (!conditionResolved || conditionRef.type != declaration.parameters[conditionIndex].type) {
+    return false;
+  }
+  const MirLocalId conditionLocal = localId(static_cast<uint32_t>(conditionIndex + 2));
+  if (switchInt.discriminant.kind() != MirOperandKind::Copy ||
+      switchInt.discriminant.place().local() != conditionLocal ||
+      switchInt.discriminant.place().rootType() != conditionRef.type ||
+      switchInt.discriminant.place().resultType() != conditionRef.type ||
+      switchInt.discriminant.place().projections().size() != 0) {
+    return false;
+  }
+  // Each arm Initialize-assigns its literal constant to the result local.
+  auto branchInitializesResult = [&](const MirBasicBlock& branch,
+                                     const hir::HirScalarLiteralExpression& literal) -> bool {
+    if (branch.statements[0].kind() != MirStatementKind::Assign) { return false; }
+    const auto& assignment = branch.statements[0].assignmentValue();
+    if (assignment.initialization != MirInitializationKind::Initialize ||
+        assignment.destination.local() != resultLocal ||
+        assignment.destination.rootType() != declaration.resultType ||
+        assignment.destination.resultType() != declaration.resultType ||
+        assignment.destination.projections().size() != 0 ||
+        assignment.value.kind() != MirRvalueKind::Use) {
+      return false;
+    }
+    const auto& operand = assignment.value.useValue().operand;
+    return operand.kind() == MirOperandKind::Constant &&
+           operand.constantValue().type == literal.type &&
+           sameConstant(operand.constantValue().value, literal.value, module, identities,
+                        semanticTypes);
+  };
+  if (!branchInitializesResult(thenBlock, thenLiteral) ||
+      !branchInitializesResult(elseBlock, elseLiteral)) {
+    return false;
+  }
+  ZC_IF_SOME(value, joinBlock.terminator.returnValue().value) {
+    return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
+           value.place().local() == resultLocal &&
+           value.place().rootType() == declaration.resultType &&
+           value.place().resultType() == declaration.resultType &&
+           value.place().projections().size() == 0;
+  }
+  return false;
+}
+
 bool validEqualityConditionalReturnFunction(
     const MirFunction& function, const hir::VerifiedHirModule& hirModule,
     const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& sourceBlock,
@@ -9542,7 +9683,17 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
             auto conditionRef = parameterReferenceFor(hirModule, sourceConditional.condition);
             auto equality = primitiveBinaryFor(hirModule, sourceConditional.condition);
             ZC_IF_SOME(condRef, conditionRef) {
-              if (thenOk && elseOk) {
+              if (sourceDeclaration.receiver != zc::none && thenArm.literal != zc::none &&
+                  elseArm.literal != zc::none && thenArm.parameter == zc::none &&
+                  elseArm.parameter == zc::none) {
+                // The shared-receiver method conditional: literal arms over a
+                // bare ordinary-parameter condition, with the receiver leading
+                // the local layout.
+                valid = validMethodConditionalReturnFunction(
+                    function, sourceDeclaration, block, returnStatement, sourceConditional, condRef,
+                    ZC_ASSERT_NONNULL(thenArm.literal), ZC_ASSERT_NONNULL(elseArm.literal), proofs,
+                    copy, module, identities, semanticTypes);
+              } else if (thenOk && elseOk) {
                 valid = validConditionalReturnFunction(
                     function, sourceDeclaration, block, returnStatement, sourceConditional, condRef,
                     thenArm, elseArm, proofs, copy, module, identities, semanticTypes);

@@ -45,6 +45,17 @@ zc::Maybe<const hir::HirParameterReferenceExpression&> parameterReferenceFor(
   return uniqueRecordFor(module.parameterReferences(), node);
 }
 
+zc::Maybe<const hir::HirConditionalExpression&> conditionalFor(const hir::VerifiedHirModule& module,
+                                                               hir::HirNodeId node) {
+  return uniqueRecordFor(module.conditionals(), node);
+}
+
+MirBlockId blockId(uint32_t ordinal) {
+  auto value = MirBlockId::fromOrdinal(ordinal);
+  ZC_IF_SOME(id, value) { return id; }
+  ZC_UNREACHABLE
+}
+
 zc::Maybe<const hir::HirParameterReborrowExpression&> parameterReborrowFor(
     const hir::VerifiedHirModule& module, hir::HirNodeId node) {
   return uniqueRecordFor(module.parameterReborrows(), node);
@@ -834,6 +845,110 @@ zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldWriteReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers `fun m(this, flag: bool) -> T { if (flag) { return a; } else {
+/// return b; } }` on a shared receiver: the receiver is the leading parameter
+/// local at localId(1), the ordinary parameters follow, and a FunctionResult
+/// local dominates the four-block diamond (SwitchInt, two arm blocks with an
+/// Initialize Assign and Goto, and an empty join returning the result).
+zc::Maybe<RecursiveFunctionProduct> buildMethodConditionalReturn(
+    const hir::HirFunctionDeclaration& declaration,
+    const hir::HirConditionalExpression& conditional,
+    const hir::HirParameterReferenceExpression& condition,
+    const hir::HirReturnStatement& sourceReturn, const hir::VerifiedHirModule& hirModule,
+    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copyMarker) {
+  if (declaration.receiver == zc::none || declaration.unsafeBlock != zc::none) return zc::none;
+  const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+  if (conditional.type != declaration.resultType ||
+      conditional.category != hir::HirValueCategory::Value) {
+    return zc::none;
+  }
+  // The bare condition must resolve to one of the ordinary parameters.
+  size_t conditionIndex = 0;
+  bool conditionResolved = false;
+  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+    if (declaration.parameters[i].key == condition.parameter) {
+      conditionIndex = i;
+      conditionResolved = true;
+      break;
+    }
+  }
+  if (!conditionResolved || condition.type != declaration.parameters[conditionIndex].type) {
+    return zc::none;
+  }
+  // Each arm is a scalar literal in this slice.
+  auto thenLiteral = expressionFor(hirModule, conditional.thenReturnValue);
+  auto elseLiteral = expressionFor(hirModule, conditional.elseReturnValue);
+  if (thenLiteral == zc::none || elseLiteral == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(thenLiteral).type != declaration.resultType ||
+      ZC_ASSERT_NONNULL(elseLiteral).type != declaration.resultType) {
+    return zc::none;
+  }
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  (void)ctx.declareLocal(MirLocalKind::Parameter, receiver.type, scope,
+                         receiver.sourceSpan.clone());
+  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+    ctx.declareLocal(MirLocalKind::Parameter, declaration.parameters[i].type, scope,
+                     declaration.parameters[i].sourceSpan.clone());
+  }
+  const MirLocalId resultLocal = ctx.declareLocal(
+      MirLocalKind::FunctionResult, declaration.resultType, scope, sourceReturn.sourceSpan.clone());
+  if (resultLocal.ordinal() != static_cast<uint32_t>(declaration.parameters.size() + 2)) {
+    return zc::none;
+  }
+
+  const auto conditionLocalMaybe =
+      MirLocalId::fromOrdinal(static_cast<uint32_t>(conditionIndex + 2));
+  if (conditionLocalMaybe == zc::none) return zc::none;
+  const MirLocalId conditionLocal = ZC_ASSERT_NONNULL(conditionLocalMaybe);
+  zc::Vector<MirProjection> conditionProjections;
+  auto discriminant = placeUse(
+      proofs, copyMarker,
+      MirPlace(conditionLocal, condition.type, zc::mv(conditionProjections), condition.type));
+  if (discriminant == zc::none) return zc::none;
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(proofs, copyMarker,
+                                MirPlace(resultLocal, declaration.resultType,
+                                         zc::mv(returnProjections), declaration.resultType));
+  if (returnOperand == zc::none) return zc::none;
+
+  // Block 1: StorageLive(result); SwitchInt(bool) { true -> 2, false -> 3 },
+  // default 3.
+  (void)ctx.beginBlock(scope);
+  ctx.appendStatement(MirStatement::storageLive(resultLocal, sourceReturn.sourceSpan.clone()));
+  zc::Vector<MirSwitchIntArm> arms;
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), blockId(2)});
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), blockId(3)});
+  ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)), zc::mv(arms),
+                                              blockId(3), conditional.sourceSpan.clone()));
+  // Blocks 2 and 3: Initialize Assign of the arm constant then Goto block 4.
+  const auto armBlock = [&](const hir::HirScalarLiteralExpression& literal) {
+    (void)ctx.beginBlock(scope);
+    zc::Vector<MirProjection> projections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(resultLocal, declaration.resultType, zc::mv(projections), declaration.resultType),
+        MirRvalue::use(MirOperand::constant(literal.type, literal.value.clone())),
+        MirInitializationKind::Initialize, literal.sourceSpan.clone()));
+    ctx.terminateBlock(MirTerminator::gotoTarget(blockId(4), literal.sourceSpan.clone()));
+  };
+  armBlock(ZC_ASSERT_NONNULL(thenLiteral));
+  armBlock(ZC_ASSERT_NONNULL(elseLiteral));
+  // Block 4: empty join returning the result.
+  (void)ctx.beginBlock(scope);
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Method, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 }  // namespace
 
 zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
@@ -848,6 +963,23 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
 
   // The bare literal and parameter returns are the one-statement shapes.
   if (block.statements.size() == 1) {
+    // Receiver method conditional return: one if/else whose branches return
+    // scalar literals over a bare bool ordinary-parameter condition.
+    auto methodConditional = conditionalFor(hirModule, valueNode);
+    if (declaration.receiver != zc::none && declaration.unsafeBlock == zc::none &&
+        methodConditional != zc::none) {
+      const auto& conditional = ZC_ASSERT_NONNULL(methodConditional);
+      auto conditionReference = parameterReferenceFor(hirModule, conditional.condition);
+      if (conditionReference != zc::none &&
+          expressionFor(hirModule, conditional.thenReturnValue) != zc::none &&
+          expressionFor(hirModule, conditional.elseReturnValue) != zc::none) {
+        auto product = buildMethodConditionalReturn(
+            declaration, conditional, ZC_ASSERT_NONNULL(conditionReference),
+            ZC_ASSERT_NONNULL(sourceReturn), hirModule, identities, proofs, copyMarker);
+        if (product != zc::none) return product;
+      }
+    }
+
     // Scalar literal return: exactly one literal expression and no direct call on
     // the return value, no unsafe tail (that shape stays on the legacy rail).
     auto literal = expressionFor(hirModule, valueNode);

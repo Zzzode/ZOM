@@ -2250,44 +2250,106 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       FunctionReturnShape source{};
       ZC_IF_SOME(value, sourceShape) { source = value; }
       if (source.isConditional) {
+        const bool conditionalIsMethod = function.receiver != zc::none;
         auto signaturePosition =
             signatureIndex(signatures.definitions.asPtr(), function.definition);
         auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
-        if (signaturePosition == zc::none || rootPosition == zc::none) {
+        if (signaturePosition == zc::none || (!conditionalIsMethod && rootPosition == zc::none)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::MissingRequiredFact, module,
                                               registries, index + 1);
         }
         size_t signatureSlot = 0;
-        size_t rootSlot = 0;
         ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
+        size_t rootSlot = 0;
         ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
         const auto& signature = signatures.definitions[signatureSlot];
-        const auto& root = signatures.roots[rootSlot];
-        auto expectedVisibility = visibility(root.visibility);
-        if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
-            !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>() ||
-            expectedVisibility == zc::none) {
-          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                              ir::IrFailureKind::InvalidFact, module, registries,
-                                              index + 1);
+        checker::signature::MemberSignatureScope conditionalMethodScope;
+        zc::Maybe<HirVisibility> expectedVisibility;
+        if (conditionalIsMethod) {
+          if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+              !signature.scope.variant().is<checker::signature::MemberSignatureScope>()) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          conditionalMethodScope =
+              signature.scope.variant().get<checker::signature::MemberSignatureScope>();
+          expectedVisibility = memberVisibility(conditionalMethodScope.visibility, module);
+        } else {
+          const auto& root = signatures.roots[rootSlot];
+          expectedVisibility = visibility(root.visibility);
+          if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+              !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>()) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
         }
         const auto& callable =
             signature.payload.variant().get<checker::signature::CallableSignature>();
         auto expectedLinkage = linkage(callable);
-        if (expectedLinkage == zc::none || signature.definition != function.definition ||
-            signature.definitionKind != identity::DefinitionKind::Function ||
-            root.canonicalDefinition != function.definition || root.sourceModule != module ||
-            callable.receiver != zc::none || callable.raises != zc::none ||
-            callable.success != function.resultType ||
-            !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
-            !sameSpan(function.sourceSpan, sourceDefinition.source) ||
-            !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
-            function.linkage != ZC_ASSERT_NONNULL(expectedLinkage) ||
-            function.parameters.size() != callable.parameters.size()) {
+        bool headerValid =
+            expectedVisibility != zc::none && expectedLinkage != zc::none &&
+            signature.definition == function.definition &&
+            signature.definitionKind == (conditionalIsMethod
+                                             ? identity::DefinitionKind::Method
+                                             : identity::DefinitionKind::Function) &&
+            (conditionalIsMethod || signatures.roots[rootSlot].sourceModule == module) &&
+            (conditionalIsMethod ? callable.receiver != zc::none : callable.receiver == zc::none) &&
+            callable.raises == zc::none && callable.success == function.resultType &&
+            sameSpan(signature.declarationSpan, sourceDefinition.source) &&
+            sameSpan(function.sourceSpan, sourceDefinition.source) &&
+            sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) &&
+            function.linkage == ZC_ASSERT_NONNULL(expectedLinkage) &&
+            function.parameters.size() == callable.parameters.size();
+        if (!headerValid) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
+        }
+        if (conditionalIsMethod) {
+          if (conditionalMethodScope.owner == function.definition) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          const auto& receiver = ZC_ASSERT_NONNULL(function.receiver);
+          if (ZC_ASSERT_NONNULL(callable.receiver).mode !=
+              checker::signature::ReceiverMode::Shared) {
+            // A conditional method body is admitted only through a shared
+            // receiver; a mutable receiver is well-formed source the current
+            // lowering does not emit. Drain the owning definition with the
+            // capability code rather than an invariant.
+            return rejectHirCapability<VerifiedHirModule>(
+                function.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                sourceDefinition.source.clone());
+          }
+          if (ZC_ASSERT_NONNULL(callable.receiver).parameter != receiver.key ||
+              !typeExists(receiver.type, semanticTypes)) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          const ast::NodeId methodParameterListNode(
+              tree.node(sourceDefinition.node).payload.words[ast::kMethodDeclParamsIdWord]);
+          if (!tree.contains(methodParameterListNode) ||
+              tree.node(methodParameterListNode).kind != ast::SyntaxKind::FunctionParameterList) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          const ast::NodeList methodAstParameters{
+              tree.node(methodParameterListNode)
+                  .payload.words[ast::kFunctionParameterListParamsFirstWord],
+              tree.node(methodParameterListNode)
+                  .payload.words[ast::kFunctionParameterListParamsSizeWord]};
+          if (!tree.contains(methodAstParameters) ||
+              methodAstParameters.size != callable.parameters.size() + 1) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
         }
         for (size_t parameterIndex = 0; parameterIndex < function.parameters.size();
              ++parameterIndex) {

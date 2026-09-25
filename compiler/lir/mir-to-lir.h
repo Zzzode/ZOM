@@ -256,6 +256,15 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerReceiverCallModule(
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
+
+  /// Lowers the verified caller-plus-method pair when the method is the
+  /// four-block conditional shape: one shared receiver pointer parameter, one
+  /// bool ordinary parameter, one FunctionResult local, and literal arms. The
+  /// caller folds to the reserved module initializer and the callee lowers as a
+  /// four-block `zom.callee`. Every other shape return none.
+  ZC_NODISCARD static zc::Maybe<Module> lowerReceiverConditionalCallModule(
+      const mir::MirFunction& caller, const mir::MirFunction& callee,
+      const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::lir

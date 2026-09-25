@@ -1,0 +1,5 @@
+section: "08-adt inherent method conditional return"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A shared-receiver inherent method with one bool ordinary parameter returns a literal in each branch of an if/else; it builds the four-block conditional diamond with a leading receiver parameter and lowers to a CondBranch callee."
