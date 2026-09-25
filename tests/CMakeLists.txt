@@ -174,12 +174,16 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-conditional-consumer/Zom.toml::receiver_conditional_consumer::receiver_conditional_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-selfcall-consumer/Zom.toml::receiver_selfcall_consumer::receiver_selfcall_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/arithmetic-consumer/Zom.toml::arithmetic_consumer::arithmetic_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-fourfn-consumer/Zom.toml::reject_fourfn_consumer::reject_fourfn_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-twocaller-consumer/Zom.toml::reject_twocaller_consumer::reject_twocaller_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-nonleaf-consumer/Zom.toml::reject_nonleaf_consumer::reject_nonleaf_consumer"
+      --reject-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-arithmetic-pow-consumer/Zom.toml::reject_arithmetic_pow_consumer::reject_arithmetic_pow_consumer"
       --incident-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml::installed_consumer::installed_consumer")
   set_tests_properties(object-emission-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)
@@ -217,6 +221,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-conditional-consumer/Zom.toml::receiver_conditional_consumer::receiver_conditional_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-selfcall-consumer/Zom.toml::receiver_selfcall_consumer::receiver_selfcall_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/arithmetic-consumer/Zom.toml::arithmetic_consumer::arithmetic_consumer::42"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer")
   set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)

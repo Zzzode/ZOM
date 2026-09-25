@@ -1427,6 +1427,9 @@ private:
           if (lir == zc::none) {
             lir = lir::MirToLirLowering::lowerAggregateFieldInitializer(functions[0], types);
           }
+          if (lir == zc::none) {
+            lir = lir::MirToLirLowering::lowerArithmeticReturn(functions[0], types);
+          }
         }
       } else if (functions.size() == 2) {
         // Two functions: identify the unique direct-call caller/callee pair by
@@ -1606,7 +1609,8 @@ private:
       return NativeObjectResult(
           zc::str("MIR -> LIR lowering rejected this module (outside the scalar-initializer, "
                   "boolean-conditional, reducible while-loop, comparison-driven conditional, "
-                  "aggregate field-return, same-module direct-call, shared-receiver method "
+                  "aggregate field-return, sequential integer arithmetic, same-module direct-call, "
+                  "shared-receiver method "
                   "call, mutating-receiver field write-read, shared-receiver constant-local "
                   "method, shared-receiver conditional method, shared-receiver self-call, and "
                   "three-function direct-call-with-leaf slices)."));

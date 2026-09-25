@@ -3757,6 +3757,14 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           }
         }
         if (producedType == zc::none) {
+          // An unannotated binary-result local referenced inside an inherent
+          // method cannot be typed at this stage; surface admission does not
+          // gate method bodies, so drain the method as ZOM4125 here instead of
+          // reaching the invariant rail. The annotated binding form is the
+          // admitted method lowering shape.
+          ZC_IF_SOME(method, enclosingMethodName(input, site.node)) {
+            return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(method));
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));

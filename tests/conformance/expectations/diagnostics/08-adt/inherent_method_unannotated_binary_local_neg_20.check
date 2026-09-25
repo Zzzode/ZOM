@@ -1,0 +1,10 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/inherent_method_unannotated_binary_local_neg_20.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// An unannotated binary-result local referenced inside an inherent method
+// cannot be typed at the checker reference stage, and surface admission does
+// not gate method bodies. The checker drains the method per definition as
+// ZOM4125, never as an internal compiler error.
+
+// CHECK-LITERAL: Error [ZOM4125]: method call `m` is not supported yet
+// CHECK: 3 |   fun m(this, x: i32) -> i32 { let z = x + 1; return z; }

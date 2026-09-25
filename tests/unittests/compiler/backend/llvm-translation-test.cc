@@ -837,6 +837,79 @@ ZC_TEST("Comparison-driven conditional lowers to a verified multi-block LLVM fun
   ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
 }
 
+// Build the verified one-block arithmetic MIR shape:
+//   fun f(a: i32) -> i32 { let r: i32 = a + 1; return r; }
+//   local#1 = a : i32 (Parameter); local#2 = r : i32 (FunctionResult)
+//   bb1: StorageLive(#2); #2 = copy #1 Add const 1; return move #2
+mir::MirFunction buildArithmeticReturn(identity::DefId owner, identity::SemanticTypeId i32,
+                                       mir::MirArithmeticOperator op) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(
+      mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::Parameter, i32, scopeId(1), span()});
+  locals.add(mir::MirLocalDeclaration{localId(2), mir::MirLocalKind::FunctionResult, i32,
+                                      scopeId(1), span()});
+
+  zc::Vector<mir::MirStatement> statements;
+  statements.add(mir::MirStatement::storageLive(localId(2), span()));
+  statements.add(mir::MirStatement::assign(
+      resultPlace(localId(2), i32),
+      mir::MirRvalue::arithmetic(op, mir::MirOperand::copy(resultPlace(localId(1), i32)),
+                                 mir::MirOperand::constant(i32, integerConstant(1)), i32),
+      mir::MirInitializationKind::Initialize, span()));
+  auto terminator =
+      mir::MirTerminator::returnValue(mir::MirOperand::move(resultPlace(localId(2), i32)), span());
+
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{blockId(1), scopeId(1), zc::mv(statements), zc::mv(terminator)});
+
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+ZC_TEST(
+    "Sequential integer arithmetic lowers MIR -> LIR -> a verified LLVM add and an ELF object") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto owner = tests::testDefinition(60);
+
+  auto function = buildArithmeticReturn(owner, i32, mir::MirArithmeticOperator::Add);
+
+  auto lir = lir::MirToLirLowering::lowerArithmeticReturn(function, typeContext.semanticTypes());
+  ZC_REQUIRE(lir != zc::none);
+  const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
+  ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+  ZC_EXPECT(lir::TranslationValidator::validate(function, lirModule, typeContext.semanticTypes()) ==
+            zc::none);
+  ZC_EXPECT(lirModule.functions().size() == 1);
+  ZC_EXPECT(lirModule.functions()[0].parameters().size() == 1);
+
+  LlvmTranslator translator;
+  auto result = translator.translate(lirModule);
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+
+  const auto ir = result.textualIr();
+  ZC_EXPECT(ir.contains("add i32"_zc));
+  ZC_EXPECT(ir.contains("ret i32"_zc));
+
+  const auto object = result.objectCode();
+  ZC_EXPECT(object.size() > 0);
+  ZC_REQUIRE(object.size() >= 4);
+  ZC_EXPECT(object[0] == 0x7f);
+  ZC_EXPECT(object[1] == static_cast<uint8_t>('E'));
+  ZC_EXPECT(object[2] == static_cast<uint8_t>('L'));
+  ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
+}
+
 // Build the verified four-block conditional whose then-arm returns a parameter:
 //   fun f(cond: bool, v: i32) -> i32 { if cond { return v } else { return elseValue } }
 //   local#1 = cond : bool (Parameter); local#2 = v : i32 (Parameter)

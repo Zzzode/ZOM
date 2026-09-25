@@ -1,0 +1,1 @@
+fun f(x: i32) -> i32 { let z = x + 1; return z; }

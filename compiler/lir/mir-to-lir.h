@@ -150,6 +150,29 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerEqualityConditionalReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers a one-block sequential integer arithmetic body to a
+  /// single-function LIR module.
+  ///
+  /// Admits the verified Built MIR shape of `let z: T = a OP b; ... return z;`
+  /// and the direct `return a OP b;` form: one `Function` scope, a prefix of
+  /// integer parameter locals followed by one or more body locals
+  /// (`UserLocal`, `Temporary`, or `FunctionResult`), one block whose
+  /// statements are one `StorageLive` plus one initializing `Assign` per body
+  /// local in order, and a place-copy return of the last local. Each assigned
+  /// rvalue is a `Use` (an integer constant or a zero-projection parameter or
+  /// earlier-body-local place) or an `Arithmetic` rvalue whose operands have the
+  /// same shape; exponentiation (`Pow`) stays outside the slice. Every assigned
+  /// and returned carrier is one equal non-one-bit integer width. The function
+  /// folds to the reserved no-argument `zom.module_init` entry when it has no
+  /// parameters, and keeps the parameterized `zom.arithmetic` symbol otherwise.
+  /// Every other shape returns `none`.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerArithmeticReturn(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers one same-module zero-argument direct call to a two-function
   /// LIR module (caller plus its defined callee).
   ///

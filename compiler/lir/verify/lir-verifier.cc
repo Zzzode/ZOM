@@ -290,6 +290,40 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
             }
             break;
           }
+          case StatementKind::Arithmetic: {
+            // The destination and both operands share one integer carrier; the
+            // arithmetic result is the same width as its operands, unlike a
+            // comparison's one-bit result. A one-bit destination stays outside
+            // the admitted subset until shift/bitwise semantics on i1 exist.
+            if (destinationCarrier.kind() != ValueTypeKind::Integer ||
+                destinationCarrier.integerWidth() == IntegerBitWidth::Bit1) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            const Operand& left = statement.left();
+            const Operand& right = statement.right();
+            const ValueType* leftCarrier = nullptr;
+            const ValueType* rightCarrier = nullptr;
+            if (left.isConstant()) {
+              leftCarrier = &left.constantValue().carrier();
+            } else {
+              auto slotFinding = requireSlot(left.localOrdinal(), blockOrdinal, statementIndex);
+              if (slotFinding != zc::none) return slotFinding;
+              leftCarrier = operandSlotCarrier(function, left);
+            }
+            if (right.isConstant()) {
+              rightCarrier = &right.constantValue().carrier();
+            } else {
+              auto slotFinding = requireSlot(right.localOrdinal(), blockOrdinal, statementIndex);
+              if (slotFinding != zc::none) return slotFinding;
+              rightCarrier = operandSlotCarrier(function, right);
+            }
+            if (*leftCarrier != destinationCarrier || *rightCarrier != destinationCarrier) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            break;
+          }
           case StatementKind::TakeAddress: {
             // The destination is an opaque pointer holding the address of a
             // whole declared slot; the source cannot be a constant (its address

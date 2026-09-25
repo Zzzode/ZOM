@@ -367,6 +367,53 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
           }
           stored = ::llvm::CmpInst::Create(::llvm::Instruction::ICmp, predicate, left, right, "cmp",
                                            target);
+        } else if (statement.kind() == lir::StatementKind::Arithmetic) {
+          ::llvm::Value* left = loadOperand(statement.left(), target);
+          ::llvm::Value* right = loadOperand(statement.right(), target);
+          ::llvm::Instruction::BinaryOps opcode = ::llvm::Instruction::Add;
+          switch (statement.arithmeticOp()) {
+            case lir::ArithmeticOp::Add:
+              opcode = ::llvm::Instruction::Add;
+              break;
+            case lir::ArithmeticOp::Sub:
+              opcode = ::llvm::Instruction::Sub;
+              break;
+            case lir::ArithmeticOp::Mul:
+              opcode = ::llvm::Instruction::Mul;
+              break;
+            // Signed division and remainder mirror the signed comparison
+            // predicates while the LIR integer carrier has no signedness.
+            case lir::ArithmeticOp::Div:
+              opcode = ::llvm::Instruction::SDiv;
+              break;
+            case lir::ArithmeticOp::Rem:
+              opcode = ::llvm::Instruction::SRem;
+              break;
+            case lir::ArithmeticOp::Shl:
+              opcode = ::llvm::Instruction::Shl;
+              break;
+            case lir::ArithmeticOp::Shr:
+              opcode = ::llvm::Instruction::AShr;
+              break;
+            case lir::ArithmeticOp::UShr:
+              opcode = ::llvm::Instruction::LShr;
+              break;
+            case lir::ArithmeticOp::BitAnd:
+              opcode = ::llvm::Instruction::And;
+              break;
+            case lir::ArithmeticOp::BitOr:
+              opcode = ::llvm::Instruction::Or;
+              break;
+            case lir::ArithmeticOp::BitXor:
+              opcode = ::llvm::Instruction::Xor;
+              break;
+            case lir::ArithmeticOp::Pow:
+              // No integer machine operation exists for exponentiation; the
+              // admitted lowering shapes never emit it.
+              return LlvmTranslationResult::failure(
+                  zc::str("LLVM translation rejected an unsupported arithmetic operation: Pow"));
+          }
+          stored = ::llvm::BinaryOperator::Create(opcode, left, right, "arith", target);
         } else if (statement.kind() == lir::StatementKind::TakeAddress) {
           // The address of a whole alloca slot is the alloca pointer itself in
           // opaque-pointer LLVM; the folded owner slot is one scalar, so no GEP

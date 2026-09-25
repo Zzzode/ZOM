@@ -1,0 +1,5 @@
+section: "08-adt inherent method receiver syntax"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks the ZOM4125 drain of an unannotated binary-result local inside a method."

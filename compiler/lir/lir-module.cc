@@ -41,6 +41,11 @@ Statement Statement::compare(uint32_t destinationOrdinal, ComparisonOp op, Opera
   return Statement(StatementKind::Compare, destinationOrdinal, op, left, right);
 }
 
+Statement Statement::arithmetic(uint32_t destinationOrdinal, ArithmeticOp op, Operand left,
+                                Operand right) noexcept {
+  return Statement(StatementKind::Arithmetic, destinationOrdinal, op, left, right);
+}
+
 Statement Statement::takeAddress(uint32_t destinationOrdinal, uint32_t sourceOrdinal) noexcept {
   Operand source = Operand::localUse(sourceOrdinal);
   return Statement(StatementKind::TakeAddress, destinationOrdinal, ComparisonOp::Eq, source,

@@ -320,8 +320,21 @@ bool isAdmittedAggregateInitializer(const ast::Tree& tree, ast::NodeId initializ
   return true;
 }
 
-bool isAdmittedLocalInitializer(const ast::Tree& tree, ast::NodeId initializer) {
+// Structurally admits a local initializer. A primitive-binary initializer is
+// admitted only when its binding declarator carries an explicit type
+// annotation: an unannotated binary-result local cannot be typed by the
+// checker reference stage, so without the drain it reaches a checker
+// invariant instead of a user diagnostic. The annotated form is the admitted
+// lowering shape.
+bool isAdmittedLocalInitializer(const ast::Tree& tree, ast::NodeId declarator,
+                                ast::NodeId initializer) {
   if (!tree.contains(initializer)) return true;
+  if (tree.node(initializer).kind == ast::SyntaxKind::BinaryExpr &&
+      isAdmittedPrimitiveBinary(tree, initializer)) {
+    const ast::NodeId annotation(
+        tree.node(declarator).payload.words[ast::kVariableDeclaratorTyWord]);
+    return tree.contains(annotation);
+  }
   return isScalarLiteral(tree.node(initializer).kind) ||
          tree.node(initializer).kind == ast::SyntaxKind::IdentExpr ||
          isAdmittedDirectCall(tree, initializer) ||
@@ -559,7 +572,7 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
             tree.node(declaratorNode).payload.words[ast::kVariableDeclaratorPatternWord]);
         const ast::NodeId initializer(
             tree.node(declaratorNode).payload.words[ast::kVariableDeclaratorInitWord]);
-        if (!isAdmittedLocalInitializer(tree, initializer)) return false;
+        if (!isAdmittedLocalInitializer(tree, declaratorNode, initializer)) return false;
         if (!isAdmittedLoopStatement(tree, middleStmt)) return false;
         // Every loop-body write targets the declared local (checked by identifier
         // name; the target type and mutability are a checker decision).
@@ -599,7 +612,11 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
     ZC_IF_SOME(declarator, soleDeclarator) {
       const ast::NodeId soleInitializer(
           tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
-      if (tree.contains(soleInitializer) && isAdmittedPrimitiveBinary(tree, soleInitializer)) {
+      // An unannotated binary-result binding drains through the single-local
+      // gate below as ZOM4099; the sequential rail requires the annotation.
+      if (isAdmittedLocalInitializer(tree, declarator, soleInitializer) &&
+          tree.contains(soleInitializer) &&
+          tree.node(soleInitializer).kind == ast::SyntaxKind::BinaryExpr) {
         sequentialLocalShape = true;
       }
     }
@@ -621,19 +638,7 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
         const ast::NodeId initializer(
             tree.node(declaratorNode).payload.words[ast::kVariableDeclaratorInitWord]);
         if (!tree.contains(initializer)) return false;
-        // A scalar literal, an aggregate, an identifier reference, or a primitive
-        // binary operation (relational/arithmetic/bitwise) whose operands are each
-        // an identifier or scalar literal with at least one identifier. The binary
-        // form is admitted operator-agnostically; the checker decides which
-        // operators are supported (a logical `&&` / `||` has no primitive
-        // operation and stays rejected there). No call, borrow, or other
-        // initializer kind is admitted in this shape.
-        if (!isScalarLiteral(tree.node(initializer).kind) &&
-            tree.node(initializer).kind != ast::SyntaxKind::IdentExpr &&
-            !isAdmittedAggregateInitializer(tree, initializer) &&
-            !isAdmittedPrimitiveBinary(tree, initializer)) {
-          return false;
-        }
+        if (!isAdmittedLocalInitializer(tree, declaratorNode, initializer)) { return false; }
       }
       return true;
     }
@@ -665,7 +670,7 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
   const ast::NodeId initializer(
       tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
   if (!tree.contains(pattern) || tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
-      !isAdmittedLocalInitializer(tree, initializer)) {
+      !isAdmittedLocalInitializer(tree, declarator, initializer)) {
     return false;
   }
   ast::NodeId returnReference = returnValue;

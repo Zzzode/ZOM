@@ -176,6 +176,36 @@ ComparisonOp comparisonOp(mir::MirComparisonOperator op) noexcept {
   return ComparisonOp::Eq;
 }
 
+ArithmeticOp arithmeticOp(mir::MirArithmeticOperator op) noexcept {
+  switch (op) {
+    case mir::MirArithmeticOperator::Add:
+      return ArithmeticOp::Add;
+    case mir::MirArithmeticOperator::Sub:
+      return ArithmeticOp::Sub;
+    case mir::MirArithmeticOperator::Mul:
+      return ArithmeticOp::Mul;
+    case mir::MirArithmeticOperator::Div:
+      return ArithmeticOp::Div;
+    case mir::MirArithmeticOperator::Rem:
+      return ArithmeticOp::Rem;
+    case mir::MirArithmeticOperator::Pow:
+      return ArithmeticOp::Pow;
+    case mir::MirArithmeticOperator::Shl:
+      return ArithmeticOp::Shl;
+    case mir::MirArithmeticOperator::Shr:
+      return ArithmeticOp::Shr;
+    case mir::MirArithmeticOperator::UShr:
+      return ArithmeticOp::UShr;
+    case mir::MirArithmeticOperator::BitAnd:
+      return ArithmeticOp::BitAnd;
+    case mir::MirArithmeticOperator::BitOr:
+      return ArithmeticOp::BitOr;
+    case mir::MirArithmeticOperator::BitXor:
+      return ArithmeticOp::BitXor;
+  }
+  return ArithmeticOp::Add;
+}
+
 // Maps a MIR operand used in an expression position to the expected LIR
 // operand: a constant of the given carrier, or a bare local use.
 zc::Maybe<Operand> expectedOperand(const mir::MirOperand& operand, ValueType carrier) noexcept {
@@ -669,11 +699,47 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
               }
               break;
             }
-            case mir::MirRvalueKind::Arithmetic:
-              // A materialized arithmetic assignment has no LIR effect in the
-              // admitted single-function subset.
-              return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
-                           statementIndex);
+            case mir::MirRvalueKind::Arithmetic: {
+              if (actual.kind() != StatementKind::Arithmetic) {
+                return fault(TranslationFaultKind::OperatorMismatch, functionIndex, b + 1, b + 1,
+                             statementIndex);
+              }
+              const auto& arithmetic = assignment.value.arithmeticValue();
+              if (actual.arithmeticOp() != arithmeticOp(arithmetic.op)) {
+                return fault(TranslationFaultKind::OperatorMismatch, functionIndex, b + 1, b + 1,
+                             statementIndex);
+              }
+              // An arithmetic result shares the carrier of both operands. The
+              // carrier is resolved from the declared destination slot, not the
+              // statement's left operand, which may be a constant.
+              const ValueType* resultCarrier = lirSlotCarrier(lir, destinationOrdinal);
+              if (resultCarrier == nullptr || resultCarrier->kind() != ValueTypeKind::Integer ||
+                  resultCarrier->integerWidth() == IntegerBitWidth::Bit1) {
+                return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
+                             statementIndex);
+              }
+              auto resolveLeaf = [&](const mir::MirOperand& leaf) -> zc::Maybe<ValueType> {
+                if (leaf.kind() == mir::MirOperandKind::Constant) {
+                  return integerCarrier(leaf.constantValue().type, types);
+                }
+                return integerCarrier(leaf.place().resultType(), types);
+              };
+              auto leftCarrier = resolveLeaf(arithmetic.left);
+              auto rightCarrier = resolveLeaf(arithmetic.right);
+              if (leftCarrier == zc::none || rightCarrier == zc::none ||
+                  ZC_REQUIRE_NONNULL(leftCarrier) != *resultCarrier ||
+                  ZC_REQUIRE_NONNULL(rightCarrier) != *resultCarrier) {
+                return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
+                             statementIndex);
+              }
+              if (!sameConstant(actual.left(), arithmetic.left, ZC_REQUIRE_NONNULL(leftCarrier)) ||
+                  !sameConstant(actual.right(), arithmetic.right,
+                                ZC_REQUIRE_NONNULL(rightCarrier))) {
+                return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1,
+                             statementIndex);
+              }
+              break;
+            }
           }
           ++lirStatement;
           break;

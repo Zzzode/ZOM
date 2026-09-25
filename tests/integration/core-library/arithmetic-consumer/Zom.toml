@@ -1,0 +1,8 @@
+[package]
+name = "arithmetic_consumer"
+version = "0.1.0"
+edition = "2026"
+
+[[bin]]
+name = "arithmetic_consumer"
+path = "src/main.zom"

@@ -135,6 +135,29 @@ Module validConditionalModule() {
   return Module(zc::mv(functions));
 }
 
+// A well-formed one-block arithmetic module: one i32 parameter, an i32 result
+// local, and one arithmetic statement adding the parameter to an i32 constant,
+// followed by a return of the result.
+Module validArithmeticModule(ArithmeticOp op = ArithmeticOp::Add) {
+  zc::Vector<BasicBlock> blocks;
+  {
+    zc::Vector<Statement> statements;
+    statements.add(Statement::arithmetic(
+        /*destinationOrdinal=*/2, op, Operand::localUse(/*localOrdinal=*/1),
+        Operand::constant(constant(carrier(IntegerBitWidth::Bit32), 1))));
+    blocks.add(BasicBlock(blockId(1), zc::mv(statements), Terminator::returnLocal(2)));
+  }
+  zc::Vector<Local> parameters;
+  parameters.add(Local(1, carrier(IntegerBitWidth::Bit32)));
+  zc::Vector<Local> locals;
+  locals.add(Local(2, carrier(IntegerBitWidth::Bit32)));
+  zc::Vector<Function> functions;
+  functions.add(Function(tests::testDefinition(0), zc::heapString("zom.arithmetic"),
+                         carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(locals),
+                         zc::mv(blocks)));
+  return Module(zc::mv(functions));
+}
+
 // A well-formed shared-receiver call module: the caller folds its one-field
 // owner slot, takes its address into a pointer temporary, calls the pointer-
 // parameter callee with that address, and returns the result; the callee
@@ -188,6 +211,10 @@ ZC_TEST("LIR structural verifier accepts the admitted scalar, call, and diamond 
   }
   {
     Module module = validConditionalModule();
+    ZC_EXPECT(LirStructuralVerifier::verify(module) == zc::none);
+  }
+  {
+    Module module = validArithmeticModule();
     ZC_EXPECT(LirStructuralVerifier::verify(module) == zc::none);
   }
 }
@@ -646,6 +673,52 @@ ZC_TEST("LIR structural verifier rejects a compare whose operands disagree on ca
   zc::Vector<Function> functions;
   functions.add(Function(tests::testDefinition(0), zc::heapString("compare.carrier"),
                          carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(locals),
+                         zc::mv(blocks)));
+  Module module(zc::mv(functions));
+  auto finding = LirStructuralVerifier::verify(module);
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == LirVerificationFaultKind::CarrierMismatch);
+}
+
+ZC_TEST("LIR structural verifier rejects an arithmetic result whose operands disagree on carrier") {
+  zc::Vector<BasicBlock> blocks;
+  {
+    zc::Vector<Statement> statements;
+    statements.add(Statement::arithmetic(
+        2, ArithmeticOp::Add, Operand::constant(constant(carrier(IntegerBitWidth::Bit32), 1)),
+        Operand::constant(constant(carrier(IntegerBitWidth::Bit8), 2))));
+    blocks.add(BasicBlock(blockId(1), zc::mv(statements), Terminator::returnLocal(2)));
+  }
+  zc::Vector<Local> parameters;
+  parameters.add(Local(1, carrier(IntegerBitWidth::Bit32)));
+  zc::Vector<Local> locals;
+  locals.add(Local(2, carrier(IntegerBitWidth::Bit32)));
+  zc::Vector<Function> functions;
+  functions.add(Function(tests::testDefinition(0), zc::heapString("arithmetic.carrier"),
+                         carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(locals),
+                         zc::mv(blocks)));
+  Module module(zc::mv(functions));
+  auto finding = LirStructuralVerifier::verify(module);
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == LirVerificationFaultKind::CarrierMismatch);
+}
+
+ZC_TEST("LIR structural verifier rejects arithmetic into a one-bit destination") {
+  zc::Vector<BasicBlock> blocks;
+  {
+    zc::Vector<Statement> statements;
+    statements.add(Statement::arithmetic(
+        2, ArithmeticOp::Add, Operand::constant(constant(carrier(IntegerBitWidth::Bit1), 1)),
+        Operand::constant(constant(carrier(IntegerBitWidth::Bit1), 0))));
+    blocks.add(BasicBlock(blockId(1), zc::mv(statements), Terminator::returnLocal(2)));
+  }
+  zc::Vector<Local> parameters;
+  parameters.add(Local(1, carrier(IntegerBitWidth::Bit1)));
+  zc::Vector<Local> locals;
+  locals.add(Local(2, carrier(IntegerBitWidth::Bit1)));
+  zc::Vector<Function> functions;
+  functions.add(Function(tests::testDefinition(0), zc::heapString("arithmetic.bit1"),
+                         carrier(IntegerBitWidth::Bit1), zc::mv(parameters), zc::mv(locals),
                          zc::mv(blocks)));
   Module module(zc::mv(functions));
   auto finding = LirStructuralVerifier::verify(module);

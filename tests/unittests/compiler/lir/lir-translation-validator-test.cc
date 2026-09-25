@@ -243,6 +243,60 @@ TranslationFaultKind validateDiamond(const Module& module, TestSemanticTypeConte
   return ZC_REQUIRE_NONNULL(finding).fault;
 }
 
+// MIR one-block arithmetic return: parameter#1 i32, result#2 i32; block:
+// StorageLive(2); 2 = copy 1 Add const 1; return copy 2.
+mir::MirFunction arithmeticMir(identity::DefId owner, identity::SemanticTypeId i32,
+                               mir::MirArithmeticOperator op) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  zc::Maybe<mir::MirSourceScopeId> noParent;
+  scopes.add(mir::MirSourceScope{mirScope(1), zc::mv(noParent), span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(mir::MirLocalDeclaration{mirLocal(1), mir::MirLocalKind::Parameter, i32, mirScope(1),
+                                      span()});
+  locals.add(mir::MirLocalDeclaration{mirLocal(2), mir::MirLocalKind::FunctionResult, i32,
+                                      mirScope(1), span()});
+  zc::Vector<mir::MirStatement> statements;
+  statements.add(mir::MirStatement::storageLive(mirLocal(2), span()));
+  statements.add(mir::MirStatement::assign(
+      place(mirLocal(2), i32),
+      mir::MirRvalue::arithmetic(op, mir::MirOperand::copy(place(mirLocal(1), i32)),
+                                 mir::MirOperand::constant(i32, integerConstant(1)), i32),
+      mir::MirInitializationKind::Initialize, span()));
+  auto terminator =
+      mir::MirTerminator::returnValue(mir::MirOperand::copy(place(mirLocal(2), i32)), span());
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{mirBlock(1), mirScope(1), zc::mv(statements), zc::mv(terminator)});
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+// LIR corresponding to arithmeticMir: parameter#1 i32, result#2 i32, one
+// arithmetic statement returning local 2.
+Module arithmeticLir(identity::DefId owner, ArithmeticOp op, uint64_t rightBits = 1) {
+  zc::Vector<BasicBlock> blocks;
+  {
+    zc::Vector<Statement> statements;
+    statements.add(Statement::arithmetic(
+        /*destinationOrdinal=*/2, op, Operand::localUse(/*localOrdinal=*/1),
+        Operand::constant(i32Const(rightBits))));
+    blocks.add(BasicBlock(lirBlock(1), zc::mv(statements), Terminator::returnLocal(2)));
+  }
+  zc::Vector<Local> parameters;
+  parameters.add(Local(1, i32Carrier()));
+  zc::Vector<Local> locals;
+  locals.add(Local(2, i32Carrier()));
+  zc::Vector<Function> functions;
+  functions.add(Function(owner, zc::heapString("zom.arithmetic"), i32Carrier(), zc::mv(parameters),
+                         zc::mv(locals), zc::mv(blocks)));
+  return Module(zc::mv(functions));
+}
+
 ZC_TEST("Translation validator accepts the folded scalar and comparison diamond") {
   TestSemanticTypeContext types;
   const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
@@ -254,6 +308,57 @@ ZC_TEST("Translation validator accepts the folded scalar and comparison diamond"
   ZC_EXPECT(TranslationValidator::validate(
                 diamondMir(diamondOwner, i32, boolType, mir::MirComparisonOperator::Eq),
                 diamondLir(diamondOwner, DiamondMutation{}), types.semanticTypes()) == zc::none);
+  const auto arithmeticOwner = testDefinition(50);
+  ZC_EXPECT(TranslationValidator::validate(
+                arithmeticMir(arithmeticOwner, i32, mir::MirArithmeticOperator::Add),
+                arithmeticLir(arithmeticOwner, ArithmeticOp::Add),
+                types.semanticTypes()) == zc::none);
+}
+
+ZC_TEST("Translation validator rejects a wrong arithmetic operator") {
+  TestSemanticTypeContext types;
+  const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto owner = testDefinition(51);
+  auto finding = TranslationValidator::validate(
+      arithmeticMir(owner, i32, mir::MirArithmeticOperator::Add),
+      arithmeticLir(owner, ArithmeticOp::Sub), types.semanticTypes());
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == TranslationFaultKind::OperatorMismatch);
+}
+
+ZC_TEST("Translation validator rejects an arithmetic statement with a wrong constant") {
+  TestSemanticTypeContext types;
+  const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto owner = testDefinition(52);
+  auto finding = TranslationValidator::validate(
+      arithmeticMir(owner, i32, mir::MirArithmeticOperator::Add),
+      arithmeticLir(owner, ArithmeticOp::Add, /*rightBits=*/2), types.semanticTypes());
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == TranslationFaultKind::ConstantMismatch);
+}
+
+ZC_TEST("Translation validator rejects an arithmetic rvalue mapped to an assign statement") {
+  TestSemanticTypeContext types;
+  const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto owner = testDefinition(53);
+  zc::Vector<BasicBlock> blocks;
+  {
+    zc::Vector<Statement> statements;
+    statements.add(Statement::assign(2, Operand::localUse(1)));
+    blocks.add(BasicBlock(lirBlock(1), zc::mv(statements), Terminator::returnLocal(2)));
+  }
+  zc::Vector<Local> parameters;
+  parameters.add(Local(1, i32Carrier()));
+  zc::Vector<Local> locals;
+  locals.add(Local(2, i32Carrier()));
+  zc::Vector<Function> functions;
+  functions.add(Function(owner, zc::heapString("zom.arithmetic"), i32Carrier(), zc::mv(parameters),
+                         zc::mv(locals), zc::mv(blocks)));
+  Module module(zc::mv(functions));
+  auto finding = TranslationValidator::validate(
+      arithmeticMir(owner, i32, mir::MirArithmeticOperator::Add), module, types.semanticTypes());
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == TranslationFaultKind::OperatorMismatch);
 }
 
 ZC_TEST("Translation validator rejects a folded scalar with the wrong constant") {

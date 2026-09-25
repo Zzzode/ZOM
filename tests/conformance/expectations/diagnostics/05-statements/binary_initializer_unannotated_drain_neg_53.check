@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/binary_initializer_unannotated_drain_neg_53.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// An unannotated binary-result local cannot be typed at the checker reference
+// stage. Surface admission drains the definition as ZOM4099 instead of
+// reaching a checker invariant; the annotated binding form stays admitted.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK: 1 | fun f(x: i32) -> i32 { let z = x + 1; return z; }

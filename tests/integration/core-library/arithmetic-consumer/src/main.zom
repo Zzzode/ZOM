@@ -1,0 +1,5 @@
+fun entry() -> i32 {
+  let a: i32 = 40;
+  let z: i32 = a + 2;
+  return z;
+}

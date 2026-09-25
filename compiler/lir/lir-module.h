@@ -95,6 +95,29 @@ enum class ComparisonOp : uint8_t {
   Ge = 0x06,
 };
 
+/// \brief Closed integer arithmetic operator for a LIR arithmetic statement.
+///
+/// Mirrors the twelve MIR arithmetic operators. The result shares the carrier
+/// width of both operands. Signedness is not part of the LIR integer carrier;
+/// the division/remainder and right-shift operators use the signed carrier
+/// convention already employed by the compare rail, and `UShr` is the logical
+/// shift. `Pow` has no direct integer machine operation and is never emitted by
+/// the admitted lowering shapes.
+enum class ArithmeticOp : uint8_t {
+  Add = 0x01,
+  Sub = 0x02,
+  Mul = 0x03,
+  Div = 0x04,
+  Rem = 0x05,
+  Pow = 0x06,
+  Shl = 0x07,
+  Shr = 0x08,
+  UShr = 0x09,
+  BitAnd = 0x0a,
+  BitOr = 0x0b,
+  BitXor = 0x0c,
+};
+
 /// \brief A LIR operand: an integer constant or a use of a local slot.
 ///
 /// A `localUse` names a one-based local ordinal (a parameter or body local); the
@@ -130,6 +153,7 @@ enum class StatementKind : uint8_t {
   TakeAddress = 0x03,
   LoadField = 0x04,
   StoreField = 0x05,
+  Arithmetic = 0x06,
 };
 
 /// \brief One LIR statement: store an operand or a comparison into a local slot,
@@ -138,6 +162,8 @@ enum class StatementKind : uint8_t {
 ///
 /// `Assign` stores `value` into `destinationOrdinal`. `Compare` stores the
 /// one-bit result of `op` applied to `left` and `right` into the destination.
+/// `Arithmetic` stores the same-width integer result of `arithmeticOp` applied
+/// to `left` and `right` into the destination.
 /// `TakeAddress` stores the address of the whole `sourceOrdinal` slot into a
 /// pointer-typed destination. `LoadField` stores into the destination the value
 /// loaded `fieldOffsetBytes` bytes from the opaque pointer held in the base
@@ -150,6 +176,10 @@ public:
   ZC_NODISCARD static Statement assign(uint32_t destinationOrdinal, Operand value) noexcept;
   ZC_NODISCARD static Statement compare(uint32_t destinationOrdinal, ComparisonOp op, Operand left,
                                         Operand right) noexcept;
+  /// \brief Stores the same-width integer result of an arithmetic operation
+  /// applied to two operands into a destination slot.
+  ZC_NODISCARD static Statement arithmetic(uint32_t destinationOrdinal, ArithmeticOp op,
+                                           Operand left, Operand right) noexcept;
   /// \brief Stores the address of a whole source local slot into a pointer
   /// destination slot (the receiver borrow of a caller owner local). Only valid
   /// when the destination carries an opaque pointer and the source is a
@@ -181,6 +211,7 @@ public:
   ZC_NODISCARD const Operand& storedValue() const noexcept { return rightValue; }
   ZC_NODISCARD uint32_t fieldOffsetBytes() const noexcept { return fieldOffsetValue; }
   ZC_NODISCARD ComparisonOp comparisonOp() const noexcept { return opValue; }
+  ZC_NODISCARD ArithmeticOp arithmeticOp() const noexcept { return arithmeticOpValue; }
   ZC_NODISCARD const Operand& left() const noexcept { return leftValue; }
   ZC_NODISCARD const Operand& right() const noexcept { return rightValue; }
 
@@ -190,13 +221,24 @@ private:
       : kindValue(kind),
         destinationValue(destinationOrdinal),
         opValue(op),
+        arithmeticOpValue(ArithmeticOp::Add),
         leftValue(left),
         rightValue(right),
         fieldOffsetValue(fieldOffsetBytes) {}
 
+  Statement(StatementKind kind, uint32_t destinationOrdinal, ArithmeticOp op, Operand left,
+            Operand right) noexcept
+      : kindValue(kind),
+        destinationValue(destinationOrdinal),
+        opValue(ComparisonOp::Eq),
+        arithmeticOpValue(op),
+        leftValue(left),
+        rightValue(right) {}
+
   StatementKind kindValue;
   uint32_t destinationValue;
   ComparisonOp opValue;
+  ArithmeticOp arithmeticOpValue;
   Operand leftValue;
   Operand rightValue;
   uint32_t fieldOffsetValue = 0;

@@ -1,0 +1,4 @@
+// Object-emission fail-closed fixture: exponentiation has no integer machine
+// operation, so the arithmetic MIR -> LIR lowerer rejects the Pow operator and
+// `zomc compile --emit=binary` must not emit an object.
+fun entry(a: i32, b: i32) -> i32 { let z: i32 = a ** b; return z; }

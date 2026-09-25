@@ -138,6 +138,39 @@ ComparisonOp lirComparisonOpFor(mir::MirComparisonOperator op) noexcept {
   return ComparisonOp::Eq;
 }
 
+/// \brief Maps a MIR arithmetic operator to its LIR arithmetic operator.
+/// \return The LIR operator, or none for exponentiation, which has no integer
+/// machine operation and stays outside the admitted lowering shapes.
+zc::Maybe<ArithmeticOp> lirArithmeticOpFor(mir::MirArithmeticOperator op) noexcept {
+  switch (op) {
+    case mir::MirArithmeticOperator::Add:
+      return ArithmeticOp::Add;
+    case mir::MirArithmeticOperator::Sub:
+      return ArithmeticOp::Sub;
+    case mir::MirArithmeticOperator::Mul:
+      return ArithmeticOp::Mul;
+    case mir::MirArithmeticOperator::Div:
+      return ArithmeticOp::Div;
+    case mir::MirArithmeticOperator::Rem:
+      return ArithmeticOp::Rem;
+    case mir::MirArithmeticOperator::Pow:
+      return zc::none;
+    case mir::MirArithmeticOperator::Shl:
+      return ArithmeticOp::Shl;
+    case mir::MirArithmeticOperator::Shr:
+      return ArithmeticOp::Shr;
+    case mir::MirArithmeticOperator::UShr:
+      return ArithmeticOp::UShr;
+    case mir::MirArithmeticOperator::BitAnd:
+      return ArithmeticOp::BitAnd;
+    case mir::MirArithmeticOperator::BitOr:
+      return ArithmeticOp::BitOr;
+    case mir::MirArithmeticOperator::BitXor:
+      return ArithmeticOp::BitXor;
+  }
+  return zc::none;
+}
+
 /// \brief Lowers a MIR operand (integer constant or parameter place-use) to a
 /// LIR operand of the given integer carrier.
 /// \return The operand, or none for a non-integer constant or a projected place.
@@ -863,6 +896,140 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
   zc::Vector<Function> functions;
   functions.add(Function(function.owner, zc::heapString("zom.conditional_cmp"), resultCarrierValue,
                          zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  return Module(zc::mv(functions));
+}
+
+zc::Maybe<Module> MirToLirLowering::lowerArithmeticReturn(
+    const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
+  // Admit only the verified one-block arithmetic shape: a leading run of
+  // integer parameter locals followed by one or more body locals, each brought
+  // to life by StorageLive plus an initializing Assign of a Use or Arithmetic
+  // rvalue, and a place-copy return of the last local. Every carrier is one
+  // equal non-one-bit integer width.
+  if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
+      function.blocks.size() != 1 || function.locals.size() < 1) {
+    return zc::none;
+  }
+
+  size_t parameterCount = 0;
+  while (parameterCount < function.locals.size() &&
+         function.locals[parameterCount].kind == mir::MirLocalKind::Parameter) {
+    ++parameterCount;
+  }
+  const size_t bodyLocalCount = function.locals.size() - parameterCount;
+  if (bodyLocalCount == 0) { return zc::none; }
+  for (size_t i = parameterCount; i < function.locals.size(); ++i) {
+    const auto kind = function.locals[i].kind;
+    if (kind != mir::MirLocalKind::UserLocal && kind != mir::MirLocalKind::Temporary &&
+        kind != mir::MirLocalKind::FunctionResult) {
+      return zc::none;
+    }
+  }
+
+  auto resultCarrier = integerCarrierFor(function.resultType, semanticTypes);
+  if (resultCarrier == zc::none) { return zc::none; }
+  const auto resultCarrierValue = ZC_REQUIRE_NONNULL(resultCarrier);
+  if (resultCarrierValue.kind() != ValueTypeKind::Integer ||
+      resultCarrierValue.integerWidth() == IntegerBitWidth::Bit1) {
+    return zc::none;
+  }
+  for (const auto& local : function.locals) {
+    auto carrier = integerCarrierFor(local.type, semanticTypes);
+    if (carrier == zc::none || ZC_REQUIRE_NONNULL(carrier) != resultCarrierValue) {
+      return zc::none;
+    }
+  }
+
+  const auto& block = function.blocks[0];
+  if (block.statements.size() != bodyLocalCount * 2) { return zc::none; }
+
+  auto leafOperand = [&](const mir::MirOperand& operand) -> zc::Maybe<Operand> {
+    if (operand.kind() == mir::MirOperandKind::Constant) {
+      return lirOperandFor(operand, resultCarrierValue);
+    }
+    if (operand.place().projections().size() != 0) { return zc::none; }
+    const uint32_t ordinal = operand.place().local().ordinal();
+    bool declared = false;
+    for (const auto& local : function.locals) {
+      if (local.id.ordinal() == ordinal) {
+        declared = true;
+        break;
+      }
+    }
+    if (!declared) { return zc::none; }
+    return Operand::localUse(ordinal);
+  };
+
+  zc::Vector<Statement> statements;
+  for (size_t j = 0; j < bodyLocalCount; ++j) {
+    const auto& localDecl = function.locals[parameterCount + j];
+    const auto& liveStatement = block.statements[2 * j];
+    const auto& assignStatement = block.statements[2 * j + 1];
+    if (liveStatement.kind() != mir::MirStatementKind::StorageLive ||
+        liveStatement.storageLocal() != localDecl.id ||
+        assignStatement.kind() != mir::MirStatementKind::Assign) {
+      return zc::none;
+    }
+    const auto& assignment = assignStatement.assignmentValue();
+    if (assignment.destination.local() != localDecl.id ||
+        assignment.destination.projections().size() != 0 ||
+        assignment.initialization != mir::MirInitializationKind::Initialize) {
+      return zc::none;
+    }
+    const uint32_t destinationOrdinal = localDecl.id.ordinal();
+    if (assignment.value.kind() == mir::MirRvalueKind::Use) {
+      auto lowered = leafOperand(assignment.value.useValue().operand);
+      if (lowered == zc::none) { return zc::none; }
+      statements.add(Statement::assign(destinationOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+    } else if (assignment.value.kind() == mir::MirRvalueKind::Arithmetic) {
+      const auto& arithmetic = assignment.value.arithmeticValue();
+      auto op = lirArithmeticOpFor(arithmetic.op);
+      if (op == zc::none) { return zc::none; }
+      if (arithmetic.resultType != localDecl.type) { return zc::none; }
+      auto left = leafOperand(arithmetic.left);
+      auto right = leafOperand(arithmetic.right);
+      if (left == zc::none || right == zc::none) { return zc::none; }
+      statements.add(Statement::arithmetic(destinationOrdinal, ZC_REQUIRE_NONNULL(op),
+                                           ZC_REQUIRE_NONNULL(left), ZC_REQUIRE_NONNULL(right)));
+    } else {
+      return zc::none;
+    }
+  }
+
+  if (block.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }
+  const auto& returnValue = block.terminator.returnValue().value;
+  const auto& lastLocalDecl = function.locals[function.locals.size() - 1];
+  if (returnValue == zc::none) { return zc::none; }
+  bool returnsLastLocal = false;
+  ZC_IF_SOME(value, returnValue) {
+    returnsLastLocal = value.kind() != mir::MirOperandKind::Constant &&
+                       value.place().local() == lastLocalDecl.id &&
+                       value.place().projections().size() == 0;
+  }
+  if (!returnsLastLocal) { return zc::none; }
+
+  auto entryId = LirBlockId::fromOrdinal(1);
+  if (entryId == zc::none) { return zc::none; }
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(statements),
+                        Terminator::returnLocal(lastLocalDecl.id.ordinal())));
+
+  zc::Vector<Local> parameters;
+  for (size_t i = 0; i < parameterCount; ++i) {
+    parameters.add(Local(function.locals[i].id.ordinal(), resultCarrierValue));
+  }
+  zc::Vector<Local> locals;
+  for (size_t i = parameterCount; i < function.locals.size(); ++i) {
+    locals.add(Local(function.locals[i].id.ordinal(), resultCarrierValue));
+  }
+
+  // A parameter-free arithmetic body folds to the reserved no-argument
+  // `zom.module_init` entry the runtime `_start` calls; a parameterized body
+  // keeps an index-independent reserved symbol and stays object-only.
+  zc::String symbol = zc::heapString(parameterCount == 0 ? "zom.module_init" : "zom.arithmetic");
+  zc::Vector<Function> functions;
+  functions.add(Function(function.owner, zc::mv(symbol), resultCarrierValue, zc::mv(parameters),
+                         zc::mv(locals), zc::mv(blocks)));
   return Module(zc::mv(functions));
 }
 
