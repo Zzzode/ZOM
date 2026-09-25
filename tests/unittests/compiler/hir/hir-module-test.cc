@@ -2110,6 +2110,79 @@ ZC_TEST("HIR pipeline lowers a shared-receiver method conditional return") {
   }
 }
 
+ZC_TEST("HIR pipeline lowers a shared-receiver method self-call return") {
+  // `fun pick(this) -> i32 { return this.base(); }` forwards the implicit
+  // receiver parameter to a zero-argument shared-receiver method. The HIR
+  // tail is a receiver call whose receiver slot is unset (the header
+  // parameter is forwarded directly); Built MIR declares the receiver
+  // parameter at ordinal 1 and one result Temporary at ordinal 2, storages
+  // the result live in the entry block, then calls base with the receiver
+  // local as its sole argument and returns the result.
+  HirPipelineFixture fixture(
+      "struct Cell { value: i32, fun base(this) -> i32 { return 42; },"
+      " fun pick(this) -> i32 { return this.base(); } }\n"
+      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.pick(); }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 3);
+  ZC_REQUIRE(module.receiverCalls().size() == 2);
+
+  zc::Maybe<const HirFunctionDeclaration&> method;
+  for (const auto& function : module.functions()) {
+    if (function.receiver != zc::none && function.parameters.size() == 0) {
+      // Both methods carry a receiver and no ordinary parameters; distinguish
+      // the forwarder by the self-call pool record.
+      for (const auto& call : module.receiverCalls()) {
+        if (call.receiver == HirNodeId() && call.resultType == function.resultType) {
+          method = function;
+        }
+      }
+    }
+  }
+  ZC_REQUIRE(method != zc::none);
+  const auto& methodDecl = ZC_ASSERT_NONNULL(method);
+
+  zc::Maybe<const HirReceiverCallExpression&> selfCall;
+  for (const auto& call : module.receiverCalls()) {
+    if (call.receiver == HirNodeId()) selfCall = call;
+  }
+  ZC_REQUIRE(selfCall != zc::none);
+  const auto& call = ZC_ASSERT_NONNULL(selfCall);
+  ZC_EXPECT(call.receiverMode == checker::checked::ReceiverMode::Shared);
+  ZC_REQUIRE(call.receiverAdjustments.size() == 1);
+  ZC_EXPECT(call.receiverAdjustments[0] ==
+            checker::checked::ReceiverAdjustmentStep::ReborrowShared);
+  ZC_EXPECT(call.arguments.size() == 0);
+  // Four-node stride: function, body, return, self call.
+  ZC_EXPECT(call.node.ordinal() == methodDecl.node.ordinal() + 3);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(!fixture.compilerSession().hasDiagnosticErrors());
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> methodFunction;
+  for (const auto& function : builtMir[0].builtMir().functions()) {
+    if (function.owner == methodDecl.definition) methodFunction = function;
+  }
+  ZC_REQUIRE(methodFunction != zc::none);
+  ZC_IF_SOME(function, methodFunction) {
+    ZC_EXPECT(function.sourceDefinitionKind == identity::DefinitionKind::Method);
+    ZC_REQUIRE(function.locals.size() == 2);
+    ZC_EXPECT(function.locals[0].kind == mir::MirLocalKind::Parameter);
+    ZC_EXPECT(function.locals[0].id == mir::MirLocalId::fromOrdinal(1));
+    ZC_EXPECT(function.locals[1].kind == mir::MirLocalKind::Temporary);
+    ZC_EXPECT(function.locals[1].id == mir::MirLocalId::fromOrdinal(2));
+    ZC_REQUIRE(function.blocks.size() == 2);
+    ZC_REQUIRE(function.blocks[0].statements.size() == 1);
+    ZC_EXPECT(function.blocks[0].statements[0].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(function.blocks[0].statements[0].storageLocal() == function.locals[1].id);
+    ZC_EXPECT(function.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call);
+    const auto& terminator = function.blocks[0].terminator.callValue();
+    ZC_EXPECT(terminator.arguments.size() == 1);
+    ZC_EXPECT(terminator.arguments[0].place().local() == function.locals[0].id);
+    ZC_EXPECT(terminator.destination.local() == function.locals[1].id);
+    ZC_EXPECT(function.blocks[1].terminator.kind() == mir::MirTerminatorKind::Return);
+  }
+}
+
 ZC_TEST("HIR pipeline drains a mutating-receiver method conditional as ZOM4099") {
   // An if/else conditional in a mutating-receiver method is well-formed source
   // the lowering does not emit; the owning definition drains as ZOM4099.

@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/inherent_method_receiver_self_call_neg_19.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A self-call that forwards `this` to a method requiring an explicit argument
+// has no lowering. The checker must drain the forwarding method per
+// definition as ZOM4125, never as an internal compiler error.
+
+// CHECK-LITERAL: Error [ZOM4125]: method call `pick` is not supported yet
+// CHECK: 7 |     return this.base(7);

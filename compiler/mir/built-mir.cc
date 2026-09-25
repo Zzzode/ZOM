@@ -4815,6 +4815,89 @@ bool validReceiverCallReturnFunction(
   return false;
 }
 
+/// \brief Validates the shared-receiver self-call shape
+/// `fun m(this) -> T { return this.n(); }`. The receiver is the leading
+/// Parameter local and is forwarded directly as the call's sole receiver
+/// argument; no BorrowCreation temporary exists. One Temporary result local is
+/// storage-live in the entry block, the call targets block 2, which returns it.
+bool validMethodReceiverSelfCallReturnFunction(const MirFunction& function,
+                                               const hir::HirFunctionDeclaration& declaration,
+                                               const hir::HirBlockStatement& sourceBlock,
+                                               const hir::HirReturnStatement& sourceReturn,
+                                               const hir::HirReceiverCallExpression& call,
+                                               checker::marker::MarkerProofEngine& proofs,
+                                               identity::DefId copy, identity::ModuleId module,
+                                               const checker::CheckerIdentityAuthority& identities,
+                                               const type::SemanticTypeStore& semanticTypes) {
+  (void)module;
+  (void)identities;
+  (void)semanticTypes;
+  if (declaration.receiver == zc::none) { return false; }
+  const auto& headerReceiver = ZC_ASSERT_NONNULL(declaration.receiver);
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Method ||
+      function.resultType != declaration.resultType || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 2 || function.blocks.size() != 2 ||
+      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 1 ||
+      sourceBlock.statements[0] != sourceReturn.node || sourceReturn.value != call.node ||
+      call.receiver != hir::HirNodeId() ||
+      call.receiverMode != checker::checked::ReceiverMode::Shared ||
+      call.receiverAdjustments.size() != 1 ||
+      call.receiverAdjustments[0] != checker::checked::ReceiverAdjustmentStep::ReborrowShared ||
+      call.arguments.size() != 0 || call.resultType != declaration.resultType ||
+      call.receiverType != headerReceiver.type || call.receiverSourceType != headerReceiver.type) {
+    return false;
+  }
+  const auto& scope = function.sourceScopes[0];
+  const auto& receiver = function.locals[0];
+  const auto& result = function.locals[1];
+  const auto& entry = function.blocks[0];
+  const auto& continuation = function.blocks[1];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || receiver.id != localId(1) ||
+      receiver.kind != MirLocalKind::Parameter || receiver.type != headerReceiver.type ||
+      receiver.sourceScope != scope.id ||
+      !sameSpan(receiver.sourceSpan, headerReceiver.sourceSpan) || result.id != localId(2) ||
+      result.kind != MirLocalKind::Temporary || result.type != call.resultType ||
+      result.sourceScope != scope.id || !sameSpan(result.sourceSpan, call.sourceSpan) ||
+      entry.id != blockId(1) || entry.sourceScope != scope.id || entry.statements.size() != 1 ||
+      entry.statements[0].kind() != MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != result.id ||
+      !sameSpan(entry.statements[0].sourceSpan(), call.sourceSpan) ||
+      entry.terminator.kind() != MirTerminatorKind::Call || continuation.id != blockId(2) ||
+      continuation.sourceScope != scope.id || continuation.statements.size() != 0 ||
+      continuation.terminator.kind() != MirTerminatorKind::Return ||
+      continuation.terminator.returnValue().value == zc::none ||
+      !sameSpan(entry.terminator.sourceSpan(), call.sourceSpan) ||
+      !sameSpan(continuation.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+    return false;
+  }
+  const auto& terminator = entry.terminator.callValue();
+  auto activatedReceiver = terminator.effect.activatedMutableReceiver();
+  if (terminator.callee != call.callee || terminator.arguments.size() != 1 ||
+      terminator.destination.local() != result.id ||
+      terminator.destination.rootType() != result.type ||
+      terminator.destination.resultType() != result.type ||
+      terminator.destination.projections().size() != 0 ||
+      terminator.effect.kind() != MirCallEffectKind::NoActivation ||
+      activatedReceiver != zc::none || terminator.normalTarget != continuation.id ||
+      terminator.unwindTarget != zc::none ||
+      !matchesPlaceUse(terminator.arguments[0], proofs, copy, receiver.type)) {
+    return false;
+  }
+  const auto& receiverOperand = terminator.arguments[0].place();
+  if (receiverOperand.local() != receiver.id || receiverOperand.rootType() != receiver.type ||
+      receiverOperand.resultType() != receiver.type || receiverOperand.projections().size() != 0) {
+    return false;
+  }
+  ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
+    return matchesPlaceUse(value, proofs, copy, result.type) &&
+           value.place().local() == result.id && value.place().rootType() == result.type &&
+           value.place().resultType() == result.type && value.place().projections().size() == 0;
+  }
+  return false;
+}
+
 bool validDirectCallReturnFunction(const MirFunction& function,
                                    const hir::HirFunctionDeclaration& declaration,
                                    const hir::HirBlockStatement& sourceBlock,
@@ -5278,6 +5361,14 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
   // (valueNodes - binaryBindings - 1) so the balance holds for any N; it is zero
   // for the former two-local literal or aggregate source and can be negative when
   // binary operands are earlier locals.
+  // A shared-receiver self-call (`return this.method();`) owns one value node
+  // (the receiver-call record) but no aggregate to pair against its function,
+  // unlike the owner-local receiver call whose aggregate entry balances the
+  // equation. Each header-forwarded self-call therefore adds one RHS term.
+  int64_t receiverSelfCallValueNodes = 0;
+  for (const auto& call : hirModule.receiverCalls()) {
+    if (call.receiver == hir::HirNodeId()) ++receiverSelfCallValueNodes;
+  }
   int64_t sequentialValueNodeExcess = 0;
   for (const auto& sequentialFunction : hirModule.functions()) {
     auto sequentialBlock = blockFor(hirModule, sequentialFunction.body);
@@ -5347,12 +5438,12 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                            hirModule.primitiveBinaryOperations().size() +
                            hirModule.loops().size()) +
               sequentialValueNodeExcess !=
-          static_cast<int64_t>(hirModule.expressions().size() + hirModule.calls().size() +
-                               hirModule.aggregates().size() + uninitializedLocalReturnCount +
-                               parameterReturnCount + parameterReborrowCount +
-                               hirModule.parameterFieldProjections().size() -
-                               localAliasReborrowCount - hirModule.localWrites().size() -
-                               hirModule.parameterFieldWrites().size()) ||
+          static_cast<int64_t>(
+              hirModule.expressions().size() + hirModule.calls().size() +
+              hirModule.aggregates().size() + uninitializedLocalReturnCount + parameterReturnCount +
+              parameterReborrowCount + hirModule.parameterFieldProjections().size() +
+              receiverSelfCallValueNodes - localAliasReborrowCount -
+              hirModule.localWrites().size() - hirModule.parameterFieldWrites().size()) ||
       hirModule.functions().size() != hirModule.blocks().size() ||
       hirModule.functions().size() != hirModule.returns().size()) {
     return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
@@ -9078,6 +9169,52 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
           recomputedFunctions.add(zc::mv(value));
         }
         continue;
+      }
+      if (sourceBlock != zc::none && ZC_ASSERT_NONNULL(sourceBlock).statements.size() == 1 &&
+          sourceDeclaration.receiver != zc::none) {
+        ZC_IF_SOME(block, sourceBlock) {
+          auto sourceReturn = returnFor(hirModule, block.statements[0]);
+          ZC_IF_SOME(returnStatement, sourceReturn) {
+            auto selfCall = receiverCallFor(hirModule, returnStatement.value);
+            if (selfCall != zc::none && ZC_ASSERT_NONNULL(selfCall).receiver == hir::HirNodeId()) {
+              ZC_IF_SOME(call, selfCall) {
+                if (!validMethodReceiverSelfCallReturnFunction(function, sourceDeclaration, block,
+                                                               returnStatement, call, proofs, copy,
+                                                               module, identities, semanticTypes)) {
+                  return rejectMir<VerifiedBuiltMir>(
+                      ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::InvalidFact,
+                      module, function.owner, identities, static_cast<uint32_t>(index + 1));
+                }
+                auto owner = identities.definition(function.owner);
+                auto record = encodeFunction(function, module, identities, semanticTypes);
+                if (owner == zc::none || record == zc::none) {
+                  return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
+                                                     ir::IrFailureKind::CanonicalCodecMismatch,
+                                                     module, function.owner, identities,
+                                                     static_cast<uint32_t>(index + 1));
+                }
+                zc::Array<uint8_t> ownerBytes;
+                ZC_IF_SOME(value, owner) { ownerBytes = value.key().encode(); }
+                if (index != 0 && !lessBytes(previousOwner.asPtr(), ownerBytes.asPtr())) {
+                  return rejectMir<VerifiedBuiltMir>(
+                      ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::InvalidFact,
+                      module, function.owner, identities, static_cast<uint32_t>(index + 1));
+                }
+                previousOwner = zc::mv(ownerBytes);
+                ZC_IF_SOME(value, record) {
+                  if (value.asPtr() != candidate.canonicalFunctions[index].asPtr()) {
+                    return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
+                                                       ir::IrFailureKind::CanonicalCodecMismatch,
+                                                       module, function.owner, identities,
+                                                       static_cast<uint32_t>(index + 1));
+                  }
+                  recomputedFunctions.add(zc::mv(value));
+                }
+                continue;
+              }
+            }
+          }
+        }
       }
       if (sourceBlock != zc::none && ZC_ASSERT_NONNULL(sourceBlock).statements.size() == 2) {
         ZC_IF_SOME(block, sourceBlock) {

@@ -265,6 +265,19 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerReceiverConditionalCallModule(
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
+
+  /// \brief Lowers one shared-receiver self-call module to LIR.
+  ///
+  /// Admits a three-function chain: a module caller with one aggregate-
+  /// initialized owner local, a shared borrow temporary, and a call result
+  /// temporary (folding to `zom.module_init`); a forwarding Method whose leading
+  /// receiver parameter is passed straight through to a zero-argument method
+  /// (`return this.method();`, lowering to `zom.forwarder` with one call); and
+  /// the leaf Method returning a scalar constant (`zom.leaf`). The caller calls
+  /// index 1 and the forwarder calls index 2. Every other shape returns none.
+  ZC_NODISCARD static zc::Maybe<Module> lowerReceiverSelfCallModule(
+      const mir::MirFunction& caller, const mir::MirFunction& forwarder,
+      const mir::MirFunction& leaf, const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::lir

@@ -32,5 +32,12 @@ void lowerDirectCallInitializerFunction(PendingFunctionDeclaration&& function, H
 /// the return value.
 void lowerReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one shared-receiver self-call body through the recursive
+/// driver: `return this.method();`. Node stride: function, body, return, self
+/// call. The implicit receiver is a header parameter forwarded directly, so the
+/// receiver allocates no body node and the self-call record's receiver slot is
+/// unset.
+void lowerReceiverSelfCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

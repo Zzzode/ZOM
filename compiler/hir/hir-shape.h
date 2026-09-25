@@ -95,6 +95,10 @@ struct FunctionReturnShape final {
   // Single-statement inherent-method shape: `return this.<field>;` read through
   // the implicit shared receiver parameter with one field projection.
   bool returnsReceiverField = false;
+  // Single-statement inherent-method shape: `return this.<method>();` forwarding
+  // the implicit shared receiver parameter to a zero-argument method of the same
+  // owner. The call node is `value`; the callee member is derived from it.
+  bool returnsReceiverSelfCall = false;
   // Two-statement mutating-method shape: `this.<field> = <scalar literal>;`
   // followed by `return this.<field>;` through the mutable receiver. The write
   // statement, its assignment, and the written literal nodes are carried for

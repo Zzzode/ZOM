@@ -1,0 +1,17 @@
+// A shared-receiver method forwards the implicit receiver to a zero-argument
+// shared-receiver method of the same owner. The forwarding method lowers to a
+// middle function that passes its own receiver pointer to the leaf, which
+// returns a literal; the program exits 42.
+struct Cell {
+  value: i32,
+  fun base(this) -> i32 {
+    return 42;
+  }
+  fun pick(this) -> i32 {
+    return this.base();
+  }
+}
+fun entry() -> i32 {
+  let cell = Cell { value: 0 };
+  return cell.pick();
+}

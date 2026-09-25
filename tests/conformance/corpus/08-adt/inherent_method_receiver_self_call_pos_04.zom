@@ -1,0 +1,13 @@
+struct Cell {
+  value: i32,
+  fun base(this) -> i32 {
+    return 42;
+  }
+  fun pick(this) -> i32 {
+    return this.base();
+  }
+}
+fun entry() -> i32 {
+  let cell = Cell { value: 0 };
+  return cell.pick();
+}

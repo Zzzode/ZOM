@@ -1,0 +1,5 @@
+section: "08-adt inherent method receiver self call with arguments"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits a self-call that passes an explicit argument; the checker drains the forwarding method with ZOM4125 because that call shape has no lowering."

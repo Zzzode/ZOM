@@ -905,38 +905,24 @@ zc::Maybe<OwnerLocalFieldShape> ownerLocalFieldShape(
   ZC_UNREACHABLE
 }
 
-/// \brief Resolved field access through the implicit `this` receiver of an
-/// inherent method: the receiver parameter root, the owner nominal type, and
-/// the projected field. `receiverMutable` records the callable receiver mode;
-/// a place derived from a shared receiver is never a mutable place.
-struct ThisReceiverFieldShape final {
+/// \brief The implicit receiver of the inherent method enclosing a `this`
+/// expression: the receiver parameter, the method and owner definitions, the
+/// owner nominal type, the receiver reference type, and the receiver mode.
+struct EnclosingMethodReceiver final {
   identity::CallableParameterId receiverParameter;
+  identity::DefId methodDefinition;
+  identity::DefId ownerDefinition;
   identity::SemanticTypeId receiverType;
   identity::SemanticTypeId receiverReferenceType;
-  identity::DefId field;
-  identity::SemanticTypeId fieldType;
   bool receiverMutable;
 };
 
-/// \brief Resolves `this.field` inside an inherent method body to the
-/// receiver parameter and field definition. Both a shared const receiver and a
-/// mutating mutable receiver are accepted; the receiver source type is read from
-/// the typed `this` expression and its mutability is returned to the caller.
-zc::Maybe<ThisReceiverFieldShape> thisReceiverFieldShape(const BodyCheckingInput& input,
-                                                         ast::NodeId node) {
+/// \brief Resolves the implicit receiver of the inherent method enclosing a
+/// `this` expression. Both a shared const receiver and a mutating mutable
+/// receiver are accepted; the caller applies the slice-specific mode gate.
+zc::Maybe<EnclosingMethodReceiver> enclosingMethodReceiver(const BodyCheckingInput& input,
+                                                           ast::NodeId object) {
   const auto& tree = input.boundModule.tree();
-  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::MemberExpression) {
-    return zc::none;
-  }
-  const auto& member = tree.node(node);
-  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
-      ast::MemberAccessKind::Dot) {
-    return zc::none;
-  }
-  const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
-  if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::ThisExpr) {
-    return zc::none;
-  }
   zc::Maybe<identity::CallableParameterId> receiverParameter;
   for (const auto& binding : input.boundModule.bindings().thisBindings()) {
     if (binding.expression != object) continue;
@@ -1022,18 +1008,57 @@ zc::Maybe<ThisReceiverFieldShape> thisReceiverFieldShape(const BodyCheckingInput
        type::semantic::Mutability::Mutable) != receiverMutable) {
     return zc::none;
   }
-  const auto ownerType = referenceData.get<type::semantic::ReferenceTypeData>().referent;
+  return EnclosingMethodReceiver{
+      ZC_ASSERT_NONNULL(receiverParameter),     ZC_ASSERT_NONNULL(methodDefinition),
+      ZC_ASSERT_NONNULL(ownerDefinition),       ZC_ASSERT_NONNULL(receiverType),
+      ZC_ASSERT_NONNULL(receiverReferenceType), receiverMutable};
+}
+
+/// \brief Resolved field access through the implicit `this` receiver of an
+/// inherent method: the receiver parameter root, the owner nominal type, and
+/// the projected field. `receiverMutable` records the callable receiver mode;
+/// a place derived from a shared receiver is never a mutable place.
+struct ThisReceiverFieldShape final {
+  identity::CallableParameterId receiverParameter;
+  identity::SemanticTypeId receiverType;
+  identity::SemanticTypeId receiverReferenceType;
+  identity::DefId field;
+  identity::SemanticTypeId fieldType;
+  bool receiverMutable;
+};
+
+/// \brief Resolves `this.field` inside an inherent method body to the
+/// receiver parameter and field definition. Both a shared const receiver and a
+/// mutating mutable receiver are accepted; the receiver source type is read from
+/// the typed `this` expression and its mutability is returned to the caller.
+zc::Maybe<ThisReceiverFieldShape> thisReceiverFieldShape(const BodyCheckingInput& input,
+                                                         ast::NodeId node) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::MemberExpression) {
+    return zc::none;
+  }
+  const auto& member = tree.node(node);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return zc::none;
+  }
+  const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::ThisExpr) {
+    return zc::none;
+  }
+  auto receiver = enclosingMethodReceiver(input, object);
+  if (receiver == zc::none) { return zc::none; }
 
   auto field = nominalFieldShape(
-      input, ZC_ASSERT_NONNULL(ownerDefinition),
+      input, ZC_ASSERT_NONNULL(receiver).ownerDefinition,
       tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord])));
   if (field == zc::none) { return zc::none; }
-  return ThisReceiverFieldShape{ZC_ASSERT_NONNULL(receiverParameter),
-                                ownerType,
-                                ZC_ASSERT_NONNULL(receiverReferenceType),
+  return ThisReceiverFieldShape{ZC_ASSERT_NONNULL(receiver).receiverParameter,
+                                ZC_ASSERT_NONNULL(receiver).receiverType,
+                                ZC_ASSERT_NONNULL(receiver).receiverReferenceType,
                                 ZC_ASSERT_NONNULL(field).definition,
                                 ZC_ASSERT_NONNULL(field).type,
-                                receiverMutable};
+                                ZC_ASSERT_NONNULL(receiver).receiverMutable};
 }
 
 struct StructLiteralShape final {
@@ -2268,6 +2293,126 @@ zc::Maybe<ConcreteMethodCallShape> concreteMethodCallShape(
   ZC_UNREACHABLE
 }
 
+/// \brief Resolves a zero-argument inherent method self-call
+/// (`this.method()`) inside an inherent method body.
+///
+/// The implicit `this` receiver is already a reference parameter, so both the
+/// receiver source and the callable receiver parameter are the enclosing
+/// method's receiver reference type; lowering forwards the parameter directly
+/// instead of borrowing an owner local. Only a shared enclosing receiver
+/// calling a shared, non-generic, zero-parameter method is admitted; every
+/// other self-call shape returns none and keeps its capability rejection.
+zc::Maybe<ConcreteMethodCallShape> thisReceiverMethodCallShape(const BodyCheckingInput& input,
+                                                               ast::NodeId callNode) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(callNode) || tree.node(callNode).kind != ast::SyntaxKind::CallExpression) {
+    return zc::none;
+  }
+  const auto& call = tree.node(callNode);
+  const ast::NodeId callee(call.payload.words[ast::kCallExpressionCalleeWord]);
+  const ast::NodeList typeArguments{call.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+                                    call.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+  const ast::NodeList arguments{call.payload.words[ast::kCallExpressionArgsFirstWord],
+                                call.payload.words[ast::kCallExpressionArgsSizeWord]};
+  if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::MemberExpression ||
+      !tree.contains(typeArguments) || !typeArguments.empty() || !tree.contains(arguments) ||
+      !arguments.empty()) {
+    return zc::none;
+  }
+  const auto& member = tree.node(callee);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return zc::none;
+  }
+  const ast::NodeId receiverNode(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(receiverNode) || tree.node(receiverNode).kind != ast::SyntaxKind::ThisExpr) {
+    return zc::none;
+  }
+  auto receiver = enclosingMethodReceiver(input, receiverNode);
+  if (receiver == zc::none || ZC_ASSERT_NONNULL(receiver).receiverMutable) { return zc::none; }
+
+  const auto memberName =
+      tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
+  zc::Maybe<identity::DefId> selected;
+  zc::Maybe<identity::SemanticTypeId> success;
+  for (const auto& nominalSignature : input.signatureFacts.signatures()) {
+    if (nominalSignature.definition != ZC_ASSERT_NONNULL(receiver).ownerDefinition ||
+        !nominalSignature.payload.variant().is<signature::NominalSignature>()) {
+      continue;
+    }
+    const auto& nominalFacts =
+        nominalSignature.payload.variant().get<signature::NominalSignature>();
+    if (nominalFacts.genericParameters.size() != 0) return zc::none;
+    for (const auto candidate : nominalFacts.members) {
+      bool namedMethod = false;
+      for (const auto& definition : input.boundModule.definitions().definitions()) {
+        if (definition.definition == candidate &&
+            definition.record.kind() == identity::DefinitionKind::Method &&
+            definition.record.name() == memberName) {
+          namedMethod = true;
+        }
+      }
+      if (!namedMethod) continue;
+      if (selected != zc::none) return zc::none;
+      for (const auto& methodSignature : input.signatureFacts.signatures()) {
+        if (methodSignature.definition != candidate ||
+            !methodSignature.scope.variant().is<signature::MemberSignatureScope>() ||
+            !methodSignature.payload.variant().is<signature::CallableSignature>()) {
+          continue;
+        }
+        const auto& scope = methodSignature.scope.variant().get<signature::MemberSignatureScope>();
+        const auto& callable =
+            methodSignature.payload.variant().get<signature::CallableSignature>();
+        if (scope.owner != ZC_ASSERT_NONNULL(receiver).ownerDefinition ||
+            callable.genericParameters.size() != 0 || callable.receiver == zc::none ||
+            callable.raises != zc::none || callable.abi != zc::none) {
+          return zc::none;
+        }
+        ZC_IF_SOME(targetReceiver, callable.receiver) {
+          if (targetReceiver.mode != signature::ReceiverMode::Shared) { return zc::none; }
+        }
+        if (callable.parameters.size() != 0) { return zc::none; }
+        selected = candidate;
+        success = callable.success;
+      }
+    }
+  }
+  if (selected == zc::none || success == zc::none) { return zc::none; }
+  bool deferredMember = false;
+  for (const auto& fact : input.boundModule.bindings().deferredMembers()) {
+    if (fact.node != callee || fact.base != receiverNode || fact.member.text() != memberName ||
+        fact.expectedNamespaces.size() != 1 ||
+        fact.expectedNamespaces[0] != binder::Namespace::Value ||
+        fact.genericArguments.size() != 0 || deferredMember) {
+      continue;
+    }
+    deferredMember = true;
+  }
+  if (!deferredMember) return zc::none;
+
+  zc::Vector<identity::SemanticTypeId> noParameters;
+  zc::Maybe<identity::SemanticTypeId> noRaises;
+  auto canonical = input.semanticTypes.canonicalizeClosed(
+      type::semantic::TypeData(type::semantic::FunctionTypeData{
+          zc::mv(noParameters), ZC_ASSERT_NONNULL(success), zc::mv(noRaises)}));
+  if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
+  auto interned =
+      input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+  if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
+  ZC_IF_SOME(method, selected) {
+    const auto receiverReferenceType = ZC_ASSERT_NONNULL(receiver).receiverReferenceType;
+    return ConcreteMethodCallShape{receiverNode,
+                                   method,
+                                   receiverReferenceType,
+                                   receiverReferenceType,
+                                   interned.get<type::SemanticTypeInterned>().id,
+                                   ZC_ASSERT_NONNULL(success),
+                                   signature::ReceiverMode::Shared,
+                                   zc::Vector<identity::SemanticTypeId>{}};
+  }
+  ZC_UNREACHABLE
+}
+
 zc::Maybe<uint32_t> definitionPreorder(
     const driver::module_graph_query::CheckerBoundModuleView& boundModule,
     identity::DefId definition) {
@@ -3446,6 +3591,38 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                 zc::Array<uint8_t>()});
             continue;
           }
+          // A `this` expression that is the receiver of an admitted zero-arg
+          // self-call (`this.method()`) is typed as the enclosing receiver
+          // reference; the call site supplies the typed call fact.
+          zc::Maybe<identity::SemanticTypeId> admittedThisCallReceiver;
+          for (size_t index = 0; index < tree.nodeCount(); ++index) {
+            const ast::NodeId candidate(static_cast<uint32_t>(index));
+            if (!tree.contains(candidate) ||
+                tree.node(candidate).kind != ast::SyntaxKind::CallExpression) {
+              continue;
+            }
+            const ast::NodeId callCallee(
+                tree.node(candidate).payload.words[ast::kCallExpressionCalleeWord]);
+            if (!tree.contains(callCallee) ||
+                tree.node(callCallee).kind != ast::SyntaxKind::MemberExpression) {
+              continue;
+            }
+            const ast::NodeId callObject(
+                tree.node(callCallee).payload.words[ast::kMemberExpressionObjectWord]);
+            if (callObject != site.node) { continue; }
+            if (thisReceiverMethodCallShape(input, candidate) == zc::none) { continue; }
+            if (admittedThisCallReceiver != zc::none) {
+              admittedThisCallReceiver = zc::none;
+              break;
+            }
+            admittedThisCallReceiver =
+                ZC_ASSERT_NONNULL(enclosingMethodReceiver(input, site.node)).receiverReferenceType;
+          }
+          if (admittedThisCallReceiver != zc::none) {
+            nodeTypes.add(checked::NodeTypeMap::Entry{
+                site.node, ZC_ASSERT_NONNULL(admittedThisCallReceiver), zc::Array<uint8_t>()});
+            continue;
+          }
         }
         ZC_IF_SOME(method, unsupportedInherentMethodThis(input, site.node)) {
           return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(method));
@@ -3589,6 +3766,12 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         auto shape =
             concreteMethodCallShape(input, site.node, nodeTypes.asPtr(), &immutableReceiver);
         if (shape == zc::none) {
+          // A zero-argument self-call through the implicit `this` receiver is
+          // the same typed call shape with the enclosing receiver reference
+          // forwarded directly.
+          shape = thisReceiverMethodCallShape(input, site.node);
+        }
+        if (shape == zc::none) {
           // A mutable-receiver method invoked on an immutable `let` local is a
           // genuine mutability error (ZOM4024), distinct from a method the
           // lowering does not implement yet (ZOM4125).
@@ -3648,10 +3831,19 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
               checked::CheckedArgumentFact{value.receiverNode, value.receiverSourceType,
                                            value.receiverParameterType, zc::mv(noReceiverCoercion)};
           zc::Maybe<signature::ReceiverMode> receiverMode = value.receiverMode;
+          const bool receiverIsThis =
+              input.boundModule.tree().contains(value.receiverNode) &&
+              input.boundModule.tree().node(value.receiverNode).kind == ast::SyntaxKind::ThisExpr;
           zc::Vector<checked::ReceiverAdjustmentStep> adjustmentSteps;
-          adjustmentSteps.add(value.receiverMode == signature::ReceiverMode::Mutable
-                                  ? checked::ReceiverAdjustmentStep::BorrowMutable
-                                  : checked::ReceiverAdjustmentStep::BorrowShared);
+          if (receiverIsThis) {
+            // `this` is already a shared receiver parameter; the self-call
+            // forwards it directly rather than borrowing an owner local.
+            adjustmentSteps.add(checked::ReceiverAdjustmentStep::ReborrowShared);
+          } else {
+            adjustmentSteps.add(value.receiverMode == signature::ReceiverMode::Mutable
+                                    ? checked::ReceiverAdjustmentStep::BorrowMutable
+                                    : checked::ReceiverAdjustmentStep::BorrowShared);
+          }
           zc::Maybe<checked::ReceiverAdjustment> receiverAdjustment;
           receiverAdjustment =
               checked::ReceiverAdjustment{value.receiverSourceType, value.receiverParameterType,
@@ -4073,6 +4265,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         zc::Maybe<ast::NodeId> immutableReceiver;
         auto shape =
             concreteMethodCallShape(input, callNode, nodeTypes.asPtr(), &immutableReceiver);
+        if (shape == zc::none) { shape = thisReceiverMethodCallShape(input, callNode); }
         if (shape == zc::none) {
           if (immutableReceiver != zc::none) {
             ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, callNode)) {

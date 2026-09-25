@@ -50,6 +50,11 @@ zc::Maybe<const hir::HirConditionalExpression&> conditionalFor(const hir::Verifi
   return uniqueRecordFor(module.conditionals(), node);
 }
 
+zc::Maybe<const hir::HirReceiverCallExpression&> receiverCallFor(
+    const hir::VerifiedHirModule& module, hir::HirNodeId node) {
+  return uniqueRecordFor(module.receiverCalls(), node);
+}
+
 MirBlockId blockId(uint32_t ordinal) {
   auto value = MirBlockId::fromOrdinal(ordinal);
   ZC_IF_SOME(id, value) { return id; }
@@ -949,6 +954,70 @@ zc::Maybe<RecursiveFunctionProduct> buildMethodConditionalReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers `fun m(this) -> T { return this.n(); }` on a shared receiver:
+/// the leading receiver parameter is forwarded directly as the call's receiver
+/// argument (a shared reborrow, so no BorrowCreation temporary), one result
+/// temporary receives the call, and the continuation returns it.
+zc::Maybe<RecursiveFunctionProduct> buildReceiverSelfCallReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
+    const hir::HirReceiverCallExpression& call, const checker::CheckerIdentityAuthority& identities,
+    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+  if (declaration.receiver == zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
+  const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
+  if (call.receiver != hir::HirNodeId() ||
+      call.receiverMode != checker::checked::ReceiverMode::Shared ||
+      call.receiverAdjustments.size() != 1 ||
+      call.receiverAdjustments[0] != checker::checked::ReceiverAdjustmentStep::ReborrowShared ||
+      call.arguments.size() != 0 || call.resultType != declaration.resultType) {
+    return zc::none;
+  }
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId receiverLocal =
+      ctx.declareLocal(MirLocalKind::Parameter, receiver.type, scope, receiver.sourceSpan.clone());
+  const MirLocalId resultLocal =
+      ctx.declareLocal(MirLocalKind::Temporary, call.resultType, scope, call.sourceSpan.clone());
+
+  // Block 1: storage-live the result, then call forwarding the receiver
+  // parameter directly as the sole receiver argument.
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  ctx.appendStatement(MirStatement::storageLive(resultLocal, call.sourceSpan.clone()));
+  zc::Vector<MirProjection> receiverProjections;
+  auto receiverArgument =
+      placeUse(proofs, copyMarker,
+               MirPlace(receiverLocal, receiver.type, zc::mv(receiverProjections), receiver.type));
+  if (receiverArgument == zc::none) return zc::none;
+  zc::Vector<MirOperand> arguments;
+  arguments.add(zc::mv(ZC_ASSERT_NONNULL(receiverArgument)));
+  zc::Maybe<MirBlockId> noUnwind;
+  zc::Vector<MirProjection> resultProjections;
+  auto callTerminator = MirTerminator::call(
+      call.callee, zc::mv(arguments), MirCallEffect::noActivation(),
+      MirPlace(resultLocal, call.resultType, zc::mv(resultProjections), call.resultType),
+      blockId(2), zc::mv(noUnwind), call.sourceSpan.clone());
+  ctx.terminateBlock(zc::mv(callTerminator));
+
+  // Block 2: return the result temporary.
+  (void)ctx.beginBlock(scope);
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(resultLocal, call.resultType, zc::mv(returnProjections), call.resultType));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Method, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 }  // namespace
 
 zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
@@ -999,6 +1068,20 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
       return buildReceiverFieldReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
                                       ZC_ASSERT_NONNULL(receiverFieldProjection), identities,
                                       proofs, copyMarker);
+    }
+
+    // Receiver self-call: a shared-receiver method forwarding `this` to a
+    // zero-argument method (`return this.method();`). The receiver header
+    // parameter is the direct call argument; no borrow temporary is created.
+    if (declaration.receiver != zc::none && directCall == zc::none &&
+        declaration.unsafeBlock == zc::none) {
+      auto receiverCall = receiverCallFor(hirModule, valueNode);
+      if (receiverCall != zc::none) {
+        auto product = buildReceiverSelfCallReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
+                                                   ZC_ASSERT_NONNULL(receiverCall), identities,
+                                                   proofs, copyMarker);
+        if (product != zc::none) return product;
+      }
     }
 
     // Parameter return: a bare parameter reference (never a parameter reborrow,

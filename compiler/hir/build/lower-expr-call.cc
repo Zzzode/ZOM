@@ -119,5 +119,32 @@ void lowerReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& 
       call.sourceSpan.clone()});
 }
 
+void lowerReceiverSelfCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  HirReceiverCallExpression call = zc::mv(ZC_ASSERT_NONNULL(function.receiverSelfCall));
+
+  // Fixed source-preorder stride matching the generic materializer: function F,
+  // body F+1, return F+2, self call F+3. The implicit receiver is a function
+  // header parameter, so it allocates no body node: the call's receiver slot is
+  // unset and MIR forwards the leading receiver parameter local directly.
+  const HirNodeId functionId = ctx.allocNode();
+  const HirNodeId bodyId = ctx.allocNode();
+  const HirNodeId returnId = ctx.allocNode();
+  const HirNodeId callId = ctx.allocNode();
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), zc::mv(function.receiver),
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
+  zc::Vector<HirNodeId> statements;
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+  ctx.addReturn(
+      HirReturnStatement{returnId, function.resultType, callId, function.returnSpan.clone()});
+  ctx.addReceiverCall(HirReceiverCallExpression{
+      callId, HirNodeId(), call.callee, call.calleeType, call.receiverSourceType, call.receiverType,
+      call.receiverMode, zc::mv(call.receiverAdjustments), call.resultType, zc::mv(call.arguments),
+      call.sourceSpan.clone()});
+}
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

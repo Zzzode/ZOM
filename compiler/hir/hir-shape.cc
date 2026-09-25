@@ -637,6 +637,33 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         return shape;
       }
     }
+    // The self-call tail: `return this.<method>();` with no explicit arguments,
+    // forwarding the implicit receiver to a zero-parameter method of the same
+    // owner. Ordinary parameters and explicit arguments keep future shapes.
+    if (tree.node(value).kind == ast::SyntaxKind::CallExpression && hasReceiver &&
+        ordinaryCount == 0) {
+      const ast::NodeId selfCallee(tree.node(value).payload.words[ast::kCallExpressionCalleeWord]);
+      const ast::NodeList selfTypeArguments{
+          tree.node(value).payload.words[ast::kCallExpressionTypeArgsFirstWord],
+          tree.node(value).payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+      const ast::NodeList selfArguments{
+          tree.node(value).payload.words[ast::kCallExpressionArgsFirstWord],
+          tree.node(value).payload.words[ast::kCallExpressionArgsSizeWord]};
+      if (tree.contains(selfCallee) &&
+          tree.node(selfCallee).kind == ast::SyntaxKind::MemberExpression &&
+          static_cast<ast::MemberAccessKind>(
+              tree.node(selfCallee).payload.words[ast::kMemberExpressionAccessWord]) ==
+              ast::MemberAccessKind::Dot &&
+          tree.contains(selfTypeArguments) && selfTypeArguments.empty() &&
+          tree.contains(selfArguments) && selfArguments.empty()) {
+        const ast::NodeId selfObject(
+            tree.node(selfCallee).payload.words[ast::kMemberExpressionObjectWord]);
+        if (tree.contains(selfObject) && tree.node(selfObject).kind == ast::SyntaxKind::ThisExpr) {
+          shape.returnsReceiverSelfCall = true;
+          return shape;
+        }
+      }
+    }
     return zc::none;
   }
   if (statements.size == 1) {

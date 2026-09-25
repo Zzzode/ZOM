@@ -1,0 +1,5 @@
+section: "08-adt inherent method receiver self call"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A shared-receiver inherent method forwards its implicit receiver to a zero-argument shared-receiver method of the same owner; the three-function chain lowers to native code."

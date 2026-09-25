@@ -213,6 +213,12 @@ struct PendingFunctionDeclaration final {
   // field reached through the mutable receiver, plus its scalar literal value.
   zc::Maybe<HirParameterFieldWriteStatement> parameterFieldWrite;
   zc::Maybe<checker::checked::CanonicalConstValue> parameterFieldWriteLiteral;
+  // Populated for the shared-receiver self-call body: `return this.method();`
+  // forwards the implicit receiver parameter to a zero-argument method of the
+  // same owner. Unlike `receiverCall` (an owner-local call with an aggregate
+  // binding), the receiver is a parameter reference and there is no local or
+  // aggregate carrier.
+  zc::Maybe<HirReceiverCallExpression> receiverSelfCall;
 };
 
 }  // namespace detail

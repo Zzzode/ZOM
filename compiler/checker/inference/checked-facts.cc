@@ -2626,9 +2626,19 @@ bool validCallEnvelope(const CheckedCallEnvelope& invocation,
     ZC_IF_SOME(receiver, invocation.receiver) {
       ZC_IF_SOME(mode, invocation.receiverMode) {
         ZC_IF_SOME(adjustment, invocation.receiverAdjustment) {
-          const ReceiverAdjustmentStep expectedStep = mode == ReceiverMode::Mutable
-                                                          ? ReceiverAdjustmentStep::BorrowMutable
-                                                          : ReceiverAdjustmentStep::BorrowShared;
+          // A call on an owner local borrows it (source is the owner,
+          // destination its reference); a self-call through the implicit
+          // `this` receiver forwards the existing shared reference parameter,
+          // so source and destination are the same reference type and the
+          // single step is a shared reborrow.
+          const bool forwardsThisReference = mode == ReceiverMode::Shared &&
+                                             receiver.sourceType == receiver.parameterType &&
+                                             adjustment.source == adjustment.destination;
+          const ReceiverAdjustmentStep expectedStep =
+              mode == ReceiverMode::Mutable
+                  ? ReceiverAdjustmentStep::BorrowMutable
+                  : (forwardsThisReference ? ReceiverAdjustmentStep::ReborrowShared
+                                           : ReceiverAdjustmentStep::BorrowShared);
           if ((mode != ReceiverMode::Mutable && mode != ReceiverMode::Shared) ||
               receiver.sourceType != adjustment.source ||
               receiver.parameterType != adjustment.destination || adjustment.steps.size() != 1 ||
