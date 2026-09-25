@@ -499,6 +499,97 @@ zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers the method parameter-binary return
+/// `fun m(this, p0..pN-1) -> T { return <parameter|literal> OP <parameter|literal>; }`:
+/// the receiver leads the parameter locals, one FunctionResult local holds the
+/// arithmetic/comparison rvalue, and the entry block stores it live, assigns
+/// the result, and returns a place-use of that local.
+zc::Maybe<RecursiveFunctionProduct> buildMethodBinaryReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
+    const hir::HirPrimitiveBinaryExpression& binary, const hir::VerifiedHirModule& hirModule,
+    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copyMarker) {
+  if (declaration.receiver == zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
+  auto arithmetic = arithmeticOperatorFor(binary.operation);
+  auto comparison = comparisonOperatorFor(binary.operation);
+  if (arithmetic == zc::none && comparison == zc::none) return zc::none;
+  if (arithmetic != zc::none && binary.type != binary.operandType) return zc::none;
+
+  // Each operand is a scalar literal or a place-use of an ordinary parameter.
+  // Receiver-field and nested-binary operands keep their own lowering shapes.
+  auto operandFor = [&](hir::HirNodeId operandNode,
+                        zc::ArrayPtr<MirLocalId> parameterLocals) -> zc::Maybe<MirOperand> {
+    if (auto literal = expressionFor(hirModule, operandNode); literal != zc::none) {
+      if (ZC_ASSERT_NONNULL(literal).type != binary.operandType) return zc::none;
+      return MirOperand::constant(binary.operandType, ZC_ASSERT_NONNULL(literal).value.clone());
+    }
+    if (auto parameter = parameterReferenceFor(hirModule, operandNode); parameter != zc::none) {
+      const auto& value = ZC_ASSERT_NONNULL(parameter);
+      auto index = parameterIndexFor(declaration, value.parameter);
+      if (index == zc::none || value.type != binary.operandType ||
+          value.category != hir::HirValueCategory::Place) {
+        return zc::none;
+      }
+      zc::Vector<MirProjection> projections;
+      return placeUse(proofs, copyMarker,
+                      MirPlace(parameterLocals[ZC_ASSERT_NONNULL(index)], binary.operandType,
+                               zc::mv(projections), binary.operandType));
+    }
+    return zc::none;
+  };
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+  const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  ctx.declareLocal(MirLocalKind::Parameter, receiver.type, scope, receiver.sourceSpan.clone());
+  zc::Vector<MirLocalId> parameterLocals;
+  for (const auto& parameter : declaration.parameters) {
+    parameterLocals.add(ctx.declareLocal(MirLocalKind::Parameter, parameter.type, scope,
+                                         parameter.sourceSpan.clone()));
+  }
+  const MirLocalId result = ctx.declareLocal(MirLocalKind::FunctionResult, declaration.resultType,
+                                             scope, sourceReturn.sourceSpan.clone());
+
+  auto left = operandFor(binary.left, parameterLocals.asPtr());
+  auto right = operandFor(binary.right, parameterLocals.asPtr());
+  if (left == zc::none || right == zc::none) return zc::none;
+
+  zc::Maybe<MirRvalue> rvalue;
+  if (arithmetic != zc::none) {
+    rvalue = MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmetic), zc::mv(ZC_ASSERT_NONNULL(left)),
+                                   zc::mv(ZC_ASSERT_NONNULL(right)), binary.type);
+  } else {
+    rvalue = MirRvalue::comparison(ZC_ASSERT_NONNULL(comparison), zc::mv(ZC_ASSERT_NONNULL(left)),
+                                   zc::mv(ZC_ASSERT_NONNULL(right)), binary.type);
+  }
+
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  ctx.appendStatement(MirStatement::storageLive(result, sourceReturn.sourceSpan.clone()));
+  zc::Vector<MirProjection> destinationProjections;
+  ctx.appendStatement(
+      MirStatement::assign(MirPlace(result, declaration.resultType, zc::mv(destinationProjections),
+                                    declaration.resultType),
+                           zc::mv(ZC_ASSERT_NONNULL(rvalue)), MirInitializationKind::Initialize,
+                           binary.sourceSpan.clone()));
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(
+      proofs, copyMarker,
+      MirPlace(result, declaration.resultType, zc::mv(returnProjections), declaration.resultType));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Method, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers `fun f(p0..pN-1) -> R { return pK; }`, or the method twin
 /// `fun m(this, p0..pN-1) -> R { return pK; }`: one root scope, parameter
 /// locals in source order with the implicit receiver leading for a method,
@@ -1080,6 +1171,20 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
         auto product = buildReceiverSelfCallReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
                                                    ZC_ASSERT_NONNULL(receiverCall), identities,
                                                    proofs, copyMarker);
+        if (product != zc::none) return product;
+      }
+    }
+
+    // Receiver parameter-binary return: a shared-receiver method whose return
+    // value is a primitive arithmetic/comparison operation over ordinary
+    // parameter references and scalar literals.
+    if (declaration.receiver != zc::none && directCall == zc::none &&
+        declaration.unsafeBlock == zc::none) {
+      auto binary = primitiveBinaryFor(hirModule, valueNode);
+      if (binary != zc::none) {
+        auto product = buildMethodBinaryReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
+                                               ZC_ASSERT_NONNULL(binary), hirModule, identities,
+                                               proofs, copyMarker);
         if (product != zc::none) return product;
       }
     }

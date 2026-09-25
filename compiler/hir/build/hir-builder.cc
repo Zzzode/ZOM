@@ -925,32 +925,57 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                registries, ordinal + 2);
         }
         const auto& signature = signatures.definitions[signatureSlot];
-        const auto& root = signatures.roots[rootSlot];
-        if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
-            !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>()) {
+        checker::signature::MemberSignatureScope comparisonMemberScopeValue;
+        zc::Maybe<checker::signature::MemberSignatureScope> comparisonMemberScope;
+        if (isMethod) {
+          if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+              !signature.scope.variant().is<checker::signature::MemberSignatureScope>()) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          comparisonMemberScope =
+              signature.scope.variant().get<checker::signature::MemberSignatureScope>();
+          comparisonMemberScopeValue = ZC_ASSERT_NONNULL(comparisonMemberScope);
+        } else if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+                   !signature.scope.variant()
+                        .is<checker::signature::ModuleDefinitionSignatureScope>()) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);
         }
         const auto& callable =
             signature.payload.variant().get<checker::signature::CallableSignature>();
-        auto functionVisibility = visibility(root.visibility);
+        zc::Maybe<HirVisibility> functionVisibility;
+        if (isMethod) {
+          functionVisibility = memberVisibility(comparisonMemberScopeValue.visibility, module);
+        } else {
+          const auto& root = signatures.roots[rootSlot];
+          functionVisibility = visibility(root.visibility);
+        }
         auto functionLinkage = linkage(callable);
         size_t nodeTypeSlot = 0;
         ZC_IF_SOME(index, nodeTypeIndex) { nodeTypeSlot = index; }
         const auto resultType = facts.nodeTypes().entries()[nodeTypeSlot].value;
+        const bool comparisonModuleMembershipValid =
+            isMethod ? definitionBelongsToModule(definition, bound.definitions())
+                     : (signatures.roots[rootSlot].sourceModule == module &&
+                        signatures.roots[rootSlot].canonicalDefinition == definition.definition);
         if (functionVisibility == zc::none || functionLinkage == zc::none ||
-            signature.definitionKind != identity::DefinitionKind::Function ||
-            root.sourceModule != module || root.canonicalDefinition != definition.definition ||
-            callable.receiver != zc::none || callable.raises != zc::none ||
-            callable.success != resultType ||
+            signature.definitionKind != (isMethod ? identity::DefinitionKind::Method
+                                                  : identity::DefinitionKind::Function) ||
+            !comparisonModuleMembershipValid || callable.raises != zc::none ||
+            (!isMethod && callable.receiver != zc::none) ||
+            (isMethod && callable.receiver == zc::none) || callable.success != resultType ||
             !sameSpan(signature.declarationSpan, definition.source)) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);
         }
         const ast::NodeId parameterListNode(
-            tree.node(definition.node).payload.words[ast::kFunctionDeclParamsIdWord]);
+            tree.node(definition.node)
+                .payload
+                .words[isMethod ? ast::kMethodDeclParamsIdWord : ast::kFunctionDeclParamsIdWord]);
         if (!tree.contains(parameterListNode) ||
             tree.node(parameterListNode).kind != ast::SyntaxKind::FunctionParameterList) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -961,14 +986,23 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         const ast::NodeList parameterNodes{
             parameterList.payload.words[ast::kFunctionParameterListParamsFirstWord],
             parameterList.payload.words[ast::kFunctionParameterListParamsSizeWord]};
-        if (!tree.contains(parameterNodes) || parameterNodes.size != callable.parameters.size()) {
+        // A method's AST parameter list leads with the implicit `this`
+        // receiver, which is carried separately and never enters `parameters`.
+        if (!tree.contains(parameterNodes) || parameterNodes.size < callable.parameters.size()) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                ir::IrFailureKind::MissingRequiredFact, module,
                                                registries, ordinal + 2);
         }
+        const size_t comparisonReceiverCount = parameterNodes.size - callable.parameters.size();
+        if ((!isMethod && comparisonReceiverCount != 0) ||
+            (isMethod && comparisonReceiverCount > 1)) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
         zc::Vector<HirParameter> parameters(callable.parameters.size());
         for (size_t index = 0; index < callable.parameters.size(); ++index) {
-          const auto parameterNode = tree.list(parameterNodes)[index];
+          const auto parameterNode = tree.list(parameterNodes)[comparisonReceiverCount + index];
           const auto& parameter = callable.parameters[index];
           if (!tree.contains(parameterNode) ||
               tree.node(parameterNode).kind != ast::SyntaxKind::FunctionParameterDecl ||
@@ -987,7 +1021,39 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             parameters.add(HirParameter{parameter.parameter.clone(), parameter.type, span.clone()});
           }
         }
-        if (!typeExists(callable.success, checkedModule.semanticTypes())) {
+        zc::Maybe<HirParameter> comparisonReceiver;
+        if (isMethod) {
+          ZC_IF_SOME(receiver, callable.receiver) {
+            if (comparisonMemberScope == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            const auto owner = ZC_ASSERT_NONNULL(comparisonMemberScope).owner;
+            if (owner == definition.definition) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            auto built = buildMethodReceiverParameter(definition, owner, receiver, bound,
+                                                      registries, semanticTypes);
+            if (built == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            comparisonReceiver = zc::mv(built);
+          }
+          if (comparisonReceiver == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+        }
+        if (!typeExists(callable.success, checkedModule.semanticTypes()) ||
+            (comparisonReceiver != zc::none &&
+             !typeExists(ZC_ASSERT_NONNULL(comparisonReceiver).type,
+                         checkedModule.semanticTypes()))) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);
@@ -1112,7 +1178,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                         callable.success,
                                                         zc::mv(parameters),
-                                                        zc::none,
+                                                        zc::mv(comparisonReceiver),
                                                         zc::mv(visibilityValue),
                                                         linkageValue,
                                                         definition.source.clone(),

@@ -1,0 +1,8 @@
+struct Cell {
+  value: i32,
+  mutating fun increment(this, x: i32) -> i32 { return x + 1; }
+}
+fun entry() -> i32 {
+  mut cell = Cell { value: 0 };
+  return cell.increment(41);
+}

@@ -453,10 +453,11 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   // with parameter arities matching the lowered shapes exactly so the
   // capability drain keeps every other body on ZOM4099:
   // `return <literal>;` (receiver optional, no ordinary parameters),
-  // `return <ordinary-parameter>;` (receiver plus exactly one parameter), or
+  // `return <ordinary-parameter>;` or `return <ordinary-parameter> OP
+  // <ordinary-parameter|literal>;` (receiver plus exactly one parameter), or
   // `return this.<field>;` (receiver, no ordinary parameters). Every other body
-  // shape (locals, calls, conditionals, loops, unsafe blocks, binary returns,
-  // extra parameters) returns none until its lowering exists.
+  // shape (locals, calls, loops, unsafe blocks, field-operand binaries, extra
+  // parameters) returns none until its lowering exists.
   if (isMethod) {
     auto layout = methodParameterLayout(tree, function);
     if (layout == zc::none) return zc::none;
@@ -625,6 +626,33 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     if (tree.node(value).kind == ast::SyntaxKind::IdentExpr) {
       if (hasReceiver && ordinaryCount == 1) return shape;
       return zc::none;
+    }
+    // The parameter-binary tail: `return <ident> OP <ident|literal>` over the
+    // one ordinary parameter of a shared-receiver method. Each operand is an
+    // ordinary-parameter reference or a scalar literal with at least one
+    // parameter reference; the operator family (relational or arithmetic) is a
+    // checker decision. Receiver-field operands and nested binaries keep their
+    // own future shapes.
+    if (tree.node(value).kind == ast::SyntaxKind::BinaryExpr && hasReceiver && ordinaryCount == 1 &&
+        isPrimitiveBinaryOperator(static_cast<ast::BinaryOperatorKind>(
+            tree.node(value).payload.words[ast::kBinaryExprOpWord]))) {
+      const ast::NodeId binaryLeft(tree.node(value).payload.words[ast::kBinaryExprLhsWord]);
+      const ast::NodeId binaryRight(tree.node(value).payload.words[ast::kBinaryExprRhsWord]);
+      if (!tree.contains(binaryLeft) || !tree.contains(binaryRight)) return zc::none;
+      const bool leftIdent = tree.node(binaryLeft).kind == ast::SyntaxKind::IdentExpr;
+      const bool rightIdent = tree.node(binaryRight).kind == ast::SyntaxKind::IdentExpr;
+      const bool leftLiteral = isScalarLiteral(tree.node(binaryLeft).kind);
+      const bool rightLiteral = isScalarLiteral(tree.node(binaryRight).kind);
+      if ((!leftIdent && !leftLiteral) || (!rightIdent && !rightLiteral) ||
+          (!leftIdent && !rightIdent)) {
+        return zc::none;
+      }
+      shape.returnsComparison = true;
+      shape.comparisonLeft = binaryLeft;
+      shape.comparisonRight = binaryRight;
+      shape.comparisonLeftIsLiteral = !leftIdent;
+      shape.comparisonRightIsLiteral = !rightIdent;
+      return shape;
     }
     if (tree.node(value).kind == ast::SyntaxKind::MemberExpression &&
         static_cast<ast::MemberAccessKind>(

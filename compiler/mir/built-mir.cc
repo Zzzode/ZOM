@@ -2226,15 +2226,21 @@ bool validComparisonReturnFunction(const MirFunction& function,
                                    identity::ModuleId module,
                                    const checker::CheckerIdentityAuthority& identities,
                                    const type::SemanticTypeStore& semanticTypes) {
-  // The comparison allocates one bool result local after the parameters.
+  // The comparison allocates one result local after the parameters. For a
+  // method the implicit receiver leads the parameter locals, so every local
+  // ordinal shifts by one and the definition kind is Method.
+  const bool isMethod = declaration.receiver != zc::none;
+  const size_t receiverCount = isMethod ? 1 : 0;
+  const auto expectedDefinitionKind =
+      isMethod ? identity::DefinitionKind::Method : identity::DefinitionKind::Function;
   if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
-      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.sourceDefinitionKind != expectedDefinitionKind ||
       function.resultType != declaration.resultType ||
       !sameSpan(function.sourceSpan, declaration.sourceSpan) || function.sourceScopes.size() != 1 ||
-      function.locals.size() != declaration.parameters.size() + 1 || function.blocks.size() != 1 ||
-      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 1 ||
-      sourceBlock.statements[0] != sourceReturn.node || sourceReturn.value != comparison.node ||
-      sourceReturn.resultType != declaration.resultType ||
+      function.locals.size() != declaration.parameters.size() + receiverCount + 1 ||
+      function.blocks.size() != 1 || declaration.body != sourceBlock.node ||
+      sourceBlock.statements.size() != 1 || sourceBlock.statements[0] != sourceReturn.node ||
+      sourceReturn.value != comparison.node || sourceReturn.resultType != declaration.resultType ||
       comparison.type != declaration.resultType) {
     return false;
   }
@@ -2243,17 +2249,27 @@ bool validComparisonReturnFunction(const MirFunction& function,
       !sameSpan(scope.sourceSpan, declaration.sourceSpan)) {
     return false;
   }
+  if (isMethod) {
+    const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
+    const auto& receiverLocal = function.locals[0];
+    if (receiverLocal.id != localId(1) || receiverLocal.kind != MirLocalKind::Parameter ||
+        receiverLocal.type != receiver.type || receiverLocal.sourceScope != scopeId(1) ||
+        !sameSpan(receiverLocal.sourceSpan, receiver.sourceSpan)) {
+      return false;
+    }
+  }
   for (size_t i = 0; i < declaration.parameters.size(); ++i) {
-    const auto& local = function.locals[i];
-    if (local.id != localId(static_cast<uint32_t>(i + 1)) ||
+    const auto& local = function.locals[i + receiverCount];
+    if (local.id != localId(static_cast<uint32_t>(i + receiverCount + 1)) ||
         local.kind != MirLocalKind::Parameter || local.type != declaration.parameters[i].type ||
         local.sourceScope != scopeId(1) ||
         !sameSpan(local.sourceSpan, declaration.parameters[i].sourceSpan)) {
       return false;
     }
   }
-  const auto resultLocal = localId(static_cast<uint32_t>(declaration.parameters.size() + 1));
-  const auto& result = function.locals[declaration.parameters.size()];
+  const auto resultLocal =
+      localId(static_cast<uint32_t>(declaration.parameters.size() + receiverCount + 1));
+  const auto& result = function.locals[declaration.parameters.size() + receiverCount];
   if (result.id != resultLocal || result.kind != MirLocalKind::FunctionResult ||
       result.type != declaration.resultType || result.sourceScope != scopeId(1) ||
       !sameSpan(result.sourceSpan, sourceReturn.sourceSpan)) {
@@ -2361,7 +2377,7 @@ bool validComparisonReturnFunction(const MirFunction& function,
     }
     ZC_IF_SOME(value, parameter) {
       (void)value;
-      const auto local = localId(static_cast<uint32_t>(parameterIndex + 1));
+      const auto local = localId(static_cast<uint32_t>(parameterIndex + receiverCount + 1));
       return matchesPlaceUse(operand, proofs, copy, operandType) &&
              operand.place().local() == local && operand.place().rootType() == operandType &&
              operand.place().resultType() == operandType &&

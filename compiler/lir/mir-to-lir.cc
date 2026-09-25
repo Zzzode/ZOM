@@ -1748,7 +1748,8 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   //     statements fold away, leaving a constant-return callee).
   if (callee.kind != mir::MirFunctionKind::Function ||
       callee.sourceDefinitionKind != identity::DefinitionKind::Method ||
-      (callee.locals.size() != 1 && callee.locals.size() != 2) || callee.blocks.size() != 1) {
+      (callee.locals.size() != 1 && callee.locals.size() != 2 && callee.locals.size() != 3) ||
+      callee.blocks.size() != 1) {
     // The one multi-block callee shape is the shared-receiver method
     // conditional: a receiver pointer plus one bool ordinary parameter, a
     // FunctionResult local, and a four-block diamond returning literal arms.
@@ -1777,10 +1778,64 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   // constant return and whose user local never becomes an LIR slot.
   zc::Vector<ValueType> ordinaryCarriers;
   bool calleeConstLocalFold = false;
-  if (callee.locals.size() == 2 && callee.locals[1].kind == mir::MirLocalKind::UserLocal &&
+  // Case F: `fun m(this, p) -> T { return p OP <literal|p>; }`. The locals are
+  // the receiver parameter, one ordinary integer parameter, and a FunctionResult
+  // local; the one block stores the result live then assigns the arithmetic
+  // rvalue and returns the result local. Detected after the callee block is
+  // read below.
+  bool calleeArithmetic = false;
+  zc::Maybe<ArithmeticOp> calleeArithmeticOp;
+  zc::Maybe<Operand> calleeArithmeticLeft;
+  zc::Maybe<Operand> calleeArithmeticRight;
+  uint32_t calleeArithmeticResultOrdinal = 0;
+
+  const auto& calleeBlock = callee.blocks[0];
+  if (calleeBlock.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }
+
+  if (callee.locals.size() == 3 && callee.locals[1].kind == mir::MirLocalKind::Parameter &&
+      callee.locals[2].kind == mir::MirLocalKind::FunctionResult &&
+      callee.locals[1].id.ordinal() == receiverLocal.id.ordinal() + 1 &&
+      callee.locals[2].id.ordinal() == receiverLocal.id.ordinal() + 2 &&
+      calleeBlock.statements.size() == 2 &&
+      calleeBlock.statements[0].kind() == mir::MirStatementKind::StorageLive &&
+      calleeBlock.statements[0].storageLocal() == callee.locals[2].id &&
+      calleeBlock.statements[1].kind() == mir::MirStatementKind::Assign) {
+    const auto& arithmeticAssignment = calleeBlock.statements[1].assignmentValue();
+    if (arithmeticAssignment.destination.local() == callee.locals[2].id &&
+        arithmeticAssignment.destination.projections().size() == 0 &&
+        arithmeticAssignment.initialization == mir::MirInitializationKind::Initialize &&
+        arithmeticAssignment.value.kind() == mir::MirRvalueKind::Arithmetic) {
+      const auto& arithmetic = arithmeticAssignment.value.arithmeticValue();
+      auto op = lirArithmeticOpFor(arithmetic.op);
+      auto ordinaryCarrier = integerCarrierFor(callee.locals[1].type, semanticTypes);
+      auto left = lirOperandFor(arithmetic.left, ZC_REQUIRE_NONNULL(ordinaryCarrier));
+      auto right = lirOperandFor(arithmetic.right, ZC_REQUIRE_NONNULL(ordinaryCarrier));
+      const auto& terminatorReturn = calleeBlock.terminator.returnValue().value;
+      bool returnsResult = false;
+      ZC_IF_SOME(returned, terminatorReturn) {
+        returnsResult = returned.kind() != mir::MirOperandKind::Constant &&
+                        returned.place().local() == callee.locals[2].id &&
+                        returned.place().projections().size() == 0;
+      }
+      if (op != zc::none && ordinaryCarrier != zc::none && left != zc::none && right != zc::none &&
+          callee.resultType == callee.locals[2].type &&
+          callee.resultType == callee.locals[1].type && returnsResult) {
+        calleeArithmetic = true;
+        calleeArithmeticOp = op;
+        calleeArithmeticLeft = zc::mv(left);
+        calleeArithmeticRight = zc::mv(right);
+        calleeArithmeticResultOrdinal = callee.locals[2].id.ordinal();
+        ordinaryCarriers.add(ZC_REQUIRE_NONNULL(ordinaryCarrier));
+      }
+    }
+  }
+  // The arithmetic case recorded its ordinary carrier above; the constant-local
+  // fold contributes none; every other trailing local is an ordinary parameter.
+  if (!calleeArithmetic && callee.locals.size() == 2 &&
+      callee.locals[1].kind == mir::MirLocalKind::UserLocal &&
       callee.locals[1].id.ordinal() == receiverLocal.id.ordinal() + 1) {
     calleeConstLocalFold = true;
-  } else {
+  } else if (!calleeArithmetic) {
     for (size_t i = 1; i < callee.locals.size(); ++i) {
       const auto& parameterLocal = callee.locals[i];
       if (parameterLocal.kind != mir::MirLocalKind::Parameter ||
@@ -1792,9 +1847,9 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
       ordinaryCarriers.add(ZC_REQUIRE_NONNULL(carrier));
     }
   }
-  const auto& calleeBlock = callee.blocks[0];
-  if (calleeBlock.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }
-  if (calleeBlock.statements.size() > (calleeConstLocalFold ? 2 : 1)) { return zc::none; }
+  if (calleeBlock.statements.size() > (calleeArithmetic ? 2 : calleeConstLocalFold ? 2 : 1)) {
+    return zc::none;
+  }
   const auto& calleeReturn = calleeBlock.terminator.returnValue().value;
   if (calleeReturn == zc::none) { return zc::none; }
   zc::Maybe<IntegerConstant> calleeConstant;
@@ -1802,7 +1857,10 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   bool calleeFieldWriteRead = false;
   zc::Maybe<IntegerConstant> calleeWriteConstant;
   zc::Maybe<uint32_t> calleeReturnParameterOrdinal;
-  ZC_IF_SOME(value, calleeReturn) {
+  if (calleeArithmetic) {
+    // The arithmetic shape is validated structurally above; the return place is
+    // the FunctionResult local and no further return classification applies.
+  } else ZC_IF_SOME(value, calleeReturn) {
     if (value.kind() == mir::MirOperandKind::Constant) {
       // The literal-method body carries no ordinary parameters.
       if (callee.locals.size() != 1 || calleeBlock.statements.size() != 0) { return zc::none; }
@@ -1911,8 +1969,8 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
       }
     }
   }
-  if (calleeConstant == zc::none && !calleeFieldRead && !calleeFieldWriteRead &&
-      calleeReturnParameterOrdinal == zc::none) {
+  if (!calleeArithmetic && calleeConstant == zc::none && !calleeFieldRead &&
+      !calleeFieldWriteRead && calleeReturnParameterOrdinal == zc::none) {
     return zc::none;
   }
 
@@ -2107,6 +2165,20 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
                                   Terminator::returnLocal(resultOrdinal)));
       zc::Vector<Local> calleeLocals;
       calleeLocals.add(Local(resultOrdinal, calleeCarrierValue));
+      functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
+                             zc::mv(parameters), zc::mv(calleeLocals), zc::mv(calleeBlocks)));
+    } else if (calleeArithmetic) {
+      // Case F: compute the arithmetic result over the ordinary parameter and a
+      // literal/parameter operand, then return the result local.
+      zc::Vector<Statement> calleeStatements;
+      calleeStatements.add(Statement::arithmetic(
+          calleeArithmeticResultOrdinal, ZC_REQUIRE_NONNULL(calleeArithmeticOp),
+          ZC_REQUIRE_NONNULL(calleeArithmeticLeft), ZC_REQUIRE_NONNULL(calleeArithmeticRight)));
+      zc::Vector<BasicBlock> calleeBlocks;
+      calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId), zc::mv(calleeStatements),
+                                  Terminator::returnLocal(calleeArithmeticResultOrdinal)));
+      zc::Vector<Local> calleeLocals;
+      calleeLocals.add(Local(calleeArithmeticResultOrdinal, calleeCarrierValue));
       functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
                              zc::mv(parameters), zc::mv(calleeLocals), zc::mv(calleeBlocks)));
     } else if (calleeConstant != zc::none) {
