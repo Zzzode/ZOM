@@ -654,6 +654,46 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       shape.comparisonRightIsLiteral = !rightIdent;
       return shape;
     }
+    // The receiver-field arithmetic tail: `return this.<field> OP <literal>`
+    // (or the mirrored operand order) on a shared receiver with no ordinary
+    // parameters. Exactly one operand is a `this.<field>` dot projection and
+    // the other is a scalar literal; parameter and nested operands keep their
+    // own shapes. The operator family is a checker decision.
+    if (tree.node(value).kind == ast::SyntaxKind::BinaryExpr && hasReceiver && ordinaryCount == 0 &&
+        isPrimitiveBinaryOperator(static_cast<ast::BinaryOperatorKind>(
+            tree.node(value).payload.words[ast::kBinaryExprOpWord]))) {
+      const ast::NodeId binaryLeft(tree.node(value).payload.words[ast::kBinaryExprLhsWord]);
+      const ast::NodeId binaryRight(tree.node(value).payload.words[ast::kBinaryExprRhsWord]);
+      auto isThisField = [&](ast::NodeId operand) -> bool {
+        if (!tree.contains(operand) ||
+            tree.node(operand).kind != ast::SyntaxKind::MemberExpression) {
+          return false;
+        }
+        const auto& projected = tree.node(operand);
+        if (static_cast<ast::MemberAccessKind>(
+                projected.payload.words[ast::kMemberExpressionAccessWord]) !=
+            ast::MemberAccessKind::Dot) {
+          return false;
+        }
+        const ast::NodeId object(projected.payload.words[ast::kMemberExpressionObjectWord]);
+        return tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::ThisExpr;
+      };
+      const bool leftField = isThisField(binaryLeft);
+      const bool rightField = isThisField(binaryRight);
+      if (leftField != rightField) {
+        const ast::NodeId literalSide = leftField ? binaryRight : binaryLeft;
+        if (isScalarLiteral(tree.node(literalSide).kind)) {
+          shape.returnsReceiverFieldArithmetic = true;
+          // Preserve source operand order; the literal flags record which side
+          // is the scalar literal (and therefore which side is the field).
+          shape.comparisonLeft = binaryLeft;
+          shape.comparisonRight = binaryRight;
+          shape.comparisonLeftIsLiteral = !leftField;
+          shape.comparisonRightIsLiteral = leftField;
+          return shape;
+        }
+      }
+    }
     if (tree.node(value).kind == ast::SyntaxKind::MemberExpression &&
         static_cast<ast::MemberAccessKind>(
             tree.node(value).payload.words[ast::kMemberExpressionAccessWord]) ==

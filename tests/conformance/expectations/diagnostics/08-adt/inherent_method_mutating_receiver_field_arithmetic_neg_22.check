@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/inherent_method_mutating_receiver_field_arithmetic_neg_22.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// Receiver-field arithmetic is admitted only on a shared-receiver method; a
+// mutating receiver is well-formed source the current lowering does not emit,
+// so the method drains per definition as ZOM4099.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK: 3 |   mutating fun plus(this) -> i32 { return this.value + 1; }

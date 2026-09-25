@@ -1,0 +1,49 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/binary_initializer_unannotated_drain_neg_53.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #19 @1:1..2:1 file_name="binary_initializer_unannotated_drain_neg_53.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #18 @1:1..1:50
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #17 @1:1..1:50 name="f"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #3 @1:6..1:14 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #2 @1:7..1:13 name="x"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:10..1:13 kind=I32
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #4 @1:18..1:21 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #16 @1:22..1:50
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #12 @1:24..1:38
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #11 @1:24..1:38 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #10 @1:28..1:37 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #9 @1:28..1:37
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #5 @1:28..1:29 name="z"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 BinaryExpr #8 @1:32..1:37 op=Add
+// CHECK-NEXT:                                   lhs:
+// CHECK-NEXT:                                     IdentExpr #6 @1:32..1:33 name="x"
+// CHECK-NEXT:                                   rhs:
+// CHECK-NEXT:                                     IntLiteral #7 @1:36..1:37 base=10 value="1"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #15 @1:39..1:48
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #14 @1:39..1:48
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         IdentExpr #13 @1:46..1:47 name="z"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

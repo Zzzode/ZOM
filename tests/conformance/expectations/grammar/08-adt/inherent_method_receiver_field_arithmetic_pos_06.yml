@@ -1,0 +1,5 @@
+section: "08-adt inherent method receiver field arithmetic"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A shared-receiver inherent method returns an arithmetic expression over a projected receiver field and a scalar literal; the two-function receiver call lowers to native code."

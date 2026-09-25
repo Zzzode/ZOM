@@ -1788,6 +1788,18 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   zc::Maybe<Operand> calleeArithmeticLeft;
   zc::Maybe<Operand> calleeArithmeticRight;
   uint32_t calleeArithmeticResultOrdinal = 0;
+  // Case G: `fun m(this) -> T { return this.<field> OP <literal>; }`. The locals
+  // are the receiver parameter and a FunctionResult; the one block stores the
+  // result live then assigns an arithmetic rvalue whose one operand is a
+  // [Dereference, Field] place-use of the receiver and whose other operand is a
+  // constant. The field is first loaded into a synthesized slot and then fed to
+  // the arithmetic statement.
+  bool calleeFieldArithmetic = false;
+  zc::Maybe<ArithmeticOp> calleeFieldArithmeticOp;
+  zc::Maybe<Operand> calleeFieldArithmeticLeft;
+  zc::Maybe<Operand> calleeFieldArithmeticRight;
+  uint32_t calleeFieldArithmeticFieldOrdinal = 0;
+  uint32_t calleeFieldArithmeticResultOrdinal = 0;
 
   const auto& calleeBlock = callee.blocks[0];
   if (calleeBlock.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }
@@ -1829,13 +1841,79 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
       }
     }
   }
+  // Case G detection: two locals (receiver parameter, FunctionResult) and one
+  // block whose storage-live/assign pair initializes the result from an
+  // arithmetic rvalue over a projected receiver field and a constant.
+  if (!calleeArithmetic && callee.locals.size() == 2 &&
+      callee.locals[1].kind == mir::MirLocalKind::FunctionResult &&
+      callee.locals[1].id.ordinal() == receiverLocal.id.ordinal() + 1 &&
+      calleeBlock.statements.size() == 2 &&
+      calleeBlock.statements[0].kind() == mir::MirStatementKind::StorageLive &&
+      calleeBlock.statements[0].storageLocal() == callee.locals[1].id &&
+      calleeBlock.statements[1].kind() == mir::MirStatementKind::Assign) {
+    const auto& fieldAssignment = calleeBlock.statements[1].assignmentValue();
+    if (fieldAssignment.destination.local() == callee.locals[1].id &&
+        fieldAssignment.destination.projections().size() == 0 &&
+        fieldAssignment.initialization == mir::MirInitializationKind::Initialize &&
+        fieldAssignment.value.kind() == mir::MirRvalueKind::Arithmetic) {
+      const auto& arithmetic = fieldAssignment.value.arithmeticValue();
+      auto op = lirArithmeticOpFor(arithmetic.op);
+      auto isReceiverFieldUse = [&](const mir::MirOperand& operand) -> bool {
+        return operand.kind() != mir::MirOperandKind::Constant &&
+               operand.place().local() == receiverLocal.id &&
+               operand.place().rootType() == receiverLocal.type &&
+               operand.place().resultType() == callee.resultType &&
+               operand.place().projections().size() == 2 &&
+               operand.place().projections()[0].kind() == mir::MirProjectionKind::Dereference &&
+               operand.place().projections()[0].inputType() == receiverLocal.type &&
+               operand.place().projections()[1].kind() == mir::MirProjectionKind::Field &&
+               operand.place().projections()[1].resultType() == callee.resultType;
+      };
+      auto constOperand = [&](const mir::MirOperand& operand) -> zc::Maybe<IntegerConstant> {
+        if (operand.kind() != mir::MirOperandKind::Constant ||
+            operand.constantValue().type != callee.resultType) {
+          return zc::none;
+        }
+        auto integer = operand.constantValue().value.integerValue();
+        if (integer == zc::none) return zc::none;
+        auto bits =
+            zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), calleeCarrierValue.integerWidth());
+        if (bits == zc::none) return zc::none;
+        return IntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(bits));
+      };
+      const bool fieldIsLeft = isReceiverFieldUse(arithmetic.left);
+      const bool fieldIsRight = isReceiverFieldUse(arithmetic.right);
+      auto constantValue =
+          fieldIsLeft ? constOperand(arithmetic.right) : constOperand(arithmetic.left);
+      const auto& terminatorReturn = calleeBlock.terminator.returnValue().value;
+      bool returnsResult = false;
+      ZC_IF_SOME(returned, terminatorReturn) {
+        returnsResult = returned.kind() != mir::MirOperandKind::Constant &&
+                        returned.place().local() == callee.locals[1].id &&
+                        returned.place().projections().size() == 0;
+      }
+      if (op != zc::none && fieldIsLeft != fieldIsRight && constantValue != zc::none &&
+          callee.resultType == callee.locals[1].type && returnsResult) {
+        const uint32_t fieldOrdinal = receiverLocal.id.ordinal() + 1;
+        const uint32_t resultOrdinal = receiverLocal.id.ordinal() + 2;
+        Operand fieldUse = Operand::localUse(fieldOrdinal);
+        Operand constantUse = Operand::constant(ZC_REQUIRE_NONNULL(constantValue));
+        calleeFieldArithmetic = true;
+        calleeFieldArithmeticOp = op;
+        calleeFieldArithmeticLeft = fieldIsLeft ? zc::mv(fieldUse) : zc::mv(constantUse);
+        calleeFieldArithmeticRight = fieldIsLeft ? zc::mv(constantUse) : zc::mv(fieldUse);
+        calleeFieldArithmeticFieldOrdinal = fieldOrdinal;
+        calleeFieldArithmeticResultOrdinal = resultOrdinal;
+      }
+    }
+  }
   // The arithmetic case recorded its ordinary carrier above; the constant-local
   // fold contributes none; every other trailing local is an ordinary parameter.
-  if (!calleeArithmetic && callee.locals.size() == 2 &&
+  if (!calleeArithmetic && !calleeFieldArithmetic && callee.locals.size() == 2 &&
       callee.locals[1].kind == mir::MirLocalKind::UserLocal &&
       callee.locals[1].id.ordinal() == receiverLocal.id.ordinal() + 1) {
     calleeConstLocalFold = true;
-  } else if (!calleeArithmetic) {
+  } else if (!calleeArithmetic && !calleeFieldArithmetic) {
     for (size_t i = 1; i < callee.locals.size(); ++i) {
       const auto& parameterLocal = callee.locals[i];
       if (parameterLocal.kind != mir::MirLocalKind::Parameter ||
@@ -1847,7 +1925,8 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
       ordinaryCarriers.add(ZC_REQUIRE_NONNULL(carrier));
     }
   }
-  if (calleeBlock.statements.size() > (calleeArithmetic ? 2 : calleeConstLocalFold ? 2 : 1)) {
+  if (calleeBlock.statements.size() >
+      (calleeArithmetic || calleeFieldArithmetic || calleeConstLocalFold ? 2 : 1)) {
     return zc::none;
   }
   const auto& calleeReturn = calleeBlock.terminator.returnValue().value;
@@ -1860,6 +1939,9 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   if (calleeArithmetic) {
     // The arithmetic shape is validated structurally above; the return place is
     // the FunctionResult local and no further return classification applies.
+  } else if (calleeFieldArithmetic) {
+    // The field-arithmetic shape is validated structurally above; the return
+    // place is its FunctionResult local.
   } else ZC_IF_SOME(value, calleeReturn) {
     if (value.kind() == mir::MirOperandKind::Constant) {
       // The literal-method body carries no ordinary parameters.
@@ -1969,8 +2051,8 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
       }
     }
   }
-  if (!calleeArithmetic && calleeConstant == zc::none && !calleeFieldRead &&
-      !calleeFieldWriteRead && calleeReturnParameterOrdinal == zc::none) {
+  if (!calleeArithmetic && !calleeFieldArithmetic && calleeConstant == zc::none &&
+      !calleeFieldRead && !calleeFieldWriteRead && calleeReturnParameterOrdinal == zc::none) {
     return zc::none;
   }
 
@@ -2165,6 +2247,26 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
                                   Terminator::returnLocal(resultOrdinal)));
       zc::Vector<Local> calleeLocals;
       calleeLocals.add(Local(resultOrdinal, calleeCarrierValue));
+      functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
+                             zc::mv(parameters), zc::mv(calleeLocals), zc::mv(calleeBlocks)));
+    } else if (calleeFieldArithmetic) {
+      // Case G: LoadField the receiver field into the synthesized field slot,
+      // combine it with the constant operand in an arithmetic statement into the
+      // result slot, then return the result.
+      zc::Vector<Statement> calleeStatements;
+      calleeStatements.add(Statement::loadField(calleeFieldArithmeticFieldOrdinal,
+                                                receiverLocal.id.ordinal(),
+                                                /*fieldOffsetBytes=*/0));
+      calleeStatements.add(Statement::arithmetic(calleeFieldArithmeticResultOrdinal,
+                                                 ZC_REQUIRE_NONNULL(calleeFieldArithmeticOp),
+                                                 ZC_REQUIRE_NONNULL(calleeFieldArithmeticLeft),
+                                                 ZC_REQUIRE_NONNULL(calleeFieldArithmeticRight)));
+      zc::Vector<BasicBlock> calleeBlocks;
+      calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId), zc::mv(calleeStatements),
+                                  Terminator::returnLocal(calleeFieldArithmeticResultOrdinal)));
+      zc::Vector<Local> calleeLocals;
+      calleeLocals.add(Local(calleeFieldArithmeticFieldOrdinal, calleeCarrierValue));
+      calleeLocals.add(Local(calleeFieldArithmeticResultOrdinal, calleeCarrierValue));
       functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
                              zc::mv(parameters), zc::mv(calleeLocals), zc::mv(calleeBlocks)));
     } else if (calleeArithmetic) {

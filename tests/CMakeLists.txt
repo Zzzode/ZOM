@@ -178,6 +178,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/arithmetic-consumer/Zom.toml::arithmetic_consumer::arithmetic_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/method-arithmetic-consumer/Zom.toml::method_arithmetic_consumer::method_arithmetic_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-field-arithmetic-consumer/Zom.toml::receiver_field_arithmetic_consumer::receiver_field_arithmetic_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-fourfn-consumer/Zom.toml::reject_fourfn_consumer::reject_fourfn_consumer"
       --reject-case
@@ -227,6 +229,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/arithmetic-consumer/Zom.toml::arithmetic_consumer::arithmetic_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/method-arithmetic-consumer/Zom.toml::method_arithmetic_consumer::method_arithmetic_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-field-arithmetic-consumer/Zom.toml::receiver_field_arithmetic_consumer::receiver_field_arithmetic_consumer::42"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer")
   set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)

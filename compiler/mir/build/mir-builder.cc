@@ -590,6 +590,83 @@ zc::Maybe<RecursiveFunctionProduct> buildMethodBinaryReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers the receiver-field arithmetic return
+/// `fun m(this) -> T { return this.<field> OP <literal>; }` (and the mirrored
+/// operand order): the receiver leads the single parameter local, one
+/// FunctionResult local holds the arithmetic rvalue whose field operand is a
+/// [Dereference, Field] place-use of the receiver and whose other operand is a
+/// scalar constant, and the entry block stores the result live, assigns it, and
+/// returns a place-use of that local.
+zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldBinaryReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
+    const hir::HirPrimitiveBinaryExpression& binary,
+    const hir::HirParameterFieldProjectionExpression& projection,
+    const checker::checked::CanonicalConstValue& literalValue, bool fieldIsLeft,
+    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
+    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+  (void)hirModule;
+  if (declaration.receiver == zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
+  auto arithmetic = arithmeticOperatorFor(binary.operation);
+  if (arithmetic == zc::none) return zc::none;
+  if (binary.type != binary.operandType || projection.type != binary.operandType) {
+    return zc::none;
+  }
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+  const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  ctx.declareLocal(MirLocalKind::Parameter, receiver.type, scope, receiver.sourceSpan.clone());
+  const MirLocalId result = ctx.declareLocal(MirLocalKind::FunctionResult, declaration.resultType,
+                                             scope, sourceReturn.sourceSpan.clone());
+
+  zc::Vector<MirProjection> fieldProjections;
+  fieldProjections.add(MirProjection::dereference(receiver.type, projection.receiverType));
+  fieldProjections.add(
+      MirProjection::field(projection.field, projection.receiverType, projection.type));
+  zc::Maybe<MirOperand> fieldOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(ZC_ASSERT_NONNULL(MirLocalId::fromOrdinal(1)), receiver.type,
+                        zc::mv(fieldProjections), projection.type));
+  if (fieldOperand == zc::none) return zc::none;
+  auto literalOperand = MirOperand::constant(projection.type, literalValue.clone());
+
+  zc::Maybe<MirRvalue> rvalue;
+  if (fieldIsLeft) {
+    rvalue = MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmetic),
+                                   zc::mv(ZC_ASSERT_NONNULL(fieldOperand)), zc::mv(literalOperand),
+                                   binary.type);
+  } else {
+    rvalue = MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmetic), zc::mv(literalOperand),
+                                   zc::mv(ZC_ASSERT_NONNULL(fieldOperand)), binary.type);
+  }
+
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  ctx.appendStatement(MirStatement::storageLive(result, sourceReturn.sourceSpan.clone()));
+  zc::Vector<MirProjection> destinationProjections;
+  ctx.appendStatement(
+      MirStatement::assign(MirPlace(result, declaration.resultType, zc::mv(destinationProjections),
+                                    declaration.resultType),
+                           zc::mv(ZC_ASSERT_NONNULL(rvalue)), MirInitializationKind::Initialize,
+                           binary.sourceSpan.clone()));
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(
+      proofs, copyMarker,
+      MirPlace(result, declaration.resultType, zc::mv(returnProjections), declaration.resultType));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Method, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers `fun f(p0..pN-1) -> R { return pK; }`, or the method twin
 /// `fun m(this, p0..pN-1) -> R { return pK; }`: one root scope, parameter
 /// locals in source order with the implicit receiver leading for a method,
@@ -1177,15 +1254,36 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
 
     // Receiver parameter-binary return: a shared-receiver method whose return
     // value is a primitive arithmetic/comparison operation over ordinary
-    // parameter references and scalar literals.
+    // parameter references and scalar literals. A field-arithmetic return
+    // instead combines a `this.<field>` projection with a scalar literal.
     if (declaration.receiver != zc::none && directCall == zc::none &&
         declaration.unsafeBlock == zc::none) {
       auto binary = primitiveBinaryFor(hirModule, valueNode);
       if (binary != zc::none) {
-        auto product = buildMethodBinaryReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
-                                               ZC_ASSERT_NONNULL(binary), hirModule, identities,
-                                               proofs, copyMarker);
-        if (product != zc::none) return product;
+        auto fieldProjection =
+            parameterFieldProjectionFor(hirModule, ZC_ASSERT_NONNULL(binary).left);
+        hir::HirNodeId literalOperandNode = ZC_ASSERT_NONNULL(binary).right;
+        bool fieldIsLeft = true;
+        if (fieldProjection == zc::none) {
+          fieldProjection = parameterFieldProjectionFor(hirModule, ZC_ASSERT_NONNULL(binary).right);
+          literalOperandNode = ZC_ASSERT_NONNULL(binary).left;
+          fieldIsLeft = false;
+        }
+        if (fieldProjection != zc::none) {
+          auto literalExpression = expressionFor(hirModule, literalOperandNode);
+          if (literalExpression != zc::none) {
+            auto product = buildReceiverFieldBinaryReturn(
+                declaration, ZC_ASSERT_NONNULL(sourceReturn), ZC_ASSERT_NONNULL(binary),
+                ZC_ASSERT_NONNULL(fieldProjection), ZC_ASSERT_NONNULL(literalExpression).value,
+                fieldIsLeft, hirModule, identities, proofs, copyMarker);
+            if (product != zc::none) return product;
+          }
+        } else {
+          auto product = buildMethodBinaryReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
+                                                 ZC_ASSERT_NONNULL(binary), hirModule, identities,
+                                                 proofs, copyMarker);
+          if (product != zc::none) return product;
+        }
       }
     }
 

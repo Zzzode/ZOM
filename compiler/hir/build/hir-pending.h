@@ -168,6 +168,24 @@ struct PendingLoopBodyReturn final {
   identity::SourceSpan loopSpan;
 };
 
+// One shared-receiver field-arithmetic return: `return this.<field> OP
+// <literal>;`. The left operand is a projection of the implicit receiver
+// parameter, the right operand is a scalar literal, and the primitive binary
+// result flows into the return. The field projection is a place read; its type
+// is the field type shared by both operands.
+struct PendingReceiverFieldArithmetic final {
+  HirParameterFieldProjectionExpression field;
+  checker::checked::CanonicalConstValue literal;
+  identity::SemanticTypeId operandType;
+  checker::PrimitiveOperation operation;
+  identity::SourceSpan literalSpan;
+  identity::SourceSpan fieldSpan;
+  identity::SourceSpan binarySpan;
+  // Source operand order: true when the field projection is the binary's left
+  // operand and the literal is the right operand.
+  bool fieldIsLeft;
+};
+
 struct PendingFunctionDeclaration final {
   identity::DefId definition;
   identity::SemanticTypeId resultType;
@@ -219,6 +237,10 @@ struct PendingFunctionDeclaration final {
   // binding), the receiver is a parameter reference and there is no local or
   // aggregate carrier.
   zc::Maybe<HirReceiverCallExpression> receiverSelfCall;
+  // Populated for the shared-receiver field-arithmetic body:
+  // `return this.<field> OP <literal>;` projects one field off the implicit
+  // receiver and combines it with a scalar literal.
+  zc::Maybe<PendingReceiverFieldArithmetic> receiverFieldArithmetic;
 };
 
 }  // namespace detail

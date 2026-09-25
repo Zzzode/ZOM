@@ -1,5 +1,0 @@
-struct Cell {
-  value: i32,
-  fun get(this) -> i32 { return this.value + 1; }
-}
-fun entry() -> i32 { let cell = Cell { value: 41 }; return cell.get(); }

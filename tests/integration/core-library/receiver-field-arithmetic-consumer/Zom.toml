@@ -1,0 +1,8 @@
+[package]
+name = "receiver_field_arithmetic_consumer"
+version = "0.1.0"
+edition = "2026"
+
+[[bin]]
+name = "receiver_field_arithmetic_consumer"
+path = "src/main.zom"

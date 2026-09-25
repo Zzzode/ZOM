@@ -1613,8 +1613,8 @@ private:
                   "shared-receiver method "
                   "call, mutating-receiver field write-read, shared-receiver constant-local "
                   "method, shared-receiver parameter-arithmetic method, shared-receiver "
-                  "conditional method, shared-receiver self-call, and "
-                  "three-function direct-call-with-leaf slices)."));
+                  "field-arithmetic method, shared-receiver conditional method, shared-receiver "
+                  "self-call, and three-function direct-call-with-leaf slices)."));
     }
     backend::llvm::LlvmTranslator translator;
     ZC_IF_SOME(lirModule, lir) {

@@ -439,6 +439,73 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     }
   }
 
+  // A shared-receiver method whose body is
+  // `return this.<field> OP <constant>;` has one StorageLive/Initialize pair
+  // whose arithmetic rvalue combines a [Dereference, Field] place-use of the
+  // receiver with a constant. LIR materializes the field read as one LoadField
+  // into a synthesized field slot and then one Arithmetic into the synthesized
+  // result slot.
+  struct ReceiverFieldArithmetic final {
+    uint32_t receiverOrdinal = 0;
+    uint32_t fieldOrdinal = 0;
+    uint32_t resultOrdinal = 0;
+    mir::MirArithmeticOperator op{};
+    bool fieldIsLeft = true;
+  };
+  zc::Maybe<ReceiverFieldArithmetic> receiverFieldArithmetic;
+  if (!folded && receiverFieldRead == zc::none && receiverFieldWriteRead == zc::none &&
+      mir.locals.size() == 2 && mir.locals[0].kind == mir::MirLocalKind::Parameter &&
+      mir.locals[1].kind == mir::MirLocalKind::FunctionResult && mir.blocks.size() == 1) {
+    const auto& receiverLocal = mir.locals[0];
+    const auto& resultLocal = mir.locals[1];
+    const auto& block = mir.blocks[0];
+    const auto& term = block.terminator;
+    if (block.statements.size() == 2 &&
+        block.statements[0].kind() == mir::MirStatementKind::StorageLive &&
+        block.statements[0].storageLocal() == resultLocal.id &&
+        block.statements[1].kind() == mir::MirStatementKind::Assign &&
+        term.kind() == mir::MirTerminatorKind::Return && term.returnValue().value != zc::none) {
+      const auto& assignment = block.statements[1].assignmentValue();
+      const auto& returned = ZC_ASSERT_NONNULL(term.returnValue().value);
+      if (assignment.initialization == mir::MirInitializationKind::Initialize &&
+          assignment.destination.local() == resultLocal.id &&
+          assignment.destination.projections().size() == 0 &&
+          assignment.value.kind() == mir::MirRvalueKind::Arithmetic &&
+          returned.kind() != mir::MirOperandKind::Constant &&
+          returned.place().local() == resultLocal.id &&
+          returned.place().projections().size() == 0) {
+        const auto& arithmetic = assignment.value.arithmeticValue();
+        auto isFieldUse = [&](const mir::MirOperand& operand) -> bool {
+          return operand.kind() != mir::MirOperandKind::Constant &&
+                 operand.place().local() == receiverLocal.id &&
+                 operand.place().rootType() == receiverLocal.type &&
+                 operand.place().resultType() == mir.resultType &&
+                 operand.place().projections().size() == 2 &&
+                 operand.place().projections()[0].kind() == mir::MirProjectionKind::Dereference &&
+                 operand.place().projections()[0].inputType() == receiverLocal.type &&
+                 operand.place().projections()[1].kind() == mir::MirProjectionKind::Field &&
+                 operand.place().projections()[1].resultType() == mir.resultType;
+        };
+        auto isConstantUse = [&](const mir::MirOperand& operand) -> bool {
+          return operand.kind() == mir::MirOperandKind::Constant &&
+                 operand.constantValue().type == mir.resultType;
+        };
+        const bool fieldIsLeft = isFieldUse(arithmetic.left);
+        const bool fieldIsRight = isFieldUse(arithmetic.right);
+        const mir::MirOperand& constantOperand = fieldIsLeft ? arithmetic.right : arithmetic.left;
+        if (fieldIsLeft != fieldIsRight && isConstantUse(constantOperand)) {
+          const uint32_t receiverOrdinal = receiverLocal.id.ordinal();
+          // LIR synthesizes the field slot at receiver + 1 and places the
+          // arithmetic result at receiver + 2; neither MIR local ordinal maps
+          // directly, since MIR keeps the field read as a projected place-use.
+          receiverFieldArithmetic =
+              ReceiverFieldArithmetic{receiverOrdinal, receiverOrdinal + 1, receiverOrdinal + 2,
+                                      arithmetic.op, fieldIsLeft};
+        }
+      }
+    }
+  }
+
   // Resolve the carrier the LIR return must carry. A materialized function
   // returns the MIR result carrier. A folded scalar function does too; a folded
   // whole-struct bundle carries its first element's carrier, and a folded
@@ -542,6 +609,25 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
         lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(integerCarrier(mir.resultType, types))) {
       return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
     }
+  } else if (receiverFieldArithmetic != zc::none) {
+    // The receiver parameter maps 1:1; the field slot and arithmetic result
+    // slot are both synthesized in LIR (ordinals receiver + 1 and receiver +
+    // 2) and have no one-to-one MIR local.
+    const auto& fieldArithmetic = ZC_ASSERT_NONNULL(receiverFieldArithmetic);
+    if (lir.parameters().size() != 1 || lir.locals().size() != 2) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
+    const auto parameterCarrier = localCarrier(mir.locals[0], mir, types);
+    const auto resultCarrier = integerCarrier(mir.resultType, types);
+    if (parameterCarrier == zc::none || resultCarrier == zc::none ||
+        lir.parameters()[0].ordinal() != fieldArithmetic.receiverOrdinal ||
+        lir.parameters()[0].carrier() != ZC_ASSERT_NONNULL(parameterCarrier) ||
+        lir.locals()[0].ordinal() != fieldArithmetic.fieldOrdinal ||
+        lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(resultCarrier) ||
+        lir.locals()[1].ordinal() != fieldArithmetic.resultOrdinal ||
+        lir.locals()[1].carrier() != ZC_ASSERT_NONNULL(resultCarrier)) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
   } else {
     uint32_t parameterCount = 0;
     for (const auto& local : mir.locals) {
@@ -571,250 +657,289 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     const BasicBlock& lirBlock = lir.blocks()[b];
     uint32_t lirStatement = 0;
 
-    for (uint32_t s = 0; s < mirBlock.statements.size(); ++s) {
-      const auto& mirStatement = mirBlock.statements[s];
-      const uint32_t statementIndex = s + 1;
-      switch (mirStatement.kind()) {
-        case mir::MirStatementKind::StorageLive:
-        case mir::MirStatementKind::StorageDead:
-        case mir::MirStatementKind::UnsafeScopeBoundary:
-          // Liveness and unsafe boundaries have no LIR effect in this subset.
-          break;
-        case mir::MirStatementKind::Assign: {
-          const auto& assignment = mirStatement.assignmentValue();
-          // The folded initializer is consumed by the return terminator.
-          if (folded && &assignment == fold.assignment) break;
-          if (lirStatement >= lirBlock.statements().size()) {
-            return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
-                         statementIndex);
+    if (receiverFieldArithmetic != zc::none) {
+      // The receiver-field arithmetic body has no lockstep statement mapping:
+      // the StorageLive pair carries no LIR effect, the projected field read is
+      // a synthesized LoadField, and the arithmetic assign maps to the trailing
+      // Arithmetic statement.
+      const auto& fieldArithmetic = ZC_ASSERT_NONNULL(receiverFieldArithmetic);
+      const auto& mAssignment = mirBlock.statements[1].assignmentValue();
+      const auto& mArithmetic = mAssignment.value.arithmeticValue();
+      const mir::MirOperand& mField =
+          fieldArithmetic.fieldIsLeft ? mArithmetic.left : mArithmetic.right;
+      const mir::MirOperand& mConstant =
+          fieldArithmetic.fieldIsLeft ? mArithmetic.right : mArithmetic.left;
+      const Operand& fieldOperand = fieldArithmetic.fieldIsLeft ? lirBlock.statements()[1].left()
+                                                                : lirBlock.statements()[1].right();
+      const Operand& constantOperand = fieldArithmetic.fieldIsLeft
+                                           ? lirBlock.statements()[1].right()
+                                           : lirBlock.statements()[1].left();
+      const auto resultCarrier = integerCarrier(mir.resultType, types);
+      if (resultCarrier == zc::none || lirBlock.statements().size() != 2 ||
+          lirBlock.statements()[0].kind() != StatementKind::LoadField ||
+          lirBlock.statements()[0].source().isConstant() ||
+          lirBlock.statements()[0].destinationOrdinal() != fieldArithmetic.fieldOrdinal ||
+          lirBlock.statements()[0].basePointerOrdinal() != fieldArithmetic.receiverOrdinal ||
+          lirBlock.statements()[0].fieldOffsetBytes() != 0 ||
+          lirBlock.statements()[1].kind() != StatementKind::Arithmetic ||
+          lirBlock.statements()[1].destinationOrdinal() != fieldArithmetic.resultOrdinal ||
+          lirBlock.statements()[1].arithmeticOp() != arithmeticOp(mArithmetic.op) ||
+          fieldOperand.isConstant() ||
+          fieldOperand.localOrdinal() != fieldArithmetic.fieldOrdinal ||
+          mField.kind() == mir::MirOperandKind::Constant ||
+          !sameConstant(constantOperand, mConstant, ZC_ASSERT_NONNULL(resultCarrier))) {
+        return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+      }
+      lirStatement = 2;
+    } else {
+      for (uint32_t s = 0; s < mirBlock.statements.size(); ++s) {
+        const auto& mirStatement = mirBlock.statements[s];
+        const uint32_t statementIndex = s + 1;
+        switch (mirStatement.kind()) {
+          case mir::MirStatementKind::StorageLive:
+          case mir::MirStatementKind::StorageDead:
+          case mir::MirStatementKind::UnsafeScopeBoundary:
+            // Liveness and unsafe boundaries have no LIR effect in this subset.
+            break;
+          case mir::MirStatementKind::Assign: {
+            const auto& assignment = mirStatement.assignmentValue();
+            // The folded initializer is consumed by the return terminator.
+            if (folded && &assignment == fold.assignment) break;
+            if (lirStatement >= lirBlock.statements().size()) {
+              return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                           statementIndex);
+            }
+            const Statement& actual = lirBlock.statements()[lirStatement];
+            if (receiverFieldWriteRead != zc::none &&
+                assignment.destination.projections().size() == 2) {
+              // The mutating receiver field write maps to one StoreField through
+              // the receiver pointer at offset zero with the write's constant
+              // operand, not to a slot-oriented statement.
+              const auto& writeRead = ZC_ASSERT_NONNULL(receiverFieldWriteRead);
+              const auto& projections = assignment.destination.projections();
+              const auto fieldCarrier = integerCarrier(assignment.destination.resultType(), types);
+              if (assignment.initialization != mir::MirInitializationKind::Overwrite ||
+                  assignment.value.kind() != mir::MirRvalueKind::Use ||
+                  assignment.value.useValue().operand.kind() != mir::MirOperandKind::Constant ||
+                  fieldCarrier == zc::none || actual.kind() != StatementKind::StoreField ||
+                  actual.basePointerOrdinal() != writeRead.receiverOrdinal ||
+                  actual.fieldOffsetBytes() != 0 || actual.source().isConstant() ||
+                  !sameConstant(actual.storedValue(), assignment.value.useValue().operand,
+                                ZC_ASSERT_NONNULL(fieldCarrier)) ||
+                  projections[0].kind() != mir::MirProjectionKind::Dereference ||
+                  projections[1].kind() != mir::MirProjectionKind::Field) {
+                return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                             statementIndex);
+              }
+              ++lirStatement;
+              break;
+            }
+            if (assignment.destination.projections().size() != 0) {
+              return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1,
+                           statementIndex);
+            }
+            const uint32_t destinationOrdinal = assignment.destination.local().ordinal();
+            if (actual.destinationOrdinal() != destinationOrdinal) {
+              return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1,
+                           statementIndex);
+            }
+            const ValueType* destinationCarrier = actual.value().isConstant()
+                                                      ? &actual.value().constantValue().carrier()
+                                                      : lirSlotCarrier(lir, destinationOrdinal);
+            if (destinationCarrier == nullptr) {
+              return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
+                           statementIndex);
+            }
+            switch (assignment.value.kind()) {
+              case mir::MirRvalueKind::Use: {
+                if (actual.kind() != StatementKind::Assign) {
+                  return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                if (!sameConstant(actual.value(), assignment.value.useValue().operand,
+                                  *destinationCarrier)) {
+                  return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                break;
+              }
+              case mir::MirRvalueKind::Comparison: {
+                if (actual.kind() != StatementKind::Compare) {
+                  return fault(TranslationFaultKind::OperatorMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                const auto& comparison = assignment.value.comparisonValue();
+                if (actual.comparisonOp() != comparisonOp(comparison.op)) {
+                  return fault(TranslationFaultKind::OperatorMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                // Comparison operands share one operand carrier, resolved from
+                // the MIR constant type or place result type (integer in the
+                // admitted subset), distinct from the one-bit result slot.
+                zc::Maybe<ValueType> leafCarrier;
+                if (comparison.left.kind() == mir::MirOperandKind::Constant) {
+                  leafCarrier = integerCarrier(comparison.left.constantValue().type, types);
+                } else {
+                  leafCarrier = integerCarrier(comparison.left.place().resultType(), types);
+                  if (leafCarrier == zc::none) {
+                    leafCarrier = boolCarrier(comparison.left.place().resultType(), types);
+                  }
+                }
+                if (leafCarrier == zc::none) {
+                  return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                if (!sameConstant(actual.left(), comparison.left, ZC_ASSERT_NONNULL(leafCarrier)) ||
+                    !sameConstant(actual.right(), comparison.right,
+                                  ZC_ASSERT_NONNULL(leafCarrier))) {
+                  return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                break;
+              }
+              case mir::MirRvalueKind::NominalAggregate: {
+                // The receiver-call owner slot folds a one-element aggregate of
+                // a scalar constant into a plain integer Assign of that element;
+                // any other materialized aggregate stays outside the subset.
+                if (actual.kind() != StatementKind::Assign) {
+                  return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                const auto& aggregate = assignment.value.nominalAggregateValue();
+                if (aggregate.elements.size() != 1 ||
+                    aggregate.elements[0].operand.kind() != mir::MirOperandKind::Constant) {
+                  return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                const auto elementCarrier =
+                    integerCarrier(aggregate.elements[0].operand.constantValue().type, types);
+                if (elementCarrier == zc::none ||
+                    !sameConstant(actual.value(), aggregate.elements[0].operand,
+                                  ZC_ASSERT_NONNULL(elementCarrier))) {
+                  return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                break;
+              }
+              case mir::MirRvalueKind::Arithmetic: {
+                if (actual.kind() != StatementKind::Arithmetic) {
+                  return fault(TranslationFaultKind::OperatorMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                const auto& arithmetic = assignment.value.arithmeticValue();
+                if (actual.arithmeticOp() != arithmeticOp(arithmetic.op)) {
+                  return fault(TranslationFaultKind::OperatorMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                // An arithmetic result shares the carrier of both operands. The
+                // carrier is resolved from the declared destination slot, not the
+                // statement's left operand, which may be a constant.
+                const ValueType* resultCarrier = lirSlotCarrier(lir, destinationOrdinal);
+                if (resultCarrier == nullptr || resultCarrier->kind() != ValueTypeKind::Integer ||
+                    resultCarrier->integerWidth() == IntegerBitWidth::Bit1) {
+                  return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                auto resolveLeaf = [&](const mir::MirOperand& leaf) -> zc::Maybe<ValueType> {
+                  if (leaf.kind() == mir::MirOperandKind::Constant) {
+                    return integerCarrier(leaf.constantValue().type, types);
+                  }
+                  return integerCarrier(leaf.place().resultType(), types);
+                };
+                auto leftCarrier = resolveLeaf(arithmetic.left);
+                auto rightCarrier = resolveLeaf(arithmetic.right);
+                if (leftCarrier == zc::none || rightCarrier == zc::none ||
+                    ZC_REQUIRE_NONNULL(leftCarrier) != *resultCarrier ||
+                    ZC_REQUIRE_NONNULL(rightCarrier) != *resultCarrier) {
+                  return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                if (!sameConstant(actual.left(), arithmetic.left,
+                                  ZC_REQUIRE_NONNULL(leftCarrier)) ||
+                    !sameConstant(actual.right(), arithmetic.right,
+                                  ZC_REQUIRE_NONNULL(rightCarrier))) {
+                  return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                break;
+              }
+            }
+            ++lirStatement;
+            break;
           }
-          const Statement& actual = lirBlock.statements()[lirStatement];
-          if (receiverFieldWriteRead != zc::none &&
-              assignment.destination.projections().size() == 2) {
-            // The mutating receiver field write maps to one StoreField through
-            // the receiver pointer at offset zero with the write's constant
-            // operand, not to a slot-oriented statement.
-            const auto& writeRead = ZC_ASSERT_NONNULL(receiverFieldWriteRead);
-            const auto& projections = assignment.destination.projections();
-            const auto fieldCarrier = integerCarrier(assignment.destination.resultType(), types);
-            if (assignment.initialization != mir::MirInitializationKind::Overwrite ||
-                assignment.value.kind() != mir::MirRvalueKind::Use ||
-                assignment.value.useValue().operand.kind() != mir::MirOperandKind::Constant ||
-                fieldCarrier == zc::none || actual.kind() != StatementKind::StoreField ||
-                actual.basePointerOrdinal() != writeRead.receiverOrdinal ||
-                actual.fieldOffsetBytes() != 0 || actual.source().isConstant() ||
-                !sameConstant(actual.storedValue(), assignment.value.useValue().operand,
-                              ZC_ASSERT_NONNULL(fieldCarrier)) ||
-                projections[0].kind() != mir::MirProjectionKind::Dereference ||
-                projections[1].kind() != mir::MirProjectionKind::Field) {
+          case mir::MirStatementKind::BorrowCreation: {
+            // A receiver borrow maps to TakeAddress of the whole owner slot into
+            // the borrow temporary; both shared and mutable borrows share the one
+            // pointer carrier, so the MIR borrow kind only has to be one of the
+            // two receiver modes.
+            if (lirStatement >= lirBlock.statements().size()) {
+              return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                           statementIndex);
+            }
+            const Statement& actual = lirBlock.statements()[lirStatement];
+            const auto& borrow = mirStatement.borrowCreationValue();
+            if ((borrow.kind != mir::MirBorrowKind::Shared &&
+                 borrow.kind != mir::MirBorrowKind::Mutable) ||
+                actual.kind() != StatementKind::TakeAddress || actual.source().isConstant() ||
+                actual.destinationOrdinal() != borrow.destination.local().ordinal() ||
+                actual.sourceOrdinal() != borrow.source.local().ordinal() ||
+                borrow.destination.projections().size() != 0 ||
+                borrow.source.projections().size() != 0) {
               return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
                            statementIndex);
             }
             ++lirStatement;
             break;
           }
-          if (assignment.destination.projections().size() != 0) {
-            return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1,
-                         statementIndex);
-          }
-          const uint32_t destinationOrdinal = assignment.destination.local().ordinal();
-          if (actual.destinationOrdinal() != destinationOrdinal) {
-            return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1,
-                         statementIndex);
-          }
-          const ValueType* destinationCarrier = actual.value().isConstant()
-                                                    ? &actual.value().constantValue().carrier()
-                                                    : lirSlotCarrier(lir, destinationOrdinal);
-          if (destinationCarrier == nullptr) {
-            return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
-                         statementIndex);
-          }
-          switch (assignment.value.kind()) {
-            case mir::MirRvalueKind::Use: {
-              if (actual.kind() != StatementKind::Assign) {
-                return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
-                             statementIndex);
-              }
-              if (!sameConstant(actual.value(), assignment.value.useValue().operand,
-                                *destinationCarrier)) {
-                return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1,
-                             statementIndex);
-              }
-              break;
-            }
-            case mir::MirRvalueKind::Comparison: {
-              if (actual.kind() != StatementKind::Compare) {
-                return fault(TranslationFaultKind::OperatorMismatch, functionIndex, b + 1, b + 1,
-                             statementIndex);
-              }
-              const auto& comparison = assignment.value.comparisonValue();
-              if (actual.comparisonOp() != comparisonOp(comparison.op)) {
-                return fault(TranslationFaultKind::OperatorMismatch, functionIndex, b + 1, b + 1,
-                             statementIndex);
-              }
-              // Comparison operands share one operand carrier, resolved from
-              // the MIR constant type or place result type (integer in the
-              // admitted subset), distinct from the one-bit result slot.
-              zc::Maybe<ValueType> leafCarrier;
-              if (comparison.left.kind() == mir::MirOperandKind::Constant) {
-                leafCarrier = integerCarrier(comparison.left.constantValue().type, types);
-              } else {
-                leafCarrier = integerCarrier(comparison.left.place().resultType(), types);
-                if (leafCarrier == zc::none) {
-                  leafCarrier = boolCarrier(comparison.left.place().resultType(), types);
-                }
-              }
-              if (leafCarrier == zc::none) {
-                return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
-                             statementIndex);
-              }
-              if (!sameConstant(actual.left(), comparison.left, ZC_ASSERT_NONNULL(leafCarrier)) ||
-                  !sameConstant(actual.right(), comparison.right, ZC_ASSERT_NONNULL(leafCarrier))) {
-                return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1,
-                             statementIndex);
-              }
-              break;
-            }
-            case mir::MirRvalueKind::NominalAggregate: {
-              // The receiver-call owner slot folds a one-element aggregate of
-              // a scalar constant into a plain integer Assign of that element;
-              // any other materialized aggregate stays outside the subset.
-              if (actual.kind() != StatementKind::Assign) {
-                return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
-                             statementIndex);
-              }
-              const auto& aggregate = assignment.value.nominalAggregateValue();
-              if (aggregate.elements.size() != 1 ||
-                  aggregate.elements[0].operand.kind() != mir::MirOperandKind::Constant) {
-                return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
-                             statementIndex);
-              }
-              const auto elementCarrier =
-                  integerCarrier(aggregate.elements[0].operand.constantValue().type, types);
-              if (elementCarrier == zc::none ||
-                  !sameConstant(actual.value(), aggregate.elements[0].operand,
-                                ZC_ASSERT_NONNULL(elementCarrier))) {
-                return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1,
-                             statementIndex);
-              }
-              break;
-            }
-            case mir::MirRvalueKind::Arithmetic: {
-              if (actual.kind() != StatementKind::Arithmetic) {
-                return fault(TranslationFaultKind::OperatorMismatch, functionIndex, b + 1, b + 1,
-                             statementIndex);
-              }
-              const auto& arithmetic = assignment.value.arithmeticValue();
-              if (actual.arithmeticOp() != arithmeticOp(arithmetic.op)) {
-                return fault(TranslationFaultKind::OperatorMismatch, functionIndex, b + 1, b + 1,
-                             statementIndex);
-              }
-              // An arithmetic result shares the carrier of both operands. The
-              // carrier is resolved from the declared destination slot, not the
-              // statement's left operand, which may be a constant.
-              const ValueType* resultCarrier = lirSlotCarrier(lir, destinationOrdinal);
-              if (resultCarrier == nullptr || resultCarrier->kind() != ValueTypeKind::Integer ||
-                  resultCarrier->integerWidth() == IntegerBitWidth::Bit1) {
-                return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
-                             statementIndex);
-              }
-              auto resolveLeaf = [&](const mir::MirOperand& leaf) -> zc::Maybe<ValueType> {
-                if (leaf.kind() == mir::MirOperandKind::Constant) {
-                  return integerCarrier(leaf.constantValue().type, types);
-                }
-                return integerCarrier(leaf.place().resultType(), types);
-              };
-              auto leftCarrier = resolveLeaf(arithmetic.left);
-              auto rightCarrier = resolveLeaf(arithmetic.right);
-              if (leftCarrier == zc::none || rightCarrier == zc::none ||
-                  ZC_REQUIRE_NONNULL(leftCarrier) != *resultCarrier ||
-                  ZC_REQUIRE_NONNULL(rightCarrier) != *resultCarrier) {
-                return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
-                             statementIndex);
-              }
-              if (!sameConstant(actual.left(), arithmetic.left, ZC_REQUIRE_NONNULL(leftCarrier)) ||
-                  !sameConstant(actual.right(), arithmetic.right,
-                                ZC_REQUIRE_NONNULL(rightCarrier))) {
-                return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1,
-                             statementIndex);
-              }
-              break;
-            }
-          }
-          ++lirStatement;
-          break;
-        }
-        case mir::MirStatementKind::BorrowCreation: {
-          // A receiver borrow maps to TakeAddress of the whole owner slot into
-          // the borrow temporary; both shared and mutable borrows share the one
-          // pointer carrier, so the MIR borrow kind only has to be one of the
-          // two receiver modes.
-          if (lirStatement >= lirBlock.statements().size()) {
+          case mir::MirStatementKind::SetDiscriminant:
+          case mir::MirStatementKind::Deinitialize:
             return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
                          statementIndex);
-          }
-          const Statement& actual = lirBlock.statements()[lirStatement];
-          const auto& borrow = mirStatement.borrowCreationValue();
-          if ((borrow.kind != mir::MirBorrowKind::Shared &&
-               borrow.kind != mir::MirBorrowKind::Mutable) ||
-              actual.kind() != StatementKind::TakeAddress || actual.source().isConstant() ||
-              actual.destinationOrdinal() != borrow.destination.local().ordinal() ||
-              actual.sourceOrdinal() != borrow.source.local().ordinal() ||
-              borrow.destination.projections().size() != 0 ||
-              borrow.source.projections().size() != 0) {
-            return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
-                         statementIndex);
-          }
-          ++lirStatement;
-          break;
         }
-        case mir::MirStatementKind::SetDiscriminant:
-        case mir::MirStatementKind::Deinitialize:
+      }
+      if (receiverFieldRead != zc::none) {
+        // The projected receiver return has no MIR statement; LIR emits exactly
+        // one LoadField into the synthesized result slot.
+        if (lirStatement != 0 || lirBlock.statements().size() != 1) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1, 1);
+        }
+        const Statement& load = lirBlock.statements()[0];
+        const auto& read = ZC_ASSERT_NONNULL(receiverFieldRead);
+        const auto baseCarrier = localCarrier(mir.locals[0], mir, types);
+        const auto resultCarrier = integerCarrier(mir.resultType, types);
+        if (baseCarrier == zc::none || resultCarrier == zc::none ||
+            load.kind() != StatementKind::LoadField || load.source().isConstant() ||
+            load.destinationOrdinal() != read.resultOrdinal ||
+            load.basePointerOrdinal() != read.receiverOrdinal || load.fieldOffsetBytes() != 0 ||
+            lir.parameters()[0].carrier() != ZC_ASSERT_NONNULL(baseCarrier) ||
+            lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(resultCarrier)) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1, 1);
+        }
+      } else if (receiverFieldWriteRead != zc::none) {
+        // The projected write consumed the leading StoreField; the projected
+        // return still has no MIR statement, so the trailing LIR statement is
+        // exactly one LoadField into the synthesized result slot.
+        if (lirStatement != 1 || lirBlock.statements().size() != 2) {
           return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
-                       statementIndex);
-      }
-    }
-    if (receiverFieldRead != zc::none) {
-      // The projected receiver return has no MIR statement; LIR emits exactly
-      // one LoadField into the synthesized result slot.
-      if (lirStatement != 0 || lirBlock.statements().size() != 1) {
-        return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1, 1);
-      }
-      const Statement& load = lirBlock.statements()[0];
-      const auto& read = ZC_ASSERT_NONNULL(receiverFieldRead);
-      const auto baseCarrier = localCarrier(mir.locals[0], mir, types);
-      const auto resultCarrier = integerCarrier(mir.resultType, types);
-      if (baseCarrier == zc::none || resultCarrier == zc::none ||
-          load.kind() != StatementKind::LoadField || load.source().isConstant() ||
-          load.destinationOrdinal() != read.resultOrdinal ||
-          load.basePointerOrdinal() != read.receiverOrdinal || load.fieldOffsetBytes() != 0 ||
-          lir.parameters()[0].carrier() != ZC_ASSERT_NONNULL(baseCarrier) ||
-          lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(resultCarrier)) {
-        return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1, 1);
-      }
-    } else if (receiverFieldWriteRead != zc::none) {
-      // The projected write consumed the leading StoreField; the projected
-      // return still has no MIR statement, so the trailing LIR statement is
-      // exactly one LoadField into the synthesized result slot.
-      if (lirStatement != 1 || lirBlock.statements().size() != 2) {
+                       lirStatement + 1);
+        }
+        const Statement& load = lirBlock.statements()[1];
+        const auto& writeRead = ZC_ASSERT_NONNULL(receiverFieldWriteRead);
+        const auto baseCarrier = localCarrier(mir.locals[0], mir, types);
+        const auto resultCarrier = integerCarrier(mir.resultType, types);
+        if (baseCarrier == zc::none || resultCarrier == zc::none ||
+            load.kind() != StatementKind::LoadField || load.source().isConstant() ||
+            load.destinationOrdinal() != writeRead.resultOrdinal ||
+            load.basePointerOrdinal() != writeRead.receiverOrdinal ||
+            load.fieldOffsetBytes() != 0 ||
+            lir.parameters()[0].carrier() != ZC_ASSERT_NONNULL(baseCarrier) ||
+            lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(resultCarrier)) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1, 2);
+        }
+      } else if (lirStatement != lirBlock.statements().size()) {
         return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
                      lirStatement + 1);
       }
-      const Statement& load = lirBlock.statements()[1];
-      const auto& writeRead = ZC_ASSERT_NONNULL(receiverFieldWriteRead);
-      const auto baseCarrier = localCarrier(mir.locals[0], mir, types);
-      const auto resultCarrier = integerCarrier(mir.resultType, types);
-      if (baseCarrier == zc::none || resultCarrier == zc::none ||
-          load.kind() != StatementKind::LoadField || load.source().isConstant() ||
-          load.destinationOrdinal() != writeRead.resultOrdinal ||
-          load.basePointerOrdinal() != writeRead.receiverOrdinal || load.fieldOffsetBytes() != 0 ||
-          lir.parameters()[0].carrier() != ZC_ASSERT_NONNULL(baseCarrier) ||
-          lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(resultCarrier)) {
-        return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1, 2);
-      }
-    } else if (lirStatement != lirBlock.statements().size()) {
-      return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
-                   lirStatement + 1);
     }
 
     // Terminator correspondence under the dense block bijection.
@@ -896,6 +1021,12 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
           if (lirTerminator.kind() != TerminatorKind::ReturnLocal ||
               lirTerminator.returnLocalOrdinal() !=
                   ZC_ASSERT_NONNULL(receiverFieldWriteRead).resultOrdinal) {
+            return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
+          }
+        } else if (receiverFieldArithmetic != zc::none) {
+          if (lirTerminator.kind() != TerminatorKind::ReturnLocal ||
+              lirTerminator.returnLocalOrdinal() !=
+                  ZC_ASSERT_NONNULL(receiverFieldArithmetic).resultOrdinal) {
             return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
           }
         } else {

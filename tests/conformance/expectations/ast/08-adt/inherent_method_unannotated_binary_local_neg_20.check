@@ -1,0 +1,66 @@
+// RUN: %zomc compile --dump-ast %corpus/08-adt/inherent_method_unannotated_binary_local_neg_20.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #26 @1:1..5:1 file_name="inherent_method_unannotated_binary_local_neg_20.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #25 @1:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StructDecl #24 @1:1..4:2 name="Cell"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #23 @1:13..4:2 nmembers=2
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #2 @2:3..2:14 name="value" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:10..2:13 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:                 MethodDecl #22 @3:3..3:58 name="m" mode=Instance visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #8 @3:8..3:22 nparams=2
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         FunctionParameterDecl #5 @3:9..3:13 name="this"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             NamedTypeExpr #4 @3:9..3:13
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #3 @3:9..3:13 segments=["Self"] root=Relative
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                         FunctionParameterDecl #7 @3:15..3:21 name="x"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             PredefinedTypeExpr #6 @3:18..3:21 kind=I32
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   type_params_id: null
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #9 @3:26..3:29 kind=I32
+// CHECK-NEXT:                   raises_ty: null
+// CHECK-NEXT:                   body:
+// CHECK-NEXT:                     BlockStmt #21 @3:30..3:58
+// CHECK-NEXT:                       stmts:
+// CHECK-NEXT:                         StatementListItem #17 @3:32..3:46
+// CHECK-NEXT:                           item:
+// CHECK-NEXT:                             LetStmt #16 @3:32..3:46 kind=Let
+// CHECK-NEXT:                               declarations:
+// CHECK-NEXT:                                 VariableDeclaratorList #15 @3:36..3:45 n_decls=1
+// CHECK-NEXT:                                   decls:
+// CHECK-NEXT:                                     VariableDeclarator #14 @3:36..3:45
+// CHECK-NEXT:                                       pattern:
+// CHECK-NEXT:                                         IdentifierPattern #10 @3:36..3:37 name="z"
+// CHECK-NEXT:                                           ty: null
+// CHECK-NEXT:                                       ty: null
+// CHECK-NEXT:                                       init:
+// CHECK-NEXT:                                         BinaryExpr #13 @3:40..3:45 op=Add
+// CHECK-NEXT:                                           lhs:
+// CHECK-NEXT:                                             IdentExpr #11 @3:40..3:41 name="x"
+// CHECK-NEXT:                                           rhs:
+// CHECK-NEXT:                                             IntLiteral #12 @3:44..3:45 base=10 value="1"
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                         StatementListItem #20 @3:47..3:56
+// CHECK-NEXT:                           item:
+// CHECK-NEXT:                             ReturnStmt #19 @3:47..3:56
+// CHECK-NEXT:                               value:
+// CHECK-NEXT:                                 IdentExpr #18 @3:54..3:55 name="z"
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:       attrs: null

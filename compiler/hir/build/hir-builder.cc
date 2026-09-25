@@ -18,6 +18,7 @@
 #include "compiler/hir/build/lower-expr-binary.h"
 #include "compiler/hir/build/lower-expr-borrow.h"
 #include "compiler/hir/build/lower-expr-call.h"
+#include "compiler/hir/build/lower-expr-field-arithmetic.h"
 #include "compiler/hir/build/lower-stmt-control.h"
 #include "compiler/hir/build/lower-stmt-write.h"
 #include "compiler/hir/hir-candidate-impl.h"
@@ -734,6 +735,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::none,
                                                           zc::none,
                                                           zc::none,
+                                                          zc::none,
                                                           zc::none});
         }
         continue;
@@ -895,6 +897,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::mv(orderingKey),
                                                           zc::none,
                                                           zc::mv(loopReturn),
+                                                          zc::none,
                                                           zc::none,
                                                           zc::none,
                                                           zc::none,
@@ -1208,6 +1211,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::none,
                                                         zc::none,
                                                         zc::none,
+                                                        zc::none,
                                                         zc::none});
         continue;
       }
@@ -1400,6 +1404,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       zc::Maybe<HirParameterFieldWriteStatement> parameterFieldWrite;
       zc::Maybe<checker::checked::CanonicalConstValue> parameterFieldWriteLiteral;
       zc::Maybe<HirReceiverCallExpression> receiverSelfCall;
+      zc::Maybe<PendingReceiverFieldArithmetic> receiverFieldArithmetic;
       zc::Maybe<HirParameterReferenceExpression> parameterReference;
       zc::Maybe<HirParameterIndexExpression> parameterIndex;
       zc::Maybe<HirParameterReborrowExpression> parameterReborrow;
@@ -1923,6 +1928,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::mv(sequential),
                                                         zc::mv(unsafeBlockSpan),
                                                         zc::mv(orderingKey),
+                                                        zc::none,
                                                         zc::none,
                                                         zc::none,
                                                         zc::none,
@@ -2778,6 +2784,134 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                ir::IrFailureKind::MissingRequiredFact, module,
                                                registries, ordinal + 2);
         }
+      } else if (shape.returnsReceiverFieldArithmetic) {
+        // Shared-receiver field arithmetic: `return this.<field> OP <literal>;`
+        // (or the mirrored operand order). The binary result type is the field
+        // type. The field operand reuses the receiver-field projection facts;
+        // the literal operand consumes its checked literal fact and the binary
+        // its checked primitive-arithmetic call fact. A field read through a
+        // mutable receiver keeps the same capability drain as the plain
+        // receiver-field return.
+        const bool fieldIsLeft = !shape.comparisonLeftIsLiteral;
+        const ast::NodeId fieldNode = fieldIsLeft ? shape.comparisonLeft : shape.comparisonRight;
+        const ast::NodeId literalNode = fieldIsLeft ? shape.comparisonRight : shape.comparisonLeft;
+        const ast::NodeId fieldObject(
+            tree.node(fieldNode).payload.words[ast::kMemberExpressionObjectWord]);
+        auto thisTypeIndex = factIndex(facts.nodeTypes(), fieldObject);
+        auto memberIndex = factIndex(facts.members(), fieldNode);
+        auto placeIndex = factIndex(facts.places(), fieldNode);
+        auto binaryCallIndex = factIndex(facts.calls(), shape.value);
+        auto literalIndex = factIndex(facts.literals(), literalNode);
+        auto literalTypeIndex = factIndex(facts.nodeTypes(), literalNode);
+        auto fieldSpan = bound.parsedModule().spanFor(tree.node(fieldNode).range);
+        auto literalSpan = bound.parsedModule().spanFor(tree.node(literalNode).range);
+        if (thisTypeIndex == zc::none || memberIndex == zc::none || placeIndex == zc::none ||
+            binaryCallIndex == zc::none || literalIndex == zc::none ||
+            literalTypeIndex == zc::none || fieldSpan == zc::none || literalSpan == zc::none ||
+            methodReceiver == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
+        size_t thisTypeSlot = 0;
+        size_t memberSlot = 0;
+        size_t placeSlot = 0;
+        size_t binaryCallSlot = 0;
+        size_t literalSlot = 0;
+        size_t literalTypeSlot = 0;
+        ZC_IF_SOME(index, thisTypeIndex) { thisTypeSlot = index; }
+        ZC_IF_SOME(index, memberIndex) { memberSlot = index; }
+        ZC_IF_SOME(index, placeIndex) { placeSlot = index; }
+        ZC_IF_SOME(index, binaryCallIndex) { binaryCallSlot = index; }
+        ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+        ZC_IF_SOME(index, literalTypeIndex) { literalTypeSlot = index; }
+        const auto& receiver = ZC_ASSERT_NONNULL(methodReceiver);
+        const auto& member = facts.members().entries()[memberSlot].value;
+        const auto& place = facts.places().entries()[placeSlot].value;
+        const auto& root = place.root.variant();
+        const auto& literalFact = facts.literals().entries()[literalSlot].value;
+        const auto& binaryCallFact = facts.calls().entries()[binaryCallSlot].value;
+        const auto& binaryCall = binaryCallFact.invocation;
+        const auto& binarySelected = binaryCall.selected.variant();
+        const auto operation =
+            binarySelected.is<checker::checked::PrimitiveCallable>()
+                ? zc::Maybe<checker::PrimitiveOperation>(
+                      binarySelected.get<checker::checked::PrimitiveCallable>().operation)
+                : zc::Maybe<checker::PrimitiveOperation>(zc::none);
+        bool operationIsArithmetic = false;
+        ZC_IF_SOME(op, operation) { operationIsArithmetic = isScalarArithmeticOperation(op); }
+        if (member.node != fieldNode || member.memberType != nodeType.value ||
+            member.adjustment != zc::none ||
+            facts.nodeTypes().entries()[thisTypeSlot].value != receiver.type ||
+            place.type != nodeType.value || !place.movable ||
+            !root.is<checker::checked::CallableParameterPlaceRoot>() ||
+            place.projections.size() != 1 ||
+            !place.projections[0].variant().is<checker::checked::FieldProjection>() ||
+            place.projections[0].variant().get<checker::checked::FieldProjection>().field !=
+                member.member ||
+            !typeExists(member.receiverType, checkedModule.semanticTypes()) ||
+            literalFact.node != literalNode || literalFact.type != nodeType.value ||
+            facts.nodeTypes().entries()[literalTypeSlot].value != nodeType.value ||
+            binaryCallFact.node != shape.value || !operationIsArithmetic ||
+            binaryCall.calleeType != nodeType.value || binaryCall.receiver != zc::none ||
+            binaryCall.receiverMode != zc::none || binaryCall.receiverAdjustment != zc::none ||
+            binaryCall.arguments.size() != 2 ||
+            binaryCall.arguments[0].sourceNode != shape.comparisonLeft ||
+            binaryCall.arguments[0].sourceType != nodeType.value ||
+            binaryCall.arguments[1].sourceNode != shape.comparisonRight ||
+            binaryCall.arguments[1].sourceType != nodeType.value ||
+            binaryCall.successType != nodeType.value || binaryCall.resultType != nodeType.value ||
+            binaryCall.substitutions != zc::none || binaryCall.witnesses != zc::none ||
+            binaryCall.raises != zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        auto rootAuthority = registries.callableParameter(
+            root.get<checker::checked::CallableParameterPlaceRoot>().parameter);
+        if (rootAuthority == zc::none || ZC_ASSERT_NONNULL(rootAuthority).key() != receiver.key) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        auto receiverLookup = checkedModule.semanticTypes().get(receiver.type);
+        if (!receiverLookup.is<type::SemanticTypeLookup>() ||
+            !receiverLookup.get<type::SemanticTypeLookup>()
+                 .data()
+                 .is<type::semantic::ReferenceTypeData>() ||
+            receiverLookup.get<type::SemanticTypeLookup>()
+                    .data()
+                    .get<type::semantic::ReferenceTypeData>()
+                    .referent != member.receiverType) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        if (receiverLookup.get<type::SemanticTypeLookup>()
+                .data()
+                .get<type::semantic::ReferenceTypeData>()
+                .mutability != type::semantic::Mutability::Const) {
+          return rejectHirCapability<HirModuleCandidate>(
+              definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+              definition.source.clone());
+        }
+        auto fieldProjection =
+            HirParameterFieldProjectionExpression{HirNodeId(),
+                                                  receiver.key.clone(),
+                                                  member.receiverType,
+                                                  member.member,
+                                                  nodeType.value,
+                                                  HirValueCategory::Place,
+                                                  ZC_ASSERT_NONNULL(fieldSpan).clone()};
+        receiverFieldArithmetic =
+            PendingReceiverFieldArithmetic{zc::mv(fieldProjection),
+                                           literalFact.literal.clone(),
+                                           nodeType.value,
+                                           ZC_ASSERT_NONNULL(operation),
+                                           ZC_ASSERT_NONNULL(literalSpan).clone(),
+                                           ZC_ASSERT_NONNULL(fieldSpan).clone(),
+                                           valueSpanValue.clone(),
+                                           fieldIsLeft};
       } else if (tree.node(shape.value).kind == ast::SyntaxKind::IndexExpression) {
         const auto& sourceIndex = tree.node(shape.value);
         const ast::NodeId base(sourceIndex.payload.words[ast::kIndexExpressionObjectWord]);
@@ -3487,7 +3621,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       zc::mv(loopBodyReturn),
                                                       zc::mv(parameterFieldWrite),
                                                       zc::mv(parameterFieldWriteLiteral),
-                                                      zc::mv(receiverSelfCall)});
+                                                      zc::mv(receiverSelfCall),
+                                                      zc::mv(receiverFieldArithmetic)});
       continue;
     }
     if (definition.record.kind() != identity::DefinitionKind::Static &&
@@ -3687,6 +3822,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // the count that are scalar literals rather than parameter references.
   size_t comparisonReturnCount = 0;
   size_t comparisonReturnLiteralOperandCount = 0;
+  // Shared-receiver field-arithmetic methods (`return this.<field> OP
+  // <literal>;`). Each carries three node-type facts beyond the per-function
+  // baseline (the receiver `this`, the field projection, and the literal; the
+  // binary result is the baseline), one member and place fact, and one
+  // primitive call and dispatch fact. Its single literal is covered by the
+  // per-function literal baseline, so the literals equation is unchanged.
+  size_t receiverFieldArithmeticCount = 0;
   // Mutable-local writes whose value is a primitive binary. Each carries one
   // call fact and one dispatch fact, two operand node types beyond the per-write
   // baseline, materializes one HirPrimitiveBinaryExpression, and its two operands
@@ -3780,6 +3922,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           if (operand->literal != zc::none) { ++comparisonReturnLiteralOperandCount; }
         }
       }
+      continue;
+    }
+    if (function.receiverFieldArithmetic != zc::none) {
+      ++receiverFieldArithmeticCount;
       continue;
     }
     // A loop-body composite function additionally materializes one loop statement
@@ -3960,7 +4106,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           localBorrowCount + unsafeBlockCount + conditionalCount * 2 +
           equalityConditionalCount * 2 + loopCount + comparisonReturnCount * 2 +
           sequentialBinaryCount * 2 + binaryWriteCount * 2 + parameterFieldProjectionCount +
-          parameterFieldWriteCount * 4) {
+          receiverFieldArithmeticCount * 3 + parameterFieldWriteCount * 4) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 1);
   }
@@ -3984,11 +4130,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   if (facts.calls().size() != directCallCount + receiverCallCount + receiverSelfCallCount +
                                   parameterIndexCount + equalityConditionalCount +
                                   comparisonReturnCount + sequentialBinaryCount +
-                                  binaryWriteCount ||
+                                  receiverFieldArithmeticCount + binaryWriteCount ||
       checkedModule.dispatchFacts().facts().size() !=
           directCallCount + receiverCallCount + receiverSelfCallCount + parameterIndexCount +
               equalityConditionalCount + comparisonReturnCount + sequentialBinaryCount +
-              binaryWriteCount) {
+              receiverFieldArithmeticCount + binaryWriteCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 4);
   }
@@ -4000,15 +4146,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 6);
   }
-  if (facts.members().size() != localFieldProjectionCount + localFieldWriteCount +
-                                    receiverCallCount + receiverSelfCallCount +
-                                    parameterFieldProjectionCount + parameterFieldWriteCount) {
+  if (facts.members().size() !=
+      localFieldProjectionCount + localFieldWriteCount + receiverCallCount + receiverSelfCallCount +
+          parameterFieldProjectionCount + parameterFieldWriteCount + receiverFieldArithmeticCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 7);
   }
   if (facts.places().size() != localFieldProjectionCount + localFieldWriteCount +
                                    parameterIndexCount + parameterFieldProjectionCount +
-                                   parameterFieldWriteCount ||
+                                   receiverFieldArithmeticCount + parameterFieldWriteCount ||
       facts.indexes().size() != parameterIndexCount ||
       facts.markerObligations().size() != parameterIndexCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -4180,6 +4326,29 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                      unsafeBlocks, parameterReborrows, localBorrows, calls, receiverCalls,
                      conditionals, loops);
       lowerComparisonReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    // Shared-receiver field arithmetic: `return this.<field> OP <literal>;`
+    // with an implicit receiver and no ordinary parameters. Six node ids:
+    // function, body, field projection, literal, binary, return.
+    if (value.receiverFieldArithmetic != zc::none && value.literal == zc::none &&
+        value.call == zc::none && value.receiverCall == zc::none &&
+        value.receiverSelfCall == zc::none && value.local == zc::none &&
+        value.aggregate == zc::none && value.localWrites.size() == 0 &&
+        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
+        value.localFieldProjection == zc::none && value.parameterFieldProjection == zc::none &&
+        value.parameterReference == zc::none && value.parameterIndex == zc::none &&
+        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
+        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
+        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.parameterFieldWrite == zc::none &&
+        value.parameterFieldWriteLiteral == zc::none && value.unsafeBlockSpan == zc::none) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
+                     unsafeBlocks, parameterReborrows, localBorrows, calls, receiverCalls,
+                     conditionals, loops);
+      lowerReceiverFieldArithmeticFunction(zc::mv(value), fnCtx);
       continue;
     }
     // Family 3: one aggregate-initialized local returned through a field

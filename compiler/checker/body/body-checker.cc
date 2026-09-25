@@ -1718,6 +1718,26 @@ zc::Maybe<PrimitiveOperation> unsupportedBinaryOperator(const BodyCheckingInput&
   return zc::none;
 }
 
+// Structural test for a `this.<field>` read operand: a dot member expression
+// whose object is the implicit receiver. This is usable from the production
+// classification traversal, which only has the bound module and tree (no
+// `BodyCheckingInput`); the full semantic resolution (enclosing method, field
+// type, receiver mutability) is left to `thisReceiverFieldShape` in the shape
+// validator. A `this` base is only bound inside a method, so the structural
+// shape is sufficient to schedule production.
+bool isReceiverFieldRead(const ast::Tree& tree, ast::NodeId node) {
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::MemberExpression) {
+    return false;
+  }
+  const auto& member = tree.node(node);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return false;
+  }
+  const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+  return tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::ThisExpr;
+}
+
 zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
     const BodyCheckingInput& input, ast::NodeId node,
     zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
@@ -1753,6 +1773,15 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
     auto parameter = callableParameterReferenceType(input, operandNode);
     if (parameter != zc::none) return parameter;
     return ownerLocalReferenceType(input, operandNode, nodeTypes);
+  };
+  // A receiver-field operand is a `this.<field>` projection read inside an
+  // inherent method. Its operand type is the field type. Like a nested operand,
+  // its node-type fact is produced at a later production stage than the binary,
+  // so it is validated structurally here rather than through a node-type fact
+  // lookup.
+  auto receiverFieldType = [&](ast::NodeId operandNode) -> zc::Maybe<identity::SemanticTypeId> {
+    ZC_IF_SOME(shape, thisReceiverFieldShape(input, operandNode)) { return shape.fieldType; }
+    return zc::none;
   };
   // A nested operand is itself a one-level primitive binary (`a + b * c`). Its
   // result type is derived structurally from a reference operand (which resolves
@@ -1830,23 +1859,33 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
       tree.node(right).kind == ast::SyntaxKind::IdentExpr && referenceType(right) != zc::none;
   const bool leftIsLiteral = isScalarLiteral(tree.node(left).kind);
   const bool rightIsLiteral = isScalarLiteral(tree.node(right).kind);
+  const bool leftIsReceiverField =
+      isReceiverFieldRead(tree, left) && receiverFieldType(left) != zc::none;
+  const bool rightIsReceiverField =
+      isReceiverFieldRead(tree, right) && receiverFieldType(right) != zc::none;
   auto leftNestedType = leftIsNested ? nestedBinaryResultType(left) : zc::none;
   auto rightNestedType = rightIsNested ? nestedBinaryResultType(right) : zc::none;
   if (leftIsNested && leftNestedType == zc::none) return zc::none;
   if (rightIsNested && rightNestedType == zc::none) return zc::none;
-  if ((!leftIsReference && !leftIsLiteral && !leftIsNested) ||
-      (!rightIsReference && !rightIsLiteral && !rightIsNested) ||
-      (!leftIsReference && !rightIsReference && !leftIsNested && !rightIsNested)) {
+  if ((!leftIsReference && !leftIsLiteral && !leftIsNested && !leftIsReceiverField) ||
+      (!rightIsReference && !rightIsLiteral && !rightIsNested && !rightIsReceiverField) ||
+      (!leftIsReference && !rightIsReference && !leftIsNested && !rightIsNested &&
+       !leftIsReceiverField && !rightIsReceiverField)) {
     return zc::none;
   }
-  // Derive the shared operand type from a reference operand, or from a nested
-  // operand's result type when no operand is a plain reference; both operands
-  // must agree on this primitive scalar type.
+  // Derive the shared operand type from a reference operand, then from a
+  // receiver-field operand, or from a nested operand's result type when no
+  // operand is a plain reference; both operands must agree on this primitive
+  // scalar type.
   zc::Maybe<identity::SemanticTypeId> operandType;
   if (leftIsReference) {
     operandType = referenceType(left);
   } else if (rightIsReference) {
     operandType = referenceType(right);
+  } else if (leftIsReceiverField) {
+    operandType = receiverFieldType(left);
+  } else if (rightIsReceiverField) {
+    operandType = receiverFieldType(right);
   } else if (leftIsNested) {
     operandType = leftNestedType;
   } else if (rightIsNested) {
@@ -1882,8 +1921,18 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   // own production site and only needs its result type to agree (checked above),
   // since its node-type fact is produced later in schema preorder.
   auto operandMatches = [&](ast::NodeId operandNode, bool isReference, bool isLiteral,
-                            bool isNested) -> bool {
+                            bool isNested, bool isReceiverField) -> bool {
     if (isNested) return true;
+    // A receiver-field read is validated structurally: the projected field type
+    // must equal the shared operand type. Its node-type fact is produced at a
+    // later production stage than the binary, so a node-type lookup here would
+    // always miss.
+    if (isReceiverField) {
+      auto fieldType = receiverFieldType(operandNode);
+      bool fieldOk = false;
+      ZC_IF_SOME(value, fieldType) { fieldOk = value == operand; }
+      return fieldOk;
+    }
     zc::Maybe<const checked::NodeTypeMap::Entry&> typeFact;
     for (const auto& entry : nodeTypes) {
       if (entry.key == operandNode) typeFact = entry;
@@ -1909,8 +1958,9 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
     }
     return literalOk;
   };
-  if (!operandMatches(left, leftIsReference, leftIsLiteral, leftIsNested) ||
-      !operandMatches(right, rightIsReference, rightIsLiteral, rightIsNested)) {
+  if (!operandMatches(left, leftIsReference, leftIsLiteral, leftIsNested, leftIsReceiverField) ||
+      !operandMatches(right, rightIsReference, rightIsLiteral, rightIsNested,
+                      rightIsReceiverField)) {
     return zc::none;
   }
   // A comparison produces bool; an arithmetic or bitwise operation produces the
@@ -3338,12 +3388,18 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
             // the shared operand type. Both operands nested is left unsupported.
             const bool leftIsNested = tree.node(left).kind == ast::SyntaxKind::BinaryExpr;
             const bool rightIsNested = tree.node(right).kind == ast::SyntaxKind::BinaryExpr;
-            const bool leftOk =
-                leftIsReference || isScalarLiteral(tree.node(left).kind) || leftIsNested;
-            const bool rightOk =
-                rightIsReference || isScalarLiteral(tree.node(right).kind) || rightIsNested;
+            // An operand may be a `this.<field>` projection read inside an
+            // inherent method. This is structural; the shape validator resolves
+            // the enclosing method, field type, and receiver mutability.
+            const bool leftIsReceiverField = isReceiverFieldRead(tree, left);
+            const bool rightIsReceiverField = isReceiverFieldRead(tree, right);
+            const bool leftOk = leftIsReference || isScalarLiteral(tree.node(left).kind) ||
+                                leftIsNested || leftIsReceiverField;
+            const bool rightOk = rightIsReference || isScalarLiteral(tree.node(right).kind) ||
+                                 rightIsNested || rightIsReceiverField;
             if (leftOk && rightOk &&
-                (leftIsReference || rightIsReference || leftIsNested || rightIsNested)) {
+                (leftIsReference || rightIsReference || leftIsNested || rightIsNested ||
+                 leftIsReceiverField || rightIsReceiverField)) {
               production = BodyProductionKind::PrimitiveBinaryOperation;
             }
           }

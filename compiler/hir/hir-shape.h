@@ -139,6 +139,12 @@ struct FunctionReturnShape final {
   ast::NodeId comparisonRight;
   bool comparisonLeftIsLiteral = false;
   bool comparisonRightIsLiteral = false;
+  // Single-statement shared-receiver method shape:
+  // `return this.<field> OP <scalar literal>;` (or the mirrored operand order)
+  // reading the field through the implicit receiver with one field projection.
+  // There are no ordinary parameters. The non-field operand must be a scalar
+  // literal; parameter and nested operands keep their own shapes.
+  bool returnsReceiverFieldArithmetic = false;
   bool isLoop = false;
   ast::NodeId loopCondition{};
   ast::NodeId loopStatement{};

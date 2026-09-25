@@ -2400,6 +2400,111 @@ bool validComparisonReturnFunction(const MirFunction& function,
   return false;
 }
 
+bool validReceiverFieldBinaryReturnFunction(
+    const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
+    const hir::HirBlockStatement& sourceBlock, const hir::HirReturnStatement& sourceReturn,
+    const hir::HirPrimitiveBinaryExpression& binary,
+    const hir::HirParameterFieldProjectionExpression& projection,
+    const hir::HirScalarLiteralExpression& literalExpression,
+    checker::marker::MarkerProofEngine& proofs, identity::DefId copy, identity::ModuleId module,
+    const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes) {
+  if (declaration.receiver == zc::none) return false;
+  const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Method ||
+      function.resultType != declaration.resultType ||
+      !sameSpan(function.sourceSpan, declaration.sourceSpan) || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 2 || function.blocks.size() != 1 ||
+      declaration.parameters.size() != 0 || declaration.body != sourceBlock.node ||
+      sourceBlock.statements.size() != 1 || sourceBlock.statements[0] != sourceReturn.node ||
+      sourceReturn.value != binary.node || sourceReturn.resultType != declaration.resultType ||
+      binary.type != declaration.resultType || binary.type != binary.operandType ||
+      projection.type != binary.operandType || literalExpression.type != binary.operandType) {
+    return false;
+  }
+  // One HIR operand is the field projection and the other is the scalar literal.
+  const bool fieldOnLeft = binary.left == projection.node;
+  const bool fieldOnRight = binary.right == projection.node;
+  if (fieldOnLeft == fieldOnRight) return false;
+  const hir::HirNodeId expectedLiteralNode = fieldOnLeft ? binary.right : binary.left;
+  if (expectedLiteralNode != literalExpression.node) return false;
+  const auto expectedArithmetic = mirArithmeticOperatorFor(binary.operation);
+  if (expectedArithmetic == zc::none) return false;
+  const auto& scope = function.sourceScopes[0];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan)) {
+    return false;
+  }
+  const auto& receiverLocal = function.locals[0];
+  if (receiverLocal.id != localId(1) || receiverLocal.kind != MirLocalKind::Parameter ||
+      receiverLocal.type != receiver.type || receiverLocal.sourceScope != scopeId(1) ||
+      !sameSpan(receiverLocal.sourceSpan, receiver.sourceSpan)) {
+    return false;
+  }
+  const auto resultLocal = localId(2);
+  const auto& result = function.locals[1];
+  if (result.id != resultLocal || result.kind != MirLocalKind::FunctionResult ||
+      result.type != declaration.resultType || result.sourceScope != scopeId(1) ||
+      !sameSpan(result.sourceSpan, sourceReturn.sourceSpan)) {
+    return false;
+  }
+  const auto& entry = function.blocks[0];
+  if (entry.id != blockId(1) || entry.sourceScope != scopeId(1) || entry.statements.size() != 2 ||
+      entry.statements[0].kind() != MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != resultLocal ||
+      !sameSpan(entry.statements[0].sourceSpan(), sourceReturn.sourceSpan) ||
+      entry.statements[1].kind() != MirStatementKind::Assign ||
+      !sameSpan(entry.statements[1].sourceSpan(), binary.sourceSpan) ||
+      entry.terminator.kind() != MirTerminatorKind::Return ||
+      !sameSpan(entry.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+    return false;
+  }
+  const auto& assignment = entry.statements[1].assignmentValue();
+  if (assignment.initialization != MirInitializationKind::Initialize ||
+      assignment.destination.local() != resultLocal ||
+      assignment.destination.rootType() != declaration.resultType ||
+      assignment.destination.resultType() != declaration.resultType ||
+      assignment.destination.projections().size() != 0 ||
+      assignment.value.kind() != MirRvalueKind::Arithmetic) {
+    return false;
+  }
+  const auto& arithmetic = assignment.value.arithmeticValue();
+  if (arithmetic.op != ZC_ASSERT_NONNULL(expectedArithmetic) ||
+      arithmetic.resultType != binary.type) {
+    return false;
+  }
+  const MirOperand& fieldOperand = fieldOnLeft ? arithmetic.left : arithmetic.right;
+  const MirOperand& literalOperand = fieldOnLeft ? arithmetic.right : arithmetic.left;
+  const bool fieldOperandOk =
+      matchesPlaceUse(fieldOperand, proofs, copy, projection.type) &&
+      fieldOperand.place().local() == localId(1) &&
+      fieldOperand.place().rootType() == receiver.type &&
+      fieldOperand.place().resultType() == projection.type &&
+      fieldOperand.place().projections().size() == 2 &&
+      fieldOperand.place().projections()[0].kind() == MirProjectionKind::Dereference &&
+      fieldOperand.place().projections()[0].inputType() == receiver.type &&
+      fieldOperand.place().projections()[0].resultType() == projection.receiverType &&
+      fieldOperand.place().projections()[1].kind() == MirProjectionKind::Field &&
+      fieldOperand.place().projections()[1].fieldValue().field == projection.field &&
+      fieldOperand.place().projections()[1].inputType() == projection.receiverType &&
+      fieldOperand.place().projections()[1].resultType() == projection.type;
+  const bool literalOperandOk =
+      literalOperand.kind() == MirOperandKind::Constant &&
+      literalOperand.constantValue().type == projection.type &&
+      sameConstant(literalOperand.constantValue().value, literalExpression.value, module,
+                   identities, semanticTypes);
+  if (!fieldOperandOk || !literalOperandOk) return false;
+  ZC_IF_SOME(value, entry.terminator.returnValue().value) {
+    return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
+           value.place().local() == resultLocal &&
+           value.place().rootType() == declaration.resultType &&
+           value.place().resultType() == declaration.resultType &&
+           value.place().projections().size() == 0;
+  }
+  return false;
+}
+
 bool validLoopReturnFunction(
     const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
     const hir::HirBlockStatement& sourceBlock, const hir::HirReturnStatement& sourceReturn,
@@ -9862,9 +9967,26 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
             }
           }
           ZC_IF_SOME(sourceComparison, comparisonReturn) {
-            valid = validComparisonReturnFunction(function, hirModule, sourceDeclaration, block,
-                                                  returnStatement, sourceComparison, proofs, copy,
-                                                  module, identities, semanticTypes);
+            auto fieldBinaryProjection =
+                parameterFieldProjectionFor(hirModule, sourceComparison.left);
+            hir::HirNodeId fieldBinaryLiteralNode = sourceComparison.right;
+            if (fieldBinaryProjection == zc::none) {
+              fieldBinaryProjection =
+                  parameterFieldProjectionFor(hirModule, sourceComparison.right);
+              fieldBinaryLiteralNode = sourceComparison.left;
+            }
+            auto fieldBinaryLiteral = expressionFor(hirModule, fieldBinaryLiteralNode);
+            if (sourceDeclaration.receiver != zc::none && fieldBinaryProjection != zc::none &&
+                fieldBinaryLiteral != zc::none) {
+              valid = validReceiverFieldBinaryReturnFunction(
+                  function, sourceDeclaration, block, returnStatement, sourceComparison,
+                  ZC_ASSERT_NONNULL(fieldBinaryProjection), ZC_ASSERT_NONNULL(fieldBinaryLiteral),
+                  proofs, copy, module, identities, semanticTypes);
+            } else {
+              valid = validComparisonReturnFunction(function, hirModule, sourceDeclaration, block,
+                                                    returnStatement, sourceComparison, proofs, copy,
+                                                    module, identities, semanticTypes);
+            }
           }
         }
       }
