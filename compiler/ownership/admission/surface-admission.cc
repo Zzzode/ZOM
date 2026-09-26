@@ -44,11 +44,19 @@ void insertFailure(zc::Vector<SurfaceFailure>& failures, SurfaceFailure&& failur
 }
 
 bool isAdmittedPrimitiveBinary(const ast::Tree& tree, ast::NodeId value);
+bool isAdmittedReceiverCall(const ast::Tree& tree, ast::NodeId expression);
 
 bool isAdmittedExpressionStatement(const ast::Tree& tree, const ast::Node& statement) {
   const ast::NodeId expression(statement.payload.words[ast::kExpressionStatementExpressionWord]);
   if (!tree.contains(expression)) { return false; }
   if (tree.node(expression).kind == ast::SyntaxKind::SpawnExpression) return true;
+  // A standalone receiver method call statement whose result is discarded (a
+  // unit-returning effect call). Callee shape and argument type matching are
+  // checker/HIR decisions kept out of surface admission. A direct free-function
+  // call statement stays unadmitted in this slice.
+  if (tree.node(expression).kind == ast::SyntaxKind::CallExpression) {
+    return isAdmittedReceiverCall(tree, expression);
+  }
   if (tree.node(expression).kind != ast::SyntaxKind::AssignmentExpr) return false;
   const auto& assignment = tree.node(expression);
   if (static_cast<ast::AssignmentOperatorKind>(
@@ -699,6 +707,41 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
     return true;
   }
   if (statements.size == 2) return true;
+  // A `let cell = ...; cell.set(...); ...; return cell.get();` body: one leading
+  // let whose binding is the receiver of both the intermediate discarded
+  // receiver-call expression statements and the trailing receiver-call return.
+  // The let need not be `mut`; receiver mutability is a checker decision.
+  if (returnsReceiverCall) {
+    bool callsOnSameLocal = true;
+    for (size_t index = 1; index + 1 < statements.size; ++index) {
+      auto callStatement = statementItem(tree, tree.list(statements)[index]);
+      if (callStatement == zc::none) {
+        callsOnSameLocal = false;
+        break;
+      }
+      ast::NodeId callStatementNode;
+      ZC_IF_SOME(statement, callStatement) { callStatementNode = statement; }
+      if (tree.node(callStatementNode).kind != ast::SyntaxKind::ExpressionStatement) {
+        callsOnSameLocal = false;
+        break;
+      }
+      const ast::NodeId callExpression(
+          tree.node(callStatementNode).payload.words[ast::kExpressionStatementExpressionWord]);
+      if (!isAdmittedReceiverCall(tree, callExpression)) {
+        callsOnSameLocal = false;
+        break;
+      }
+      const ast::NodeId callee(
+          tree.node(callExpression).payload.words[ast::kCallExpressionCalleeWord]);
+      const ast::NodeId callReceiver(
+          tree.node(callee).payload.words[ast::kMemberExpressionObjectWord]);
+      if (!matchesLocalReference(tree, pattern, callReceiver)) {
+        callsOnSameLocal = false;
+        break;
+      }
+    }
+    if (callsOnSameLocal) return true;
+  }
   if (static_cast<ast::BindingDeclarationKind>(declaration.payload.words[ast::kLetStmtKindWord]) !=
       ast::BindingDeclarationKind::Mut) {
     return false;
