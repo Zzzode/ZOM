@@ -32,6 +32,7 @@ enum class ValueTypeKind : uint8_t {
   Integer = 0x01,
   Float = 0x02,
   Pointer = 0x03,
+  Unit = 0x04,
 };
 
 /// \brief Closed integer carrier width in bits (RFC 0021 `IntegerBitWidth`).
@@ -62,6 +63,9 @@ public:
   ZC_NODISCARD static zc::Maybe<ValueType> floating(FloatFormat format) noexcept;
   /// \brief Builds an opaque pointer carrier in the given address space.
   ZC_NODISCARD static ValueType pointer(uint32_t addressSpace) noexcept;
+  /// \brief Builds the zero-sized unit carrier of a void/unit-returning
+  /// function or a discarded call result.
+  ZC_NODISCARD static ValueType unit() noexcept;
 
   ZC_NODISCARD ValueTypeKind kind() const noexcept { return kindValue; }
   ZC_NODISCARD IntegerBitWidth integerWidth() const noexcept { return integerValue; }

@@ -703,6 +703,63 @@ ZC_TEST("LIR structural verifier rejects an arithmetic result whose operands dis
   ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == LirVerificationFaultKind::CarrierMismatch);
 }
 
+ZC_TEST("LIR structural verifier accepts a void function returning void and a void call") {
+  // A unit-returning callee takes an integer and a pointer parameter and
+  // returns void; the unit caller calls it with no destination then returns
+  // void.
+  zc::Vector<Function> functions;
+  {
+    // Callee: StoreField through the receiver pointer then ReturnVoid.
+    zc::Vector<BasicBlock> blocks;
+    zc::Vector<Statement> statements;
+    statements.add(Statement::storeField(
+        /*basePointerOrdinal=*/1, Operand::constant(constant(carrier(IntegerBitWidth::Bit32), 0)),
+        /*fieldOffsetBytes=*/0));
+    blocks.add(BasicBlock(blockId(1), zc::mv(statements), Terminator::returnVoid()));
+    zc::Vector<Local> parameters;
+    parameters.add(Local(1, ValueType::pointer(0)));
+    parameters.add(Local(2, carrier(IntegerBitWidth::Bit32)));
+    zc::Vector<Local> locals;
+    functions.add(Function(tests::testDefinition(1), zc::heapString("zom.void_callee"),
+                           ValueType::unit(), zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  }
+  {
+    // Caller: two blocks, void call to index 0 then ReturnVoid.
+    zc::Vector<BasicBlock> blocks;
+    zc::Vector<Statement> callStatements;
+    zc::Vector<Operand> arguments;
+    arguments.add(Operand::localUse(1));
+    arguments.add(Operand::constant(constant(carrier(IntegerBitWidth::Bit32), 42)));
+    auto call = Terminator::callVoidFunction(/*calleeIndex=*/0, zc::mv(arguments), blockId(2));
+    ZC_REQUIRE(call != zc::none);
+    blocks.add(BasicBlock(blockId(1), zc::mv(callStatements), zc::mv(ZC_ASSERT_NONNULL(call))));
+    zc::Vector<Statement> returnStatements;
+    blocks.add(BasicBlock(blockId(2), zc::mv(returnStatements), Terminator::returnVoid()));
+    zc::Vector<Local> parameters;
+    parameters.add(Local(1, ValueType::pointer(0)));
+    zc::Vector<Local> locals;
+    functions.add(Function(tests::testDefinition(2), zc::heapString("zom.void_caller"),
+                           ValueType::unit(), zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  }
+  Module module(zc::mv(functions));
+  ZC_EXPECT(LirStructuralVerifier::verify(module) == zc::none);
+}
+
+ZC_TEST("LIR structural verifier rejects a void return on an integer carrier function") {
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(blockId(1), Terminator::returnVoid()));
+  zc::Vector<Local> parameters;
+  zc::Vector<Local> locals;
+  zc::Vector<Function> functions;
+  functions.add(Function(tests::testDefinition(0), zc::heapString("bad.void"),
+                         carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(locals),
+                         zc::mv(blocks)));
+  Module module(zc::mv(functions));
+  auto finding = LirStructuralVerifier::verify(module);
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == LirVerificationFaultKind::ReturnCarrierMismatch);
+}
+
 ZC_TEST("LIR structural verifier rejects arithmetic into a one-bit destination") {
   zc::Vector<BasicBlock> blocks;
   {

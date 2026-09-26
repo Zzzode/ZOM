@@ -68,6 +68,12 @@ ValueType ValueType::pointer(uint32_t addressSpace) noexcept {
   return type;
 }
 
+ValueType ValueType::unit() noexcept {
+  ValueType type;
+  type.kindValue = ValueTypeKind::Unit;
+  return type;
+}
+
 bool ValueType::operator==(const ValueType& other) const noexcept {
   if (kindValue != other.kindValue) { return false; }
   switch (kindValue) {
@@ -77,6 +83,8 @@ bool ValueType::operator==(const ValueType& other) const noexcept {
       return floatValue == other.floatValue;
     case ValueTypeKind::Pointer:
       return addressSpaceValue == other.addressSpaceValue;
+    case ValueTypeKind::Unit:
+      return true;
   }
   return false;
 }

@@ -69,6 +69,7 @@ enum class TerminatorKind : uint8_t {
   ReturnLocal = 0x04,
   Call = 0x05,
   ReturnAggregate = 0x06,
+  ReturnVoid = 0x07,
 };
 
 /// \brief Upper bound on the slot count of a multi-slot aggregate return.
@@ -274,6 +275,16 @@ public:
                                                          uint32_t destinationOrdinal,
                                                          zc::Vector<Operand>&& arguments,
                                                          LirBlockId normalTarget) noexcept;
+  /// \brief Builds a void call terminator: call a unit-returning module-local
+  /// function (by zero-based index) with no result destination, then branch to
+  /// `normalTarget`. The discarded call result is not stored.
+  /// \return The terminator, or none when the vector is over the cap.
+  ZC_NODISCARD static zc::Maybe<Terminator> callVoidFunction(uint32_t calleeIndex,
+                                                             zc::Vector<Operand>&& arguments,
+                                                             LirBlockId normalTarget) noexcept;
+  /// \brief Builds a terminator that returns no value (a unit-returning
+  /// function).
+  ZC_NODISCARD static Terminator returnVoid() noexcept;
   /// \brief Builds a terminator that returns an ordered bundle of integer
   /// constants as a multi-slot direct return (RFC 0021 carrier bundle rendered as
   /// a literal struct). The slots are returned in the given order.
@@ -297,6 +308,9 @@ public:
   ZC_NODISCARD uint32_t returnLocalOrdinal() const noexcept { return localOrdinalValue; }
   ZC_NODISCARD uint32_t calleeIndex() const noexcept { return calleeIndexValue; }
   ZC_NODISCARD uint32_t callDestinationOrdinal() const noexcept { return localOrdinalValue; }
+  /// \brief Whether the call stores its result into a destination slot. A
+  /// unit-returning void call has no destination.
+  ZC_NODISCARD bool hasCallDestination() const noexcept { return hasDestinationValue; }
   ZC_NODISCARD LirBlockId callNormalTarget() const noexcept { return trueTargetValue; }
   /// \brief The ordered call arguments; each is an integer-constant or
   /// local-slot operand. Empty for a zero-argument call.
@@ -330,6 +344,16 @@ private:
       : kindValue(TerminatorKind::ReturnAggregate),
         integerValue(fallbackConstant()),
         aggregateSlotsValue(zc::mv(slots)) {}
+  Terminator(uint32_t calleeIndex, zc::Vector<Operand>&& arguments,
+             LirBlockId normalTarget) noexcept
+      : kindValue(TerminatorKind::Call),
+        integerValue(fallbackConstant()),
+        trueTargetValue(normalTarget),
+        calleeIndexValue(calleeIndex),
+        hasDestinationValue(false),
+        callArgumentsValue(zc::mv(arguments)) {}
+  explicit Terminator(TerminatorKind kind) noexcept
+      : kindValue(kind), integerValue(fallbackConstant()) {}
 
   ZC_NODISCARD static IntegerConstant fallbackConstant() noexcept;
 
@@ -339,6 +363,7 @@ private:
   LirBlockId trueTargetValue;
   LirBlockId falseTargetValue;
   uint32_t calleeIndexValue = 0;
+  bool hasDestinationValue = true;
   zc::Vector<IntegerConstant> aggregateSlotsValue;
   zc::Vector<Operand> callArgumentsValue;
 };

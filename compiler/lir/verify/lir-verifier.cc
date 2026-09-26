@@ -113,6 +113,7 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
         case TerminatorKind::ReturnInteger:
         case TerminatorKind::ReturnLocal:
         case TerminatorKind::ReturnAggregate:
+        case TerminatorKind::ReturnVoid:
           break;
       }
     }
@@ -150,6 +151,7 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
           case TerminatorKind::ReturnInteger:
           case TerminatorKind::ReturnLocal:
           case TerminatorKind::ReturnAggregate:
+          case TerminatorKind::ReturnVoid:
             break;
         }
       }
@@ -425,12 +427,21 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
                          blockOrdinal);
           }
           const Function& callee = functions[calleeIndex];
-          const uint32_t destinationOrdinal = terminator.callDestinationOrdinal();
-          auto destinationSlotFinding =
-              requireSlot(destinationOrdinal, blockOrdinal, kFunctionLevel);
-          if (destinationSlotFinding != zc::none) return destinationSlotFinding;
-          if (*declaredSlotCarrier(function, destinationOrdinal) != callee.returnCarrier()) {
-            return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal);
+          // A void call stores no result and its callee must return unit; a
+          // value-producing call's destination slot must match the callee
+          // carrier.
+          if (!terminator.hasCallDestination()) {
+            if (callee.returnCarrier().kind() != ValueTypeKind::Unit) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal);
+            }
+          } else {
+            const uint32_t destinationOrdinal = terminator.callDestinationOrdinal();
+            auto destinationSlotFinding =
+                requireSlot(destinationOrdinal, blockOrdinal, kFunctionLevel);
+            if (destinationSlotFinding != zc::none) return destinationSlotFinding;
+            if (*declaredSlotCarrier(function, destinationOrdinal) != callee.returnCarrier()) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal);
+            }
           }
           // The ordered argument vector matches the callee parameters in count
           // and carrier. A constant argument carries its own carrier; a
@@ -458,6 +469,12 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
           }
           break;
         }
+        case TerminatorKind::ReturnVoid:
+          if (function.returnCarrier().kind() != ValueTypeKind::Unit) {
+            return fault(LirVerificationFaultKind::ReturnCarrierMismatch, functionIndex,
+                         blockOrdinal);
+          }
+          break;
         case TerminatorKind::Goto:
           break;
       }

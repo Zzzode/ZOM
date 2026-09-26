@@ -106,4 +106,15 @@ zc::Maybe<Terminator> Terminator::returnAggregate(zc::Vector<IntegerConstant>&& 
   return Terminator(zc::mv(slots));
 }
 
+zc::Maybe<Terminator> Terminator::callVoidFunction(uint32_t calleeIndex,
+                                                   zc::Vector<Operand>&& arguments,
+                                                   LirBlockId normalTarget) noexcept {
+  // A discarded unit call obeys the same argument cap but carries no result
+  // destination.
+  if (arguments.size() > kMaxCallArguments) { return zc::none; }
+  return Terminator(calleeIndex, zc::mv(arguments), normalTarget);
+}
+
+Terminator Terminator::returnVoid() noexcept { return Terminator(TerminatorKind::ReturnVoid); }
+
 }  // namespace zomlang::compiler::lir

@@ -84,9 +84,10 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
         zc::heapString("LIR module must contain one, two, or three functions in this slice"));
   }
   for (const auto& candidate : functions) {
-    if (candidate.returnCarrier().kind() != lir::ValueTypeKind::Integer) {
+    if (candidate.returnCarrier().kind() != lir::ValueTypeKind::Integer &&
+        candidate.returnCarrier().kind() != lir::ValueTypeKind::Unit) {
       return LlvmTranslationResult::failure(
-          zc::heapString("LIR function return carrier must be an integer"));
+          zc::heapString("LIR function return carrier must be an integer or unit"));
     }
   }
   // Each function is one of: the single-block integer-constant return
@@ -113,7 +114,8 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
       const auto kind = candidateBlocks[0].terminator().kind();
       return kind == lir::TerminatorKind::ReturnInteger ||
              kind == lir::TerminatorKind::ReturnLocal ||
-             kind == lir::TerminatorKind::ReturnAggregate;
+             kind == lir::TerminatorKind::ReturnAggregate ||
+             kind == lir::TerminatorKind::ReturnVoid;
     }
     if (candidateBlocks.size() < 2) { return false; }
     const auto entryKind = candidateBlocks[0].terminator().kind();
@@ -169,6 +171,7 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
     if (carrier.kind() == lir::ValueTypeKind::Pointer) {
       return ::llvm::PointerType::get(*context, carrier.pointerAddressSpace());
     }
+    if (carrier.kind() == lir::ValueTypeKind::Unit) { return ::llvm::Type::getVoidTy(*context); }
     return integerType(carrier.integerWidth());
   };
   // The LLVM return type of one LIR function. A single-block ReturnAggregate
@@ -193,6 +196,9 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
       ::llvm::ArrayRef<::llvm::Type*> elementRef(elementTypes.begin(), elementTypes.size());
       return ::llvm::StructType::get(*context, elementRef);
     }
+    if (candidate.returnCarrier().kind() == lir::ValueTypeKind::Unit) {
+      return ::llvm::Type::getVoidTy(*context);
+    }
     return integerType(candidate.returnCarrier().integerWidth());
   };
   zc::Vector<::llvm::Function*> llvmFunctions;
@@ -214,6 +220,14 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
     const auto& function = functions[functionIndex];
     ::llvm::Function* llvmFunction = llvmFunctions[functionIndex];
     const auto blocks = function.blocks();
+
+    if (blocks.size() == 1 && blocks[0].terminator().kind() == lir::TerminatorKind::ReturnVoid) {
+      // Single entry block returning no value (a unit-returning function).
+      ::llvm::BasicBlock* entryBlock = ::llvm::BasicBlock::Create(*context, "entry", llvmFunction);
+      ::llvm::ReturnInst::Create(*context, entryBlock);
+      continue;
+    }
+
     ::llvm::IntegerType* returnType = integerType(function.returnCarrier().integerWidth());
 
     if (blocks.size() == 1 && blocks[0].terminator().kind() == lir::TerminatorKind::ReturnInteger) {
@@ -469,10 +483,17 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
             callArgs.add(loadOperand(argument, target));
           }
           ::llvm::ArrayRef<::llvm::Value*> callArgsRef(callArgs.begin(), callArgs.size());
-          auto* callResult = ::llvm::CallInst::Create(callee->getFunctionType(), callee,
-                                                      callArgsRef, "call", target);
-          auto* destination = slotFor(terminator.callDestinationOrdinal());
-          new ::llvm::StoreInst(callResult, destination, /*isVolatile=*/false, target);
+          if (terminator.hasCallDestination()) {
+            auto* callResult = ::llvm::CallInst::Create(callee->getFunctionType(), callee,
+                                                        callArgsRef, "call", target);
+            auto* destination = slotFor(terminator.callDestinationOrdinal());
+            new ::llvm::StoreInst(callResult, destination, /*isVolatile=*/false, target);
+          } else {
+            // A unit-returning call's result is discarded; emit the call with
+            // no SSA name and store nothing.
+            ::llvm::CallInst::Create(callee->getFunctionType(), callee, callArgsRef,
+                                     /*NameStr=*/"", target);
+          }
           ::llvm::BranchInst::Create(blockFor(terminator.callNormalTarget()), target);
           break;
         }
@@ -494,6 +515,9 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
           // before translation reaches here, so this arm is unreachable. The
           // literal-struct lowering is the next RFC 0021 step.
           ZC_UNREACHABLE;
+        case lir::TerminatorKind::ReturnVoid:
+          ::llvm::ReturnInst::Create(*context, target);
+          break;
       }
     }
   }
