@@ -802,7 +802,12 @@ bool isSimpleReceiverFieldWrite(
   if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::ThisExpr) {
     return false;
   }
-  return isScalarLiteral(tree.node(value).kind);
+  // The written value is a scalar literal or an identifier reference (an
+  // ordinary parameter or owner local, resolved and type-checked downstream at
+  // the production site). Structure only; the checker decides whether the
+  // reference is in scope and matches the field type.
+  return isScalarLiteral(tree.node(value).kind) ||
+         tree.node(value).kind == ast::SyntaxKind::IdentExpr;
 }
 
 struct OwnerLocalFieldShape final {
