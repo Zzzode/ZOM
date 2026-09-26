@@ -706,6 +706,22 @@ struct Vector2D {
 }
 ```
 
+A method carrying the `mutating` modifier may write storage through its `this`
+receiver. A method without a result annotation returns `unit` and ends by
+falling through, so an effect-only method has no `return` statement:
+
+```zom
+struct Counter {
+    count: i32,
+    mutating fun set(this, value: i32) {
+        this.count = value;
+    }
+}
+```
+
+A field write through a shared (non-`mutating`) receiver is rejected with
+`ZOM4126`.
+
 ### Struct with Constructor
 
 ```zom

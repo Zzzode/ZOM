@@ -707,11 +707,14 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
     return true;
   }
   if (statements.size == 2) return true;
-  // A `let cell = ...; cell.set(...); ...; return cell.get();` body: one leading
-  // let whose binding is the receiver of both the intermediate discarded
-  // receiver-call expression statements and the trailing receiver-call return.
-  // The let need not be `mut`; receiver mutability is a checker decision.
-  if (returnsReceiverCall) {
+  // A `let cell = ...; cell.set(...); return cell.get();` body: one leading
+  // let whose binding is the receiver of the single intermediate discarded
+  // receiver-call expression statement and the trailing receiver-call return.
+  // The let need not be `mut`; receiver mutability is a checker decision. The
+  // HIR/MIR lowering admits exactly one intermediate statement (three total),
+  // so the cap stays in lockstep with the lowering shape; a body with more
+  // discarded calls drains ZOM4099 at this boundary.
+  if (returnsReceiverCall && statements.size == 3) {
     bool callsOnSameLocal = true;
     for (size_t index = 1; index + 1 < statements.size; ++index) {
       auto callStatement = statementItem(tree, tree.list(statements)[index]);

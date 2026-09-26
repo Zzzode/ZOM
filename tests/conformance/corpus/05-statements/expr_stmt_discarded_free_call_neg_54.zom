@@ -1,0 +1,4 @@
+fun g() -> i32 { return 1; }
+fun f() {
+    g();
+}

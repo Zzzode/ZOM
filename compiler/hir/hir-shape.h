@@ -154,6 +154,23 @@ struct FunctionReturnShape final {
   // localReference, returnsLocal) and adds only the loop discriminator, the loop
   // condition node, and the loop statement node.
   bool isLoopBody = false;
+  // Void mutating-method shape: the sole statement is
+  // `this.<field> = <ordinary-parameter>;` with no return. The callable result
+  // is Unit; there is no return statement or return value. The write statement,
+  // its assignment, and the parameter RHS reuse receiverWriteStatement,
+  // receiverWriteAssignment, and receiverWriteValue.
+  bool isVoidBody = false;
+  // True in a void body when the sole write RHS is an ordinary parameter
+  // reference (IdentExpr) rather than a scalar literal. Resolving it to the
+  // parameter is a builder decision; shape only records the structure.
+  bool voidWriteValueIsParameter = false;
+  // Function shape: a leading aggregate-initialized owner local, one discarded
+  // receiver-call expression statement on that local, and a trailing
+  // `return <owner-local>.<method>(...);`. This slice admits exactly one
+  // intermediate statement (three statements total). The statement node is
+  // carried; the trailing return routes through returnsReceiverCall.
+  bool hasDiscardedReceiverCallStatement = false;
+  ast::NodeId discardedCallStatement;
 };
 
 zc::Maybe<ast::NodeId> statementItem(const ast::Tree& tree, ast::NodeId statement);

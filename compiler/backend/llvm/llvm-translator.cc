@@ -221,14 +221,9 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
     ::llvm::Function* llvmFunction = llvmFunctions[functionIndex];
     const auto blocks = function.blocks();
 
-    if (blocks.size() == 1 && blocks[0].terminator().kind() == lir::TerminatorKind::ReturnVoid) {
-      // Single entry block returning no value (a unit-returning function).
-      ::llvm::BasicBlock* entryBlock = ::llvm::BasicBlock::Create(*context, "entry", llvmFunction);
-      ::llvm::ReturnInst::Create(*context, entryBlock);
-      continue;
-    }
-
-    ::llvm::IntegerType* returnType = integerType(function.returnCarrier().integerWidth());
+    ::llvm::IntegerType* returnType = function.returnCarrier().kind() == lir::ValueTypeKind::Integer
+                                          ? integerType(function.returnCarrier().integerWidth())
+                                          : nullptr;
 
     if (blocks.size() == 1 && blocks[0].terminator().kind() == lir::TerminatorKind::ReturnInteger) {
       // Single entry block returning the integer constant.

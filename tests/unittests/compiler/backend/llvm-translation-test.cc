@@ -3017,6 +3017,182 @@ ZC_TEST("Mutating-receiver field write-read lowers StoreField then LoadField") {
   ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
 }
 
+ZC_TEST("Mutating unit receiver call lowers a void call before the field read") {
+  // The void vertical: the caller aggregate-initializes one owner local, invokes
+  // the mutating unit setter (its parameter is stored through the receiver and
+  // it returns void), then invokes the shared getter and returns the field. The
+  // MIR unit call-destination temporary is dropped by dense LIR renumbering, so
+  // the setter call has no SSA result and lowers to `call void` / `ret void`.
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto unit = typeContext.internPrimitive(type::semantic::PrimitiveKind::Unit);
+  const auto structDef = tests::testDefinition(2);
+  const auto fieldDef = tests::testDefinition(3);
+  const auto callerOwner = tests::testDefinition(0);
+  const auto setterOwner = tests::testDefinition(1);
+  const auto getterOwner = tests::testDefinition(4);
+  auto& types = typeContext.semanticTypes();
+  const auto cellType = i32;
+  const auto mutableReceiverType =
+      internTypeData(types, type::semantic::TypeData(type::semantic::ReferenceTypeData{
+                                type::semantic::Mutability::Mutable, cellType}));
+  const auto sharedReceiverType =
+      internTypeData(types, type::semantic::TypeData(type::semantic::ReferenceTypeData{
+                                type::semantic::Mutability::Const, cellType}));
+
+  // Setter: mutable receiver plus i32 parameter, one projected Overwrite Assign
+  // copying the parameter into the field, then a value-less unit Return.
+  mir::MirFunction setter = [&] {
+    zc::Vector<mir::MirSourceScope> scopes;
+    scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+    zc::Vector<mir::MirLocalDeclaration> locals;
+    locals.add(mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::Parameter,
+                                        mutableReceiverType, scopeId(1), span()});
+    locals.add(mir::MirLocalDeclaration{localId(2), mir::MirLocalKind::Parameter, i32, scopeId(1),
+                                        span()});
+    zc::Vector<mir::MirStatement> statements;
+    {
+      zc::Vector<mir::MirProjection> writeProjections;
+      writeProjections.add(mir::MirProjection::dereference(mutableReceiverType, cellType));
+      writeProjections.add(mir::MirProjection::field(fieldDef, cellType, i32));
+      zc::Vector<mir::MirProjection> rhsProjections;
+      statements.add(mir::MirStatement::assign(
+          mir::MirPlace(localId(1), mutableReceiverType, zc::mv(writeProjections), i32),
+          mir::MirRvalue::use(
+              mir::MirOperand::copy(mir::MirPlace(localId(2), i32, zc::mv(rhsProjections), i32))),
+          mir::MirInitializationKind::Overwrite, span()));
+    }
+    zc::Vector<mir::MirBasicBlock> blocks;
+    blocks.add(mir::MirBasicBlock{blockId(1), scopeId(1), zc::mv(statements),
+                                  mir::MirTerminator::returnVoid(span())});
+    return mir::MirFunction{setterOwner,
+                            mir::MirFunctionKind::Function,
+                            identity::DefinitionKind::Method,
+                            unit,
+                            span(),
+                            zc::mv(scopes),
+                            zc::mv(locals),
+                            zc::mv(blocks)};
+  }();
+
+  // Getter: shared receiver, zero statements, projected field-copy return.
+  mir::MirFunction getter =
+      buildSharedReceiverCallee(getterOwner, i32, sharedReceiverType, fieldDef,
+                                /*fieldRead=*/true);
+
+  // Caller: five MIR locals across three blocks; the unit destination temporary
+  // (local 3) is dropped during lowering.
+  zc::Vector<mir::MirSourceScope> callerScopes;
+  callerScopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+  zc::Vector<mir::MirLocalDeclaration> callerLocals;
+  callerLocals.add(mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::UserLocal, cellType,
+                                            scopeId(1), span()});
+  callerLocals.add(mir::MirLocalDeclaration{localId(2), mir::MirLocalKind::Temporary,
+                                            mutableReceiverType, scopeId(1), span()});
+  callerLocals.add(
+      mir::MirLocalDeclaration{localId(3), mir::MirLocalKind::Temporary, unit, scopeId(1), span()});
+  callerLocals.add(mir::MirLocalDeclaration{localId(4), mir::MirLocalKind::Temporary,
+                                            sharedReceiverType, scopeId(1), span()});
+  callerLocals.add(
+      mir::MirLocalDeclaration{localId(5), mir::MirLocalKind::Temporary, i32, scopeId(1), span()});
+
+  zc::Vector<mir::MirBasicBlock> callerBlocks;
+  {
+    zc::Vector<mir::MirStatement> entry;
+    entry.add(mir::MirStatement::storageLive(localId(1), span()));
+    zc::Vector<mir::MirNominalAggregateElement> elements;
+    elements.add(mir::MirNominalAggregateElement{
+        fieldDef, mir::MirOperand::constant(i32, integerConstant(0))});
+    entry.add(mir::MirStatement::assign(
+        resultPlace(localId(1), cellType),
+        mir::MirRvalue::nominalAggregate(structDef, cellType, zc::mv(elements)),
+        mir::MirInitializationKind::Initialize, span()));
+    entry.add(mir::MirStatement::storageLive(localId(2), span()));
+    entry.add(mir::MirStatement::borrowCreation(
+        mir::MirPlace(localId(2), mutableReceiverType, zc::Vector<mir::MirProjection>{},
+                      mutableReceiverType),
+        mir::MirBorrowKind::Mutable,
+        mir::MirPlace(localId(1), cellType, zc::Vector<mir::MirProjection>{}, cellType), span()));
+    entry.add(mir::MirStatement::storageLive(localId(3), span()));
+    zc::Vector<mir::MirOperand> arguments;
+    arguments.add(mir::MirOperand::copy(mir::MirPlace(
+        localId(2), mutableReceiverType, zc::Vector<mir::MirProjection>{}, mutableReceiverType)));
+    arguments.add(mir::MirOperand::constant(i32, integerConstant(42)));
+    callerBlocks.add(mir::MirBasicBlock{
+        blockId(1), scopeId(1), zc::mv(entry),
+        mir::MirTerminator::call(setterOwner, zc::mv(arguments),
+                                 mir::MirCallEffect::activateMutableReceiver(localId(2)),
+                                 resultPlace(localId(3), unit), blockId(2), zc::none, span())});
+  }
+  {
+    zc::Vector<mir::MirStatement> middle;
+    middle.add(mir::MirStatement::storageLive(localId(4), span()));
+    middle.add(mir::MirStatement::borrowCreation(
+        mir::MirPlace(localId(4), sharedReceiverType, zc::Vector<mir::MirProjection>{},
+                      sharedReceiverType),
+        mir::MirBorrowKind::Shared,
+        mir::MirPlace(localId(1), cellType, zc::Vector<mir::MirProjection>{}, cellType), span()));
+    middle.add(mir::MirStatement::storageLive(localId(5), span()));
+    zc::Vector<mir::MirOperand> arguments;
+    arguments.add(mir::MirOperand::copy(mir::MirPlace(
+        localId(4), sharedReceiverType, zc::Vector<mir::MirProjection>{}, sharedReceiverType)));
+    callerBlocks.add(mir::MirBasicBlock{
+        blockId(2), scopeId(1), zc::mv(middle),
+        mir::MirTerminator::call(getterOwner, zc::mv(arguments), mir::MirCallEffect::noActivation(),
+                                 resultPlace(localId(5), i32), blockId(3), zc::none, span())});
+  }
+  callerBlocks.add(
+      mir::MirBasicBlock{blockId(3), scopeId(1), zc::Vector<mir::MirStatement>{},
+                         mir::MirTerminator::returnValue(
+                             mir::MirOperand::move(resultPlace(localId(5), i32)), span())});
+  mir::MirFunction caller{callerOwner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(callerScopes),
+                          zc::mv(callerLocals),
+                          zc::mv(callerBlocks)};
+
+  auto lir =
+      lir::MirToLirLowering::lowerReceiverVoidThenValueCallModule(caller, setter, getter, types);
+  ZC_REQUIRE(lir != zc::none);
+  const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
+  ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+  {
+    auto functions = zc::heapArray<const mir::MirFunction*>(3);
+    functions[0] = &caller;
+    functions[1] = &setter;
+    functions[2] = &getter;
+    ZC_EXPECT(lir::TranslationValidator::validate(functions.asPtr(), lirModule, types) == zc::none);
+  }
+
+  LlvmTranslator translator;
+  auto result = translator.translate(lirModule);
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+
+  const auto ir = result.textualIr();
+  // The setter call carries no SSA result and the setter returns void; its
+  // parameter (42 at the call site) is stored through the receiver pointer.
+  ZC_EXPECT(ir.contains("call void"_zc));
+  ZC_EXPECT(ir.contains("@zom.setter"_zc));
+  ZC_EXPECT(ir.contains("i32 42"_zc));
+  ZC_EXPECT(ir.contains("ret void"_zc));
+  // The getter loads the field and the entry returns its i32 result.
+  ZC_EXPECT(ir.contains("call i32"_zc));
+  ZC_EXPECT(ir.contains("@zom.getter"_zc));
+  ZC_EXPECT(ir.contains("load i32"_zc));
+  ZC_EXPECT(ir.contains("ret i32"_zc));
+
+  const auto object = result.objectCode();
+  ZC_REQUIRE(object.size() >= 4);
+  ZC_EXPECT(object[0] == 0x7f);
+  ZC_EXPECT(object[1] == static_cast<uint8_t>('E'));
+  ZC_EXPECT(object[2] == static_cast<uint8_t>('L'));
+  ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
+}
+
 ZC_TEST("Shared-receiver scalar local method folds the callee to a constant return") {
   tests::TestSemanticTypeContext typeContext;
   const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);

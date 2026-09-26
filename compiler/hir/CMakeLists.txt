@@ -9,6 +9,7 @@ set(HIR_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/build/lower-expr-aggregate.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/build/lower-expr-borrow.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/build/lower-expr-call.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/build/lower-stmt-discarded-call.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/build/lower-stmt-write.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/build/lower-stmt-control.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/hir-module.cc

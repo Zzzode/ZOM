@@ -301,6 +301,23 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerReceiverSelfCallModule(
       const mir::MirFunction& caller, const mir::MirFunction& forwarder,
       const mir::MirFunction& leaf, const type::SemanticTypeStore& semanticTypes);
+
+  /// \brief Lowers the discarded-mutating-call-then-shared-read receiver module.
+  ///
+  /// Admits a three-function module: a Function-sourced caller with one
+  /// aggregate-initialized owner local, a mutable borrow temporary, an unread
+  /// unit call-destination temporary, a shared borrow temporary, and a call
+  /// result temporary across three blocks (a mutating unit call, then a shared
+  /// value call, then the value return); a mutating Method (`voidCallee`) whose
+  /// sole statement writes one ordinary parameter into the receiver field and
+  /// whose terminator is a value-less unit Return; and a shared Method
+  /// (`valueCallee`) returning the receiver field. The caller folds to
+  /// `zom.module_init`, the unit method to `zom.setter`, and the read method to
+  /// `zom.getter`. The MIR unit destination temporary is dropped by dense
+  /// renumbering. Every other shape returns none.
+  ZC_NODISCARD static zc::Maybe<Module> lowerReceiverVoidThenValueCallModule(
+      const mir::MirFunction& caller, const mir::MirFunction& voidCallee,
+      const mir::MirFunction& valueCallee, const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::lir

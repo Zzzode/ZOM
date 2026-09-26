@@ -1692,6 +1692,125 @@ zc::Maybe<identity::DeclaredDefinitionName> unsupportedSharedReceiverInherentMet
   return selectedName;
 }
 
+/// \brief Name and declared parameter count of a dot-method call on an owner
+/// local, resolved without the lowering shape's receiver-mutability and arity
+/// gates.
+///
+/// The lowering shape (`concreteMethodCallShape`) returns one undifferentiated
+/// none for every unlowered call, so ordinary user errors -- wrong argument
+/// count, an identifier argument, an unknown method -- would otherwise collapse
+/// into a MissingRequiredFact invariant. This resolver returns none only for
+/// sites that are not dot-method calls on a resolved owner-local receiver of a
+/// non-generic nominal type. A uniquely resolved inherent method reports its
+/// declared binding name and parameter count; an unknown or ambiguous member
+/// name keeps the source spelling with `methodResolved == false`.
+struct ReceiverMethodCallName final {
+  identity::DeclaredDefinitionName name;
+  bool methodResolved;
+  uint32_t parameterCount;
+};
+
+zc::Maybe<ReceiverMethodCallName> receiverMethodCallName(
+    const BodyCheckingInput& input, zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
+    ast::NodeId callNode) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(callNode) || tree.node(callNode).kind != ast::SyntaxKind::CallExpression) {
+    return zc::none;
+  }
+  const auto& call = tree.node(callNode);
+  const ast::NodeId callee(call.payload.words[ast::kCallExpressionCalleeWord]);
+  const ast::NodeList typeArguments{call.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+                                    call.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+  if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::MemberExpression ||
+      !tree.contains(typeArguments) || !typeArguments.empty()) {
+    return zc::none;
+  }
+  const auto& member = tree.node(callee);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return zc::none;
+  }
+  const ast::NodeId receiverNode(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(receiverNode) || tree.node(receiverNode).kind != ast::SyntaxKind::IdentExpr ||
+      resolvedOwnerLocal(input.boundModule.bindings(), receiverNode) == zc::none) {
+    return zc::none;
+  }
+  const auto receiverSourceType = ownerLocalReferenceType(input, receiverNode, nodeTypes);
+  if (receiverSourceType == zc::none) return zc::none;
+  auto receiverLookup = input.semanticTypes.get(ZC_ASSERT_NONNULL(receiverSourceType));
+  if (!receiverLookup.is<type::SemanticTypeLookup>() ||
+      !receiverLookup.get<type::SemanticTypeLookup>()
+           .data()
+           .is<type::semantic::NominalTypeData>()) {
+    return zc::none;
+  }
+  const auto& nominal =
+      receiverLookup.get<type::SemanticTypeLookup>().data().get<type::semantic::NominalTypeData>();
+  if (nominal.arguments.size() != 0) return zc::none;
+
+  const auto memberName =
+      tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
+  auto sourceName = identity::DeclaredDefinitionName::fromSource(memberName);
+  if (sourceName == zc::none) return zc::none;
+
+  zc::Maybe<identity::DefId> selected;
+  zc::Maybe<identity::DeclaredDefinitionName> selectedName;
+  uint32_t parameterCount = 0;
+  for (const auto& nominalSignature : input.signatureFacts.signatures()) {
+    if (nominalSignature.definition != nominal.definition ||
+        !nominalSignature.payload.variant().is<signature::NominalSignature>()) {
+      continue;
+    }
+    const auto& nominalFacts =
+        nominalSignature.payload.variant().get<signature::NominalSignature>();
+    if (nominalFacts.genericParameters.size() != 0) return zc::none;
+    for (const auto candidate : nominalFacts.members) {
+      bool namedMethod = false;
+      for (const auto& definition : input.boundModule.definitions().definitions()) {
+        if (definition.definition == candidate &&
+            definition.record.kind() == identity::DefinitionKind::Method &&
+            definition.record.name() == memberName) {
+          namedMethod = true;
+        }
+      }
+      if (namedMethod) {
+        for (const auto& binding : input.boundModule.bindings().definitions()) {
+          if (binding.identity == candidate) { selectedName = binding.name.clone(); }
+        }
+      }
+      if (!namedMethod) continue;
+      if (selected != zc::none) return zc::none;
+      for (const auto& methodSignature : input.signatureFacts.signatures()) {
+        if (methodSignature.definition != candidate ||
+            !methodSignature.scope.variant().is<signature::MemberSignatureScope>() ||
+            !methodSignature.payload.variant().is<signature::CallableSignature>()) {
+          continue;
+        }
+        const auto& scope = methodSignature.scope.variant().get<signature::MemberSignatureScope>();
+        const auto& callable =
+            methodSignature.payload.variant().get<signature::CallableSignature>();
+        if (scope.owner != nominal.definition || callable.genericParameters.size() != 0 ||
+            callable.receiver == zc::none || callable.raises != zc::none ||
+            callable.abi != zc::none) {
+          return zc::none;
+        }
+        for (const auto& parameter : callable.parameters) {
+          if (parameter.hasDefault || parameter.mode != signature::ParameterMode::Value) {
+            return zc::none;
+          }
+          ++parameterCount;
+        }
+        selected = candidate;
+      }
+    }
+  }
+  if (selected == zc::none) {
+    return ReceiverMethodCallName{zc::mv(ZC_ASSERT_NONNULL(sourceName)), false, 0};
+  }
+  if (selectedName == zc::none) return zc::none;
+  return ReceiverMethodCallName{zc::mv(ZC_ASSERT_NONNULL(selectedName)), true, parameterCount};
+}
+
 /// \brief Returns the binary operator the checker does not yet implement.
 ///
 /// Surface admission is deliberately operator-agnostic: it admits every
@@ -2508,6 +2627,33 @@ checked::CheckedFactsSourceRejected rejectTypeMismatch(const BodyProductionSite&
       checked::CheckerErrorId::TypeCheckerTypeMismatch(), checked::CheckerDiagnosticStage::Body,
       site.node, site.key.sourceSpan.clone(), zc::mv(arguments), zc::mv(notes),
       checked::CheckerDiagnosticProducer::Inference,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::TypeMismatch, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
+// ZOM4036: a call supplies a different number of arguments than the resolved
+// callee declares. Both display arguments are plain counts, matching the
+// projector contract (Count, Count).
+checked::CheckedFactsSourceRejected rejectCallArgumentCount(const BodyProductionSite& site,
+                                                            uint32_t ownerPreorder,
+                                                            uint64_t expectedCount,
+                                                            uint64_t actualCount) {
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(checked::CheckerDisplayArgument(checked::CountDisplayArg{expectedCount}));
+  arguments.add(checked::CheckerDisplayArgument(checked::CountDisplayArg{actualCount}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::CallArgumentCountMismatch(), checked::CheckerDiagnosticStage::Body,
+      site.node, site.key.sourceSpan.clone(), zc::mv(arguments), zc::mv(notes),
+      checked::CheckerDiagnosticProducer::Call,
       checked::CheckerRecoveryPolicy(
           checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::TypeMismatch, true}),
       checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
@@ -3854,6 +4000,30 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
               }
             }
           }
+          // Resolve the callee name without the lowering shape's mutability and
+          // arity gates so ordinary user errors do not collapse into an
+          // invariant: a wrong argument count is ZOM4036, while an unknown
+          // method or any other unlowered receiver call drains ZOM4125.
+          const auto& fallbackTree = input.boundModule.tree();
+          const ast::NodeList fallbackArguments{
+              fallbackTree.node(site.node).payload.words[ast::kCallExpressionArgsFirstWord],
+              fallbackTree.node(site.node).payload.words[ast::kCallExpressionArgsSizeWord]};
+          auto methodName = receiverMethodCallName(input, nodeTypes.asPtr(), site.node);
+          ZC_IF_SOME(resolved, methodName) {
+            if (resolved.methodResolved && fallbackTree.contains(fallbackArguments) &&
+                fallbackArguments.size != resolved.parameterCount) {
+              ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+                ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                  return attachRecoveryLedger(
+                      rejectCallArgumentCount(site, ownerOrdinal, resolved.parameterCount,
+                                              fallbackArguments.size),
+                      input, factStoreBrands);
+                }
+              }
+            }
+            return rejectMethodCallCapability(site, input, factStoreBrands,
+                                              zc::mv(ZC_ASSERT_NONNULL(methodName).name));
+          }
           return rejectMethodCallCapability(
               site, input, factStoreBrands,
               unsupportedSharedReceiverInherentMethodCall(input, nodeTypes.asPtr(), site.node));
@@ -3876,14 +4046,37 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             if (!input.boundModule.tree().contains(argument) ||
                 !isScalarLiteral(input.boundModule.tree().node(argument).kind) ||
                 argumentType == zc::none || literal == zc::none) {
+              // A non-literal (for example an identifier) argument names a
+              // well-typed call the receiver-call lowering does not admit yet;
+              // report the method capability code rather than an invariant.
+              if (input.boundModule.tree().contains(argument) &&
+                  !isScalarLiteral(input.boundModule.tree().node(argument).kind)) {
+                auto calleeName = receiverMethodCallName(input, nodeTypes.asPtr(), site.node);
+                if (calleeName != zc::none) {
+                  return rejectMethodCallCapability(site, input, factStoreBrands,
+                                                    zc::mv(ZC_ASSERT_NONNULL(calleeName).name));
+                }
+              }
               return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                      site.key.schemaPreorder, zc::none, site.node,
                                      site.key.sourceSpan.clone(), factPath(site.primaryGroup));
             }
             ZC_IF_SOME(type, argumentType) {
               ZC_IF_SOME(literalFact, literal) {
-                if (type.value != value.parameters[index] || literalFact.value.node != argument ||
-                    literalFact.value.type != type.value) {
+                if (type.value != value.parameters[index]) {
+                  ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+                    ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                      return attachRecoveryLedger(
+                          rejectTypeMismatch(site, ownerOrdinal, value.parameters[index],
+                                             type.value),
+                          input, factStoreBrands);
+                    }
+                  }
+                  return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                         site.key.schemaPreorder, zc::none, site.node,
+                                         site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+                }
+                if (literalFact.value.node != argument || literalFact.value.type != type.value) {
                   return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
                                          site.key.schemaPreorder, zc::none, site.node,
                                          site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -3937,6 +4130,38 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       } else if (site.production == BodyProductionKind::DirectCall) {
         auto shape = directCallShape(input, site.node);
         if (shape == zc::none) {
+          // A resolved callee supplied with the wrong number of arguments is a
+          // user error (ZOM4036); every other unresolved direct call keeps its
+          // invariant rail.
+          const auto& tree = input.boundModule.tree();
+          if (tree.contains(site.node) &&
+              tree.node(site.node).kind == ast::SyntaxKind::CallExpression) {
+            const auto& failedCall = tree.node(site.node);
+            const ast::NodeId callee(failedCall.payload.words[ast::kCallExpressionCalleeWord]);
+            const ast::NodeList failedTypeArguments{
+                failedCall.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+                failedCall.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+            const ast::NodeList failedArguments{
+                failedCall.payload.words[ast::kCallExpressionArgsFirstWord],
+                failedCall.payload.words[ast::kCallExpressionArgsSizeWord]};
+            if (tree.contains(callee) && tree.node(callee).kind == ast::SyntaxKind::IdentExpr &&
+                tree.contains(failedTypeArguments) && failedTypeArguments.empty() &&
+                tree.contains(failedArguments)) {
+              auto resolved = directCallableShape(input, callee);
+              ZC_IF_SOME(callable, resolved) {
+                if (failedArguments.size != callable.parameters.size()) {
+                  ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+                    ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                      return attachRecoveryLedger(
+                          rejectCallArgumentCount(site, ownerOrdinal, callable.parameters.size(),
+                                                  failedArguments.size),
+                          input, factStoreBrands);
+                    }
+                  }
+                }
+              }
+            }
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -4020,6 +4245,17 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                               input, factStoreBrands);
                         }
                       }
+                    }
+                  }
+                  // A concrete argument that does not unify with the declared
+                  // parameter is an ordinary type error (ZOM4009), not a
+                  // checker invariant.
+                  ZC_IF_SOME(callOwner, enclosingBodyOwner(input.boundModule, site.node)) {
+                    ZC_IF_SOME(callOwnerOrdinal, definitionPreorder(input.boundModule, callOwner)) {
+                      return attachRecoveryLedger(
+                          rejectTypeMismatch(site, callOwnerOrdinal, value.parameters[index],
+                                             type.value),
+                          input, factStoreBrands);
                     }
                   }
                   return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
@@ -4346,6 +4582,29 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
               }
             }
           }
+          // Resolve the callee name without the lowering shape's gates so a
+          // wrong argument count is ZOM4036 and an unknown or unlowered method
+          // drains ZOM4125 instead of an invariant.
+          const auto& referenceTree = input.boundModule.tree();
+          const ast::NodeList referenceArguments{
+              referenceTree.node(callNode).payload.words[ast::kCallExpressionArgsFirstWord],
+              referenceTree.node(callNode).payload.words[ast::kCallExpressionArgsSizeWord]};
+          auto referenceName = receiverMethodCallName(input, nodeTypes.asPtr(), callNode);
+          ZC_IF_SOME(resolved, referenceName) {
+            if (resolved.methodResolved && referenceTree.contains(referenceArguments) &&
+                referenceArguments.size != resolved.parameterCount) {
+              ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, callNode)) {
+                ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                  return attachRecoveryLedger(
+                      rejectCallArgumentCount(site, ownerOrdinal, resolved.parameterCount,
+                                              referenceArguments.size),
+                      input, factStoreBrands);
+                }
+              }
+            }
+            return rejectMethodCallCapability(site, input, factStoreBrands,
+                                              zc::mv(ZC_ASSERT_NONNULL(referenceName).name));
+          }
           return rejectMethodCallCapability(
               site, input, factStoreBrands,
               unsupportedSharedReceiverInherentMethodCall(input, nodeTypes.asPtr(), callNode));
@@ -4502,9 +4761,20 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                              site.key.schemaPreorder, zc::none, site.node,
                              site.key.sourceSpan.clone(), factPath(CheckedFactGroup::NodeType));
     }
-    ZC_IF_SOME(target, targetType) {
-      ZC_IF_SOME(valueEntry, valueType) {
-        if (target.value != valueEntry.value) {
+    ZC_IF_SOME(targetTypeEntry, targetType) {
+      ZC_IF_SOME(valueTypeEntry, valueType) {
+        if (targetTypeEntry.value != valueTypeEntry.value) {
+          // A write value whose type differs from the target place is an
+          // ordinary user type error (ZOM4009), covering local writes,
+          // owner-local field writes, and receiver field writes.
+          ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+            ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+              return attachRecoveryLedger(
+                  rejectTypeMismatch(site, ownerOrdinal, targetTypeEntry.value,
+                                     valueTypeEntry.value),
+                  input, factStoreBrands);
+            }
+          }
           return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(CheckedFactGroup::NodeType));
@@ -4524,6 +4794,52 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Place));
+        }
+      }
+    }
+  }
+
+  // An annotated owner local (`let x: T = init`) binds to its annotation; the
+  // initializer must meet that annotation. Owner locals are bindings rather
+  // than materialized definitions, so the definition-type loop above never
+  // visits them. A mismatch is an ordinary type error (ZOM4009), matching the
+  // materialized-initializer rail; a selected concrete-to-dyn erasure at the
+  // initializer site coerces and is accepted.
+  for (const auto& local : input.boundModule.definitions().ownerLocalBindings()) {
+    if (!local.site.value().is<binder::PatternBindingSite>()) continue;
+    const auto& localSite = local.site.value().get<binder::PatternBindingSite>();
+    const auto& localTree = input.boundModule.tree();
+    if (!localTree.contains(localSite.introducer) ||
+        localTree.node(localSite.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
+      continue;
+    }
+    const auto& declarator = localTree.node(localSite.introducer);
+    const ast::NodeId annotation(declarator.payload.words[ast::kVariableDeclaratorTyWord]);
+    const ast::NodeId initializer(declarator.payload.words[ast::kVariableDeclaratorInitWord]);
+    if (!localTree.contains(annotation) || !localTree.contains(initializer)) continue;
+    auto declaredType = ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                                          input.semanticTypes, initializer);
+    auto initializerType = factEntry(nodeTypes.asPtr(), initializer);
+    if (declaredType == zc::none || initializerType == zc::none) continue;
+    if (ZC_ASSERT_NONNULL(declaredType) == ZC_ASSERT_NONNULL(initializerType).value) continue;
+    bool erasedHere = false;
+    for (const auto& erase : dynErases) {
+      if (erase.node == initializer && erase.existential == ZC_ASSERT_NONNULL(declaredType) &&
+          erase.concrete == ZC_ASSERT_NONNULL(initializerType).value) {
+        erasedHere = true;
+        break;
+      }
+    }
+    if (erasedHere) continue;
+    const auto initializerProductionSite =
+        productionSite(input.requirements.impl->productionSiteValues.asPtr(), initializer);
+    ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, initializer)) {
+      ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+        ZC_IF_SOME(initializerSite, initializerProductionSite) {
+          return attachRecoveryLedger(
+              rejectTypeMismatch(initializerSite, ownerOrdinal, ZC_ASSERT_NONNULL(declaredType),
+                                 ZC_ASSERT_NONNULL(initializerType).value),
+              input, factStoreBrands);
         }
       }
     }

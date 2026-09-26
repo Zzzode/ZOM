@@ -37,19 +37,34 @@ Statement ::= BlockStatement
 
 ### Expression Statements
 
-Any expression can be used as a statement by appending a semicolon. The expression's value is discarded.
-
 ```ebnf
 ExpressionStatement ::= Expression ';'
 ```
 
 The first token of the expression MUST NOT be `{`, `class`, `struct`, `enum`, `mut`, `let`, `const`, `fun`, `interface`, `error`, `alias`, or `module` to avoid ambiguity with declarations and block statements.
 
+#### Admitted expression-statement shapes
+
+The parser accepts the full `ExpressionStatement` production above. Semantic
+lowering currently admits only the following expression-statement forms:
+
+- A plain assignment (`=`) to a local binding, or to a field reached through a
+  local binding or the method receiver (`this.value = x;`). The write value is a
+  scalar literal, an identifier reference, or — for a local target only — an
+  admitted primitive binary expression. A field write through a shared
+  (non-`mutating`) receiver is rejected with `ZOM4126`.
+- A method call on an identifier receiver with scalar literal arguments whose
+  result is discarded (`cell.set(42);`), used for its effect.
+
+Every other expression statement — a bare literal or identifier, a prefix or
+postfix unary operation, a compound assignment, and a direct free-function call
+(`g();`) — has no admitted semantic contract yet and is rejected with `ZOM4098`
+(this expression statement is not supported yet).
+
 ```zom
-print("Hello, World!");     // Function call statement
-x = y + z;                  // Assignment statement
-array.push(newElement);     // Method call statement
-++counter;                  // Increment statement
+x = y + z;                  // Assignment to a local
+this.value = x;             // Field write through a mutating receiver
+array.push(newElement);     // Discarded method call
 ```
 
 ### Empty Statement

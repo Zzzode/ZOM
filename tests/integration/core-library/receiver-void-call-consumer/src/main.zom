@@ -1,0 +1,14 @@
+// A mutating unit method performs one parameter-RHS field write and returns no
+// value; the caller discards the call statement, then reads the field back
+// through the existing shared receiver method. The module initializer returns
+// 42, so the program links against the runtime `_start` and exits 42.
+struct Cell {
+  value: i32,
+  mutating fun set(this, x: i32) { this.value = x; }
+  fun get(this) -> i32 { return this.value; }
+}
+fun entry() -> i32 {
+  mut cell = Cell { value: 0 };
+  cell.set(42);
+  return cell.get();
+}

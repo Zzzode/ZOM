@@ -241,6 +241,21 @@ struct PendingFunctionDeclaration final {
   // `return this.<field> OP <literal>;` projects one field off the implicit
   // receiver and combines it with a scalar literal.
   zc::Maybe<PendingReceiverFieldArithmetic> receiverFieldArithmetic;
+  // Populated for the discarded unit-resulting receiver-call statement
+  // (`cell.set(42);`). Its node id is placed directly in the body block
+  // statement list; there is no return or local reference tied to it.
+  zc::Maybe<HirReceiverCallExpression> statementReceiverCall;
+  // The discarded call's owner-local receiver reference. Its source node and
+  // span are distinct from the trailing call's receiver; both borrow the same
+  // HirLocalId.
+  zc::Maybe<HirLocalReferenceExpression> statementReceiverReference;
+  // Populated for the void method shape: the ordinary parameter referenced by
+  // the sole receiver-field write RHS (`this.value = x;`). The write value
+  // node names this pooled parameter reference; parameterFieldWriteLiteral is
+  // unset.
+  zc::Maybe<HirParameterReferenceExpression> parameterFieldWriteParameter;
+  // True for the void method body (no HirReturnStatement is materialized).
+  bool voidBody = false;
 };
 
 }  // namespace detail

@@ -119,6 +119,18 @@ zc::Maybe<ValueType> receiverPointerCarrier(identity::SemanticTypeId type,
   return ValueType::pointer(0);
 }
 
+/// \brief Resolves the zero-sized Unit carrier for a Unit-result method.
+zc::Maybe<ValueType> unitCarrierFor(identity::SemanticTypeId type,
+                                    const type::SemanticTypeStore& semanticTypes) {
+  auto lookup = semanticTypes.get(type);
+  if (!lookup.is<type::SemanticTypeLookup>()) { return zc::none; }
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  ZC_IF_SOME(primitive, data.primitiveKind()) {
+    if (primitive == type::semantic::PrimitiveKind::Unit) { return ValueType::unit(); }
+  }
+  return zc::none;
+}
+
 /// \brief Maps a MIR relational operator to its LIR comparison operator.
 ComparisonOp lirComparisonOpFor(mir::MirComparisonOperator op) noexcept {
   switch (op) {
@@ -2838,6 +2850,361 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverSelfCallModule(
     zc::Vector<Local> noLocals;
     functions.add(Function(leaf.owner, zc::heapString("zom.leaf"), leafCarrierValue,
                            zc::mv(parameters), zc::mv(noLocals), zc::mv(leafBlocks)));
+  }
+
+  return Module(zc::mv(functions));
+}
+
+zc::Maybe<Module> MirToLirLowering::lowerReceiverVoidThenValueCallModule(
+    const mir::MirFunction& caller, const mir::MirFunction& voidCallee,
+    const mir::MirFunction& valueCallee, const type::SemanticTypeStore& semanticTypes) {
+  // Void callee (the mutating setter): two dense parameter locals (a mutable
+  // receiver pointer and one ordinary integer parameter), one block with a sole
+  // Overwrite Assign copying the parameter through [Dereference, Field] into the
+  // receiver field, and a value-less unit Return.
+  if (voidCallee.kind != mir::MirFunctionKind::Function ||
+      voidCallee.sourceDefinitionKind != identity::DefinitionKind::Method ||
+      voidCallee.locals.size() != 2 || voidCallee.blocks.size() != 1) {
+    return zc::none;
+  }
+  const auto& setterReceiver = voidCallee.locals[0];
+  const auto& setterParameter = voidCallee.locals[1];
+  if (setterReceiver.kind != mir::MirLocalKind::Parameter ||
+      setterParameter.kind != mir::MirLocalKind::Parameter || setterReceiver.id.ordinal() != 1 ||
+      setterParameter.id.ordinal() != 2) {
+    return zc::none;
+  }
+  auto setterReceiverMutable = receiverReferenceIsMutable(setterReceiver.type, semanticTypes);
+  if (setterReceiverMutable == zc::none || !ZC_ASSERT_NONNULL(setterReceiverMutable)) {
+    return zc::none;
+  }
+  auto setterReceiverCarrier = receiverPointerCarrier(setterReceiver.type, semanticTypes);
+  if (setterReceiverCarrier == zc::none) { return zc::none; }
+  const auto setterReceiverCarrierValue = ZC_REQUIRE_NONNULL(setterReceiverCarrier);
+  auto setterParameterCarrier = integerCarrierFor(setterParameter.type, semanticTypes);
+  if (setterParameterCarrier == zc::none) { return zc::none; }
+  const auto setterParameterCarrierValue = ZC_REQUIRE_NONNULL(setterParameterCarrier);
+  auto setterUnitCarrier = unitCarrierFor(voidCallee.resultType, semanticTypes);
+  if (setterUnitCarrier == zc::none) { return zc::none; }
+  const auto setterUnitCarrierValue = ZC_REQUIRE_NONNULL(setterUnitCarrier);
+  const auto& setterBlock = voidCallee.blocks[0];
+  if (setterBlock.statements.size() != 1 ||
+      setterBlock.terminator.kind() != mir::MirTerminatorKind::Return ||
+      setterBlock.terminator.returnValue().value != zc::none) {
+    return zc::none;
+  }
+  const auto& setterStatement = setterBlock.statements[0];
+  if (setterStatement.kind() != mir::MirStatementKind::Assign) { return zc::none; }
+  const auto& setterAssign = setterStatement.assignmentValue();
+  const auto& setterDest = setterAssign.destination;
+  const auto& setterProjections = setterDest.projections();
+  if (setterAssign.initialization != mir::MirInitializationKind::Overwrite ||
+      setterAssign.value.kind() != mir::MirRvalueKind::Use ||
+      setterDest.local() != setterReceiver.id || setterDest.rootType() != setterReceiver.type ||
+      setterDest.resultType() != setterParameter.type || setterProjections.size() != 2) {
+    return zc::none;
+  }
+  if (setterProjections[0].kind() != mir::MirProjectionKind::Dereference ||
+      setterProjections[0].inputType() != setterReceiver.type ||
+      setterProjections[1].kind() != mir::MirProjectionKind::Field ||
+      setterProjections[1].resultType() != setterParameter.type ||
+      setterProjections[0].resultType() != setterProjections[1].inputType()) {
+    return zc::none;
+  }
+  const auto& setterRhs = setterAssign.value.useValue().operand;
+  if (setterRhs.kind() == mir::MirOperandKind::Constant ||
+      setterRhs.place().local() != setterParameter.id ||
+      setterRhs.place().projections().size() != 0 ||
+      setterRhs.place().rootType() != setterParameter.type ||
+      setterRhs.place().resultType() != setterParameter.type) {
+    return zc::none;
+  }
+
+  // Value callee (the shared getter): one shared receiver parameter, one empty
+  // block, and a [Dereference, Field] copy of the receiver field.
+  if (valueCallee.kind != mir::MirFunctionKind::Function ||
+      valueCallee.sourceDefinitionKind != identity::DefinitionKind::Method ||
+      valueCallee.locals.size() != 1 || valueCallee.blocks.size() != 1) {
+    return zc::none;
+  }
+  const auto& getterReceiver = valueCallee.locals[0];
+  if (getterReceiver.kind != mir::MirLocalKind::Parameter || getterReceiver.id.ordinal() != 1) {
+    return zc::none;
+  }
+  auto getterReceiverMutable = receiverReferenceIsMutable(getterReceiver.type, semanticTypes);
+  if (getterReceiverMutable == zc::none || ZC_ASSERT_NONNULL(getterReceiverMutable)) {
+    return zc::none;
+  }
+  auto getterReceiverCarrier = receiverPointerCarrier(getterReceiver.type, semanticTypes);
+  if (getterReceiverCarrier == zc::none) { return zc::none; }
+  const auto getterReceiverCarrierValue = ZC_REQUIRE_NONNULL(getterReceiverCarrier);
+  auto getterCarrier = integerCarrierFor(valueCallee.resultType, semanticTypes);
+  if (getterCarrier == zc::none) { return zc::none; }
+  const auto getterCarrierValue = ZC_REQUIRE_NONNULL(getterCarrier);
+  const auto& getterBlock = valueCallee.blocks[0];
+  if (getterBlock.statements.size() != 0 ||
+      getterBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& getterReturn = getterBlock.terminator.returnValue().value;
+  if (getterReturn == zc::none) { return zc::none; }
+  {
+    const auto& returned = ZC_ASSERT_NONNULL(getterReturn);
+    if (returned.kind() == mir::MirOperandKind::Constant) { return zc::none; }
+    const auto& place = returned.place();
+    if (place.local() != getterReceiver.id || place.rootType() != getterReceiver.type ||
+        place.resultType() != valueCallee.resultType || place.projections().size() != 2 ||
+        place.projections()[0].kind() != mir::MirProjectionKind::Dereference ||
+        place.projections()[0].inputType() != getterReceiver.type ||
+        place.projections()[1].kind() != mir::MirProjectionKind::Field ||
+        place.projections()[1].resultType() != valueCallee.resultType ||
+        place.projections()[0].resultType() != place.projections()[1].inputType()) {
+      return zc::none;
+    }
+  }
+
+  // Caller: five dense locals across three blocks -- the owner UserLocal, a
+  // mutable borrow temporary, the unread unit call-destination temporary, a
+  // shared borrow temporary, and the value call result temporary.
+  if (caller.kind != mir::MirFunctionKind::Function ||
+      caller.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      caller.locals.size() != 5 || caller.blocks.size() != 3 ||
+      caller.resultType != valueCallee.resultType) {
+    return zc::none;
+  }
+  const auto& ownerLocal = caller.locals[0];
+  const auto& borrowMutTemporary = caller.locals[1];
+  const auto& unitTemporary = caller.locals[2];
+  const auto& borrowShTemporary = caller.locals[3];
+  const auto& resultTemporary = caller.locals[4];
+  if (ownerLocal.kind != mir::MirLocalKind::UserLocal ||
+      borrowMutTemporary.kind != mir::MirLocalKind::Temporary ||
+      unitTemporary.kind != mir::MirLocalKind::Temporary ||
+      borrowShTemporary.kind != mir::MirLocalKind::Temporary ||
+      resultTemporary.kind != mir::MirLocalKind::Temporary) {
+    return zc::none;
+  }
+  for (size_t i = 0; i < caller.locals.size(); ++i) {
+    if (caller.locals[i].id.ordinal() != i + 1) { return zc::none; }
+  }
+  auto borrowMutIsMutable = receiverReferenceIsMutable(borrowMutTemporary.type, semanticTypes);
+  auto borrowShIsMutable = receiverReferenceIsMutable(borrowShTemporary.type, semanticTypes);
+  if (borrowMutIsMutable == zc::none || !ZC_ASSERT_NONNULL(borrowMutIsMutable) ||
+      borrowShIsMutable == zc::none || ZC_ASSERT_NONNULL(borrowShIsMutable)) {
+    return zc::none;
+  }
+  if (unitCarrierFor(unitTemporary.type, semanticTypes) == zc::none ||
+      resultTemporary.type != caller.resultType) {
+    return zc::none;
+  }
+  auto callerCarrier = integerCarrierFor(caller.resultType, semanticTypes);
+  if (callerCarrier == zc::none) { return zc::none; }
+  const auto callerCarrierValue = ZC_REQUIRE_NONNULL(callerCarrier);
+
+  const auto& entry = caller.blocks[0];
+  const auto& continuation = caller.blocks[1];
+  const auto& tail = caller.blocks[2];
+  if (entry.statements.size() != 5 || entry.terminator.kind() != mir::MirTerminatorKind::Call ||
+      continuation.statements.size() != 3 ||
+      continuation.terminator.kind() != mir::MirTerminatorKind::Call ||
+      tail.statements.size() != 0 || tail.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  if (entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != ownerLocal.id ||
+      entry.statements[1].kind() != mir::MirStatementKind::Assign ||
+      entry.statements[2].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[2].storageLocal() != borrowMutTemporary.id ||
+      entry.statements[3].kind() != mir::MirStatementKind::BorrowCreation ||
+      entry.statements[4].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[4].storageLocal() != unitTemporary.id) {
+    return zc::none;
+  }
+  if (continuation.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      continuation.statements[0].storageLocal() != borrowShTemporary.id ||
+      continuation.statements[1].kind() != mir::MirStatementKind::BorrowCreation ||
+      continuation.statements[2].kind() != mir::MirStatementKind::StorageLive ||
+      continuation.statements[2].storageLocal() != resultTemporary.id) {
+    return zc::none;
+  }
+  // The owner folds from a one-element nominal aggregate of a scalar constant.
+  const auto& initialization = entry.statements[1].assignmentValue();
+  if (initialization.initialization != mir::MirInitializationKind::Initialize ||
+      initialization.destination.local() != ownerLocal.id ||
+      initialization.destination.projections().size() != 0 ||
+      initialization.value.kind() != mir::MirRvalueKind::NominalAggregate) {
+    return zc::none;
+  }
+  const auto& aggregate = initialization.value.nominalAggregateValue();
+  if (aggregate.type != ownerLocal.type || aggregate.elements.size() != 1) { return zc::none; }
+  const auto& elementOperand = aggregate.elements[0].operand;
+  if (elementOperand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
+  auto ownerCarrier = integerCarrierFor(elementOperand.constantValue().type, semanticTypes);
+  if (ownerCarrier == zc::none) { return zc::none; }
+  const auto ownerCarrierValue = ZC_REQUIRE_NONNULL(ownerCarrier);
+  auto ownerConstant = lirOperandFor(elementOperand, ownerCarrierValue);
+  if (ownerConstant == zc::none) { return zc::none; }
+  // The two receiver borrows are distinct, each sourced from the owner slot.
+  const auto& mutableBorrow = entry.statements[3].borrowCreationValue();
+  const auto& sharedBorrow = continuation.statements[1].borrowCreationValue();
+  if (mutableBorrow.kind != mir::MirBorrowKind::Mutable ||
+      mutableBorrow.destination.local() != borrowMutTemporary.id ||
+      mutableBorrow.destination.projections().size() != 0 ||
+      mutableBorrow.source.local() != ownerLocal.id ||
+      mutableBorrow.source.projections().size() != 0 ||
+      sharedBorrow.kind != mir::MirBorrowKind::Shared ||
+      sharedBorrow.destination.local() != borrowShTemporary.id ||
+      sharedBorrow.destination.projections().size() != 0 ||
+      sharedBorrow.source.local() != ownerLocal.id ||
+      sharedBorrow.source.projections().size() != 0) {
+    return zc::none;
+  }
+  // The mutating call targets the setter, activating the mutable borrow and
+  // writing its (unread) unit result into the unit temporary.
+  const auto& voidCall = entry.terminator.callValue();
+  if (voidCall.callee != voidCallee.owner || voidCall.arguments.size() != 2 ||
+      voidCall.effect.kind() != mir::MirCallEffectKind::ActivateMutableReceiver ||
+      voidCall.destination.local() != unitTemporary.id ||
+      voidCall.destination.projections().size() != 0 || voidCall.normalTarget != continuation.id ||
+      voidCall.unwindTarget != zc::none) {
+    return zc::none;
+  }
+  {
+    auto activated = voidCall.effect.activatedMutableReceiver();
+    if (activated == zc::none || ZC_ASSERT_NONNULL(activated) != borrowMutTemporary.id) {
+      return zc::none;
+    }
+  }
+  if (voidCall.arguments[0].kind() == mir::MirOperandKind::Constant ||
+      voidCall.arguments[0].place().local() != borrowMutTemporary.id ||
+      voidCall.arguments[0].place().projections().size() != 0 ||
+      voidCall.arguments[1].kind() != mir::MirOperandKind::Constant ||
+      voidCall.arguments[1].constantValue().type != setterParameter.type) {
+    return zc::none;
+  }
+  auto setterArgument = lirOperandFor(voidCall.arguments[1], setterParameterCarrierValue);
+  if (setterArgument == zc::none) { return zc::none; }
+  // The shared call targets the getter with the shared borrow as its sole
+  // argument and stores the field value into the result temporary.
+  const auto& valueCall = continuation.terminator.callValue();
+  if (valueCall.callee != valueCallee.owner || valueCall.arguments.size() != 1 ||
+      valueCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
+      valueCall.destination.local() != resultTemporary.id ||
+      valueCall.destination.projections().size() != 0 || valueCall.normalTarget != tail.id ||
+      valueCall.unwindTarget != zc::none) {
+    return zc::none;
+  }
+  if (valueCall.arguments[0].kind() == mir::MirOperandKind::Constant ||
+      valueCall.arguments[0].place().local() != borrowShTemporary.id ||
+      valueCall.arguments[0].place().projections().size() != 0) {
+    return zc::none;
+  }
+  {
+    const auto& returned = tail.terminator.returnValue().value;
+    if (returned == zc::none) { return zc::none; }
+    const auto& value = ZC_ASSERT_NONNULL(returned);
+    if (value.kind() == mir::MirOperandKind::Constant ||
+        value.place().local() != resultTemporary.id || value.place().projections().size() != 0) {
+      return zc::none;
+    }
+  }
+
+  // Dense LIR renumbering: the MIR unit destination temporary (ordinal 3) is
+  // never materialized, so the five MIR locals collapse to four LIR slots.
+  zc::Vector<uint32_t> lirOrdinalFor;
+  uint32_t nextOrdinal = 1;
+  for (const auto& local : caller.locals) {
+    const bool droppedUnitTemp =
+        &local == &caller.locals[2] && unitCarrierFor(local.type, semanticTypes) != zc::none;
+    lirOrdinalFor.add(droppedUnitTemp ? 0 : nextOrdinal++);
+  }
+  ZC_IREQUIRE(nextOrdinal == 5, "four materialized caller slots after the unit drop");
+
+  auto callerBb1 = LirBlockId::fromOrdinal(1);
+  auto callerBb2 = LirBlockId::fromOrdinal(2);
+  auto callerBb3 = LirBlockId::fromOrdinal(3);
+  auto setterEntryId = LirBlockId::fromOrdinal(1);
+  auto getterEntryId = LirBlockId::fromOrdinal(1);
+  if (callerBb1 == zc::none || callerBb2 == zc::none || callerBb3 == zc::none ||
+      setterEntryId == zc::none || getterEntryId == zc::none) {
+    return zc::none;
+  }
+
+  zc::Vector<Function> functions;
+
+  // Function 0: the module initializer. The unit call has no destination; the
+  // getter call stores into the dense result slot (ordinal 4).
+  {
+    zc::Vector<Statement> bb1Statements;
+    bb1Statements.add(Statement::assign(lirOrdinalFor[0], ZC_ASSERT_NONNULL(ownerConstant)));
+    bb1Statements.add(Statement::takeAddress(lirOrdinalFor[1], lirOrdinalFor[0]));
+    zc::Vector<Operand> voidArguments;
+    voidArguments.add(Operand::localUse(lirOrdinalFor[1]));
+    voidArguments.add(zc::mv(ZC_ASSERT_NONNULL(setterArgument)));
+    auto voidTerminator = Terminator::callVoidFunction(
+        /*calleeIndex=*/1, zc::mv(voidArguments), ZC_REQUIRE_NONNULL(callerBb2));
+    if (voidTerminator == zc::none) { return zc::none; }
+
+    zc::Vector<Statement> bb2Statements;
+    bb2Statements.add(Statement::takeAddress(lirOrdinalFor[3], lirOrdinalFor[0]));
+    zc::Vector<Operand> valueArguments;
+    valueArguments.add(Operand::localUse(lirOrdinalFor[3]));
+    auto valueTerminator = Terminator::callFunction(
+        /*calleeIndex=*/2, lirOrdinalFor[4], zc::mv(valueArguments), ZC_REQUIRE_NONNULL(callerBb3));
+    if (valueTerminator == zc::none) { return zc::none; }
+
+    zc::Vector<BasicBlock> callerBlocks;
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerBb1), zc::mv(bb1Statements),
+                                ZC_REQUIRE_NONNULL(zc::mv(voidTerminator))));
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerBb2), zc::mv(bb2Statements),
+                                ZC_REQUIRE_NONNULL(zc::mv(valueTerminator))));
+    callerBlocks.add(
+        BasicBlock(ZC_REQUIRE_NONNULL(callerBb3), Terminator::returnLocal(lirOrdinalFor[4])));
+
+    zc::Vector<Local> noParameters;
+    zc::Vector<Local> locals;
+    locals.add(Local(lirOrdinalFor[0], ownerCarrierValue));
+    locals.add(Local(lirOrdinalFor[1], setterReceiverCarrierValue));
+    locals.add(Local(lirOrdinalFor[3], getterReceiverCarrierValue));
+    locals.add(Local(lirOrdinalFor[4], callerCarrierValue));
+    functions.add(Function(caller.owner, zc::heapString("zom.module_init"), callerCarrierValue,
+                           zc::mv(noParameters), zc::mv(locals), zc::mv(callerBlocks)));
+  }
+
+  // Function 1: the mutating setter. It stores the ordinary parameter into the
+  // receiver field at offset zero and returns no value.
+  {
+    zc::Vector<Statement> setterStatements;
+    setterStatements.add(Statement::storeField(setterReceiver.id.ordinal(),
+                                               Operand::localUse(setterParameter.id.ordinal()),
+                                               /*fieldOffsetBytes=*/0));
+    zc::Vector<BasicBlock> setterBlocks;
+    setterBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(setterEntryId), zc::mv(setterStatements),
+                                Terminator::returnVoid()));
+    zc::Vector<Local> parameters;
+    parameters.add(Local(setterReceiver.id.ordinal(), setterReceiverCarrierValue));
+    parameters.add(Local(setterParameter.id.ordinal(), setterParameterCarrierValue));
+    zc::Vector<Local> noLocals;
+    functions.add(Function(voidCallee.owner, zc::heapString("zom.setter"), setterUnitCarrierValue,
+                           zc::mv(parameters), zc::mv(noLocals), zc::mv(setterBlocks)));
+  }
+
+  // Function 2: the shared getter. It loads the receiver field at offset zero
+  // into a synthesized result slot and returns it.
+  {
+    const uint32_t resultOrdinal = getterReceiver.id.ordinal() + 1;
+    zc::Vector<Statement> getterStatements;
+    getterStatements.add(
+        Statement::loadField(resultOrdinal, getterReceiver.id.ordinal(), /*fieldOffsetBytes=*/0));
+    zc::Vector<BasicBlock> getterBlocks;
+    getterBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(getterEntryId), zc::mv(getterStatements),
+                                Terminator::returnLocal(resultOrdinal)));
+    zc::Vector<Local> parameters;
+    parameters.add(Local(getterReceiver.id.ordinal(), getterReceiverCarrierValue));
+    zc::Vector<Local> locals;
+    locals.add(Local(resultOrdinal, getterCarrierValue));
+    functions.add(Function(valueCallee.owner, zc::heapString("zom.getter"), getterCarrierValue,
+                           zc::mv(parameters), zc::mv(locals), zc::mv(getterBlocks)));
   }
 
   return Module(zc::mv(functions));

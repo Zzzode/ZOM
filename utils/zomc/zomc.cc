@@ -1492,6 +1492,56 @@ private:
         // The self-call chain is distinguished by two Method-sourced functions
         // whose two-block member forwards its leading receiver parameter, so it
         // is classified before the generic unique-caller scan.
+        {
+          // Void-then-value receiver module: one Function-sourced three-block
+          // caller (bb0 mutating unit Call, bb1 shared value Call, bb2 value
+          // Return) and two one-block Method owners, each resolved from one Call
+          // terminator's callee owner. A non-unique caller or owner leaves lir
+          // unset so the later ladders reject the module.
+          zc::Maybe<size_t> voidCallerIndex;
+          for (size_t index = 0; index < functions.size(); ++index) {
+            const auto& fn = functions[index];
+            if (fn.kind == mir::MirFunctionKind::Function &&
+                fn.sourceDefinitionKind == identity::DefinitionKind::Function &&
+                fn.blocks.size() == 3 &&
+                fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call &&
+                fn.blocks[1].terminator.kind() == mir::MirTerminatorKind::Call &&
+                fn.blocks[2].terminator.kind() == mir::MirTerminatorKind::Return) {
+              if (voidCallerIndex != zc::none) {
+                voidCallerIndex = zc::none;
+                break;
+              }
+              voidCallerIndex = index;
+            }
+          }
+          ZC_IF_SOME(caller, voidCallerIndex) {
+            const auto& callerFn = functions[caller];
+            const auto& mutatingCall = callerFn.blocks[0].terminator.callValue();
+            const auto& readCall = callerFn.blocks[1].terminator.callValue();
+            auto resolveMethod = [&](identity::DefId owner) -> zc::Maybe<size_t> {
+              zc::Maybe<size_t> hit;
+              for (size_t index = 0; index < functions.size(); ++index) {
+                if (index == caller) continue;
+                if (functions[index].owner == owner &&
+                    functions[index].kind == mir::MirFunctionKind::Function &&
+                    functions[index].sourceDefinitionKind == identity::DefinitionKind::Method &&
+                    functions[index].blocks.size() == 1) {
+                  if (hit != zc::none) return zc::none;
+                  hit = index;
+                }
+              }
+              return hit;
+            };
+            auto setterIndex = resolveMethod(mutatingCall.callee);
+            auto getterIndex = resolveMethod(readCall.callee);
+            if (setterIndex != zc::none && getterIndex != zc::none &&
+                ZC_ASSERT_NONNULL(setterIndex) != ZC_ASSERT_NONNULL(getterIndex)) {
+              lir = lir::MirToLirLowering::lowerReceiverVoidThenValueCallModule(
+                  functions[caller], functions[ZC_ASSERT_NONNULL(setterIndex)],
+                  functions[ZC_ASSERT_NONNULL(getterIndex)], types);
+            }
+          }
+        }
         zc::Maybe<size_t> receiverCallerIndex;
         zc::Maybe<size_t> forwarderIndex;
         zc::Maybe<size_t> selfCallLeafIndex;
@@ -1614,7 +1664,8 @@ private:
                   "call, mutating-receiver field write-read, shared-receiver constant-local "
                   "method, shared-receiver parameter-arithmetic method, shared-receiver "
                   "field-arithmetic method, shared-receiver conditional method, shared-receiver "
-                  "self-call, and three-function direct-call-with-leaf slices)."));
+                  "self-call, three-function direct-call-with-leaf, and "
+                  "void-setter-then-value-getter receiver-call slices)."));
     }
     backend::llvm::LlvmTranslator translator;
     ZC_IF_SOME(lirModule, lir) {

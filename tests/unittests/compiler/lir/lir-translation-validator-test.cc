@@ -24,6 +24,7 @@
 #include "compiler/lir/lir-store.h"
 #include "compiler/lir/verify/translation-validator.h"
 #include "compiler/mir/built-mir.h"
+#include "compiler/type/semantic-type-data.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
 #include "tests/unittests/compiler/test-semantic-type-context.h"
 #include "zc/core/string.h"
@@ -771,6 +772,308 @@ ZC_TEST("Translation validator fail-closes on a call argument kind mismatch") {
   auto finding = TranslationValidator::validate(mirFunctions.asPtr(), Module(zc::mv(lirFunctions)),
                                                 types.semanticTypes());
   ZC_EXPECT(finding != zc::none);
+}
+
+// Interns one mutable or shared reference type through the production admission
+// boundary. The referent is deliberately the scalar i32 type: the validator
+// independently re-derives mutability and projection type chains but never
+// requires a nominal referent in this hand-built correspondence.
+identity::SemanticTypeId internReference(TestSemanticTypeContext& context,
+                                         type::semantic::Mutability mutability,
+                                         identity::SemanticTypeId referent) {
+  auto& store = context.semanticTypes();
+  auto canonical = store.canonicalizeClosed(
+      type::semantic::TypeData(type::semantic::ReferenceTypeData{mutability, referent}));
+  ZC_REQUIRE(canonical.is<type::semantic::CanonicalTypeData>());
+  auto interned = store.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+  ZC_REQUIRE(interned.is<type::SemanticTypeInterned>());
+  return interned.get<type::SemanticTypeInterned>().id;
+}
+
+// A receiver-rooted place projected through Dereference then one Field.
+mir::MirPlace projectedFieldPlace(mir::MirLocalId root, identity::SemanticTypeId receiverType,
+                                  identity::SemanticTypeId fieldType, identity::DefId field) {
+  zc::Vector<mir::MirProjection> projections;
+  projections.add(mir::MirProjection::dereference(receiverType, fieldType));
+  projections.add(mir::MirProjection::field(field, fieldType, fieldType));
+  return mir::MirPlace(root, receiverType, zc::mv(projections), fieldType);
+}
+
+struct VoidVerticalTypes final {
+  identity::SemanticTypeId i32;
+  identity::SemanticTypeId unit;
+  identity::SemanticTypeId mutableReference;
+  identity::SemanticTypeId sharedReference;
+};
+
+VoidVerticalTypes voidVerticalTypes(TestSemanticTypeContext& context) {
+  const auto i32 = context.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto unit = context.internPrimitive(type::semantic::PrimitiveKind::Unit);
+  return {i32, unit, internReference(context, type::semantic::Mutability::Mutable, i32),
+          internReference(context, type::semantic::Mutability::Const, i32)};
+}
+
+// MIR unit setter: two parameter locals (mutable receiver, i32 x), one
+// projected Overwrite Assign copying x, then a value-less Return.
+mir::MirFunction voidSetterMir(identity::DefId owner, const VoidVerticalTypes& types,
+                               identity::DefId field) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  zc::Maybe<mir::MirSourceScopeId> noParent;
+  scopes.add(mir::MirSourceScope{mirScope(1), zc::mv(noParent), span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(mir::MirLocalDeclaration{mirLocal(1), mir::MirLocalKind::Parameter,
+                                      types.mutableReference, mirScope(1), span()});
+  locals.add(mir::MirLocalDeclaration{mirLocal(2), mir::MirLocalKind::Parameter, types.i32,
+                                      mirScope(1), span()});
+  zc::Vector<mir::MirStatement> statements;
+  statements.add(mir::MirStatement::assign(
+      projectedFieldPlace(mirLocal(1), types.mutableReference, types.i32, field),
+      mir::MirRvalue::use(mir::MirOperand::copy(place(mirLocal(2), types.i32))),
+      mir::MirInitializationKind::Overwrite, span()));
+  auto terminator = mir::MirTerminator::returnVoid(span());
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{mirBlock(1), mirScope(1), zc::mv(statements), zc::mv(terminator)});
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Method,
+                          types.unit,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+// MIR shared getter: one receiver parameter, zero statements, a projected
+// field-copy valued Return.
+mir::MirFunction valueGetterMir(identity::DefId owner, const VoidVerticalTypes& types,
+                                identity::DefId field) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  zc::Maybe<mir::MirSourceScopeId> noParent;
+  scopes.add(mir::MirSourceScope{mirScope(1), zc::mv(noParent), span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(mir::MirLocalDeclaration{mirLocal(1), mir::MirLocalKind::Parameter,
+                                      types.sharedReference, mirScope(1), span()});
+  auto terminator =
+      mir::MirTerminator::returnValue(mir::MirOperand::copy(projectedFieldPlace(
+                                          mirLocal(1), types.sharedReference, types.i32, field)),
+                                      span());
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{mirBlock(1), mirScope(1), zc::Vector<mir::MirStatement>{},
+                                zc::mv(terminator)});
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Method,
+                          types.i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+// MIR three-block caller: owner aggregate, a mutable unit call, a shared value
+// call, then a valued Return of the result temporary.
+mir::MirFunction voidCallerMir(identity::DefId owner, identity::DefId setterOwner,
+                               identity::DefId getterOwner, identity::DefId structDefinition,
+                               identity::DefId field, const VoidVerticalTypes& types) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  zc::Maybe<mir::MirSourceScopeId> noParent;
+  scopes.add(mir::MirSourceScope{mirScope(1), zc::mv(noParent), span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(mir::MirLocalDeclaration{mirLocal(1), mir::MirLocalKind::UserLocal, types.i32,
+                                      mirScope(1), span()});
+  locals.add(mir::MirLocalDeclaration{mirLocal(2), mir::MirLocalKind::Temporary,
+                                      types.mutableReference, mirScope(1), span()});
+  locals.add(mir::MirLocalDeclaration{mirLocal(3), mir::MirLocalKind::Temporary, types.unit,
+                                      mirScope(1), span()});
+  locals.add(mir::MirLocalDeclaration{mirLocal(4), mir::MirLocalKind::Temporary,
+                                      types.sharedReference, mirScope(1), span()});
+  locals.add(mir::MirLocalDeclaration{mirLocal(5), mir::MirLocalKind::Temporary, types.i32,
+                                      mirScope(1), span()});
+  zc::Vector<mir::MirBasicBlock> blocks;
+  {
+    zc::Vector<mir::MirStatement> statements;
+    statements.add(mir::MirStatement::storageLive(mirLocal(1), span()));
+    zc::Vector<mir::MirNominalAggregateElement> elements;
+    elements.add(mir::MirNominalAggregateElement{
+        field, mir::MirOperand::constant(types.i32, integerConstant(0))});
+    statements.add(mir::MirStatement::assign(
+        place(mirLocal(1), types.i32),
+        mir::MirRvalue::nominalAggregate(structDefinition, types.i32, zc::mv(elements)),
+        mir::MirInitializationKind::Initialize, span()));
+    statements.add(mir::MirStatement::storageLive(mirLocal(2), span()));
+    statements.add(mir::MirStatement::borrowCreation(place(mirLocal(2), types.mutableReference),
+                                                     mir::MirBorrowKind::Mutable,
+                                                     place(mirLocal(1), types.i32), span()));
+    statements.add(mir::MirStatement::storageLive(mirLocal(3), span()));
+    zc::Vector<mir::MirOperand> arguments;
+    arguments.add(mir::MirOperand::copy(place(mirLocal(2), types.mutableReference)));
+    arguments.add(mir::MirOperand::constant(types.i32, integerConstant(42)));
+    auto effect = mir::MirCallEffect::activateMutableReceiver(mirLocal(2));
+    auto terminator =
+        mir::MirTerminator::call(setterOwner, zc::mv(arguments), zc::mv(effect),
+                                 place(mirLocal(3), types.unit), mirBlock(2), zc::none, span());
+    blocks.add(
+        mir::MirBasicBlock{mirBlock(1), mirScope(1), zc::mv(statements), zc::mv(terminator)});
+  }
+  {
+    zc::Vector<mir::MirStatement> statements;
+    statements.add(mir::MirStatement::storageLive(mirLocal(4), span()));
+    statements.add(mir::MirStatement::borrowCreation(place(mirLocal(4), types.sharedReference),
+                                                     mir::MirBorrowKind::Shared,
+                                                     place(mirLocal(1), types.i32), span()));
+    statements.add(mir::MirStatement::storageLive(mirLocal(5), span()));
+    zc::Vector<mir::MirOperand> arguments;
+    arguments.add(mir::MirOperand::copy(place(mirLocal(4), types.sharedReference)));
+    auto effect = mir::MirCallEffect::noActivation();
+    auto terminator =
+        mir::MirTerminator::call(getterOwner, zc::mv(arguments), zc::mv(effect),
+                                 place(mirLocal(5), types.i32), mirBlock(3), zc::none, span());
+    blocks.add(
+        mir::MirBasicBlock{mirBlock(2), mirScope(1), zc::mv(statements), zc::mv(terminator)});
+  }
+  {
+    auto terminator = mir::MirTerminator::returnValue(
+        mir::MirOperand::copy(place(mirLocal(5), types.i32)), span());
+    blocks.add(mir::MirBasicBlock{mirBlock(3), mirScope(1), zc::Vector<mir::MirStatement>{},
+                                  zc::mv(terminator)});
+  }
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          types.i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+// LIR for the three functions. Emission order is entry (0), setter (1), getter
+// (2). When `voidCallCarriesDestination` is set the setter call is mutated into
+// a destination-carrying call, the one semantic mutation the reject test needs.
+Module voidVerticalLir(identity::DefId entryOwner, identity::DefId setterOwner,
+                       identity::DefId getterOwner, bool voidCallCarriesDestination) {
+  zc::Vector<Function> functions;
+  {
+    // Entry: four dense slots (the MIR unit temporary is dropped), three blocks.
+    zc::Vector<BasicBlock> blocks;
+    {
+      zc::Vector<Statement> statements;
+      statements.add(Statement::assign(/*destinationOrdinal=*/1, Operand::constant(i32Const(0))));
+      statements.add(Statement::takeAddress(/*destinationOrdinal=*/2, /*sourceOrdinal=*/1));
+      zc::Vector<Operand> arguments;
+      arguments.add(Operand::localUse(2));
+      arguments.add(Operand::constant(i32Const(42)));
+      zc::Maybe<Terminator> terminator;
+      if (voidCallCarriesDestination) {
+        terminator = ZC_ASSERT_NONNULL(Terminator::callFunction(
+            /*calleeIndex=*/1, /*destinationOrdinal=*/4, zc::mv(arguments), lirBlock(2)));
+      } else {
+        terminator = ZC_ASSERT_NONNULL(
+            Terminator::callVoidFunction(/*calleeIndex=*/1, zc::mv(arguments), lirBlock(2)));
+      }
+      blocks.add(
+          BasicBlock(lirBlock(1), zc::mv(statements), zc::mv(ZC_ASSERT_NONNULL(terminator))));
+    }
+    {
+      zc::Vector<Statement> statements;
+      statements.add(Statement::takeAddress(/*destinationOrdinal=*/3, /*sourceOrdinal=*/1));
+      zc::Vector<Operand> arguments;
+      arguments.add(Operand::localUse(3));
+      auto terminator = ZC_ASSERT_NONNULL(Terminator::callFunction(
+          /*calleeIndex=*/2, /*destinationOrdinal=*/4, zc::mv(arguments), lirBlock(3)));
+      blocks.add(BasicBlock(lirBlock(2), zc::mv(statements), zc::mv(terminator)));
+    }
+    {
+      zc::Vector<Statement> statements;
+      blocks.add(BasicBlock(lirBlock(3), zc::mv(statements), Terminator::returnLocal(4)));
+    }
+    zc::Vector<Local> parameters;
+    zc::Vector<Local> locals;
+    locals.add(Local(1, i32Carrier()));
+    locals.add(Local(2, ValueType::pointer(0)));
+    locals.add(Local(3, ValueType::pointer(0)));
+    locals.add(Local(4, i32Carrier()));
+    functions.add(Function(entryOwner, zc::heapString("zom.module_init"), i32Carrier(),
+                           zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  }
+  {
+    // Setter: pointer plus i32 parameter, one StoreField of the parameter, ReturnVoid.
+    zc::Vector<BasicBlock> blocks;
+    zc::Vector<Statement> statements;
+    statements.add(Statement::storeField(/*basePointerOrdinal=*/1, Operand::localUse(2),
+                                         /*fieldOffsetBytes=*/0));
+    blocks.add(BasicBlock(lirBlock(1), zc::mv(statements), Terminator::returnVoid()));
+    zc::Vector<Local> parameters;
+    parameters.add(Local(1, ValueType::pointer(0)));
+    parameters.add(Local(2, i32Carrier()));
+    zc::Vector<Local> locals;
+    functions.add(Function(setterOwner, zc::heapString("zom.setter"), ValueType::unit(),
+                           zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  }
+  {
+    // Getter: pointer parameter, one LoadField into slot 2, return it.
+    zc::Vector<BasicBlock> blocks;
+    zc::Vector<Statement> statements;
+    statements.add(Statement::loadField(/*destinationOrdinal=*/2, /*basePointerOrdinal=*/1,
+                                        /*fieldOffsetBytes=*/0));
+    blocks.add(BasicBlock(lirBlock(1), zc::mv(statements), Terminator::returnLocal(2)));
+    zc::Vector<Local> parameters;
+    parameters.add(Local(1, ValueType::pointer(0)));
+    zc::Vector<Local> locals;
+    locals.add(Local(2, i32Carrier()));
+    functions.add(Function(getterOwner, zc::heapString("zom.getter"), i32Carrier(),
+                           zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  }
+  return Module(zc::mv(functions));
+}
+
+ZC_TEST(
+    "Translation validator accepts a unit callee, a destination-less void call, and a trailing "
+    "receiver call") {
+  TestSemanticTypeContext context;
+  const auto types = voidVerticalTypes(context);
+  const auto entryOwner = testDefinition(80);
+  const auto setterOwner = testDefinition(81);
+  const auto getterOwner = testDefinition(82);
+  const auto field = testDefinition(83);
+  const auto structDefinition = testDefinition(84);
+  auto caller = voidCallerMir(entryOwner, setterOwner, getterOwner, structDefinition, field, types);
+  auto setter = voidSetterMir(setterOwner, types, field);
+  auto getter = valueGetterMir(getterOwner, types, field);
+  auto module = voidVerticalLir(entryOwner, setterOwner, getterOwner,
+                                /*voidCallCarriesDestination=*/false);
+  auto functions = zc::heapArray<const mir::MirFunction*>(3);
+  functions[0] = &caller;
+  functions[1] = &setter;
+  functions[2] = &getter;
+  ZC_EXPECT(TranslationValidator::validate(functions.asPtr(), module, context.semanticTypes()) ==
+            zc::none);
+}
+
+ZC_TEST("Translation validator rejects a void call that incorrectly carries a destination") {
+  // One semantic mutation: the destination-less setter call is emitted as a
+  // destination-carrying call. The bespoke caller correspondence requires the
+  // unit call to have no destination, so the first block reports an effect
+  // mismatch.
+  TestSemanticTypeContext context;
+  const auto types = voidVerticalTypes(context);
+  const auto entryOwner = testDefinition(90);
+  const auto setterOwner = testDefinition(91);
+  const auto getterOwner = testDefinition(92);
+  const auto field = testDefinition(93);
+  const auto structDefinition = testDefinition(94);
+  auto caller = voidCallerMir(entryOwner, setterOwner, getterOwner, structDefinition, field, types);
+  auto setter = voidSetterMir(setterOwner, types, field);
+  auto getter = valueGetterMir(getterOwner, types, field);
+  auto module = voidVerticalLir(entryOwner, setterOwner, getterOwner,
+                                /*voidCallCarriesDestination=*/true);
+  auto functions = zc::heapArray<const mir::MirFunction*>(3);
+  functions[0] = &caller;
+  functions[1] = &setter;
+  functions[2] = &getter;
+  auto finding = TranslationValidator::validate(functions.asPtr(), module, context.semanticTypes());
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == TranslationFaultKind::EffectMismatch);
 }
 
 }  // namespace

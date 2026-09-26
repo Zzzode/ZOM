@@ -129,9 +129,10 @@ set_tests_properties(native-execution-cli PROPERTIES LABELS "unittest;cli" TIMEO
 # boolean-conditional diamond fixture, the KR5.2 C2 reducible while-loop fixture,
 # the KR5.2 C3 comparison-driven conditional fixture, the KR5.2 C4 same-module
 # direct-call fixture, the KR5.2 C5 single-argument direct-call fixture, the
-# gap#2 aggregate field-return fixture, the shared-receiver method fixtures, and
-# the mutating-receiver call fixture. Gated on the backend so the frontend-only
-# lane never requires LLVM.
+# gap#2 aggregate field-return fixture, the shared-receiver method fixtures, the
+# mutating-receiver call fixture, the receiver field-arithmetic fixture, and
+# the discarded unit-receiver-call fixture. Gated on the backend so the
+# frontend-only lane never requires LLVM.
 if(ZOM_ENABLE_LLVM_BACKEND)
   add_test(
     NAME object-emission-cli
@@ -180,6 +181,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/method-arithmetic-consumer/Zom.toml::method_arithmetic_consumer::method_arithmetic_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-field-arithmetic-consumer/Zom.toml::receiver_field_arithmetic_consumer::receiver_field_arithmetic_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-void-call-consumer/Zom.toml::receiver_void_call_consumer::receiver_void_call_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-fourfn-consumer/Zom.toml::reject_fourfn_consumer::reject_fourfn_consumer"
       --reject-case
@@ -231,6 +234,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/method-arithmetic-consumer/Zom.toml::method_arithmetic_consumer::method_arithmetic_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-field-arithmetic-consumer/Zom.toml::receiver_field_arithmetic_consumer::receiver_field_arithmetic_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-void-call-consumer/Zom.toml::receiver_void_call_consumer::receiver_void_call_consumer::42"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer")
   set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)

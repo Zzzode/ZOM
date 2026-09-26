@@ -586,6 +586,53 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       shape.receiverWriteValue = writeValue;
       return shape;
     }
+    // Void mutating-method shape: the sole statement is
+    // `this.<field> = <ordinary-parameter>;` and there is no return. Receiver
+    // mutability and parameter resolution are checker decisions; shape only
+    // records the structure. Tried before the return-only size-1 gate.
+    if (statements.size == 1 && hasReceiver && ordinaryCount == 1) {
+      auto voidItem = statementItem(tree, tree.list(statements)[0]);
+      if (voidItem != zc::none) {
+        ast::NodeId voidStatement;
+        ZC_IF_SOME(value, voidItem) { voidStatement = value; }
+        if (tree.contains(voidStatement) &&
+            tree.node(voidStatement).kind == ast::SyntaxKind::ExpressionStatement) {
+          const ast::NodeId voidAssignment(
+              tree.node(voidStatement).payload.words[ast::kExpressionStatementExpressionWord]);
+          if (tree.contains(voidAssignment) &&
+              tree.node(voidAssignment).kind == ast::SyntaxKind::AssignmentExpr &&
+              static_cast<ast::AssignmentOperatorKind>(
+                  tree.node(voidAssignment).payload.words[ast::kAssignmentExprOpWord]) ==
+                  ast::AssignmentOperatorKind::Assign) {
+            const ast::NodeId voidTarget(
+                tree.node(voidAssignment).payload.words[ast::kAssignmentExprLhsWord]);
+            const ast::NodeId voidRhs(
+                tree.node(voidAssignment).payload.words[ast::kAssignmentExprRhsWord]);
+            if (tree.contains(voidTarget) && tree.contains(voidRhs) &&
+                tree.node(voidTarget).kind == ast::SyntaxKind::MemberExpression &&
+                static_cast<ast::MemberAccessKind>(
+                    tree.node(voidTarget).payload.words[ast::kMemberExpressionAccessWord]) ==
+                    ast::MemberAccessKind::Dot &&
+                tree.node(voidRhs).kind == ast::SyntaxKind::IdentExpr) {
+              const ast::NodeId voidObject(
+                  tree.node(voidTarget).payload.words[ast::kMemberExpressionObjectWord]);
+              if (tree.contains(voidObject) &&
+                  tree.node(voidObject).kind == ast::SyntaxKind::ThisExpr) {
+                FunctionReturnShape shape{};
+                shape.body = body;
+                shape.writesReceiverField = true;
+                shape.receiverWriteStatement = voidStatement;
+                shape.receiverWriteAssignment = voidAssignment;
+                shape.receiverWriteValue = voidRhs;
+                shape.isVoidBody = true;
+                shape.voidWriteValueIsParameter = true;
+                return shape;
+              }
+            }
+          }
+        }
+      }
+    }
     if (statements.size != 1) return zc::none;
     auto methodItem = statementItem(tree, tree.list(statements)[0]);
     if (methodItem == zc::none) return zc::none;
@@ -873,6 +920,128 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       shape.loopCondition = loopCondition;
       shape.loopStatement = middleStmt;
       return shape;
+    } else {
+      // Discarded receiver-call statement shape:
+      // `<let|mut> id = T { .. }; id.set(<literal args>); return id.get();`. The
+      // middle statement is a discarded owner-local receiver call and the
+      // trailing return is a second receiver call on the same owner local.
+      // Only scalar-literal arguments and empty type-argument lists are
+      // admitted; mutability is a checker decision. A non-matching middle
+      // statement falls through to the later shape arms unchanged.
+      bool matchesDiscardedShape =
+          tree.node(middleStmt).kind == ast::SyntaxKind::ExpressionStatement;
+      ast::NodeId middleCall;
+      ast::NodeId middleCallee;
+      ast::NodeList middleTypeArguments{0, 0};
+      ast::NodeList middleArguments{0, 0};
+      ast::NodeId middleReceiver;
+      if (matchesDiscardedShape) {
+        middleCall = ast::NodeId(
+            tree.node(middleStmt).payload.words[ast::kExpressionStatementExpressionWord]);
+        matchesDiscardedShape = tree.contains(middleCall) &&
+                                tree.node(middleCall).kind == ast::SyntaxKind::CallExpression;
+      }
+      if (matchesDiscardedShape) {
+        middleCallee =
+            ast::NodeId(tree.node(middleCall).payload.words[ast::kCallExpressionCalleeWord]);
+        middleTypeArguments = {
+            tree.node(middleCall).payload.words[ast::kCallExpressionTypeArgsFirstWord],
+            tree.node(middleCall).payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+        middleArguments = {tree.node(middleCall).payload.words[ast::kCallExpressionArgsFirstWord],
+                           tree.node(middleCall).payload.words[ast::kCallExpressionArgsSizeWord]};
+        matchesDiscardedShape =
+            tree.contains(middleCallee) &&
+            tree.node(middleCallee).kind == ast::SyntaxKind::MemberExpression &&
+            static_cast<ast::MemberAccessKind>(
+                tree.node(middleCallee).payload.words[ast::kMemberExpressionAccessWord]) ==
+                ast::MemberAccessKind::Dot &&
+            tree.contains(middleTypeArguments) && middleTypeArguments.empty() &&
+            tree.contains(middleArguments);
+      }
+      if (matchesDiscardedShape) {
+        for (const auto argument : tree.list(middleArguments)) {
+          if (!tree.contains(argument) || !isScalarLiteral(tree.node(argument).kind)) {
+            matchesDiscardedShape = false;
+          }
+        }
+      }
+      if (matchesDiscardedShape) {
+        middleReceiver =
+            ast::NodeId(tree.node(middleCallee).payload.words[ast::kMemberExpressionObjectWord]);
+        matchesDiscardedShape = tree.contains(middleReceiver) &&
+                                tree.node(middleReceiver).kind == ast::SyntaxKind::IdentExpr &&
+                                tree.node(value).kind == ast::SyntaxKind::CallExpression;
+      }
+      ast::NodeId trailingCallee;
+      ast::NodeList trailingTypeArguments{0, 0};
+      ast::NodeId trailingReceiver;
+      if (matchesDiscardedShape) {
+        trailingCallee =
+            ast::NodeId(tree.node(value).payload.words[ast::kCallExpressionCalleeWord]);
+        trailingTypeArguments = {
+            tree.node(value).payload.words[ast::kCallExpressionTypeArgsFirstWord],
+            tree.node(value).payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+        matchesDiscardedShape =
+            tree.contains(trailingCallee) &&
+            tree.node(trailingCallee).kind == ast::SyntaxKind::MemberExpression &&
+            static_cast<ast::MemberAccessKind>(
+                tree.node(trailingCallee).payload.words[ast::kMemberExpressionAccessWord]) ==
+                ast::MemberAccessKind::Dot &&
+            tree.contains(trailingTypeArguments) && trailingTypeArguments.empty();
+      }
+      if (matchesDiscardedShape) {
+        trailingReceiver =
+            ast::NodeId(tree.node(trailingCallee).payload.words[ast::kMemberExpressionObjectWord]);
+        matchesDiscardedShape = tree.contains(trailingReceiver) &&
+                                tree.node(trailingReceiver).kind == ast::SyntaxKind::IdentExpr;
+      }
+      auto leadingItem = statementItem(tree, tree.list(statements)[0]);
+      ast::NodeId pattern;
+      ast::NodeId initializer;
+      if (matchesDiscardedShape && leadingItem != zc::none) {
+        ast::NodeId letNode;
+        ZC_IF_SOME(item, leadingItem) { letNode = item; }
+        const ast::NodeId letDeclarations(
+            tree.node(letNode).payload.words[ast::kLetStmtDeclarationsWord]);
+        bool letMatches =
+            tree.node(letNode).kind == ast::SyntaxKind::LetStmt && tree.contains(letDeclarations) &&
+            tree.node(letDeclarations).kind == ast::SyntaxKind::VariableDeclaratorList;
+        ast::NodeId letDeclarator;
+        if (letMatches) {
+          const ast::NodeList letDeclarators{
+              tree.node(letDeclarations).payload.words[ast::kVariableDeclaratorListDeclsFirstWord],
+              tree.node(letDeclarations).payload.words[ast::kVariableDeclaratorListDeclsSizeWord]};
+          letMatches = tree.contains(letDeclarators) && letDeclarators.size == 1;
+          if (letMatches) letDeclarator = tree.list(letDeclarators)[0];
+        }
+        if (letMatches && tree.contains(letDeclarator) &&
+            tree.node(letDeclarator).kind == ast::SyntaxKind::VariableDeclarator) {
+          pattern = ast::NodeId(
+              tree.node(letDeclarator).payload.words[ast::kVariableDeclaratorPatternWord]);
+          initializer =
+              ast::NodeId(tree.node(letDeclarator).payload.words[ast::kVariableDeclaratorInitWord]);
+          letMatches = tree.contains(pattern) &&
+                       tree.node(pattern).kind == ast::SyntaxKind::IdentifierPattern &&
+                       tree.contains(initializer) &&
+                       tree.node(initializer).kind == ast::SyntaxKind::StructLiteralExpr &&
+                       matchesLocalReference(tree, pattern, middleReceiver) &&
+                       matchesLocalReference(tree, pattern, trailingReceiver);
+        }
+        if (letMatches) {
+          FunctionReturnShape shape{};
+          shape.body = body;
+          shape.returnStatement = returnNode;
+          shape.value = value;
+          shape.localPattern = pattern;
+          shape.localInitializer = initializer;
+          shape.returnsLocal = true;
+          shape.localReference = trailingReceiver;
+          shape.returnsReceiverCall = true;
+          shape.hasDiscardedReceiverCallStatement = true;
+          shape.discardedCallStatement = middleStmt;
+          return shape;
+        }
+      }
     }
   }
   zc::Maybe<ast::NodeId> unsafeBlock;

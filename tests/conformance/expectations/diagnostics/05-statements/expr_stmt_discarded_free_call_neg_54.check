@@ -1,0 +1,13 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/expr_stmt_discarded_free_call_neg_54.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A direct free-function call in statement position has no admitted semantic
+// contract even when the callee body is admitted; only a discarded receiver
+// method call lowers. Surface admission rejects the statement as ZOM4098.
+
+// CHECK-LITERAL: Error [ZOM4098]: this expression statement is not supported yet
+// CHECK:   --> {{.*}}05-statements/expr_stmt_discarded_free_call_neg_54.zom:3:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |     g();
+// CHECK-LITERAL:   |     ^~~~
+// CHECK-LITERAL: 1 error generated.

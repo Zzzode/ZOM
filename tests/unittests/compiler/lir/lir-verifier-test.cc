@@ -745,6 +745,80 @@ ZC_TEST("LIR structural verifier accepts a void function returning void and a vo
   ZC_EXPECT(LirStructuralVerifier::verify(module) == zc::none);
 }
 
+ZC_TEST(
+    "LIR structural verifier accepts a void call followed by a destination call in one caller") {
+  // The void-then-value receiver caller: one dense caller block performs a
+  // destination-less void call into the unit setter, the next block performs a
+  // destination-carrying call into the i32 getter, and the last block returns
+  // that destination slot. The two callees precede the caller at indices 0 and 1.
+  zc::Vector<Function> functions;
+  {
+    // Function 0: unit setter; pointer plus i32 parameter, StoreField, ReturnVoid.
+    zc::Vector<BasicBlock> blocks;
+    zc::Vector<Statement> statements;
+    statements.add(Statement::storeField(
+        /*basePointerOrdinal=*/1, Operand::constant(constant(carrier(IntegerBitWidth::Bit32), 0)),
+        /*fieldOffsetBytes=*/0));
+    blocks.add(BasicBlock(blockId(1), zc::mv(statements), Terminator::returnVoid()));
+    zc::Vector<Local> parameters;
+    parameters.add(Local(1, ValueType::pointer(0)));
+    parameters.add(Local(2, carrier(IntegerBitWidth::Bit32)));
+    zc::Vector<Local> locals;
+    functions.add(Function(tests::testDefinition(1), zc::heapString("zom.setter"),
+                           ValueType::unit(), zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  }
+  {
+    // Function 1: i32 getter; pointer parameter, LoadField into slot 2, return it.
+    zc::Vector<BasicBlock> blocks;
+    zc::Vector<Statement> statements;
+    statements.add(Statement::loadField(/*destinationOrdinal=*/2, /*basePointerOrdinal=*/1,
+                                        /*fieldOffsetBytes=*/0));
+    blocks.add(BasicBlock(blockId(1), zc::mv(statements), Terminator::returnLocal(2)));
+    zc::Vector<Local> parameters;
+    parameters.add(Local(1, ValueType::pointer(0)));
+    zc::Vector<Local> locals;
+    locals.add(Local(2, carrier(IntegerBitWidth::Bit32)));
+    functions.add(Function(tests::testDefinition(2), zc::heapString("zom.getter"),
+                           carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(locals),
+                           zc::mv(blocks)));
+  }
+  {
+    // Function 2: caller; three dense blocks chained through call normal edges.
+    zc::Vector<BasicBlock> blocks;
+    {
+      zc::Vector<Statement> statements;
+      zc::Vector<Operand> arguments;
+      arguments.add(Operand::localUse(1));
+      arguments.add(Operand::constant(constant(carrier(IntegerBitWidth::Bit32), 42)));
+      auto call = Terminator::callVoidFunction(/*calleeIndex=*/0, zc::mv(arguments), blockId(2));
+      ZC_REQUIRE(call != zc::none);
+      blocks.add(BasicBlock(blockId(1), zc::mv(statements), zc::mv(ZC_ASSERT_NONNULL(call))));
+    }
+    {
+      zc::Vector<Statement> statements;
+      zc::Vector<Operand> arguments;
+      arguments.add(Operand::localUse(1));
+      auto call = Terminator::callFunction(/*calleeIndex=*/1, /*destinationOrdinal=*/2,
+                                           zc::mv(arguments), blockId(3));
+      ZC_REQUIRE(call != zc::none);
+      blocks.add(BasicBlock(blockId(2), zc::mv(statements), zc::mv(ZC_ASSERT_NONNULL(call))));
+    }
+    {
+      zc::Vector<Statement> statements;
+      blocks.add(BasicBlock(blockId(3), zc::mv(statements), Terminator::returnLocal(2)));
+    }
+    zc::Vector<Local> parameters;
+    parameters.add(Local(1, ValueType::pointer(0)));
+    zc::Vector<Local> locals;
+    locals.add(Local(2, carrier(IntegerBitWidth::Bit32)));
+    functions.add(Function(tests::testDefinition(3), zc::heapString("zom.module_init"),
+                           carrier(IntegerBitWidth::Bit32), zc::mv(parameters), zc::mv(locals),
+                           zc::mv(blocks)));
+  }
+  Module module(zc::mv(functions));
+  ZC_EXPECT(LirStructuralVerifier::verify(module) == zc::none);
+}
+
 ZC_TEST("LIR structural verifier rejects a void return on an integer carrier function") {
   zc::Vector<BasicBlock> blocks;
   blocks.add(BasicBlock(blockId(1), Terminator::returnVoid()));

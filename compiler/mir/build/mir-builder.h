@@ -15,6 +15,10 @@ namespace zomlang::compiler::checker {
 class CheckerIdentityAuthority;
 }  // namespace zomlang::compiler::checker
 
+namespace zomlang::compiler::type {
+class SemanticTypeStore;
+}  // namespace zomlang::compiler::type
+
 namespace zomlang::compiler::mir {
 
 /// \brief One recursively lowered function plus its sorted owner key.
@@ -49,6 +53,7 @@ struct RecursiveFunctionProduct final {
 zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
     const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
     const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker);
+    const type::SemanticTypeStore& semanticTypes, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copyMarker);
 
 }  // namespace zomlang::compiler::mir

@@ -89,6 +89,18 @@ zc::Maybe<ValueType> pointerCarrier(identity::SemanticTypeId type,
   return ValueType::pointer(0);
 }
 
+// Independently derived zero-sized Unit carrier for a Unit-result method.
+zc::Maybe<ValueType> unitCarrier(identity::SemanticTypeId type,
+                                 const type::SemanticTypeStore& types) noexcept {
+  auto lookup = types.get(type);
+  if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  ZC_IF_SOME(primitive, data.primitiveKind()) {
+    if (primitive == type::semantic::PrimitiveKind::Unit) return ValueType::unit();
+  }
+  return zc::none;
+}
+
 // Independently resolves the carrier of one materialized MIR local. Beyond the
 // integer and boolean carriers, a shared- or mutable-reference parameter or
 // temporary carries an opaque pointer, and a one-field aggregate-initialized
@@ -439,6 +451,202 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     }
   }
 
+  // A mutating-receiver unit method whose sole statement is
+  // `this.field = <ordinary-parameter>;` and which ends in a value-less Return.
+  // The write materializes as one StoreField carrying a parameter local-use (no
+  // read-back, unlike ReceiverFieldWriteRead), and the value-less Return maps to
+  // a LIR ReturnVoid. The receiver must be a mutable reference.
+  struct ReceiverParameterFieldWriteVoid final {
+    uint32_t receiverOrdinal = 0;
+    uint32_t parameterOrdinal = 0;
+  };
+  zc::Maybe<ReceiverParameterFieldWriteVoid> receiverParameterFieldWriteVoid;
+  if (!folded && receiverFieldWriteRead == zc::none && mir.locals.size() == 2 &&
+      mir.locals[0].kind == mir::MirLocalKind::Parameter &&
+      mir.locals[1].kind == mir::MirLocalKind::Parameter &&
+      mir.locals[1].id.ordinal() == mir.locals[0].id.ordinal() + 1 && mir.blocks.size() == 1) {
+    const auto& receiverLocal = mir.locals[0];
+    const auto& parameterLocal = mir.locals[1];
+    auto receiverLookup = types.get(receiverLocal.type);
+    bool receiverMutable = false;
+    if (receiverLookup.is<type::SemanticTypeLookup>()) {
+      const auto& receiverData = receiverLookup.get<type::SemanticTypeLookup>().data();
+      receiverMutable = receiverData.is<type::semantic::ReferenceTypeData>() &&
+                        receiverData.get<type::semantic::ReferenceTypeData>().mutability ==
+                            type::semantic::Mutability::Mutable;
+    }
+    const auto& block = mir.blocks[0];
+    const auto& term = block.terminator;
+    if (receiverMutable && block.statements.size() == 1 &&
+        term.kind() == mir::MirTerminatorKind::Return && term.returnValue().value == zc::none &&
+        unitCarrier(mir.resultType, types) != zc::none) {
+      const auto& write = block.statements[0];
+      if (write.kind() == mir::MirStatementKind::Assign) {
+        const auto& assignment = write.assignmentValue();
+        const auto& destination = assignment.destination;
+        const auto& projections = destination.projections();
+        bool projectedDestination =
+            assignment.initialization == mir::MirInitializationKind::Overwrite &&
+            assignment.value.kind() == mir::MirRvalueKind::Use &&
+            destination.local() == receiverLocal.id &&
+            destination.rootType() == receiverLocal.type &&
+            destination.resultType() == parameterLocal.type && projections.size() == 2 &&
+            projections[0].kind() == mir::MirProjectionKind::Dereference &&
+            projections[0].inputType() == receiverLocal.type &&
+            projections[1].kind() == mir::MirProjectionKind::Field &&
+            projections[1].resultType() == parameterLocal.type &&
+            projections[0].resultType() == projections[1].inputType();
+        const auto& writeOperand = assignment.value.useValue().operand;
+        bool parameterRhs = writeOperand.kind() != mir::MirOperandKind::Constant &&
+                            writeOperand.place().local() == parameterLocal.id &&
+                            writeOperand.place().projections().size() == 0 &&
+                            writeOperand.place().rootType() == parameterLocal.type &&
+                            writeOperand.place().resultType() == parameterLocal.type;
+        if (projectedDestination && parameterRhs) {
+          receiverParameterFieldWriteVoid = ReceiverParameterFieldWriteVoid{
+              receiverLocal.id.ordinal(), parameterLocal.id.ordinal()};
+        }
+      }
+    }
+  }
+
+  // A Function-sourced three-block caller that performs a mutating unit receiver
+  // call and then a shared value receiver call, returning the value. Five MIR
+  // locals (owner, mutable borrow, an unread unit call destination, shared
+  // borrow, value result) collapse to four LIR slots: the unit destination is
+  // dropped by dense renumbering, and neither call maps under lockstep.
+  struct ReceiverVoidThenValueCall final {
+    uint32_t ownerMir = 0, borrowMutMir = 0, unitTmpMir = 0;
+    uint32_t borrowShMir = 0, resultMir = 0;
+    uint32_t lirOwner = 0, lirBorrowMut = 0, lirBorrowSh = 0, lirResult = 0;
+  };
+  zc::Maybe<ReceiverVoidThenValueCall> receiverVoidThenValueCall;
+  if (mir.kind == mir::MirFunctionKind::Function &&
+      mir.sourceDefinitionKind == identity::DefinitionKind::Function && mir.locals.size() == 5 &&
+      mir.blocks.size() == 3) {
+    auto referenceIsMutable = [&](identity::SemanticTypeId type) -> zc::Maybe<bool> {
+      auto lookup = types.get(type);
+      if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
+      const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+      if (!data.is<type::semantic::ReferenceTypeData>()) return zc::none;
+      return data.get<type::semantic::ReferenceTypeData>().mutability ==
+             type::semantic::Mutability::Mutable;
+    };
+    const auto& ownerLocal = mir.locals[0];
+    const auto& borrowMutLocal = mir.locals[1];
+    const auto& unitTmpLocal = mir.locals[2];
+    const auto& borrowShLocal = mir.locals[3];
+    const auto& resultLocal = mir.locals[4];
+    auto borrowMutMutable = referenceIsMutable(borrowMutLocal.type);
+    auto borrowShMutable = referenceIsMutable(borrowShLocal.type);
+    bool denseOrdinals = true;
+    for (uint32_t i = 0; i < mir.locals.size(); ++i) {
+      if (mir.locals[i].id.ordinal() != i + 1) denseOrdinals = false;
+    }
+    bool headerShape =
+        denseOrdinals && ownerLocal.kind == mir::MirLocalKind::UserLocal &&
+        borrowMutLocal.kind == mir::MirLocalKind::Temporary &&
+        unitTmpLocal.kind == mir::MirLocalKind::Temporary &&
+        borrowShLocal.kind == mir::MirLocalKind::Temporary &&
+        resultLocal.kind == mir::MirLocalKind::Temporary && borrowMutMutable != zc::none &&
+        ZC_ASSERT_NONNULL(borrowMutMutable) && borrowShMutable != zc::none &&
+        !ZC_ASSERT_NONNULL(borrowShMutable) && unitCarrier(unitTmpLocal.type, types) != zc::none &&
+        resultLocal.type == mir.resultType && integerCarrier(mir.resultType, types) != zc::none;
+    const auto& bbOne = mir.blocks[0];
+    const auto& bbTwo = mir.blocks[1];
+    const auto& bbThree = mir.blocks[2];
+    if (headerShape && bbOne.statements.size() == 5 &&
+        bbOne.terminator.kind() == mir::MirTerminatorKind::Call && bbTwo.statements.size() == 3 &&
+        bbTwo.terminator.kind() == mir::MirTerminatorKind::Call && bbThree.statements.size() == 0 &&
+        bbThree.terminator.kind() == mir::MirTerminatorKind::Return) {
+      bool blockOneShape = bbOne.statements[0].kind() == mir::MirStatementKind::StorageLive &&
+                           bbOne.statements[0].storageLocal() == ownerLocal.id &&
+                           bbOne.statements[1].kind() == mir::MirStatementKind::Assign &&
+                           bbOne.statements[2].kind() == mir::MirStatementKind::StorageLive &&
+                           bbOne.statements[2].storageLocal() == borrowMutLocal.id &&
+                           bbOne.statements[3].kind() == mir::MirStatementKind::BorrowCreation &&
+                           bbOne.statements[4].kind() == mir::MirStatementKind::StorageLive &&
+                           bbOne.statements[4].storageLocal() == unitTmpLocal.id;
+      const auto& initialization = bbOne.statements[1].assignmentValue();
+      bool ownerAggregate =
+          initialization.initialization == mir::MirInitializationKind::Initialize &&
+          initialization.destination.local() == ownerLocal.id &&
+          initialization.destination.projections().size() == 0 &&
+          initialization.value.kind() == mir::MirRvalueKind::NominalAggregate;
+      if (ownerAggregate) {
+        const auto& aggregate = initialization.value.nominalAggregateValue();
+        ownerAggregate = aggregate.type == ownerLocal.type && aggregate.elements.size() == 1 &&
+                         aggregate.elements[0].operand.kind() == mir::MirOperandKind::Constant;
+      }
+      const auto& mutableBorrow = bbOne.statements[3].borrowCreationValue();
+      bool mutableBorrowShape = mutableBorrow.kind == mir::MirBorrowKind::Mutable &&
+                                mutableBorrow.destination.local() == borrowMutLocal.id &&
+                                mutableBorrow.destination.projections().size() == 0 &&
+                                mutableBorrow.source.local() == ownerLocal.id &&
+                                mutableBorrow.source.projections().size() == 0;
+      const auto& voidCall = bbOne.terminator.callValue();
+      bool voidCallShape =
+          voidCall.arguments.size() == 2 &&
+          voidCall.arguments[0].kind() != mir::MirOperandKind::Constant &&
+          voidCall.arguments[0].place().local() == borrowMutLocal.id &&
+          voidCall.arguments[0].place().projections().size() == 0 &&
+          voidCall.arguments[1].kind() == mir::MirOperandKind::Constant &&
+          voidCall.effect.kind() == mir::MirCallEffectKind::ActivateMutableReceiver &&
+          voidCall.effect.activatedMutableReceiver() != zc::none &&
+          ZC_ASSERT_NONNULL(voidCall.effect.activatedMutableReceiver()) == borrowMutLocal.id &&
+          voidCall.destination.local() == unitTmpLocal.id &&
+          voidCall.destination.projections().size() == 0 && voidCall.normalTarget == bbTwo.id &&
+          voidCall.unwindTarget == zc::none;
+      bool blockTwoShape = bbTwo.statements[0].kind() == mir::MirStatementKind::StorageLive &&
+                           bbTwo.statements[0].storageLocal() == borrowShLocal.id &&
+                           bbTwo.statements[1].kind() == mir::MirStatementKind::BorrowCreation &&
+                           bbTwo.statements[2].kind() == mir::MirStatementKind::StorageLive &&
+                           bbTwo.statements[2].storageLocal() == resultLocal.id;
+      const auto& sharedBorrow = bbTwo.statements[1].borrowCreationValue();
+      bool sharedBorrowShape = sharedBorrow.kind == mir::MirBorrowKind::Shared &&
+                               sharedBorrow.destination.local() == borrowShLocal.id &&
+                               sharedBorrow.destination.projections().size() == 0 &&
+                               sharedBorrow.source.local() == ownerLocal.id &&
+                               sharedBorrow.source.projections().size() == 0;
+      const auto& valueCall = bbTwo.terminator.callValue();
+      bool valueCallShape = valueCall.arguments.size() == 1 &&
+                            valueCall.arguments[0].kind() != mir::MirOperandKind::Constant &&
+                            valueCall.arguments[0].place().local() == borrowShLocal.id &&
+                            valueCall.arguments[0].place().projections().size() == 0 &&
+                            valueCall.effect.kind() == mir::MirCallEffectKind::NoActivation &&
+                            valueCall.destination.local() == resultLocal.id &&
+                            valueCall.destination.projections().size() == 0 &&
+                            valueCall.normalTarget == bbThree.id &&
+                            valueCall.unwindTarget == zc::none;
+      const auto& tailReturn = bbThree.terminator.returnValue().value;
+      bool tailShape = tailReturn != zc::none &&
+                       ZC_ASSERT_NONNULL(tailReturn).kind() != mir::MirOperandKind::Constant &&
+                       ZC_ASSERT_NONNULL(tailReturn).place().local() == resultLocal.id &&
+                       ZC_ASSERT_NONNULL(tailReturn).place().projections().size() == 0;
+      if (blockOneShape && ownerAggregate && mutableBorrowShape && voidCallShape && blockTwoShape &&
+          sharedBorrowShape && valueCallShape && tailShape) {
+        zc::Vector<uint32_t> dense;
+        uint32_t nextDense = 1;
+        for (const auto& local : mir.locals) {
+          const bool droppedUnit =
+              &local == &mir.locals[2] && unitCarrier(local.type, types) != zc::none;
+          dense.add(droppedUnit ? 0 : nextDense++);
+        }
+        if (nextDense == 5) {
+          receiverVoidThenValueCall = ReceiverVoidThenValueCall{ownerLocal.id.ordinal(),
+                                                                borrowMutLocal.id.ordinal(),
+                                                                unitTmpLocal.id.ordinal(),
+                                                                borrowShLocal.id.ordinal(),
+                                                                resultLocal.id.ordinal(),
+                                                                dense[0],
+                                                                dense[1],
+                                                                dense[3],
+                                                                dense[4]};
+        }
+      }
+    }
+  }
+
   // A shared-receiver method whose body is
   // `return this.<field> OP <constant>;` has one StorageLive/Initialize pair
   // whose arithmetic rvalue combines a [Dereference, Field] place-use of the
@@ -534,6 +742,9 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     expectedReturnCarrier = integerCarrier(ZC_ASSERT_NONNULL(fieldType), types);
   } else {
     expectedReturnCarrier = integerCarrier(mir.resultType, types);
+    if (expectedReturnCarrier == zc::none) {
+      expectedReturnCarrier = unitCarrier(mir.resultType, types);
+    }
   }
   if (expectedReturnCarrier == zc::none ||
       lir.returnCarrier() != ZC_ASSERT_NONNULL(expectedReturnCarrier)) {
@@ -628,6 +839,32 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
         lir.locals()[1].carrier() != ZC_ASSERT_NONNULL(resultCarrier)) {
       return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
     }
+  } else if (receiverVoidThenValueCall != zc::none) {
+    // The caller has no parameters and four dense body locals: the owner slot,
+    // the two receiver pointer slots, and the value result slot. The MIR unit
+    // call-destination temporary is dropped, so the generic 1:1 local path does
+    // not apply.
+    const auto& voidThenValue = ZC_ASSERT_NONNULL(receiverVoidThenValueCall);
+    if (lir.parameters().size() != 0 || lir.locals().size() != 4) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
+    const auto& ownerAggregate =
+        mir.blocks[0].statements[1].assignmentValue().value.nominalAggregateValue();
+    auto ownerElementCarrier =
+        integerCarrier(ownerAggregate.elements[0].operand.constantValue().type, types);
+    auto resultCarrier = integerCarrier(mir.resultType, types);
+    const ValueType pointerCarrierValue = ValueType::pointer(0);
+    if (ownerElementCarrier == zc::none || resultCarrier == zc::none ||
+        lir.locals()[0].ordinal() != voidThenValue.lirOwner ||
+        lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(ownerElementCarrier) ||
+        lir.locals()[1].ordinal() != voidThenValue.lirBorrowMut ||
+        lir.locals()[1].carrier() != pointerCarrierValue ||
+        lir.locals()[2].ordinal() != voidThenValue.lirBorrowSh ||
+        lir.locals()[2].carrier() != pointerCarrierValue ||
+        lir.locals()[3].ordinal() != voidThenValue.lirResult ||
+        lir.locals()[3].carrier() != ZC_ASSERT_NONNULL(resultCarrier)) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
   } else {
     uint32_t parameterCount = 0;
     for (const auto& local : mir.locals) {
@@ -656,6 +893,65 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     const auto& mirBlock = mir.blocks[b];
     const BasicBlock& lirBlock = lir.blocks()[b];
     uint32_t lirStatement = 0;
+
+    if (receiverVoidThenValueCall != zc::none) {
+      // The void-then-value caller has no lockstep mapping: the unit call carries
+      // no destination, the value call's destination is dense-renumbered, and the
+      // MIR unit temporary has no LIR slot. Validate the statements and the
+      // terminator for each block bespoke, then bypass the generic arms.
+      const auto& v = ZC_ASSERT_NONNULL(receiverVoidThenValueCall);
+      const auto statements = lirBlock.statements();
+      const Terminator& terminator = lirBlock.terminator();
+      if (b == 0) {
+        const auto& aggregate =
+            mir.blocks[0].statements[1].assignmentValue().value.nominalAggregateValue();
+        const auto& ownerElement = aggregate.elements[0].operand;
+        auto ownerCarrier = integerCarrier(ownerElement.constantValue().type, types);
+        const auto& mCall = mir.blocks[0].terminator.callValue();
+        auto argumentCarrier = integerCarrier(mCall.arguments[1].constantValue().type, types);
+        if (ownerCarrier == zc::none || argumentCarrier == zc::none || statements.size() != 2 ||
+            statements[0].kind() != StatementKind::Assign ||
+            statements[0].destinationOrdinal() != v.lirOwner ||
+            !sameConstant(statements[0].value(), ownerElement, ZC_ASSERT_NONNULL(ownerCarrier)) ||
+            statements[1].kind() != StatementKind::TakeAddress ||
+            statements[1].destinationOrdinal() != v.lirBorrowMut ||
+            statements[1].sourceOrdinal() != v.lirOwner ||
+            terminator.kind() != TerminatorKind::Call || terminator.hasCallDestination() ||
+            terminator.calleeIndex() >= moduleFunctions.size() ||
+            moduleFunctions[terminator.calleeIndex()].owner() != mCall.callee ||
+            terminator.callArguments().size() != 2 ||
+            terminator.callNormalTarget().ordinal() != 2 ||
+            terminator.callArguments()[0].isConstant() ||
+            terminator.callArguments()[0].localOrdinal() != v.lirBorrowMut ||
+            lirSlotCarrier(moduleFunctions[functionIndex], v.lirBorrowMut) == nullptr ||
+            !sameConstant(terminator.callArguments()[1], mCall.arguments[1],
+                          ZC_ASSERT_NONNULL(argumentCarrier))) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+        }
+      } else if (b == 1) {
+        const auto& mCall = mir.blocks[1].terminator.callValue();
+        if (statements.size() != 1 || statements[0].kind() != StatementKind::TakeAddress ||
+            statements[0].destinationOrdinal() != v.lirBorrowSh ||
+            statements[0].sourceOrdinal() != v.lirOwner ||
+            terminator.kind() != TerminatorKind::Call || !terminator.hasCallDestination() ||
+            terminator.callDestinationOrdinal() != v.lirResult ||
+            terminator.calleeIndex() >= moduleFunctions.size() ||
+            moduleFunctions[terminator.calleeIndex()].owner() != mCall.callee ||
+            terminator.callArguments().size() != 1 ||
+            terminator.callNormalTarget().ordinal() != 3 ||
+            terminator.callArguments()[0].isConstant() ||
+            terminator.callArguments()[0].localOrdinal() != v.lirBorrowSh ||
+            lirSlotCarrier(moduleFunctions[functionIndex], v.lirBorrowSh) == nullptr) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+        }
+      } else {
+        if (b != 2 || statements.size() != 0 || terminator.kind() != TerminatorKind::ReturnLocal ||
+            terminator.returnLocalOrdinal() != v.lirResult) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+        }
+      }
+      continue;
+    }
 
     if (receiverFieldArithmetic != zc::none) {
       // The receiver-field arithmetic body has no lockstep statement mapping:
@@ -710,26 +1006,45 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                            statementIndex);
             }
             const Statement& actual = lirBlock.statements()[lirStatement];
-            if (receiverFieldWriteRead != zc::none &&
+            if ((receiverFieldWriteRead != zc::none ||
+                 receiverParameterFieldWriteVoid != zc::none) &&
                 assignment.destination.projections().size() == 2) {
-              // The mutating receiver field write maps to one StoreField through
-              // the receiver pointer at offset zero with the write's constant
-              // operand, not to a slot-oriented statement.
-              const auto& writeRead = ZC_ASSERT_NONNULL(receiverFieldWriteRead);
+              // A mutating receiver field write maps to one StoreField through
+              // the receiver pointer at offset zero. The write-read shape stores
+              // a constant and reads the field back; the unit-write shape stores
+              // an ordinary-parameter local-use and returns no value.
               const auto& projections = assignment.destination.projections();
               const auto fieldCarrier = integerCarrier(assignment.destination.resultType(), types);
-              if (assignment.initialization != mir::MirInitializationKind::Overwrite ||
-                  assignment.value.kind() != mir::MirRvalueKind::Use ||
-                  assignment.value.useValue().operand.kind() != mir::MirOperandKind::Constant ||
-                  fieldCarrier == zc::none || actual.kind() != StatementKind::StoreField ||
-                  actual.basePointerOrdinal() != writeRead.receiverOrdinal ||
-                  actual.fieldOffsetBytes() != 0 || actual.source().isConstant() ||
-                  !sameConstant(actual.storedValue(), assignment.value.useValue().operand,
-                                ZC_ASSERT_NONNULL(fieldCarrier)) ||
+              if (fieldCarrier == zc::none || actual.kind() != StatementKind::StoreField ||
+                  actual.fieldOffsetBytes() != 0 ||
                   projections[0].kind() != mir::MirProjectionKind::Dereference ||
                   projections[1].kind() != mir::MirProjectionKind::Field) {
                 return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
                              statementIndex);
+              }
+              if (receiverFieldWriteRead != zc::none) {
+                const auto& writeRead = ZC_ASSERT_NONNULL(receiverFieldWriteRead);
+                if (assignment.initialization != mir::MirInitializationKind::Overwrite ||
+                    assignment.value.kind() != mir::MirRvalueKind::Use ||
+                    assignment.value.useValue().operand.kind() != mir::MirOperandKind::Constant ||
+                    actual.basePointerOrdinal() != writeRead.receiverOrdinal ||
+                    actual.source().isConstant() ||
+                    !sameConstant(actual.storedValue(), assignment.value.useValue().operand,
+                                  ZC_ASSERT_NONNULL(fieldCarrier))) {
+                  return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+              } else {
+                const auto& write = ZC_ASSERT_NONNULL(receiverParameterFieldWriteVoid);
+                if (assignment.initialization != mir::MirInitializationKind::Overwrite ||
+                    assignment.value.kind() != mir::MirRvalueKind::Use ||
+                    assignment.value.useValue().operand.kind() == mir::MirOperandKind::Constant ||
+                    actual.basePointerOrdinal() != write.receiverOrdinal ||
+                    actual.storedValue().isConstant() ||
+                    actual.storedValue().localOrdinal() != write.parameterOrdinal) {
+                  return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
               }
               ++lirStatement;
               break;
@@ -948,6 +1263,10 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
       case mir::MirTerminatorKind::Return: {
         const auto& returned = mirBlock.terminator.returnValue().value;
         if (returned == zc::none) {
+          if (receiverParameterFieldWriteVoid != zc::none &&
+              lirTerminator.kind() == TerminatorKind::ReturnVoid) {
+            break;  // A value-less Return of a Unit method maps to ReturnVoid.
+          }
           return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
         }
         const mir::MirOperand& operand = ZC_ASSERT_NONNULL(returned);

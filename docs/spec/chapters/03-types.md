@@ -85,6 +85,10 @@ let multiline: str = "Line 1\nLine 2";
 
 The `unit` type has exactly one value, written `()` or an empty block `{}`. It is used for functions that do not produce a meaningful return value.
 
+A function or method declared without a result annotation has the `unit` result
+type. Its body contains no value-producing `return` statement; it returns the
+unit value by falling through the end of the block.
+
 ```zom
 let empty: unit = ();
 

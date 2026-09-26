@@ -1,0 +1,5 @@
+section: "08-adt inherent mutating unit method with a discarded receiver call"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A mutating unit method writes this.field from an ordinary parameter; the entry discards a receiver-call statement and then reads the field through a trailing shared receiver call. It builds verified semantic HIR, Built MIR (three caller blocks, an unread unit call destination, ReturnVoid callee), verified LIR, and a native program that exits 42."

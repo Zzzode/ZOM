@@ -10,6 +10,7 @@
 #include "compiler/checker/body/marker-proof.h"
 #include "compiler/identity/key/definition-key.h"
 #include "compiler/mir/build/mir-fn-builder.h"
+#include "compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::mir {
 namespace {
@@ -109,6 +110,16 @@ zc::Maybe<const hir::HirPrimitiveBinaryExpression&> primitiveBinaryFor(
 zc::Maybe<const hir::HirReturnStatement&> returnFor(const hir::VerifiedHirModule& module,
                                                     hir::HirNodeId node) {
   return uniqueRecordFor(module.returns(), node);
+}
+
+/// \brief Resolves whether a semantic type id names the canonical Unit primitive.
+bool isUnitSemanticType(const type::SemanticTypeStore& semanticTypes,
+                        identity::SemanticTypeId type) {
+  auto lookup = semanticTypes.get(type);
+  if (!lookup.is<type::SemanticTypeLookup>()) return false;
+  auto primitive = lookup.get<type::SemanticTypeLookup>().data().primitiveKind();
+  return primitive != zc::none &&
+         ZC_ASSERT_NONNULL(primitive) == type::semantic::PrimitiveKind::Unit;
 }
 
 /// \brief Resolves a place use to a copy or move operand from the Copy marker
@@ -1018,6 +1029,192 @@ zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldWriteReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers `mutating fun m(this, x: T) { this.field = x; }` with a Unit
+/// result: one root scope with the receiver parameter local at localId(1) and
+/// the ordinary parameter local at localId(2), one Overwrite Assign to the
+/// [Dereference, Field] place whose rvalue is a copy/move place-use of the
+/// parameter local, and a void Return carrying no value.
+zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldWriteVoidReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
+    const hir::HirParameterFieldWriteStatement& sourceWrite,
+    const hir::HirParameterReferenceExpression& writeParameter,
+    const type::SemanticTypeStore& semanticTypes,
+    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copyMarker) {
+  if (declaration.receiver == zc::none || declaration.unsafeBlock != zc::none ||
+      declaration.parameters.size() != 1) {
+    return zc::none;
+  }
+  const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
+  if (!isUnitSemanticType(semanticTypes, declaration.resultType)) return zc::none;
+  if (sourceWrite.parameter != receiver.key || sourceWrite.value != writeParameter.node ||
+      writeParameter.parameter != declaration.parameters[0].key ||
+      writeParameter.type != declaration.parameters[0].type ||
+      writeParameter.type != sourceWrite.type ||
+      writeParameter.category != hir::HirValueCategory::Place) {
+    return zc::none;
+  }
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId receiverLocal =
+      ctx.declareLocal(MirLocalKind::Parameter, receiver.type, scope, receiver.sourceSpan.clone());
+  const MirLocalId parameterLocal =
+      ctx.declareLocal(MirLocalKind::Parameter, declaration.parameters[0].type, scope,
+                       declaration.parameters[0].sourceSpan.clone());
+
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  zc::Vector<MirProjection> writeProjections;
+  writeProjections.add(MirProjection::dereference(receiver.type, sourceWrite.receiverType));
+  writeProjections.add(
+      MirProjection::field(sourceWrite.field, sourceWrite.receiverType, sourceWrite.type));
+  zc::Vector<MirProjection> rhsProjections;
+  auto parameterOperand = placeUse(
+      proofs, copyMarker,
+      MirPlace(parameterLocal, writeParameter.type, zc::mv(rhsProjections), writeParameter.type));
+  if (parameterOperand == zc::none) return zc::none;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(receiverLocal, receiver.type, zc::mv(writeProjections), sourceWrite.type),
+      MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(parameterOperand))), MirInitializationKind::Overwrite,
+      sourceWrite.sourceSpan.clone()));
+
+  // The void return has no HirReturnStatement to source a span from; the body
+  // block span is the terminator span.
+  ctx.terminateBlock(MirTerminator::returnVoid(block.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Method, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
+/// \brief Lowers the discarded-mutable-call then shared-call caller:
+/// `fun f() -> T { let o = S{..}; o.set(c); return o.get(); }`. Five dense
+/// locals (owner, the set-call mutable borrow, the unread Unit call result, the
+/// get-call shared borrow, the get-call result) and three blocks: the first
+/// initializes the owner, creates the mutable borrow, and calls the setter with
+/// an ActivateMutableReceiver effect into the Unit temporary; the second
+/// creates a distinct shared borrow of the same owner and calls the getter; the
+/// third returns the getter result.
+zc::Maybe<RecursiveFunctionProduct> buildVoidCallThenReceiverCallReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirLocalBinding& binding,
+    const hir::HirNominalAggregateExpression& aggregate,
+    const hir::HirReturnStatement& sourceReturn,
+    const hir::HirLocalReferenceExpression& setReceiver,
+    const hir::HirReceiverCallExpression& discardedCall,
+    const hir::HirLocalReferenceExpression& getReceiver,
+    const hir::HirReceiverCallExpression& trailingCall,
+    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copyMarker) {
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId owner =
+      ctx.declareLocal(MirLocalKind::UserLocal, binding.type, scope, binding.sourceSpan.clone());
+  const MirLocalId borrowMutable = ctx.declareLocal(
+      MirLocalKind::Temporary, discardedCall.receiverType, scope, setReceiver.sourceSpan.clone());
+  const MirLocalId unitTemp = ctx.declareLocal(MirLocalKind::Temporary, discardedCall.resultType,
+                                               scope, discardedCall.sourceSpan.clone());
+  const MirLocalId borrowShared = ctx.declareLocal(
+      MirLocalKind::Temporary, trailingCall.receiverType, scope, getReceiver.sourceSpan.clone());
+  const MirLocalId getResult = ctx.declareLocal(MirLocalKind::Temporary, trailingCall.resultType,
+                                                scope, trailingCall.sourceSpan.clone());
+
+  // Block 1: initialize the owner, create the mutable borrow, then call the
+  // setter with the borrow as its receiver argument and the literal argument.
+  (void)ctx.beginBlock(scope);
+  ctx.appendStatement(MirStatement::storageLive(owner, binding.sourceSpan.clone()));
+  zc::Vector<MirNominalAggregateElement> elements;
+  for (const auto& element : aggregate.elements) {
+    elements.add(MirNominalAggregateElement{
+        element.field, MirOperand::constant(element.type, element.value.clone())});
+  }
+  zc::Vector<MirProjection> ownerProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(owner, binding.type, zc::mv(ownerProjections), binding.type),
+      MirRvalue::nominalAggregate(aggregate.definition, aggregate.type, zc::mv(elements)),
+      MirInitializationKind::Initialize, aggregate.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(borrowMutable, setReceiver.sourceSpan.clone()));
+  zc::Vector<MirProjection> borrowMutableDest;
+  zc::Vector<MirProjection> borrowMutableSource;
+  ctx.appendStatement(MirStatement::borrowCreation(
+      MirPlace(borrowMutable, discardedCall.receiverType, zc::mv(borrowMutableDest),
+               discardedCall.receiverType),
+      MirBorrowKind::Mutable,
+      MirPlace(owner, binding.type, zc::mv(borrowMutableSource), binding.type),
+      setReceiver.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(unitTemp, discardedCall.sourceSpan.clone()));
+  zc::Vector<MirProjection> receiverArgumentProjections;
+  auto receiverArgument =
+      placeUse(proofs, copyMarker,
+               MirPlace(borrowMutable, discardedCall.receiverType,
+                        zc::mv(receiverArgumentProjections), discardedCall.receiverType));
+  if (receiverArgument == zc::none) return zc::none;
+  zc::Vector<MirOperand> setArguments;
+  setArguments.add(zc::mv(ZC_ASSERT_NONNULL(receiverArgument)));
+  setArguments.add(
+      MirOperand::constant(discardedCall.arguments[0].type,
+                           ZC_ASSERT_NONNULL(discardedCall.arguments[0].value).clone()));
+  zc::Maybe<MirBlockId> noUnwindSet;
+  zc::Vector<MirProjection> unitDestProjections;
+  ctx.terminateBlock(
+      MirTerminator::call(discardedCall.callee, zc::mv(setArguments),
+                          MirCallEffect::activateMutableReceiver(borrowMutable),
+                          MirPlace(unitTemp, discardedCall.resultType, zc::mv(unitDestProjections),
+                                   discardedCall.resultType),
+                          blockId(2), zc::mv(noUnwindSet), discardedCall.sourceSpan.clone()));
+
+  // Block 2: a distinct shared borrow of the same owner, then the getter call.
+  (void)ctx.beginBlock(scope);
+  ctx.appendStatement(MirStatement::storageLive(borrowShared, getReceiver.sourceSpan.clone()));
+  zc::Vector<MirProjection> borrowSharedDest;
+  zc::Vector<MirProjection> borrowSharedSource;
+  ctx.appendStatement(MirStatement::borrowCreation(
+      MirPlace(borrowShared, trailingCall.receiverType, zc::mv(borrowSharedDest),
+               trailingCall.receiverType),
+      MirBorrowKind::Shared,
+      MirPlace(owner, binding.type, zc::mv(borrowSharedSource), binding.type),
+      getReceiver.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(getResult, trailingCall.sourceSpan.clone()));
+  zc::Vector<MirProjection> getReceiverArgumentProjections;
+  auto getReceiverArgument =
+      placeUse(proofs, copyMarker,
+               MirPlace(borrowShared, trailingCall.receiverType,
+                        zc::mv(getReceiverArgumentProjections), trailingCall.receiverType));
+  if (getReceiverArgument == zc::none) return zc::none;
+  zc::Vector<MirOperand> getArguments;
+  getArguments.add(zc::mv(ZC_ASSERT_NONNULL(getReceiverArgument)));
+  zc::Maybe<MirBlockId> noUnwindGet;
+  zc::Vector<MirProjection> getResultProjections;
+  ctx.terminateBlock(
+      MirTerminator::call(trailingCall.callee, zc::mv(getArguments), MirCallEffect::noActivation(),
+                          MirPlace(getResult, trailingCall.resultType, zc::mv(getResultProjections),
+                                   trailingCall.resultType),
+                          blockId(3), zc::mv(noUnwindGet), trailingCall.sourceSpan.clone()));
+
+  // Block 3: return the getter result.
+  (void)ctx.beginBlock(scope);
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(proofs, copyMarker,
+                                MirPlace(getResult, trailingCall.resultType,
+                                         zc::mv(returnProjections), trailingCall.resultType));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers `fun m(this, flag: bool) -> T { if (flag) { return a; } else {
 /// return b; } }` on a shared receiver: the receiver is the leading parameter
 /// local at localId(1), the ordinary parameters follow, and a FunctionResult
@@ -1191,8 +1388,25 @@ zc::Maybe<RecursiveFunctionProduct> buildReceiverSelfCallReturn(
 zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
     const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
     const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+    const type::SemanticTypeStore& semanticTypes, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copyMarker) {
   if (block.statements.empty()) return zc::none;
+  // Void mutating-receiver method: a sole `this.<field> = <parameter>;`
+  // statement with a Unit result. It deliberately has no trailing return, so it
+  // must be claimed before the trailing-return resolution below bails.
+  if (block.statements.size() == 1 && declaration.receiver != zc::none &&
+      declaration.unsafeBlock == zc::none) {
+    auto write = parameterFieldWriteFor(hirModule, block.statements[0]);
+    ZC_IF_SOME(sourceWrite, write) {
+      auto writeParameter = parameterReferenceFor(hirModule, sourceWrite.value);
+      ZC_IF_SOME(parameter, writeParameter) {
+        auto product =
+            buildReceiverFieldWriteVoidReturn(declaration, block, sourceWrite, parameter,
+                                              semanticTypes, identities, proofs, copyMarker);
+        if (product != zc::none) return product;
+      }
+    }
+  }
   // Every owned shape ends in its trailing return; a missing return delegates.
   auto sourceReturn = returnFor(hirModule, block.statements[block.statements.size() - 1]);
   if (sourceReturn == zc::none) return zc::none;
@@ -1314,6 +1528,62 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
             ZC_ASSERT_NONNULL(projection), ZC_ASSERT_NONNULL(sourceReturn), identities, proofs,
             copyMarker);
         if (product != zc::none) return product;
+      }
+    }
+  }
+
+  // Discarded mutable receiver call followed by a shared trailing receiver call:
+  // `fun f() -> T { let o = S{..constants..}; o.set(c); return o.get(); }`. The
+  // statement-position setter targets an unread Unit temporary; the trailing
+  // getter returns the owner field. This arm must precede the size-3 overwrite
+  // and sequential-local arms below.
+  if (block.statements.size() == 3 && declaration.receiver == zc::none &&
+      declaration.unsafeBlock == zc::none) {
+    auto bindingRecord = localFor(hirModule, block.statements[0]);
+    auto discardedRecord = receiverCallFor(hirModule, block.statements[1]);
+    if (bindingRecord != zc::none && discardedRecord != zc::none) {
+      const auto& binding = ZC_ASSERT_NONNULL(bindingRecord);
+      const auto& discardedCall = ZC_ASSERT_NONNULL(discardedRecord);
+      hir::HirNodeId initializerNode;
+      ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
+      auto aggregateRecord = aggregateFor(hirModule, initializerNode);
+      auto trailingCallRecord = receiverCallFor(hirModule, valueNode);
+      auto setReceiverRecord = localReferenceFor(hirModule, discardedCall.receiver);
+      if (aggregateRecord != zc::none && trailingCallRecord != zc::none &&
+          setReceiverRecord != zc::none) {
+        const auto& aggregate = ZC_ASSERT_NONNULL(aggregateRecord);
+        const auto& trailingCall = ZC_ASSERT_NONNULL(trailingCallRecord);
+        const auto& setReceiver = ZC_ASSERT_NONNULL(setReceiverRecord);
+        auto getReceiverRecord = localReferenceFor(hirModule, trailingCall.receiver);
+        if (getReceiverRecord != zc::none) {
+          const auto& getReceiver = ZC_ASSERT_NONNULL(getReceiverRecord);
+          if (binding.local.ordinal() == 1 && binding.initializer == aggregate.node &&
+              binding.type == aggregate.type && binding.type == discardedCall.receiverSourceType &&
+              binding.type == trailingCall.receiverSourceType &&
+              aggregate.category == hir::HirValueCategory::Value &&
+              discardedCall.receiver == setReceiver.node &&
+              trailingCall.receiver == getReceiver.node && setReceiver.local == binding.local &&
+              getReceiver.local == binding.local &&
+              setReceiver.category == hir::HirValueCategory::Place &&
+              getReceiver.category == hir::HirValueCategory::Place &&
+              discardedCall.receiverMode == checker::checked::ReceiverMode::Mutable &&
+              discardedCall.receiverAdjustments.size() == 1 &&
+              discardedCall.receiverAdjustments[0] ==
+                  checker::checked::ReceiverAdjustmentStep::BorrowMutable &&
+              isUnitSemanticType(semanticTypes, discardedCall.resultType) &&
+              discardedCall.arguments.size() == 1 && discardedCall.arguments[0].value != zc::none &&
+              trailingCall.receiverMode == checker::checked::ReceiverMode::Shared &&
+              trailingCall.receiverAdjustments.size() == 1 &&
+              trailingCall.receiverAdjustments[0] ==
+                  checker::checked::ReceiverAdjustmentStep::BorrowShared &&
+              trailingCall.arguments.size() == 0 &&
+              trailingCall.resultType == declaration.resultType) {
+            auto product = buildVoidCallThenReceiverCallReturn(
+                declaration, binding, aggregate, ZC_ASSERT_NONNULL(sourceReturn), setReceiver,
+                discardedCall, getReceiver, trailingCall, identities, proofs, copyMarker);
+            if (product != zc::none) return product;
+          }
+        }
       }
     }
   }

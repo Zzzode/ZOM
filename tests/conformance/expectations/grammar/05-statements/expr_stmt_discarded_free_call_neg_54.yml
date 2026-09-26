@@ -1,0 +1,5 @@
+section: "05-statements discarded direct free-function call"
+covers_rule: "expressionStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks the ZOM4098 rejection for a direct free-function call in statement position. Only a discarded receiver method call has an admitted semantic contract; a discarded free call does not."

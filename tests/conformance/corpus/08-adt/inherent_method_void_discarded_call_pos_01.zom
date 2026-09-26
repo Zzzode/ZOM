@@ -1,0 +1,10 @@
+struct Cell {
+  value: i32,
+  mutating fun set(this, x: i32) { this.value = x; }
+  fun get(this) -> i32 { return this.value; }
+}
+fun entry() -> i32 {
+  mut cell = Cell { value: 0 };
+  cell.set(42);
+  return cell.get();
+}
