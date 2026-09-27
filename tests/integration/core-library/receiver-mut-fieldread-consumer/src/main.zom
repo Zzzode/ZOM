@@ -1,0 +1,12 @@
+// A mutating-receiver method whose body only reads a field lowers like the
+// shared getter: a field copy is sound through a mutable receiver, so the
+// receiver call carries a mutable borrow and the callee loads the field
+// through the receiver pointer. The module initializer returns 42.
+struct C {
+  v: i32,
+  mutating fun g(this) -> i32 { return this.v; }
+}
+fun entry() -> i32 {
+  mut c = C { v: 42 };
+  return c.g();
+}

@@ -1,0 +1,10 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/inherent_method_discarded_mutating_trailing_neg_23.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A discarded mutating unit call followed by a trailing mutating field-read
+// call is well-formed source the discarded-call composition does not lower
+// yet (it admits only a shared trailing borrow), so the caller definition
+// drains as ZOM4099 instead of hitting an internal invalid-fact invariant.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK: 6 | fun entry() -> i32 {

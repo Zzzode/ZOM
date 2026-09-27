@@ -12,6 +12,8 @@
 #include "compiler/hir/checked-module.h"
 #include "compiler/identity/crypto/sha256.h"
 #include "compiler/ownership/admission/surface-admission.h"
+#include "compiler/type/semantic-type-data.h"
+#include "compiler/type/semantic-type-store.h"
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "zc/core/encoding.h"
 #include "zc/core/time.h"
@@ -1985,6 +1987,103 @@ ZC_TEST("HIR pipeline lowers a shared-receiver this field read") {
       ZC_EXPECT(operand.place().projections()[1].kind() == mir::MirProjectionKind::Field);
       ZC_EXPECT(operand.place().projections()[1].fieldValue().field == projection.field);
     }
+  }
+}
+
+ZC_TEST("HIR pipeline lowers a mutating-receiver this field read") {
+  // `mutating fun get(this) -> i32 { return this.value; }` only reads the one
+  // field through the implicit receiver. A field copy is sound through a
+  // mutable receiver, so it lowers exactly like the shared getter: the
+  // parameter-keyed field projection loads the field, the Built MIR return is
+  // a place-use of the receiver parameter through [Dereference, Field], and
+  // the caller's single receiver borrow is a mutable borrow.
+  HirPipelineFixture fixture(
+      "struct Cell { value: i32, mutating fun get(this) -> i32 { return this.value; } }\n"
+      "fun entry() -> i32 { mut cell = Cell { value: 7 }; return cell.get(); }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 2);
+  ZC_REQUIRE(module.parameterFieldProjections().size() == 1);
+  ZC_REQUIRE(module.receiverCalls().size() == 1);
+  const auto& projection = module.parameterFieldProjections()[0];
+  ZC_EXPECT(projection.category == HirValueCategory::Place);
+
+  zc::Maybe<const HirFunctionDeclaration&> method;
+  zc::Maybe<const HirFunctionDeclaration&> caller;
+  const auto& call = module.receiverCalls()[0];
+  for (const auto& function : module.functions()) {
+    if (function.receiver != zc::none) method = function;
+    if (function.definition != call.callee) caller = function;
+  }
+  ZC_REQUIRE(method != zc::none);
+  ZC_REQUIRE(caller != zc::none);
+  const auto& methodDecl = ZC_ASSERT_NONNULL(method);
+  ZC_REQUIRE(methodDecl.parameters.size() == 0);
+  ZC_EXPECT(projection.parameter == ZC_ASSERT_NONNULL(methodDecl.receiver).key);
+  ZC_EXPECT(projection.type == methodDecl.resultType);
+  // Four-node stride: function, body, return, parameter field projection.
+  ZC_EXPECT(projection.node.ordinal() == methodDecl.node.ordinal() + 3);
+
+  // The callee receiver carries a mutable reference whose referent is the
+  // field owner; the caller borrow that feeds it is mutable.
+  auto semanticTypesMaybe = fixture.compilerSession().getSemanticTypeStore();
+  ZC_REQUIRE(semanticTypesMaybe != zc::none);
+  ZC_IF_SOME(semanticTypes, semanticTypesMaybe) {
+    auto receiverLookup = semanticTypes.get(ZC_ASSERT_NONNULL(methodDecl.receiver).type);
+    ZC_REQUIRE(receiverLookup.is<type::SemanticTypeLookup>());
+    const auto& receiverData = receiverLookup.get<type::SemanticTypeLookup>().data();
+    ZC_REQUIRE(receiverData.is<type::semantic::ReferenceTypeData>());
+    const auto& receiverReference = receiverData.get<type::semantic::ReferenceTypeData>();
+    ZC_EXPECT(receiverReference.mutability == type::semantic::Mutability::Mutable);
+    ZC_EXPECT(receiverReference.referent == projection.receiverType);
+  }
+  ZC_EXPECT(call.receiverMode == checker::checked::ReceiverMode::Mutable);
+  ZC_REQUIRE(call.receiverAdjustments.size() == 1);
+  ZC_EXPECT(call.receiverAdjustments[0] == checker::checked::ReceiverAdjustmentStep::BorrowMutable);
+  ZC_REQUIRE(call.arguments.size() == 0);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(!fixture.compilerSession().hasDiagnosticErrors());
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> methodFunction;
+  zc::Maybe<const mir::MirFunction&> callerFunction;
+  for (const auto& function : builtMir[0].builtMir().functions()) {
+    if (function.owner == methodDecl.definition) methodFunction = function;
+    if (function.owner == ZC_ASSERT_NONNULL(caller).definition) callerFunction = function;
+  }
+  ZC_REQUIRE(methodFunction != zc::none);
+  ZC_REQUIRE(callerFunction != zc::none);
+  ZC_IF_SOME(function, methodFunction) {
+    ZC_EXPECT(function.sourceDefinitionKind == identity::DefinitionKind::Method);
+    ZC_REQUIRE(function.locals.size() == 1);
+    ZC_EXPECT(function.locals[0].kind == mir::MirLocalKind::Parameter);
+    ZC_EXPECT(function.locals[0].type == ZC_ASSERT_NONNULL(methodDecl.receiver).type);
+    ZC_REQUIRE(function.blocks.size() == 1);
+    ZC_EXPECT(function.blocks[0].statements.size() == 0);
+    const auto& terminator = function.blocks[0].terminator;
+    ZC_EXPECT(terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_REQUIRE(terminator.returnValue().value != zc::none);
+    ZC_IF_SOME(operand, terminator.returnValue().value) {
+      ZC_EXPECT(operand.kind() != mir::MirOperandKind::Constant);
+      ZC_EXPECT(operand.place().local() == function.locals[0].id);
+      ZC_EXPECT(operand.place().resultType() == methodDecl.resultType);
+      ZC_REQUIRE(operand.place().projections().size() == 2);
+      ZC_EXPECT(operand.place().projections()[0].kind() == mir::MirProjectionKind::Dereference);
+      ZC_EXPECT(operand.place().projections()[0].resultType() == projection.receiverType);
+      ZC_EXPECT(operand.place().projections()[1].kind() == mir::MirProjectionKind::Field);
+      ZC_EXPECT(operand.place().projections()[1].fieldValue().field == projection.field);
+    }
+  }
+  ZC_IF_SOME(function, callerFunction) {
+    // User local, mutable-receiver borrow temporary, call result temporary.
+    ZC_REQUIRE(function.locals.size() == 3);
+    ZC_EXPECT(function.locals[0].kind == mir::MirLocalKind::UserLocal);
+    ZC_EXPECT(function.locals[1].kind == mir::MirLocalKind::Temporary);
+    ZC_EXPECT(function.locals[2].kind == mir::MirLocalKind::Temporary);
+    ZC_REQUIRE(function.blocks.size() == 2);
+    const auto& entry = function.blocks[0];
+    ZC_EXPECT(entry.statements[3].kind() == mir::MirStatementKind::BorrowCreation);
+    ZC_EXPECT(entry.statements[3].borrowCreationValue().kind == mir::MirBorrowKind::Mutable);
+    ZC_EXPECT(function.blocks[1].terminator.kind() == mir::MirTerminatorKind::Return);
   }
 }
 

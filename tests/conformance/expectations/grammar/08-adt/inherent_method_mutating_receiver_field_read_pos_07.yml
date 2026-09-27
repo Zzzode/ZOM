@@ -1,0 +1,5 @@
+section: "08-adt inherent mutating method receiver field read"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A mutating-receiver inherent method returning this.field reads through the implicit this receiver parameter; a field copy is sound through a mutable receiver, so it builds the same verified semantic HIR and Built MIR as the shared getter with a Dereference plus Field place projection and lowers to a native pointer field load."

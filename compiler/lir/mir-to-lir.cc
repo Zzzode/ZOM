@@ -1748,7 +1748,8 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
     const mir::MirFunction& caller, const mir::MirFunction& callee,
     const type::SemanticTypeStore& semanticTypes) {
   // Callee: a Method-sourced function whose first parameter local is the
-  // shared-reference receiver. It admits exactly one block with one of:
+  // receiver reference parameter (shared or mutable). It admits exactly one
+  // block with one of:
   // (A) a scalar-constant return and no ordinary parameters (the
   //     literal-method slice),
   // (B) a [Dereference, Field] place-use of the receiver and no ordinary
@@ -2068,8 +2069,9 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
     return zc::none;
   }
 
-  // Caller: one aggregate-initialized owner local, one shared-receiver borrow
-  // temporary, and one call result temporary; two blocks (Call then Return).
+  // Caller: one aggregate-initialized owner local, one receiver borrow
+  // temporary whose mutability matches the callee receiver, and one call result
+  // temporary; two blocks (Call then Return).
   if (caller.kind != mir::MirFunctionKind::Function ||
       caller.sourceDefinitionKind != identity::DefinitionKind::Function ||
       caller.locals.size() != 3 || caller.blocks.size() != 2 ||

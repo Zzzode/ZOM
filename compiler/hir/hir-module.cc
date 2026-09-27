@@ -2294,11 +2294,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         continue;
       }
     }
-    // Receiver-field method shape: a shared-receiver inherent method whose body
-    // is the single statement `return this.<field>;`. Four node ids: function,
-    // body, return, parameter field projection. The branch is fully
-    // self-contained: it validates the source shape, the receiver-keyed member
-    // and place facts, and the method header before advancing past four nodes.
+    // Receiver-field method shape: a shared- or mutating-receiver inherent
+    // method whose body is the single statement `return this.<field>;`. Four
+    // node ids: function, body, return, parameter field projection. The branch
+    // is fully self-contained: it validates the source shape, the
+    // receiver-keyed member and place facts, and the method header before
+    // advancing past four nodes.
     {
       zc::Maybe<const HirParameterFieldProjectionExpression&> projectionRecord;
       for (const auto& projection : candidate.impl->parameterFieldProjections) {
@@ -2387,8 +2388,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
-        // The receiver parameter carries the shared reference `&Owner`; its
-        // referent must equal the projection's receiver type.
+        // The receiver parameter carries a reference to the owner, either shared
+        // or mutable; its referent must equal the projection's receiver type.
         auto receiverLookup = semanticTypes.get(receiver.type);
         if (!receiverLookup.is<type::SemanticTypeLookup>() ||
             !receiverLookup.get<type::SemanticTypeLookup>()
@@ -2406,14 +2407,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
-        if (receiverReference.mutability != type::semantic::Mutability::Const) {
-          // A field read through a mutable receiver without an admitted write is
-          // well-formed source the current lowering does not emit; drain the
-          // owning method with the capability code instead of an invariant.
-          return rejectHirCapability<VerifiedHirModule>(
-              function.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
-              sourceDefinition.source.clone());
-        }
+        // A field READ copies the projected value out and is sound through both
+        // shared and mutable receivers; no mutability gate applies here. The
+        // write-read branch retains its mutable-receiver requirement separately.
         // Checked facts: the bare `this` carries the receiver reference type,
         // the member node carries the field type, and the member/place facts
         // root at the receiver parameter with one field projection.
@@ -2442,7 +2438,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             memberFact.node != source.value || memberFact.receiverType != projection.receiverType ||
             memberFact.member != projection.field || memberFact.memberType != projection.type ||
             memberFact.adjustment != zc::none || placeFact.node != source.value ||
-            placeFact.type != projection.type || placeFact.mutablePlace || !placeFact.movable ||
+            placeFact.type != projection.type || !placeFact.movable ||
             !placeFact.root.variant().is<checker::checked::CallableParameterPlaceRoot>() ||
             placeFact.projections.size() != 1 ||
             !placeFact.projections[0].variant().is<checker::checked::FieldProjection>() ||
@@ -2459,8 +2455,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
-        // Method header: member-signature scope, shared receiver matching the
-        // header, zero ordinary parameters, and matching linkage/visibility.
+        // Method header: member-signature scope, a shared-or-mutating receiver
+        // matching the header, zero ordinary parameters, and matching
+        // linkage/visibility. A field read is sound through either receiver mode.
         auto signaturePosition =
             signatureIndex(signatures.definitions.asPtr(), function.definition);
         if (signaturePosition == zc::none) {
@@ -2488,7 +2485,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         if (memberScope.owner == function.definition || callable.raises != zc::none ||
             callable.success != function.resultType || callable.parameters.size() != 0 ||
             function.parameters.size() != 0 || callable.receiver == zc::none ||
-            ZC_ASSERT_NONNULL(callable.receiver).mode != checker::signature::ReceiverMode::Shared ||
+            (ZC_ASSERT_NONNULL(callable.receiver).mode !=
+                 checker::signature::ReceiverMode::Shared &&
+             ZC_ASSERT_NONNULL(callable.receiver).mode !=
+                 checker::signature::ReceiverMode::Mutable) ||
             ZC_ASSERT_NONNULL(callable.receiver).parameter != receiver.key ||
             expectedLinkage == zc::none ||
             !sameVisibility(function.visibility, expectedVisibility) ||

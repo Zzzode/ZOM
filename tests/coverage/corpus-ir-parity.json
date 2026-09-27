@@ -1,6 +1,6 @@
 {
   "corpusRoot": "tests/conformance/corpus",
-  "count": 984,
+  "count": 985,
   "irChannel": true,
   "outputs": {
     "02-lexical/bigint_suffix_neg_01.zom": {
@@ -2777,13 +2777,13 @@
       "mirSha256": "26c1121e09a711046dab255c98f5a8d481db9f475359e867aa8dc67939b8d663",
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
+    "08-adt/inherent_method_discarded_mutating_trailing_neg_23.zom": {
+      "exitCode": 1,
+      "sha256": "8f46d93ec102f71a52f14344bef1e26ccdb4010a0f7c4cf75c84088d4bf2a0e1"
+    },
     "08-adt/inherent_method_mutating_conditional_neg_18.zom": {
       "exitCode": 1,
       "sha256": "30798d96e7e912089fefe080779d8f950ff1e835071546136d64d240ba126405"
-    },
-    "08-adt/inherent_method_mutating_field_read_neg_04.zom": {
-      "exitCode": 1,
-      "sha256": "ca29a702d0222020c7308696b13163a0fdc6fa4f6741ac860475e0918a4cf485"
     },
     "08-adt/inherent_method_mutating_immutable_neg_03.zom": {
       "exitCode": 1,
@@ -2800,6 +2800,12 @@
     "08-adt/inherent_method_mutating_receiver_field_arithmetic_neg_22.zom": {
       "exitCode": 1,
       "sha256": "74332ca191ced520051b6fdf69df3f025f23b2fc94301e6b4626a923a6d742d4"
+    },
+    "08-adt/inherent_method_mutating_receiver_field_read_pos_07.zom": {
+      "exitCode": 0,
+      "hirSha256": "47cfef6e5f20e42e36abb50a44d93399e88840cd1e3eb8aac491b22f61db954e",
+      "mirSha256": "9d471d786a6464616bb59378bf886cb703fd019c18ac68d9e3e3983b8ebfe1a7",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "08-adt/inherent_method_mutating_receiver_field_write_pos_01.zom": {
       "exitCode": 0,

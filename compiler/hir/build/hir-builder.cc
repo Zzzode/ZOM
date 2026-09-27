@@ -2875,17 +2875,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                               ZC_ASSERT_NONNULL(writeStatementSpan).clone(),
                                               ZC_ASSERT_NONNULL(writeValueSpan).clone()};
           parameterFieldWriteLiteral = writeLiteral.literal.clone();
-        } else if (receiverLookup.get<type::SemanticTypeLookup>()
-                       .data()
-                       .get<type::semantic::ReferenceTypeData>()
-                       .mutability != type::semantic::Mutability::Const) {
-          // A field READ through a mutable receiver without an admitted write is
-          // well-formed source the current lowering does not emit; drain the
-          // owning definition with the capability code rather than an invariant.
-          return rejectHirCapability<HirModuleCandidate>(
-              definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
-              definition.source.clone());
         }
+        // A field READ copies the projected value out through the receiver
+        // pointer and is sound for both shared and mutable receivers. The write
+        // arm above is the only mutability gate on this shape.
       } else if (shape.returnsReceiverSelfCall) {
         // Shared-receiver self-call: `return this.<method>();` forwards the
         // implicit receiver parameter to a zero-argument method of the same
@@ -3620,6 +3613,19 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::MissingRequiredFact, module,
                                                  registries, ordinal + 2);
+          }
+          if (shape.hasDiscardedReceiverCallStatement &&
+              ZC_ASSERT_NONNULL(receiverCall).receiverMode ==
+                  checker::checked::ReceiverMode::Mutable) {
+            // The discarded-call composition lowers a mutable statement call
+            // followed only by a SHARED trailing borrow. A mutating trailing
+            // call is well-formed source outside this slice; drain the owner
+            // definition with the capability code here, in the builder, so the
+            // shared-only verifier and MIR gates below never see it and fail it
+            // as an invalid-fact invariant.
+            return rejectHirCapability<HirModuleCandidate>(
+                definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                definition.source.clone());
           }
           if (shape.hasDiscardedReceiverCallStatement) {
             // The middle statement is a second, discarded owner-local receiver

@@ -468,10 +468,10 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
-/// \brief Lowers `fun m(this) -> T { return this.field; }` on a shared
-/// receiver: one root scope, one receiver parameter local carrying the shared
-/// reference, and a Return of a copy/move place-use rooted at that local
-/// through [Dereference(&Owner -> Owner), Field(Owner -> T)].
+/// \brief Lowers `fun m(this) -> T { return this.field; }` on a shared or
+/// mutating receiver: one root scope, one receiver parameter local carrying
+/// the receiver reference, and a Return of a copy/move place-use rooted at that
+/// local through [Dereference(&Owner -> Owner), Field(Owner -> T)].
 zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldReturn(
     const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
     const hir::HirParameterFieldProjectionExpression& projection,
@@ -1441,7 +1441,8 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
                                ZC_ASSERT_NONNULL(literal), identities);
     }
 
-    // Receiver field read: a shared-receiver method returning this.field.
+    // Receiver field read: a shared- or mutating-receiver method returning
+    // this.field; the read is a copy through either kind of receiver reference.
     auto receiverFieldProjection = parameterFieldProjectionFor(hirModule, valueNode);
     if (declaration.receiver != zc::none && receiverFieldProjection != zc::none &&
         ZC_ASSERT_NONNULL(receiverFieldProjection).type == declaration.resultType &&

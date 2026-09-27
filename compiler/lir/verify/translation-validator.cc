@@ -343,10 +343,10 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
 
   const bool folded = fold.kind != FoldKind::None;
 
-  // A shared-receiver method returning this.field has no fold: its Return
-  // operand is a copy/move place-use rooted at the receiver parameter through
-  // [Dereference, Field]. The read materializes as one LoadField into a
-  // synthesized result slot followed by ReturnLocal.
+  // A shared- or mutating-receiver method returning this.field has no fold:
+  // its Return operand is a copy/move place-use rooted at the receiver
+  // parameter through [Dereference, Field]. The read materializes as one
+  // LoadField into a synthesized result slot followed by ReturnLocal.
   struct ReceiverFieldRead final {
     uint32_t receiverOrdinal = 0;
     uint32_t resultOrdinal = 0;

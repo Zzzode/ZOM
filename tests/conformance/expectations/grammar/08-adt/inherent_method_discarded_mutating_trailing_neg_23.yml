@@ -1,0 +1,5 @@
+section: "08-adt inherent method discarded mutating trailing call"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks the ZOM4099 drain of a discarded mutating unit call followed by a trailing mutating receiver field read, a caller shape the current lowering does not emit."
